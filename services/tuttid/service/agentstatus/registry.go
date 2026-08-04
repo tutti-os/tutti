@@ -237,6 +237,7 @@ func installerSpecFromProviderDescriptor(descriptor providerregistry.InstallerDe
 			FailureReasonMarkers: failureReasonMarkers,
 			ScriptURL:            descriptor.ScriptURL,
 			ScriptShell:          descriptor.ScriptShell,
+			WindowsFallback:      descriptor.WindowsFallback,
 		}, nil
 	case providerregistry.InstallerKindManagedNPM:
 		return InstallerSpec{

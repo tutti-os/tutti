@@ -58,6 +58,10 @@ func appServerForkStrategyForTest(
 	}
 }
 
+func tuttiAgentForkUserAgent() string {
+	return "tutti_agent/" + providerregistry.TuttiAgentThroughTurnForkMinVersion
+}
+
 func appServerRequestParamsList(t *testing.T, conn *scriptedAppServerConnection, method string) []map[string]any {
 	t.Helper()
 	conn.mu.Lock()

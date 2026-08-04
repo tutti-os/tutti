@@ -588,7 +588,7 @@ func TestServicePatchAgentComposerDefaultsForTargetValidatesStoresAndInvalidates
 	if store.patchAgentTarget != "local:codex" || validator.agentTargetID != "local:codex" {
 		t.Fatalf("targets store=%q validator=%q", store.patchAgentTarget, validator.agentTargetID)
 	}
-	if got := *store.patchInput[preferencesbiz.AgentComposerDefaultsFieldPermissionModeID]; got != "full-access" {
+	if got, _ := store.patchInput[preferencesbiz.AgentComposerDefaultsFieldPermissionModeID].(string); got != "full-access" {
 		t.Fatalf("stored permission = %q", got)
 	}
 	if len(publisher.agentTargetIDs) != 1 || publisher.agentTargetIDs[0] != "local:codex" {

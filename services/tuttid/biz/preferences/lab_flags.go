@@ -8,6 +8,7 @@ package preferences
 const (
 	LabFlagAutomationRules  = "lab.automationRules"
 	LabFlagAgentSessionFork = "lab.agentSessionFork"
+	LabFlagCodexSaverMode   = "lab.codexSaverMode"
 	// Durable key for Early Access agent-integration visibility (Agents directory).
 	LabFlagPreviewAgents = "lab.previewAgents"
 )
@@ -16,6 +17,7 @@ const (
 var labFlagDefaults = map[string]bool{
 	LabFlagAutomationRules:  false,
 	LabFlagAgentSessionFork: false,
+	LabFlagCodexSaverMode:   false,
 	LabFlagPreviewAgents:    false,
 }
 

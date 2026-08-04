@@ -253,7 +253,7 @@ func buildDaemonAPI(
 		return tuttiapi.DaemonAPI{}, nil, nil, nil, fmt.Errorf("create agent runtime: %w", err)
 	}
 	agentRuntimePreparer := runtimeprep.NewDefaultPreparer(tuttitypes.DefaultStateDir())
-	agentRuntimePreparer.RegisterProvider(tuttiagentservice.NewPreparer())
+	agentRuntimePreparer.RegisterProvider(tuttiagentservice.NewPreparer(tuttitypes.DefaultStateDir()))
 	agentRuntimePreparer.ComputerUseAvailable = func() bool {
 		return runtimeprep.ComputerUseDefaultEnabled() && computersvc.CheckReady() == nil
 	}
@@ -373,7 +373,8 @@ func buildDaemonAPI(
 		},
 		Composer: agentservice.ServiceComposerConfig{
 			AvailabilityChecker:         availabilityChecker,
-			ModelCatalog:                agentModelCatalog,
+			ModelCatalog:                replayAgentModelCatalog(replayComposition, agentProcessComposition, agentModelCatalog),
+			ReplayMode:                  replayComposition,
 			ModelCapabilities:           agentModelCapabilities,
 			AgentTargetStore:            agentTargetStore,
 			WorkspaceAgentResolver:      workspaceAgents,
@@ -601,26 +602,20 @@ func buildDaemonAPI(
 			}
 		}
 	}
+	appShellAdapter := workspaceservice.NewPlatformAppShellAdapter()
 	appCenterService := &workspaceservice.AppCenterService{
 		Store:                 appStore,
 		AppFactoryStore:       appFactoryStore,
 		WorkspaceStore:        store,
 		PreferencesStore:      preferencesStore,
-		Runner:                &workspaceservice.AppRunner{RuntimeResolver: managedRuntimeResolver},
+		Runner:                &workspaceservice.AppRunner{RuntimeResolver: managedRuntimeResolver, ShellAdapter: appShellAdapter},
+		ShellAdapter:          appShellAdapter,
 		StateDir:              tuttitypes.DefaultStateDir(),
 		HostTuttiVersion:      tuttitypes.ResolveAppVersion(),
 		HostTuttiCapabilities: tuttitypes.ResolveAppCapabilities(),
 		Publisher:             eventstreamservice.WorkspaceAppPublisher{Service: events},
 	}
-	go func() {
-		startedAt := time.Now()
-		slog.Info("managed runtime profile preload started", "event", "tutti.managed_runtime.profile_preload_started", "profile", managedruntime.NodeStaticProfile)
-		if err := managedRuntimeResolver.PreloadProfile(context.Background(), managedruntime.NodeStaticProfile); err != nil {
-			slog.Warn("managed runtime profile preload failed", "event", "tutti.managed_runtime.profile_preload_failed", "profile", managedruntime.NodeStaticProfile, "durationMs", time.Since(startedAt).Milliseconds(), "error", err)
-			return
-		}
-		slog.Info("managed runtime profile preload completed", "event", "tutti.managed_runtime.profile_preload_completed", "profile", managedruntime.NodeStaticProfile, "durationMs", time.Since(startedAt).Milliseconds())
-	}()
+	startManagedRuntimeProfilePreload(managedRuntimeResolver)
 	go func() {
 		// The packaged sidecar bundle no longer carries the native claude
 		// binary; provision it up front so the first Claude session does not
@@ -657,7 +652,8 @@ func buildDaemonAPI(
 		AgentMessageReader:    agentActivityProjection,
 		AgentSessionReader:    agentActivityProjection,
 		AgentSessionState:     agentActivityProjection,
-		Runner:                &workspaceservice.AppRunner{RuntimeResolver: managedRuntimeResolver},
+		Runner:                &workspaceservice.AppRunner{RuntimeResolver: managedRuntimeResolver, ShellAdapter: appShellAdapter},
+		ShellAdapter:          appShellAdapter,
 		StateDir:              tuttitypes.DefaultStateDir(),
 		Publisher:             eventstreamservice.WorkspaceAppFactoryPublisher{Service: events},
 	}
@@ -746,7 +742,7 @@ func buildDaemonAPI(
 	}
 	agentRuntimePreparer.CommandCatalog = runtimePrepCommandCatalog{Catalog: cliRegistry}
 
-	terminalService := &workspaceservice.TerminalService{}
+	terminalService := workspaceservice.NewTerminalService(workspaceservice.NewPlatformTerminalProcessFactory())
 	tuttiAgentReadiness := configureReplayAwareTuttiAgentReadiness(
 		replayComposition, accountService, &agentStatusService, agentTargets,
 	)
@@ -776,9 +772,8 @@ func buildDaemonAPI(
 		ModelPolicyService:        modelPolicies,
 		CollaborationRunService:   collabRuns,
 		AutomationRuleService:     automationRules,
-
-		EventStreamService: events,
-		WorkspaceService:   workspaceService,
+		EventStreamService:        events,
+		WorkspaceService:          workspaceService,
 		WorkbenchService: workspaceservice.WorkbenchService{
 			Store: workspaceStore,
 			SnapshotReconciler: workspaceservice.TerminalWorkbenchSnapshotReconciler{

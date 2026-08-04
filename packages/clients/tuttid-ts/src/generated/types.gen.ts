@@ -546,6 +546,7 @@ export type DesktopWorkbenchWindowSnappingShortcutPreset =
   | "commandShiftArrows";
 
 export type DesktopAgentComposerDefaults = {
+  codexSaverMode?: boolean;
   model?: string;
   permissionModeId?: string;
   reasoningEffort?: string;
@@ -1841,6 +1842,7 @@ export type WorkspaceAgentSource = "user" | "legacy_binding";
 export type WorkspaceAgentProvider = string;
 
 export type AgentSessionComposerSettings = {
+  codexSaverMode?: boolean | null;
   model?: string | null;
   permissionModeId?: string | null;
   planMode?: boolean | null;
@@ -1913,6 +1915,10 @@ export type GetWorkspaceAppFactoryAgentTargetComposerOptionsRequest = {
 };
 
 export type AgentProviderComposerOptionsResponse = {
+  /**
+   * Whether this resolved provider target supports the Codex Luna subagent saver mode; product entry policy is reported separately by the host
+   */
+  codexSaverModeSupported?: boolean;
   provider: WorkspaceAgentProvider;
   modelConfig: AgentProviderComposerConfig;
   permissionConfig: PermissionConfig;
@@ -3223,6 +3229,10 @@ export type WorkspaceAgentInitialGoalControl = {
 };
 
 export type CreateWorkspaceAgentSessionRequest = {
+  /**
+   * Enables the Codex Luna subagent saver mode for this session without changing the main model
+   */
+  codexSaverMode?: boolean | null;
   agentSessionId: string;
   /**
    * Required target-first session launch authority. The daemon derives provider and providerTargetRef from the stored agent target launchRef and rejects mismatched provider values.

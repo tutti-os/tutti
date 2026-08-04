@@ -42,8 +42,8 @@ func TestCodexRuntimeSelectionUsesOnlyReadyCandidateForStatusAndLaunch(t *testin
 	home := t.TempDir()
 	broken := filepath.Join(home, "broken", "codex")
 	healthy := filepath.Join(home, "healthy", "codex")
-	writeCodexVersionFixture(t, broken, "0.142.0")
-	writeCodexVersionFixture(t, healthy, "0.142.0")
+	broken = writeCodexVersionFixture(t, broken, "0.142.0")
+	healthy = writeCodexVersionFixture(t, healthy, "0.142.0")
 	service := probeTestService(home)
 	service.Environ = func() []string {
 		return []string{"PATH=" + filepath.Dir(broken) + string(filepath.ListSeparator) + filepath.Dir(healthy)}
@@ -74,8 +74,8 @@ func TestCodexRuntimeSelectionRequiresAUserChoiceBeforeStatusOrLaunch(t *testing
 	home := t.TempDir()
 	first := filepath.Join(home, "first", "codex")
 	second := filepath.Join(home, "second", "codex")
-	writeCodexVersionFixture(t, first, "0.142.0")
-	writeCodexVersionFixture(t, second, "0.142.0")
+	first = writeCodexVersionFixture(t, first, "0.142.0")
+	second = writeCodexVersionFixture(t, second, "0.142.0")
 	service := probeTestService(home)
 	service.Environ = func() []string {
 		return []string{"PATH=" + filepath.Dir(first) + string(filepath.ListSeparator) + filepath.Dir(second)}
@@ -117,8 +117,8 @@ func TestCodexRuntimeSelectionPersistsOnlyAReadyCandidateFromTheCurrentCatalog(t
 	home := t.TempDir()
 	first := filepath.Join(home, "first", "codex")
 	second := filepath.Join(home, "second", "codex")
-	writeCodexVersionFixture(t, first, "0.142.0")
-	writeCodexVersionFixture(t, second, "0.142.0")
+	first = writeCodexVersionFixture(t, first, "0.142.0")
+	second = writeCodexVersionFixture(t, second, "0.142.0")
 	store := &memoryCodexRuntimeSelectionStore{}
 	service := probeTestService(home)
 	service.Environ = func() []string {
@@ -168,8 +168,8 @@ func TestCodexRuntimeSelectionDoesNotFallbackFromBrokenExplicitCandidate(t *test
 	home := t.TempDir()
 	broken := filepath.Join(home, "broken", "codex")
 	healthy := filepath.Join(home, "healthy", "codex")
-	writeCodexVersionFixture(t, broken, "0.142.0")
-	writeCodexVersionFixture(t, healthy, "0.142.0")
+	broken = writeCodexVersionFixture(t, broken, "0.142.0")
+	healthy = writeCodexVersionFixture(t, healthy, "0.142.0")
 	service := probeTestService(home)
 	service.Environ = func() []string {
 		return []string{"PATH=" + filepath.Dir(broken) + string(filepath.ListSeparator) + filepath.Dir(healthy)}

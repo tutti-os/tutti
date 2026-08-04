@@ -10,6 +10,9 @@ import (
 
 func TestCodexComposerProfileComesFromProviderDescriptor(t *testing.T) {
 	profile := composerProfileFor(agentprovider.Codex)
+	if !profile.SubagentSaverMode {
+		t.Fatal("Codex composer profile must advertise subagent saver mode")
+	}
 	if !profile.ModelSelection || !profile.UsesModelCatalog || profile.ModelCatalog != "codex-cli" {
 		t.Fatalf("model profile = %#v", profile)
 	}
@@ -85,7 +88,7 @@ func TestCodexModelCatalogSpecComesFromProviderDescriptor(t *testing.T) {
 	if spec.source != "codex-cli" {
 		t.Fatalf("source = %q", spec.source)
 	}
-	if spec.lister == nil || spec.configuredDefaultModel == nil || spec.configuredModelOnly == nil || spec.configuredModelSource != "codex-configured-model" {
+	if spec.lister == nil || spec.configuredDefaultModel == nil {
 		t.Fatalf("catalog spec incomplete: %#v", spec)
 	}
 }
@@ -165,12 +168,16 @@ func TestCodexModelCatalogListerUsesDescriptorRuntimeCommand(t *testing.T) {
 	if err != nil || !registered {
 		t.Fatalf("agentModelCatalogSpecFromDescriptor() = (_, %v, %v)", registered, err)
 	}
-	lister, ok := spec.lister(&CachedAgentModelCatalog{}, AgentModelCatalogInput{}).(CodexCLIModelLister)
+	resolver := &fakeProviderCommandResolver{}
+	lister, ok := spec.lister(&CachedAgentModelCatalog{ProviderCommands: resolver}, AgentModelCatalogInput{}).(CodexCLIModelLister)
 	if !ok {
-		t.Fatalf("lister = %T, want CodexCLIModelLister", spec.lister(&CachedAgentModelCatalog{}, AgentModelCatalogInput{}))
+		t.Fatalf("lister = %T, want CodexCLIModelLister", spec.lister(&CachedAgentModelCatalog{ProviderCommands: resolver}, AgentModelCatalogInput{}))
 	}
 	if lister.Command != "poison-codex" || !reflect.DeepEqual(lister.Args, []string{"poison-app-server"}) {
 		t.Fatalf("lister command = %q %#v", lister.Command, lister.Args)
+	}
+	if lister.Provider != agentprovider.Codex || lister.ProviderCommands != resolver {
+		t.Fatalf("lister provider wiring = provider %q resolver %T, want %q and injected resolver", lister.Provider, lister.ProviderCommands, agentprovider.Codex)
 	}
 }
 

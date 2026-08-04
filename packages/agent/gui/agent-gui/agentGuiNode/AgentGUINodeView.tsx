@@ -399,17 +399,6 @@ export function AgentGUINodeView({
     const label = providerAuthAccountLabels?.[provider]?.trim();
     return label || null;
   }, [effectiveRailConfigProvider, providerAuthAccountLabels]);
-  const enabledProviderTargets = viewModel.rail.agentTargets.filter(
-    (target) =>
-      target.disabled !== true &&
-      ((target.agentTargetId?.trim() ?? "") || (target.targetId?.trim() ?? ""))
-  );
-  const sectionAgentTargetFallbackId =
-    enabledProviderTargets.length <= 1
-      ? viewModel.rail.selectedAgentTarget.agentTargetId?.trim() ||
-        viewModel.rail.selectedAgentTarget.targetId?.trim() ||
-        null
-      : null;
   const {
     controller: targetSetupController,
     environmentSetupVisible,
@@ -472,7 +461,6 @@ export function AgentGUINodeView({
       agentTargets: viewModel.rail.agentTargets,
       agentTargetsLoading: viewModel.rail.agentTargetsLoading,
       conversationFilter: viewModel.rail.conversationFilter,
-      sectionAgentTargetFallbackId,
       onCreateConversation: requestCreateConversation,
       onUpdateConversationFilter: actions.updateConversationFilter,
       onSelectConversationFilterTarget: actions.selectConversationFilterTarget,
@@ -512,7 +500,6 @@ export function AgentGUINodeView({
       requestRenameConversation,
       selectConversation,
       effectiveSelectProjectDirectory,
-      sectionAgentTargetFallbackId,
       viewModel.rail.agentTargets,
       viewModel.rail.agentTargetsLoading,
       viewModel.rail.revealRequest,

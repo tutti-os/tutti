@@ -25,6 +25,7 @@ type AppCenterService struct {
 	WorkspaceStore         workspacedata.CatalogStore
 	PreferencesStore       workspacedata.PreferencesStore
 	Runner                 *AppRunner
+	ShellAdapter           AppShellAdapter
 	AppCLIRegistry         *appcliservice.Registry
 	StateDir               string
 	HostTuttiVersion       string
@@ -366,7 +367,7 @@ func (s *AppCenterService) packageForInstall(ctx context.Context, appID string) 
 	if err != nil {
 		return appPackage, nil
 	}
-	if ok && shouldMaterializeRemoteBuiltin(appPackage, remoteBuiltin) {
+	if ok && s.shouldMaterializeRemoteBuiltin(appPackage, remoteBuiltin) {
 		return s.downloadRemoteBuiltinPackage(ctx, remoteBuiltin)
 	}
 	return appPackage, nil

@@ -36,6 +36,7 @@ type PrepareInput struct {
 	Provider               string
 	Cwd                    string
 	CLICommand             string
+	CodexSaverMode         bool
 	Title                  string
 	PermissionModeID       string
 	PlanMode               bool

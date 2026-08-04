@@ -96,7 +96,7 @@ func (s *AppCenterService) ImportPackage(ctx context.Context, archivePath string
 	if err != nil {
 		return workspacebiz.WorkspaceApp{}, err
 	}
-	if err := validateExtractedAppPackage(packageRoot, manifest); err != nil {
+	if err := validateExtractedAppPackage(s.ShellAdapter, packageRoot, manifest); err != nil {
 		return workspacebiz.WorkspaceApp{}, err
 	}
 	if _, err := s.Store.GetAppPackageVersion(ctx, manifest.AppID, manifest.Version); err == nil {
@@ -104,9 +104,9 @@ func (s *AppCenterService) ImportPackage(ctx context.Context, archivePath string
 	} else if !errors.Is(err, workspacedata.ErrWorkspaceAppNotFound) {
 		return workspacebiz.WorkspaceApp{}, err
 	}
-	packageDir := s.packageCacheDir(manifest.AppID, manifest.Version)
-	if err := os.RemoveAll(packageDir); err != nil {
-		return workspacebiz.WorkspaceApp{}, fmt.Errorf("replace imported app package dir: %w", err)
+	packageDir, err := replaceWorkspaceAppPackageDir(s.packageCacheDir(manifest.AppID, manifest.Version))
+	if err != nil {
+		return workspacebiz.WorkspaceApp{}, err
 	}
 	if err := copyDirectory(packageRoot, packageDir); err != nil {
 		return workspacebiz.WorkspaceApp{}, fmt.Errorf("copy imported app package: %w", err)

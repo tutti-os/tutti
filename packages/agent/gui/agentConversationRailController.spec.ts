@@ -23,7 +23,6 @@ describe("createAgentGUIConversationRailQueryController", () => {
     };
     const scope = {
       conversationFilter: { kind: "all" as const },
-      sectionAgentTargetFallbackId: null,
       userProjects: []
     };
     const first = createAgentGUIConversationRailQueryController({

@@ -169,6 +169,9 @@ func sessionRuntimeEffectiveConfig(input CreateSessionInput) map[string]any {
 	if input.ComputerUse != nil {
 		result["computerUse"] = *input.ComputerUse
 	}
+	if input.CodexSaverMode != nil {
+		result["codexSaverMode"] = *input.CodexSaverMode
+	}
 	if value := strings.TrimSpace(value(input.ReasoningEffort)); value != "" {
 		result["reasoningEffort"] = value
 	}

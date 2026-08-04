@@ -48,6 +48,20 @@ test("resolveWorkspaceFileAbsolutePath normalizes relative-looking paths under t
   );
 });
 
+test("resolveWorkspaceFileAbsolutePath normalizes daemon Windows drive paths", () => {
+  if (process.platform !== "win32") {
+    return;
+  }
+
+  assert.equal(
+    resolveWorkspaceFileAbsolutePath({
+      logicalPath: "/C:/Users/test/Documents/notes.txt",
+      rootDirectory: "C:\\"
+    }),
+    path.resolve("C:/Users/test/Documents/notes.txt")
+  );
+});
+
 test("resolveWorkspaceFileAbsolutePath rejects empty workspace roots", () => {
   assert.throws(
     () =>

@@ -8003,6 +8003,8 @@ components:
       type: object
       additionalProperties: false
       properties:
+        codexSaverMode:
+          type: boolean
         model:
           type: string
         permissionModeId:
@@ -11087,6 +11089,9 @@ components:
       type: object
       additionalProperties: false
       properties:
+        codexSaverMode:
+          type: boolean
+          nullable: true
         model:
           type: string
           nullable: true
@@ -11242,6 +11247,9 @@ components:
         - capabilityCatalog
         - behavior
       properties:
+        codexSaverModeSupported:
+          type: boolean
+          description: Whether this resolved provider target supports the Codex Luna subagent saver mode; product entry policy is reported separately by the host
         provider:
           $ref: "#/components/schemas/WorkspaceAgentProvider"
         modelConfig:
@@ -14207,6 +14215,10 @@ components:
         - initialContent
         - clientSubmitId
       properties:
+        codexSaverMode:
+          type: boolean
+          nullable: true
+          description: Enables the Codex Luna subagent saver mode for this session without changing the main model
         agentSessionId:
           type: string
           format: uuid

@@ -328,7 +328,7 @@ jobs:
         run: pnpm generate:builtin-apps
 
       - name: Run Go workspace tests
-        run: pnpm test:go:prepared
+        run: pnpm test:go:prepared -- --tail-lines 400
 
   go-lint:
     name: Go Lint

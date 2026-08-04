@@ -89,6 +89,11 @@ func (c *Controller) confirmProviderDispatchDurable(
 	accepted.Payload.Metadata = map[string]any{
 		"acceptanceSource": string(receipt.Source),
 	}
+	// Preserve the stamped ProviderInputUnit from the live provider event so the
+	// acceptance commit carries Replay batches. Without it, Claude Code's later
+	// re-emit is often an empty-mutation no-op (no TransactionID) and
+	// checkpoint_commit_unconfirmed fails for turn.working.
+	accepted.ProviderInputUnit = receipt.ProviderInputUnit
 	reported, err := c.reportProviderAcceptanceDurable(ctx, session, []activityshared.Event{accepted})
 	if err != nil {
 		return ProviderDispatchResult{

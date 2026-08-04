@@ -77,6 +77,7 @@ type SessionTurnQuery struct {
 }
 
 type ComposerSettings struct {
+	CodexSaverMode   bool
 	Model            string
 	ModelPlanID      string
 	PermissionModeID string
@@ -93,6 +94,7 @@ type ComposerSettings struct {
 }
 
 type ComposerSettingsPatch struct {
+	CodexSaverMode   *bool
 	Model            *string
 	PermissionModeID *string
 	PlanMode         *bool
@@ -277,6 +279,7 @@ type RuntimeStartInput struct {
 	PlanMode                bool
 	BrowserUse              *bool
 	ComputerUse             *bool
+	CodexSaverMode          bool
 	ProviderTargetRef       map[string]any
 	RuntimeContext          map[string]any
 	ReasoningEffort         string
@@ -486,6 +489,9 @@ type RuntimeCancelResult struct {
 type RuntimeCloseInput struct {
 	WorkspaceID    string
 	AgentSessionID string
+	// PreserveCanonicalState removes the provider runtime without publishing a
+	// canonical Session completion over an already-durable terminal state.
+	PreserveCanonicalState bool
 }
 
 type RuntimeSubmitInteractiveInput struct {
@@ -594,6 +600,7 @@ type CreateSessionInput struct {
 	PlanMode               *bool
 	BrowserUse             *bool
 	ComputerUse            *bool
+	CodexSaverMode         *bool
 	ProviderTargetRef      map[string]any
 	ReasoningEffort        *string
 	RuntimeContext         map[string]any

@@ -25,6 +25,7 @@ type scriptedSessionState struct {
 	threadName                   string
 	replayTokenUsageOnResume     bool
 	threadResumeError            bool
+	extraRootsError              bool
 }
 
 func (s *fakeCodexAppServer) handleSessionRPC(message scriptedAppServerMessage) bool {
@@ -41,6 +42,18 @@ func (s *fakeCodexAppServer) handleSessionRPC(message scriptedAppServerMessage) 
 		})
 	case appServerMethodInitialized:
 		// notification, no response
+	case appServerMethodSkillsExtraRootsSet:
+		if s.extraRootsError {
+			s.sendJSON(map[string]any{
+				"id":    message.ID,
+				"error": map[string]any{"code": -32601, "message": "method not found"},
+			})
+			return true
+		}
+		s.sendJSON(map[string]any{
+			"id":     message.ID,
+			"result": map[string]any{},
+		})
 	case appServerMethodAccountRead:
 		if s.accountReadError {
 			errorMessage := s.accountReadErrorMessage

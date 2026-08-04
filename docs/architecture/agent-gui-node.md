@@ -196,6 +196,21 @@ explicit top-level `set`/`unset` patch. Omission preserves existing context;
 patches may update only provider-private keys and must never replace unrelated
 session metadata.
 
+### New-session launch settings
+
+Remembered composer defaults are target-scoped preferences, not active Session
+state. AgentGUI reads them only while composing a new Session and sends the
+resolved sparse settings through the normal activation command. A host-owned
+entry capability may additionally hide or disable an experimental control; the
+activation boundary must fail closed as well, so a remembered `true` value
+cannot outlive a disabled host entry. Provider support comes from the resolved
+composer descriptor rather than provider-name checks in shared UI code.
+
+Settings that affect provider preparation are immutable after launch. The
+daemon validates them against current product policy and resolved provider
+capability before runtime preparation; an active Session cannot reinterpret
+them through an in-place settings update.
+
 ### 2.4 Ownership map
 
 | Layer                           | Owns                                                                                          | Must not own                                      |
@@ -315,6 +330,12 @@ The developer-only `agent.sessionRecording` desktop preference defaults off.
 When enabled, Desktop injects its recording and replay controls through generic
 AgentGUI render slots. AgentGUI contains no recording/replay API, controller,
 state, provider branch, component, or copy.
+
+The provider-neutral renderer contract is published separately as
+`@tutti-os/agent-session-replay`. It owns the portable activity event type and
+interaction contract shared by Desktop and TSH; product adapters still own
+scope mapping, persistence, HTTP/Electron integration, replay runners, and
+provider/runtime setup.
 
 `packages/agent/session-replay` owns the provider-neutral Recording/Cassette
 workflow, status transitions, portable contracts, and validation policy.
@@ -2020,10 +2041,10 @@ home composer submit
   -> authoritative Session/Turn replaces optimistic projection
 ```
 
-Initial content is one user-owned submit flow, but provider acceptance is not the prompt's durability boundary. Once the submitted Turn and prompt are durably recorded, a deterministic provider rejection keeps the visible Session, failed Turn, and user prompt so the failure can be rendered and retried. Only a pre-dispatch startup/validation failure may compensate an empty provisional shell; an outcome-unknown delivery keeps its recovery claim instead of guessing whether the provider ran.
+Initial content is one user-owned submit flow, but provider acceptance is not the prompt's durability boundary. Once the submitted Turn and prompt are durably recorded, a deterministic provider rejection keeps the visible Session, failed Turn, and user prompt so the failure can be rendered as history. Host then discards the startup runtime without publishing canonical completion. AgentGUI may offer provider login for an authentication failure, but it does not offer manual activation retry for failed or canceled Sessions; the user starts a new conversation instead. Restarted Sessions already project their canonical canceled state, so this presentation rule does not require a separate provider-history query. Only a pre-dispatch startup/validation failure may compensate an empty provisional shell; an outcome-unknown delivery keeps its recovery claim instead of guessing whether the provider ran.
 The rejected submit claim is terminal and remains bound to that failed Turn, so
-retrying the same `clientSubmitId` reuses the persisted failure and never
-dispatches a second provider Turn.
+replaying the same `clientSubmitId` is an idempotent read of the persisted
+failure and never dispatches a second provider Turn.
 The initiating composer snapshots Tutti activation plus effect and speed with
 that submit. An explicit active or inactive submit snapshot is authoritative
 over a later read of mutable home-draft state; non-composer callers may fall

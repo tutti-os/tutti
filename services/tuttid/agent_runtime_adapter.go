@@ -145,8 +145,9 @@ func (a agentRuntimeAdapter) CanResume(input agentservice.RuntimeResumeInput) bo
 
 func (a agentRuntimeAdapter) Close(ctx context.Context, input agentservice.RuntimeCloseInput) error {
 	if _, err := a.controller.Close(ctx, agentruntime.CloseInput{
-		RoomID:         input.WorkspaceID,
-		AgentSessionID: input.AgentSessionID,
+		RoomID:                 input.WorkspaceID,
+		AgentSessionID:         input.AgentSessionID,
+		PreserveCanonicalState: input.PreserveCanonicalState,
 	}); err != nil {
 		return mapAgentRuntimeError(err)
 	}

@@ -236,6 +236,7 @@ test("new page creates about:blank and enables the request guard before navigati
     closeTarget: async () => undefined,
     requestTarget: async (input) => {
       assert.equal(input.url, "about:blank");
+      assert.equal(input.agentTurnId, "turn-a");
       registry.register("agent:tab:1", contents, {
         agentSessionId: "agent-a",
         selected: true,
@@ -250,6 +251,7 @@ test("new page creates about:blank and enables the request guard before navigati
 
   await registry.call({
     agentSessionId: "agent-a",
+    agentTurnId: "turn-a",
     args: { url: "https://public.example/start" },
     tool: "new_page",
     workspaceId: "ws-1"

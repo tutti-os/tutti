@@ -228,12 +228,13 @@ func (c *Controller) Close(ctx context.Context, input CloseInput) (CloseResult, 
 	}
 	key := sessionKey(session.RoomID, session.AgentSessionID)
 	c.cancelActiveTurn(session.RoomID, session.AgentSessionID)
-	if err := adapter.Close(ctx, session); err != nil {
-		return CloseResult{}, err
+	closeErr := adapter.Close(ctx, session)
+	if closeErr != nil && !input.PreserveCanonicalState {
+		return CloseResult{}, closeErr
 	}
 	c.mu.Lock()
 	provisional := c.provisionalSessions[key]
-	if provisional {
+	if provisional || input.PreserveCanonicalState {
 		delete(c.provisionalSessions, key)
 		delete(c.sessions, key)
 		delete(c.turns, key)
@@ -243,7 +244,10 @@ func (c *Controller) Close(ctx context.Context, input CloseInput) (CloseResult, 
 		delete(c.goalGenerationFences, key)
 	}
 	c.mu.Unlock()
-	if provisional {
+	if closeErr != nil {
+		return CloseResult{AgentSessionID: session.AgentSessionID, Disconnected: true}, closeErr
+	}
+	if provisional || input.PreserveCanonicalState {
 		return CloseResult{AgentSessionID: session.AgentSessionID, Disconnected: true}, nil
 	}
 	session.Status = SessionStatusCompleted
@@ -387,6 +391,7 @@ func normalizeSessionSettings(settings *SessionSettings, provider string, defaul
 	if settings == nil {
 		return normalized
 	}
+	normalized.CodexSaverMode = settings.CodexSaverMode
 	normalized.Model = strings.TrimSpace(settings.Model)
 	normalized.ReasoningEffort = strings.TrimSpace(settings.ReasoningEffort)
 	normalized.Speed = strings.TrimSpace(settings.Speed)

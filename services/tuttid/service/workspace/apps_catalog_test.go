@@ -230,6 +230,9 @@ func TestAppCenterServiceInitializesBuiltinCatalogAndInstallState(t *testing.T) 
 	if _, err := os.Stat(filepath.Join(onboarding.Package.PackageDir, "bin", "darwin-arm64", "tutti-onboarding-server")); err != nil {
 		t.Fatalf("onboarding embedded server missing: %v", err)
 	}
+	if _, err := os.Stat(filepath.Join(onboarding.Package.PackageDir, "bin", "windows-amd64", "tutti-onboarding-server.exe")); err != nil {
+		t.Fatalf("onboarding embedded Windows server missing: %v", err)
+	}
 }
 
 func TestAppCenterServiceInitializesBuiltinPackagesWhenRemoteCatalogFails(t *testing.T) {

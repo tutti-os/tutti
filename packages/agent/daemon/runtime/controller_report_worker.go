@@ -191,6 +191,9 @@ func (c *Controller) reportProviderAcceptanceDurable(
 	}
 	report := reportActivityInput(session, events)
 	c.enrichReportStatePatchesWithSessionMetadata(session, &report)
+	// Mirror enqueueSessionReport: observe batches before the durable commit so
+	// checkpoint candidates exist when ObserveReplayCommitted runs.
+	c.observeProviderObservations(ctx, session, report.ProviderObservations)
 	reportCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 	defer cancel()
 	request := reportRequest{

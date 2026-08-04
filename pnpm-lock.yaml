@@ -78,6 +78,9 @@ importers:
       "@tutti-os/agent-gui":
         specifier: workspace:*
         version: link:../../packages/agent/gui
+      "@tutti-os/agent-session-replay":
+        specifier: workspace:*
+        version: link:../../packages/agent/session-replay-ui
       "@tutti-os/analytics":
         specifier: workspace:*
         version: link:../../packages/analytics/core
@@ -615,6 +618,31 @@ importers:
         specifier: ^4.0.13
         version: 4.1.7(@types/node@24.12.4)(jsdom@27.4.0)(vite@6.4.2(@types/node@24.12.4)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.49.0)(tsx@4.22.3)(yaml@2.9.0))
 
+  packages/agent/session-replay-ui:
+    dependencies:
+      "@tutti-os/agent-activity-core":
+        specifier: workspace:*
+        version: link:../activity-core
+    devDependencies:
+      "@tutti-os/config-tsconfig":
+        specifier: workspace:*
+        version: link:../../configs/tsconfig
+      "@types/node":
+        specifier: ^24.0.1
+        version: 24.12.4
+      "@types/react":
+        specifier: ^19.2.15
+        version: 19.2.15
+      react:
+        specifier: ^19.2.6
+        version: 19.2.6
+      tsup:
+        specifier: 8.5.1
+        version: 8.5.1(jiti@2.7.0)(postcss@8.5.15)(tsx@4.22.3)(typescript@5.9.3)(yaml@2.9.0)
+      typescript:
+        specifier: ^5.8.3
+        version: 5.9.3
+
   packages/analytics/core:
     dependencies:
       "@tutti-os/infra":
@@ -782,6 +810,34 @@ importers:
   packages/configs/prettier: {}
 
   packages/configs/tsconfig: {}
+
+  packages/connector/market:
+    dependencies:
+      "@tutti-os/infra":
+        specifier: 0.1.0
+        version: 0.1.0(lodash-es@4.18.1)(react@19.2.6)
+      valtio:
+        specifier: ^2.3.2
+        version: 2.3.2(@types/react@19.2.15)(react@19.2.6)
+    devDependencies:
+      "@tutti-os/config-tsconfig":
+        specifier: workspace:*
+        version: link:../../configs/tsconfig
+      "@types/node":
+        specifier: ^24.0.1
+        version: 24.12.4
+      "@types/react":
+        specifier: ^19.1.6
+        version: 19.2.15
+      react:
+        specifier: ^19.1.0
+        version: 19.2.6
+      tsx:
+        specifier: ^4.22.3
+        version: 4.22.3
+      typescript:
+        specifier: ^5.8.3
+        version: 5.9.3
 
   packages/desktop/update-admission:
     dependencies:

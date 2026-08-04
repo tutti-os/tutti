@@ -3,6 +3,7 @@ package agentstatus
 import (
 	"context"
 	"path/filepath"
+	"runtime"
 	"testing"
 )
 
@@ -10,8 +11,8 @@ func TestValidateCodexRuntimeCandidatesImplicitlyUsesOnlyReadyCandidate(t *testi
 	home := t.TempDir()
 	broken := filepath.Join(home, "broken", "codex")
 	healthy := filepath.Join(home, "healthy", "codex")
-	writeCodexVersionFixture(t, broken, "0.142.0")
-	writeCodexVersionFixture(t, healthy, "0.142.0")
+	broken = writeCodexVersionFixture(t, broken, "0.142.0")
+	healthy = writeCodexVersionFixture(t, healthy, "0.142.0")
 
 	service := probeTestService(home)
 	service.CodexProtocolProbe = func(_ context.Context, command, _ []string) CodexProbeEvidence {
@@ -41,8 +42,8 @@ func TestValidateCodexRuntimeCandidatesSkipsUnsupportedCandidate(t *testing.T) {
 	home := t.TempDir()
 	old := filepath.Join(home, "old", "codex")
 	current := filepath.Join(home, "current", "codex")
-	writeCodexVersionFixture(t, old, "0.125.0")
-	writeCodexVersionFixture(t, current, "0.142.0")
+	old = writeCodexVersionFixture(t, old, "0.125.0")
+	current = writeCodexVersionFixture(t, current, "0.142.0")
 
 	service := probeTestService(home)
 	service.CodexProtocolProbe = codexProtocolReadyFixture
@@ -83,7 +84,13 @@ func TestDecideCodexRuntimeImplicitSelectionRequiresAUserChoiceForMultipleReadyC
 	}
 }
 
-func writeCodexVersionFixture(t *testing.T, path string, version string) {
+func writeCodexVersionFixture(t *testing.T, path string, version string) string {
 	t.Helper()
-	writeExecutable(t, path, "#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then echo 'codex "+version+"'; exit 0; fi\nexit 0\n")
+	contents := "#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then echo 'codex " + version + "'; exit 0; fi\nexit 0\n"
+	if runtime.GOOS == "windows" {
+		path += ".cmd"
+		contents = "@echo off\r\nif \"%~1\"==\"--version\" (\r\n  echo codex " + version + "\r\n  exit /b 0\r\n)\r\nexit /b 0\r\n"
+	}
+	writeExecutable(t, path, contents)
+	return path
 }

@@ -8,7 +8,9 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"os"
 	"sync"
+	"time"
 
 	agentdaemon "github.com/tutti-os/tutti/packages/agent/daemon"
 	runtimeprep "github.com/tutti-os/tutti/packages/agent/runtimeprep"
@@ -119,27 +121,37 @@ func newTuttiWiring() (*tuttiWiring, error) {
 }
 
 func buildTuttiServer() (*http.Server, net.Listener, *tuttiWiring, error) {
-	wiring, err := newTuttiWiring()
-	if err != nil {
-		return nil, nil, nil, err
-	}
-
 	listenerSpec, err := tuttiserver.ListenerSpecFromEnv()
 	if err != nil {
-		_ = wiring.Close()
 		return nil, nil, nil, fmt.Errorf("resolve tuttid listener spec: %w", err)
 	}
 	listener, err := tuttiserver.NewListener(listenerSpec)
 	if err != nil {
-		_ = wiring.Close()
 		return nil, nil, nil, fmt.Errorf("create tuttid listener: %w", err)
 	}
 
 	if err := tuttiserver.WriteListenerInfo(listener, listenerSpec); err != nil {
 		_ = listener.Close()
-		_ = wiring.Close()
 		return nil, nil, nil, fmt.Errorf("write tuttid listener info: %w", err)
 	}
+	slog.Info("tuttid listener allocated",
+		"event", "tutti.listen.allocated",
+		"addr", listener.Addr().String(),
+	)
+
+	wiringStartedAt := time.Now()
+	slog.Info("tuttid wiring build started", "event", "tutti.wiring.build_started")
+	wiring, err := newTuttiWiring()
+	if err != nil {
+		_ = listener.Close()
+		_ = os.Remove(tuttitypes.TuttidListenerInfoPath())
+		return nil, nil, nil, err
+	}
+	slog.Info("tuttid wiring build completed",
+		"event", "tutti.wiring.build_completed",
+		"durationMs", time.Since(wiringStartedAt).Milliseconds(),
+	)
+
 	wiring.startTuttiModeWakeRecovery()
 	wiring.startAgentCLIUpdateScheduler()
 

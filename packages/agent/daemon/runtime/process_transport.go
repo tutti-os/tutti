@@ -10,7 +10,6 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
 
 	"github.com/tutti-os/tutti/packages/agent/daemon/runtimecmd"
@@ -31,7 +30,7 @@ func RunVerifiedExecutable(ctx context.Context, path string, args []string, iden
 		return nil, err
 	}
 	defer func() { _ = preparedExecutable.Close() }()
-	cmd := exec.CommandContext(ctx, preparedExecutable.path, args...)
+	cmd := newManagedProcessCommand(ctx, preparedExecutable.path, args...)
 	if preparedExecutable.file != nil {
 		cmd.ExtraFiles = []*os.File{preparedExecutable.file}
 	}
@@ -82,7 +81,7 @@ func (localProcessTransport) Start(ctx context.Context, spec ProcessSpec) (Proce
 			_ = preparedExecutable.Close()
 		}
 	}()
-	cmd := exec.CommandContext(processCtx, preparedExecutable.path, spec.Command[1:]...)
+	cmd := newManagedProcessCommand(processCtx, preparedExecutable.path, spec.Command[1:]...)
 	if preparedExecutable.file != nil {
 		cmd.ExtraFiles = []*os.File{preparedExecutable.file}
 	}
@@ -341,18 +340,20 @@ func (c *localProcessConnection) Terminate() error {
 	if c == nil || c.cmd == nil || c.cmd.Process == nil {
 		return nil
 	}
-	return c.cmd.Process.Signal(syscall.SIGTERM)
+	return terminateManagedProcess(c.cmd)
 }
 
 func (c *localProcessConnection) Kill() error {
 	if c == nil {
 		return nil
 	}
-	c.cancel()
 	if c.cmd == nil || c.cmd.Process == nil {
+		c.cancel()
 		return nil
 	}
-	return c.cmd.Process.Kill()
+	err := killManagedProcessTree(c.cmd)
+	c.cancel()
+	return err
 }
 
 func (c *localProcessConnection) waitDone(timeout time.Duration) bool {

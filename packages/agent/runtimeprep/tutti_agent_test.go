@@ -4,13 +4,14 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
 
 func TestTuttiAgentPreparerUsesExplicitAuthSourceAndInstallsSkills(t *testing.T) {
 	userHome := t.TempDir()
-	t.Setenv("HOME", userHome)
+	setTestHome(t, userHome)
 	defaultAuthDir := filepath.Join(userHome, ".tutti-agent")
 	if err := os.MkdirAll(defaultAuthDir, 0o700); err != nil {
 		t.Fatal(err)
@@ -21,6 +22,9 @@ func TestTuttiAgentPreparerUsesExplicitAuthSourceAndInstallsSkills(t *testing.T)
 
 	runtimeRoot := t.TempDir()
 	authSource := filepath.Join(t.TempDir(), "auth.json")
+	if err := os.WriteFile(authSource, []byte(`{"token":"explicit"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	preparer := TuttiAgentPreparer{
 		ResolveAuthSource: func(context.Context, PrepareInput) (string, error) {
 			return authSource, nil
@@ -42,12 +46,23 @@ func TestTuttiAgentPreparerUsesExplicitAuthSourceAndInstallsSkills(t *testing.T)
 	}
 
 	home := filepath.Join(runtimeRoot, "tutti-agent-home")
-	linked, err := os.Readlink(filepath.Join(home, "auth.json"))
-	if err != nil {
-		t.Fatalf("read auth symlink: %v", err)
-	}
-	if linked != authSource {
-		t.Fatalf("auth symlink = %q, want %q", linked, authSource)
+	authPath := filepath.Join(home, "auth.json")
+	if runtime.GOOS == "windows" {
+		content, err := os.ReadFile(authPath)
+		if err != nil {
+			t.Fatalf("read materialized auth: %v", err)
+		}
+		if string(content) != `{"token":"explicit"}` {
+			t.Fatalf("materialized auth = %q", content)
+		}
+	} else {
+		linked, err := os.Readlink(authPath)
+		if err != nil {
+			t.Fatalf("read auth symlink: %v", err)
+		}
+		if linked != authSource {
+			t.Fatalf("auth symlink = %q, want %q", linked, authSource)
+		}
 	}
 	if _, err := os.Stat(filepath.Join(home, "skills", "tutti-cli", "SKILL.md")); err != nil {
 		t.Fatalf("native tutti-cli skill missing: %v", err)
@@ -87,7 +102,7 @@ func TestTuttiAgentPreparerRejectsRelativeAuthSource(t *testing.T) {
 
 func TestTuttiAgentPreparerDoesNotFallbackWhenExplicitAuthSourceIsEmpty(t *testing.T) {
 	userHome := t.TempDir()
-	t.Setenv("HOME", userHome)
+	setTestHome(t, userHome)
 	defaultHome := filepath.Join(userHome, ".tutti-agent")
 	if err := os.MkdirAll(defaultHome, 0o700); err != nil {
 		t.Fatal(err)

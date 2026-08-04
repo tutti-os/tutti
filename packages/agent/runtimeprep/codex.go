@@ -26,12 +26,27 @@ func (CodexPreparer) Prepare(_ context.Context, input ProviderPrepareInput) (Pro
 	if err := prepareCodexHome(codexHome, input.PrepareInput); err != nil {
 		return ProviderPrepareResult{}, err
 	}
+	if input.CodexSaverMode {
+		rolePath, err := installCodexLunaWorkerRole(codexHome)
+		if err != nil {
+			return ProviderPrepareResult{}, err
+		}
+		if err := ensureCodexSaverDefaultRole(filepath.Join(codexHome, "config.toml")); err != nil {
+			return ProviderPrepareResult{}, err
+		}
+		if input.Manifest != nil {
+			input.Manifest.RecordManagedFile(rolePath, "codex-agent-role", true)
+		}
+	}
 	logRuntimePrepareTrace("runtime_prepare.codex.home_prepared", input.PrepareInput, nil)
 	instructionsPath := filepath.Join(codexHome, "AGENTS.md")
 	logRuntimePrepareTrace("runtime_prepare.codex.instructions_write_requested", input.PrepareInput, nil)
 	policy, err := tuttiCLIPolicy(input.PrepareInput)
 	if err != nil {
 		return ProviderPrepareResult{}, err
+	}
+	if input.CodexSaverMode {
+		policy = strings.TrimSpace(policy) + "\n\n" + codexSaverModePolicy
 	}
 	writeResult, err := input.Store.WriteManagedBlock(instructionsPath, policy)
 	if err != nil {
@@ -162,9 +177,9 @@ func exposeUserCodexFiles(codexHome string) error {
 		if _, err := os.Lstat(target); err == nil {
 			continue
 		}
-		if err := os.Symlink(source, target); err != nil {
+		if err := exposeCodexFile(source, target, 0o600); err != nil {
 			if copyErr := copyFile(source, target, 0o600); copyErr != nil {
-				return fmt.Errorf("expose codex %s: symlink failed: %v; copy failed: %w", name, err, copyErr)
+				return fmt.Errorf("expose codex %s: link failed: %v; copy failed: %w", name, err, copyErr)
 			}
 		}
 	}
@@ -229,7 +244,7 @@ func exposeCodexImportedRolloutFile(codexHome string, sourcePath string) error {
 	if err := os.MkdirAll(filepath.Dir(target), 0o700); err != nil {
 		return fmt.Errorf("create codex imported rollout parent dir: %w", err)
 	}
-	if err := os.Symlink(sourcePath, target); err != nil {
+	if err := exposeCodexFile(sourcePath, target, 0o600); err != nil {
 		return fmt.Errorf("expose codex imported rollout file: %w", err)
 	}
 	return nil
@@ -252,7 +267,7 @@ func exposeUserCodexPluginState(codexHome string, userCodexHome string) error {
 		if err := os.MkdirAll(filepath.Dir(target), 0o700); err != nil {
 			return fmt.Errorf("create codex plugin state parent: %w", err)
 		}
-		if err := os.Symlink(source, target); err != nil {
+		if err := exposeCodexDirectory(source, target); err != nil {
 			return fmt.Errorf("expose codex plugin state %s: %w", rel, err)
 		}
 	}
@@ -598,68 +613,6 @@ func codexConfigStringAssignmentValueAt(lines []string, index int, key string) (
 	return "", index, false
 }
 
-// Consume a complete multiline TOML array so stale marker entries do not remain
-// after replacing project_root_markers with the session-scoped override.
-func codexConfigAssignmentEndLine(lines []string, startIndex int) int {
-	if startIndex < 0 || startIndex >= len(lines) {
-		return startIndex
-	}
-	_, value, ok := strings.Cut(lines[startIndex], "=")
-	if !ok {
-		return startIndex
-	}
-	depth := tomlSquareBracketDelta(value)
-	if depth <= 0 {
-		return startIndex
-	}
-	for index := startIndex + 1; index < len(lines); index++ {
-		depth += tomlSquareBracketDelta(lines[index])
-		if depth <= 0 {
-			return index
-		}
-	}
-	return startIndex
-}
-
-func tomlSquareBracketDelta(line string) int {
-	depth := 0
-	escaped := false
-	quote := rune(0)
-	for _, char := range line {
-		switch quote {
-		case '"':
-			if escaped {
-				escaped = false
-				continue
-			}
-			if char == '\\' {
-				escaped = true
-				continue
-			}
-			if char == '"' {
-				quote = 0
-			}
-			continue
-		case '\'':
-			if char == '\'' {
-				quote = 0
-			}
-			continue
-		}
-		switch char {
-		case '#':
-			return depth
-		case '"', '\'':
-			quote = char
-		case '[':
-			depth++
-		case ']':
-			depth--
-		}
-	}
-	return depth
-}
-
 func exposeUserCodexSkillFolders(targetRoot string, input PrepareInput) error {
 	userHome, err := os.UserHomeDir()
 	if err != nil || strings.TrimSpace(userHome) == "" {
@@ -710,7 +663,7 @@ func exposeUserCodexSkillFolders(targetRoot string, input PrepareInput) error {
 		} else if !os.IsNotExist(err) {
 			return fmt.Errorf("inspect codex skill %s: %w", name, err)
 		}
-		if err := os.Symlink(source, target); err != nil {
+		if err := exposeCodexDirectory(source, target); err != nil {
 			return fmt.Errorf("expose codex skill %s: %w", name, err)
 		}
 	}

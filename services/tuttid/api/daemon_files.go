@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"encoding/base64"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -48,13 +49,34 @@ func (api DaemonAPI) ListWorkspaceFileDirectory(
 	if request.Params.IncludeHidden != nil {
 		includeHidden = *request.Params.IncludeHidden
 	}
+	slog.Info("workspace file directory list requested",
+		"event", "workspace.file.directory.list_requested",
+		"workspaceId", workspaceID,
+		"path", path,
+		"includeHidden", includeHidden,
+	)
 	listing, err := api.FileService.ListDirectory(ctx, workspaceID, workspacefiles.DirectoryListInput{
 		IncludeHidden: includeHidden,
 		Path:          path,
 	})
 	if err != nil {
+		slog.Warn("workspace file directory list failed",
+			"event", "workspace.file.directory.list_failed",
+			"workspaceId", workspaceID,
+			"path", path,
+			"includeHidden", includeHidden,
+			"error", err,
+		)
 		return writeListWorkspaceFileDirectoryError(err), nil
 	}
+	slog.Info("workspace file directory list completed",
+		"event", "workspace.file.directory.list_completed",
+		"workspaceId", workspaceID,
+		"path", path,
+		"directoryPath", listing.DirectoryPath.String(),
+		"root", listing.Root.String(),
+		"entryCount", len(listing.Entries),
+	)
 
 	return tuttigenerated.ListWorkspaceFileDirectory200JSONResponse(
 		workspaceapi.GeneratedFileDirectoryResponseFromDomain(listing),

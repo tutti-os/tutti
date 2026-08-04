@@ -3,16 +3,20 @@ package workspace
 import (
 	"context"
 	"errors"
+	"os"
 	"path/filepath"
+	"runtime"
+	"strings"
 	"testing"
 	"time"
 
 	workspacefiles "github.com/tutti-os/tutti/packages/workspace/files"
+	localworkspace "github.com/tutti-os/tutti/services/tuttid/data/workspace"
 )
 
 func TestFileServiceResolveWorkspaceRootDefaultsToUserHome(t *testing.T) {
 	homeDir := t.TempDir()
-	t.Setenv("HOME", homeDir)
+	setTestHome(t, homeDir)
 
 	service := FileService{}
 
@@ -34,7 +38,7 @@ func TestFileServiceResolveWorkspaceRootDefaultsToUserHome(t *testing.T) {
 
 func TestFileServiceListDirectoryAcceptsHomeAbsolutePaths(t *testing.T) {
 	homeDir := t.TempDir()
-	t.Setenv("HOME", homeDir)
+	setTestHome(t, homeDir)
 	adapter := &fileSearchDeadlineAdapter{}
 	service := FileService{Adapter: adapter}
 	targetPath := filepath.Join(homeDir, ".tutti-dev", "agent", "runs")
@@ -47,20 +51,53 @@ func TestFileServiceListDirectoryAcceptsHomeAbsolutePaths(t *testing.T) {
 		t.Fatalf("ListDirectory() error = %v", err)
 	}
 
-	if adapter.listRoot.LogicalRoot != filepath.Clean(homeDir) {
-		t.Fatalf("logical root = %q, want %q", adapter.listRoot.LogicalRoot, filepath.Clean(homeDir))
+	wantLogicalRoot := workspacefiles.NormalizeLogicalRoot(filepath.Clean(homeDir)).String()
+	if adapter.listRoot.LogicalRoot != wantLogicalRoot {
+		t.Fatalf("logical root = %q, want %q", adapter.listRoot.LogicalRoot, wantLogicalRoot)
 	}
-	if adapter.listPath.String() != filepath.ToSlash(targetPath) {
-		t.Fatalf("list path = %q, want %q", adapter.listPath, filepath.ToSlash(targetPath))
+	wantListPath, err := workspacefiles.NormalizeLogicalPath(targetPath)
+	if err != nil {
+		t.Fatalf("NormalizeLogicalPath(%q) error = %v", targetPath, err)
+	}
+	if adapter.listPath != wantListPath {
+		t.Fatalf("list path = %q, want %q", adapter.listPath, wantListPath)
 	}
 	if !adapter.listIncludeHidden {
 		t.Fatal("include hidden = false, want true")
 	}
 }
 
+func TestFileServiceListDirectoryUsesWindowsDriveAbsolutePathWithLocalAdapter(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("Windows drive-qualified paths are only exercised on Windows")
+	}
+
+	homeDir := t.TempDir()
+	setTestHome(t, homeDir)
+	targetPath := filepath.Join(homeDir, "workspace", "src")
+	if err := os.MkdirAll(targetPath, 0o755); err != nil {
+		t.Fatalf("MkdirAll(%q) error = %v", targetPath, err)
+	}
+
+	service := FileService{Adapter: localworkspace.LocalFilesAdapter{}}
+	listing, err := service.ListDirectory(context.Background(), "ws-1", workspacefiles.DirectoryListInput{
+		Path: targetPath,
+	})
+	if err != nil {
+		t.Fatalf("ListDirectory(%q) error = %v", targetPath, err)
+	}
+	wantPath := filepath.ToSlash(targetPath)
+	if !strings.HasPrefix(wantPath, "/") {
+		wantPath = "/" + wantPath
+	}
+	if listing.DirectoryPath.String() != wantPath {
+		t.Fatalf("directory path = %q, want %q", listing.DirectoryPath, wantPath)
+	}
+}
+
 func TestFileServiceListDirectoryAcceptsExternalAbsolutePaths(t *testing.T) {
 	homeDir := t.TempDir()
-	t.Setenv("HOME", homeDir)
+	setTestHome(t, homeDir)
 	adapter := &fileSearchDeadlineAdapter{}
 	service := FileService{Adapter: adapter}
 	targetPath := filepath.Join(t.TempDir(), "codex-presentations")
@@ -74,14 +111,19 @@ func TestFileServiceListDirectoryAcceptsExternalAbsolutePaths(t *testing.T) {
 	}
 
 	wantRoot := filesystemRootForPath(targetPath)
-	if adapter.listRoot.LogicalRoot != filepath.ToSlash(wantRoot) {
-		t.Fatalf("logical root = %q, want %q", adapter.listRoot.LogicalRoot, filepath.ToSlash(wantRoot))
+	wantLogicalRoot := workspacefiles.NormalizeLogicalRoot(wantRoot).String()
+	if adapter.listRoot.LogicalRoot != wantLogicalRoot {
+		t.Fatalf("logical root = %q, want %q", adapter.listRoot.LogicalRoot, wantLogicalRoot)
 	}
 	if adapter.listRoot.PhysicalRoot != wantRoot {
 		t.Fatalf("physical root = %q, want %q", adapter.listRoot.PhysicalRoot, wantRoot)
 	}
-	if adapter.listPath.String() != filepath.ToSlash(filepath.Clean(targetPath)) {
-		t.Fatalf("list path = %q, want %q", adapter.listPath, filepath.ToSlash(filepath.Clean(targetPath)))
+	wantListPath, err := workspacefiles.NormalizeLogicalPath(filepath.Clean(targetPath))
+	if err != nil {
+		t.Fatalf("NormalizeLogicalPath(%q) error = %v", targetPath, err)
+	}
+	if adapter.listPath != wantListPath {
+		t.Fatalf("list path = %q, want %q", adapter.listPath, wantListPath)
 	}
 	if !adapter.listIncludeHidden {
 		t.Fatal("include hidden = false, want true")
@@ -90,7 +132,7 @@ func TestFileServiceListDirectoryAcceptsExternalAbsolutePaths(t *testing.T) {
 
 func TestFileServiceResolveWorkspaceRootForPathRejectsUnsupportedSpecialPaths(t *testing.T) {
 	homeDir := t.TempDir()
-	t.Setenv("HOME", homeDir)
+	setTestHome(t, homeDir)
 	service := FileService{}
 
 	for _, path := range []string{
@@ -110,7 +152,7 @@ func TestFileServiceResolveWorkspaceRootForPathRejectsUnsupportedSpecialPaths(t 
 
 func TestFileServiceRenameEntryAcceptsExternalAbsolutePaths(t *testing.T) {
 	homeDir := t.TempDir()
-	t.Setenv("HOME", homeDir)
+	setTestHome(t, homeDir)
 	adapter := &fileSearchDeadlineAdapter{}
 	service := FileService{Adapter: adapter}
 	targetPath := filepath.Join(t.TempDir(), "report.txt")
@@ -124,8 +166,9 @@ func TestFileServiceRenameEntryAcceptsExternalAbsolutePaths(t *testing.T) {
 	if adapter.renameRoot.PhysicalRoot != wantRoot {
 		t.Fatalf("rename physical root = %q, want %q", adapter.renameRoot.PhysicalRoot, wantRoot)
 	}
-	if adapter.renamePath.String() != filepath.ToSlash(filepath.Clean(targetPath)) {
-		t.Fatalf("rename path = %q, want %q", adapter.renamePath, filepath.ToSlash(filepath.Clean(targetPath)))
+	wantRenamePath := normalizeTestLogicalPath(targetPath)
+	if adapter.renamePath.String() != wantRenamePath {
+		t.Fatalf("rename path = %q, want %q", adapter.renamePath, wantRenamePath)
 	}
 	if adapter.renameName != "renamed.txt" {
 		t.Fatalf("rename name = %q", adapter.renameName)
@@ -134,7 +177,7 @@ func TestFileServiceRenameEntryAcceptsExternalAbsolutePaths(t *testing.T) {
 
 func TestFileServiceMoveEntryUsesExternalRootWhenTargetIsExternal(t *testing.T) {
 	homeDir := t.TempDir()
-	t.Setenv("HOME", homeDir)
+	setTestHome(t, homeDir)
 	adapter := &fileSearchDeadlineAdapter{}
 	service := FileService{Adapter: adapter}
 	sourcePath := filepath.Join(homeDir, "project", "report.txt")
@@ -149,17 +192,19 @@ func TestFileServiceMoveEntryUsesExternalRootWhenTargetIsExternal(t *testing.T) 
 	if adapter.moveRoot.PhysicalRoot != wantRoot {
 		t.Fatalf("move physical root = %q, want %q", adapter.moveRoot.PhysicalRoot, wantRoot)
 	}
-	if adapter.movePath.String() != filepath.ToSlash(filepath.Clean(sourcePath)) {
-		t.Fatalf("move path = %q, want %q", adapter.movePath, filepath.ToSlash(filepath.Clean(sourcePath)))
+	wantMovePath := normalizeTestLogicalPath(sourcePath)
+	if adapter.movePath.String() != wantMovePath {
+		t.Fatalf("move path = %q, want %q", adapter.movePath, wantMovePath)
 	}
-	if adapter.moveTargetDirectory.String() != filepath.ToSlash(filepath.Clean(targetDirectoryPath)) {
-		t.Fatalf("move target = %q, want %q", adapter.moveTargetDirectory, filepath.ToSlash(filepath.Clean(targetDirectoryPath)))
+	wantMoveTargetDirectory := normalizeTestLogicalPath(targetDirectoryPath)
+	if adapter.moveTargetDirectory.String() != wantMoveTargetDirectory {
+		t.Fatalf("move target = %q, want %q", adapter.moveTargetDirectory, wantMoveTargetDirectory)
 	}
 }
 
 func TestFileServiceSearchSetsDefaultDeadline(t *testing.T) {
 	homeDir := t.TempDir()
-	t.Setenv("HOME", homeDir)
+	setTestHome(t, homeDir)
 	adapter := &fileSearchDeadlineAdapter{}
 	service := FileService{Adapter: adapter}
 
@@ -185,7 +230,7 @@ func TestFileServiceSearchSetsDefaultDeadline(t *testing.T) {
 
 func TestFileServiceSearchPreservesExplicitDeadline(t *testing.T) {
 	homeDir := t.TempDir()
-	t.Setenv("HOME", homeDir)
+	setTestHome(t, homeDir)
 	adapter := &fileSearchDeadlineAdapter{}
 	service := FileService{Adapter: adapter}
 	deadline := time.Now().Add(42 * time.Second)
@@ -200,6 +245,20 @@ func TestFileServiceSearchPreservesExplicitDeadline(t *testing.T) {
 	if !adapter.input.Deadline.Equal(deadline) {
 		t.Fatalf("deadline = %s, want %s", adapter.input.Deadline, deadline)
 	}
+}
+
+func setTestHome(t *testing.T, homeDir string) {
+	t.Helper()
+	t.Setenv("HOME", homeDir)
+	t.Setenv("USERPROFILE", homeDir)
+}
+
+func normalizeTestLogicalPath(value string) string {
+	normalized, err := workspacefiles.NormalizeLogicalPath(filepath.Clean(value))
+	if err != nil {
+		panic(err)
+	}
+	return normalized.String()
 }
 
 type fileSearchDeadlineAdapter struct {

@@ -159,6 +159,20 @@ prepare_packaged_daemon() {
     return
   fi
 
+  if [[ "${VARIANT}" == "win" ]]; then
+    (
+      cd "${ROOT_DIR}/services/tuttid"
+      env CGO_ENABLED=0 GOOS=windows GOARCH=amd64 \
+        go build -o "${DAEMON_BUNDLE_DIR}/${daemon_output_name}" .
+    )
+    (
+      cd "${ROOT_DIR}/apps/cli"
+      env CGO_ENABLED=0 GOOS=windows GOARCH=amd64 \
+        go build -o "${CLI_BUNDLE_DIR}/${cli_output_name}" ./cmd/tutti
+    )
+    return
+  fi
+
   (
     cd "${ROOT_DIR}/services/tuttid"
     go build -o "${DAEMON_BUNDLE_DIR}/${daemon_output_name}" .
@@ -189,6 +203,13 @@ prepare_claude_sdk_sidecar() {
   # The native claude binaries are provisioned by tuttid at runtime and are
   # deliberately absent from the bundle.
   node "${ROOT_DIR}/apps/desktop/scripts/vendor-claude-sdk-sidecar.mjs"
+}
+
+prepare_managed_posix_shell() {
+  if [[ "${VARIANT}" != "win" ]]; then
+    return
+  fi
+  node "${ROOT_DIR}/apps/desktop/scripts/vendor-managed-posix-shell.mjs" --platform=windows-amd64
 }
 
 run_pnpm_build() {
@@ -270,6 +291,7 @@ case "${VARIANT}" in
     run_timed_phase "prepare_packaged_daemon" prepare_packaged_daemon
     run_timed_phase "prepare_browser_mcp" prepare_browser_mcp
     run_timed_phase "prepare_claude_sdk_sidecar" prepare_claude_sdk_sidecar
+    run_timed_phase "prepare_managed_posix_shell" prepare_managed_posix_shell
     (
       cd "${APP_DIR}"
       run_timed_phase "resolve_desktop_build_version" resolve_desktop_build_version

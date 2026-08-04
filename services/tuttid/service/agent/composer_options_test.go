@@ -39,6 +39,33 @@ func TestGetComposerOptionsUsesTargetDefaultsAndSparseRequestOverrides(t *testin
 	}
 }
 
+func TestGetComposerOptionsAdvertisesRememberedCodexSaverModeOnlyForCodex(t *testing.T) {
+	service := newTestService(newFakeRuntime())
+	service.AgentComposerDefaultsReader = fakeAgentComposerDefaultsReader{
+		agenttargetbiz.IDLocalCodex: {CodexSaverMode: true},
+	}
+	options, err := service.GetComposerOptions(context.Background(), ComposerOptionsInput{
+		AgentTargetID: agenttargetbiz.IDLocalCodex,
+		Provider:      "codex",
+	})
+	if err != nil {
+		t.Fatalf("GetComposerOptions() error = %v", err)
+	}
+	if !options.CodexSaverModeSupported || !options.EffectiveSettings.CodexSaverMode {
+		t.Fatalf("options = %#v, want remembered saver mode", options)
+	}
+	options, err = service.GetComposerOptions(context.Background(), ComposerOptionsInput{
+		AgentTargetID: agenttargetbiz.IDLocalClaudeCode,
+		Provider:      "claude-code",
+	})
+	if err != nil {
+		t.Fatalf("GetComposerOptions() for Claude error = %v", err)
+	}
+	if options.CodexSaverModeSupported || options.EffectiveSettings.CodexSaverMode {
+		t.Fatalf("options = %#v, want saver mode unavailable outside Codex", options)
+	}
+}
+
 func TestValidateAgentComposerDefaultsPatchRejectsUnknownTargetAndValue(t *testing.T) {
 	service := newTestService(newFakeRuntime())
 	unsupported := "not-a-permission"

@@ -468,6 +468,7 @@ export interface PreferencesAgentComposerDefaultsChangedPayloadV1 {
 export interface PreferencesAgentComposerDefaultsPatchRequestedPayloadV1 {
   agentTargetId: string;
   patch: {
+    codexSaverMode?: boolean;
     model?: string | null;
     permissionModeId?: string | null;
     reasoningEffort?: string | null;

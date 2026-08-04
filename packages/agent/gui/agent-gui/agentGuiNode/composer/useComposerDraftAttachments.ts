@@ -18,6 +18,7 @@ import type {
   AgentComposerDraftLargeText
 } from "../model/agentGuiNodeTypes";
 import {
+  applyPastedTextStagingResult,
   agentComposerDraftFiles,
   agentComposerDraftImages,
   agentComposerDraftLargeTexts,
@@ -673,22 +674,12 @@ export function useComposerDraftAttachments({
         name
       })
         .then((result) => {
-          const uploadedPath = result.path.trim();
-          if (!uploadedPath) {
-            throw new Error("Pasted text staging completed without path.");
-          }
           updateScopedDraft(draftScopeKey, (currentDraft) =>
             updateAgentComposerDraft(currentDraft, {
               largeTexts: agentComposerDraftLargeTexts(currentDraft).map(
                 (item) =>
                   item.id === id
-                    ? {
-                        ...item,
-                        path: uploadedPath,
-                        name: result.name || item.name,
-                        sizeBytes: result.sizeBytes,
-                        uploading: false
-                      }
+                    ? applyPastedTextStagingResult(item, result)
                     : item
               )
             })

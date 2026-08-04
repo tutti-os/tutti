@@ -190,6 +190,8 @@ export interface AgentComposerProps {
       professionalLongRunning: string;
     };
     planModeLabel: string;
+    codexSaverModeLabel: string;
+    codexSaverModeDescription: string;
     tuttiModeLabel: string;
     tuttiModeDescription: string;
     tuttiModeRemove: string;
@@ -363,6 +365,7 @@ export interface AgentComposerProps {
     metadata?: AgentProjectPathChangeMetadata
   ) => void;
   onSettingsChange: (settings: {
+    codexSaverMode?: boolean;
     model?: string | null;
     reasoningEffort?: string | null;
     speed?: string | null;

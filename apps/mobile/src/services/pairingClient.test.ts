@@ -1,6 +1,8 @@
 jest.mock("../native/mobileNative", () => ({
   __esModule: true,
-  deviceLink: {},
+  deviceLink: {
+    configureRelay: jest.fn()
+  },
   mobileSecurity: {
     getOrCreateIdentity: jest.fn(),
     sign: jest.fn()
@@ -8,7 +10,11 @@ jest.mock("../native/mobileNative", () => ({
 }));
 
 import { mobileSecurity } from "../native/mobileNative";
-import { claimPairing, registerCurrentDevice } from "./pairingClient";
+import {
+  claimPairing,
+  issueAgentRelayDescriptor,
+  registerCurrentDevice
+} from "./pairingClient";
 import {
   deviceLinkProof,
   identityProof,
@@ -89,6 +95,72 @@ describe("control-plane authentication", () => {
 
     expect(fetchMock).not.toHaveBeenCalled();
   });
+
+  it("requests a scoped Agent Relay descriptor with the relay proof", async () => {
+    mockSign.mockResolvedValue("relay-signature");
+    const fetchMock = jest.fn().mockResolvedValue(
+      controlPlaneResponse({
+        authorityId: "authority-1",
+        relayDialEndpoint: "wss://relay.example.test/v1/tunnels/dial",
+        token: "target-token",
+        tokenExpiresAt: "2026-08-04T10:00:00Z"
+      })
+    );
+    globalThis.fetch = fetchMock;
+
+    await expect(
+      issueAgentRelayDescriptor("session-1", "pairing-1", {
+        arch: "arm64",
+        deviceId: "device-1",
+        deviceName: "Alice's iPhone",
+        publicKey: "cHVibGljLWtleQ"
+      })
+    ).resolves.toEqual({
+      authorityId: "authority-1",
+      relayDialEndpoint: "wss://relay.example.test/v1/tunnels/dial",
+      token: "target-token",
+      tokenExpiresAt: "2026-08-04T10:00:00Z"
+    });
+
+    expect(mockSign).toHaveBeenCalledWith(
+      deviceLinkProof("relay", "pairing-1", "", "")
+    );
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://tutti.sh/api/desktop/v1/device-pairings/pairing-1/agent-relay-descriptor",
+      expect.objectContaining({
+        body: JSON.stringify({
+          deviceId: "device-1",
+          identitySignature: "relay-signature",
+          pairingId: "pairing-1"
+        }),
+        headers: expect.objectContaining({
+          Cookie: "session_id=session-1"
+        }),
+        method: "POST"
+      })
+    );
+  });
+
+  it("rejects a Relay descriptor that is not a websocket endpoint", async () => {
+    mockSign.mockResolvedValue("relay-signature");
+    globalThis.fetch = jest.fn().mockResolvedValue(
+      controlPlaneResponse({
+        authorityId: "authority-1",
+        relayDialEndpoint: "https://relay.example.test/not-websocket",
+        token: "target-token",
+        tokenExpiresAt: "2026-08-04T10:00:00Z"
+      })
+    );
+
+    await expect(
+      issueAgentRelayDescriptor("session-1", "pairing-1", {
+        arch: "arm64",
+        deviceId: "device-1",
+        deviceName: "Alice's iPhone",
+        publicKey: "cHVibGljLWtleQ"
+      })
+    ).rejects.toThrow("control-plane Relay descriptor is incomplete");
+  });
 });
 
 describe("parsePairingQR", () => {
@@ -132,6 +204,9 @@ describe("pairing proofs", () => {
     );
     expect(deviceLinkProof("get", "pairing-1", "attempt-1", "")).toBe(
       "tutti-device-link/1\nget\npairing-1\nattempt-1\n"
+    );
+    expect(deviceLinkProof("relay", "pairing-1", "", "")).toBe(
+      "tutti-device-link/1\nrelay\npairing-1\n\n"
     );
     expect(standardBase64ToURL("a+b/c==")).toBe("a-b_c");
   });

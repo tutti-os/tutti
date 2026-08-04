@@ -21,7 +21,6 @@ export interface AgentGUIConversationRailInput {
   conversationQuery: string;
   nodeId?: string | null;
   registerInteractionLockProbe?: (probe: (() => boolean) | null) => void;
-  sectionAgentTargetFallbackId: string | null;
   userProjects: AgentGUINodeViewModel["rail"]["userProjects"];
   workspaceId: string;
 }
@@ -32,7 +31,6 @@ export function useAgentGUIConversationRailQuery({
   conversationQuery,
   nodeId,
   registerInteractionLockProbe,
-  sectionAgentTargetFallbackId,
   userProjects,
   workspaceId
 }: AgentGUIConversationRailInput) {
@@ -86,17 +84,10 @@ export function useAgentGUIConversationRailQuery({
   useEffect(() => {
     controller.configure({
       conversationFilter,
-      sectionAgentTargetFallbackId,
       userProjects
     });
     controller.setSearchQuery(conversationQuery);
-  }, [
-    controller,
-    conversationFilter,
-    conversationQuery,
-    sectionAgentTargetFallbackId,
-    userProjects
-  ]);
+  }, [controller, conversationFilter, conversationQuery, userProjects]);
 
   const querySnapshot = useEngineSelector(
     controller,
@@ -130,15 +121,9 @@ export function useAgentGUIConversationRailQuery({
     () =>
       resolveConversationRailQueryScope(workspaceId, {
         conversationFilter,
-        sectionAgentTargetFallbackId,
         userProjects
       }).scopeKey,
-    [
-      conversationFilter,
-      sectionAgentTargetFallbackId,
-      userProjects,
-      workspaceId
-    ]
+    [conversationFilter, userProjects, workspaceId]
   );
   return useMemo(
     () => ({

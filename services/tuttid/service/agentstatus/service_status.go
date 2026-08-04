@@ -264,7 +264,9 @@ func (s Service) statusForSpec(
 			"authStatus", status.Auth.Status,
 			"authMethod", status.Auth.AuthMethod,
 			"cliInstalled", status.CLI.Installed,
+			"resolvedCLIPath", status.CLI.BinaryPath,
 			"cliVersion", status.CLI.Version,
+			"resolvedAdapterPath", status.Adapter.BinaryPath,
 			"sdkSidecarInstalled", status.Adapter.Installed,
 		)
 	}

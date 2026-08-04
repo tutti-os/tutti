@@ -340,7 +340,7 @@ export function useAgentGUISessionPresentation(
               : {
                   kind: "failed",
                   message: recoveryMessage,
-                  canRetry: !providerSessionMissing
+                  canRetry: false
                 }
             : null,
       rawState: sessionChromeRawState

@@ -41,6 +41,12 @@ interface MobilePreferencesNative {
 interface DeviceLinkNative {
   addListener(eventName: string): void;
   closeLink(): Promise<void>;
+  configureRelay?: (
+    endpoint: string,
+    queryJSON: string,
+    headersJSON: string,
+    subprotocol: string
+  ) => Promise<void>;
   connectLink(
     peerDescriptionJSON: string,
     caller: boolean,

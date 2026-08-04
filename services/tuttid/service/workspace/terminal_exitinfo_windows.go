@@ -4,16 +4,15 @@ package workspace
 
 import (
 	"errors"
-	"os/exec"
 )
 
 func describeTerminalExit(err error) (*int, *string) {
-	var exitErr *exec.ExitError
+	var exitErr terminalProcessExitError
 	if !errors.As(err, &exitErr) {
 		return nil, nil
 	}
 
-	code := exitErr.ExitCode()
+	code := exitErr.code
 	if code < 0 {
 		return nil, nil
 	}

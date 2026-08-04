@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import { EventEmitter } from "node:events";
-import { mkdtemp, mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
@@ -18,6 +18,7 @@ import {
   verifyCassette
 } from "./agent-session-replay-runner/cassette.mjs";
 import {
+  enableAgentSessionRecordingFeature,
   replayListenerInfoPath,
   replayWorkbenchSnapshot
 } from "./agent-session-replay-runner/runtime.mjs";
@@ -2658,6 +2659,59 @@ test("Replay Workspace seeds each portable project once before blobs", async () 
     "project:/runtime/state/tuttid.db:${REPLAY_CWD}/packages/agent",
     "blobs"
   ]);
+});
+
+test("Replay registrations carry cassette provider and frozen model metadata", () => {
+  assert.deepEqual(
+    replayWorkspaceTransportRegistrations([
+      {
+        cassetteId: replayCassetteAID,
+        rootAgentSessionId: "root-a",
+        cassetteDirectory: "/tmp/cassette-a",
+        providers: ["codex"],
+        replayPrerequisites: replayPrerequisitesForTest(),
+        action: { workspaceId: "workspace-a" }
+      }
+    ]),
+    [
+      {
+        cassetteId: replayCassetteAID,
+        rootAgentSessionId: "root-a",
+        cassetteDirectory: "/tmp/cassette-a/provider",
+        artifactDirectory: "/tmp/cassette-a",
+        workspaceId: "workspace-a",
+        providers: ["codex"],
+        frozenModel: "gpt-5.4"
+      }
+    ]
+  );
+});
+
+test("Replay database enables the agent session recording feature", async () => {
+  const databasePath = join(
+    tmpdir(),
+    `agent-session-replay-feature-${Date.now()}.db`
+  );
+  try {
+    await execFileAsync("sqlite3", [
+      databasePath,
+      `CREATE TABLE desktop_preferences (
+        id TEXT PRIMARY KEY,
+        feature_flags_json TEXT
+      );
+      INSERT INTO desktop_preferences (id, feature_flags_json)
+      VALUES ('desktop', '{}');`
+    ]);
+    await enableAgentSessionRecordingFeature(databasePath, workspaceRoot);
+    const result = await execFileAsync("sqlite3", [
+      databasePath,
+      `SELECT json_extract(feature_flags_json, '$."agent.sessionRecording"')
+       FROM desktop_preferences WHERE id = 'desktop';`
+    ]);
+    assert.equal(result.stdout.trim(), "1");
+  } finally {
+    await rm(databasePath, { force: true });
+  }
 });
 
 test("resolves a project placement from portable expected Session state", () => {

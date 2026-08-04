@@ -42,6 +42,8 @@ class DeviceLinkModule(
     private var link: Link? = null
     @Volatile
     private var agentLiveStream: Stream? = null
+    @Volatile
+    private var relayConfig: RelayConfig? = null
     private var linkGeneration = 0L
     private var agentLiveGeneration = 0L
     private val backgroundClose = Runnable { closeCurrentLink() }
@@ -140,6 +142,34 @@ class DeviceLinkModule(
     }
 
     @ReactMethod
+    fun configureRelay(
+        endpoint: String,
+        queryJSON: String,
+        headersJSON: String,
+        subprotocol: String,
+        promise: Promise,
+    ) {
+        val normalizedEndpoint = endpoint.trim()
+        val normalizedSubprotocol = subprotocol.trim()
+        if (normalizedEndpoint.isEmpty() || normalizedSubprotocol.isEmpty()) {
+            promise.reject(
+                "DEVICE_LINK_RELAY_CONFIG_FAILED",
+                "Relay endpoint and subprotocol are required",
+            )
+            return
+        }
+        synchronized(this) {
+            relayConfig = RelayConfig(
+                endpoint = normalizedEndpoint,
+                queryJSON = queryJSON,
+                headersJSON = headersJSON,
+                subprotocol = normalizedSubprotocol,
+            )
+        }
+        promise.resolve(null)
+    }
+
+    @ReactMethod
     fun requestAgentHTTP(
         method: String,
         path: String,
@@ -148,7 +178,8 @@ class DeviceLinkModule(
         promise: Promise,
     ) {
         val selected = linkSnapshot()
-        if (selected == null) {
+        val relay = relaySnapshot()
+        if (selected == null && relay == null) {
             promise.reject(
                 "DEVICE_LINK_REQUEST_FAILED",
                 "DeviceLink is not prepared",
@@ -156,81 +187,43 @@ class DeviceLinkModule(
             return
         }
         runAsync(promise, "DEVICE_LINK_REQUEST_FAILED", "DeviceLink request failed") {
-            val timeout = timeoutMillis.toLong().coerceAtLeast(1)
-            val deadline = SystemClock.elapsedRealtime() + timeout
-            val stream = selected.openStream(timeout)
-            try {
-                stream.setDeadline(
-                    (deadline - SystemClock.elapsedRealtime()).coerceAtLeast(1),
-                )
-                val requestID = UUID.randomUUID().toString()
-                val bodyBytes = body.toByteArray(StandardCharsets.UTF_8)
-                require(bodyBytes.size <= MAX_REQUEST_BODY_BYTES) {
-                    "DeviceLink request body exceeds $MAX_REQUEST_BODY_BYTES bytes"
-                }
-                val request =
-                    JSONObject()
-                        .put("protocolEpoch", Mobile.protocolEpoch())
-                        .put("service", "agent_http")
-                        .put("requestId", requestID)
-                        .put("method", method)
-                        .put("path", path)
-                        .put(
-                            "headers",
-                            JSONObject()
-                                .put("Accept", JSONArray().put("application/json"))
-                                .put("Content-Type", JSONArray().put("application/json")),
-                        ).put(
-                            "body",
-                            Base64.encodeToString(
-                                bodyBytes,
-                                Base64.NO_WRAP,
-                            ),
-                        ).toString()
-                val payload = request.toByteArray(StandardCharsets.UTF_8)
-                require(payload.size <= MAX_REQUEST_FRAME_BYTES) {
-                    "DeviceLink request exceeds $MAX_REQUEST_FRAME_BYTES bytes"
-                }
-                val framed =
-                    ByteBuffer
-                        .allocate(Int.SIZE_BYTES + payload.size)
-                        .order(ByteOrder.BIG_ENDIAN)
-                        .putInt(payload.size)
-                        .put(payload)
-                        .array()
-                writeFully(stream, framed)
-                val header = readFully(stream, Int.SIZE_BYTES)
-                val responseSize = ByteBuffer.wrap(header).order(ByteOrder.BIG_ENDIAN).int
-                require(responseSize in 1..MAX_RESPONSE_FRAME_BYTES) {
-                    "DeviceLink response size is invalid"
-                }
-                val response =
-                    JSONObject(
-                        String(
-                            readFully(stream, responseSize),
-                            StandardCharsets.UTF_8,
-                        ),
+            var directFailure: Throwable? = null
+            if (selected != null) {
+                try {
+                    return@runAsync requestAgentHTTPWithStream(
+                        selected.openStream(timeoutMillis.toLong().coerceAtLeast(1)),
+                        method,
+                        path,
+                        body,
+                        timeoutMillis.toLong(),
                     )
-                require(response.optString("requestId") == requestID) {
-                    "DeviceLink response request id does not match"
+                } catch (error: Throwable) {
+                    directFailure = error
                 }
-                val responseBody =
-                    response
-                        .optString("body")
-                        .takeIf(String::isNotEmpty)
-                        ?.let { encoded ->
-                            String(Base64.decode(encoded, Base64.DEFAULT), StandardCharsets.UTF_8)
-                        }.orEmpty()
-                Arguments.createMap().apply {
-                    putInt("protocolEpoch", response.optInt("protocolEpoch"))
-                    putInt("status", response.optInt("status"))
-                    putString("body", responseBody)
-                    putString("errorCode", response.optString("errorCode"))
-                    putMap("headers", responseHeaders(response.optJSONObject("headers")))
-                }
-            } finally {
-                runCatching(stream::close)
             }
+            if (relay != null) {
+                try {
+                    return@runAsync requestAgentHTTPWithStream(
+                        Mobile.dialRelay(
+                            relay.endpoint,
+                            relay.queryJSON,
+                            relay.headersJSON,
+                            relay.subprotocol,
+                            timeoutMillis.toLong(),
+                        ),
+                        method,
+                        path,
+                        body,
+                        timeoutMillis.toLong(),
+                    )
+                } catch (error: Throwable) {
+                    if (directFailure != null) {
+                        throw IllegalStateException("direct and Relay Agent requests failed", error)
+                    }
+                    throw error
+                }
+            }
+            throw directFailure ?: IllegalStateException("DeviceLink request failed")
         }
     }
 
@@ -260,7 +253,8 @@ class DeviceLinkModule(
             return
         }
         val selected = linkSnapshot()
-        if (selected == null) {
+        val relay = relaySnapshot()
+        if (selected == null && relay == null) {
             promise.reject(
                 "AGENT_LIVE_SUBSCRIBE_FAILED",
                 "DeviceLink is not prepared",
@@ -273,7 +267,11 @@ class DeviceLinkModule(
                 var stream: Stream? = null
                 var promiseSettled = false
                 try {
-                    stream = selected.openStream(AGENT_LIVE_OPEN_TIMEOUT_MILLIS)
+                    stream = openAgentStream(
+                        selected,
+                        relay,
+                        AGENT_LIVE_OPEN_TIMEOUT_MILLIS,
+                    )
                     check(promoteAgentLiveStream(stream, generation)) {
                         "Agent live subscription was cancelled"
                     }
@@ -464,10 +462,14 @@ class DeviceLinkModule(
                 linkGeneration += 1
                 val detached = link
                 link = null
+                relayConfig = null
                 detached
             }
         closeDetachedLink(previous)
     }
+
+    @Synchronized
+    private fun relaySnapshot(): RelayConfig? = relayConfig
 
     private fun closeDetachedLink(detached: Link?) {
         if (detached == null) {
@@ -611,6 +613,115 @@ class DeviceLinkModule(
         return output.toByteArray()
     }
 
+    private fun requestAgentHTTPWithStream(
+        stream: Stream,
+        method: String,
+        path: String,
+        body: String,
+        timeoutMillis: Long,
+    ): Any {
+        val timeout = timeoutMillis.coerceAtLeast(1)
+        val deadline = SystemClock.elapsedRealtime() + timeout
+        try {
+            stream.setDeadline(
+                (deadline - SystemClock.elapsedRealtime()).coerceAtLeast(1),
+            )
+            val requestID = UUID.randomUUID().toString()
+            val bodyBytes = body.toByteArray(StandardCharsets.UTF_8)
+            require(bodyBytes.size <= MAX_REQUEST_BODY_BYTES) {
+                "DeviceLink request body exceeds $MAX_REQUEST_BODY_BYTES bytes"
+            }
+            val request =
+                JSONObject()
+                    .put("protocolEpoch", Mobile.protocolEpoch())
+                    .put("service", "agent_http")
+                    .put("requestId", requestID)
+                    .put("method", method)
+                    .put("path", path)
+                    .put(
+                        "headers",
+                        JSONObject()
+                            .put("Accept", JSONArray().put("application/json"))
+                            .put("Content-Type", JSONArray().put("application/json")),
+                    ).put(
+                        "body",
+                        Base64.encodeToString(bodyBytes, Base64.NO_WRAP),
+                    ).toString()
+            val payload = request.toByteArray(StandardCharsets.UTF_8)
+            require(payload.size <= MAX_REQUEST_FRAME_BYTES) {
+                "DeviceLink request exceeds $MAX_REQUEST_FRAME_BYTES bytes"
+            }
+            val framed =
+                ByteBuffer
+                    .allocate(Int.SIZE_BYTES + payload.size)
+                    .order(ByteOrder.BIG_ENDIAN)
+                    .putInt(payload.size)
+                    .put(payload)
+                    .array()
+            writeFully(stream, framed)
+            val header = readFully(stream, Int.SIZE_BYTES)
+            val responseSize = ByteBuffer.wrap(header).order(ByteOrder.BIG_ENDIAN).int
+            require(responseSize in 1..MAX_RESPONSE_FRAME_BYTES) {
+                "DeviceLink response size is invalid"
+            }
+            val response =
+                JSONObject(
+                    String(readFully(stream, responseSize), StandardCharsets.UTF_8),
+                )
+            require(response.optString("requestId") == requestID) {
+                "DeviceLink response request id does not match"
+            }
+            val responseBody =
+                response
+                    .optString("body")
+                    .takeIf(String::isNotEmpty)
+                    ?.let { encoded ->
+                        String(Base64.decode(encoded, Base64.DEFAULT), StandardCharsets.UTF_8)
+                    }.orEmpty()
+            return Arguments.createMap().apply {
+                putInt("protocolEpoch", response.optInt("protocolEpoch"))
+                putInt("status", response.optInt("status"))
+                putString("body", responseBody)
+                putString("errorCode", response.optString("errorCode"))
+                putMap("headers", responseHeaders(response.optJSONObject("headers")))
+            }
+        } finally {
+            runCatching(stream::close)
+        }
+    }
+
+    private fun openAgentStream(
+        selected: Link?,
+        relay: RelayConfig?,
+        timeoutMillis: Long,
+    ): Stream {
+        var directFailure: Throwable? = null
+        if (selected != null) {
+            try {
+                return selected.openStream(timeoutMillis)
+            } catch (error: Throwable) {
+                directFailure = error
+            }
+        }
+        if (relay != null) {
+            try {
+                return Mobile.dialRelay(
+                    relay.endpoint,
+                    relay.queryJSON,
+                    relay.headersJSON,
+                    relay.subprotocol,
+                    timeoutMillis,
+                )
+            } catch (error: Throwable) {
+                if (directFailure != null) {
+                    throw IllegalStateException("direct and Relay Agent live streams failed", error)
+                }
+                throw error
+            }
+        }
+        throw directFailure ?: IllegalStateException("DeviceLink Agent live stream is unavailable")
+    }
+
     private fun responseHeaders(headers: JSONObject?) =
         Arguments.createMap().apply {
             if (headers == null) {
@@ -658,4 +769,11 @@ class DeviceLinkModule(
         private const val MAX_RESPONSE_FRAME_BYTES =
             ((MAX_RESPONSE_BODY_BYTES + 2) / 3 * 4) + FRAME_ENVELOPE_BYTES
     }
+
+    private data class RelayConfig(
+        val endpoint: String,
+        val queryJSON: String,
+        val headersJSON: String,
+        val subprotocol: String,
+    )
 }

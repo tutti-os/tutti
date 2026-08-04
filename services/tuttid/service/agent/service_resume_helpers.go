@@ -108,6 +108,10 @@ func (s *Service) prepareRuntimeForResume(ctx context.Context, session Persisted
 	input.CommandCapabilityProjection = cloneCommandCapabilityProjection(
 		snapshot.CommandCapabilityProjection,
 	)
+	if enabled, ok := snapshot.EffectiveConfig["codexSaverMode"].(bool); ok {
+		input.CodexSaverMode = boolPointer(enabled)
+		input.CodexSaverModeAllowed = enabled
+	}
 	if err := s.applyHarnessFromSessionRuntimeSnapshot(ctx, snapshot, &input); err != nil {
 		return preparedRuntime{}, err
 	}

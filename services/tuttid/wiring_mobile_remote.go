@@ -27,13 +27,15 @@ func buildMobileRemoteService(
 	if err != nil {
 		reportedName = "Tutti Desktop"
 	}
-	return &mobileremoteservice.Service{
+	identities := deviceidentitydata.NewFileStore(
+		filepath.Join(stateDir, "mobile-remote", "device-identity.json"),
+		deviceID,
+	)
+	service := &mobileremoteservice.Service{
 		Account:         account,
 		AgentLiveEvents: mobileAgentLiveEventSource{events: events},
-		Identities: deviceidentitydata.NewFileStore(
-			filepath.Join(stateDir, "mobile-remote", "device-identity.json"),
-			deviceID,
-		),
+		Identities:      identities,
+		RuntimeID:       deviceID,
 		ControlPlane: &mobileremoteservice.HTTPControlPlane{
 			BaseURL: os.Getenv("TUTTI_MOBILE_CONTROL_PLANE_BASE_URL"),
 		},
@@ -43,7 +45,20 @@ func buildMobileRemoteService(
 			Arch:          runtime.GOARCH,
 			ClientVersion: tuttitypes.ResolveAppVersion(),
 		},
-	}, nil
+	}
+	deviceAuthority, err := mobileremoteservice.NewDeviceAuthorityClient(
+		os.Getenv("TUTTI_MOBILE_CONTROL_PLANE_BASE_URL"), account, identities,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("configure mobile remote Device Authority client: %w", err)
+	}
+	service.DeviceAuthority = deviceAuthority
+	relayOwner, err := service.NewRelayOwner()
+	if err != nil {
+		return nil, fmt.Errorf("configure mobile remote Relay owner: %w", err)
+	}
+	service.RelayOwner = relayOwner
+	return service, nil
 }
 
 type mobileAgentLiveEventSource struct {

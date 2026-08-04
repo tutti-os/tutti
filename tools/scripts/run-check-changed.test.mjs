@@ -353,6 +353,32 @@ test("runLanes preserves lane indexes without relying on outer scope", async () 
   );
 });
 
+test("runLanes spawns Windows command shims through the shell", async () => {
+  if (process.platform !== "win32") {
+    return;
+  }
+
+  const runDirectory = mkdtempSync(join(tmpdir(), "run-check-changed-"));
+  const shimPath = join(runDirectory, "shim.cmd");
+  writeFileSync(shimPath, "@echo off\r\nexit /b 0\r\n");
+
+  const results = await runLanes(
+    [
+      {
+        key: "windows-shim",
+        label: "windows-shim",
+        command: [shimPath]
+      }
+    ],
+    runDirectory
+  );
+
+  assert.deepEqual(
+    results.map((result) => result.exitCode),
+    [0]
+  );
+});
+
 test("runLanes serializes lanes that write the same generated assets", async () => {
   const runDirectory = mkdtempSync(join(tmpdir(), "run-check-changed-"));
   const markerPath = join(runDirectory, "marker.txt");

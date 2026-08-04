@@ -90,6 +90,7 @@ func (api DaemonAPI) GetAgentProviderComposerOptions(ctx context.Context, reques
 	}
 	if request.Body != nil && request.Body.Settings != nil {
 		input.Settings = composerSettingsFromGenerated(*request.Body.Settings)
+		input.CodexSaverMode = request.Body.Settings.CodexSaverMode
 	}
 	if request.Body != nil && request.Body.Locale != nil {
 		input.Locale = string(*request.Body.Locale)
@@ -511,6 +512,7 @@ func generatedAgentSessionSection(section agentservice.SessionSection) (tuttigen
 
 func composerSettingsFromGenerated(settings tuttigenerated.AgentSessionComposerSettings) agentservice.ComposerSettings {
 	return agentservice.ComposerSettings{
+		CodexSaverMode:   settings.CodexSaverMode != nil && *settings.CodexSaverMode,
 		Model:            optionalStringValue(settings.Model),
 		PermissionModeID: optionalStringValue(settings.PermissionModeId),
 		PlanMode:         settings.PlanMode != nil && *settings.PlanMode,
@@ -544,6 +546,7 @@ func (api DaemonAPI) agentConversationDetailMode(ctx context.Context) string {
 
 func composerSettingsPatchFromGenerated(settings tuttigenerated.AgentSessionComposerSettings) agentservice.ComposerSettingsPatch {
 	return agentservice.ComposerSettingsPatch{
+		CodexSaverMode:   settings.CodexSaverMode,
 		Model:            settings.Model,
 		PermissionModeID: settings.PermissionModeId,
 		PlanMode:         settings.PlanMode,
@@ -556,6 +559,7 @@ func composerSettingsPatchFromGenerated(settings tuttigenerated.AgentSessionComp
 func generatedAgentProviderComposerOptions(options agentservice.ComposerOptions) tuttigenerated.AgentProviderComposerOptionsResponse {
 	effectiveSettings := generatedAgentSessionComposerSettings(options.EffectiveSettings)
 	return tuttigenerated.AgentProviderComposerOptionsResponse{
+		CodexSaverModeSupported: &options.CodexSaverModeSupported,
 		Behavior: tuttigenerated.AgentProviderComposerBehavior{
 			CollapseModelOptionsToLatest:        options.Behavior.CollapseModelOptionsToLatest,
 			ModelOptionsAuthoritative:           options.Behavior.ModelOptionsAuthoritative,
@@ -603,6 +607,7 @@ func generatedAgentSlashCommandPolicy(
 
 func generatedAgentSessionComposerSettings(settings agentservice.ComposerSettings) tuttigenerated.AgentSessionComposerSettings {
 	result := tuttigenerated.AgentSessionComposerSettings{
+		CodexSaverMode:   boolPointer(settings.CodexSaverMode),
 		Model:            optionalStringPointer(strings.TrimSpace(settings.Model)),
 		PermissionModeId: optionalStringPointer(strings.TrimSpace(settings.PermissionModeID)),
 		PlanMode:         boolPointer(settings.PlanMode),

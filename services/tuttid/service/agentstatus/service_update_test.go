@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -69,8 +70,8 @@ func TestTuttiAgentBelowMinimumRequiresManagedInstall(t *testing.T) {
 	if status.Availability.Status != AvailabilityNotInstalled || status.Availability.ReasonCode != "cli_version_unsupported" {
 		t.Fatalf("Availability = %#v, want minimum-version repair", status.Availability)
 	}
-	if status.CLI.Version != "0.0.2" || status.CLI.MinVersion != "0.0.10" {
-		t.Fatalf("CLI = %#v, want current 0.0.2 and minimum 0.0.10", status.CLI)
+	if status.CLI.Version != "0.0.2" || status.CLI.MinVersion != "0.0.11" {
+		t.Fatalf("CLI = %#v, want current 0.0.2 and minimum 0.0.11", status.CLI)
 	}
 	if !hasProviderAction(status.Actions, ActionInstall) {
 		t.Fatalf("Actions = %#v, want install", status.Actions)
@@ -116,7 +117,7 @@ func TestTuttiAgentUnknownVersionFailsClosed(t *testing.T) {
 			if status.Availability.Status != AvailabilityNotInstalled || status.Availability.ReasonCode != "cli_version_unsupported" {
 				t.Fatalf("Availability = %#v, want unknown-version repair", status.Availability)
 			}
-			if status.CLI.Version != "" || status.CLI.MinVersion != "0.0.10" || !hasProviderAction(status.Actions, ActionInstall) {
+			if status.CLI.Version != "" || status.CLI.MinVersion != "0.0.11" || !hasProviderAction(status.Actions, ActionInstall) {
 				t.Fatalf("CLI/actions = %#v/%#v, want unknown current version and managed install", status.CLI, status.Actions)
 			}
 
@@ -165,13 +166,13 @@ func TestTuttiAgentVersionFloorPrecedesAdapterFailure(t *testing.T) {
 	if status.Availability.ReasonCode != "cli_version_unsupported" {
 		t.Fatalf("Availability = %#v, want CLI floor before adapter failure", status.Availability)
 	}
-	if status.CLI.Version != "0.0.2" || status.CLI.MinVersion != "0.0.10" {
+	if status.CLI.Version != "0.0.2" || status.CLI.MinVersion != "0.0.11" {
 		t.Fatalf("CLI = %#v, want version evidence retained", status.CLI)
 	}
 }
 
 func TestCompatibleTuttiAgentDoesNotRequireManagedInstall(t *testing.T) {
-	for _, version := range []string{"0.0.10", "0.0.11"} {
+	for _, version := range []string{"0.0.11"} {
 		t.Run(version, func(t *testing.T) {
 			service, _ := updateTestService(t, version)
 			snapshot, err := service.List(context.Background(), ListInput{Providers: []string{"tutti-agent"}})
@@ -217,10 +218,10 @@ func TestRunInstallActionUpgradesTuttiAgentBelowMinimumAndReprobes(t *testing.T)
 	var commands atomic.Int32
 	service.InstallCommand = func(_ context.Context, input InstallCommandInput) (InstallCommandResult, error) {
 		commands.Add(1)
-		if !strings.Contains(input.Command, "@tutti-os/tutti-agent@0.0.10") {
-			t.Fatalf("install command = %q, want exact managed Tutti Agent 0.0.10 package", input.Command)
+		if !strings.Contains(input.Command, "@tutti-os/tutti-agent@0.0.11") {
+			t.Fatalf("install command = %q, want exact managed Tutti Agent 0.0.11 package", input.Command)
 		}
-		writeUpdateTestCLI(t, binaryPath, "0.0.10")
+		writeUpdateTestCLI(t, binaryPath, "0.0.11")
 		return InstallCommandResult{ExitCode: 0, Stdout: "updated"}, nil
 	}
 
@@ -237,7 +238,7 @@ func TestRunInstallActionUpgradesTuttiAgentBelowMinimumAndReprobes(t *testing.T)
 		t.Fatalf("post-install List() error = %v", err)
 	}
 	status := onlyStatus(t, snapshot)
-	if status.Availability.Status != AvailabilityReady || status.CLI.Version != "0.0.10" {
+	if status.Availability.Status != AvailabilityReady || status.CLI.Version != "0.0.11" {
 		t.Fatalf("post-install status = %#v", status)
 	}
 }
@@ -514,10 +515,16 @@ func updateTestService(t *testing.T, version string) (Service, string) {
 	if err := os.WriteFile(filepath.Join(packageDir, "package.json"), []byte(packageJSON), 0o644); err != nil {
 		t.Fatalf("write package.json: %v", err)
 	}
-	packageBinaryPath := filepath.Join(packageBinDir, "tutti-agent")
+	binaryName := "tutti-agent"
+	if runtime.GOOS == "windows" {
+		binaryName += ".cmd"
+	}
+	packageBinaryPath := filepath.Join(packageBinDir, binaryName)
 	writeUpdateTestCLI(t, packageBinaryPath, version)
-	binaryPath := filepath.Join(binDir, "tutti-agent")
-	if err := os.Symlink(packageBinaryPath, binaryPath); err != nil {
+	binaryPath := filepath.Join(binDir, binaryName)
+	if runtime.GOOS == "windows" {
+		writeUpdateTestCLI(t, binaryPath, version)
+	} else if err := os.Symlink(packageBinaryPath, binaryPath); err != nil {
 		t.Fatalf("symlink test CLI: %v", err)
 	}
 	service := testService(func(name string) (string, error) {
@@ -548,6 +555,13 @@ func updateTestService(t *testing.T, version string) (Service, string) {
 
 func writeUpdateTestCLI(t *testing.T, path string, version string) {
 	t.Helper()
+	if runtime.GOOS == "windows" {
+		content := "@echo off\r\nif /I \"%~1\"==\"--version\" echo tutti-agent " + version + "\r\n"
+		if err := os.WriteFile(path, []byte(content), 0o755); err != nil {
+			t.Fatalf("write test CLI: %v", err)
+		}
+		return
+	}
 	content := "#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then echo \"tutti-agent " + version + "\"; exit 0; fi\nsleep 1\n"
 	if err := os.WriteFile(path, []byte(content), 0o755); err != nil {
 		t.Fatalf("write test CLI: %v", err)

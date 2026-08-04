@@ -40,6 +40,12 @@ Current naming guidance:
 ## Action rules
 
 - keep business rules out of renderer, preload, and main-process code
+- when changing Microsoft Windows packaging or native resources, read
+  [Windows Platform Support](../../docs/architecture/windows-platform-support.md)
+  and keep platform selection at packaging or desktop composition boundaries
+- inject platform-native resources such as the managed POSIX shell
+  through the daemon launch environment; daemon consumers must depend on their
+  capability contract rather than importing desktop packaging details
 - prefer calling `tuttid` or desktop IPC adapters instead of re-implementing workflows in Electron
 - for workspace-agent activity adapters, reconcile bridges, or AgentGUI
   Workbench integration, read
@@ -82,6 +88,7 @@ Current naming guidance:
 - [docs/conventions/desktop-visual-language.md](../../docs/conventions/desktop-visual-language.md)
 - [docs/architecture/desktop-transport.md](../../docs/architecture/desktop-transport.md)
 - [docs/architecture/desktop-windows.md](../../docs/architecture/desktop-windows.md)
+- [docs/architecture/windows-platform-support.md](../../docs/architecture/windows-platform-support.md)
 - [docs/conventions/logging.md](../../docs/conventions/logging.md)
 - [docs/conventions/tuttid-layering.md](../../docs/conventions/tuttid-layering.md)
 - [packages/ui/system/ui-system.md](../../packages/ui/system/ui-system.md)

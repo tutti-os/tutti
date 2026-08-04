@@ -172,6 +172,15 @@ func Validate(descriptor ProviderDescriptor) error {
 		if strings.TrimSpace(descriptor.Runtime.ClientInfoName) == "" {
 			return fmt.Errorf("provider %q runtime client info name is required", providerID)
 		}
+		switch descriptor.Runtime.AppServerSkillRoots {
+		case "", AppServerSkillRootsStrategyTuttiStable:
+		default:
+			return fmt.Errorf(
+				"provider %q app-server skill roots strategy %q is unsupported",
+				providerID,
+				descriptor.Runtime.AppServerSkillRoots,
+			)
+		}
 		fork := descriptor.Runtime.AppServerFork
 		if descriptor.Runtime.NativeSessionFork {
 			if strings.TrimSpace(fork.UserAgentBrand) == "" {
@@ -189,6 +198,9 @@ func Validate(descriptor ProviderDescriptor) error {
 			return fmt.Errorf("provider %q app-server fork strategy requires native session fork", providerID)
 		}
 	case RuntimeKindStandardACP:
+		if descriptor.Runtime.AppServerSkillRoots != "" {
+			return fmt.Errorf("provider %q non-app-server runtime declares app-server skill roots strategy", providerID)
+		}
 		if descriptor.Runtime.AppServerFork != (AppServerForkDescriptor{}) {
 			return fmt.Errorf("provider %q non-app-server runtime declares app-server fork strategy", providerID)
 		}
@@ -196,6 +208,9 @@ func Validate(descriptor ProviderDescriptor) error {
 			return fmt.Errorf("provider %q standard ACP runtime: %w", providerID, err)
 		}
 	case RuntimeKindClaudeSDK:
+		if descriptor.Runtime.AppServerSkillRoots != "" {
+			return fmt.Errorf("provider %q non-app-server runtime declares app-server skill roots strategy", providerID)
+		}
 		if descriptor.Runtime.AppServerFork != (AppServerForkDescriptor{}) {
 			return fmt.Errorf("provider %q non-app-server runtime declares app-server fork strategy", providerID)
 		}
@@ -380,6 +395,15 @@ func Validate(descriptor ProviderDescriptor) error {
 	default:
 		return fmt.Errorf("provider %q installer kind %q is unsupported", providerID, descriptor.Status.Install.Kind)
 	}
+	switch descriptor.Status.Install.WindowsFallback {
+	case "":
+	case InstallerWindowsFallbackManagedRuntime:
+		if descriptor.Status.Install.Kind != InstallerKindOfficialScript {
+			return fmt.Errorf("provider %q Windows installer fallback requires an official script installer", providerID)
+		}
+	default:
+		return fmt.Errorf("provider %q installer Windows fallback %q is unsupported", providerID, descriptor.Status.Install.WindowsFallback)
+	}
 	if descriptor.Status.Install.Kind != "" && strings.TrimSpace(descriptor.Status.Install.DisplayCommand) == "" {
 		return fmt.Errorf("provider %q installer display command is required", providerID)
 	}
@@ -393,15 +417,6 @@ func Validate(descriptor ProviderDescriptor) error {
 	case "", ModelCatalogKindCodexCLI, ModelCatalogKindOpenCodeCLI, ModelCatalogKindTuttiCLI:
 	default:
 		return fmt.Errorf("provider %q model catalog kind %q is unsupported", providerID, descriptor.ComposerProfile.ModelCatalog)
-	}
-	switch descriptor.ComposerProfile.ConfiguredModelOverride {
-	case "":
-	case ConfiguredModelOverrideCodexCustomProvider:
-		if descriptor.ComposerProfile.ModelCatalog != ModelCatalogKindCodexCLI {
-			return fmt.Errorf("provider %q codex custom-provider override requires the Codex model catalog", providerID)
-		}
-	default:
-		return fmt.Errorf("provider %q configured model override %q is unsupported", providerID, descriptor.ComposerProfile.ConfiguredModelOverride)
 	}
 	switch descriptor.ComposerProfile.CapabilityCatalog.Kind {
 	case "", CapabilityCatalogKindCodexAppServer, CapabilityCatalogKindAppServerSkills:

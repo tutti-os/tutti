@@ -43,24 +43,27 @@ func exposeUserCodexModelsCache(codexHome, userCodexHome string) error {
 		return fmt.Errorf("create shared codex home for models cache: %w", err)
 	}
 	source := filepath.Join(userCodexHome, "models_cache.json")
-	symlinkErr := os.Symlink(source, target)
-	if symlinkErr == nil {
+	linkErr := exposeCodexFile(source, target, 0o600)
+	if linkErr == nil {
 		return nil
 	}
 	info, statErr := os.Stat(source)
 	if os.IsNotExist(statErr) {
+		if err := initializeCodexModelsCacheForWindows(source, target); err != nil {
+			return fmt.Errorf("initialize Windows codex models cache: %w", err)
+		}
 		// Platforms that cannot create the link have no cache to copy yet. The
 		// run remains usable and Codex will create its ordinary local cache.
 		return nil
 	}
 	if statErr != nil {
-		return fmt.Errorf("inspect shared codex models cache after symlink failure: %w", statErr)
+		return fmt.Errorf("inspect shared codex models cache after link failure: %w", statErr)
 	}
 	if info.IsDir() {
 		return fmt.Errorf("shared codex models cache is a directory: %s", source)
 	}
 	if copyErr := copyFile(source, target, 0o600); copyErr != nil {
-		return fmt.Errorf("expose codex models cache: symlink failed: %v; copy failed: %w", symlinkErr, copyErr)
+		return fmt.Errorf("expose codex models cache: link failed: %v; copy failed: %w", linkErr, copyErr)
 	}
 	return nil
 }

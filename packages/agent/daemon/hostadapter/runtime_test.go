@@ -29,6 +29,33 @@ type goalLifecycleRuntimeBackend struct {
 	observer agentruntime.GoalControlLifecycleObserver
 }
 
+type closeRuntimeBackend struct {
+	RuntimeBackend
+	input agentruntime.CloseInput
+}
+
+func (b *closeRuntimeBackend) Close(_ context.Context, input agentruntime.CloseInput) (agentruntime.CloseResult, error) {
+	b.input = input
+	return agentruntime.CloseResult{AgentSessionID: input.AgentSessionID, Disconnected: true}, nil
+}
+
+func TestRuntimeControllerPreservesCanonicalStateWhenClosingRuntime(t *testing.T) {
+	t.Parallel()
+	backend := &closeRuntimeBackend{}
+	controller := &RuntimeController{Backend: backend}
+
+	if err := controller.Close(t.Context(), host.RuntimeCloseInput{
+		WorkspaceID: "workspace-1", AgentSessionID: "session-rejected", PreserveCanonicalState: true,
+	}); err != nil {
+		t.Fatalf("Close() error = %v", err)
+	}
+	if backend.input.RoomID != "workspace-1" ||
+		backend.input.AgentSessionID != "session-rejected" ||
+		!backend.input.PreserveCanonicalState {
+		t.Fatalf("backend close input = %#v", backend.input)
+	}
+}
+
 func (b *goalLifecycleRuntimeBackend) SetGoalControlLifecycleObserver(observer agentruntime.GoalControlLifecycleObserver) {
 	b.observer = observer
 }

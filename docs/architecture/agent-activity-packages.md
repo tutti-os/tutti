@@ -444,6 +444,16 @@ capabilities such as files, clipboard, runtime metadata, account/project
 lookup, diagnostics, setup, and OS/Workbench helpers. Its input type still
 accepts a legacy `agentSessions` shape, but `toAgentHostRuntimeApi` strips that
 shape; production AgentGUI must not use it as an activity source.
+Large pasted text is a separate runtime capability rather than an inference
+from generic file upload. `stagePastedText` returns one provider-readable
+locator: a local archive `path`, or an ordinary prepared remote-file `url`
+with optional object-store identity metadata. AgentGUI keeps the local path
+behavior as a read-file instruction, while a remote locator is emitted as an
+ordinary prepared file so shared hosts use their existing attachment transport;
+it must never be disguised as a local path. The conversation `displayPrompt`
+for a remote pasted-text asset carries only its safe preview mention; short-
+lived URLs and object-store locators remain in structured prompt content and
+must not enter caller-visible transcript projections.
 Device-global quick prompts are also an optional host capability rather than
 activity data. The desktop adapter combines the developer-gated preference,
 the generated `tuttid` client, and global invalidation events behind

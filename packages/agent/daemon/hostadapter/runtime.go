@@ -151,6 +151,7 @@ func (a *RuntimeController) Start(ctx context.Context, input host.RuntimeStartIn
 		ProviderTargetRef:       cloneMap(input.ProviderTargetRef),
 		PermissionModeID:        input.PermissionModeID,
 		Settings: runtimeSettings(host.ComposerSettings{
+			CodexSaverMode:         input.CodexSaverMode,
 			Model:                  input.Model,
 			PermissionModeID:       input.PermissionModeID,
 			PlanMode:               input.PlanMode,
@@ -366,7 +367,11 @@ func (a *RuntimeController) Close(ctx context.Context, input host.RuntimeCloseIn
 	if err := a.requireBackend(); err != nil {
 		return err
 	}
-	_, err := a.Backend.Close(ctx, agentruntime.CloseInput{RoomID: input.WorkspaceID, AgentSessionID: input.AgentSessionID})
+	_, err := a.Backend.Close(ctx, agentruntime.CloseInput{
+		RoomID:                 input.WorkspaceID,
+		AgentSessionID:         input.AgentSessionID,
+		PreserveCanonicalState: input.PreserveCanonicalState,
+	})
 	return mapRuntimeError(err)
 }
 
@@ -779,7 +784,8 @@ func runtimeTuttiModeSnapshot(input *host.TuttiModeTurnSnapshot) *agentruntime.T
 
 func runtimeSettings(settings host.ComposerSettings) *agentruntime.SessionSettings {
 	return &agentruntime.SessionSettings{
-		Model: settings.Model, ReasoningEffort: settings.ReasoningEffort, Speed: settings.Speed,
+		CodexSaverMode: settings.CodexSaverMode,
+		Model:          settings.Model, ReasoningEffort: settings.ReasoningEffort, Speed: settings.Speed,
 		PlanMode: settings.PlanMode, BrowserUse: settings.BrowserUse, ComputerUse: settings.ComputerUse,
 		PermissionModeID: settings.PermissionModeID, ConversationDetailMode: settings.ConversationDetailMode,
 	}
@@ -787,7 +793,8 @@ func runtimeSettings(settings host.ComposerSettings) *agentruntime.SessionSettin
 
 func hostSettings(settings agentruntime.SessionSettings) host.ComposerSettings {
 	return host.ComposerSettings{
-		Model: settings.Model, ReasoningEffort: settings.ReasoningEffort, Speed: settings.Speed,
+		CodexSaverMode: settings.CodexSaverMode,
+		Model:          settings.Model, ReasoningEffort: settings.ReasoningEffort, Speed: settings.Speed,
 		PlanMode: settings.PlanMode, BrowserUse: settings.BrowserUse, ComputerUse: settings.ComputerUse,
 		PermissionModeID: settings.PermissionModeID, ConversationDetailMode: settings.ConversationDetailMode,
 	}

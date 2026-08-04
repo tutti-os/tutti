@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="760" viewBox="0 0 1440 760">
+  <rect width="1440" height="760" fill="#0b1020"/>
+  <text x="72" y="86" fill="#f8fafc" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" font-size="38" font-weight="700">Codex 省额度模式 · 真实运行证据</text>
+  <text x="72" y="130" fill="#94a3b8" font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="20">Session ce09a5f5-17a3-4aaf-aee7-1ffe30eecf02 · outcome=completed · childSessions=1</text>
+  <rect x="72" y="182" width="1296" height="164" rx="18" fill="#111a31" stroke="#334155"/>
+  <text x="112" y="230" fill="#93c5fd" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" font-size="25" font-weight="700">主线程（保留用户选择）</text>
+  <text x="112" y="281" fill="#e2e8f0" font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="29">model = gpt-5.6-sol</text>
+  <text x="760" y="281" fill="#e2e8f0" font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="29">reasoning = low</text>
+  <rect x="72" y="382" width="1296" height="204" rx="18" fill="#10251f" stroke="#22c55e" stroke-width="2"/>
+  <text x="112" y="432" fill="#86efac" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" font-size="25" font-weight="700">独立子线程（默认 Luna worker）</text>
+  <text x="112" y="486" fill="#dcfce7" font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="29">thread_source = subagent</text>
+  <text x="112" y="536" fill="#dcfce7" font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="29">model = gpt-5.6-luna</text>
+  <text x="760" y="536" fill="#dcfce7" font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="29">reasoning = max</text>
+  <text x="72" y="650" fill="#cbd5e1" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" font-size="22">证据源：会话级 CODEX_HOME/state_5.sqlite 的 threads 表（不是模型自报）</text>
+  <text x="72" y="696" fill="#22c55e" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" font-size="27" font-weight="700">结论：通过</text>
+</svg>

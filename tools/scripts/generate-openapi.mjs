@@ -15,6 +15,11 @@ import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import YAML from "yaml";
 
+import {
+  normalizeOpenApiFragmentRefs,
+  resolveOpenApiFragmentPath as resolveFragmentPath
+} from "./openapi-fragments.mjs";
+
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(__dirname, "../..");
 const specPath = resolve(
@@ -101,7 +106,10 @@ function generateGo(configPath, outputPath, inputPath) {
 
 function writeComposedOpenAPISpec(outputPath) {
   const document = YAML.parse(readFileSync(specPath, "utf8"));
-  const fragmentRefs = normalizeFragmentRefs(document?.[fragmentExtensionKey]);
+  const fragmentRefs = normalizeOpenApiFragmentRefs(
+    document?.[fragmentExtensionKey],
+    fragmentExtensionKey
+  );
   delete document[fragmentExtensionKey];
 
   for (const fragmentRef of fragmentRefs) {
@@ -114,27 +122,14 @@ function writeComposedOpenAPISpec(outputPath) {
   writeFileSync(outputPath, YAML.stringify(document), "utf8");
 }
 
-function normalizeFragmentRefs(value) {
-  if (value == null) {
-    return [];
-  }
-  if (!Array.isArray(value)) {
-    throw new Error(`${fragmentExtensionKey} must be an array`);
-  }
-  return value.map((entry) => {
-    const fragmentRef = String(entry ?? "").trim();
-    if (fragmentRef === "") {
-      throw new Error(`${fragmentExtensionKey} cannot contain empty entries`);
-    }
-    return fragmentRef;
-  });
-}
-
 function resolveOpenApiFragmentPath(fragmentRef) {
-  if (fragmentRef.startsWith(".")) {
-    return resolve(dirname(specPath), fragmentRef);
-  }
-  return resolve(repoRoot, fragmentRef);
+  return resolveFragmentPath(fragmentRef, {
+    repoRoot,
+    specPath,
+    resolvePackageSpecifier(specifier) {
+      return fileURLToPath(import.meta.resolve(specifier));
+    }
+  });
 }
 
 function mergeOpenApiFragment(document, fragment, fragmentPath) {

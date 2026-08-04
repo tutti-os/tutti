@@ -32,6 +32,9 @@ export function tuttiCreateWorkspaceAgentSessionRequestFromActivity(
     ...(typeof input.browserUse === "boolean"
       ? { browserUse: input.browserUse }
       : {}),
+    ...(typeof input.codexSaverMode === "boolean"
+      ? { codexSaverMode: input.codexSaverMode }
+      : {}),
     ...(capabilityRefs.length > 0 ? { capabilityRefs } : {}),
     clientSubmitId: input.clientSubmitId,
     cwd: input.cwd ?? null,
@@ -81,6 +84,9 @@ export function tuttiCreateWorkspaceAgentSessionRequestFromActivation(
     agentTargetId: input.agentTargetId,
     ...(typeof input.settings?.browserUse === "boolean"
       ? { browserUse: input.settings.browserUse }
+      : {}),
+    ...(typeof input.settings?.codexSaverMode === "boolean"
+      ? { codexSaverMode: input.settings.codexSaverMode }
       : {}),
     capabilityRefs: input.capabilityRefs
       ? input.capabilityRefs.map((reference) => ({ ...reference }))

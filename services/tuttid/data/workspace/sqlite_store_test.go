@@ -19,6 +19,13 @@ import (
 	workspacebiz "github.com/tutti-os/tutti/services/tuttid/biz/workspace"
 )
 
+func TestSQLiteDSNPathUsesFileURLFormOnWindows(t *testing.T) {
+	got := sqliteDSNPath(`C:\Users\Tutti User\state\tuttid.db`, "windows")
+	if got != "/C:/Users/Tutti User/state/tuttid.db" {
+		t.Fatalf("sqliteDSNPath() = %q", got)
+	}
+}
+
 func TestSQLiteStoreListEmptyDatabase(t *testing.T) {
 	t.Parallel()
 

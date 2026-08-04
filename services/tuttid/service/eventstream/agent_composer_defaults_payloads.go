@@ -31,7 +31,8 @@ func validateAgentComposerDefaultsPatchRequestedPayload(payload []byte) error {
 	}
 	for field := range decoded.Patch {
 		switch field {
-		case preferencesbiz.AgentComposerDefaultsFieldModel,
+		case preferencesbiz.AgentComposerDefaultsFieldCodexSaverMode,
+			preferencesbiz.AgentComposerDefaultsFieldModel,
 			preferencesbiz.AgentComposerDefaultsFieldPermissionModeID,
 			preferencesbiz.AgentComposerDefaultsFieldReasoningEffort,
 			preferencesbiz.AgentComposerDefaultsFieldSpeed:

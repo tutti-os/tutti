@@ -200,6 +200,7 @@ func (a *ClaudeCodeSDKAdapter) ExecWithProviderAcceptance(
 				Source:            AcceptanceSourceTurnStartResponse,
 				ProviderSessionID: strings.TrimSpace(adapterSession.providerSessionID),
 				ProviderTurnID:    providerTurnID,
+				ProviderInputUnit: event.ProviderInputUnit,
 			}
 			acceptanceOnce.Do(func() {
 				if acceptProviderTurn == nil {

@@ -201,7 +201,7 @@ function shellQuote(value) {
 
 function resolveCommand(command) {
   if (process.platform === "win32") {
-    return `${command}.cmd`;
+    return command === "go" ? "go.exe" : `${command}.cmd`;
   }
   return command;
 }

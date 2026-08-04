@@ -9,6 +9,9 @@ import { zhCNAgentGuiCollaboration } from "./zh-CN.agentGuiCollaboration.ts";
 import { zhCNTuttiModePlan } from "./zh-CN.tuttiModePlan.ts";
 
 export const zhCNAgentGui = {
+  codexSaverModeLabel: "Codex 省额度模式",
+  codexSaverModeDescription:
+    "主模型保持不变；合适的独立子任务改用 Luna Max，按当前额度口径约为 Sol High 的 1/10。实际效果与速度因任务而异。",
   initialPlaceholder: "输入 @ 引用会话、文件、任务和应用",
   followupPlaceholder: "要求 {{provider}} 继续后续变更",
   installRequiredPlaceholder: "请先连接 {{provider}}，然后再发送消息",

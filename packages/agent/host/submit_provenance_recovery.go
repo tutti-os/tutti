@@ -7,20 +7,30 @@ import (
 	"time"
 )
 
-func (h *Host) cleanupPreparedRuntime(
+func (h *Host) discardRejectedPreparedRuntime(
 	ctx context.Context,
 	cause error,
 	workspaceID string,
 	agentSessionID string,
 	provider string,
 ) error {
-	cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
-	defer cancel()
+	cleanupBaseCtx := context.WithoutCancel(ctx)
 	cleanupErrs := []error{cause}
+	if h.runtime != nil {
+		closeCtx, cancelClose := context.WithTimeout(cleanupBaseCtx, 10*time.Second)
+		cleanupErrs = append(cleanupErrs, h.runtime.Close(closeCtx, RuntimeCloseInput{
+			WorkspaceID:            workspaceID,
+			AgentSessionID:         agentSessionID,
+			PreserveCanonicalState: true,
+		}))
+		cancelClose()
+	}
 	if h.preparation != nil {
-		cleanupErrs = append(cleanupErrs, h.preparation.Cleanup(cleanupCtx, RuntimeCleanupInput{
+		preparationCtx, cancelPreparation := context.WithTimeout(cleanupBaseCtx, 10*time.Second)
+		cleanupErrs = append(cleanupErrs, h.preparation.Cleanup(preparationCtx, RuntimeCleanupInput{
 			WorkspaceID: workspaceID, AgentSessionID: agentSessionID, Provider: provider,
 		}))
+		cancelPreparation()
 	}
 	return errors.Join(cleanupErrs...)
 }

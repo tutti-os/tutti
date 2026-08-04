@@ -31,7 +31,7 @@ export function pairingClaimProof(challengeID: string, secret: string): string {
 }
 
 export function deviceLinkProof(
-  action: "create" | "get" | "update",
+  action: "create" | "get" | "relay" | "update",
   pairingID: string,
   attemptID: string,
   fingerprint: string

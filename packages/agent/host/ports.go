@@ -420,6 +420,7 @@ type RuntimePreparationInput struct {
 	PlanMode               bool
 	BrowserUse             bool
 	ComputerUse            bool
+	CodexSaverMode         bool
 	ProviderTargetRef      map[string]any
 	Model                  string
 	ReasoningEffort        string

@@ -1011,7 +1011,10 @@ export interface DesktopComputerUseRestartDriverResult {
 export interface DesktopBrowserAutomationRequest {
   action: "create" | "select" | "close";
   agentSessionId: string | null;
+  agentTurnId?: string | null;
   nodeId: string | null;
+  /** Whether this create request should reveal its Browser surface. */
+  reveal?: boolean;
   requestId: string;
   surfaceRole: "agent" | "user";
   url: string | null;

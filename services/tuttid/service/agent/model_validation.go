@@ -82,6 +82,29 @@ func (s *Service) availableComposerModelsForValidationProfile(
 	cwd string,
 	profile composerProfile,
 ) ([]string, bool, error) {
+	if s.ReplayMode && s.ModelCatalog != nil {
+		result, err := s.ModelCatalog.ListModels(ctx, AgentModelCatalogInput{
+			Provider: provider,
+			Cwd:      cwd,
+		})
+		if err != nil {
+			return nil, false, nil
+		}
+		values := make([]string, 0, len(result.Models))
+		seen := make(map[string]struct{}, len(result.Models))
+		for _, model := range result.Models {
+			id := strings.TrimSpace(model.ID)
+			if id == "" {
+				continue
+			}
+			if _, ok := seen[id]; ok {
+				continue
+			}
+			seen[id] = struct{}{}
+			values = append(values, id)
+		}
+		return values, true, nil
+	}
 	switch profile.ModelCatalog {
 	case "", providerregistry.ModelCatalogKindCodexCLI, providerregistry.ModelCatalogKindOpenCodeCLI, providerregistry.ModelCatalogKindTuttiCLI:
 	default:

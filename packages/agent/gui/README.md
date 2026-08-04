@@ -59,7 +59,12 @@ AgentGUI classifies plain-text clipboard content before delegating structured
 mention HTML. A trimmed payload of at least 5,000 characters is never inserted
 into the prompt automatically. It becomes a pasted-text draft attachment and
 is passed as raw text to `AgentGUIRuntime.stagePastedText`; the host owns
-local persistence and returns `{ path, name, sizeBytes }`.
+persistence and returns either a local `{ path, name, sizeBytes }` locator or
+a remote `{ url, name, sizeBytes, assetId?, uri?, uploadStatus? }` prepared
+attachment. Local text is sent as a read-file instruction; a remote locator is
+sent as an ordinary prepared file, so shared hosts reuse their attachment path.
+Its conversation display mention contains only the pasted-text preview, never
+the remote URL or storage locator.
 
 If the method is absent or staging fails, the attachment remains in an explicit
 failed state and retains its in-memory text. AgentGUI must not silently put the

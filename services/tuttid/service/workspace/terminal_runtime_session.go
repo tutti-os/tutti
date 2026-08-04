@@ -2,8 +2,6 @@ package workspace
 
 import (
 	"log/slog"
-	"os"
-	"os/exec"
 	"sync"
 	"time"
 )
@@ -11,17 +9,16 @@ import (
 type terminalRuntimeSession struct {
 	mu           sync.Mutex
 	cols         int
-	command      *exec.Cmd
 	createdAt    time.Time
 	cwd          string
 	endedAt      *time.Time
-	file         *os.File
 	id           string
 	lastError    *string
 	output       string
 	outputChunks []terminalOutputChunk
 	outputChars  int
 	profileID    *string
+	process      TerminalProcess
 	rows         int
 	seq          int64
 	shell        string
@@ -91,10 +88,13 @@ func (s *terminalRuntimeSession) write(data string) error {
 		s.mu.Unlock()
 		return ErrTerminalNotRunning
 	}
-	file := s.file
+	process := s.process
 	s.mu.Unlock()
 
-	_, err := file.Write([]byte(data))
+	if process == nil {
+		return ErrTerminalNotRunning
+	}
+	_, err := process.Write([]byte(data))
 	return err
 }
 
@@ -227,7 +227,7 @@ func (s *terminalRuntimeSession) attachStream(input AttachTerminalInput) Termina
 func (s *terminalRuntimeSession) readLoop() {
 	buffer := make([]byte, 32*1024)
 	for {
-		n, err := s.file.Read(buffer)
+		n, err := s.process.Read(buffer)
 		if n > 0 {
 			s.appendOutput(string(buffer[:n]))
 		}
@@ -241,7 +241,8 @@ func (s *terminalRuntimeSession) readLoop() {
 }
 
 func (s *terminalRuntimeSession) waitLoop() {
-	err := s.command.Wait()
+	err := s.process.Wait()
+	_ = s.process.Close()
 	s.mu.Lock()
 
 	if isEndedTerminalStatus(s.status) {

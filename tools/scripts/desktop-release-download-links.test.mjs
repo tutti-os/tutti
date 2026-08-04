@@ -11,7 +11,7 @@ import {
   buildUpdatedReleaseBody
 } from "../../apps/desktop/scripts/upsert-release-download-links.mjs";
 
-test("desktop release notes append all macOS direct download links for mirrored assets", () => {
+test("desktop release notes append macOS and Windows direct download links for mirrored assets", () => {
   const nextBody = buildUpdatedReleaseBody({
     assetNames: [
       "Tutti-0.1.0-rc.2-linux-x86_64.AppImage",
@@ -43,7 +43,10 @@ test("desktop release notes append all macOS direct download links for mirrored 
     nextBody,
     /\[macOS Universal\]\(https:\/\/d111111abcdef8\.cloudfront\.net\/desktop-release-assets\/v0\.1\.0-rc\.2\/Tutti-0\.1\.0-rc\.2-mac-universal\.dmg\)/
   );
-  assert.doesNotMatch(nextBody, /\[Windows\]/);
+  assert.match(
+    nextBody,
+    /\[Windows \(x64, unsigned\)\]\(https:\/\/d111111abcdef8\.cloudfront\.net\/desktop-release-assets\/v0\.1\.0-rc\.2\/Tutti-0\.1\.0-rc\.2-win-x64\.exe\)/
+  );
   assert.doesNotMatch(nextBody, /\[Linux\]/);
 });
 
