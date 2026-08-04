@@ -12,7 +12,7 @@ import (
 )
 
 func (c *Controller) Exec(ctx context.Context, input ExecInput) (result ExecResult, err error) {
-	if input.HistoryReplacement || input.RequireProviderAcceptance {
+	if input.Guidance || input.HistoryReplacement || input.RequireProviderAcceptance {
 		defer func() {
 			if err != nil && result.ProviderDispatch == nil {
 				result.ProviderDispatch = &ProviderDispatchResult{
@@ -114,7 +114,7 @@ func (c *Controller) Exec(ctx context.Context, input ExecInput) (result ExecResu
 		}
 	}
 	if input.Guidance {
-		return c.guideActiveTurn(ctx, session, adapter, content, displayPrompt, metadata, input.CapabilityRefs)
+		return c.guideActiveTurn(ctx, session, adapter, content, displayPrompt, metadata, input.CapabilityRefs, input.TurnID)
 	}
 	previousSession := session
 	titleUpdated := false
@@ -331,6 +331,7 @@ func (c *Controller) guideActiveTurn(
 	displayPrompt string,
 	metadata map[string]any,
 	capabilityRefs []activityshared.CapabilityReference,
+	expectedTurnID string,
 ) (ExecResult, error) {
 	guidanceAdapter, ok := adapter.(ActiveTurnGuidanceAdapter)
 	if !ok {
@@ -339,6 +340,22 @@ func (c *Controller) guideActiveTurn(
 	turnID, ok := c.activeTurnID(session.RoomID, session.AgentSessionID)
 	if !ok {
 		return ExecResult{}, ErrSessionNoActiveTurn
+	}
+	// The lifecycle lock held by Exec makes this comparison and the provider
+	// admission below one serialized decision. A guidance request is allowed to
+	// use the legacy empty target only for direct internal Controller callers;
+	// Host consumers must provide the target and are checked before reaching
+	// this method. When a target is present, never retarget to whichever turn is
+	// current when the request happens to arrive.
+	if expectedTurnID = strings.TrimSpace(expectedTurnID); expectedTurnID != "" && expectedTurnID != turnID {
+		return ExecResult{
+			AgentSessionID: session.AgentSessionID,
+			Status:         ExecStatusStarted,
+			TurnID:         expectedTurnID,
+			ProviderDispatch: &ProviderDispatchResult{
+				Disposition: DispatchDispositionNotDispatched,
+			},
+		}, fmt.Errorf("%w: expected %q, current %q", ErrActiveTurnTargetMismatch, expectedTurnID, turnID)
 	}
 	runCtx := ctx
 	if len(metadata) > 0 {

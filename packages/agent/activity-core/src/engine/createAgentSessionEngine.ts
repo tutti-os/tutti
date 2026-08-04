@@ -577,6 +577,9 @@ export function createAgentSessionEngine({
         : {}),
       requestedAtUnixMs,
       routing,
+      ...(input.targetTurnId?.trim()
+        ? { targetTurnId: input.targetTurnId.trim() }
+        : {}),
       ...(input.runtimeContent
         ? {
             runtimeContent: input.runtimeContent.map((block) => ({

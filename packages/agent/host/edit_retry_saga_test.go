@@ -429,6 +429,7 @@ type hostEditRetryRuntime struct {
 	execOutcomeUnknown          bool
 	execOutcomeUnknownAccepted  bool
 	execNotDispatchedBeforeTurn bool
+	guidanceMismatch            bool
 	reconcileAcceptanceCalls    int
 	reconcileAcceptanceInput    agenthost.RuntimeProviderTurnAcceptanceInput
 	goalControlCalls            int
@@ -459,6 +460,7 @@ func (r *hostEditRetryRuntime) Exec(ctx context.Context, input agenthost.Runtime
 	outcomeUnknown := r.execOutcomeUnknown
 	outcomeUnknownAccepted := r.execOutcomeUnknownAccepted
 	notDispatchedBeforeTurn := r.execNotDispatchedBeforeTurn
+	guidanceMismatch := r.guidanceMismatch
 	r.execOutcomeUnknown = false
 	r.execOutcomeUnknownAccepted = false
 	r.execNotDispatchedBeforeTurn = false
@@ -470,6 +472,14 @@ func (r *hostEditRetryRuntime) Exec(ctx context.Context, input agenthost.Runtime
 		}
 	}
 	r.mu.Unlock()
+	if input.Guidance && guidanceMismatch {
+		return agenthost.RuntimeExecResult{
+			TurnID: input.TurnID,
+			ProviderDispatch: agenthost.RuntimeProviderDispatchResult{
+				Disposition: agenthost.RuntimeDispatchDispositionNotDispatched,
+			},
+		}, errors.New("guidance target changed before provider admission")
+	}
 	if notDispatchedBeforeTurn {
 		return agenthost.RuntimeExecResult{
 			ProviderDispatch: agenthost.RuntimeProviderDispatchResult{

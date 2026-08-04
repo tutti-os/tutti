@@ -69,6 +69,29 @@ test("request projection rejects local file blocks", () => {
   );
 });
 
+test("request projection carries the exact target only for guidance", () => {
+  const guidance = tuttiSendWorkspaceAgentSessionInputRequestFromActivity({
+    agentSessionId: "session-1",
+    clientSubmitId: "submit-guidance",
+    content: [activityTextBlock()],
+    guidance: true,
+    targetTurnId: "  turn-target  ",
+    workspaceId: "workspace-1"
+  });
+  assert.equal(guidance.guidance, true);
+  assert.equal(guidance.turnId, "turn-target");
+
+  const ordinary = tuttiSendWorkspaceAgentSessionInputRequestFromActivity({
+    agentSessionId: "session-1",
+    clientSubmitId: "submit-ordinary",
+    content: [activityTextBlock()],
+    targetTurnId: "turn-ignored",
+    workspaceId: "workspace-1"
+  });
+  assert.equal("guidance" in ordinary, false);
+  assert.equal("turnId" in ordinary, false);
+});
+
 function activityTextBlock(): AgentPromptContentBlock {
   return {
     assetId: "asset-1",

@@ -404,6 +404,13 @@ func (h *Host) SendInput(ctx context.Context, ref SessionRef, input SendInput) (
 	if h == nil || h.runtime == nil || h.store == nil || ref.WorkspaceID == "" || ref.AgentSessionID == "" {
 		return SendInputResult{}, ErrInvalidArgument
 	}
+	// Guidance is a mutation of an already-running canonical Turn. Host
+	// consumers must bind that mutation to the exact Turn observed at the
+	// interaction boundary; allowing the runtime to infer "current" would make
+	// an A->B transition during transport silently steer B.
+	if input.Guidance && strings.TrimSpace(input.TurnID) == "" {
+		return SendInputResult{}, ErrActiveTurnTargetRequired
+	}
 	normalized, promptText, err := normalizePromptContent(input.Content)
 	if err != nil {
 		return SendInputResult{}, err
@@ -542,6 +549,12 @@ func (h *Host) sendInputSerialized(
 				}
 				return SendInputResult{}, err
 			}
+		}
+		if input.Guidance && execResult.ProviderDispatch.Disposition == RuntimeDispatchDispositionNotDispatched {
+			// The runtime rejected the exact target before provider admission. Keep
+			// claimPending true so the deferred cleanup removes the prepared claim;
+			// this is a known rejection, not an outcome-unknown delivery.
+			return SendInputResult{}, err
 		}
 		if input.Guidance ||
 			execResult.ProviderDispatch.Disposition == RuntimeDispatchDispositionApplied ||

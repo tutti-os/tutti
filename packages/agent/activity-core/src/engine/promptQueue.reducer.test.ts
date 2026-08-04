@@ -256,6 +256,7 @@ test("send-now native guidance can send against a canonical active turn", () => 
   ).state;
   const guided = reduce(state, sendNow("prompt-guidance"), lifecycle);
   assert.equal(send(guided.commands[0]).guidance, true);
+  assert.equal(send(guided.commands[0]).targetTurnId, "turn-1");
 });
 
 test("drain after settle strips a stale guidance flag from the queue head", () => {

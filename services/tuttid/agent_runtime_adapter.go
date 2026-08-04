@@ -644,6 +644,12 @@ func mapAgentRuntimeError(err error) error {
 	if errors.Is(err, agentruntime.ErrActiveTurnGuidanceUnsupported) {
 		return agentservice.ErrActiveTurnGuidanceUnsupported
 	}
+	if errors.Is(err, agentruntime.ErrActiveTurnTargetRequired) {
+		return agentservice.ErrActiveTurnTargetRequired
+	}
+	if errors.Is(err, agentruntime.ErrActiveTurnTargetMismatch) {
+		return agentservice.ErrActiveTurnTargetMismatch
+	}
 	if errors.Is(err, agentruntime.ErrSessionSettingsRequireNewSession) {
 		return agentservice.ErrSessionSettingsRequireNewSession
 	}

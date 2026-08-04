@@ -1037,6 +1037,15 @@ The busy-session prompt queue is ephemeral durable-intent coordination in the wo
 
 - a normal prompt waits for canonical availability
 - a provider with native guidance capability may guide the active Turn
+- guidance captures the canonical `activeTurnId` at the interaction boundary
+  and carries it through the queue, activity adapter, daemon API, Agent Host,
+  and runtime Controller; `turnId` is required for every cross-process
+  guidance request and is never inferred from the latest Session snapshot
+- Host and the runtime Controller compare that target with the live active
+  Turn while holding the lifecycle admission lock. A mismatch is a typed
+  pre-provider rejection (`NotDispatched`), and a prepared submit claim is
+  removed so the failed guidance cannot strand the queue or be redirected to a
+  newer Turn
 - otherwise send-now performs exact cancel-then-send
 - user Stop pauses the queue; cancellation must not leak the next prompt
 - a prompt settings precondition is an explicit preparation stage, not a nested

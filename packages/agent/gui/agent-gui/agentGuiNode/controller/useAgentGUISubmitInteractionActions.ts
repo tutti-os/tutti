@@ -85,6 +85,7 @@ interface UseAgentGUISubmitInteractionActionsInput {
         immediate?: boolean;
         requiredSettingsPatch?: AgentComposerSubmitOptions["requiredSettingsPatch"];
         sendNow?: boolean;
+        targetTurnId?: AgentComposerSubmitOptions["targetTurnId"];
         sourceScopeKey?: string;
         trackDraft?: boolean;
       }
@@ -216,6 +217,7 @@ export function useAgentGUISubmitInteractionActions(
         immediate?: boolean;
         requiredSettingsPatch?: AgentComposerSubmitOptions["requiredSettingsPatch"];
         sendNow?: boolean;
+        targetTurnId?: AgentComposerSubmitOptions["targetTurnId"];
         sourceScopeKey?: string;
         trackDraft?: boolean;
       }
@@ -286,6 +288,9 @@ export function useAgentGUISubmitInteractionActions(
                 ...options.requiredSettingsPatch
               }
             }
+          : {}),
+        ...(options?.targetTurnId?.trim()
+          ? { targetTurnId: options.targetTurnId.trim() }
           : {}),
         ...(options?.immediate === true
           ? { routing: "immediate" as const }
@@ -382,6 +387,7 @@ export function useAgentGUISubmitInteractionActions(
         capabilityRefs?: AgentComposerSubmitOptions["capabilityRefs"];
         requiredSettingsPatch?: AgentComposerSubmitOptions["requiredSettingsPatch"];
         sendNow?: boolean;
+        targetTurnId?: AgentComposerSubmitOptions["targetTurnId"];
         sourceScopeKey?: string;
         trackDraft?: boolean;
       }
@@ -410,6 +416,7 @@ export function useAgentGUISubmitInteractionActions(
       executePrompt(agentSessionId, normalizedContent, displayPromptText, {
         capabilityRefs: options?.capabilityRefs,
         requiredSettingsPatch: options?.requiredSettingsPatch,
+        targetTurnId: options?.targetTurnId,
         sendNow: options?.sendNow === true,
         sourceScopeKey: options?.sourceScopeKey,
         trackDraft: options?.trackDraft === true
@@ -590,6 +597,7 @@ export function useAgentGUISubmitInteractionActions(
         {
           capabilityRefs: options?.capabilityRefs,
           sendNow: true,
+          targetTurnId: activeTurnId,
           trackDraft: true
         }
       );

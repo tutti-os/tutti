@@ -443,6 +443,7 @@ func TestControllerExecGuidanceDuringActiveTurn(t *testing.T) {
 	result, err := controller.Exec(ctx, ExecInput{
 		RoomID:                          started.Session.RoomID,
 		AgentSessionID:                  started.Session.AgentSessionID,
+		TurnID:                          first.TurnID,
 		Content:                         textPrompt("guide current turn"),
 		Guidance:                        true,
 		ClientSubmitID:                  "guidance-submit-1",
@@ -485,6 +486,52 @@ func TestControllerExecGuidanceDuringActiveTurn(t *testing.T) {
 	}
 	if guidanceUpdate == nil || guidanceUpdate.TurnID != first.TurnID {
 		t.Fatalf("guidance message update = %#v, want active turn id %q", guidanceUpdate, first.TurnID)
+	}
+
+	adapter.releaseNext()
+	waitForSessionStatus(t, controller, "room-1", started.Session.AgentSessionID, SessionStatusReady)
+}
+
+func TestControllerExecGuidanceRejectsChangedExactTargetBeforeProviderCall(t *testing.T) {
+	t.Parallel()
+
+	adapter := &guidanceBlockingAdapter{blockingExecAdapter: newBlockingExecAdapter()}
+	controller := NewController([]Adapter{adapter}, nil)
+	ctx := context.Background()
+	started, err := controller.Start(ctx, StartInput{
+		RoomID:         "room-1",
+		AgentSessionID: "agent-session-1",
+		Provider:       ProviderCodex,
+		Title:          "Codex",
+	})
+	if err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	_, err = controller.Exec(ctx, ExecInput{
+		RoomID:         started.Session.RoomID,
+		AgentSessionID: started.Session.AgentSessionID,
+		Content:        textPrompt("first prompt"),
+	})
+	if err != nil {
+		t.Fatalf("first Exec: %v", err)
+	}
+	adapter.waitForPrompt(t, "first prompt")
+
+	result, err := controller.Exec(ctx, ExecInput{
+		RoomID:         started.Session.RoomID,
+		AgentSessionID: started.Session.AgentSessionID,
+		TurnID:         "turn-no-longer-active",
+		Content:        textPrompt("stale guidance"),
+		Guidance:       true,
+	})
+	if !errors.Is(err, ErrActiveTurnTargetMismatch) {
+		t.Fatalf("guidance error = %v, want %v", err, ErrActiveTurnTargetMismatch)
+	}
+	if result.ProviderDispatch == nil || result.ProviderDispatch.Disposition != DispatchDispositionNotDispatched {
+		t.Fatalf("guidance result = %#v, want not-dispatched result", result)
+	}
+	if got := adapter.guidanceCalls.Load(); got != 0 {
+		t.Fatalf("provider guidance calls = %d, want 0", got)
 	}
 
 	adapter.releaseNext()

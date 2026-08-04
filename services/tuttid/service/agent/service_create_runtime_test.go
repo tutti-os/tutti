@@ -759,6 +759,7 @@ func TestServiceSendInputPassesDisplayPromptToRuntime(t *testing.T) {
 		Content:        TextPromptContent("real repair prompt"),
 		DisplayPrompt:  "Fix the app",
 		Guidance:       true,
+		TurnID:         activeTurnID,
 		ClientSubmitID: "submit-1",
 		Metadata: map[string]any{
 			"clientSubmittedAtUnixMs":    int64(1234),

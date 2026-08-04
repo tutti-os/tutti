@@ -1051,6 +1051,17 @@ addition to its session and turn id. Desktop adapters must reject a successful
 transport response that omits that turn; they must not reconstruct it from the
 deprecated session-level lifecycle or submit-availability fields.
 
+`AgentActivitySendInput.targetTurnId` is the exact canonical active Turn target
+for guidance. AgentGUI captures it from the active Turn at the interaction
+boundary; Activity Core preserves it through queued intents (and captures the
+current active id when promoting an existing queued prompt to send-now) and
+emits it only on the guidance request. The Tutti adapter maps it to the daemon's
+`turnId`; ordinary new-Turn submits clear it. The daemon service, Host, and
+runtime Controller fail closed when guidance has no target or when the target
+is no longer active. That rejection is known `NotDispatched` provider
+delivery, so no provider call occurs and any prepared submit claim is cleaned
+up. A caller must not recover a target by reading a newer Session snapshot.
+
 `AgentSessionActivateEffectInput` requires `agentTargetId` for
 `mode: "new"`. Shared UI passes it through unchanged; trusted host or daemon code
 resolves it against `agent_targets`, validates enabled state and launch ref

@@ -49,6 +49,8 @@ export interface AgentComposerReferenceProvenanceFilters {
 export interface AgentComposerSubmitOptions {
   requiredSettingsPatch?: AgentActivitySubmitSettingsPatch;
   capabilityRefs?: readonly AgentComposerCapabilityReference[];
+  /** Exact canonical active Turn captured for native guidance. */
+  targetTurnId?: string;
   /**
    * Immutable Tutti presentation captured by the composer that initiated the
    * submit. An explicit inactive snapshot is authoritative over stale draft

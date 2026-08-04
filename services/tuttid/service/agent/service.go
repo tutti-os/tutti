@@ -10,6 +10,8 @@ import (
 var (
 	ErrInvalidArgument                  = agenthost.ErrInvalidArgument
 	ErrActiveTurnGuidanceUnsupported    = errors.New("agent provider does not support active-turn guidance")
+	ErrActiveTurnTargetRequired         = agenthost.ErrActiveTurnTargetRequired
+	ErrActiveTurnTargetMismatch         = agenthost.ErrActiveTurnTargetMismatch
 	ErrPromptImageUnsupported           = errors.New("agent prompt image input is unsupported")
 	ErrSessionNoActiveTurn              = errors.New("agent session has no active turn")
 	ErrSessionNotFound                  = agenthost.ErrSessionNotFound
