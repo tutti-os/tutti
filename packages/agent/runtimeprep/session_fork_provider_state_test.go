@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -680,6 +681,9 @@ func TestDefaultPreparerRejectsSourceCodexRolloutWithCorruptTail(t *testing.T) {
 }
 
 func TestDefaultPreparerRejectsSymlinkInTargetCodexStatePath(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("requires Windows symlink privilege")
+	}
 	stateDir := t.TempDir()
 	preparer := NewDefaultPreparer(stateDir)
 	store := LocalStore{StateDir: stateDir}
@@ -732,6 +736,9 @@ func TestDefaultPreparerRejectsSymlinkInTargetCodexStatePath(t *testing.T) {
 }
 
 func TestDefaultPreparerRejectsTargetAncestorSymlinkWithExistingMatchingRollout(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("requires Windows symlink privilege")
+	}
 	for _, test := range []struct {
 		name          string
 		linkTargetDir func(targetRoot, outside string) string
@@ -815,6 +822,9 @@ func TestDefaultPreparerRejectsTargetAncestorSymlinkWithExistingMatchingRollout(
 }
 
 func TestDefaultPreparerRejectsSourceCodexHomeSymlink(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("requires Windows symlink privilege")
+	}
 	stateDir := t.TempDir()
 	preparer := NewDefaultPreparer(stateDir)
 	store := LocalStore{StateDir: stateDir}

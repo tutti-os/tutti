@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -107,6 +108,13 @@ func (l CodexCLIModelLister) ListModels(ctx context.Context) (AgentModelListResu
 	if len(args) == 0 {
 		args = []string{"app-server"}
 	}
+	slog.Info("agent model catalog process launch",
+		"event", "agent.model_catalog.process_start",
+		"provider", l.Provider,
+		"command", command,
+		"args", args,
+		"provider_command_resolver", l.ProviderCommands != nil,
+	)
 	process, err := startCodexAppServerProcess(processCtx, command, args, env)
 	if err != nil {
 		return AgentModelListResult{}, err

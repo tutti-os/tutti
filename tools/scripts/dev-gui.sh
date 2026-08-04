@@ -321,9 +321,67 @@ NODE
 prepare_dev_gui_runtime() {
   DEV_GUI_PID_PATH="$(resolve_tuttid_pid_path)"
   DEV_GUI_INITIAL_TUTTID_PID="$(read_tuttid_pid_file "${DEV_GUI_PID_PATH}")"
+  prepare_managed_posix_shell
   if [[ "$(uname -s)" == "Darwin" ]]; then
     node "${ROOT_DIR}/tools/scripts/prepare-dev-login-protocol.mjs"
   fi
+}
+
+prepare_managed_posix_shell() {
+  # Workspace app packages keep a stable bootstrap.sh contract. On Windows the
+  # daemon executes that contract through the vendored MSYS2 shell; packaged
+  # launches discover it from runtime.json, while dev launches need to inject
+  # the same absolute path explicitly.
+  if [[ "$(node -p 'process.platform')" != "win32" ]]; then
+    return
+  fi
+
+  if [[ -n "${TUTTI_MANAGED_POSIX_SHELL:-}" ]]; then
+    [[ -f "${TUTTI_MANAGED_POSIX_SHELL}" ]] || fail \
+      "TUTTI_MANAGED_POSIX_SHELL does not point to a file: ${TUTTI_MANAGED_POSIX_SHELL}"
+    log "using managed POSIX shell from TUTTI_MANAGED_POSIX_SHELL=${TUTTI_MANAGED_POSIX_SHELL}"
+    return
+  fi
+
+  local runtime_root="${DESKTOP_APP_DIR}/build/managed-posix-shell"
+  local metadata_path="${runtime_root}/runtime.json"
+  local shell_path=""
+
+  if [[ -f "${metadata_path}" ]]; then
+    shell_path="$(node - "${metadata_path}" <<'NODE'
+const fs = require("node:fs");
+const path = require("node:path");
+const metadataPath = process.argv[2];
+const metadata = JSON.parse(fs.readFileSync(metadataPath, "utf8"));
+if (metadata.schemaVersion !== "tutti.managed-posix-shell.v1" || typeof metadata.executable !== "string") {
+  process.exit(1);
+}
+process.stdout.write(path.resolve(path.dirname(metadataPath), metadata.executable));
+NODE
+    )" || shell_path=""
+  fi
+
+  if [[ -z "${shell_path}" ]] || [[ ! -f "${shell_path}" ]]; then
+    log "preparing managed POSIX shell for Windows dev GUI"
+    node "${DESKTOP_APP_DIR}/scripts/vendor-managed-posix-shell.mjs" \
+      --platform=windows-amd64
+    shell_path="$(node - "${metadata_path}" <<'NODE'
+const fs = require("node:fs");
+const path = require("node:path");
+const metadataPath = process.argv[2];
+const metadata = JSON.parse(fs.readFileSync(metadataPath, "utf8"));
+if (metadata.schemaVersion !== "tutti.managed-posix-shell.v1" || typeof metadata.executable !== "string") {
+  throw new Error("managed POSIX shell runtime metadata is invalid");
+}
+process.stdout.write(path.resolve(path.dirname(metadataPath), metadata.executable));
+NODE
+    )"
+  fi
+
+  [[ -f "${shell_path}" ]] || fail \
+    "managed POSIX shell executable is missing after preparation: ${shell_path}"
+  export TUTTI_MANAGED_POSIX_SHELL="${shell_path}"
+  log "using managed POSIX shell for Windows dev GUI: ${TUTTI_MANAGED_POSIX_SHELL}"
 }
 
 resolve_required_node_major() {

@@ -153,6 +153,15 @@ failures: gomobile cannot preserve final bytes returned together with `io.EOF`,
 and the generated pointer-bearing result may abort the Android process before
 Java receives it.
 
+`mobile.DialRelay` is the corresponding gomobile-safe byte-stream entry point for
+an already-authorized Relay caller. It accepts the endpoint, query values,
+headers, and WebSocket subprotocol as JSON `map[string][]string` values, then
+returns the same `Stream` abstraction used by the Agent framing adapter. The
+mobile package does not issue credentials, select a target, or decide when to
+fall back; those policies remain in the Mobile pairing service and native
+bridge. Relay streams must be closed by the caller after each HTTP request or
+when the live subscription ends.
+
 Account identity signatures, DeviceLink attempts, pairing scope, Agent HTTP
 framing, and foreground/background policy remain in the Android and tuttid
 product adapters. The mobile facade never accepts account cookies or Agent

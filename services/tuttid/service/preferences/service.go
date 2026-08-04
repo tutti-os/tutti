@@ -205,6 +205,13 @@ func normalizeAgentComposerDefaultsPatch(
 	result := make(preferencesbiz.AgentComposerDefaultsPatch, len(input))
 	for field, value := range input {
 		switch field {
+		case preferencesbiz.AgentComposerDefaultsFieldCodexSaverMode:
+			enabled, ok := value.(bool)
+			if !ok {
+				return nil, errors.New("agent composer defaults codexSaverMode must be boolean")
+			}
+			result[field] = enabled
+			continue
 		case preferencesbiz.AgentComposerDefaultsFieldModel,
 			preferencesbiz.AgentComposerDefaultsFieldPermissionModeID,
 			preferencesbiz.AgentComposerDefaultsFieldReasoningEffort,
@@ -216,11 +223,21 @@ func normalizeAgentComposerDefaultsPatch(
 			result[field] = nil
 			continue
 		}
-		normalized := strings.TrimSpace(*value)
+		normalized := ""
+		switch typed := value.(type) {
+		case string:
+			normalized = strings.TrimSpace(typed)
+		case *string:
+			if typed != nil {
+				normalized = strings.TrimSpace(*typed)
+			}
+		default:
+			return nil, errors.New("agent composer defaults text patch values must be strings or null")
+		}
 		if normalized == "" {
 			return nil, errors.New("agent composer defaults patch values must be non-empty or null")
 		}
-		result[field] = &normalized
+		result[field] = normalized
 	}
 	return result, nil
 }

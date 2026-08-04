@@ -15,6 +15,7 @@ export type BrowserNodeAutomationTool =
 
 export interface BrowserNodeAutomationCallInput {
   agentSessionId?: string | null;
+  agentTurnId?: string | null;
   args?: Record<string, unknown>;
   tool: BrowserNodeAutomationTool;
   workspaceId: string;
@@ -46,6 +47,7 @@ export type BrowserNodeAutomationAuthorizationResult =
 
 export interface BrowserNodeAutomationTargetRequest {
   agentSessionId: string | null;
+  agentTurnId: string | null;
   requestedPageId?: string | null;
   url?: string | null;
   workspaceId: string;

@@ -193,6 +193,15 @@ func (h *Host) dispatchEditRetryReplacement(
 			ErrEditRetryResendPending,
 		)
 	}
+	if !created && claim.Status == "rejected" {
+		// A terminal rejected claim is a durable no-redispatch fence. The
+		// replacement operation cannot safely turn that failed submission back
+		// into provider work, so fail closed instead of calling Exec again.
+		return h.failEditRetryRecovery(
+			ctx, operation, owner, storesqlite.EditRetryReasonOperationConflict,
+			ErrSubmitDeliveryUnknown,
+		)
+	}
 	execResult, execErr := h.runtime.Exec(ctx, RuntimeExecInput{
 		WorkspaceID: operation.WorkspaceID, AgentSessionID: operation.AgentSessionID,
 		TurnID: payload.ReplacementTurnID, ClientSubmitID: payload.ClientSubmitID,

@@ -31,8 +31,13 @@ func NormalizeLogicalPathWithinRoot(value string, root string) (LogicalPath, err
 	}
 
 	var candidate string
-	if strings.HasPrefix(raw, "/") {
-		candidate = path.Clean(raw)
+	if strings.HasPrefix(raw, "/") || isWindowsAbsolutePath(raw) {
+		// Logical paths always use a leading slash. Windows drive-qualified
+		// paths (for example, C:/Users/demo) are absolute too, but their
+		// drive letter means they do not start with one. Prefixing the
+		// normalized value keeps the logical representation stable as
+		// /C:/Users/demo while preserving the physical drive in WorkspaceRoot.
+		candidate = path.Clean("/" + strings.TrimPrefix(raw, "/"))
 	} else {
 		candidate = path.Clean(path.Join(logicalRoot.String(), raw))
 	}
@@ -46,6 +51,16 @@ func NormalizeLogicalPathWithinRoot(value string, root string) (LogicalPath, err
 		return "", fmt.Errorf("%w: %q", ErrPathEscapesRoot, value)
 	}
 	return LogicalPath(candidate), nil
+}
+
+func isWindowsAbsolutePath(value string) bool {
+	if len(value) < 3 {
+		return false
+	}
+	letter := value[0]
+	return ((letter >= 'a' && letter <= 'z') ||
+		(letter >= 'A' && letter <= 'Z')) &&
+		value[1] == ':' && (value[2] == '/' || value[2] == '\\')
 }
 
 func IsLogicalRoot(value LogicalPath, root string) bool {

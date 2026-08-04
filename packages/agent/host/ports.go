@@ -69,6 +69,7 @@ type EffectiveHistoryStore interface {
 type CanonicalSubmitClaimStore interface {
 	PrepareSubmitClaim(context.Context, storesqlite.SubmitClaimPrepare) (storesqlite.SubmitClaim, bool, error)
 	AcceptSubmitClaim(context.Context, string, string, string, string, int64) (storesqlite.SubmitClaim, bool, error)
+	RejectSubmitClaim(context.Context, string, string, string, string, int64) (storesqlite.SubmitClaim, bool, error)
 	DeleteSubmitClaim(context.Context, string, string, string) (bool, error)
 }
 
@@ -396,6 +397,7 @@ type RuntimePreparationInput struct {
 	PlanMode               bool
 	BrowserUse             bool
 	ComputerUse            bool
+	CodexSaverMode         bool
 	ProviderTargetRef      map[string]any
 	Model                  string
 	ReasoningEffort        string

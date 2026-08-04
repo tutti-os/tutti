@@ -1,4 +1,5 @@
 import type { AgentSessionActivityReplayDriver } from "./agentSessionActivityReplayDriver.ts";
+import type { AgentSessionReplayWorkspaceBridge as AgentSessionReplayWorkspaceBridgeContract } from "@tutti-os/agent-session-replay";
 import type {
   AgentSessionReplayNodeLaunchRequest,
   AgentSessionReplayWorkspaceCoordinator,
@@ -6,21 +7,11 @@ import type {
   AgentSessionReplayWorkspaceSnapshot
 } from "./agentSessionReplayWorkspaceCoordinator.ts";
 
-export interface AgentSessionReplayWorkspaceBridge {
-  activate(cassetteId: string): Promise<AgentSessionReplayWorkspaceSnapshot>;
-  bootstrap(
-    cassettes: readonly AgentSessionReplayWorkspaceCassette[]
-  ): Promise<AgentSessionReplayWorkspaceSnapshot>;
-  observedSession(
-    agentSessionId: string
-  ): AgentSessionReplayCanonicalObservation | null;
-  snapshot(): AgentSessionReplayWorkspaceSnapshot;
-}
-
-export interface AgentSessionReplayCanonicalObservation {
-  messageVersion: number;
-  updatedAtUnixMs: number;
-}
+export type AgentSessionReplayWorkspaceBridge =
+  AgentSessionReplayWorkspaceBridgeContract<
+    AgentSessionReplayWorkspaceCassette,
+    AgentSessionReplayWorkspaceSnapshot
+  >;
 
 interface ReplayWorkspaceGlobal {
   __tuttiAgentSessionReplayDriver?: AgentSessionActivityReplayDriver;

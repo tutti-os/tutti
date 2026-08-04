@@ -376,13 +376,24 @@ func (a *ClaudeCodeSDKAdapter) sidecarTurnEvents(adapterSession *claudeSDKAdapte
 		return events, true, nil
 	case "turn_failed":
 		if boundProviderTurnID == "" {
-			return a.finishClaudeSDKTurnLifecycle(
+			events := a.finishClaudeSDKTurnLifecycle(
 				adapterSession,
 				session,
 				rootTurnID,
 				claudeSDKTurnFinishFailed,
 				"failed_before_provider_acceptance",
-			), true, nil
+			)
+			rejected := strings.EqualFold(
+				strings.TrimSpace(payloadString(event.Payload, "dispatchDisposition")),
+				string(DispatchDispositionRejected),
+			)
+			events = ensureClaudeSDKPreAcceptanceFailureEvent(
+				events, session, rootTurnID, event.Payload, rejected,
+			)
+			if rejected {
+				return events, true, newClaudeSDKProviderRejectedError(session, event.Payload)
+			}
+			return events, true, nil
 		}
 		events := a.finishClaudeSDKTurnLifecycle(adapterSession, session, rootTurnID, claudeSDKTurnFinishFailed, "turn_failed")
 		events = append(events, claudeSDKRootProviderTurnCompletedEvent(session, rootTurnID, boundProviderTurnID, activityshared.TurnOutcomeFailed, map[string]any{

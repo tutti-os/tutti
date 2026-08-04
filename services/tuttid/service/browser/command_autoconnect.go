@@ -62,16 +62,29 @@ func readStableChromeDevToolsActivePort() (devToolsActivePort, error) {
 
 func stableChromeDevToolsActivePortPath() string {
 	home, err := os.UserHomeDir()
-	if err != nil || strings.TrimSpace(home) == "" {
+	if err != nil {
 		return ""
 	}
-	switch runtime.GOOS {
+	return stableChromeDevToolsActivePortPathFor(runtime.GOOS, home, os.Getenv("LOCALAPPDATA"))
+}
+
+func stableChromeDevToolsActivePortPathFor(goos string, home string, localAppData string) string {
+	switch goos {
 	case "darwin":
+		if strings.TrimSpace(home) == "" {
+			return ""
+		}
 		return filepath.Join(home, "Library", "Application Support", "Google", "Chrome", "DevToolsActivePort")
 	case "linux":
+		if strings.TrimSpace(home) == "" {
+			return ""
+		}
 		return filepath.Join(home, ".config", "google-chrome", "DevToolsActivePort")
 	case "windows":
-		return filepath.Join(home, "AppData", "Local", "Google", "Chrome", "User Data", "DevToolsActivePort")
+		if strings.TrimSpace(localAppData) == "" {
+			return ""
+		}
+		return filepath.Join(localAppData, "Google", "Chrome", "User Data", "DevToolsActivePort")
 	default:
 		return ""
 	}

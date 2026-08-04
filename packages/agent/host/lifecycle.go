@@ -68,7 +68,7 @@ func (h *Host) CreateSession(ctx context.Context, workspaceID string, input Crea
 		return CreateSessionResult{}, err
 	}
 	if claim.ClientSubmitID != "" && !claimPending {
-		if claim.Status != "accepted" {
+		if claim.Status != "accepted" && claim.Status != "rejected" {
 			return CreateSessionResult{}, ErrSubmitDeliveryUnknown
 		}
 		canonicalSession, _, readErr := h.store.GetSession(ctx, workspaceID, input.AgentSessionID)
@@ -113,7 +113,6 @@ func (h *Host) CreateSession(ctx context.Context, workspaceID string, input Crea
 		}
 		return errors.Join(cleanupErrs...)
 	}
-
 	startedAt := h.now()
 	release, err := h.acquireStartup(ctx, input.Provider)
 	if err != nil {
@@ -128,7 +127,7 @@ func (h *Host) CreateSession(ctx context.Context, workspaceID string, input Crea
 			Provider: input.Provider, Cwd: prepared.Cwd, Env: append([]string(nil), prepared.Env...),
 			Title: runtimeTitle, InitialTitleEstablished: initialTitleEstablished,
 			PermissionModeID: value(input.PermissionModeID), Model: value(input.Model), PlanMode: valueBool(input.PlanMode),
-			BrowserUse: input.BrowserUse, ComputerUse: input.ComputerUse,
+			BrowserUse: input.BrowserUse, ComputerUse: input.ComputerUse, CodexSaverMode: valueBool(input.CodexSaverMode),
 			ProviderTargetRef: cloneMap(firstMap(prepared.ProviderTargetRef, input.ProviderTargetRef)),
 			RuntimeContext:    cloneMap(input.RuntimeContext), ReasoningEffort: value(input.ReasoningEffort),
 			Speed: value(input.Speed), ConversationDetailMode: strings.TrimSpace(input.ConversationDetailMode),
@@ -214,8 +213,33 @@ func (h *Host) CreateSession(ctx context.Context, workspaceID string, input Crea
 	})
 	if err != nil {
 		h.observeStep(ctx, "session_create", "runtime_exec", session.ID, session.Provider, startedAt, err)
-		if execResult.ProviderDispatch.Disposition == RuntimeDispatchDispositionApplied ||
-			execResult.ProviderDispatch.Disposition == RuntimeDispatchDispositionOutcomeUnknown {
+		disposition := execResult.ProviderDispatch.Disposition
+		if disposition == RuntimeDispatchDispositionRejected ||
+			disposition == RuntimeDispatchDispositionApplied ||
+			disposition == RuntimeDispatchDispositionOutcomeUnknown {
+			if persistErr := h.persistRuntimeSubmitOutcome(
+				ctx, SessionRef{WorkspaceID: workspaceID, AgentSessionID: session.ID}, execResult,
+				firstNonEmpty(claim.ClientSubmitID, input.ClientSubmitID, legacyClientSubmitID(metadata)),
+				claim.CreatedAtUnixMS, preparedContent, displayPrompt, input.CapabilityRefs,
+				input.TuttiModeSnapshot,
+			); persistErr != nil {
+				claimPending = false
+				return CreateSessionResult{}, errors.Join(ErrSubmitDeliveryUnknown, err, persistErr)
+			}
+			if disposition == RuntimeDispatchDispositionRejected {
+				// A definitive rejection keeps the visible Session/failed Turn. The
+				// claim is a terminal idempotency fence, so replay reads the same
+				// failed Turn without invoking the provider again. Once that terminal
+				// report is durable, discard the startup runtime without publishing a
+				// canonical completion over the failure.
+				if strings.TrimSpace(execResult.TurnID) != "" {
+					claimPending = false
+					if rejectErr := h.finalizeRejectedSubmitClaim(ref, firstNonEmpty(claim.ClientSubmitID, input.ClientSubmitID, legacyClientSubmitID(metadata)), execResult.TurnID); rejectErr != nil {
+						return CreateSessionResult{}, errors.Join(ErrSubmitDeliveryUnknown, err, rejectErr)
+					}
+				}
+				return CreateSessionResult{}, h.discardRejectedPreparedRuntime(ctx, err, workspaceID, session.ID, session.Provider)
+			}
 			claimPending = false
 			return CreateSessionResult{}, errors.Join(ErrSubmitDeliveryUnknown, err)
 		}
@@ -433,10 +457,10 @@ func (h *Host) sendInputSerialized(
 		return SendInputResult{}, err
 	}
 	if claim.ClientSubmitID != "" && !claimPending {
-		if claim.Status != "accepted" {
+		if claim.Status != "accepted" && claim.Status != "rejected" {
 			return SendInputResult{}, ErrSubmitDeliveryUnknown
 		}
-		return h.acceptedSubmitResult(ctx, ref, claim)
+		return h.replayedSubmitResult(ctx, ref, claim)
 	}
 	defer func() {
 		if claimPending {
@@ -496,6 +520,29 @@ func (h *Host) sendInputSerialized(
 	}()
 	if err != nil {
 		h.observeStep(ctx, "message_send", "runtime_exec", ref.AgentSessionID, session.Provider, startedAt, err)
+		if !input.Guidance && strings.TrimSpace(execResult.TurnID) != "" {
+			if persistErr := h.persistRuntimeSubmitOutcome(
+				ctx, ref, execResult,
+				firstNonEmpty(claim.ClientSubmitID, input.ClientSubmitID, legacyClientSubmitID(metadata)),
+				claim.CreatedAtUnixMS, preparedContent, displayPrompt, input.CapabilityRefs,
+				input.TuttiModeSnapshot,
+			); persistErr != nil {
+				claimPending = false
+				return SendInputResult{}, errors.Join(ErrSubmitDeliveryUnknown, err, persistErr)
+			}
+		}
+		if !input.Guidance &&
+			execResult.ProviderDispatch.Disposition == RuntimeDispatchDispositionRejected {
+			// The failed Turn and prompt are already durable. Resolve the claim to
+			// a terminal rejected state before the deferred cleanup can run.
+			if strings.TrimSpace(execResult.TurnID) != "" {
+				claimPending = false
+				if rejectErr := h.finalizeRejectedSubmitClaim(ref, firstNonEmpty(claim.ClientSubmitID, input.ClientSubmitID, legacyClientSubmitID(metadata)), execResult.TurnID); rejectErr != nil {
+					return SendInputResult{}, errors.Join(ErrSubmitDeliveryUnknown, err, rejectErr)
+				}
+				return SendInputResult{}, err
+			}
+		}
 		if input.Guidance ||
 			execResult.ProviderDispatch.Disposition == RuntimeDispatchDispositionApplied ||
 			execResult.ProviderDispatch.Disposition == RuntimeDispatchDispositionOutcomeUnknown {
@@ -589,63 +636,6 @@ func (h *Host) UpdateTitle(ctx context.Context, input UpdateTitleInput) (UpdateT
 	}
 	result.Session = runtimeSession
 	return result, nil
-}
-
-func (h *Host) acceptedSubmitResult(ctx context.Context, ref SessionRef, claim storesqlite.SubmitClaim) (SendInputResult, error) {
-	canonicalSession, ok, err := h.store.GetSession(ctx, ref.WorkspaceID, ref.AgentSessionID)
-	if err != nil {
-		return SendInputResult{}, err
-	}
-	if !ok {
-		if _, live := h.runtime.Session(ref.WorkspaceID, ref.AgentSessionID); !live {
-			return SendInputResult{}, ErrSessionNotFound
-		}
-	}
-	turn, ok, err := h.store.GetTurn(ctx, ref.WorkspaceID, ref.AgentSessionID, claim.TurnID)
-	if err != nil {
-		return SendInputResult{}, err
-	}
-	if !ok {
-		return SendInputResult{}, ErrSubmitDeliveryUnknown
-	}
-	live, _ := h.runtime.Session(ref.WorkspaceID, ref.AgentSessionID)
-	availability := SubmitAvailability{State: "available"}
-	if strings.TrimSpace(canonicalSession.ActiveTurnID) != "" {
-		availability = SubmitAvailability{State: "blocked", Reason: "active_turn"}
-	}
-	return SendInputResult{
-		Session: live, Canonical: canonicalSession, Turn: &turn, TurnID: claim.TurnID,
-		TurnLifecycle: lifecycleFromTurn(turn), SubmitAvailability: availability,
-	}, nil
-}
-
-type preparedPromptContent struct {
-	Persisted   []PromptContentBlock
-	Hydrated    []PromptContentBlock
-	DisplayText string
-}
-
-func (h *Host) prepareContent(workspaceID, sessionID string, content []PromptContentBlock) (preparedPromptContent, error) {
-	if h.attachments == nil {
-		cloned := append([]PromptContentBlock(nil), content...)
-		return preparedPromptContent{
-			Persisted: cloned,
-			Hydrated:  append([]PromptContentBlock(nil), cloned...),
-		}, nil
-	}
-	persisted, err := h.attachments.PersistRequestContent(workspaceID, sessionID, content)
-	if err != nil {
-		return preparedPromptContent{}, err
-	}
-	hydrated, err := h.attachments.HydrateRuntimeContent(workspaceID, sessionID, persisted)
-	if err != nil {
-		return preparedPromptContent{}, err
-	}
-	return preparedPromptContent{
-		Persisted:   append([]PromptContentBlock(nil), persisted...),
-		Hydrated:    append([]PromptContentBlock(nil), hydrated...),
-		DisplayText: imageOnlyDisplayText(persisted),
-	}, nil
 }
 
 func (h *Host) recordTurnSubmission(
@@ -745,7 +735,7 @@ func createPreparationInput(workspaceID string, input CreateSessionInput) Runtim
 	return RuntimePreparationInput{
 		WorkspaceID: workspaceID, AgentSessionID: input.AgentSessionID, AgentTargetID: input.AgentTargetID,
 		Provider: input.Provider, Cwd: value(input.Cwd), Title: value(input.Title), PermissionModeID: value(input.PermissionModeID),
-		PlanMode: valueBool(input.PlanMode), BrowserUse: valueBoolDefault(input.BrowserUse, true), ComputerUse: valueBoolDefault(input.ComputerUse, true),
+		PlanMode: valueBool(input.PlanMode), BrowserUse: valueBoolDefault(input.BrowserUse, true), ComputerUse: valueBoolDefault(input.ComputerUse, true), CodexSaverMode: valueBool(input.CodexSaverMode),
 		ProviderTargetRef: cloneMap(input.ProviderTargetRef), Model: value(input.Model), ReasoningEffort: value(input.ReasoningEffort),
 		ConversationDetailMode: input.ConversationDetailMode, Metadata: cloneMap(input.Metadata), RuntimeContext: cloneMap(input.RuntimeContext),
 	}
@@ -755,7 +745,7 @@ func resumePreparationInput(session storesqlite.Session, settings ComposerSettin
 	return RuntimePreparationInput{
 		WorkspaceID: session.WorkspaceID, AgentSessionID: session.ID, AgentTargetID: session.AgentTargetID,
 		Provider: session.Provider, Cwd: session.Cwd, Title: session.Title, PermissionModeID: settings.PermissionModeID,
-		PlanMode: settings.PlanMode, BrowserUse: valueBoolDefault(settings.BrowserUse, true), ComputerUse: valueBoolDefault(settings.ComputerUse, true),
+		PlanMode: settings.PlanMode, BrowserUse: valueBoolDefault(settings.BrowserUse, true), ComputerUse: valueBoolDefault(settings.ComputerUse, true), CodexSaverMode: settings.CodexSaverMode,
 		Model: settings.Model, ReasoningEffort: settings.ReasoningEffort, ConversationDetailMode: settings.ConversationDetailMode,
 		RuntimeContext: cloneMap(session.InternalRuntimeContext), SessionOrigin: session.Origin,
 		ProviderSessionID: session.ProviderSessionID, CreatedAtUnixMS: session.CreatedAtUnixMS,
@@ -766,6 +756,7 @@ func resumePreparationInput(session storesqlite.Session, settings ComposerSettin
 
 func composerSettingsFromMap(values map[string]any) ComposerSettings {
 	result := ComposerSettings{}
+	result.CodexSaverMode, _ = values["codexSaverMode"].(bool)
 	result.Model, _ = values["model"].(string)
 	result.PermissionModeID, _ = values["permissionModeId"].(string)
 	result.PlanMode, _ = values["planMode"].(bool)

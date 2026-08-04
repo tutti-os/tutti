@@ -26,6 +26,7 @@ If you are editing `packages/ui/*`, also read [packages/ui/AGENTS.md](ui/AGENTS.
 ## Package groups
 
 - `clients/*`: shared domain-specific clients
+- `connector/*`: reusable connector-domain contracts and application cores shared by daemon hosts
 - `device-link`: shared ICE/QUIC peer transport, product-neutral Relay stream mechanics, and gomobile boundary
 - `events/*`: shared schema-first business event protocol contracts and generated transport metadata
 - `agent/*`: Agent lifecycle Host, canonical store, frontend activity engine, replication contract, and GUI boundaries
@@ -41,6 +42,7 @@ If you are editing `packages/ui/*`, also read [packages/ui/AGENTS.md](ui/AGENTS.
 - name packages by responsibility, not by audience
 - avoid vague names such as `shared`, `common`, `utils`, or `client-sdk`
 - keep `clients/*` focused on domain-specific access patterns
+- keep `connector/*` focused on host-neutral connector semantics, contracts, and state; concrete catalog endpoints, persistence, credentials, installation directories, and generated daemon clients stay in host adapters
 - keep `device-link` transport-only: it may own candidate selection, authenticated peer streams, generation-fenced admission, product-neutral pooling/racing/probe mechanics, WebSocket/yamux Relay byte-stream mechanics, and platform build boundaries, but not account, pairing, rendezvous, path-specific authentication, Relay authorization or product policy, or Agent/Workspace DTOs
 - keep `events/*` focused on repository-owned business event protocol contracts, topic catalogs, generated validators, and transport metadata rather than socket lifecycle or daemon business workflows
 - keep `browser/*` focused on browser mechanics, workbench node integration, bridge shape, Electron webview guest management, and package-local i18n defaults; host product globals, backend-token access, preview proxy behavior, and business bridge methods stay in host adapters

@@ -362,6 +362,9 @@ func normalizedSessionRef(ref SessionRef) SessionRef {
 }
 
 func applyComposerSettingsPatch(settings ComposerSettings, patch ComposerSettingsPatch) ComposerSettings {
+	if patch.CodexSaverMode != nil {
+		settings.CodexSaverMode = *patch.CodexSaverMode
+	}
 	if patch.Model != nil {
 		settings.Model = strings.TrimSpace(*patch.Model)
 	}

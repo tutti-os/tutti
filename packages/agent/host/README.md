@@ -57,6 +57,19 @@ the Turn to `durably_accepted`. Streaming, waiting for approval/input, running
 tools, checkpoints, and terminal events all follow the barrier and retain the
 same authoritative provider Turn ID. Correlation IDs are never provider IDs.
 
+The acceptance barrier does not decide whether the user's prompt is durable.
+After `Exec` returns an explicit rejection or an outcome-unknown timeout, Host
+records the submit provenance and lossless replay envelope on a
+cancellation-independent context. An explicit rejection settles an existing
+canonical Turn as failed and transitions its submit claim to terminal
+`rejected`; replaying the same `ClientSubmitID` returns that failed Turn without
+provider dispatch. For an initial-Session rejection, Host then closes the
+startup runtime with canonical completion suppressed: the failed Session, Turn,
+and prompt remain historical facts, but that runtime cannot be reactivated.
+An outcome-unknown result retains the prepared submit claim for reconciliation
+and never blindly redispatches. Only a new provisional Session with no visible
+message or provider identity may be compensated away.
+
 Adapters must carry the structured action/objective instead of reconstructing
 it from presentation text. `ParseTypedGoalControl` remains the compatibility
 path for callers that still send `/goal ...` as initial content. Resume

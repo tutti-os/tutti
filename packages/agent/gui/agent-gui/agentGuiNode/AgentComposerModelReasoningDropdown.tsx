@@ -562,6 +562,11 @@ function ComposerMenuOptionItems({
               showInlineDescription && "items-start"
             )}
             data-agent-model-option={showModelTooltip ? "true" : undefined}
+            data-testid="agent-gui-model-option"
+            data-agent-model-selected={
+              option.value === selectedValue ? "true" : "false"
+            }
+            data-agent-model-value={option.value}
             onPointerDown={(event) => {
               if (
                 event.target instanceof Element &&

@@ -556,7 +556,7 @@ func ValidateAppManifest(manifest AppManifest) error {
 		return errors.New("app manifest runtime.bootstrap is required")
 	}
 	bootstrap := strings.TrimSpace(manifest.Runtime.Bootstrap)
-	if strings.HasPrefix(bootstrap, "/") || strings.Contains(bootstrap, "..") {
+	if !isRelativePackagePath(bootstrap) {
 		return errors.New("app manifest runtime.bootstrap must be a relative package path")
 	}
 	if strings.TrimSpace(manifest.Runtime.HealthcheckPath) == "" {
@@ -684,7 +684,7 @@ func validateAppManifestLocalizationInfo(info *AppManifestLocalizationInfo) erro
 
 func isRelativePackagePath(value string) bool {
 	trimmed := strings.TrimSpace(value)
-	if trimmed == "" || filepath.IsAbs(trimmed) || strings.HasPrefix(trimmed, `\`) {
+	if trimmed == "" || filepath.IsAbs(trimmed) || filepath.VolumeName(trimmed) != "" || hasWindowsVolumePrefix(trimmed) || strings.HasPrefix(trimmed, `\`) {
 		return false
 	}
 	for _, part := range strings.FieldsFunc(trimmed, func(char rune) bool {
@@ -695,6 +695,10 @@ func isRelativePackagePath(value string) bool {
 		}
 	}
 	return true
+}
+
+func hasWindowsVolumePrefix(path string) bool {
+	return len(path) >= 2 && ((path[0] >= 'a' && path[0] <= 'z') || (path[0] >= 'A' && path[0] <= 'Z')) && path[1] == ':'
 }
 
 func isRelativeURLPath(value string) bool {

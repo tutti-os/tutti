@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import { EventEmitter } from "node:events";
-import { mkdtemp, mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
@@ -18,6 +18,7 @@ import {
   verifyCassette
 } from "./agent-session-replay-runner/cassette.mjs";
 import {
+  enableAgentSessionRecordingFeature,
   replayListenerInfoPath,
   replayWorkbenchSnapshot
 } from "./agent-session-replay-runner/runtime.mjs";
@@ -37,11 +38,18 @@ import {
   createReplayActivityClock,
   createReplayPlaybackController,
   createReplayWorkspaceSurfaceReadyQueue,
+  createSerialAsyncQueue,
+  maybeSettleForScreenshot,
   validateReplayCheckpointPlan,
   assertReplayWorkspaceSucceeded,
   checkpointNeedsToolSettle,
+  checkpointNeedsScreenshotSettle,
+  captureCheckpointScreenshot,
+  captureScreenshot,
+  normalizeScreenshotClip,
   parseArgs,
   resolveDesktopHeadless,
+  resolveAgentSessionScreenshotClip,
   replayCheckpointScreenshotPath,
   replayControlRouter,
   replayPendingInteraction,
@@ -56,6 +64,7 @@ import {
   replayWorkspaceInitialTargetCheckpoint,
   managedReplayFailure,
   loadRecordScenario,
+  screenshotEvidenceLabel,
   submitRequestedRequiresSessionIdle,
   validateAction,
   validateReplayWorkspaceManifest,
@@ -254,6 +263,65 @@ test("Replay Workspace continues Surface readiness after one failure", async () 
   await assert.rejects(first, /first Surface failed/u);
   await second;
   assert.deepEqual(events, ["cassette-1", "cassette-2"]);
+});
+
+test("createSerialAsyncQueue runs Desktop UI tasks one at a time", async () => {
+  const events = [];
+  let releaseFirst;
+  const firstGate = new Promise((resolve) => {
+    releaseFirst = resolve;
+  });
+  const enqueue = createSerialAsyncQueue();
+  const first = enqueue(async () => {
+    events.push("start:a");
+    await firstGate;
+    events.push("end:a");
+  });
+  const second = enqueue(async () => {
+    events.push("start:b");
+    events.push("end:b");
+  });
+  await Promise.resolve();
+  assert.deepEqual(events, ["start:a"]);
+  releaseFirst();
+  await Promise.all([first, second]);
+  assert.deepEqual(events, ["start:a", "end:a", "start:b", "end:b"]);
+});
+
+test("maybeSettleForScreenshot pins and clears settle agent session id", async () => {
+  const expressions = [];
+  const client = {
+    async send(method, params) {
+      assert.equal(method, "Runtime.evaluate");
+      expressions.push(params.expression);
+      return { result: { value: true } };
+    }
+  };
+  let settleSawPin = false;
+  await maybeSettleForScreenshot(
+    {
+      async settleForScreenshot() {
+        settleSawPin = expressions.some((expression) =>
+          expression.includes("__tuttiSettleAgentSessionId = ")
+        );
+      }
+    },
+    client,
+    1_000,
+    { kind: "tool.completed", tags: ["tool.completed"] },
+    "session-r03"
+  );
+  assert.equal(settleSawPin, true);
+  assert.ok(
+    expressions.some((expression) =>
+      expression.includes('__tuttiSettleAgentSessionId = "session-r03"')
+    )
+  );
+  assert.ok(
+    expressions.some((expression) =>
+      expression.includes("delete globalThis.__tuttiSettleAgentSessionId")
+    )
+  );
 });
 
 test("replay rebases recorded Turn identities before Engine intents", async () => {
@@ -1978,6 +2046,173 @@ test("checkpoint screenshot paths stay Cassette-scoped in a Replay Workspace", (
   );
 });
 
+test("normalizeScreenshotClip rejects tiny or invalid rects", () => {
+  assert.equal(normalizeScreenshotClip(null), null);
+  assert.equal(
+    normalizeScreenshotClip({ x: 0, y: 0, width: 4, height: 100 }),
+    null
+  );
+  assert.deepEqual(
+    normalizeScreenshotClip({ x: 10.9, y: 20.1, width: 300.7, height: 400.2 }),
+    { x: 10, y: 20, width: 300, height: 400, scale: 1 }
+  );
+});
+
+test("screenshotEvidenceLabel prefers caseId over scenario", () => {
+  assert.equal(screenshotEvidenceLabel(" C03 "), "C03");
+  assert.equal(
+    screenshotEvidenceLabel({ caseId: "C03", scenario: "c03" }),
+    "C03"
+  );
+  assert.equal(screenshotEvidenceLabel({ scenario: "c03" }), "c03");
+  assert.equal(screenshotEvidenceLabel({}), "");
+});
+
+test("captureScreenshot clips to the pinned Agent Session and stamps a case badge", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "asr-clip-shot-"));
+  const outputPath = join(directory, "checkpoint.png");
+  const evaluations = [];
+  const captures = [];
+  const client = {
+    async send(method, params) {
+      if (method === "Runtime.evaluate") {
+        evaluations.push(params.expression);
+        if (params.expression.includes("getBoundingClientRect")) {
+          return {
+            result: {
+              value: { x: 120.4, y: 40.6, width: 640.8, height: 800.2 }
+            }
+          };
+        }
+        return { result: { value: true } };
+      }
+      if (method === "Page.captureScreenshot") {
+        captures.push(params);
+        // 1x1 PNG
+        return {
+          data: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
+        };
+      }
+      throw new Error(`unexpected CDP method: ${method}`);
+    }
+  };
+
+  const result = await captureScreenshot(client, outputPath, {
+    agentSessionId: "session-left",
+    label: "C03"
+  });
+  assert.deepEqual(result.clip, {
+    x: 120,
+    y: 40,
+    width: 640,
+    height: 800,
+    scale: 1
+  });
+  assert.equal(captures.length, 1);
+  assert.deepEqual(captures[0].clip, result.clip);
+  assert.ok(
+    evaluations.some((expression) =>
+      expression.includes('data-tutti-replay-evidence-badge="true"')
+    )
+  );
+  assert.ok(evaluations.some((expression) => expression.includes('"C03"')));
+  assert.ok(
+    evaluations.some((expression) =>
+      expression.includes(
+        "querySelectorAll('[data-tutti-replay-evidence-badge="
+      )
+    )
+  );
+  assert.equal((await readFile(outputPath)).length > 0, true);
+});
+
+test("captureScreenshot falls back to a full-page shot when the session rect is missing", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "asr-full-shot-"));
+  const outputPath = join(directory, "checkpoint.png");
+  const captures = [];
+  const client = {
+    async send(method, params) {
+      if (method === "Runtime.evaluate") {
+        if (params.expression.includes("getBoundingClientRect")) {
+          return { result: { value: null } };
+        }
+        return { result: { value: true } };
+      }
+      if (method === "Page.captureScreenshot") {
+        captures.push(params);
+        return {
+          data: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
+        };
+      }
+      throw new Error(`unexpected CDP method: ${method}`);
+    }
+  };
+
+  const result = await captureScreenshot(client, outputPath, {
+    agentSessionId: "missing-session",
+    label: "C05"
+  });
+  assert.equal(result.clip, null);
+  assert.equal(captures.length, 1);
+  assert.equal(captures[0].clip, undefined);
+});
+
+test("captureCheckpointScreenshot keeps Cassette path and forwards clip identity", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "asr-checkpoint-shot-"));
+  const captures = [];
+  const client = {
+    async send(method, params) {
+      if (method === "Runtime.evaluate") {
+        if (params.expression.includes("getBoundingClientRect")) {
+          return {
+            result: { value: { x: 0, y: 0, width: 200, height: 300 } }
+          };
+        }
+        return { result: { value: true } };
+      }
+      if (method === "Page.captureScreenshot") {
+        captures.push(params);
+        return {
+          data: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
+        };
+      }
+      throw new Error(`unexpected CDP method: ${method}`);
+    }
+  };
+
+  const outputPath = await captureCheckpointScreenshot({
+    agentSessionId: "session-a",
+    artifactDirectory: directory,
+    cassetteId: "cassette-a",
+    checkpointIndex: 0,
+    checkpoints: [{ id: "checkpoint-0007" }],
+    client,
+    label: "R12"
+  });
+  assert.equal(
+    outputPath,
+    join(directory, "cassette-a", "checkpoint-0007.png")
+  );
+  assert.deepEqual(captures[0]?.clip, {
+    x: 0,
+    y: 0,
+    width: 200,
+    height: 300,
+    scale: 1
+  });
+});
+
+test("resolveAgentSessionScreenshotClip returns null without a session id", async () => {
+  assert.equal(
+    await resolveAgentSessionScreenshotClip({ send() {} }, ""),
+    null
+  );
+  assert.equal(
+    await resolveAgentSessionScreenshotClip({ send() {} }, null),
+    null
+  );
+});
+
 test("record arguments accept an external scenario file", () => {
   const options = parseArgs([
     "--record",
@@ -2008,7 +2243,36 @@ test("replay arguments accept an optional scenario file for screenshot settle", 
 });
 
 test("checkpoint settle targets completed tool and terminal turn checkpoints", () => {
-  assert.equal(checkpointNeedsToolSettle(null), true);
+  assert.equal(checkpointNeedsScreenshotSettle(null), true);
+  assert.equal(
+    checkpointNeedsScreenshotSettle({
+      kind: "tool.completed",
+      tags: ["tool.completed"]
+    }),
+    true
+  );
+  assert.equal(
+    checkpointNeedsScreenshotSettle({
+      kind: "turn.terminal",
+      tags: ["turn.terminal"]
+    }),
+    true
+  );
+  assert.equal(
+    checkpointNeedsScreenshotSettle({
+      kind: "submission.accepted",
+      tags: ["submission.accepted"]
+    }),
+    false
+  );
+  assert.equal(
+    checkpointNeedsScreenshotSettle({
+      kind: "turn.working",
+      tags: ["turn.working"]
+    }),
+    false
+  );
+  assert.equal(checkpointNeedsToolSettle(null), false);
   assert.equal(
     checkpointNeedsToolSettle({
       kind: "tool.completed",
@@ -2018,13 +2282,16 @@ test("checkpoint settle targets completed tool and terminal turn checkpoints", (
   );
   assert.equal(
     checkpointNeedsToolSettle({
+      kind: "tool.started",
+      tags: ["tool.started"]
+    }),
+    false
+  );
+  assert.equal(
+    checkpointNeedsToolSettle({
       kind: "turn.terminal",
       tags: ["turn.terminal"]
     }),
-    true
-  );
-  assert.equal(
-    checkpointNeedsToolSettle({ kind: "tool.started", tags: ["tool.started"] }),
     false
   );
   assert.equal(
@@ -2172,6 +2439,7 @@ test("Replay Workspace manifest rejects duplicate cassette and root Session", ()
     {
       cassettes: [
         {
+          caseId: "",
           cassetteDirectory: join(process.cwd(), ".tmp", "portable-cassette"),
           cassetteId: "",
           rootAgentSessionId: "",
@@ -2182,6 +2450,18 @@ test("Replay Workspace manifest rejects duplicate cassette and root Session", ()
       playbackMode: "manual",
       workspaceId: null
     }
+  );
+  assert.equal(
+    validateReplayWorkspaceManifest({
+      playbackMode: "automatic",
+      cassettes: [
+        {
+          caseId: "C03",
+          cassetteDirectory: ".tmp/c03"
+        }
+      ]
+    }).cassettes[0]?.caseId,
+    "C03"
   );
 });
 
@@ -2379,6 +2659,59 @@ test("Replay Workspace seeds each portable project once before blobs", async () 
     "project:/runtime/state/tuttid.db:${REPLAY_CWD}/packages/agent",
     "blobs"
   ]);
+});
+
+test("Replay registrations carry cassette provider and frozen model metadata", () => {
+  assert.deepEqual(
+    replayWorkspaceTransportRegistrations([
+      {
+        cassetteId: replayCassetteAID,
+        rootAgentSessionId: "root-a",
+        cassetteDirectory: "/tmp/cassette-a",
+        providers: ["codex"],
+        replayPrerequisites: replayPrerequisitesForTest(),
+        action: { workspaceId: "workspace-a" }
+      }
+    ]),
+    [
+      {
+        cassetteId: replayCassetteAID,
+        rootAgentSessionId: "root-a",
+        cassetteDirectory: "/tmp/cassette-a/provider",
+        artifactDirectory: "/tmp/cassette-a",
+        workspaceId: "workspace-a",
+        providers: ["codex"],
+        frozenModel: "gpt-5.4"
+      }
+    ]
+  );
+});
+
+test("Replay database enables the agent session recording feature", async () => {
+  const databasePath = join(
+    tmpdir(),
+    `agent-session-replay-feature-${Date.now()}.db`
+  );
+  try {
+    await execFileAsync("sqlite3", [
+      databasePath,
+      `CREATE TABLE desktop_preferences (
+        id TEXT PRIMARY KEY,
+        feature_flags_json TEXT
+      );
+      INSERT INTO desktop_preferences (id, feature_flags_json)
+      VALUES ('desktop', '{}');`
+    ]);
+    await enableAgentSessionRecordingFeature(databasePath, workspaceRoot);
+    const result = await execFileAsync("sqlite3", [
+      databasePath,
+      `SELECT json_extract(feature_flags_json, '$."agent.sessionRecording"')
+       FROM desktop_preferences WHERE id = 'desktop';`
+    ]);
+    assert.equal(result.stdout.trim(), "1");
+  } finally {
+    await rm(databasePath, { force: true });
+  }
 });
 
 test("resolves a project placement from portable expected Session state", () => {

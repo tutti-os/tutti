@@ -23,7 +23,7 @@ func (s *AppCenterService) LoadLocalPackage(ctx context.Context, workspaceID str
 	if err != nil {
 		return workspacebiz.WorkspaceApp{}, err
 	}
-	appPackage, err := readLocalAppPackage(packageDir)
+	appPackage, err := readLocalAppPackage(s.ShellAdapter, packageDir)
 	if err != nil {
 		return workspacebiz.WorkspaceApp{}, err
 	}
@@ -49,7 +49,7 @@ func (s *AppCenterService) ReloadLocalPackage(ctx context.Context, workspaceID s
 	if existing.Source != workspacebiz.AppPackageSourceLocalDev {
 		return workspacebiz.WorkspaceApp{}, fmt.Errorf("%w: app %q has source %q", ErrLocalAppPackageInvalid, appID, existing.Source)
 	}
-	appPackage, err := readLocalAppPackage(existing.PackageDir)
+	appPackage, err := readLocalAppPackage(s.ShellAdapter, existing.PackageDir)
 	if err != nil {
 		return workspacebiz.WorkspaceApp{}, err
 	}
@@ -135,7 +135,7 @@ func resolveLocalAppPackageDir(sourceDir string) (string, error) {
 	return "", fmt.Errorf("%w: sourceDir must contain tutti.app.json or %s/tutti.app.json", ErrLocalAppPackageInvalid, localDevAppPackageSubdir)
 }
 
-func readLocalAppPackage(packageDir string) (workspacebiz.AppPackage, error) {
+func readLocalAppPackage(adapter AppShellAdapter, packageDir string) (workspacebiz.AppPackage, error) {
 	packageDir = strings.TrimSpace(packageDir)
 	if packageDir == "" {
 		return workspacebiz.AppPackage{}, fmt.Errorf("%w: package directory is required", ErrLocalAppPackageInvalid)
@@ -144,7 +144,7 @@ func readLocalAppPackage(packageDir string) (workspacebiz.AppPackage, error) {
 	if err != nil {
 		return workspacebiz.AppPackage{}, fmt.Errorf("%w: %w", ErrLocalAppPackageInvalid, err)
 	}
-	if err := validateLocalAppPackage(packageDir, manifest); err != nil {
+	if err := validateLocalAppPackage(adapter, packageDir, manifest); err != nil {
 		return workspacebiz.AppPackage{}, err
 	}
 	return workspacebiz.AppPackage{
@@ -157,17 +157,9 @@ func readLocalAppPackage(packageDir string) (workspacebiz.AppPackage, error) {
 	}, nil
 }
 
-func validateLocalAppPackage(packageDir string, manifest workspacebiz.AppManifest) error {
-	bootstrapPath := filepath.Join(packageDir, filepath.FromSlash(strings.TrimSpace(manifest.Runtime.Bootstrap)))
-	info, err := os.Stat(bootstrapPath)
-	if err != nil {
-		return fmt.Errorf("%w: bootstrap %q is required: %w", ErrLocalAppPackageInvalid, manifest.Runtime.Bootstrap, err)
-	}
-	if info.IsDir() {
-		return fmt.Errorf("%w: bootstrap %q must be a file", ErrLocalAppPackageInvalid, manifest.Runtime.Bootstrap)
-	}
-	if info.Mode()&0o111 == 0 {
-		return fmt.Errorf("%w: bootstrap %q must be executable", ErrLocalAppPackageInvalid, manifest.Runtime.Bootstrap)
+func validateLocalAppPackage(adapter AppShellAdapter, packageDir string, manifest workspacebiz.AppManifest) error {
+	if err := validateAppBootstrapFile(adapter, packageDir, manifest.Runtime.Bootstrap); err != nil {
+		return fmt.Errorf("%w: %w", ErrLocalAppPackageInvalid, err)
 	}
 	return nil
 }

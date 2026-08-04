@@ -558,11 +558,24 @@ allowlist 和 Android fetch adapter，并直接复用生成的
 `@tutti-os/client-tuttid-ts`；workspace、Agent Target catalog、Session
 list/get/create/send/cancel/Interaction 均沿用现有 HTTP contract。owner host 会在
 caller 获得 response-only STUN endpoints 并二次发布 ICE 后再认领 attempt，避免
-连接旧 fingerprint。Relay 尚未实现。direct lane 的 `agent_live` event stream
-已经接入：delta、Turn、Interaction 和 session audit 通过 framed live protocol
-进入 Mobile；canonical-only 更新由 Personal 的 `mobileremote` adapter 转为
-scoped discontinuity，再触发权威 snapshot reconcile。Session/Message poller
-仅在 event stream 未就绪或断开时作为降级路径。
+连接旧 fingerprint。
+
+Relay Agent lane 已接入同一套应用帧协议：Desktop `mobileremote` 只在用户打开
+移动端连接开关后获取 Relay owner demand，按 Device Authority 完成 identity
+enrollment、owner token 和 lease renewal；Relay stream prelude 校验 authority、
+user、target、channel 及 paired-device scope 后复用现有 Agent HTTP/live handler。
+Mobile 在直连准备阶段并行请求短期 Relay descriptor，直连优先，直连无法建立时由
+Android/iOS native adapter 使用相同 framed HTTP/live 协议拨号 Relay。因此 UI、生成
+客户端和 Agent DTO 不变。pairing 的 active 快照仍由现有控制面轮询刷新，Relay stream
+在本地快照中找不到 pairing 时 fail closed；快照刷新间隔是当前 2 秒轮询周期。
+
+这里依赖的 Relay descriptor、Device Authority 和 `tsh-tunnel-relay` Agent channel
+是跨仓库的增量契约；服务端部署状态不在 Tutti 仓库内，须以对应 tsh-server/relay
+变更合入和线上配置为准。direct lane 的 `agent_live` event stream 已接入：delta、
+Turn、Interaction 和 session audit 通过 framed live protocol 进入 Mobile；
+canonical-only 更新由 Personal 的 `mobileremote` adapter 转为 scoped discontinuity，
+再触发权威 snapshot reconcile。Session/Message poller 仅在 event stream 未就绪或
+断开时作为降级路径。
 
 ### M4 — Mobile App shell（Android 首发）
 

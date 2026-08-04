@@ -18,6 +18,7 @@ import {
 import { summarizeProviderStatusFocusRefresh } from "./agent-provider-status-performance-scenario.mjs";
 import { buildAllProcessTimeProfileArgs } from "./all-process-time-profile.mjs";
 import { prepareConcurrentAgentStreamingWorkbenchSnapshot } from "./agent-gui-concurrent-streaming-performance-scenario.mjs";
+import { isDesktopBundleFresh } from "./prepared-desktop-launch.mjs";
 import {
   applyScenarioAssessment,
   findUnknownAgentTargetMigrationIDs,
@@ -42,6 +43,21 @@ test("parses the structured Desktop startup failure from process output", () => 
       },
       message: "tuttid exited"
     }
+  );
+});
+
+test("reuses a prepared Desktop bundle until source output is newer", () => {
+  assert.equal(
+    isDesktopBundleFresh({ outputMtimeMs: 20, sourceMtimeMs: 20 }),
+    true
+  );
+  assert.equal(
+    isDesktopBundleFresh({ outputMtimeMs: 19, sourceMtimeMs: 20 }),
+    false
+  );
+  assert.equal(
+    isDesktopBundleFresh({ outputMtimeMs: Number.NaN, sourceMtimeMs: 20 }),
+    false
   );
 });
 

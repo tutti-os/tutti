@@ -21,8 +21,11 @@ func (p *ActivityProjection) ObserveCommitted(ctx context.Context, delta agentho
 		return nil
 	}
 	if committed := delta.ActivityState; committed != nil {
-		p.publishPersistedTurnState(ctx, committed.Input, committed.Result)
-		if committed.Result.State.Accepted {
+		provisional := activityStateIsProvisional(committed.Input)
+		if !provisional {
+			p.publishPersistedTurnState(ctx, committed.Input, committed.Result)
+		}
+		if committed.Result.State.Accepted && !provisional {
 			p.publishActivityUpdated(ctx, committed.Input.WorkspaceID, committed.Input.AgentSessionID,
 				"session_reconcile_required", activitySessionUpdateEventPayload(
 					committed.Input.WorkspaceID, committed.Input.AgentSessionID,
@@ -61,6 +64,12 @@ func (p *ActivityProjection) ObserveCommitted(ctx context.Context, delta agentho
 		if mutation.EntityKind != agentactivitybiz.MutationEntityTurn || mutation.Operation != "settle" {
 			continue
 		}
+		if session, found, err := p.repo.GetSession(ctx, mutation.WorkspaceID, mutation.AgentSessionID); err == nil && found && runtimeContextBool(session.InternalRuntimeContext, "provisional") {
+			// Provisional provider rejection is durably settled only long enough
+			// for Host compensation; never publish a hidden session's terminal
+			// Turn update to AgentGUI.
+			continue
+		}
 		turn, found, err := p.repo.GetTurn(ctx, mutation.WorkspaceID, mutation.AgentSessionID, mutation.EntityID)
 		if err != nil || !found {
 			continue
@@ -69,6 +78,15 @@ func (p *ActivityProjection) ObserveCommitted(ctx context.Context, delta agentho
 			p.activityTurnUpdateEventPayload(ctx, mutation.WorkspaceID, mutation.AgentSessionID, turn, time.Now().UnixMilli()))
 	}
 	return nil
+}
+
+func activityStateIsProvisional(input canonical.ReportSessionStateInput) bool {
+	return runtimeContextBool(input.State.RuntimeContext, "provisional")
+}
+
+func runtimeContextBool(runtimeContext map[string]any, key string) bool {
+	value, _ := runtimeContext[key].(bool)
+	return value
 }
 
 func canonicalSessionDeleted(delta agenthost.CommittedDelta, invalidated agenthost.CanonicalViewInvalidated) bool {

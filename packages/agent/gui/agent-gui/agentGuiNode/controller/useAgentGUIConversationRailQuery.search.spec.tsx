@@ -58,7 +58,6 @@ describe("useAgentGUIConversationRailQuery search", () => {
           conversationFilter: { kind: "all" },
           conversationQuery: "",
           nodeId: "desktop-node-1",
-          sectionAgentTargetFallbackId: null,
           userProjects: [],
           workspaceId: "workspace-1"
         }),
@@ -100,7 +99,6 @@ describe("useAgentGUIConversationRailQuery search", () => {
           activeConversationId: null,
           conversationFilter: { kind: "all" },
           conversationQuery: "",
-          sectionAgentTargetFallbackId: null,
           userProjects: [],
           workspaceId: "workspace-1"
         }),
@@ -305,7 +303,6 @@ describe("useAgentGUIConversationRailQuery search", () => {
         activeConversationId: null,
         conversationFilter: { agentTargetId, kind: "agentTarget" },
         conversationQuery: "",
-        sectionAgentTargetFallbackId: null,
         userProjects: [],
         workspaceId: "workspace-1"
       });
@@ -379,7 +376,6 @@ describe("useAgentGUIConversationRailQuery search", () => {
             kind: "agentTarget"
           },
           conversationQuery: " backend ",
-          sectionAgentTargetFallbackId: null,
           userProjects: [],
           workspaceId: "workspace-1"
         }),
@@ -457,7 +453,6 @@ describe("useAgentGUIConversationRailQuery search", () => {
           activeConversationId: null,
           conversationFilter: { kind: "all" },
           conversationQuery: "backend",
-          sectionAgentTargetFallbackId: null,
           userProjects: [],
           workspaceId: "workspace-1"
         }),
@@ -507,7 +502,6 @@ describe("useAgentGUIConversationRailQuery search", () => {
           activeConversationId: "session-1",
           conversationFilter: { kind: "all" },
           conversationQuery: "",
-          sectionAgentTargetFallbackId: null,
           userProjects: [],
           workspaceId: "workspace-1"
         });
@@ -558,7 +552,6 @@ describe("useAgentGUIConversationRailQuery search", () => {
         activeConversationId: "session-1",
         conversationFilter: { kind: "all" },
         conversationQuery: "streaming",
-        sectionAgentTargetFallbackId: null,
         userProjects: [],
         workspaceId: "workspace-1"
       });
@@ -587,7 +580,6 @@ describe("useAgentGUIConversationRailQuery search", () => {
             labels={RAIL_LABELS}
             pendingDeleteConversationId={null}
             railQuery={railQuery}
-            sectionAgentTargetFallbackId={null}
             uiLanguage="en"
             userProjects={[]}
             workspaceId="workspace-1"
@@ -683,7 +675,6 @@ describe("useAgentGUIConversationRailQuery search", () => {
         activeConversationId: null,
         conversationFilter: { kind: "all" },
         conversationQuery: "does-not-match",
-        sectionAgentTargetFallbackId: null,
         userProjects,
         workspaceId: "workspace-1"
       });
@@ -705,7 +696,6 @@ describe("useAgentGUIConversationRailQuery search", () => {
           labels={RAIL_LABELS}
           pendingDeleteConversationId={null}
           railQuery={railQuery}
-          sectionAgentTargetFallbackId={null}
           uiLanguage="en"
           userProjects={userProjects}
           workspaceId="workspace-1"
@@ -812,7 +802,6 @@ describe("useAgentGUIConversationRailQuery search", () => {
         activeConversationId: null,
         conversationFilter: { kind: "all" },
         conversationQuery: "",
-        sectionAgentTargetFallbackId: null,
         userProjects,
         workspaceId: "workspace-1"
       });
@@ -835,7 +824,6 @@ describe("useAgentGUIConversationRailQuery search", () => {
           labels={RAIL_LABELS}
           pendingDeleteConversationId={null}
           railQuery={railQuery}
-          sectionAgentTargetFallbackId={null}
           uiLanguage="en"
           userProjects={userProjects}
           workspaceId="workspace-1"

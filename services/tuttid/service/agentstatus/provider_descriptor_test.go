@@ -54,7 +54,8 @@ func TestClaudeCodeStatusSpecComesFromProviderDescriptor(t *testing.T) {
 	}
 	if spec.Install.Kind != InstallerKindOfficialScript ||
 		spec.Install.ScriptURL != "https://claude.ai/install.sh" ||
-		spec.Install.ScriptShell != "bash" {
+		spec.Install.ScriptShell != "bash" ||
+		spec.Install.WindowsFallback != providerregistry.InstallerWindowsFallbackManagedRuntime {
 		t.Fatalf("claude installer = %#v", spec.Install)
 	}
 }

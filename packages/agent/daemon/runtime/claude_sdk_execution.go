@@ -116,7 +116,7 @@ func (a *ClaudeCodeSDKAdapter) exec(
 		if len(result.events) > 0 {
 			events = append(events, result.events...)
 		}
-		if result.err != nil {
+		if result.err != nil && !isClaudeSDKProviderRejectedError(result.err) {
 			events = append(events, a.claudeSDKRootProviderFailureEvents(adapterSession, session, turnID, promptCorrelationID, result.err)...)
 		}
 		return events, result.err
@@ -162,13 +162,22 @@ func (a *ClaudeCodeSDKAdapter) ExecWithProviderAcceptance(
 	var acceptanceErr error
 	accepted := false
 	acceptedProviderTurnID := ""
+	pendingEvents := make([]activityshared.Event, 0, 2)
 	wrappedEmit := func(events []activityshared.Event) {
 		if acceptanceErr != nil {
 			return
 		}
 		observedAcceptance := false
+		explicitRejection := false
 		providerTurnID := ""
 		for _, event := range events {
+			if event.Type == activityshared.EventTurnFailed &&
+				strings.EqualFold(
+					strings.TrimSpace(payloadString(event.Payload.Metadata, "dispatchDisposition")),
+					string(DispatchDispositionRejected),
+				) {
+				explicitRejection = true
+			}
 			if event.Type != activityshared.EventRootProviderTurnStarted ||
 				strings.TrimSpace(event.Payload.TurnID) != strings.TrimSpace(turnID) {
 				continue
@@ -191,6 +200,7 @@ func (a *ClaudeCodeSDKAdapter) ExecWithProviderAcceptance(
 				Source:            AcceptanceSourceTurnStartResponse,
 				ProviderSessionID: strings.TrimSpace(adapterSession.providerSessionID),
 				ProviderTurnID:    providerTurnID,
+				ProviderInputUnit: event.ProviderInputUnit,
 			}
 			acceptanceOnce.Do(func() {
 				if acceptProviderTurn == nil {
@@ -210,9 +220,12 @@ func (a *ClaudeCodeSDKAdapter) ExecWithProviderAcceptance(
 				return
 			}
 		}
-		if !accepted &&
-			!observedAcceptance &&
-			!claudeSDKEventsMayPrecedeProviderAcceptance(events) {
+		if !accepted && !observedAcceptance &&
+			(explicitRejection || claudeSDKEventsMayPrecedeProviderAcceptance(events)) {
+			pendingEvents = append(pendingEvents, events...)
+			return
+		}
+		if !accepted && !observedAcceptance {
 			acceptanceErr = errors.New(
 				"claude SDK published provider output before durable acceptance",
 			)
@@ -225,10 +238,18 @@ func (a *ClaudeCodeSDKAdapter) ExecWithProviderAcceptance(
 			return
 		}
 		if emit != nil {
+			if len(pendingEvents) > 0 {
+				published := make([]activityshared.Event, 0, len(pendingEvents)+len(events))
+				published = append(published, pendingEvents...)
+				published = append(published, events...)
+				pendingEvents = nil
+				emit(published)
+				return
+			}
 			emit(events)
 		}
 	}
-	return a.exec(
+	events, err := a.exec(
 		acceptanceCtx,
 		session,
 		content,
@@ -238,6 +259,49 @@ func (a *ClaudeCodeSDKAdapter) ExecWithProviderAcceptance(
 		emitCommands,
 		reportDispatch,
 	)
+	if isClaudeSDKProviderRejectedError(err) {
+		if !claudeSDKEventsContainTurnFailed(events) {
+			metadata := map[string]any{
+				"error":               err.Error(),
+				"dispatchDisposition": string(DispatchDispositionRejected),
+			}
+			var appErr *AppError
+			if errors.As(err, &appErr) && appErr != nil {
+				metadata["code"] = appErr.Code
+				if strings.TrimSpace(appErr.DebugMessage) != "" {
+					metadata["error"] = appErr.DebugMessage
+				}
+			}
+			events = append(events, newTurnActivityEvent(
+				session, EventTurnFailed, turnID, SessionStatusFailed, "", "", metadata,
+			))
+		}
+		if reportDispatch != nil {
+			reportDispatch(ProviderDispatchResult{
+				Disposition: DispatchDispositionRejected,
+				Failure:     err,
+			})
+		}
+		// The provider emitted the submitted lifecycle and terminal rejection
+		// events before returning this typed error. Preserve those events so the
+		// controller can settle the canonical Turn even though acceptance never
+		// crossed the provider boundary.
+		return events, err
+	}
+	if !accepted {
+		if claudeSDKEventsContainTurnFailed(events) {
+			if err == nil {
+				err = errors.New("provider Turn failed before durable acceptance")
+			}
+			return events, err
+		}
+		// The submitted/user events are caller-owned facts, but publishing them
+		// would commit a provisional Session before the provider delivery result
+		// is known. Keep them behind the same acceptance barrier as provider
+		// output; outcome-unknown recovery owns any later reconciliation.
+		return nil, err
+	}
+	return events, err
 }
 
 func claudeSDKEventsMayPrecedeProviderAcceptance(
@@ -260,6 +324,15 @@ func claudeSDKEventsMayPrecedeProviderAcceptance(
 		return false
 	}
 	return true
+}
+
+func claudeSDKEventsContainTurnFailed(events []activityshared.Event) bool {
+	for _, event := range events {
+		if event.Type == activityshared.EventTurnFailed {
+			return true
+		}
+	}
+	return false
 }
 
 var _ ProviderAcceptanceExecAdapter = (*ClaudeCodeSDKAdapter)(nil)

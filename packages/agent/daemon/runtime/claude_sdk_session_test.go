@@ -9,6 +9,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	activityshared "github.com/tutti-os/tutti/packages/agent/daemon/activity/events"
 )
@@ -23,6 +24,39 @@ func TestClaudeCodeSDKAdapterCanResumeRequiresProviderSessionID(t *testing.T) {
 	session.ProviderSessionID = "claude-session-1"
 	if !adapter.CanResume(session) {
 		t.Fatal("CanResume with provider session id = false, want true")
+	}
+}
+
+func TestClaudeCodeSDKAdapterCloseHonorsCallerDeadlineAndForcesTeardown(t *testing.T) {
+	t.Parallel()
+
+	adapter := NewClaudeCodeSDKAdapter(nil)
+	session := standardTestSession(ProviderClaudeCode)
+	conn := newBlockingClaudeSDKConnection()
+	adapterSession := &claudeSDKAdapterSession{
+		conn:             conn,
+		pendingResponses: make(map[string]chan claudeSDKSidecarEvent),
+		readerStarted:    true,
+	}
+	adapter.storeSession(session.AgentSessionID, adapterSession)
+	ctx, cancel := context.WithTimeout(context.Background(), 25*time.Millisecond)
+	defer cancel()
+
+	startedAt := time.Now()
+	err := adapter.Close(ctx, session)
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("Close() error = %v, want deadline exceeded", err)
+	}
+	if elapsed := time.Since(startedAt); elapsed > time.Second {
+		t.Fatalf("Close() elapsed = %v, want caller deadline", elapsed)
+	}
+	if adapter.getSession(session.AgentSessionID) != nil {
+		t.Fatal("timed-out close retained adapter session")
+	}
+	select {
+	case <-conn.closed:
+	default:
+		t.Fatal("timed-out close did not force connection teardown")
 	}
 }
 

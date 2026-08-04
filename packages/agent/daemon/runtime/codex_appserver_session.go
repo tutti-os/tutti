@@ -9,6 +9,7 @@ import (
 	"time"
 
 	activityshared "github.com/tutti-os/tutti/packages/agent/daemon/activity/events"
+	"github.com/tutti-os/tutti/packages/agent/daemon/providerregistry"
 )
 
 func (a *CodexAppServerAdapter) Start(ctx context.Context, session Session) (events []activityshared.Event, err error) {
@@ -18,6 +19,14 @@ func (a *CodexAppServerAdapter) Start(ctx context.Context, session Session) (eve
 	defer func() {
 		trace.Finish(err)
 	}()
+	extraSkillRoots, err := tuttiAgentExtraSkillRoots(a.config.skillRootsStrategy, session.Env)
+	if err != nil {
+		return nil, err
+	}
+	stableSystemSkillsRoot, err := tuttiAgentStableSystemSkillsRoot(a.config.skillRootsStrategy, session.Env)
+	if err != nil {
+		return nil, err
+	}
 	// One session owns at most one live app-server process. Starting over a
 	// session that already holds a live client replaces it: stop the old
 	// client first, then spawn the new process.
@@ -46,6 +55,12 @@ func (a *CodexAppServerAdapter) Start(ctx context.Context, session Session) (eve
 		acpLiveState:    newACPLiveState(),
 		pendingRequests: make(map[string]*pendingInteractiveRequest),
 	})
+	if err := a.stabilizeSystemSkillPaths(session, stableSystemSkillsRoot, trace); err != nil {
+		return nil, err
+	}
+	if err := a.configureExtraSkillRoots(ctx, client, session, extraSkillRoots, trace); err != nil {
+		return nil, err
+	}
 
 	account, authRequired := a.fetchAccount(ctx, client, session, trace)
 	if authRequired {
@@ -179,6 +194,14 @@ func (a *CodexAppServerAdapter) Resume(ctx context.Context, session Session) (er
 	trace.Log("resume.begin", map[string]any{
 		"thread_id": strings.TrimSpace(session.ProviderSessionID),
 	})
+	extraSkillRoots, err := tuttiAgentExtraSkillRoots(a.config.skillRootsStrategy, session.Env)
+	if err != nil {
+		return err
+	}
+	stableSystemSkillsRoot, err := tuttiAgentStableSystemSkillsRoot(a.config.skillRootsStrategy, session.Env)
+	if err != nil {
+		return err
+	}
 	client, initializeResult, attachedCheckpoint, err := a.startClient(ctx, session, trace, true)
 	if err != nil {
 		return err
@@ -237,6 +260,12 @@ func (a *CodexAppServerAdapter) Resume(ctx context.Context, session Session) (er
 		return nil
 	}
 	serverInfo := a.appServerInfo(initializeResult)
+	if err := a.stabilizeSystemSkillPaths(session, stableSystemSkillsRoot, trace); err != nil {
+		return err
+	}
+	if err := a.configureExtraSkillRoots(ctx, client, session, extraSkillRoots, trace); err != nil {
+		return err
+	}
 
 	account, authRequired := a.fetchAccount(ctx, client, session, trace)
 	if authRequired {
@@ -437,7 +466,7 @@ func (a *CodexAppServerAdapter) prepareInitializedClientLaunch(
 		}
 		spawnEnv = append(spawnEnv, resolved.Env...)
 	}
-	return prepareProviderLaunch(ctx, a.preparer, session, ProcessSpec{
+	spec, cleanup, err := prepareProviderLaunch(ctx, a.preparer, session, ProcessSpec{
 		Provider:           a.config.provider,
 		AgentSessionID:     session.AgentSessionID,
 		RootAgentSessionID: session.RootAgentSessionID,
@@ -446,6 +475,14 @@ func (a *CodexAppServerAdapter) prepareInitializedClientLaunch(
 		Command:            command,
 		Env:                spawnEnv,
 	})
+	if err != nil {
+		return ProcessSpec{}, nil, err
+	}
+	if a.config.skillRootsStrategy == providerregistry.AppServerSkillRootsStrategyTuttiStable {
+		spec.Env = withoutEnvironmentKey(spec.Env, tuttiAgentExtraSkillRootsEnv)
+		spec.Env = withoutEnvironmentKey(spec.Env, tuttiAgentStableSystemSkillsEnv)
+	}
+	return spec, cleanup, nil
 }
 
 func (a *CodexAppServerAdapter) startClientPrepared(

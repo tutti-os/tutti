@@ -4,7 +4,7 @@
 
 ## Session
 
-- session: `{{.AgentSessionID}}`
+- session identity: read `$TUTTI_AGENT_SESSION_ID` only when a command requires it.
 - provider: `{{.Provider}}`
 - `<tutti-host-context>`: Tutti-owned; independent of Default/Plan; Tutti CLI is always available.
 

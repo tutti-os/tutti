@@ -1,0 +1,74 @@
+{
+  "name": "@tutti-os/connector-market",
+  "version": "0.1.0",
+  "private": false,
+  "type": "module",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./contracts": "./src/contracts/index.ts",
+    "./openapi/connector-market.v1.yaml": "./openapi/connector-market.v1.yaml",
+    "./react": "./src/react/index.ts",
+    "./services": "./src/services/index.ts"
+  },
+  "files": [
+    "dist",
+    "openapi",
+    "README.md"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tutti-os/tutti.git",
+    "directory": "packages/connector/market"
+  },
+  "scripts": {
+    "build": "tsup --config tsup.config.ts",
+    "test": "tsx --test \"./src/**/*.test.ts\"",
+    "typecheck": "node ../../../tools/scripts/run-tsgo-typecheck.mjs"
+  },
+  "dependencies": {
+    "@tutti-os/infra": "0.1.0",
+    "valtio": "^2.3.2"
+  },
+  "devDependencies": {
+    "@tutti-os/config-tsconfig": "workspace:*",
+    "@types/node": "^24.0.1",
+    "@types/react": "^19.1.6",
+    "react": "^19.1.0",
+    "tsx": "^4.22.3",
+    "typescript": "^5.8.3",
+    "valtio": "^2.3.2"
+  },
+  "peerDependencies": {
+    "react": "^19.1.0",
+    "valtio": "^2.3.2"
+  },
+  "peerDependenciesMeta": {
+    "react": {
+      "optional": true
+    }
+  },
+  "publishConfig": {
+    "access": "public",
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "import": "./dist/index.js"
+      },
+      "./contracts": {
+        "types": "./dist/contracts/index.d.ts",
+        "import": "./dist/contracts/index.js"
+      },
+      "./openapi/connector-market.v1.yaml": "./openapi/connector-market.v1.yaml",
+      "./react": {
+        "types": "./dist/react/index.d.ts",
+        "import": "./dist/react/index.js"
+      },
+      "./services": {
+        "types": "./dist/services/index.d.ts",
+        "import": "./dist/services/index.js"
+      }
+    },
+    "types": "./dist/index.d.ts"
+  }
+}

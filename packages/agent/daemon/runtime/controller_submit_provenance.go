@@ -37,6 +37,17 @@ func (c *Controller) DurablyReportSubmitProvenance(ctx context.Context, input Su
 	if !ok {
 		return ErrSessionNotFound
 	}
+	key := sessionKey(input.RoomID, input.AgentSessionID)
+	c.mu.Lock()
+	provisional := c.provisionalSessions[key]
+	c.mu.Unlock()
+	if provisional {
+		// A nonstandard caller may still be inside the provisional window when
+		// this late provenance arrives. Keep it hidden until the submitted-intent
+		// barrier publishes the canonical prompt; normal initial-content creates
+		// have already crossed that barrier before Exec returns.
+		session.Visible = false
+	}
 	content := normalizeRuntimePromptContent(input.Content)
 	if len(content) == 0 {
 		return errors.New("submit provenance prompt is required")
@@ -60,6 +71,9 @@ func (c *Controller) DurablyReportSubmitProvenance(ctx context.Context, input Su
 	// without regressing a fast provider that already moved it onward.
 	report := reportActivityInput(session, []activityshared.Event{message})
 	c.enrichReportWithSessionSnapshot(session, &report)
+	if provisional {
+		hideProvisionalSessionReport(&report)
+	}
 	if len(report.StatePatches) != 1 || len(report.MessageUpdates) != 1 {
 		return fmt.Errorf(
 			"build atomic submit provenance: got %d state patches and %d message updates",

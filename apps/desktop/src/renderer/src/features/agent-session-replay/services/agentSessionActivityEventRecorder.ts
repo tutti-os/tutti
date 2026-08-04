@@ -2,6 +2,10 @@ import type {
   EngineExternalCommand,
   EngineIntent
 } from "@tutti-os/agent-activity-core";
+import type {
+  AgentSessionActivityEvent,
+  AgentSessionActivityEventKind
+} from "@tutti-os/agent-session-replay";
 import type { TuttidClient } from "@tutti-os/client-tuttid-ts";
 import {
   agentSessionReplayIntentAllowsEffect,
@@ -14,21 +18,7 @@ import {
 
 export { isReplayableAgentSessionActivityEffectCommand };
 
-export type AgentSessionActivityEventKind = "effect" | "intent";
-
-export interface AgentSessionActivityEvent {
-  agentSessionId?: string;
-  causedByEventId?: string;
-  correlationId?: string;
-  eventId: string;
-  kind: AgentSessionActivityEventKind;
-  occurredAtUnixMs: number;
-  payload: Readonly<Record<string, unknown>>;
-  schemaVersion: 3;
-  scopeId: string;
-  sequence: number;
-  type: string;
-}
+export type { AgentSessionActivityEvent, AgentSessionActivityEventKind };
 
 export interface AppendAgentSessionActivityEventsInput {
   events: readonly AgentSessionActivityEvent[];

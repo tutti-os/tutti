@@ -10,6 +10,7 @@ Stable change rules live in [Conventions](../conventions/README.md).
 ## Repository And Platform
 
 - [Project Structure](./project-structure.md)
+- [Windows Platform Support](./windows-platform-support.md)
 - [Business Event Stream](./business-event-stream.md)
 - [Analytics Tracking](./analytics-tracking.md)
 - [Browser Node Package](./browser-node-package.md)
@@ -30,6 +31,7 @@ Stable change rules live in [Conventions](../conventions/README.md).
 
 ## Desktop And Transport
 
+- [Connector Market](./connector-market.md)
 - [Desktop Backend Access](./desktop-backend-access.md)
 - [Desktop Update Admission](./desktop-update-admission.md)
 - [Desktop Transport](./desktop-transport.md)

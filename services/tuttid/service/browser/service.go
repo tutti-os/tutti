@@ -59,16 +59,16 @@ func NewService(preferences ...PreferencesReader) *Service {
 // CallTool invokes a chrome-devtools-mcp tool against the workspace's browser
 // session, lazily starting it on first use.
 func (s *Service) CallTool(ctx context.Context, workspaceID, cwd, tool string, args map[string]any) (ToolResult, error) {
-	return s.CallToolForAgent(ctx, workspaceID, cwd, "", tool, args)
+	return s.CallToolForAgent(ctx, workspaceID, cwd, "", "", tool, args)
 }
 
 // CallToolForAgent routes desktop-owned browser calls to the in-app
 // BrowserNode host. A daemon without that explicit host configuration keeps
 // the managed Chrome backend for headless use.
-func (s *Service) CallToolForAgent(ctx context.Context, workspaceID, cwd, agentSessionID, tool string, args map[string]any) (ToolResult, error) {
+func (s *Service) CallToolForAgent(ctx context.Context, workspaceID, cwd, agentSessionID, agentTurnID, tool string, args map[string]any) (ToolResult, error) {
 	workspaceID = strings.TrimSpace(workspaceID)
 	if s.browserNode != nil {
-		return s.browserNode.Call(ctx, workspaceID, strings.TrimSpace(agentSessionID), tool, args)
+		return s.browserNode.Call(ctx, workspaceID, strings.TrimSpace(agentSessionID), strings.TrimSpace(agentTurnID), tool, args)
 	}
 	currentMode := resolveBrowserUseConnectionMode(ctx, s.preferences)
 

@@ -1,4 +1,3 @@
-import { type PointerEvent, useRef } from "react";
 import {
   BareIconButton,
   Button,
@@ -14,6 +13,7 @@ import {
 } from "@tutti-os/ui-system/icons";
 import type { AgentHostQuickPrompt } from "../../../../host/agentHostApi";
 import type { AgentQuickPromptLibraryController } from "./useAgentQuickPromptLibrary";
+import { usePrimaryPointerAction } from "./usePrimaryPointerAction";
 
 export function AgentQuickPromptRow({
   handleRef,
@@ -142,27 +142,4 @@ export function AgentQuickPromptRow({
       ) : null}
     </div>
   );
-}
-
-type PrimaryPointerAction = {
-  onClick: () => void;
-  onPointerDown: (event: PointerEvent<HTMLButtonElement>) => void;
-};
-
-function usePrimaryPointerAction(action: () => void): PrimaryPointerAction {
-  const requestedOnPointerDownRef = useRef(false);
-  return {
-    onPointerDown: (event) => {
-      if (event.button !== 0) return;
-      requestedOnPointerDownRef.current = true;
-      action();
-    },
-    onClick: () => {
-      if (requestedOnPointerDownRef.current) {
-        requestedOnPointerDownRef.current = false;
-        return;
-      }
-      action();
-    }
-  };
 }

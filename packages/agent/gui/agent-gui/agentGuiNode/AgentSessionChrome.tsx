@@ -162,14 +162,6 @@ export function AgentSessionChrome({
                   {labels.authLogin ?? labels.retryActivation}
                 </Button>
               ) : null}
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                onClick={() => onRetryActivation()}
-              >
-                {labels.retryActivation}
-              </Button>
             </div>
           </div>
         </section>

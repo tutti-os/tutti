@@ -144,9 +144,15 @@ export async function uiDriveScenario(options) {
   let disposeDesktopShutdown = () => {};
   const checkpoints = [];
   try {
+    const scenarioStallTimeoutMs = options.stallTimeoutMs ?? 60_000;
+    // Scenario modules live in the replay-cases checkout and import their own
+    // wait helper. Pass the runner's stall policy across that module boundary.
+    process.env.TUTTI_AGENT_SESSION_REPLAY_STALL_TIMEOUT_MS = String(
+      scenarioStallTimeoutMs
+    );
     configureWaitDiagnostics({
       log,
-      stallTimeoutMs: options.stallTimeoutMs ?? 60_000
+      stallTimeoutMs: scenarioStallTimeoutMs
     });
     const scenario = await loadUiScenario(options);
     const workspaceId = "11111111-1111-4111-8111-111111111111";

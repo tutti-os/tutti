@@ -51,6 +51,32 @@ func TestSubmitClaimAcceptRequiresExactCanonicalTurn(t *testing.T) {
 	}
 }
 
+func TestSubmitClaimRejectIsTerminalAndIdempotent(t *testing.T) {
+	t.Parallel()
+	store := openTestStore(t, testOptions(&staticProjectPaths{}))
+	ctx := context.Background()
+	if _, _, err := store.PrepareSubmitClaim(ctx, SubmitClaimPrepare{
+		WorkspaceID: "ws-1", AgentSessionID: "session-1", ClientSubmitID: "submit-rejected",
+		CanonicalTurnID: "turn-rejected", NowUnixMS: 10,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	rejected, changed, err := store.RejectSubmitClaim(ctx, "ws-1", "session-1", "submit-rejected", "turn-rejected", 20)
+	if err != nil || !changed || rejected.Status != "rejected" || rejected.TurnID != "turn-rejected" {
+		t.Fatalf("rejected=%#v changed=%v error=%v", rejected, changed, err)
+	}
+	replayed, changed, err := store.RejectSubmitClaim(ctx, "ws-1", "session-1", "submit-rejected", "turn-rejected", 30)
+	if err != nil || changed || replayed.Status != "rejected" || replayed.UpdatedAtUnixMS != 20 {
+		t.Fatalf("replayed rejected=%#v changed=%v error=%v", replayed, changed, err)
+	}
+	if _, changed, err := store.AcceptSubmitClaim(ctx, "ws-1", "session-1", "submit-rejected", "turn-rejected", 40); !errors.Is(err, ErrSubmitClaimTurnConflict) || changed {
+		t.Fatalf("accepted rejected claim changed=%v error=%v", changed, err)
+	}
+	if _, changed, err := store.RejectSubmitClaim(ctx, "ws-1", "session-1", "submit-rejected", "turn-other", 40); !errors.Is(err, ErrSubmitClaimTurnConflict) || changed {
+		t.Fatalf("mismatched rejected replay changed=%v error=%v", changed, err)
+	}
+}
+
 func TestSubmitClaimsAllowMultipleGuidanceSubmissionsForOneCanonicalTurn(t *testing.T) {
 	t.Parallel()
 	store := openTestStore(t, testOptions(&staticProjectPaths{}))
@@ -98,6 +124,20 @@ VALUES
 	prepared, ok, err := store.getSubmitClaim(ctx, "ws-1", "session-1", "prepared-legacy")
 	if err != nil || !ok || prepared.CanonicalTurnID != "" || prepared.Status != "prepared" {
 		t.Fatalf("prepared legacy claim=%#v ok=%v err=%v", prepared, ok, err)
+	}
+	if err := store.applyWorkspaceAgentSubmitClaimsV3(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.db.ExecContext(ctx, `
+INSERT INTO workspace_agent_submit_claims
+  (workspace_id, agent_session_id, client_submit_id, status, turn_id, created_at_unix_ms, updated_at_unix_ms, canonical_turn_id)
+VALUES ('ws-1', 'session-1', 'rejected-v3', 'rejected', 'turn-rejected', 3, 4, 'turn-rejected');
+`); err != nil {
+		t.Fatalf("insert rejected v3 claim: %v", err)
+	}
+	rejected, ok, err := store.getSubmitClaim(ctx, "ws-1", "session-1", "rejected-v3")
+	if err != nil || !ok || rejected.Status != "rejected" || rejected.TurnID != "turn-rejected" {
+		t.Fatalf("rejected v3 claim=%#v ok=%v err=%v", rejected, ok, err)
 	}
 }
 

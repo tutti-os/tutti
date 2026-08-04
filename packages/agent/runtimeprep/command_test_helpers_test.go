@@ -2,6 +2,7 @@ package runtimeprep
 
 import (
 	"context"
+	"runtime"
 	"testing"
 )
 
@@ -15,6 +16,17 @@ func newTestPreparer(stateDir string) *DefaultPreparer {
 	preparer := NewDefaultPreparer(stateDir)
 	preparer.CommandCatalog = staticCommandCatalog(testCommandCapabilities())
 	return preparer
+}
+
+// setTestHome keeps tests isolated on Windows too. os.UserHomeDir uses
+// USERPROFILE there, so changing HOME alone still points the implementation
+// at the developer's real profile and makes tests read live Codex state.
+func setTestHome(t *testing.T, home string) {
+	t.Helper()
+	t.Setenv("HOME", home)
+	if runtime.GOOS == "windows" {
+		t.Setenv("USERPROFILE", home)
+	}
 }
 
 func testInputWithCommands(t testingT, input PrepareInput) PrepareInput {

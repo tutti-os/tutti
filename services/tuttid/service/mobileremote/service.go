@@ -12,6 +12,7 @@ import (
 	"time"
 
 	authbridge "github.com/tutti-os/tutti/packages/auth/bridge-go"
+	deviceauthority "github.com/tutti-os/tutti/packages/clients/device-authority-go"
 	mobileremotebiz "github.com/tutti-os/tutti/services/tuttid/biz/mobileremote"
 )
 
@@ -26,6 +27,24 @@ type AccountSessionSource interface {
 
 type IdentityStore interface {
 	LoadOrCreate(context.Context) (mobileremotebiz.DeviceIdentity, error)
+}
+
+// DeviceAuthorityClient is the narrow control-plane dependency used by the
+// Relay owner lifecycle. The shared client owns signing and wire validation;
+// the mobile-remote service owns demand, lease, and reconnect policy.
+type DeviceAuthorityClient interface {
+	EnsureDeviceAuthority(context.Context, deviceauthority.EnsureDeviceAuthorityRequest) (deviceauthority.DeviceAuthorityResult, error)
+	RegisterDeviceGatewayIdentity(context.Context, deviceauthority.RegisterDeviceGatewayIdentityRequest) (deviceauthority.DeviceGatewayIdentityResult, error)
+	IssueDeviceGatewayOwnerTunnelToken(context.Context, deviceauthority.IssueDeviceGatewayOwnerTunnelTokenRequest) (deviceauthority.DeviceGatewayOwnerTunnelTokenResult, error)
+	RenewDeviceAuthorityLease(context.Context, deviceauthority.RenewDeviceAuthorityLeaseRequest) (deviceauthority.RenewDeviceAuthorityLeaseResult, error)
+}
+
+// RelayOwnerHost is the demand-counted owner tunnel supplied by the shared
+// relay transport. Mobile Remote acquires it only while the user-enabled
+// connection feature is running.
+type RelayOwnerHost interface {
+	Acquire(context.Context, string) error
+	Release(string) error
 }
 
 // AgentLiveEventSource feeds already-validated agent.activity.updated
@@ -62,6 +81,9 @@ type Service struct {
 	Account         AccountSessionSource
 	Identities      IdentityStore
 	ControlPlane    ControlPlane
+	DeviceAuthority DeviceAuthorityClient
+	RuntimeID       string
+	RelayOwner      RelayOwnerHost
 	AgentLiveEvents AgentLiveEventSource
 	Metadata        DeviceMetadata
 	Now             func() time.Time

@@ -80,6 +80,35 @@ func TestServiceCreateInheritsTargetComposerDefaultsAndExplicitOverridesWin(t *t
 	}
 }
 
+func TestServiceCreateAppliesCodexSaverModeWithoutChangingMainModel(t *testing.T) {
+	runtime := newFakeRuntime()
+	service := newTestService(runtime)
+	service.AgentComposerDefaultsReader = fakeAgentComposerDefaultsReader{
+		agenttargetbiz.IDLocalCodex: {CodexSaverMode: true},
+	}
+	mainModel := "gpt-5.6-sol"
+	if _, err := service.Create(context.Background(), "ws-saver", CreateSessionInput{
+		AgentSessionID:        "13131313-1313-4131-8131-131313131313",
+		AgentTargetID:         agenttargetbiz.IDLocalCodex,
+		Model:                 &mainModel,
+		CodexSaverModeAllowed: true,
+	}); err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+	if len(runtime.startCalls) != 1 || !runtime.startCalls[0].CodexSaverMode || runtime.startCalls[0].Model != mainModel {
+		t.Fatalf("runtime starts = %#v", runtime.startCalls)
+	}
+
+	enabled := true
+	if _, err := service.Create(context.Background(), "ws-saver", CreateSessionInput{
+		AgentSessionID: "14141414-1414-4141-8141-141414141414",
+		AgentTargetID:  agenttargetbiz.IDLocalCodex,
+		CodexSaverMode: &enabled,
+	}); !errors.Is(err, ErrInvalidArgument) {
+		t.Fatalf("Create() error = %v, want gated invalid argument", err)
+	}
+}
+
 func TestServiceApplicationHostUsesConfiguredSingleton(t *testing.T) {
 	service := newTestService(newFakeRuntime())
 	host := service.ApplicationHost()

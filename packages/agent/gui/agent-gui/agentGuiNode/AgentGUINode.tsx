@@ -117,7 +117,8 @@ export const AgentGUINode = memo(function AgentGUINode({
     referenceProvenanceFilterCatalog: injectedReferenceProvenanceFilterCatalog,
     referenceProvenanceFilterEnabled = false,
     sessionInputHistoryEnabled = false,
-    sessionForkEnabled = false
+    sessionForkEnabled = false,
+    codexSaverModeEntryEnabled = false
   } = hostCapabilities;
   const referenceProvenanceFilters = useAgentMentionProvenanceFilters({
     agentTargets,
@@ -283,6 +284,7 @@ export const AgentGUINode = memo(function AgentGUINode({
     composerAppendRequest,
     openSessionRequest,
     prefillPromptRequest,
+    codexSaverModeEntryEnabled,
     agentTargets,
     agentTargetsLoading,
     handoffAgentTargets,

@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -158,7 +159,18 @@ func sqliteDSN(dbPath string, readOnly bool) string {
 		query.Set("mode", "ro")
 		query.Add("_pragma", "query_only(1)")
 	}
-	return (&url.URL{Scheme: "file", Path: dbPath, RawQuery: query.Encode()}).String()
+	return (&url.URL{Scheme: "file", Path: sqliteDSNPath(dbPath, runtime.GOOS), RawQuery: query.Encode()}).String()
+}
+
+func sqliteDSNPath(dbPath string, goos string) string {
+	if goos != "windows" {
+		return dbPath
+	}
+	path := strings.ReplaceAll(dbPath, `\`, "/")
+	if len(path) >= 2 && path[1] == ':' && !strings.HasPrefix(path, "/") {
+		path = "/" + path
+	}
+	return path
 }
 
 func (s *SQLiteStore) openReadPool(ctx context.Context) error {

@@ -53,6 +53,9 @@ jobs:
           - platform: linux-amd64
             runner: ubuntu-latest
             node_distribution: linux-x64
+          - platform: windows-amd64
+            runner: windows-latest
+            node_distribution: win-x64
 
     steps:
       - name: Checkout
@@ -80,6 +83,9 @@ jobs:
             ["runtime_version", lock.runtimeVersion],
             ["uv_version", lock.uv?.version],
             ["python_version", lock.python?.version],
+            ["python_windows_archive_url", lock.python?.windows?.archiveUrl],
+            ["python_windows_archive_sha256", lock.python?.windows?.archiveSha256],
+            ["python_windows_archive_root", lock.python?.windows?.archiveRoot],
             ["node_version", lock.node?.version],
             ["node_release_base_url", lock.node?.releaseBaseUrl],
             ["configured_node_distribution", lock.platforms[platform].nodeDistribution],
@@ -115,6 +121,7 @@ jobs:
           sudo apt-get install -y rsync zip
 
       - name: Install uv
+        if: runner.os != 'Windows'
         shell: bash
         env:
           UV_VERSION: ${{ steps.lock.outputs.uv_version }}
@@ -123,6 +130,7 @@ jobs:
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
       - name: Install managed Python
+        if: runner.os != 'Windows'
         shell: bash
         env:
           PYTHON_VERSION: ${{ steps.lock.outputs.python_version }}
@@ -137,6 +145,7 @@ jobs:
           echo "PYTHON_ROOT=${python_root}" >> "$GITHUB_ENV"
 
       - name: Download Node.js
+        if: runner.os != 'Windows'
         shell: bash
         env:
           NODE_DISTRIBUTION: ${{ matrix.node_distribution }}
@@ -155,6 +164,7 @@ jobs:
           fi
 
       - name: Assemble runtime artifacts
+        if: runner.os != 'Windows'
         shell: bash
         env:
           NODE_VERSION: ${{ steps.lock.outputs.node_version }}
@@ -237,6 +247,133 @@ jobs:
             }
           }
           JSON
+
+      - name: Download Node.js on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          NODE_DISTRIBUTION: ${{ matrix.node_distribution }}
+          NODE_RELEASE_BASE_URL: ${{ steps.lock.outputs.node_release_base_url }}
+          NODE_VERSION: ${{ steps.lock.outputs.node_version }}
+        run: |
+          $archive = "node-v$env:NODE_VERSION-$env:NODE_DISTRIBUTION.zip"
+          $archivePath = Join-Path $env:RUNNER_TEMP $archive
+          $checksumsPath = Join-Path $env:RUNNER_TEMP "SHASUMS256.txt"
+          Invoke-WebRequest -Uri "$env:NODE_RELEASE_BASE_URL/$archive" -OutFile $archivePath
+          Invoke-WebRequest -Uri "$env:NODE_RELEASE_BASE_URL/SHASUMS256.txt" -OutFile $checksumsPath
+          $expected = ((Get-Content $checksumsPath | Where-Object { $_ -match "  $([regex]::Escape($archive))$" }) -split '\s+')[0]
+          $actual = (Get-FileHash -Algorithm SHA256 $archivePath).Hash.ToLowerInvariant()
+          if (-not $expected -or $actual -ne $expected) {
+            throw "Node.js archive checksum mismatch"
+          }
+          $expanded = Join-Path $env:RUNNER_TEMP "tutti-runtime-node-expanded"
+          $target = Join-Path $env:RUNNER_TEMP "tutti-runtime-node"
+          Remove-Item $expanded, $target -Recurse -Force -ErrorAction SilentlyContinue
+          Expand-Archive -Path $archivePath -DestinationPath $expanded
+          $source = Get-ChildItem $expanded -Directory | Select-Object -First 1
+          New-Item -ItemType Directory -Path $target | Out-Null
+          Copy-Item (Join-Path $source.FullName '*') $target -Recurse
+          if (-not (Test-Path (Join-Path $target 'node.exe')) -or -not (Test-Path (Join-Path $target 'npm.cmd'))) {
+            throw "Node.js archive does not contain node.exe and npm.cmd"
+          }
+
+      - name: Download managed Python on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          PYTHON_VERSION: ${{ steps.lock.outputs.python_version }}
+          PYTHON_WINDOWS_ARCHIVE_URL: ${{ steps.lock.outputs.python_windows_archive_url }}
+          PYTHON_WINDOWS_ARCHIVE_SHA256: ${{ steps.lock.outputs.python_windows_archive_sha256 }}
+          PYTHON_WINDOWS_ARCHIVE_ROOT: ${{ steps.lock.outputs.python_windows_archive_root }}
+        run: |
+          # The official CPython release may be source-only for a patch
+          # release. Use the pinned relocatable build instead of silently
+          # substituting another Python version.
+          $archive = "python-$env:PYTHON_VERSION-windows.tar.gz"
+          $archivePath = Join-Path $env:RUNNER_TEMP $archive
+          Invoke-WebRequest -Uri $env:PYTHON_WINDOWS_ARCHIVE_URL -OutFile $archivePath
+          $actual = (Get-FileHash -Algorithm SHA256 $archivePath).Hash.ToLowerInvariant()
+          if ($actual -ne $env:PYTHON_WINDOWS_ARCHIVE_SHA256) {
+            throw "Managed Python archive checksum mismatch"
+          }
+          $expanded = Join-Path $env:RUNNER_TEMP 'tutti-runtime-python-expanded'
+          $target = Join-Path $env:RUNNER_TEMP 'tutti-runtime-python'
+          Remove-Item $expanded, $target -Recurse -Force -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Path $expanded -Force | Out-Null
+          tar -xzf $archivePath -C $expanded
+          $pythonRoot = Join-Path $target 'python/bin'
+          New-Item -ItemType Directory -Path $pythonRoot -Force | Out-Null
+          $sourceRoot = Join-Path $expanded $env:PYTHON_WINDOWS_ARCHIVE_ROOT
+          if (-not (Test-Path (Join-Path $sourceRoot 'python.exe'))) {
+            throw "Managed Python archive root does not contain python.exe"
+          }
+          Copy-Item (Join-Path $sourceRoot '*') $pythonRoot -Recurse
+          $python = Join-Path $pythonRoot 'python.exe'
+          if (-not (Test-Path $python)) {
+            throw "Managed Python archive does not contain python.exe"
+          }
+          & $python --version
+
+      - name: Assemble Windows runtime artifacts
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          NODE_VERSION: ${{ steps.lock.outputs.node_version }}
+          PYTHON_VERSION: ${{ steps.lock.outputs.python_version }}
+          PLATFORM: ${{ matrix.platform }}
+          RUNTIME_VERSION: ${{ steps.lock.outputs.runtime_version }}
+        run: |
+          $artifactDir = Join-Path $env:GITHUB_WORKSPACE "tutti-app-runtime/$env:RUNTIME_VERSION/$env:PLATFORM"
+          $pythonArtifactDir = Join-Path $artifactDir 'python'
+          $nodeArtifactDir = Join-Path $artifactDir "node"
+          $pythonStaging = Join-Path $env:RUNNER_TEMP 'tutti-runtime-python-artifact'
+          $nodeStaging = Join-Path $env:RUNNER_TEMP "tutti-app-runtime-node-artifact"
+          $pythonRoot = Join-Path $pythonStaging 'python/bin'
+          $nodeRoot = Join-Path $nodeStaging "node/bin"
+          $pythonArtifactFile = "tutti-app-runtime-python-$env:PLATFORM-$env:RUNTIME_VERSION.zip"
+          $artifactFile = "tutti-app-runtime-node-$env:PLATFORM-$env:RUNTIME_VERSION.zip"
+          $pythonArtifactPath = Join-Path $pythonArtifactDir $pythonArtifactFile
+          $artifactPath = Join-Path $nodeArtifactDir $artifactFile
+          Remove-Item $pythonStaging, $nodeStaging -Recurse -Force -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Path $pythonRoot, $pythonArtifactDir, $nodeRoot, $nodeArtifactDir -Force | Out-Null
+          Copy-Item (Join-Path $env:RUNNER_TEMP 'tutti-runtime-python/python/bin/*') $pythonRoot -Recurse
+          Copy-Item (Join-Path $env:RUNNER_TEMP 'tutti-runtime-node/*') $nodeRoot -Recurse
+          & (Join-Path $pythonRoot 'python.exe') --version
+          & (Join-Path $nodeRoot 'node.exe') --version
+          & (Join-Path $nodeRoot 'npm.cmd') --version
+          & (Join-Path $nodeRoot 'corepack.cmd') --version
+          Compress-Archive -Path (Join-Path $pythonStaging '*') -DestinationPath $pythonArtifactPath -Force
+          Compress-Archive -Path (Join-Path $nodeStaging '*') -DestinationPath $artifactPath -Force
+          $pythonSha256 = (Get-FileHash -Algorithm SHA256 $pythonArtifactPath).Hash.ToLowerInvariant()
+          $pythonSize = (Get-Item $pythonArtifactPath).Length
+          $sha256 = (Get-FileHash -Algorithm SHA256 $artifactPath).Hash.ToLowerInvariant()
+          $size = (Get-Item $artifactPath).Length
+          $metadata = [ordered]@{
+            schemaVersion = 'tutti.app.runtime-platform.v2'
+            runtimeVersion = $env:RUNTIME_VERSION
+            platform = $env:PLATFORM
+            pythonVersion = $env:PYTHON_VERSION
+            nodeVersion = $env:NODE_VERSION
+            components = [ordered]@{
+              python = [ordered]@{
+                version = $env:PYTHON_VERSION
+                artifactPath = "$env:RUNTIME_VERSION/$env:PLATFORM/python/$pythonArtifactFile"
+                artifactSha256 = $pythonSha256
+                artifactSizeBytes = $pythonSize
+              }
+              node = [ordered]@{
+                version = $env:NODE_VERSION
+                artifactPath = "$env:RUNTIME_VERSION/$env:PLATFORM/node/$artifactFile"
+                artifactSha256 = $sha256
+                artifactSizeBytes = $size
+              }
+            }
+            profiles = [ordered]@{
+              baseline = @('python', 'node')
+              'node-static' = @('node')
+            }
+          }
+          $metadata | ConvertTo-Json -Depth 8 | Set-Content (Join-Path $artifactDir 'metadata.json') -Encoding utf8
 
       - name: Upload runtime artifact
         uses: actions/upload-artifact@v7

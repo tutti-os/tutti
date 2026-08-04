@@ -822,6 +822,159 @@ test("SDK assistant authentication error fails the message and turn", async () =
   }
 });
 
+test("SDK authentication rejection before provider identity skips recovery", async () => {
+  const events: Array<{ type: string; payload?: Record<string, unknown> }> = [];
+  const restoreSink = withSidecarEventSinkForTest((event) =>
+    events.push(event)
+  );
+  const failure =
+    "Failed to authenticate. API Error: 401 The API Key appears to be invalid.";
+  let identityRecoveryCalls = 0;
+  try {
+    const session = new SessionRuntime(
+      "provider-session-auth-rejected",
+      "/repo",
+      {},
+      false,
+      false,
+      {
+        model: "k3",
+        permissionModeId: "default",
+        planMode: false,
+        effort: "",
+        speed: ""
+      },
+      sidecarClaudeOptionsFromPayload({}),
+      undefined,
+      ({ prompt }) => ({
+        async *[Symbol.asyncIterator]() {
+          const iterator = prompt[Symbol.asyncIterator]();
+          await iterator.next();
+          yield {
+            type: "assistant",
+            error: "authentication_failed",
+            message: {
+              id: "assistant-auth-rejected",
+              role: "assistant",
+              content: [{ type: "text", text: failure }]
+            },
+            parent_tool_use_id: null,
+            session_id: "provider-session-auth-rejected"
+          } as never;
+          yield {
+            type: "result",
+            subtype: "success",
+            is_error: true,
+            api_error_status: 401,
+            result: failure,
+            session_id: "provider-session-auth-rejected"
+          } as never;
+        },
+        close() {}
+      }),
+      30_000,
+      async () => {
+        identityRecoveryCalls += 1;
+        throw new Error("identity recovery must not run for an explicit 401");
+      },
+      50
+    );
+
+    await session.start();
+    session.exec("turn-auth-rejected", "hello");
+    await waitForEvent(events, "turn_failed");
+
+    assert.equal(identityRecoveryCalls, 0);
+    assert.equal(
+      events.some((event) => event.type === "assistant_failed"),
+      false,
+      "provider output must not escape before durable acceptance"
+    );
+    assert.equal(
+      events.some((event) => event.type === "provider_turn_identity_resolved"),
+      false
+    );
+    const failedTurn = events.find((event) => event.type === "turn_failed");
+    assert.equal(failedTurn?.payload?.turnId, "turn-auth-rejected");
+    assert.equal(failedTurn?.payload?.code, "authentication_failed");
+    assert.equal(failedTurn?.payload?.apiErrorStatus, 401);
+    assert.equal(failedTurn?.payload?.dispatchDisposition, "rejected");
+  } finally {
+    restoreSink();
+  }
+});
+
+test("SDK api_retry authentication error fails before retrying", async () => {
+  const events: Array<{ type: string; payload?: Record<string, unknown> }> = [];
+  const restoreSink = withSidecarEventSinkForTest((event) =>
+    events.push(event)
+  );
+  let queryClosed = false;
+  let closeCalls = 0;
+  try {
+    const session = new SessionRuntime(
+      "provider-session-api-retry-auth",
+      "/repo",
+      {},
+      false,
+      false,
+      {
+        model: "k3",
+        permissionModeId: "default",
+        planMode: false,
+        effort: "",
+        speed: ""
+      },
+      sidecarClaudeOptionsFromPayload({}),
+      undefined,
+      ({ prompt }) => ({
+        async *[Symbol.asyncIterator]() {
+          await prompt[Symbol.asyncIterator]().next();
+          yield {
+            type: "system",
+            subtype: "api_retry",
+            attempt: 1,
+            max_retries: 10,
+            retry_delay_ms: 100,
+            error_status: 401,
+            error: "authentication_failed",
+            session_id: "provider-session-api-retry-auth"
+          } as never;
+          while (!queryClosed) {
+            await new Promise((resolve) => setTimeout(resolve, 5));
+          }
+        },
+        close() {
+          closeCalls += 1;
+          queryClosed = true;
+        }
+      })
+    );
+
+    await session.start();
+    session.exec("turn-api-retry-auth", "hello");
+    await waitForEvent(events, "turn_failed");
+
+    const failedTurn = events.find((event) => event.type === "turn_failed");
+    assert.equal(failedTurn?.payload?.turnId, "turn-api-retry-auth");
+    assert.equal(failedTurn?.payload?.code, "authentication_failed");
+    assert.equal(failedTurn?.payload?.apiErrorStatus, 401);
+    assert.equal(failedTurn?.payload?.dispatchDisposition, "rejected");
+    assert.equal(closeCalls, 1);
+    assert.equal(
+      events.filter(
+        (event) =>
+          event.type === "sdk_lifecycle_observed" &&
+          event.payload?.sdkMessageSubtype === "api_retry"
+      ).length,
+      1
+    );
+  } finally {
+    queryClosed = true;
+    restoreSink();
+  }
+});
+
 test("guidance prompt stays on the active SDK turn", async () => {
   const events: Array<{ type: string; payload?: Record<string, unknown> }> = [];
   const prompts: string[] = [];

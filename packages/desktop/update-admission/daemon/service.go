@@ -287,7 +287,7 @@ func (service *Service) refresh(ctx context.Context, trigger string) (RefreshRes
 		revision := parsed.Policy.PolicyRevision
 		fetchedAt := completedAt
 		service.snapshot.FeatureAvailability = FeatureAvailabilitySnapshot{
-			Keys:           append([]string(nil), parsed.Feature...),
+			Keys:           cloneFeatureKeys(parsed.Feature),
 			Source:         "remote",
 			PolicyRevision: &revision,
 			FetchedAt:      &fetchedAt,
@@ -354,7 +354,7 @@ func cloneSnapshot(snapshot Snapshot) Snapshot {
 
 func cloneFeatureSnapshot(snapshot FeatureAvailabilitySnapshot) FeatureAvailabilitySnapshot {
 	clone := snapshot
-	clone.Keys = append([]string(nil), snapshot.Keys...)
+	clone.Keys = cloneFeatureKeys(snapshot.Keys)
 	if snapshot.PolicyRevision != nil {
 		revision := *snapshot.PolicyRevision
 		clone.PolicyRevision = &revision
@@ -362,6 +362,15 @@ func cloneFeatureSnapshot(snapshot FeatureAvailabilitySnapshot) FeatureAvailabil
 	if snapshot.FetchedAt != nil {
 		clone.FetchedAt = pointerTime(*snapshot.FetchedAt)
 	}
+	return clone
+}
+
+// cloneFeatureKeys preserves the wire contract that an empty key set is an
+// empty JSON array, never null. append([]string(nil), values...) would turn an
+// empty slice into nil and break strict feature-availability consumers.
+func cloneFeatureKeys(keys []string) []string {
+	clone := make([]string, len(keys))
+	copy(clone, keys)
 	return clone
 }
 

@@ -64,6 +64,25 @@ runtimeprep leaves auth unprojected and does not fall back to the VM user's
 `~/.tutti-agent`. Tutti Agent preparation also materializes the same resolved
 native Skills used by the other supported providers.
 
+When `TuttiAgentPreparer.StableSkillBundleRoot` is configured, Tutti-managed
+Skills are content-addressed under
+`<root>/v1/<sha256>/skills` instead of the run-scoped home. Preparation emits
+the validated roots through the internal
+`TUTTI_AGENT_EXTRA_SKILL_ROOTS_JSON` launch handoff. The app-server adapter
+removes that handoff from the child environment and calls
+`skills/extraRoots/set` after `initialized` and before `thread/start` or
+`thread/resume`. A zero-value root preserves the legacy run-scoped layout.
+Stable bundles are immutable rebuildable cache entries and are not removed by
+single-session cleanup. When `StableSystemSkillBundleRoot` is also configured,
+runtimeprep passes that store as internal launch metadata. After the provider
+has installed its embedded `.system` Skills during initialization, the Adapter
+snapshots their actual provider-owned content into
+`<root>/v1/<sha256>/.system`, atomically replaces the run-scoped directory with
+a symlink to that immutable target, and only then refreshes Skills through the
+extra-roots RPC. This preserves provider ownership and version updates while
+making the earliest rendered Skill paths stable across Sessions. Both internal
+handoffs are stripped before child launch.
+
 ## Capability Packs
 
 A deployment capability resolves once into its policy, skills, and environment

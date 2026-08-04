@@ -49,6 +49,20 @@ types/
 - `integration/`: daemon-wide black-box and process-level tests
 - `types/`: cross-domain helpers only
 
+## Platform adapter rules
+
+- read [Windows Platform Support](../../docs/architecture/windows-platform-support.md)
+  before changing Microsoft Windows behavior
+- keep use cases dependent on capability interfaces; select the platform
+  implementation in the owning composition root or a small build-tagged factory
+- use shared Go behavior when its semantics are already portable; add an adapter
+  only for a proven OS difference such as PTY, process-tree, shell, or filesystem
+  behavior
+- keep related platform behavior cohesive instead of splitting every helper into
+  separate per-platform files
+- do not hardcode drive letters, home directories, executable locations, or a
+  dependency on Git for Windows or WSL
+
 ## Agent CLI ownership
 
 - `tuttid` owns agent provider availability, AgentGUI launch intent publication,
@@ -84,3 +98,4 @@ types/
 - [docs/conventions/tuttid-layering.md](../../docs/conventions/tuttid-layering.md)
 - [docs/conventions/workspace-domain.md](../../docs/conventions/workspace-domain.md)
 - [docs/conventions/local-state-storage.md](../../docs/conventions/local-state-storage.md)
+- [docs/architecture/windows-platform-support.md](../../docs/architecture/windows-platform-support.md)

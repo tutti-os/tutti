@@ -145,8 +145,9 @@ func (a agentRuntimeAdapter) CanResume(input agentservice.RuntimeResumeInput) bo
 
 func (a agentRuntimeAdapter) Close(ctx context.Context, input agentservice.RuntimeCloseInput) error {
 	if _, err := a.controller.Close(ctx, agentruntime.CloseInput{
-		RoomID:         input.WorkspaceID,
-		AgentSessionID: input.AgentSessionID,
+		RoomID:                 input.WorkspaceID,
+		AgentSessionID:         input.AgentSessionID,
+		PreserveCanonicalState: input.PreserveCanonicalState,
 	}); err != nil {
 		return mapAgentRuntimeError(err)
 	}
@@ -180,26 +181,49 @@ func (a agentRuntimeAdapter) Exec(ctx context.Context, input agentservice.Runtim
 		Metadata:                        cloneRuntimeContext(input.Metadata),
 		TuttiModeSnapshot:               runtimeTuttiModeSnapshotFromService(input.TuttiModeSnapshot),
 	})
+	projected := agentservice.RuntimeExecResult{
+		AgentSessionID:     result.AgentSessionID,
+		Status:             result.Status,
+		TurnID:             result.TurnID,
+		Accepted:           result.Accepted,
+		ProviderDispatch:   serviceProviderDispatchFromRuntime(result.ProviderDispatch),
+		SessionStatus:      result.SessionStatus,
+		TurnLifecycle:      serviceTurnLifecycleFromRuntime(result.TurnLifecycle),
+		SubmitAvailability: serviceSubmitAvailabilityFromRuntime(result.SubmitAvailability),
+	}
 	if err != nil {
 		agentservice.LogSubmitTrace("runtime_adapter.exec.failed", input.WorkspaceID, input.AgentSessionID, input.ClientSubmitID, input.Metadata, map[string]any{
 			"error": err.Error(),
 		})
-		return agentservice.RuntimeExecResult{}, mapAgentRuntimeError(err)
+		return projected, mapAgentRuntimeError(err)
 	}
 	agentservice.LogSubmitTrace("runtime_adapter.exec.resolved", input.WorkspaceID, input.AgentSessionID, input.ClientSubmitID, input.Metadata, map[string]any{
 		"turn_id":        result.TurnID,
 		"session_status": result.SessionStatus,
 		"turn_phase":     result.TurnLifecycle.Phase,
 	})
-	return agentservice.RuntimeExecResult{
-		AgentSessionID:     result.AgentSessionID,
-		Status:             result.Status,
-		TurnID:             result.TurnID,
-		Accepted:           result.Accepted,
-		SessionStatus:      result.SessionStatus,
-		TurnLifecycle:      serviceTurnLifecycleFromRuntime(result.TurnLifecycle),
-		SubmitAvailability: serviceSubmitAvailabilityFromRuntime(result.SubmitAvailability),
-	}, nil
+	return projected, nil
+}
+
+func serviceProviderDispatchFromRuntime(
+	dispatch *agentruntime.ProviderDispatchResult,
+) agenthost.RuntimeProviderDispatchResult {
+	if dispatch == nil {
+		return agenthost.RuntimeProviderDispatchResult{}
+	}
+	projected := agenthost.RuntimeProviderDispatchResult{
+		Disposition: agenthost.RuntimeDispatchDisposition(dispatch.Disposition),
+	}
+	if dispatch.Acceptance != nil {
+		projected.Acceptance = &agenthost.RuntimeProviderAcceptanceReceipt{
+			ProviderSessionID: dispatch.Acceptance.ProviderSessionID,
+			ProviderTurnID:    dispatch.Acceptance.ProviderTurnID,
+			Source: agenthost.RuntimeAcceptanceSource(
+				dispatch.Acceptance.Source,
+			),
+		}
+	}
+	return projected
 }
 
 func (a agentRuntimeAdapter) DurablyReportSubmitProvenance(

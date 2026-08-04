@@ -96,6 +96,17 @@ func (c *Controller) runProviderAcceptanceTurn(
 	reportDispatch ProviderDispatchSink,
 	acceptProviderTurn ProviderAcceptanceBarrier,
 ) {
+	var reportedDispatch ProviderDispatchResult
+	reported := false
+	report := func(dispatch ProviderDispatchResult) {
+		if !reported {
+			reportedDispatch = dispatch
+			reported = true
+		}
+		if reportDispatch != nil {
+			reportDispatch(dispatch)
+		}
+	}
 	c.runBlockingExecTurn(ctx, session, adapter, turnID, func(
 		emit EventSink,
 		emitCommands CommandSnapshotSink,
@@ -108,16 +119,49 @@ func (c *Controller) runProviderAcceptanceTurn(
 			turnID,
 			emit,
 			emitCommands,
-			reportDispatch,
+			report,
 			acceptProviderTurn,
 		)
-		if reportDispatch != nil {
+		if reportedDispatch.Disposition == DispatchDispositionRejected &&
+			!eventsContainRejectedProviderTurn(events) {
+			metadata := map[string]any{
+				"dispatchDisposition": string(DispatchDispositionRejected),
+			}
+			if reportedDispatch.Failure != nil {
+				metadata["error"] = reportedDispatch.Failure.Error()
+			}
+			events = append(events, newTurnActivityEvent(
+				session,
+				EventTurnFailed,
+				turnID,
+				SessionStatusFailed,
+				"",
+				"",
+				metadata,
+			))
+		}
+		if !reported && reportDispatch != nil {
 			reportDispatch(ProviderDispatchResult{
 				Disposition: DispatchDispositionOutcomeUnknown,
 			})
 		}
 		return events, err
 	})
+}
+
+func eventsContainRejectedProviderTurn(events []activityshared.Event) bool {
+	for _, event := range events {
+		if event.Type != activityshared.EventTurnFailed {
+			continue
+		}
+		if strings.EqualFold(
+			strings.TrimSpace(payloadString(event.Payload.Metadata, "dispatchDisposition")),
+			string(DispatchDispositionRejected),
+		) {
+			return true
+		}
+	}
+	return false
 }
 
 func (c *Controller) runHistoryReplacementTurn(
@@ -172,7 +216,9 @@ func (c *Controller) runBlockingExecTurn(
 			return
 		}
 		emitted = append(emitted, events...)
-		c.publish(session, events)
+		if !c.isProvisionalSession(session) {
+			c.publish(session, events)
+		}
 		c.enqueueSessionReport(ctx, session, events)
 		emittedSummary.observe(events, session)
 	}
@@ -226,6 +272,14 @@ func (c *Controller) runBlockingExecTurn(
 	}
 	emittedSummary.log("runtime.events_emitted.summary", session, turnID, metadata)
 	if rootProviderLifecycle {
+		if eventsContainRejectedProviderTurn(statusEvents) {
+			// A provider rejection before identity resolution has no root-provider
+			// Turn for the durable aggregation path to settle. The direct Turn
+			// failure is authoritative, so release the in-memory active-turn fence
+			// immediately after its event has been reported.
+			c.finishTurn(session, turnID)
+			return
+		}
 		// Exec returning closes only the provider invocation. The controller's
 		// active root turn remains addressable for guidance/cancel until the
 		// daemon commits and reconciles canonical root settlement.
@@ -233,6 +287,15 @@ func (c *Controller) runBlockingExecTurn(
 		return
 	}
 	c.finishTurn(session, turnID)
+}
+
+func (c *Controller) isProvisionalSession(session Session) bool {
+	if c == nil {
+		return false
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.provisionalSessions[sessionKey(session.RoomID, session.AgentSessionID)]
 }
 
 func adapterUsesRootProviderTurnLifecycle(adapter Adapter) bool {

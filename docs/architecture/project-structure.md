@@ -185,6 +185,20 @@ Product policy transport, normal update preferences, release feeds, download
 URLs, window assets, logging sinks, and business-window enumeration remain in
 the consuming desktop app.
 
+### `packages/connector/*`
+
+Connector packages own host-neutral connector domain boundaries shared across
+desktop daemons.
+
+Current packages:
+
+- `packages/connector/market`: connector catalog, installation,
+  authorization, compatibility, workspace-binding, operation, OpenAPI, and
+  renderer state contracts shared by Tutti and external hosts
+
+Catalog endpoints, local persistence, credentials, installation directories,
+generated daemon clients, and product integration remain in host adapters.
+
 ### `services/tuttid`
 
 `services/tuttid` is the primary business core.

@@ -349,6 +349,9 @@ func composerSettingsWithRuntimeSnapshot(
 	snapshot, exists, err := sessionRuntimeSnapshotFromContext(runtimeContext)
 	if err == nil && exists {
 		settings.ModelPlanID = strings.TrimSpace(snapshot.ModelPlanID)
+		if enabled, ok := snapshot.EffectiveConfig["codexSaverMode"].(bool); ok {
+			settings.CodexSaverMode = enabled
+		}
 	}
 	return settings
 }

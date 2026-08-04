@@ -9,9 +9,9 @@ const (
 	CursorTargetID                      = "local:cursor"
 	TuttiAgentProviderID                = canonical.TuttiAgentProviderID
 	TuttiAgentTargetID                  = "local:tutti-agent"
-	TuttiAgentMinVersion                = "0.0.10"
-	TuttiAgentRecommendedVersion        = "0.0.10"
-	TuttiAgentThroughTurnForkMinVersion = "0.0.10"
+	TuttiAgentMinVersion                = "0.0.11"
+	TuttiAgentRecommendedVersion        = "0.0.11"
+	TuttiAgentThroughTurnForkMinVersion = "0.0.11"
 	NexightProviderID                   = canonical.NexightProviderID
 	NexightTargetID                     = "local:nexight"
 	OpenClawProviderID                  = canonical.OpenClawProviderID
@@ -71,6 +71,7 @@ func tuttiAgentDescriptor() ProviderDescriptor {
 			Command:             []string{"tutti-agent", "app-server"},
 			ClientInfoName:      "tutti_agent",
 			AuthRequiredMessage: "Tutti Agent requires authentication. Sign in to Tutti on this device (or run `tutti-agent login`), then retry this session.",
+			AppServerSkillRoots: AppServerSkillRootsStrategyTuttiStable,
 			NativeSessionFork:   true,
 			AppServerFork: AppServerForkDescriptor{
 				UserAgentBrand:        "tutti-agent",

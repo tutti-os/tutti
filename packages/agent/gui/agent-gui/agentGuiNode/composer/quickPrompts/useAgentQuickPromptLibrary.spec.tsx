@@ -139,7 +139,7 @@ describe("useAgentQuickPromptLibrary", () => {
       revision: 1
     });
     hostApi = { quickPrompts: quickPrompts.api } as AgentHostRuntimeApi;
-    const onInsertPrompt = vi.fn();
+    const onInsertPrompt = vi.fn(() => true);
     const rendered = renderHook(() =>
       useAgentQuickPromptLibrary({
         disabled: false,
@@ -151,6 +151,7 @@ describe("useAgentQuickPromptLibrary", () => {
 
     expect(rendered.result.current.isInteractionLocked).toBe(true);
     expect(rendered.result.current.canReorder).toBe(false);
+    expect(rendered.result.current.reorderCapabilityAvailable).toBe(true);
     act(() => {
       rendered.result.current.openCreate();
       rendered.result.current.openEdit(second);
@@ -167,7 +168,7 @@ describe("useAgentQuickPromptLibrary", () => {
     const quickPrompts = createQuickPrompts();
     hostApi = { quickPrompts: quickPrompts.api } as AgentHostRuntimeApi;
     const onBeforeOpen = vi.fn();
-    const onInsertPrompt = vi.fn();
+    const onInsertPrompt = vi.fn(() => true);
     const rendered = renderHook(() =>
       useAgentQuickPromptLibrary({
         disabled: false,
@@ -286,12 +287,13 @@ describe("useAgentQuickPromptLibrary", () => {
   it("runs create and preserves edit disclosure on a version conflict", async () => {
     const quickPrompts = createQuickPrompts();
     hostApi = { quickPrompts: quickPrompts.api } as AgentHostRuntimeApi;
+    const onInsertPrompt = vi.fn(() => true);
     const rendered = renderHook(() =>
       useAgentQuickPromptLibrary({
         disabled: false,
         labels,
         onBeforeOpen: vi.fn(),
-        onInsertPrompt: vi.fn()
+        onInsertPrompt
       })
     );
 
@@ -310,6 +312,7 @@ describe("useAgentQuickPromptLibrary", () => {
       content: "Explain this code"
     });
     expect(rendered.result.current.mode).toBe("popover");
+    expect(onInsertPrompt).not.toHaveBeenCalled();
 
     act(() =>
       rendered.result.current.openEdit(
@@ -360,6 +363,187 @@ describe("useAgentQuickPromptLibrary", () => {
     expect(quickPrompts.api.update).toHaveBeenLastCalledWith(
       expect.objectContaining({ expectedVersion: 2 })
     );
+    expect(onInsertPrompt).not.toHaveBeenCalled();
+  });
+
+  it("inserts a template-backed prompt into the Composer after creation", async () => {
+    const quickPrompts = createQuickPrompts();
+    hostApi = { quickPrompts: quickPrompts.api } as AgentHostRuntimeApi;
+    const onInsertPrompt = vi.fn(() => true);
+    const rendered = renderHook(() =>
+      useAgentQuickPromptLibrary({
+        disabled: false,
+        labels,
+        onBeforeOpen: vi.fn(),
+        onInsertPrompt
+      })
+    );
+
+    act(() => rendered.result.current.openPopover());
+    act(() =>
+      rendered.result.current.openCreate(
+        {
+          title: "Template title",
+          content: "Template content"
+        },
+        { insertIntoComposerAfterSave: true }
+      )
+    );
+    await act(async () => {
+      expect(
+        await rendered.result.current.saveDraft({
+          title: "Edited title",
+          content: "Edited template content"
+        })
+      ).toBe(true);
+    });
+
+    expect(quickPrompts.api.create).toHaveBeenCalledWith({
+      title: "Edited title",
+      content: "Edited template content"
+    });
+    expect(onInsertPrompt).toHaveBeenCalledOnce();
+    expect(onInsertPrompt).toHaveBeenCalledWith("Edited template content");
+    expect(rendered.result.current.mode).toBe("closed");
+  });
+
+  it("keeps a saved template in the library when Composer insertion throws", async () => {
+    const quickPrompts = createQuickPrompts();
+    hostApi = { quickPrompts: quickPrompts.api } as AgentHostRuntimeApi;
+    const onInsertPrompt = vi.fn(() => {
+      throw new Error("editor unavailable");
+    });
+    const rendered = renderHook(() =>
+      useAgentQuickPromptLibrary({
+        disabled: false,
+        labels,
+        onBeforeOpen: vi.fn(),
+        onInsertPrompt
+      })
+    );
+
+    act(() => rendered.result.current.openPopover());
+    act(() =>
+      rendered.result.current.openCreate(
+        { title: "Template", content: "Template content" },
+        { insertIntoComposerAfterSave: true }
+      )
+    );
+    await act(async () => {
+      expect(
+        await rendered.result.current.saveDraft({
+          title: "Template",
+          content: "Edited content"
+        })
+      ).toBe(true);
+    });
+
+    expect(quickPrompts.api.create).toHaveBeenCalledOnce();
+    expect(onInsertPrompt).toHaveBeenCalledWith("Edited content");
+    expect(rendered.result.current.mutationError).toBeNull();
+    expect(rendered.result.current.insertionError).toBe(true);
+    expect(rendered.result.current.mode).toBe("popover");
+  });
+
+  it("retains template insertion intent when creation succeeds on retry", async () => {
+    const quickPrompts = createQuickPrompts();
+    vi.mocked(quickPrompts.api.create).mockRejectedValueOnce(
+      new Error("temporary create failure")
+    );
+    hostApi = { quickPrompts: quickPrompts.api } as AgentHostRuntimeApi;
+    const onInsertPrompt = vi.fn(() => true);
+    const rendered = renderHook(() =>
+      useAgentQuickPromptLibrary({
+        disabled: false,
+        labels,
+        onBeforeOpen: vi.fn(),
+        onInsertPrompt
+      })
+    );
+
+    act(() => rendered.result.current.openPopover());
+    act(() =>
+      rendered.result.current.openCreate(
+        { title: "Template", content: "Template content" },
+        { insertIntoComposerAfterSave: true }
+      )
+    );
+    await act(async () => {
+      expect(
+        await rendered.result.current.saveDraft({
+          title: "Template",
+          content: "Edited content"
+        })
+      ).toBe(false);
+    });
+    expect(onInsertPrompt).not.toHaveBeenCalled();
+    expect(rendered.result.current.mode).toBe("create");
+
+    await act(async () => {
+      expect(
+        await rendered.result.current.saveDraft({
+          title: "Template",
+          content: "Edited again"
+        })
+      ).toBe(true);
+    });
+    expect(onInsertPrompt).toHaveBeenCalledOnce();
+    expect(onInsertPrompt).toHaveBeenCalledWith("Edited again");
+    expect(rendered.result.current.mode).toBe("closed");
+  });
+
+  it("does not insert after the template creation disclosure becomes unavailable", async () => {
+    const quickPrompts = createQuickPrompts();
+    let releaseCreate: (() => void) | undefined;
+    vi.mocked(quickPrompts.api.create).mockImplementationOnce(async (input) => {
+      await new Promise<void>((resolve) => {
+        releaseCreate = resolve;
+      });
+      return {
+        id: "created-after-disable",
+        ...input,
+        version: 1,
+        createdAtUnixMs: 5,
+        updatedAtUnixMs: 5
+      };
+    });
+    hostApi = { quickPrompts: quickPrompts.api } as AgentHostRuntimeApi;
+    const onInsertPrompt = vi.fn(() => true);
+    const rendered = renderHook(
+      ({ disabled }) =>
+        useAgentQuickPromptLibrary({
+          disabled,
+          labels,
+          onBeforeOpen: vi.fn(),
+          onInsertPrompt
+        }),
+      { initialProps: { disabled: false } }
+    );
+
+    act(() => rendered.result.current.openPopover());
+    act(() =>
+      rendered.result.current.openCreate(
+        { title: "Template", content: "Template content" },
+        { insertIntoComposerAfterSave: true }
+      )
+    );
+    let saveResult: Promise<boolean> | undefined;
+    act(() => {
+      saveResult = rendered.result.current.saveDraft({
+        title: "Template",
+        content: "Edited content"
+      });
+    });
+    expect(releaseCreate).toBeTypeOf("function");
+
+    rendered.rerender({ disabled: true });
+    await act(async () => {
+      releaseCreate?.();
+      expect(await saveResult).toBe(true);
+    });
+
+    expect(onInsertPrompt).not.toHaveBeenCalled();
+    expect(rendered.result.current.mode).toBe("closed");
   });
 
   it("does not treat the prompt limit as a version conflict", async () => {
@@ -370,17 +554,23 @@ describe("useAgentQuickPromptLibrary", () => {
       reason: "agent_quick_prompt_limit_exceeded",
       statusCode: 409
     });
+    const onInsertPrompt = vi.fn(() => true);
     const rendered = renderHook(() =>
       useAgentQuickPromptLibrary({
         disabled: false,
         labels,
         onBeforeOpen: vi.fn(),
-        onInsertPrompt: vi.fn()
+        onInsertPrompt
       })
     );
 
     act(() => rendered.result.current.openPopover());
-    act(() => rendered.result.current.openCreate());
+    act(() =>
+      rendered.result.current.openCreate(
+        { title: "Template", content: "Template content" },
+        { insertIntoComposerAfterSave: true }
+      )
+    );
     await act(async () => {
       expect(
         await rendered.result.current.saveDraft({
@@ -391,6 +581,9 @@ describe("useAgentQuickPromptLibrary", () => {
     });
 
     expect(rendered.result.current.mutationError).toBe("generic");
+    expect(rendered.result.current.insertionError).toBe(false);
+    expect(rendered.result.current.mode).toBe("create");
+    expect(onInsertPrompt).not.toHaveBeenCalled();
     expect(quickPrompts.api.ensureLoaded).toHaveBeenCalledTimes(1);
   });
 });

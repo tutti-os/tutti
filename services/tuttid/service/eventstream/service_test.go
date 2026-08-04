@@ -541,8 +541,8 @@ func TestAgentComposerDefaultsPatchIntentUsesDedicatedMutationAndTargetInvalidat
 	if len(patcher.inputs) != 1 || patcher.inputs[0].AgentTargetID != "local:opencode" {
 		t.Fatalf("patch inputs = %#v", patcher.inputs)
 	}
-	permission := patcher.inputs[0].Patch[preferencesbiz.AgentComposerDefaultsFieldPermissionModeID]
-	if permission == nil || *permission != "full-access" {
+	permission, _ := patcher.inputs[0].Patch[preferencesbiz.AgentComposerDefaultsFieldPermissionModeID].(string)
+	if permission != "full-access" {
 		t.Fatalf("patch = %#v", patcher.inputs[0].Patch)
 	}
 

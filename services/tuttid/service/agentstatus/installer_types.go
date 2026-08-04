@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"runtime"
 	"strings"
+
+	"github.com/tutti-os/tutti/packages/agent/daemon/providerregistry"
 )
 
 type InstallerKind string
@@ -23,6 +25,7 @@ type InstallerSpec struct {
 	ShellCommand         string
 	ScriptURL            string
 	ScriptShell          string
+	WindowsFallback      providerregistry.InstallerWindowsFallback
 	ReleaseBinary        *ReleaseBinaryInstallerSpec
 	RegistryNPM          *ExternalAgentRegistryNPMInstallerSpec
 	CodexCLI             *CodexCLILatestInstallerSpec

@@ -267,6 +267,10 @@ export function useAgentGUIViewLabels(input: {
         )
       },
       planModeLabel: t("agentHost.agentGui.planModeLabel"),
+      codexSaverModeLabel: t("agentHost.agentGui.codexSaverModeLabel"),
+      codexSaverModeDescription: t(
+        "agentHost.agentGui.codexSaverModeDescription"
+      ),
       normalModeLabel: t("agentHost.agentGui.normalModeLabel"),
       normalModeDescription: t("agentHost.agentGui.normalModeDescription"),
       ...agentGUITuttiModeLabels(t),

@@ -620,6 +620,9 @@ export function AgentComposerView(input: Props): React.JSX.Element {
             composerControlsHardDisabled={composerControlsHardDisabled}
             inputDisabled={inputDisabled}
             settingsControlsDisabled={settingsControlsDisabled}
+            codexSaverModeDisabled={
+              settingsControlsDisabled || Boolean(input.props.agentSessionId)
+            }
             permissionModeControlsDisabled={permissionModeControlsDisabled}
             isSendingTurn={input.props.isSendingTurn}
             isHeroLayout={isHeroLayout}

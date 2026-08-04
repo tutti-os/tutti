@@ -28,6 +28,7 @@ type Service struct {
 	AnalyticsReporter              reporterservice.Reporter
 	AvailabilityChecker            ProviderAvailabilityChecker
 	ModelCatalog                   AgentModelCatalog
+	ReplayMode                     bool
 	ModelCapabilities              ModelCapabilitiesResolver
 	AgentTargetStore               AgentTargetStore
 	SessionInitializer             SessionInitializer
@@ -135,6 +136,7 @@ type SubmitClaimStore interface {
 	PrepareSubmitClaim(context.Context, agentactivitybiz.SubmitClaimPrepare) (agentactivitybiz.SubmitClaim, bool, error)
 	GetSubmitClaim(context.Context, string, string, string) (agentactivitybiz.SubmitClaim, bool, error)
 	AcceptSubmitClaim(context.Context, string, string, string, string, int64) (agentactivitybiz.SubmitClaim, bool, error)
+	RejectSubmitClaim(context.Context, string, string, string, string, int64) (agentactivitybiz.SubmitClaim, bool, error)
 	DeleteSubmitClaim(context.Context, string, string, string) (bool, error)
 	FindTurnByClientSubmitID(context.Context, string, string, string) (string, bool, error)
 }
@@ -647,14 +649,16 @@ type CreateSessionInput struct {
 	// StrictPermissionMode rejects an explicit unsupported permission mode
 	// instead of applying the provider default. It is used by unattended
 	// automation so a typo cannot silently broaden authority.
-	StrictPermissionMode bool
-	Model                *string
-	ModelPlanID          *string
-	PlanMode             *bool
-	BrowserUse           *bool
-	ComputerUse          *bool
-	ProviderTargetRef    map[string]any
-	ReasoningEffort      *string
+	StrictPermissionMode  bool
+	Model                 *string
+	ModelPlanID           *string
+	PlanMode              *bool
+	BrowserUse            *bool
+	ComputerUse           *bool
+	CodexSaverMode        *bool
+	CodexSaverModeAllowed bool
+	ProviderTargetRef     map[string]any
+	ReasoningEffort       *string
 	// ReasoningIntensity is an Issue-owned 0-100 strength request. When an
 	// explicit ReasoningEffort is absent, Create compiles it against the
 	// selected model's ordered reasoning-effort catalog. It is daemon-only and

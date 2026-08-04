@@ -81,7 +81,6 @@ export interface AgentGUIConversationRailControllerProps {
   agentTargets: AgentGUINodeViewModel["rail"]["agentTargets"];
   agentTargetsLoading: AgentGUINodeViewModel["rail"]["agentTargetsLoading"];
   conversationFilter: AgentGUINodeViewModel["rail"]["conversationFilter"];
-  sectionAgentTargetFallbackId: string | null;
   /**
    * Lets the host subtree observe the rail query controller's interaction
    * lock (e.g. so header-dispatched session actions honor the same lock).
@@ -176,7 +175,6 @@ export const AgentGUIConversationRailPane = memo(
     createConversationDisabled,
     isCollapsed,
     conversationFilter,
-    sectionAgentTargetFallbackId,
     conversationQuery,
     railQuery,
     onCreateConversation,
@@ -421,7 +419,6 @@ export const AgentGUIConversationRailPane = memo(
       );
     const railViewScopeKey = agentGUIConversationRailViewScopeKey({
       conversationFilter,
-      sectionAgentTargetFallbackId,
       workspaceId
     });
     const groupedConversationIdentityKey = useMemo(
@@ -437,7 +434,7 @@ export const AgentGUIConversationRailPane = memo(
     const sectionAgentTargetId =
       conversationFilter.kind === "agentTarget"
         ? conversationFilter.agentTargetId.trim()
-        : (sectionAgentTargetFallbackId?.trim() ?? "");
+        : "";
     const requestSectionBatchDeletion = useStableEventCallback(
       (section: ConversationSection) => {
         if (

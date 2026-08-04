@@ -402,6 +402,7 @@ export function sameComposerSettings(
   right: AgentSessionComposerSettings | null
 ): boolean {
   return (
+    left?.codexSaverMode === right?.codexSaverMode &&
     (left?.model ?? null) === (right?.model ?? null) &&
     (left?.reasoningEffort ?? null) === (right?.reasoningEffort ?? null) &&
     (left?.speed ?? null) === (right?.speed ?? null) &&
@@ -423,6 +424,7 @@ export function buildNodeDefaultComposerSettings(
   // (normalizeComposerSettingsForProvider and the session create path).
   const composerOverrides = nodeComposerOverridesForProvider(data) ?? {};
   return {
+    codexSaverMode: composerOverrides.codexSaverMode === true,
     model: normalizeOptionalText(composerOverrides.model),
     reasoningEffort:
       (normalizeOptionalText(
@@ -479,6 +481,7 @@ export function nodeDataFromComposerSettings(
 ): AgentGUINodeData {
   // Generic cleanup only — provider-level clamping is owned by the daemon.
   const composerOverrides = {
+    codexSaverMode: settings.codexSaverMode === true,
     model: normalizeOptionalText(settings.model),
     reasoningEffort: normalizeOptionalText(settings.reasoningEffort),
     speed: normalizeOptionalText(settings.speed),

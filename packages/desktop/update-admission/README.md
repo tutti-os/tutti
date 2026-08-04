@@ -113,7 +113,8 @@ A valid `featureAvailability.keys` envelope replaces the daemon's
 exact-identity cache. Missing or invalid feature data retains the prior cache
 without changing a valid admission decision. The cache stores only identity,
 feature keys, policy revision, and fetch time; it never stores a minimum version
-or admission decision.
+or admission decision. The daemon always serializes `keys` as a JSON array,
+including `[]` when no feature keys are available.
 
 Electron keeps only an in-memory projection for trusted renderer IPC:
 

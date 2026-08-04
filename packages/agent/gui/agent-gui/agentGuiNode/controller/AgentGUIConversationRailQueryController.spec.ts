@@ -56,7 +56,6 @@ describe("AgentGUIConversationRailQueryController", () => {
     });
     controller.configure({
       conversationFilter: { kind: "all" },
-      sectionAgentTargetFallbackId: null,
       userProjects: []
     });
 
@@ -126,12 +125,10 @@ describe("AgentGUIConversationRailQueryController", () => {
     });
     const scopeA: ConversationRailQueryScope = {
       conversationFilter: { agentTargetId: "agent-a", kind: "agentTarget" },
-      sectionAgentTargetFallbackId: null,
       userProjects: []
     };
     const scopeB: ConversationRailQueryScope = {
       conversationFilter: { agentTargetId: "agent-b", kind: "agentTarget" },
-      sectionAgentTargetFallbackId: null,
       userProjects: []
     };
     const scopeAKey = resolveConversationRailQueryScope(
@@ -228,7 +225,6 @@ describe("AgentGUIConversationRailQueryController", () => {
     });
     controller.configure({
       conversationFilter: { kind: "all" },
-      sectionAgentTargetFallbackId: null,
       userProjects: []
     });
 
@@ -311,7 +307,6 @@ describe("AgentGUIConversationRailQueryController", () => {
     });
     const scope: ConversationRailQueryScope = {
       conversationFilter: { kind: "all" },
-      sectionAgentTargetFallbackId: null,
       userProjects: []
     };
     const scopeKey = resolveConversationRailQueryScope(
@@ -372,7 +367,6 @@ describe("AgentGUIConversationRailQueryController", () => {
       });
       controller.configure({
         conversationFilter: { kind: "all" },
-        sectionAgentTargetFallbackId: null,
         userProjects: []
       });
 
@@ -484,7 +478,6 @@ describe("AgentGUIConversationRailQueryController", () => {
     });
     const initialScope: ConversationRailQueryScope = {
       conversationFilter: { kind: "all" },
-      sectionAgentTargetFallbackId: null,
       userProjects: []
     };
     const initialScopeKey = resolveConversationRailQueryScope(
@@ -582,7 +575,6 @@ describe("AgentGUIConversationRailQueryController", () => {
         agentTargetId: "local:claude-code",
         kind: "agentTarget"
       },
-      sectionAgentTargetFallbackId: null,
       userProjects: []
     };
     controller.configure(nextScope);
@@ -624,7 +616,6 @@ describe("AgentGUIConversationRailQueryController", () => {
     });
     const regularScope = {
       conversationFilter: { kind: "all" } as const,
-      sectionAgentTargetFallbackId: null,
       userProjects: []
     };
 
@@ -685,7 +676,6 @@ describe("AgentGUIConversationRailQueryController", () => {
     };
     const scope = {
       conversationFilter: { kind: "all" } as const,
-      sectionAgentTargetFallbackId: null,
       userProjects: [alpha, beta]
     };
 
@@ -770,7 +760,6 @@ describe("AgentGUIConversationRailQueryController", () => {
     });
     controller.configure({
       conversationFilter: { kind: "all" },
-      sectionAgentTargetFallbackId: null,
       userProjects: []
     });
     const detach = controller.attach();
@@ -861,7 +850,6 @@ describe("AgentGUIConversationRailQueryController", () => {
     });
     controller.configure({
       conversationFilter: { kind: "all" },
-      sectionAgentTargetFallbackId: null,
       userProjects: []
     });
     const detach = controller.attach();
@@ -930,7 +918,6 @@ describe("AgentGUIConversationRailQueryController", () => {
     });
     controller.configure({
       conversationFilter: { kind: "all" },
-      sectionAgentTargetFallbackId: null,
       userProjects: []
     });
 
@@ -999,7 +986,6 @@ describe("AgentGUIConversationRailQueryController", () => {
     });
     controller.configure({
       conversationFilter: { kind: "all" },
-      sectionAgentTargetFallbackId: null,
       userProjects: []
     });
     const unsubscribeThrowingListener = controller.subscribe(() => {
@@ -1069,7 +1055,6 @@ describe("AgentGUIConversationRailQueryController", () => {
         kind: "agentTarget",
         agentTargetId: "local:codex"
       },
-      sectionAgentTargetFallbackId: null,
       userProjects: []
     });
 
@@ -1132,7 +1117,6 @@ describe("AgentGUIConversationRailQueryController", () => {
     });
     const scope = {
       conversationFilter: { kind: "all" } as const,
-      sectionAgentTargetFallbackId: null,
       userProjects: []
     };
     controller.configure(scope);
@@ -1205,7 +1189,6 @@ describe("AgentGUIConversationRailQueryController", () => {
         agentTargetId: "local:codex",
         kind: "agentTarget"
       } as const,
-      sectionAgentTargetFallbackId: null,
       userProjects: []
     };
     const first = new AgentGUIConversationRailQueryController({
@@ -1290,7 +1273,6 @@ describe("AgentGUIConversationRailQueryController", () => {
     });
     const scope = (agentTargetId: string) => ({
       conversationFilter: { agentTargetId, kind: "agentTarget" as const },
-      sectionAgentTargetFallbackId: null,
       userProjects: []
     });
     controller.configure(scope("local:codex"));
@@ -1412,7 +1394,6 @@ describe("AgentGUIConversationRailQueryController", () => {
         agentTargetId: "shared:one",
         kind: "agentTarget"
       },
-      sectionAgentTargetFallbackId: null,
       userProjects: []
     });
     const detach = controller.attach();
@@ -1423,9 +1404,12 @@ describe("AgentGUIConversationRailQueryController", () => {
 
     controller.configure({
       conversationFilter: { kind: "all" },
-      sectionAgentTargetFallbackId: "shared:one",
       userProjects: []
     });
+
+    expect(listSessionSections).toHaveBeenLastCalledWith(
+      expect.objectContaining({ agentTargetId: undefined })
+    );
 
     expect(controller.getSnapshot().runtimeRailSectionsPending).toBe(true);
     expect(controller.getSnapshot().runtimeRailMemberships).toEqual([
@@ -1443,7 +1427,7 @@ describe("AgentGUIConversationRailQueryController", () => {
         retainedPreviousSections: true,
         runtimeOrigin: AGENT_SESSION_ENGINE_LOCAL_ORIGIN,
         status: "pending",
-        toAgentTargetId: "shared:one",
+        toAgentTargetId: null,
         toFilterKind: "all"
       })
     );
@@ -1462,8 +1446,12 @@ describe("AgentGUIConversationRailQueryController", () => {
         status: "ready"
       })
     );
-    expect(diagnosticLogger).not.toHaveBeenCalledWith(
-      expect.objectContaining({ event: "agent_gui.provider_switch.completed" })
+    expect(diagnosticLogger).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: "agent_gui.provider_switch.completed",
+        fromAgentTargetId: "shared:one",
+        toAgentTargetId: null
+      })
     );
 
     detach();

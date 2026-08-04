@@ -330,6 +330,9 @@ async function replayCassette(options) {
           "utf8"
         )
       );
+      const replayProviders = await readReplayProviderIDs(
+        options.cassetteDirectory
+      );
       const checkpoints = await loadReplayCheckpointPlan(
         options.cassetteDirectory,
         activityEvents
@@ -358,6 +361,7 @@ async function replayCassette(options) {
         await initializeCleanDatabase(workspaceRoot, runtime, workspaceId, {
           seedWorkspace: false
         });
+        await enableAgentSessionRecordingFeature(databasePath, workspaceRoot);
         // Activation intents can omit composer settings. Restore the values that
         // the cassette itself recorded so provider startup RPCs stay deterministic.
         await setAgentComposerDefaults(
@@ -403,6 +407,7 @@ async function replayCassette(options) {
             logPath: desktopLogPath,
             mode: "replay",
             cassetteId: replayCassetteId,
+            screenshotLabel: screenshotEvidenceLabel(options.scenario),
             settleScenario,
             replayRegistrations: [
               {
@@ -410,7 +415,9 @@ async function replayCassette(options) {
                 rootAgentSessionId: manifest.rootAgentSessionId,
                 cassetteDirectory: join(options.cassetteDirectory, "provider"),
                 artifactDirectory: options.cassetteDirectory,
-                workspaceId
+                workspaceId,
+                providers: replayProviders,
+                frozenModel: manifest.replayPrerequisites.composerDefaults.model
               }
             ],
             initialTargetCheckpoint: options.targetCheckpoint,
@@ -601,8 +608,9 @@ async function runReplayWorkspaceOrchestration(bootstrap, options) {
       bootstrap.cassettes,
       options.timeoutMs
     );
-    const reportSurfaceReady = createReplayWorkspaceSurfaceReadyQueue(
-      async (cassette) => {
+    const runDesktopUi = createSerialAsyncQueue();
+    const reportSurfaceReady = (cassette) =>
+      runDesktopUi(async () => {
         await activateRendererReplayWorkspaceCassette(
           client,
           cassette.cassetteId,
@@ -614,8 +622,7 @@ async function runReplayWorkspaceOrchestration(bootstrap, options) {
             runtimeDirectory: bootstrap.runtime.directory
           })}\n`
         );
-      }
-    );
+      });
     const workspaceArtifactDirectory = join(
       bootstrap.runtime.directory,
       "artifacts"
@@ -631,6 +638,10 @@ async function runReplayWorkspaceOrchestration(bootstrap, options) {
           surfaceReadyReported = true;
           await reportSurfaceReady(cassette);
         };
+        const settleAgentSessionId =
+          cassette.rootAgentSessionId ||
+          cassette.action?.agentSessionId ||
+          null;
         try {
           await replayStimuli(
             bootstrap.runtime.stateDirectory,
@@ -646,18 +657,31 @@ async function runReplayWorkspaceOrchestration(bootstrap, options) {
               async onCheckpoint(checkpoint) {
                 if (options.screenshotCheckpoints) {
                   const checkpointPlan = cassette.checkpoints[checkpoint];
-                  await maybeSettleForScreenshot(
-                    cassette.settleScenario,
-                    client,
-                    options.timeoutMs,
-                    checkpointPlan
-                  );
-                  await captureCheckpointScreenshot({
-                    artifactDirectory: workspaceArtifactDirectory,
-                    cassetteId: cassette.cassetteId,
-                    checkpointIndex: checkpoint,
-                    checkpoints: cassette.checkpoints,
-                    client
+                  await runDesktopUi(async () => {
+                    await activateRendererReplayWorkspaceCassette(
+                      client,
+                      cassette.cassetteId,
+                      options.timeoutMs
+                    );
+                    await maybeSettleForScreenshot(
+                      cassette.settleScenario,
+                      client,
+                      options.timeoutMs,
+                      checkpointPlan,
+                      settleAgentSessionId
+                    );
+                    await captureCheckpointScreenshot({
+                      agentSessionId: settleAgentSessionId,
+                      artifactDirectory: workspaceArtifactDirectory,
+                      cassetteId: cassette.cassetteId,
+                      checkpointIndex: checkpoint,
+                      checkpoints: cassette.checkpoints,
+                      client,
+                      label: screenshotEvidenceLabel(cassette),
+                      prepareToolEvidence:
+                        scenarioPreparesToolEvidence(cassette.settleScenario) &&
+                        checkpointNeedsToolSettle(checkpointPlan)
+                    });
                   });
                 }
                 process.stdout.write(
@@ -696,10 +720,12 @@ async function runReplayWorkspaceOrchestration(bootstrap, options) {
                 ) {
                   return;
                 }
-                await activateRendererReplayWorkspaceCassette(
-                  client,
-                  cassette.cassetteId,
-                  options.timeoutMs
+                await runDesktopUi(() =>
+                  activateRendererReplayWorkspaceCassette(
+                    client,
+                    cassette.cassetteId,
+                    options.timeoutMs
+                  )
                 );
               }
             }
@@ -742,13 +768,18 @@ async function runReplayWorkspaceOrchestration(bootstrap, options) {
   }
 }
 
-export function createReplayWorkspaceSurfaceReadyQueue(activate) {
+export function createSerialAsyncQueue() {
   let tail = Promise.resolve();
-  return (cassette) => {
-    const current = tail.then(() => activate(cassette));
+  return (task) => {
+    const current = tail.then(() => task());
     tail = current.catch(() => undefined);
     return current;
   };
+}
+
+export function createReplayWorkspaceSurfaceReadyQueue(activate) {
+  const enqueue = createSerialAsyncQueue();
+  return (cassette) => enqueue(() => activate(cassette));
 }
 
 export function assertReplayWorkspaceSucceeded(results, managed) {
@@ -947,6 +978,8 @@ export function validateReplayWorkspaceManifest(value) {
       );
     }
     const normalized = {
+      caseId:
+        typeof cassette?.caseId === "string" ? cassette.caseId.trim() : "",
       cassetteId:
         typeof cassette?.cassetteId === "string"
           ? cassette.cassetteId.trim()
@@ -1013,10 +1046,15 @@ export async function bootstrapReplayWorkspace(
   const manifest = validateReplayWorkspaceManifest(manifestValue);
   const dependencies = {
     createRuntime: () => createRuntime(workspaceRoot, "replay-workspace"),
-    initializeDatabase: (runtime, workspaceId) =>
-      initializeCleanDatabase(workspaceRoot, runtime, workspaceId, {
+    initializeDatabase: async (runtime, workspaceId) => {
+      await initializeCleanDatabase(workspaceRoot, runtime, workspaceId, {
         seedWorkspace: false
-      }),
+      });
+      await enableAgentSessionRecordingFeature(
+        join(runtime.stateDirectory, "tuttid.db"),
+        workspaceRoot
+      );
+    },
     loadCassette: loadReplayWorkspaceCassette,
     materializeBlobs: materializeReplayWorkspaceBlobs,
     removeRuntime,
@@ -1118,6 +1156,7 @@ async function loadReplayWorkspaceCassette(cassette, workspaceId) {
     activityEvents,
     workspaceId
   );
+  const providers = await readReplayProviderIDs(cassette.cassetteDirectory);
   action.replayProject = await loadReplayProject(
     cassette.cassetteDirectory,
     rootAgentSessionId
@@ -1137,6 +1176,8 @@ async function loadReplayWorkspaceCassette(cassette, workspaceId) {
     ...cassette,
     cassetteId,
     rootAgentSessionId,
+    providers,
+    replayPrerequisites: cassetteManifest.replayPrerequisites,
     action,
     activityEvents,
     checkpoints: await loadReplayCheckpointPlan(
@@ -1222,13 +1263,44 @@ export async function readReplayTotalDurationMs(
 }
 
 export function replayWorkspaceTransportRegistrations(cassettes) {
-  return cassettes.map((cassette) => ({
-    cassetteId: cassette.cassetteId,
-    rootAgentSessionId: cassette.rootAgentSessionId,
-    cassetteDirectory: join(cassette.cassetteDirectory, "provider"),
-    artifactDirectory: cassette.cassetteDirectory,
-    workspaceId: cassette.action.workspaceId
-  }));
+  return cassettes.map((cassette) => {
+    const registration = {
+      cassetteId: cassette.cassetteId,
+      rootAgentSessionId: cassette.rootAgentSessionId,
+      cassetteDirectory: join(cassette.cassetteDirectory, "provider"),
+      artifactDirectory: cassette.cassetteDirectory,
+      workspaceId: cassette.action.workspaceId
+    };
+    if (Array.isArray(cassette.providers) && cassette.providers.length > 0) {
+      registration.providers = cassette.providers;
+    }
+    const frozenModel = cassette.replayPrerequisites?.composerDefaults?.model;
+    if (typeof frozenModel === "string" && frozenModel.trim()) {
+      registration.frozenModel = frozenModel.trim();
+    }
+    return registration;
+  });
+}
+
+async function readReplayProviderIDs(cassetteDirectory) {
+  const manifest = JSON.parse(
+    await readFile(join(cassetteDirectory, providerManifestName), "utf8")
+  );
+  const providers = [
+    ...new Set(
+      (Array.isArray(manifest.connections) ? manifest.connections : [])
+        .map((connection) =>
+          typeof connection?.provider === "string"
+            ? connection.provider.trim()
+            : ""
+        )
+        .filter(Boolean)
+    )
+  ];
+  if (providers.length === 0) {
+    throw new Error("Replay provider manifest has no providers");
+  }
+  return providers;
 }
 
 async function loadReplayTurnIdentityPlan(cassetteDirectory, mode) {
@@ -1331,9 +1403,9 @@ async function runDesktopAction(input) {
           paused: false,
           timingMode:
             process.env.TUTTI_AGENT_SESSION_REPLAY_TIMING_MODE?.trim() ===
-            "fast-forward"
-              ? "fast-forward"
-              : "realtime",
+            "realtime"
+              ? "realtime"
+              : "fast-forward",
           targetCheckpoint: null
         }
       : {})
@@ -1465,13 +1537,19 @@ async function runDesktopAction(input) {
                 input.settleScenario,
                 pageClient,
                 input.timeoutMs,
-                checkpointPlan
+                checkpointPlan,
+                input.action.agentSessionId
               );
               await captureCheckpointScreenshot({
+                agentSessionId: input.action.agentSessionId,
                 artifactDirectory: input.artifactDirectory,
                 checkpointIndex: checkpoint,
                 checkpoints: input.checkpoints,
-                client: pageClient
+                client: pageClient,
+                label: input.screenshotLabel,
+                prepareToolEvidence:
+                  scenarioPreparesToolEvidence(input.settleScenario) &&
+                  checkpointNeedsToolSettle(checkpointPlan)
               });
             }
             await input.onCheckpoint?.(checkpoint);
@@ -1574,7 +1652,8 @@ async function runDesktopAction(input) {
       settleScenario,
       pageClient,
       input.timeoutMs,
-      null
+      null,
+      input.action.agentSessionId
     );
     await captureScreenshot(
       pageClient,
@@ -2554,10 +2633,15 @@ export function createReplayPlaybackController(input) {
     : input.targetCheckpoint;
   let targetDeadline = null;
   let activityEventSequence = 0;
-  const preferFastForward =
-    process.env.TUTTI_AGENT_SESSION_REPLAY_TIMING_MODE?.trim() ===
-    "fast-forward";
-  let timingMode = preferFastForward ? "fast-forward" : "realtime";
+  const timingModeEnv =
+    process.env.TUTTI_AGENT_SESSION_REPLAY_TIMING_MODE?.trim() || "";
+  // preferFastForward: opt-in batch mode that keeps FF even after landing a
+  // checkpoint (env === "fast-forward"). Default seeking still uses FF via
+  // setFastForward, then setRealtime restores realtime on land — unless the
+  // operator explicitly requested realtime seeking for busy-queue visuals.
+  const preferFastForward = timingModeEnv === "fast-forward";
+  const forceRealtimeSeek = timingModeEnv === "realtime";
+  let timingMode = "realtime";
   const transportPlaybackPath = `/v1/agent-session-replay/cassettes/${encodeURIComponent(cassetteId)}/transport/playback`;
   const checkpointVerificationPath = (checkpointIndex) =>
     `/v1/agent-session-replay/cassettes/${encodeURIComponent(cassetteId)}/checkpoints/${checkpointIndex}/verify`;
@@ -2630,6 +2714,13 @@ export function createReplayPlaybackController(input) {
   };
 
   const setFastForward = async () => {
+    // Explicit realtime keeps seeking in realtime. Forcing FF here lets the
+    // provider finish a long busy turn before queued submit/requested intents
+    // are dispatched, so the composer queue never becomes visible.
+    if (forceRealtimeSeek) {
+      await setRealtime();
+      return;
+    }
     if (timingMode === "fast-forward") return;
     await setTransport({
       command: "set-timing-mode",
@@ -3637,16 +3728,467 @@ async function ensureReplayConversationRailExpanded(client, timeoutMs) {
   );
 }
 
-async function captureScreenshot(client, outputPath) {
-  const result = await client.send("Page.captureScreenshot", {
-    format: "png",
-    fromSurface: true
-  });
-  if (!result.data) {
-    throw new Error("CDP screenshot returned no data");
+export function normalizeScreenshotClip(rect) {
+  if (!rect || typeof rect !== "object") return null;
+  const x = Math.max(0, Math.floor(Number(rect.x)));
+  const y = Math.max(0, Math.floor(Number(rect.y)));
+  const width = Math.floor(Number(rect.width));
+  const height = Math.floor(Number(rect.height));
+  if (
+    !Number.isFinite(x) ||
+    !Number.isFinite(y) ||
+    !Number.isFinite(width) ||
+    !Number.isFinite(height) ||
+    width < 8 ||
+    height < 8
+  ) {
+    return null;
   }
-  await mkdir(dirname(outputPath), { recursive: true });
-  await writeFile(outputPath, Buffer.from(result.data, "base64"));
+  return { x, y, width, height, scale: 1 };
+}
+
+export function screenshotEvidenceLabel(source) {
+  if (typeof source === "string") {
+    return source.trim();
+  }
+  if (!source || typeof source !== "object") return "";
+  for (const key of ["caseId", "screenshotLabel", "scenario", "label"]) {
+    const value = source[key];
+    if (typeof value === "string" && value.trim()) return value.trim();
+  }
+  return "";
+}
+
+export async function resolveAgentSessionScreenshotClip(
+  client,
+  agentSessionId
+) {
+  const pinned =
+    typeof agentSessionId === "string" ? agentSessionId.trim() : "";
+  if (!pinned) return null;
+  const rect = await evaluate(
+    client,
+    `(() => {
+      const id = ${JSON.stringify(pinned)};
+      const detail = [...document.querySelectorAll('main[data-agent-session-id]')].find(
+        (candidate) => candidate.getAttribute('data-agent-session-id') === id
+      );
+      if (!(detail instanceof HTMLElement)) return null;
+      const shell =
+        detail.closest('[data-workbench-window-id]') instanceof HTMLElement
+          ? detail.closest('[data-workbench-window-id]')
+          : detail;
+      const box = shell.getBoundingClientRect();
+      const x = Math.max(0, box.left);
+      const y = Math.max(0, box.top);
+      const right = Math.min(window.innerWidth, box.right);
+      const bottom = Math.min(window.innerHeight, box.bottom);
+      return {
+        x,
+        y,
+        width: right - x,
+        height: bottom - y
+      };
+    })()`
+  );
+  return normalizeScreenshotClip(rect);
+}
+
+async function installEvidenceBadge(client, { agentSessionId, label }) {
+  const text = screenshotEvidenceLabel(label);
+  if (!text) return false;
+  const pinned =
+    typeof agentSessionId === "string" ? agentSessionId.trim() : "";
+  await evaluate(
+    client,
+    `(() => {
+      const text = ${JSON.stringify(text)};
+      const id = ${JSON.stringify(pinned)};
+      document
+        .querySelectorAll('[data-tutti-replay-evidence-badge="true"]')
+        .forEach((node) => node.remove());
+      const detail = id
+        ? [...document.querySelectorAll('main[data-agent-session-id]')].find(
+            (candidate) => candidate.getAttribute('data-agent-session-id') === id
+          )
+        : null;
+      const host =
+        (detail instanceof HTMLElement &&
+          detail.closest('[data-workbench-window-id]')) ||
+        detail ||
+        document.documentElement;
+      if (!(host instanceof HTMLElement)) return false;
+      if (getComputedStyle(host).position === 'static') {
+        host.style.position = 'relative';
+      }
+      const badge = document.createElement('div');
+      badge.setAttribute('data-tutti-replay-evidence-badge', 'true');
+      badge.textContent = text;
+      badge.style.cssText = [
+        'position:absolute',
+        'top:8px',
+        'left:8px',
+        'z-index:2147483647',
+        'pointer-events:none',
+        'box-sizing:border-box',
+        'padding:4px 10px',
+        'border-radius:4px',
+        'background:#111827',
+        'color:#f8fafc',
+        'font:700 14px/1.2 ui-monospace,SFMono-Regular,Menlo,monospace',
+        'letter-spacing:0.02em',
+        'box-shadow:0 1px 4px rgba(0,0,0,.45)'
+      ].join(';');
+      host.appendChild(badge);
+      return true;
+    })()`
+  );
+  return true;
+}
+
+async function removeEvidenceBadge(client) {
+  try {
+    await evaluate(
+      client,
+      `(() => {
+        document
+          .querySelectorAll('[data-tutti-replay-evidence-badge="true"]')
+          .forEach((node) => node.remove());
+        return true;
+      })()`
+    );
+  } catch {
+    // Best-effort cleanup; capture already completed or page is gone.
+  }
+}
+
+const PINNED_PAINTED_DETAIL_EXPRESSION = `(function resolvePinnedPaintedDetail(sessionId) {
+  const isPaintedAtCenter = (candidate) => {
+    if (!(candidate instanceof HTMLElement) || candidate.offsetParent === null) {
+      return false;
+    }
+    const rect = candidate.getBoundingClientRect();
+    if (
+      rect.width <= 0 ||
+      rect.height <= 0 ||
+      rect.right <= 0 ||
+      rect.bottom <= 0 ||
+      rect.left >= window.innerWidth ||
+      rect.top >= window.innerHeight
+    ) {
+      return false;
+    }
+    const x = Math.min(window.innerWidth - 1, Math.max(0, rect.left + rect.width / 2));
+    const y = Math.min(window.innerHeight - 1, Math.max(0, rect.top + rect.height / 2));
+    return document.elementsFromPoint(x, y).some(
+      (element) => element === candidate || candidate.contains(element)
+    );
+  };
+  const matches = [...document.querySelectorAll('main[data-agent-session-id]')].filter(
+    (candidate) => candidate.getAttribute('data-agent-session-id') === sessionId
+  );
+  return (
+    matches.find((candidate) => isPaintedAtCenter(candidate)) ||
+    matches.find((candidate) => {
+      if (!(candidate instanceof HTMLElement) || candidate.offsetParent === null) {
+        return false;
+      }
+      const rect = candidate.getBoundingClientRect();
+      return rect.width > 0 && rect.height > 0;
+    }) ||
+    null
+  );
+})`;
+
+async function startToolEvidenceExpandKeepAlive(client, agentSessionId) {
+  const pinned =
+    typeof agentSessionId === "string" ? agentSessionId.trim() : "";
+  if (!pinned) return false;
+  // Runner-injected only: keep re-clicking collapsed chrome every frame so
+  // virtualizer remounts cannot leave a collapsed frame for the PNG.
+  return evaluate(
+    client,
+    `(() => {
+      const id = ${JSON.stringify(pinned)};
+      const resolvePinnedPaintedDetail = ${PINNED_PAINTED_DETAIL_EXPRESSION};
+      globalThis.__tuttiToolEvidenceExpandKeepAlive = true;
+      globalThis.__tuttiToolEvidenceExpandSessionId = id;
+      if (globalThis.__tuttiToolEvidenceExpandRaf != null) {
+        return true;
+      }
+      const clickCollapsed = (nodes) => {
+        for (const node of nodes) {
+          if (!(node instanceof HTMLButtonElement)) continue;
+          if (node.getAttribute('aria-expanded') === 'true') continue;
+          node.click();
+        }
+      };
+      const tick = () => {
+        if (globalThis.__tuttiToolEvidenceExpandKeepAlive !== true) {
+          globalThis.__tuttiToolEvidenceExpandRaf = null;
+          return;
+        }
+        const detail = resolvePinnedPaintedDetail(
+          globalThis.__tuttiToolEvidenceExpandSessionId
+        );
+        if (detail instanceof HTMLElement) {
+          clickCollapsed([
+            ...detail.querySelectorAll(
+              '[data-agent-turn-work-header] button[aria-expanded]'
+            )
+          ]);
+          clickCollapsed([
+            ...detail.querySelectorAll(
+              'button.workspace-agents-status-panel__detail-tool-count[aria-expanded]'
+            )
+          ]);
+          clickCollapsed([
+            ...detail.querySelectorAll(
+              'button.workspace-agents-status-panel__detail-tool-row-head--button'
+            )
+          ]);
+        }
+        globalThis.__tuttiToolEvidenceExpandRaf = requestAnimationFrame(tick);
+      };
+      globalThis.__tuttiToolEvidenceExpandRaf = requestAnimationFrame(tick);
+      return true;
+    })()`
+  );
+}
+
+async function stopToolEvidenceExpandKeepAlive(client) {
+  try {
+    await evaluate(
+      client,
+      `(() => {
+        globalThis.__tuttiToolEvidenceExpandKeepAlive = false;
+        if (globalThis.__tuttiToolEvidenceExpandRaf != null) {
+          cancelAnimationFrame(globalThis.__tuttiToolEvidenceExpandRaf);
+          globalThis.__tuttiToolEvidenceExpandRaf = null;
+        }
+        delete globalThis.__tuttiToolEvidenceExpandSessionId;
+        return true;
+      })()`
+    );
+  } catch {
+    // Best-effort cleanup after capture.
+  }
+}
+
+export async function captureScreenshot(client, outputPath, options = {}) {
+  const agentSessionId =
+    typeof options.agentSessionId === "string"
+      ? options.agentSessionId.trim()
+      : "";
+  const label = screenshotEvidenceLabel(options.label ?? options);
+  const expandToolEvidence = Boolean(
+    options.expandToolEvidence && agentSessionId
+  );
+  const captureOnce = async (clip) => {
+    const result = await client.send("Page.captureScreenshot", {
+      format: "png",
+      fromSurface: true,
+      ...(clip ? { clip } : {})
+    });
+    if (!result.data) {
+      throw new Error("CDP screenshot returned no data");
+    }
+    return { clip, data: result.data };
+  };
+
+  if (!expandToolEvidence) {
+    const badgeInstalled = await installEvidenceBadge(client, {
+      agentSessionId,
+      label
+    });
+    try {
+      const clip = agentSessionId
+        ? await resolveAgentSessionScreenshotClip(client, agentSessionId)
+        : null;
+      const { data } = await captureOnce(clip);
+      await mkdir(dirname(outputPath), { recursive: true });
+      await writeFile(outputPath, Buffer.from(data, "base64"));
+      return { clip, outputPath };
+    } finally {
+      if (badgeInstalled) {
+        await removeEvidenceBadge(client);
+      }
+    }
+  }
+
+  // Expand → capture → verify. Remounts can collapse between settle and PNG;
+  // a runner-side rAF keep-alive re-opens chrome without touching AGUI source.
+  await startToolEvidenceExpandKeepAlive(client, agentSessionId);
+  try {
+    await prepareToolEvidenceForScreenshot(client, agentSessionId);
+    const badgeInstalled = await installEvidenceBadge(client, {
+      agentSessionId,
+      label
+    });
+    try {
+      const clip = await resolveAgentSessionScreenshotClip(
+        client,
+        agentSessionId
+      );
+      const deadline = Date.now() + 5_000;
+      let lastInspect = null;
+      while (Date.now() < deadline) {
+        // Expand + paint-check in one evaluate, then capture with no other awaits.
+        lastInspect = await evaluate(
+          client,
+          `(() => {
+            const id = ${JSON.stringify(agentSessionId)};
+            const resolvePinnedPaintedDetail = ${PINNED_PAINTED_DETAIL_EXPRESSION};
+            const detail = resolvePinnedPaintedDetail(id);
+            if (!(detail instanceof HTMLElement)) {
+              return { ready: false, reason: 'pinned-detail-missing' };
+            }
+            const clickCollapsed = (nodes) => {
+              for (const node of nodes) {
+                if (!(node instanceof HTMLElement)) continue;
+                if (node.getAttribute('aria-expanded') === 'true') continue;
+                if (typeof node.click === 'function') node.click();
+              }
+            };
+            clickCollapsed([
+              ...detail.querySelectorAll(
+                '[data-agent-turn-work-header] button[aria-expanded], [data-agent-turn-work-header] [aria-expanded]'
+              )
+            ]);
+            clickCollapsed([
+              ...detail.querySelectorAll(
+                'button.workspace-agents-status-panel__detail-tool-count[aria-expanded]'
+              )
+            ]);
+            clickCollapsed([
+              ...detail.querySelectorAll(
+                'button.workspace-agents-status-panel__detail-tool-row-head--button'
+              )
+            ]);
+            const groups = [
+              ...detail.querySelectorAll(
+                'button.workspace-agents-status-panel__detail-tool-count[aria-expanded]'
+              )
+            ];
+            const heads = [
+              ...detail.querySelectorAll(
+                'button.workspace-agents-status-panel__detail-tool-row-head--button'
+              )
+            ];
+            // No tool chrome yet (or this turn has none): do not block capture.
+            if (groups.length === 0 && heads.length === 0) {
+              return {
+                ready: true,
+                reason: 'no-tool-chrome',
+                commandVisible: false,
+                commandText: '',
+                commandRect: null,
+                toolDetailTextVisible: false,
+                openToolRevealCount: 0,
+                groupExpanded: [],
+                headExpanded: [],
+                dpr: window.devicePixelRatio,
+                viewport: { width: window.innerWidth, height: window.innerHeight }
+              };
+            }
+            const isPaintedElement = (element) => {
+              if (!(element instanceof HTMLElement) || element.offsetParent === null) {
+                return false;
+              }
+              const rect = element.getBoundingClientRect();
+              if (rect.height < 8 || rect.width < 8) return false;
+              if (
+                rect.bottom <= 0 ||
+                rect.top >= window.innerHeight ||
+                rect.right <= 0 ||
+                rect.left >= window.innerWidth
+              ) {
+                return false;
+              }
+              const x = Math.min(
+                window.innerWidth - 1,
+                Math.max(0, rect.left + rect.width / 2)
+              );
+              const y = Math.min(
+                window.innerHeight - 1,
+                Math.max(0, rect.top + rect.height / 2)
+              );
+              return document.elementsFromPoint(x, y).some(
+                (node) =>
+                  node === element ||
+                  element.contains(node) ||
+                  node.contains?.(element)
+              );
+            };
+            const openRowReveals = [
+              ...detail.querySelectorAll(
+                '.workspace-agents-status-panel__detail-tool-row .agent-collapsible-reveal[data-expanded="true"]'
+              )
+            ].filter((reveal) => isPaintedElement(reveal));
+            const commands = [
+              ...detail.querySelectorAll('[data-agent-terminal-command="true"]')
+            ];
+            const visibleCommand = commands.find((element) => {
+              if (!isPaintedElement(element)) return false;
+              return (element.textContent ?? '').trim().length > 0;
+            });
+            const commandVisible = Boolean(visibleCommand);
+            const toolDetailTextVisible = openRowReveals.some((reveal) => {
+              const text = (reveal.textContent ?? '').trim();
+              return text.length > 12;
+            });
+            return {
+              ready: commandVisible || toolDetailTextVisible,
+              reason:
+                commandVisible || toolDetailTextVisible
+                  ? 'tool-body-painted'
+                  : 'tool-body-not-painted',
+              commandVisible,
+              commandText: (visibleCommand?.textContent ?? '').trim().slice(0, 80),
+              commandRect: visibleCommand
+                ? (() => {
+                    const rect = visibleCommand.getBoundingClientRect();
+                    return {
+                      x: rect.x,
+                      y: rect.y,
+                      width: rect.width,
+                      height: rect.height
+                    };
+                  })()
+                : null,
+              toolDetailTextVisible,
+              openToolRevealCount: openRowReveals.length,
+              groupExpanded: groups.map((group) =>
+                group.getAttribute('aria-expanded')
+              ),
+              headExpanded: heads.map((head) =>
+                head.getAttribute('aria-expanded')
+              ),
+              dpr: window.devicePixelRatio,
+              viewport: { width: window.innerWidth, height: window.innerHeight }
+            };
+          })()`
+        );
+        if (!lastInspect?.ready) {
+          await delay(25);
+          continue;
+        }
+        const { data } = await captureOnce(clip);
+        await mkdir(dirname(outputPath), { recursive: true });
+        await writeFile(outputPath, Buffer.from(data, "base64"));
+        return { clip, outputPath };
+      }
+      throw new Error(
+        `timed out capturing expanded tool evidence: ${JSON.stringify(lastInspect)}`
+      );
+    } finally {
+      if (badgeInstalled) {
+        await removeEvidenceBadge(client);
+      }
+    }
+  } finally {
+    await stopToolEvidenceExpandKeepAlive(client);
+  }
 }
 
 export function replayCheckpointScreenshotPath({
@@ -3682,12 +4224,15 @@ export function replayCheckpointScreenshotPath({
     : join(artifactDirectory, `${id}.png`);
 }
 
-async function captureCheckpointScreenshot({
+export async function captureCheckpointScreenshot({
+  agentSessionId,
   artifactDirectory,
   cassetteId,
   checkpointIndex,
   checkpoints,
-  client
+  client,
+  label,
+  prepareToolEvidence = false
 }) {
   const outputPath = replayCheckpointScreenshotPath({
     artifactDirectory,
@@ -3695,7 +4240,12 @@ async function captureCheckpointScreenshot({
     checkpointIndex,
     checkpoints
   });
-  await captureScreenshot(client, outputPath);
+  const expandToolEvidence = Boolean(prepareToolEvidence && agentSessionId);
+  await captureScreenshot(client, outputPath, {
+    agentSessionId,
+    expandToolEvidence,
+    label
+  });
   log(`checkpoint screenshot: ${outputPath}`);
   return outputPath;
 }
@@ -3913,33 +4463,252 @@ export async function loadRecordScenario(options) {
 }
 
 export function checkpointNeedsToolSettle(checkpoint) {
+  if (!checkpoint) return false;
+  const kind = String(checkpoint.kind ?? "");
+  const tags = Array.isArray(checkpoint.tags) ? checkpoint.tags : [];
+  // Forced expanded-tool PNG capture is only meaningful once a tool has
+  // completed. tool.started often has no painted body yet (I10/L06 Agent
+  // tool); requiring it hard-fails replay with tool-body-not-painted.
+  return [kind, ...tags].some((token) =>
+    /(?:^|[.])tool\.completed$/u.test(String(token))
+  );
+}
+
+export function checkpointNeedsScreenshotSettle(checkpoint) {
   if (!checkpoint) return true;
   const kind = String(checkpoint.kind ?? "");
   const tags = Array.isArray(checkpoint.tags) ? checkpoint.tags : [];
   return [kind, ...tags].some((token) =>
-    /(?:^|[.])(?:tool\.completed|turn\.terminal|turn\.completed)$/u.test(
+    /(?:^|[.])(?:tool\.completed|tool\.started|turn\.terminal|turn\.completed)$/u.test(
       String(token)
     )
   );
+}
+
+export function checkpointAllowsOptionalScreenshotSettle(checkpoint) {
+  if (!checkpoint) return false;
+  const kind = String(checkpoint.kind ?? "");
+  const tags = Array.isArray(checkpoint.tags) ? checkpoint.tags : [];
+  // Queue cases soft-wait for the composer blue bar on busy-queue submits.
+  // Do not fold this into checkpointNeedsScreenshotSettle: tool-evidence
+  // settlers (I10/L06/R*) would hang for the full timeout when no tool chrome
+  // exists yet at submission.accepted.
+  return [kind, ...tags].some((token) =>
+    /(?:^|[.])submission\.accepted$/u.test(String(token))
+  );
+}
+
+export function scenarioPreparesToolEvidence(scenario) {
+  return typeof scenario?.settleForScreenshot === "function";
 }
 
 export async function maybeSettleForScreenshot(
   scenario,
   client,
   timeoutMs,
-  checkpoint = null
+  checkpoint = null,
+  agentSessionId = null
 ) {
   if (!scenario || typeof scenario.settleForScreenshot !== "function") {
     return;
   }
-  if (checkpoint && !checkpointNeedsToolSettle(checkpoint)) {
+  if (
+    checkpoint &&
+    !checkpointNeedsScreenshotSettle(checkpoint) &&
+    !checkpointAllowsOptionalScreenshotSettle(checkpoint)
+  ) {
     return;
   }
-  await scenario.settleForScreenshot({
+  const pinned =
+    typeof agentSessionId === "string" && agentSessionId.trim()
+      ? agentSessionId.trim()
+      : null;
+  if (pinned) {
+    await evaluate(
+      client,
+      `globalThis.__tuttiSettleAgentSessionId = ${JSON.stringify(pinned)}; true`
+    );
+  }
+  try {
+    await scenario.settleForScreenshot({
+      agentSessionId: pinned,
+      client,
+      timeoutMs,
+      checkpoint
+    });
+  } finally {
+    if (pinned) {
+      await evaluate(
+        client,
+        "delete globalThis.__tuttiSettleAgentSessionId; true"
+      );
+    }
+  }
+}
+
+export async function prepareToolEvidenceForScreenshot(
+  client,
+  agentSessionId,
+  timeoutMs = 5_000
+) {
+  const pinned =
+    typeof agentSessionId === "string" && agentSessionId.trim()
+      ? agentSessionId.trim()
+      : null;
+  if (!pinned) return null;
+  await evaluate(
     client,
-    timeoutMs,
-    checkpoint
-  });
+    `globalThis.__tuttiSettleAgentSessionId = ${JSON.stringify(pinned)}; true`
+  );
+  try {
+    await waitForEvaluation(
+      client,
+      `(() => {
+        const resolvePinnedPaintedDetail = ${PINNED_PAINTED_DETAIL_EXPRESSION};
+        const detail = resolvePinnedPaintedDetail(
+          globalThis.__tuttiSettleAgentSessionId
+        );
+        if (!(detail instanceof HTMLElement)) {
+          return { ready: false, reason: 'pinned-detail-missing' };
+        }
+        const clickCollapsed = (nodes) => {
+          for (const node of nodes) {
+            if (!(node instanceof HTMLElement)) continue;
+            if (node.getAttribute('aria-expanded') === 'true') continue;
+            if (typeof node.click === 'function') node.click();
+          }
+        };
+        const workToggles = [
+          ...detail.querySelectorAll(
+            '[data-agent-turn-work-header] button[aria-expanded], [data-agent-turn-work-header] [aria-expanded]'
+          )
+        ];
+        const workCollapsed = workToggles.some(
+          (toggle) => toggle.getAttribute('aria-expanded') !== 'true'
+        );
+        clickCollapsed(workToggles);
+        // Collapsed turn-work unmounts tool rows; wait a poll after expanding.
+        if (workCollapsed) {
+          return { ready: false, reason: 'expanding-work' };
+        }
+        const groups = [
+          ...detail.querySelectorAll(
+            'button.workspace-agents-status-panel__detail-tool-count[aria-expanded]'
+          )
+        ];
+        const heads = [
+          ...detail.querySelectorAll(
+            'button.workspace-agents-status-panel__detail-tool-row-head--button'
+          )
+        ];
+        const groupsCollapsed = groups.some(
+          (group) => group.getAttribute('aria-expanded') !== 'true'
+        );
+        clickCollapsed(groups);
+        if (groupsCollapsed) {
+          return { ready: false, reason: 'expanding-groups' };
+        }
+        // Heads may mount only after the group reveal opens.
+        const headsNow = [
+          ...detail.querySelectorAll(
+            'button.workspace-agents-status-panel__detail-tool-row-head--button'
+          )
+        ];
+        const headsCollapsed = headsNow.some(
+          (head) => head.getAttribute('aria-expanded') !== 'true'
+        );
+        clickCollapsed(headsNow);
+        if (headsCollapsed) {
+          return { ready: false, reason: 'expanding-heads' };
+        }
+        const hasToolChrome = groups.length > 0 || headsNow.length > 0;
+        // Text/queue turns never mount tool chrome. Do not wait forever here —
+        // that breaks C04 and other non-tool terminal screenshots.
+        if (!hasToolChrome) {
+          return { ready: true, reason: 'no-tool-chrome', hasToolChrome: false };
+        }
+        const openRowReveals = [
+          ...detail.querySelectorAll(
+            '.workspace-agents-status-panel__detail-tool-row .agent-collapsible-reveal[data-expanded="true"]'
+          )
+        ].filter((reveal) => {
+          if (!(reveal instanceof HTMLElement) || reveal.offsetParent === null) {
+            return false;
+          }
+          const rect = reveal.getBoundingClientRect();
+          if (rect.height < 8 || rect.width < 8) return false;
+          const x = Math.min(
+            window.innerWidth - 1,
+            Math.max(0, rect.left + rect.width / 2)
+          );
+          const y = Math.min(
+            window.innerHeight - 1,
+            Math.max(0, rect.top + rect.height / 2)
+          );
+          return document.elementsFromPoint(x, y).some(
+            (node) =>
+              node === reveal || reveal.contains(node) || node.contains?.(reveal)
+          );
+        });
+        const commands = [
+          ...detail.querySelectorAll('[data-agent-terminal-command="true"]')
+        ];
+        const commandVisible = commands.some((element) => {
+          if (!(element instanceof HTMLElement) || element.offsetParent === null) {
+            return false;
+          }
+          const rect = element.getBoundingClientRect();
+          if (rect.height < 8 || rect.width < 8) return false;
+          if (
+            rect.bottom <= 0 ||
+            rect.top >= window.innerHeight ||
+            rect.right <= 0 ||
+            rect.left >= window.innerWidth
+          ) {
+            return false;
+          }
+          const x = Math.min(
+            window.innerWidth - 1,
+            Math.max(0, rect.left + rect.width / 2)
+          );
+          const y = Math.min(
+            window.innerHeight - 1,
+            Math.max(0, rect.top + rect.height / 2)
+          );
+          const painted = document.elementsFromPoint(x, y).some(
+            (node) =>
+              node === element ||
+              element.contains(node) ||
+              node.contains?.(element)
+          );
+          if (!painted) return false;
+          return (element.textContent ?? '').trim().length > 0;
+        });
+        const toolDetailTextVisible = openRowReveals.some((reveal) => {
+          const text = (reveal.textContent ?? '').trim();
+          return text.length > 12;
+        });
+        return {
+          ready: commandVisible || toolDetailTextVisible,
+          openToolRevealCount: openRowReveals.length,
+          commandVisible,
+          toolDetailTextVisible,
+          hasToolChrome,
+          groupExpanded: groups.map((group) => group.getAttribute('aria-expanded')),
+          headExpanded: headsNow.map((head) => head.getAttribute('aria-expanded'))
+        };
+      })()`,
+      timeoutMs,
+      "pre-screenshot tool evidence",
+      25
+    );
+  } finally {
+    await evaluate(
+      client,
+      "delete globalThis.__tuttiSettleAgentSessionId; true"
+    );
+  }
+  return null;
 }
 
 function setMode(options, mode, directory) {

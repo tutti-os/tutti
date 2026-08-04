@@ -10,6 +10,7 @@ export const desktopErrorCodes = {
   daemonUnavailable: "daemon_unavailable",
   electronDebugRequired: "electron_debug_required",
   loggerFallback: "logger_file_unavailable",
+  managedProcessError: "managed_process_error",
   managedProcessExited: "managed_process_exited",
   managedProcessStderr: "managed_process_stderr",
   nodeRuntimeBroken: "node_runtime_broken",

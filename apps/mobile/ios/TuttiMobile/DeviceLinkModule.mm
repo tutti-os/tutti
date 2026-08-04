@@ -120,6 +120,10 @@ static NSUInteger TUTReadFrameSize(TUTMobileStream *stream, NSUInteger maximum,
 @interface TuttiDeviceLink : RCTEventEmitter <RCTBridgeModule>
 @property(nonatomic, strong) TUTMobileLink *link;
 @property(nonatomic, strong) TUTMobileStream *agentLiveStream;
+@property(nonatomic, copy) NSString *relayEndpoint;
+@property(nonatomic, copy) NSString *relayQueryJSON;
+@property(nonatomic, copy) NSString *relayHeadersJSON;
+@property(nonatomic, copy) NSString *relaySubprotocol;
 @property(nonatomic, assign) int64_t linkGeneration;
 @property(nonatomic, assign) int64_t agentLiveGeneration;
 @property(nonatomic, strong) dispatch_queue_t operationQueue;
@@ -269,6 +273,33 @@ RCT_REMAP_METHOD(connectLink,
   });
 }
 
+RCT_REMAP_METHOD(configureRelay,
+                 configureRelay:(NSString *)endpoint
+                 queryJSON:(NSString *)queryJSON
+                 headersJSON:(NSString *)headersJSON
+                 subprotocol:(NSString *)subprotocol
+                 resolver:(RCTPromiseResolveBlock)resolve
+                 rejecter:(RCTPromiseRejectBlock)reject) {
+  NSString *normalizedEndpoint =
+      [endpoint stringByTrimmingCharactersInSet:
+                    [NSCharacterSet whitespaceAndNewlineCharacterSet]];
+  NSString *normalizedSubprotocol =
+      [subprotocol stringByTrimmingCharactersInSet:
+                      [NSCharacterSet whitespaceAndNewlineCharacterSet]];
+  if (normalizedEndpoint.length == 0 || normalizedSubprotocol.length == 0) {
+    reject(@"DEVICE_LINK_RELAY_CONFIG_FAILED",
+           @"Relay endpoint and subprotocol are required", nil);
+    return;
+  }
+  @synchronized(self) {
+    self.relayEndpoint = normalizedEndpoint;
+    self.relayQueryJSON = queryJSON ?: @"";
+    self.relayHeadersJSON = headersJSON ?: @"";
+    self.relaySubprotocol = normalizedSubprotocol;
+  }
+  resolve(nil);
+}
+
 RCT_REMAP_METHOD(requestAgentHTTP,
                  requestAgentHTTP:(NSString *)method
                  path:(NSString *)path
@@ -277,19 +308,41 @@ RCT_REMAP_METHOD(requestAgentHTTP,
                  resolver:(RCTPromiseResolveBlock)resolve
                  rejecter:(RCTPromiseRejectBlock)reject) {
   TUTMobileLink *selected = [self linkSnapshot];
-  if (selected == nil) {
+  NSDictionary *relay = [self relaySnapshot];
+  if (selected == nil && relay == nil) {
     reject(@"DEVICE_LINK_REQUEST_FAILED", @"DeviceLink is not prepared", nil);
     return;
   }
   dispatch_async(self.operationQueue, ^{
     NSError *error = nil;
-    NSDictionary *response =
-        [self requestAgentHTTPWithLink:selected
-                               method:method
-                                 path:path
-                                 body:body
-                        timeoutMillis:(int64_t)timeoutMillis
-                                error:&error];
+    NSDictionary *response = nil;
+    if (selected != nil) {
+      response = [self requestAgentHTTPWithLink:selected
+                                         method:method
+                                           path:path
+                                           body:body
+                                  timeoutMillis:(int64_t)timeoutMillis
+                                          error:&error];
+    }
+    if (response == nil && relay != nil) {
+      NSError *relayError = nil;
+      TUTMobileStream *stream = TUTMobileDialRelay(
+          relay[@"endpoint"], relay[@"queryJSON"], relay[@"headersJSON"],
+          relay[@"subprotocol"], (int64_t)timeoutMillis, &relayError);
+      if (stream != nil && relayError == nil) {
+        response = [self requestAgentHTTPWithStream:stream
+                                              method:method
+                                                path:path
+                                                body:body
+                                         timeoutMillis:(int64_t)timeoutMillis
+                                                 error:&relayError];
+      }
+      if (response != nil) {
+        error = nil;
+      } else if (error == nil) {
+        error = relayError;
+      }
+    }
     if (response == nil || error != nil) {
       reject(@"DEVICE_LINK_REQUEST_FAILED", @"DeviceLink request failed",
              error);
@@ -321,15 +374,18 @@ RCT_REMAP_METHOD(startAgentLive,
     return;
   }
   TUTMobileLink *selected = [self linkSnapshot];
-  if (selected == nil) {
+  NSDictionary *relay = [self relaySnapshot];
+  if (selected == nil && relay == nil) {
     reject(@"AGENT_LIVE_SUBSCRIBE_FAILED", @"DeviceLink is not prepared", nil);
     return;
   }
   int64_t generation = [self beginAgentLiveOperation];
   dispatch_async(self.agentLiveQueue, ^{
     NSError *error = nil;
-    TUTMobileStream *stream =
-        [selected openStream:TUTAgentLiveOpenTimeoutMillis error:&error];
+    TUTMobileStream *stream = [self openAgentStream:selected
+                                              relay:relay
+                                      timeoutMillis:TUTAgentLiveOpenTimeoutMillis
+                                              error:&error];
     if (stream == nil || error != nil) {
       reject(@"AGENT_LIVE_SUBSCRIBE_FAILED",
              @"Unable to start Agent live subscription", error);
@@ -444,15 +500,30 @@ RCT_REMAP_METHOD(closeLink,
 - (NSDictionary *)requestAgentHTTPWithLink:(TUTMobileLink *)link
                                     method:(NSString *)method
                                       path:(NSString *)path
-                                      body:(NSString *)body
-                             timeoutMillis:(int64_t)timeoutMillis
+                                     body:(NSString *)body
+                            timeoutMillis:(int64_t)timeoutMillis
                                      error:(NSError **)error {
   int64_t timeout = MAX(timeoutMillis, 1);
-  NSDate *deadline = [NSDate dateWithTimeIntervalSinceNow:timeout / 1000.0];
   TUTMobileStream *stream = [link openStream:timeout error:error];
   if (stream == nil) {
     return nil;
   }
+  return [self requestAgentHTTPWithStream:stream
+                                   method:method
+                                     path:path
+                                     body:body
+                            timeoutMillis:timeoutMillis
+                                    error:error];
+}
+
+- (NSDictionary *)requestAgentHTTPWithStream:(TUTMobileStream *)stream
+                                      method:(NSString *)method
+                                        path:(NSString *)path
+                                        body:(NSString *)body
+                               timeoutMillis:(int64_t)timeoutMillis
+                                       error:(NSError **)error {
+  int64_t timeout = MAX(timeoutMillis, 1);
+  NSDate *deadline = [NSDate dateWithTimeIntervalSinceNow:timeout / 1000.0];
   @try {
     int64_t remaining =
         MAX((int64_t)([deadline timeIntervalSinceNow] * 1000.0), 1);
@@ -532,6 +603,52 @@ RCT_REMAP_METHOD(closeLink,
   }
 }
 
+- (NSDictionary *)relaySnapshot {
+  @synchronized(self) {
+    if (self.relayEndpoint.length == 0 ||
+        self.relaySubprotocol.length == 0) {
+      return nil;
+    }
+    return @{
+      @"endpoint" : self.relayEndpoint,
+      @"queryJSON" : self.relayQueryJSON ?: @"",
+      @"headersJSON" : self.relayHeadersJSON ?: @"",
+      @"subprotocol" : self.relaySubprotocol,
+    };
+  }
+}
+
+- (TUTMobileStream *)openAgentStream:(TUTMobileLink *)link
+                               relay:(NSDictionary *)relay
+                       timeoutMillis:(int64_t)timeoutMillis
+                               error:(NSError **)error {
+  NSError *directError = nil;
+  if (link != nil) {
+    TUTMobileStream *stream = [link openStream:MAX(timeoutMillis, 1)
+                                         error:&directError];
+    if (stream != nil) {
+      return stream;
+    }
+  }
+  if (relay != nil) {
+    NSError *relayError = nil;
+    TUTMobileStream *stream = TUTMobileDialRelay(
+        relay[@"endpoint"], relay[@"queryJSON"], relay[@"headersJSON"],
+        relay[@"subprotocol"], MAX(timeoutMillis, 1), &relayError);
+    if (stream != nil) {
+      return stream;
+    }
+    if (error != NULL) {
+      *error = relayError ?: directError;
+    }
+    return nil;
+  }
+  if (error != NULL) {
+    *error = directError;
+  }
+  return nil;
+}
+
 - (NSDictionary *)objectFromJSONString:(NSString *)json {
   NSData *data = [json dataUsingEncoding:NSUTF8StringEncoding];
   return data == nil ? nil : TUTJSONObject(data, nil);
@@ -578,6 +695,10 @@ RCT_REMAP_METHOD(closeLink,
     self.linkGeneration += 1;
     previous = self.link;
     self.link = nil;
+    self.relayEndpoint = nil;
+    self.relayQueryJSON = nil;
+    self.relayHeadersJSON = nil;
+    self.relaySubprotocol = nil;
   }
   [self closeDetachedLink:previous];
 }

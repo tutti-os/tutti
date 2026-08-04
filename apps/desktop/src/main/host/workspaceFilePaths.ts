@@ -37,7 +37,9 @@ export function resolveWorkspaceFileAbsolutePath(input: {
     throw new Error("root directory is required");
   }
   const rootDirectory = path.resolve(rootDirectoryInput);
-  const rawPath = input.logicalPath.trim().replaceAll("\\", "/");
+  const rawPath = normalizeWindowsDriveAbsolutePath(
+    input.logicalPath.trim().replaceAll("\\", "/")
+  );
 
   const absolutePath = path.isAbsolute(rawPath)
     ? path.resolve(rawPath)
@@ -50,6 +52,18 @@ export function resolveWorkspaceFileAbsolutePath(input: {
   }
 
   return absolutePath;
+}
+
+function normalizeWindowsDriveAbsolutePath(value: string): string {
+  if (path.sep !== "\\") {
+    return value;
+  }
+
+  // The daemon exposes Windows absolute paths in POSIX form (`/C:/...`) so
+  // they can travel through the logical workspace API. Node's win32 resolver
+  // treats that leading slash as the current drive root and produces
+  // `C:\\C:\\...`, which then looks like an escape from the workspace root.
+  return value.replace(/^\/([A-Za-z]:)(?=\/|$)/, "$1");
 }
 
 export function resolveTerminalLinkAbsolutePath(input: {

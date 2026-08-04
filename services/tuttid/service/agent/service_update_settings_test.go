@@ -57,6 +57,18 @@ func TestServiceUpdateSettingsPersistsHistoricalSessionWithoutRuntimeResume(t *t
 	}
 }
 
+func TestServiceUpdateSettingsRejectsCodexSaverModeForExistingSession(t *testing.T) {
+	service := newTestService(newFakeRuntime())
+	enabled := true
+
+	_, err := service.UpdateSettings(context.Background(), "ws-1", "session-1", ComposerSettingsPatch{
+		CodexSaverMode: &enabled,
+	})
+	if !errors.Is(err, ErrInvalidArgument) {
+		t.Fatalf("UpdateSettings error = %v, want ErrInvalidArgument", err)
+	}
+}
+
 func TestServiceUpdateSettingsSerializesWithHistoricalResume(t *testing.T) {
 	baseRuntime := newFakeRuntime()
 	runtime := &blockingResumeRuntime{

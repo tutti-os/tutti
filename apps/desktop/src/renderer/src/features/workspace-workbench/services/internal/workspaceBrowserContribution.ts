@@ -43,6 +43,7 @@ export function createWorkspaceBrowserContribution(input: {
   const browserApi = input.browserService.createFeatureHostApi({
     acceptsEvent: isWorkspaceBrowserEvent,
     observeEvent: (event) => analyticsTracker.observeEvent(event),
+    source: "browser",
     workspaceId: input.workspaceId
   });
   const feature = createBrowserNodeFeature({

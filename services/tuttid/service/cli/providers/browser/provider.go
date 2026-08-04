@@ -6,6 +6,7 @@ package browser
 import (
 	"context"
 	"errors"
+	"strings"
 
 	browsersvc "github.com/tutti-os/tutti/services/tuttid/service/browser"
 	cliservice "github.com/tutti-os/tutti/services/tuttid/service/cli"
@@ -18,16 +19,25 @@ var errBrowserUnavailable = errors.New("browser service is unavailable")
 
 // BrowserService is the subset of the daemon browser service the CLI needs.
 type BrowserService interface {
-	CallToolForAgent(ctx context.Context, workspaceID, cwd, agentSessionID, tool string, args map[string]any) (browsersvc.ToolResult, error)
+	CallToolForAgent(ctx context.Context, workspaceID, cwd, agentSessionID, agentTurnID, tool string, args map[string]any) (browsersvc.ToolResult, error)
+}
+
+type AgentTurnReader interface {
+	PersistedActiveTurnID(ctx context.Context, workspaceID, agentSessionID string) (string, error)
 }
 
 type Provider struct {
 	workspaces cliservice.WorkspaceCatalog
 	browser    BrowserService
+	agentTurns AgentTurnReader
 }
 
-func NewProvider(workspaces cliservice.WorkspaceCatalog, browser BrowserService) Provider {
-	return Provider{workspaces: workspaces, browser: browser}
+func NewProvider(workspaces cliservice.WorkspaceCatalog, browser BrowserService, agentTurns ...AgentTurnReader) Provider {
+	var turnReader AgentTurnReader
+	if len(agentTurns) > 0 {
+		turnReader = agentTurns[0]
+	}
+	return Provider{workspaces: workspaces, browser: browser, agentTurns: turnReader}
 }
 
 func (Provider) AppID() string { return appID }
@@ -56,11 +66,24 @@ func (p Provider) call(ctx context.Context, invoke framework.InvokeContext, tool
 	if p.browser == nil {
 		return "", errBrowserUnavailable
 	}
+	agentSessionID := strings.TrimSpace(invoke.Request.Context.AgentSessionID)
+	agentTurnID := ""
+	if tool == "new_page" && agentSessionID != "" && p.agentTurns != nil {
+		resolvedTurnID, err := p.agentTurns.PersistedActiveTurnID(
+			ctx,
+			invoke.WorkspaceID,
+			agentSessionID,
+		)
+		if err == nil {
+			agentTurnID = strings.TrimSpace(resolvedTurnID)
+		}
+	}
 	result, err := p.browser.CallToolForAgent(
 		ctx,
 		invoke.WorkspaceID,
 		"",
-		invoke.Request.Context.AgentSessionID,
+		agentSessionID,
+		agentTurnID,
 		tool,
 		args,
 	)

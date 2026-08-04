@@ -56,14 +56,14 @@ func shouldUseRemoteBuiltin(appPackage workspacebiz.AppPackage, builtin builtina
 		compareWorkspaceAppVersions(builtin.Manifest.Version, appPackage.Version) > 0
 }
 
-func shouldMaterializeRemoteBuiltin(appPackage workspacebiz.AppPackage, builtin builtinapps.App) bool {
+func (s *AppCenterService) shouldMaterializeRemoteBuiltin(appPackage workspacebiz.AppPackage, builtin builtinapps.App) bool {
 	if appPackage.Source != workspacebiz.AppPackageSourceBuiltin || builtin.Distribution.Kind != builtinapps.DistributionRemote {
 		return false
 	}
 	if compareWorkspaceAppVersions(builtin.Manifest.Version, appPackage.Version) > 0 {
 		return true
 	}
-	return validateExtractedAppPackage(appPackage.PackageDir, appPackage.Manifest) != nil
+	return validateExtractedAppPackage(s.ShellAdapter, appPackage.PackageDir, appPackage.Manifest) != nil
 }
 
 func compareWorkspaceAppVersions(left string, right string) int {
@@ -215,21 +215,21 @@ func (s *AppCenterService) materializeBuiltinArchivePackage(ctx context.Context,
 	if err != nil {
 		return workspacebiz.AppPackage{}, err
 	}
-	if err := validateExtractedAppPackage(packageRoot, manifest); err != nil {
+	if err := validateExtractedAppPackage(s.ShellAdapter, packageRoot, manifest); err != nil {
 		return workspacebiz.AppPackage{}, err
 	}
 	if manifest.AppID != builtin.Manifest.AppID || manifest.Version != builtin.Manifest.Version {
 		return workspacebiz.AppPackage{}, fmt.Errorf("remote builtin app manifest mismatch for %q", builtin.Manifest.AppID)
 	}
 
-	packageDir := s.packageCacheDir(manifest.AppID, manifest.Version)
-	if err := os.RemoveAll(packageDir); err != nil {
-		return workspacebiz.AppPackage{}, fmt.Errorf("replace builtin app package dir: %w", err)
+	packageDir, err := replaceWorkspaceAppPackageDir(s.packageCacheDir(manifest.AppID, manifest.Version))
+	if err != nil {
+		return workspacebiz.AppPackage{}, err
 	}
 	if err := copyDirectory(packageRoot, packageDir); err != nil {
 		return workspacebiz.AppPackage{}, fmt.Errorf("copy builtin app package: %w", err)
 	}
-	if err := validateExtractedAppPackage(packageDir, manifest); err != nil {
+	if err := validateExtractedAppPackage(s.ShellAdapter, packageDir, manifest); err != nil {
 		return workspacebiz.AppPackage{}, fmt.Errorf("validate copied builtin app package: %w", err)
 	}
 	appPackage := workspacebiz.AppPackage{

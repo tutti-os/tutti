@@ -5,6 +5,7 @@ import {
   AppWindowIcon,
   Button,
   LockLayoutLinedIcon,
+  DownloadIcon,
   SettingsIcon,
   ShortcutBadge,
   Tooltip,
@@ -83,6 +84,55 @@ export function WorkspaceMissionControlActions({
         <TriggerIcon className="size-4" />
       </WorkspaceMissionControlAction>
     </div>
+  );
+}
+
+/**
+ * Windows keeps the workspace in a custom chrome surface, while the native
+ * Help menu is not discoverable from that surface. Keep the existing native
+ * menu action as the fallback, but expose the same export operation directly
+ * in the Windows header so support logs remain reachable.
+ */
+export function WorkspaceExportLogsAction({
+  platform
+}: {
+  platform: NodeJS.Platform;
+}) {
+  const { t } = useTranslation();
+  const { service: settingsService, state: settingsState } =
+    useWorkspaceSettingsService();
+
+  if (platform !== "win32") {
+    return null;
+  }
+
+  const label = t("workspace.settings.developer.exportLogs");
+  const exporting = settingsState.developerLogs.exporting;
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span className="inline-flex">
+          <Button
+            aria-label={label}
+            className="text-[var(--workbench-chrome-foreground)]"
+            disabled={exporting}
+            size="icon-sm"
+            title={label}
+            type="button"
+            variant="ghost"
+            onClick={() =>
+              void settingsService.exportDeveloperLogs({
+                includeAgentSessions: true,
+                scope: "recent-10-minutes"
+              })
+            }
+          >
+            <DownloadIcon className="size-4" />
+          </Button>
+        </span>
+      </TooltipTrigger>
+      <TooltipContent>{label}</TooltipContent>
+    </Tooltip>
   );
 }
 

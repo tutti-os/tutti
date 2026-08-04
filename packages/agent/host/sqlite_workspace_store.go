@@ -691,6 +691,14 @@ func (s *SQLiteWorkspaceStore) AcceptSubmitClaim(ctx context.Context, workspaceI
 	return store.AcceptSubmitClaim(ctx, workspaceID, sessionID, clientSubmitID, turnID, now)
 }
 
+func (s *SQLiteWorkspaceStore) RejectSubmitClaim(ctx context.Context, workspaceID, sessionID, clientSubmitID, turnID string, now int64) (storesqlite.SubmitClaim, bool, error) {
+	store, err := s.store(workspaceID)
+	if err != nil {
+		return storesqlite.SubmitClaim{}, false, err
+	}
+	return store.RejectSubmitClaim(ctx, workspaceID, sessionID, clientSubmitID, turnID, now)
+}
+
 func (s *SQLiteWorkspaceStore) DeleteSubmitClaim(ctx context.Context, workspaceID, sessionID, clientSubmitID string) (bool, error) {
 	store, err := s.store(workspaceID)
 	if err != nil {
@@ -730,7 +738,8 @@ func composerSettingsPayload(settings *ComposerSettings) map[string]any {
 		return nil
 	}
 	return map[string]any{
-		"model": settings.Model, "permissionModeId": settings.PermissionModeID, "planMode": settings.PlanMode,
+		"codexSaverMode": settings.CodexSaverMode,
+		"model":          settings.Model, "permissionModeId": settings.PermissionModeID, "planMode": settings.PlanMode,
 		"browserUse": settings.BrowserUse, "computerUse": settings.ComputerUse,
 		"reasoningEffort": settings.ReasoningEffort, "speed": settings.Speed,
 		"conversationDetailMode": settings.ConversationDetailMode,

@@ -357,6 +357,7 @@ export interface AgentActivityCreateSessionInput {
   initialDisplayPrompt?: string | null;
   submitDiagnostics?: AgentActivitySubmitDiagnostics;
   browserUse?: boolean | null;
+  codexSaverMode?: boolean | null;
   model?: string | null;
   planMode?: boolean | null;
   permissionModeId?: string | null;
@@ -578,6 +579,7 @@ export interface AgentActivityInteraction {
 }
 
 export type AgentActivitySessionSettings = {
+  codexSaverMode?: boolean | null;
   model?: string | null;
   permissionModeId?: string | null;
   planMode?: boolean | null;

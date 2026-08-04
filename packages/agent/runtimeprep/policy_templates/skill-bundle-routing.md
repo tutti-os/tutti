@@ -31,7 +31,7 @@ Skill usage:
 Execution:
 
 - `{{.CLICommand}}` needs local daemon localhost/IPC access; if unavailable, explain the limitation.
-- Runtime context: session `{{.AgentSessionID}}`, provider `{{.Provider}}`.
+- Runtime context: read session identity from `$TUTTI_AGENT_SESSION_ID` only when required; provider `{{.Provider}}`.
 
 Fallback only when the matching Skill is unavailable:
 

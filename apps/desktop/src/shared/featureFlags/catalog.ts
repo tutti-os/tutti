@@ -10,6 +10,7 @@ export const LAB_AUTOMATION_RULES_FLAG = "lab.automationRules";
 export const LAB_WORKBENCH_SHORTCUTS_FLAG = "lab.workbenchShortcuts";
 export const LAB_AGENT_INPUT_HISTORY_FLAG = "lab.agentInputHistory";
 export const LAB_AGENT_SESSION_FORK_FLAG = "lab.agentSessionFork";
+export const LAB_CODEX_SAVER_MODE_FLAG = "lab.codexSaverMode";
 // Keep the durable key for existing profiles while naming the product concept
 // after Tutti's integration maturity rather than the upstream Agent maturity.
 export const EARLY_ACCESS_AGENT_INTEGRATIONS_FLAG = "lab.previewAgents";
@@ -181,6 +182,13 @@ export const FEATURE_FLAG_DEFINITIONS: readonly FeatureFlagDefinition[] = [
     group: "developer",
     labelKey: "workspace.settings.developer.agentSessionForkLabel",
     descriptionKey: "workspace.settings.developer.agentSessionForkDescription"
+  },
+  {
+    key: LAB_CODEX_SAVER_MODE_FLAG,
+    default: false,
+    group: "developer",
+    labelKey: "workspace.settings.developer.codexSaverModeLabel",
+    descriptionKey: "workspace.settings.developer.codexSaverModeDescription"
   },
   {
     key: EARLY_ACCESS_AGENT_INTEGRATIONS_FLAG,

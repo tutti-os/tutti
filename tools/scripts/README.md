@@ -35,13 +35,21 @@ Current examples include:
 - `build-tutti-app-release.mjs` for packaging an external Tutti app into a zip plus `release.json` and `latest.json`
 - `build-tutti-app-catalog.mjs` for merging app `release.json` files into the App Center remote catalog
 - `build-tutti-app-runtime-catalog.mjs` for merging managed app runtime artifact metadata into the runtime download catalog
+- `apps/desktop/scripts/vendor-managed-posix-shell.mjs` for assembling the
+  pinned minimal managed POSIX shell used by packaged Windows Desktop adapters;
+  CI downloads and verifies the archive from
+  `config/tutti.managed-posix-shell.lock.json`, while local packaging may set
+  `TUTTI_MSYS2_BASE_ARCHIVE` to an already downloaded matching archive
+  (the caller passes the target platform explicitly)
 - `capture-electron-trace.mjs` for recording desktop Electron performance
   traces through CDP stream mode without opening the DevTools Performance export
   UI
 - `run-agent-gui-performance.mjs` for starting an isolated Desktop from a
   consistent backup of the developer database, running a selected AgentGUI or
   window interaction, capturing its exact trace window, and generating
-  report-only JSON and Markdown summaries
+  report-only JSON and Markdown summaries. It reuses a fresh production
+  Desktop bundle when available, so each run starts the isolated Electron
+  process directly instead of starting a new Vite renderer dev server.
 - `lark-log-tool.mjs` for fetching Feishu/Lark message file attachments or Base bug-record attachments with `lark-cli`, extracting Tutti log bundles, summarizing repeated log failures around an anchor time, and optionally watching appended warn/error lines in real time
 
   ```bash

@@ -25,6 +25,7 @@ import {
   analyzeElectronTrace,
   renderElectronTraceMarkdown
 } from "./analyze-electron-trace.mjs";
+import { ensurePreparedDesktopLaunch } from "./prepared-desktop-launch.mjs";
 import {
   agentGuiPerformanceScenarios,
   resolveAgentGuiPerformanceScenario
@@ -110,7 +111,12 @@ export async function main(argv) {
 
     await buildDaemon(daemonPath);
     const cdpPort = await reservePort();
+    const desktopLaunch = await ensurePreparedDesktopLaunch({
+      log,
+      workspaceRoot
+    });
     desktopProcess = startDesktop({
+      ...desktopLaunch,
       cdpPort,
       daemonPath,
       desktopLogPath,
@@ -476,15 +482,22 @@ export function startDesktop(input) {
   const headless = input.headless !== false;
   const command = input.command ?? "pnpm";
   const args = input.args ?? ["dev:desktop"];
+  const launchMode = input.launchMode ? `${input.launchMode} ` : "";
   log(
-    `starting ${headless ? "headless " : ""}isolated Desktop on CDP ${input.cdpPort}`
+    `starting ${headless ? "headless " : ""}${launchMode}isolated Desktop on CDP ${input.cdpPort}`
   );
   const logStream = createWriteStream(input.desktopLogPath, { flags: "w" });
+  const environment = { ...process.env };
+  if (input.launchMode === "prebuilt") {
+    delete environment.ELECTRON_ENTRY;
+    delete environment.ELECTRON_RENDERER_URL;
+    delete environment.NODE_ENV_ELECTRON_VITE;
+  }
   const child = spawn(command, args, {
     cwd: workspaceRoot,
     detached: process.platform !== "win32",
     env: {
-      ...process.env,
+      ...environment,
       ...input.environment,
       TUTTI_ANALYTICS_DISABLED: "1",
       TUTTI_DESKTOP_LOG_OUTPUT: "tee",

@@ -135,6 +135,32 @@ export class SDKMessageRouter {
     if (message.type === "system") {
       const raw = message as unknown as Record<string, unknown>;
       const systemSubtype = stringValue(raw.subtype);
+      const sdkErrorStatus =
+        typeof raw.error_status === "number" ? raw.error_status : undefined;
+      const sdkAssistantError = stringValue(raw.error);
+      if (
+        systemSubtype === "api_retry" &&
+        !parentToolUseID &&
+        (sdkErrorStatus === 401 ||
+          sdkAssistantError === "authentication_failed")
+      ) {
+        // Claude reports an invalid API key as a system api_retry before it
+        // emits the later assistant/result pair. A 401 is definitive, so do
+        // not let the SDK spend several minutes retrying a turn that has not
+        // crossed the provider-acceptance boundary.
+        const turn = this.turns.ensureActive("api_retry");
+        if (turn && !this.turns.lastProviderTurnId.trim()) {
+          this.activeRootAssistantError = "authentication_failed";
+          this.turns.settleActive("turn_failed", {
+            error: "Claude authentication failed",
+            code: "authentication_failed",
+            apiErrorStatus: 401,
+            dispatchDisposition: "rejected"
+          });
+          this.onTerminalConnectionError();
+        }
+        return;
+      }
       if (
         systemSubtype === "api_retry" &&
         raw.error_status === null &&
@@ -171,6 +197,39 @@ export class SDKMessageRouter {
     }
 
     if (message.type === "assistant") {
+      const assistantError = stringValue(
+        (message as unknown as Record<string, unknown>).error
+      );
+      if (
+        !parentToolUseID &&
+        assistantError === "authentication_failed" &&
+        !this.turns.lastProviderTurnId.trim()
+      ) {
+        // An SDK-level failure can arrive before Claude persists the root user
+        // message. Retain the structured failure for the terminal result, but
+        // do not enter identity recovery or publish provider output that has
+        // no durably accepted provider Turn.
+        if (this.turns.ensureActive("assistant")) {
+          this.activeRootAssistantError = assistantError;
+          const failureText =
+            contentBlocksFromMessage(message)
+              .filter((block) => block.type === "text")
+              .map((block) => stringValue(block.text))
+              .find((text) => text.trim()) || "Claude authentication failed";
+          // Authentication failures are definitive before Claude has created
+          // a provider Turn. Settle locally and retire the query immediately;
+          // waiting for the SDK's later result would leave the Host waiting on
+          // an acceptance barrier while the SDK retries the same request.
+          this.turns.settleActive("turn_failed", {
+            error: failureText,
+            code: assistantError,
+            apiErrorStatus: 401,
+            dispatchDisposition: "rejected"
+          });
+          this.onTerminalConnectionError();
+        }
+        return;
+      }
       if (!parentToolUseID) {
         await this.ensureProviderTurnAcceptance("streaming");
       }
@@ -510,13 +569,20 @@ export class SDKMessageRouter {
     ) {
       return;
     }
-    await this.ensureProviderTurnAcceptance("streaming");
+    const assistantError = this.activeRootAssistantError;
+    const rejectedBeforeAcceptance =
+      !this.turns.lastProviderTurnId.trim() &&
+      result.is_error === true &&
+      (result.api_error_status === 401 ||
+        assistantError === "authentication_failed");
+    if (!rejectedBeforeAcceptance) {
+      await this.ensureProviderTurnAcceptance("streaming");
+    }
     if (!this.turns.ensureActive("result")) {
       return;
     }
     const turnId = this.turns.activeId;
     const contextUsageGeneration = this.contextUsageGeneration;
-    const assistantError = this.activeRootAssistantError;
     const terminalConnectionError =
       result.is_error === true &&
       (result.api_error_status === null ||
@@ -571,7 +637,8 @@ export class SDKMessageRouter {
         ...(assistantError ? { code: assistantError } : {}),
         ...(typeof result.api_error_status === "number"
           ? { apiErrorStatus: result.api_error_status }
-          : {})
+          : {}),
+        ...(rejectedBeforeAcceptance ? { dispatchDisposition: "rejected" } : {})
       });
     } else if (!retainRootForBackgroundContinuation) {
       this.turns.settleActive("turn_completed", { stopReason: "end_turn" });

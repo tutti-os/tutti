@@ -16,6 +16,17 @@ const workspaceSource = readFileSync(
   ),
   "utf8"
 );
+const workspaceRuntimeSource = readFileSync(
+  new URL("./AgentSessionReplayWorkspaceRuntime.tsx", import.meta.url),
+  "utf8"
+);
+const composerFooterSource = readFileSync(
+  new URL(
+    "../../workspace-agent/ui/useDesktopAgentGUIComposerFooterAccessory.tsx",
+    import.meta.url
+  ),
+  "utf8"
+);
 const workspaceChromeSource = readFileSync(
   new URL("../../workspace-workbench/ui/WorkspaceChrome.tsx", import.meta.url),
   "utf8"
@@ -37,7 +48,9 @@ const standalonePanelHostsSource = readFileSync(
 
 test("activity replay binding is owned by the bootstrapped workspace renderer", () => {
   assert.doesNotMatch(nodeBodySource, /AgentSessionActivityReplayBinding/);
-  assert.equal(bindingMountCount(workspaceSource), 1);
+  assert.doesNotMatch(nodeBodySource, /useAgentSessionReplayNodeReadiness/);
+  assert.equal(bindingMountCount(workspaceSource), 0);
+  assert.equal(bindingMountCount(workspaceRuntimeSource), 1);
   assert.equal(bindingMountCount(standaloneSource), 0);
   assert.doesNotMatch(
     standaloneSource,
@@ -46,25 +59,38 @@ test("activity replay binding is owned by the bootstrapped workspace renderer", 
 });
 
 test("workspace replay machinery mounts only in the isolated replay runtime", () => {
-  // Coordinator construction and every replay binding hang off the
-  // synchronous replay-runtime flag; normal windows mount none of it.
+  // The normal workspace only keeps a lazy boundary; the coordinator and
+  // bindings live in a replay-only chunk.
   assert.match(workspaceSource, /isAgentSessionReplayRuntime\?\.\(\)/);
   assert.match(
     workspaceSource,
-    /\{replayWorkspaceCoordinator \? \(\s*<WorkspaceAgentSessionActivityReplayBinding\b/
+    /import\("@renderer\/features\/agent-session-replay\/ui\/AgentSessionReplayWorkspaceRuntime\.tsx"\)/
   );
-  assert.match(
+  assert.doesNotMatch(
     workspaceSource,
-    /\{replayWorkspaceCoordinator && workbenchHost \? \(\s*<AgentSessionReplayWorkspaceBinding\b/
-  );
-  assert.match(
-    workspaceSource,
-    /replayRuntimeActive\s*\?\s*new AgentSessionReplayWorkspaceCoordinator\(/
+    /from "@renderer\/features\/agent-session-replay\/(?:ui|services)\/(?:AgentSessionReplayWorkspaceBinding|AgentSessionReplayWorkspaceContext|AgentSessionReplayWorkspaceCoordinator)/
   );
   assert.equal(
-    workspaceSource.match(/new AgentSessionReplayWorkspaceCoordinator\(/g)
-      ?.length,
+    workspaceRuntimeSource.match(
+      /new AgentSessionReplayWorkspaceCoordinator\(/g
+    )?.length,
     1
+  );
+});
+
+test("normal Agent nodes keep replay readiness and composer code out of the hot path", () => {
+  assert.match(
+    nodeBodySource,
+    /import\("\.\.\/\.\.\/agent-session-replay\/ui\/AgentSessionReplayNodeReadiness\.tsx"\)/
+  );
+  assert.match(nodeBodySource, /replayRuntimeActive/);
+  assert.match(
+    composerFooterSource,
+    /import\("\.\.\/\.\.\/agent-session-replay\/ui\/AgentSessionReplayComposerFooterAccessory\.tsx"\)/
+  );
+  assert.doesNotMatch(
+    composerFooterSource,
+    /from "\.\.\/\.\.\/agent-session-replay\/(?:services|ui)\//
   );
 });
 

@@ -6,10 +6,14 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"net/http"
+	"net/url"
+	"strings"
 	"sync"
 	"time"
 
 	authenticated "github.com/tutti-os/tutti/packages/device-link/authenticated"
+	"github.com/tutti-os/tutti/packages/device-link/relaytransport"
 )
 
 const (
@@ -53,6 +57,40 @@ func NewLoopbackLink() (*Link, error) {
 		return nil, err
 	}
 	return &Link{participant: participant}, nil
+}
+
+// DialRelay opens one product-configured Relay byte stream. The mobile
+// binding keeps the Relay endpoint, query, headers, and subprotocol opaque;
+// account, pairing, and target authorization remain owned by the caller.
+// queryJSON and headersJSON encode map[string][]string values so the API stays
+// safe for gomobile bindings.
+func DialRelay(
+	endpoint string,
+	queryJSON string,
+	headersJSON string,
+	subprotocol string,
+	timeoutMillis int64,
+) (*Stream, error) {
+	query, err := decodeRelayValues(queryJSON, "query")
+	if err != nil {
+		return nil, err
+	}
+	headers, err := decodeRelayValues(headersJSON, "headers")
+	if err != nil {
+		return nil, err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), linkTimeout(timeoutMillis))
+	defer cancel()
+	conn, err := relaytransport.Dial(ctx, relaytransport.DialRequest{
+		Endpoint:    endpoint,
+		Query:       query,
+		Header:      http.Header(headers),
+		Subprotocol: subprotocol,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &Stream{conn: conn}, nil
 }
 
 func (l *Link) LocalDescription(timeoutMillis int64) (string, error) {
@@ -217,4 +255,23 @@ func linkTimeout(timeoutMillis int64) time.Duration {
 		return defaultLinkTimeout
 	}
 	return time.Duration(timeoutMillis) * time.Millisecond
+}
+
+func decodeRelayValues(raw, name string) (url.Values, error) {
+	if strings.TrimSpace(raw) == "" {
+		return make(url.Values), nil
+	}
+	var values map[string][]string
+	if err := json.Unmarshal([]byte(raw), &values); err != nil {
+		return nil, fmt.Errorf("decode relay %s: %w", name, err)
+	}
+	result := make(url.Values, len(values))
+	for key, entries := range values {
+		key = strings.TrimSpace(key)
+		if key == "" {
+			return nil, fmt.Errorf("relay %s contains an empty key", name)
+		}
+		result[key] = append([]string(nil), entries...)
+	}
+	return result, nil
 }

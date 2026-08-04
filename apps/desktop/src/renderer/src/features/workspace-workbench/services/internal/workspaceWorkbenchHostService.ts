@@ -227,8 +227,8 @@ export class WorkspaceWorkbenchHostService implements IWorkspaceWorkbenchHostSer
       this.dependencies
     );
     this.hostSessionConfiguration = createWorkbenchHostSessionConfiguration({
-      createSession: (partition) =>
-        new WorkbenchHostSession<
+      createSession: (partition) => {
+        const session = new WorkbenchHostSession<
           WorkspaceWorkbenchHostSessionUpdate,
           WorkspaceWorkbenchHostInput,
           CachedWorkspaceWorkbenchHostInput
@@ -240,7 +240,12 @@ export class WorkspaceWorkbenchHostService implements IWorkspaceWorkbenchHostSer
           partition,
           resolve: (update, current) =>
             this.hostInputResolver.resolve(update, current)
-        })
+        });
+        session.registerDisposable(() => {
+          this.dependencies.browserService.disposeWorkspace(partition.scope.id);
+        });
+        return session;
+      }
     });
     this.dependencies.repository.subscribe(() => {
       this.notifyWallpaperListeners();
