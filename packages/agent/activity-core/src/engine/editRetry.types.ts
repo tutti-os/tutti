@@ -22,6 +22,7 @@ export type AgentActivityEditRetryReasonCode =
   | "history_revision_conflict"
   | "operation_conflict"
   | "recovery_required"
+  | "provider_rejected"
   | "provider_outcome_unknown"
   | "replacement_not_proven_absent";
 

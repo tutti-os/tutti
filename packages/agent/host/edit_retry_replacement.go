@@ -2,6 +2,7 @@ package agenthost
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -24,13 +25,13 @@ func (h *Host) reconcileBlockedEditRetryReadOnly(ctx context.Context, operation 
 	}
 	supported, err := h.historyRuntime.SupportsEffectiveHistory(ctx, RuntimeHistoryInput{WorkspaceID: operation.WorkspaceID, AgentSessionID: operation.AgentSessionID, Provider: session.Provider})
 	if err != nil || !supported {
-		return h.reconcileBlockedEditRetry(ctx, operation, expectedOperationVersion, expectedHistoryRevision, storesqlite.BlockedEditRetryReconcileUnknown, "", nil, "")
+		return h.reconcileBlockedEditRetry(ctx, operation, expectedOperationVersion, expectedHistoryRevision, storesqlite.BlockedEditRetryReconcileUnknown, "", nil, "", nil)
 	}
 	snapshot, err := h.historyRuntime.ReadEffectiveHistory(ctx, RuntimeHistoryInput{
 		WorkspaceID: operation.WorkspaceID, AgentSessionID: operation.AgentSessionID, Provider: session.Provider,
 	})
 	if err != nil {
-		return h.reconcileBlockedEditRetry(ctx, operation, expectedOperationVersion, expectedHistoryRevision, storesqlite.BlockedEditRetryReconcileUnknown, "", nil, "")
+		return h.reconcileBlockedEditRetry(ctx, operation, expectedOperationVersion, expectedHistoryRevision, storesqlite.BlockedEditRetryReconcileUnknown, "", nil, "", nil)
 	}
 	actual := runtimeHistoryTurnIDs(snapshot)
 	disposition, providerTurnID := storesqlite.BlockedEditRetryReconcileUnknown, ""
@@ -50,16 +51,76 @@ func (h *Host) reconcileBlockedEditRetryReadOnly(ctx context.Context, operation 
 			}
 		}
 	}
-	reconciled, reconcileErr := h.reconcileBlockedEditRetry(ctx, operation, expectedOperationVersion, expectedHistoryRevision, disposition, snapshot.ProviderSessionID, actual, providerTurnID)
+	var replacementSubmission *storesqlite.TurnSubmission
+	if disposition == storesqlite.BlockedEditRetryReconcileReplacementPresent {
+		// A provider-history read can prove that the replacement exists before
+		// the local turn has its provider binding. Repair that binding through
+		// the normal activity projection first; this is read-only reconciliation,
+		// never a provider dispatch. If the local repair cannot be committed,
+		// retain the blocked fence and let the next explicit reconcile try again.
+		reconciler, ok := h.runtime.(RuntimeProviderTurnAcceptanceReconciler)
+		if !ok || reconciler.ReconcileProviderTurnAcceptance(ctx, RuntimeProviderTurnAcceptanceInput{
+			WorkspaceID:               operation.WorkspaceID,
+			AgentSessionID:            operation.AgentSessionID,
+			Provider:                  session.Provider,
+			RootTurnID:                payload.ReplacementTurnID,
+			ExpectedProviderSessionID: payload.ProviderSessionID,
+			ExpectedProviderTurnID:    providerTurnID,
+			ClientUserMessageID:       payload.ClientSubmitID,
+		}) != nil {
+			disposition, providerTurnID = storesqlite.BlockedEditRetryReconcileUnknown, ""
+		}
+	}
+	if disposition == storesqlite.BlockedEditRetryReconcileReplacementPresent {
+		replacementSubmission = h.reconciledReplacementSubmission(ctx, operation, payload)
+	}
+	reconciled, reconcileErr := h.reconcileBlockedEditRetry(ctx, operation, expectedOperationVersion, expectedHistoryRevision, disposition, snapshot.ProviderSessionID, actual, providerTurnID, replacementSubmission)
 	if errors.Is(reconcileErr, storesqlite.ErrRuntimeOperationSubjectState) && disposition != storesqlite.BlockedEditRetryReconcileUnknown {
-		return h.reconcileBlockedEditRetry(ctx, operation, expectedOperationVersion, expectedHistoryRevision, storesqlite.BlockedEditRetryReconcileUnknown, "", nil, "")
+		return h.reconcileBlockedEditRetry(ctx, operation, expectedOperationVersion, expectedHistoryRevision, storesqlite.BlockedEditRetryReconcileUnknown, "", nil, "", nil)
 	}
 	return reconciled, reconcileErr
 }
 
-func (h *Host) reconcileBlockedEditRetry(ctx context.Context, operation storesqlite.RuntimeOperation, version, revision int64, disposition storesqlite.BlockedEditRetryReconcileDisposition, providerSessionID string, providerTurns []string, providerTurnID string) (storesqlite.RuntimeOperation, error) {
-	reconciled, _, err := h.effectiveHistory.ReconcileBlockedEditRetry(ctx, storesqlite.ReconcileBlockedEditRetryInput{WorkspaceID: operation.WorkspaceID, OperationID: operation.OperationID, ExpectedOperationVersion: version, ExpectedHistoryRevision: revision, ClientActionID: editRetryClientAction(ctx), ActionIdentity: editRetryRecoveryActionIdentity(EditRetryRecoveryActionReconcile, version, uint64(revision)), Disposition: disposition, ProviderSessionID: providerSessionID, ProviderTurnIDs: providerTurns, ProviderTurnID: providerTurnID, NowUnixMS: h.now().UnixMilli()})
+func (h *Host) reconcileBlockedEditRetry(ctx context.Context, operation storesqlite.RuntimeOperation, version, revision int64, disposition storesqlite.BlockedEditRetryReconcileDisposition, providerSessionID string, providerTurns []string, providerTurnID string, replacementSubmission *storesqlite.TurnSubmission) (storesqlite.RuntimeOperation, error) {
+	reconciled, _, err := h.effectiveHistory.ReconcileBlockedEditRetry(ctx, storesqlite.ReconcileBlockedEditRetryInput{WorkspaceID: operation.WorkspaceID, OperationID: operation.OperationID, ExpectedOperationVersion: version, ExpectedHistoryRevision: revision, ClientActionID: editRetryClientAction(ctx), ActionIdentity: editRetryRecoveryActionIdentity(EditRetryRecoveryActionReconcile, version, uint64(revision)), Disposition: disposition, ProviderSessionID: providerSessionID, ProviderTurnIDs: providerTurns, ProviderTurnID: providerTurnID, ReplacementSubmission: replacementSubmission, NowUnixMS: h.now().UnixMilli()})
 	return reconciled, err
+}
+
+func (h *Host) reconciledReplacementSubmission(ctx context.Context, operation storesqlite.RuntimeOperation, payload storesqlite.EditRetryOperationPayload) *storesqlite.TurnSubmission {
+	if h == nil || h.turnSubmissions == nil {
+		return nil
+	}
+	source, found, err := h.turnSubmissions.GetTurnSubmission(ctx, operation.WorkspaceID, operation.AgentSessionID, operation.TurnID)
+	if err != nil || !found {
+		return nil
+	}
+	input, err := editRetryReplacementInput(source, payload.EditedText)
+	if err != nil {
+		return nil
+	}
+	contentJSON, err := json.Marshal(input.Content)
+	if err != nil {
+		return nil
+	}
+	capabilityRefsJSON, err := json.Marshal(input.CapabilityRefs)
+	if err != nil {
+		return nil
+	}
+	tuttiModeSnapshotJSON, err := json.Marshal(input.TuttiModeSnapshot)
+	if err != nil {
+		return nil
+	}
+	now := h.now().UnixMilli()
+	if now <= 0 {
+		return nil
+	}
+	return &storesqlite.TurnSubmission{
+		WorkspaceID: operation.WorkspaceID, AgentSessionID: operation.AgentSessionID,
+		TurnID: payload.ReplacementTurnID, ContentJSON: string(contentJSON),
+		DisplayPrompt: input.DisplayPrompt, CapabilityRefsJSON: string(capabilityRefsJSON),
+		TuttiModeSnapshotJSON: string(tuttiModeSnapshotJSON), ClientSubmitID: payload.ClientSubmitID,
+		CreatedAtUnixMS: now, UpdatedAtUnixMS: now,
+	}
 }
 
 func (h *Host) reconcileEditRetryReplacement(
@@ -73,14 +134,27 @@ func (h *Host) reconcileEditRetryReplacement(
 		return operation, false, false, editRetryInvariant("replacement checkpoint is invalid")
 	}
 	session, found, err := h.store.GetSession(ctx, operation.WorkspaceID, operation.AgentSessionID)
-	if err != nil || !found {
-		return operation, false, false, err
+	if err != nil {
+		released, releaseErr := h.releaseEditRetry(
+			ctx, operation, owner, storesqlite.EditRetryReasonProviderOutcomeUnknown, err,
+		)
+		return released, false, false, releaseErr
+	}
+	if !found {
+		failed, failErr := h.failEditRetryRecovery(
+			ctx, operation, owner, storesqlite.EditRetryReasonLocalStateInconsistent,
+			ErrSessionNotFound,
+		)
+		return failed, false, false, failErr
 	}
 	snapshot, err := h.historyRuntime.ReadEffectiveHistory(ctx, RuntimeHistoryInput{
 		WorkspaceID: operation.WorkspaceID, AgentSessionID: operation.AgentSessionID, Provider: session.Provider,
 	})
 	if err != nil {
-		return operation, false, false, err
+		released, releaseErr := h.releaseEditRetry(
+			ctx, operation, owner, storesqlite.EditRetryReasonProviderOutcomeUnknown, err,
+		)
+		return released, false, false, releaseErr
 	}
 	if strings.TrimSpace(snapshot.ProviderSessionID) != payload.ProviderSessionID {
 		return operation, false, false, editRetryInvariant(
@@ -119,6 +193,12 @@ func (h *Host) reconcileEditRetryReplacement(
 		nil,
 	)
 	if err != nil {
+		if isTransientEditRetryPersistenceError(err) {
+			released, releaseErr := h.releaseEditRetry(
+				ctx, operation, owner, storesqlite.EditRetryReasonProviderOutcomeUnknown, err,
+			)
+			return released, false, false, releaseErr
+		}
 		failed, failErr := h.failEditRetryRecovery(
 			ctx, operation, owner, storesqlite.EditRetryReasonRecoveryRequired, err,
 		)
@@ -257,8 +337,9 @@ func (h *Host) dispatchEditRetryReplacement(
 	execResult, execErr := h.runtime.Exec(ctx, RuntimeExecInput{
 		WorkspaceID: operation.WorkspaceID, AgentSessionID: operation.AgentSessionID,
 		TurnID: payload.ReplacementTurnID, ClientSubmitID: payload.ClientSubmitID,
-		CapabilityRefs: append([]CapabilityReference(nil), input.CapabilityRefs...),
-		Content:        hydrated, DisplayPrompt: input.DisplayPrompt,
+		CanonicalSubmitOccurredAtUnixMS: claim.CreatedAtUnixMS,
+		CapabilityRefs:                  append([]CapabilityReference(nil), input.CapabilityRefs...),
+		Content:                         hydrated, DisplayPrompt: input.DisplayPrompt,
 		Metadata:           map[string]any{"clientSubmitId": payload.ClientSubmitID},
 		HistoryReplacement: true, RequireProviderAcceptance: true,
 		TuttiModeSnapshot: input.TuttiModeSnapshot,
@@ -278,12 +359,22 @@ func (h *Host) dispatchEditRetryReplacement(
 		if completeErr == nil {
 			return completed, nil
 		}
+		if isTransientEditRetryPersistenceError(completeErr) {
+			return h.releaseEditRetry(
+				ctx, operation, owner, storesqlite.EditRetryReasonProviderOutcomeUnknown, completeErr,
+			)
+		}
 		return h.failEditRetryRecovery(
 			ctx, operation, owner, storesqlite.EditRetryReasonRecoveryRequired, completeErr,
 		)
 	}
 	if strings.TrimSpace(execResult.TurnID) == payload.ReplacementTurnID {
 		if err := h.recordEditRetryReplacementSubmission(ctx, operation, input, hydrated); err != nil {
+			if isTransientEditRetryPersistenceError(err) {
+				return h.releaseEditRetry(
+					ctx, operation, owner, storesqlite.EditRetryReasonProviderOutcomeUnknown, err,
+				)
+			}
 			return h.failEditRetryRecovery(
 				ctx, operation, owner, storesqlite.EditRetryReasonRecoveryRequired, err,
 			)
@@ -291,29 +382,31 @@ func (h *Host) dispatchEditRetryReplacement(
 	}
 	if execResult.ProviderDispatch.Disposition == RuntimeDispatchDispositionNotDispatched {
 		// An intent checkpoint is deliberately not proof that the provider did
-		// nothing. Persist this provider-neutral negative receipt before making
-		// the terminal Abandon action available; a failed persistence leaves the
-		// fence in place and recovery must reconcile instead.
+		// nothing. Persist this provider-neutral negative receipt and stop the
+		// automatic worker. The user may explicitly retry after the durable
+		// recovery boundary; a failed persistence leaves the fence in place and
+		// recovery must reconcile instead.
 		payload.ReplacementNotDispatched = true
 		checkpointed, checkpointErr := h.checkpointEditRetry(ctx, operation, owner, payload)
 		if checkpointErr != nil {
 			return operation, checkpointErr
 		}
-		return h.releaseEditRetry(
-			ctx, checkpointed, owner, storesqlite.EditRetryReasonProviderOutcomeUnknown,
+		return h.blockEditRetryReplacementNotDispatched(
+			ctx, checkpointed, owner, payload,
 			errors.Join(ErrEditRetryResendPending, execErr),
 		)
 	}
 	if execResult.ProviderDispatch.Disposition == RuntimeDispatchDispositionRejected {
-		return h.releaseEditRetry(
-			ctx, operation, owner, storesqlite.EditRetryReasonProviderOutcomeUnknown,
+		return h.blockEditRetryProviderRejected(
+			ctx, operation, owner, payload,
 			errors.Join(ErrEditRetryResendPending, execErr),
 		)
 	}
 	// A timeout or disconnect is not evidence that turn/start was rejected.
-	// Leave the stable ids and replacement_dispatched checkpoint intact; only
-	// a later authoritative history read may complete or authorize a retry.
-	return h.releaseEditRetry(
+	// Keep the stable ids and replacement_dispatched checkpoint fenced, but do
+	// not release the operation into automatic retry: only an authoritative
+	// history read may complete it or grant an explicit retry proof.
+	return h.failEditRetryRecovery(
 		ctx, operation, owner, storesqlite.EditRetryReasonProviderOutcomeUnknown,
 		errors.Join(ErrEditRetryResendPending, execErr),
 	)
@@ -407,6 +500,17 @@ func (h *Host) recordEditRetryReplacementSubmission(
 	if err != nil {
 		return err
 	}
+	claim, _, err := h.store.PrepareSubmitClaim(ctx, storesqlite.SubmitClaimPrepare{
+		WorkspaceID: operation.WorkspaceID, AgentSessionID: operation.AgentSessionID,
+		ClientSubmitID: payload.ClientSubmitID, CanonicalTurnID: payload.ReplacementTurnID,
+		NowUnixMS: h.now().UnixMilli(),
+	})
+	if err != nil {
+		return err
+	}
+	if strings.TrimSpace(claim.CanonicalTurnID) != payload.ReplacementTurnID || claim.CreatedAtUnixMS <= 0 {
+		return storesqlite.ErrSubmitClaimTurnConflict
+	}
 	if reporter, ok := h.runtime.(RuntimeSubmitProvenanceReporter); ok {
 		if hydrated == nil {
 			hydrated = append([]PromptContentBlock(nil), input.Content...)
@@ -422,7 +526,8 @@ func (h *Host) recordEditRetryReplacementSubmission(
 		if err := reporter.DurablyReportSubmitProvenance(ctx, RuntimeSubmitProvenanceInput{
 			WorkspaceID: operation.WorkspaceID, AgentSessionID: operation.AgentSessionID,
 			TurnID: payload.ReplacementTurnID, ClientSubmitID: payload.ClientSubmitID,
-			Content: hydrated, DisplayPrompt: input.DisplayPrompt,
+			CanonicalSubmitOccurredAtUnixMS: claim.CreatedAtUnixMS,
+			Content:                         hydrated, DisplayPrompt: input.DisplayPrompt,
 		}); err != nil {
 			return err
 		}

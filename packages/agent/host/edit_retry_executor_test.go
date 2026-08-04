@@ -1,10 +1,60 @@
 package agenthost
 
 import (
+	"context"
+	"errors"
 	"testing"
 
 	storesqlite "github.com/tutti-os/tutti/packages/agent/store-sqlite"
 )
+
+func TestEditRetryPersistenceRetryRetriesOnlySQLiteContention(t *testing.T) {
+	var calls int
+	err := withEditRetryPersistenceRetry(context.Background(), func(context.Context) error {
+		calls++
+		if calls < 3 {
+			return errors.New("database is locked")
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("persistence transition returned error: %v", err)
+	}
+	if calls != 3 {
+		t.Fatalf("expected two bounded retries and one successful transition, got %d calls", calls)
+	}
+}
+
+func TestEditRetryPersistenceRetryDoesNotReplaySemanticFailure(t *testing.T) {
+	var calls int
+	wantErr := errors.New("runtime operation subject state conflict")
+	err := withEditRetryPersistenceRetry(context.Background(), func(context.Context) error {
+		calls++
+		return wantErr
+	})
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("expected semantic failure to be returned unchanged, got %v", err)
+	}
+	if calls != 1 {
+		t.Fatalf("semantic failure was retried %d times", calls)
+	}
+}
+
+func TestEditRetryPersistenceRetryFinishesAfterAttemptCancellation(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	var transitionCanceled bool
+	err := withEditRetryPersistenceRetry(ctx, func(persistCtx context.Context) error {
+		transitionCanceled = persistCtx.Err() != nil
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("canceled attempt could not converge locally: %v", err)
+	}
+	if transitionCanceled {
+		t.Fatal("local persistence transition inherited provider-attempt cancellation")
+	}
+}
 
 func TestEditRetryExecutorBoundsProviderWorkspaceAndSessionWithoutConstrainingControl(t *testing.T) {
 	executor := newEditRetryExecutor(4)

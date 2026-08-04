@@ -21,6 +21,7 @@ import { projectAgentTurnSummaryRows } from "./agentTurnSummaryProjection";
 
 export interface AgentConversationProjectionOptions {
   avoidGroupingEdits?: boolean;
+  suppressGenericProcessing?: boolean;
 }
 
 const RENDER_IRRELEVANT_TRANSCRIPT_ROW_FIELDS = new Set(["occurredAtUnixMs"]);
@@ -65,7 +66,9 @@ export function projectAgentConversationVM(
     )
   );
   const timelineRows = insertGoalControlRows(normalizedRows, detail);
-  const processing = projectAgentProcessingRow(detail, timelineRows);
+  const processing = options.suppressGenericProcessing
+    ? null
+    : projectAgentProcessingRow(detail, timelineRows);
   const projectedRows = projectAgentMessageFinalText(
     processing ? [...timelineRows, processing] : timelineRows,
     detail

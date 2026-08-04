@@ -3,15 +3,80 @@ package storesqlite
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
 )
 
+func ensureReconciledReplacementSubmissionTx(
+	ctx context.Context,
+	tx *sql.Tx,
+	candidate *TurnSubmission,
+	nowUnixMS int64,
+	workspaceID, agentSessionID, turnID string,
+) (TurnSubmission, bool, error) {
+	stored, found, err := getTurnSubmissionTx(ctx, tx, workspaceID, agentSessionID, turnID)
+	if err != nil {
+		return TurnSubmission{}, false, err
+	}
+	if found {
+		if candidate != nil && !sameTurnSubmissionEnvelope(stored, *candidate) {
+			return TurnSubmission{}, false, ErrTurnSubmissionConflict
+		}
+		return stored, true, nil
+	}
+	if candidate == nil {
+		return TurnSubmission{}, false, nil
+	}
+	value := *candidate
+	value.WorkspaceID = strings.TrimSpace(value.WorkspaceID)
+	value.AgentSessionID = strings.TrimSpace(value.AgentSessionID)
+	value.TurnID = strings.TrimSpace(value.TurnID)
+	value.ClientSubmitID = strings.TrimSpace(value.ClientSubmitID)
+	if value.WorkspaceID != workspaceID || value.AgentSessionID != agentSessionID || value.TurnID != turnID ||
+		value.ClientSubmitID == "" || !json.Valid([]byte(value.ContentJSON)) ||
+		!json.Valid([]byte(value.CapabilityRefsJSON)) || !json.Valid([]byte(value.TuttiModeSnapshotJSON)) {
+		return TurnSubmission{}, false, errors.New("reconciled replacement submission envelope is invalid")
+	}
+	if value.CreatedAtUnixMS <= 0 {
+		value.CreatedAtUnixMS = nowUnixMS
+	}
+	if value.UpdatedAtUnixMS <= 0 {
+		value.UpdatedAtUnixMS = value.CreatedAtUnixMS
+	}
+	if _, err := tx.ExecContext(ctx, `
+INSERT INTO workspace_agent_turn_submissions (
+  workspace_id, agent_session_id, turn_id, content_json, display_prompt,
+  capability_refs_json, tutti_mode_snapshot_json, client_submit_id,
+  created_at_unix_ms, updated_at_unix_ms
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+ON CONFLICT(workspace_id, agent_session_id, turn_id) DO NOTHING
+`, value.WorkspaceID, value.AgentSessionID, value.TurnID, value.ContentJSON, value.DisplayPrompt,
+		value.CapabilityRefsJSON, value.TuttiModeSnapshotJSON, value.ClientSubmitID,
+		value.CreatedAtUnixMS, value.UpdatedAtUnixMS); err != nil {
+		return TurnSubmission{}, false, fmt.Errorf("persist reconciled replacement submission: %w", err)
+	}
+	stored, found, err = getTurnSubmissionTx(ctx, tx, workspaceID, agentSessionID, turnID)
+	if err != nil {
+		return TurnSubmission{}, false, err
+	}
+	if !found {
+		return TurnSubmission{}, false, errors.New("reconciled replacement submission disappeared before it could be read")
+	}
+	if !sameTurnSubmissionEnvelope(stored, value) {
+		return TurnSubmission{}, false, ErrTurnSubmissionConflict
+	}
+	return stored, true, nil
+}
+
 // ReconcileBlockedEditRetry records a Host-classified, read-only provider
 // observation. It never creates a provider dispatch capability: absence is
 // surfaced as an explicit retry action and terminal source-present evidence is
-// safely abandoned. The fence, action ledger and outbox event commit together.
+// safely abandoned. When a provider replacement is already present, its
+// prepared local submit claim may be promoted only after the canonical turn,
+// submission, and provider-history evidence all correlate. The fence, action
+// ledger, claim transition, and outbox event commit together.
 func (s *Store) ReconcileBlockedEditRetry(ctx context.Context, input ReconcileBlockedEditRetryInput) (RuntimeOperation, bool, error) {
 	if s == nil || s.db == nil {
 		return RuntimeOperation{}, false, errors.New("workspace database is not initialized")
@@ -136,6 +201,12 @@ WHERE workspace_id=? AND agent_session_id=? AND turn_id=?`,
 	case BlockedEditRetryReconcileReplacementAbsent:
 		payload.Checkpoint = EditRetryCheckpointReplacementDispatched
 		payload.ReplacementNotDispatched = true
+		// Any prior redispatch proof authorized only the provider attempt that
+		// produced the now-reconciled outcome. Clear it before exposing a fresh
+		// explicit retry action so a stale proof cannot authorize a replay.
+		payload.RedispatchProofIDs = nil
+		payload.RedispatchProofSID = ""
+		payload.RedispatchProofAt = 0
 		encoded, err := EncodeEditRetryOperationPayload(payload)
 		if err != nil {
 			return op, false, err
@@ -164,10 +235,43 @@ WHERE workspace_id=? AND agent_session_id=? AND turn_id=?`,
 		}
 		var submissionID, claimStatus string
 		var canonicalTurnID, claimTurnID sql.NullString
-		if err := tx.QueryRowContext(ctx, `SELECT client_submit_id FROM workspace_agent_turn_submissions WHERE workspace_id=? AND agent_session_id=? AND turn_id=?`, op.WorkspaceID, op.AgentSessionID, replacement.TurnID).Scan(&submissionID); err != nil || strings.TrimSpace(submissionID) != payload.ClientSubmitID {
+		submission, submissionFound, err := ensureReconciledReplacementSubmissionTx(ctx, tx, input.ReplacementSubmission, input.NowUnixMS, op.WorkspaceID, op.AgentSessionID, replacement.TurnID)
+		if err != nil {
+			return op, false, err
+		}
+		if !submissionFound {
 			return op, false, ErrRuntimeOperationSubjectState
 		}
-		if err := tx.QueryRowContext(ctx, `SELECT status,canonical_turn_id,turn_id FROM workspace_agent_submit_claims WHERE workspace_id=? AND agent_session_id=? AND client_submit_id=?`, op.WorkspaceID, op.AgentSessionID, payload.ClientSubmitID).Scan(&claimStatus, &canonicalTurnID, &claimTurnID); err != nil || claimStatus != "accepted" || !canonicalTurnID.Valid || !claimTurnID.Valid || strings.TrimSpace(canonicalTurnID.String) != replacement.TurnID || strings.TrimSpace(claimTurnID.String) != replacement.TurnID {
+		submissionID = submission.ClientSubmitID
+		if strings.TrimSpace(submissionID) != payload.ClientSubmitID {
+			return op, false, ErrRuntimeOperationSubjectState
+		}
+		if err := tx.QueryRowContext(ctx, `SELECT status,canonical_turn_id,turn_id FROM workspace_agent_submit_claims WHERE workspace_id=? AND agent_session_id=? AND client_submit_id=?`, op.WorkspaceID, op.AgentSessionID, payload.ClientSubmitID).Scan(&claimStatus, &canonicalTurnID, &claimTurnID); err != nil {
+			return op, false, ErrRuntimeOperationSubjectState
+		}
+		if !canonicalTurnID.Valid || strings.TrimSpace(canonicalTurnID.String) != replacement.TurnID {
+			return op, false, ErrRuntimeOperationSubjectState
+		}
+		if claimStatus == "prepared" {
+			if claimTurnID.Valid && strings.TrimSpace(claimTurnID.String) != "" {
+				return op, false, ErrRuntimeOperationSubjectState
+			}
+			if err := requireSessionForkSourceWritableTx(ctx, tx, op.WorkspaceID, op.AgentSessionID); err != nil {
+				return op, false, err
+			}
+			changed, err := tx.ExecContext(ctx, `UPDATE workspace_agent_submit_claims SET status='accepted',turn_id=?,updated_at_unix_ms=? WHERE workspace_id=? AND agent_session_id=? AND client_submit_id=? AND status='prepared' AND canonical_turn_id=? AND turn_id IS NULL`, replacement.TurnID, input.NowUnixMS, op.WorkspaceID, op.AgentSessionID, payload.ClientSubmitID, replacement.TurnID)
+			if err != nil {
+				return op, false, err
+			}
+			if ok, err := rowsWereAffected(changed, "promote observed replacement submit claim"); err != nil {
+				return op, false, err
+			} else if !ok {
+				return op, false, ErrRuntimeOperationSubjectState
+			}
+			claimStatus = "accepted"
+			claimTurnID = sql.NullString{String: replacement.TurnID, Valid: true}
+		}
+		if claimStatus != "accepted" || !claimTurnID.Valid || strings.TrimSpace(claimTurnID.String) != replacement.TurnID {
 			return op, false, ErrRuntimeOperationSubjectState
 		}
 		if changed, err := tx.ExecContext(ctx, `UPDATE workspace_agent_turn_history SET replacement_turn_id=?,updated_at_unix_ms=? WHERE workspace_id=? AND agent_session_id=? AND turn_id=? AND history_state='retracted' AND retracted_by_operation_id=?`, replacement.TurnID, input.NowUnixMS, op.WorkspaceID, op.AgentSessionID, op.TurnID, op.OperationID); err != nil {

@@ -111,6 +111,9 @@ read: only `GoalControl`, `AdoptProviderGoal`, `ReconcileGoal`, and recovery
 workers may create or change the durable goal projection. `RecoverCore` is the
 cold-start boundary: it validates ports and performs only local durable
 requeue/invariant work, never claims a runtime operation or calls a provider.
+If local runtime-operation lease requeue cannot commit, Host retains the exact
+lease fence, records a scoped store degradation, and retries that repair from
+the runtime worker after listener publication instead of failing startup.
 After the daemon publishes its listener, `Run` supervises bounded
 post-listener recovery for goals, forks, and stale turns plus the periodic
 workers. Stale settlement is ownership-fenced and skips a session protected by
@@ -180,17 +183,21 @@ means automatic attempts have stopped at the durable age/attempt budget and
 therefore has `automatic=false` and no retry timestamp. `local_state_inconsistent`
 means the operation, exact fence, or history cannot prove a local transition;
 it is session-local blocked recovery, not a daemon failure. Existing
-`provider_outcome_unknown`, `operation_conflict`, and `recovery_required`
-remain distinct stable causes. Raw provider and SQLite diagnostics are never
-reason codes.
+`provider_rejected`, `provider_outcome_unknown`, `operation_conflict`, and
+`recovery_required` remain distinct stable causes. An explicit provider
+rejection is blocked with no automatic retry timestamp; an unknown provider
+outcome remains a reconciliation boundary. A provider-negative
+`not_dispatched` receipt is also blocked without a retry timestamp; only an
+explicit CAS-bound retry or abandon action can advance it. Raw provider and
+SQLite diagnostics are never reason codes.
 
 The contract has three fixed scopes:
 
-| Scope | V2 boundary |
-| --- | --- |
-| Impact | `EditRetryImpactScopeSession`: one exact agent Session. A poisoned or fenced operation can reject only conflicting mutations for that Session; reads, diagnostics, and every other Session remain available. |
-| Retry | One Session plus its provider's bounded attempt/age budget and authoritative reconciliation evidence. Unknown evidence is `blocked`/`reconcile`, never automatic replay. |
-| Data | One workspace operation and its exact Session-history fence, plus affected turn history, action ledger, audit, and outbox facts in the same compound transaction. The daemon is never an operation impact scope. |
+| Scope  | V2 boundary                                                                                                                                                                                                      |
+| ------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Impact | `EditRetryImpactScopeSession`: one exact agent Session. A poisoned or fenced operation can reject only conflicting mutations for that Session; reads, diagnostics, and every other Session remain available.     |
+| Retry  | One Session plus its provider's bounded attempt/age budget and authoritative reconciliation evidence. Unknown evidence is `blocked`/`reconcile`, never automatic replay.                                         |
+| Data   | One workspace operation and its exact Session-history fence, plus affected turn history, action ledger, audit, and outbox facts in the same compound transaction. The daemon is never an operation impact scope. |
 
 Every transition checks the operation ID, operation version, checkpoint, and
 the exact fence owner. Only the operation named by `fence.operation_id` can
@@ -210,6 +217,14 @@ dispatch identity. No absence proof, unknown outcome, or restart can justify a
 blind rollback or replacement replay. Stable reason codes and `availableActions`
 are the only control-plane contract; raw provider or SQLite errors never cross
 this boundary.
+
+Errors detected before a rollback-intent checkpoint (for example, an unsupported
+history capability or invalid local submission) use the compound abort
+transition. It records `rollback_aborted`, marks the operation terminal, and
+restores the exact Session fence in one SQLite transaction. They therefore
+cannot leave an otherwise healthy Session parked in `rollback_pending` or be
+reclaimed after lease expiry. A malformed protocol or claimable terminal
+checkpoint is instead blocked as a session-local recovery incident.
 
 The payload version is also a safety boundary: a missing, unknown, or newer
 saga version is fail-closed and grants neither claim nor execution. Current
@@ -250,6 +265,20 @@ proved its absence from authoritative history; a read-only `reconcile` command
 cannot dispatch provider work. While history is fenced in
 `rollback_pending`, `resend_pending`, or `recovery_required`, ordinary sends
 are rejected rather than appended to an uncertain model context.
+If a read-only provider-history reconciliation is temporarily unavailable, the
+same operation is released to a future `retry_wait` with its fence retained;
+the worker does not hold the lease until expiry or widen the failure to another
+Session.
+If the provider has already accepted the replacement but SQLite reports a
+transient busy/locked error while recording the local acceptance facts, Host
+uses the same scoped `retry_wait` path and keeps `replacement_dispatched`; the
+next reconciliation proves the provider Turn before completing, so it never
+redispatches the provider call. Semantic conflicts and other local invariant
+failures remain blocked for explicit recovery.
+If the provider-attempt context is canceled while Host is unwinding an edit
+retry, the final local transition uses a separate bounded persistence context;
+the operation therefore does not retain its lease merely because the provider
+deadline elapsed. This context is never passed to provider work.
 For `retry_replacement`, Host reads authoritative provider history before any
 database transaction, then calls one compound Store transition. That
 transition CAS-checks the operation/history/fence, binds the proof to the
@@ -326,6 +355,13 @@ remains `blocked` with only `reconcile` available:
 | source present                        | `prepared`                                       | source is still `effective`                                                                                                        | terminal abandoned, release exact fence                                |
 | replacement absent                    | `rollback_confirmed` or `replacement_dispatched` | source is `retracted` by this operation                                                                                            | persist `replacement_dispatched` + absence fact; expose explicit retry |
 | replacement present                   | `replacement_dispatched`                         | source is retracted by this operation and local replacement receipt/submit claim match the provider ID and stable client-submit ID | complete and release exact fence                                       |
+
+When provider history proves a replacement but a crash or local provenance
+failure left its replay envelope missing, Host reconstructs that envelope from
+the original durable submission and the edited text. The Store persists the
+replacement submission, promotes the exact prepared claim, links history, and
+releases the fence in one local transaction. This repair path never calls the
+provider; missing or conflicting source data remains blocked.
 
 Before persisting a `prepared` edit-retry operation, Host records a read-only
 provider-history snapshot as evidence when the runtime can supply one. That

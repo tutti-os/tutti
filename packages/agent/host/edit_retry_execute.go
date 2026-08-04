@@ -30,7 +30,13 @@ func (h *Host) executeEditRetryRuntimeOperation(
 		// V1 has been migrated to either a terminal no-effect record or a
 		// blocked incident. A direct caller must not revive it around the claim
 		// query and reach a provider boundary.
-		return operation, ErrEditRetryRecoveryRequired
+		if h.effectiveHistory == nil {
+			return operation, ErrEditRetryRecoveryRequired
+		}
+		return h.failEditRetryRecovery(
+			ctx, operation, owner, storesqlite.EditRetryReasonOperationConflict,
+			editRetryInvariant("unsupported edit retry saga version %d", payload.SagaVersion),
+		)
 	}
 	history, foundHistory, historyErr := h.effectiveHistory.GetSessionHistory(
 		ctx, operation.WorkspaceID, operation.AgentSessionID,
@@ -86,7 +92,13 @@ func (h *Host) executeEditRetryRuntimeOperation(
 		}
 		payload, _ = storesqlite.DecodeEditRetryOperationPayload(operation.Payload)
 	case storesqlite.EditRetryCheckpointRollbackAborted:
-		return operation, ErrEditRetryNotEligible
+		if h.effectiveHistory == nil {
+			return operation, ErrEditRetryNotEligible
+		}
+		return h.failEditRetryRecovery(
+			ctx, operation, owner, storesqlite.EditRetryReasonOperationConflict,
+			editRetryInvariant("rollback_aborted checkpoint was still claimable"),
+		)
 	}
 	if payload.Checkpoint != storesqlite.EditRetryCheckpointRollbackConfirmed &&
 		payload.Checkpoint != storesqlite.EditRetryCheckpointReplacementDispatched {

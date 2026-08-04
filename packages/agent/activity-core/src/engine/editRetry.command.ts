@@ -56,11 +56,14 @@ function waitForEditRetrySettlement(
       ) {
         return;
       }
+      // A successful host mutation is only an acknowledgement. Keep the
+      // caller pending while the authoritative availability snapshot catches
+      // up; settling here would let a stale projection look complete.
+      if (operation?.commandId === null && operation.status === "reconciling") {
+        return;
+      }
       unsubscribe();
-      if (
-        operation?.status === "succeeded" ||
-        operation?.status === "reconciling"
-      ) {
+      if (operation?.status === "succeeded") {
         resolve(operation);
         return;
       }

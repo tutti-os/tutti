@@ -210,3 +210,40 @@ test("authoritative unchanged availability settles a read-only recovery", () => 
     "succeeded"
   );
 });
+
+test("stale availability cannot roll back a newer recovery CAS tuple", () => {
+  let state = createInitialAgentSessionEngineState();
+  const current = {
+    ...AVAILABLE,
+    availableActions: ["reconcile"] as const,
+    eligible: false,
+    nextAttemptAtUnixMs: 2_000,
+    operationId: "operation-1",
+    operationVersion: 4,
+    recoveryState: "resend_pending" as const,
+    turnId: undefined
+  };
+  state = rootEngineReducer(state, {
+    agentSessionId: "session-1",
+    availability: current,
+    type: "editRetry/availabilityReceived",
+    workspaceId: "workspace-1"
+  }).state;
+
+  const stale = rootEngineReducer(state, {
+    agentSessionId: "session-1",
+    availability: {
+      ...current,
+      nextAttemptAtUnixMs: 1_000,
+      operationVersion: 3,
+      attempt: 1
+    },
+    type: "editRetry/availabilityReceived",
+    workspaceId: "workspace-1"
+  });
+
+  assert.deepEqual(
+    stale.state.editRetry.availabilityBySessionId["session-1"],
+    current
+  );
+});

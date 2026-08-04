@@ -1,16 +1,40 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type {
+  WorkspaceAgentEditRetryAvailability,
   WorkspaceAgentSessionGoalControlResponse,
   WorkspaceAgentSession,
   WorkspaceAgentSessionMessage
 } from "@tutti-os/client-tuttid-ts";
 import {
+  agentActivityEditRetryAvailabilityFromTuttid,
   agentActivityGoalControlResultFromTuttid,
   agentActivityMessageFromTuttidMessage,
   agentActivitySessionFromTuttidSession,
   agentActivityTuttiModeActivationFromTuttid
 } from "./index.ts";
+
+test("edit retry mapping preserves the recovery CAS tuple", () => {
+  const availability = {
+    supported: true,
+    eligible: false,
+    historyRevision: 8,
+    recoveryState: "resend_pending",
+    operationId: "operation-1",
+    operationVersion: 4,
+    automatic: false,
+    nextAttemptAtUnixMs: 0,
+    attempt: 3,
+    availableActions: ["reconcile", "retry_replacement", "abandon"],
+    reasonCode: "replacement_not_proven_absent",
+    impactScope: "session"
+  } satisfies WorkspaceAgentEditRetryAvailability;
+
+  assert.deepEqual(agentActivityEditRetryAvailabilityFromTuttid(availability), {
+    ...availability,
+    availableActions: [...availability.availableActions]
+  });
+});
 
 test("goal control mapping preserves operation evidence and explicit clear", () => {
   const response = {

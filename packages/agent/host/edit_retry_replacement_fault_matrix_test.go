@@ -292,7 +292,7 @@ func replacementUnknownReconcilesOnly(t *testing.T, f *replacementFaultFixture) 
 	f.runtime.execOutcomeUnknown = true
 	f.runtime.execOutcomeUnknownAccepted = true
 	f.runtime.mu.Unlock()
-	if _, _, err := replacementAuthorize(t, f, "unknown"); !errors.Is(err, agenthost.ErrEditRetryResendPending) {
+	if _, _, err := replacementAuthorize(t, f, "unknown"); !errors.Is(err, agenthost.ErrEditRetryRecoveryRequired) {
 		t.Fatalf("error=%v", err)
 	}
 	assertFaultHarnessCheckpoint(t, f.store, f.operationID, storesqlite.EditRetryCheckpointReplacementDispatched, false)

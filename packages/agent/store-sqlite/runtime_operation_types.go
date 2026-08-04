@@ -45,6 +45,7 @@ var (
 	ErrRuntimeOperationLeaseLost        = errors.New("runtime operation lease is not owned by the caller")
 	ErrRuntimeOperationSubjectState     = errors.New("runtime operation subject is not in the required state")
 	ErrRuntimeOperationActionConflict   = errors.New("runtime operation recovery action identity conflicts with an existing client action")
+	ErrRuntimeOperationEventConflict    = errors.New("runtime operation event occurrence conflicts with an existing event")
 )
 
 type RuntimeOperation struct {
@@ -234,7 +235,11 @@ type ReconcileBlockedEditRetryInput struct {
 	ProviderSessionID        string
 	ProviderTurnIDs          []string
 	ProviderTurnID           string
-	NowUnixMS                int64
+	// ReplacementSubmission is a locally reconstructed replay envelope. It is
+	// accepted only after provider history and canonical turn identity prove the
+	// replacement; persisting it never authorizes provider work.
+	ReplacementSubmission *TurnSubmission
+	NowUnixMS             int64
 }
 
 type CompleteEditRetryRuntimeOperationInput struct {
@@ -252,7 +257,11 @@ type FailEditRetryRecoveryInput struct {
 	LeaseOwner  string
 	ReasonCode  EditRetryReasonCode
 	Reason      string
-	NowUnixMS   int64
+	// Payload is an optional edit-retry checkpoint update. When present, it is
+	// committed together with the blocked status and session fence so a
+	// provider rejection cannot leave a half-recorded negative receipt.
+	Payload   *EditRetryOperationPayload
+	NowUnixMS int64
 }
 
 // BlockEditRetryInput records a provider-unknown or otherwise unsafe recovery

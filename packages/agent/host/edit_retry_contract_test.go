@@ -94,6 +94,7 @@ func TestEditRetryContractValues(t *testing.T) {
 		EditRetryReasonCodeHistoryRevisionConflict:    "history_revision_conflict",
 		EditRetryReasonCodeOperationConflict:          "operation_conflict",
 		EditRetryReasonCodeRecoveryRequired:           "recovery_required",
+		EditRetryReasonCodeProviderRejected:           "provider_rejected",
 		EditRetryReasonCodeProviderOutcomeUnknown:     "provider_outcome_unknown",
 		EditRetryReasonCodeReplacementNotProvenAbsent: "replacement_not_proven_absent",
 		EditRetryReasonCodeRolloutDisabled:            "rollout_disabled",

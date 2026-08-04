@@ -37,6 +37,7 @@ const (
 	EditRetryReasonHistoryRevisionConflict    = canonical.EditRetryReasonHistoryRevisionConflict
 	EditRetryReasonOperationConflict          = canonical.EditRetryReasonOperationConflict
 	EditRetryReasonRecoveryRequired           = canonical.EditRetryReasonRecoveryRequired
+	EditRetryReasonProviderRejected           = canonical.EditRetryReasonProviderRejected
 	EditRetryReasonProviderOutcomeUnknown     = canonical.EditRetryReasonProviderOutcomeUnknown
 	EditRetryReasonReplacementNotProvenAbsent = canonical.EditRetryReasonReplacementNotProvenAbsent
 )

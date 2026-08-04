@@ -3,6 +3,7 @@ package agenthost
 import (
 	"context"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -108,6 +109,7 @@ type Host struct {
 	editRetryAdmission          EditRetryAdmissionPolicy
 	editRetryRecovery           EditRetryRecoveryPolicy
 	runtimeOperationHealth      runtimeOperationWorkerHealth
+	startupRequeuePending       atomic.Bool
 	outboxMu                    sync.Mutex
 	goalFencesRestored          sync.Map
 }

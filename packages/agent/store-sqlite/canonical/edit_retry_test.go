@@ -15,6 +15,7 @@ func TestEditRetryReasonVocabularyIsClosed(t *testing.T) {
 		EditRetryReasonHistoryRevisionConflict,
 		EditRetryReasonOperationConflict,
 		EditRetryReasonRecoveryRequired,
+		EditRetryReasonProviderRejected,
 		EditRetryReasonProviderOutcomeUnknown,
 		EditRetryReasonReplacementNotProvenAbsent,
 	}

@@ -88,6 +88,31 @@ func TestRuntimeOperationWorkerBatchIsolatesSessionsAndSkipsBlockedDeferredAfter
 	assertBatchHistoryOwner(t, reopened, "session-c", operationC.OperationID, storesqlite.SessionHistoryRecoveryRequired)
 }
 
+func TestRuntimeOperationWorkerStoreReadFailureIsScopedAndRetryable(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "store-read-isolation.db")
+	runtime := &hostEditRetryRuntime{}
+	_, store, db := openEditRetryRestartFixture(t, dbPath, runtime, true)
+	defer db.Close()
+	seedBatchRunningSession(t, store, "session-healthy", "turn-healthy")
+	operation := prepareBatchCancel(t, store, "operation-store-read", "session-healthy", "turn-healthy", time.Now().UnixMilli())
+	fault := errors.New("injected runtime-operation queue read failure")
+	operations := &failOnceRuntimeOperationListStore{RuntimeOperationStore: store, err: fault}
+	host := newBatchRuntimeOperationHost(store, runtime, operations, &recordingRuntimeOperationPublisher{}, true)
+
+	if err := host.StepRuntimeOperationWorker(t.Context(), false); !errors.Is(err, fault) {
+		t.Fatalf("first StepRuntimeOperationWorker()=%v, want scoped queue read error", err)
+	}
+	if summary := host.RuntimeOperationWorkerSummary(); summary.StoreFailures != 1 {
+		t.Fatalf("worker summary=%#v, want one scoped store failure", summary)
+	}
+	// The next worker tick retries the queue and processes the healthy session;
+	// the previous read failure does not poison the Host or the session.
+	if err := host.StepRuntimeOperationWorker(t.Context(), false); err != nil {
+		t.Fatalf("retry StepRuntimeOperationWorker()=%v", err)
+	}
+	assertBatchOperationStatus(t, store, operation.OperationID, storesqlite.RuntimeOperationStatusCompleted)
+}
+
 func TestEditRetryWorkerHungProviderDoesNotBlockHealthyProviderOrControlOperation(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "edit-retry-hung-provider.db")
 	runtime := newEditRetryIsolationRuntime("session-hung")
@@ -167,6 +192,20 @@ type editRetryIsolationRuntime struct {
 	reads            map[string]int
 	execs            map[string]int
 	turns            map[string][]agenthost.RuntimeHistoryTurn
+}
+
+type failOnceRuntimeOperationListStore struct {
+	agenthost.RuntimeOperationStore
+	err    error
+	failed bool
+}
+
+func (s *failOnceRuntimeOperationListStore) ListClaimableRuntimeOperations(ctx context.Context, input storesqlite.ListClaimableRuntimeOperationsInput) ([]storesqlite.RuntimeOperation, error) {
+	if !s.failed {
+		s.failed = true
+		return nil, s.err
+	}
+	return s.RuntimeOperationStore.ListClaimableRuntimeOperations(ctx, input)
 }
 
 func newEditRetryIsolationRuntime(hungSession string) *editRetryIsolationRuntime {

@@ -103,12 +103,9 @@ func TestEditRetryAdmissionDenyNewDrainsExistingV2(t *testing.T) {
 	if err != nil || !found {
 		t.Fatalf("existing history found=%v error=%v", found, err)
 	}
-	if _, changed, err := store.WakeDeferredEditRetry(t.Context(), storesqlite.WakeDeferredEditRetryInput{
-		WorkspaceID: ref.WorkspaceID, OperationID: operation.OperationID,
-		ExpectedOperationVersion: operation.Version, ExpectedHistoryRevision: int64(history.Revision),
-		ClientActionID: "deny-new-drain-wake", NowUnixMS: time.Now().UnixMilli(),
-	}); err != nil || !changed {
-		t.Fatalf("WakeDeferredEditRetry() changed=%v error=%v", changed, err)
+	if operation.Status != storesqlite.RuntimeOperationStatusBlocked ||
+		history.RecoveryState != storesqlite.SessionHistoryRecoveryResendPending {
+		t.Fatalf("existing operation=%#v history=%#v, want blocked resend-pending state", operation, history)
 	}
 	runtime.mu.Lock()
 	rollbackBefore, execBefore, readsBefore := runtime.rollbackCalls, runtime.execCalls, runtime.historyReads
@@ -120,8 +117,8 @@ func TestEditRetryAdmissionDenyNewDrainsExistingV2(t *testing.T) {
 	runtime.mu.Lock()
 	rollbackAfter, execAfter, readsAfter := runtime.rollbackCalls, runtime.execCalls, runtime.historyReads
 	runtime.mu.Unlock()
-	if rollbackAfter != rollbackBefore || execAfter != execBefore || readsAfter <= readsBefore {
-		t.Fatalf("existing drain calls rollback %d->%d replacement %d->%d reads %d->%d, want read-only reconcile", rollbackBefore, rollbackAfter, execBefore, execAfter, readsBefore, readsAfter)
+	if rollbackAfter != rollbackBefore || execAfter != execBefore || readsAfter != readsBefore {
+		t.Fatalf("blocked operation touched provider: rollback %d->%d replacement %d->%d reads %d->%d", rollbackBefore, rollbackAfter, execBefore, execAfter, readsBefore, readsAfter)
 	}
 	availability, err := denied.GetEditRetryAvailability(t.Context(), ref)
 	if err != nil || availability.OperationID != created.OperationID || availability.RecoveryState != agenthost.EditRetryStateResendPending {
@@ -153,7 +150,7 @@ func TestRecoverCoreDoesNotDrainOrMutateDurableEditRetry(t *testing.T) {
 		EditedText: "edited prompt", ClientOperationID: "edit-cold-start", ExpectedHistoryRevision: 0,
 	})
 	if !errors.Is(err, agenthost.ErrEditRetryResendPending) {
-		t.Fatalf("EditRetry() error = %v, want ErrEditRetryResendPending", err)
+		t.Fatalf("EditRetry() error = %v, want resend pending", err)
 	}
 	runtime.mu.Lock()
 	rollbackBefore, execBefore, readsBefore := runtime.rollbackCalls, runtime.execCalls, runtime.historyReads
@@ -166,8 +163,8 @@ func TestRecoverCoreDoesNotDrainOrMutateDurableEditRetry(t *testing.T) {
 	if err != nil || !found {
 		t.Fatalf("GetRuntimeOperation() found=%v error=%v", found, err)
 	}
-	if operation.Status != storesqlite.RuntimeOperationStatusPrepared {
-		t.Fatalf("operation status = %q, want parked prepared", operation.Status)
+	if operation.Status != storesqlite.RuntimeOperationStatusBlocked {
+		t.Fatalf("operation status = %q, want blocked", operation.Status)
 	}
 	runtime.mu.Lock()
 	defer runtime.mu.Unlock()
@@ -261,23 +258,19 @@ func TestRealHostSafeAbandonRefusesUnknownReplacement(t *testing.T) {
 	result, err := host.EditRetry(t.Context(), ref, "turn-original", agenthost.EditRetryInput{
 		EditedText: "edited prompt", ClientOperationID: "edit-abandon-unknown", ExpectedHistoryRevision: 0,
 	})
-	if !errors.Is(err, agenthost.ErrEditRetryResendPending) {
-		t.Fatalf("EditRetry() error = %v, want resend pending", err)
+	if !errors.Is(err, agenthost.ErrEditRetryRecoveryRequired) {
+		t.Fatalf("EditRetry() error = %v, want session-local recovery", err)
 	}
 	op, found, err := store.GetRuntimeOperation(t.Context(), ref.WorkspaceID, result.OperationID)
 	if err != nil || !found {
 		t.Fatalf("GetRuntimeOperation() found=%v error=%v", found, err)
 	}
 	now := time.Now().Add(2 * time.Second).UnixMilli()
-	op, claimed, err := store.ClaimRuntimeOperationLease(t.Context(), storesqlite.ClaimRuntimeOperationLeaseInput{WorkspaceID: ref.WorkspaceID, OperationID: op.OperationID, LeaseOwner: "safe-abandon-test", NowUnixMS: now, LeaseExpiresAtMS: now + 30_000})
-	if err != nil || !claimed {
-		t.Fatalf("ClaimRuntimeOperationLease() claimed=%v error=%v", claimed, err)
-	}
-	if _, changed, err := store.AbandonEditRetry(t.Context(), storesqlite.AbandonEditRetryInput{WorkspaceID: ref.WorkspaceID, OperationID: op.OperationID, LeaseOwner: "safe-abandon-test", ExpectedOperationVersion: op.Version, ExpectedHistoryRevision: 1, ClientActionID: "host-unknown-abandon", NowUnixMS: now}); !errors.Is(err, storesqlite.ErrRuntimeOperationSubjectState) || changed {
+	if _, changed, err := store.AbandonEditRetry(t.Context(), storesqlite.AbandonEditRetryInput{WorkspaceID: ref.WorkspaceID, OperationID: op.OperationID, LeaseOwner: "safe-abandon-test", ExpectedOperationVersion: op.Version, ExpectedHistoryRevision: 1, ClientActionID: "host-unknown-abandon", NowUnixMS: now}); !errors.Is(err, storesqlite.ErrRuntimeOperationLeaseLost) || changed {
 		t.Fatalf("AbandonEditRetry() changed=%v error=%v, want unknown replacement rejection", changed, err)
 	}
-	if _, err := host.SendInput(t.Context(), ref, agenthost.SendInput{Content: []agenthost.PromptContentBlock{{Type: "text", Text: "must remain fenced"}}}); !errors.Is(err, agenthost.ErrEditRetryResendPending) {
-		t.Fatalf("SendInput() error = %v, want resend-pending fence", err)
+	if _, err := host.SendInput(t.Context(), ref, agenthost.SendInput{Content: []agenthost.PromptContentBlock{{Type: "text", Text: "must remain fenced"}}}); !errors.Is(err, agenthost.ErrEditRetryRecoveryRequired) {
+		t.Fatalf("SendInput() error = %v, want recovery-required fence", err)
 	}
 	availability, err := host.GetEditRetryAvailability(t.Context(), ref)
 	if err != nil {
@@ -414,8 +407,8 @@ func TestRecoverEditRetryCommandUsesDurableActionLedger(t *testing.T) {
 		ExpectedOperationVersion: op.Version, ExpectedHistoryRevision: history.Revision,
 	}
 	first, firstErr := host.RecoverEditRetryCommand(t.Context(), ref, result.OperationID, input)
-	if !errors.Is(firstErr, agenthost.ErrEditRetryResendPending) {
-		t.Fatalf("first RecoverEditRetryCommand() result=%#v error=%v, want resend pending", first, firstErr)
+	if firstErr != nil || first.State != agenthost.EditRetryStateResendPending {
+		t.Fatalf("first RecoverEditRetryCommand() result=%#v error=%v, want explicit resend-pending state", first, firstErr)
 	}
 	runtime.mu.Lock()
 	rollbackBefore, execBefore, readsBefore := runtime.rollbackCalls, runtime.execCalls, runtime.historyReads
@@ -491,8 +484,8 @@ func TestEditRetryReconcileOnlyBlocksUnknownOperationWithoutMutation(t *testing.
 	if err != nil {
 		t.Fatalf("GetRuntimeOperation() error = %v", err)
 	}
-	if !found || operation.Status != storesqlite.RuntimeOperationStatusPrepared {
-		t.Fatalf("operation status = %q found=%v, want parked %q", operation.Status, found, storesqlite.RuntimeOperationStatusPrepared)
+	if !found || operation.Status != storesqlite.RuntimeOperationStatusBlocked {
+		t.Fatalf("operation status = %q found=%v, want blocked", operation.Status, found)
 	}
 
 	// The operation keeps its session fence while deferred.
@@ -503,12 +496,6 @@ func TestEditRetryReconcileOnlyBlocksUnknownOperationWithoutMutation(t *testing.
 	if history.RecoveryState != storesqlite.SessionHistoryRecoveryResendPending {
 		t.Fatalf("post-core recovery_state = %q, want fenced %q", history.RecoveryState, storesqlite.SessionHistoryRecoveryResendPending)
 	}
-	if _, changed, wakeErr := store.WakeDeferredEditRetry(t.Context(), storesqlite.WakeDeferredEditRetryInput{
-		WorkspaceID: "workspace-1", OperationID: operationID, ExpectedOperationVersion: operation.Version,
-		ExpectedHistoryRevision: int64(history.Revision), ClientActionID: "disabled-unknown-quarantine", NowUnixMS: time.Now().UnixMilli(),
-	}); wakeErr != nil || !changed {
-		t.Fatalf("WakeDeferredEditRetry(disabled unknown) changed=%v error=%v", changed, wakeErr)
-	}
 	if err := disabled.StepRuntimeOperationWorker(t.Context(), false); err != nil {
 		t.Fatalf("reconcile-only StepRuntimeOperationWorker() = %v", err)
 	}
@@ -517,8 +504,8 @@ func TestEditRetryReconcileOnlyBlocksUnknownOperationWithoutMutation(t *testing.
 		t.Fatalf("disabled unknown operation=%#v found=%v error=%v, want blocked", operation, found, err)
 	}
 	history, found, err = store.GetSessionHistory(t.Context(), "workspace-1", "session-1")
-	if err != nil || !found || history.OperationID != operationID || history.RecoveryState != storesqlite.SessionHistoryRecoveryRequired {
-		t.Fatalf("reconcile-only unknown fence=%#v found=%v error=%v, want retained blocked fence", history, found, err)
+	if err != nil || !found || history.OperationID != operationID || history.RecoveryState != storesqlite.SessionHistoryRecoveryResendPending {
+		t.Fatalf("reconcile-only fence=%#v found=%v error=%v, want retained resend-pending fence", history, found, err)
 	}
 
 	// Cold recovery is local-only: it must not re-engage the provider.
@@ -551,28 +538,19 @@ func TestEditRetryAdmissionDenyNewPreservesBlockedFenceOnSend(t *testing.T) {
 	if !errors.Is(err, agenthost.ErrEditRetryResendPending) {
 		t.Fatalf("EditRetry() error = %v, want ErrEditRetryResendPending", err)
 	}
-	now := time.Now().Add(2 * time.Second).UnixMilli()
-	if _, claimed, claimErr := store.ClaimRuntimeOperationLease(t.Context(), storesqlite.ClaimRuntimeOperationLeaseInput{
-		WorkspaceID: "workspace-1", OperationID: result.OperationID,
-		LeaseOwner: "legacy-worker", NowUnixMS: now, LeaseExpiresAtMS: now + 30_000,
-	}); claimErr != nil || !claimed {
-		t.Fatalf("ClaimRuntimeOperationLease() claimed=%v error=%v", claimed, claimErr)
+	operation, found, operationErr := store.GetRuntimeOperation(t.Context(), "workspace-1", result.OperationID)
+	if operationErr != nil || !found || operation.Status != storesqlite.RuntimeOperationStatusBlocked {
+		t.Fatalf("blocked operation=%#v found=%v error=%v", operation, found, operationErr)
 	}
-	if _, changed, failErr := store.FailEditRetryRecovery(t.Context(), storesqlite.FailEditRetryRecoveryInput{
-		WorkspaceID: "workspace-1", OperationID: result.OperationID, LeaseOwner: "legacy-worker",
-		ReasonCode: storesqlite.EditRetryReasonRecoveryRequired, NowUnixMS: now,
-	}); failErr != nil || !changed {
-		t.Fatalf("FailEditRetryRecovery() changed=%v error=%v", changed, failErr)
-	}
-	if history, _, _ := store.GetSessionHistory(t.Context(), "workspace-1", "session-1"); history.RecoveryState != storesqlite.SessionHistoryRecoveryRequired {
-		t.Fatalf("legacy recovery_state = %q, want %q", history.RecoveryState, storesqlite.SessionHistoryRecoveryRequired)
+	if history, _, _ := store.GetSessionHistory(t.Context(), "workspace-1", "session-1"); history.RecoveryState != storesqlite.SessionHistoryRecoveryResendPending {
+		t.Fatalf("recovery_state = %q, want %q", history.RecoveryState, storesqlite.SessionHistoryRecoveryResendPending)
 	}
 
 	// Guard: the enabled host's send gate rejects this state, proving SendInput
 	// reaches the effective-history fence in this fixture.
 	prompt := agenthost.SendInput{Content: []agenthost.PromptContentBlock{{Type: "text", Text: "hello again"}}}
-	if _, sendErr := enabled.SendInput(t.Context(), ref, prompt); !errors.Is(sendErr, agenthost.ErrEditRetryRecoveryRequired) {
-		t.Fatalf("SendInput(enabled) error = %v, want ErrEditRetryRecoveryRequired", sendErr)
+	if _, sendErr := enabled.SendInput(t.Context(), ref, prompt); !errors.Is(sendErr, agenthost.ErrEditRetryResendPending) {
+		t.Fatalf("SendInput(enabled) error = %v, want ErrEditRetryResendPending", sendErr)
 	}
 
 	// Core recovery is non-fatal and cannot see the blocked operation, so the
@@ -581,18 +559,18 @@ func TestEditRetryAdmissionDenyNewPreservesBlockedFenceOnSend(t *testing.T) {
 	if recErr := disabled.RecoverCore(t.Context()); recErr != nil {
 		t.Fatalf("RecoverCore(disabled) = %v, want nil", recErr)
 	}
-	if history, _, _ := store.GetSessionHistory(t.Context(), "workspace-1", "session-1"); history.RecoveryState != storesqlite.SessionHistoryRecoveryRequired {
-		t.Fatalf("post-recovery recovery_state = %q, want it untouched (%q)", history.RecoveryState, storesqlite.SessionHistoryRecoveryRequired)
+	if history, _, _ := store.GetSessionHistory(t.Context(), "workspace-1", "session-1"); history.RecoveryState != storesqlite.SessionHistoryRecoveryResendPending {
+		t.Fatalf("post-recovery recovery_state = %q, want it untouched (%q)", history.RecoveryState, storesqlite.SessionHistoryRecoveryResendPending)
 	}
 
-	if _, sendErr := disabled.SendInput(t.Context(), ref, prompt); !errors.Is(sendErr, agenthost.ErrEditRetryRecoveryRequired) {
+	if _, sendErr := disabled.SendInput(t.Context(), ref, prompt); !errors.Is(sendErr, agenthost.ErrEditRetryResendPending) {
 		t.Fatalf("SendInput(disabled) error = %v, want blocked fence preserved", sendErr)
 	}
 	history, found, err := store.GetSessionHistory(t.Context(), "workspace-1", "session-1")
 	if err != nil || !found {
 		t.Fatalf("GetSessionHistory() found=%v error=%v", found, err)
 	}
-	if history.RecoveryState != storesqlite.SessionHistoryRecoveryRequired {
-		t.Fatalf("post-send recovery_state = %q, want %q", history.RecoveryState, storesqlite.SessionHistoryRecoveryRequired)
+	if history.RecoveryState != storesqlite.SessionHistoryRecoveryResendPending {
+		t.Fatalf("post-send recovery_state = %q, want %q", history.RecoveryState, storesqlite.SessionHistoryRecoveryResendPending)
 	}
 }

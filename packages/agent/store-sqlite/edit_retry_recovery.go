@@ -43,16 +43,17 @@ func (s *Store) AbandonEditRetry(ctx context.Context, input AbandonEditRetryInpu
 	if found && op.Status == RuntimeOperationStatusCompleted && op.Result == RuntimeOperationResultAbandoned {
 		return op, false, nil
 	}
-	preparedCAS := found && op.Status == RuntimeOperationStatusPrepared && op.Version == input.ExpectedOperationVersion
-	leasedOwner := validEditRetryLease(op, found, input.LeaseOwner, input.NowUnixMS) && op.Version == input.ExpectedOperationVersion
-	if !preparedCAS && !leasedOwner {
-		return op, false, ErrRuntimeOperationLeaseLost
-	}
 	payload, err := DecodeEditRetryOperationPayload(op.Payload)
 	if err != nil {
 		return op, false, err
 	}
 	safeReplacementNonDispatch := payload.Checkpoint == EditRetryCheckpointReplacementDispatched && payload.ReplacementNotDispatched
+	preparedCAS := found && op.Status == RuntimeOperationStatusPrepared && op.Version == input.ExpectedOperationVersion
+	blockedCAS := found && op.Status == RuntimeOperationStatusBlocked && safeReplacementNonDispatch && op.LastError == string(EditRetryReasonReplacementNotProvenAbsent) && op.Version == input.ExpectedOperationVersion
+	leasedOwner := validEditRetryLease(op, found, input.LeaseOwner, input.NowUnixMS) && op.Version == input.ExpectedOperationVersion
+	if !preparedCAS && !blockedCAS && !leasedOwner {
+		return op, false, ErrRuntimeOperationLeaseLost
+	}
 	if payload.Checkpoint != EditRetryCheckpointPrepared &&
 		payload.Checkpoint != EditRetryCheckpointRollbackConfirmed &&
 		!safeReplacementNonDispatch {
@@ -93,8 +94,16 @@ func (s *Store) AbandonEditRetry(ctx context.Context, input AbandonEditRetryInpu
 	if _, err := tx.ExecContext(ctx, `INSERT INTO workspace_agent_runtime_operation_recovery_actions (workspace_id, operation_id, client_action_id, action_kind, action_identity, created_at_unix_ms) VALUES (?, ?, ?, 'abandon', ?, ?)`, op.WorkspaceID, op.OperationID, input.ClientActionID, actionIdentity, input.NowUnixMS); err != nil {
 		return RuntimeOperation{}, false, fmt.Errorf("record edit retry abandon action: %w", err)
 	}
-	completionSQL := `UPDATE workspace_agent_runtime_operations SET status = 'completed', result = 'abandoned', lease_owner = NULL, lease_expires_at_unix_ms = NULL, next_attempt_at_unix_ms = NULL, version = version + 1, last_error = 'abandoned', updated_at_unix_ms = ?, completed_at_unix_ms = ? WHERE workspace_id = ? AND operation_id = ? AND status = 'leased' AND lease_owner = ? AND version = ?`
-	completionArgs := []any{input.NowUnixMS, input.NowUnixMS, op.WorkspaceID, op.OperationID, input.LeaseOwner, input.ExpectedOperationVersion}
+	completionStatus := RuntimeOperationStatusPrepared
+	if blockedCAS {
+		completionStatus = RuntimeOperationStatusBlocked
+	}
+	completionSQL := `UPDATE workspace_agent_runtime_operations SET status = 'completed', result = 'abandoned', lease_owner = NULL, lease_expires_at_unix_ms = NULL, next_attempt_at_unix_ms = NULL, version = version + 1, last_error = 'abandoned', updated_at_unix_ms = ?, completed_at_unix_ms = ? WHERE workspace_id = ? AND operation_id = ? AND status = ? AND version = ?`
+	completionArgs := []any{input.NowUnixMS, input.NowUnixMS, op.WorkspaceID, op.OperationID, completionStatus, input.ExpectedOperationVersion}
+	if leasedOwner {
+		completionSQL = `UPDATE workspace_agent_runtime_operations SET status = 'completed', result = 'abandoned', lease_owner = NULL, lease_expires_at_unix_ms = NULL, next_attempt_at_unix_ms = NULL, version = version + 1, last_error = 'abandoned', updated_at_unix_ms = ?, completed_at_unix_ms = ? WHERE workspace_id = ? AND operation_id = ? AND status = 'leased' AND lease_owner = ? AND version = ?`
+		completionArgs = []any{input.NowUnixMS, input.NowUnixMS, op.WorkspaceID, op.OperationID, input.LeaseOwner, input.ExpectedOperationVersion}
+	}
 	if preparedCAS {
 		completionSQL = `UPDATE workspace_agent_runtime_operations SET status = 'completed', result = 'abandoned', lease_owner = NULL, lease_expires_at_unix_ms = NULL, next_attempt_at_unix_ms = NULL, version = version + 1, last_error = 'abandoned', updated_at_unix_ms = ?, completed_at_unix_ms = ? WHERE workspace_id = ? AND operation_id = ? AND status = 'prepared' AND version = ?`
 		completionArgs = []any{input.NowUnixMS, input.NowUnixMS, op.WorkspaceID, op.OperationID, input.ExpectedOperationVersion}

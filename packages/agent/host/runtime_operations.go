@@ -398,6 +398,17 @@ func (h *Host) StepRuntimeOperationWorker(ctx context.Context, recovering bool) 
 	if h == nil || h.operations == nil {
 		return nil
 	}
+	if h.startupRequeuePending.Load() {
+		if _, err := h.operations.RequeueLeasedRuntimeOperationsOnStartup(ctx, h.now().UnixMilli()); err != nil {
+			h.recordRuntimeOperationWorkerFailure("store")
+			logRuntimeOperationFailure(
+				storesqlite.RuntimeOperation{},
+				fmt.Errorf("retry startup runtime-operation requeue: %w", err),
+			)
+		} else {
+			h.startupRequeuePending.Store(false)
+		}
+	}
 	// Keep the ordinary runtime-operation queue byte-for-byte aligned with the
 	// upstream synchronous worker contract. Edit retry is deliberately absent
 	// from this query and handled by its own recovery queue below, so a hung
@@ -406,6 +417,11 @@ func (h *Host) StepRuntimeOperationWorker(ctx context.Context, recovering bool) 
 	claimInput := storesqlite.ListClaimableRuntimeOperationsInput{NowUnixMS: h.now().UnixMilli(), Limit: runtimeOperationBatchSize}
 	operations, err := h.operations.ListClaimableRuntimeOperations(ctx, claimInput)
 	if err != nil {
+		// A durable queue read failure is scoped to this worker tick. The
+		// long-running worker records it and keeps its lifecycle alive; callers
+		// of StepRuntimeOperationWorker may still observe the diagnostic error,
+		// but it must never become a Host startup failure.
+		h.recordRuntimeOperationWorkerFailure("store")
 		return err
 	}
 	var processErrors []error
@@ -478,7 +494,20 @@ func (h *Host) RecoverCore(ctx context.Context) error {
 	}
 	if h.operations != nil {
 		if _, err := h.operations.RequeueLeasedRuntimeOperationsOnStartup(ctx, h.now().UnixMilli()); err != nil {
-			return fmt.Errorf("requeue leased runtime operations on startup: %w", err)
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
+			// Keep the exact lease/fence intact and retry after listener
+			// publication. A local runtime-operation repair failure is a scoped
+			// degradation, never a daemon-startup failure.
+			h.startupRequeuePending.Store(true)
+			h.recordRuntimeOperationWorkerFailure("store")
+			logRuntimeOperationFailure(
+				storesqlite.RuntimeOperation{},
+				fmt.Errorf("defer startup runtime-operation requeue: %w", err),
+			)
+		} else {
+			h.startupRequeuePending.Store(false)
 		}
 	}
 	// These transitions touch only canonical SQLite rows. They intentionally

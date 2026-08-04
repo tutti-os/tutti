@@ -175,6 +175,67 @@ func TestEditRetryRetryReasonTransitionsAreDurable(t *testing.T) {
 	})
 }
 
+func TestBlockEditRetryProviderRejectionCommitsReceiptAndFenceAtomically(t *testing.T) {
+	store := openTestStore(t, testOptions(&staticProjectPaths{}))
+	ctx := context.Background()
+	op, payload := prepareEditRetryReplacementPhase(t, store, "operation-provider-rejected")
+	if _, _, err := store.PrepareSubmitClaim(ctx, SubmitClaimPrepare{
+		WorkspaceID: "ws-1", AgentSessionID: "session-1",
+		ClientSubmitID: payload.ClientSubmitID, CanonicalTurnID: payload.ReplacementTurnID, NowUnixMS: 29,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	payload.ReplacementNotDispatched = true
+	payload.RedispatchProofIDs = nil
+	payload.RedispatchProofSID = ""
+	payload.RedispatchProofAt = 0
+	if _, err := store.db.ExecContext(ctx, `
+CREATE TRIGGER fail_provider_rejection_event BEFORE INSERT ON workspace_agent_runtime_operation_events
+WHEN NEW.operation_id='operation-provider-rejected'
+BEGIN SELECT RAISE(ABORT, 'forced provider rejection event failure'); END;
+`); err != nil {
+		t.Fatal(err)
+	}
+	if _, changed, err := store.BlockEditRetry(ctx, BlockEditRetryInput{
+		WorkspaceID: "ws-1", OperationID: op.OperationID, LeaseOwner: "worker-a",
+		ReasonCode: EditRetryReasonProviderRejected, Payload: &payload, NowUnixMS: 30,
+	}); err == nil || changed || !strings.Contains(err.Error(), "forced provider rejection event failure") {
+		t.Fatalf("failed provider rejection block changed=%v error=%v", changed, err)
+	}
+	current, found, err := store.GetRuntimeOperation(ctx, "ws-1", op.OperationID)
+	if err != nil || !found || current.Status != RuntimeOperationStatusLeased || current.LeaseOwner != "worker-a" {
+		t.Fatalf("operation after failed rejection block=%#v found=%v error=%v", current, found, err)
+	}
+	if rejectedPayload := decodeEditRetryPayloadTest(t, current); rejectedPayload.ReplacementNotDispatched {
+		t.Fatalf("negative receipt was half committed: %#v", rejectedPayload)
+	}
+	claim, found, err := store.GetSubmitClaim(ctx, "ws-1", "session-1", payload.ClientSubmitID)
+	if err != nil || !found || claim.Status != "prepared" {
+		t.Fatalf("claim after failed rejection block=%#v found=%v error=%v, want prepared", claim, found, err)
+	}
+	assertSessionHistory(t, store, "session-1", 1, SessionHistoryRecoveryResendPending)
+	if _, err := store.db.ExecContext(ctx, `DROP TRIGGER fail_provider_rejection_event`); err != nil {
+		t.Fatal(err)
+	}
+	blocked, changed, err := store.BlockEditRetry(ctx, BlockEditRetryInput{
+		WorkspaceID: "ws-1", OperationID: op.OperationID, LeaseOwner: "worker-a",
+		ReasonCode: EditRetryReasonProviderRejected, Payload: &payload, NowUnixMS: 31,
+	})
+	if err != nil || !changed || blocked.Status != RuntimeOperationStatusBlocked ||
+		blocked.LastError != string(EditRetryReasonProviderRejected) || blocked.NextAttemptAtMS != 0 {
+		t.Fatalf("provider rejection block=%#v changed=%v error=%v", blocked, changed, err)
+	}
+	storedPayload := decodeEditRetryPayloadTest(t, blocked)
+	if !storedPayload.ReplacementNotDispatched || storedPayload.RedispatchProofAt != 0 {
+		t.Fatalf("provider rejection payload=%#v, want durable negative receipt", storedPayload)
+	}
+	claim, found, err = store.GetSubmitClaim(ctx, "ws-1", "session-1", payload.ClientSubmitID)
+	if err != nil || !found || claim.Status != "rejected" || claim.TurnID != payload.ReplacementTurnID {
+		t.Fatalf("claim after provider rejection block=%#v found=%v error=%v, want rejected", claim, found, err)
+	}
+	assertSessionHistory(t, store, "session-1", 1, SessionHistoryRecoveryRequired)
+}
+
 func TestPrepareEditRetryAtomicallyFencesTheSession(t *testing.T) {
 	store := openTestStore(t, testOptions(&staticProjectPaths{}))
 	ctx := context.Background()
@@ -492,6 +553,36 @@ func prepareAbandonEventFixture(t *testing.T, s *Store, id string, confirmed boo
 
 func TestEditRetryAbortAndRecoveryFailureAreAtomic(t *testing.T) {
 	t.Parallel()
+	t.Run("pre-effect local failure restores the session fence", func(t *testing.T) {
+		store := openTestStore(t, testOptions(&staticProjectPaths{}))
+		ctx := context.Background()
+		seedEditRetryTurn(t, store, "turn-original", "provider-original", 20, "submit-original")
+		if _, _, err := store.PrepareRuntimeOperation(ctx, editRetryPrepare("operation-pre-effect", "turn-original", "client-pre-effect", 0)); err != nil {
+			t.Fatal(err)
+		}
+		claimRuntimeOperation(t, store, "operation-pre-effect", "worker-pre-effect")
+		failed, changed, err := store.AbortEditRetryRollback(ctx, AbortEditRetryRollbackInput{
+			WorkspaceID: "ws-1", OperationID: "operation-pre-effect", LeaseOwner: "worker-pre-effect",
+			ReasonCode: EditRetryReasonProviderUnsupported, NowUnixMS: 21,
+		})
+		if err != nil || !changed || failed.Status != RuntimeOperationStatusFailed {
+			t.Fatalf("pre-effect abort changed=%v op=%#v error=%v", changed, failed, err)
+		}
+		payload, err := DecodeEditRetryOperationPayload(failed.Payload)
+		if err != nil || payload.Checkpoint != EditRetryCheckpointRollbackAborted {
+			t.Fatalf("pre-effect payload=%#v error=%v, want rollback_aborted", payload, err)
+		}
+		assertSessionHistory(t, store, "session-1", 0, SessionHistoryRecoveryReady)
+		claimable, err := store.ListClaimableEditRetryOperations(ctx, ListClaimableRuntimeOperationsInput{NowUnixMS: 22})
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, operation := range claimable {
+			if operation.OperationID == "operation-pre-effect" {
+				t.Fatal("pre-effect failed operation remained claimable")
+			}
+		}
+	})
 	t.Run("abort proven rejection restores ready", func(t *testing.T) {
 		store := openTestStore(t, testOptions(&staticProjectPaths{}))
 		ctx := context.Background()
@@ -958,7 +1049,20 @@ func TestReconcileBlockedEditRetryValidatesCanonicalCheckpointCombinations(t *te
 	})
 	t.Run("replacement absence advances the exact authorization checkpoint", func(t *testing.T) {
 		store := openTestStore(t, testOptions(&staticProjectPaths{}))
-		op, _ := prepareEditRetryReplacementPhase(t, store, "operation-replacement-absent")
+		op, payload := prepareEditRetryReplacementPhase(t, store, "operation-replacement-absent")
+		payload.RedispatchProofIDs = []string{"stale-provider-replacement"}
+		payload.RedispatchProofSID = "provider-session-1"
+		payload.RedispatchProofAt = 29
+		payloadMap, err := EncodeEditRetryOperationPayload(payload)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, changed, err := store.CheckpointRuntimeOperation(ctx, CheckpointRuntimeOperationInput{
+			WorkspaceID: "ws-1", OperationID: op.OperationID, LeaseOwner: "worker-a",
+			Payload: payloadMap, NowUnixMS: 29,
+		}); err != nil || !changed {
+			t.Fatalf("seed stale redispatch proof changed=%v error=%v", changed, err)
+		}
 		blocked, changed, err := store.BlockEditRetry(ctx, BlockEditRetryInput{
 			WorkspaceID: "ws-1", OperationID: op.OperationID, LeaseOwner: "worker-a",
 			ReasonCode: EditRetryReasonProviderOutcomeUnknown, NowUnixMS: 30,
@@ -975,8 +1079,8 @@ func TestReconcileBlockedEditRetryValidatesCanonicalCheckpointCombinations(t *te
 		if err != nil || !changed || reconciled.Status != RuntimeOperationStatusBlocked {
 			t.Fatalf("reconcile=%#v changed=%v error=%v", reconciled, changed, err)
 		}
-		payload := decodeEditRetryPayloadTest(t, reconciled)
-		if payload.Checkpoint != EditRetryCheckpointReplacementDispatched || !payload.ReplacementNotDispatched {
+		payload = decodeEditRetryPayloadTest(t, reconciled)
+		if payload.Checkpoint != EditRetryCheckpointReplacementDispatched || !payload.ReplacementNotDispatched || payload.RedispatchProofAt != 0 || len(payload.RedispatchProofIDs) != 0 || payload.RedispatchProofSID != "" {
 			t.Fatalf("absence payload=%#v, want durable replacement-dispatched absence", payload)
 		}
 		assertSessionHistory(t, store, "session-1", 1, SessionHistoryRecoveryResendPending)
@@ -1002,7 +1106,15 @@ func TestReconcileBlockedEditRetryValidatesCanonicalCheckpointCombinations(t *te
 		store := openTestStore(t, testOptions(&staticProjectPaths{}))
 		op, payload := prepareEditRetryReplacementPhase(t, store, "operation-replacement-present")
 		seedEditRetryTurn(t, store, payload.ReplacementTurnID, "provider-replacement", 30, payload.ClientSubmitID)
-		acceptEditRetrySubmitClaim(t, store, payload.ClientSubmitID, payload.ReplacementTurnID, 31)
+		if _, err := store.db.ExecContext(ctx, `DELETE FROM workspace_agent_turn_submissions WHERE workspace_id='ws-1' AND agent_session_id='session-1' AND turn_id=?`, payload.ReplacementTurnID); err != nil {
+			t.Fatal(err)
+		}
+		if _, created, err := store.PrepareSubmitClaim(ctx, SubmitClaimPrepare{
+			WorkspaceID: "ws-1", AgentSessionID: "session-1", ClientSubmitID: payload.ClientSubmitID,
+			CanonicalTurnID: payload.ReplacementTurnID, NowUnixMS: 31,
+		}); err != nil || !created {
+			t.Fatalf("prepare replacement submit claim created=%v error=%v", created, err)
+		}
 		blocked, changed, err := store.BlockEditRetry(ctx, BlockEditRetryInput{
 			WorkspaceID: "ws-1", OperationID: op.OperationID, LeaseOwner: "worker-a",
 			ReasonCode: EditRetryReasonProviderOutcomeUnknown, NowUnixMS: 32,
@@ -1014,10 +1126,23 @@ func TestReconcileBlockedEditRetryValidatesCanonicalCheckpointCombinations(t *te
 			WorkspaceID: "ws-1", OperationID: blocked.OperationID, ExpectedOperationVersion: blocked.Version,
 			ExpectedHistoryRevision: 1, ClientActionID: "replacement-present", ActionIdentity: "reconcile:replacement-present",
 			Disposition: BlockedEditRetryReconcileReplacementPresent, ProviderSessionID: "provider-session-1",
-			ProviderTurnIDs: []string{"provider-replacement"}, ProviderTurnID: "provider-replacement", NowUnixMS: 33,
+			ProviderTurnIDs: []string{"provider-replacement"}, ProviderTurnID: "provider-replacement",
+			ReplacementSubmission: &TurnSubmission{
+				WorkspaceID: "ws-1", AgentSessionID: "session-1", TurnID: payload.ReplacementTurnID,
+				ContentJSON: `[ {"type":"text","text":"edited prompt"} ]`, DisplayPrompt: "edited prompt",
+				CapabilityRefsJSON: `[]`, TuttiModeSnapshotJSON: `null`, ClientSubmitID: payload.ClientSubmitID,
+			}, NowUnixMS: 33,
 		})
 		if err != nil || !changed || completed.Status != RuntimeOperationStatusCompleted || completed.Result != RuntimeOperationResultApplied {
 			t.Fatalf("complete=%#v changed=%v error=%v", completed, changed, err)
+		}
+		claim, found, err := store.GetSubmitClaim(ctx, "ws-1", "session-1", payload.ClientSubmitID)
+		if err != nil || !found || claim.Status != "accepted" || claim.TurnID != payload.ReplacementTurnID {
+			t.Fatalf("replacement submit claim=%#v found=%v error=%v", claim, found, err)
+		}
+		submission, found, err := store.GetTurnSubmission(ctx, "ws-1", "session-1", payload.ReplacementTurnID)
+		if err != nil || !found || submission.ClientSubmitID != payload.ClientSubmitID || submission.DisplayPrompt != "edited prompt" {
+			t.Fatalf("repaired replacement submission=%#v found=%v error=%v", submission, found, err)
 		}
 		assertSessionHistory(t, store, "session-1", 2, SessionHistoryRecoveryReady)
 		turnHistory, found, err := store.GetTurnHistory(ctx, "ws-1", "session-1", "turn-original")
@@ -1061,6 +1186,44 @@ func TestReconcileBlockedEditRetryValidatesCanonicalCheckpointCombinations(t *te
 		}
 		assertSessionHistory(t, store, "session-1", 1, SessionHistoryRecoveryRequired)
 	})
+}
+
+func TestInsertRuntimeOperationEventIsIdempotent(t *testing.T) {
+	store := openTestStore(t, testOptions(&staticProjectPaths{}))
+	ctx := context.Background()
+	op, _ := prepareEditRetryReplacementPhase(t, store, "operation-event-idempotent")
+	tx, err := store.db.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	first, err := insertRuntimeOperationEventTx(ctx, tx, op, RuntimeOperationEventEditRetryRecovery, map[string]any{
+		"turnId": op.TurnID, "reasonCode": string(EditRetryReasonProviderOutcomeUnknown), "historyRevision": 1,
+	}, 30)
+	if err != nil {
+		_ = tx.Rollback()
+		t.Fatalf("first event insert: %v", err)
+	}
+	second, err := insertRuntimeOperationEventTx(ctx, tx, op, RuntimeOperationEventEditRetryRecovery, map[string]any{
+		"turnId": op.TurnID, "reasonCode": string(EditRetryReasonProviderOutcomeUnknown), "historyRevision": 1,
+	}, 31)
+	if err != nil {
+		_ = tx.Rollback()
+		t.Fatalf("duplicate event insert: %v", err)
+	}
+	if first.ID != second.ID || first.CreatedAtUnixMS != second.CreatedAtUnixMS {
+		_ = tx.Rollback()
+		t.Fatalf("duplicate event=%#v, first=%#v; expected the original event", second, first)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatal(err)
+	}
+	var count int
+	if err := store.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM workspace_agent_runtime_operation_events WHERE operation_id=? AND kind=?`, op.OperationID, RuntimeOperationEventEditRetryRecovery).Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	if count != 1 {
+		t.Fatalf("event count=%d, want 1", count)
+	}
 }
 
 func TestReconcileBlockedEditRetryEventInsertFailureRollsBack(t *testing.T) {

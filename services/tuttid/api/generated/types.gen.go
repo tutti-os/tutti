@@ -2947,6 +2947,7 @@ const (
 	WorkspaceAgentEditRetryReasonCodeLocalStateInconsistent     WorkspaceAgentEditRetryReasonCode = "local_state_inconsistent"
 	WorkspaceAgentEditRetryReasonCodeOperationConflict          WorkspaceAgentEditRetryReasonCode = "operation_conflict"
 	WorkspaceAgentEditRetryReasonCodeProviderOutcomeUnknown     WorkspaceAgentEditRetryReasonCode = "provider_outcome_unknown"
+	WorkspaceAgentEditRetryReasonCodeProviderRejected           WorkspaceAgentEditRetryReasonCode = "provider_rejected"
 	WorkspaceAgentEditRetryReasonCodeProviderUnsupported        WorkspaceAgentEditRetryReasonCode = "provider_unsupported"
 	WorkspaceAgentEditRetryReasonCodeRecoveryRequired           WorkspaceAgentEditRetryReasonCode = "recovery_required"
 	WorkspaceAgentEditRetryReasonCodeReplacementNotProvenAbsent WorkspaceAgentEditRetryReasonCode = "replacement_not_proven_absent"
@@ -2968,6 +2969,8 @@ func (e WorkspaceAgentEditRetryReasonCode) Valid() bool {
 	case WorkspaceAgentEditRetryReasonCodeOperationConflict:
 		return true
 	case WorkspaceAgentEditRetryReasonCodeProviderOutcomeUnknown:
+		return true
+	case WorkspaceAgentEditRetryReasonCodeProviderRejected:
 		return true
 	case WorkspaceAgentEditRetryReasonCodeProviderUnsupported:
 		return true

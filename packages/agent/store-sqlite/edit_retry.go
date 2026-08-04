@@ -285,8 +285,13 @@ WHERE workspace_id = ? AND operation_id = ? AND status = ? AND lease_owner = ?
 	return op, true, nil
 }
 
-// AbortEditRetryRollback is permitted only after an authoritative provider
-// read proves membership still equals the pre-dispatch checkpoint.
+// AbortEditRetryRollback closes an edit-retry before any provider mutation is
+// known to have happened. For rollback_dispatched, the caller must provide an
+// authoritative unchanged-history proof. For prepared, an empty provider
+// proof is sufficient because the durable checkpoint proves that rollback
+// intent was never published to the provider. Both paths atomically restore
+// the session fence and make the operation terminal, so a local pre-effect
+// error cannot strand the session in rollback_pending.
 func (s *Store) AbortEditRetryRollback(ctx context.Context, input AbortEditRetryRollbackInput) (RuntimeOperation, bool, error) {
 	if s == nil || s.db == nil {
 		return RuntimeOperation{}, false, errors.New("workspace database is not initialized")
@@ -296,7 +301,7 @@ func (s *Store) AbortEditRetryRollback(ctx context.Context, input AbortEditRetry
 	input.LeaseOwner = strings.TrimSpace(input.LeaseOwner)
 	reason, err := editRetryReason(input.ReasonCode, input.Reason)
 	if err != nil || input.WorkspaceID == "" || input.OperationID == "" ||
-		input.LeaseOwner == "" || input.NowUnixMS <= 0 || len(input.ProviderTurnIDs) == 0 {
+		input.LeaseOwner == "" || input.NowUnixMS <= 0 {
 		return RuntimeOperation{}, false, errors.New("valid edit retry rollback abort input is required")
 	}
 	tx, err := s.db.BeginTx(ctx, nil)
@@ -320,8 +325,15 @@ func (s *Store) AbortEditRetryRollback(ctx context.Context, input AbortEditRetry
 	if err != nil {
 		return op, false, err
 	}
-	if payload.Checkpoint != EditRetryCheckpointRollbackDispatched ||
-		!equalStringValues(payload.BeforeProviderIDs, input.ProviderTurnIDs) {
+	if payload.Checkpoint != EditRetryCheckpointRollbackDispatched &&
+		payload.Checkpoint != EditRetryCheckpointPrepared {
+		return op, false, ErrRuntimeOperationSubjectState
+	}
+	if payload.Checkpoint == EditRetryCheckpointRollbackDispatched {
+		if len(input.ProviderTurnIDs) == 0 || !equalStringValues(payload.BeforeProviderIDs, input.ProviderTurnIDs) {
+			return op, false, ErrRuntimeOperationSubjectState
+		}
+	} else if len(input.ProviderTurnIDs) != 0 {
 		return op, false, ErrRuntimeOperationSubjectState
 	}
 	update, err := tx.ExecContext(ctx, `
@@ -523,13 +535,73 @@ WHERE workspace_id = ? AND agent_session_id = ?
 	if ownerMismatch {
 		operationReason = EditRetryReasonRecoveryRequired
 	}
+	payloadJSON := ""
+	if input.Payload != nil {
+		// A negative provider receipt is meaningful only for the replacement
+		// dispatch checkpoint and only for the exact leased operation. Validate
+		// both identities here, inside the same transaction that blocks the row,
+		// so a stale caller cannot attach evidence to another operation.
+		if (operationReason != EditRetryReasonProviderRejected && operationReason != EditRetryReasonReplacementNotProvenAbsent) || op.Kind != RuntimeOperationKindEditRetry {
+			return op, false, ErrRuntimeOperationSubjectState
+		}
+		currentPayload, err := DecodeEditRetryOperationPayload(op.Payload)
+		if err != nil {
+			return op, false, err
+		}
+		if currentPayload.Checkpoint != EditRetryCheckpointReplacementDispatched ||
+			!input.Payload.ReplacementNotDispatched ||
+			!editRetryIdentityEqual(currentPayload, *input.Payload) {
+			return op, false, ErrRuntimeOperationSubjectState
+		}
+		encoded, err := editRetryPayloadMap(op.OperationID, *input.Payload)
+		if err != nil {
+			return op, false, err
+		}
+		payloadJSON, err = marshalJSONMap(encoded)
+		if err != nil {
+			return op, false, err
+		}
+		// A provider rejection is a terminal no-redispatch fence. Keep the
+		// rejected claim in this transaction as well; if the recovery event
+		// insert later fails, the claim must not silently return to prepared and
+		// permit another provider call after lease expiry. A local
+		// not-dispatched receipt deliberately keeps the claim prepared so an
+		// explicit, CAS-bound retry can still consume it safely.
+		if operationReason == EditRetryReasonProviderRejected {
+			claimUpdate, err := tx.ExecContext(ctx, `
+UPDATE workspace_agent_submit_claims
+SET status = 'rejected', turn_id = ?, updated_at_unix_ms = ?
+WHERE workspace_id = ? AND agent_session_id = ? AND client_submit_id = ?
+  AND status = 'prepared' AND canonical_turn_id = ?
+`, input.Payload.ReplacementTurnID, input.NowUnixMS, op.WorkspaceID, op.AgentSessionID,
+				input.Payload.ClientSubmitID, input.Payload.ReplacementTurnID)
+			if err != nil {
+				return op, false, fmt.Errorf("reject edit retry submit claim: %w", err)
+			}
+			if changed, err := rowsWereAffected(claimUpdate, "reject edit retry submit claim"); err != nil {
+				return op, false, err
+			} else if !changed {
+				claim, found, readErr := getSubmitClaimTx(ctx, tx, op.WorkspaceID, op.AgentSessionID, input.Payload.ClientSubmitID)
+				if readErr != nil {
+					return op, false, readErr
+				}
+				if !found || claim.Status != "rejected" || claim.TurnID != input.Payload.ReplacementTurnID {
+					return op, false, ErrRuntimeOperationSubjectState
+				}
+			}
+		}
+	}
+	targetRecoveryState := SessionHistoryRecoveryRequired
+	if operationReason == EditRetryReasonReplacementNotProvenAbsent {
+		targetRecoveryState = SessionHistoryRecoveryResendPending
+	}
 	if !ownerMismatch {
 		update, err := tx.ExecContext(ctx, `
 UPDATE workspace_agent_session_history
-SET recovery_state = 'recovery_required', operation_id = ?, updated_at_unix_ms = ?
+SET recovery_state = ?, operation_id = ?, updated_at_unix_ms = ?
 WHERE workspace_id = ? AND agent_session_id = ?
   AND (operation_id IS NULL OR operation_id = '' OR operation_id = ?)
-`, op.OperationID, input.NowUnixMS, op.WorkspaceID, op.AgentSessionID, op.OperationID)
+	`, targetRecoveryState, op.OperationID, input.NowUnixMS, op.WorkspaceID, op.AgentSessionID, op.OperationID)
 		if err != nil {
 			return RuntimeOperation{}, false, fmt.Errorf("mark edit retry session recovery required: %w", err)
 		}
@@ -537,22 +609,40 @@ WHERE workspace_id = ? AND agent_session_id = ?
 			return RuntimeOperation{}, false, ErrRuntimeOperationSubjectState
 		}
 	}
-	update, err := tx.ExecContext(ctx, `
+	operationUpdate := `
 UPDATE workspace_agent_runtime_operations
 SET status = 'blocked', result = NULL, lease_owner = NULL,
     lease_expires_at_unix_ms = NULL, next_attempt_at_unix_ms = NULL,
     version = version + 1, last_error = ?, updated_at_unix_ms = ?
 WHERE workspace_id = ? AND operation_id = ? AND status = 'leased' AND lease_owner = ?
-`, string(operationReason), input.NowUnixMS, op.WorkspaceID, op.OperationID, input.LeaseOwner)
+`
+	operationArgs := []any{string(operationReason), input.NowUnixMS, op.WorkspaceID, op.OperationID, input.LeaseOwner}
+	if payloadJSON != "" {
+		operationUpdate = `
+UPDATE workspace_agent_runtime_operations
+SET status = 'blocked', result = NULL, payload_json = ?, lease_owner = NULL,
+    lease_expires_at_unix_ms = NULL, next_attempt_at_unix_ms = NULL,
+    version = version + 1, last_error = ?, updated_at_unix_ms = ?
+WHERE workspace_id = ? AND operation_id = ? AND status = 'leased' AND lease_owner = ?
+`
+		operationArgs = []any{payloadJSON, string(operationReason), input.NowUnixMS, op.WorkspaceID, op.OperationID, input.LeaseOwner}
+	}
+	update, err := tx.ExecContext(ctx, operationUpdate, operationArgs...)
 	if err != nil {
 		return RuntimeOperation{}, false, fmt.Errorf("fail edit retry recovery operation: %w", err)
 	}
 	if changed, err := rowsWereAffected(update, "fail edit retry recovery operation"); err != nil || !changed {
 		return RuntimeOperation{}, false, ErrRuntimeOperationLeaseLost
 	}
-	event, err := insertRuntimeOperationEventTx(ctx, tx, op, RuntimeOperationEventEditRetryRecovery, map[string]any{
+	eventPayload := map[string]any{
 		"turnId": op.TurnID, "reasonCode": string(operationReason), "historyRevision": revision,
-	}, input.NowUnixMS)
+		"actionIdentity": "block:" + string(operationReason),
+	}
+	if input.Payload != nil {
+		eventPayload["checkpoint"] = string(input.Payload.Checkpoint)
+		eventPayload["replacementNotDispatched"] = true
+	}
+	event, err := insertRuntimeOperationEventTx(ctx, tx, op, RuntimeOperationEventEditRetryRecovery, eventPayload, input.NowUnixMS)
 	if err != nil {
 		return RuntimeOperation{}, false, err
 	}

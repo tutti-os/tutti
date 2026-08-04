@@ -14,8 +14,11 @@ import (
 )
 
 const (
-	editRetryMaxAttempts = 8
-	editRetryMaxAge      = 24 * time.Hour
+	editRetryMaxAttempts        = 8
+	editRetryMaxAge             = 24 * time.Hour
+	editRetryPersistenceTimeout = 5 * time.Second
+	editRetryPersistenceRetries = 3
+	editRetryPersistenceBackoff = 50 * time.Millisecond
 )
 
 type editRetryRecoveryContextKey struct{}
@@ -213,7 +216,12 @@ func (h *Host) GetEditRetryAvailability(ctx context.Context, ref SessionRef) (Ed
 }
 
 func editRetryCanAbandon(operation storesqlite.RuntimeOperation) bool {
-	if operation.Kind != storesqlite.RuntimeOperationKindEditRetry || operation.Status != storesqlite.RuntimeOperationStatusPrepared {
+	if operation.Kind != storesqlite.RuntimeOperationKindEditRetry ||
+		(operation.Status != storesqlite.RuntimeOperationStatusPrepared && operation.Status != storesqlite.RuntimeOperationStatusBlocked) {
+		return false
+	}
+	if operation.Status == storesqlite.RuntimeOperationStatusBlocked &&
+		editRetryReasonFromOperation(operation) != EditRetryReasonCodeReplacementNotProvenAbsent {
 		return false
 	}
 	payload, err := storesqlite.DecodeEditRetryOperationPayload(operation.Payload)
@@ -567,9 +575,14 @@ func (h *Host) failEditRetryBeforeRollback(
 	reason storesqlite.EditRetryReasonCode,
 	cause error,
 ) (storesqlite.RuntimeOperation, error) {
-	failed, _, err := h.operations.ReleaseOrFailRuntimeOperation(ctx, storesqlite.ReleaseOrFailRuntimeOperationInput{
-		WorkspaceID: operation.WorkspaceID, OperationID: operation.OperationID,
-		LeaseOwner: owner, LastError: string(reason), NowUnixMS: h.now().UnixMilli(), Fail: true,
+	var failed storesqlite.RuntimeOperation
+	err := withEditRetryPersistenceRetry(ctx, func(persistCtx context.Context) error {
+		var transitionErr error
+		failed, _, transitionErr = h.effectiveHistory.AbortEditRetryRollback(persistCtx, storesqlite.AbortEditRetryRollbackInput{
+			WorkspaceID: operation.WorkspaceID, OperationID: operation.OperationID,
+			LeaseOwner: owner, ReasonCode: reason, NowUnixMS: h.now().UnixMilli(),
+		})
+		return transitionErr
 	})
 	if err != nil {
 		return operation, errors.Join(cause, err)
@@ -587,11 +600,16 @@ func (h *Host) releaseEditRetry(
 	if h.editRetryBudgetExhausted(operation) {
 		return h.blockEditRetryBudget(ctx, operation, owner, cause)
 	}
-	now := h.now()
-	released, _, err := h.effectiveHistory.DeferEditRetry(ctx, storesqlite.DeferEditRetryInput{
-		WorkspaceID: operation.WorkspaceID, OperationID: operation.OperationID, LeaseOwner: owner,
-		ReasonCode: storesqlite.EditRetryReasonRetryWait, NowUnixMS: now.UnixMilli(),
-		NextAttemptAtMS: editRetryNextAttemptAt(now, operation.OperationID, operation.Attempt),
+	var released storesqlite.RuntimeOperation
+	err := withEditRetryPersistenceRetry(ctx, func(persistCtx context.Context) error {
+		now := h.now()
+		var transitionErr error
+		released, _, transitionErr = h.effectiveHistory.DeferEditRetry(persistCtx, storesqlite.DeferEditRetryInput{
+			WorkspaceID: operation.WorkspaceID, OperationID: operation.OperationID, LeaseOwner: owner,
+			ReasonCode: storesqlite.EditRetryReasonRetryWait, NowUnixMS: now.UnixMilli(),
+			NextAttemptAtMS: editRetryNextAttemptAt(now, operation.OperationID, operation.Attempt),
+		})
+		return transitionErr
 	})
 	if err != nil {
 		return operation, errors.Join(cause, err)
@@ -613,9 +631,14 @@ func (h *Host) editRetryPreEffectBudgetExceeded(operation storesqlite.RuntimeOpe
 }
 
 func (h *Host) blockEditRetryBudget(ctx context.Context, operation storesqlite.RuntimeOperation, owner string, cause error) (storesqlite.RuntimeOperation, error) {
-	blocked, _, err := h.effectiveHistory.BlockEditRetry(ctx, storesqlite.BlockEditRetryInput{
-		WorkspaceID: operation.WorkspaceID, OperationID: operation.OperationID, LeaseOwner: owner,
-		ReasonCode: storesqlite.EditRetryReasonRetryBudgetExhausted, NowUnixMS: h.now().UnixMilli(),
+	var blocked storesqlite.RuntimeOperation
+	err := withEditRetryPersistenceRetry(ctx, func(persistCtx context.Context) error {
+		var transitionErr error
+		blocked, _, transitionErr = h.effectiveHistory.BlockEditRetry(persistCtx, storesqlite.BlockEditRetryInput{
+			WorkspaceID: operation.WorkspaceID, OperationID: operation.OperationID, LeaseOwner: owner,
+			ReasonCode: storesqlite.EditRetryReasonRetryBudgetExhausted, NowUnixMS: h.now().UnixMilli(),
+		})
+		return transitionErr
 	})
 	if err != nil {
 		return operation, errors.Join(cause, err)
@@ -649,17 +672,184 @@ func (h *Host) failEditRetryRecovery(
 	reason storesqlite.EditRetryReasonCode,
 	cause error,
 ) (storesqlite.RuntimeOperation, error) {
-	failed, _, err := h.effectiveHistory.BlockEditRetry(ctx, storesqlite.BlockEditRetryInput{
-		WorkspaceID: operation.WorkspaceID, OperationID: operation.OperationID,
-		LeaseOwner: owner, ReasonCode: reason, NowUnixMS: h.now().UnixMilli(),
+	var failed storesqlite.RuntimeOperation
+	err := withEditRetryPersistenceRetry(ctx, func(persistCtx context.Context) error {
+		var transitionErr error
+		failed, _, transitionErr = h.effectiveHistory.BlockEditRetry(persistCtx, storesqlite.BlockEditRetryInput{
+			WorkspaceID: operation.WorkspaceID, OperationID: operation.OperationID,
+			LeaseOwner: owner, ReasonCode: reason, NowUnixMS: h.now().UnixMilli(),
+		})
+		return transitionErr
 	})
 	if err != nil {
 		return operation, errors.Join(cause, err)
 	}
-	if publishErr := h.publishRuntimeOperationEvents(ctx, operation.WorkspaceID); publishErr != nil {
+	persistCtx, cancel := editRetryDurableTransitionContext(ctx)
+	defer cancel()
+	if publishErr := h.publishRuntimeOperationEvents(persistCtx, operation.WorkspaceID); publishErr != nil {
 		logRuntimeOperationFailure(failed, publishErr)
 	}
 	return failed, errors.Join(ErrEditRetryRecoveryRequired, cause)
+}
+
+// blockEditRetryProviderRejected records an authoritative negative provider
+// receipt at the same time as the blocked operation and session fence. A
+// rejection is not an unknown outcome: scheduling it through releaseEditRetry
+// would create an automatic retry loop and could repeatedly spend provider
+// quota. Clear any prior redispatch proof because that proof authorized only
+// the request that was just rejected.
+func (h *Host) blockEditRetryProviderRejected(
+	ctx context.Context,
+	operation storesqlite.RuntimeOperation,
+	owner string,
+	payload storesqlite.EditRetryOperationPayload,
+	cause error,
+) (storesqlite.RuntimeOperation, error) {
+	payload.ReplacementNotDispatched = true
+	payload.RedispatchProofIDs = nil
+	payload.RedispatchProofSID = ""
+	payload.RedispatchProofAt = 0
+	var blocked storesqlite.RuntimeOperation
+	err := withEditRetryPersistenceRetry(ctx, func(persistCtx context.Context) error {
+		var transitionErr error
+		blocked, _, transitionErr = h.effectiveHistory.BlockEditRetry(persistCtx, storesqlite.BlockEditRetryInput{
+			WorkspaceID: operation.WorkspaceID, OperationID: operation.OperationID,
+			LeaseOwner: owner, ReasonCode: storesqlite.EditRetryReasonProviderRejected,
+			Payload: &payload, NowUnixMS: h.now().UnixMilli(),
+		})
+		return transitionErr
+	})
+	if err != nil {
+		// If the compound transition failed after the provider rejection, retain
+		// the provider-call idempotency fence independently. This fallback is
+		// deliberately terminal for the claim; it never releases the operation
+		// into automatic retry. A later worker pass will see the rejected claim
+		// and block the operation without invoking the provider again.
+		if rejectErr := h.rejectSubmitClaim(
+			SessionRef{WorkspaceID: operation.WorkspaceID, AgentSessionID: operation.AgentSessionID},
+			payload.ClientSubmitID, payload.ReplacementTurnID,
+		); rejectErr != nil {
+			return operation, errors.Join(cause, err, rejectErr)
+		}
+		return operation, errors.Join(cause, err)
+	}
+	persistCtx, cancel := editRetryDurableTransitionContext(ctx)
+	defer cancel()
+	if publishErr := h.publishRuntimeOperationEvents(persistCtx, operation.WorkspaceID); publishErr != nil {
+		logRuntimeOperationFailure(blocked, publishErr)
+	}
+	return blocked, errors.Join(ErrEditRetryRecoveryRequired, cause)
+}
+
+// blockEditRetryReplacementNotDispatched keeps a provider-negative receipt
+// out of the automatic queue while preserving an explicit, CAS-bound retry or
+// abandon action. The provider call did not dispatch, but the worker must not
+// infer that from a future retry timestamp and spend the session budget.
+func (h *Host) blockEditRetryReplacementNotDispatched(
+	ctx context.Context,
+	operation storesqlite.RuntimeOperation,
+	owner string,
+	payload storesqlite.EditRetryOperationPayload,
+	cause error,
+) (storesqlite.RuntimeOperation, error) {
+	payload.ReplacementNotDispatched = true
+	var blocked storesqlite.RuntimeOperation
+	err := withEditRetryPersistenceRetry(ctx, func(persistCtx context.Context) error {
+		var transitionErr error
+		blocked, _, transitionErr = h.effectiveHistory.BlockEditRetry(persistCtx, storesqlite.BlockEditRetryInput{
+			WorkspaceID: operation.WorkspaceID, OperationID: operation.OperationID,
+			LeaseOwner: owner, ReasonCode: storesqlite.EditRetryReasonReplacementNotProvenAbsent,
+			Payload: &payload, NowUnixMS: h.now().UnixMilli(),
+		})
+		return transitionErr
+	})
+	if err != nil {
+		return operation, errors.Join(cause, err)
+	}
+	persistCtx, cancel := editRetryDurableTransitionContext(ctx)
+	defer cancel()
+	if publishErr := h.publishRuntimeOperationEvents(persistCtx, operation.WorkspaceID); publishErr != nil {
+		logRuntimeOperationFailure(blocked, publishErr)
+	}
+	return blocked, errors.Join(ErrEditRetryResendPending, cause)
+}
+
+// editRetryDurableTransitionContext detaches only the final local state
+// transition from a canceled provider-attempt context. Provider work never
+// receives this context, and the bounded timeout prevents cleanup from
+// turning into a wait or spin when SQLite remains unavailable.
+func editRetryDurableTransitionContext(ctx context.Context) (context.Context, context.CancelFunc) {
+	if ctx == nil {
+		return context.WithTimeout(context.Background(), editRetryPersistenceTimeout)
+	}
+	if ctx.Err() == nil {
+		return ctx, func() {}
+	}
+	return context.WithTimeout(context.WithoutCancel(ctx), editRetryPersistenceTimeout)
+}
+
+// withEditRetryPersistenceRetry retries only the small local SQLite state
+// transition after an edit-retry attempt. It never wraps provider work: a
+// provider call has already crossed its idempotency fence before this helper
+// is used. The detached, bounded context lets cancellation finish the local
+// convergence without allowing a locked database to hold a worker forever.
+func withEditRetryPersistenceRetry(ctx context.Context, transition func(context.Context) error) error {
+	if transition == nil {
+		return errors.New("edit retry persistence transition is required")
+	}
+	base := context.Background()
+	if ctx != nil {
+		base = context.WithoutCancel(ctx)
+	}
+	persistCtx, cancel := context.WithTimeout(base, editRetryPersistenceTimeout)
+	defer cancel()
+
+	var transitionErr error
+	for attempt := 0; attempt < editRetryPersistenceRetries; attempt++ {
+		transitionErr = transition(persistCtx)
+		if transitionErr == nil || !isTransientEditRetryPersistenceError(transitionErr) || attempt == editRetryPersistenceRetries-1 {
+			return transitionErr
+		}
+
+		delay := editRetryPersistenceBackoff * time.Duration(1<<attempt)
+		timer := time.NewTimer(delay)
+		select {
+		case <-persistCtx.Done():
+			if !timer.Stop() {
+				select {
+				case <-timer.C:
+				default:
+				}
+			}
+			return transitionErr
+		case <-timer.C:
+		}
+	}
+	return transitionErr
+}
+
+// isTransientEditRetryPersistenceError is intentionally narrow. SQLite
+// contention can be retried locally; semantic conflicts and arbitrary local
+// failures must remain fail-closed so they cannot be mistaken for a provider
+// outcome that is safe to replay.
+func isTransientEditRetryPersistenceError(err error) bool {
+	if err == nil {
+		return false
+	}
+	message := strings.ToLower(err.Error())
+	for _, marker := range []string{
+		"sqlite_busy",
+		"sqlite_locked",
+		"database is busy",
+		"database is locked",
+		"database table is locked",
+		"database schema is locked",
+	} {
+		if strings.Contains(message, marker) {
+			return true
+		}
+	}
+	return false
 }
 
 func editRetryInvariant(format string, args ...any) error {

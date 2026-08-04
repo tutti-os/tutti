@@ -18,14 +18,18 @@ const (
 	// EditRetryReasonLocalStateInconsistent means operation, fence, or history
 	// facts cannot prove a safe local transition. It is never a daemon-wide
 	// failure and exposes only Host-derived safe recovery actions.
-	EditRetryReasonLocalStateInconsistent     EditRetryReasonCode = "local_state_inconsistent"
-	EditRetryReasonProviderUnsupported        EditRetryReasonCode = "provider_unsupported"
-	EditRetryReasonTurnNotFound               EditRetryReasonCode = "turn_not_found"
-	EditRetryReasonTurnNotLatest              EditRetryReasonCode = "turn_not_latest"
-	EditRetryReasonTurnNotSettled             EditRetryReasonCode = "turn_not_settled"
-	EditRetryReasonHistoryRevisionConflict    EditRetryReasonCode = "history_revision_conflict"
-	EditRetryReasonOperationConflict          EditRetryReasonCode = "operation_conflict"
-	EditRetryReasonRecoveryRequired           EditRetryReasonCode = "recovery_required"
+	EditRetryReasonLocalStateInconsistent  EditRetryReasonCode = "local_state_inconsistent"
+	EditRetryReasonProviderUnsupported     EditRetryReasonCode = "provider_unsupported"
+	EditRetryReasonTurnNotFound            EditRetryReasonCode = "turn_not_found"
+	EditRetryReasonTurnNotLatest           EditRetryReasonCode = "turn_not_latest"
+	EditRetryReasonTurnNotSettled          EditRetryReasonCode = "turn_not_settled"
+	EditRetryReasonHistoryRevisionConflict EditRetryReasonCode = "history_revision_conflict"
+	EditRetryReasonOperationConflict       EditRetryReasonCode = "operation_conflict"
+	EditRetryReasonRecoveryRequired        EditRetryReasonCode = "recovery_required"
+	// EditRetryReasonProviderRejected means the provider explicitly refused
+	// the replacement request. It is a definitive local recovery boundary: the
+	// operation is blocked and must never receive an automatic retry timestamp.
+	EditRetryReasonProviderRejected           EditRetryReasonCode = "provider_rejected"
 	EditRetryReasonProviderOutcomeUnknown     EditRetryReasonCode = "provider_outcome_unknown"
 	EditRetryReasonReplacementNotProvenAbsent EditRetryReasonCode = "replacement_not_proven_absent"
 	EditRetryReasonRolloutDisabled            EditRetryReasonCode = "rollout_disabled"
@@ -43,6 +47,7 @@ func (reason EditRetryReasonCode) Validate() error {
 		EditRetryReasonHistoryRevisionConflict,
 		EditRetryReasonOperationConflict,
 		EditRetryReasonRecoveryRequired,
+		EditRetryReasonProviderRejected,
 		EditRetryReasonProviderOutcomeUnknown,
 		EditRetryReasonReplacementNotProvenAbsent,
 		EditRetryReasonRolloutDisabled:

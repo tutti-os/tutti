@@ -11,6 +11,7 @@ import type {
   EditRetryOperationRecord,
   EditRetryState
 } from "./editRetry.types.ts";
+import { isEditRetryAvailabilityOlder } from "./editRetry.selectors.ts";
 
 const NO_COMMANDS: readonly EngineCommand[] = [];
 const IDLE_OPERATION: EditRetryOperationRecord = {
@@ -66,6 +67,9 @@ function receiveAvailability(
   }
   const current = state.availabilityBySessionId[agentSessionId];
   const operation = state.operationBySessionId[agentSessionId];
+  if (current && isEditRetryAvailabilityOlder(intent.availability, current)) {
+    return unchanged(state);
+  }
   const confirmsOperation =
     operation?.status === "reconciling" &&
     operation.result &&

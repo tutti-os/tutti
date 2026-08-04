@@ -52,7 +52,7 @@ export const zhCNAgentGui = {
   targetSetupStage: {
     detect: "检测运行时",
     install: "安装运行时",
-    login: "登录",
+    login: "登录"
   },
   targetSetupChecking: "正在检测本地和 Tutti 托管运行时…",
   targetSetupInstall: "安装运行时",
@@ -84,7 +84,7 @@ export const zhCNAgentGui = {
     probing: "正在检测 ACP 兼容性…",
     activating: "正在启用托管运行时…",
     authenticating: "正在等待登录完成…",
-    complete: "安装完成",
+    complete: "安装完成"
   },
   collaboratorSessionReadOnlyPlaceholder: "非当前用户会话，不可直接对话",
   send: "发送",
@@ -126,126 +126,125 @@ export const zhCNAgentGui = {
       "近期版本的 Codex，尤其在使用 GPT-5.6 系列模型时，可能会超出你的意图，误删或覆盖文件。仅在你理解并接受此风险时继续。",
     learnMore: "了解详情",
     cancel: "取消",
-    confirm: "启用完全访问权限",
+    confirm: "启用完全访问权限"
   },
   fullAccessRestoredWarning: {
     title: "完全访问权限已开启",
     description:
       "Codex 可以在未经你同意的情况下运行命令、使用互联网，以及在这台电脑的任意位置创建、修改、上传或删除文件。这可能导致数据丢失，也会带来提示词注入风险。",
     dontShowAgain: "不再显示",
-    dismissLabel: "关闭完全访问权限警告",
+    dismissLabel: "关闭完全访问权限警告"
   },
   permissionSemantics: {
     "ask-before-write": {
       label: "请求批准",
-      description: "编辑外部文件和使用互联网时始终询问",
+      description: "编辑外部文件和使用互联网时始终询问"
     },
     "accept-edits": {
       label: "接受编辑",
-      description: "允许直接编辑文件，但更高风险操作仍会先询问你",
+      description: "允许直接编辑文件，但更高风险操作仍会先询问你"
     },
     "locked-down": {
       label: "不再询问",
-      description: "不会弹出确认；未获允许的操作会被直接拒绝",
+      description: "不会弹出确认；未获允许的操作会被直接拒绝"
     },
     auto: {
       label: "替我审批",
-      description: "仅对检测到的风险操作请求批准",
+      description: "仅对检测到的风险操作请求批准"
     },
     "full-access": {
       label: "完全访问权限",
-      description: "可不受限制地访问互联网和您电脑上的任何文件",
+      description: "可不受限制地访问互联网和您电脑上的任何文件"
     },
     unconfigurable: {
       label: "固定模式",
-      description: "这个 provider 当前不支持在这里调整权限模式",
-    },
+      description: "这个 provider 当前不支持在这里调整权限模式"
+    }
   },
   permissionModes: {
     codex: {
       "read-only": {
         label: "请求批准",
-        description: "编辑外部文件和使用互联网时始终询问",
+        description: "编辑外部文件和使用互联网时始终询问"
       },
       auto: {
         label: "替我审批",
-        description: "仅对检测到的风险操作请求批准",
+        description: "仅对检测到的风险操作请求批准"
       },
       "full-access": {
         label: "完全访问权限",
-        description: "可不受限制地访问互联网和您电脑上的任何文件",
-      },
+        description: "可不受限制地访问互联网和您电脑上的任何文件"
+      }
     },
     cursor: {
       "read-only": {
         label: "只读",
-        description: "Cursor 只读取和规划，提出修改建议但不做任何更改。",
+        description: "Cursor 只读取和规划，提出修改建议但不做任何更改。"
       },
       agent: {
         label: "请求批准",
-        description:
-          "完整工具权限；Cursor 在运行命令等高风险操作前会先询问你。",
+        description: "完整工具权限；Cursor 在运行命令等高风险操作前会先询问你。"
       },
       "full-access": {
         label: "完全访问",
         description:
-          "无需询问直接运行命令，除非被你的 Cursor 权限规则明确拒绝。",
-      },
+          "无需询问直接运行命令，除非被你的 Cursor 权限规则明确拒绝。"
+      }
     },
     opencode: {
       "read-only": {
         label: "只读",
         description:
-          "允许读取和搜索本地项目，拒绝修改、命令、网络及其他需授权操作",
+          "允许读取和搜索本地项目，拒绝修改、命令、网络及其他需授权操作"
       },
       ask: {
         label: "询问",
-        description: "读取和搜索直接执行，修改、命令、网络及其他操作会先询问你",
+        description: "读取和搜索直接执行，修改、命令、网络及其他操作会先询问你"
       },
       "full-access": {
         label: "完全访问",
         description:
-          "自动允许需授权操作，但不会改变 OpenCode 独立的 Plan 模式限制",
-      },
+          "自动允许需授权操作，但不会改变 OpenCode 独立的 Plan 模式限制"
+      }
     },
     nexight: {
       "read-only": {
         label: "请求批准",
-        description: "编辑外部文件或使用互联网前始终询问你",
+        description: "编辑外部文件或使用互联网前始终询问你"
       },
       auto: {
         label: "替我审批",
-        description: "仅在检测到可能不安全的操作时询问你",
+        description: "仅在检测到可能不安全的操作时询问你"
       },
       "full-access": {
         label: "完全访问",
-        description: "可不受限制地访问互联网和你电脑上的任何文件",
-      },
+        description: "可不受限制地访问互联网和你电脑上的任何文件"
+      }
     },
     "claude-code": {
       default: {
         label: "默认权限",
-        description: "默认较保守；需要执行修改或高风险操作时会先询问你。",
+        description: "默认较保守；需要执行修改或高风险操作时会先询问你。"
       },
       acceptEdits: {
         label: "接受编辑",
-        description: "允许直接修改文件；遇到更高风险操作时仍会先询问你。",
+        description: "允许直接修改文件；遇到更高风险操作时仍会先询问你。"
       },
       dontAsk: {
         label: "不再询问",
-        description: "不会弹出确认；未预先允许的操作会被直接拒绝。",
+        description: "不会弹出确认；未预先允许的操作会被直接拒绝。"
       },
       bypassPermissions: {
         label: "绕过权限",
-        description: "尽量不做权限拦截，适合需要连续执行且你完全信任的任务。",
-      },
+        description: "尽量不做权限拦截，适合需要连续执行且你完全信任的任务。"
+      }
     },
     hermes: {
       yolo: {
         label: "固定模式",
-        description: "当前 provider 不支持在这里调整权限模式。",
-      },
-    },
+        description: "当前 provider 不支持在这里调整权限模式。"
+      }
+    }
   },
   modelContextWindowSuffix: "上下文窗口",
   modelTooltipVersionLabel: "版本",
@@ -255,7 +254,7 @@ export const zhCNAgentGui = {
     smallFastCostEfficient: "小型、快速且成本高效，适合较简单的编码任务",
     codingOptimized: "面向编码优化的模型",
     ultraFastCoding: "超快编码模型",
-    professionalLongRunning: "针对专业工作和长时间运行的 Agent 优化",
+    professionalLongRunning: "针对专业工作和长时间运行的 Agent 优化"
   },
   permissionLabel: "运行权限",
   planModeLabel: "计划模式",
@@ -370,6 +369,7 @@ export const zhCNAgentGui = {
   editRetryEditMessage: "编辑消息",
   editRetryCancel: "取消",
   editRetrySubmit: "保存并重试",
+  editRetryFailed: "编辑重试失败",
   editRetryProcessing: "正在更新会话历史并重试…",
   editRetryRetryWait: "正在等待自动恢复",
   editRetryCompleted: "编辑消息恢复已完成",
@@ -408,57 +408,57 @@ export const zhCNAgentGui = {
     commitPlaceholder: "提交 SHA",
     customPlaceholder: "描述要审查的内容",
     submit: "开始审查",
-    cancel: "取消",
+    cancel: "取消"
   },
   promptTips: {
     setWorkspace: {
       label: "指定工作区",
-      prompt: "让 Agent 知道在哪里读文件、运行命令和理解代码",
+      prompt: "让 Agent 知道在哪里读文件、运行命令和理解代码"
     },
     useIssue: {
       label: "善用任务",
-      prompt: "把需求、约束和验收标准写进任务，Agent 更容易按目标推进",
+      prompt: "把需求、约束和验收标准写进任务，Agent 更容易按目标推进"
     },
     mapCurrentState: {
       label: "先梳理现状",
-      prompt: "不确定怎么下手时，让 Agent 先总结当前状态、风险和下一步",
+      prompt: "不确定怎么下手时，让 Agent 先总结当前状态、风险和下一步"
     },
     continueRecentSession: {
       label: "接力最近会话",
-      prompt: "延续工作时让 Agent 先回顾最近进展、未完成任务和阻塞点",
+      prompt: "延续工作时让 Agent 先回顾最近进展、未完成任务和阻塞点"
     },
     referenceOtherAgents: {
       label: "引用其他 Agent 对话历史",
-      prompt: "让上下文接力更完整，减少关键信息丢失",
+      prompt: "让上下文接力更完整，减少关键信息丢失"
     },
     controlPermissions: {
       label: "控制执行权限",
-      prompt: "需要稳妥时使用「请求批准」，确认可改文件后再切到更高权限",
-    },
+      prompt: "需要稳妥时使用「请求批准」，确认可改文件后再切到更高权限"
+    }
   },
   empty: "需要 {{provider}} 帮你做些什么？",
   homeSuggestionsClose: "收起建议",
   homeSuggestions: {
     about: {
       title: "认识 Tutti",
-      prompt: "介绍一下 Tutti 能帮我做些什么",
+      prompt: "介绍一下 Tutti 能帮我做些什么"
     },
     breakdown: {
       title: "任务拆解",
       taskCenterLabel: "任务管理",
-      prompt: "使用 {{taskCenterMention}} 帮我拆解任务，任务主题 { 请输入 }",
+      prompt: "使用 {{taskCenterMention}} 帮我拆解任务，任务主题 { 请输入 }"
     },
     review: {
       title: "质量审查",
-      prompt: "让 { @agent } 审查 { @agent 会话 } 的产物质量",
+      prompt: "让 { @agent } 审查 { @agent 会话 } 的产物质量"
     },
     interaction: {
       title: "Agent 互动",
-      prompt: "让 { @agent } 和 { @agent } 一起 { 做些什么 }，主题 { 请输入 }",
+      prompt: "让 { @agent } 和 { @agent } 一起 { 做些什么 }，主题 { 请输入 }"
     },
     import: {
-      title: "导入会话",
-    },
+      title: "导入会话"
+    }
   },
   conversations: "会话",
   newConversation: "新建会话",
@@ -550,7 +550,7 @@ export const zhCNAgentGui = {
     manualApproval: "允许，并手动确认编辑",
     rejectOnce: "拒绝执行",
     rejectAlways: "拒绝，并且不再询问",
-    rejectWithFollowUp: "拒绝，然后发送新的指令",
+    rejectWithFollowUp: "拒绝，然后发送新的指令"
   },
   authRequired: "需要认证",
   authLogin: "登录",
@@ -630,20 +630,20 @@ export const zhCNAgentGui = {
   planModes: {
     acceptEdits: {
       label: "接受编辑",
-      description: "自动批准文件编辑",
+      description: "自动批准文件编辑"
     },
     askFirst: {
       label: "逐次确认",
-      description: "每次工具调用前都询问",
+      description: "每次工具调用前都询问"
     },
     allowAll: {
       label: "全部允许",
-      description: "不再弹出工具确认",
+      description: "不再弹出工具确认"
     },
     auto: {
       label: "自动",
-      description: "由智能体自行决定何时询问",
-    },
+      description: "由智能体自行决定何时询问"
+    }
   },
   stayInPlan: "继续规划",
   sendFeedback: "发送反馈并继续规划",
@@ -789,10 +789,10 @@ export const zhCNAgentGui = {
     requirementSummaryOutput:
       "2. 如果用户没有另行指定位置，至少输出 docs/tutti/task_summary_{{issueId}}.md，说明处理结果、改动与结论。",
     taskContentLabel: "任务内容",
-    taskTitleLabel: "任务标题",
+    taskTitleLabel: "任务标题"
   },
   syncPending: "已保存到本地，正在同步到云端",
   syncSynced: "已同步到云端",
   syncFailed: "云端同步失败",
-  ...zhCNAgentGuiCollaboration,
+  ...zhCNAgentGuiCollaboration
 } as const;

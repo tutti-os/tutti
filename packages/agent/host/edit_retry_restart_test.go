@@ -19,9 +19,10 @@ func TestEditRetryRealSQLiteColdRestartsDoNotMutateProviders(t *testing.T) {
 	testCases := []struct {
 		name                   string
 		prepare                func(*testing.T, *agenthost.Host, *storesqlite.Store, *hostEditRetryRuntime) string
+		wantStatus             string
 		wantRollback, wantExec int
 	}{
-		{"deferred prepared operation remains parked before retry time", prepareFutureDeferredEditRetry, 0, 0},
+		{"deferred prepared operation remains parked before retry time", prepareFutureDeferredEditRetry, storesqlite.RuntimeOperationStatusPrepared, 0, 0},
 		{"unknown rollback is never replayed", func(t *testing.T, host *agenthost.Host, _ *storesqlite.Store, runtime *hostEditRetryRuntime) string {
 			runtime.mu.Lock()
 			runtime.rollbackUnknown = true
@@ -31,17 +32,17 @@ func TestEditRetryRealSQLiteColdRestartsDoNotMutateProviders(t *testing.T) {
 				t.Fatalf("EditRetry() error = %v", err)
 			}
 			return result.OperationID
-		}, 1, 0},
+		}, storesqlite.RuntimeOperationStatusPrepared, 1, 0},
 		{"unknown replacement is never resent", func(t *testing.T, host *agenthost.Host, _ *storesqlite.Store, runtime *hostEditRetryRuntime) string {
 			runtime.mu.Lock()
 			runtime.execOutcomeUnknown = true
 			runtime.mu.Unlock()
 			result, err := host.EditRetry(t.Context(), editRetryRestartRef, "turn-original", agenthost.EditRetryInput{EditedText: "edited", ClientOperationID: "restart-replacement", ExpectedHistoryRevision: 0})
-			if !errors.Is(err, agenthost.ErrEditRetryResendPending) {
+			if !errors.Is(err, agenthost.ErrEditRetryRecoveryRequired) {
 				t.Fatalf("EditRetry() error = %v", err)
 			}
 			return result.OperationID
-		}, 1, 1},
+		}, storesqlite.RuntimeOperationStatusBlocked, 1, 1},
 	}
 	for _, test := range testCases {
 		t.Run(test.name, func(t *testing.T) {
@@ -49,7 +50,7 @@ func TestEditRetryRealSQLiteColdRestartsDoNotMutateProviders(t *testing.T) {
 			runtime := &hostEditRetryRuntime{}
 			host, store, db := openEditRetryRestartFixture(t, dbPath, runtime, true)
 			operationID := test.prepare(t, host, store, runtime)
-			assertEditRetryRestartSnapshot(t, store, operationID)
+			assertEditRetryRestartSnapshot(t, store, operationID, test.wantStatus)
 			if err := db.Close(); err != nil {
 				t.Fatal(err)
 			}
@@ -58,7 +59,7 @@ func TestEditRetryRealSQLiteColdRestartsDoNotMutateProviders(t *testing.T) {
 				if err := host.RecoverCore(t.Context()); err != nil {
 					t.Fatalf("restart %d RecoverCore() = %v", restart+1, err)
 				}
-				assertEditRetryRestartSnapshot(t, store, operationID)
+				assertEditRetryRestartSnapshot(t, store, operationID, test.wantStatus)
 				if err := db.Close(); err != nil {
 					t.Fatal(err)
 				}
@@ -375,6 +376,10 @@ func TestEditRetryPreEffectSnapshotCrashBoundariesKeepProviderMutationAtZero(t *
 			t.Fatal("EditRetry() error=nil after cancelled provider read")
 		}
 		close(release)
+		deferred, found, err := store.GetRuntimeOperation(t.Context(), editRetryRestartRef.WorkspaceID, operationID)
+		if err != nil || !found || deferred.Status != storesqlite.RuntimeOperationStatusPrepared || deferred.LeaseOwner != "" || deferred.NextAttemptAtMS <= deferred.UpdatedAtUnixMS {
+			t.Fatalf("cancelled operation=%#v found=%v error=%v, want unleased future retry", deferred, found, err)
+		}
 		assertNoEditRetryProviderMutation(t, runtime)
 		if err := db.Close(); err != nil {
 			t.Fatal(err)
@@ -679,11 +684,11 @@ func prepareFutureDeferredEditRetry(t *testing.T, _ *agenthost.Host, store *stor
 	return operationID
 }
 
-func assertEditRetryRestartSnapshot(t *testing.T, store *storesqlite.Store, operationID string) {
+func assertEditRetryRestartSnapshot(t *testing.T, store *storesqlite.Store, operationID string, wantStatus string) {
 	t.Helper()
 	op, found, err := store.GetRuntimeOperation(t.Context(), editRetryRestartRef.WorkspaceID, operationID)
-	if err != nil || !found || op.Status != storesqlite.RuntimeOperationStatusPrepared {
-		t.Fatalf("operation=%#v found=%v err=%v", op, found, err)
+	if err != nil || !found || op.Status != wantStatus {
+		t.Fatalf("operation=%#v found=%v err=%v, want status %q", op, found, err, wantStatus)
 	}
 	history, found, err := store.GetSessionHistory(t.Context(), editRetryRestartRef.WorkspaceID, editRetryRestartRef.AgentSessionID)
 	if err != nil || !found || history.OperationID != operationID || history.RecoveryState == storesqlite.SessionHistoryRecoveryReady {

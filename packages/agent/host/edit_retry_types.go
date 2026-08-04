@@ -69,6 +69,7 @@ const (
 	EditRetryReasonCodeHistoryRevisionConflict    = canonical.EditRetryReasonHistoryRevisionConflict
 	EditRetryReasonCodeOperationConflict          = canonical.EditRetryReasonOperationConflict
 	EditRetryReasonCodeRecoveryRequired           = canonical.EditRetryReasonRecoveryRequired
+	EditRetryReasonCodeProviderRejected           = canonical.EditRetryReasonProviderRejected
 	EditRetryReasonCodeProviderOutcomeUnknown     = canonical.EditRetryReasonProviderOutcomeUnknown
 	EditRetryReasonCodeReplacementNotProvenAbsent = canonical.EditRetryReasonReplacementNotProvenAbsent
 	EditRetryReasonCodeRolloutDisabled            = canonical.EditRetryReasonRolloutDisabled

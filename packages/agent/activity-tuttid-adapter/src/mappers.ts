@@ -126,8 +126,25 @@ export function agentActivityEditRetryAvailabilityFromTuttid(
     ...(availability.operationId
       ? { operationId: availability.operationId }
       : {}),
+    ...(availability.operationVersion !== undefined
+      ? { operationVersion: availability.operationVersion }
+      : {}),
+    ...(availability.automatic !== undefined
+      ? { automatic: availability.automatic }
+      : {}),
+    ...(availability.nextAttemptAtUnixMs !== undefined
+      ? { nextAttemptAtUnixMs: availability.nextAttemptAtUnixMs }
+      : availability.nextAttemptAt !== undefined
+        ? { nextAttemptAtUnixMs: availability.nextAttemptAt }
+        : {}),
+    ...(availability.attempt !== undefined
+      ? { attempt: availability.attempt }
+      : {}),
     availableActions: [...availability.availableActions],
-    ...(availability.reasonCode ? { reasonCode: availability.reasonCode } : {})
+    ...(availability.reasonCode ? { reasonCode: availability.reasonCode } : {}),
+    ...(availability.impactScope
+      ? { impactScope: availability.impactScope }
+      : {})
   };
 }
 

@@ -109,8 +109,18 @@ BEGIN SELECT RAISE(ABORT, 'injected edit retry startup requeue failure'); END;
 `); err != nil {
 			t.Fatal(err)
 		}
-		if err := f.host.RecoverCore(t.Context()); err == nil || !strings.Contains(err.Error(), "injected edit retry startup requeue failure") {
-			t.Fatalf("RecoverCore()=%v, want injected requeue failure", err)
+		operations := &startupRequeueFaultStore{RuntimeOperationStore: f.store}
+		retryHost := agenthost.New(agenthost.Config{
+			CanonicalStore: sqliteCanonicalStore{Store: f.store}, TurnSubmissions: f.store,
+			EffectiveHistory: f.store, RuntimeOperations: operations, Runtime: f.runtime,
+			HistoryRuntime: f.runtime, GoalRuntime: f.runtime, OperationOwner: "post-listener-requeue",
+			EditRetryRecovery: agenthost.EditRetryRecoveryReconcileOnly,
+		})
+		if err := retryHost.RecoverCore(t.Context()); err != nil {
+			t.Fatalf("RecoverCore()=%v, want listener-safe deferred repair", err)
+		}
+		if summary := retryHost.RuntimeOperationWorkerSummary(); summary.StoreFailures == 0 {
+			t.Fatalf("startup requeue summary=%#v, want scoped store degradation", summary)
 		}
 		leased := f.operation(t)
 		if leased.Status != storesqlite.RuntimeOperationStatusLeased || leased.LeaseOwner != "previous-process" {
@@ -121,10 +131,25 @@ BEGIN SELECT RAISE(ABORT, 'injected edit retry startup requeue failure'); END;
 		if _, err := db.ExecContext(t.Context(), `DROP TRIGGER fail_edit_retry_startup_requeue`); err != nil {
 			t.Fatal(err)
 		}
-		f.reopenTwice(t)
+		// Retry the deferred local repair through the post-listener worker lane.
+		if err := retryHost.StepRuntimeOperationWorker(t.Context(), false); err != nil {
+			t.Fatalf("post-listener requeue retry=%v", err)
+		}
+		f.assertNoProviderMutation(t)
 		requeued := f.operation(t)
 		if requeued.Status != storesqlite.RuntimeOperationStatusPrepared || requeued.LeaseOwner != "" {
-			t.Fatalf("recovered requeue operation=%#v", requeued)
+			t.Fatalf("post-listener requeue operation=%#v, want fenced prepared operation", requeued)
+		}
+		operations.mu.Lock()
+		requeueCalls := operations.calls
+		operations.mu.Unlock()
+		if requeueCalls != 2 {
+			t.Fatalf("startup requeue calls=%d, want initial defer plus post-listener retry", requeueCalls)
+		}
+		f.reopenTwice(t)
+		requeued = f.operation(t)
+		if requeued.Status != storesqlite.RuntimeOperationStatusPrepared || requeued.LeaseOwner != "" {
+			t.Fatalf("recovered deferred operation=%#v", requeued)
 		}
 		// The production-disabled disposition is provider-free; it lets the
 		// same test prove session B remains processable after the later reopen.
@@ -313,6 +338,19 @@ type postCommitClaimStore struct {
 	agenthost.RuntimeOperationStore
 	mu    sync.Mutex
 	fired bool
+}
+
+type startupRequeueFaultStore struct {
+	agenthost.RuntimeOperationStore
+	mu    sync.Mutex
+	calls int
+}
+
+func (s *startupRequeueFaultStore) RequeueLeasedRuntimeOperationsOnStartup(ctx context.Context, now int64) (int64, error) {
+	s.mu.Lock()
+	s.calls++
+	s.mu.Unlock()
+	return s.RuntimeOperationStore.RequeueLeasedRuntimeOperationsOnStartup(ctx, now)
 }
 
 func (s *postCommitClaimStore) ClaimRuntimeOperationLease(ctx context.Context, input storesqlite.ClaimRuntimeOperationLeaseInput) (storesqlite.RuntimeOperation, bool, error) {
