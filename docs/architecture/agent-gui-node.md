@@ -1855,16 +1855,24 @@ metadata, dismissal, details navigation, and update lifecycle state.
 
 Tutti Desktop keeps those responsibilities in the window-scoped
 `DesktopAgentCLIUpdateNoticeService`; the React binding only reports whether a
-surface is eligible, subscribes to the readonly notice snapshot, and forwards
-user actions. The service fills the capability only from
-`desktopManagedAgentProviders`: when automatic checks are enabled, at least one
-visible empty Home surface requests cached update discovery through
+surface is eligible, subscribes to a referentially stable exact-target notice
+snapshot, and forwards user actions. Ineligible surfaces do not subscribe, and
+an unrelated target's notice transition retains the current target snapshot so
+it cannot fan out through AgentGUI's memo boundary. The service fills the
+capability only from `desktopManagedAgentProviders`: when automatic checks are
+enabled, at least one visible empty Home surface requests cached update
+discovery through
 `IAgentProviderStatusService.ensureLoaded({ includeUpdates: true })`; the
-daemon remains the periodic discovery owner. Update discovery has a separate
+daemon remains the periodic discovery owner. Window activation enters through
+the existing managed-provider visibility refresh coordinator: an eligible
+update-discovery request also satisfies an otherwise-stale ordinary status
+refresh, while a failed or ineligible discovery falls back to the ordinary
+provider reconciliation path. Update discovery has a separate
 request-freshness plane from ordinary local readiness refreshes and is only
 overlaid when the Provider CLI path/version still identifies the same runtime;
-this prevents a later local refresh from hiding a valid discovery result or a
-stale result from crossing runtime selections. Each notice carries only the
+ordinary refresh preservation applies the same identity guard. This prevents a
+later local refresh from hiding a valid discovery result or a stale result from
+crossing runtime selections. Each notice carries only the
 exact catalog-owned built-in `agentTargetId` and current/latest versions.
 AgentGUI resolves presentation from that target and fails closed if it is
 absent from the current directory; Desktop resolves the Provider again from

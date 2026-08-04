@@ -1,9 +1,12 @@
-import { useCallback, useEffect, useMemo, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useSyncExternalStore } from "react";
 import type { AgentGUIProps } from "@tutti-os/agent-gui";
-import type { IAgentCLIUpdateNoticeService } from "../services/agentCLIUpdateNoticeService.interface.ts";
-import { projectDesktopAgentCLIUpdateNoticesForTarget } from "../services/internal/desktopAgentCLIUpdateNoticeModel.ts";
+import type {
+  AgentCLIUpdateNoticeSnapshot,
+  IAgentCLIUpdateNoticeService
+} from "../services/agentCLIUpdateNoticeService.interface.ts";
 
-const EMPTY_NOTICES = [] as const;
+const EMPTY_SNAPSHOT: AgentCLIUpdateNoticeSnapshot = { notices: [] };
+const subscribeNoop = (): (() => void) => () => {};
 
 export function useDesktopAgentCLIUpdateNotices({
   agentTargetId,
@@ -21,10 +24,15 @@ export function useDesktopAgentCLIUpdateNotices({
     AgentGUIProps["hostActions"]["onAgentProviderUpdateNoticeAction"]
   >;
 } {
+  const getTargetSnapshot = useCallback(
+    () =>
+      eligible ? service.getSnapshotForTarget(agentTargetId) : EMPTY_SNAPSHOT,
+    [agentTargetId, eligible, service]
+  );
   const snapshot = useSyncExternalStore(
-    service.subscribe,
-    service.getSnapshot,
-    service.getSnapshot
+    eligible ? service.subscribe : subscribeNoop,
+    getTargetSnapshot,
+    getTargetSnapshot
   );
 
   useEffect(() => {
@@ -43,19 +51,8 @@ export function useDesktopAgentCLIUpdateNotices({
     [service]
   );
 
-  const notices = useMemo(
-    () =>
-      eligible
-        ? projectDesktopAgentCLIUpdateNoticesForTarget(
-            snapshot.notices,
-            agentTargetId
-          )
-        : EMPTY_NOTICES,
-    [agentTargetId, eligible, snapshot.notices]
-  );
-
   return {
-    notices,
+    notices: snapshot.notices,
     onAction
   };
 }

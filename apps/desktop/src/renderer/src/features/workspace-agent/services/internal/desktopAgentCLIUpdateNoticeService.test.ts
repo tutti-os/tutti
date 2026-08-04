@@ -6,10 +6,6 @@ import type {
   WorkspaceAgentProvider
 } from "@tutti-os/client-tuttid-ts";
 import { proxy } from "valtio";
-import type {
-  WorkspaceWindowLifecycle,
-  WorkspaceWindowLifecycleEvent
-} from "../../../../lib/workspaceWindowLifecycle.ts";
 import type { IDesktopPreferencesService } from "../../../desktop-preferences/services/desktopPreferencesService.interface.ts";
 import type { IAgentEnvService } from "../agentEnvService.interface.ts";
 import type {
@@ -122,19 +118,35 @@ test("does not surface cached updates when automatic checks are disabled", () =>
   fixture.dispose();
 });
 
-test("refreshes cached discovery on later window focus without focus-spam", async () => {
+test("keeps an exact target snapshot stable when another provider changes", async () => {
   const fixture = createFixture();
   fixture.service.setSurfaceEligible("node-1", true);
   await Promise.resolve();
-  await Promise.resolve();
+
+  const firstSnapshot = fixture.service.getSnapshotForTarget("local:codex");
+  fixture.providerStatus.setStatuses([
+    createStatus("codex"),
+    createStatus("tutti-agent")
+  ]);
+  const secondSnapshot = fixture.service.getSnapshotForTarget("local:codex");
+
+  assert.strictEqual(secondSnapshot, firstSnapshot);
+  assert.deepEqual(secondSnapshot.notices, [availableNotice]);
+  fixture.dispose();
+});
+
+test("refreshes cached discovery on later window activation without activation spam", async () => {
+  const fixture = createFixture();
+  fixture.service.setSurfaceEligible("node-1", true);
+  assert.equal(await fixture.service.refreshForWindowActivation(), true);
   assert.equal(fixture.providerStatus.ensureLoadedCalls, 1);
 
   fixture.advance(29_999);
-  fixture.windowLifecycle.emit({ kind: "focused", occurredAt: 29_999 });
+  assert.equal(await fixture.service.refreshForWindowActivation(), false);
   assert.equal(fixture.providerStatus.ensureLoadedCalls, 1);
 
   fixture.advance(1);
-  fixture.windowLifecycle.emit({ kind: "focused", occurredAt: 30_000 });
+  assert.equal(await fixture.service.refreshForWindowActivation(), true);
   assert.equal(fixture.providerStatus.ensureLoadedCalls, 2);
   fixture.dispose();
 });
@@ -157,20 +169,23 @@ function createFixture(
   dispose(): void;
   providerStatus: FakeProviderStatusService;
   service: DesktopAgentCLIUpdateNoticeService;
-  windowLifecycle: FakeWindowLifecycle;
 } {
   const providerStatus = new FakeProviderStatusService([createStatus("codex")]);
   const agentEnv = new FakeAgentEnvService();
   const agentsService = new FakeAgentsService([
     createAgent({ agentTargetId: "workspace-agent-codex", name: "Workspace" }),
-    createAgent({ agentTargetId: "local:codex", name: "Codex" })
+    createAgent({ agentTargetId: "local:codex", name: "Codex" }),
+    createAgent({
+      agentTargetId: "local:tutti-agent",
+      name: "Tutti Agent",
+      provider: "tutti-agent"
+    })
   ]);
   const desktopPreferencesService = {
     store: proxy({
       agentCliUpdateCheckEnabled: input.autoCheckEnabled ?? true
     })
   } as unknown as IDesktopPreferencesService;
-  const windowLifecycle = new FakeWindowLifecycle();
   let now = 0;
   const service = new DesktopAgentCLIUpdateNoticeService({
     agentEnvService: agentEnv as unknown as IAgentEnvService,
@@ -180,7 +195,6 @@ function createFixture(
     now: () => now,
     providerStatusService:
       providerStatus as unknown as IAgentProviderStatusService,
-    windowLifecycle,
     workspaceId: "workspace-1"
   });
   return {
@@ -190,8 +204,7 @@ function createFixture(
     },
     dispose: () => service.dispose(),
     providerStatus,
-    service,
-    windowLifecycle
+    service
   };
 }
 
@@ -200,29 +213,6 @@ class FakeAgentEnvService {
 
   open(input: unknown): void {
     this.opens.push(input);
-  }
-}
-
-class FakeWindowLifecycle implements WorkspaceWindowLifecycle {
-  private readonly listeners = new Set<
-    (event: WorkspaceWindowLifecycleEvent) => void
-  >();
-
-  getSnapshot() {
-    return { focused: true, visibility: "visible" as const };
-  }
-
-  subscribe(
-    listener: (event: WorkspaceWindowLifecycleEvent) => void
-  ): () => void {
-    this.listeners.add(listener);
-    return () => this.listeners.delete(listener);
-  }
-
-  emit(event: WorkspaceWindowLifecycleEvent): void {
-    for (const listener of this.listeners) {
-      listener(event);
-    }
   }
 }
 
@@ -275,9 +265,13 @@ class FakeProviderStatusService {
     return () => this.listeners.delete(listener);
   }
 
-  async ensureLoaded(): Promise<null> {
+  async ensureLoaded() {
     this.ensureLoadedCalls += 1;
-    return null;
+    return {
+      capturedAt: this.snapshot.capturedAt ?? "",
+      defaultProvider: this.snapshot.defaultProvider ?? "codex",
+      providers: [...this.snapshot.statuses]
+    };
   }
 
   async runAction(provider: WorkspaceAgentProvider): Promise<void> {

@@ -5,6 +5,11 @@ import { desktopManagedAgentProviders } from "./desktopManagedAgentProviders.ts"
 export interface DesktopAgentProviderVisibilityRefreshOptions {
   minIntervalMs?: number;
   freshnessMs?: number;
+  /**
+   * Returns true when update discovery already refreshed provider statuses for
+   * this activation, so the ordinary reconciliation can be skipped.
+   */
+  refreshForActivation?: () => Promise<boolean>;
 }
 
 export function bindDesktopManagedAgentProviderVisibilityRefresh(
@@ -21,13 +26,23 @@ export function bindDesktopManagedAgentProviderVisibilityRefresh(
   let running = false;
 
   const reconcileProviders = async (): Promise<void> => {
+    for (const provider of providers) {
+      if (disposed || lifecycle.getSnapshot().visibility !== "visible") {
+        return;
+      }
+      await service.reconcileStatuses([provider]).catch(() => null);
+    }
+  };
+
+  const refreshActivatedWindow = async (
+    ordinaryReconciliationRequired: boolean
+  ): Promise<void> => {
     running = true;
     try {
-      for (const provider of providers) {
-        if (disposed || lifecycle.getSnapshot().visibility !== "visible") {
-          return;
-        }
-        await service.reconcileStatuses([provider]).catch(() => null);
+      const updateDiscoveryHandled =
+        (await options.refreshForActivation?.().catch(() => false)) ?? false;
+      if (!updateDiscoveryHandled && ordinaryReconciliationRequired) {
+        await reconcileProviders();
       }
     } finally {
       running = false;
@@ -45,19 +60,20 @@ export function bindDesktopManagedAgentProviderVisibilityRefresh(
     ) {
       return;
     }
-    if (event.occurredAt - lastRefreshAt < minIntervalMs) {
-      return;
-    }
     const capturedAt = service.getSnapshot?.().capturedAt;
     const capturedAtMs = capturedAt ? Date.parse(capturedAt) : Number.NaN;
-    if (
+    const snapshotIsFresh =
       Number.isFinite(capturedAtMs) &&
-      event.occurredAt - capturedAtMs < freshnessMs
-    ) {
+      event.occurredAt - capturedAtMs < freshnessMs;
+    const ordinaryReconciliationRequired =
+      !snapshotIsFresh && event.occurredAt - lastRefreshAt >= minIntervalMs;
+    if (!ordinaryReconciliationRequired && !options.refreshForActivation) {
       return;
     }
-    lastRefreshAt = event.occurredAt;
-    void reconcileProviders();
+    if (ordinaryReconciliationRequired) {
+      lastRefreshAt = event.occurredAt;
+    }
+    void refreshActivatedWindow(ordinaryReconciliationRequired);
   });
 
   return () => {

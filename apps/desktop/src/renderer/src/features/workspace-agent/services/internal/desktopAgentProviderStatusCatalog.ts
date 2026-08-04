@@ -112,12 +112,17 @@ function preserveNetwork(
 
 // Local-only status reads attach a base update block without discovery
 // (lastCheckedAt stays null). Keep the last explicit includeUpdates result so a
-// dock/poll refresh cannot wipe "update available" or the update action.
+// dock/poll refresh cannot wipe "update available" or the update action. Never
+// carry that discovery across a CLI path/version change.
 function preserveUpdateDiscovery(
   previous: AgentProviderStatus | undefined,
   next: AgentProviderStatus
 ): AgentProviderStatus {
-  if (next.update?.lastCheckedAt || !previous?.update?.lastCheckedAt) {
+  if (
+    next.update?.lastCheckedAt ||
+    !previous?.update?.lastCheckedAt ||
+    !sameProviderCLIRuntime(next, previous)
+  ) {
     return next;
   }
   const preservedUpdate = previous.update;

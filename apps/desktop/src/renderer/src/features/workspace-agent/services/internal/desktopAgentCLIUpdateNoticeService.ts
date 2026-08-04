@@ -8,7 +8,6 @@ import type {
   WorkspaceAgentProvider
 } from "@tutti-os/client-tuttid-ts";
 import { subscribe as subscribeValtio } from "valtio";
-import type { WorkspaceWindowLifecycle } from "../../../../lib/workspaceWindowLifecycle.ts";
 import type { IDesktopPreferencesService } from "../../../desktop-preferences/services/desktopPreferencesService.interface.ts";
 import type {
   AgentCLIUpdateNoticeSnapshot,
@@ -21,6 +20,7 @@ import {
   desktopAgentCLIUpdateItemKey,
   desktopAgentCLIUpdateItemsEqual,
   hasDesktopAgentCLIUpdateConverged,
+  projectDesktopAgentCLIUpdateNoticesForTarget,
   projectDesktopAgentCLIUpdateItems,
   type DesktopAgentCLIUpdateItem
 } from "./desktopAgentCLIUpdateNoticeModel.ts";
@@ -28,6 +28,9 @@ import { desktopManagedAgentProviders } from "./desktopManagedAgentProviders.ts"
 
 const DEFAULT_COMPLETED_NOTICE_DURATION_MS = 6_000;
 const DEFAULT_DISCOVERY_REQUEST_MIN_INTERVAL_MS = 30_000;
+const EMPTY_UPDATE_NOTICE_SNAPSHOT: AgentCLIUpdateNoticeSnapshot = {
+  notices: []
+};
 
 type DesktopAgentCLIUpdateActionPhase = "updating" | "failed" | "completed";
 
@@ -46,7 +49,6 @@ export interface DesktopAgentCLIUpdateNoticeServiceDependencies {
   agentsService: IAgentsService;
   desktopPreferencesService: IDesktopPreferencesService;
   providerStatusService: IAgentProviderStatusService;
-  windowLifecycle: WorkspaceWindowLifecycle;
   workspaceId: string;
   completedNoticeDurationMs?: number;
   discoveryRequestMinIntervalMs?: number;
@@ -57,6 +59,10 @@ export class DesktopAgentCLIUpdateNoticeService implements IAgentCLIUpdateNotice
   readonly _serviceBrand = undefined;
 
   private snapshot: AgentCLIUpdateNoticeSnapshot = { notices: [] };
+  private readonly targetSnapshots = new Map<
+    string,
+    AgentCLIUpdateNoticeSnapshot
+  >();
   private readonly listeners = new Set<() => void>();
   private readonly eligibleSurfaceIds = new Set<string>();
   private readonly dismissedItemKeys = new Set<string>();
@@ -71,7 +77,7 @@ export class DesktopAgentCLIUpdateNoticeService implements IAgentCLIUpdateNotice
   >();
   private readonly disposers: Array<() => void>;
   private presentations: readonly DesktopAgentCLIUpdatePresentation[] = [];
-  private discoveryRequest: Promise<unknown> | null = null;
+  private discoveryRequest: Promise<boolean> | null = null;
   private lastDiscoveryRequestedAt = Number.NEGATIVE_INFINITY;
   private autoCheckEnabled: boolean;
   private disposed = false;
@@ -91,23 +97,41 @@ export class DesktopAgentCLIUpdateNoticeService implements IAgentCLIUpdateNotice
         const enabledChanged = enabled !== this.autoCheckEnabled;
         this.autoCheckEnabled = enabled;
         if (enabledChanged && enabled) {
-          this.requestDiscovery();
+          void this.requestDiscovery();
         }
         this.reconcile();
-      }),
-      dependencies.windowLifecycle.subscribe((event) => {
-        if (
-          event.kind === "focused" ||
-          (event.kind === "visibility_changed" &&
-            event.visibility === "visible")
-        ) {
-          this.requestDiscovery();
-        }
       })
     ];
   }
 
   readonly getSnapshot = (): AgentCLIUpdateNoticeSnapshot => this.snapshot;
+
+  readonly getSnapshotForTarget = (
+    agentTargetId: string | null | undefined
+  ): AgentCLIUpdateNoticeSnapshot => {
+    const normalizedAgentTargetId = agentTargetId?.trim() ?? "";
+    if (!normalizedAgentTargetId) {
+      return EMPTY_UPDATE_NOTICE_SNAPSHOT;
+    }
+    const notices = projectDesktopAgentCLIUpdateNoticesForTarget(
+      this.snapshot.notices,
+      normalizedAgentTargetId
+    );
+    if (notices.length === 0) {
+      this.targetSnapshots.delete(normalizedAgentTargetId);
+      return EMPTY_UPDATE_NOTICE_SNAPSHOT;
+    }
+    const nextSnapshot = { notices };
+    const previousSnapshot = this.targetSnapshots.get(normalizedAgentTargetId);
+    if (
+      previousSnapshot &&
+      updateNoticeSnapshotsEqual(previousSnapshot, nextSnapshot)
+    ) {
+      return previousSnapshot;
+    }
+    this.targetSnapshots.set(normalizedAgentTargetId, nextSnapshot);
+    return nextSnapshot;
+  };
 
   readonly subscribe = (listener: () => void): (() => void) => {
     if (this.disposed) {
@@ -116,6 +140,10 @@ export class DesktopAgentCLIUpdateNoticeService implements IAgentCLIUpdateNotice
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);
   };
+
+  refreshForWindowActivation(): Promise<boolean> {
+    return this.requestDiscovery();
+  }
 
   setSurfaceEligible(surfaceId: string, eligible: boolean): void {
     const normalizedSurfaceId = surfaceId.trim();
@@ -130,7 +158,7 @@ export class DesktopAgentCLIUpdateNoticeService implements IAgentCLIUpdateNotice
     }
     if (eligible) {
       this.eligibleSurfaceIds.add(normalizedSurfaceId);
-      this.requestDiscovery();
+      void this.requestDiscovery();
     } else {
       this.eligibleSurfaceIds.delete(normalizedSurfaceId);
     }
@@ -194,20 +222,27 @@ export class DesktopAgentCLIUpdateNoticeService implements IAgentCLIUpdateNotice
     this.listeners.clear();
     this.eligibleSurfaceIds.clear();
     this.inflightProviders.clear();
+    this.targetSnapshots.clear();
   }
 
-  private requestDiscovery(): void {
+  private requestDiscovery(): Promise<boolean> {
     const now = this.dependencies.now?.() ?? Date.now();
     if (
       this.disposed ||
-      this.discoveryRequest ||
       this.eligibleSurfaceIds.size === 0 ||
-      !this.autoCheckEnabled ||
-      now - this.lastDiscoveryRequestedAt <
-        (this.dependencies.discoveryRequestMinIntervalMs ??
-          DEFAULT_DISCOVERY_REQUEST_MIN_INTERVAL_MS)
+      !this.autoCheckEnabled
     ) {
-      return;
+      return Promise.resolve(false);
+    }
+    if (this.discoveryRequest) {
+      return this.discoveryRequest;
+    }
+    if (
+      now - this.lastDiscoveryRequestedAt <
+      (this.dependencies.discoveryRequestMinIntervalMs ??
+        DEFAULT_DISCOVERY_REQUEST_MIN_INTERVAL_MS)
+    ) {
+      return Promise.resolve(false);
     }
     this.lastDiscoveryRequestedAt = now;
     const request = this.dependencies.providerStatusService
@@ -215,13 +250,15 @@ export class DesktopAgentCLIUpdateNoticeService implements IAgentCLIUpdateNotice
         includeUpdates: true,
         providers: [...desktopManagedAgentProviders]
       })
-      .catch(() => null);
+      .then((response) => response !== null)
+      .catch(() => false);
     this.discoveryRequest = request;
     void request.finally(() => {
       if (this.discoveryRequest === request) {
         this.discoveryRequest = null;
       }
     });
+    return request;
   }
 
   private reconcile(): void {

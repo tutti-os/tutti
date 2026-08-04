@@ -1717,6 +1717,7 @@ func TestServiceRunActionReportsActiveActionForClaudeInstall(t *testing.T) {
 	}
 	runtimeRoot := fakeManagedRuntimeRoot(t)
 	service := probeTestService(home)
+	service.ClaudeCodeStateDir = filepath.Join(home, ".tutti")
 	service.FileExists = fileExistsForTest
 	service.Environ = func() []string {
 		return []string{"PATH=" + binDir, claudeSDKSidecarEntryPathEnv + "=" + entry}

@@ -108,11 +108,6 @@ export function registerWorkspaceAgentServices(
     workspaceId: input.workspaceId
   });
   registry.registerInstance(IAgentEnvService, agentEnvService);
-  const disposeManagedAgentProviderVisibilityRefresh =
-    bindDesktopManagedAgentProviderVisibilityRefresh(
-      agentProviderStatusService,
-      input.windowLifecycle
-    );
   const managedProviderSet = new Set<WorkspaceAgentProvider>(
     desktopManagedAgentProviders
   );
@@ -142,13 +137,21 @@ export function registerWorkspaceAgentServices(
     agentsService,
     desktopPreferencesService: input.desktopPreferencesService,
     providerStatusService: agentProviderStatusService,
-    windowLifecycle: input.windowLifecycle,
     workspaceId: input.workspaceId
   });
   registry.registerInstance(
     IAgentCLIUpdateNoticeService,
     agentCLIUpdateNoticeService
   );
+  const disposeManagedAgentProviderVisibilityRefresh =
+    bindDesktopManagedAgentProviderVisibilityRefresh(
+      agentProviderStatusService,
+      input.windowLifecycle,
+      {
+        refreshForActivation: () =>
+          agentCLIUpdateNoticeService.refreshForWindowActivation()
+      }
+    );
   const disposeAgentsEarlyAccessSync = bindDesktopAgentsEarlyAccessSync({
     agentsService,
     preferencesStore

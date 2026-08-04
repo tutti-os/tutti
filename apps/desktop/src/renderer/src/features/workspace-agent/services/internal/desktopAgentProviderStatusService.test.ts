@@ -303,6 +303,65 @@ test("local-only refresh preserves prior includeUpdates discovery", async () => 
   );
 });
 
+test("local-only refresh drops update discovery after the CLI runtime changes", async () => {
+  const discoveredUpdate = {
+    capability: "supported" as const,
+    currentVersion: "1.0.0",
+    lastCheckedAt: "2026-07-19T00:00:00.000Z",
+    latestVersion: "1.1.0",
+    reasonCode: null,
+    source: "npm" as const,
+    unsupportedReason: null,
+    updateAvailable: true
+  };
+  const service = new DesktopAgentProviderStatusService({
+    tuttidClient: createTuttidClient({
+      snapshots: [
+        createStatusResponse([
+          createProviderStatus({
+            actions: [{ id: "update", kind: "daemon_action" }],
+            availability: "ready",
+            cliBinaryPath: "/usr/local/bin/codex",
+            cliVersion: "1.0.0",
+            update: discoveredUpdate
+          })
+        ]),
+        createStatusResponse([
+          createProviderStatus({
+            actions: [],
+            availability: "ready",
+            cliBinaryPath: "/usr/local/bin/codex",
+            cliVersion: "1.1.0",
+            update: {
+              ...discoveredUpdate,
+              currentVersion: "1.1.0",
+              lastCheckedAt: null,
+              latestVersion: null,
+              updateAvailable: null
+            }
+          })
+        ])
+      ]
+    }),
+    terminalCommandRunner: {
+      async runTerminalCommand() {}
+    }
+  });
+
+  await service.checkUpdates(["codex"]);
+  await service.refresh(["codex"]);
+
+  assert.equal(service.getStatus("codex")?.cli.version, "1.1.0");
+  assert.equal(service.getStatus("codex")?.update.currentVersion, "1.1.0");
+  assert.equal(service.getStatus("codex")?.update.updateAvailable, null);
+  assert.equal(
+    service
+      .getStatus("codex")
+      ?.actions.some((action) => action.id === "update"),
+    false
+  );
+});
+
 test("a later ordinary response does not make an earlier update response stale", async () => {
   const updateStatusRequest = createDeferred<AgentProviderStatusListResponse>();
   const ordinaryStatusRequest =
