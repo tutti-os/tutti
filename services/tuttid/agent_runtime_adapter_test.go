@@ -368,10 +368,14 @@ func TestAgentRuntimeAdapterDelegatesTypedDurableSubmitProvenance(t *testing.T) 
 	}
 
 	adapter := newAgentRuntimeAdapter(controller)
+	queued := false
 	if err := adapter.DurablyReportSubmitProvenance(context.Background(), agentservice.RuntimeSubmitProvenanceInput{
 		WorkspaceID: "workspace-1", AgentSessionID: "session-1", TurnID: "turn-1",
 		ClientSubmitID: "submit-1", Content: agentservice.TextPromptContent("hello"),
 		CanonicalSubmitOccurredAtUnixMS: 1_234,
+		ClientSubmittedAtUnixMS:         1_000,
+		SessionState:                    "new",
+		WasQueued:                       &queued,
 		DisplayPrompt:                   "Visible hello",
 	}); err != nil {
 		t.Fatalf("DurablyReportSubmitProvenance() error = %v", err)
@@ -382,7 +386,9 @@ func TestAgentRuntimeAdapterDelegatesTypedDurableSubmitProvenance(t *testing.T) 
 	}
 	message := got.MessageUpdates[0]
 	if message.TurnID != "turn-1" || message.Seq != 1_234 || message.OccurredAtUnixMS != 1_234 ||
-		message.Payload["clientSubmitId"] != "submit-1" || message.Payload["displayPrompt"] != "Visible hello" {
+		message.Payload["clientSubmitId"] != "submit-1" || message.Payload["displayPrompt"] != "Visible hello" ||
+		message.Payload["clientSubmittedAtUnixMs"] != int64(1_000) || message.Payload["sessionState"] != "new" ||
+		message.Payload["queued"] != false {
 		t.Fatalf("provenance message = %#v", message)
 	}
 }

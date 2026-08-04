@@ -235,6 +235,9 @@ func (a agentRuntimeAdapter) DurablyReportSubmitProvenance(
 		TurnID:                          input.TurnID,
 		ClientSubmitID:                  input.ClientSubmitID,
 		CanonicalSubmitOccurredAtUnixMS: input.CanonicalSubmitOccurredAtUnixMS,
+		ClientSubmittedAtUnixMS:         input.ClientSubmittedAtUnixMS,
+		SessionState:                    input.SessionState,
+		WasQueued:                       cloneBoolPointer(input.WasQueued),
 		Content:                         runtimePromptContentFromService(input.Content),
 		DisplayPrompt:                   input.DisplayPrompt,
 		Guidance:                        input.Guidance,
@@ -243,6 +246,14 @@ func (a agentRuntimeAdapter) DurablyReportSubmitProvenance(
 		return mapAgentRuntimeError(err)
 	}
 	return nil
+}
+
+func cloneBoolPointer(value *bool) *bool {
+	if value == nil {
+		return nil
+	}
+	cloned := *value
+	return &cloned
 }
 
 func runtimeTuttiModeSnapshotFromService(

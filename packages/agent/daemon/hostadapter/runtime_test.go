@@ -248,10 +248,14 @@ func TestRuntimeControllerFailsClosedWithoutBackend(t *testing.T) {
 func TestRuntimeControllerDelegatesDurableSubmitProvenance(t *testing.T) {
 	backend := &provenanceRuntimeBackend{}
 	controller := &RuntimeController{Backend: backend}
+	queued := true
 	input := host.RuntimeSubmitProvenanceInput{
 		WorkspaceID: " workspace-1 ", AgentSessionID: "session-1", TurnID: "turn-1",
 		ClientSubmitID: "submit-1", DisplayPrompt: "display", Guidance: true,
 		CanonicalSubmitOccurredAtUnixMS: 1_234,
+		ClientSubmittedAtUnixMS:         1_000,
+		SessionState:                    "existing",
+		WasQueued:                       &queued,
 		Content:                         []host.PromptContentBlock{{Type: "text", Text: "hello"}},
 	}
 
@@ -261,6 +265,8 @@ func TestRuntimeControllerDelegatesDurableSubmitProvenance(t *testing.T) {
 	if backend.input.RoomID != input.WorkspaceID || backend.input.AgentSessionID != input.AgentSessionID ||
 		backend.input.TurnID != input.TurnID || backend.input.ClientSubmitID != input.ClientSubmitID ||
 		backend.input.CanonicalSubmitOccurredAtUnixMS != input.CanonicalSubmitOccurredAtUnixMS ||
+		backend.input.ClientSubmittedAtUnixMS != input.ClientSubmittedAtUnixMS ||
+		backend.input.SessionState != input.SessionState || backend.input.WasQueued == nil || !*backend.input.WasQueued ||
 		backend.input.DisplayPrompt != input.DisplayPrompt || !backend.input.Guidance {
 		t.Fatalf("delegated provenance = %#v", backend.input)
 	}

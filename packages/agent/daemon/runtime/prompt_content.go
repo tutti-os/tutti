@@ -316,6 +316,12 @@ func userPromptActivityPayloadExtraFromMetadata(metadata map[string]any, extra m
 	if submittedAtUnixMS := metadataInt64(metadata, "clientSubmittedAtUnixMs"); submittedAtUnixMS > 0 {
 		payload["clientSubmittedAtUnixMs"] = submittedAtUnixMS
 	}
+	if queued, ok := metadata["queued"].(bool); ok {
+		payload["queued"] = queued
+	}
+	if sessionState := strings.TrimSpace(metadataString(metadata, "sessionState")); sessionState == "new" || sessionState == "existing" {
+		payload["sessionState"] = sessionState
+	}
 	if strings.TrimSpace(payloadString(payload, "messageId")) == "" {
 		payload["messageId"] = userPromptActivityMessageIDFromClientSubmitID(clientSubmitID)
 	}

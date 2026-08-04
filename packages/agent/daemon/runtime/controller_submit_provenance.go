@@ -55,6 +55,20 @@ func (c *Controller) DurablyReportSubmitProvenance(ctx context.Context, input Su
 
 	messageID := userPromptActivityMessageIDFromClientSubmitID(input.ClientSubmitID)
 	explicitDisplayPrompt, visibleText := explicitAndVisiblePromptText(content, input.DisplayPrompt)
+	performanceProvenance := make(map[string]any, 3)
+	if input.ClientSubmittedAtUnixMS > 0 {
+		performanceProvenance["clientSubmittedAtUnixMs"] = input.ClientSubmittedAtUnixMS
+	}
+	switch sessionState := strings.TrimSpace(input.SessionState); sessionState {
+	case "new", "existing":
+		performanceProvenance["sessionState"] = sessionState
+	}
+	if input.WasQueued != nil {
+		performanceProvenance["queued"] = *input.WasQueued
+	}
+	if len(performanceProvenance) == 0 {
+		performanceProvenance = nil
+	}
 	message := newUserPromptActivityEventWithFact(
 		session,
 		content,
@@ -62,7 +76,7 @@ func (c *Controller) DurablyReportSubmitProvenance(ctx context.Context, input Su
 		visibleText,
 		input.TurnID,
 		canonicalSubmit,
-		nil,
+		performanceProvenance,
 	)
 	// Do not replay a submitted lifecycle patch here. Exec durably committed
 	// that patch before provider dispatch. The adapter's user-message report may

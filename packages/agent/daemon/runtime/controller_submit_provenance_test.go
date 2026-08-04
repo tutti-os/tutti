@@ -94,7 +94,9 @@ func TestCanonicalSubmitSequenceIsStableAcrossRuntimeAndProvenanceOrder(t *testi
 			}
 
 			const occurredAtUnixMS = int64(1_234)
+			const clientSubmittedAtUnixMS = int64(1_000)
 			const clientSubmitID = "submit-1"
+			queued := false
 			content := textPrompt("hello")
 			execResult, err := controller.Exec(t.Context(), ExecInput{
 				RoomID:                          started.Session.RoomID,
@@ -103,6 +105,11 @@ func TestCanonicalSubmitSequenceIsStableAcrossRuntimeAndProvenanceOrder(t *testi
 				ClientSubmitID:                  clientSubmitID,
 				CanonicalSubmitOccurredAtUnixMS: occurredAtUnixMS,
 				Content:                         content,
+				Metadata: map[string]any{
+					"clientSubmittedAtUnixMs": clientSubmittedAtUnixMS,
+					"queued":                  queued,
+					"sessionState":            "existing",
+				},
 			})
 			if err != nil {
 				t.Fatal(err)
@@ -119,6 +126,9 @@ func TestCanonicalSubmitSequenceIsStableAcrossRuntimeAndProvenanceOrder(t *testi
 				TurnID:                          execResult.TurnID,
 				ClientSubmitID:                  clientSubmitID,
 				CanonicalSubmitOccurredAtUnixMS: occurredAtUnixMS,
+				ClientSubmittedAtUnixMS:         clientSubmittedAtUnixMS,
+				SessionState:                    "existing",
+				WasQueued:                       &queued,
 				Content:                         content,
 			}); err != nil {
 				t.Fatal(err)
@@ -138,6 +148,10 @@ func TestCanonicalSubmitSequenceIsStableAcrossRuntimeAndProvenanceOrder(t *testi
 			projected := agentsessionstore.SessionMessageUpdateFromActivityUpdate(updates[0])
 			if projected.Payload["seq"] != uint64(occurredAtUnixMS) {
 				t.Fatalf("canonical payload seq = %#v", projected.Payload["seq"])
+			}
+			if projected.Payload["clientSubmittedAtUnixMs"] != clientSubmittedAtUnixMS ||
+				projected.Payload["queued"] != false || projected.Payload["sessionState"] != "existing" {
+				t.Fatalf("canonical submit performance provenance = %#v", projected.Payload)
 			}
 		})
 	}

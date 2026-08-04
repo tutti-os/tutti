@@ -110,6 +110,32 @@ lifecycle writes. Non-AgentGUI prompt-session integrations keep their explicit
 tracker because they call the activity service without entering the shared
 engine.
 
+### Agent Turn performance ownership
+
+`agent.turn_performance` is a daemon-owned, best-effort terminal summary. The
+`tuttid` `ActivityProjection` observes committed canonical Turn mutations and
+emits at most one event per terminal Turn in one daemon process. Renderer
+snapshots are not an analytics authority, and reporting, message reads, model
+normalization, or transport failure must never delay or fail the Turn.
+
+The event contains only a strict content-free whitelist: normalized provider
+and catalog model (`custom` or `unknown` when a raw value is not safe),
+new/existing/unknown Session state, client-submit or canonical-Turn timing
+source, first visible progress, assistant-text TTFT, total duration, outcome,
+maximum idle duration, long-idle and tool-call facts, queue state, and nullable
+reconnect/retry facts. Input/output tokens are omitted unless a provider
+supplies reliable Turn-scoped usage; Session cumulative usage is never
+subtracted to manufacture a Turn count.
+
+The event never includes workspace, Session, Turn, or submit identifiers;
+Prompt or response text; reasoning; file contents or paths; commands, tool
+names, or tool arguments; authentication values; or URLs. Local canonical IDs
+are used only for association and same-process deduplication. `ttft_ms` is null
+when no displayable assistant answer text exists. Unsupported reconnect/retry
+facts remain null rather than being reported as zero. DataFinder derives
+version/provider/model P50/P95, failure, long-tail, and reconnect trends from
+these terminal summaries plus daemon-owned common parameters.
+
 ## Event Naming Convention
 
 Event names follow the product analytics spec's dot-separated domain action

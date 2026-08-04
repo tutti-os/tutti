@@ -26,6 +26,23 @@ func submissionMetadata(metadata map[string]any, typedClientSubmitID string) map
 	return result
 }
 
+// withSubmitPerformanceProvenance copies only the privacy-reviewed fields
+// needed to measure a Turn from the user's submit boundary. Keeping this as a
+// typed allowlist prevents arbitrary request metadata from becoming durable
+// canonical message payload.
+func withSubmitPerformanceProvenance(input RuntimeSubmitProvenanceInput, metadata map[string]any) RuntimeSubmitProvenanceInput {
+	input.ClientSubmittedAtUnixMS = metadataInt64(metadata, "clientSubmittedAtUnixMs")
+	switch state := metadataString(metadata, "sessionState"); state {
+	case "new", "existing":
+		input.SessionState = state
+	}
+	if queued, ok := metadata["queued"].(bool); ok {
+		queuedCopy := queued
+		input.WasQueued = &queuedCopy
+	}
+	return input
+}
+
 func (h *Host) prepareSubmitClaim(ctx context.Context, ref SessionRef, metadata map[string]any, canonicalTurnID string) (storesqlite.SubmitClaim, bool, error) {
 	clientID := legacyClientSubmitID(metadata)
 	if h == nil || h.store == nil || clientID == "" {

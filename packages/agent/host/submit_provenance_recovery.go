@@ -33,6 +33,7 @@ func (h *Host) persistRuntimeSubmitOutcome(
 	occurredAtUnixMS int64,
 	prepared preparedPromptContent,
 	displayPrompt string,
+	metadata map[string]any,
 	capabilityRefs []CapabilityReference,
 	tuttiModeSnapshot *TuttiModeTurnSnapshot,
 ) error {
@@ -46,6 +47,7 @@ func (h *Host) persistRuntimeSubmitOutcome(
 		prepared.Hydrated,
 		prepared.Persisted,
 		displayPrompt,
+		metadata,
 		false,
 		capabilityRefs,
 		tuttiModeSnapshot,
@@ -66,6 +68,7 @@ func (h *Host) persistSubmitAfterRuntimeOutcome(
 	hydratedContent []PromptContentBlock,
 	persistedContent []PromptContentBlock,
 	displayPrompt string,
+	metadata map[string]any,
 	guidance bool,
 	capabilityRefs []CapabilityReference,
 	tuttiModeSnapshot *TuttiModeTurnSnapshot,
@@ -83,7 +86,7 @@ func (h *Host) persistSubmitAfterRuntimeOutcome(
 	defer cancel()
 
 	if reporter, ok := h.runtime.(RuntimeSubmitProvenanceReporter); ok {
-		if err := reporter.DurablyReportSubmitProvenance(persistCtx, RuntimeSubmitProvenanceInput{
+		provenance := withSubmitPerformanceProvenance(RuntimeSubmitProvenanceInput{
 			WorkspaceID:                     workspaceID,
 			AgentSessionID:                  agentSessionID,
 			TurnID:                          turnID,
@@ -92,7 +95,8 @@ func (h *Host) persistSubmitAfterRuntimeOutcome(
 			Content:                         hydratedContent,
 			DisplayPrompt:                   displayPrompt,
 			Guidance:                        guidance,
-		}); err != nil {
+		}, metadata)
+		if err := reporter.DurablyReportSubmitProvenance(persistCtx, provenance); err != nil {
 			return err
 		}
 	}

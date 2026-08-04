@@ -600,6 +600,8 @@ func TestServiceCreatePassesInitialDisplayPromptToRuntime(t *testing.T) {
 			"":                        "drop",
 			"clientSubmitId":          "submit-create-1",
 			"clientSubmittedAtUnixMs": int64(12345),
+			"queued":                  false,
+			"sessionState":            "new",
 			" spacedDiagnosticKey ":   "trimmed",
 		},
 	})
@@ -625,6 +627,11 @@ func TestServiceCreatePassesInitialDisplayPromptToRuntime(t *testing.T) {
 	if call.CanonicalSubmitOccurredAtUnixMS <= 0 || len(runtime.provenanceCalls) != 1 ||
 		runtime.provenanceCalls[0].CanonicalSubmitOccurredAtUnixMS != call.CanonicalSubmitOccurredAtUnixMS {
 		t.Fatalf("canonical submit occurrence exec=%d provenance=%#v", call.CanonicalSubmitOccurredAtUnixMS, runtime.provenanceCalls)
+	}
+	provenance := runtime.provenanceCalls[0]
+	if provenance.ClientSubmittedAtUnixMS != 12345 || provenance.SessionState != "new" ||
+		provenance.WasQueued == nil || *provenance.WasQueued {
+		t.Fatalf("submit performance provenance = %#v", provenance)
 	}
 	if _, ok := call.Metadata[""]; ok {
 		t.Fatalf("runtime metadata includes blank key: %#v", call.Metadata)
@@ -762,6 +769,8 @@ func TestServiceSendInputPassesDisplayPromptToRuntime(t *testing.T) {
 		ClientSubmitID: "submit-1",
 		Metadata: map[string]any{
 			"clientSubmittedAtUnixMs":    int64(1234),
+			"queued":                     true,
+			"sessionState":               "existing",
 			" ignoredBlankKeyIsRemoved ": true,
 			"":                           "drop",
 		},
@@ -790,6 +799,11 @@ func TestServiceSendInputPassesDisplayPromptToRuntime(t *testing.T) {
 	if call.CanonicalSubmitOccurredAtUnixMS <= 0 || len(runtime.provenanceCalls) != 1 ||
 		runtime.provenanceCalls[0].CanonicalSubmitOccurredAtUnixMS != call.CanonicalSubmitOccurredAtUnixMS {
 		t.Fatalf("canonical submit occurrence exec=%d provenance=%#v", call.CanonicalSubmitOccurredAtUnixMS, runtime.provenanceCalls)
+	}
+	provenance := runtime.provenanceCalls[0]
+	if provenance.ClientSubmittedAtUnixMS != 1234 || provenance.SessionState != "existing" ||
+		provenance.WasQueued == nil || !*provenance.WasQueued {
+		t.Fatalf("submit performance provenance = %#v", provenance)
 	}
 	if _, ok := call.Metadata[""]; ok {
 		t.Fatalf("runtime metadata includes blank key: %#v", call.Metadata)

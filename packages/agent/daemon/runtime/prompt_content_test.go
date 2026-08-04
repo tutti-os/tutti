@@ -305,6 +305,8 @@ func TestUserPromptActivityPayloadExtraFromExecMetadataAddsClientSubmitIdentity(
 	ctx := context.WithValue(context.Background(), execMetadataContextKey{}, map[string]any{
 		"clientSubmitId":          "submit-1",
 		"clientSubmittedAtUnixMs": int64(1234),
+		"queued":                  true,
+		"sessionState":            "existing",
 	})
 	extra := userPromptActivityPayloadExtraFromExecMetadata(ctx, map[string]any{
 		"steered": true,
@@ -312,6 +314,8 @@ func TestUserPromptActivityPayloadExtraFromExecMetadataAddsClientSubmitIdentity(
 
 	if extra["clientSubmitId"] != "submit-1" ||
 		extra["clientSubmittedAtUnixMs"] != int64(1234) ||
+		extra["queued"] != true ||
+		extra["sessionState"] != "existing" ||
 		extra["messageId"] != "client-submit:user:submit-1" ||
 		extra["steered"] != true {
 		t.Fatalf("extra = %#v, want client submit identity and existing fields", extra)

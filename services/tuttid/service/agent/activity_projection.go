@@ -30,6 +30,7 @@ type ActivityProjection struct {
 	workspaceAgentTargetResolver WorkspaceAgentTargetResolver
 	rootTurnObserver             RootTurnObserver
 	turnForkabilityResolver      TurnForkabilityResolver
+	turnPerformanceState         agentTurnPerformanceState
 	replayCommitObserver         ReplayCommitObserver
 	// rootTurnSettleStateObserver is the dedicated, opt-in consumer list for
 	// synthesized canonical root-turn settlement states. It is deliberately

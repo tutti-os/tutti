@@ -229,6 +229,9 @@ type SubmitProvenanceInput struct {
 	TurnID                          string
 	ClientSubmitID                  string
 	CanonicalSubmitOccurredAtUnixMS int64
+	ClientSubmittedAtUnixMS         int64
+	SessionState                    string
+	WasQueued                       *bool
 	Content                         []PromptContentBlock
 	DisplayPrompt                   string
 	Guidance                        bool

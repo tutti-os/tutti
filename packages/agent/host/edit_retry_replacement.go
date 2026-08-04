@@ -350,11 +350,12 @@ func (h *Host) recordEditRetryReplacementSubmission(
 				}
 			}
 		}
-		if err := reporter.DurablyReportSubmitProvenance(ctx, RuntimeSubmitProvenanceInput{
+		provenance := withSubmitPerformanceProvenance(RuntimeSubmitProvenanceInput{
 			WorkspaceID: operation.WorkspaceID, AgentSessionID: operation.AgentSessionID,
 			TurnID: payload.ReplacementTurnID, ClientSubmitID: payload.ClientSubmitID,
 			Content: hydrated, DisplayPrompt: input.DisplayPrompt,
-		}); err != nil {
+		}, input.Metadata)
+		if err := reporter.DurablyReportSubmitProvenance(ctx, provenance); err != nil {
 			return err
 		}
 	}
