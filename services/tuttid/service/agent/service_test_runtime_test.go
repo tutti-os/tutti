@@ -36,6 +36,9 @@ type fakeRuntime struct {
 	execErr                error
 	execHook               func(RuntimeExecInput) (RuntimeExecResult, error)
 	execCalls              []RuntimeExecInput
+	guidanceTargetMismatch bool
+	guidanceTarget         string
+	guidanceProviderCalls  int
 	provenanceErr          error
 	provenanceHook         func(RuntimeSubmitProvenanceInput) error
 	provenanceCalls        []RuntimeSubmitProvenanceInput
@@ -540,6 +543,18 @@ func (f *fakeRuntime) CanResume(input RuntimeResumeInput) bool {
 
 func (f *fakeRuntime) Exec(_ context.Context, input RuntimeExecInput) (RuntimeExecResult, error) {
 	f.execCalls = append(f.execCalls, input)
+	if input.Guidance && f.guidanceTargetMismatch && strings.TrimSpace(input.TurnID) != strings.TrimSpace(f.guidanceTarget) {
+		return RuntimeExecResult{
+			AgentSessionID: input.AgentSessionID,
+			TurnID:         input.TurnID,
+			ProviderDispatch: agenthost.RuntimeProviderDispatchResult{
+				Disposition: agenthost.RuntimeDispatchDispositionNotDispatched,
+			},
+		}, ErrActiveTurnTargetMismatch
+	}
+	if input.Guidance {
+		f.guidanceProviderCalls++
+	}
 	if f.execHook != nil {
 		return f.execHook(input)
 	}
