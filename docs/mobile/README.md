@@ -366,12 +366,14 @@ release keystore 必须在 GitHub 之外另做加密备份。GitHub Secret 的�
 
 在 iOS 真机上测试时，运行同一工作流并选择 `ios`。它使用仓库已有的 App Store
 Connect API Key 和 `IOS_DEVELOPMENT_TEAM` 仓库变量，让 Xcode 自动管理云签名并
-使用 `IOS_TEST_DEVICE_UDID` secret 幂等登记内部测试设备，再导出 development
-IPA。工作流上传保留 14 天的内部 artifact
-`tutti-mobile-ios-internal-<commit>`，其中包含 `tutti-mobile-internal.ipa` 和
-SHA-256 校验文件；不会创建 GitHub Release 或公开下载链接。IPA 只能安装到 Apple
-Developer 后台由该 secret 配置并包含在自动生成描述文件中的设备。选择 `all` 可
-同时构建两个平台。
+组合 GitHub Actions run number 和 attempt 作为唯一构建号，导出 App Store
+Connect IPA 并上传 TestFlight。工作流会确认签名后的 App 包含 release
+`main.jsbundle`，同时上传保留 14 天的私有 artifact
+`tutti-mobile-ios-testflight-<commit>`，其中包含
+`tutti-mobile-testflight.ipa` 和 SHA-256 校验文件；不会创建 GitHub Release 或公开
+下载链接。测试人员通过 TestFlight 安装，不需要预先登记设备 UDID；App Store
+Connect 仍需把处理完成的构建分配给对应的内部或外部测试组。选择 `all` 可同时构建
+两个平台。
 
 ## 6. 调试时先判断问题属于哪一层
 
