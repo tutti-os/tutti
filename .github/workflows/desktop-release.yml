@@ -720,14 +720,20 @@ jobs:
           name: tutti-desktop-release-summary
           path: release-assets/release-summary.json
 
-      - name: Update release notes with summary
+      - name: Update release notes with summary and direct downloads
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          export RELEASE_TAG="${TUTTI_DESKTOP_RELEASE_TAG}"
+          export RELEASE_ASSET_BASE_URL="${TUTTI_DESKTOP_RELEASE_ASSETS_BASE_URL}"
           gh release view "${TUTTI_DESKTOP_RELEASE_TAG}" --json body --jq .body > release-body.md
           node apps/desktop/scripts/upsert-release-summary.mjs \
             release-body.md \
             release-assets/release-summary.json \
+            release-body-with-summary.md
+          node apps/desktop/scripts/upsert-release-download-links.mjs \
+            release-body-with-summary.md \
+            release-assets \
             updated-release-body.md
           gh release edit "${TUTTI_DESKTOP_RELEASE_TAG}" --notes-file updated-release-body.md
 

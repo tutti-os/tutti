@@ -177,7 +177,7 @@ function findPreferredAssetName(assetNames, pattern) {
 }
 
 function findAssetUrl(release, pattern, releaseAssetBaseUrl = "") {
-  const assets = Array.isArray(release.assets) ? release.assets : [];
+  const assets = Array.isArray(release?.assets) ? release.assets : [];
   const assetName = findPreferredAssetName(
     assets.map((candidate) => candidate.name ?? ""),
     pattern
@@ -280,6 +280,7 @@ function buildCardPayload({
   actor,
   branch,
   macUrl,
+  winUrl,
   publicationStatus = "published",
   releaseUrl,
   runUrl,
@@ -292,6 +293,7 @@ function buildCardPayload({
   const deployActor = resolveDisplayValue(actor);
   const actions = [
     { label: "下载 macOS", url: macUrl },
+    { label: "下载 Windows（未签名）", url: winUrl },
     { label: "打开 Release 页面", url: releaseUrl },
     { label: "查看流水线", url: runUrl }
   ]
@@ -450,6 +452,12 @@ async function main() {
     releaseAssetBaseUrl,
     tag
   );
+  const mirroredWinUrl = resolveMirroredAssetUrl(
+    mirroredAssetNames,
+    /-win-x64\.exe$/i,
+    releaseAssetBaseUrl,
+    tag
+  );
   const release = mirroredMacUrl
     ? null
     : await loadRelease(repository, tag, resolveGithubToken());
@@ -461,6 +469,9 @@ async function main() {
     branch,
     macUrl:
       mirroredMacUrl || findAssetUrl(release, /\.dmg$/i, releaseAssetBaseUrl),
+    winUrl:
+      mirroredWinUrl ||
+      findAssetUrl(release, /-win-x64\.exe$/i, releaseAssetBaseUrl),
     publicationStatus,
     releaseUrl,
     runUrl,

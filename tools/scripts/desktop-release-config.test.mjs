@@ -350,7 +350,10 @@ test("desktop release workflow only publishes root latest metadata for stable re
   const workflow = await readFile(workflowPath, "utf8");
   const promoteWorkflow = await readFile(promoteWorkflowPath, "utf8");
 
-  assert.match(workflow, /publication_mode:[\s\S]*?- publish\n\s*- draft_only/);
+  assert.match(
+    workflow,
+    /publication_mode:[\s\S]*?- publish\r?\n\s*- draft_only/
+  );
   assert.match(
     workflow,
     /needs\.resolve\.outputs\.publication_mode\s*==\s*'publish'/
@@ -663,8 +666,8 @@ test("desktop release workflow keeps Windows packaging opt-in and stages unsigne
     /include_windows:[\s\S]*?type:\s+boolean[\s\S]*?default:\s+false/
   );
   assert.match(workflow, /id:\s+windows[\s\S]*?include_windows=false/);
-  assert.match(workflow, /\n\s{2}build-windows:\n/);
-  assert.doesNotMatch(workflow, /\n\s{2}build-linux:\n/);
+  assert.match(workflow, /\r?\n\s{2}build-windows:\r?\n/);
+  assert.doesNotMatch(workflow, /\r?\n\s{2}build-linux:\r?\n/);
   assert.match(
     workflow,
     /build-windows:[\s\S]*?if:\s+\$\{\{\s*needs\.resolve\.outputs\.include_windows\s*==\s*'true'\s*\}\}/
@@ -691,6 +694,14 @@ test("desktop release workflow keeps Windows packaging opt-in and stages unsigne
     /name:\s+tutti-desktop-release-assets-windows/
   );
   assert.match(stageJobMatch[0], /name:\s+Add Windows release artifacts/);
+  assert.match(
+    stageJobMatch[0],
+    /upsert-release-download-links\.mjs[\s\S]*?release-assets[\s\S]*?updated-release-body\.md/
+  );
+  assert.match(
+    stageJobMatch[0],
+    /export RELEASE_TAG="\$\{TUTTI_DESKTOP_RELEASE_TAG\}"/
+  );
   assert.match(stageJobMatch[0], /merge-multiple:\s+false/);
   assert.doesNotMatch(
     notifyJobMatch[0],
