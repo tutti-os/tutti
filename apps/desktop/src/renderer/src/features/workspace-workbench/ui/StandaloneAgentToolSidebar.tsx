@@ -272,7 +272,7 @@ export function StandaloneAgentToolSidebar({
           if (!sessionId) {
             throw new Error("Agent Browser request requires an agent session");
           }
-          if (request.action === "create") {
+          if (request.action === "create" && request.reveal !== false) {
             sidebarRef.current?.openPanel("browser", sessionId);
           }
           const entry = await waitForController(sessionId);

@@ -195,6 +195,8 @@ function parseCall(raw: string): BrowserNodeAutomationCallInput {
   return {
     agentSessionId:
       typeof value.agentSessionId === "string" ? value.agentSessionId : null,
+    agentTurnId:
+      typeof value.agentTurnId === "string" ? value.agentTurnId : null,
     args: value.args ?? {},
     tool: value.tool,
     workspaceId: value.workspaceId

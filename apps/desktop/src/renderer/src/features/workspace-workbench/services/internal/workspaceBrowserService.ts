@@ -230,10 +230,12 @@ export function createWorkspaceBrowserService(
               const anchorNodeId = request.nodeId?.trim() ?? "";
               let surfaceNodeId = resolveBrowserSurfaceNodeId(anchorNodeId);
               if (request.action === "create") {
-                surfaceNodeId = await requestWorkspaceBrowserSurfaceFocus({
-                  preferredNodeId: surfaceNodeId,
-                  workspaceId
-                });
+                if (request.reveal !== false) {
+                  surfaceNodeId = await requestWorkspaceBrowserSurfaceFocus({
+                    preferredNodeId: surfaceNodeId,
+                    workspaceId
+                  });
+                }
                 if (!surfaceNodeId) {
                   throw new Error("No user Browser surface is available");
                 }

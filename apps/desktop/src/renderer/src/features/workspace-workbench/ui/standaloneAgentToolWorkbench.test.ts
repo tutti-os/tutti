@@ -36,7 +36,7 @@ test("standalone Agent Files keeps the complete Open With menu", () => {
 test("standalone Agent browser automation reveals the session Browser panel", () => {
   assert.match(
     standaloneAgentToolSidebarSource,
-    /request\.action === "create"[\s\S]*?openPanel\("browser", sessionId\)/
+    /request\.action === "create" &&[\s\S]*?request\.reveal !== false[\s\S]*?openPanel\("browser", sessionId\)/
   );
   assert.doesNotMatch(
     standaloneAgentToolSidebarSource,

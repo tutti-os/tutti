@@ -394,7 +394,8 @@ delimited by ---`, and the composer skill picker may show partial or
   reporting `action=open-url` with `defaultPrevented=true`, followed by both
   `Browser Node guest open-url IPC received` and the guest `open-url` emission,
   but no navigation to the requested URL. Cross-origin popup links may still
-  appear to work.
+  appear to work. A partial host fix can instead create a new tab whose first
+  guest URL is the product home page, such as Google, for every requested link.
 - Quick checks:
   Compare the current and requested origins. Confirm the event's
   `sourceNodeId` names an existing `:tab:*` child and that the workspace Browser
@@ -405,7 +406,10 @@ delimited by ---`, and the composer skill picker may show partial or
   then changed only the active tab's `defaultUrl`. Browser Node's passive host
   synchronization intentionally ignores same-origin differences to avoid
   fighting in-page and authentication redirects, so the explicit popup URL was
-  never loaded.
+  never loaded. After routing the popup into a real tab, there is a second
+  materialization boundary: the active child has no runtime state until its
+  guest mounts. Falling straight back to the static product home page at that
+  point synchronizes the home page over the new tab's requested URL.
 - Fix:
   Keep the same-origin synchronization guard. Route Browser-owned `open-url`
   events by their exact source child ID, create and select a new tab on that
@@ -413,10 +417,14 @@ delimited by ---`, and the composer skill picker may show partial or
   emitted by Workspace Apps or unavailable Browser surfaces. Treat the route
   registration as a Workbench-session resource: replace an earlier route for
   the same workspace/source generation and dispose all workspace routes when
-  its session closes.
+  its session closes. In the package Workbench adapter, resolve the active tab's
+  stored URL before the static product home while runtime state is absent;
+  explicit activation and restored runtime state must keep higher priority.
 - Validation:
   Cover a same-origin popup from an existing Browser child and assert that a
   second selected tab owns the requested URL while no Workbench launch occurs.
+  Also resolve the new tab before it has runtime state and assert its requested
+  URL wins over the product home page.
   Rebuild the Browser contribution and assert only the latest feature receives
   the popup, then dispose the workspace and assert its feature no longer
   receives events. Also retain coverage that Workspace App URLs still launch
@@ -425,6 +433,45 @@ delimited by ---`, and the composer skill picker may show partial or
   [workspaceBrowserService.ts](../../../apps/desktop/src/renderer/src/features/workspace-workbench/services/internal/workspaceBrowserService.ts)
   [tabsStore.ts](../../../packages/browser/workbench-node/src/core/tabsStore.ts)
   [nodeController.ts](../../../packages/browser/workbench-node/src/core/nodeController.ts)
+
+### Agent opening several pages repeatedly steals workspace focus
+
+- Symptom:
+  One Agent Turn asks to open several URLs. Every page is created successfully,
+  but each `new_page` result reveals and focuses the workspace again, producing
+  repeated foreground jumps during the same response.
+- Quick checks:
+  Confirm the calls carry the same Agent session and persisted active Turn ID.
+  Separately count `Browser automation host activated` logs and workspace
+  Browser surface-focus requests. One host-activation log with several visible
+  Browser switches means the renderer reveal path is repeating even though
+  Main's window activation is already deduplicated.
+- Root cause:
+  There are two foreground effects: Desktop Main activates the owning Electron
+  window, while the renderer focuses or opens the Browser surface before
+  creating a tab. Deduplicating only Main's post-create activation still lets
+  every renderer create request switch the workspace or standalone Agent panel
+  back to Browser.
+- Fix:
+  Resolve the existing persisted active Turn in the daemon Browser CLI adapter,
+  carry it opaquely through BrowserNode automation, and keep the reveal policy
+  in Desktop Main. Mark only the first create request for each workspace, Agent
+  session, and Turn as revealable. The renderer must still create and select
+  every requested tab, but it focuses the workspace Browser surface or opens the
+  standalone Browser panel only when that flag is set. Bound the remembered
+  reveal keys and preserve the previous behavior when no exact Turn identity is
+  available.
+- Validation:
+  Issue three concurrent create requests for one Turn and assert that all three
+  pages are requested with reveal flags `true`, `false`, `false` while the host
+  activates once. Assert the workspace and standalone renderer handlers do not
+  focus/open their Browser surface for `reveal=false`. Then issue a create for a
+  different Turn and assert it reveals again. Also cover turnless/manual
+  requests, BrowserNode transport parsing, and daemon active-Turn propagation.
+- References:
+  [browserAutomationCoordinator.ts](../../../apps/desktop/src/main/ipc/browserAutomationCoordinator.ts)
+  [provider.go](../../../services/tuttid/service/cli/providers/browser/provider.go)
+  [automationRegistry.ts](../../../packages/browser/workbench-node/src/electron-main/automationRegistry.ts)
 
 ### Standalone Agent Browser Node is blank and never attaches a guest
 
