@@ -10,10 +10,10 @@ Desktop releases for `apps/desktop` use three GitHub Release shapes:
 - release candidates such as `v1.12.19-rc.0`, which should remain `Pre-release`
 - beta releases such as `v1.12.19-beta.0`, which should remain `Pre-release`
 
-The current release flow intentionally includes:
+The formal desktop release flow currently includes:
 
 - GitHub Release publishing
-- macOS, Windows, and Linux desktop artifacts
+- macOS desktop artifacts
 - Electron auto-update metadata
 - release candidate (`rc`) prereleases
 - beta prereleases for development-branch packaging
@@ -23,6 +23,15 @@ The current release flow intentionally excludes:
 
 - nightly releases
 - S3 runtime artifacts
+- Windows and Linux artifacts
+
+Windows packaging is currently isolated in
+`.github/workflows/windows-desktop-alpha.yml`. It builds an unsigned Windows x64
+NSIS installer and uploads a CI artifact for Alpha validation. It does not add
+Windows assets to a GitHub Release, stable alias, release mirror, updater
+channel, or `latest.json`. See
+[Windows Platform Support](../architecture/windows-platform-support.md) for the
+promotion gates.
 
 ## Workflow Status
 
@@ -130,14 +139,17 @@ prefix scans as a runtime fallback.
 
 On Windows the bundled daemon filename is `tuttid.exe`.
 
-Expected release artifacts include:
+The formal release workflow currently produces:
 
 - macOS x64, arm64, and universal `.dmg`
 - macOS x64, arm64, and universal `.zip`
-- Windows `.exe`
-- Linux `.AppImage`
-- update metadata such as `.yml` and `.blockmap`
+- macOS update metadata such as `.yml` and `.blockmap`
 - `SHA256SUMS.txt`
+
+Windows `.exe`/`.blockmap`/`.yml` and Linux `.AppImage` are target artifact
+shapes, not current formal-release outputs. Do not add them to `latest`, stable
+release metadata, or notifications until their platform promotion gates are
+satisfied and the formal workflow explicitly stages them.
 
 The release workflow builds macOS x64, arm64, and universal packages as a
 three-entry GitHub Actions matrix. Each architecture uploads an isolated

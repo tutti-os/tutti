@@ -26,6 +26,15 @@ const (
 	StandardACPAdapterStrategyOpenCode StandardACPAdapterStrategy = "opencode"
 )
 
+// AppServerSkillRootsStrategy identifies optional app-server skill path
+// preparation owned by a provider descriptor. Runtime consumers dispatch on
+// this strategy, never on provider identity.
+type AppServerSkillRootsStrategy string
+
+const (
+	AppServerSkillRootsStrategyTuttiStable AppServerSkillRootsStrategy = "tutti_stable"
+)
+
 // EndpointConfigKind identifies an optional provider-owned config source for
 // endpoint discovery. Runtime consumers switch on this protocol/config shape,
 // never on provider identity.
@@ -152,6 +161,7 @@ type RuntimeDescriptor struct {
 	Command             []string
 	ClientInfoName      string
 	AuthRequiredMessage string
+	AppServerSkillRoots AppServerSkillRootsStrategy
 	// NativeSessionFork marks runtimes whose provider strategy may expose a
 	// native session-fork primitive. The live adapter must still attest the
 	// exact protocol/version before advertising any fork capability.
@@ -498,6 +508,9 @@ const (
 )
 
 type ComposerProfileDescriptor struct {
+	// SubagentSaverMode allows a session-scoped lower-cost custom role while
+	// leaving the main composer model unchanged.
+	SubagentSaverMode       bool
 	ModelSelection          bool
 	ModelCatalog            ModelCatalogKind
 	ReasoningEffort         bool

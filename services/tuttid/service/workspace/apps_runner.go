@@ -27,6 +27,7 @@ import (
 const defaultAppHealthcheckTimeout = 30 * time.Second
 
 type AppRunner struct {
+	ShellAdapter       AppShellAdapter
 	HealthcheckTimeout time.Duration
 	HTTPClient         *http.Client
 	OnStateChanged     AppRunnerStateChanged
@@ -198,12 +199,18 @@ func (r *AppRunner) startProcess(ctx context.Context, key string, input AppStart
 		return
 	}
 
-	bootstrap := input.Bootstrap
+	bootstrap := strings.TrimSpace(input.Bootstrap)
 	if bootstrap == "" {
 		bootstrap = "bootstrap.sh"
 	}
-	bootstrapPath := filepath.Join(input.PackageDir, filepath.Clean(bootstrap))
-	command := exec.Command(bootstrapPath)
+	bootstrapPath := filepath.Join(input.PackageDir, filepath.FromSlash(bootstrap))
+	command, shellBinDirs, err := resolveAppShellAdapter(r.ShellAdapter).Command(ctx, bootstrapPath)
+	if err != nil {
+		_ = logFile.Close()
+		logAppRuntimeControl("workspace_app_runtime_start_failed", input, port, "bootstrap_unavailable", err)
+		r.setFailed(key, "bootstrap_unavailable", err)
+		return
+	}
 	prepareAppProcessCommand(command)
 	command.Dir = input.RuntimeDir
 	command.Stdout = logFile
@@ -216,6 +223,7 @@ func (r *AppRunner) startProcess(ctx context.Context, key string, input AppStart
 		"TUTTI_WORKSPACE_ID=" + input.WorkspaceID,
 		"TUTTI_WORKSPACE_NAME=" + input.WorkspaceName,
 		"TUTTI_APP_HOST=127.0.0.1",
+		"TUTTI_PLATFORM=" + runtime.GOOS + "-" + runtime.GOARCH,
 		"TUTTI_APP_PACKAGE_DIR=" + input.PackageDir,
 		"TUTTI_APP_RUNTIME_DIR=" + input.RuntimeDir,
 		"TUTTI_APP_DATA_DIR=" + input.DataDir,
@@ -230,7 +238,7 @@ func (r *AppRunner) startProcess(ctx context.Context, key string, input AppStart
 		"TUTTI_CLI=" + tuttiCLIShim,
 	}
 	envOverrides = append(envOverrides, appRuntime.EnvOverrides...)
-	envOverrides = append(envOverrides, appRuntimePathWithCLIShim(appRuntime, tuttiCLIShim))
+	envOverrides = append(envOverrides, appRuntimePathWithCLIShim(appRuntime, tuttiCLIShim, shellBinDirs...))
 	command.Env = workspaceAppProcessEnv(envOverrides...)
 	writeAppStartupDiagnostic(logFile, input, bootstrapPath, port, appRuntime, command.Env)
 
@@ -786,14 +794,19 @@ func tuttiAppToolchainRoot() string {
 	return filepath.Join(tuttitypes.DefaultStateDir(), "app-toolchains")
 }
 
-func appRuntimePathWithCLIShim(appRuntime ResolvedAppRuntime, cliShimPath string) string {
+func appRuntimePathWithCLIShim(appRuntime ResolvedAppRuntime, cliShimPath string, extraBinDirs ...string) string {
+	prefixDirs := append([]string{filepath.Dir(cliShimPath)}, extraBinDirs...)
+	return appRuntimePathWithBinDirs(appRuntime, prefixDirs...)
+}
+
+func appRuntimePathWithBinDirs(appRuntime ResolvedAppRuntime, prefixDirs ...string) string {
 	pathKey := pathEnvKey(appRuntime.EnvOverrides)
 	pathValue := envValue(appRuntime.EnvOverrides, pathKey)
 	if strings.TrimSpace(pathValue) == "" {
 		pathValue = os.Getenv(pathKey)
 	}
 	pathDirs := filepath.SplitList(pathValue)
-	pathDirs = mergeAppPathDirs(append([]string{filepath.Dir(cliShimPath)}, pathDirs...))
+	pathDirs = mergeAppPathDirs(append(prefixDirs, pathDirs...))
 	return pathKey + "=" + strings.Join(pathDirs, string(os.PathListSeparator))
 }
 

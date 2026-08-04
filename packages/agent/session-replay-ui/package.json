@@ -7,7 +7,10 @@
   "exports": {
     ".": "./src/index.ts",
     "./activity-event": "./src/activity-event.ts",
-    "./interaction-contract": "./src/interaction-contract.ts"
+    "./activity-replay-driver": "./src/activity-replay-driver.ts",
+    "./interaction-contract": "./src/interaction-contract.ts",
+    "./react-binding": "./src/react-binding.tsx",
+    "./workspace-contract": "./src/workspace-contract.ts"
   },
   "files": [
     "dist",
@@ -29,6 +32,8 @@
   "devDependencies": {
     "@tutti-os/config-tsconfig": "workspace:*",
     "@types/node": "^24.0.1",
+    "@types/react": "^19.2.15",
+    "react": "^19.2.6",
     "tsup": "8.5.1",
     "typescript": "^5.8.3"
   },
@@ -43,11 +48,26 @@
         "types": "./dist/activity-event.d.ts",
         "import": "./dist/activity-event.js"
       },
+      "./activity-replay-driver": {
+        "types": "./dist/activity-replay-driver.d.ts",
+        "import": "./dist/activity-replay-driver.js"
+      },
       "./interaction-contract": {
         "types": "./dist/interaction-contract.d.ts",
         "import": "./dist/interaction-contract.js"
+      },
+      "./react-binding": {
+        "types": "./dist/react-binding.d.ts",
+        "import": "./dist/react-binding.js"
+      },
+      "./workspace-contract": {
+        "types": "./dist/workspace-contract.d.ts",
+        "import": "./dist/workspace-contract.js"
       }
     },
     "types": "./dist/index.d.ts"
+  },
+  "peerDependencies": {
+    "react": "^19.2.6"
   }
 }

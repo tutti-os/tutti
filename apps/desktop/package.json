@@ -72,6 +72,15 @@
     "win": {
       "target": [
         "nsis"
+      ],
+      "extraResources": [
+        {
+          "from": "build/managed-posix-shell",
+          "to": "bin/managed-posix-shell",
+          "filter": [
+            "**/*"
+          ]
+        }
       ]
     },
     "linux": {

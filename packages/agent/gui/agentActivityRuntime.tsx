@@ -232,9 +232,10 @@ export interface AgentActivityRuntimeUploadPromptContentResult {
 }
 
 /**
- * Dedicated host boundary for turning an in-memory text paste into a local
- * prompt asset. The runtime owns persistence and returns a sendable host path;
- * AgentGUI must not infer this capability from generic file-upload support.
+ * Dedicated host boundary for turning an in-memory text paste into a prepared
+ * prompt asset. The runtime owns persistence and returns one provider-readable
+ * locator; AgentGUI must not infer this capability from generic file-upload
+ * support.
  */
 export interface AgentActivityRuntimeStagePastedTextInput {
   name: string;
@@ -242,11 +243,32 @@ export interface AgentActivityRuntimeStagePastedTextInput {
   workspaceId: string;
 }
 
-export interface AgentActivityRuntimeStagePastedTextResult {
-  name: string;
-  path: string;
-  sizeBytes: number;
-}
+/**
+ * A prepared long-text asset. Local hosts return a path; remote/shared hosts
+ * return the same URL-backed attachment metadata used by ordinary prompt-file
+ * upload. Exactly one of `path` and `url` must be present.
+ */
+export type AgentActivityRuntimeStagePastedTextResult =
+  | {
+      name: string;
+      path: string;
+      url?: never;
+      assetId?: never;
+      mimeType?: string;
+      sizeBytes: number;
+      uploadStatus?: never;
+      uri?: never;
+    }
+  | {
+      name: string;
+      path?: never;
+      url: string;
+      assetId?: string;
+      mimeType?: string;
+      sizeBytes: number;
+      uploadStatus?: string;
+      uri?: string;
+    };
 
 export type AgentActivityRuntimeSessionSectionScopeInput =
   AgentConversationRailSessionSectionScopeInput;

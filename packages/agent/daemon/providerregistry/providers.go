@@ -71,6 +71,7 @@ func tuttiAgentDescriptor() ProviderDescriptor {
 			Command:             []string{"tutti-agent", "app-server"},
 			ClientInfoName:      "tutti_agent",
 			AuthRequiredMessage: "Tutti Agent requires authentication. Sign in to Tutti on this device (or run `tutti-agent login`), then retry this session.",
+			AppServerSkillRoots: AppServerSkillRootsStrategyTuttiStable,
 			NativeSessionFork:   true,
 			AppServerFork: AppServerForkDescriptor{
 				UserAgentBrand:        "tutti-agent",

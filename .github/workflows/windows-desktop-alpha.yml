@@ -1,0 +1,157 @@
+name: Windows Desktop Alpha
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: windows-desktop-alpha-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  test-and-package:
+    name: Test and package Windows x64
+    runs-on: windows-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: "1.24.5"
+          cache-dependency-path: |
+            go.work
+            go.work.sum
+            packages/agent/daemon/go.mod
+            packages/agent/daemon/go.sum
+            services/tuttid/go.mod
+            services/tuttid/go.sum
+
+      - name: Install dependencies
+        shell: pwsh
+        run: pnpm install --frozen-lockfile
+
+      - name: Generate Onboarding fat package
+        shell: pwsh
+        run: pnpm generate:builtin-apps
+
+      - name: Test Windows agent process adapters
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $true
+          Push-Location packages/agent/daemon
+          go test ./runtime -run 'Test(RunVerifiedExecutableUsesVerifiedIdentity|PrepareProcessExecutableExecutesVerifiedDescriptorAfterPathReplacement)$'
+          go test ./runtimecmd -run 'Test(ResolverResolveAllReturnsEveryExecutableMatchInPathOrder|ResolverResolveAllNamesKeepsDirectoryOrderBeforeLauncherVariant|ResolveNPMGlobalLayoutUsesPrefixRootForWindowsShims|ResolverFindsWindowsNPMGlobalShim)$'
+          Pop-Location
+
+      - name: Test Windows daemon adapters
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $true
+          Push-Location services/tuttid
+          go test ./data/workspace -run 'Test(SQLiteDSNPathUsesFileURLFormOnWindows|SQLiteStoreListEmptyDatabase)$'
+          go test ./service/managedruntime -run 'TestNodeReadyAcceptsOfficialWindowsCorepackLayout$'
+          go test ./service/agentstatus -run 'Test(NewInstallShellCommandUsesCmdInterpreter|PlatformExecutableFileAcceptsPlainWindowsFile|RunDefaultInstallCommandPreservesStructuredArguments)$'
+          go test ./service/browser -run 'TestStableChromeDevToolsActivePortPathUsesLocalAppDataOnWindows$'
+          go test ./service/workspace -run 'Test(PlatformAppShellAdapter|NormalizeWindowsTerminalInput|TerminalServiceCreatesLocalPTY|TerminalServiceAttachStream|AppCenterServiceInitializesBuiltinCatalogAndInstallState)'
+          go test ./integration -run 'TestTuttidBlackBoxWorkspaceTerminalWebSocketStreamsInputAndOutput$'
+          go test ./integration -run 'TestTuttidBlackBoxWorkspaceTerminalWebSocketExitFrameCarriesExitCode$'
+          Pop-Location
+
+      - name: Test Desktop lifecycle
+        shell: pwsh
+        run: >-
+          node --import ./apps/desktop/test/register-asset-stub.mjs
+          --test --experimental-strip-types
+          ./apps/desktop/src/main/daemon/tuttidManager.test.ts
+
+      - name: Typecheck Desktop
+        shell: pwsh
+        run: pnpm --filter @tutti-os/desktop typecheck
+
+      - name: Build unsigned Windows NSIS package
+        shell: pwsh
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+        run: pnpm --filter @tutti-os/desktop build:win
+
+      - name: Smoke test packaged Workspace App shell and Onboarding
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $true
+          $shellRuntimeRoot = Resolve-Path 'apps/desktop/dist/win-unpacked/resources/bin/managed-posix-shell'
+          $shellMetadata = Get-Content (Join-Path $shellRuntimeRoot 'runtime.json') -Raw | ConvertFrom-Json
+          $shell = Resolve-Path (Join-Path $shellRuntimeRoot $shellMetadata.executable)
+          $shellBin = Split-Path -Parent $shell
+          $package = Resolve-Path 'services/tuttid/builtin-apps/tutti-onboarding/build/package'
+          $runtime = Join-Path $env:RUNNER_TEMP 'tutti-onboarding-runtime'
+          $data = Join-Path $env:RUNNER_TEMP 'tutti-onboarding-data'
+          New-Item -ItemType Directory -Force -Path $runtime, $data | Out-Null
+
+          $originalPath = $env:PATH
+          $env:PATH = $shellBin
+          & $shell --noprofile --norc -c 'set -eu; for command in cat cp dirname mkdir mv rm sleep uname; do case "$(command -v "$command")" in /usr/bin/*) ;; *) exit 1 ;; esac; done'
+          if ($LASTEXITCODE -ne 0) { throw 'packaged shell command validation failed' }
+          & $shell --noprofile --norc -n (Join-Path $package 'bootstrap.sh')
+          if ($LASTEXITCODE -ne 0) { throw 'bootstrap.sh syntax validation failed' }
+
+          $listener = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Loopback, 0)
+          $listener.Start()
+          $port = $listener.LocalEndpoint.Port
+          $listener.Stop()
+          $env:TUTTI_PLATFORM = 'windows-amd64'
+          $env:TUTTI_APP_PACKAGE_DIR = $package
+          $env:TUTTI_APP_RUNTIME_DIR = $runtime
+          $env:TUTTI_APP_DATA_DIR = $data
+          $env:TUTTI_APP_HOST = '127.0.0.1'
+          $env:TUTTI_APP_PORT = "$port"
+
+          $process = Start-Process -FilePath $shell -ArgumentList '--noprofile', '--norc', (Join-Path $package 'bootstrap.sh') -WorkingDirectory $runtime -PassThru -NoNewWindow
+          try {
+            $healthy = $false
+            for ($attempt = 0; $attempt -lt 30; $attempt++) {
+              if ($process.HasExited) { throw "Onboarding exited early with code $($process.ExitCode)" }
+              try {
+                $response = Invoke-WebRequest -UseBasicParsing -NoProxy "http://127.0.0.1:$port/healthz" -TimeoutSec 2
+                if ($response.StatusCode -ge 200 -and $response.StatusCode -lt 300) { $healthy = $true; break }
+              } catch {}
+              Start-Sleep -Milliseconds 500
+            }
+            if (-not $healthy) { throw 'Onboarding /healthz did not become ready' }
+          } finally {
+            $env:PATH = $originalPath
+            if (-not $process.HasExited) { & (Join-Path $env:SystemRoot 'System32/taskkill.exe') /PID $process.Id /T /F | Out-Null }
+          }
+
+      - name: Upload Windows installer
+        uses: actions/upload-artifact@v7
+        with:
+          name: tutti-windows-amd64-alpha
+          path: |
+            apps/desktop/dist/*.exe
+            apps/desktop/dist/*.blockmap
+            apps/desktop/dist/*.yml
+          if-no-files-found: error

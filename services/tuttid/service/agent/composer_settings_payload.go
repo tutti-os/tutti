@@ -101,6 +101,10 @@ func createSessionInputFromPersisted(session PersistedSession) CreateSessionInpu
 		input.Title = &title
 	}
 	settings := session.Settings
+	if settings.CodexSaverMode {
+		input.CodexSaverMode = boolPointer(true)
+		input.CodexSaverModeAllowed = true
+	}
 	if model := strings.TrimSpace(settings.Model); model != "" {
 		input.Model = &model
 	}

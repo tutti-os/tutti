@@ -12,6 +12,7 @@ import (
 	agentdaemon "github.com/tutti-os/tutti/packages/agent/daemon"
 	agentruntime "github.com/tutti-os/tutti/packages/agent/daemon/runtime"
 	sessionreplay "github.com/tutti-os/tutti/packages/agent/session-replay"
+	agentservice "github.com/tutti-os/tutti/services/tuttid/service/agent"
 	tuttitypes "github.com/tutti-os/tutti/services/tuttid/types"
 )
 
@@ -29,14 +30,28 @@ type agentProcessComposition struct {
 	recorder            *agentdaemon.SessionRecordingProcessTransport
 	replay              *agentdaemon.SessionReplayProcessTransport
 	replayRegistrations []agentSessionReplayRegistration
+	replayModelCatalog  agentservice.AgentModelCatalog
 }
 
 type agentSessionReplayRegistration struct {
-	CassetteID         string `json:"cassetteId"`
-	RootAgentSessionID string `json:"rootAgentSessionId"`
-	CassetteDirectory  string `json:"cassetteDirectory"`
-	ArtifactDirectory  string `json:"artifactDirectory"`
-	WorkspaceID        string `json:"workspaceId"`
+	CassetteID         string   `json:"cassetteId"`
+	RootAgentSessionID string   `json:"rootAgentSessionId"`
+	CassetteDirectory  string   `json:"cassetteDirectory"`
+	ArtifactDirectory  string   `json:"artifactDirectory"`
+	WorkspaceID        string   `json:"workspaceId"`
+	Providers          []string `json:"providers"`
+	FrozenModel        string   `json:"frozenModel"`
+}
+
+func replayAgentModelCatalog(
+	replayComposition bool,
+	composition agentProcessComposition,
+	normalCatalog agentservice.AgentModelCatalog,
+) agentservice.AgentModelCatalog {
+	if replayComposition && composition.replayModelCatalog != nil {
+		return composition.replayModelCatalog
+	}
+	return normalCatalog
 }
 
 func buildAgentProcessComposition(
@@ -70,6 +85,20 @@ func buildAgentProcessComposition(
 				},
 			)
 		}
+		frozenModels := make(map[string][]string)
+		for _, registration := range registrations {
+			model := strings.TrimSpace(registration.FrozenModel)
+			if model == "" {
+				continue
+			}
+			for _, provider := range registration.Providers {
+				provider = strings.TrimSpace(provider)
+				if provider == "" {
+					continue
+				}
+				frozenModels[provider] = append(frozenModels[provider], model)
+			}
+		}
 		replay, err := agentdaemon.NewSessionReplayProcessTransport(transportRegistrations)
 		if err != nil {
 			return agentProcessComposition{}, fmt.Errorf(
@@ -82,6 +111,7 @@ func buildAgentProcessComposition(
 				base: replay, stateDir: tuttitypes.DefaultStateDir(),
 			},
 			replay: replay, replayRegistrations: registrations,
+			replayModelCatalog: agentservice.NewFrozenAgentModelCatalog(frozenModels),
 		}, nil
 	}
 	if !sessionRecordingEnabled {

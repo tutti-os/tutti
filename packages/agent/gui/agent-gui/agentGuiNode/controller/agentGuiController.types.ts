@@ -68,6 +68,7 @@ export interface UseAgentGUINodeControllerInput {
   composerAppendRequest?: AgentGUIComposerAppendRequest | null;
   openSessionRequest?: AgentGUIOpenSessionRequest | null;
   prefillPromptRequest?: AgentGUIPrefillPromptRequest | null;
+  codexSaverModeEntryEnabled?: boolean;
   onDataChange: (
     updater: (current: AgentGUINodeData) => AgentGUINodeData
   ) => void;

@@ -501,17 +501,9 @@ func appManifestFileExists(packageDir string) (bool, error) {
 	return false, err
 }
 
-func validateExtractedAppPackage(packageRoot string, manifest workspacebiz.AppManifest) error {
-	bootstrapPath := filepath.Join(packageRoot, filepath.Clean(manifest.Runtime.Bootstrap))
-	info, err := os.Stat(bootstrapPath)
-	if err != nil {
-		return fmt.Errorf("stat runtime bootstrap: %w", err)
-	}
-	if info.IsDir() {
-		return errors.New("runtime bootstrap must be a file")
-	}
-	if info.Mode()&0o111 == 0 {
-		return errors.New("runtime bootstrap must be executable")
+func validateExtractedAppPackage(adapter AppShellAdapter, packageRoot string, manifest workspacebiz.AppManifest) error {
+	if err := validateAppBootstrapFile(adapter, packageRoot, manifest.Runtime.Bootstrap); err != nil {
+		return err
 	}
 	agentsData, err := os.ReadFile(filepath.Join(packageRoot, "AGENTS.md"))
 	if err != nil {

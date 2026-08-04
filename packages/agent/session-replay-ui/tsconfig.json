@@ -2,6 +2,7 @@
   "extends": "../../../packages/configs/tsconfig/base.json",
   "compilerOptions": {
     "allowImportingTsExtensions": true,
+    "jsx": "react-jsx",
     "types": ["node"]
   },
   "include": ["src/**/*", "tsup.config.ts"]

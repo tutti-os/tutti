@@ -10,7 +10,7 @@ import {
 } from "node:fs/promises";
 import { constants } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 import {
@@ -19,7 +19,8 @@ import {
   resolveBrowserMcpDaemonEnv,
   resolveClaudeSDKSidecarDaemonEnv,
   resolveLaunchSpec,
-  resolveManagedDaemonProcessEnv
+  resolveManagedDaemonProcessEnv,
+  resolveManagedPosixShellDaemonEnv
 } from "./tuttidManager.ts";
 
 const repoRoot = resolve(
@@ -219,6 +220,83 @@ test("resolveClaudeSDKSidecarDaemonEnv points the daemon at a vendored bundle wh
   }
 });
 
+test("resolveManagedPosixShellDaemonEnv respects an explicit operator override", () => {
+  const previousEnv = { ...process.env };
+  try {
+    process.env.TUTTI_MANAGED_POSIX_SHELL = "C:\\custom\\bash.exe";
+    const got = resolveManagedPosixShellDaemonEnv({
+      isPackaged: true,
+      resourcesPath: join(tmpdir(), "tutti-resources")
+    });
+    assert.deepEqual(got, {});
+  } finally {
+    restoreEnv(previousEnv);
+  }
+});
+
+test("resolveManagedPosixShellDaemonEnv points the daemon at the packaged shell", async () => {
+  const previousEnv = { ...process.env };
+  try {
+    delete process.env.TUTTI_MANAGED_POSIX_SHELL;
+    const resourcesPath = await mkdtemp(join(tmpdir(), "tutti-resources-"));
+    const shell = join(
+      resourcesPath,
+      "bin",
+      "managed-posix-shell",
+      "usr",
+      "bin",
+      "bash.exe"
+    );
+    await mkdir(dirname(shell), { recursive: true });
+    await writeFile(shell, "stub\n");
+    await writeFile(
+      join(resourcesPath, "bin", "managed-posix-shell", "runtime.json"),
+      JSON.stringify({
+        schemaVersion: "tutti.managed-posix-shell.v1",
+        executable: "usr/bin/bash.exe"
+      })
+    );
+
+    const got = resolveManagedPosixShellDaemonEnv({
+      isPackaged: true,
+      resourcesPath
+    });
+    assert.deepEqual(got, {
+      TUTTI_MANAGED_POSIX_SHELL: shell
+    });
+  } finally {
+    restoreEnv(previousEnv);
+  }
+});
+
+test("resolveManagedPosixShellDaemonEnv rejects an executable outside its runtime root", async () => {
+  const previousEnv = { ...process.env };
+  try {
+    delete process.env.TUTTI_MANAGED_POSIX_SHELL;
+    const resourcesPath = await mkdtemp(join(tmpdir(), "tutti-resources-"));
+    const runtimeRoot = join(resourcesPath, "bin", "managed-posix-shell");
+    const outsideShell = join(resourcesPath, "bin", "outside", "bash.exe");
+    await mkdir(runtimeRoot, { recursive: true });
+    await mkdir(dirname(outsideShell), { recursive: true });
+    await writeFile(outsideShell, "stub\n");
+    await writeFile(
+      join(runtimeRoot, "runtime.json"),
+      JSON.stringify({
+        schemaVersion: "tutti.managed-posix-shell.v1",
+        executable: "../outside/bash.exe"
+      })
+    );
+
+    const got = resolveManagedPosixShellDaemonEnv({
+      isPackaged: true,
+      resourcesPath
+    });
+    assert.deepEqual(got, {});
+  } finally {
+    restoreEnv(previousEnv);
+  }
+});
+
 test("resolveManagedDaemonProcessEnv seeds the managed runtime cache root", () => {
   const previousEnv = { ...process.env };
   try {
@@ -240,15 +318,12 @@ test("resolveManagedDaemonProcessEnv seeds the managed runtime cache root", () =
       sessionID: "session-1"
     });
     assert.equal(
-      got.TUTTI_APP_RUNTIME_CACHE_ROOT?.endsWith("/app-runtimes"),
-      true
+      basename(got.TUTTI_APP_RUNTIME_CACHE_ROOT ?? ""),
+      "app-runtimes"
     );
-    assert.equal(
-      got.TUTTI_BROWSER_NODE_LISTENER_INFO?.endsWith(
-        "/run/browser-node-automation.json"
-      ),
-      true
-    );
+    const browserListenerInfo = got.TUTTI_BROWSER_NODE_LISTENER_INFO ?? "";
+    assert.equal(basename(browserListenerInfo), "browser-node-automation.json");
+    assert.equal(basename(dirname(browserListenerInfo)), "run");
   } finally {
     restoreEnv(previousEnv);
   }
@@ -339,6 +414,10 @@ test("resolveLaunchSpec honors TUTTID_BIN override", () => {
 
 test("isLikelyTuttidProcess only matches tuttid executables", () => {
   assert.equal(isLikelyTuttidProcess("/tmp/tuttid"), true);
+  assert.equal(
+    isLikelyTuttidProcess("C:\\Program Files\\Tutti\\tuttid.exe"),
+    true
+  );
   assert.equal(
     isLikelyTuttidProcess(join(repoRoot, "apps/desktop/build/tuttid/tuttid")),
     true

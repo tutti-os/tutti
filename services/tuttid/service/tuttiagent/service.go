@@ -41,9 +41,20 @@ const (
 )
 
 // NewPreparer returns the shared runtime preparer with Tutti account bootstrap
-// injected at the product boundary.
-func NewPreparer() runtimeprep.TuttiAgentPreparer {
-	return runtimeprep.TuttiAgentPreparer{BeforePrepare: bootstrapTuttiAgentUserAuthForPrepare}
+// and the daemon-owned stable Skill bundle store injected at the product boundary.
+func NewPreparer(stateDir string) runtimeprep.TuttiAgentPreparer {
+	stableRoot := filepath.Join(
+		filepath.Clean(strings.TrimSpace(stateDir)),
+		"agent",
+	)
+	return runtimeprep.TuttiAgentPreparer{
+		BeforePrepare: bootstrapTuttiAgentUserAuthForPrepare,
+		StableSkillBundleRoot: filepath.Join(
+			stableRoot,
+			"skill-bundles",
+		),
+		StableSystemSkillBundleRoot: filepath.Join(stableRoot, "system-skill-bundles"),
+	}
 }
 
 func PrepareHome(home string) error {

@@ -1,9 +1,9 @@
 import type { AgentActivityComposerOptions } from "@tutti-os/agent-activity-core";
 import type { AgentSessionComposerSettings } from "../../../shared/agentSessionTypes";
 import type { AgentGUIComposerTargetData } from "./agentGuiController.composerPresentation";
-import { normalizeOptionalText } from "./agentGuiController.promptHelpers";
 import {
   rememberComposerDefaultsFields,
+  normalizedComposerDefaultValue,
   type AgentGUIComposerDefaults,
   type AgentGUIComposerDefaultsField,
   type AgentGUIRememberComposerDefaultsResult
@@ -94,7 +94,7 @@ export function registerAgentGUIComposerDefaultsMutation(
   const acknowledged = (ledger.acknowledgedByDraftKey[draftKey] ??= {});
   const fields: AgentGUIComposerDefaultsMutation["fields"] = {};
   for (const field of rememberComposerDefaultsFields) {
-    const value = normalizeOptionalText(defaults[field]);
+    const value = normalizedComposerDefaultValue(defaults, field);
     if (value === null) continue;
     const generation = ++ledger.nextGeneration;
     latest[field] = generation;
@@ -151,7 +151,7 @@ export function prepareAcknowledgedComposerDefaultsAuthorityRead(
       if (
         entry &&
         latest[field] === entry.generation &&
-        normalizeOptionalText(authoritySettings[field]) === entry.value
+        normalizedComposerDefaultValue(authoritySettings, field) === entry.value
       ) {
         receipt.fields[field] = {
           generation: entry.generation,
@@ -192,8 +192,9 @@ export function retireAcknowledgedComposerDefaultsForRead(
     ) {
       continue;
     }
-    const authoritativeValue = normalizeOptionalText(
-      authoritativeSettings[field]
+    const authoritativeValue = normalizedComposerDefaultValue(
+      authoritativeSettings,
+      field
     );
     if (authoritativeValue === null) {
       // This provider does not project authority for the field. Stop forcing
@@ -213,7 +214,7 @@ export function retireAcknowledgedComposerDefaultsForRead(
       }
       continue;
     }
-    if (normalizeOptionalText(settings[field]) === readEntry.value) {
+    if (normalizedComposerDefaultValue(settings, field) === readEntry.value) {
       retired.push({ field, value: readEntry.value });
     }
     delete acknowledged[field];
@@ -230,7 +231,7 @@ export function removeRetiredComposerDefaults(
 ): AgentSessionComposerSettings {
   const result = { ...settings };
   for (const entry of retired) {
-    if (normalizeOptionalText(result[entry.field]) === entry.value) {
+    if (normalizedComposerDefaultValue(result, entry.field) === entry.value) {
       delete result[entry.field];
     }
   }
@@ -253,8 +254,8 @@ export function preserveAcknowledgedComposerDefaultsForReconciliation(
     if (
       !entry ||
       latest[field] !== entry.generation ||
-      normalizeOptionalText(currentSettings[field]) !== entry.value ||
-      normalizeOptionalText(result[field]) === entry.value
+      normalizedComposerDefaultValue(currentSettings, field) !== entry.value ||
+      normalizedComposerDefaultValue(result, field) === entry.value
     ) {
       continue;
     }

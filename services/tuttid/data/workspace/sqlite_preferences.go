@@ -246,21 +246,26 @@ WHERE id = ?
 	}
 	defaults := defaultsByTarget[agentTargetID]
 	for field, value := range patch {
-		next := ""
-		if value != nil {
-			next = strings.TrimSpace(*value)
-		}
 		switch field {
+		case preferencesbiz.AgentComposerDefaultsFieldCodexSaverMode:
+			next, ok := value.(bool)
+			if !ok {
+				return preferencesbiz.AgentComposerDefaults{}, fmt.Errorf("agent composer defaults field %q must be boolean", field)
+			}
+			defaults.CodexSaverMode = next
 		case preferencesbiz.AgentComposerDefaultsFieldModel:
-			defaults.Model = next
+			defaults.Model, err = agentComposerDefaultsTextPatchValue(value)
 		case preferencesbiz.AgentComposerDefaultsFieldPermissionModeID:
-			defaults.PermissionModeID = next
+			defaults.PermissionModeID, err = agentComposerDefaultsTextPatchValue(value)
 		case preferencesbiz.AgentComposerDefaultsFieldReasoningEffort:
-			defaults.ReasoningEffort = next
+			defaults.ReasoningEffort, err = agentComposerDefaultsTextPatchValue(value)
 		case preferencesbiz.AgentComposerDefaultsFieldSpeed:
-			defaults.Speed = next
+			defaults.Speed, err = agentComposerDefaultsTextPatchValue(value)
 		default:
 			return preferencesbiz.AgentComposerDefaults{}, fmt.Errorf("unsupported agent composer defaults field %q", field)
+		}
+		if err != nil {
+			return preferencesbiz.AgentComposerDefaults{}, fmt.Errorf("agent composer defaults field %q: %w", field, err)
 		}
 	}
 	if defaults.IsZero() {
@@ -291,6 +296,22 @@ WHERE id = ?
 		return preferencesbiz.AgentComposerDefaults{}, fmt.Errorf("commit agent composer defaults patch: %w", err)
 	}
 	return defaults, nil
+}
+
+func agentComposerDefaultsTextPatchValue(value any) (string, error) {
+	if value == nil {
+		return "", nil
+	}
+	switch typed := value.(type) {
+	case string:
+		return strings.TrimSpace(typed), nil
+	case *string:
+		if typed != nil {
+			return strings.TrimSpace(*typed), nil
+		}
+		return "", nil
+	}
+	return "", fmt.Errorf("must be a string or null")
 }
 
 func decodeFileDefaultOpenersByExtension(raw string) (map[string]string, error) {

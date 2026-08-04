@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
-	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -44,6 +44,7 @@ type AppFactoryService struct {
 	AgentSessionReader    agentservice.SessionReader
 	AgentSessionState     FactoryAgentSessionStateReporter
 	Runner                *AppRunner
+	ShellAdapter          AppShellAdapter
 	StateDir              string
 	Publisher             WorkspaceAppFactoryEventPublisher
 
@@ -459,24 +460,22 @@ func (s *AppFactoryService) PrepareModification(ctx context.Context, workspaceID
 	return s.putAndPublishReturn(ctx, job)
 }
 
-func prepareAppFactoryJob(ctx context.Context, job workspacebiz.AppFactoryJob) error {
+func prepareAppFactoryJobWithShell(ctx context.Context, job workspacebiz.AppFactoryJob, adapter AppShellAdapter) error {
 	draftPackageDir := appFactoryDraftPackageDir(job)
 	if draftPackageDir == "" {
 		return errors.New("app factory draft package directory is missing")
 	}
 	preparePath := filepath.Join(draftPackageDir, "prepare.sh")
-	info, err := os.Stat(preparePath)
+	_, err := os.Stat(preparePath)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil
 		}
 		return fmt.Errorf("stat prepare.sh: %w", err)
 	}
-	if info.IsDir() {
-		return errors.New("prepare.sh must be a file")
-	}
-	if info.Mode()&0o111 == 0 {
-		return errors.New("prepare.sh must be executable")
+	adapter = resolveAppShellAdapter(adapter)
+	if err := adapter.ValidateScript(preparePath); err != nil {
+		return fmt.Errorf("validate prepare.sh: %w", err)
 	}
 
 	runCtx, cancel := context.WithTimeout(ctx, defaultFactoryPrepareTimeout)
@@ -490,12 +489,16 @@ func prepareAppFactoryJob(ctx context.Context, job workspacebiz.AppFactoryJob) e
 	if err != nil {
 		return fmt.Errorf("resolve managed app runtime: %w", err)
 	}
-	command := exec.CommandContext(runCtx, preparePath)
+	command, shellBinDirs, err := adapter.Command(runCtx, preparePath)
+	if err != nil {
+		return fmt.Errorf("prepare app shell command: %w", err)
+	}
 	command.Dir = draftPackageDir
 	command.Stdout = logFile
 	command.Stderr = logFile
 	envOverrides := []string{
 		"TUTTI_APP_ID=" + job.AppID,
+		"TUTTI_PLATFORM=" + runtime.GOOS + "-" + runtime.GOARCH,
 		"TUTTI_APP_PACKAGE_DIR=" + draftPackageDir,
 		"TUTTI_APP_RUNTIME_DIR=" + job.RuntimeDir,
 		"TUTTI_APP_DATA_DIR=" + job.DataDir,
@@ -503,6 +506,7 @@ func prepareAppFactoryJob(ctx context.Context, job workspacebiz.AppFactoryJob) e
 		"TUTTI_APP_TOOLCHAIN_ROOT=" + tuttiAppToolchainRoot(),
 	}
 	envOverrides = append(envOverrides, appRuntime.EnvOverrides...)
+	envOverrides = append(envOverrides, appRuntimePathWithBinDirs(appRuntime, shellBinDirs...))
 	command.Env = workspaceAppProcessEnv(envOverrides...)
 	if err := command.Run(); err != nil {
 		return fmt.Errorf("run prepare.sh: %w", err)
@@ -531,16 +535,8 @@ func (s *AppFactoryService) validatePackage(ctx context.Context, workspaceID str
 		return err
 	}
 
-	bootstrapPath := filepath.Join(draftPackageDir, filepath.Clean(manifest.Runtime.Bootstrap))
-	info, err := os.Stat(bootstrapPath)
-	if err != nil {
-		return fmt.Errorf("stat runtime bootstrap: %w", err)
-	}
-	if info.IsDir() {
-		return errors.New("runtime bootstrap must be a file")
-	}
-	if info.Mode()&0o111 == 0 {
-		return errors.New("runtime bootstrap must be executable")
+	if err := validateAppBootstrapFile(s.ShellAdapter, draftPackageDir, manifest.Runtime.Bootstrap); err != nil {
+		return err
 	}
 
 	agentsData, err := readCleanAppFactoryAgentsFile(job)

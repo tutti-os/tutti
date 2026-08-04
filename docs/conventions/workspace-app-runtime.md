@@ -4,6 +4,27 @@ Workspace App Center apps and daemon-managed ACP npm adapters run against a
 daemon-managed runtime baseline. App packages must not bundle or declare
 Python/Node versions; Tutti injects the managed runtime paths at launch.
 
+## Bootstrap Contract
+
+Every Workspace App package exposes one POSIX-compatible `bootstrap.sh` through
+`runtime.bootstrap`. The app lifecycle depends on this contract rather than on
+a platform implementation:
+
+- macOS and Linux execute the script through the host's normal executable path;
+- packaged Windows Desktop injects a Tutti-managed Bash runtime and the Windows
+  shell adapter invokes the same script;
+- fat packages select their native artifact with the injected
+  `TUTTI_PLATFORM` value (`darwin-arm64`, `darwin-amd64`, or
+  `windows-amd64`).
+
+Keep bootstrap scripts LF-terminated and limited to POSIX shell built-ins plus
+the commands supplied by the managed Windows shell: `cat`, `cp`, `dirname`,
+`mkdir`, `mv`, `rm`, `sleep`, and `uname`. Use the explicit managed runtime
+variables for Node and Python instead of expecting package managers or other
+Unix tools in the shell. Do not add a second manifest entrypoint map or require
+Git for Windows. The optional App Factory `prepare.sh` uses the same shell
+adapter and command subset.
+
 ## App State Directories
 
 Each installed app receives installation-scoped directories below the Tutti
@@ -162,6 +183,10 @@ Supported daemon overrides:
 - `TUTTI_APP_RUNTIME_CATALOG`: HTTP(S) URL or local file path for the runtime catalog. Set it to an empty string to disable the default runtime catalog.
 - `TUTTI_APP_RUNTIME_CACHE_ROOT`: cache root for platform-specific runtime directories.
 - `TUTTI_APP_RUNTIME_ROOT`: exact prepared runtime root, mainly for tests and local debugging.
+- `TUTTI_MANAGED_POSIX_SHELL`: absolute path to the managed POSIX shell
+  executable. Packaged Windows Desktop sets this automatically; the Workspace
+  App adapter consumes it, while the override exists for development, tests,
+  and packaging diagnostics.
 
 App packages must not set these variables. The runner injects `TUTTI_APP_PYTHON`, `TUTTI_APP_NODE`, `TUTTI_APP_NPM`, and `PATH` for app processes.
 Agent provider installers may also use the managed `TUTTI_APP_NPM` path to

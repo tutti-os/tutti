@@ -96,7 +96,7 @@ func (s *AppCenterService) ImportPackage(ctx context.Context, archivePath string
 	if err != nil {
 		return workspacebiz.WorkspaceApp{}, err
 	}
-	if err := validateExtractedAppPackage(packageRoot, manifest); err != nil {
+	if err := validateExtractedAppPackage(s.ShellAdapter, packageRoot, manifest); err != nil {
 		return workspacebiz.WorkspaceApp{}, err
 	}
 	if _, err := s.Store.GetAppPackageVersion(ctx, manifest.AppID, manifest.Version); err == nil {

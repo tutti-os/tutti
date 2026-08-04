@@ -119,6 +119,7 @@ exec "$TUTTI_APP_PYTHON" "$TUTTI_APP_PACKAGE_DIR/server.py"
 		"workspaceName": "Runner Workspace",
 		"appHost":       "127.0.0.1",
 		"appBaseUrl":    *state.LaunchURL,
+		"platform":      runtime.GOOS + "-" + runtime.GOARCH,
 	} {
 		if probeValues[key] != want {
 			t.Fatalf("probe[%s] = %q, want %q", key, probeValues[key], want)
@@ -909,6 +910,7 @@ func pythonAppReadyServerScript(healthcheckPath string, writeProbe bool) string 
                 "legacyWorkspaceRoot": os.environ.get("NEX" + "TOP_WORKSPACE_ROOT", ""),
                 "appHost": os.environ["TUTTI_APP_HOST"],
                 "appBaseUrl": os.environ["TUTTI_APP_BASE_URL"],
+                "platform": os.environ["TUTTI_PLATFORM"],
                 "packageDir": os.environ["TUTTI_APP_PACKAGE_DIR"],
                 "runtimeDir": os.environ["TUTTI_APP_RUNTIME_DIR"],
                 "dataDir": os.environ["TUTTI_APP_DATA_DIR"],

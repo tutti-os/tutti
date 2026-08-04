@@ -189,7 +189,7 @@ func TestAppCenterServiceStartEnabledRepairsMissingRemoteBuiltinCacheBeforeStart
 		t.Fatalf("StartEnabled() initial app = %#v", app)
 	}
 	active := waitForActiveAppPackageDirChangeForTest(t, store, "large-builtin", missingPackageDir)
-	if err := validateExtractedAppPackage(active.PackageDir, active.Manifest); err != nil {
+	if err := validateExtractedAppPackage(NewPlatformAppShellAdapter(), active.PackageDir, active.Manifest); err != nil {
 		t.Fatalf("repaired package validation error = %v", err)
 	}
 	waitForRunnerStatus(t, runner, "ws-1", "large-builtin", workspacebiz.AppRuntimeStatusFailed)

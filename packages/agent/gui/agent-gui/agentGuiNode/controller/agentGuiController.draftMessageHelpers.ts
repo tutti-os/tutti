@@ -98,7 +98,12 @@ export function composerSettingsFromPendingRecord(
   if (typeof value.speed === "string" || value.speed === null) {
     settings.speed = value.speed;
   }
-  for (const key of ["planMode", "browserUse", "computerUse"] as const) {
+  for (const key of [
+    "codexSaverMode",
+    "planMode",
+    "browserUse",
+    "computerUse"
+  ] as const) {
     if (typeof value[key] === "boolean") settings[key] = value[key];
   }
   if (

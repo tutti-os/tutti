@@ -18,6 +18,7 @@ import type { ConversationIntent } from "./useAgentConversationSelection";
 import type { AgentGUIConversationRailRevealReason } from "../model/agentGuiConversationRailViewState";
 
 export interface UseAgentGUINewConversationActivationInput {
+  codexSaverModeEntryEnabled: boolean;
   getCachedComposerOptions: () =>
     | import("@tutti-os/agent-activity-core").AgentActivityComposerOptions
     | null;

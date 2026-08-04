@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -146,6 +147,104 @@ func TestLiveProtocolTurnStartDuringActiveTurn(t *testing.T) {
 	t.Logf("turn lifecycle notifications observed:\n%s", proc.lifecycleDigest())
 }
 
+// Live verification for the tutti-agent process-global extra Skill roots used
+// by runtimeprep. This does not run a model turn or require provider auth.
+//
+//	TUTTI_LIVE_TUTTI_AGENT_SKILLS_VERIFY=1 go test ./runtime/ -run TestLiveTuttiAgentExtraRoots -v -count=1
+func TestLiveTuttiAgentExtraRoots(t *testing.T) {
+	if os.Getenv("TUTTI_LIVE_TUTTI_AGENT_SKILLS_VERIFY") == "" {
+		t.Skip("set TUTTI_LIVE_TUTTI_AGENT_SKILLS_VERIFY=1 to run live tutti-agent verification")
+	}
+
+	cwd := t.TempDir()
+	extraRoot := filepath.Join(t.TempDir(), "skills")
+	skillPath := filepath.Join(extraRoot, "prefix-cache-verify", "SKILL.md")
+	if err := os.MkdirAll(filepath.Dir(skillPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(
+		skillPath,
+		[]byte("---\nname: prefix-cache-verify\ndescription: stable root verification\n---\n\n# Verify\n"),
+		0o644,
+	); err != nil {
+		t.Fatal(err)
+	}
+	expectedSkillPath, err := filepath.EvalSymlinks(skillPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stableSystemStore := filepath.Join(t.TempDir(), "system-skill-bundles")
+	wantSystemPaths := map[string]string{}
+
+	for _, session := range []string{"session-a", "session-b"} {
+		home := filepath.Join(t.TempDir(), session, "tutti-agent-home")
+		if err := os.MkdirAll(home, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		env := append(os.Environ(), "TUTTI_AGENT_HOME="+home)
+		proc := startLiveAppServerCommand(t, env, "tutti-agent", "app-server")
+		proc.initialize(t)
+		if _, _, err := stabilizeTuttiAgentSystemSkills(home, stableSystemStore); err != nil {
+			proc.kill()
+			t.Fatalf("stabilize system skills for %s: %v", session, err)
+		}
+		setResult := proc.call(t, appServerMethodSkillsExtraRootsSet, map[string]any{
+			"extraRoots": []string{extraRoot},
+		})
+		if _, hasError := setResult["error"]; hasError {
+			proc.kill()
+			t.Fatalf("skills/extraRoots/set failed: %s", compactJSON(setResult))
+		}
+		listResult := proc.call(t, "skills/list", map[string]any{
+			"cwds":        []string{cwd},
+			"forceReload": true,
+		})
+		proc.kill()
+		paths := liveSkillPaths(t, listResult)
+		if got := paths["prefix-cache-verify"]; got != expectedSkillPath {
+			t.Fatalf("session %s stable skill path = %q, want %q", session, got, expectedSkillPath)
+		}
+		for _, name := range []string{"skill-creator", "skill-installer"} {
+			got := paths[name]
+			if got == "" {
+				t.Fatalf("session %s did not expose built-in %s", session, name)
+			}
+			if want := wantSystemPaths[name]; want == "" {
+				wantSystemPaths[name] = got
+			} else if got != want {
+				t.Fatalf("session %s %s path = %q, want stable %q", session, name, got, want)
+			}
+		}
+		t.Logf("session %s skill paths: %s", session, compactJSON(paths))
+	}
+}
+
+func liveSkillPaths(t *testing.T, response map[string]any) map[string]string {
+	t.Helper()
+	if rawError, hasError := response["error"]; hasError {
+		t.Fatalf("skills/list failed: %s", compactJSON(rawError))
+	}
+	raw, _ := response["result"].(json.RawMessage)
+	var parsed struct {
+		Data []struct {
+			Skills []struct {
+				Name string `json:"name"`
+				Path string `json:"path"`
+			} `json:"skills"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(raw, &parsed); err != nil {
+		t.Fatalf("decode skills/list: %v", err)
+	}
+	paths := make(map[string]string)
+	for _, entry := range parsed.Data {
+		for _, skill := range entry.Skills {
+			paths[skill.Name] = skill.Path
+		}
+	}
+	return paths
+}
+
 func liveTurnID(response map[string]any) string {
 	raw, _ := response["result"].(json.RawMessage)
 	var parsed struct {
@@ -213,8 +312,18 @@ type liveAppServer struct {
 
 func startLiveAppServer(t *testing.T) *liveAppServer {
 	t.Helper()
-	cmd := exec.Command("codex", "app-server")
-	cmd.Env = os.Environ()
+	return startLiveAppServerCommand(t, os.Environ(), "codex", "app-server")
+}
+
+func startLiveAppServerCommand(
+	t *testing.T,
+	env []string,
+	command string,
+	args ...string,
+) *liveAppServer {
+	t.Helper()
+	cmd := exec.Command(command, args...)
+	cmd.Env = append([]string(nil), env...)
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
 		t.Fatalf("stdin pipe: %v", err)

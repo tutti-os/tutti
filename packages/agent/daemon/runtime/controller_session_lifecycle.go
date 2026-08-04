@@ -387,6 +387,7 @@ func normalizeSessionSettings(settings *SessionSettings, provider string, defaul
 	if settings == nil {
 		return normalized
 	}
+	normalized.CodexSaverMode = settings.CodexSaverMode
 	normalized.Model = strings.TrimSpace(settings.Model)
 	normalized.ReasoningEffort = strings.TrimSpace(settings.ReasoningEffort)
 	normalized.Speed = strings.TrimSpace(settings.Speed)

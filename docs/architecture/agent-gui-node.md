@@ -196,6 +196,21 @@ explicit top-level `set`/`unset` patch. Omission preserves existing context;
 patches may update only provider-private keys and must never replace unrelated
 session metadata.
 
+### New-session launch settings
+
+Remembered composer defaults are target-scoped preferences, not active Session
+state. AgentGUI reads them only while composing a new Session and sends the
+resolved sparse settings through the normal activation command. A host-owned
+entry capability may additionally hide or disable an experimental control; the
+activation boundary must fail closed as well, so a remembered `true` value
+cannot outlive a disabled host entry. Provider support comes from the resolved
+composer descriptor rather than provider-name checks in shared UI code.
+
+Settings that affect provider preparation are immutable after launch. The
+daemon validates them against current product policy and resolved provider
+capability before runtime preparation; an active Session cannot reinterpret
+them through an in-place settings update.
+
 ### 2.4 Ownership map
 
 | Layer                           | Owns                                                                                          | Must not own                                      |

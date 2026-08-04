@@ -860,13 +860,13 @@ printf '%s\n' "$TUTTI_APP_TOOLCHAIN_ROOT" > "$TUTTI_APP_DATA_DIR/toolchain-root.
 		t.Fatalf("write prepare.sh: %v", err)
 	}
 
-	err := prepareAppFactoryJob(ctx, workspacebiz.AppFactoryJob{
+	err := prepareAppFactoryJobWithShell(ctx, workspacebiz.AppFactoryJob{
 		AppID:      "app_1",
 		DraftDir:   draftDir,
 		RuntimeDir: runtimeDir,
 		DataDir:    dataDir,
 		LogDir:     logDir,
-	})
+	}, NewPlatformAppShellAdapter())
 	if err != nil {
 		t.Fatalf("prepareAppFactoryJob() error = %v", err)
 	}

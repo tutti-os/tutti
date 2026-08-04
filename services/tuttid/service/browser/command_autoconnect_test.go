@@ -15,7 +15,7 @@ func testStableChromeProfileDir(home string) string {
 	case "linux":
 		return filepath.Join(home, ".config", "google-chrome")
 	case "windows":
-		return filepath.Join(home, "AppData", "Local", "Google", "Chrome", "User Data")
+		return filepath.Join(home, "Google", "Chrome", "User Data")
 	default:
 		return ""
 	}
@@ -23,6 +23,9 @@ func testStableChromeProfileDir(home string) string {
 
 func writeTestDevToolsActivePort(t *testing.T, home string, content string) {
 	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Setenv("LOCALAPPDATA", home)
+	}
 
 	chromeDir := testStableChromeProfileDir(home)
 	if chromeDir == "" {
@@ -44,6 +47,14 @@ func TestParseDevToolsActivePort(t *testing.T) {
 	}
 	if activePort.port != 9222 || activePort.path != "/devtools/browser/abc" {
 		t.Fatalf("activePort = %#v", activePort)
+	}
+}
+
+func TestStableChromeDevToolsActivePortPathUsesLocalAppDataOnWindows(t *testing.T) {
+	got := stableChromeDevToolsActivePortPathFor("windows", `C:\Users\example`, `D:\Profiles\Local`)
+	want := filepath.Join(`D:\Profiles\Local`, "Google", "Chrome", "User Data", "DevToolsActivePort")
+	if got != want {
+		t.Fatalf("stableChromeDevToolsActivePortPathFor() = %q, want %q", got, want)
 	}
 }
 

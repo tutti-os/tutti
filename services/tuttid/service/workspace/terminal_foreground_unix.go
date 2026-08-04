@@ -13,20 +13,23 @@ import (
 
 func (s *terminalRuntimeSession) foregroundProcess() (terminalForegroundProcess, bool) {
 	s.mu.Lock()
-	file := s.file
-	process := s.command.Process
+	process := s.process
 	shell := s.shell
 	s.mu.Unlock()
 
-	if file == nil || process == nil {
+	if process == nil {
+		return terminalForegroundProcess{}, false
+	}
+	fdProvider, ok := process.(interface{ terminalFD() uintptr })
+	if !ok {
 		return terminalForegroundProcess{}, false
 	}
 
-	foregroundPgrp, err := unix.IoctlGetInt(int(file.Fd()), unix.TIOCGPGRP)
+	foregroundPgrp, err := unix.IoctlGetInt(int(fdProvider.terminalFD()), unix.TIOCGPGRP)
 	if err != nil || foregroundPgrp <= 0 {
 		return terminalForegroundProcess{}, false
 	}
-	shellPgrp, err := unix.Getpgid(process.Pid)
+	shellPgrp, err := unix.Getpgid(process.PID())
 	if err != nil || shellPgrp <= 0 {
 		return terminalForegroundProcess{}, false
 	}

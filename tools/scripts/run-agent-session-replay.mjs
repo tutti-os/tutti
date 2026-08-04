@@ -330,6 +330,9 @@ async function replayCassette(options) {
           "utf8"
         )
       );
+      const replayProviders = await readReplayProviderIDs(
+        options.cassetteDirectory
+      );
       const checkpoints = await loadReplayCheckpointPlan(
         options.cassetteDirectory,
         activityEvents
@@ -358,6 +361,7 @@ async function replayCassette(options) {
         await initializeCleanDatabase(workspaceRoot, runtime, workspaceId, {
           seedWorkspace: false
         });
+        await enableAgentSessionRecordingFeature(databasePath, workspaceRoot);
         // Activation intents can omit composer settings. Restore the values that
         // the cassette itself recorded so provider startup RPCs stay deterministic.
         await setAgentComposerDefaults(
@@ -411,7 +415,9 @@ async function replayCassette(options) {
                 rootAgentSessionId: manifest.rootAgentSessionId,
                 cassetteDirectory: join(options.cassetteDirectory, "provider"),
                 artifactDirectory: options.cassetteDirectory,
-                workspaceId
+                workspaceId,
+                providers: replayProviders,
+                frozenModel: manifest.replayPrerequisites.composerDefaults.model
               }
             ],
             initialTargetCheckpoint: options.targetCheckpoint,
@@ -1040,10 +1046,15 @@ export async function bootstrapReplayWorkspace(
   const manifest = validateReplayWorkspaceManifest(manifestValue);
   const dependencies = {
     createRuntime: () => createRuntime(workspaceRoot, "replay-workspace"),
-    initializeDatabase: (runtime, workspaceId) =>
-      initializeCleanDatabase(workspaceRoot, runtime, workspaceId, {
+    initializeDatabase: async (runtime, workspaceId) => {
+      await initializeCleanDatabase(workspaceRoot, runtime, workspaceId, {
         seedWorkspace: false
-      }),
+      });
+      await enableAgentSessionRecordingFeature(
+        join(runtime.stateDirectory, "tuttid.db"),
+        workspaceRoot
+      );
+    },
     loadCassette: loadReplayWorkspaceCassette,
     materializeBlobs: materializeReplayWorkspaceBlobs,
     removeRuntime,
@@ -1145,6 +1156,7 @@ async function loadReplayWorkspaceCassette(cassette, workspaceId) {
     activityEvents,
     workspaceId
   );
+  const providers = await readReplayProviderIDs(cassette.cassetteDirectory);
   action.replayProject = await loadReplayProject(
     cassette.cassetteDirectory,
     rootAgentSessionId
@@ -1164,6 +1176,8 @@ async function loadReplayWorkspaceCassette(cassette, workspaceId) {
     ...cassette,
     cassetteId,
     rootAgentSessionId,
+    providers,
+    replayPrerequisites: cassetteManifest.replayPrerequisites,
     action,
     activityEvents,
     checkpoints: await loadReplayCheckpointPlan(
@@ -1249,13 +1263,44 @@ export async function readReplayTotalDurationMs(
 }
 
 export function replayWorkspaceTransportRegistrations(cassettes) {
-  return cassettes.map((cassette) => ({
-    cassetteId: cassette.cassetteId,
-    rootAgentSessionId: cassette.rootAgentSessionId,
-    cassetteDirectory: join(cassette.cassetteDirectory, "provider"),
-    artifactDirectory: cassette.cassetteDirectory,
-    workspaceId: cassette.action.workspaceId
-  }));
+  return cassettes.map((cassette) => {
+    const registration = {
+      cassetteId: cassette.cassetteId,
+      rootAgentSessionId: cassette.rootAgentSessionId,
+      cassetteDirectory: join(cassette.cassetteDirectory, "provider"),
+      artifactDirectory: cassette.cassetteDirectory,
+      workspaceId: cassette.action.workspaceId
+    };
+    if (Array.isArray(cassette.providers) && cassette.providers.length > 0) {
+      registration.providers = cassette.providers;
+    }
+    const frozenModel = cassette.replayPrerequisites?.composerDefaults?.model;
+    if (typeof frozenModel === "string" && frozenModel.trim()) {
+      registration.frozenModel = frozenModel.trim();
+    }
+    return registration;
+  });
+}
+
+async function readReplayProviderIDs(cassetteDirectory) {
+  const manifest = JSON.parse(
+    await readFile(join(cassetteDirectory, providerManifestName), "utf8")
+  );
+  const providers = [
+    ...new Set(
+      (Array.isArray(manifest.connections) ? manifest.connections : [])
+        .map((connection) =>
+          typeof connection?.provider === "string"
+            ? connection.provider.trim()
+            : ""
+        )
+        .filter(Boolean)
+    )
+  ];
+  if (providers.length === 0) {
+    throw new Error("Replay provider manifest has no providers");
+  }
+  return providers;
 }
 
 async function loadReplayTurnIdentityPlan(cassetteDirectory, mode) {

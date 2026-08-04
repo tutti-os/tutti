@@ -104,7 +104,7 @@ func (s *AppCenterService) installNeedsPackageDownload(ctx context.Context, appI
 	if remoteErr != nil || !ok {
 		return false
 	}
-	return shouldMaterializeRemoteBuiltin(appPackage, remoteBuiltin)
+	return s.shouldMaterializeRemoteBuiltin(appPackage, remoteBuiltin)
 }
 
 func (s *AppCenterService) installNeedsRuntimeDownload() bool {

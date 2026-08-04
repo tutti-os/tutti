@@ -255,8 +255,11 @@ func TestExtensionRuntimePreparerIsolatesSkillRootsPerSession(t *testing.T) {
 		if err != nil {
 			t.Fatalf("session %s tutti skill missing: %v", sessionID, err)
 		}
-		if !strings.Contains(string(skill), "The current AgentGUI session is `"+sessionID+"`.") {
-			t.Fatalf("session %s skill should be rendered with its own session id", sessionID)
+		if !strings.Contains(string(skill), "Read the current AgentGUI session id from `$TUTTI_AGENT_SESSION_ID`") {
+			t.Fatalf("session %s skill should resolve its session id at command time", sessionID)
+		}
+		if strings.Contains(string(skill), sessionID) {
+			t.Fatalf("session %s skill should not embed its session id", sessionID)
 		}
 	}
 

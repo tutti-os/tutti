@@ -121,6 +121,8 @@ export interface AgentGUIViewLabels extends AgentGUIProviderReadinessLabels {
     professionalLongRunning: string;
   };
   planModeLabel: string;
+  codexSaverModeLabel: string;
+  codexSaverModeDescription: string;
   normalModeLabel?: string;
   normalModeDescription?: string;
   tuttiModeLabel: string;

@@ -1736,6 +1736,9 @@ export const preferencesAgentComposerDefaultsPatchRequestedPayloadSchema = {
       additionalProperties: false,
       minProperties: 1,
       properties: {
+        codexSaverMode: {
+          type: "boolean"
+        },
         model: {
           type: ["string", "null"]
         },

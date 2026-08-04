@@ -10,6 +10,9 @@ import (
 
 func TestCodexComposerProfileComesFromProviderDescriptor(t *testing.T) {
 	profile := composerProfileFor(agentprovider.Codex)
+	if !profile.SubagentSaverMode {
+		t.Fatal("Codex composer profile must advertise subagent saver mode")
+	}
 	if !profile.ModelSelection || !profile.UsesModelCatalog || profile.ModelCatalog != "codex-cli" {
 		t.Fatalf("model profile = %#v", profile)
 	}

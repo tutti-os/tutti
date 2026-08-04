@@ -182,9 +182,12 @@ def validate_scripts(root: Path, manifest: dict[str, Any] | None, errors: list[s
                 errors.append("Missing bootstrap.sh")
             continue
         mode = path.stat().st_mode
-        if not mode & stat.S_IXUSR:
+        if os.name != "nt" and not mode & stat.S_IXUSR:
             errors.append(f"{name} must be executable")
-        text = path.read_text(encoding="utf-8", errors="ignore")
+        script_bytes = path.read_bytes()
+        if b"\r" in script_bytes:
+            errors.append(f"{name} must use LF line endings")
+        text = script_bytes.decode("utf-8", errors="ignore")
         for line_number, line in enumerate(text.splitlines(), start=1):
             stripped = line.strip()
             if not stripped or stripped.startswith("#"):

@@ -205,7 +205,7 @@ export function agentPromptPastedTextBlocks(
     (block): block is AgentPromptContentBlock & { type: "file" } =>
       block.type === "file" &&
       block.kind === AGENT_PASTED_TEXT_BLOCK_KIND &&
-      typeof block.path === "string"
+      (typeof block.path === "string" || typeof block.url === "string")
   );
 }
 

@@ -11,7 +11,7 @@ type AgentComposerDefaultsField = DesktopAgentComposerDefaultsField;
 
 interface VersionedPatchValue {
   revision: number;
-  value: string | null;
+  value: string | boolean | null;
 }
 
 interface PatchWaiter {
@@ -306,6 +306,7 @@ function normalizePatch(
 ): DesktopAgentComposerDefaultsPatch {
   if (input === null) {
     return {
+      codexSaverMode: false,
       model: null,
       permissionModeId: null,
       reasoningEffort: null,
@@ -318,7 +319,13 @@ function normalizePatch(
       continue;
     }
     const value = input[field];
-    result[field] = typeof value === "string" ? value.trim() || null : null;
+    if (field === "codexSaverMode") {
+      result.codexSaverMode = value === true;
+      continue;
+    }
+    Object.assign(result, {
+      [field]: typeof value === "string" ? value.trim() || null : null
+    });
   }
   return result;
 }
@@ -337,7 +344,7 @@ function snapshotDesiredPatch(desired: TargetPatchState["desired"]): {
       continue;
     }
     fields.push(field);
-    patch[field] = entry.value;
+    Object.assign(patch, { [field]: entry.value });
     revisions[field] = entry.revision;
   }
   return { fields, patch, revisions };

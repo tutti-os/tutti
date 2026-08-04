@@ -403,6 +403,7 @@ export function areComposerSettingsDraftsEqual(
   right: AgentGUIComposerSettingsVM["draftSettings"]
 ): boolean {
   return (
+    left.codexSaverMode === right.codexSaverMode &&
     left.model === right.model &&
     left.reasoningEffort === right.reasoningEffort &&
     left.speed === right.speed &&
@@ -450,6 +451,8 @@ export function areComposerSettingsVMsEqual(
     sameComposerSettings(left.sessionSettings, right.sessionSettings) &&
     areComposerSettingsDraftsEqual(left.draftSettings, right.draftSettings) &&
     left.supportsModel === right.supportsModel &&
+    (left.supportsCodexSaverMode ?? false) ===
+      (right.supportsCodexSaverMode ?? false) &&
     left.supportsReasoningEffort === right.supportsReasoningEffort &&
     left.supportsSpeed === right.supportsSpeed &&
     (left.supportsPermissionMode ?? false) ===

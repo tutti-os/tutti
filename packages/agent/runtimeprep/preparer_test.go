@@ -375,6 +375,245 @@ func TestDefaultPreparerCodexWritesInstructionsSkillManifestAndEnv(t *testing.T)
 	}
 }
 
+func TestDefaultPreparerCodexSaverModeInstallsLunaWorkerAndRoutingPolicy(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	if err := os.MkdirAll(filepath.Join(home, ".codex"), 0o700); err != nil {
+		t.Fatalf("create user Codex home: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(home, ".codex", "config.toml"), []byte(`[agents.default]
+description = """
+User default multiline description
+"""
+config_file = "/tmp/user-default.toml"
+nickname_candidates = ["User Worker"]
+
+[agents.reviewer]
+description = "Keep reviewer"
+`), 0o600); err != nil {
+		t.Fatalf("write user Codex config: %v", err)
+	}
+	prepared, err := newTestPreparer(t.TempDir()).Prepare(t.Context(), PrepareInput{
+		WorkspaceID:    "workspace-1",
+		AgentSessionID: "session-1",
+		AgentTargetID:  "local:codex",
+		Provider:       "codex",
+		Cwd:            t.TempDir(),
+		CodexSaverMode: true,
+	})
+	if err != nil {
+		t.Fatalf("Prepare() error = %v", err)
+	}
+	codexHome := envValue(prepared.Env, "CODEX_HOME")
+	role, err := os.ReadFile(filepath.Join(codexHome, "agents", "luna_worker.toml"))
+	if err != nil {
+		t.Fatalf("read Luna worker role: %v", err)
+	}
+	for _, expected := range []string{
+		`name = "default"`,
+		`description = "Luna worker`,
+		`model = "gpt-5.6-luna"`,
+		`model_reasoning_effort = "max"`,
+		`developer_instructions = "Complete only the delegated task using the minimum analysis and tools needed.`,
+		`Do not spawn or delegate to another worker unless the parent task explicitly authorizes nested delegation`,
+		`supplies a total nested-worker and tool-call budget`,
+		`For read-only analysis, do not modify files, run tests, or repair environments unless explicitly asked.`,
+		`Do not inspect unrelated repository history or use external research unless requested.`,
+	} {
+		if !strings.Contains(string(role), expected) {
+			t.Fatalf("role = %q, want %q", role, expected)
+		}
+	}
+	config, err := os.ReadFile(filepath.Join(codexHome, "config.toml"))
+	if err != nil {
+		t.Fatalf("read session Codex config: %v", err)
+	}
+	for _, expected := range []string{
+		"[agents.default]",
+		`description = "Luna worker`,
+		`config_file = "./agents/luna_worker.toml"`,
+		"[agents.reviewer]",
+		`description = "Keep reviewer"`,
+	} {
+		if !strings.Contains(string(config), expected) {
+			t.Fatalf("config = %q, want %q", config, expected)
+		}
+	}
+	if strings.Contains(string(config), "/tmp/user-default.toml") ||
+		strings.Contains(string(config), "User default multiline description") ||
+		strings.Contains(string(config), "User Worker") {
+		t.Fatalf("session config retained conflicting user default role: %q", config)
+	}
+	instructions, err := os.ReadFile(filepath.Join(codexHome, "AGENTS.md"))
+	if err != nil {
+		t.Fatalf("read Codex instructions: %v", err)
+	}
+	for _, expected := range []string{
+		"default subagent as the Luna worker",
+		"will replace meaningful main-thread reasoning",
+		"merely because a task is complex",
+		"mechanical workflow in the main thread",
+		"require multiple model-driven tool turns",
+		"default to one Luna worker",
+		"multiple genuinely independent, non-trivial units",
+		"Do not split one cohesive investigation",
+		"without forking the main conversation history",
+		"isolated-worktree units in parallel",
+		"Continue only with non-overlapping work",
+		"do not inspect or implement",
+		"minimum analysis and tools needed",
+		"concrete tool-call budget",
+		"8 tool calls and implementation at 20",
+		"does not run tests, repair environments, or modify files",
+		"return the best available evidence immediately",
+		"Workers must not spawn or delegate to additional workers",
+		"total nested-worker and tool-call budget",
+		"interrupt the worker",
+		"hour-long wait",
+		"do not repeat the delegated investigation",
+		"allowed state changes",
+		"blocking or event-driven waits",
+		"acceptance criteria",
+	} {
+		if !strings.Contains(string(instructions), expected) {
+			t.Fatalf("Codex saver instructions = %q, want %q", instructions, expected)
+		}
+	}
+	if strings.Contains(string(instructions), "fork_turns") ||
+		strings.Contains(string(instructions), "fork_context") ||
+		strings.Contains(string(instructions), "max_concurrent_threads") ||
+		strings.Contains(string(instructions), "default to at least two") {
+		t.Fatalf("Codex saver instructions are not lightweight: %q", instructions)
+	}
+}
+
+func TestCodexConfigWithSaverDefaultRoleReplacesEquivalentTOMLForms(t *testing.T) {
+	tests := map[string]string{
+		"quoted section": `[agents."default"] # replace this role
+description = "User default"
+config_file = "/tmp/user.toml"
+`,
+		"single quoted section": `[agents.'default']
+description = "User default"
+config_file = "/tmp/user.toml"
+`,
+		"fully quoted section": `["agents"."default"]
+description = "User default"
+config_file = "/tmp/user.toml"
+`,
+		"inline in agents section": `[agents]
+max_threads = 4
+default = {
+  description = "User default",
+  config_file = "/tmp/user.toml",
+}
+`,
+		"root dotted keys": `agents.default.description = """
+User default
+"""
+agents.default.config_file = "/tmp/user.toml"
+model = "gpt-5.6-sol"
+`,
+	}
+	for name, input := range tests {
+		t.Run(name, func(t *testing.T) {
+			next, changed := codexConfigWithSaverDefaultRole(input)
+			if !changed {
+				t.Fatal("codexConfigWithSaverDefaultRole() changed = false, want true")
+			}
+			for _, unexpected := range []string{"User default", "/tmp/user.toml"} {
+				if strings.Contains(next, unexpected) {
+					t.Fatalf("config = %q, retained %q", next, unexpected)
+				}
+			}
+			for _, expected := range []string{
+				"[agents.default]",
+				`config_file = "./agents/luna_worker.toml"`,
+			} {
+				if !strings.Contains(next, expected) {
+					t.Fatalf("config = %q, want %q", next, expected)
+				}
+			}
+			if name == "inline in agents section" && !strings.Contains(next, "max_threads = 4") {
+				t.Fatalf("config = %q, lost unrelated agents setting", next)
+			}
+			if name == "root dotted keys" && !strings.Contains(next, `model = "gpt-5.6-sol"`) {
+				t.Fatalf("config = %q, lost unrelated root setting", next)
+			}
+		})
+	}
+}
+
+func TestCodexConfigWithSaverDefaultRoleIgnoresSectionTextInsideMultilineString(t *testing.T) {
+	input := `developer_instructions = """
+Example only:
+[agents]
+default = { description = "text only" }
+[agents.default]
+description = "also text only"
+"""
+model = "gpt-5.6-sol"
+`
+	next, changed := codexConfigWithSaverDefaultRole(input)
+	if !changed {
+		t.Fatal("codexConfigWithSaverDefaultRole() changed = false, want true")
+	}
+	for _, expected := range []string{
+		"Example only:",
+		`default = { description = "text only" }`,
+		`description = "also text only"`,
+		`model = "gpt-5.6-sol"`,
+		`config_file = "./agents/luna_worker.toml"`,
+	} {
+		if !strings.Contains(next, expected) {
+			t.Fatalf("config = %q, want %q", next, expected)
+		}
+	}
+	if strings.Count(next, `"""`) != 2 {
+		t.Fatalf("config = %q, multiline string delimiters changed", next)
+	}
+}
+
+func TestCodexConfigWithSaverDefaultRolePreservesUnrelatedTOMLKeysAndArrayTables(t *testing.T) {
+	input := `[agents.default]
+description = "replace me"
+config_file = "/tmp/user.toml"
+
+[[other.items]]
+default = "keep array-table field"
+
+["agents.default"]
+value = "single dotted key"
+
+[agents."de fault"]
+value = "different role"
+
+[agents]
+"default.foo" = { description = "different dotted role" }
+`
+	next, changed := codexConfigWithSaverDefaultRole(input)
+	if !changed {
+		t.Fatal("codexConfigWithSaverDefaultRole() changed = false, want true")
+	}
+	for _, expected := range []string{
+		"[[other.items]]",
+		`default = "keep array-table field"`,
+		`["agents.default"]`,
+		`value = "single dotted key"`,
+		`[agents."de fault"]`,
+		`value = "different role"`,
+		`"default.foo" = { description = "different dotted role" }`,
+		`config_file = "./agents/luna_worker.toml"`,
+	} {
+		if !strings.Contains(next, expected) {
+			t.Fatalf("config = %q, want %q", next, expected)
+		}
+	}
+	if strings.Contains(next, "replace me") || strings.Contains(next, "/tmp/user.toml") {
+		t.Fatalf("config = %q, retained replaced default role", next)
+	}
+}
+
 func TestDefaultPreparerCodexDedicatedProjectionNarrowsAutomaticCLIApproval(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	stateDir := t.TempDir()

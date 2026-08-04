@@ -77,7 +77,8 @@ For a publishable package, create or update these files under `output.packageRoo
 
 - `tutti.app.json`: valid JSON manifest matching `references/manifest-contract.md`.
 - `tutti.cli.json`: CLI manifest matching `references/cli-manifest-contract.md`, required when the user asks to connect the app to the Tutti ecosystem; otherwise create it only when `tutti.app.json` declares `cli.manifest`.
-- `bootstrap.sh`: executable shell entrypoint that starts the app server with no arguments.
+- `bootstrap.sh`: backward-compatible executable shell entrypoint that starts the app server with no arguments.
+- Platform-native binaries under `bin/<platform>/` when the package supports Windows or uses the `standalone` profile; keep all supported artifacts in the same fat package and select them from `bootstrap.sh` using `TUTTI_PLATFORM`.
 - `AGENTS.md`: package-local guidance describing layout, runtime command, endpoints, data storage, and modification rules.
 - `locales/<locale>/manifest.json`: manifest metadata localization files, only when the user asks for localized app metadata.
 - App-owned locale dictionaries or an i18n helper/harness when the app has user-facing in-app copy in more than one language.
@@ -101,6 +102,7 @@ If the task supplies exact metadata such as `appId`, version, display name, or d
 - `description`: one concise sentence describing actual app behavior
 - `icon`: package-local asset, preferably `{"type":"asset","src":"icon.svg"}`
 - `runtime.bootstrap`: `bootstrap.sh`
+- `runtime.bootstrap`: the single cross-platform package entrypoint. Keep it POSIX-compatible and use `TUTTI_PLATFORM` when a fat package needs to select a platform-native binary.
 - `runtime.healthcheckPath`: `/healthz`
 - `localizationInfo`: omit unless the user asks for localized app metadata; when needed, follow `references/manifest-contract.md` and create each referenced locale file.
 

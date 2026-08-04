@@ -61,6 +61,7 @@ func newAdapterFromProviderDescriptor(
 				command:                          append([]string(nil), descriptor.Runtime.Command...),
 				clientInfoName:                   descriptor.Runtime.ClientInfoName,
 				authRequiredMessage:              descriptor.Runtime.AuthRequiredMessage,
+				skillRootsStrategy:               descriptor.Runtime.AppServerSkillRoots,
 				rateLimits:                       providerDescriptorHasCapability(descriptor, CapabilityRateLimits),
 				nativeSessionFork:                descriptor.Runtime.NativeSessionFork,
 				sessionForkUserAgentBrand:        descriptor.Runtime.AppServerFork.UserAgentBrand,

@@ -92,6 +92,8 @@ func (api DaemonAPI) CreateWorkspaceAgentSession(ctx context.Context, request tu
 		PermissionModeID:           request.Body.PermissionModeId,
 		PlanMode:                   request.Body.PlanMode,
 		BrowserUse:                 request.Body.BrowserUse,
+		CodexSaverMode:             request.Body.CodexSaverMode,
+		CodexSaverModeAllowed:      api.codexSaverModeEnabled(ctx),
 		ReasoningEffort:            request.Body.ReasoningEffort,
 		RuntimeContext:             createSessionRuntimeContext(request.Body.NoProject),
 		RailPlacement:              railPlacementFromGenerated(request.Body.RailPlacement),
@@ -119,6 +121,7 @@ func (api DaemonAPI) CreateWorkspaceAgentSession(ctx context.Context, request tu
 		stimulusPayload := map[string]any{
 			"agentTargetId":              agentTargetID,
 			"browserUse":                 request.Body.BrowserUse,
+			"codexSaverMode":             request.Body.CodexSaverMode,
 			"capabilityRefs":             request.Body.CapabilityRefs,
 			"clientSubmitId":             clientSubmitID,
 			"content":                    request.Body.InitialContent,

@@ -26,12 +26,27 @@ func (CodexPreparer) Prepare(_ context.Context, input ProviderPrepareInput) (Pro
 	if err := prepareCodexHome(codexHome, input.PrepareInput); err != nil {
 		return ProviderPrepareResult{}, err
 	}
+	if input.CodexSaverMode {
+		rolePath, err := installCodexLunaWorkerRole(codexHome)
+		if err != nil {
+			return ProviderPrepareResult{}, err
+		}
+		if err := ensureCodexSaverDefaultRole(filepath.Join(codexHome, "config.toml")); err != nil {
+			return ProviderPrepareResult{}, err
+		}
+		if input.Manifest != nil {
+			input.Manifest.RecordManagedFile(rolePath, "codex-agent-role", true)
+		}
+	}
 	logRuntimePrepareTrace("runtime_prepare.codex.home_prepared", input.PrepareInput, nil)
 	instructionsPath := filepath.Join(codexHome, "AGENTS.md")
 	logRuntimePrepareTrace("runtime_prepare.codex.instructions_write_requested", input.PrepareInput, nil)
 	policy, err := tuttiCLIPolicy(input.PrepareInput)
 	if err != nil {
 		return ProviderPrepareResult{}, err
+	}
+	if input.CodexSaverMode {
+		policy = strings.TrimSpace(policy) + "\n\n" + codexSaverModePolicy
 	}
 	writeResult, err := input.Store.WriteManagedBlock(instructionsPath, policy)
 	if err != nil {
@@ -596,68 +611,6 @@ func codexConfigStringAssignmentValueAt(lines []string, index int, key string) (
 		builder.WriteString(lineValue)
 	}
 	return "", index, false
-}
-
-// Consume a complete multiline TOML array so stale marker entries do not remain
-// after replacing project_root_markers with the session-scoped override.
-func codexConfigAssignmentEndLine(lines []string, startIndex int) int {
-	if startIndex < 0 || startIndex >= len(lines) {
-		return startIndex
-	}
-	_, value, ok := strings.Cut(lines[startIndex], "=")
-	if !ok {
-		return startIndex
-	}
-	depth := tomlSquareBracketDelta(value)
-	if depth <= 0 {
-		return startIndex
-	}
-	for index := startIndex + 1; index < len(lines); index++ {
-		depth += tomlSquareBracketDelta(lines[index])
-		if depth <= 0 {
-			return index
-		}
-	}
-	return startIndex
-}
-
-func tomlSquareBracketDelta(line string) int {
-	depth := 0
-	escaped := false
-	quote := rune(0)
-	for _, char := range line {
-		switch quote {
-		case '"':
-			if escaped {
-				escaped = false
-				continue
-			}
-			if char == '\\' {
-				escaped = true
-				continue
-			}
-			if char == '"' {
-				quote = 0
-			}
-			continue
-		case '\'':
-			if char == '\'' {
-				quote = 0
-			}
-			continue
-		}
-		switch char {
-		case '#':
-			return depth
-		case '"', '\'':
-			quote = char
-		case '[':
-			depth++
-		case ']':
-			depth--
-		}
-	}
-	return depth
 }
 
 func exposeUserCodexSkillFolders(targetRoot string, input PrepareInput) error {

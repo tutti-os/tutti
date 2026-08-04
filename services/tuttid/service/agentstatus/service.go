@@ -232,6 +232,7 @@ type TerminalCommand struct {
 
 type InstallCommandInput struct {
 	Command  string
+	Args     []string
 	CWD      string
 	Env      []string
 	OnStdout func(string)

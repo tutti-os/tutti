@@ -19,6 +19,22 @@ const buildScriptPath = new URL(
   "../../tools/scripts/build-desktop-package.sh",
   import.meta.url
 );
+const windowsAlphaWorkflowPath = new URL(
+  "../../.github/workflows/windows-desktop-alpha.yml",
+  import.meta.url
+);
+const managedPosixShellVendorScriptPath = new URL(
+  "../../apps/desktop/scripts/vendor-managed-posix-shell.mjs",
+  import.meta.url
+);
+const managedPosixShellLockPath = new URL(
+  "../../config/tutti.managed-posix-shell.lock.json",
+  import.meta.url
+);
+const tuttidManagerPath = new URL(
+  "../../apps/desktop/src/main/daemon/tuttidManager.ts",
+  import.meta.url
+);
 const claudeSidecarVendorScriptPath = new URL(
   "../../apps/desktop/scripts/vendor-claude-sdk-sidecar.mjs",
   import.meta.url
@@ -907,4 +923,32 @@ test("desktop windows packaging anchors electron-builder workspace detection to 
 
   assert.match(buildScript, /npm_package_json="\$\{ROOT_DIR\}\/package\.json"/);
   assert.match(buildScript, /INIT_CWD="\$\{ROOT_DIR\}"/);
+});
+
+test("desktop Windows package and daemon agree on the managed POSIX shell resource", async () => {
+  const packageJson = JSON.parse(await readFile(desktopPackagePath, "utf8"));
+  const buildScript = await readFile(buildScriptPath, "utf8");
+  const alphaWorkflow = await readFile(windowsAlphaWorkflowPath, "utf8");
+  const tuttidManager = await readFile(tuttidManagerPath, "utf8");
+  const lock = JSON.parse(await readFile(managedPosixShellLockPath, "utf8"));
+
+  await access(managedPosixShellVendorScriptPath);
+  assert.deepEqual(packageJson.build.win.extraResources, [
+    {
+      from: "build/managed-posix-shell",
+      to: "bin/managed-posix-shell",
+      filter: ["**/*"]
+    }
+  ]);
+  assert.match(buildScript, /vendor-managed-posix-shell\.mjs/);
+  assert.match(alphaWorkflow, /managed-posix-shell/);
+  assert.match(alphaWorkflow, /runtime\.json/);
+  assert.match(alphaWorkflow, /shellMetadata\.executable/);
+  assert.match(tuttidManager, /"managed-posix-shell"/);
+  assert.match(tuttidManager, /TUTTI_MANAGED_POSIX_SHELL/);
+  assert.match(tuttidManager, /runtime\.json/);
+  assert.doesNotMatch(tuttidManager, /bash\.exe/);
+  assert.equal(lock.schemaVersion, "tutti.managed-posix-shell-lock.v1");
+  assert.equal(lock.platforms["windows-amd64"].executable, "usr/bin/bash.exe");
+  assert.doesNotMatch(alphaWorkflow, /\n\s+push:/);
 });

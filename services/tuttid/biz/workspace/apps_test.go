@@ -92,6 +92,27 @@ func TestValidateAppManifestRejectsInvalidLocalizationInfo(t *testing.T) {
 	}
 }
 
+func TestValidateAppManifestRejectsBootstrapOutsidePackage(t *testing.T) {
+	t.Parallel()
+
+	for _, executable := range []string{
+		"../server.exe",
+		`C:server.exe`,
+		`C:\server.exe`,
+		`\\server\share\server.exe`,
+	} {
+		executable := executable
+		t.Run(executable, func(t *testing.T) {
+			t.Parallel()
+			manifest := validTestAppManifest()
+			manifest.Runtime.Bootstrap = executable
+			if err := ValidateAppManifest(manifest); err == nil {
+				t.Fatal("ValidateAppManifest() error = nil, want unsafe bootstrap error")
+			}
+		})
+	}
+}
+
 func TestAppPackageMinimizeBehaviorDefaultsToKeepMounted(t *testing.T) {
 	t.Parallel()
 

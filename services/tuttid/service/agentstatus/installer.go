@@ -573,6 +573,7 @@ func (s Service) runOfficialScriptInstaller(ctx context.Context, provider string
 	}
 	return s.installCommand(ctx, InstallCommandInput{
 		Command:  joinShellCommand([]string{spec.ScriptShell, scriptPath}),
+		Args:     []string{spec.ScriptShell, scriptPath},
 		Env:      s.commandResolver().Env(nil),
 		OnStdout: activeActionStdoutAppender(ctx, provider),
 	})
@@ -654,18 +655,26 @@ func (s Service) runExternalAgentRegistryNPMInstaller(ctx context.Context, provi
 	if err := os.MkdirAll(npmSpec.PrefixDir, 0o755); err != nil {
 		return InstallCommandResult{ExitCode: 1, Stderr: err.Error()}, nil
 	}
-	appRuntime, err := s.managedRuntimeResolver().Resolve(ctx)
+	resolver := s.managedRuntimeResolver()
+	var appRuntime managedruntime.ResolvedRuntime
+	var err error
+	if profileResolver, ok := resolver.(managedruntime.ProfileResolver); ok {
+		appRuntime, err = profileResolver.ResolveProfile(ctx, managedruntime.NodeStaticProfile)
+	} else {
+		appRuntime, err = resolver.Resolve(ctx)
+	}
 	if err != nil {
 		return InstallCommandResult{ExitCode: 1, Stderr: err.Error()}, nil
 	}
 	packageSpec := boundedNPMPackageSpec(npmSpec.Package)
-	command := joinShellCommand([]string{
+	commandArgs := []string{
 		appRuntime.NPM,
 		"--prefix",
 		npmSpec.PrefixDir,
 		"install",
 		packageSpec,
-	})
+	}
+	command := joinShellCommand(commandArgs)
 	baseEnv := managedruntime.ProcessEnv(append(appRuntime.EnvOverrides, envMapToList(npmSpec.Env)...)...)
 	// Use a dedicated, tutti-owned npm cache inside the install prefix rather than
 	// the user's global ~/.npm, which on some machines holds root-owned files that
@@ -690,6 +699,7 @@ func (s Service) runExternalAgentRegistryNPMInstaller(ctx context.Context, provi
 		attemptCtx, cancel := context.WithTimeout(ctx, perRegistryInstallTimeout)
 		result, err = s.installCommand(attemptCtx, InstallCommandInput{
 			Command:  command,
+			Args:     commandArgs,
 			Env:      env,
 			OnStdout: activeActionStdoutAppender(ctx, provider),
 		})

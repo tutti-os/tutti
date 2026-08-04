@@ -120,7 +120,7 @@ func (s *AppCenterService) StartEnabled(ctx context.Context, workspaceID string)
 			slog.Warn("workspace app start enabled deferred app; package unavailable locally", "workspaceId", workspaceID, "appId", installation.AppID)
 			continue
 		}
-		if remoteBuiltin, ok := remoteBuiltins[installation.AppID]; ok && shouldMaterializeRemoteBuiltin(appPackage, remoteBuiltin) {
+		if remoteBuiltin, ok := remoteBuiltins[installation.AppID]; ok && s.shouldMaterializeRemoteBuiltin(appPackage, remoteBuiltin) {
 			s.startRemoteBuiltinInstallJob(workspaceID, remoteBuiltin)
 			slog.Info(
 				"workspace app start enabled deferred app; remote builtin update available",
@@ -218,7 +218,7 @@ func (s *AppCenterService) packageForRemoteBuiltinInstall(ctx context.Context, b
 	}
 	existing, err := s.Store.GetAppPackageVersion(ctx, appID, version)
 	if err == nil && existing.Source == workspacebiz.AppPackageSourceBuiltin {
-		if shouldMaterializeRemoteBuiltin(existing, builtin) {
+		if s.shouldMaterializeRemoteBuiltin(existing, builtin) {
 			return s.downloadRemoteBuiltinPackage(ctx, builtin)
 		}
 		return existing, nil

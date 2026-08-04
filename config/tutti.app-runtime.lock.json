@@ -25,6 +25,10 @@
     "linux-amd64": {
       "runner": "ubuntu-latest",
       "nodeDistribution": "linux-x64"
+    },
+    "windows-amd64": {
+      "runner": "windows-latest",
+      "nodeDistribution": "win-x64"
     }
   }
 }

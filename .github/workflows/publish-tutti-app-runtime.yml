@@ -53,6 +53,9 @@ jobs:
           - platform: linux-amd64
             runner: ubuntu-latest
             node_distribution: linux-x64
+          - platform: windows-amd64
+            runner: windows-latest
+            node_distribution: win-x64
 
     steps:
       - name: Checkout
@@ -115,6 +118,7 @@ jobs:
           sudo apt-get install -y rsync zip
 
       - name: Install uv
+        if: runner.os != 'Windows'
         shell: bash
         env:
           UV_VERSION: ${{ steps.lock.outputs.uv_version }}
@@ -123,6 +127,7 @@ jobs:
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
       - name: Install managed Python
+        if: runner.os != 'Windows'
         shell: bash
         env:
           PYTHON_VERSION: ${{ steps.lock.outputs.python_version }}
@@ -137,6 +142,7 @@ jobs:
           echo "PYTHON_ROOT=${python_root}" >> "$GITHUB_ENV"
 
       - name: Download Node.js
+        if: runner.os != 'Windows'
         shell: bash
         env:
           NODE_DISTRIBUTION: ${{ matrix.node_distribution }}
@@ -155,6 +161,7 @@ jobs:
           fi
 
       - name: Assemble runtime artifacts
+        if: runner.os != 'Windows'
         shell: bash
         env:
           NODE_VERSION: ${{ steps.lock.outputs.node_version }}
@@ -237,6 +244,78 @@ jobs:
             }
           }
           JSON
+
+      - name: Download Node.js on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          NODE_DISTRIBUTION: ${{ matrix.node_distribution }}
+          NODE_RELEASE_BASE_URL: ${{ steps.lock.outputs.node_release_base_url }}
+          NODE_VERSION: ${{ steps.lock.outputs.node_version }}
+        run: |
+          $archive = "node-v$env:NODE_VERSION-$env:NODE_DISTRIBUTION.zip"
+          $archivePath = Join-Path $env:RUNNER_TEMP $archive
+          $checksumsPath = Join-Path $env:RUNNER_TEMP "SHASUMS256.txt"
+          Invoke-WebRequest -Uri "$env:NODE_RELEASE_BASE_URL/$archive" -OutFile $archivePath
+          Invoke-WebRequest -Uri "$env:NODE_RELEASE_BASE_URL/SHASUMS256.txt" -OutFile $checksumsPath
+          $expected = ((Get-Content $checksumsPath | Where-Object { $_ -match "  $([regex]::Escape($archive))$" }) -split '\s+')[0]
+          $actual = (Get-FileHash -Algorithm SHA256 $archivePath).Hash.ToLowerInvariant()
+          if (-not $expected -or $actual -ne $expected) {
+            throw "Node.js archive checksum mismatch"
+          }
+          $expanded = Join-Path $env:RUNNER_TEMP "tutti-runtime-node-expanded"
+          $target = Join-Path $env:RUNNER_TEMP "tutti-runtime-node"
+          Remove-Item $expanded, $target -Recurse -Force -ErrorAction SilentlyContinue
+          Expand-Archive -Path $archivePath -DestinationPath $expanded
+          $source = Get-ChildItem $expanded -Directory | Select-Object -First 1
+          New-Item -ItemType Directory -Path $target | Out-Null
+          Copy-Item (Join-Path $source.FullName '*') $target -Recurse
+          if (-not (Test-Path (Join-Path $target 'node.exe')) -or -not (Test-Path (Join-Path $target 'npm.cmd'))) {
+            throw "Node.js archive does not contain node.exe and npm.cmd"
+          }
+
+      - name: Assemble Windows Node runtime artifact
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          NODE_VERSION: ${{ steps.lock.outputs.node_version }}
+          PLATFORM: ${{ matrix.platform }}
+          RUNTIME_VERSION: ${{ steps.lock.outputs.runtime_version }}
+        run: |
+          $artifactDir = Join-Path $env:GITHUB_WORKSPACE "tutti-app-runtime/$env:RUNTIME_VERSION/$env:PLATFORM"
+          $nodeArtifactDir = Join-Path $artifactDir "node"
+          $nodeStaging = Join-Path $env:RUNNER_TEMP "tutti-app-runtime-node-artifact"
+          $nodeRoot = Join-Path $nodeStaging "node/bin"
+          $artifactFile = "tutti-app-runtime-node-$env:PLATFORM-$env:RUNTIME_VERSION.zip"
+          $artifactPath = Join-Path $nodeArtifactDir $artifactFile
+          Remove-Item $nodeStaging -Recurse -Force -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Path $nodeRoot, $nodeArtifactDir -Force | Out-Null
+          Copy-Item (Join-Path $env:RUNNER_TEMP 'tutti-runtime-node/*') $nodeRoot -Recurse
+          & (Join-Path $nodeRoot 'node.exe') --version
+          & (Join-Path $nodeRoot 'npm.cmd') --version
+          & (Join-Path $nodeRoot 'corepack.cmd') --version
+          Compress-Archive -Path (Join-Path $nodeStaging '*') -DestinationPath $artifactPath -Force
+          $sha256 = (Get-FileHash -Algorithm SHA256 $artifactPath).Hash.ToLowerInvariant()
+          $size = (Get-Item $artifactPath).Length
+          $metadata = [ordered]@{
+            schemaVersion = 'tutti.app.runtime-platform.v2'
+            runtimeVersion = $env:RUNTIME_VERSION
+            platform = $env:PLATFORM
+            nodeVersion = $env:NODE_VERSION
+            components = [ordered]@{
+              node = [ordered]@{
+                version = $env:NODE_VERSION
+                artifactPath = "$env:RUNTIME_VERSION/$env:PLATFORM/node/$artifactFile"
+                artifactSha256 = $sha256
+                artifactSizeBytes = $size
+              }
+            }
+            profiles = [ordered]@{
+              baseline = @('node')
+              'node-static' = @('node')
+            }
+          }
+          $metadata | ConvertTo-Json -Depth 8 | Set-Content (Join-Path $artifactDir 'metadata.json') -Encoding utf8
 
       - name: Upload runtime artifact
         uses: actions/upload-artifact@v7

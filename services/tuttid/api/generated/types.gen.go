@@ -4543,6 +4543,9 @@ type AgentProviderComposerOptionsResponse struct {
 	Capabilities      *WorkspaceAgentCapabilities     `json:"capabilities,omitempty"`
 	CapabilityCatalog []AgentProviderCapabilityOption `json:"capabilityCatalog"`
 
+	// CodexSaverModeSupported Whether this resolved provider target supports the Codex Luna subagent saver mode; product entry policy is reported separately by the host
+	CodexSaverModeSupported *bool `json:"codexSaverModeSupported,omitempty"`
+
 	// Commands Commands advertised by the resolved runtime session.
 	Commands                []AgentProviderComposerCommandOption         `json:"commands"`
 	EffectiveSettings       AgentSessionComposerSettings                 `json:"effectiveSettings"`
@@ -4786,6 +4789,7 @@ type AgentSessionCassetteListResponse struct {
 // AgentSessionComposerSettings defines model for AgentSessionComposerSettings.
 type AgentSessionComposerSettings struct {
 	BrowserUse       *bool   `json:"browserUse,omitempty"`
+	CodexSaverMode   *bool   `json:"codexSaverMode,omitempty"`
 	Model            *string `json:"model,omitempty"`
 	PermissionModeId *string `json:"permissionModeId,omitempty"`
 	PlanMode         *bool   `json:"planMode,omitempty"`
@@ -5622,8 +5626,11 @@ type CreateWorkspaceAgentSessionRequest struct {
 	// CapabilityRefs Structured capability references attached to the initial submission. They are persisted on the turn but never converted into provider prompt text.
 	CapabilityRefs *[]WorkspaceAgentCapabilityReference `json:"capabilityRefs,omitempty"`
 	ClientSubmitId string                               `json:"clientSubmitId"`
-	Cwd            *string                              `json:"cwd,omitempty"`
-	InitialContent []AgentPromptContentBlock            `json:"initialContent"`
+
+	// CodexSaverMode Enables the Codex Luna subagent saver mode for this session without changing the main model
+	CodexSaverMode *bool                     `json:"codexSaverMode,omitempty"`
+	Cwd            *string                   `json:"cwd,omitempty"`
+	InitialContent []AgentPromptContentBlock `json:"initialContent"`
 
 	// InitialDisplayPrompt Optional display-only text for the first turn (e.g. a folder bundle shown as one chip while initialContent carries the expanded files).
 	InitialDisplayPrompt *string `json:"initialDisplayPrompt,omitempty"`
@@ -5806,6 +5813,7 @@ type DeletedAgentConversationRetentionDays int
 
 // DesktopAgentComposerDefaults defines model for DesktopAgentComposerDefaults.
 type DesktopAgentComposerDefaults struct {
+	CodexSaverMode   *bool   `json:"codexSaverMode,omitempty"`
 	Model            *string `json:"model,omitempty"`
 	PermissionModeId *string `json:"permissionModeId,omitempty"`
 	ReasoningEffort  *string `json:"reasoningEffort,omitempty"`
