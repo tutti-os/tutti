@@ -224,7 +224,7 @@ test("desktop release workflow passes tsh-aligned Feishu card context", async ()
   );
   assert.match(
     workflow,
-    /outputs:\s*\n\s*release_url:\s*\${{\s*steps\.stage-release\.outputs\.url\s*}}/
+    /outputs:\s*\n\s*release_url:\s*\${{\s*github\.server_url\s*}}\/\${{\s*github\.repository\s*}}\/releases\/tag\/\${{\s*needs\.resolve\.outputs\.release_tag\s*}}/
   );
   assert.match(
     workflow,
