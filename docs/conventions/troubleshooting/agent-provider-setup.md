@@ -2255,3 +2255,34 @@ invalid_grant`. Search `tuttid.log` for
   [runtime-overrides.md](../runtime-overrides.md)
   [visible_error.go](../../../packages/agent/daemon/runtime/visible_error.go)
   [setup.go](../../../services/tuttid/service/agentextension/setup.go)
+
+### Terminal login succeeds but the setup terminal remains open
+
+- Symptom:
+  The provider's terminal login reports success and returns to its normal TUI,
+  but AgentGUI keeps the setup terminal open and continues polling the Target as
+  `auth_required`.
+- Quick checks:
+  Confirm the Desktop terminal diagnostic reports the startup action as
+  `submitted`, then inspect repeated Target setup probes. Compare the fresh ACP
+  `initialize` response with `session/new`: some runtimes keep advertising a
+  terminal login method even after authentication succeeds.
+- Root cause:
+  ACP `authMethods` is a catalog of available authentication methods, not the
+  current authentication state. Treating a terminal-only catalog as an
+  immediate `auth_required` verdict skips `session/new`, so a successfully
+  configured runtime can never become `ready` and the Host never closes its
+  login-terminal handle.
+- Fix:
+  Preserve the advertised methods for presentation, but verify readiness with
+  the bounded setup `session/new` probe. Continue mapping explicit
+  authentication, missing-model, missing-provider, and terminal-method timeout
+  outcomes to `auth_required`. Do not scrape terminal output or inject an exit
+  command to infer login completion.
+- Validation:
+  Cover a runtime that still advertises only a terminal login method while
+  `session/new` returns a usable model, plus unconfigured runtimes whose
+  `session/new` returns no usable model, a missing-provider error, or a timeout.
+- References:
+  [standard_acp_setup.go](../../../packages/agent/daemon/runtime/standard_acp_setup.go)
+  [desktopTerminalLoginReadinessMonitor.ts](../../../apps/desktop/src/renderer/src/features/workspace-agent/services/internal/desktopTerminalLoginReadinessMonitor.ts)

@@ -37,13 +37,6 @@ var ErrACPAuthMethodTerminal = errors.New("ACP auth method requires an interacti
 // classifier so only the explicit errors.Is mapping classifies it.
 var ErrACPSetupNoUsableModel = errors.New("ACP agent created a session without any usable model")
 
-// errACPSetupInteractiveAuthRequired lets setup finish as auth_required when
-// an agent advertises only terminal authentication methods. Calling
-// session/new before the user completes that flow is both unnecessary and,
-// for some Python agents, can block while trying to resolve an unconfigured
-// model provider.
-var errACPSetupInteractiveAuthRequired = errors.New("ACP setup requires interactive terminal authentication")
-
 type StandardACPSetupStatus string
 
 const (
@@ -109,9 +102,6 @@ func RunStandardACPSetup(
 	adapter.config.beforeNewSession = func(ctx context.Context, client *acpClient, session Session, initializeResult json.RawMessage) error {
 		methods = parseStandardACPAuthMethods(initializeResult)
 		if methodID == "" {
-			if standardACPSetupRequiresInteractiveAuth(methods) {
-				return errACPSetupInteractiveAuthRequired
-			}
 			return nil
 		}
 		method := findStandardACPAuthMethod(methods, methodID)
@@ -148,9 +138,6 @@ func RunStandardACPSetup(
 		}
 	}
 	if _, err := adapter.Start(ctx, session); err != nil {
-		if errors.Is(err, errACPSetupInteractiveAuthRequired) {
-			return StandardACPSetupResult{Status: StandardACPSetupAuthRequired, AuthMethods: methods}, nil
-		}
 		if errors.Is(err, ErrACPAuthMethodTerminal) {
 			return StandardACPSetupResult{Status: StandardACPSetupAuthRequired, AuthMethods: methods}, err
 		}
@@ -182,18 +169,6 @@ func RunStandardACPSetup(
 		return StandardACPSetupResult{}, fmt.Errorf("close ACP setup session: %w", err)
 	}
 	return StandardACPSetupResult{Status: StandardACPSetupReady, AuthMethods: methods, Account: account}, nil
-}
-
-func standardACPSetupRequiresInteractiveAuth(methods []StandardACPAuthMethod) bool {
-	if len(methods) == 0 {
-		return false
-	}
-	for _, method := range methods {
-		if strings.TrimSpace(method.Type) != "terminal" {
-			return false
-		}
-	}
-	return true
 }
 
 func standardACPSetupHasInteractiveAuth(methods []StandardACPAuthMethod) bool {
