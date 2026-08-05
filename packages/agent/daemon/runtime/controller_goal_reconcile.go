@@ -24,9 +24,12 @@ func (c *Controller) GoalCapabilities(ctx context.Context, input GoalReconcileIn
 		return GoalAdapterCapabilities{}, err
 	}
 	defer release()
-	_, adapter, err := c.sessionAndAdapter(input.RoomID, input.AgentSessionID)
+	session, adapter, err := c.sessionAndAdapter(input.RoomID, input.AgentSessionID)
 	if err != nil {
 		return GoalAdapterCapabilities{}, err
+	}
+	if session.IsSideConversation() {
+		return GoalAdapterCapabilities{}, ErrSideConversationUnsupported
 	}
 	goalAdapter, ok := adapter.(GoalAdapter)
 	if !ok {
@@ -47,6 +50,9 @@ func (c *Controller) ReconcileGoal(ctx context.Context, input GoalReconcileInput
 	session, adapter, err := c.sessionAndAdapter(input.RoomID, input.AgentSessionID)
 	if err != nil {
 		return GoalReconcileResult{}, err
+	}
+	if session.IsSideConversation() {
+		return GoalReconcileResult{}, ErrSideConversationUnsupported
 	}
 	goalAdapter, ok := adapter.(GoalAdapter)
 	if !ok {

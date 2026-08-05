@@ -584,6 +584,9 @@ importers:
       "@tutti-os/config-tsconfig":
         specifier: workspace:*
         version: link:../../configs/tsconfig
+      "@tutti-os/event-protocol":
+        specifier: workspace:*
+        version: link:../../events/protocol
       "@types/lodash":
         specifier: ^4.17.24
         version: 4.17.24

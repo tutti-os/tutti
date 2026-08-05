@@ -130,6 +130,9 @@ func (c *Controller) Sessions(roomID string) []Session {
 		if strings.TrimSpace(session.RoomID) != roomID {
 			continue
 		}
+		if session.IsSideConversation() {
+			continue
+		}
 		if c.provisionalSessions[key] {
 			continue
 		}
@@ -417,6 +420,18 @@ func (c *Controller) publishPendingConfigOptionsUpdates(session Session) {
 	if len(pending) == 0 {
 		return
 	}
+	c.publishConfigOptionsUpdates(session, pending)
+}
+
+func (c *Controller) publishConfigOptionsUpdates(
+	session Session,
+	pending []AgentSessionConfigOptionsUpdate,
+) {
+	if c == nil || len(pending) == 0 {
+		return
+	}
+	roomID := strings.TrimSpace(session.RoomID)
+	agentSessionID := strings.TrimSpace(session.AgentSessionID)
 	events := make([]StreamEvent, 0, len(pending))
 	for _, update := range pending {
 		update = c.completeConfigOptionsUpdate(session, update)
@@ -642,6 +657,12 @@ func (c *Controller) applySessionEventsByAgentSessionID(agentSessionID string, e
 	}
 	c.sessions[foundKey] = session
 	provisional := c.provisionalSessions[foundKey]
+	if provisional && session.IsSideConversation() {
+		c.pendingSideEvents[foundKey] = append(
+			c.pendingSideEvents[foundKey],
+			events...,
+		)
+	}
 	c.mu.Unlock()
 	if provisional {
 		return

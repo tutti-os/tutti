@@ -419,7 +419,7 @@ export interface AgentComposerProps {
     action?: string;
     optionId?: string;
     payload?: Record<string, unknown>;
-  }) => void;
+  }) => void | Promise<void>;
   onLinkAction?: (action: WorkspaceLinkAction) => void;
   onRequestWorkspaceReferences?:
     | ((

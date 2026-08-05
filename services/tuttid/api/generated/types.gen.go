@@ -6873,6 +6873,12 @@ type MoveWorkspaceFileEntryRequest struct {
 	TargetDirectoryPath string `json:"targetDirectoryPath"`
 }
 
+// OpenWorkspaceAgentSideConversationRequest defines model for OpenWorkspaceAgentSideConversationRequest.
+type OpenWorkspaceAgentSideConversationRequest struct {
+	RequestId          string `json:"requestId"`
+	SideAgentSessionId string `json:"sideAgentSessionId"`
+}
+
 // PermissionConfig defines model for PermissionConfig.
 type PermissionConfig struct {
 	Configurable bool                   `json:"configurable"`
@@ -7103,6 +7109,14 @@ type SendWorkspaceAgentSessionInputTurnResponse struct {
 // SendWorkspaceAgentSessionInputTurnResponseKind defines model for SendWorkspaceAgentSessionInputTurnResponse.Kind.
 type SendWorkspaceAgentSessionInputTurnResponseKind string
 
+// SendWorkspaceAgentSideConversationInputRequest defines model for SendWorkspaceAgentSideConversationInputRequest.
+type SendWorkspaceAgentSideConversationInputRequest struct {
+	ClientSubmitId string                    `json:"clientSubmitId"`
+	Content        []AgentPromptContentBlock `json:"content"`
+	DisplayPrompt  *string                   `json:"displayPrompt,omitempty"`
+	TurnId         string                    `json:"turnId"`
+}
+
 // SetAgentModelBindingRequest defines model for SetAgentModelBindingRequest.
 type SetAgentModelBindingRequest struct {
 	// DefaultModel Must belong to the referenced plan's model list when a plan is set.
@@ -7181,6 +7195,13 @@ type SubmitWorkspaceAgentPlanDecisionRequestAction string
 
 // SubmitWorkspaceAgentPlanDecisionRequestPromptKind defines model for SubmitWorkspaceAgentPlanDecisionRequest.PromptKind.
 type SubmitWorkspaceAgentPlanDecisionRequestPromptKind string
+
+// SubmitWorkspaceAgentSideConversationInteractiveRequest defines model for SubmitWorkspaceAgentSideConversationInteractiveRequest.
+type SubmitWorkspaceAgentSideConversationInteractiveRequest struct {
+	Action   *string                 `json:"action,omitempty"`
+	OptionId *string                 `json:"optionId,omitempty"`
+	Payload  *map[string]interface{} `json:"payload,omitempty"`
+}
 
 // SwitchTuttiModeGoalReviewToSelfRequest defines model for SwitchTuttiModeGoalReviewToSelfRequest.
 type SwitchTuttiModeGoalReviewToSelfRequest struct {
@@ -8213,6 +8234,54 @@ type WorkspaceAgentSessionSectionsResponse struct {
 	Pinned      WorkspaceAgentSessionPage      `json:"pinned"`
 	Sections    []WorkspaceAgentSessionSection `json:"sections"`
 	WorkspaceId string                         `json:"workspaceId"`
+}
+
+// WorkspaceAgentSideCapabilities defines model for WorkspaceAgentSideCapabilities.
+type WorkspaceAgentSideCapabilities struct {
+	ActiveSourceTurn      bool `json:"activeSourceTurn"`
+	Ephemeral             bool `json:"ephemeral"`
+	HideInheritedTurns    bool `json:"hideInheritedTurns"`
+	ModelBoundaryInjected bool `json:"modelBoundaryInjected"`
+	Supported             bool `json:"supported"`
+}
+
+// WorkspaceAgentSideCapabilitiesResponse defines model for WorkspaceAgentSideCapabilitiesResponse.
+type WorkspaceAgentSideCapabilitiesResponse struct {
+	Capabilities WorkspaceAgentSideCapabilities `json:"capabilities"`
+}
+
+// WorkspaceAgentSideConversation defines model for WorkspaceAgentSideConversation.
+type WorkspaceAgentSideConversation struct {
+	Capabilities         WorkspaceAgentSideCapabilities `json:"capabilities"`
+	Provider             string                         `json:"provider"`
+	SideAgentSessionId   string                         `json:"sideAgentSessionId"`
+	SourceAgentSessionId string                         `json:"sourceAgentSessionId"`
+	Status               string                         `json:"status"`
+	WorkspaceId          string                         `json:"workspaceId"`
+}
+
+// WorkspaceAgentSideConversationResponse defines model for WorkspaceAgentSideConversationResponse.
+type WorkspaceAgentSideConversationResponse struct {
+	Side WorkspaceAgentSideConversation `json:"side"`
+}
+
+// WorkspaceAgentSideInteractiveResponse defines model for WorkspaceAgentSideInteractiveResponse.
+type WorkspaceAgentSideInteractiveResponse struct {
+	Disposition string `json:"disposition"`
+}
+
+// WorkspaceAgentSideTurnCancelResponse defines model for WorkspaceAgentSideTurnCancelResponse.
+type WorkspaceAgentSideTurnCancelResponse struct {
+	Canceled     bool `json:"canceled"`
+	TargetAbsent bool `json:"targetAbsent"`
+}
+
+// WorkspaceAgentSideTurnResponse defines model for WorkspaceAgentSideTurnResponse.
+type WorkspaceAgentSideTurnResponse struct {
+	Accepted           bool   `json:"accepted"`
+	SideAgentSessionId string `json:"sideAgentSessionId"`
+	Status             string `json:"status"`
+	TurnId             string `json:"turnId"`
 }
 
 // WorkspaceAgentSource Origin of the workspace Agent configuration. legacy_binding rows were migrated from the former fixed-target binding model.
@@ -9503,6 +9572,9 @@ type UpdateWorkspaceAgentSessionPinJSONRequestBody = UpdateWorkspaceAgentSession
 // UpdateWorkspaceAgentSessionSettingsJSONRequestBody defines body for UpdateWorkspaceAgentSessionSettings for application/json ContentType.
 type UpdateWorkspaceAgentSessionSettingsJSONRequestBody = AgentSessionComposerSettings
 
+// OpenWorkspaceAgentSideConversationJSONRequestBody defines body for OpenWorkspaceAgentSideConversation for application/json ContentType.
+type OpenWorkspaceAgentSideConversationJSONRequestBody = OpenWorkspaceAgentSideConversationRequest
+
 // UpdateWorkspaceAgentSessionTitleJSONRequestBody defines body for UpdateWorkspaceAgentSessionTitle for application/json ContentType.
 type UpdateWorkspaceAgentSessionTitleJSONRequestBody = UpdateWorkspaceAgentSessionTitleRequest
 
@@ -9517,6 +9589,12 @@ type UpdateWorkspaceAgentSessionTuttiModeActivationJSONRequestBody = UpdateTutti
 
 // UpdateWorkspaceAgentSessionVisibilityJSONRequestBody defines body for UpdateWorkspaceAgentSessionVisibility for application/json ContentType.
 type UpdateWorkspaceAgentSessionVisibilityJSONRequestBody = UpdateWorkspaceAgentSessionVisibilityRequest
+
+// SendWorkspaceAgentSideConversationInputJSONRequestBody defines body for SendWorkspaceAgentSideConversationInput for application/json ContentType.
+type SendWorkspaceAgentSideConversationInputJSONRequestBody = SendWorkspaceAgentSideConversationInputRequest
+
+// SubmitWorkspaceAgentSideConversationInteractiveJSONRequestBody defines body for SubmitWorkspaceAgentSideConversationInteractive for application/json ContentType.
+type SubmitWorkspaceAgentSideConversationInteractiveJSONRequestBody = SubmitWorkspaceAgentSideConversationInteractiveRequest
 
 // AuthenticateAgentTargetRuntimeJSONRequestBody defines body for AuthenticateAgentTargetRuntime for application/json ContentType.
 type AuthenticateAgentTargetRuntimeJSONRequestBody = AuthenticateAgentTargetRuntimeRequest

@@ -29,6 +29,8 @@ const (
 	appServerMethodThreadStart           = "thread/start"
 	appServerMethodThreadResume          = "thread/resume"
 	appServerMethodThreadFork            = "thread/fork"
+	appServerMethodThreadInjectItems     = "thread/inject_items"
+	appServerMethodThreadUnsubscribe     = "thread/unsubscribe"
 	appServerMethodThreadRollback        = "thread/rollback"
 	appServerMethodThreadRead            = "thread/read"
 	appServerMethodThreadCompact         = "thread/compact/start"
@@ -150,6 +152,7 @@ type CodexAppServerAdapter struct {
 	commandResolver            ProviderCommandResolver
 	mu                         sync.Mutex
 	sessions                   map[string]*codexAppServerSession
+	pendingSideRoutes          map[*codexAppServerClient]*codexPendingSideRoute
 	terminalInteractions       terminalInteractiveDispositionStore
 	interactiveDispositionSink InteractiveDispositionSink
 	commandSink                CommandSnapshotSink
@@ -206,9 +209,12 @@ type codexAppServerSessionLock struct {
 }
 
 type codexAppServerSession struct {
-	client     *codexAppServerClient
-	threadID   string
-	serverInfo map[string]any
+	client   *codexAppServerClient
+	threadID string
+	// runtimeSession is the routing identity for connection-scoped clients
+	// that host multiple app-server threads. It is never persisted.
+	runtimeSession Session
+	serverInfo     map[string]any
 	// resumeRuntimeContext preserves the historical adapter projection only
 	// when replay attaches at an already-initialized connection checkpoint.
 	resumeRuntimeContext map[string]any

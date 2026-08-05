@@ -244,6 +244,97 @@ canonical Turn. The Host owns reconnect and catch-up fencing and must remove
 the gap only after the same Turn is authoritative again. When the capability
 is absent, AgentGUI preserves its existing lifecycle presentation.
 
+### 2.5.1 Live Side transient lane
+
+Side is a provider-neutral, surface-owned live conversation fork. It is
+intentionally separate from the durable command and observation paths:
+
+```text
+AgentGUI Side pane
+  -> AgentSideConversationRuntime port
+  -> Desktop generated tuttid client adapter
+  -> tuttid Side HTTP handlers
+  -> packages/agent/host Side lifecycle
+  -> packages/agent/daemon provider Side adapter
+
+provider Side runtime observation
+  -> SideStreamObserver
+  -> tuttid agent.side.updated publisher
+  -> Desktop business-event adapter
+  -> AgentGUI Side event normalizer
+  -> activity-core ephemeral conversation projector
+  -> shared AgentConversationVM projection
+  -> Side timeline + composer instances
+```
+
+The runtime `SideStreamObserver` seam includes both event observation and
+explicit ephemeral-identity cleanup. Host calls the cleanup operation when a
+Side closes, is removed, or expires, so bridge-local ordering state cannot
+outlive the Side identity.
+
+The provider adapter owns provider-specific context snapshot mechanics. Host
+owns Side identity, idempotent open, exact-Turn commands, scope isolation, and
+cleanup. tuttid projects those commands through generated OpenAPI contracts and
+publishes only the transient `agent.side.updated` envelope. Desktop is a thin
+transport adapter. AgentGUI owns capability gating, the transient event
+projection, and presentation; it contains no provider-name branches.
+
+Side has no persistent button in the main composer. AgentGUI injects the
+provider-neutral `/side` entry into the slash command palette only after the
+exact source Session reports every required Side capability. Selecting the
+entry inserts `/side`; submitting it ensures the source runtime is available,
+then opens Side; `/side <prompt>` opens it and sends the prompt in one action.
+Capability resolution is fail-closed: pending, unavailable, and unsupported
+providers do not show `/side`, including when a provider advertises a command
+with that name. A released canonical provider connection may be resumed from
+the source Session before capability resolution; the runtime remains the final
+authority for whether the operation can open.
+
+Desktop supplies a Side runtime factory rather than a workspace singleton.
+Each mounted embedded or detached AgentGUI surface creates and disposes its
+own runtime instance, so transient identity and cleanup ownership cannot race
+between windows.
+
+The Side controller is not an `AgentSessionEngine` and must never dispatch Side
+events into the durable workspace engine. AgentGUI normalizes the transient
+envelope into the React-free `activity-core` ephemeral conversation projector,
+which emits the same `AgentActivitySnapshot`/Turn vocabulary consumed by the
+shared conversation projection. This reuse is projection-only: it does not
+load, retain, reconcile, or persist a workspace Session.
+
+The controller retains only the selected surface's active Side identity,
+ephemeral projection, pending Interaction, sequence, and error. Changing the
+selected source does not close the Side: the Side remains attached to its
+source identity and becomes visible again when that source is selected. The
+owning AgentGUI surface closes it only through the explicit Side close action
+or when the surface-owned runtime is destroyed. Its external-store subscription
+owns the transient event and connection subscriptions. Once the last surface
+subscriber is gone, those subscriptions are released. Disconnect,
+source-identity mismatch, or a sequence gap expires local state and prevents
+further rendering; no canonical reconciliation fallback exists for this
+ephemeral lane.
+
+The Side UI is a docked sibling of the main detail surface, not an overlay and
+not a nested durable Session route. It creates a second instance of the shared
+conversation timeline and a second instance of the shared composer. Each
+instance owns its own draft, scroll-follow state, focus/shortcut scope, Turn
+gate, and interrupt action. The Side composer inherits the provider/model/cwd
+boundary captured at open time and presents those settings read-only. A normal
+main-composer submission always stays on the main Session; only the explicit
+`/side` command opens or targets the Side lane.
+
+Side capability is enabled only when the exact selected source runtime, after
+any required canonical-session resume, reports all mandatory facts: native
+support, active-source-Turn snapshot support, ephemeral lifetime, hidden
+inherited history, and an injected model boundary. The Side may be opened after
+the source has started and may continue after the source Turn settles; the
+source Turn only determines whether the provider has live context to snapshot,
+not the lifetime of an already-open Side. Attachments
+are rejected at the AgentGUI controller and Desktop adapter until the
+transport contract can preserve them without degradation. Approval and
+question state remains Side-local and is answered through the exact
+`(workspaceId, sideAgentSessionId, turnId, requestId)` command.
+
 ### 2.6 On-demand status
 
 AgentGUI owns one provider-neutral `AgentStatusController` for `/status`, Agent

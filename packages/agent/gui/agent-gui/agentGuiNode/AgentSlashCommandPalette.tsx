@@ -6,6 +6,7 @@ import {
   ListChecks,
   Minimize2,
   Monitor,
+  PanelRightOpen,
   Search,
   Target,
   ZapIcon
@@ -393,6 +394,8 @@ function slashPaletteEntryIcon(entry: AgentSlashPaletteEntry): ReactNode {
       return <Target className={SLASH_PALETTE_ICON_CLASS} />;
     case "plan":
       return <ListChecks className={SLASH_PALETTE_ICON_CLASS} />;
+    case "side":
+      return <PanelRightOpen className={SLASH_PALETTE_ICON_CLASS} />;
     case "review":
       return <Search className={SLASH_PALETTE_ICON_CLASS} />;
     case "status":

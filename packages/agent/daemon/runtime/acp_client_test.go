@@ -194,6 +194,65 @@ func TestACPClientCallWithTimeoutStartsAfterQueuedCall(t *testing.T) {
 	}
 }
 
+func TestACPClientLateResultRemainsRecoverableUntilClientCloses(t *testing.T) {
+	t.Parallel()
+
+	requestSent := make(chan int64, 1)
+	client := &acpClient{
+		pending: make(map[int64]*acpPendingCall),
+		done:    make(chan struct{}),
+	}
+	client.conn = acpClientTestConnection{
+		send: func(data []byte) error {
+			var request struct {
+				ID int64 `json:"id"`
+			}
+			if err := json.Unmarshal(bytes.TrimSpace(data), &request); err != nil {
+				return err
+			}
+			requestSent <- request.ID
+			return nil
+		},
+	}
+
+	lateResult := make(chan string, 1)
+	_, err := client.CallNoHandlerWithLateResult(
+		context.Background(),
+		5*time.Millisecond,
+		"resource/create",
+		nil,
+		func(result json.RawMessage) {
+			lateResult <- string(result)
+		},
+	)
+	if err == nil {
+		t.Fatal("late-result call unexpectedly completed before timeout")
+	}
+	var requestID int64
+	select {
+	case requestID = <-requestSent:
+	case <-time.After(time.Second):
+		t.Fatal("request was not sent")
+	}
+
+	// Exceed the former one-timeout late window. Resource-creating calls must
+	// still reconcile their response for as long as the client is alive.
+	time.Sleep(20 * time.Millisecond)
+	client.dispatchMessage(acpMessage{
+		JSONRPC: "2.0",
+		ID:      json.RawMessage(strconv.FormatInt(requestID, 10)),
+		Result:  json.RawMessage(`{"id":"resource-1"}`),
+	})
+	select {
+	case result := <-lateResult:
+		if result != `{"id":"resource-1"}` {
+			t.Fatalf("late result = %s", result)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("late result was forgotten while client remained alive")
+	}
+}
+
 func TestACPClientDispatchesNotificationWithoutActiveCall(t *testing.T) {
 	t.Parallel()
 

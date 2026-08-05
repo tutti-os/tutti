@@ -367,27 +367,32 @@ type PromptContentBlock struct {
 }
 
 type Session struct {
-	RoomID             string              `json:"roomId"`
-	AgentSessionID     string              `json:"agentSessionId"`
-	RootAgentSessionID string              `json:"rootAgentSessionId,omitempty"`
-	AgentTargetID      string              `json:"agentTargetId,omitempty"`
-	Provider           string              `json:"provider"`
-	ProviderSessionID  string              `json:"providerSessionId"`
-	Resumable          bool                `json:"resumable"`
-	CWD                string              `json:"cwd,omitempty"`
-	Env                []string            `json:"-"`
-	Status             string              `json:"status"`
-	TurnLifecycle      *TurnLifecycle      `json:"turnLifecycle,omitempty"`
-	SubmitAvailability *SubmitAvailability `json:"submitAvailability,omitempty"`
-	Title              string              `json:"title,omitempty"`
-	LastError          string              `json:"lastError,omitempty"`
-	Visible            bool                `json:"visible"`
-	RuntimeContext     map[string]any      `json:"runtimeContext,omitempty"`
-	ProviderTargetRef  map[string]any      `json:"-"`
-	PermissionModeID   string              `json:"permissionModeId,omitempty"`
-	Settings           *SessionSettings    `json:"settings,omitempty"`
-	CreatedAtUnixMS    int64               `json:"createdAtUnixMs"`
-	UpdatedAtUnixMS    int64               `json:"updatedAtUnixMs"`
+	RoomID             string `json:"roomId"`
+	AgentSessionID     string `json:"agentSessionId"`
+	RootAgentSessionID string `json:"rootAgentSessionId,omitempty"`
+	// Scope separates durable workspace sessions from runtime-only side
+	// conversations. The empty value is canonical for backwards compatibility.
+	Scope                RuntimeSessionScope `json:"scope,omitempty"`
+	SourceAgentSessionID string              `json:"sourceAgentSessionId,omitempty"`
+	SideRequestID        string              `json:"sideRequestId,omitempty"`
+	AgentTargetID        string              `json:"agentTargetId,omitempty"`
+	Provider             string              `json:"provider"`
+	ProviderSessionID    string              `json:"providerSessionId"`
+	Resumable            bool                `json:"resumable"`
+	CWD                  string              `json:"cwd,omitempty"`
+	Env                  []string            `json:"-"`
+	Status               string              `json:"status"`
+	TurnLifecycle        *TurnLifecycle      `json:"turnLifecycle,omitempty"`
+	SubmitAvailability   *SubmitAvailability `json:"submitAvailability,omitempty"`
+	Title                string              `json:"title,omitempty"`
+	LastError            string              `json:"lastError,omitempty"`
+	Visible              bool                `json:"visible"`
+	RuntimeContext       map[string]any      `json:"runtimeContext,omitempty"`
+	ProviderTargetRef    map[string]any      `json:"-"`
+	PermissionModeID     string              `json:"permissionModeId,omitempty"`
+	Settings             *SessionSettings    `json:"settings,omitempty"`
+	CreatedAtUnixMS      int64               `json:"createdAtUnixMs"`
+	UpdatedAtUnixMS      int64               `json:"updatedAtUnixMs"`
 	// LifecycleAuthority is set once an adapter-origin TurnLifecycle snapshot
 	// was applied (ADR 0008). Authority sessions copy lifecycle from
 	// snapshots and derive Status purely; legacy sessions keep the historic
@@ -399,6 +404,43 @@ type Session struct {
 	// InitialTitleEstablished prevents a first-submit title candidate from
 	// overwriting a title established concurrently in this runtime.
 	InitialTitleEstablished bool `json:"-"`
+}
+
+type RuntimeSessionScope string
+
+const (
+	RuntimeSessionScopeCanonical RuntimeSessionScope = "canonical"
+	RuntimeSessionScopeSide      RuntimeSessionScope = "side"
+)
+
+func (s Session) IsSideConversation() bool {
+	return s.Scope == RuntimeSessionScopeSide
+}
+
+type SideConversationCapabilities struct {
+	Supported             bool `json:"supported"`
+	ActiveSourceTurn      bool `json:"activeSourceTurn"`
+	Ephemeral             bool `json:"ephemeral"`
+	HideInheritedTurns    bool `json:"hideInheritedTurns"`
+	ModelBoundaryInjected bool `json:"modelBoundaryInjected"`
+}
+
+type SideConversationOpenInput struct {
+	RoomID               string `json:"roomId"`
+	SourceAgentSessionID string `json:"sourceAgentSessionId"`
+	SideAgentSessionID   string `json:"sideAgentSessionId"`
+	RequestID            string `json:"requestId"`
+}
+
+type SideConversationAdapterOpenInput struct {
+	Source    Session `json:"-"`
+	Side      Session `json:"-"`
+	RequestID string  `json:"requestId"`
+}
+
+type SideConversationOpenResult struct {
+	Session      Session                      `json:"session"`
+	Capabilities SideConversationCapabilities `json:"capabilities"`
 }
 
 type SessionInteractivePrompt struct {

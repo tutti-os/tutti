@@ -3038,6 +3038,7 @@ func probeTestService(home string) Service {
 		HomeDir: func() (string, error) {
 			return home, nil
 		},
+		ClaudeCodeStateDir: home,
 		LookPath: func(string) (string, error) {
 			return "", errors.New("not found")
 		},

@@ -152,6 +152,7 @@ func (a *CodexAppServerAdapter) Start(ctx context.Context, session Session) (eve
 	a.storeSession(session.AgentSessionID, &codexAppServerSession{
 		client:                 client,
 		threadID:               threadID,
+		runtimeSession:         session,
 		serverInfo:             serverInfo,
 		account:                account,
 		models:                 cloneCodexAppServerModels(models),
@@ -346,6 +347,7 @@ func (a *CodexAppServerAdapter) Resume(ctx context.Context, session Session) (er
 	a.storeSession(session.AgentSessionID, &codexAppServerSession{
 		client:                 client,
 		threadID:               strings.TrimSpace(session.ProviderSessionID),
+		runtimeSession:         session,
 		serverInfo:             serverInfo,
 		account:                account,
 		models:                 cloneCodexAppServerModels(models),
@@ -378,7 +380,7 @@ func (a *CodexAppServerAdapter) HasLiveSession(session Session) bool {
 	return appSession != nil && appSession.client != nil
 }
 
-func (a *CodexAppServerAdapter) Close(_ context.Context, session Session) error {
+func (a *CodexAppServerAdapter) Close(ctx context.Context, session Session) error {
 	if a == nil {
 		return nil
 	}
@@ -386,7 +388,97 @@ func (a *CodexAppServerAdapter) Close(_ context.Context, session Session) error 
 	unlockLifecycle := a.lockSessionLifecycle(agentSessionID)
 	defer unlockLifecycle()
 	a.rejectPendingRequests(agentSessionID, errPermissionRequestCanceled)
+	if appSession := a.getSession(agentSessionID); appSession != nil &&
+		appSession.client != nil &&
+		strings.TrimSpace(appSession.threadID) != "" {
+		a.mu.Lock()
+		shared := a.clientReferencedLocked(appSession.client, agentSessionID)
+		a.mu.Unlock()
+		if session.IsSideConversation() || shared {
+			if err := appSession.client.ThreadUnsubscribeNoHandler(
+				ctx,
+				acpStartCallTimeout,
+				appSession.threadID,
+			); err != nil {
+				select {
+				case <-appSession.client.Done():
+					// The shared process is already gone; local removal is the
+					// only cleanup left and Side will be expired.
+				default:
+					return err
+				}
+			}
+		}
+	}
 	return a.closeLiveSession(agentSessionID)
+}
+
+func (a *CodexAppServerAdapter) QuiesceForClose(
+	ctx context.Context,
+	session Session,
+) error {
+	if a == nil {
+		return nil
+	}
+	appTurn := a.sessionActiveTurn(session.AgentSessionID)
+	if appTurn == nil &&
+		a.sessionActiveTurnID(session.AgentSessionID) == "" {
+		return nil
+	}
+	appSession := a.getSession(session.AgentSessionID)
+	_, err := a.Cancel(ctx, session, "session closed")
+	if errors.Is(err, ErrSessionDisconnected) {
+		return nil
+	}
+	if err != nil && !errors.Is(err, ErrSessionNoActiveTurn) {
+		return err
+	}
+	if appTurn == nil {
+		return nil
+	}
+	select {
+	case <-appTurn.terminated:
+		return nil
+	default:
+	}
+
+	// Cancel queues an interrupt when turn/start has been sent but has not
+	// returned the provider Turn id yet. Close must not detach the session while
+	// that queued interrupt still depends on the session registry. Wait for the
+	// normal binding/interrupt path, then tear down the shared transport if the
+	// provider never supplies an interruptible identity within the ordinary
+	// cancellation grace window.
+	grace := a.cancelGraceWindow
+	if grace <= 0 {
+		grace = defaultCodexAppServerCancelGraceWindow
+	}
+	timer := time.NewTimer(grace)
+	defer timer.Stop()
+	select {
+	case <-appTurn.terminated:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+	}
+	a.markTurnForceCanceled(appTurn)
+	slog.Warn(
+		"agent session app-server force-closing turn with unresolved provider identity",
+		"event", "agent_session.app_server.close.pending_turn_start_forced",
+		"agent_session_id", session.AgentSessionID,
+		"provider_session_id", session.ProviderSessionID,
+		"turn_id", appTurn.turnID,
+		"grace_ms", grace.Milliseconds(),
+	)
+	if appSession != nil && appSession.client != nil {
+		_ = appSession.client.Close()
+	}
+	select {
+	case <-appTurn.terminated:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 }
 
 func (a *CodexAppServerAdapter) ReleaseLiveSession(_ context.Context, session Session) error {
@@ -406,8 +498,10 @@ func (a *CodexAppServerAdapter) closeLiveSession(agentSessionID string) error {
 	a.mu.Lock()
 	appSession := a.sessions[agentSessionID]
 	delete(a.sessions, agentSessionID)
+	shared := appSession != nil &&
+		a.clientReferencedLocked(appSession.client, agentSessionID)
 	a.mu.Unlock()
-	if appSession != nil && appSession.client != nil {
+	if appSession != nil && appSession.client != nil && !shared {
 		return appSession.client.Close()
 	}
 	return nil
@@ -522,6 +616,14 @@ func (a *CodexAppServerAdapter) startClientPrepared(
 		endInputUnit := a.inputUnits.begin(ctx, session.AgentSessionID)
 		defer endInputUnit()
 		turnSession := session
+		// thread/fork learns its child id after this long-lived handler is
+		// installed. Refresh the provider identity from the registered adapter
+		// session so idle notifications after OpenSide are still owned by the
+		// ephemeral child rather than the source or an empty thread.
+		if current := a.getSession(session.AgentSessionID); current != nil &&
+			strings.TrimSpace(current.threadID) != "" {
+			turnSession.ProviderSessionID = current.threadID
+		}
 		turnID := ""
 		var normalizer *acpTurnNormalizer
 		var turnEmit func([]activityshared.Event)

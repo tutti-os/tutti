@@ -27,6 +27,14 @@ import type {
   AuthenticateAgentTargetRuntimeRequest,
   InstallAgentTargetRuntimeRequest,
   WorkspaceAgentTurnCancelResponse,
+  WorkspaceAgentSideCapabilities,
+  WorkspaceAgentSideConversation,
+  WorkspaceAgentSideInteractiveResponse,
+  WorkspaceAgentSideTurnCancelResponse,
+  WorkspaceAgentSideTurnResponse,
+  OpenWorkspaceAgentSideConversationRequest,
+  SendWorkspaceAgentSideConversationInputRequest,
+  SubmitWorkspaceAgentSideConversationInteractiveRequest,
   ClearWorkspaceAgentSessionsResponse,
   GoalControlWorkspaceAgentSessionResponse,
   GetWorkspaceAgentSessionGoalResponse,
@@ -353,6 +361,36 @@ export interface TuttidClient
     request: ForkWorkspaceAgentSessionRequest,
     requestOptions?: TuttidRequestOptions
   ): Promise<WorkspaceAgentSessionForkOperation>;
+  resolveWorkspaceAgentSideCapabilities?(
+    workspaceID: string,
+    agentSessionID: string
+  ): Promise<WorkspaceAgentSideCapabilities>;
+  openWorkspaceAgentSideConversation?(
+    workspaceID: string,
+    agentSessionID: string,
+    request: OpenWorkspaceAgentSideConversationRequest
+  ): Promise<WorkspaceAgentSideConversation>;
+  closeWorkspaceAgentSideConversation?(
+    workspaceID: string,
+    sideAgentSessionID: string
+  ): Promise<void>;
+  sendWorkspaceAgentSideConversationInput?(
+    workspaceID: string,
+    sideAgentSessionID: string,
+    request: SendWorkspaceAgentSideConversationInputRequest
+  ): Promise<WorkspaceAgentSideTurnResponse>;
+  cancelWorkspaceAgentSideConversationTurn?(
+    workspaceID: string,
+    sideAgentSessionID: string,
+    turnID: string
+  ): Promise<WorkspaceAgentSideTurnCancelResponse>;
+  submitWorkspaceAgentSideConversationInteractive?(
+    workspaceID: string,
+    sideAgentSessionID: string,
+    turnID: string,
+    requestID: string,
+    request: SubmitWorkspaceAgentSideConversationInteractiveRequest
+  ): Promise<WorkspaceAgentSideInteractiveResponse>;
   getWorkspaceAgentSessionForkOperation(
     workspaceID: string,
     operationID: string,

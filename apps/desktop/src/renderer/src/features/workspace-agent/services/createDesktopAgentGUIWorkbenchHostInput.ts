@@ -1,5 +1,6 @@
 import type {
   AgentGUIRuntime,
+  AgentSideConversationRuntime,
   AgentGUIProps,
   AgentHostInputApi,
   TuttiModePlanReviewRuntime
@@ -58,9 +59,11 @@ import { createDesktopAgentExternalPromptEntryResolver } from "./internal/resolv
 import { createDesktopTuttiModePlanReviewRuntime } from "./internal/desktopWorkspaceWorkflowRuntime.ts";
 import type { AgentSessionReplayDesktopComposition } from "../../agent-session-replay/services/agentSessionReplayDesktopComposition.ts";
 import type { AgentSessionReplayService } from "../../agent-session-replay/services/agentSessionReplayService.ts";
+import { createDesktopAgentSideConversationRuntime } from "./internal/desktopAgentSideConversationRuntime.ts";
 
 export interface DesktopAgentGUIWorkbenchHostInput {
   agentActivityRuntime: AgentGUIRuntime;
+  createAgentSideConversationRuntime(): AgentSideConversationRuntime | null;
   agentHostApi: AgentHostInputApi;
   agentSessionReplayService: AgentSessionReplayService | null;
   tuttiModePlanReviewRuntime: TuttiModePlanReviewRuntime;
@@ -264,6 +267,12 @@ export function createDesktopAgentGUIWorkbenchHostInput({
     createDesktopAgentExternalPromptEntryResolver({ platformApi });
   return {
     agentActivityRuntime,
+    createAgentSideConversationRuntime: () =>
+      createDesktopAgentSideConversationRuntime({
+        tuttidClient,
+        eventStreamClient,
+        workspaceId
+      }),
     agentHostApi: resolvedAgentHostApi,
     agentSessionReplayService: agentSessionReplayComposition?.service ?? null,
     tuttiModePlanReviewRuntime: createDesktopTuttiModePlanReviewRuntime({

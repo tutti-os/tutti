@@ -8,6 +8,8 @@
     ".": "./index.ts",
     "./agent-gui": "./AgentGUI.tsx",
     "./startup-shell": "./AgentGUIStartupShell.tsx",
+    "./side-conversation": "./side-conversation.ts",
+    "./side-conversation/controller": "./agentSideConversationController.ts",
     "./agents": "./agents.ts",
     "./custom-mention": "./custom-mention.ts",
     "./dock-icons": "./dockIcons.ts",
@@ -105,6 +107,7 @@
     "@tiptap/suggestion": "^3.11.1",
     "@tutti-os/client-tuttid-ts": "workspace:*",
     "@tutti-os/config-tsconfig": "workspace:*",
+    "@tutti-os/event-protocol": "workspace:*",
     "@types/lodash": "^4.17.24",
     "@types/node": "^24.0.1",
     "@types/react": "^19.1.6",
@@ -144,6 +147,14 @@
       "./startup-shell": {
         "types": "./dist/startup-shell.d.ts",
         "import": "./dist/startup-shell.js"
+      },
+      "./side-conversation": {
+        "types": "./dist/side-conversation.d.ts",
+        "import": "./dist/side-conversation.js"
+      },
+      "./side-conversation/controller": {
+        "types": "./dist/side-conversation/controller.d.ts",
+        "import": "./dist/side-conversation/controller.js"
       },
       "./agents": {
         "types": "./dist/agents.d.ts",
@@ -299,6 +310,12 @@
         ],
         "startup-shell": [
           "./dist/startup-shell.d.ts"
+        ],
+        "side-conversation": [
+          "./dist/side-conversation.d.ts"
+        ],
+        "side-conversation/controller": [
+          "./dist/side-conversation/controller.d.ts"
         ],
         "agents": [
           "./dist/agents.d.ts"

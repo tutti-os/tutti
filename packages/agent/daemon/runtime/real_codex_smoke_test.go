@@ -70,3 +70,154 @@ func TestRealCodexAppServerTurn(t *testing.T) {
 		t.Fatalf("assistant reply = %q, want PONG", assistantText)
 	}
 }
+
+// TestRealCodexAppServerActiveSide verifies the complete live Side path:
+// fork an ephemeral Side while the durable parent Turn is still active, run a
+// Side Turn, then unsubscribe the Side without interrupting the parent.
+func TestRealCodexAppServerActiveSide(t *testing.T) {
+	if os.Getenv("TUTTI_REAL_CODEX_SIDE_TEST") == "" {
+		t.Skip(
+			"set TUTTI_REAL_CODEX_SIDE_TEST=1 to run the real active Side test",
+		)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 180*time.Second)
+	defer cancel()
+
+	adapter := NewCodexAppServerAdapter(NewLocalProcessTransport())
+	source := Session{
+		RoomID:         "real-side-room",
+		AgentSessionID: "real-side-parent",
+		Provider:       ProviderCodex,
+		CWD:            t.TempDir(),
+		Status:         SessionStatusReady,
+	}
+	startEvents, err := adapter.Start(ctx, source)
+	if err != nil {
+		t.Fatalf("start parent: %v", err)
+	}
+	for _, event := range startEvents {
+		if strings.TrimSpace(event.ProviderSessionID) != "" {
+			source.ProviderSessionID = event.ProviderSessionID
+			break
+		}
+	}
+	if source.ProviderSessionID == "" {
+		t.Fatal("parent start did not return a provider thread id")
+	}
+	t.Cleanup(func() {
+		if adapter.sessionActiveTurn(source.AgentSessionID) != nil {
+			cancelCtx, cancelTurn := context.WithTimeout(
+				context.Background(),
+				10*time.Second,
+			)
+			_, _ = adapter.Cancel(cancelCtx, source, "live Side test cleanup")
+			cancelTurn()
+		}
+		_ = adapter.Close(context.Background(), source)
+	})
+
+	parentDone := make(chan error, 1)
+	go func() {
+		_, execErr := adapter.Exec(
+			ctx,
+			source,
+			[]PromptContentBlock{{
+				Type: "text",
+				Text: "Use the terminal to run `sleep 30`. After it finishes, " +
+					"reply PARENT_DONE. Do not modify any files.",
+			}},
+			"",
+			"real-side-parent-turn",
+			nil,
+			nil,
+		)
+		parentDone <- execErr
+	}()
+
+	activeDeadline := time.Now().Add(30 * time.Second)
+	for adapter.sessionActiveTurnID(source.AgentSessionID) == "" &&
+		time.Now().Before(activeDeadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if activeID := adapter.sessionActiveTurnID(source.AgentSessionID); activeID == "" {
+		t.Fatal("parent provider Turn did not become active")
+	} else {
+		t.Logf("parent provider Turn active: %s", activeID)
+	}
+
+	capabilities, err := adapter.SideCapabilities(ctx, source)
+	if err != nil {
+		t.Fatalf("SideCapabilities: %v", err)
+	}
+	if !capabilities.Supported || !capabilities.ActiveSourceTurn ||
+		!capabilities.Ephemeral {
+		t.Fatalf("Side capabilities = %#v", capabilities)
+	}
+
+	side := source
+	side.AgentSessionID = "real-side-child"
+	side.ProviderSessionID = ""
+	side.Scope = RuntimeSessionScopeSide
+	side.SourceAgentSessionID = source.AgentSessionID
+	side.Resumable = false
+	opened, err := adapter.OpenSide(ctx, SideConversationAdapterOpenInput{
+		Source: source, Side: side, RequestID: "real-side-open",
+	})
+	if err != nil {
+		t.Fatalf("OpenSide during active parent Turn: %v", err)
+	}
+	side = opened.Session
+	t.Logf("Side provider thread: %s", side.ProviderSessionID)
+	defer func() { _ = adapter.Close(context.Background(), side) }()
+
+	sideEvents, err := adapter.Exec(
+		ctx,
+		side,
+		[]PromptContentBlock{{
+			Type: "text",
+			Text: "Reply exactly SIDE_OK. Do not use tools or modify anything.",
+		}},
+		"",
+		"real-side-child-turn",
+		nil,
+		nil,
+	)
+	if err != nil {
+		t.Fatalf("execute Side Turn: %v", err)
+	}
+	var sideText string
+	for _, event := range sideEvents {
+		if event.Type == activityshared.EventMessageAppended &&
+			event.Payload.Role == activityshared.MessageRoleAssistant {
+			sideText = event.Payload.Content
+		}
+	}
+	if !strings.Contains(strings.ToUpper(sideText), "SIDE_OK") {
+		t.Fatalf("Side assistant reply = %q, want SIDE_OK", sideText)
+	}
+	if adapter.sessionActiveTurnID(source.AgentSessionID) == "" {
+		t.Fatal("parent Turn stopped before the Side Turn completed")
+	}
+	if err := adapter.Close(ctx, side); err != nil {
+		t.Fatalf("close Side: %v", err)
+	}
+	if !adapter.HasLiveSession(source) {
+		t.Fatal("closing Side disconnected the parent session")
+	}
+
+	cancelCtx, cancelParent := context.WithTimeout(
+		context.Background(),
+		10*time.Second,
+	)
+	_, err = adapter.Cancel(cancelCtx, source, "live Side test complete")
+	cancelParent()
+	if err != nil {
+		t.Fatalf("cancel parent after Side test: %v", err)
+	}
+	select {
+	case parentErr := <-parentDone:
+		t.Logf("parent Exec settled after cleanup: %v", parentErr)
+	case <-time.After(15 * time.Second):
+		t.Fatal("parent Exec did not settle after cancellation")
+	}
+}

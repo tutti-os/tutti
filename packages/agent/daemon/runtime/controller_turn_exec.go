@@ -342,7 +342,8 @@ func (c *Controller) runAsyncExecTurn(ctx context.Context, session Session, adap
 		session = c.preserveCurrentSessionSettings(session)
 		terminal := turnHasTerminalEvent(events, turnID) ||
 			turnLifecycleSnapshotSettledTurn(events, turnID) ||
-			turnSteeredIntoActiveTurn(events, turnID)
+			turnSteeredIntoActiveTurn(events, turnID) ||
+			sideConversationProviderTurnSettled(session, events, turnID)
 		if terminal {
 			// Remove the controller's active-turn record before publishing a
 			// terminal/ready session. Consumers must never observe a ready session
@@ -376,6 +377,24 @@ func (c *Controller) runAsyncExecTurn(ctx context.Context, session Session, adap
 		}
 		emit(events)
 	}
+}
+
+func sideConversationProviderTurnSettled(
+	session Session,
+	events []activityshared.Event,
+	turnID string,
+) bool {
+	if !session.IsSideConversation() {
+		return false
+	}
+	turnID = strings.TrimSpace(turnID)
+	for _, event := range events {
+		if event.Type == activityshared.EventRootProviderTurnCompleted &&
+			strings.TrimSpace(event.Payload.TurnID) == turnID {
+			return true
+		}
+	}
+	return false
 }
 
 func (c *Controller) asyncTurnEventsReadyForFold(session Session, turnID string, events []activityshared.Event) []activityshared.Event {

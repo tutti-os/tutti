@@ -27,6 +27,30 @@ import { SendFilledIcon } from "./AgentComposerDraftPreview";
 import { useOptionalAgentGUIRuntime } from "../../../agentActivityRuntime";
 import { reportAgentComposerDiagnostic } from "./agentComposerDiagnostics";
 
+export async function submitInteractivePromptWithAck(
+  input: {
+    requestId: string;
+    action?: string;
+    optionId?: string;
+    payload?: Record<string, unknown>;
+  },
+  options: {
+    submit: AgentComposerProps["onSubmitInteractivePrompt"];
+    isCurrent(): boolean;
+    dismiss(requestId: string): void;
+  }
+): Promise<boolean> {
+  try {
+    await options.submit(input);
+    if (options.isCurrent()) {
+      options.dismiss(input.requestId);
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 interface Input {
   draftContent: AgentComposerDraft;
   canQueueWhileBusy: boolean;
@@ -252,16 +276,19 @@ export function useComposerPresentation(input: Input) {
   }, [activePromptRequestId]);
 
   const submitInteractivePromptAndDismiss = useCallback(
-    (input: {
+    async (input: {
       requestId: string;
       action?: string;
       optionId?: string;
       payload?: Record<string, unknown>;
     }) => {
-      onSubmitInteractivePrompt(input);
-      setDismissedPromptRequestId(input.requestId);
+      await submitInteractivePromptWithAck(input, {
+        submit: onSubmitInteractivePrompt,
+        isCurrent: () => activePromptRequestId === input.requestId,
+        dismiss: setDismissedPromptRequestId
+      });
     },
-    [onSubmitInteractivePrompt]
+    [activePromptRequestId, onSubmitInteractivePrompt]
   );
 
   // While the empty-send override is active (plan review) the send button

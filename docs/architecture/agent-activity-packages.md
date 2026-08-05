@@ -995,6 +995,23 @@ transport bound. Store and service layers retain `uint64`; the daemon API owns
 checked conversion and must fail response projection instead of emitting an
 inexact JSON number.
 
+### Ephemeral conversation projection
+
+`agent-activity-core` also exports
+`createAgentActivityEphemeralConversationProjector` for provider-neutral,
+surface-owned lanes such as live Side. It is a small React-free projector, not
+a workspace `AgentSessionEngine`: callers seed one exact ephemeral identity,
+normalize raw provider events at their adapter boundary, and receive the
+standard snapshot, Turn, and Interaction vocabulary needed by shared
+conversation projections.
+
+The projector enforces monotonic sequence and exact
+`(workspaceId, agentSessionId, sourceAgentSessionId)` identity. Identity
+mismatch, a forward sequence gap, or a terminal Session patch expires the
+projection. It has no adapter, timers, pagination, persistence, authoritative
+reconcile, or fallback to a durable Session. Its caller owns transport
+subscription and cleanup.
+
 The adapter exposes the HTTP operations used by that command port and by the
 desktop reconcile bridge:
 

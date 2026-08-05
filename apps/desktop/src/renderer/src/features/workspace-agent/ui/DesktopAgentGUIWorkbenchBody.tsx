@@ -99,6 +99,7 @@ const AgentSessionReplayNodeReadiness = lazy(() =>
 
 function DesktopAgentGUISurfaceImpl({
   agentActivityRuntime,
+  agentSideConversationRuntime = null,
   agentHostApi,
   agentSessionReplayService,
   agentStatusSource,
@@ -681,6 +682,7 @@ function DesktopAgentGUISurfaceImpl({
         allAgentsPresentation={allAgentsPresentation}
         renderAgentsEmpty={renderAgentsEmpty}
         agentActivityRuntime={agentActivityRuntime}
+        agentSideConversationRuntime={agentSideConversationRuntime}
         agentHostApi={agentHostApiWithToast}
         tuttiModePlanReviewRuntime={
           capabilityMenuState?.tuttiMode?.enabled === false

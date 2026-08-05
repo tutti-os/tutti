@@ -510,6 +510,14 @@ export function StandaloneAgentWindow({
       agentGuiHostInput.createAgentGUIEngagementEventSink("standalone_agent"),
     [agentGuiHostInput]
   );
+  const agentSideConversationRuntime = useMemo(
+    () => agentGuiHostInput.createAgentSideConversationRuntime(),
+    [agentGuiHostInput]
+  );
+  useEffect(
+    () => () => agentSideConversationRuntime?.dispose?.(),
+    [agentSideConversationRuntime]
+  );
   const dockPreviewCache = useMemo(
     () => createStandaloneAgentDockPreviewCache(desktopApi.dockPreviewCache),
     [desktopApi.dockPreviewCache]
@@ -820,6 +828,7 @@ export function StandaloneAgentWindow({
           >
             <DesktopAgentGUISurface
               agentActivityRuntime={agentGuiHostInput.agentActivityRuntime}
+              agentSideConversationRuntime={agentSideConversationRuntime}
               agentHostApi={agentGuiHostInput.agentHostApi}
               agentSessionReplayService={
                 agentGuiHostInput.agentSessionReplayService

@@ -217,7 +217,8 @@ func (c *Controller) foldTurnSessionEvents(session Session, events []activitysha
 		return session
 	}
 	for _, event := range events {
-		if event.Type == activityshared.EventRootProviderTurnStarted {
+		if event.Type == activityshared.EventRootProviderTurnStarted &&
+			!session.IsSideConversation() {
 			session.Resumable = true
 			break
 		}

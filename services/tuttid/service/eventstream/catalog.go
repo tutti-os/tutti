@@ -15,6 +15,7 @@ import (
 const (
 	TopicAnalyticsDebugReported                         = "analytics.debug.reported"
 	TopicAgentActivityUpdated                           = "agent.activity.updated"
+	TopicAgentSideUpdated                               = "agent.side.updated"
 	TopicAgentCollaborationUpdated                      = "agent.collaboration.updated"
 	TopicAgentModelCatalogInvalidated                   = "agent.model.catalog.invalidated"
 	TopicAgentQuickPromptUpdated                        = "agent.quickprompt.updated"
@@ -108,6 +109,16 @@ func DefaultCatalog() StaticCatalog {
 			directions:         []Direction{DirectionServerToClient},
 			validators: map[Direction]PayloadValidator{
 				DirectionServerToClient: validateAgentActivityUpdatedPayload,
+			},
+		},
+		{
+			Name:               TopicAgentSideUpdated,
+			ClientCanPublish:   false,
+			ClientCanSubscribe: true,
+			Version:            1,
+			directions:         []Direction{DirectionServerToClient},
+			validators: map[Direction]PayloadValidator{
+				DirectionServerToClient: validateAgentSideUpdatedPayload,
 			},
 		},
 		{

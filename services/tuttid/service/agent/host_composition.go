@@ -180,6 +180,7 @@ func composeApplicationHost(
 		sessionForkRecovery, _ = canonical.(agenthost.SessionForkRecoveryStore)
 	}
 	sessionForkRuntime, _ := runtime.(agenthost.SessionForkRuntime)
+	sideConversationRuntime, _ := runtime.(agenthost.SideConversationRuntime)
 	turnSubmissions, _ := canonical.(agenthost.TurnSubmissionStore)
 	effectiveHistory, _ := canonical.(agenthost.EffectiveHistoryStore)
 	historyRuntime, _ := runtime.(agenthost.RuntimeHistoryController)
@@ -198,8 +199,9 @@ func composeApplicationHost(
 		Runtime:                runtime,
 		HistoryRuntime:         historyRuntime,
 		RuntimePreparation:     support.RuntimePreparation, Attachments: support.Attachments,
-		SettingsPolicy: support.SettingsPolicy,
-		Clock:          support.Clock, SessionLocker: support.SessionLocker,
+		SideConversationRuntime: sideConversationRuntime,
+		SettingsPolicy:          support.SettingsPolicy,
+		Clock:                   support.Clock, SessionLocker: support.SessionLocker,
 		RuntimeStartGate:  support.RuntimeStartGate,
 		LifecycleObserver: support.LifecycleObserver,
 		CommitObserver:    support.CommitObserver,

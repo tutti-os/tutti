@@ -14,6 +14,9 @@ import (
 )
 
 func (c *Controller) enqueueSessionReport(ctx context.Context, session Session, events []activityshared.Event) {
+	if session.IsSideConversation() {
+		return
+	}
 	c.observeGoalControlLifecycle(ctx, session, events)
 	c.mu.Lock()
 	provisional := c.provisionalSessions[sessionKey(session.RoomID, session.AgentSessionID)]
@@ -147,6 +150,9 @@ func (c *Controller) reportSubmittedTurnDurable(
 	events []activityshared.Event,
 	keepProvisional bool,
 ) error {
+	if session.IsSideConversation() {
+		return nil
+	}
 	if c == nil || c.reporter == nil {
 		// Reporter-less controllers are used as standalone runtimes and have no
 		// durable projection. The wired tuttid runtime always provides a reporter.
@@ -261,6 +267,9 @@ func (c *Controller) reportGoalReconcileControl(ctx context.Context, report agen
 }
 
 func (c *Controller) reportGoalReconcileDurable(ctx context.Context, session Session, request GoalReconcileDurableRequest) error {
+	if session.IsSideConversation() {
+		return nil
+	}
 	report := agentsessionstore.ReportActivityInput{
 		WorkspaceID: session.RoomID,
 		Connector:   &canonical.ConnectorInfo{ID: session.Provider, Version: "agent-gui-runtime"},
@@ -277,6 +286,9 @@ func (c *Controller) reportGoalReconcileDurable(ctx context.Context, session Ses
 }
 
 func (c *Controller) enqueueSessionSnapshotReport(ctx context.Context, session Session) {
+	if session.IsSideConversation() {
+		return
+	}
 	report := agentsessionstore.ReportActivityInput{
 		WorkspaceID: session.RoomID,
 		Connector: &canonical.ConnectorInfo{
@@ -294,6 +306,9 @@ func (c *Controller) enqueueSessionStatePatchReport(
 	session Session,
 	patch agentsessionstore.WorkspaceAgentStatePatch,
 ) {
+	if session.IsSideConversation() {
+		return
+	}
 	report := agentsessionstore.ReportActivityInput{
 		WorkspaceID: session.RoomID,
 		Connector: &canonical.ConnectorInfo{

@@ -57,7 +57,8 @@ type Config struct {
 	// instead of engaging the saga. The zero value keeps the feature enabled so
 	// its unit/conformance tests still exercise it; production wiring sets this
 	// true. Remove once the saga's resend/recovery gap is fixed.
-	EditRetryDisabled bool
+	EditRetryDisabled       bool
+	SideConversationRuntime SideConversationRuntime
 }
 
 type Host struct {
@@ -73,6 +74,7 @@ type Host struct {
 	sessionForks           SessionForkStore
 	sessionForkRecovery    SessionForkRecoveryStore
 	sessionForkRuntime     SessionForkRuntime
+	sideRuntime            SideConversationRuntime
 	sessionForkContext     SessionForkContextPolicy
 	sessionForkState       SessionForkProviderStateBinder
 	sessionForkAttachments SessionForkAttachmentStager
@@ -106,6 +108,8 @@ type Host struct {
 	sessionMutationActor   *SessionActor
 	editRetryDisabled      bool
 	goalFencesRestored     sync.Map
+	sideMu                 sync.Mutex
+	sideConversations      map[string]sideConversationRegistration
 }
 
 func New(config Config) *Host {
@@ -123,6 +127,7 @@ func New(config Config) *Host {
 		sessionManagement: config.SessionManagement, sessionBatchManagement: config.SessionBatchManagement, sessionDeletionGuard: config.SessionDeletionGuard, sessionPurge: config.SessionPurge,
 		sessionForks: config.SessionForks, sessionForkRuntime: config.SessionForkRuntime,
 		historicalState:    config.HistoricalState,
+		sideRuntime:        config.SideConversationRuntime,
 		sessionForkContext: config.SessionForkContext, sessionForkState: config.SessionForkState,
 		sessionForkAttachments: config.SessionForkAttachments,
 		runtime:                config.Runtime,
@@ -140,6 +145,7 @@ func New(config Config) *Host {
 		goalMaxAttempts: config.GoalMaxAttempts, goalDispatchDeadline: config.GoalDispatchDeadline,
 		goalActor: goalActor, sessionMutationActor: sessionMutationActor,
 		editRetryDisabled: config.EditRetryDisabled,
+		sideConversations: make(map[string]sideConversationRegistration),
 	}
 	if host.interactionTrees == nil {
 		host.interactionTrees, _ = host.store.(CanonicalInteractionTreeStore)

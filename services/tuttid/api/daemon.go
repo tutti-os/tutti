@@ -72,6 +72,7 @@ type DaemonAPI struct {
 	CLIRegistry                   *cliservice.Registry
 	AnalyticsReporter             reporterservice.Reporter
 	DesktopUpdateAdmissionService DesktopUpdateAdmissionService
+	SideConversationService       SideConversationService
 	// OnListenerReady starts daemon work that may wake an Agent whose next
 	// action calls back into tuttid. Wiring invokes it only after publishing
 	// listener information.

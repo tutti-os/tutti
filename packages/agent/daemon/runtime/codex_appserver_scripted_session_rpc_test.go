@@ -1,31 +1,36 @@
 package agentruntime
 
-import "slices"
+import (
+	"slices"
+	"time"
+)
 
 type scriptedSessionState struct {
-	modelList                    []any
-	userAgent                    string
-	forkChildThreadID            string
-	forkedFromThreadID           string
-	omitForkedFromThreadID       bool
-	emptyForkedFromThreadID      bool
-	forkResponseLastTurnID       string
-	forkResponseTurnIDs          []string
-	threadReadTurnIDs            []string
-	forkRPCError                 bool
-	requiresAuth                 bool
-	collaborationModeUnsupported bool
-	accountReadError             bool
-	accountReadErrorCode         int
-	accountReadErrorMessage      string
-	childNicknames               map[string]string
-	historyTurns                 []any
-	rollbackHistoryTurns         []any
-	rollbackUnsupported          bool
-	threadName                   string
-	replayTokenUsageOnResume     bool
-	threadResumeError            bool
-	extraRootsError              bool
+	modelList                      []any
+	userAgent                      string
+	forkChildThreadID              string
+	forkedFromThreadID             string
+	omitForkedFromThreadID         bool
+	emptyForkedFromThreadID        bool
+	forkResponseLastTurnID         string
+	forkResponseTurnIDs            []string
+	forkNotificationBeforeResponse bool
+	forkResponseDelay              time.Duration
+	threadReadTurnIDs              []string
+	forkRPCError                   bool
+	requiresAuth                   bool
+	collaborationModeUnsupported   bool
+	accountReadError               bool
+	accountReadErrorCode           int
+	accountReadErrorMessage        string
+	childNicknames                 map[string]string
+	historyTurns                   []any
+	rollbackHistoryTurns           []any
+	rollbackUnsupported            bool
+	threadName                     string
+	replayTokenUsageOnResume       bool
+	threadResumeError              bool
+	extraRootsError                bool
 }
 
 func (s *fakeCodexAppServer) handleSessionRPC(message scriptedAppServerMessage) bool {
@@ -251,11 +256,38 @@ func (s *fakeCodexAppServer) handleSessionRPC(message scriptedAppServerMessage) 
 				thread["forkedFromId"] = forkedFromThreadID
 			}
 		}
-		s.sendJSON(map[string]any{
+		if s.forkNotificationBeforeResponse {
+			s.notify(appServerNotifyThreadNameUpdated, map[string]any{
+				"threadId":   childThreadID,
+				"threadName": "Early Side title",
+			})
+		}
+		s.mu.Lock()
+		forkResponseDelay := s.forkResponseDelay
+		s.mu.Unlock()
+		response := map[string]any{
 			"id": message.ID,
 			"result": map[string]any{
 				"thread": thread,
 			},
+		}
+		if forkResponseDelay > 0 {
+			go func() {
+				time.Sleep(forkResponseDelay)
+				s.sendJSON(response)
+			}()
+			return true
+		}
+		s.sendJSON(response)
+	case appServerMethodThreadInjectItems:
+		s.sendJSON(map[string]any{
+			"id":     message.ID,
+			"result": map[string]any{},
+		})
+	case appServerMethodThreadUnsubscribe:
+		s.sendJSON(map[string]any{
+			"id":     message.ID,
+			"result": map[string]any{"status": "unsubscribed"},
 		})
 	case appServerMethodThreadRead:
 		s.mu.Lock()

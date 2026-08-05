@@ -19,3 +19,4 @@ There are currently eight active specs:
 - [Agent Session Fork Design](./2026-07-27-agent-session-fork-design.md): throughTurn implemented; supersedes the 2026-07-01 draft and implementation plan.
 - [Tutti Agent `skills/list` Integration](./2026-07-30-tutti-agent-skills-list-integration.md): implemented; local Desktop end-to-end validation passed, pending cross-platform artifact validation.
 - [Connector Market Shared Domain](./2026-08-03-connector-market-shared-domain.md): accepted architecture; public contract foundation is in progress before tuttidd and TSH host-adapter rollout.
+- [Agent Side Conversation Technical Design](./2026-07-28-agent-side-conversation-technical-design.md): runtime-only active-Turn Side architecture, provider contract, Codex reference flow, and delivery phases.
