@@ -54,35 +54,7 @@ import {
   useAgentGUIConversationRailResizePointerMove,
   type AgentGUIConversationRailResizeInteraction
 } from "./view/useAgentGUIConversationRailResizePointerMove";
-export type {
-  AgentGUIComposerFooterAccessoryContext,
-  AgentGUIComposerFooterAccessoryRenderer
-} from "./view/AgentGUIComposerFooterAccessory.types";
-export type {
-  AgentGUINodeViewProps,
-  AgentGUIAgentsEmptyRenderer,
-  AgentGUIConversationRailLayout,
-  AgentGUISidebarFooterContext,
-  AgentGUISidebarFooterRenderer,
-  AgentGUIViewLabels,
-  AgentMentionReferenceTargetResolver,
-  AgentWorkspaceReferenceInitialTargetInput,
-  AgentWorkspaceReferenceInitialTargetResolver
-} from "./view/AgentGUINodeView.types";
-export {
-  buildAgentConversationHandoffPrompt,
-  handoffProjectPathForConversation,
-  isContextCanceledMessage,
-  isDifferentKnownConversationOwner,
-  resolveActiveConversationBusyStatus,
-  resolveConversationDetailStatus,
-  resolveSlashStatus,
-  useStableSlashStatus
-} from "./view/agentGUIDetailModelHelpers";
-export {
-  resolveAgentGUIHeroIconUrl,
-  shouldEmphasizeEmptyHeroProvider
-} from "./view/AgentGUIEmptyState";
+export * from "./AgentGUINodeView.exports";
 import { useAgentGUIExternalRequests } from "./view/useAgentGUIExternalRequests";
 export function AgentGUINodeView({
   viewModel,
@@ -90,6 +62,7 @@ export function AgentGUINodeView({
   sessionInputHistoryEnabled = false,
   sessionForkEnabled = false,
   renderAgentTargetInfo,
+  agentProviderUpdateNotices,
   renderProjectDirectoryPickerHeaderActions,
   renderSidebarFooter,
   renderProviderRailEmpty,
@@ -126,6 +99,7 @@ export function AgentGUINodeView({
   onSlashStatusRefresh,
   onAgentProviderLogin,
   onAgentEnvPanelOpen,
+  onAgentProviderUpdateNoticeAction,
   actions,
   conversationRailCollapsed,
   conversationRailWidthPx,
@@ -726,6 +700,10 @@ export function AgentGUINodeView({
                 onRequestComposerFocus={requestComposerFocus}
                 workspaceAppIcons={effectiveWorkspaceAppIcons}
                 workspaceUserProjectI18n={workspaceUserProjectI18n}
+                agentProviderUpdateNotices={agentProviderUpdateNotices}
+                onAgentProviderUpdateNoticeAction={
+                  onAgentProviderUpdateNoticeAction
+                }
                 renderComposerFooterAccessory={renderComposerFooterAccessory}
               />
             </AgentConversationClockProvider>

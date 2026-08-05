@@ -128,6 +128,14 @@ func TestManagedClaudeCodeInstallerUsesProvisionedRuntime(t *testing.T) {
 func TestResolveProviderRuntimeUsesManagedClaudeCodePointer(t *testing.T) {
 	fixture := newClaudeBinaryFixture(t)
 	installedPath := fixture.installedBinaryPath()
+	// Keep a developer-installed Claude binary in fallback search paths from
+	// overriding the managed runtime created by this fixture.
+	fixture.service.IsExecutableFile = func(path string) bool {
+		return filepath.Clean(path) == filepath.Clean(installedPath)
+	}
+	fixture.service.LookPath = func(string) (string, error) {
+		return "", os.ErrNotExist
+	}
 	if err := os.MkdirAll(filepath.Dir(installedPath), 0o755); err != nil {
 		t.Fatal(err)
 	}

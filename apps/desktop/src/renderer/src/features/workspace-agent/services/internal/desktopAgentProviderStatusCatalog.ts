@@ -47,6 +47,59 @@ export function reconcileProviderStatuses(input: {
   return merged;
 }
 
+export function reconcileProviderUpdateDiscoveries(input: {
+  statuses: readonly AgentProviderStatus[];
+  updateStatuses: readonly AgentProviderStatus[];
+}): {
+  appliedProviders: readonly WorkspaceAgentProvider[];
+  statuses: readonly AgentProviderStatus[];
+} {
+  const updateStatusByProvider = new Map(
+    input.updateStatuses.map((status) => [status.provider, status])
+  );
+  const appliedProviders: WorkspaceAgentProvider[] = [];
+  const statuses = input.statuses.map((status) => {
+    const updateStatus = updateStatusByProvider.get(status.provider);
+    if (!updateStatus || !sameProviderCLIRuntime(status, updateStatus)) {
+      return status;
+    }
+    appliedProviders.push(status.provider);
+    const actions = status.actions.filter((action) => action.id !== "update");
+    const updateAction = updateStatus.actions.find(
+      (action) => action.id === "update"
+    );
+    if (updateStatus.update.updateAvailable === true && updateAction) {
+      actions.push(updateAction);
+    }
+    return {
+      ...status,
+      actions,
+      update: updateStatus.update
+    };
+  });
+  return { appliedProviders, statuses };
+}
+
+function sameProviderCLIRuntime(
+  status: AgentProviderStatus,
+  updateStatus: AgentProviderStatus
+): boolean {
+  if (status.provider !== updateStatus.provider) {
+    return false;
+  }
+  const binaryPath = status.cli.binaryPath?.trim() ?? "";
+  const updateBinaryPath = updateStatus.cli.binaryPath?.trim() ?? "";
+  if (binaryPath && updateBinaryPath && binaryPath !== updateBinaryPath) {
+    return false;
+  }
+  const version = status.cli.version?.trim() ?? "";
+  const updateVersion = updateStatus.update.currentVersion?.trim() ?? "";
+  if (version && updateVersion && version !== updateVersion) {
+    return false;
+  }
+  return Boolean(binaryPath || updateBinaryPath || version || updateVersion);
+}
+
 function preserveNetwork(
   previous: AgentProviderStatus | undefined,
   next: AgentProviderStatus
@@ -59,12 +112,17 @@ function preserveNetwork(
 
 // Local-only status reads attach a base update block without discovery
 // (lastCheckedAt stays null). Keep the last explicit includeUpdates result so a
-// dock/poll refresh cannot wipe "update available" or the update action.
+// dock/poll refresh cannot wipe "update available" or the update action. Never
+// carry that discovery across a CLI path/version change.
 function preserveUpdateDiscovery(
   previous: AgentProviderStatus | undefined,
   next: AgentProviderStatus
 ): AgentProviderStatus {
-  if (next.update?.lastCheckedAt || !previous?.update?.lastCheckedAt) {
+  if (
+    next.update?.lastCheckedAt ||
+    !previous?.update?.lastCheckedAt ||
+    !sameProviderCLIRuntime(next, previous)
+  ) {
     return next;
   }
   const preservedUpdate = previous.update;

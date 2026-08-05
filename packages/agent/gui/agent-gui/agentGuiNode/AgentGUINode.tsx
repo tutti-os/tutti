@@ -114,6 +114,7 @@ export const AgentGUINode = memo(function AgentGUINode({
     mentionService,
     workspaceAppIcons,
     disabledHomeSuggestions,
+    agentProviderUpdateNotices,
     referenceProvenanceFilterCatalog: injectedReferenceProvenanceFilterCatalog,
     referenceProvenanceFilterEnabled = false,
     sessionInputHistoryEnabled = false,
@@ -132,6 +133,7 @@ export const AgentGUINode = memo(function AgentGUINode({
     onCapabilitySettingsRequest,
     onAgentProviderLogin,
     onAgentEnvPanelOpen,
+    onAgentProviderUpdateNoticeAction,
     onAgentConfigMenuOpen: onHostAgentConfigMenuOpen,
     onOpenConversationWindow,
     onClose,
@@ -471,6 +473,7 @@ export const AgentGUINode = memo(function AgentGUINode({
             <AgentGUINodeView
               viewModel={viewModel}
               renderAgentTargetInfo={renderAgentTargetInfo}
+              agentProviderUpdateNotices={agentProviderUpdateNotices}
               renderSidebarFooter={renderSidebarFooter}
               renderProviderRailEmpty={renderProviderRailEmpty}
               providerRailAllPresentation={providerRailAllPresentation}
@@ -519,6 +522,9 @@ export const AgentGUINode = memo(function AgentGUINode({
                 onAgentProviderLogin ? handleAgentProviderLogin : undefined
               }
               onAgentEnvPanelOpen={onAgentEnvPanelOpen}
+              onAgentProviderUpdateNoticeAction={
+                onAgentProviderUpdateNoticeAction
+              }
               conversationRailCollapsed={isRenderedConversationRailCollapsed}
               conversationRailWidthPx={clampAgentGUIConversationRailWidthPx(
                 state.conversationRailWidthPx,

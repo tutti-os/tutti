@@ -73,6 +73,7 @@ import { resolveDesktopAgentGUIWorkbenchBodyVisibility } from "./desktopAgentGUI
 import { useDesktopAgentConfigCommerce } from "./useDesktopAgentConfigCommerce.tsx";
 import { hasDesktopLocalTuttiAgent } from "./desktopAgentConfigCommerceContext.ts";
 import { useDesktopAgentGUIComposerFooterAccessory } from "./useDesktopAgentGUIComposerFooterAccessory.tsx";
+import { useDesktopAgentCLIUpdateNotices } from "./DesktopAgentCLIUpdateNotices.tsx";
 import { useDesktopAgentGUIOpenSessionComposerRequest } from "./useDesktopAgentGUIOpenSessionComposerRequest.ts";
 import { useDesktopAgentGUIProviderAuthAccountLabels } from "./useDesktopAgentGUIProviderAuthAccountLabels.ts";
 import {
@@ -80,6 +81,7 @@ import {
   useDesktopAgentGUIConversationRailToggle
 } from "./useDesktopAgentGUIConversationRailPreference.ts";
 import { IAgentEnvService } from "../services/agentEnvService.interface.ts";
+import { IAgentCLIUpdateNoticeService } from "../services/agentCLIUpdateNoticeService.interface.ts";
 import { preloadDesktopAgentGuiMentionBrowse } from "../services/preloadDesktopAgentGuiMentionBrowse.ts";
 import { DESKTOP_AGENT_GUI_CURRENT_USER_ID } from "../services/desktopAgentGuiIdentity.ts";
 import {
@@ -154,6 +156,7 @@ function DesktopAgentGUISurfaceImpl({
     agents.find((agent) => agent.agentTargetId === requestedAgentTargetId)
       ?.provider ?? null;
   const agentEnvService = useService(IAgentEnvService);
+  const agentCLIUpdateNoticeService = useService(IAgentCLIUpdateNoticeService);
   const visibleErrorPresentationOverrides =
     useMemo<AgentVisibleErrorOverrides | null>(() => {
       if (!commerceEnabled) {
@@ -533,6 +536,15 @@ function DesktopAgentGUISurfaceImpl({
   const handleAgentEnvPanelOpen = useCallback<
     NonNullable<AgentGUIProps["hostActions"]["onAgentEnvPanelOpen"]>
   >((input) => agentEnvService.open(input), [agentEnvService]);
+  const agentCLIUpdateNotices = useDesktopAgentCLIUpdateNotices({
+    agentTargetId: workbenchAgentTargetId ?? defaultAgentTargetId,
+    eligible:
+      surface.isVisible &&
+      !surface.isMinimized &&
+      workbenchState.lastActiveAgentSessionId === null,
+    service: agentCLIUpdateNoticeService,
+    surfaceId: surface.nodeId
+  });
   const referenceProvenanceFilterEnabled = isFeatureEnabled(
     desktopPreferencesState.featureFlags,
     AGENT_REFERENCE_PROVENANCE_FILTER_FLAG
@@ -628,11 +640,13 @@ function DesktopAgentGUISurfaceImpl({
       defaultAgentTargetId,
       providerAuthAccountLabels,
       mentionService,
-      workspaceAppIcons
+      workspaceAppIcons,
+      agentProviderUpdateNotices: agentCLIUpdateNotices.notices
     },
     hostActions: {
       onComposerAppendHandled: handleComposerAppendHandled,
       onAgentEnvPanelOpen: handleAgentEnvPanelOpen,
+      onAgentProviderUpdateNoticeAction: agentCLIUpdateNotices.onAction,
       onAgentConfigMenuOpen: handleAgentConfigMenuOpen,
       onAgentProviderLogin: agentProviderStatusService
         ? handleAgentProviderLogin

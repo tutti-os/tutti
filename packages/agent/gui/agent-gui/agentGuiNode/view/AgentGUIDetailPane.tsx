@@ -75,6 +75,8 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
   onRequestGitBranches,
   onRequestComposerFocus,
   workspaceAppIcons = EMPTY_WORKSPACE_APP_ICONS,
+  agentProviderUpdateNotices,
+  onAgentProviderUpdateNoticeAction,
   renderComposerFooterAccessory
 }: AgentGUIDetailPaneProps): React.JSX.Element {
   "use memo";
@@ -681,6 +683,8 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       suggestionsCloseLabel={labels.homeSuggestionsClose}
       onSelectSuggestion={handleSelectHomeSuggestion}
       onSelectSuggestionAction={handleHomeSuggestionAction}
+      updateNotices={agentProviderUpdateNotices}
+      onUpdateNoticeAction={onAgentProviderUpdateNoticeAction}
     />
   ) : null;
   const forkedFrom =

@@ -21,6 +21,7 @@ import {
 } from "../../agent-session-replay/services/agentSessionReplayDesktopComposition.ts";
 import type { WorkspaceWindowLifecycle } from "../../../lib/workspaceWindowLifecycle.ts";
 import { IAgentEnvService } from "./agentEnvService.interface.ts";
+import { IAgentCLIUpdateNoticeService } from "./agentCLIUpdateNoticeService.interface.ts";
 import { IAgentProviderStatusService } from "./agentProviderStatusService.interface";
 import type { AgentProviderTerminalCommandRunner } from "./agentProviderStatusService.interface";
 import { bindDesktopManagedAgentProviderVisibilityRefresh } from "./internal/desktopAgentProviderVisibilityRefresh.ts";
@@ -35,6 +36,7 @@ import { IAgentsService } from "./agentsService.interface";
 import { IWorkspaceAgentActivityService } from "./workspaceAgentActivityService.interface";
 import { IWorkspaceAgentPromptSessionService } from "./workspaceAgentPromptSessionService.interface";
 import { AgentEnvService } from "./internal/agentEnvService.ts";
+import { DesktopAgentCLIUpdateNoticeService } from "./internal/desktopAgentCLIUpdateNoticeService.ts";
 import { DesktopAgentQuickPromptService } from "./internal/desktopAgentQuickPromptService.ts";
 import {
   IAgentQuickPromptService,
@@ -106,11 +108,6 @@ export function registerWorkspaceAgentServices(
     workspaceId: input.workspaceId
   });
   registry.registerInstance(IAgentEnvService, agentEnvService);
-  const disposeManagedAgentProviderVisibilityRefresh =
-    bindDesktopManagedAgentProviderVisibilityRefresh(
-      agentProviderStatusService,
-      input.windowLifecycle
-    );
   const managedProviderSet = new Set<WorkspaceAgentProvider>(
     desktopManagedAgentProviders
   );
@@ -135,6 +132,26 @@ export function registerWorkspaceAgentServices(
     workspaceId: input.workspaceId
   });
   registry.registerInstance(IAgentsService, agentsService);
+  const agentCLIUpdateNoticeService = new DesktopAgentCLIUpdateNoticeService({
+    agentEnvService,
+    agentsService,
+    desktopPreferencesService: input.desktopPreferencesService,
+    providerStatusService: agentProviderStatusService,
+    workspaceId: input.workspaceId
+  });
+  registry.registerInstance(
+    IAgentCLIUpdateNoticeService,
+    agentCLIUpdateNoticeService
+  );
+  const disposeManagedAgentProviderVisibilityRefresh =
+    bindDesktopManagedAgentProviderVisibilityRefresh(
+      agentProviderStatusService,
+      input.windowLifecycle,
+      {
+        refreshForActivation: () =>
+          agentCLIUpdateNoticeService.refreshForWindowActivation()
+      }
+    );
   const disposeAgentsEarlyAccessSync = bindDesktopAgentsEarlyAccessSync({
     agentsService,
     preferencesStore
@@ -192,6 +209,7 @@ export function registerWorkspaceAgentServices(
     dispose() {
       disposeAgentsEarlyAccessSync();
       disposeManagedAgentProviderVisibilityRefresh();
+      agentCLIUpdateNoticeService.dispose();
       agentEnvService.dispose();
       agentProviderStatusService.dispose();
       agentQuickPromptService.dispose();

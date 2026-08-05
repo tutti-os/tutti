@@ -45,6 +45,8 @@ test("React Compiler preserves field-keyed Agent GUI host projections", async ()
   assert.match(compiled, /nextHostActions\.onAgentConfigMenuOpen/);
   assert.match(compiled, /nextHostActions\.onOpenConversationWindow/);
   assert.match(compiled, /nextRenderSlots\.agentConfigAccount/);
+  assert.match(compiled, /nextHostCapabilities\.agentProviderUpdateNotices/);
+  assert.match(compiled, /nextHostActions\.onAgentProviderUpdateNoticeAction/);
 });
 
 test("forwards the explicitly selected project directory capability", () => {
@@ -78,6 +80,28 @@ test("forwards the host-owned composer footer accessory slot", () => {
   assert.strictEqual(
     result.renderSlots.composerFooterAccessory,
     composerFooterAccessory
+  );
+});
+
+test("forwards the explicit Agent CLI update capability and action", () => {
+  const agentProviderUpdateNotices = [{ agentTargetId: "local:codex" }];
+  const onAgentProviderUpdateNoticeAction = () => {};
+  const result = useStableDesktopAgentGUIHostProps({
+    hostActions: { onAgentProviderUpdateNoticeAction },
+    hostCapabilities: { agentProviderUpdateNotices },
+    identity: { currentUserId: null, nodeId: "node-1", workspaceId: "ws-1" },
+    renderSlots: {},
+    runtimeRequests: {},
+    workspace: {}
+  } as never);
+
+  assert.strictEqual(
+    result.hostCapabilities.agentProviderUpdateNotices,
+    agentProviderUpdateNotices
+  );
+  assert.strictEqual(
+    result.hostActions.onAgentProviderUpdateNoticeAction,
+    onAgentProviderUpdateNoticeAction
   );
 });
 

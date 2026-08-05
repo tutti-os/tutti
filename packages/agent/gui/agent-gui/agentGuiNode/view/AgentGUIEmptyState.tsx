@@ -17,7 +17,9 @@ import { agentColorfulUrl } from "../../../managedAgentIconAssets";
 import type {
   AgentGUIProviderRailAllPresentation,
   AgentGUIProviderReadinessGate,
-  AgentGUIAgentTarget
+  AgentGUIAgentTarget,
+  AgentGUIProviderUpdateNotice,
+  AgentGUIProviderUpdateNoticeAction
 } from "../../../types";
 import { AgentGUIHeroAgentCarousel } from "../AgentGUIHeroAgentCarousel";
 import { AgentSessionChrome } from "../AgentSessionChrome";
@@ -49,6 +51,7 @@ import { projectAgentGUIAgentTargetName } from "../model/agentGuiTargetName";
 import { AgentGUIAgentTargetName } from "./AgentGUIAgentTargetName";
 import styles from "../AgentGUINode.styles";
 import { AgentGUIOwnerAvatar } from "../AgentGUIOwnerAvatar";
+import { AgentGUIProviderUpdateNotices } from "./AgentGUIProviderUpdateNotices";
 
 export interface AgentGUIProviderIconPresentation {
   iconUrl: string;
@@ -110,6 +113,11 @@ interface AgentGUIEmptyHomePaneProps {
   suggestionsCloseLabel?: string;
   onSelectSuggestion: (prompt: string) => void;
   onSelectSuggestionAction?: (action: AgentHomeSuggestionAction) => void;
+  updateNotices?: readonly AgentGUIProviderUpdateNotice[];
+  onUpdateNoticeAction?: (input: {
+    action: AgentGUIProviderUpdateNoticeAction;
+    notice: AgentGUIProviderUpdateNotice;
+  }) => void;
 }
 
 export const AgentGUIEmptyHomePane = memo(function AgentGUIEmptyHomePane({
@@ -235,6 +243,11 @@ interface AgentGUIEmptyHeroPaneProps {
   suggestionsCloseLabel?: string;
   onSelectSuggestion: (prompt: string) => void;
   onSelectSuggestionAction?: (action: AgentHomeSuggestionAction) => void;
+  updateNotices?: readonly AgentGUIProviderUpdateNotice[];
+  onUpdateNoticeAction?: (input: {
+    action: AgentGUIProviderUpdateNoticeAction;
+    notice: AgentGUIProviderUpdateNotice;
+  }) => void;
 }
 
 export const AgentGUIEmptyHeroPane = memo(function AgentGUIEmptyHeroPane({
@@ -261,7 +274,9 @@ export const AgentGUIEmptyHeroPane = memo(function AgentGUIEmptyHeroPane({
   suggestions,
   suggestionsCloseLabel,
   onSelectSuggestion,
-  onSelectSuggestionAction
+  onSelectSuggestionAction,
+  updateNotices,
+  onUpdateNoticeAction
 }: AgentGUIEmptyHeroPaneProps): React.JSX.Element {
   "use memo";
 
@@ -283,6 +298,16 @@ export const AgentGUIEmptyHeroPane = memo(function AgentGUIEmptyHeroPane({
 
   return (
     <div className={styles.emptyHero}>
+      {updateNotices?.length && onUpdateNoticeAction ? (
+        <div className={styles.emptyHeroUpdateNotices}>
+          <AgentGUIProviderUpdateNotices
+            agentTargets={agentTargets}
+            notices={updateNotices}
+            onAction={onUpdateNoticeAction}
+            ownerSeparator={sharedAgentOwnerSeparator}
+          />
+        </div>
+      ) : null}
       <div className={styles.emptyHeroBody}>
         <div
           className={styles.emptyHeroIconSlot}

@@ -22,6 +22,8 @@ import type {
   AgentGUIAgentTarget,
   AgentGUIAgentTargetInfoRenderer,
   AgentGUIAgentOwnership,
+  AgentGUIProviderUpdateNotice,
+  AgentGUIProviderUpdateNoticeAction,
   NodeFrame,
   Point
 } from "../../types";
@@ -160,6 +162,8 @@ export interface AgentGUINodeHostCapabilities {
   mentionService?: RichTextMentionService;
   workspaceAppIcons?: readonly AgentMessageMarkdownWorkspaceAppIcon[];
   disabledHomeSuggestions?: readonly AgentGUIHomeSuggestionId[];
+  /** Host-owned actionable CLI updates for exact Agent targets. */
+  agentProviderUpdateNotices?: readonly AgentGUIProviderUpdateNotice[];
 }
 
 export interface AgentGUINodeHostActions {
@@ -178,6 +182,10 @@ export interface AgentGUINodeHostActions {
   ) => void;
   onAgentProviderLogin?: (provider: AgentGUIProvider) => void;
   onAgentEnvPanelOpen?: (input?: OpenAgentEnvPanelInput) => void;
+  onAgentProviderUpdateNoticeAction?: (input: {
+    action: AgentGUIProviderUpdateNoticeAction;
+    notice: AgentGUIProviderUpdateNotice;
+  }) => void;
   /**
    * Notifies the Host when the exact target's config menu opens. Account and
    * Commerce refreshes remain Host-owned and must not enter Agent status.
@@ -440,11 +448,14 @@ export function areAgentGUINodePropsEqual(
     pc.mentionService === nc.mentionService &&
     pc.workspaceAppIcons === nc.workspaceAppIcons &&
     pc.disabledHomeSuggestions === nc.disabledHomeSuggestions &&
+    pc.agentProviderUpdateNotices === nc.agentProviderUpdateNotices &&
     pa.onLinkAction === na.onLinkAction &&
     pa.onHandoffConversation === na.onHandoffConversation &&
     pa.onCapabilitySettingsRequest === na.onCapabilitySettingsRequest &&
     pa.onAgentProviderLogin === na.onAgentProviderLogin &&
     pa.onAgentEnvPanelOpen === na.onAgentEnvPanelOpen &&
+    pa.onAgentProviderUpdateNoticeAction ===
+      na.onAgentProviderUpdateNoticeAction &&
     pa.onAgentConfigMenuOpen === na.onAgentConfigMenuOpen &&
     pa.onComposerAppendHandled === na.onComposerAppendHandled &&
     pa.onOpenConversationWindow === na.onOpenConversationWindow &&
