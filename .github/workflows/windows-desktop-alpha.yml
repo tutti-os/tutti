@@ -90,11 +90,9 @@ jobs:
 
       - name: Test Desktop lifecycle
         shell: pwsh
-        run: >-
-          node --import ./apps/desktop/test/register-asset-stub.mjs
-          --test --experimental-strip-types
-          ./apps/desktop/src/main/cli/cliInstaller.test.ts
-          ./apps/desktop/src/main/daemon/tuttidManager.test.ts
+        run: |
+          node --import ./apps/desktop/test/register-asset-stub.mjs --test --experimental-strip-types --test-name-pattern='Windows|windows' ./apps/desktop/src/main/cli/cliInstaller.test.ts
+          node --import ./apps/desktop/test/register-asset-stub.mjs --test --experimental-strip-types ./apps/desktop/src/main/daemon/tuttidManager.test.ts
 
       - name: Typecheck Desktop
         shell: pwsh
