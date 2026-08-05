@@ -348,7 +348,8 @@ test("resolveManagedDaemonProcessEnv seeds the managed runtime cache root", () =
       userShellEnv: {},
       logDir: "/tmp/logs",
       parentPID: 123,
-      sessionID: "session-1"
+      sessionID: "session-1",
+      workspaceAppCliPath: "C:\\Program Files\\Tutti\\resources\\bin\\tutti.exe"
     });
     assert.equal(
       basename(got.TUTTI_APP_RUNTIME_CACHE_ROOT ?? ""),
@@ -357,6 +358,10 @@ test("resolveManagedDaemonProcessEnv seeds the managed runtime cache root", () =
     const browserListenerInfo = got.TUTTI_BROWSER_NODE_LISTENER_INFO ?? "";
     assert.equal(basename(browserListenerInfo), "browser-node-automation.json");
     assert.equal(basename(dirname(browserListenerInfo)), "run");
+    assert.equal(
+      got.TUTTI_WORKSPACE_APP_CLI_PATH,
+      "C:\\Program Files\\Tutti\\resources\\bin\\tutti.exe"
+    );
   } finally {
     restoreEnv(previousEnv);
   }

@@ -50,6 +50,7 @@ import {
 import { registerIpcHandlers } from "./ipc/register";
 import { flushDesktopLogger, setupDesktopLogger } from "./logging";
 import { ensureMacosApplicationInstalled } from "./macosApplicationInstallGuard.ts";
+import { prepareDesktopCliTarget } from "./cli/cliInstaller.ts";
 import { ensureSingleInstance } from "./singleInstance";
 import {
   completeDesktopLoginCallbackUrl,
@@ -204,8 +205,13 @@ export async function bootstrapDesktopApp(): Promise<void> {
     process.arch
   );
   const managedAdmissionTarget = featureAvailabilityTarget;
+  const workspaceAppCliPath =
+    process.platform === "win32"
+      ? prepareDesktopCliTarget({ isPackaged: app.isPackaged })
+      : undefined;
   const daemonRuntime = await startDesktopDaemonRuntime({
     daemonRuntime: createDesktopDaemonRuntime({
+      ...(workspaceAppCliPath ? { workspaceAppCliPath } : {}),
       desktopUpdateAdmission: managedAdmissionTarget
         ? {
             ...managedAdmissionTarget,

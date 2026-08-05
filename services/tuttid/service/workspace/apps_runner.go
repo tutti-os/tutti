@@ -218,7 +218,13 @@ func (r *AppRunner) startProcess(ctx context.Context, key string, input AppStart
 	command.Dir = input.RuntimeDir
 	command.Stdout = logFile
 	command.Stderr = logFile
-	tuttiCLIShim := tuttiCLIShimPath()
+	tuttiCLIPath, err := workspaceAppCLIPath()
+	if err != nil {
+		_ = logFile.Close()
+		logAppRuntimeControl("workspace_app_runtime_start_failed", input, port, "cli_unavailable", err)
+		r.setFailed(key, "cli_unavailable", err)
+		return
+	}
 	tuttiAPIBaseURL := tuttiAPIBaseURLFromEnv()
 	appToolchainRoot := tuttiAppToolchainRoot()
 	envOverrides := []string{
@@ -238,10 +244,14 @@ func (r *AppRunner) startProcess(ctx context.Context, key string, input AppStart
 		"TUTTI_API_BASE_URL=" + tuttiAPIBaseURL,
 		"TUTTI_APP_INSTALLATION_ID=" + input.WorkspaceID + ":" + input.AppID,
 		"TUTTI_APP_SERVER_TOKEN=" + appServerToken(input.WorkspaceID, input.AppID),
-		"TUTTI_CLI=" + tuttiCLIShim,
 	}
+	envOverrides = append(envOverrides, workspaceAppCLIEnvOverrides(runtime.GOOS, tuttiCLIPath)...)
 	envOverrides = append(envOverrides, appRuntime.EnvOverrides...)
-	envOverrides = append(envOverrides, appRuntimePathWithCLIShim(appRuntime, tuttiCLIShim, shellBinDirs...))
+	if runtime.GOOS == "windows" {
+		envOverrides = append(envOverrides, appRuntimePathWithBinDirs(appRuntime, shellBinDirs...))
+	} else {
+		envOverrides = append(envOverrides, appRuntimePathWithCLIShim(appRuntime, tuttiCLIPath, shellBinDirs...))
+	}
 	envOverrides = append(envOverrides, shellAdapter.EnvironmentOverrides()...)
 	command.Env = workspaceAppProcessEnv(envOverrides...)
 	writeAppStartupDiagnostic(logFile, input, bootstrapPath, port, appRuntime, command, shellBinDirs)
@@ -724,10 +734,6 @@ func allocateLoopbackPort() (int, error) {
 		return 0, fmt.Errorf("unexpected listener address %q", listener.Addr().String())
 	}
 	return tcpAddr.Port, nil
-}
-
-func tuttiCLIShimPath() string {
-	return tuttiCLIShimPathForPlatform(runtime.GOOS)
 }
 
 func tuttiAppToolchainRoot() string {

@@ -1039,14 +1039,47 @@ func TestTuttiCLIShimPathUsesDevelopmentCommand(t *testing.T) {
 	}
 }
 
-func TestTuttiCLIShimPathUsesWindowsCommandExtension(t *testing.T) {
-	stateDir := t.TempDir()
-	t.Setenv("TUTTI_STATE_DIR", stateDir)
-	t.Setenv("TUTTI_ENV", "production")
+func TestWorkspaceAppCLIPathUsesNativeWindowsExecutable(t *testing.T) {
+	target := filepath.Join(t.TempDir(), "Tutti CLI.exe")
+	if err := os.WriteFile(target, []byte("fixture"), 0o755); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+	t.Setenv("TUTTI_WORKSPACE_APP_CLI_PATH", target)
 
-	want := filepath.Join(stateDir, "bin", "tutti.cmd")
-	if got := tuttiCLIShimPathForPlatform("windows"); got != want {
-		t.Fatalf("tuttiCLIShimPathForPlatform() = %q, want %q", got, want)
+	got, err := workspaceAppCLIPathForPlatform("windows")
+	if err != nil {
+		t.Fatalf("workspaceAppCLIPathForPlatform() error = %v", err)
+	}
+	if got != target {
+		t.Fatalf("workspaceAppCLIPathForPlatform() = %q, want %q", got, target)
+	}
+}
+
+func TestWorkspaceAppCLIPathRejectsWindowsBatchShim(t *testing.T) {
+	target := filepath.Join(t.TempDir(), "tutti.cmd")
+	if err := os.WriteFile(target, []byte("@echo off"), 0o755); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+	t.Setenv("TUTTI_WORKSPACE_APP_CLI_PATH", target)
+
+	if _, err := workspaceAppCLIPathForPlatform("windows"); err == nil || !strings.Contains(err.Error(), ".exe") {
+		t.Fatalf("workspaceAppCLIPathForPlatform() error = %v, want .exe validation", err)
+	}
+}
+
+func TestWorkspaceAppCLIEnvOverridesIncludeWindowsListenerPath(t *testing.T) {
+	listenerPath := filepath.Join(t.TempDir(), "run", "tuttid.listener.json")
+	t.Setenv("TUTTID_LISTENER_INFO_PATH", listenerPath)
+
+	overrides := workspaceAppCLIEnvOverrides("windows", `C:\Program Files\Tutti\tutti.exe`)
+	if got := envValue(overrides, "TUTTI_CLI"); got != `C:\Program Files\Tutti\tutti.exe` {
+		t.Fatalf("TUTTI_CLI = %q", got)
+	}
+	if got := envValue(overrides, "TUTTID_LISTENER_INFO_PATH"); got != listenerPath {
+		t.Fatalf("TUTTID_LISTENER_INFO_PATH = %q, want %q", got, listenerPath)
+	}
+	if got := envValue(overrides, "TUTTI_STATE_DIR"); got != "" {
+		t.Fatalf("TUTTI_STATE_DIR = %q, want omitted", got)
 	}
 }
 

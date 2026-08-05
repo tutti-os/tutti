@@ -73,12 +73,14 @@ export function createTuttidManager(
   tuttidClient: TuttidClient,
   options?: {
     desktopUpdateAdmission?: DesktopUpdateAdmissionDaemonConfig;
+    workspaceAppCliPath?: string;
   }
 ): TuttidManager {
   return new ManagedTuttid(
     endpoint,
     tuttidClient,
-    options?.desktopUpdateAdmission
+    options?.desktopUpdateAdmission,
+    options?.workspaceAppCliPath
   );
 }
 
@@ -91,15 +93,18 @@ class ManagedTuttid implements TuttidManager {
   private readonly desktopUpdateAdmission:
     | DesktopUpdateAdmissionDaemonConfig
     | undefined;
+  private readonly workspaceAppCliPath: string | undefined;
 
   constructor(
     endpoint: DesktopDaemonEndpoint,
     tuttidClient: TuttidClient,
-    desktopUpdateAdmission?: DesktopUpdateAdmissionDaemonConfig
+    desktopUpdateAdmission?: DesktopUpdateAdmissionDaemonConfig,
+    workspaceAppCliPath?: string
   ) {
     this.endpoint = endpoint;
     this.tuttidClient = tuttidClient;
     this.desktopUpdateAdmission = desktopUpdateAdmission;
+    this.workspaceAppCliPath = workspaceAppCliPath;
     this.restartController = createDaemonRestartController({
       restart: () => this.start(),
       isStopRequested: () => this.stopRequested,
@@ -135,6 +140,7 @@ class ManagedTuttid implements TuttidManager {
     const processEnv = resolveManagedDaemonProcessEnv({
       endpoint: this.endpoint,
       desktopUpdateAdmission: this.desktopUpdateAdmission,
+      workspaceAppCliPath: this.workspaceAppCliPath,
       logOutput,
       userShellEnv
     });
@@ -313,6 +319,7 @@ export interface ManagedDaemonProcessEnvInput {
   parentPID?: number;
   sessionID?: string;
   userShellEnv?: Record<string, string>;
+  workspaceAppCliPath?: string;
 }
 
 // Relative path (under the packaged Resources dir) to the vendored
@@ -494,6 +501,7 @@ export function resolveManagedDaemonProcessEnv(
     TUTTI_DESKTOP_PARENT_PID: String(input.parentPID ?? process.pid),
     TUTTI_LOG_DIR: input.logDir ?? resolveDesktopLogsDir(),
     TUTTI_SESSION_ID: input.sessionID ?? getDesktopLogSessionID(),
+    TUTTI_WORKSPACE_APP_CLI_PATH: input.workspaceAppCliPath?.trim() ?? "",
     TUTTID_LOG_OUTPUT: input.logOutput,
     TUTTI_ENV: resolveTuttiEnv()
   };

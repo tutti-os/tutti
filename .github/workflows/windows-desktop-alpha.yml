@@ -1,6 +1,14 @@
 name: Windows Desktop Alpha
 
 on:
+  pull_request:
+    paths:
+      - ".github/workflows/windows-desktop-alpha.yml"
+      - "apps/desktop/**"
+      - "packages/agent/daemon/**"
+      - "services/tuttid/**"
+      - "package.json"
+      - "pnpm-lock.yaml"
   workflow_dispatch:
 
 concurrency:
@@ -75,7 +83,7 @@ jobs:
           go test ./service/managedruntime -run 'TestNodeReadyAcceptsOfficialWindowsCorepackLayout$'
           go test ./service/agentstatus -run 'Test(NewInstallShellCommandUsesCmdInterpreter|PlatformExecutableFileAcceptsPlainWindowsFile|RunDefaultInstallCommandPreservesStructuredArguments)$'
           go test ./service/browser -run 'TestStableChromeDevToolsActivePortPathUsesLocalAppDataOnWindows$'
-          go test ./service/workspace -run 'Test(PlatformAppShellAdapter|NormalizeWindowsTerminalInput|TerminalServiceCreatesLocalPTY|TerminalServiceAttachStream|AppCenterServiceInitializesBuiltinCatalogAndInstallState)'
+          go test ./service/workspace -run 'Test(PlatformAppShellAdapter|NormalizeWindowsTerminalInput|TerminalServiceCreatesLocalPTY|TerminalServiceAttachStream|AppCenterServiceInitializesBuiltinCatalogAndInstallState|WorkspaceAppCLI)'
           go test ./integration -run 'TestTuttidBlackBoxWorkspaceTerminalWebSocketStreamsInputAndOutput$'
           go test ./integration -run 'TestTuttidBlackBoxWorkspaceTerminalWebSocketExitFrameCarriesExitCode$'
           Pop-Location
@@ -85,6 +93,7 @@ jobs:
         run: >-
           node --import ./apps/desktop/test/register-asset-stub.mjs
           --test --experimental-strip-types
+          ./apps/desktop/src/main/cli/cliInstaller.test.ts
           ./apps/desktop/src/main/daemon/tuttidManager.test.ts
 
       - name: Typecheck Desktop
@@ -102,6 +111,8 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           $PSNativeCommandUseErrorActionPreference = $true
+          $nativeCli = Resolve-Path 'apps/desktop/dist/win-unpacked/resources/bin/tutti.exe'
+          if (-not (Test-Path $nativeCli -PathType Leaf)) { throw 'packaged native tutti.exe is missing' }
           $shellRuntimeRoot = Resolve-Path 'apps/desktop/dist/win-unpacked/resources/bin/managed-posix-shell'
           $shellMetadata = Get-Content (Join-Path $shellRuntimeRoot 'runtime.json') -Raw | ConvertFrom-Json
           $shell = Resolve-Path (Join-Path $shellRuntimeRoot $shellMetadata.executable)

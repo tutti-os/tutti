@@ -98,6 +98,13 @@ The package is fat because it contains every currently shipped platform
 artifact. `TUTTI_PLATFORM` selects the artifact at runtime. Adding a future
 platform key should add an artifact and build job, not another app lifecycle.
 
+The desktop also resolves the packaged or development native `tutti.exe` at
+composition time and passes its absolute path to `tuttid`. The Workspace App
+runner exposes that executable as `TUTTI_CLI` together with the effective
+`TUTTID_LISTENER_INFO_PATH`. Apps therefore launch the CLI without `cmd.exe`
+or batch-file parsing. The user-facing `tutti.cmd` remains a terminal PATH shim;
+it is not the Windows Workspace App execution contract.
+
 ## Native Adapter Boundaries
 
 ### Workspace App shell
