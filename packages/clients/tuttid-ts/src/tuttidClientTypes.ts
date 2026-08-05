@@ -12,6 +12,7 @@ import type {
   AccountProductSummaryResponse,
   AccountUserInfo,
   AgentProviderComposerOptionsResponse,
+  AgentProviderPluginListResponse,
   AgentProviderRuntimeCatalogResponse,
   AgentProviderProbeResponse,
   AgentProviderActionId,
@@ -35,6 +36,7 @@ import type {
   CliCapabilitiesResponse,
   AgentSessionComposerSettings,
   GetAgentProviderComposerOptionsRequest,
+  ListAgentProviderPluginsRequest,
   SetAgentProviderRuntimeSelectionRequest,
   GetWorkspaceAppFactoryAgentTargetComposerOptionsRequest,
   CompleteIssueManagerRunRequest,
@@ -483,6 +485,11 @@ export interface TuttidClient
     request?: GetAgentProviderComposerOptionsRequest,
     requestOptions?: TuttidRequestOptions
   ): Promise<AgentProviderComposerOptionsResponse>;
+  listAgentProviderPlugins(
+    provider: WorkspaceAgentProvider,
+    request: ListAgentProviderPluginsRequest,
+    requestOptions?: TuttidRequestOptions
+  ): Promise<AgentProviderPluginListResponse>;
   getAgentProviderStatuses(request?: {
     providers?: WorkspaceAgentProvider[];
     /**

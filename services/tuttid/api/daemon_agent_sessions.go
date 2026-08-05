@@ -27,6 +27,8 @@ type AgentSessionService interface {
 	DeleteSessionsBatch(context.Context, string, agentservice.DeleteSessionsBatchInput) (agentservice.DeleteSessionsBatchResult, error)
 	ListPinnedSessionPage(context.Context, string, agentservice.ListPinnedSessionPageInput) (agentservice.SessionPage, error)
 	GetComposerOptions(context.Context, agentservice.ComposerOptionsInput) (agentservice.ComposerOptions, error)
+	GetComposerPluginOptions(context.Context, agentservice.ComposerPluginOptionsInput) (agentservice.ComposerPluginOptions, error)
+	PrimeComposerPluginInventory(context.Context, agentservice.ComposerPluginOptionsInput) error
 	ListGeneratedFiles(context.Context, string, agentservice.ListGeneratedFilesInput) (agentservice.GeneratedFileList, error)
 	ListMessages(context.Context, string, string, agentservice.ListMessagesInput) (agentservice.SessionMessagesPage, error)
 	ScanExternalImports(context.Context, agentservice.ExternalImportScanInput) (agentservice.ExternalImportScanResult, error)

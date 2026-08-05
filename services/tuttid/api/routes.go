@@ -220,6 +220,14 @@ func RegisterRoutes(mux *http.ServeMux, routes Routes) {
 		wrapper.GetAgentProviderComposerOptions(w, r)
 	})
 
+	mux.HandleFunc("/v1/agent-providers/{provider}/plugins", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			tuttitypes.WriteMethodNotAllowed(w)
+			return
+		}
+		wrapper.ListAgentProviderPlugins(w, r)
+	})
+
 	mux.HandleFunc("/v1/agent-providers/{provider}/runtime-candidates", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			tuttitypes.WriteMethodNotAllowed(w)

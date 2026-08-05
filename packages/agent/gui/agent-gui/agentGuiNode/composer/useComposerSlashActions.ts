@@ -615,7 +615,11 @@ export function useComposerSlashActions(input: UseComposerSlashActionsInput) {
       if (event.key === "Tab" || event.key === "Enter") {
         event.preventDefault();
         const activeEntry = slashPaletteEntries[activeHighlight];
-        if (activeEntry?.type === "capability" && activeEntry.disabled) {
+        if (
+          (activeEntry?.type === "capability" ||
+            activeEntry?.type === "nativeCapability") &&
+          activeEntry.disabled
+        ) {
           return true;
         }
         if (activeEntry?.type === "command") {

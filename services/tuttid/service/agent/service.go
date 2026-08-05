@@ -38,6 +38,7 @@ func NewService(runtime RuntimeController, configs ...ServiceConfig) *Service {
 		skillOptionsCache:         newComposerSkillOptionsCache(),
 		providerAvailabilityCache: newProviderAvailabilityCache(),
 		capabilityCatalogCache:    newComposerCapabilityCatalogCache(),
+		pluginInventoryCache:      newCodexPluginInventoryCache(),
 		liveModelCache:            newComposerLiveModelCache(),
 		claudeStartupLock:         claudecodeservice.DefaultStartupGate,
 	}

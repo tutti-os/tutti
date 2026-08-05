@@ -14,6 +14,7 @@ import type { AgentSessionCommand } from "../../shared/agentSessionTypes";
 import { cn } from "../../app/renderer/lib/utils";
 import type { AgentGUIProviderSkillOption } from "./model/agentGuiNodeTypes";
 import type { AgentSlashCommandCapability } from "./model/agentSlashCommandProviderPolicy";
+import type { AgentHostComposerCapability } from "../../host/agentHostApi";
 
 export type AgentSlashPaletteEntry =
   | {
@@ -35,6 +36,17 @@ export type AgentSlashPaletteEntry =
       disabled?: boolean;
       selectAction?: "capability" | "settings";
       capability: AgentSlashCommandCapability;
+    }
+  | {
+      // This row is a daemon-attested provider capability. Invocation is a
+      // later Host lifecycle concern; the presentation layer never turns it
+      // into a provider-specific prompt or runtime action.
+      type: "nativeCapability";
+      key: string;
+      label: string;
+      description?: string;
+      disabled: true;
+      capability: AgentHostComposerCapability;
     }
   | {
       type: "skill";
@@ -135,7 +147,7 @@ export function AgentSlashCommandPalette({
     }
   });
   const hasCapabilityEntries = entries.some(
-    (entry) => entry.type === "capability"
+    (entry) => entry.type === "capability" || entry.type === "nativeCapability"
   );
   const capabilityLoadingInsertIndex = capabilitiesLoading
     ? capabilityLoadingIndex(entries)
@@ -168,7 +180,8 @@ export function AgentSlashCommandPalette({
       {entries.map((entry, index) => {
         const isHighlighted = index === highlightedIndex;
         const isDisabled =
-          entry.type === "capability" && entry.disabled === true;
+          (entry.type === "capability" || entry.type === "nativeCapability") &&
+          entry.disabled === true;
         const groupType = entryGroupType(entry);
         const entryIcon = slashPaletteEntryIcon(entry);
         const groupHeader =
@@ -231,6 +244,9 @@ export function AgentSlashCommandPalette({
                     return;
                   }
                   onSelectCapability(entry.capability);
+                  return;
+                }
+                if (entry.type === "nativeCapability") {
                   return;
                 }
                 onSelectSkill(entry.skill);
@@ -309,7 +325,10 @@ function capabilityLoadingIndex(
 ): number {
   let lastCapabilityIndex = -1;
   for (let index = entries.length - 1; index >= 0; index -= 1) {
-    if (entries[index]?.type === "capability") {
+    if (
+      entries[index]?.type === "capability" ||
+      entries[index]?.type === "nativeCapability"
+    ) {
       lastCapabilityIndex = index;
       break;
     }
@@ -324,6 +343,9 @@ function capabilityLoadingIndex(
 function entryGroupType(
   entry: AgentSlashPaletteEntry
 ): AgentSlashPaletteEntryGroup {
+  if (entry.type === "nativeCapability") {
+    return "capability";
+  }
   if (entry.type !== "skill") {
     return entry.type;
   }
@@ -376,6 +398,13 @@ const SLASH_PALETTE_ICON_CLASS = "size-4";
 function slashPaletteEntryIcon(entry: AgentSlashPaletteEntry): ReactNode {
   if (entry.type === "capability") {
     return entry.capability.capability === "computerUse" ? (
+      <Monitor className={SLASH_PALETTE_ICON_CLASS} />
+    ) : (
+      <Globe className={SLASH_PALETTE_ICON_CLASS} />
+    );
+  }
+  if (entry.type === "nativeCapability") {
+    return entry.capability.semantic === "computerUse" ? (
       <Monitor className={SLASH_PALETTE_ICON_CLASS} />
     ) : (
       <Globe className={SLASH_PALETTE_ICON_CLASS} />

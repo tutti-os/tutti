@@ -5,6 +5,7 @@ import type {
   AgentHostQuickPromptsApi
 } from "@tutti-os/agent-gui";
 import type {
+  AgentProviderPluginListResponse,
   AgentTargetSetupSnapshot,
   TuttidClient
 } from "@tutti-os/client-tuttid-ts";
@@ -20,6 +21,7 @@ import type {
 } from "@shared/contracts/ipc";
 import {
   createDesktopAgentHostApi,
+  projectDesktopCodexComposerCapabilities,
   projectDesktopAgentTargetSetupSnapshot
 } from "./createDesktopAgentHostApi.ts";
 import { WorkspaceAgentActivityService } from "./internal/workspaceAgentActivityService.ts";
@@ -33,6 +35,132 @@ test("desktop agent host api projects the optional quick prompts capability", ()
   const api = createAgentHostApi({ agentQuickPromptService: quickPrompts });
 
   assert.equal(api.quickPrompts, quickPrompts);
+});
+
+test("desktop Codex plugin projection hides only one exact proven Skill entry", () => {
+  const snapshot = {
+    provider: "codex",
+    partial: false,
+    plugins: [
+      {
+        id: "plugin:sites@openai-bundled",
+        name: "sites",
+        label: "Sites",
+        semantic: "sites",
+        status: "ready",
+        bundledSkills: [
+          {
+            name: "sites:sites-building",
+            path: "/plugins/sites/skills/build/SKILL.md"
+          },
+          {
+            name: "sites:sites-hosting",
+            path: "/plugins/sites/skills/hosting/SKILL.md"
+          }
+        ]
+      }
+    ]
+  } satisfies AgentProviderPluginListResponse;
+  const result = projectDesktopCodexComposerCapabilities(snapshot, [
+    {
+      entryId: "build",
+      kind: "skill",
+      name: "sites:sites-building",
+      path: "/plugins/sites/skills/build/./SKILL.md"
+    },
+    {
+      entryId: "unrelated-same-name",
+      kind: "skill",
+      name: "sites:sites-building",
+      path: "/user/skills/sites/SKILL.md"
+    },
+    {
+      entryId: "hosting-duplicate-a",
+      kind: "skill",
+      name: "sites:sites-hosting",
+      path: "/plugins/sites/skills/hosting/SKILL.md"
+    },
+    {
+      entryId: "hosting-duplicate-b",
+      kind: "skill",
+      name: "sites:sites-hosting",
+      path: "/plugins/sites/skills/hosting/SKILL.md"
+    }
+  ]);
+
+  assert.deepEqual(result.hiddenSlashSkillEntryIds, ["build"]);
+  assert.equal(result.capabilities[0]?.semantic, "sites");
+});
+
+test("desktop Codex plugin projection fails open for partial inventory", () => {
+  const result = projectDesktopCodexComposerCapabilities(
+    {
+      provider: "codex",
+      partial: true,
+      plugins: []
+    } satisfies AgentProviderPluginListResponse,
+    [
+      {
+        entryId: "sites",
+        kind: "skill",
+        name: "sites:sites-building",
+        path: "/plugins/sites/SKILL.md"
+      }
+    ]
+  );
+
+  assert.deepEqual(result.hiddenSlashSkillEntryIds, []);
+  assert.equal(result.partial, true);
+});
+
+test("desktop composer Plugin catalog is gated to the exact Codex target", async () => {
+  const pluginCalls: unknown[] = [];
+  const api = createAgentHostApi({
+    tuttidClient: createTuttidClient({
+      async listAgentProviderPlugins(...args) {
+        pluginCalls.push(args);
+        return { partial: false, plugins: [], provider: args[0] };
+      }
+    })
+  });
+  const capabilities = api.composerCapabilities;
+  assert.ok(capabilities);
+
+  assert.equal(
+    capabilities.isSupported({
+      agentTargetId: "local:codex",
+      provider: "codex"
+    }),
+    true
+  );
+  assert.equal(
+    capabilities.isSupported({
+      agentTargetId: "local:cursor",
+      provider: "codex"
+    }),
+    false
+  );
+  assert.equal(
+    capabilities.isSupported({
+      agentTargetId: "local:cursor",
+      provider: "cursor"
+    }),
+    false
+  );
+
+  await capabilities.list({
+    agentTargetId: "local:cursor",
+    authoritativeSkills: [],
+    cwd: "/workspace",
+    provider: "codex"
+  });
+  await capabilities.prime({
+    agentTargetId: "local:cursor",
+    cwd: "/workspace",
+    provider: "codex"
+  });
+
+  assert.deepEqual(pluginCalls, []);
 });
 
 test("desktop agent host api routes terminal login through the launch coordinator", async () => {

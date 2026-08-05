@@ -2,6 +2,7 @@ import {
   getAgentProviderComposerOptions,
   getAgentProviderRuntimeCandidates,
   getAgentProviderStatuses,
+  listAgentProviderPlugins,
   probeAgentProvider,
   runAgentProviderAction,
   setAgentProviderRuntimeSelection
@@ -13,6 +14,7 @@ import type { TuttidClient } from "./tuttidClientTypes.ts";
 type AgentProvidersClient = Pick<
   TuttidClient,
   | "getAgentProviderComposerOptions"
+  | "listAgentProviderPlugins"
   | "getAgentProviderRuntimeCandidates"
   | "getAgentProviderStatuses"
   | "probeAgentProvider"
@@ -38,6 +40,18 @@ export function createAgentProvidersClient(
       return unwrapData(
         response,
         "Get agent provider composer options request failed."
+      );
+    },
+    async listAgentProviderPlugins(provider, request, requestOptions) {
+      const response = await listAgentProviderPlugins({
+        client,
+        body: request,
+        path: { provider },
+        ...requestOptions
+      });
+      return unwrapData(
+        response,
+        "List agent provider plugins request failed."
       );
     },
     async getAgentProviderStatuses(request = {}) {

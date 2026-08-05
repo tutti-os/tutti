@@ -89,6 +89,34 @@ func TestAppServerCapabilityListSkillsOnly(t *testing.T) {
 	}
 }
 
+func TestAppServerCapabilityListCodexRetainsConnectorAndMCPDiscovery(t *testing.T) {
+	var stdin bytes.Buffer
+	if err := writeAppServerCapabilityListRequests(&stdin, "/tmp/workspace", appServerCatalogRequestSetCodex); err != nil {
+		t.Fatalf("writeAppServerCapabilityListRequests returned error: %v", err)
+	}
+	requests := stdin.String()
+	for _, included := range []string{"skills/list", "app/list", "mcpServerStatus/list"} {
+		if !strings.Contains(requests, included) {
+			t.Fatalf("requests = %q, want %s", requests, included)
+		}
+	}
+	if strings.Contains(requests, "plugin/list") {
+		t.Fatalf("requests = %q, plugin inventory must remain independent", requests)
+	}
+
+	options, err := readAppServerCapabilityListResponses(strings.NewReader(
+		`{"id":"2","result":{"data":[{"skills":[{"name":"review","enabled":true}]}]}}`+"\n"+
+			`{"id":"3","result":{"data":[{"id":"github","name":"GitHub"}]}}`+"\n"+
+			`{"id":"5","result":{"data":[{"name":"docs","status":"running"}]}}`+"\n",
+	), appServerCatalogRequestSetCodex)
+	if err != nil {
+		t.Fatalf("readAppServerCapabilityListResponses returned error: %v", err)
+	}
+	if len(options) != 3 || options[1].Kind != "connector" || options[2].Kind != "mcpServer" {
+		t.Fatalf("options = %#v, want skill, connector, and MCP server", options)
+	}
+}
+
 func TestAppServerCatalogRequestsRejectsUnknownSet(t *testing.T) {
 	if _, _, err := appServerCatalogRequests("/tmp/workspace", "poison"); err == nil {
 		t.Fatal("appServerCatalogRequests() error = nil, want unsupported request set")

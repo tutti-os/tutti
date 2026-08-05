@@ -209,6 +209,9 @@ func TestMigratedCodexDescriptorIsComplete(t *testing.T) {
 	if descriptor.ComposerProfile.CapabilityCatalog.Kind != CapabilityCatalogKindCodexAppServer {
 		t.Fatalf("CapabilityCatalog = %#v", descriptor.ComposerProfile.CapabilityCatalog)
 	}
+	if descriptor.ComposerProfile.PluginCatalog.Kind != PluginCatalogKindCodexAppServer {
+		t.Fatalf("PluginCatalog = %#v", descriptor.ComposerProfile.PluginCatalog)
+	}
 	if !slices.Contains(descriptor.ComposerProfile.Capabilities, CapabilityGoalPause) {
 		t.Fatalf("Composer capabilities missing Codex goal pause: %#v", descriptor.ComposerProfile.Capabilities)
 	}
@@ -565,6 +568,8 @@ func TestValidateRejectsUnsupportedDescriptorStrategies(t *testing.T) {
 			value.ComposerProfile.Skills.ConfigDirSuffix = "codex"
 		}},
 		{name: "capability catalog kind", mutate: func(value *ProviderDescriptor) { value.ComposerProfile.CapabilityCatalog.Kind = "poison" }},
+		{name: "plugin catalog kind", mutate: func(value *ProviderDescriptor) { value.ComposerProfile.PluginCatalog.Kind = "poison" }},
+		{name: "plugin catalog runtime mismatch", mutate: func(value *ProviderDescriptor) { value.Runtime.Kind = RuntimeKindStandardACP }},
 		{name: "target launch ref type", mutate: func(value *ProviderDescriptor) { value.Target.LaunchRefType = "poison" }},
 		{name: "blank event alias", mutate: func(value *ProviderDescriptor) { value.Events.Aliases = []string{" "} }},
 		{name: "duplicate event alias", mutate: func(value *ProviderDescriptor) { value.Events.Aliases = []string{"alias", " ALIAS "} }},

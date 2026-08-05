@@ -50,6 +50,9 @@ type ServerInterface interface {
 	// Get provider composer options with Claude Code live discovery
 	// (POST /v1/agent-providers/{provider}/composer-options)
 	GetAgentProviderComposerOptions(w http.ResponseWriter, r *http.Request, provider WorkspaceAgentProvider)
+	// Read the cached native plugin inventory for one exact agent target
+	// (POST /v1/agent-providers/{provider}/plugins)
+	ListAgentProviderPlugins(w http.ResponseWriter, r *http.Request, provider WorkspaceAgentProvider)
 	// Probe whether tuttid can start a local agent provider runtime command
 	// (POST /v1/agent-providers/{provider}/probe)
 	ProbeAgentProvider(w http.ResponseWriter, r *http.Request, provider WorkspaceAgentProvider)
@@ -1053,6 +1056,38 @@ func (siw *ServerInterfaceWrapper) GetAgentProviderComposerOptions(w http.Respon
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetAgentProviderComposerOptions(w, r, provider)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListAgentProviderPlugins operation middleware
+func (siw *ServerInterfaceWrapper) ListAgentProviderPlugins(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "provider" -------------
+	var provider WorkspaceAgentProvider
+
+	err = runtime.BindStyledParameterWithOptions("simple", "provider", r.PathValue("provider"), &provider, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "provider", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListAgentProviderPlugins(w, r, provider)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -10522,6 +10557,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/agent-providers/status", wrapper.GetAgentProviderStatuses)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/agent-providers/{provider}/actions/{actionID}/run", wrapper.RunAgentProviderAction)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/agent-providers/{provider}/composer-options", wrapper.GetAgentProviderComposerOptions)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/agent-providers/{provider}/plugins", wrapper.ListAgentProviderPlugins)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/agent-providers/{provider}/probe", wrapper.ProbeAgentProvider)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/agent-providers/{provider}/runtime-candidates", wrapper.GetAgentProviderRuntimeCandidates)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/v1/agent-providers/{provider}/runtime-selection", wrapper.SetAgentProviderRuntimeSelection)
@@ -11596,6 +11632,109 @@ type GetAgentProviderComposerOptions503JSONResponse struct {
 }
 
 func (response GetAgentProviderComposerOptions503JSONResponse) VisitGetAgentProviderComposerOptionsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAgentProviderPluginsRequestObject struct {
+	Provider WorkspaceAgentProvider `json:"provider"`
+	Body     *ListAgentProviderPluginsJSONRequestBody
+}
+
+type ListAgentProviderPluginsResponseObject interface {
+	VisitListAgentProviderPluginsResponse(w http.ResponseWriter) error
+}
+
+type ListAgentProviderPlugins200JSONResponse AgentProviderPluginListResponse
+
+func (response ListAgentProviderPlugins200JSONResponse) VisitListAgentProviderPluginsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAgentProviderPlugins400JSONResponse struct {
+	InvalidRequestErrorJSONResponse
+}
+
+func (response ListAgentProviderPlugins400JSONResponse) VisitListAgentProviderPluginsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAgentProviderPlugins404JSONResponse struct {
+	AgentTargetNotFoundErrorJSONResponse
+}
+
+func (response ListAgentProviderPlugins404JSONResponse) VisitListAgentProviderPluginsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAgentProviderPlugins405JSONResponse struct {
+	MethodNotAllowedErrorJSONResponse
+}
+
+func (response ListAgentProviderPlugins405JSONResponse) VisitListAgentProviderPluginsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(405)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAgentProviderPlugins502JSONResponse struct {
+	WorkspaceOperationErrorJSONResponse
+}
+
+func (response ListAgentProviderPlugins502JSONResponse) VisitListAgentProviderPluginsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(502)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAgentProviderPlugins503JSONResponse struct {
+	ServiceUnavailableErrorJSONResponse
+}
+
+func (response ListAgentProviderPlugins503JSONResponse) VisitListAgentProviderPluginsResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -36605,6 +36744,9 @@ type StrictServerInterface interface {
 	// Get provider composer options with Claude Code live discovery
 	// (POST /v1/agent-providers/{provider}/composer-options)
 	GetAgentProviderComposerOptions(ctx context.Context, request GetAgentProviderComposerOptionsRequestObject) (GetAgentProviderComposerOptionsResponseObject, error)
+	// Read the cached native plugin inventory for one exact agent target
+	// (POST /v1/agent-providers/{provider}/plugins)
+	ListAgentProviderPlugins(ctx context.Context, request ListAgentProviderPluginsRequestObject) (ListAgentProviderPluginsResponseObject, error)
 	// Probe whether tuttid can start a local agent provider runtime command
 	// (POST /v1/agent-providers/{provider}/probe)
 	ProbeAgentProvider(ctx context.Context, request ProbeAgentProviderRequestObject) (ProbeAgentProviderResponseObject, error)
@@ -37577,6 +37719,41 @@ func (sh *strictHandler) GetAgentProviderComposerOptions(w http.ResponseWriter, 
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetAgentProviderComposerOptionsResponseObject); ok {
 		if err := validResponse.VisitGetAgentProviderComposerOptionsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListAgentProviderPlugins operation middleware
+func (sh *strictHandler) ListAgentProviderPlugins(w http.ResponseWriter, r *http.Request, provider WorkspaceAgentProvider) {
+	var request ListAgentProviderPluginsRequestObject
+
+	request.Provider = provider
+
+	var body ListAgentProviderPluginsJSONRequestBody
+	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListAgentProviderPlugins(ctx, request.(ListAgentProviderPluginsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListAgentProviderPlugins")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListAgentProviderPluginsResponseObject); ok {
+		if err := validResponse.VisitListAgentProviderPluginsResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

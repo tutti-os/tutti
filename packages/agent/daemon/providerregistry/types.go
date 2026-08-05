@@ -464,6 +464,19 @@ type CapabilityCatalogDescriptor struct {
 	Kind CapabilityCatalogKind
 }
 
+// PluginCatalogKind identifies an optional provider-owned plugin inventory.
+// Unlike the capability catalog, this is a control-plane read: it must never
+// be required to load Skills or submit a prompt.
+type PluginCatalogKind string
+
+const (
+	PluginCatalogKindCodexAppServer PluginCatalogKind = "codex_app_server"
+)
+
+type PluginCatalogDescriptor struct {
+	Kind PluginCatalogKind
+}
+
 type LiveModelDiscoveryKind string
 
 const (
@@ -540,6 +553,7 @@ type ComposerProfileDescriptor struct {
 	ConfigOptionIDs         ComposerConfigOptionIDs
 	Skills                  SkillDescriptor
 	CapabilityCatalog       CapabilityCatalogDescriptor
+	PluginCatalog           PluginCatalogDescriptor
 	LiveModelDiscovery      LiveModelDiscoveryDescriptor
 	SlashCommandPolicy      SlashCommandPolicyDescriptor
 	PlanDecisionStrategy    PlanDecisionStrategy

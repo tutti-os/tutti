@@ -218,6 +218,9 @@ func appServerCatalogRequests(
 	default:
 		return nil, nil, fmt.Errorf("unsupported app-server catalog request set %q", requestSet)
 	}
+	// Plugin inventory is intentionally separate: plugin/list and plugin/read
+	// are experimental App Server APIs and must never gate the established
+	// Skill, connector, or MCP capability catalog.
 	requests = append(requests,
 		map[string]any{
 			"id":     "3",
@@ -225,13 +228,6 @@ func appServerCatalogRequests(
 			"params": map[string]any{
 				"limit":        200,
 				"forceRefetch": false,
-			},
-		},
-		map[string]any{
-			"id":     "4",
-			"method": "plugin/list",
-			"params": map[string]any{
-				"limit": 200,
 			},
 		},
 		map[string]any{
@@ -244,7 +240,6 @@ func appServerCatalogRequests(
 		},
 	)
 	pending["3"] = "app/list"
-	pending["4"] = "plugin/list"
 	pending["5"] = "mcpServerStatus/list"
 	return requests, pending, nil
 }
@@ -289,8 +284,6 @@ func readAppServerCapabilityListResponses(
 			options = append(options, parseCodexSkillCapabilities(payload["result"])...)
 		case "3":
 			options = append(options, parseCodexAppCapabilities(payload["result"])...)
-		case "4":
-			options = append(options, parseCodexPluginCapabilities(payload["result"])...)
 		case "5":
 			options = append(options, parseCodexMCPCapabilities(payload["result"])...)
 		}
@@ -397,35 +390,6 @@ func parseCodexAppCapabilities(raw json.RawMessage) []ComposerCapabilityOption {
 	return options
 }
 
-func parseCodexPluginCapabilities(raw json.RawMessage) []ComposerCapabilityOption {
-	var result struct {
-		Data []map[string]any `json:"data"`
-	}
-	if json.Unmarshal(raw, &result) != nil {
-		return nil
-	}
-	options := make([]ComposerCapabilityOption, 0, len(result.Data))
-	for _, plugin := range result.Data {
-		name := firstNonEmptyString(codexTextValue(plugin, "name"), codexTextValue(plugin, "id"), codexTextValue(plugin, "pluginName"))
-		if name == "" {
-			continue
-		}
-		label := firstNonEmptyString(codexTextValue(plugin, "displayName"), codexTextValue(plugin, "title"), name)
-		options = append(options, ComposerCapabilityOption{
-			ID:          "plugin:" + name,
-			Kind:        "plugin",
-			Name:        name,
-			Label:       label,
-			Description: codexTextValue(plugin, "description"),
-			Status:      "available",
-			Source:      codexPluginSource(plugin),
-			PluginName:  name,
-			Invocation:  "none",
-		})
-	}
-	return options
-}
-
 func parseCodexMCPCapabilities(raw json.RawMessage) []ComposerCapabilityOption {
 	var result struct {
 		Data []map[string]any `json:"data"`
@@ -480,14 +444,6 @@ func normalizeCodexMCPStatus(status string) string {
 	default:
 		return "available"
 	}
-}
-
-func codexPluginSource(plugin map[string]any) string {
-	source := codexNestedMap(plugin, "source")
-	if source == nil {
-		return codexTextValue(plugin, "source")
-	}
-	return firstNonEmptyString(codexTextValue(source, "type"), codexTextValue(source, "url"), codexTextValue(source, "path"))
 }
 
 func codexTextValue(values map[string]any, key string) string {

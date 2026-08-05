@@ -69,6 +69,52 @@ export type AgentHostEnvironmentApi = AgentHostRecord & {
   getBaseUrl?: () => AgentHostAsyncResult<string>;
 };
 
+// Plugin inventories are host-owned control-plane snapshots. AgentGUI receives
+// only generic capability presentation and already-proven Skill entry ids; it
+// never resolves a provider, marketplace, or local filesystem path itself.
+export interface AgentHostComposerCapabilitySkillEntry {
+  entryId: string;
+  /** Only executable Skills participate in Plugin -> Skill presentation proof. */
+  kind: "skill";
+  name: string;
+  path: string | null;
+}
+
+export interface AgentHostComposerCapability {
+  id: string;
+  semantic: "browserUse" | "computerUse" | "sites";
+  label: string;
+  description: string | null;
+  status:
+    | "ready"
+    | "disabled"
+    | "disabledByAdmin"
+    | "notInstalled"
+    | "unknown"
+    | "unsupported";
+}
+
+export interface AgentHostComposerCapabilitiesSnapshot {
+  capabilities: readonly AgentHostComposerCapability[];
+  hiddenSlashSkillEntryIds: readonly string[];
+  partial: boolean;
+}
+
+export interface AgentHostComposerCapabilitiesApi {
+  isSupported: (input: { agentTargetId: string; provider: string }) => boolean;
+  list: (input: {
+    agentTargetId: string;
+    cwd?: string | null;
+    provider: string;
+    authoritativeSkills: readonly AgentHostComposerCapabilitySkillEntry[];
+  }) => AgentHostAsyncResult<AgentHostComposerCapabilitiesSnapshot>;
+  prime: (input: {
+    agentTargetId: string;
+    cwd?: string | null;
+    provider: string;
+  }) => AgentHostAsyncResult<void>;
+}
+
 export interface AgentHostQuickPrompt {
   id: string;
   title: string;
@@ -213,6 +259,7 @@ export interface AgentHostInputApi {
   account?: AgentHostAccountApi;
   agentTargetSetup?: AgentHostAgentTargetSetupApi;
   clipboard: AgentHostClipboardApi;
+  composerCapabilities?: AgentHostComposerCapabilitiesApi;
   debug?: AgentHostDebugApi;
   filesystem: AgentHostFilesystemApi;
   meta?: AgentHostMetaApi;
@@ -399,6 +446,7 @@ export interface AgentHostRuntimeApi {
   account?: AgentHostAccountApi;
   agentTargetSetup?: AgentHostAgentTargetSetupApi;
   clipboard: AgentHostClipboardApi;
+  composerCapabilities?: AgentHostComposerCapabilitiesApi;
   debug?: AgentHostDebugApi;
   filesystem: AgentHostFilesystemApi;
   meta?: AgentHostMetaApi;
@@ -420,6 +468,7 @@ export function toAgentHostRuntimeApi(
     account: hostApi.account,
     agentTargetSetup: hostApi.agentTargetSetup,
     clipboard: hostApi.clipboard,
+    composerCapabilities: hostApi.composerCapabilities,
     debug: hostApi.debug,
     filesystem: hostApi.filesystem,
     meta: hostApi.meta,

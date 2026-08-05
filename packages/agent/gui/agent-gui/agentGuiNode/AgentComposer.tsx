@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
   AgentComposerDraft,
   AgentComposerDraftFile,
@@ -22,6 +22,7 @@ import {
   useComposerLayout
 } from "./composer/useComposerLayout";
 import { useComposerPaletteCatalog } from "./composer/useComposerPaletteCatalog";
+import { useAgentComposerCapabilities } from "./composer/useAgentComposerCapabilities";
 import { useMentionPaletteFrame } from "./composer/useMentionPaletteFrame";
 import { useComposerSlashActions } from "./composer/useComposerSlashActions";
 import { useComposerMentionActions } from "./composer/useComposerMentionActions";
@@ -53,6 +54,7 @@ import {
   resolveAgentExternalPromptEntries
 } from "./model/agentExternalPromptEntries";
 import { useComposerInputHistory } from "./composer/useComposerInputHistory";
+import { getPromptStartSlashCommandQuery } from "./model/agentComposerTriggerQueries";
 
 export { formatSlashStatusTokenCount };
 
@@ -239,6 +241,21 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
   const [paletteDraftPrompt, setPaletteDraftPrompt] = useState(
     goalDraftObjective ?? draftPrompt
   );
+  const nativeCapabilitiesActive =
+    isPaletteOpen &&
+    !isGoalModeActive &&
+    getPromptStartSlashCommandQuery(paletteDraftPrompt) !== null;
+  const nativeCapabilityCatalog = useAgentComposerCapabilities({
+    agentTargetId:
+      selectedAgentTarget?.agentTargetId ?? selectedAgentTarget?.targetId,
+    authoritativeSkills: availableSkills,
+    cwd: workspacePath,
+    provider
+  });
+  const hiddenSlashSkillEntryIds = useMemo(
+    () => new Set(nativeCapabilityCatalog.snapshot.hiddenSlashSkillEntryIds),
+    [nativeCapabilityCatalog.snapshot.hiddenSlashSkillEntryIds]
+  );
   const [fileMentionSuggestion, setFileMentionSuggestion] =
     useState<AgentFileMentionSuggestionState | null>(null);
   const selectedProjectPath =
@@ -301,6 +318,8 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
     paletteDraftPrompt,
     availableCommands,
     availableSkills,
+    hiddenSlashSkillEntryIds,
+    nativeCapabilities: nativeCapabilityCatalog.snapshot.capabilities,
     hasCompactableContext,
     compactSupported,
     composerSettings,
@@ -344,8 +363,15 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
   );
 
   useEffect(() => {
+    nativeCapabilityCatalog.sync(nativeCapabilitiesActive);
     setHighlightedIndex(0);
-  }, [skillQueryMatch?.prefix, skillQueryMatch?.query, slashQuery]);
+  }, [
+    nativeCapabilitiesActive,
+    nativeCapabilityCatalog.sync,
+    skillQueryMatch?.prefix,
+    skillQueryMatch?.query,
+    slashQuery
+  ]);
 
   useEffect(() => {
     const preferredKey =
