@@ -3335,9 +3335,13 @@ export type SendWorkspaceAgentSessionInputRequest = {
    */
   capabilityRefs?: Array<WorkspaceAgentCapabilityReference>;
   /**
-   * When true, send this input as guidance to the currently active turn instead of starting a new turn.
+   * When true, send this input as guidance to the exact active turn identified by turnId instead of starting a new turn.
    */
   guidance?: boolean;
+  /**
+   * Exact canonical active Turn targeted by guidance. Required when guidance is true; ignored for normal new-turn submits.
+   */
+  turnId?: string;
 };
 
 export type AgentSubmitDiagnostics = {

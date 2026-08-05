@@ -12,8 +12,9 @@ func TestPublishedScenarioCatalogsHaveUniqueNames(t *testing.T) {
 		scenarios []Scenario
 		wantCount int
 	}{
-		{name: "adapter lifecycle", scenarios: Scenarios(), wantCount: 25},
-		{name: "application core", scenarios: ApplicationCoreScenarios(), wantCount: 20},
+		{name: "adapter lifecycle", scenarios: Scenarios(), wantCount: 28},
+		{name: "application core", scenarios: ApplicationCoreScenarios(), wantCount: 23},
+		{name: "guidance", scenarios: GuidanceScenarios(), wantCount: 3},
 		{name: "resume policy", scenarios: ResumePolicyScenarios(), wantCount: 5},
 		{name: "submission fence", scenarios: SubmissionFenceScenarios(), wantCount: 1},
 		{name: "title policy", scenarios: TitlePolicyScenarios(), wantCount: 1},
@@ -78,6 +79,9 @@ func TestScenarioOwnershipIsExplicit(t *testing.T) {
 		"create with explicit rail placement",
 		"resume persisted session",
 		"send input",
+		"guidance requires exact target before dispatch",
+		"guidance forwards exact target",
+		"guidance target mismatch does not dispatch provider and cleans claim",
 		"new turns require durable provider acceptance",
 		"rejected initial submit discards runtime without completing canonical session",
 		"duplicate client submit id",
@@ -105,6 +109,9 @@ func TestScenarioOwnershipIsExplicit(t *testing.T) {
 		"create with explicit rail placement",
 		"resume persisted session",
 		"send input",
+		"guidance requires exact target before dispatch",
+		"guidance forwards exact target",
+		"guidance target mismatch does not dispatch provider and cleans claim",
 		"new turns require durable provider acceptance",
 		"rejected initial submit discards runtime without completing canonical session",
 		"duplicate client submit id",

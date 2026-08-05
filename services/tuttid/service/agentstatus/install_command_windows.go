@@ -49,6 +49,6 @@ func installCommandInterpreter() string {
 	return resolveInstallerShell()
 }
 
-func managedNPMInstallRunner() string {
+func structuredInstallRunner() string {
 	return "cmd.exe /D /S /C call"
 }

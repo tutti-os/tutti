@@ -6,6 +6,7 @@ import (
 	"time"
 
 	agentsessionstore "github.com/tutti-os/tutti/packages/agent/daemon/activity"
+	replay "github.com/tutti-os/tutti/packages/agent/session-replay"
 	"github.com/tutti-os/tutti/packages/agent/store-sqlite/canonical"
 )
 
@@ -120,6 +121,61 @@ func TestStreamingReportCoalescerNeverCoalescesSessionAudit(t *testing.T) {
 	flushed := coalescer.add(request)
 	if len(flushed) != 1 || len(flushed[0].report.SessionAudits) != 1 {
 		t.Fatalf("flushed = %#v", flushed)
+	}
+}
+
+func TestStreamingReportCoalescerFlushesBeforeProviderObservationReport(t *testing.T) {
+	t.Parallel()
+
+	coalescer := newStreamingReportCoalescer(time.Hour)
+	defer coalescer.stop()
+
+	if flushed := coalescer.add(reportRequest{
+		ctx:    context.Background(),
+		report: streamingReport("assistant-message-1", 1, "hello"),
+	}); len(flushed) != 0 {
+		t.Fatalf("streaming add flushed %#v, want pending", flushed)
+	}
+
+	observed := toolCallStreamingReport(2, map[string]any{
+		"input": map[string]any{"command": "touch /tmp/marker"},
+	})
+	observed.ProviderObservations = []agentsessionstore.ProviderObservationBatch{{
+		RecordingID:  "recording-1",
+		ConnectionID: "connection-1",
+		ChunkSeq:     317,
+		UnitIndex:    1,
+		UnitKind:     "protocol-message",
+		Events: []replay.ProviderObservationEvent{{
+			EventIndex: 1,
+			Type:       "call.started",
+			TurnID:     "turn-1",
+			CallID:     "call-1",
+			Status:     "streaming",
+		}},
+	}}
+
+	flushed := coalescer.add(reportRequest{
+		ctx:    context.Background(),
+		report: observed,
+	})
+	if len(flushed) != 2 {
+		t.Fatalf("flushed reports = %d, want pending streaming plus observation report", len(flushed))
+	}
+	if flushed[0].report.MessageUpdates[0].Status != messageStreamStateStreaming {
+		t.Fatalf("first flushed report = %#v, want streaming", flushed[0].report)
+	}
+	if len(flushed[1].report.ProviderObservations) != 1 ||
+		flushed[1].report.ProviderObservations[0].ChunkSeq != 317 ||
+		len(flushed[1].report.ProviderObservations[0].Events) != 1 ||
+		flushed[1].report.ProviderObservations[0].Events[0].Type != "call.started" {
+		t.Fatalf(
+			"observation report = %#v, want preserved ProviderObservations",
+			flushed[1].report.ProviderObservations,
+		)
+	}
+	if pending := coalescer.flushAll(); len(pending) != 0 {
+		t.Fatalf("remaining pending reports = %#v, want none", pending)
 	}
 }
 

@@ -55,7 +55,7 @@ type cancelTurnInput struct {
 
 type sendInput struct {
 	SessionID string   `cli:"session-id" validate:"required"`
-	Guidance  bool     `cli:"guidance" description:"Send this prompt as guidance to the currently active turn instead of starting a new turn."`
+	Guidance  bool     `cli:"guidance" description:"Capture and guide the exact active turn instead of starting a new turn."`
 	Images    []string `cli:"image" description:"Image file to attach to this prompt. May be passed multiple times."`
 	Prompt    string   `cli:"prompt" validate:"required"`
 }
@@ -341,6 +341,17 @@ func (p Provider) runSend(ctx context.Context, invoke framework.InvokeContext, i
 	if err != nil {
 		return nil, err
 	}
+	turnID := ""
+	if input.Guidance {
+		session, err := p.sessions.Get(ctx, invoke.WorkspaceID, input.SessionID)
+		if err != nil {
+			return nil, err
+		}
+		turnID = strings.TrimSpace(session.ActiveTurnID)
+		if turnID == "" {
+			return nil, agentservice.ErrActiveTurnTargetRequired
+		}
+	}
 	messagePage, err := p.sessions.ListMessages(ctx, invoke.WorkspaceID, input.SessionID, agentservice.ListMessagesInput{
 		Limit: 1,
 		Order: agentactivitybiz.MessageOrderDesc,
@@ -352,6 +363,7 @@ func (p Provider) runSend(ctx context.Context, invoke framework.InvokeContext, i
 	result, err := p.sessions.SendInput(ctx, invoke.WorkspaceID, input.SessionID, agentservice.SendInput{
 		Content:        content,
 		Guidance:       input.Guidance,
+		TurnID:         turnID,
 		ClientSubmitID: uuid.NewString(),
 	})
 	if err != nil {

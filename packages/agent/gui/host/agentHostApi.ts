@@ -211,7 +211,6 @@ export type AgentHostWorkspaceApi = AgentHostRecord & {
 
 export interface AgentHostInputApi {
   account?: AgentHostAccountApi;
-  agentSessions?: AgentHostAgentSessionsApi;
   agentTargetSetup?: AgentHostAgentTargetSetupApi;
   clipboard: AgentHostClipboardApi;
   debug?: AgentHostDebugApi;
@@ -394,19 +393,6 @@ export type AgentHostUserProjectsApi = AgentHostRecord & {
     path: string | null;
   }) => AgentHostAsyncResult<void>;
   use: (input: { path: string }) => AgentHostAsyncResult<AgentHostUserProject>;
-};
-
-export type AgentHostAgentSessionsApi = AgentHostRecord & {
-  activate: (input: any) => AgentHostAsyncResult<any>;
-  getComposerOptions?: (input: any) => AgentHostAsyncResult<any>;
-  getState: (input: any) => AgentHostAsyncResult<any>;
-  onEvent?: (listener: (event: any) => void) => AgentHostUnsubscribe;
-  subscribeEvents: (
-    input: any,
-    listener: (event: any) => void
-  ) => AgentHostUnsubscribe;
-  unactivate: (input: any) => AgentHostAsyncResult<any>;
-  updateSettings: (input: any) => AgentHostAsyncResult<any>;
 };
 
 export interface AgentHostRuntimeApi {

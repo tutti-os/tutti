@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	agenthost "github.com/tutti-os/tutti/packages/agent/host"
+	storesqlite "github.com/tutti-os/tutti/packages/agent/store-sqlite"
 	"github.com/tutti-os/tutti/packages/agent/store-sqlite/canonical"
 )
 
@@ -154,7 +155,7 @@ func runCreateWithRailPlacement(ctx context.Context, driver Driver) error {
 			Version:     1,
 			Kind:        agenthost.RailPlacementKindProject,
 			ProjectPath: "/workspace/project",
-			SectionKey:  "project:workspace-1:/workspace/project",
+			SectionKey:  "project:/workspace/project",
 		},
 	}
 	session, turnID, err := driver.Create(ctx, "workspace-1", input)
@@ -164,11 +165,12 @@ func runCreateWithRailPlacement(ctx context.Context, driver Driver) error {
 	if turnID == "" {
 		return fmt.Errorf("create with explicit rail placement turn is empty")
 	}
-	if session.RailSectionKey != input.RailPlacement.SectionKey {
+	wantKey := storesqlite.RailSectionKeyForProject("/workspace/project")
+	if session.RailSectionKey != wantKey {
 		return fmt.Errorf(
 			"create with explicit rail placement key=%q, want %q",
 			session.RailSectionKey,
-			input.RailPlacement.SectionKey,
+			wantKey,
 		)
 	}
 	if err := verifyRetriedInitialCreate(ctx, driver, input, session, turnID); err != nil {

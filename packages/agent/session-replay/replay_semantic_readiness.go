@@ -114,9 +114,9 @@ func (r semanticCanonicalReader) predicateSatisfied(
 			return false, err
 		}
 		status, _ := message.Payload["status"].(string)
-		// A tool call awaiting an interactive approval keeps the recorded
-		// running readiness: waiting_approval is a running sub-state, not a
-		// terminal transition.
+		// Prefer payload status then message.Status. Fold stream/activity
+		// vocabularies (streaming/working) and interactive-wait sub-states
+		// into running so recorded call.status=running stays satisfied.
 		return canonicalCallStatus(firstNonEmpty(status, message.Status)) ==
 			canonicalCallStatus(predicate.Equals), nil
 	case "plan.status":
@@ -188,7 +188,13 @@ func (r semanticCanonicalReader) predicateSatisfied(
 			r.expected,
 			r.entities,
 		)
-		return found && reflect.DeepEqual(session.Settings, expected.Settings), nil
+		// Expected-state capture can omit default-only composer keys (for
+		// example speed:"standard") that live GetSession still materializes.
+		// Require every recorded key to match; ignore live-only extras.
+		return found && composerSettingsEqual(
+			session.Settings,
+			expected.Settings,
+		), nil
 	case "attachment.materialized":
 		message, found, err := r.message(subject, session)
 		if err != nil || !found {
@@ -261,12 +267,15 @@ func canonicalTurnPhase(phase string) string {
 	}
 }
 
-// canonicalCallStatus folds interactive-wait call sub-states into running so
-// a recorded call.status=running readiness stays satisfied while the replayed
-// call waits for its approval or input response.
+// canonicalCallStatus folds activity/stream-layer call vocabularies into the
+// closed checkpoint readiness tokens (running/completed/failed). Recorded
+// call.status=running must stay satisfied while the canonical message still
+// carries payload.status "streaming"/"working" (ACP live tool frames) or an
+// interactive-wait sub-state — same family as canonicalTurnPhase.
 func canonicalCallStatus(status string) string {
 	switch strings.TrimSpace(status) {
-	case "waiting_approval", "awaiting_approval", "waiting_input":
+	case "working", "streaming", "in_progress", "pending",
+		"waiting_approval", "awaiting_approval", "waiting_input":
 		return "running"
 	default:
 		return strings.TrimSpace(status)
@@ -289,6 +298,74 @@ func projectBindingMatches(
 			storesqlite.NormalizeProjectPath(expected.RailProjectPath) &&
 		storesqlite.NormalizeRailSectionKey(actual.RailSectionKey) ==
 			storesqlite.NormalizeRailSectionKey(expected.RailSectionKey)
+}
+
+func composerSettingsEqual(actual, expected map[string]any) bool {
+	if len(expected) == 0 {
+		return true
+	}
+	for key, expectedValue := range expected {
+		actualValue, ok := actual[key]
+		if !ok {
+			if composerSettingsValueEmpty(expectedValue) {
+				continue
+			}
+			return false
+		}
+		if !composerSettingsValueEqual(actualValue, expectedValue) {
+			return false
+		}
+	}
+	return true
+}
+
+func composerSettingsValueEmpty(value any) bool {
+	if value == nil {
+		return true
+	}
+	switch typed := value.(type) {
+	case string:
+		return strings.TrimSpace(typed) == ""
+	case bool:
+		return !typed
+	case *bool:
+		return typed == nil
+	default:
+		return false
+	}
+}
+
+func composerSettingsValueEqual(actual, expected any) bool {
+	if composerSettingsValueEmpty(actual) &&
+		composerSettingsValueEmpty(expected) {
+		return true
+	}
+	actualBool, actualIsBool := composerSettingsBool(actual)
+	expectedBool, expectedIsBool := composerSettingsBool(expected)
+	if actualIsBool && expectedIsBool {
+		return actualBool == expectedBool
+	}
+	actualText, actualIsText := actual.(string)
+	expectedText, expectedIsText := expected.(string)
+	if actualIsText && expectedIsText {
+		return strings.TrimSpace(actualText) ==
+			strings.TrimSpace(expectedText)
+	}
+	return reflect.DeepEqual(actual, expected)
+}
+
+func composerSettingsBool(value any) (bool, bool) {
+	switch typed := value.(type) {
+	case bool:
+		return typed, true
+	case *bool:
+		if typed == nil {
+			return false, true
+		}
+		return *typed, true
+	default:
+		return false, false
+	}
 }
 
 func semanticGoalStatus(state storesqlite.SessionGoalState) string {

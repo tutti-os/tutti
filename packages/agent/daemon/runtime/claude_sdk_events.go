@@ -39,6 +39,14 @@ func (a *ClaudeCodeSDKAdapter) sidecarTurnEvents(adapterSession *claudeSDKAdapte
 		explicitProviderTurnID,
 		activeProviderTurnID,
 	)
+	// dispatchClaudeSDKEvent may have already consume()'d the only known
+	// provider turn id before projection. Synthetic continuations often omit
+	// providerTurnId in the payload; fall back to the synthetic turn id so
+	// turn_completed can still mint root_provider_turn.completed.
+	if boundProviderTurnID == "" &&
+		strings.HasPrefix(eventTurnID, "synthetic-") {
+		boundProviderTurnID = eventTurnID
+	}
 	providerTurnID := firstNonEmptyString(
 		boundProviderTurnID,
 		strings.TrimSpace(turnID),
@@ -290,12 +298,25 @@ func (a *ClaudeCodeSDKAdapter) sidecarTurnEvents(adapterSession *claudeSDKAdapte
 			payloadString(event.Payload, "content"),
 			true,
 		), false, nil
-	case "tool_started", "tool_updated":
+	case "tool_started":
 		if a.claudeSDKToolEventTargetsClosedTurn(adapterSession, rootTurnID, event.Payload) {
 			return nil, false, nil
 		}
 		events := adapterSession.claudeSDKToolEvents(session, rootTurnID, event.Payload, EventCallStarted, messageStreamStateStreaming, event.Type)
 		events = a.projectClaudeSDKTurnCallEvents(adapterSession, events)
+		return events, false, nil
+	case "tool_updated":
+		if a.claudeSDKToolEventTargetsClosedTurn(adapterSession, rootTurnID, event.Payload) {
+			return nil, false, nil
+		}
+		events := adapterSession.claudeSDKToolEvents(session, rootTurnID, event.Payload, EventCallStarted, messageStreamStateStreaming, event.Type)
+		events = a.projectClaudeSDKTurnCallEvents(adapterSession, events)
+		for index := range events {
+			if events[index].Type != activityshared.EventCallStarted {
+				continue
+			}
+			markClaudeSDKToolProgressUpdate(&events[index])
+		}
 		return events, false, nil
 	case "tool_completed":
 		if a.claudeSDKToolEventTargetsClosedTurn(adapterSession, rootTurnID, event.Payload) {

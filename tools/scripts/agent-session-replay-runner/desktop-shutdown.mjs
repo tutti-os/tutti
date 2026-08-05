@@ -26,11 +26,21 @@ export function bindManagedReplayShutdown(
   } = {}
 ) {
   let stopping = false;
-  const stop = () => {
+  const stop = (exitCode = null) => {
     if (stopping) return;
     stopping = true;
-    void Promise.resolve(stopDesktop(desktop)).catch(() => undefined);
+    void Promise.resolve(stopDesktop(desktop))
+      .catch(() => undefined)
+      .finally(() => {
+        // Signal/parent handlers remove the default exit; finish after Desktop
+        // stops. Skip when the host is a test double without exit().
+        if (exitCode != null && typeof processRuntime.exit === "function") {
+          processRuntime.exit(exitCode);
+        }
+      });
   };
+  const onSigInt = () => stop(130);
+  const onSigTerm = () => stop(143);
   const onOutputError = (error) => {
     if (error?.code === "EPIPE") {
       stop();
@@ -41,21 +51,21 @@ export function bindManagedReplayShutdown(
     Number.isSafeInteger(parsedParentPid) && parsedParentPid > 0
       ? setIntervalFn(() => {
           if (!isProcessAlive(parsedParentPid)) {
-            stop();
+            stop(1);
           }
         }, 500)
       : null;
   parentCheckInterval?.unref?.();
-  processRuntime.once("SIGINT", stop);
-  processRuntime.once("SIGTERM", stop);
+  processRuntime.once("SIGINT", onSigInt);
+  processRuntime.once("SIGTERM", onSigTerm);
   processRuntime.stdout?.on("error", onOutputError);
   processRuntime.stderr?.on("error", onOutputError);
   return () => {
     if (parentCheckInterval) {
       clearIntervalFn(parentCheckInterval);
     }
-    processRuntime.off("SIGINT", stop);
-    processRuntime.off("SIGTERM", stop);
+    processRuntime.off("SIGINT", onSigInt);
+    processRuntime.off("SIGTERM", onSigTerm);
     processRuntime.stdout?.off("error", onOutputError);
     processRuntime.stderr?.off("error", onOutputError);
   };

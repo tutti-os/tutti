@@ -54,6 +54,8 @@ export class SDKMessageRouter {
   private readonly ensureProviderTurnAcceptance: (
     phase: ObservableProviderTurnPhase
   ) => Promise<void>;
+  private readonly peekGuidanceInterrupt: () => boolean;
+  private readonly clearGuidanceInterrupt: () => void;
   private contextUsageGeneration = 0;
   private activeRootAssistantError = "";
   private activeRootConnectionRetry = false;
@@ -80,6 +82,12 @@ export class SDKMessageRouter {
     ensureProviderTurnAcceptance: (
       phase: ObservableProviderTurnPhase
     ) => Promise<void>;
+    /**
+     * guide()-initiated interrupt is pending. The next root result should
+     * clear it; an error_during_execution result must not settle the turn.
+     */
+    peekGuidanceInterrupt?: () => boolean;
+    clearGuidanceInterrupt?: () => void;
   }) {
     this.getProviderSessionId = options.getProviderSessionId;
     this.setProviderSessionId = options.setProviderSessionId;
@@ -97,6 +105,9 @@ export class SDKMessageRouter {
     this.goals = new ClaudeGoalProjection(options.turns, options.emit);
     this.emitProviderCheckpointEvent = options.emitProviderCheckpoint;
     this.ensureProviderTurnAcceptance = options.ensureProviderTurnAcceptance;
+    this.peekGuidanceInterrupt = options.peekGuidanceInterrupt ?? (() => false);
+    this.clearGuidanceInterrupt =
+      options.clearGuidanceInterrupt ?? (() => undefined);
   }
 
   async handle(message: SDKMessage): Promise<void> {
@@ -625,23 +636,39 @@ export class SDKMessageRouter {
       pendingBackgroundContinuation &&
       this.turns.activeTurn?.synthetic !== true;
     if (this.turns.cancelled) {
+      this.clearGuidanceInterrupt();
       this.turns.settleActive("turn_canceled");
       this.turns.clearCancelled();
     } else if (!succeeded) {
-      this.turns.settleActive("turn_failed", {
-        error:
-          result.errors?.[0] ||
-          (result.is_error ? result.result : "") ||
-          assistantError ||
-          "Claude SDK turn failed",
-        ...(assistantError ? { code: assistantError } : {}),
-        ...(typeof result.api_error_status === "number"
-          ? { apiErrorStatus: result.api_error_status }
-          : {}),
-        ...(rejectedBeforeAcceptance ? { dispatchDisposition: "rejected" } : {})
-      });
+      // guide() interrupts in-flight tool work before enqueueing steer text.
+      // Claude reports that abort as error_during_execution; settling here
+      // would end the canonical turn and force a synthetic continuation that
+      // record/replay cannot close with turn.terminal (C06).
+      const guidanceInterrupt =
+        this.peekGuidanceInterrupt() &&
+        result.subtype === "error_during_execution";
+      this.clearGuidanceInterrupt();
+      if (!guidanceInterrupt) {
+        this.turns.settleActive("turn_failed", {
+          error:
+            result.errors?.[0] ||
+            (result.is_error ? result.result : "") ||
+            assistantError ||
+            "Claude SDK turn failed",
+          ...(assistantError ? { code: assistantError } : {}),
+          ...(typeof result.api_error_status === "number"
+            ? { apiErrorStatus: result.api_error_status }
+            : {}),
+          ...(rejectedBeforeAcceptance
+            ? { dispatchDisposition: "rejected" }
+            : {})
+        });
+      }
     } else if (!retainRootForBackgroundContinuation) {
+      this.clearGuidanceInterrupt();
       this.turns.settleActive("turn_completed", { stopReason: "end_turn" });
+    } else {
+      this.clearGuidanceInterrupt();
     }
     if (completedSyntheticContinuation) {
       this.activities.clearBackgroundContinuation();

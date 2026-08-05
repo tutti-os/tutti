@@ -344,3 +344,45 @@ func TestToolOutputDeltaCallStartedDoesNotMintCheckpointObservation(
 		t.Fatal("outputDelta should still project a durable message update")
 	}
 }
+
+func TestClaudeToolUpdatedCallStartedDoesNotMintCheckpointObservation(
+	t *testing.T,
+) {
+	session := Session{
+		RoomID: "workspace-1", AgentSessionID: "session-1",
+		Provider: ProviderClaudeCode,
+	}
+	progress := newTurnActivityEventWithID(
+		session,
+		"command-1",
+		EventCallStarted,
+		"turn-1",
+		messageStreamStateStreaming,
+		"",
+		"Bash",
+		map[string]any{
+			"toolCallId": "command-1",
+			"status":     "running",
+			"input": map[string]any{
+				"command": "sleep 20",
+			},
+		},
+	)
+	markClaudeSDKToolProgressUpdate(&progress)
+	progress.ProviderInputUnit = &activityshared.ProviderInputUnitContext{
+		RecordingID: "recording-1", ConnectionID: "connection-1",
+		ChunkSeq: 64, UnitIndex: 1, EventIndex: 1,
+		UnitKind: string(replay.ProviderInputUnitProtocolMessage),
+	}
+
+	report := reportActivityInput(session, []activityshared.Event{progress})
+	if len(report.ProviderObservations) != 0 {
+		t.Fatalf(
+			"tool_updated observations=%#v, want none",
+			report.ProviderObservations,
+		)
+	}
+	if len(report.MessageUpdates) == 0 {
+		t.Fatal("tool_updated should still project a durable message update")
+	}
+}

@@ -50,6 +50,13 @@ export class ToolEventProjector {
     if (!tool) {
       return false;
     }
+    // Input stream ended — flush a deferred tool_started even if a command
+    // tool never received a parseable command field.
+    if (!tool.started) {
+      tool.started = true;
+      this.emitToolEvent("tool_started", tool, "streaming");
+      return true;
+    }
     this.emitToolEvent("tool_updated", tool, "streaming");
     return true;
   }
@@ -113,6 +120,17 @@ export class ToolEventProjector {
     const parsed = parseJSONObject(tool.partialInputJson);
     if (parsed) {
       tool.input = parsed;
+    }
+    // Bash/command tools stream input_json before command is parseable. Emitting
+    // tool_started with only {toolName} creates empty terminal chrome and makes
+    // session-replay tool.started checkpoints pause before command arrives.
+    if (!tool.started) {
+      if (commandToolMissingCommand(tool)) {
+        return;
+      }
+      tool.started = true;
+      this.emitToolEvent("tool_started", tool, "streaming");
+      return;
     }
     this.emitToolEvent("tool_updated", tool, "streaming");
   }
@@ -244,9 +262,17 @@ export class ToolEventProjector {
     if (typeof index === "number") {
       this.toolByIndex.set(index, tool);
     }
-    if (!tool.started || eventType === "tool_started") {
+    if (!tool.started) {
+      if (commandToolMissingCommand(tool)) {
+        return;
+      }
       tool.started = true;
       this.emitToolEvent("tool_started", tool, "streaming");
+      return;
+    }
+    if (eventType === "tool_started") {
+      // Duplicate start after we already projected — treat as progress.
+      this.emitToolEvent("tool_updated", tool, "streaming");
       return;
     }
     this.emitToolEvent("tool_updated", tool, "streaming");
@@ -307,4 +333,29 @@ export class ToolEventProjector {
     }
     parent.steps = existing;
   }
+}
+
+function commandToolMissingCommand(tool: ToolState): boolean {
+  const name = (tool.name ?? "").trim().toLowerCase();
+  const isCommand = ["bash", "command", "shell", "terminal"].some((token) =>
+    name.includes(token)
+  );
+  if (isCommand) {
+    return !(stringValue(tool.input?.command) || stringValue(tool.input?.cmd));
+  }
+  // Write/Edit stream input_json before file_path is parseable. Emitting
+  // tool_started with only {toolName} creates empty file-change chrome and
+  // leaves session-replay tool.started checkpoints without a durable running
+  // call commit when the later update races to failed.
+  const isFileChange = ["write", "edit", "multiedit"].some((token) =>
+    name.includes(token)
+  );
+  if (!isFileChange) {
+    return false;
+  }
+  return !(
+    stringValue(tool.input?.file_path) ||
+    stringValue(tool.input?.filePath) ||
+    stringValue(tool.input?.path)
+  );
 }

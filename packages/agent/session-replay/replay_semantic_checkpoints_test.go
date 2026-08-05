@@ -221,6 +221,32 @@ func TestCanonicalTurnPhaseFoldsActivityVocabulary(t *testing.T) {
 	}
 }
 
+func TestCanonicalCallStatusFoldsActivityVocabulary(t *testing.T) {
+	tests := map[string]string{
+		"running":           "running",
+		"working":           "running",
+		"streaming":         "running",
+		"in_progress":       "running",
+		"pending":           "running",
+		"waiting_approval":  "running",
+		"awaiting_approval": "running",
+		"waiting_input":     "running",
+		" streaming ":       "running",
+		"completed":         "completed",
+		"failed":            "failed",
+	}
+	for recorded, want := range tests {
+		if got := canonicalCallStatus(recorded); got != want {
+			t.Fatalf(
+				"canonicalCallStatus(%q) = %q, want %q",
+				recorded,
+				got,
+				want,
+			)
+		}
+	}
+}
+
 func TestSemanticTurnStateMatchesTerminalActivityPhase(t *testing.T) {
 	if !semanticTurnStateMatches(
 		storesqlite.TurnPhaseSettled,

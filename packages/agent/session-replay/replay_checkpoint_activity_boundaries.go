@@ -23,6 +23,14 @@ func (s *Service) recordActivityBoundary(
 	if len(events) == 0 {
 		return nil
 	}
+	// The activity stream is global, but completeActivityBoundary only inspects
+	// this batch. A later complete batch must not cut the plan at a sequence
+	// that still contains an earlier unresolved intent (cancelRequested /
+	// submit/requested / …) — ValidateCheckpointPlan rejects that as
+	// "activity trigger splits an intent from its effects".
+	if len(r.pendingActivityIntents) > 0 {
+		return nil
+	}
 	kind, subject, readiness, ok := r.describeActivityEvents(events)
 	if sessionID := goalEffectSessionID(events); sessionID != "" {
 		if committed, exists := r.pendingGoals[sessionID]; exists {
@@ -160,20 +168,19 @@ func (r *checkpointRecorder) completeActivityBoundary(
 }
 
 func activityIntentRequiresEffect(eventType string) bool {
-	switch eventType {
-	case "activation/requested", "goal/controlRequested",
-		"interaction/responseRequested", "plan/decisionRequested",
-		"plan/feedbackRequested", "session/cancelRequested",
-		"session/settingsUpdateRequested", "submit/requested":
-		// Keep submit/requested requiring an effect for checkpoint boundaries:
-		// busy-queue admits have no immediate effect, but the same intent later
-		// causes queue/sendPrompt on drain — cutting submission.accepted on the
-		// bare intent fails checkpoint_plan validation (splits intent/effects).
-		// Mid-queue UI evidence stays on record-time captureEvidence.
-		return true
-	default:
+	intent, ok := PortableActivityContract.IntentContract(eventType)
+	if !ok {
 		return false
 	}
+	if intent.RequiresEffect {
+		return true
+	}
+	// Checkpoint cuts must not land between an intent and a later declared
+	// effect — ValidateCheckpointPlan rejects that as splitting intent/effects.
+	// The portable contract's requiresEffect flag is about timeline completeness,
+	// which is weaker than this recorder constraint (e.g. stopRequested /
+	// cancelRequested declare turn/cancel but set requiresEffect=false).
+	return len(intent.Effects) > 0
 }
 
 func activityEventsContainID(events []ActivityEvent, eventID string) bool {

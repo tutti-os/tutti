@@ -14,6 +14,7 @@ import com.facebook.react.bridge.Promise
 import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.bridge.ReactContextBaseJavaModule
 import com.facebook.react.bridge.ReactMethod
+import com.facebook.react.bridge.ReadableMap
 import com.facebook.react.bridge.UiThreadUtil
 import com.facebook.react.modules.core.DeviceEventManagerModule
 import dev.tutti.mobile.bindings.liveprotocolmobile.Liveprotocolmobile
@@ -170,6 +171,48 @@ class DeviceLinkModule(
     }
 
     @ReactMethod
+    fun probeRelay(timeoutMillis: Double, promise: Promise) {
+        val relay = relaySnapshot()
+        if (relay == null) {
+            promise.reject(
+                "DEVICE_LINK_RELAY_PROBE_FAILED",
+                "DeviceLink Relay is not configured",
+            )
+            return
+        }
+        val timeout = timeoutMillis.toLong().coerceAtLeast(1)
+        runAsync(
+            promise,
+            "DEVICE_LINK_RELAY_PROBE_FAILED",
+            "Relay peer handshake failed",
+        ) {
+            val response =
+                requestAgentHTTPWithStream(
+                    Mobile.dialRelay(
+                        relay.endpoint,
+                        relay.queryJSON,
+                        relay.headersJSON,
+                        relay.subprotocol,
+                        timeout,
+                    ),
+                    "GET",
+                    "/v1/preferences/desktop",
+                    "",
+                    timeout,
+                )
+            val protocolEpoch = response.getInt("protocolEpoch")
+            require(protocolEpoch.toLong() == Mobile.protocolEpoch()) {
+                "Relay peer uses an unsupported DeviceLink protocol epoch"
+            }
+            val status = response.getInt("status")
+            require(status in 200..299) {
+                "Relay peer control request returned HTTP $status"
+            }
+            null
+        }
+    }
+
+    @ReactMethod
     fun requestAgentHTTP(
         method: String,
         path: String,
@@ -187,43 +230,48 @@ class DeviceLinkModule(
             return
         }
         runAsync(promise, "DEVICE_LINK_REQUEST_FAILED", "DeviceLink request failed") {
-            var directFailure: Throwable? = null
+            if (selected != null && relay != null) {
+                val stream = selected.openStreamWithRelay(
+                    relay.endpoint,
+                    relay.queryJSON,
+                    relay.headersJSON,
+                    relay.subprotocol,
+                    timeoutMillis.toLong().coerceAtLeast(1),
+                )
+                return@runAsync requestAgentHTTPWithStream(
+                    stream,
+                    method,
+                    path,
+                    body,
+                    timeoutMillis.toLong(),
+                )
+            }
             if (selected != null) {
-                try {
-                    return@runAsync requestAgentHTTPWithStream(
-                        selected.openStream(timeoutMillis.toLong().coerceAtLeast(1)),
-                        method,
-                        path,
-                        body,
-                        timeoutMillis.toLong(),
-                    )
-                } catch (error: Throwable) {
-                    directFailure = error
-                }
+                val stream = selected.openStream(timeoutMillis.toLong().coerceAtLeast(1))
+                return@runAsync requestAgentHTTPWithStream(
+                    stream,
+                    method,
+                    path,
+                    body,
+                    timeoutMillis.toLong(),
+                )
             }
             if (relay != null) {
-                try {
-                    return@runAsync requestAgentHTTPWithStream(
-                        Mobile.dialRelay(
-                            relay.endpoint,
-                            relay.queryJSON,
-                            relay.headersJSON,
-                            relay.subprotocol,
-                            timeoutMillis.toLong(),
-                        ),
-                        method,
-                        path,
-                        body,
+                return@runAsync requestAgentHTTPWithStream(
+                    Mobile.dialRelay(
+                        relay.endpoint,
+                        relay.queryJSON,
+                        relay.headersJSON,
+                        relay.subprotocol,
                         timeoutMillis.toLong(),
-                    )
-                } catch (error: Throwable) {
-                    if (directFailure != null) {
-                        throw IllegalStateException("direct and Relay Agent requests failed", error)
-                    }
-                    throw error
-                }
+                    ),
+                    method,
+                    path,
+                    body,
+                    timeoutMillis.toLong(),
+                )
             }
-            throw directFailure ?: IllegalStateException("DeviceLink request failed")
+            throw IllegalStateException("DeviceLink request is not configured")
         }
     }
 
@@ -619,7 +667,7 @@ class DeviceLinkModule(
         path: String,
         body: String,
         timeoutMillis: Long,
-    ): Any {
+    ): ReadableMap {
         val timeout = timeoutMillis.coerceAtLeast(1)
         val deadline = SystemClock.elapsedRealtime() + timeout
         try {
@@ -695,6 +743,15 @@ class DeviceLinkModule(
         relay: RelayConfig?,
         timeoutMillis: Long,
     ): Stream {
+        if (selected != null && relay != null) {
+            return selected.openStreamWithRelay(
+                relay.endpoint,
+                relay.queryJSON,
+                relay.headersJSON,
+                relay.subprotocol,
+                timeoutMillis,
+            )
+        }
         var directFailure: Throwable? = null
         if (selected != null) {
             try {

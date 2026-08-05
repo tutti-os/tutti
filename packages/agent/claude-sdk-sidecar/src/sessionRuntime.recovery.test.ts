@@ -192,7 +192,7 @@ for (const scenario of [
     outcome: "http-error" as const
   }
 ]) {
-  test(`${scenario.name} keeps the current query`, async () => {
+  test(`${scenario.name} resumes a fresh query on the next turn`, async () => {
     const events: Array<{ type: string; payload?: Record<string, unknown> }> =
       [];
     const calls: Array<{
@@ -216,8 +216,10 @@ for (const scenario of [
       session.exec("turn-second", "second");
       await waitForEvent(events, "turn_completed");
 
-      assert.equal(calls.length, 1);
-      assert.deepEqual(closes, []);
+      assert.equal(calls.length, 2);
+      assert.equal(calls[0]?.options.sessionId, "provider-session-recovery");
+      assert.equal(calls[1]?.options.resume, "provider-session-recovery");
+      assert.deepEqual(closes, [1]);
     } finally {
       await session.close();
       restoreSink();

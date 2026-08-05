@@ -24,6 +24,7 @@ export interface SessionCancelState {
   expiryId: string | null;
   requestedSessionVersion: number | null;
   requestedWorkspaceId: string | null;
+  targetClientSubmitId: string | null;
   turnId: string | null;
   status: SessionCancelStatus;
 }
@@ -216,6 +217,7 @@ export interface SessionCancelRequestedIntent {
   agentSessionId: string;
   commandId: string;
   awaitingTurnExpiresAtUnixMs: number;
+  clientSubmitId?: string;
   timeoutMs?: number;
   workspaceId: string;
 }
@@ -225,6 +227,7 @@ export interface SessionStopRequestedIntent {
   agentSessionId: string;
   commandId: string;
   awaitingTurnExpiresAtUnixMs: number;
+  clientSubmitId?: string;
   timeoutMs?: number;
   workspaceId: string;
 }

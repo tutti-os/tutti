@@ -23,6 +23,12 @@ export interface ResolveAgentGUIComposerGateInput {
   pendingInteractivePrompt: boolean;
   providerReadinessGate: AgentGUIProviderReadinessGate | null;
   selectedAgentTargetUnavailable: boolean;
+  /**
+   * True while a session settings update is unsettled (in flight, waiting for
+   * runtime, timed out/unknown, or failed). Blocks submit until idle so send
+   * cannot race UpdateSettings on the daemon settings lock.
+   */
+  settingsUpdatePending: boolean;
   sessionRuntimeBlockedReason: AgentGUIRuntimeBlockedReason | null;
   targetConnectionBlocked: boolean;
 }
@@ -71,6 +77,7 @@ export function resolveAgentGUIComposerGate(
     !input.pendingApproval &&
     !input.pendingInteractivePrompt &&
     !input.authBlocked &&
+    !input.settingsUpdatePending &&
     !conversationBusy &&
     !input.isCreatingConversation &&
     !input.isInterrupting;
@@ -169,6 +176,7 @@ function resolveSubmissionBlockReason(
   if (input.pendingApproval) return "pending_approval";
   if (input.pendingInteractivePrompt) return "pending_interactive_prompt";
   if (input.authBlocked) return "authentication_required";
+  if (input.settingsUpdatePending) return "settings_update_pending";
   if (input.activeConversationBusy) return "conversation_busy";
   if (input.isCreatingConversation) return "creating_conversation";
   if (input.isSubmitting) return "submitting";

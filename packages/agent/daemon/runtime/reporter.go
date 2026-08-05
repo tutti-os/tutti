@@ -410,10 +410,14 @@ func checkpointObservationEvent(event activityshared.Event) bool {
 		return true
 	case activityshared.EventCallStarted:
 		// commandExecution/outputDelta reuses call.started for live tool
-		// output. Those frames must not mint another tool.started checkpoint
-		// (no matching commit → checkpoint_commit_unconfirmed).
+		// output. Claude tool_updated likewise reuses call.started for input
+		// /progress streaming. Those frames must not mint another tool.started
+		// checkpoint (no matching commit → checkpoint_commit_unconfirmed).
 		if event.Payload.Metadata != nil {
 			if _, ok := event.Payload.Metadata[liveToolOutputOperationMetadataKey]; ok {
+				return false
+			}
+			if _, ok := event.Payload.Metadata[liveToolProgressMetadataKey]; ok {
 				return false
 			}
 		}

@@ -277,6 +277,23 @@ test("desktop release workflow defaults Feishu notifications on outside manual d
   );
 });
 
+test("desktop release post-stage jobs tolerate skipped optional dependencies", async () => {
+  const workflow = await readFile(workflowPath, "utf8");
+  const promoteJob = workflow.match(
+    /promote:[\s\S]*?(?=\n\s{2}[a-z][a-z0-9_-]+:\n|$)/
+  )?.[0];
+  const notifyJob = workflow.match(
+    /notify-draft-feishu:[\s\S]*?(?=\n\s{2}[a-z][a-z0-9_-]+:\n|$)/
+  )?.[0];
+
+  assert.ok(promoteJob, "promote job should exist");
+  assert.ok(notifyJob, "draft notify job should exist");
+  assert.match(promoteJob, /if:\s+\${{\s*always\(\)\s*&&/);
+  assert.match(promoteJob, /needs\.stage\.result\s*==\s*'success'/);
+  assert.match(notifyJob, /if:\s+\${{\s*always\(\)\s*&&/);
+  assert.match(notifyJob, /needs\.stage\.result\s*==\s*'success'/);
+});
+
 test("desktop release workflow does not redownload release assets for Feishu", async () => {
   const workflow = await readFile(workflowPath, "utf8");
   const notifyJobMatch = workflow.match(

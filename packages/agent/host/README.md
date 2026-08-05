@@ -225,6 +225,15 @@ message. Host passes it to both runtime execution and durable submit-provenance
 reporting; adapters must derive the same message sequence from that occurrence
 regardless of which report reaches storage first. `ClientSubmitID` identifies
 the submission but is not itself an ordering value.
+
+Guidance is a mutation of an existing canonical Turn, not a request to steer
+whatever happens to be current when transport completes. `SendInput.Guidance`
+therefore requires an explicit `TurnID` at the Host boundary. Host and the
+runtime Controller compare that identity with the live active Turn under the
+session lifecycle lock before provider admission. A mismatch returns a typed
+`NotDispatched` result, makes zero provider calls, and removes a prepared
+submit claim; callers must surface the rejection or retry with a newly captured
+target rather than silently redirecting the guidance.
 Accepted runtime Session reports reconcile their Goal snapshot through the
 canonical bottom-up observation path without overwriting a newer desired
 intent. When that changes the public Goal projection, the same transaction

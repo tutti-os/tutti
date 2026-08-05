@@ -1,8 +1,10 @@
 package agent
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -235,6 +237,9 @@ func prepareTuttiAgentModelListEnv(ctx context.Context, env []string) ([]string,
 	env = withoutEnvKeys(env, "TUTTI_AGENT_HOME", "CODEX_HOME")
 	tuttiAgentHome := filepath.Join(tuttitypes.DefaultStateDir(), "agent-model-catalog", "tutti-agent-home")
 	tuttiagentservice.BootstrapTuttiAgentUserAuth(ctx)
+	if err := refreshTuttiAgentModelCatalogAuth(tuttiAgentHome); err != nil {
+		return nil, err
+	}
 	if err := tuttiagentservice.PrepareHome(tuttiAgentHome); err != nil {
 		return nil, err
 	}
@@ -243,6 +248,38 @@ func prepareTuttiAgentModelListEnv(ctx context.Context, env []string) ([]string,
 	// model cache when tuttid itself runs inside a Codex-hosted environment.
 	env = append(env, "CODEX_HOME=")
 	return env, nil
+}
+
+// refreshTuttiAgentModelCatalogAuth drops only a stale materialized auth view
+// in the dedicated model-catalog home. PrepareHome will then recreate the
+// view from the freshly bootstrapped user auth (symlink/hard-link when
+// possible). This matters on Windows, where a first-run copy can otherwise
+// remain frozen after the host auth is refreshed.
+func refreshTuttiAgentModelCatalogAuth(home string) error {
+	userHome, err := os.UserHomeDir()
+	if err != nil || strings.TrimSpace(userHome) == "" {
+		return nil
+	}
+	source := filepath.Join(userHome, ".tutti-agent", "auth.json")
+	sourceBytes, err := os.ReadFile(source)
+	if os.IsNotExist(err) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("read tutti-agent user auth: %w", err)
+	}
+	target := filepath.Join(home, "auth.json")
+	targetBytes, err := os.ReadFile(target)
+	if err == nil && bytes.Equal(sourceBytes, targetBytes) {
+		return nil
+	}
+	if err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("read tutti-agent model catalog auth: %w", err)
+	}
+	if err := os.Remove(target); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("remove stale tutti-agent model catalog auth: %w", err)
+	}
+	return nil
 }
 
 func withoutEnvKeys(env []string, keys ...string) []string {

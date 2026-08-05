@@ -25,6 +25,9 @@ export function queuedPromptFromSubmitIntent(
         intent.submitDiagnostics?.submittedAtUnixMs ?? intent.requestedAtUnixMs
     },
     ...(intent.runtimeContent ? { runtimeContent: intent.runtimeContent } : {}),
+    ...(intent.targetTurnId?.trim()
+      ? { targetTurnId: intent.targetTurnId.trim() }
+      : {}),
     visibleInQueue
   };
 }

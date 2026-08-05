@@ -101,6 +101,23 @@ export class SessionConfiguration {
     }
   }
 
+  /**
+   * Clear pending effort/speed flags when the next Claude query will receive
+   * them through create-time `settings` instead of live applyFlagSettings.
+   * Call after computing querySettingsFromSessionSettings so a retired idle
+   * generation's pending write cannot poison the resumed query's first prompt.
+   */
+  absorbPendingFlagsIntoQueryCreate(): void {
+    if (Object.keys(this.pendingFlagSettings).length === 0) {
+      return;
+    }
+    const enabled = this.pendingFlagSettings.fastMode;
+    this.pendingFlagSettings = {};
+    if (typeof enabled === "boolean") {
+      this.emitFastModeState(enabled ? "on" : "off");
+    }
+  }
+
   applyInitializationResult(value: unknown): void {
     const result = recordValue(value);
     if (!result) {

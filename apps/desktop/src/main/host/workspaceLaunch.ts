@@ -1,4 +1,4 @@
-import type { TuttidClient } from "@tutti-os/client-tuttid-ts";
+import type { TrackEvent, TuttidClient } from "@tutti-os/client-tuttid-ts";
 import type { DesktopAgentDirectorySnapshot } from "../../shared/contracts/agentDirectory.ts";
 import type { DesktopAgentProviderStatusSnapshot } from "../../shared/contracts/ipc.ts";
 
@@ -47,14 +47,21 @@ export interface WorkspaceLaunch {
   ): Promise<void>;
   replaceWorkspaceWindow(
     ownerWindow: WorkspaceLaunchOwnerWindow | null,
-    workspaceID: string,
-    windowKind: "agent" | "workspace"
+    input: WorkspaceLaunchReplacementInput
   ): Promise<void>;
+}
+
+export interface WorkspaceLaunchReplacementInput {
+  clientTS: number;
+  mode: "agent" | "os";
+  previousMode: "agent" | "os";
+  workspaceID: string;
 }
 
 export interface WorkspaceLaunchDependencies {
   adapters: WorkspaceLaunchAdapters;
-  tuttidClient: Pick<TuttidClient, "getStartupWorkspace">;
+  onAnalyticsError?: (error: unknown) => void;
+  tuttidClient: Pick<TuttidClient, "getStartupWorkspace" | "trackEvents">;
 }
 
 export function createWorkspaceLaunch(
@@ -108,20 +115,48 @@ export function createWorkspaceLaunch(
 
   async function replaceWorkspaceWindow(
     ownerWindow: WorkspaceLaunchOwnerWindow | null,
-    workspaceID: string,
-    windowKind: "agent" | "workspace"
+    input: WorkspaceLaunchReplacementInput
   ): Promise<void> {
-    const workspaceWindow = await deps.adapters.showWorkspaceWindow(
-      workspaceID,
-      {
-        windowKind
-      }
-    );
+    let workspaceWindow: WorkspaceLaunchOwnerWindow | null | void;
+    try {
+      workspaceWindow = await deps.adapters.showWorkspaceWindow(
+        input.workspaceID,
+        {
+          windowKind: input.mode === "agent" ? "agent" : "workspace"
+        }
+      );
+    } catch (error) {
+      reportWorkspaceUiModeChanged(input);
+      throw error;
+    }
+    reportWorkspaceUiModeChanged(input);
     if (workspaceWindow === ownerWindow) {
       return;
     }
     forceCloseWindow(ownerWindow);
   }
+
+  function reportWorkspaceUiModeChanged(
+    input: WorkspaceLaunchReplacementInput
+  ): void {
+    void deps.tuttidClient
+      .trackEvents([createWorkspaceUiModeChangedEvent(input)])
+      .catch((error) => deps.onAnalyticsError?.(error));
+  }
+}
+
+export function createWorkspaceUiModeChangedEvent(
+  input: WorkspaceLaunchReplacementInput
+): TrackEvent {
+  return {
+    client_ts: input.clientTS,
+    name: "settings.workspace_ui_mode_changed",
+    params: {
+      action: input.mode === "agent" ? "enabled" : "disabled",
+      next_mode: input.mode,
+      previous_mode: input.previousMode
+    }
+  };
 }
 
 function forceCloseWindow(

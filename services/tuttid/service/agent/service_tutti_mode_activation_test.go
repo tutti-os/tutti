@@ -16,6 +16,50 @@ import (
 	tuttimodeactivationservice "github.com/tutti-os/tutti/services/tuttid/service/tuttimodeactivation"
 )
 
+func TestServiceSendInputGuidanceRequiresExactTarget(t *testing.T) {
+	t.Parallel()
+	runtime := newFakeRuntime()
+	service := newTestService(runtime)
+
+	_, err := service.SendInput(context.Background(), "ws-1", "session-guidance", SendInput{
+		Content: TextPromptContent("missing target"), Guidance: true, ClientSubmitID: "guidance-required",
+	})
+	if !errors.Is(err, ErrActiveTurnTargetRequired) {
+		t.Fatalf("SendInput() error = %v, want ErrActiveTurnTargetRequired", err)
+	}
+	if len(runtime.execCalls) != 0 {
+		t.Fatalf("runtime exec calls = %#v, want none", runtime.execCalls)
+	}
+}
+
+func TestServiceSendInputGuidanceDoesNotOverrideDurableClaimTarget(t *testing.T) {
+	ctx := context.Background()
+	store := openAgentServiceSQLiteStore(t)
+	if err := store.Create(ctx, workspacebiz.Summary{ID: "ws-1", Name: "Claim target"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, created, err := store.PrepareSubmitClaim(ctx, agentactivitybiz.SubmitClaimPrepare{
+		WorkspaceID: "ws-1", AgentSessionID: "session-guidance", ClientSubmitID: "guidance-target",
+		CanonicalTurnID: "turn-active", NowUnixMS: 1,
+	}); err != nil || !created {
+		t.Fatalf("prepare claim created=%v err=%v", created, err)
+	}
+	runtime := newFakeRuntime()
+	service := newTestService(runtime)
+	service.SubmitClaimStore = store
+
+	_, err := service.SendInput(ctx, "ws-1", "session-guidance", SendInput{
+		Content: TextPromptContent("wrong target"), Guidance: true,
+		TurnID: "turn-other", ClientSubmitID: "guidance-target",
+	})
+	if !errors.Is(err, ErrActiveTurnTargetMismatch) {
+		t.Fatalf("SendInput() error = %v, want ErrActiveTurnTargetMismatch", err)
+	}
+	if len(runtime.execCalls) != 0 {
+		t.Fatalf("runtime exec calls = %#v, want none", runtime.execCalls)
+	}
+}
+
 func TestTuttiModeSnapshotForGuidanceUsesBoundTurnRevision(t *testing.T) {
 	t.Parallel()
 	activeTurnID := "turn-1"
@@ -348,7 +392,7 @@ func TestPreparedGuidanceClaimsReconcileIndependentlyOnOneCanonicalTurnWithoutRe
 	for _, clientSubmitID := range []string{"guidance-1", "guidance-2"} {
 		result, err := service.SendInput(ctx, "ws-1", "session-guidance", SendInput{
 			Content: TextPromptContent("already delivered guidance"), Guidance: true,
-			ClientSubmitID: clientSubmitID,
+			ClientSubmitID: clientSubmitID, TurnID: "turn-active",
 		})
 		if err != nil || result.TurnID != "turn-active" {
 			t.Fatalf("SendInput(%s) result=%#v err=%v", clientSubmitID, result, err)
@@ -392,7 +436,7 @@ func TestPreparedClaimWithMismatchedDurableProvenanceStaysUnknownWithoutReplay(t
 
 	_, err := service.SendInput(ctx, "ws-1", "session-guidance", SendInput{
 		Content: TextPromptContent("must not replay"), Guidance: true,
-		ClientSubmitID: "guidance-1",
+		ClientSubmitID: "guidance-1", TurnID: "turn-active",
 	})
 	if !errors.Is(err, ErrSubmitDeliveryUnknown) || len(runtime.execCalls) != 0 || coordinator.acceptedTurnID != "" {
 		t.Fatalf("error=%v runtime=%#v coordinator=%#v", err, runtime.execCalls, coordinator)
@@ -425,7 +469,7 @@ func TestGuidanceTransportFailureKeepsPreparedClaimAndExistingSnapshot(t *testin
 
 	_, err := service.SendInput(context.Background(), "ws-1", "session-guidance", SendInput{
 		Content: TextPromptContent("ambiguous guidance"), Guidance: true,
-		ClientSubmitID: "guidance-ambiguous",
+		ClientSubmitID: "guidance-ambiguous", TurnID: activeTurnID,
 	})
 	if !errors.Is(err, ErrSubmitDeliveryUnknown) || !errors.Is(err, wantErr) {
 		t.Fatalf("SendInput() error = %v", err)

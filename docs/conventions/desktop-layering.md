@@ -349,7 +349,9 @@ Rules:
   container
 - pass that service into AgentGUI, MessageCenter, and other workspace workbench
   contributions that need agent activity
-- keep controller/cache ownership inside `WorkspaceAgentActivityService`
+- keep controller/cache ownership inside `WorkspaceAgentActivityService` for
+  activity engine and reconcile state; the Agent Session Replay feature owns
+  its recording binding, recorder state, and Engine observer bridge
 - keep daemon session-directory query projection and external-import refresh
   workflows in focused internal operation collaborators; the public service
   remains the facade and the only owner of engine/reconcile coordination

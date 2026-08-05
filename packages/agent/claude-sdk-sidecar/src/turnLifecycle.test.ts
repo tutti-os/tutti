@@ -184,7 +184,7 @@ test("turn lifecycle creates an explicit synthetic turn for orphan assistant out
   assert.equal(events[0]?.payload?.synthetic, true);
 });
 
-test("turn lifecycle cancels queued turns and consumes their orphan results", () => {
+test("cancelQueued cancels queued turns and consumes their orphan results", () => {
   const { lifecycle, events } = createLifecycle();
   lifecycle.enqueue({
     turnId: "turn-1",
@@ -204,6 +204,19 @@ test("turn lifecycle cancels queued turns and consumes their orphan results", ()
   assert.equal(lifecycle.consumePendingOrphan(), false);
   assert.equal(events.at(-1)?.type, "turn_canceled");
   assert.equal(events.at(-1)?.payload?.turnId, "turn-2");
+});
+
+test("cancelActiveExact rejects unknown or queued-only turns", () => {
+  const { lifecycle } = createLifecycle();
+  lifecycle.enqueue({
+    turnId: "turn-queued",
+    promptUuid: "prompt-queued",
+    settled: false
+  });
+  assert.equal(lifecycle.cancelActiveExact("turn-queued"), false);
+  lifecycle.activateForUserMessage("prompt-queued");
+  assert.equal(lifecycle.cancelActiveExact("turn-other"), false);
+  assert.equal(lifecycle.cancelActiveExact("turn-queued"), true);
 });
 
 test("notification-reserved synthetic turn times out and rejects late continuation", async () => {

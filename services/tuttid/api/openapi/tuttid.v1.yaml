@@ -14680,7 +14680,11 @@ components:
           description: Structured capability references attached to this submission. They are persisted on the turn but never converted into provider prompt text.
         guidance:
           type: boolean
-          description: When true, send this input as guidance to the currently active turn instead of starting a new turn.
+          description: When true, send this input as guidance to the exact active turn identified by turnId instead of starting a new turn.
+        turnId:
+          type: string
+          minLength: 1
+          description: Exact canonical active Turn targeted by guidance. Required when guidance is true; ignored for normal new-turn submits.
     AgentSubmitDiagnostics:
       type: object
       additionalProperties: false

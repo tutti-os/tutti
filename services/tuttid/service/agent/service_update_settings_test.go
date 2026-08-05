@@ -220,6 +220,95 @@ func TestServiceUpdateSettingsStopsWaitingWhenContextIsCanceled(t *testing.T) {
 	}
 }
 
+func TestServiceUpdateSettingsCanceledWaiterDoesNotStarveFollowingUpdate(t *testing.T) {
+	baseRuntime := newFakeRuntime()
+	runtime := &blockingResumeRuntime{
+		fakeRuntime:       baseRuntime,
+		resumeEntered:     make(chan RuntimeResumeInput, 1),
+		resumeRelease:     make(chan struct{}),
+		liveUpdateEntered: make(chan RuntimeUpdateSettingsInput, 1),
+	}
+	reader := &settingsUpdateSessionReader{
+		fakeSessionReader: &fakeSessionReader{sessions: map[string]PersistedSession{
+			"ws-1:session-1": {
+				ID:                "session-1",
+				WorkspaceID:       "ws-1",
+				AgentTargetID:     "local:claude-code",
+				Provider:          "claude-code",
+				ProviderSessionID: "provider-session-1",
+				Cwd:               "/workspace",
+				RailSectionKey:    "conversations",
+				Settings:          ComposerSettings{PermissionModeID: "dontAsk"},
+			},
+		}},
+	}
+	service := newTestService(runtime)
+	service.SessionReader = reader
+	resumeDone := make(chan error, 1)
+	go func() {
+		_, err := service.ensureRuntimeSessionResult(context.Background(), "ws-1", "session-1")
+		resumeDone <- err
+	}()
+	select {
+	case <-runtime.resumeEntered:
+	case <-time.After(time.Second):
+		t.Fatal("resume did not acquire the session settings lock")
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	settingsDone := make(chan error, 1)
+	permissionModeID := "acceptEdits"
+	go func() {
+		_, err := service.UpdateSettings(ctx, "ws-1", "session-1", ComposerSettingsPatch{
+			PermissionModeID: &permissionModeID,
+		})
+		settingsDone <- err
+	}()
+	deadline := time.Now().Add(time.Second)
+	for {
+		service.sessionSettingsMu.Lock()
+		refs := service.sessionSettingsLocks["ws-1\x00session-1"].refs
+		service.sessionSettingsMu.Unlock()
+		if refs == 2 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("settings update did not begin waiting for the session settings lock")
+		}
+		time.Sleep(time.Millisecond)
+	}
+	cancel()
+	select {
+	case err := <-settingsDone:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("UpdateSettings error = %v, want context.Canceled", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("canceled settings update remained blocked on the session settings lock")
+	}
+
+	close(runtime.resumeRelease)
+	if err := <-resumeDone; err != nil {
+		t.Fatalf("resume returned error: %v", err)
+	}
+
+	followUpDone := make(chan error, 1)
+	go func() {
+		_, err := service.UpdateSettings(context.Background(), "ws-1", "session-1", ComposerSettingsPatch{
+			PermissionModeID: &permissionModeID,
+		})
+		followUpDone <- err
+	}()
+	select {
+	case err := <-followUpDone:
+		if err != nil {
+			t.Fatalf("follow-up UpdateSettings returned error: %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("follow-up UpdateSettings starved after canceled settings waiter")
+	}
+}
+
 func TestServiceUpdateSettingsSerializesHistoricalPartialPatches(t *testing.T) {
 	reader := &serializedSettingsReader{
 		fakeSessionReader: &fakeSessionReader{sessions: map[string]PersistedSession{

@@ -1,10 +1,14 @@
 package agentruntime
 
 import (
+	"regexp"
+	"strconv"
 	"strings"
 
 	activityshared "github.com/tutti-os/tutti/packages/agent/daemon/activity/events"
 )
+
+var unifiedDiffHunkPattern = regexp.MustCompile(`^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@(?:.*)$`)
 
 // fileChangesFromActivityEvent projects provider tool payloads into the one
 // canonical shape persisted on WorkspaceAgentTurn. Provider-specific metadata
@@ -17,12 +21,14 @@ func canonicalFileChangesFromToolPayload(payload map[string]any) map[string]any 
 	if len(payload) == 0 {
 		return nil
 	}
+	hint := toolFileChangeKind(payload)
 	if fileChanges := payloadMap(payload, "fileChanges"); len(fileChanges) > 0 {
-		return clonePayload(fileChanges)
+		if canonical := canonicalizeFileChanges(fileChanges, hint); canonical != nil {
+			return canonical
+		}
 	}
 	input := payloadMap(payload, "input")
 	output := payloadMap(payload, "output")
-	hint := toolFileChangeKind(payload)
 	for _, candidate := range []map[string]any{
 		fileChangesFromChangeEntries(output["changes"], hint),
 		fileChangesFromChangeEntries(input["changes"], hint),
@@ -39,6 +45,27 @@ func canonicalFileChangesFromToolPayload(payload map[string]any) map[string]any 
 		}
 	}
 	return nil
+}
+
+func canonicalizeFileChanges(value map[string]any, hint string) map[string]any {
+	entries := fileChangeEntryMaps(value["files"])
+	if len(entries) == 0 {
+		return nil
+	}
+	files := make([]any, 0, len(entries))
+	for _, entry := range entries {
+		if file := canonicalToolFileChange(entry, hint); file != nil {
+			files = append(files, file)
+		}
+	}
+	canonical := canonicalFileChanges(files)
+	if canonical == nil {
+		return nil
+	}
+	if coverage := strings.TrimSpace(asString(value["coverage"])); coverage != "" {
+		canonical["coverage"] = coverage
+	}
+	return canonical
 }
 
 func fileChangesFromChangeEntries(value any, hint string) map[string]any {
@@ -128,18 +155,21 @@ func canonicalToolFileChange(value map[string]any, hint string) map[string]any {
 	if path == "" {
 		return nil
 	}
-	diff := firstNonEmpty(
-		asStringRaw(value["diff"]),
-		asStringRaw(value["patch"]),
-		asStringRaw(value["unifiedDiff"]),
-		asStringRaw(value["unified_diff"]),
+	validDiff, hasValidDiff, rawDiff, hasRawDiff := selectToolFileDiff(
+		value["diff"],
+		value["patch"],
+		value["unifiedDiff"],
+		value["unified_diff"],
 	)
+	diff := validDiff
+	hasDiff := hasValidDiff
 	oldString, hasOld := firstPresentToolFileString(
 		value["oldString"], value["old_string"], value["oldText"],
 	)
 	newString, hasNew := firstPresentToolFileString(
-		value["newString"], value["new_string"], value["newText"], value["content"],
+		value["newString"], value["new_string"], value["newText"],
 	)
+	content, hasContent := firstPresentToolFileString(value["content"])
 	change := firstNonEmpty(
 		normalizeToolFileChangeKind(value["change"]),
 		normalizeToolFileChangeKind(value["status"]),
@@ -147,14 +177,34 @@ func canonicalToolFileChange(value map[string]any, hint string) map[string]any {
 		normalizeToolFileChangeKind(value["type"]),
 		hint,
 	)
+	if change == "" && hasContent {
+		change = "added"
+	}
+	if change == "added" && !hasNew && hasContent {
+		newString, hasNew = content, true
+		hasContent = false
+	}
+	if !hasValidDiff && hasRawDiff {
+		switch {
+		case change == "added" && !hasNew:
+			newString, hasNew = rawDiff, true
+		case change == "deleted" && !hasOld:
+			oldString, hasOld = rawDiff, true
+		case !hasOld && !hasNew && !hasContent:
+			content, hasContent = rawDiff, true
+		}
+	}
 	if change == "" {
 		change = inferToolFileChangeKind(hasOld, oldString, hasNew, newString, diff)
+		if change == "" && hasContent {
+			change = "modified"
+		}
 	}
 	if change == "" {
 		return nil
 	}
 	file := map[string]any{"path": path, "change": change}
-	if diff != "" {
+	if hasDiff {
 		file["diff"] = diff
 		file["unifiedDiff"] = diff
 	}
@@ -163,6 +213,9 @@ func canonicalToolFileChange(value map[string]any, hint string) map[string]any {
 	}
 	if hasNew {
 		file["newString"] = newString
+	}
+	if hasContent {
+		file["content"] = content
 	}
 	return file
 }
@@ -268,7 +321,31 @@ func canonicalFileChanges(files []any) map[string]any {
 	if len(files) == 0 {
 		return nil
 	}
-	return map[string]any{"files": files}
+	byPath := make(map[string]map[string]any, len(files))
+	order := make([]string, 0, len(files))
+	for _, raw := range files {
+		file := payloadObject(raw)
+		path := strings.TrimSpace(asString(file["path"]))
+		if path == "" {
+			continue
+		}
+		if current, exists := byPath[path]; exists {
+			byPath[path] = mergeCanonicalFileChange(current, file)
+			continue
+		}
+		order = append(order, path)
+		byPath[path] = clonePayload(file)
+	}
+	result := make([]any, 0, len(order))
+	for _, path := range order {
+		if file := byPath[path]; file != nil {
+			result = append(result, file)
+		}
+	}
+	if len(result) == 0 {
+		return nil
+	}
+	return map[string]any{"files": result}
 }
 
 func firstPresentToolFileString(values ...any) (string, bool) {
@@ -278,6 +355,22 @@ func firstPresentToolFileString(values ...any) (string, bool) {
 		}
 	}
 	return "", false
+}
+
+func selectToolFileDiff(values ...any) (valid string, hasValid bool, raw string, hasRaw bool) {
+	for _, value := range values {
+		text, ok := value.(string)
+		if !ok {
+			continue
+		}
+		if !hasRaw {
+			raw, hasRaw = text, true
+		}
+		if !hasValid && looksLikeUnifiedDiff(text) {
+			valid, hasValid = text, true
+		}
+	}
+	return
 }
 
 func toolFileChangeKind(payload map[string]any) string {
@@ -326,17 +419,143 @@ func inferToolFileChangeKind(hasOld bool, oldString string, hasNew bool, newStri
 	return ""
 }
 
+func looksLikeUnifiedDiff(value string) bool {
+	normalized := strings.TrimSpace(strings.ReplaceAll(strings.ReplaceAll(value, "\r\n", "\n"), "\r", "\n"))
+	if normalized == "" {
+		return false
+	}
+	lines := strings.Split(normalized, "\n")
+	isApplyPatch := strings.Contains(normalized, "*** Begin Patch") &&
+		(strings.Contains(normalized, "*** Add File:") || strings.Contains(normalized, "*** Delete File:") || strings.Contains(normalized, "*** Update File:"))
+	hasHunk := false
+	hunkHasChange := false
+	oldCount := 0
+	newCount := 0
+	expectedOld := 0
+	expectedNew := 0
+	hunkActive := false
+	hunkHasCounts := false
+	finishHunk := func() bool {
+		if !hunkActive {
+			return true
+		}
+		if !hunkHasCounts {
+			return isApplyPatch && hunkHasChange
+		}
+		return oldCount == expectedOld && newCount == expectedNew && hunkHasChange
+	}
+	for _, line := range lines {
+		if match := unifiedDiffHunkPattern.FindStringSubmatch(line); match != nil {
+			if !finishHunk() {
+				return false
+			}
+			hasHunk = true
+			hunkActive = true
+			hunkHasCounts = true
+			oldCount = 0
+			newCount = 0
+			hunkHasChange = false
+			expectedOld = unifiedDiffHunkCount(match[2])
+			expectedNew = unifiedDiffHunkCount(match[4])
+			continue
+		}
+		if line == "@@" && isApplyPatch {
+			if !finishHunk() {
+				return false
+			}
+			hasHunk = true
+			hunkActive = true
+			hunkHasCounts = false
+			hunkHasChange = false
+			continue
+		}
+		if hunkActive && strings.HasPrefix(line, "diff --git ") {
+			if !finishHunk() {
+				return false
+			}
+			hunkActive = false
+			continue
+		}
+		if !hunkActive && (strings.HasPrefix(line, "diff --git ") || strings.HasPrefix(line, "index ") ||
+			strings.HasPrefix(line, "--- ") || strings.HasPrefix(line, "+++ ") ||
+			strings.HasPrefix(line, "new file mode ") || strings.HasPrefix(line, "deleted file mode ") ||
+			strings.HasPrefix(line, "old mode ") || strings.HasPrefix(line, "new mode ") ||
+			strings.HasPrefix(line, "similarity index ") || strings.HasPrefix(line, "rename from ") ||
+			strings.HasPrefix(line, "rename to ") || strings.HasPrefix(line, "*** ")) {
+			continue
+		}
+		if hunkActive && isApplyPatch && strings.HasPrefix(line, "*** ") {
+			continue
+		}
+		if line == "\\ No newline at end of file" {
+			continue
+		}
+		if !hasHunk {
+			continue
+		}
+		if !hunkHasCounts && isApplyPatch {
+			switch {
+			case strings.HasPrefix(line, "+"):
+				hunkHasChange = true
+			case strings.HasPrefix(line, "-"):
+				hunkHasChange = true
+			case strings.HasPrefix(line, " "):
+			default:
+				return false
+			}
+			continue
+		}
+		switch {
+		case strings.HasPrefix(line, "+"):
+			newCount++
+			hunkHasChange = true
+		case strings.HasPrefix(line, "-"):
+			oldCount++
+			hunkHasChange = true
+		case strings.HasPrefix(line, " "):
+			oldCount++
+			newCount++
+		default:
+			return false
+		}
+	}
+	return hasHunk && finishHunk()
+}
+
+func unifiedDiffHunkCount(value string) int {
+	if value == "" {
+		return 1
+	}
+	count, err := strconv.Atoi(value)
+	if err != nil {
+		return -1
+	}
+	return count
+}
+
 func mergeCanonicalFileChanges(current map[string]any, incoming map[string]any) map[string]any {
 	files := payloadArray(current["files"])
 	order := make([]string, 0, len(files))
 	byPath := make(map[string]map[string]any, len(files))
+	seenPaths := make(map[string]struct{}, len(files))
+	appendPath := func(path string) {
+		if _, seen := seenPaths[path]; seen {
+			return
+		}
+		seenPaths[path] = struct{}{}
+		order = append(order, path)
+	}
 	for _, file := range files {
 		path := strings.TrimSpace(asString(file["path"]))
 		if path == "" {
 			continue
 		}
-		order = append(order, path)
-		byPath[path] = file
+		appendPath(path)
+		if existing := byPath[path]; existing != nil {
+			byPath[path] = mergeCanonicalFileChange(existing, file)
+			continue
+		}
+		byPath[path] = clonePayload(file)
 	}
 	for _, next := range payloadArray(incoming["files"]) {
 		path := strings.TrimSpace(asString(next["path"]))
@@ -345,8 +564,8 @@ func mergeCanonicalFileChanges(current map[string]any, incoming map[string]any) 
 		}
 		existing := byPath[path]
 		if existing == nil {
-			order = append(order, path)
-			byPath[path] = next
+			appendPath(path)
+			byPath[path] = clonePayload(next)
 			continue
 		}
 		byPath[path] = mergeCanonicalFileChange(existing, next)
@@ -361,6 +580,12 @@ func mergeCanonicalFileChanges(current map[string]any, incoming map[string]any) 
 }
 
 func mergeCanonicalFileChange(existing map[string]any, next map[string]any) map[string]any {
+	if existing == nil {
+		return clonePayload(next)
+	}
+	if next == nil {
+		return clonePayload(existing)
+	}
 	merged := clonePayload(existing)
 	for key, value := range next {
 		if key != "path" && key != "change" && key != "oldString" {
@@ -375,10 +600,14 @@ func mergeCanonicalFileChange(existing map[string]any, next map[string]any) map[
 	previousKind := normalizeToolFileChangeKind(existing["change"])
 	nextKind := normalizeToolFileChangeKind(next["change"])
 	switch {
+	case previousKind == "added" && nextKind == "deleted":
+		return nil
 	case previousKind == "added" && nextKind == "modified":
 		merged["change"] = "added"
 	case previousKind == "deleted" && nextKind == "added":
 		merged["change"] = "modified"
+	case previousKind == "modified" && nextKind == "deleted":
+		merged["change"] = "deleted"
 	case nextKind != "":
 		merged["change"] = nextKind
 	}

@@ -490,6 +490,48 @@ func TestProjectPortableAgentStateExcludesCanceledTurnCompletionWatermarks(
 	}
 }
 
+func TestCompareTuttiReplayStateTreatsRootProviderTurnIDsAsAlphaEquivalent(
+	t *testing.T,
+) {
+	buildState := func(turnID, rootProviderTurnID string) TuttiReplayState {
+		return TuttiReplayState{
+			SchemaVersion: SchemaVersion,
+			Agent: TuttiReplayAgent{
+				RootSessionID: "session-1",
+				Sessions: []agenthost.HistoricalSession{{
+					ID:                "session-1",
+					Kind:              "root",
+					AgentTargetID:     "local:claude-code",
+					Provider:          "claude-code",
+					ProviderSessionID: "provider-session-1",
+					Turns: []agenthost.HistoricalTurn{{
+						ID:                 turnID,
+						Phase:              "settled",
+						Outcome:            "canceled",
+						Origin:             "user_prompt",
+						RootProviderTurnID: rootProviderTurnID,
+					}},
+				}},
+			},
+			TuttiMode: TuttiReplayTuttiMode{
+				Activations:   []TuttiReplayActivation{},
+				TurnSnapshots: []TuttiReplayTurnSnapshot{},
+			},
+			Workflows: []TuttiReplayWorkflow{},
+			Issues:    []TuttiReplayIssue{},
+		}
+	}
+	if err := CompareTuttiReplayState(
+		buildState("recorded-turn", "recorded-root-provider-turn"),
+		buildState("replayed-turn", "replayed-root-provider-turn"),
+	); err != nil {
+		t.Fatalf(
+			"rootProviderTurnId must be alpha-equivalent, got %v",
+			err,
+		)
+	}
+}
+
 func TestCompareTuttiReplayStateTreatsGoalControlOperationIDsAsAlphaEquivalent(
 	t *testing.T,
 ) {

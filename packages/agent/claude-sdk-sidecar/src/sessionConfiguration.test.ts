@@ -53,3 +53,46 @@ test("switching to Default clears the previous effective model without pinning i
   assert.equal(updatedModelOption?.currentValue, "default");
   assert.equal(updatedModelOption?.effectiveValue, "claude-opus-4-8");
 });
+
+test("absorbPendingFlagsIntoQueryCreate clears pending without live applyFlagSettings", async () => {
+  const applyFlagSettingsCalls: unknown[] = [];
+  const fastModeStates: Array<"on" | "off"> = [];
+  const settings = {
+    model: "",
+    permissionModeId: "default",
+    planMode: false,
+    effort: "medium",
+    speed: "standard"
+  };
+  let queryAvailable = false;
+  const configuration = new SessionConfiguration({
+    settings,
+    getQuery: () =>
+      queryAvailable
+        ? {
+            applyFlagSettings: async (value) => {
+              applyFlagSettingsCalls.push(value);
+            }
+          }
+        : undefined,
+    testDriver: false,
+    isInitialized: () => true,
+    markInitialized: () => {},
+    emitFastModeState: (state) => {
+      fastModeStates.push(state);
+    }
+  });
+
+  // Mirror apply_settings after idle-retire: no live query, pending retained.
+  await configuration.apply({ effort: "high", speed: "fast" });
+  assert.equal(settings.effort, "high");
+  assert.equal(settings.speed, "fast");
+  assert.deepEqual(applyFlagSettingsCalls, []);
+
+  configuration.absorbPendingFlagsIntoQueryCreate();
+  queryAvailable = true;
+  await configuration.applyPendingFlags();
+
+  assert.deepEqual(applyFlagSettingsCalls, []);
+  assert.deepEqual(fastModeStates, ["on"]);
+});

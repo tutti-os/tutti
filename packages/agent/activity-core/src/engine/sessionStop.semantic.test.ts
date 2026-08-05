@@ -3,6 +3,7 @@ import { test } from "node:test";
 import { normalizeAgentActivitySession } from "../sessionNormalization.ts";
 import type { AgentActivityTurn } from "../types.ts";
 import { createAgentSessionEngine } from "./createAgentSessionEngine.ts";
+import { selectLatestStopTargetSubmitForSession } from "./pendingIntents.selectors.ts";
 import { selectEngineCancelState } from "./sessionLifecycle.selectors.ts";
 import { createTestEngineCommandPort } from "./testEngineCommandPort.ts";
 import type { EngineExternalCommand, EngineScheduler } from "./types.ts";
@@ -107,6 +108,128 @@ test("semantic session stop waits 30 seconds for a first Turn and deduplicates r
   assert.equal(harness.scheduled[0]?.canceled, true);
 });
 
+test("semantic session stop targets the latest pending prompt admission", () => {
+  const harness = createHarness(false);
+
+  assert.deepEqual(
+    harness.engine.submitPrompt({
+      agentSessionId: "session-1",
+      clientSubmitId: "submit-1",
+      content: [{ text: "hello", type: "text" }]
+    }),
+    { accepted: true, queued: false }
+  );
+
+  harness.engine.stopSession({ agentSessionId: "session-1" });
+
+  assert.equal(
+    selectEngineCancelState(harness.engine.getSnapshot(), "session-1")
+      ?.targetClientSubmitId,
+    "submit-1"
+  );
+  assert.equal(harness.commands.at(-1)?.type, "queue/sendPrompt");
+});
+
+test("semantic session stop does not target a failed submit admission", () => {
+  const harness = createHarness(false);
+
+  harness.engine.submitPrompt({
+    agentSessionId: "session-1",
+    clientSubmitId: "submit-1",
+    content: [{ text: "hello", type: "text" }]
+  });
+  harness.engine.dispatch({
+    commandId: "send-1",
+    commandType: "queue/sendPrompt",
+    correlationId: "submit-1",
+    errorCode: "send_failed",
+    errorMessage: "send failed",
+    outcome: "failed",
+    type: "engine/commandResult"
+  });
+
+  harness.engine.stopSession({ agentSessionId: "session-1" });
+
+  assert.equal(
+    selectEngineCancelState(harness.engine.getSnapshot(), "session-1")
+      ?.targetClientSubmitId,
+    null
+  );
+  assert.equal(
+    selectEngineCancelState(harness.engine.getSnapshot(), "session-1")?.status,
+    "awaitingTurn"
+  );
+});
+
+test("semantic session stop keeps a delivery-unknown submit as its target", () => {
+  const harness = createHarness(false);
+
+  harness.engine.submitPrompt({
+    agentSessionId: "session-1",
+    clientSubmitId: "submit-1",
+    content: [{ text: "hello", type: "text" }]
+  });
+  harness.engine.dispatch({
+    commandId: "send-1",
+    commandType: "queue/sendPrompt",
+    correlationId: "submit-1",
+    errorCode: "timeout",
+    outcome: "timedOut",
+    type: "engine/commandResult"
+  });
+
+  harness.engine.stopSession({ agentSessionId: "session-1" });
+
+  assert.equal(
+    selectEngineCancelState(harness.engine.getSnapshot(), "session-1")
+      ?.targetClientSubmitId,
+    "submit-1"
+  );
+});
+
+test("stop target selection ignores a submit whose canonical Turn is settled", () => {
+  const harness = createHarness(false);
+  const turn = settledTurn();
+
+  harness.engine.submitPrompt({
+    agentSessionId: "session-1",
+    clientSubmitId: "submit-1",
+    content: [{ text: "hello", type: "text" }]
+  });
+  harness.engine.dispatch({
+    commandId: "send-1",
+    commandType: "queue/sendPrompt",
+    correlationId: "submit-1",
+    outcome: "succeeded",
+    type: "engine/commandResult",
+    value: { session: session(turn), turn, turnId: turn.turnId }
+  });
+
+  assert.equal(
+    selectLatestStopTargetSubmitForSession(
+      harness.engine.getSnapshot(),
+      "session-1"
+    ),
+    null
+  );
+});
+
+test("semantic session stop preserves an explicit submit target with an active turn", () => {
+  const harness = createHarness(true);
+
+  harness.engine.stopSession({
+    agentSessionId: "session-1",
+    clientSubmitId: "submit-explicit"
+  });
+
+  assert.deepEqual(harness.commands, []);
+  assert.equal(
+    selectEngineCancelState(harness.engine.getSnapshot(), "session-1")
+      ?.targetClientSubmitId,
+    "submit-explicit"
+  );
+});
+
 function activeTurn(): AgentActivityTurn {
   return {
     agentSessionId: "session-1",
@@ -115,6 +238,15 @@ function activeTurn(): AgentActivityTurn {
     startedAtUnixMs: 1,
     turnId: "turn-1",
     updatedAtUnixMs: 2
+  };
+}
+
+function settledTurn(): AgentActivityTurn {
+  return {
+    ...activeTurn(),
+    outcome: "completed",
+    phase: "settled",
+    settledAtUnixMs: 3
   };
 }
 

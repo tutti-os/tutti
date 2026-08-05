@@ -12,7 +12,7 @@ import (
 )
 
 func (c *Controller) Exec(ctx context.Context, input ExecInput) (result ExecResult, err error) {
-	if input.HistoryReplacement || input.RequireProviderAcceptance {
+	if input.Guidance || input.HistoryReplacement || input.RequireProviderAcceptance {
 		defer func() {
 			if err != nil && result.ProviderDispatch == nil {
 				result.ProviderDispatch = &ProviderDispatchResult{
@@ -114,7 +114,7 @@ func (c *Controller) Exec(ctx context.Context, input ExecInput) (result ExecResu
 		}
 	}
 	if input.Guidance {
-		return c.guideActiveTurn(ctx, session, adapter, content, displayPrompt, metadata, input.CapabilityRefs)
+		return c.guideActiveTurn(ctx, session, adapter, content, displayPrompt, metadata, input.CapabilityRefs, input.TurnID)
 	}
 	previousSession := session
 	titleUpdated := false
@@ -285,6 +285,19 @@ func (c *Controller) Exec(ctx context.Context, input ExecInput) (result ExecResu
 		}
 		if dispatch.Disposition != DispatchDispositionApplied || dispatch.Acceptance == nil {
 			if input.RequireProviderAcceptance {
+				// Durable submit already published the Turn. Any outcome that
+				// never bound a provider Turn identity (cancel-before-accept,
+				// pre-acceptance interrupt races where adapter cancel settles
+				// before runCtx is canceled, caller disconnect) must not become
+				// delivery-unknown — that locks the Session for the next submit.
+				if dispatch.Acceptance == nil &&
+					dispatch.Disposition != DispatchDispositionRejected &&
+					dispatch.Disposition != DispatchDispositionNotDispatched {
+					result.ProviderDispatch = &ProviderDispatchResult{
+						Disposition: DispatchDispositionAppliedWithoutProviderTurn,
+					}
+					return result, nil
+				}
 				if dispatch.Failure != nil {
 					return result, dispatch.Failure
 				}
@@ -294,6 +307,15 @@ func (c *Controller) Exec(ctx context.Context, input ExecInput) (result ExecResu
 		}
 		return result, nil
 	case <-ctx.Done():
+		// Caller context can end (HTTP cancel / stall) while provider acceptance
+		// is still pending. The Turn is already durable; do not leave
+		// OutcomeUnknown on the claim fence.
+		if input.RequireProviderAcceptance {
+			result.ProviderDispatch = &ProviderDispatchResult{
+				Disposition: DispatchDispositionAppliedWithoutProviderTurn,
+			}
+			return result, nil
+		}
 		result.ProviderDispatch = &ProviderDispatchResult{
 			Disposition: DispatchDispositionOutcomeUnknown,
 		}
@@ -309,6 +331,7 @@ func (c *Controller) guideActiveTurn(
 	displayPrompt string,
 	metadata map[string]any,
 	capabilityRefs []activityshared.CapabilityReference,
+	expectedTurnID string,
 ) (ExecResult, error) {
 	guidanceAdapter, ok := adapter.(ActiveTurnGuidanceAdapter)
 	if !ok {
@@ -317,6 +340,22 @@ func (c *Controller) guideActiveTurn(
 	turnID, ok := c.activeTurnID(session.RoomID, session.AgentSessionID)
 	if !ok {
 		return ExecResult{}, ErrSessionNoActiveTurn
+	}
+	// The lifecycle lock held by Exec makes this comparison and the provider
+	// admission below one serialized decision. A guidance request is allowed to
+	// use the legacy empty target only for direct internal Controller callers;
+	// Host consumers must provide the target and are checked before reaching
+	// this method. When a target is present, never retarget to whichever turn is
+	// current when the request happens to arrive.
+	if expectedTurnID = strings.TrimSpace(expectedTurnID); expectedTurnID != "" && expectedTurnID != turnID {
+		return ExecResult{
+			AgentSessionID: session.AgentSessionID,
+			Status:         ExecStatusStarted,
+			TurnID:         expectedTurnID,
+			ProviderDispatch: &ProviderDispatchResult{
+				Disposition: DispatchDispositionNotDispatched,
+			},
+		}, fmt.Errorf("%w: expected %q, current %q", ErrActiveTurnTargetMismatch, expectedTurnID, turnID)
 	}
 	runCtx := ctx
 	if len(metadata) > 0 {

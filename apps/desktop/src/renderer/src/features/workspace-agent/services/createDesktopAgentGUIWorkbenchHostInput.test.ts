@@ -302,7 +302,7 @@ test("desktop agent GUI workbench host input creates the default agent host api"
   });
 
   assert.equal(hostInput.agentHostApi.meta?.workspaceId, workspaceId);
-  assert.equal(hostInput.agentHostApi.agentSessions, undefined);
+  assert.equal("agentSessions" in hostInput.agentHostApi, false);
   assert.equal("workspaceAgents" in hostInput.agentHostApi, false);
   assert.deepEqual(
     await hostInput.workspaceFileReferenceAdapter.listDirectory?.({

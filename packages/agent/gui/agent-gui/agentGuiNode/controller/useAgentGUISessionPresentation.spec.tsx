@@ -191,6 +191,7 @@ describe("useAgentGUISessionPresentation", () => {
       activeEngineLatestTurn: null,
       activeEngineRuntimeAvailability: null,
       activeEngineSession: null,
+      activeEngineSettingsUpdate: null,
       activeGoalControlPresentation: {
         agentSessionId: null,
         goal: null,
@@ -299,6 +300,7 @@ describe("useAgentGUISessionPresentation", () => {
         goal: null,
         resumable: true
       },
+      activeEngineSettingsUpdate: null,
       activeGoalControlPresentation: {
         agentSessionId: "session-1",
         goal: null,
@@ -394,6 +396,7 @@ describe("useAgentGUISessionPresentation", () => {
         goal: null,
         resumable: true
       },
+      activeEngineSettingsUpdate: null,
       activeGoalControlPresentation: {
         agentSessionId: "session-1",
         goal: null,

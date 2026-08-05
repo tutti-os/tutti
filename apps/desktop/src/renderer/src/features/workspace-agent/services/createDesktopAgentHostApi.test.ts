@@ -184,7 +184,7 @@ test("desktop agent host api writes images through the host clipboard", async ()
 test("desktop agent host api does not inject legacy agent data host apis", () => {
   const api = createAgentHostApi();
 
-  assert.equal(api.agentSessions, undefined);
+  assert.equal("agentSessions" in api, false);
   assert.equal("workspaceAgents" in api, false);
 });
 

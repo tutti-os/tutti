@@ -5,7 +5,10 @@ import type {
   PermissionUpdate
 } from "@anthropic-ai/claude-agent-sdk";
 import { isDeepStrictEqual } from "node:util";
-import { answersFromInteractivePayload } from "./normalizer.ts";
+import {
+  answersFromInteractivePayload,
+  stampAskUserQuestionInput
+} from "./normalizer.ts";
 import type { ClaudeSDKSidecarEventEmitter } from "./protocol.ts";
 import type { ProviderTurnPhase } from "./providerTurnAcceptance.ts";
 import { stringValue } from "./runtimeValues.ts";
@@ -198,10 +201,11 @@ export class InteractiveCoordinator {
     toolInput: Record<string, unknown>,
     callbackOptions: ToolPermissionOptions
   ): Promise<PermissionResult> {
+    const stampedInput = stampAskUserQuestionInput(toolInput);
     const submission = await this.request(
       "user_input_requested",
       "AskUserQuestion",
-      toolInput,
+      stampedInput,
       [],
       callbackOptions
     );
@@ -209,8 +213,8 @@ export class InteractiveCoordinator {
     return {
       behavior: "allow",
       updatedInput: {
-        questions: toolInput.questions,
-        answers: answersFromInteractivePayload(submission.payload, toolInput)
+        questions: stampedInput.questions,
+        answers: answersFromInteractivePayload(submission.payload, stampedInput)
       }
     };
   }

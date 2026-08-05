@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
+import { realpathSync } from "node:fs";
 import { access, readFile, rm } from "node:fs/promises";
 import { basename, join, relative, resolve } from "node:path";
 import {
@@ -16,9 +17,19 @@ const checkpointPlanName = cassettePolicy.files.checkpointPlan.path;
 const expectedStateName = cassettePolicy.files.expectedState.path;
 const initialStateName = cassettePolicy.files.initialState.path;
 
+function canonicalizeProjectPath(path) {
+  const absolute = resolve(String(path ?? "").trim());
+  if (!absolute) return absolute;
+  try {
+    return realpathSync(absolute);
+  } catch {
+    return absolute;
+  }
+}
+
 export function resolveRecordScenarioProject(project, replayCWD) {
-  const root = resolve(replayCWD);
-  const path = resolve(root, project.relativePath);
+  const root = canonicalizeProjectPath(replayCWD);
+  const path = canonicalizeProjectPath(resolve(root, project.relativePath));
   const relativePath = relative(root, path);
   if (
     relativePath === ".." ||
@@ -45,6 +56,7 @@ export function resolveRecordScenarioProject(project, replayCWD) {
 
 export async function seedRecordingUserProject(databasePath, project) {
   const now = Date.now();
+  const path = canonicalizeProjectPath(project.path);
   await runCommand("sqlite3", [
     databasePath,
     `
@@ -53,7 +65,7 @@ INSERT INTO user_projects (
   last_used_at_unix_ms, sort_order, pinned_at_unix_ms
 ) VALUES (
   '${sqlString(project.id)}',
-  '${sqlString(project.path)}',
+  '${sqlString(path)}',
   '${sqlString(project.label)}',
   ${now}, ${now}, ${now}, 0, 0
 )

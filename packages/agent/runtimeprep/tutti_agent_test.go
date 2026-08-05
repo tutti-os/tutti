@@ -79,6 +79,9 @@ func TestTuttiAgentPreparerUsesExplicitAuthSourceAndInstallsSkills(t *testing.T)
 			t.Fatalf("managed config unexpectedly pinned %q: %s", unexpected, config)
 		}
 	}
+	if runtime.GOOS == "windows" && !containsConfigBlock(string(config), "[windows]\nsandbox = \"unelevated\"") {
+		t.Fatalf("Tutti Agent session config missing Windows sandbox fallback: %s", config)
+	}
 	if len(result.Env) == 0 || result.Env[0] != "TUTTI_AGENT_HOME="+home {
 		t.Fatalf("Prepare() env = %#v", result.Env)
 	}
@@ -170,5 +173,45 @@ func TestPrepareTuttiAgentHomeRemovesLegacyPinnedProvider(t *testing.T) {
 		if strings.Contains(string(config), removed) {
 			t.Fatalf("legacy pinned config still contains %q:\n%s", removed, config)
 		}
+	}
+}
+
+func TestPrepareTuttiAgentHomeWritesResponsesModelPlanEndpoint(t *testing.T) {
+	home := t.TempDir()
+	endpoint := &ModelEndpointConfig{
+		PlanName: "Custom plan",
+		Protocol: "openai",
+		BaseURL:  "http://127.0.0.1:40000/v1",
+		APIKey:   "temporary-session-token",
+		WireAPI:  "responses",
+		Model:    "model-a",
+	}
+	if err := PrepareTuttiAgentHome(home, testResolvedInput(t, PrepareInput{
+		Provider:      "tutti-agent",
+		ModelEndpoint: endpoint,
+	})); err != nil {
+		t.Fatalf("PrepareTuttiAgentHome() error = %v", err)
+	}
+
+	configBytes, err := os.ReadFile(filepath.Join(home, "config.toml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	config := string(configBytes)
+	for _, expected := range []string{
+		`model_provider = "tutti-model-plan"`,
+		`model = "model-a"`,
+		`[model_providers.tutti-model-plan]`,
+		`name = "Custom plan"`,
+		`base_url = "http://127.0.0.1:40000/v1"`,
+		`env_key = "TUTTI_MODEL_PLAN_API_KEY"`,
+		`wire_api = "responses"`,
+	} {
+		if !strings.Contains(config, expected) {
+			t.Fatalf("config missing %q:\n%s", expected, config)
+		}
+	}
+	if strings.Contains(config, endpoint.APIKey) {
+		t.Fatalf("config contains the temporary credential:\n%s", config)
 	}
 }

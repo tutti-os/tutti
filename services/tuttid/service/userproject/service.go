@@ -7,10 +7,10 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
+	storesqlite "github.com/tutti-os/tutti/packages/agent/store-sqlite"
 	userprojectbiz "github.com/tutti-os/tutti/services/tuttid/biz/userproject"
 	workspacedata "github.com/tutti-os/tutti/services/tuttid/data/workspace"
 )
@@ -70,23 +70,19 @@ func (s Service) List(ctx context.Context) ([]userprojectbiz.Project, error) {
 }
 
 func (Service) CheckPath(_ context.Context, input CheckPathInput) (PathCheck, error) {
-	path := strings.TrimSpace(input.Path)
+	path := storesqlite.NormalizeProjectPath(input.Path)
 	if path == "" {
 		return PathCheck{}, ErrInvalidArgument
 	}
-	absolute, err := filepath.Abs(path)
-	if err != nil {
-		return PathCheck{}, fmt.Errorf("%w: %w", ErrInvalidArgument, err)
-	}
-	info, err := os.Stat(absolute)
+	info, err := os.Stat(path)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return PathCheck{Path: absolute}, nil
+			return PathCheck{Path: path}, nil
 		}
 		return PathCheck{}, fmt.Errorf("check user project path: %w", err)
 	}
 	return PathCheck{
-		Path:        absolute,
+		Path:        path,
 		Exists:      true,
 		IsDirectory: info.IsDir(),
 	}, nil
@@ -97,9 +93,9 @@ func (s Service) Use(ctx context.Context, input UseInput) (userprojectbiz.Projec
 		return userprojectbiz.Project{}, errors.New("user project store is not configured")
 	}
 
-	projectPath, err := normalizeDirectoryPath(input.Path)
-	if err != nil {
-		return userprojectbiz.Project{}, err
+	projectPath := storesqlite.NormalizeProjectPath(input.Path)
+	if projectPath == "" {
+		return userprojectbiz.Project{}, ErrInvalidArgument
 	}
 	info, err := os.Stat(projectPath)
 	if err != nil {
@@ -222,19 +218,11 @@ func (s Service) publishCurrentProjects(ctx context.Context) {
 }
 
 func normalizeDirectoryPath(path string) (string, error) {
-	path = strings.TrimSpace(path)
-	if path == "" {
+	normalized := storesqlite.NormalizeProjectPath(path)
+	if normalized == "" {
 		return "", ErrInvalidArgument
 	}
-	absolute, err := filepath.Abs(path)
-	if err != nil {
-		return "", ErrInvalidArgument
-	}
-	evaluated, err := filepath.EvalSymlinks(absolute)
-	if err == nil {
-		absolute = evaluated
-	}
-	return absolute, nil
+	return normalized, nil
 }
 
 func projectID(path string) string {

@@ -172,9 +172,11 @@ func parseTuttiAgentAuthMarkerFile(path string) (AuthInfo, bool) {
 		strings.TrimSpace(payload.TuttiLLM.RefreshToken) == "" {
 		return AuthInfo{Status: AuthRequired}, true
 	}
+	// app_id identifies the Tutti LLM application, not the signed-in user.
+	// The marker does not contain user-facing account identity, so leave the
+	// account label empty rather than showing the shared application ID.
 	return AuthInfo{
-		AccountLabel: payload.TuttiLLM.AppID,
-		AuthMethod:   "tutti_llm",
-		Status:       AuthAuthenticated,
+		AuthMethod: "tutti_llm",
+		Status:     AuthAuthenticated,
 	}, true
 }

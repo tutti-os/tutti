@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { spawn } from "node:child_process";
+import { once } from "node:events";
 import { createWriteStream } from "node:fs";
 import {
   access,
@@ -524,6 +525,11 @@ export function startDesktop(input) {
   }
   child.once("close", () => logStream.end());
   child.performanceLogTail = tail;
+  // Detached Electron descendants may leave the process group; stopProcessTree
+  // sweeps leftovers by isolated user-data / state dir only (not shared TUTTID_BIN).
+  child.userDataDirectory = input.userDataDirectory;
+  child.stateDirectory = input.stateDirectory;
+  child.daemonPath = input.daemonPath;
   return child;
 }
 
@@ -654,28 +660,119 @@ export async function reservePort() {
 }
 
 export async function stopProcessTree(child) {
-  if (child.exitCode !== null || child.signalCode !== null) return;
-  if (process.platform !== "win32") {
-    try {
-      process.kill(-child.pid, "SIGINT");
-    } catch {
-      child.kill("SIGINT");
+  if (child?.pid && child.exitCode === null && child.signalCode === null) {
+    if (process.platform !== "win32") {
+      try {
+        process.kill(-child.pid, "SIGINT");
+      } catch {
+        try {
+          child.kill("SIGINT");
+        } catch {
+          // Already gone.
+        }
+      }
+    } else {
+      try {
+        child.kill("SIGINT");
+      } catch {
+        // Already gone.
+      }
     }
-  } else {
-    child.kill("SIGINT");
-  }
-  await Promise.race([onceExit(child), delay(5_000)]);
-  if (child.exitCode !== null || child.signalCode !== null) return;
-  if (process.platform !== "win32") {
-    try {
-      process.kill(-child.pid, "SIGKILL");
-    } catch {
-      child.kill("SIGKILL");
+    await Promise.race([onceExit(child), delay(5_000)]);
+    if (child.exitCode === null && child.signalCode === null) {
+      if (process.platform !== "win32") {
+        try {
+          process.kill(-child.pid, "SIGKILL");
+        } catch {
+          try {
+            child.kill("SIGKILL");
+          } catch {
+            // Already gone.
+          }
+        }
+      } else {
+        try {
+          child.kill("SIGKILL");
+        } catch {
+          // Already gone.
+        }
+      }
+      await Promise.race([onceExit(child), delay(2_000)]);
     }
-  } else {
-    child.kill("SIGKILL");
   }
-  await Promise.race([onceExit(child), delay(2_000)]);
+  // Detached Electron/tuttid can survive process-group signals; sweep by the
+  // isolated paths this Desktop was launched with.
+  await sweepDetachedDesktopLeftovers(child);
+}
+
+async function sweepDetachedDesktopLeftovers(child) {
+  if (process.platform === "win32" || typeof child !== "object" || !child) {
+    return;
+  }
+  // Only match run-isolated paths. Never use daemonPath: parallel record/replay
+  // workers share a warmed tuttids binary (TUTTID_BIN), so sweeping by that path
+  // SIGTERMs every concurrent managed tuttids when one Desktop exits.
+  const markers = [child.userDataDirectory, child.stateDirectory].filter(
+    (value) => typeof value === "string" && value.trim()
+  );
+  if (markers.length === 0) return;
+  const pids = await listPidsMatchingMarkers(markers);
+  for (const pid of pids) {
+    if (pid === process.pid || pid === child.pid) continue;
+    try {
+      process.kill(pid, "SIGTERM");
+    } catch {
+      // Already gone.
+    }
+  }
+  if (pids.length === 0) return;
+  await delay(500);
+  for (const pid of pids) {
+    if (pid === process.pid || pid === child.pid) continue;
+    try {
+      process.kill(pid, 0);
+      process.kill(pid, "SIGKILL");
+    } catch {
+      // Already gone.
+    }
+  }
+}
+
+async function listPidsMatchingMarkers(markers) {
+  const child = spawn("ps", ["-axo", "pid=,command="], {
+    stdio: ["ignore", "pipe", "ignore"]
+  });
+  let stdout = "";
+  child.stdout.setEncoding("utf8");
+  child.stdout.on("data", (chunk) => {
+    stdout += chunk;
+  });
+  try {
+    await once(child, "close");
+  } catch {
+    return [];
+  }
+  const pids = [];
+  for (const line of stdout.split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    const match = /^(\d+)\s+(.*)$/.exec(trimmed);
+    if (!match) continue;
+    const pid = Number.parseInt(match[1], 10);
+    const command = match[2];
+    if (!Number.isSafeInteger(pid) || pid <= 0) continue;
+    if (!markers.some((marker) => command.includes(marker))) continue;
+    // Only sweep Tutti desktop / daemon leftovers, not unrelated tools that
+    // happen to mention a path in their argv.
+    if (
+      !/Electron|tuttid|electron-vite|dev:desktop/i.test(command) &&
+      !command.includes("electron-user-data")
+    ) {
+      continue;
+    }
+    pids.push(pid);
+  }
+  return pids;
 }
 
 function onceExit(child) {

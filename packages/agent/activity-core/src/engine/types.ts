@@ -520,6 +520,8 @@ export interface AgentSessionSubmitPromptInput {
   displayPrompt?: string;
   requiredSettingsPatch?: Readonly<AgentActivitySubmitSettingsPatch>;
   routing?: "auto" | "immediate" | "send_now";
+  /** Exact canonical active Turn targeted when routing as guidance. */
+  targetTurnId?: string;
   runtimeContent?: readonly AgentPromptContentBlock[];
   submitDiagnostics?: Readonly<AgentActivitySubmitDiagnostics>;
 }
@@ -531,6 +533,8 @@ export interface AgentSessionSubmitPromptResult {
 
 export interface AgentSessionStopInput {
   agentSessionId: string;
+  /** Identity of the pending submit to stop while its Turn is being admitted. */
+  clientSubmitId?: string;
 }
 
 export interface AgentSessionEngine {

@@ -187,6 +187,12 @@ func replayProviderHome(
 		session.AgentTargetID,
 		session.Provider,
 	)
+	if !ok {
+		// Shared Agent Sessions use a runtime-specific shared-agent:<id> target
+		// while retaining the provider identity in the canonical Session. The
+		// provider descriptor still owns portable runtime paths for that Session.
+		descriptor, ok = FindProviderReplayByProvider(session.Provider)
+	}
 	directory := strings.TrimSpace(
 		descriptor.PortableRuntime.SessionHomeDirectory,
 	)

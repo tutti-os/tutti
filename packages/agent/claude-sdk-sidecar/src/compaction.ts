@@ -10,9 +10,15 @@ type ContextUsageQuery = {
 
 export type ContextUsageSnapshotResult = "emitted" | "unavailable" | "stale";
 
+const LOCAL_COMMAND_STDOUT_PATTERN =
+  /<local-command-stdout>([\s\S]*?)<\/local-command-stdout>/iu;
+const COMPACT_FAILURE_PATTERN = /not enough|fail|error/iu;
+const COMPACT_SUCCESS_PATTERN = /^compacted\b/iu;
+
 export class CompactionTracker {
   private inProgress = false;
   private commandTurnId = "";
+  private readonly startedTurnIds = new Set<string>();
   private readonly completedTurnIds = new Set<string>();
   private readonly activeTurnId: () => string;
   private readonly ensureActive: (messageType: string) => void;
@@ -39,7 +45,17 @@ export class CompactionTracker {
   }
 
   selectCommand(turnId: string, isCompact: boolean): void {
-    this.commandTurnId = isCompact ? turnId : "";
+    if (!isCompact) {
+      this.commandTurnId = "";
+      return;
+    }
+    // Claude Code 2.1.x frequently finishes /compact without streaming
+    // status:compacting or compact_boundary to the query iterator (the
+    // boundary may exist only in the on-disk transcript). Emit the progress
+    // banner immediately so the daemon can settle it when the turn closes,
+    // matching the Codex silent-compact path.
+    this.commandTurnId = turnId;
+    this.emitStarted(turnId);
   }
 
   handleSystemMessage(
@@ -49,6 +65,9 @@ export class CompactionTracker {
     if (subtype === "status") {
       return this.handleStatus(message);
     }
+    if (subtype === "local_command" || subtype === "local_command_output") {
+      return this.handleLocalCommandOutput(message);
+    }
     if (subtype !== "compact_boundary") {
       return false;
     }
@@ -57,6 +76,24 @@ export class CompactionTracker {
     this.emitBoundaryUsage(message, turnId);
     this.emitBoundaryCompletion();
     return true;
+  }
+
+  /**
+   * Claude 2.1.x may surface compact failures as assistant-style text (or as
+   * a result fallback) instead of status/compact_result. When a slash
+   * /compact turn is live, treat known failure copy as compact_failed so the
+   * daemon does not settle the progress banner as "completed" on a successful
+   * result subtype.
+   */
+  noteAssistantText(content: string): void {
+    const text = collapseRepeatedText(content);
+    if (!text || !this.isLiveCommandTurn()) {
+      return;
+    }
+    if (!COMPACT_FAILURE_PATTERN.test(text)) {
+      return;
+    }
+    this.emitFailed(this.eventTurnId(), text);
   }
 
   async emitContextUsageSnapshot(
@@ -109,38 +146,43 @@ export class CompactionTracker {
     if (message.status === "compacting") {
       this.ensureActive("compact_status");
       this.clearPendingOrphans();
-      this.inProgress = true;
-      this.emit({
-        type: "compact_started",
-        payload: {
-          turnId: this.activeTurnId(),
-          content: "Compacting..."
-        }
-      });
+      this.emitStarted(this.activeTurnId() || this.commandTurnId);
       return true;
     }
     const compactResult = stringValue(message.compact_result);
     if (compactResult === "success" && this.inProgress) {
-      this.inProgress = false;
       const turnId = this.eventTurnId();
       this.emitCompleted(turnId, "Compacting completed.");
       void this.emitContextUsageSnapshot(turnId);
       return true;
     }
     if (compactResult === "failed" && this.inProgress) {
-      this.inProgress = false;
-      const turnId = this.activeTurnId();
+      const turnId = this.activeTurnId() || this.commandTurnId;
       const reason = collapseRepeatedText(stringValue(message.compact_error));
-      this.emit({
-        type: "compact_failed",
-        payload: {
-          turnId,
-          reason,
-          content: reason
-            ? `Compacting failed: ${reason}`
-            : "Compacting failed."
-        }
-      });
+      this.emitFailed(turnId, reason);
+      return true;
+    }
+    return false;
+  }
+
+  private handleLocalCommandOutput(message: Record<string, unknown>): boolean {
+    if (!this.isLiveCommandTurn()) {
+      return false;
+    }
+    const stdout = localCommandStdout(message);
+    if (!stdout) {
+      return false;
+    }
+    const turnId = this.eventTurnId();
+    if (COMPACT_FAILURE_PATTERN.test(stdout)) {
+      this.ensureActive("compact_local_command");
+      this.emitFailed(turnId, stdout);
+      return true;
+    }
+    if (COMPACT_SUCCESS_PATTERN.test(stdout)) {
+      this.ensureActive("compact_local_command");
+      this.emitCompleted(turnId, "Compacting completed.");
+      void this.emitContextUsageSnapshot(turnId);
       return true;
     }
     return false;
@@ -150,9 +192,11 @@ export class CompactionTracker {
     message: Record<string, unknown>,
     turnId: string
   ): void {
-    const metadata = recordValue(message.compact_metadata);
-    const postTokens = numberValue(metadata?.post_tokens);
-    const preTokens = numberValue(metadata?.pre_tokens);
+    const metadata = compactBoundaryMetadata(message);
+    const postTokens = numberValue(
+      metadata?.post_tokens ?? metadata?.postTokens
+    );
+    const preTokens = numberValue(metadata?.pre_tokens ?? metadata?.preTokens);
     if (postTokens > 0 && turnId) {
       emitUsageUpdated(this.emit, turnId, {
         contextWindow: {
@@ -172,21 +216,91 @@ export class CompactionTracker {
     if (!this.inProgress && turnId !== this.commandTurnId) {
       return;
     }
-    this.inProgress = false;
     this.emitCompleted(turnId, "Compacting completed.");
   }
 
-  private emitCompleted(turnId: string, content: string): void {
-    if (!turnId || this.completedTurnIds.has(turnId)) {
+  private emitStarted(turnId: string): void {
+    const normalized = turnId.trim();
+    if (
+      !normalized ||
+      this.startedTurnIds.has(normalized) ||
+      this.completedTurnIds.has(normalized)
+    ) {
       return;
     }
-    this.completedTurnIds.add(turnId);
-    this.emit({ type: "compact_completed", payload: { turnId, content } });
+    this.startedTurnIds.add(normalized);
+    this.inProgress = true;
+    this.emit({
+      type: "compact_started",
+      payload: {
+        turnId: normalized,
+        content: "Compacting..."
+      }
+    });
+  }
+
+  private emitCompleted(turnId: string, content: string): void {
+    const normalized = turnId.trim();
+    if (!normalized || this.completedTurnIds.has(normalized)) {
+      return;
+    }
+    this.completedTurnIds.add(normalized);
+    this.inProgress = false;
+    if (normalized === this.commandTurnId) {
+      this.commandTurnId = "";
+    }
+    this.emit({
+      type: "compact_completed",
+      payload: { turnId: normalized, content }
+    });
+  }
+
+  private emitFailed(turnId: string, reason: string): void {
+    const normalized = turnId.trim();
+    if (!normalized || this.completedTurnIds.has(normalized)) {
+      return;
+    }
+    this.completedTurnIds.add(normalized);
+    this.inProgress = false;
+    if (normalized === this.commandTurnId) {
+      this.commandTurnId = "";
+    }
+    this.emit({
+      type: "compact_failed",
+      payload: {
+        turnId: normalized,
+        reason,
+        content: reason ? `Compacting failed: ${reason}` : "Compacting failed."
+      }
+    });
+  }
+
+  private isLiveCommandTurn(): boolean {
+    if (!this.commandTurnId || this.completedTurnIds.has(this.commandTurnId)) {
+      return false;
+    }
+    return this.inProgress || this.startedTurnIds.has(this.commandTurnId);
   }
 
   private eventTurnId(): string {
     return this.activeTurnId() || this.commandTurnId;
   }
+}
+
+function compactBoundaryMetadata(
+  message: Record<string, unknown>
+): Record<string, unknown> | null {
+  return (
+    recordValue(message.compact_metadata) ||
+    recordValue(message.compactMetadata) ||
+    null
+  );
+}
+
+function localCommandStdout(message: Record<string, unknown>): string {
+  const content = stringValue(message.content);
+  const match = LOCAL_COMMAND_STDOUT_PATTERN.exec(content);
+  return collapseRepeatedText((match?.[1] ?? content).trim());
 }
 
 export function collapseRepeatedText(value: string): string {

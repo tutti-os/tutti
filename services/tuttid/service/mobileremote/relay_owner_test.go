@@ -14,6 +14,7 @@ import (
 
 	authbridge "github.com/tutti-os/tutti/packages/auth/bridge-go"
 	deviceauthority "github.com/tutti-os/tutti/packages/clients/device-authority-go"
+	devicelink "github.com/tutti-os/tutti/packages/device-link"
 	mobileremotebiz "github.com/tutti-os/tutti/services/tuttid/biz/mobileremote"
 )
 
@@ -148,6 +149,9 @@ func TestHandleRelayStreamValidatesPreludeAndUsesExistingAgentFraming(t *testing
 		done <- service.handleRelayStream(context.Background(), owner)
 	}()
 	writeRelayTestPrelude(t, caller)
+	if err := devicelink.ProbeStream(context.Background(), caller); err != nil {
+		t.Fatalf("probe Relay stream: %v", err)
+	}
 	if err := writeRemoteFrame(caller, RemoteRequest{
 		ProtocolEpoch: ApplicationProtocolEpoch,
 		Service:       AgentHTTPService,

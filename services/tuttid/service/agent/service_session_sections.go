@@ -284,10 +284,23 @@ func (s *Service) ListSessionSectionPage(
 	if err != nil {
 		return SessionSection{}, err
 	}
+	canonicalSectionKey := agentactivitybiz.NormalizeRailSectionKey(sectionKey)
 	for _, project := range projects {
 		project = userProjectWithSectionKey(project)
-		if project.SectionKey == sectionKey {
-			return s.sessionSectionPage(ctx, workspaceID, sessionSectionKindProject, sectionKey, &project, input.Cursor, input.Limit, agentTargetID)
+		if agentactivitybiz.NormalizeRailSectionKey(project.SectionKey) == canonicalSectionKey {
+			// Always list by the project-derived canonical key so sessions
+			// classified with NormalizeProjectPath are found even when the
+			// caller still has a symlink-aliased section key.
+			return s.sessionSectionPage(
+				ctx,
+				workspaceID,
+				sessionSectionKindProject,
+				project.SectionKey,
+				&project,
+				input.Cursor,
+				input.Limit,
+				agentTargetID,
+			)
 		}
 	}
 	return SessionSection{}, ErrInvalidArgument
@@ -474,9 +487,10 @@ func (s *Service) resolveSessionSectionScope(
 	if err != nil {
 		return "", nil, err
 	}
+	canonicalSectionKey := agentactivitybiz.NormalizeRailSectionKey(sectionKey)
 	for _, project := range projects {
 		project = userProjectWithSectionKey(project)
-		if project.SectionKey == sectionKey {
+		if agentactivitybiz.NormalizeRailSectionKey(project.SectionKey) == canonicalSectionKey {
 			return sessionSectionKindProject, &project, nil
 		}
 	}
@@ -541,8 +555,7 @@ func (s *Service) sessionsFromActivity(ctx context.Context, workspaceID string, 
 }
 
 func userProjectWithSectionKey(project userprojectbiz.Project) userprojectbiz.Project {
-	if strings.TrimSpace(project.SectionKey) == "" {
-		project.SectionKey = userprojectbiz.SectionKeyFromPath(project.Path)
-	}
+	project.Path = agentactivitybiz.NormalizeProjectPath(project.Path)
+	project.SectionKey = userprojectbiz.SectionKeyFromPath(project.Path)
 	return project
 }

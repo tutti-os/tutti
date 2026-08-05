@@ -506,11 +506,14 @@ assembles the same Mobile
 binding surface as an XCFramework, archives the React Native app, and uses the
 repository App Store Connect API key plus the `IOS_DEVELOPMENT_TEAM` repository
 variable for Xcode-managed cloud signing. It loads the Mobile Podfile's pnpm
-path compatibility shim before generating the Pods project, then ensures the
-device configured by the `IOS_TEST_DEVICE_UDID` Actions secret is registered
-before exporting a development IPA as a 14-day private validation artifact
-rather than creating a GitHub Release. Both jobs remain manual so pull request
-code does not receive mobile signing credentials automatically.
+path compatibility shim before generating the Pods project, combines the GitHub
+Actions run number and attempt as the unique iOS build number, exports an App
+Store Connect IPA, verifies that the signed app contains its release
+`main.jsbundle`, and uploads the archive to TestFlight without registering test
+device UDIDs. The exported IPA and checksum remain available as a 14-day private
+validation artifact rather than creating a GitHub Release. Both jobs remain
+manual so pull request code does not receive mobile signing credentials
+automatically.
 
 Local runs resolve `golangci-lint` from `$(go env GOPATH)/bin` first and fall
 back to `PATH`. This matches the repository install command without requiring a

@@ -482,6 +482,43 @@ file or directory`. A failed `codex app-server` probe is diagnostic evidence,
   [runtimeprep tutti_agent.go](../../../packages/agent/runtimeprep/tutti_agent.go)
   [tuttid tuttiagent service.go](../../../services/tuttid/service/tuttiagent/service.go)
 
+### Managed npm install fails before reaching every registry
+
+- Symptom:
+  A Codex or Tutti Agent managed npm install fails immediately with exit code
+  `126`. On macOS or another Unix host, stderr contains
+  `dirname: command not found` followed by a malformed `node` path. Switching
+  npm registries produces the same failure without meaningful network delay.
+- Quick checks:
+  Inspect the prepared npm path and the install process `PATH`. Run the managed
+  npm launcher once with that exact environment. If adding `/usr/bin:/bin`
+  makes it work, the failure is local process setup rather than registry or
+  package availability. On Windows, confirm the structured runner uses
+  `cmd.exe /D /S /C call` for `npm.cmd` and retains the inherited `System32`
+  path.
+- Root cause:
+  Managed runtime overrides put the bundled Node directory first, but an
+  already-installed runtime fast path can accidentally build the override from
+  an empty base environment. Direct structured execution then exposes the
+  truncated `PATH`: the Unix npm launcher cannot resolve tools such as
+  `dirname`, while Windows batch launchers can lose commands supplied by the
+  host environment. A login shell can hide this defect by rebuilding `PATH`.
+- Fix:
+  Keep structured argv execution and the platform process adapters. When no
+  environment provider is injected, inherit the daemon process environment
+  before prepending managed runtime directories. Do not switch back to shell
+  command strings or hardcode a Unix path into shared installer policy.
+- Validation:
+  Execute a real POSIX npm-style launcher that calls `dirname` with the
+  production managed-runtime composition, test Windows `.cmd` argument
+  preservation, build the daemon natively, and cross-compile the Windows
+  agentstatus tests.
+- References:
+  [installer_codex_cli.go](../../../services/tuttid/service/agentstatus/installer_codex_cli.go)
+  [provider_resolution.go](../../../services/tuttid/service/agentstatus/provider_resolution.go)
+  [service_helpers.go](../../../services/tuttid/service/agentstatus/service_helpers.go)
+  [install_command_windows.go](../../../services/tuttid/service/agentstatus/install_command_windows.go)
+
 ### Tutti Agent unexpectedly loses login after a host auth read failure
 
 - Symptom:

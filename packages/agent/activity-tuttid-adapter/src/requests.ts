@@ -130,6 +130,9 @@ export function tuttiSendWorkspaceAgentSessionInputRequestFromActivity(
     content: tuttiPromptContentBlocksFromActivity(input.content),
     displayPrompt: input.displayPrompt ?? null,
     ...(input.guidance === true ? { guidance: true } : {}),
+    ...(input.guidance === true && input.targetTurnId?.trim()
+      ? { turnId: input.targetTurnId.trim() }
+      : {}),
     ...(input.submitDiagnostics
       ? {
           submitDiagnostics: tuttiSubmitDiagnosticsFromActivity(

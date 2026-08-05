@@ -4,6 +4,10 @@ import {
   inferAgentPatchChangeType
 } from "../../../rules/agentPatchMetadata";
 import {
+  agentFileChangeStats,
+  isAgentUnifiedDiff
+} from "../file-diff/agentUnifiedDiff";
+import {
   fileChangeEntriesFromChanges,
   fileChangeTypeValue
 } from "../../../../workspaceAgentFileChangePayload";
@@ -77,72 +81,48 @@ export function getFileChangeRenderData(
     stringValue(payloadInput?.path),
     firstLocationPath(inputLocations)
   );
-  const unifiedDiff = firstString(
-    stringValue(call.output?.patch),
-    stringValue(payloadOutput?.patch),
-    stringValue(call.output?.diff),
-    stringValue(payloadOutput?.diff)
-  );
+  const diffValues = [
+    call.output?.patch,
+    payloadOutput?.patch,
+    call.output?.diff,
+    payloadOutput?.diff
+  ];
+  const rawDiff = firstRawString(...diffValues);
   const path = firstString(
     inputPath,
-    unifiedDiff ? extractAgentPatchPath(unifiedDiff) : null
+    rawDiff ? extractAgentPatchPath(rawDiff) : null
   );
   if (!path) {
     return [];
   }
 
-  const content = firstString(
-    stringValue(call.input?.content),
-    stringValue(payloadInput?.content)
+  const content = firstFileString(call.input?.content, payloadInput?.content);
+  const oldString = firstFileString(
+    call.input?.old_string,
+    call.input?.oldString,
+    payloadInput?.old_string,
+    payloadInput?.oldString,
+    call.output?.oldString,
+    payloadOutput?.oldString
   );
-  const oldString = firstString(
-    stringValue(call.input?.old_string),
-    stringValue(call.input?.oldString),
-    stringValue(payloadInput?.old_string),
-    stringValue(payloadInput?.oldString),
-    stringValue(call.output?.oldString),
-    stringValue(payloadOutput?.oldString)
+  const newString = firstFileString(
+    call.input?.new_string,
+    call.input?.newString,
+    payloadInput?.new_string,
+    payloadInput?.newString,
+    call.output?.newString,
+    payloadOutput?.newString
   );
-  const newString = firstString(
-    stringValue(call.input?.new_string),
-    stringValue(call.input?.newString),
-    stringValue(payloadInput?.new_string),
-    stringValue(payloadInput?.newString),
-    stringValue(call.output?.newString),
-    stringValue(payloadOutput?.newString)
-  );
-  const changeType = inferFileChangeType(
-    call.toolName,
-    unifiedDiff,
+  const rendered = normalizeFileChangeRenderData({
+    path,
+    toolName: call.toolName,
+    allowSyntheticDiff: true,
+    diffValues,
     content,
     oldString,
     newString
-  );
-  const normalizedUnifiedDiff =
-    !unifiedDiff && oldString !== null && newString !== null
-      ? syntheticUnifiedDiff(path, changeType, oldString, newString)
-      : unifiedDiff;
-  const lineStats = fileChangeStats(
-    changeType,
-    normalizedUnifiedDiff,
-    content,
-    oldString,
-    newString
-  );
-
-  return [
-    {
-      path,
-      changeType,
-      language: languageForPath(path),
-      content,
-      oldString,
-      newString,
-      unifiedDiff: normalizedUnifiedDiff,
-      added: lineStats.added,
-      removed: lineStats.removed
-    }
-  ];
+  });
+  return rendered ? [rendered] : [];
 }
 
 function structuredPatchFiles(value: unknown): AgentFileChangeRenderData[] {
@@ -156,77 +136,39 @@ function structuredPatchFiles(value: unknown): AgentFileChangeRenderData[] {
       stringValue(patch?.filePath),
       stringValue(patch?.path)
     );
-    const diff = firstString(
-      stringValue(patch?.diff),
-      stringValue(patch?.patch)
-    );
     if (!path) {
       return [];
     }
-    const oldString = firstString(
-      stringValue(patch?.oldString),
-      stringValue(patch?.old_string)
-    );
-    const newString = firstString(
-      stringValue(patch?.newString),
-      stringValue(patch?.new_string)
-    );
-    const content = firstString(stringValue(patch?.content), newString);
-    if (!diff && !oldString && !newString && !content) {
-      return [];
-    }
-    const changeType = firstKnownChangeType(
-      normalizeChangeType(stringValue(patch?.kind)),
-      normalizeChangeType(stringValue(patch?.change)),
-      inferFileChangeType(null, diff, content, oldString, newString)
-    );
-    const stats = fileChangeStats(
-      changeType,
-      diff,
-      content,
-      oldString,
-      newString
-    );
-    return [
-      {
-        path,
-        changeType,
-        language: languageForPath(path),
-        content,
-        oldString,
-        newString,
-        unifiedDiff: diff,
-        added: stats.added,
-        removed: stats.removed
-      }
-    ];
+    const rendered = normalizeFileChangeRenderData({
+      path,
+      explicitChangeType: normalizeChangeType(fileChangeTypeValue(patch ?? {})),
+      allowSyntheticDiff: false,
+      diffValues: [patch?.diff, patch?.patch],
+      content: firstFileString(patch?.content),
+      oldString: firstFileString(patch?.oldString, patch?.old_string),
+      newString: firstFileString(patch?.newString, patch?.new_string)
+    });
+    return rendered ? [rendered] : [];
   });
 }
 
 function detailedDiffFiles(value: unknown): AgentFileChangeRenderData[] {
-  const diff = stringValue(value);
-  if (!diff) {
+  const diff = firstRawString(value);
+  if (diff === null) {
     return [];
   }
   const path = diffPath(diff);
   if (!path) {
     return [];
   }
-  const stats = diffLineStats(diff);
-  const changeType = inferFileChangeType(null, diff, null, null, null);
-  return [
-    {
-      path,
-      changeType,
-      language: languageForPath(path),
-      content: null,
-      oldString: null,
-      newString: null,
-      unifiedDiff: diff,
-      added: stats.added,
-      removed: stats.removed
-    }
-  ];
+  const rendered = normalizeFileChangeRenderData({
+    path,
+    diffValues: [diff],
+    content: null,
+    oldString: null,
+    newString: null
+  });
+  return rendered ? [rendered] : [];
 }
 
 function fileChangesFiles(value: unknown): AgentFileChangeRenderData[] {
@@ -238,50 +180,120 @@ function fileChangesFiles(value: unknown): AgentFileChangeRenderData[] {
   return files.flatMap((item) => {
     const file = recordValue(item);
     const path = stringValue(file?.path);
-    if (!path) {
+    if (!file || !path) {
       return [];
     }
-    const unifiedDiff = firstString(
-      stringValue(file?.diff),
-      stringValue(file?.patch),
-      stringValue(file?.unifiedDiff),
-      stringValue(file?.unified_diff)
-    );
-    const oldString = firstString(
-      stringValue(file?.oldString),
-      stringValue(file?.old_string)
-    );
-    const newString = firstString(
-      stringValue(file?.newString),
-      stringValue(file?.new_string)
-    );
-    const content = firstString(stringValue(file?.content), newString);
-    const changeType = firstKnownChangeType(
-      normalizeChangeType(stringValue(file?.change)),
-      normalizeChangeType(stringValue(file?.kind)),
-      inferFileChangeType(null, unifiedDiff, content, oldString, newString)
-    );
-    const stats = fileChangeStats(
-      changeType,
-      unifiedDiff,
-      content,
-      oldString,
-      newString
-    );
-    return [
-      {
-        path,
-        changeType,
-        language: languageForPath(path),
-        content,
-        oldString,
-        newString,
-        unifiedDiff,
-        added: stats.added,
-        removed: stats.removed
-      }
-    ];
+    const rendered = normalizeFileChangeRenderData({
+      path,
+      explicitChangeType: normalizeChangeType(fileChangeTypeValue(file)),
+      diffValues: [
+        file?.diff,
+        file?.patch,
+        file?.unifiedDiff,
+        file?.unified_diff
+      ],
+      content: firstFileString(file?.content),
+      oldString: firstFileString(file?.oldString, file?.old_string),
+      newString: firstFileString(file?.newString, file?.new_string)
+    });
+    return rendered ? [rendered] : [];
   });
+}
+
+function normalizeFileChangeRenderData({
+  path,
+  toolName = null,
+  explicitChangeType = "unknown",
+  allowSyntheticDiff = false,
+  diffValues,
+  content: initialContent,
+  oldString: initialOldString,
+  newString: initialNewString
+}: {
+  path: string;
+  toolName?: string | null;
+  explicitChangeType?: AgentFileChangeRenderData["changeType"];
+  allowSyntheticDiff?: boolean;
+  diffValues: unknown[];
+  content: string | null;
+  oldString: string | null;
+  newString: string | null;
+}): AgentFileChangeRenderData | null {
+  const rawDiff = firstRawString(...diffValues);
+  const unifiedDiff = firstValidUnifiedDiff(...diffValues);
+  let content = initialContent;
+  let oldString = initialOldString;
+  let newString = initialNewString;
+  let changeType = firstKnownChangeType(
+    explicitChangeType,
+    inferFileChangeType(toolName, unifiedDiff, content, oldString, newString)
+  );
+
+  if (unifiedDiff === null && rawDiff !== null) {
+    switch (changeType) {
+      case "created":
+        if (newString === null && content === null) {
+          newString = fileTextValue(rawDiff);
+        }
+        content ??= newString;
+        break;
+      case "deleted":
+        if (oldString === null && content === null) {
+          oldString = fileTextValue(rawDiff);
+        }
+        if (oldString !== null && newString === null) {
+          newString = "";
+        }
+        content = null;
+        break;
+      default:
+        if (oldString === null && newString === null && content === null) {
+          content = fileTextValue(rawDiff);
+        }
+        break;
+    }
+    if (changeType === "unknown" && content !== null) {
+      changeType = "modified";
+    }
+  }
+  if (changeType === "created" && content === null && newString !== null) {
+    content = newString;
+  }
+
+  const normalizedUnifiedDiff =
+    allowSyntheticDiff &&
+    unifiedDiff === null &&
+    oldString !== null &&
+    newString !== null
+      ? syntheticUnifiedDiff(path, changeType, oldString, newString)
+      : unifiedDiff;
+  if (
+    normalizedUnifiedDiff === null &&
+    content === null &&
+    oldString === null &&
+    newString === null &&
+    changeType === "unknown"
+  ) {
+    return null;
+  }
+  const stats = fileChangeStats(
+    changeType,
+    normalizedUnifiedDiff,
+    content,
+    oldString,
+    newString
+  );
+  return {
+    path,
+    changeType,
+    language: languageForPath(path),
+    content,
+    oldString,
+    newString,
+    unifiedDiff: normalizedUnifiedDiff,
+    added: stats.added,
+    removed: stats.removed
+  };
 }
 
 function changeMapFiles(value: unknown): AgentFileChangeRenderData[] {
@@ -291,21 +303,12 @@ function changeMapFiles(value: unknown): AgentFileChangeRenderData[] {
     if (!normalizedPath) {
       return [];
     }
-    const unifiedDiff = firstString(
-      stringValue(change.unified_diff),
-      stringValue(change.unifiedDiff),
-      stringValue(change.diff),
-      stringValue(change.patch)
-    );
-    const explicitContent = stringValue(change.content);
     const normalizedType = normalizeChangeType(fileChangeTypeValue(change));
-    let oldString = firstString(
-      stringValue(change.old_string),
-      stringValue(change.oldString)
-    );
-    let newString = firstString(
-      stringValue(change.new_string),
-      stringValue(change.newString),
+    const explicitContent = firstFileString(change.content);
+    let oldString = firstFileString(change.old_string, change.oldString);
+    let newString = firstFileString(
+      change.new_string,
+      change.newString,
       explicitContent
     );
     if (
@@ -330,46 +333,25 @@ function changeMapFiles(value: unknown): AgentFileChangeRenderData[] {
     ) {
       newString = "";
     }
-    const content = firstString(
+    const content = firstFileString(
       normalizedType === "deleted" ? null : explicitContent,
       normalizedType === "created" ? newString : null
     );
-    if (
-      !unifiedDiff &&
-      oldString === null &&
-      newString === null &&
-      content === null
-    ) {
-      return [];
-    }
-    const changeType = firstKnownChangeType(
-      normalizedType,
-      inferFileChangeType(null, unifiedDiff, content, oldString, newString)
-    );
-    const normalizedUnifiedDiff =
-      !unifiedDiff && oldString !== null && newString !== null
-        ? syntheticUnifiedDiff(normalizedPath, changeType, oldString, newString)
-        : unifiedDiff;
-    const stats = fileChangeStats(
-      changeType,
-      normalizedUnifiedDiff,
+    const rendered = normalizeFileChangeRenderData({
+      path: normalizedPath,
+      explicitChangeType: normalizedType ?? "unknown",
+      allowSyntheticDiff: true,
+      diffValues: [
+        change.unified_diff,
+        change.unifiedDiff,
+        change.diff,
+        change.patch
+      ],
       content,
       oldString,
       newString
-    );
-    return [
-      {
-        path: normalizedPath,
-        changeType,
-        language: languageForPath(normalizedPath),
-        content,
-        oldString,
-        newString,
-        unifiedDiff: normalizedUnifiedDiff,
-        added: stats.added,
-        removed: stats.removed
-      }
-    ];
+    });
+    return rendered ? [rendered] : [];
   });
 }
 
@@ -380,14 +362,21 @@ function inferFileChangeType(
   oldString: string | null,
   newString: string | null
 ): AgentFileChangeRenderData["changeType"] {
-  if (unifiedDiff) {
+  if (unifiedDiff && isAgentUnifiedDiff(unifiedDiff)) {
     return inferAgentPatchChangeType(unifiedDiff);
   }
   const normalizedToolName = normalizeToolName(toolName);
-  if (normalizedToolName === "write" && (content || newString)) {
+  if (
+    normalizedToolName === "write" &&
+    (content !== null || newString !== null)
+  ) {
     return "created";
   }
-  if (normalizedToolName === "edit" || oldString || newString) {
+  if (
+    normalizedToolName === "edit" ||
+    oldString !== null ||
+    newString !== null
+  ) {
     return "modified";
   }
   return "unknown";
@@ -436,30 +425,6 @@ function diffPath(value: string): string | null {
   return match?.[2]?.trim() ?? match?.[1]?.trim() ?? null;
 }
 
-function diffLineStats(value: string | null): {
-  added: number;
-  removed: number;
-} {
-  if (!value) {
-    return { added: 0, removed: 0 };
-  }
-  let added = 0;
-  let removed = 0;
-  value.split("\n").forEach((line) => {
-    if (line.startsWith("+++") || line.startsWith("---")) {
-      return;
-    }
-    if (line.startsWith("+")) {
-      added += 1;
-      return;
-    }
-    if (line.startsWith("-")) {
-      removed += 1;
-    }
-  });
-  return { added, removed };
-}
-
 function fileChangeStats(
   changeType: AgentFileChangeRenderData["changeType"],
   unifiedDiff: string | null,
@@ -467,24 +432,13 @@ function fileChangeStats(
   oldString: string | null,
   newString: string | null
 ): { added: number; removed: number } {
-  if (unifiedDiff) {
-    return diffLineStats(unifiedDiff);
-  }
-  if (changeType === "created") {
-    return { added: countTextLines(content ?? newString), removed: 0 };
-  }
-  if (changeType === "deleted") {
-    return { added: 0, removed: countTextLines(oldString) };
-  }
-  return { added: 0, removed: 0 };
-}
-
-function countTextLines(value: string | null): number {
-  if (!value) {
-    return 0;
-  }
-  const normalized = value.trimEnd();
-  return normalized ? normalized.split("\n").length : 0;
+  return agentFileChangeStats({
+    changeType,
+    unifiedDiff,
+    content,
+    oldString,
+    newString
+  });
 }
 
 function syntheticUnifiedDiff(
@@ -570,6 +524,38 @@ function firstString(
     }
   }
   return null;
+}
+
+function firstRawString(...values: unknown[]): string | null {
+  for (const value of values) {
+    if (typeof value === "string") {
+      return value;
+    }
+  }
+  return null;
+}
+
+function firstValidUnifiedDiff(...values: unknown[]): string | null {
+  for (const value of values) {
+    if (typeof value === "string" && isAgentUnifiedDiff(value)) {
+      return value;
+    }
+  }
+  return null;
+}
+
+function firstFileString(...values: unknown[]): string | null {
+  for (const value of values) {
+    if (typeof value === "string") {
+      return fileTextValue(value);
+    }
+  }
+  return null;
+}
+
+function fileTextValue(value: string): string {
+  const trimmed = value.trim();
+  return trimmed ? trimmed : value;
 }
 
 function recordValue(value: unknown): Record<string, unknown> | null {

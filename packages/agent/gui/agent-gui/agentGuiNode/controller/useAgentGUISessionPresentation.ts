@@ -94,6 +94,10 @@ interface UseAgentGUISessionPresentationInput {
   activeEngineLatestTurn: AgentActivityTurn | null;
   activeEngineRuntimeAvailability: SessionRuntimeAvailability | null;
   activeEngineSession: CanonicalAgentSession | null;
+  /** In-flight / waiting session settings update; blocks submit until settled. */
+  activeEngineSettingsUpdate: {
+    status: string;
+  } | null;
   activeGoalControlPresentation: SessionGoalControlPresentation;
   activeLatestPendingSubmitTurnId: string | null;
   activeLiveState: "inactive" | "activating" | "active" | "failed";
@@ -376,6 +380,12 @@ export function useAgentGUISessionPresentation(
   });
   const pendingApproval = input.pendingApproval !== null;
   const hasPendingInteractivePrompt = pendingInteractivePrompt !== null;
+  const settingsUpdateStatus = input.activeEngineSettingsUpdate?.status;
+  const settingsUpdatePending =
+    settingsUpdateStatus === "inFlight" ||
+    settingsUpdateStatus === "waitingForRuntime" ||
+    settingsUpdateStatus === "unknown" ||
+    settingsUpdateStatus === "failed";
   const composerGate = useMemo(
     () =>
       resolveAgentGUIComposerGate({
@@ -396,6 +406,7 @@ export function useAgentGUISessionPresentation(
         pendingInteractivePrompt: hasPendingInteractivePrompt,
         providerReadinessGate: input.providerReadinessGate,
         selectedAgentTargetUnavailable: input.selectedAgentTargetUnavailable,
+        settingsUpdatePending,
         sessionRuntimeBlockedReason,
         targetConnectionBlocked:
           targetConnection.blocked || observationGap !== null
@@ -418,6 +429,7 @@ export function useAgentGUISessionPresentation(
       isCollaboratorConversation,
       pendingApproval,
       sessionRuntimeBlockedReason,
+      settingsUpdatePending,
       targetConnection.blocked,
       observationGap
     ]

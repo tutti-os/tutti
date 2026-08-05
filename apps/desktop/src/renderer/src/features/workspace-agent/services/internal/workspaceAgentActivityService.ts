@@ -50,11 +50,7 @@ import {
   reportAgentSubmitTraceDiagnostic
 } from "../desktopAgentRuntimeSubmitDiagnostics.ts";
 import { reportAgentSessionSettingsChanges } from "./agentSessionSettingsAnalytics.ts";
-import { AgentSessionRecordingBinding } from "../../../agent-session-replay/services/agentSessionRecordingBinding.ts";
-import {
-  AgentSessionActivityEventRecorder,
-  createTuttidAgentSessionActivityEventAppender
-} from "../../../agent-session-replay/services/agentSessionActivityEventRecorder.ts";
+import { AgentSessionReplayActivityBridge } from "../../../agent-session-replay/services/agentSessionReplayActivityBridge.ts";
 
 function waitForPromiseWithSignal<T>(
   promise: Promise<T>,
@@ -121,21 +117,14 @@ export class WorkspaceAgentActivityService
     string,
     Promise<AgentActivitySnapshot>
   >();
-  private sessionRecordingBinding: AgentSessionRecordingBinding | null = null;
-  private sessionActivityEventRecorders: Map<
-    string,
-    AgentSessionActivityEventRecorder
-  > | null = null;
-  private sessionEngineActivityObservers: Map<
-    string,
-    Set<{
-      observeCommand(command: EngineExternalCommand): void;
-      observeIntent(intent: EngineIntent): void;
-    }>
-  > | null = null;
+  private readonly sessionReplayActivityBridge: AgentSessionReplayActivityBridge;
   constructor(dependencies: WorkspaceAgentActivityServiceDependencies) {
     super(dependencies);
     this.dependencies = dependencies;
+    this.sessionReplayActivityBridge = new AgentSessionReplayActivityBridge({
+      enabled: dependencies.sessionReplayEnabled,
+      tuttidClient: dependencies.tuttidClient
+    });
     this.analytics = new WorkspaceAgentActivityAnalytics({
       forceRefreshAgentProviderStatuses:
         dependencies.forceRefreshAgentProviderStatuses,
@@ -166,77 +155,47 @@ export class WorkspaceAgentActivityService
   }
 
   armNextSessionRecording(workspaceId: string, recordingId: string): void {
-    this.assertSessionReplayEnabled();
-    (this.sessionRecordingBinding ??= new AgentSessionRecordingBinding()).arm(
+    this.sessionReplayActivityBridge.armNextSessionRecording(
       workspaceId,
       recordingId
     );
   }
 
   clearNextSessionRecording(workspaceId: string, recordingId?: string): void {
-    this.sessionRecordingBinding?.clear(workspaceId, recordingId);
+    this.sessionReplayActivityBridge.clearNextSessionRecording(
+      workspaceId,
+      recordingId
+    );
   }
 
-  // Recorder lifecycle: an AgentSessionActivityEventRecorder exists only
-  // between a successful start and the matching seal/discard. Outside that
-  // window the per-workspace map stays empty so the engine hot path reduces
-  // to a null check.
   startSessionActivityEventRecording(
     workspaceId: string,
     recordingId: string
   ): void {
-    const normalizedWorkspaceId = normalizeWorkspaceId(workspaceId);
-    this.assertSessionReplayEnabled();
-    const recorders = (this.sessionActivityEventRecorders ??= new Map());
-    const existing = recorders.get(normalizedWorkspaceId);
-    const recorder =
-      existing ??
-      new AgentSessionActivityEventRecorder({
-        appender: createTuttidAgentSessionActivityEventAppender({
-          tuttidClient: this.dependencies.tuttidClient,
-          workspaceId: normalizedWorkspaceId
-        })
-      });
-    // Retain the recorder only after start accepts the recording, so a
-    // rejected start leaves no idle recorder on the hot path.
-    recorder.start({
-      recordingId,
-      scopeId: normalizedWorkspaceId
-    });
-    if (!existing) {
-      recorders.set(normalizedWorkspaceId, recorder);
-    }
+    this.sessionReplayActivityBridge.startSessionActivityEventRecording(
+      workspaceId,
+      recordingId
+    );
   }
 
-  async sealSessionActivityEventRecording(
+  sealSessionActivityEventRecording(
     workspaceId: string,
     recordingId: string
   ): Promise<void> {
-    const normalizedWorkspaceId = normalizeWorkspaceId(workspaceId);
-    const recorders = this.sessionActivityEventRecorders;
-    const recorder = recorders?.get(normalizedWorkspaceId);
-    if (!recorder) return;
-    // On seal failure the recorder keeps its pending batch so the caller can
-    // retry seal; drop the instance only after the flush succeeded.
-    await recorder.seal(recordingId);
-    if (recorders?.get(normalizedWorkspaceId) === recorder) {
-      recorders.delete(normalizedWorkspaceId);
-      if (recorders.size === 0) this.sessionActivityEventRecorders = null;
-    }
+    return this.sessionReplayActivityBridge.sealSessionActivityEventRecording(
+      workspaceId,
+      recordingId
+    );
   }
 
   discardSessionActivityEventRecording(
     workspaceId: string,
     recordingId: string
   ): void {
-    const normalizedWorkspaceId = normalizeWorkspaceId(workspaceId);
-    const recorders = this.sessionActivityEventRecorders;
-    if (!recorders) return;
-    const recorder = recorders.get(normalizedWorkspaceId);
-    if (!recorder) return;
-    recorder.discard(recordingId);
-    recorders.delete(normalizedWorkspaceId);
-    if (recorders.size === 0) this.sessionActivityEventRecorders = null;
+    this.sessionReplayActivityBridge.discardSessionActivityEventRecording(
+      workspaceId,
+      recordingId
+    );
   }
 
   addSessionEngineActivityObserver(
@@ -246,33 +205,26 @@ export class WorkspaceAgentActivityService
       observeIntent(intent: EngineIntent): void;
     }
   ): () => void {
-    const normalizedWorkspaceId = normalizeWorkspaceId(workspaceId);
-    this.assertSessionReplayEnabled();
-    const observerMap = (this.sessionEngineActivityObservers ??= new Map());
-    let observers = observerMap.get(normalizedWorkspaceId);
-    if (!observers) {
-      observers = new Set();
-      observerMap.set(normalizedWorkspaceId, observers);
-    }
-    observers.add(observer);
-    return () => {
-      observers?.delete(observer);
-      if (observers?.size === 0) {
-        observerMap.delete(normalizedWorkspaceId);
-        if (observerMap.size === 0) this.sessionEngineActivityObservers = null;
-      }
-    };
+    return this.sessionReplayActivityBridge.addSessionEngineActivityObserver(
+      workspaceId,
+      observer
+    );
   }
 
   private takeNextSessionRecording(workspaceId: string): string | null {
-    return this.sessionRecordingBinding?.take(workspaceId) ?? null;
+    return this.sessionReplayActivityBridge.takePendingSessionRecording(
+      workspaceId
+    );
   }
 
   private restoreNextSessionRecording(
     workspaceId: string,
     recordingId: string
   ): void {
-    this.sessionRecordingBinding?.restore(workspaceId, recordingId);
+    this.sessionReplayActivityBridge.restorePendingSessionRecording(
+      workspaceId,
+      recordingId
+    );
   }
 
   getSnapshot(workspaceId: string): AgentActivitySnapshot {
@@ -1083,28 +1035,10 @@ export class WorkspaceAgentActivityService
     return createWorkspaceAgentSessionEngineHost({
       ...(this.dependencies.sessionReplayEnabled
         ? {
-            activityEventObserver: {
-              observeCommand: (command: EngineExternalCommand) => {
-                this.sessionActivityEventRecorders
-                  ?.get(workspaceId)
-                  ?.observeCommand(command);
-                this.notifySessionEngineActivityObservers(
-                  workspaceId,
-                  "observeCommand",
-                  command
-                );
-              },
-              observeIntent: (intent: EngineIntent) => {
-                this.sessionActivityEventRecorders
-                  ?.get(workspaceId)
-                  ?.observeIntent(intent);
-                this.notifySessionEngineActivityObservers(
-                  workspaceId,
-                  "observeIntent",
-                  intent
-                );
-              }
-            },
+            activityEventObserver:
+              this.sessionReplayActivityBridge.createSessionEngineActivityObserver(
+                workspaceId
+              ),
             takePendingSessionRecording: (entryWorkspaceId: string) =>
               this.takeNextSessionRecording(entryWorkspaceId),
             restorePendingSessionRecording: (
@@ -1157,42 +1091,6 @@ export class WorkspaceAgentActivityService
         this.updateTuttiModeActivation(input),
       workspaceId
     });
-  }
-
-  private notifySessionEngineActivityObservers(
-    workspaceId: string,
-    method: "observeCommand",
-    value: EngineExternalCommand
-  ): void;
-  private notifySessionEngineActivityObservers(
-    workspaceId: string,
-    method: "observeIntent",
-    value: EngineIntent
-  ): void;
-  private notifySessionEngineActivityObservers(
-    workspaceId: string,
-    method: "observeCommand" | "observeIntent",
-    value: EngineExternalCommand | EngineIntent
-  ): void {
-    const observers = this.sessionEngineActivityObservers?.get(workspaceId);
-    if (!observers) return;
-    for (const observer of observers) {
-      try {
-        if (method === "observeCommand") {
-          observer.observeCommand(value as EngineExternalCommand);
-        } else {
-          observer.observeIntent(value as EngineIntent);
-        }
-      } catch {
-        // Replay instrumentation cannot block the product command path.
-      }
-    }
-  }
-
-  private assertSessionReplayEnabled(): void {
-    if (!this.dependencies.sessionReplayEnabled) {
-      throw new Error("agent_session_replay_not_composed");
-    }
   }
 }
 

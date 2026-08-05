@@ -149,6 +149,16 @@ export type MobileDiagnosticEvent =
         | "transport_lost";
     }
   | {
+      elapsedMs: number;
+      name: "device_link.stage";
+      stage:
+        | "direct_attempt_created"
+        | "direct_attempt_ready"
+        | "direct_connected"
+        | "relay_descriptor_ready"
+        | "relay_probe_ready";
+    }
+  | {
       name: "device_pairing.phase_changed";
       phase: DevicePairingPhase;
       source?: "manual" | "scanner";

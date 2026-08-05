@@ -22,6 +22,7 @@ const readyInput: ResolveAgentGUIComposerGateInput = {
   pendingInteractivePrompt: false,
   providerReadinessGate: null,
   selectedAgentTargetUnavailable: false,
+  settingsUpdatePending: false,
   sessionRuntimeBlockedReason: null,
   targetConnectionBlocked: false
 };
@@ -69,6 +70,19 @@ describe("resolveAgentGUIComposerGate", () => {
     expect(editor.contentEditable).toBe("true");
     expect(document.activeElement).toBe(editor);
     editor.remove();
+  });
+
+  it("blocks submission while a session settings update is pending", () => {
+    expect(
+      resolveAgentGUIComposerGate({
+        ...readyInput,
+        settingsUpdatePending: true
+      })
+    ).toMatchObject({
+      runtime: { status: "ready", reason: null },
+      editor: { status: "editable", reason: null },
+      submission: { status: "blocked", reason: "settings_update_pending" }
+    });
   });
 
   it("cannot expose ready submission with a stale runtime connection block", () => {

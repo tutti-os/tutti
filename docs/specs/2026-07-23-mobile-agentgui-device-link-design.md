@@ -14,8 +14,9 @@ fallback policy. Personal Desktop and Android consume the same authenticated
 facade; the direct lane includes paired-device rendezvous, framed Agent HTTP,
 request deadlines, event streaming and foreground/background close behavior.
 Android 15 ARM64 emulator build/install/start and authenticated loopback
-integration pass. Real-account physical-device network transitions and Relay
-fallback remain hardening work that does not expand the transport API. A stable
+integration pass. Mobile's Relay stream race and native consumer integration are
+now implemented; real-account physical-device network transitions and end-to-end
+Relay verification remain hardening work. A stable
 tag still requires the authenticated lifecycle checks and reproducible Mobile
 AAR consumer build to pass at the release head. TSH cutover to the shared
 manager remains a consumer-side rollout step.
@@ -222,9 +223,12 @@ TypeScript 侧继续使用：
 ### 7.4 P2P 与 Relay
 
 - P2P 与 Relay 同时受同一设备身份和配对授权约束。
-- Direct 立即开始；Relay 在现有竞速窗口后启动，快速失败时立即启动。
+- Mobile 的 Agent HTTP/live 数据流 direct 与 Relay 同时立即开始，首个成功的
+  authenticated stream 获胜；TSH Desktop 的默认 3 秒 Relay 兜底窗口由其产品策略
+  保持不变。
 - 第一条完成认证的可用链路获胜，晚到链路关闭。
-- 主界面不展示 P2P/Relay 区别，只展示连接中、已连接、重连中和设备离线。
+- 主界面和连接详情继续复用现有状态与 path scope，不新增 P2P/Relay 展示分支；选路
+  只在 native transport 内部生效。
 - 具体选路、耗时和 fallback reason 只进入清洗后的诊断与指标，不记录 candidate、IP、token 或 Agent payload。
 
 ## 8. 账号、配对和设备身份
@@ -564,10 +568,17 @@ Relay Agent lane 已接入同一套应用帧协议：Desktop `mobileremote` 只�
 移动端连接开关后获取 Relay owner demand，按 Device Authority 完成 identity
 enrollment、owner token 和 lease renewal；Relay stream prelude 校验 authority、
 user、target、channel 及 paired-device scope 后复用现有 Agent HTTP/live handler。
-Mobile 在直连准备阶段并行请求短期 Relay descriptor，直连优先，直连无法建立时由
-Android/iOS native adapter 使用相同 framed HTTP/live 协议拨号 Relay。因此 UI、生成
-客户端和 Agent DTO 不变。pairing 的 active 快照仍由现有控制面轮询刷新，Relay stream
-在本地快照中找不到 pairing 时 fail closed；快照刷新间隔是当前 2 秒轮询周期。
+Mobile 在直连准备阶段并行请求短期 Relay descriptor；原生层对每条 direct/Relay
+数据流先完成共享 DeviceLink transport probe，收到对端 ACK 后才让该路径赢得竞速，
+再发送应用帧；不会取消 direct attempt，后者继续到成功或当前连接代际失效。
+Android/iOS native adapter 不能把 WebSocket 101 或本地 QUIC stream allocation 单独
+当作成功路径。因此 UI、生成客户端和 Agent DTO 不变。paired-device attempt 的
+`device_link.attempt.changed` 通过已上线的设备级 V2 WebSocket 作为唤醒提示，连接
+建立时携带 session cookie 与 `deviceId`；客户端收到提示后仍通过 HTTP attempt API
+读取权威状态，推送丢失、重连或乱序时回退到 500ms 状态轮询。服务端对没有 room 的
+paired-device attempt 使用 `userId + deviceId` 精确投递；未开启连接功能的 Desktop
+不会建立这条长连接。pairing 的 active 快照仍在本地使用当前 2 秒周期轮询，Relay
+stream 在本地快照中找不到 pairing 时 fail closed。
 
 这里依赖的 Relay descriptor、Device Authority 和 `tsh-tunnel-relay` Agent channel
 是跨仓库的增量契约；服务端部署状态不在 Tutti 仓库内，须以对应 tsh-server/relay

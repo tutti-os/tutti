@@ -335,7 +335,9 @@ export interface DesktopHostOpenAgentWindowInput {
 }
 
 export interface DesktopHostReplaceWorkspaceWindowInput {
+  clientTs: number;
   mode: "agent" | "os";
+  previousMode: "agent" | "os";
   workspaceId: string;
 }
 

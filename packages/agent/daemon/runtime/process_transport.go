@@ -386,14 +386,8 @@ func (w processFrameWriter) Write(data []byte) (int, error) {
 	} else {
 		frame.Stderr = chunk
 	}
-	select {
-	case w.conn.frames <- frame:
-		return len(data), nil
-	case <-w.conn.closing:
-		// Closing intentionally discards unread diagnostics. Report the write as
-		// consumed so an orderly shutdown is not rewritten as a copy failure.
-		return len(data), nil
-	}
+	w.conn.sendFrame(frame)
+	return len(data), nil
 }
 
 func (c *localProcessConnection) wait() {
@@ -410,10 +404,31 @@ func (c *localProcessConnection) wait() {
 			exitCode = exitErr.ExitCode()
 		}
 	}
-	select {
-	case c.frames <- ProcessFrame{ExitCode: &exitCode}:
-	case <-c.closing:
-	}
+	c.sendFrame(ProcessFrame{ExitCode: &exitCode})
 	close(c.frames)
 	close(c.done)
+}
+
+// sendFrame preserves the output ordering guarantee even when Close has
+// started. Once closing is signaled, a send and the close signal are both
+// ready; choosing between them directly would make final stdout/stderr
+// diagnostics disappear nondeterministically. Prefer an available queue slot
+// before observing closing, and make one last non-blocking attempt after the
+// connection starts closing.
+func (c *localProcessConnection) sendFrame(frame ProcessFrame) {
+	select {
+	case c.frames <- frame:
+		return
+	default:
+	}
+
+	select {
+	case c.frames <- frame:
+		return
+	case <-c.closing:
+		select {
+		case c.frames <- frame:
+		default:
+		}
+	}
 }

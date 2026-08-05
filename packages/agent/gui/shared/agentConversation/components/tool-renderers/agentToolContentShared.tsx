@@ -5,6 +5,7 @@ import { AgentMessageMarkdown } from "../../../AgentMessageMarkdown";
 import { stripImagePayloadData } from "../../../imageGenerationTool";
 import type { AgentToolCallVM } from "../../contracts/agentToolCallVM";
 import {
+  getCommandRenderData,
   getFileChangeRenderData,
   getImageGenerationRenderData,
   getToolFallbackText,
@@ -177,7 +178,18 @@ export function hasAgentToolContent(call: AgentToolCallVM): boolean {
       return hasWriteContent(call);
     case "edit":
       return hasEditContent(call);
-    case "bash":
+    case "bash": {
+      const command = getCommandRenderData(call);
+      // toolName-only Claude Bash starts must not claim expandable detail —
+      // that paints an empty terminal shell with no data-agent-terminal-command.
+      return Boolean(
+        command.command ||
+        command.stdout ||
+        command.stderr ||
+        call.error ||
+        stringValue(call.summary)
+      );
+    }
     case "search":
       return hasGenericStructuredContent(call);
     case "web-search":
@@ -250,7 +262,7 @@ function hasReadContent(call: AgentToolCallVM): boolean {
 function hasWriteContent(call: AgentToolCallVM): boolean {
   const files = getFileChangeRenderData(call);
   return Boolean(
-    files.some((file) => file.content || file.unifiedDiff) ||
+    files.some((file) => file.content !== null || file.unifiedDiff !== null) ||
     (files.length === 0 &&
       (call.summary.trim() ||
         stringValue(call.input?.path) ||
@@ -264,9 +276,9 @@ function hasEditContent(call: AgentToolCallVM): boolean {
   return Boolean(
     files.some(
       (file) =>
-        file.unifiedDiff ||
+        file.unifiedDiff !== null ||
         (file.oldString !== null && file.newString !== null) ||
-        file.content
+        file.content !== null
     ) ||
     (files.length === 0 &&
       (stringValue(call.input?.path) ||

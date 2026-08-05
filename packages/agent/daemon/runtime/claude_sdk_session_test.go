@@ -154,6 +154,43 @@ func TestClaudeCodeSDKAdapterRuntimeContextIncludesProviderConfig(t *testing.T) 
 	}
 }
 
+func TestClaudeCodeSDKAdapterStartSkipsBootstrapOnAttachedLiveConnection(t *testing.T) {
+	conn := &attachedLiveClaudeSDKConnection{}
+	adapter := NewClaudeCodeSDKAdapter(&attachedLiveClaudeSDKTransport{conn: conn})
+	session := standardTestSession(ProviderClaudeCode)
+	session.ProviderSessionID = "provider-session-1"
+
+	events, err := adapter.Start(context.Background(), session)
+	if err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	if len(events) != 1 || events[0].Type != activityshared.EventSessionStarted {
+		t.Fatalf("Start events = %#v, want session.started", events)
+	}
+	if sent := conn.sentRequests(); len(sent) != 0 {
+		t.Fatalf("attached-live Start sent %#v, want no start bootstrap", sent)
+	}
+	if !adapter.HasLiveSession(session) {
+		t.Fatal("attached-live Start left no live session")
+	}
+}
+
+type attachedLiveClaudeSDKTransport struct {
+	conn *attachedLiveClaudeSDKConnection
+}
+
+func (t *attachedLiveClaudeSDKTransport) Start(_ context.Context, _ ProcessSpec) (ProcessConnection, error) {
+	return t.conn, nil
+}
+
+type attachedLiveClaudeSDKConnection struct {
+	scriptedClaudeSDKConnection
+}
+
+func (*attachedLiveClaudeSDKConnection) ProcessCassetteCaptureOrigin() ProcessCassetteCaptureOrigin {
+	return ProcessCassetteCaptureOriginAttachedLiveConnection
+}
+
 func TestClaudeCodeSDKAdapterStartSendsInitialSettings(t *testing.T) {
 	conn := &scriptedClaudeSDKConnection{
 		frames: []ProcessFrame{{

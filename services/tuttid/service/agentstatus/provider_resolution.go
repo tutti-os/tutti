@@ -414,7 +414,7 @@ func resolvedExistingManagedNodeRuntime(root string, environ func() []string) (m
 	if !managedruntime.NodeReady(root) {
 		return managedruntime.ResolvedRuntime{}, false
 	}
-	baseEnv := []string(nil)
+	baseEnv := os.Environ()
 	if environ != nil {
 		baseEnv = environ()
 	}

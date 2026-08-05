@@ -34,7 +34,10 @@ import {
 import { AgentCodeBlock } from "./tool-renderers/code/AgentCodeBlock";
 import { CollapsibleReveal } from "./CollapsibleReveal";
 import { AgentMonacoDiffViewer } from "./tool-renderers/file-diff/AgentMonacoDiffViewer";
-import { parseAgentUnifiedDiffStats } from "./tool-renderers/file-diff/agentUnifiedDiff";
+import {
+  agentFileChangeStats,
+  isAgentUnifiedDiff
+} from "./tool-renderers/file-diff/agentUnifiedDiff";
 import { AgentUnifiedPatchViewer } from "./tool-renderers/file-diff/AgentUnifiedPatchViewer";
 
 interface AgentTurnSummaryRowProps {
@@ -512,7 +515,11 @@ function TurnSummaryFileCard({
 }
 
 function filePreview(file: AgentTurnSummaryFileVM): JSX.Element | null {
-  if (file.changeType === "created" && file.content?.trim()) {
+  if (
+    file.changeType === "created" &&
+    file.content !== null &&
+    file.content !== undefined
+  ) {
     return (
       <AgentCodeBlock
         path={file.path}
@@ -524,7 +531,7 @@ function filePreview(file: AgentTurnSummaryFileVM): JSX.Element | null {
     );
   }
 
-  if (file.unifiedDiff?.trim()) {
+  if (file.unifiedDiff && isAgentUnifiedDiff(file.unifiedDiff)) {
     return (
       <AgentUnifiedPatchViewer
         path={file.path}
@@ -535,7 +542,11 @@ function filePreview(file: AgentTurnSummaryFileVM): JSX.Element | null {
     );
   }
 
-  if (file.changeType === "created" && file.newString?.trim()) {
+  if (
+    file.changeType === "created" &&
+    file.newString !== null &&
+    file.newString !== undefined
+  ) {
     return (
       <AgentCodeBlock
         path={file.path}
@@ -547,7 +558,10 @@ function filePreview(file: AgentTurnSummaryFileVM): JSX.Element | null {
     );
   }
 
-  if (file.oldString?.trim() || file.newString?.trim()) {
+  if (
+    (file.oldString !== null && file.oldString !== undefined) ||
+    (file.newString !== null && file.newString !== undefined)
+  ) {
     return (
       <AgentMonacoDiffViewer
         path={file.path}
@@ -559,11 +573,43 @@ function filePreview(file: AgentTurnSummaryFileVM): JSX.Element | null {
     );
   }
 
-  if (file.content?.trim()) {
+  if (
+    file.changeType === "deleted" &&
+    ((file.content !== null && file.content !== undefined) ||
+      (file.unifiedDiff !== null && file.unifiedDiff !== undefined))
+  ) {
+    return (
+      <AgentMonacoDiffViewer
+        path={file.path}
+        oldValue={file.oldString ?? file.content ?? file.unifiedDiff ?? ""}
+        newValue=""
+        flat
+        showHeader={false}
+      />
+    );
+  }
+
+  if (file.content !== null && file.content !== undefined) {
     return (
       <AgentCodeBlock
         path={file.path}
         content={file.content}
+        showHeader={false}
+        collapsible
+        flat
+      />
+    );
+  }
+
+  if (
+    file.unifiedDiff !== null &&
+    file.unifiedDiff !== undefined &&
+    file.changeType !== "deleted"
+  ) {
+    return (
+      <AgentCodeBlock
+        path={file.path}
+        content={file.content ?? file.newString ?? file.unifiedDiff}
         showHeader={false}
         collapsible
         flat
@@ -647,26 +693,11 @@ function summarizeFileDiff(file: AgentTurnSummaryFileVM): {
   added: number;
   removed: number;
 } {
-  if (file.unifiedDiff?.trim()) {
-    return parseAgentUnifiedDiffStats(file.unifiedDiff);
-  }
-  if (file.content?.trim()) {
-    return {
-      added: file.content.split("\n").filter(Boolean).length || 1,
-      removed: 0
-    };
-  }
-  if (file.changeType === "created" && file.newString?.trim()) {
-    return {
-      added: file.newString.split("\n").filter(Boolean).length || 1,
-      removed: 0
-    };
-  }
-  if (file.changeType === "deleted" && file.oldString?.trim()) {
-    return {
-      added: 0,
-      removed: file.oldString.split("\n").filter(Boolean).length || 1
-    };
-  }
-  return { added: 0, removed: 0 };
+  return agentFileChangeStats({
+    changeType: file.changeType,
+    unifiedDiff: file.unifiedDiff,
+    content: file.content,
+    oldString: file.oldString,
+    newString: file.newString
+  });
 }

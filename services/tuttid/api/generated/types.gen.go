@@ -7086,9 +7086,12 @@ type SendWorkspaceAgentSessionInputRequest struct {
 	// DisplayPrompt Optional display-only text shown in the conversation (e.g. a folder bundle rendered as one chip while content carries the expanded files).
 	DisplayPrompt *string `json:"displayPrompt,omitempty"`
 
-	// Guidance When true, send this input as guidance to the currently active turn instead of starting a new turn.
+	// Guidance When true, send this input as guidance to the exact active turn identified by turnId instead of starting a new turn.
 	Guidance          *bool                   `json:"guidance,omitempty"`
 	SubmitDiagnostics *AgentSubmitDiagnostics `json:"submitDiagnostics,omitempty"`
+
+	// TurnId Exact canonical active Turn targeted by guidance. Required when guidance is true; ignored for normal new-turn submits.
+	TurnId *string `json:"turnId,omitempty"`
 }
 
 // SendWorkspaceAgentSessionInputResponse defines model for SendWorkspaceAgentSessionInputResponse.

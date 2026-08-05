@@ -1,6 +1,7 @@
 package agentruntime
 
 import (
+	"context"
 	"encoding/json"
 	"strings"
 
@@ -118,8 +119,63 @@ func (a *ClaudeCodeSDKAdapter) beginClaudeSDKRootTurn(
 	adapterSession.rootProviderTurns = make(map[string]struct{})
 	if providerTurnID != "" {
 		adapterSession.rootProviderTurns[providerTurnID] = struct{}{}
+	} else {
+		// A new root turn must re-arm the acceptance gate Cancel waits on.
+		adapterSession.providerTurnAccepted = make(chan struct{})
 	}
 	a.mu.Unlock()
+}
+
+func (a *ClaudeCodeSDKAdapter) signalClaudeSDKProviderTurnAccepted(
+	adapterSession *claudeSDKAdapterSession,
+) {
+	if a == nil || adapterSession == nil {
+		return
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	ch := adapterSession.providerTurnAccepted
+	if ch == nil {
+		return
+	}
+	select {
+	case <-ch:
+	default:
+		close(ch)
+	}
+}
+
+func (a *ClaudeCodeSDKAdapter) waitClaudeSDKProviderTurnAccepted(
+	ctx context.Context,
+	adapterSession *claudeSDKAdapterSession,
+) error {
+	if a == nil || adapterSession == nil {
+		return nil
+	}
+	a.mu.Lock()
+	ch := adapterSession.providerTurnAccepted
+	if ch != nil {
+		select {
+		case <-ch:
+			a.mu.Unlock()
+			return nil
+		default:
+		}
+	} else if len(adapterSession.rootProviderTurns) > 0 {
+		// No gate armed (tests / already-bound identity): nothing to wait for.
+		a.mu.Unlock()
+		return nil
+	} else {
+		a.mu.Unlock()
+		return nil
+	}
+	a.mu.Unlock()
+	select {
+	case <-ch:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 }
 
 func (a *ClaudeCodeSDKAdapter) claudeSDKRootTurnID(

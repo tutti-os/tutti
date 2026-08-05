@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
+  agentFileChangeStats,
+  countAgentTextLines,
+  isAgentUnifiedDiff,
   parseAgentUnifiedDiff,
   parseAgentUnifiedDiffLines,
   parseAgentUnifiedDiffStats
@@ -29,6 +32,73 @@ describe("agentUnifiedDiff", () => {
       added: 1,
       removed: 1
     });
+  });
+
+  it("does not treat file content as a unified diff", () => {
+    const content = [
+      "# 你好，我是 Liying 👋",
+      "",
+      "欢迎来到我的个人主页！",
+      "",
+      "我是 Liying。",
+      "",
+      "- 👤 名字：Liying",
+      "- 🌱 正在持续学习与成长",
+      "- ✨ 喜欢尝试新事物、记录想法"
+    ].join("\n");
+
+    expect(isAgentUnifiedDiff(content)).toBe(false);
+    expect(parseAgentUnifiedDiffStats(content)).toEqual({
+      added: 0,
+      removed: 0
+    });
+    expect(
+      agentFileChangeStats({
+        changeType: "created",
+        unifiedDiff: content,
+        content: null,
+        oldString: null,
+        newString: null
+      })
+    ).toEqual({ added: 9, removed: 0 });
+  });
+
+  it("rejects pseudo hunk headers", () => {
+    expect(isAgentUnifiedDiff("@@ notes\n- bullet")).toBe(false);
+    expect(parseAgentUnifiedDiffStats("@@ notes\n- bullet")).toEqual({
+      added: 0,
+      removed: 0
+    });
+  });
+
+  it("counts blank lines consistently with file content", () => {
+    expect(countAgentTextLines("first\n\nthird\n")).toBe(3);
+    expect(countAgentTextLines("\n")).toBe(1);
+    expect(countAgentTextLines("   ")).toBe(1);
+  });
+
+  it("does not count an invalid modified body as additions", () => {
+    expect(
+      agentFileChangeStats({
+        changeType: "modified",
+        unifiedDiff: "README\n- bullet\n",
+        content: null,
+        oldString: null,
+        newString: null
+      })
+    ).toEqual({ added: 0, removed: 0 });
+  });
+
+  it("computes conservative stats for modified text bodies", () => {
+    expect(
+      agentFileChangeStats({
+        changeType: "modified",
+        unifiedDiff: null,
+        content: null,
+        oldString: "one\ntwo\n",
+        newString: "one\nthree\n"
+      })
+    ).toEqual({ added: 1, removed: 1 });
   });
 
   it("parses unified diff into numbered display lines", () => {

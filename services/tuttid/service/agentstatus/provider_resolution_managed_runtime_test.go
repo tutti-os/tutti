@@ -2,7 +2,9 @@ package agentstatus
 
 import (
 	"context"
+	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/tutti-os/tutti/services/tuttid/service/managedruntime"
@@ -54,5 +56,20 @@ func TestResolvedExistingManagedNodeRuntimeAcceptsCompatibleCorepack(t *testing.
 	wantNode := filepath.Join(root, "node", "bin", nodeBinaryNameForTest())
 	if runtime.Node != wantNode {
 		t.Fatalf("Node = %q, want %q", runtime.Node, wantNode)
+	}
+}
+
+func TestResolvedExistingManagedNodeRuntimeInheritsProcessPath(t *testing.T) {
+	root := fakeManagedRuntimeRoot(t)
+	inheritedPath := strings.Join([]string{t.TempDir(), t.TempDir()}, string(os.PathListSeparator))
+	t.Setenv("PATH", inheritedPath)
+
+	resolved, ok := resolvedExistingManagedNodeRuntime(root, nil)
+	if !ok {
+		t.Fatal("resolvedExistingManagedNodeRuntime() rejected compatible cache")
+	}
+	wantPath := filepath.Join(root, "node", "bin") + string(os.PathListSeparator) + inheritedPath
+	if got := managedruntime.EnvValue(resolved.EnvOverrides, "PATH"); got != wantPath {
+		t.Fatalf("PATH = %q, want %q", got, wantPath)
 	}
 }
