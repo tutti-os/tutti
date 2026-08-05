@@ -959,6 +959,78 @@ paths:
           $ref: "#/components/responses/WorkspaceOperationError"
         "503":
           $ref: "#/components/responses/ServiceUnavailableError"
+  /v1/workspaces/{workspaceID}/agent-targets/{agentTargetID}/runtime-update:
+    parameters:
+      - $ref: "#/components/parameters/WorkspaceID"
+      - name: agentTargetID
+        in: path
+        required: true
+        schema:
+          type: string
+          minLength: 1
+    get:
+      operationId: getAgentTargetRuntimeUpdate
+      tags:
+        - agent-target
+      summary: Check an Agent Extension runtime update
+      description: >
+        Compares the exact runtime currently selected for the Target with the
+        latest compatible signed Agent Extension release. This operation never
+        activates a release or mutates a runtime.
+      responses:
+        "200":
+          description: Current Target runtime update state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentTargetRuntimeUpdateSnapshot"
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "404":
+          $ref: "#/components/responses/WorkspaceNotFoundError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "502":
+          $ref: "#/components/responses/WorkspaceOperationError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
+    post:
+      operationId: updateAgentTargetRuntime
+      tags:
+        - agent-target
+      summary: Update an Agent Extension runtime
+      description: >
+        Revalidates the requested signed release, installs and probes its
+        managed runtime, then atomically switches the Target installation. The
+        previous installation remains active if preparation or verification
+        fails.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateAgentTargetRuntimeRequest"
+      responses:
+        "200":
+          description: Updated Target runtime state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentTargetRuntimeUpdateSnapshot"
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "404":
+          $ref: "#/components/responses/WorkspaceNotFoundError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "502":
+          $ref: "#/components/responses/WorkspaceOperationError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
   /v1/workspaces:
     get:
       operationId: listWorkspaces
@@ -8529,6 +8601,30 @@ components:
           allOf:
             - $ref: "#/components/schemas/AgentTargetSetupAction"
           nullable: true
+    AgentTargetRuntimeUpdateSnapshot:
+      type: object
+      additionalProperties: false
+      required:
+        - workspaceId
+        - agentTargetId
+        - available
+        - currentVersion
+        - latestVersion
+      properties:
+        workspaceId:
+          type: string
+          minLength: 1
+        agentTargetId:
+          type: string
+          minLength: 1
+        available:
+          type: boolean
+        currentVersion:
+          type: string
+          nullable: true
+        latestVersion:
+          type: string
+          nullable: true
     AgentTargetAuthMethod:
       type: object
       additionalProperties: false
@@ -8582,6 +8678,19 @@ components:
           type: string
           minLength: 1
           maxLength: 128
+    UpdateAgentTargetRuntimeRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - currentVersion
+        - latestVersion
+      properties:
+        currentVersion:
+          type: string
+          minLength: 1
+        latestVersion:
+          type: string
+          minLength: 1
     ListWorkspacesResponse:
       type: object
       additionalProperties: false

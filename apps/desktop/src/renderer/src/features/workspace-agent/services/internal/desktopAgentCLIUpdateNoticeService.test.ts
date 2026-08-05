@@ -137,7 +137,7 @@ test("keeps an exact target snapshot stable when another provider changes", asyn
 
 test("refreshes cached discovery on later window activation without activation spam", async () => {
   const fixture = createFixture();
-  fixture.service.setSurfaceEligible("node-1", true);
+  fixture.service.setSurfaceEligible("node-1", true, "local:codex");
   assert.equal(await fixture.service.refreshForWindowActivation(), true);
   assert.equal(fixture.providerStatus.ensureLoadedCalls, 1);
 
@@ -148,6 +148,77 @@ test("refreshes cached discovery on later window activation without activation s
   fixture.advance(1);
   assert.equal(await fixture.service.refreshForWindowActivation(), true);
   assert.equal(fixture.providerStatus.ensureLoadedCalls, 2);
+  fixture.dispose();
+});
+
+test("discovers and updates the exact Agent Extension runtime through the shared card", async () => {
+  const fixture = createFixture({ extensionUpdateAvailable: true });
+  fixture.service.setSurfaceEligible("node-1", true, "extension:kimi-code");
+  await fixture.service.refreshForWindowActivation();
+
+  const notice = fixture.service.getSnapshotForTarget("extension:kimi-code")
+    .notices[0];
+  assert.deepEqual(notice, {
+    agentTargetId: "extension:kimi-code",
+    currentVersion: "1.49.0",
+    latestVersion: "1.50.0",
+    phase: "available",
+    detailsTarget: "target-runtime"
+  });
+
+  await fixture.service.runAction({ action: "update", notice: notice! });
+  assert.deepEqual(fixture.extensionUpdateRuns, [
+    {
+      agentTargetId: "extension:kimi-code",
+      currentVersion: "1.49.0",
+      latestVersion: "1.50.0"
+    }
+  ]);
+  assert.equal(
+    fixture.service.getSnapshotForTarget("extension:kimi-code").notices[0]
+      ?.phase,
+    "completed"
+  );
+  fixture.dispose();
+});
+
+test("converges an Extension update when the success response is lost", async () => {
+  const fixture = createFixture({
+    extensionUpdateAvailable: true,
+    extensionUpdateThrowsAfterApply: true
+  });
+  fixture.service.setSurfaceEligible("node-1", true, "extension:kimi-code");
+  await fixture.service.refreshForWindowActivation();
+  const notice = fixture.service.getSnapshotForTarget("extension:kimi-code")
+    .notices[0];
+
+  await fixture.service.runAction({ action: "update", notice: notice! });
+
+  assert.equal(
+    fixture.service.getSnapshotForTarget("extension:kimi-code").notices[0]
+      ?.phase,
+    "completed"
+  );
+  fixture.dispose();
+});
+
+test("keeps a failed Extension update visible and retryable", async () => {
+  const fixture = createFixture({
+    extensionUpdateAvailable: true,
+    extensionUpdateFailure: true
+  });
+  fixture.service.setSurfaceEligible("node-1", true, "extension:kimi-code");
+  await fixture.service.refreshForWindowActivation();
+  const notice = fixture.service.getSnapshotForTarget("extension:kimi-code")
+    .notices[0];
+
+  await fixture.service.runAction({ action: "update", notice: notice! });
+
+  assert.equal(
+    fixture.service.getSnapshotForTarget("extension:kimi-code").notices[0]
+      ?.phase,
+    "failed"
+  );
   fixture.dispose();
 });
 
@@ -162,17 +233,25 @@ function createFixture(
   input: {
     autoCheckEnabled?: boolean;
     completedNoticeDurationMs?: number;
+    extensionUpdateAvailable?: boolean;
+    extensionUpdateFailure?: boolean;
+    extensionUpdateThrowsAfterApply?: boolean;
   } = {}
 ): {
   agentEnv: FakeAgentEnvService;
   advance(milliseconds: number): void;
   dispose(): void;
   providerStatus: FakeProviderStatusService;
+  extensionUpdateRuns: Array<{
+    agentTargetId: string;
+    currentVersion: string;
+    latestVersion: string;
+  }>;
   service: DesktopAgentCLIUpdateNoticeService;
 } {
   const providerStatus = new FakeProviderStatusService([createStatus("codex")]);
   const agentEnv = new FakeAgentEnvService();
-  const agentsService = new FakeAgentsService([
+  const agents = [
     createAgent({ agentTargetId: "workspace-agent-codex", name: "Workspace" }),
     createAgent({ agentTargetId: "local:codex", name: "Codex" }),
     createAgent({
@@ -180,13 +259,30 @@ function createFixture(
       name: "Tutti Agent",
       provider: "tutti-agent"
     })
-  ]);
+  ];
+  if (input.extensionUpdateAvailable) {
+    agents.push(
+      createAgent({
+        agentTargetId: "extension:kimi-code",
+        name: "Kimi Code",
+        provider: "acp:kimi-code",
+        setupKind: "target_runtime"
+      })
+    );
+  }
+  const agentsService = new FakeAgentsService(agents);
   const desktopPreferencesService = {
     store: proxy({
       agentCliUpdateCheckEnabled: input.autoCheckEnabled ?? true
     })
   } as unknown as IDesktopPreferencesService;
   let now = 0;
+  const extensionUpdateRuns: Array<{
+    agentTargetId: string;
+    currentVersion: string;
+    latestVersion: string;
+  }> = [];
+  let extensionUpdateApplied = false;
   const service = new DesktopAgentCLIUpdateNoticeService({
     agentEnvService: agentEnv as unknown as IAgentEnvService,
     agentsService: agentsService as unknown as IAgentsService,
@@ -195,6 +291,55 @@ function createFixture(
     now: () => now,
     providerStatusService:
       providerStatus as unknown as IAgentProviderStatusService,
+    tuttidClient: {
+      async getAgentTargetRuntimeUpdate(_workspaceId, agentTargetId) {
+        if (
+          input.extensionUpdateAvailable &&
+          agentTargetId === "extension:kimi-code"
+        ) {
+          if (extensionUpdateApplied) {
+            return {
+              workspaceId: "workspace-1",
+              agentTargetId,
+              available: false,
+              currentVersion: "1.50.0",
+              latestVersion: "1.50.0"
+            };
+          }
+          return {
+            workspaceId: "workspace-1",
+            agentTargetId,
+            available: true,
+            currentVersion: "1.49.0",
+            latestVersion: "1.50.0"
+          };
+        }
+        return {
+          workspaceId: "workspace-1",
+          agentTargetId,
+          available: false,
+          currentVersion: null,
+          latestVersion: null
+        };
+      },
+      async updateAgentTargetRuntime(_workspaceId, agentTargetId, request) {
+        extensionUpdateRuns.push({ agentTargetId, ...request });
+        if (input.extensionUpdateFailure) {
+          throw new Error("update failed");
+        }
+        extensionUpdateApplied = true;
+        if (input.extensionUpdateThrowsAfterApply) {
+          throw new Error("response lost after update");
+        }
+        return {
+          workspaceId: "workspace-1",
+          agentTargetId,
+          available: false,
+          currentVersion: request.latestVersion,
+          latestVersion: request.latestVersion
+        };
+      }
+    },
     workspaceId: "workspace-1"
   });
   return {
@@ -202,6 +347,7 @@ function createFixture(
     advance: (milliseconds) => {
       now += milliseconds;
     },
+    extensionUpdateRuns,
     dispose: () => service.dispose(),
     providerStatus,
     service

@@ -24,8 +24,10 @@ import type {
   AgentQuickPrompt,
   AgentQuickPromptListResponse,
   AgentTargetSetupSnapshot,
+  AgentTargetRuntimeUpdateSnapshot,
   AuthenticateAgentTargetRuntimeRequest,
   InstallAgentTargetRuntimeRequest,
+  UpdateAgentTargetRuntimeRequest,
   WorkspaceAgentTurnCancelResponse,
   ClearWorkspaceAgentSessionsResponse,
   GoalControlWorkspaceAgentSessionResponse,
@@ -249,6 +251,15 @@ export interface TuttidClient
     workspaceID: string,
     agentTargetID: string
   ): Promise<AgentTargetSetupSnapshot>;
+  getAgentTargetRuntimeUpdate(
+    workspaceID: string,
+    agentTargetID: string
+  ): Promise<AgentTargetRuntimeUpdateSnapshot>;
+  updateAgentTargetRuntime(
+    workspaceID: string,
+    agentTargetID: string,
+    request: UpdateAgentTargetRuntimeRequest
+  ): Promise<AgentTargetRuntimeUpdateSnapshot>;
   installAgentTargetRuntime(
     workspaceID: string,
     agentTargetID: string,

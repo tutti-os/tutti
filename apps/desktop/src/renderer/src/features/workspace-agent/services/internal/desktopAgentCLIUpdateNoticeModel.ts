@@ -17,12 +17,16 @@ export interface DesktopAgentCLIUpdateItem {
   currentVersion: string;
   latestVersion: string;
   provider: WorkspaceAgentProvider;
+  source?: "agent_extension";
 }
 
 export function desktopAgentCLIUpdateItemKey(
-  item: Pick<DesktopAgentCLIUpdateItem, "provider" | "latestVersion">
+  item: Pick<
+    DesktopAgentCLIUpdateItem,
+    "agentTargetId" | "provider" | "latestVersion"
+  >
 ): string {
-  return `${item.provider}:${item.latestVersion}`;
+  return `${item.agentTargetId}:${item.provider}:${item.latestVersion}`;
 }
 
 export function desktopAgentCLIUpdateItemsEqual(

@@ -47,4 +47,15 @@ func registerAgentTargetRoutes(mux *http.ServeMux, wrapper *tuttigenerated.Serve
 		}
 		wrapper.AuthenticateAgentTargetRuntime(w, r)
 	})
+
+	mux.HandleFunc("/v1/workspaces/{workspaceID}/agent-targets/{agentTargetID}/runtime-update", func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet:
+			wrapper.GetAgentTargetRuntimeUpdate(w, r)
+		case http.MethodPost:
+			wrapper.UpdateAgentTargetRuntime(w, r)
+		default:
+			tuttitypes.WriteMethodNotAllowed(w)
+		}
+	})
 }

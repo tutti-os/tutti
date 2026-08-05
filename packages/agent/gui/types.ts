@@ -241,6 +241,7 @@ export interface AgentGUIProviderUpdateNotice {
   currentVersion: string;
   latestVersion: string;
   phase: AgentGUIProviderUpdateNoticePhase;
+  detailsTarget?: "provider-environment" | "target-runtime";
 }
 
 export type AgentGUIProviderUpdateNoticeAction = "update" | "later" | "details";

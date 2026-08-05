@@ -22,7 +22,11 @@ export interface IAgentCLIUpdateNoticeService {
    * handled the activation.
    */
   refreshForWindowActivation(): Promise<boolean>;
-  setSurfaceEligible(surfaceId: string, eligible: boolean): void;
+  setSurfaceEligible(
+    surfaceId: string,
+    eligible: boolean,
+    agentTargetId?: string | null
+  ): void;
   releaseSurface(surfaceId: string): void;
   runAction(input: {
     action: AgentGUIProviderUpdateNoticeAction;

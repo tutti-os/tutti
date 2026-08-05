@@ -36,9 +36,9 @@ export function useDesktopAgentCLIUpdateNotices({
   );
 
   useEffect(() => {
-    service.setSurfaceEligible(surfaceId, eligible);
+    service.setSurfaceEligible(surfaceId, eligible, agentTargetId);
     return () => service.releaseSurface(surfaceId);
-  }, [eligible, service, surfaceId]);
+  }, [agentTargetId, eligible, service, surfaceId]);
 
   const onAction = useCallback<
     NonNullable<

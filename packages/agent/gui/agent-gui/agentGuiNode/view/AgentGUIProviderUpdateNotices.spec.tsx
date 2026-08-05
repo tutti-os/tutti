@@ -5,6 +5,10 @@ import type {
   AgentGUIAgentTarget,
   AgentGUIProviderUpdateNotice
 } from "../../../types";
+import {
+  AgentTargetSetupControllerProvider,
+  type AgentTargetSetupController
+} from "../../../shared/agentEnv/agentTargetSetupController";
 import { AgentGUIProviderUpdateNotices } from "./AgentGUIProviderUpdateNotices";
 
 vi.mock("../../../i18n/index", () => ({
@@ -110,6 +114,49 @@ describe("AgentGUIProviderUpdateNotices", () => {
     expect(screen.queryByRole("button", { name: "Update" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Later" })).toBeNull();
     expect(screen.getByRole("button", { name: "View details" })).toBeEnabled();
+  });
+
+  it("opens the exact Extension Target runtime details in the setup dialog", () => {
+    const onAction = vi.fn();
+    const setDialogOpen = vi.fn();
+    const extensionAgentTargetId = "extension:kimi-code";
+    const extensionTarget: AgentGUIAgentTarget = {
+      ...target,
+      agentTargetId: extensionAgentTargetId,
+      label: "Kimi Code",
+      provider: "acp:kimi-code",
+      ref: {
+        ...target.ref,
+        provider: "acp:kimi-code",
+        setupKind: "target_runtime"
+      },
+      targetId: extensionAgentTargetId
+    };
+    const controller = {
+      getSnapshot: () => ({ agentTargetId: extensionTarget.agentTargetId }),
+      setDialogOpen
+    } as unknown as AgentTargetSetupController;
+    render(
+      <AgentTargetSetupControllerProvider controller={controller}>
+        <AgentGUIProviderUpdateNotices
+          agentTargets={[extensionTarget]}
+          notices={[
+            {
+              ...createNotice(),
+              agentTargetId: extensionAgentTargetId,
+              detailsTarget: "target-runtime"
+            }
+          ]}
+          onAction={onAction}
+          ownerSeparator="'s"
+        />
+      </AgentTargetSetupControllerProvider>
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "View details" }));
+
+    expect(setDialogOpen).toHaveBeenCalledWith(true);
+    expect(onAction).not.toHaveBeenCalled();
   });
 
   it("renders nothing without an update for a resolvable exact target", () => {

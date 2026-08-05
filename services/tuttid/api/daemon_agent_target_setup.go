@@ -16,6 +16,8 @@ type AgentTargetSetupService interface {
 	GetSetup(context.Context, agentextensionservice.InstallPlanInput) (agentextensionservice.SetupSnapshot, error)
 	Install(context.Context, agentextensionservice.InstallInput) (agentextensionservice.SetupSnapshot, error)
 	Authenticate(context.Context, agentextensionservice.AuthenticateInput) (agentextensionservice.SetupSnapshot, error)
+	GetRuntimeUpdate(context.Context, agentextensionservice.RuntimeUpdateInput) (agentextensionservice.RuntimeUpdateSnapshot, error)
+	ApplyRuntimeUpdate(context.Context, agentextensionservice.ApplyRuntimeUpdateInput) (agentextensionservice.RuntimeUpdateSnapshot, error)
 }
 
 func (api DaemonAPI) AuthenticateAgentTargetRuntime(ctx context.Context, request tuttigenerated.AuthenticateAgentTargetRuntimeRequestObject) (tuttigenerated.AuthenticateAgentTargetRuntimeResponseObject, error) {

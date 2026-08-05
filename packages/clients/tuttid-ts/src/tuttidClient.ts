@@ -35,6 +35,7 @@ import {
   dismissAccountRegistrationCreditsReward,
   getHealth,
   getAgentTargetSetup,
+  getAgentTargetRuntimeUpdate,
   getStartupWorkspace,
   listAgentTargets,
   listAgentQuickPrompts,
@@ -64,6 +65,7 @@ import {
   listWorkspaceRecentFiles,
   listWorkspaces,
   installAgentTargetRuntime,
+  updateAgentTargetRuntime,
   logoutAccount,
   confirmMobileRemotePairing,
   copyWorkspaceFileEntry,
@@ -196,6 +198,25 @@ export function createTuttidClient(
           path: { workspaceID, agentTargetID }
         }),
         "Agent target setup request failed."
+      );
+    },
+    async getAgentTargetRuntimeUpdate(workspaceID, agentTargetID) {
+      return unwrapData(
+        await getAgentTargetRuntimeUpdate({
+          client,
+          path: { workspaceID, agentTargetID }
+        }),
+        "Agent target runtime update request failed."
+      );
+    },
+    async updateAgentTargetRuntime(workspaceID, agentTargetID, request) {
+      return unwrapData(
+        await updateAgentTargetRuntime({
+          client,
+          path: { workspaceID, agentTargetID },
+          body: request
+        }),
+        "Agent target runtime update failed."
       );
     },
     async installAgentTargetRuntime(workspaceID, agentTargetID, request) {

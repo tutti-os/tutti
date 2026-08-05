@@ -335,6 +335,12 @@ type ServerInterface interface {
 	// Update one workspace agent session visibility
 	// (POST /v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/visibility)
 	UpdateWorkspaceAgentSessionVisibility(w http.ResponseWriter, r *http.Request, workspaceID WorkspaceID, agentSessionID AgentSessionID)
+	// Check an Agent Extension runtime update
+	// (GET /v1/workspaces/{workspaceID}/agent-targets/{agentTargetID}/runtime-update)
+	GetAgentTargetRuntimeUpdate(w http.ResponseWriter, r *http.Request, workspaceID WorkspaceID, agentTargetID string)
+	// Update an Agent Extension runtime
+	// (POST /v1/workspaces/{workspaceID}/agent-targets/{agentTargetID}/runtime-update)
+	UpdateAgentTargetRuntime(w http.ResponseWriter, r *http.Request, workspaceID WorkspaceID, agentTargetID string)
 	// Resolve Agent Target setup state
 	// (GET /v1/workspaces/{workspaceID}/agent-targets/{agentTargetID}/setup)
 	GetAgentTargetSetup(w http.ResponseWriter, r *http.Request, workspaceID WorkspaceID, agentTargetID string)
@@ -4789,6 +4795,88 @@ func (siw *ServerInterfaceWrapper) UpdateWorkspaceAgentSessionVisibility(w http.
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.UpdateWorkspaceAgentSessionVisibility(w, r, workspaceID, agentSessionID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetAgentTargetRuntimeUpdate operation middleware
+func (siw *ServerInterfaceWrapper) GetAgentTargetRuntimeUpdate(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "workspaceID" -------------
+	var workspaceID WorkspaceID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "workspaceID", r.PathValue("workspaceID"), &workspaceID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "workspaceID", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "agentTargetID" -------------
+	var agentTargetID string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "agentTargetID", r.PathValue("agentTargetID"), &agentTargetID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "agentTargetID", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetAgentTargetRuntimeUpdate(w, r, workspaceID, agentTargetID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateAgentTargetRuntime operation middleware
+func (siw *ServerInterfaceWrapper) UpdateAgentTargetRuntime(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "workspaceID" -------------
+	var workspaceID WorkspaceID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "workspaceID", r.PathValue("workspaceID"), &workspaceID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "workspaceID", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "agentTargetID" -------------
+	var agentTargetID string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "agentTargetID", r.PathValue("agentTargetID"), &agentTargetID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "agentTargetID", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateAgentTargetRuntime(w, r, workspaceID, agentTargetID)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -10617,6 +10705,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/tutti-mode-activation", wrapper.GetWorkspaceAgentSessionTuttiModeActivation)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/tutti-mode-activation", wrapper.UpdateWorkspaceAgentSessionTuttiModeActivation)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/visibility", wrapper.UpdateWorkspaceAgentSessionVisibility)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/agent-targets/{agentTargetID}/runtime-update", wrapper.GetAgentTargetRuntimeUpdate)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/agent-targets/{agentTargetID}/runtime-update", wrapper.UpdateAgentTargetRuntime)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/agent-targets/{agentTargetID}/setup", wrapper.GetAgentTargetSetup)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/agent-targets/{agentTargetID}/setup/authenticate", wrapper.AuthenticateAgentTargetRuntime)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/agent-targets/{agentTargetID}/setup/install", wrapper.InstallAgentTargetRuntime)
@@ -20984,6 +21074,241 @@ type UpdateWorkspaceAgentSessionVisibility503JSONResponse struct {
 }
 
 func (response UpdateWorkspaceAgentSessionVisibility503JSONResponse) VisitUpdateWorkspaceAgentSessionVisibilityResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAgentTargetRuntimeUpdateRequestObject struct {
+	WorkspaceID   WorkspaceID `json:"workspaceID"`
+	AgentTargetID string      `json:"agentTargetID"`
+}
+
+type GetAgentTargetRuntimeUpdateResponseObject interface {
+	VisitGetAgentTargetRuntimeUpdateResponse(w http.ResponseWriter) error
+}
+
+type GetAgentTargetRuntimeUpdate200JSONResponse AgentTargetRuntimeUpdateSnapshot
+
+func (response GetAgentTargetRuntimeUpdate200JSONResponse) VisitGetAgentTargetRuntimeUpdateResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAgentTargetRuntimeUpdate400JSONResponse struct {
+	InvalidRequestErrorJSONResponse
+}
+
+func (response GetAgentTargetRuntimeUpdate400JSONResponse) VisitGetAgentTargetRuntimeUpdateResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAgentTargetRuntimeUpdate401JSONResponse struct{ UnauthorizedErrorJSONResponse }
+
+func (response GetAgentTargetRuntimeUpdate401JSONResponse) VisitGetAgentTargetRuntimeUpdateResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAgentTargetRuntimeUpdate404JSONResponse struct {
+	WorkspaceNotFoundErrorJSONResponse
+}
+
+func (response GetAgentTargetRuntimeUpdate404JSONResponse) VisitGetAgentTargetRuntimeUpdateResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAgentTargetRuntimeUpdate405JSONResponse struct {
+	MethodNotAllowedErrorJSONResponse
+}
+
+func (response GetAgentTargetRuntimeUpdate405JSONResponse) VisitGetAgentTargetRuntimeUpdateResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(405)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAgentTargetRuntimeUpdate502JSONResponse struct {
+	WorkspaceOperationErrorJSONResponse
+}
+
+func (response GetAgentTargetRuntimeUpdate502JSONResponse) VisitGetAgentTargetRuntimeUpdateResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(502)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAgentTargetRuntimeUpdate503JSONResponse struct {
+	ServiceUnavailableErrorJSONResponse
+}
+
+func (response GetAgentTargetRuntimeUpdate503JSONResponse) VisitGetAgentTargetRuntimeUpdateResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateAgentTargetRuntimeRequestObject struct {
+	WorkspaceID   WorkspaceID `json:"workspaceID"`
+	AgentTargetID string      `json:"agentTargetID"`
+	Body          *UpdateAgentTargetRuntimeJSONRequestBody
+}
+
+type UpdateAgentTargetRuntimeResponseObject interface {
+	VisitUpdateAgentTargetRuntimeResponse(w http.ResponseWriter) error
+}
+
+type UpdateAgentTargetRuntime200JSONResponse AgentTargetRuntimeUpdateSnapshot
+
+func (response UpdateAgentTargetRuntime200JSONResponse) VisitUpdateAgentTargetRuntimeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateAgentTargetRuntime400JSONResponse struct {
+	InvalidRequestErrorJSONResponse
+}
+
+func (response UpdateAgentTargetRuntime400JSONResponse) VisitUpdateAgentTargetRuntimeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateAgentTargetRuntime401JSONResponse struct{ UnauthorizedErrorJSONResponse }
+
+func (response UpdateAgentTargetRuntime401JSONResponse) VisitUpdateAgentTargetRuntimeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateAgentTargetRuntime404JSONResponse struct {
+	WorkspaceNotFoundErrorJSONResponse
+}
+
+func (response UpdateAgentTargetRuntime404JSONResponse) VisitUpdateAgentTargetRuntimeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateAgentTargetRuntime405JSONResponse struct {
+	MethodNotAllowedErrorJSONResponse
+}
+
+func (response UpdateAgentTargetRuntime405JSONResponse) VisitUpdateAgentTargetRuntimeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(405)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateAgentTargetRuntime502JSONResponse struct {
+	WorkspaceOperationErrorJSONResponse
+}
+
+func (response UpdateAgentTargetRuntime502JSONResponse) VisitUpdateAgentTargetRuntimeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(502)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateAgentTargetRuntime503JSONResponse struct {
+	ServiceUnavailableErrorJSONResponse
+}
+
+func (response UpdateAgentTargetRuntime503JSONResponse) VisitUpdateAgentTargetRuntimeResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -36890,6 +37215,12 @@ type StrictServerInterface interface {
 	// Update one workspace agent session visibility
 	// (POST /v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/visibility)
 	UpdateWorkspaceAgentSessionVisibility(ctx context.Context, request UpdateWorkspaceAgentSessionVisibilityRequestObject) (UpdateWorkspaceAgentSessionVisibilityResponseObject, error)
+	// Check an Agent Extension runtime update
+	// (GET /v1/workspaces/{workspaceID}/agent-targets/{agentTargetID}/runtime-update)
+	GetAgentTargetRuntimeUpdate(ctx context.Context, request GetAgentTargetRuntimeUpdateRequestObject) (GetAgentTargetRuntimeUpdateResponseObject, error)
+	// Update an Agent Extension runtime
+	// (POST /v1/workspaces/{workspaceID}/agent-targets/{agentTargetID}/runtime-update)
+	UpdateAgentTargetRuntime(ctx context.Context, request UpdateAgentTargetRuntimeRequestObject) (UpdateAgentTargetRuntimeResponseObject, error)
 	// Resolve Agent Target setup state
 	// (GET /v1/workspaces/{workspaceID}/agent-targets/{agentTargetID}/setup)
 	GetAgentTargetSetup(ctx context.Context, request GetAgentTargetSetupRequestObject) (GetAgentTargetSetupResponseObject, error)
@@ -40441,6 +40772,69 @@ func (sh *strictHandler) UpdateWorkspaceAgentSessionVisibility(w http.ResponseWr
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(UpdateWorkspaceAgentSessionVisibilityResponseObject); ok {
 		if err := validResponse.VisitUpdateWorkspaceAgentSessionVisibilityResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetAgentTargetRuntimeUpdate operation middleware
+func (sh *strictHandler) GetAgentTargetRuntimeUpdate(w http.ResponseWriter, r *http.Request, workspaceID WorkspaceID, agentTargetID string) {
+	var request GetAgentTargetRuntimeUpdateRequestObject
+
+	request.WorkspaceID = workspaceID
+	request.AgentTargetID = agentTargetID
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetAgentTargetRuntimeUpdate(ctx, request.(GetAgentTargetRuntimeUpdateRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetAgentTargetRuntimeUpdate")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetAgentTargetRuntimeUpdateResponseObject); ok {
+		if err := validResponse.VisitGetAgentTargetRuntimeUpdateResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// UpdateAgentTargetRuntime operation middleware
+func (sh *strictHandler) UpdateAgentTargetRuntime(w http.ResponseWriter, r *http.Request, workspaceID WorkspaceID, agentTargetID string) {
+	var request UpdateAgentTargetRuntimeRequestObject
+
+	request.WorkspaceID = workspaceID
+	request.AgentTargetID = agentTargetID
+
+	var body UpdateAgentTargetRuntimeJSONRequestBody
+	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.UpdateAgentTargetRuntime(ctx, request.(UpdateAgentTargetRuntimeRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UpdateAgentTargetRuntime")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(UpdateAgentTargetRuntimeResponseObject); ok {
+		if err := validResponse.VisitUpdateAgentTargetRuntimeResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

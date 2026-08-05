@@ -7,5 +7,6 @@ type InstallationStore interface {
 	PackageDir(agentKey, version string) (string, error)
 	ReadActive(agentKey string) (agentextensionbiz.Installation, error)
 	ReadInstallation(installationID string) (agentextensionbiz.Installation, error)
+	PutInstallation(agentextensionbiz.Installation) error
 	PutActive(agentextensionbiz.Installation) error
 }

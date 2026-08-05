@@ -176,6 +176,46 @@ func TestManagerReconcileInstallsVerifiedPackageAndFallsBackOffline(t *testing.T
 	}
 }
 
+func TestManagerDefersReleaseThatRaisesManagedRuntimeVersion(t *testing.T) {
+	installedManifest := testManifest()
+	installed := Installation{ID: "gemini@1.0.0", AgentKey: "gemini", Version: "1.0.0", Manifest: installedManifest}
+	nextManifest := installedManifest
+	nextManifest.Version = "1.0.1"
+	nextManifest.Runtime.Install.Args = []string{"install", "--prefix", "${installRoot}", "@google/gemini-cli@0.51.0"}
+	manager := Manager{}
+
+	if !manager.releaseRequiresUserRuntimeUpdate(context.Background(), installed, Release{Manifest: nextManifest}) {
+		t.Fatal("newer managed runtime was not deferred for explicit user update")
+	}
+	nextManifest.Runtime.Install.Args = append([]string(nil), installedManifest.Runtime.Install.Args...)
+	if manager.releaseRequiresUserRuntimeUpdate(context.Background(), installed, Release{Manifest: nextManifest}) {
+		t.Fatal("metadata-only extension release unexpectedly required a runtime update")
+	}
+}
+
+func TestInstallVerifiedReleasePersistsManagedRuntimePreference(t *testing.T) {
+	manager := &Manager{
+		Installations: agentextensiondata.NewFileInstallationStore(t.TempDir()),
+	}
+	installation, err := installTestPackageWithPreference(
+		t,
+		manager,
+		Release{AgentKey: "gemini", Version: "1.0.0"},
+		testPackageZIP(t),
+		true,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	active, err := manager.loadActive("gemini")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !installation.PreferManagedRuntime || !active.PreferManagedRuntime {
+		t.Fatalf("managed runtime preference was not persisted: installation=%#v active=%#v", installation, active)
+	}
+}
+
 func TestManagerReconcileUsesFallbackReleaseIndex(t *testing.T) {
 	publicKey, privateKey, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {
@@ -1596,6 +1636,16 @@ func writeLegacyRemoteInstallationFixture(
 }
 
 func installTestPackage(t *testing.T, manager *Manager, release Release, artifact []byte) (Installation, error) {
+	return installTestPackageWithPreference(t, manager, release, artifact, false)
+}
+
+func installTestPackageWithPreference(
+	t *testing.T,
+	manager *Manager,
+	release Release,
+	artifact []byte,
+	preferManagedRuntime bool,
+) (Installation, error) {
 	t.Helper()
 	verificationRoot := t.TempDir()
 	if err := extractPackage(artifact, verificationRoot); err != nil {
@@ -1624,7 +1674,7 @@ func installTestPackage(t *testing.T, manager *Manager, release Release, artifac
 		Key: release.AgentKey, SigningKeyID: keyID, SigningPublicKey: publicKeyPEM(t, publicKey),
 	}
 	manager.Sources = append(manager.Sources, source)
-	return manager.installVerifiedRelease(release, artifact, source)
+	return manager.installVerifiedRelease(release, artifact, source, preferManagedRuntime)
 }
 
 func signTestRelease(t *testing.T, release Release, key ed25519.PrivateKey) string {

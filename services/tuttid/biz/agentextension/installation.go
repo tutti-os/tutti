@@ -21,6 +21,7 @@ type Installation struct {
 	InstalledAt              time.Time `json:"installedAt"`
 	DisplayName              string    `json:"displayName"`
 	AuthMessage              string    `json:"authMessage"`
+	PreferManagedRuntime     bool      `json:"preferManagedRuntime,omitempty"`
 }
 
 // HasLocalPackageProvenance reports whether this durable installation was

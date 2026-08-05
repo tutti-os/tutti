@@ -137,6 +137,7 @@ export function registerWorkspaceAgentServices(
     agentsService,
     desktopPreferencesService: input.desktopPreferencesService,
     providerStatusService: agentProviderStatusService,
+    tuttidClient: input.tuttidClient,
     workspaceId: input.workspaceId
   });
   registry.registerInstance(

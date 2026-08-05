@@ -5,7 +5,7 @@ import type {
 } from "@tutti-os/agent-gui";
 import type {
   AgentProviderStatus,
-  WorkspaceAgentProvider
+  TuttidClient
 } from "@tutti-os/client-tuttid-ts";
 import { subscribe as subscribeValtio } from "valtio";
 import type { IDesktopPreferencesService } from "../../../desktop-preferences/services/desktopPreferencesService.interface.ts";
@@ -49,6 +49,10 @@ export interface DesktopAgentCLIUpdateNoticeServiceDependencies {
   agentsService: IAgentsService;
   desktopPreferencesService: IDesktopPreferencesService;
   providerStatusService: IAgentProviderStatusService;
+  tuttidClient: Pick<
+    TuttidClient,
+    "getAgentTargetRuntimeUpdate" | "updateAgentTargetRuntime"
+  >;
   workspaceId: string;
   completedNoticeDurationMs?: number;
   discoveryRequestMinIntervalMs?: number;
@@ -65,14 +69,20 @@ export class DesktopAgentCLIUpdateNoticeService implements IAgentCLIUpdateNotice
   >();
   private readonly listeners = new Set<() => void>();
   private readonly eligibleSurfaceIds = new Set<string>();
+  private readonly eligibleSurfaceTargets = new Map<string, string>();
+  private readonly extensionItems = new Map<
+    string,
+    DesktopAgentCLIUpdateItem
+  >();
+  private readonly extensionCheckedTargets = new Set<string>();
   private readonly dismissedItemKeys = new Set<string>();
   private readonly actionStates = new Map<
-    WorkspaceAgentProvider,
+    string,
     DesktopAgentCLIUpdateActionState
   >();
-  private readonly inflightProviders = new Set<WorkspaceAgentProvider>();
+  private readonly inflightItemKeys = new Set<string>();
   private readonly completionTimers = new Map<
-    WorkspaceAgentProvider,
+    string,
     ReturnType<typeof setTimeout>
   >();
   private readonly disposers: Array<() => void>;
@@ -145,22 +155,38 @@ export class DesktopAgentCLIUpdateNoticeService implements IAgentCLIUpdateNotice
     return this.requestDiscovery();
   }
 
-  setSurfaceEligible(surfaceId: string, eligible: boolean): void {
+  setSurfaceEligible(
+    surfaceId: string,
+    eligible: boolean,
+    agentTargetId?: string | null
+  ): void {
     const normalizedSurfaceId = surfaceId.trim();
+    const normalizedAgentTargetId = agentTargetId?.trim() ?? "";
     if (this.disposed || !normalizedSurfaceId) {
       return;
     }
+    const previousTarget = this.eligibleSurfaceTargets.get(normalizedSurfaceId);
     const changed = eligible
-      ? !this.eligibleSurfaceIds.has(normalizedSurfaceId)
+      ? !this.eligibleSurfaceIds.has(normalizedSurfaceId) ||
+        previousTarget !== normalizedAgentTargetId
       : this.eligibleSurfaceIds.has(normalizedSurfaceId);
     if (!changed) {
       return;
     }
     if (eligible) {
       this.eligibleSurfaceIds.add(normalizedSurfaceId);
+      if (normalizedAgentTargetId) {
+        this.eligibleSurfaceTargets.set(
+          normalizedSurfaceId,
+          normalizedAgentTargetId
+        );
+      } else {
+        this.eligibleSurfaceTargets.delete(normalizedSurfaceId);
+      }
       void this.requestDiscovery();
     } else {
       this.eligibleSurfaceIds.delete(normalizedSurfaceId);
+      this.eligibleSurfaceTargets.delete(normalizedSurfaceId);
     }
     this.reconcile();
   }
@@ -173,6 +199,7 @@ export class DesktopAgentCLIUpdateNoticeService implements IAgentCLIUpdateNotice
     ) {
       return;
     }
+    this.eligibleSurfaceTargets.delete(normalizedSurfaceId);
     this.reconcile();
   }
 
@@ -191,6 +218,9 @@ export class DesktopAgentCLIUpdateNoticeService implements IAgentCLIUpdateNotice
     }
     const { item, phase } = presentation;
     if (input.action === "details") {
+      if (item.source === "agent_extension") {
+        return;
+      }
       this.dependencies.agentEnvService.open({
         provider: item.provider,
         focus: "upgrade"
@@ -221,7 +251,10 @@ export class DesktopAgentCLIUpdateNoticeService implements IAgentCLIUpdateNotice
     this.completionTimers.clear();
     this.listeners.clear();
     this.eligibleSurfaceIds.clear();
-    this.inflightProviders.clear();
+    this.eligibleSurfaceTargets.clear();
+    this.extensionItems.clear();
+    this.extensionCheckedTargets.clear();
+    this.inflightItemKeys.clear();
     this.targetSnapshots.clear();
   }
 
@@ -237,25 +270,39 @@ export class DesktopAgentCLIUpdateNoticeService implements IAgentCLIUpdateNotice
     if (this.discoveryRequest) {
       return this.discoveryRequest;
     }
+    const hasUncheckedExtensionTarget = [
+      ...this.eligibleSurfaceTargets.values()
+    ].some((agentTargetId) => !this.extensionCheckedTargets.has(agentTargetId));
     if (
+      !hasUncheckedExtensionTarget &&
       now - this.lastDiscoveryRequestedAt <
-      (this.dependencies.discoveryRequestMinIntervalMs ??
-        DEFAULT_DISCOVERY_REQUEST_MIN_INTERVAL_MS)
+        (this.dependencies.discoveryRequestMinIntervalMs ??
+          DEFAULT_DISCOVERY_REQUEST_MIN_INTERVAL_MS)
     ) {
       return Promise.resolve(false);
     }
     this.lastDiscoveryRequestedAt = now;
-    const request = this.dependencies.providerStatusService
-      .ensureLoaded({
-        includeUpdates: true,
-        providers: [...desktopManagedAgentProviders]
-      })
-      .then((response) => response !== null)
-      .catch(() => false);
+    const request = Promise.all([
+      this.dependencies.providerStatusService
+        .ensureLoaded({
+          includeUpdates: true,
+          providers: [...desktopManagedAgentProviders]
+        })
+        .then((response) => response !== null)
+        .catch(() => false),
+      this.discoverExtensionUpdates()
+    ]).then((results) => results.some(Boolean));
     this.discoveryRequest = request;
     void request.finally(() => {
       if (this.discoveryRequest === request) {
         this.discoveryRequest = null;
+        if (
+          [...this.eligibleSurfaceTargets.values()].some(
+            (agentTargetId) => !this.extensionCheckedTargets.has(agentTargetId)
+          )
+        ) {
+          void this.requestDiscovery();
+        }
       }
     });
     return request;
@@ -268,15 +315,18 @@ export class DesktopAgentCLIUpdateNoticeService implements IAgentCLIUpdateNotice
     const providerSnapshot =
       this.dependencies.providerStatusService.getSnapshot();
     const availableItems = this.autoCheckEnabled
-      ? projectDesktopAgentCLIUpdateItems(
-          providerSnapshot.statuses,
-          this.dependencies.agentsService.getSnapshot().agents
-        )
+      ? [
+          ...projectDesktopAgentCLIUpdateItems(
+            providerSnapshot.statuses,
+            this.dependencies.agentsService.getSnapshot().agents
+          ),
+          ...this.extensionItems.values()
+        ]
       : [];
     this.reconcileActionStates(availableItems, providerSnapshot.statuses);
 
-    const presentationsByProvider = new Map<
-      WorkspaceAgentProvider,
+    const presentationsByItemKey = new Map<
+      string,
       DesktopAgentCLIUpdatePresentation
     >();
     if (this.eligibleSurfaceIds.size > 0) {
@@ -287,29 +337,34 @@ export class DesktopAgentCLIUpdateNoticeService implements IAgentCLIUpdateNotice
       );
       for (const item of availableItems) {
         if (!this.dismissedItemKeys.has(desktopAgentCLIUpdateItemKey(item))) {
-          presentationsByProvider.set(item.provider, {
+          presentationsByItemKey.set(desktopAgentCLIUpdateItemKey(item), {
             item,
-            phase: pendingProviders.has(item.provider)
-              ? "updating"
-              : "available"
+            phase:
+              item.source !== "agent_extension" &&
+              pendingProviders.has(item.provider)
+                ? "updating"
+                : "available"
           });
         }
       }
       for (const state of this.actionStates.values()) {
-        presentationsByProvider.set(state.item.provider, state);
+        presentationsByItemKey.set(
+          desktopAgentCLIUpdateItemKey(state.item),
+          state
+        );
       }
     }
-    this.presentations = desktopManagedAgentProviders.flatMap((provider) => {
-      const presentation = presentationsByProvider.get(provider);
-      return presentation ? [presentation] : [];
-    });
+    this.presentations = [...presentationsByItemKey.values()];
     this.syncCompletionTimers();
     this.setSnapshot({
       notices: this.presentations.map(({ item, phase }) => ({
         agentTargetId: item.agentTargetId,
         currentVersion: item.currentVersion,
         latestVersion: item.latestVersion,
-        phase
+        phase,
+        ...(item.source === "agent_extension"
+          ? ({ detailsTarget: "target-runtime" } as const)
+          : {})
       }))
     });
   }
@@ -318,60 +373,94 @@ export class DesktopAgentCLIUpdateNoticeService implements IAgentCLIUpdateNotice
     availableItems: readonly DesktopAgentCLIUpdateItem[],
     statuses: readonly AgentProviderStatus[]
   ): void {
-    const availableByProvider = new Map(
-      availableItems.map((item) => [item.provider, item])
+    const availableByItemKey = new Map(
+      availableItems.map((item) => [desktopAgentCLIUpdateItemKey(item), item])
     );
     const statusByProvider = new Map(
       statuses.map((status) => [status.provider, status])
     );
-    for (const [provider, state] of this.actionStates) {
-      const itemKey = desktopAgentCLIUpdateItemKey(state.item);
+    for (const [itemKey, state] of this.actionStates) {
       if (this.dismissedItemKeys.has(itemKey)) {
-        this.actionStates.delete(provider);
+        this.actionStates.delete(itemKey);
         continue;
       }
       if (
+        state.item.source !== "agent_extension" &&
         state.phase !== "completed" &&
         hasDesktopAgentCLIUpdateConverged(
           state.item,
-          statusByProvider.get(provider)?.update
+          statusByProvider.get(state.item.provider)?.update
         )
       ) {
-        this.actionStates.set(provider, {
+        this.actionStates.set(itemKey, {
           item: state.item,
           phase: "completed"
         });
         continue;
       }
-      const availableItem = availableByProvider.get(provider);
+      const availableItem = availableByItemKey.get(itemKey);
       if (
         state.phase !== "updating" &&
         availableItem &&
         !desktopAgentCLIUpdateItemsEqual(state.item, availableItem)
       ) {
-        this.clearCompletionTimer(provider);
-        this.actionStates.delete(provider);
+        this.clearCompletionTimer(itemKey);
+        this.actionStates.delete(itemKey);
+      } else if (state.phase === "failed" && !availableItem) {
+        this.clearCompletionTimer(itemKey);
+        this.actionStates.delete(itemKey);
       }
     }
   }
 
   private async updateItem(item: DesktopAgentCLIUpdateItem): Promise<void> {
-    if (this.inflightProviders.has(item.provider)) {
+    const itemKey = desktopAgentCLIUpdateItemKey(item);
+    if (this.inflightItemKeys.has(itemKey)) {
       return;
     }
-    this.inflightProviders.add(item.provider);
-    this.clearCompletionTimer(item.provider);
-    this.actionStates.set(item.provider, { item, phase: "updating" });
+    this.inflightItemKeys.add(itemKey);
+    this.clearCompletionTimer(itemKey);
+    this.actionStates.set(itemKey, { item, phase: "updating" });
     this.reconcile();
     try {
-      await this.dependencies.providerStatusService.runAction(
-        item.provider,
-        "update",
-        {
-          context: { workspaceId: this.dependencies.workspaceId },
-          origin: "user"
+      if (item.source === "agent_extension") {
+        const result =
+          await this.dependencies.tuttidClient.updateAgentTargetRuntime(
+            this.dependencies.workspaceId,
+            item.agentTargetId,
+            {
+              currentVersion: item.currentVersion,
+              latestVersion: item.latestVersion
+            }
+          );
+        const currentVersion = result.currentVersion?.trim() ?? "";
+        if (result.available || !currentVersion) {
+          const unresolvedItem = {
+            ...item,
+            currentVersion: currentVersion || item.currentVersion,
+            latestVersion: result.latestVersion ?? item.latestVersion
+          };
+          this.extensionItems.set(item.agentTargetId, unresolvedItem);
+          if (!this.disposed) {
+            this.markFailed(unresolvedItem);
+          }
+        } else {
+          this.extensionItems.delete(item.agentTargetId);
+          if (!this.disposed) {
+            this.markCompleted(item);
+          }
         }
-      );
+        return;
+      } else {
+        await this.dependencies.providerStatusService.runAction(
+          item.provider,
+          "update",
+          {
+            context: { workspaceId: this.dependencies.workspaceId },
+            origin: "user"
+          }
+        );
+      }
       if (!this.disposed) {
         if (this.hasConverged(item)) {
           this.markCompleted(item);
@@ -380,15 +469,26 @@ export class DesktopAgentCLIUpdateNoticeService implements IAgentCLIUpdateNotice
         }
       }
     } catch {
+      const extensionConverged =
+        item.source === "agent_extension"
+          ? await this.hasExtensionConverged(item)
+          : false;
       if (!this.disposed) {
-        if (this.hasConverged(item)) {
+        if (
+          extensionConverged ||
+          (item.source !== "agent_extension" && this.hasConverged(item))
+        ) {
           this.markCompleted(item);
         } else {
-          this.markFailed(item);
+          this.markFailed(
+            item.source === "agent_extension"
+              ? (this.extensionItems.get(item.agentTargetId) ?? item)
+              : item
+          );
         }
       }
     } finally {
-      this.inflightProviders.delete(item.provider);
+      this.inflightItemKeys.delete(itemKey);
     }
   }
 
@@ -399,11 +499,42 @@ export class DesktopAgentCLIUpdateNoticeService implements IAgentCLIUpdateNotice
     );
   }
 
+  private async hasExtensionConverged(
+    item: DesktopAgentCLIUpdateItem
+  ): Promise<boolean> {
+    try {
+      const update =
+        await this.dependencies.tuttidClient.getAgentTargetRuntimeUpdate(
+          this.dependencies.workspaceId,
+          item.agentTargetId
+        );
+      const currentVersion = update.currentVersion?.trim() ?? "";
+      const latestVersion = update.latestVersion?.trim() ?? "";
+      if (!update.available && currentVersion) {
+        this.extensionItems.delete(item.agentTargetId);
+        return true;
+      }
+      if (update.available && currentVersion && latestVersion) {
+        this.extensionItems.set(item.agentTargetId, {
+          ...item,
+          currentVersion,
+          latestVersion
+        });
+      }
+    } catch {
+      // The failed action remains retryable when convergence cannot be proven.
+    }
+    return false;
+  }
+
   private markCompleted(item: DesktopAgentCLIUpdateItem): void {
     if (this.dismissedItemKeys.has(desktopAgentCLIUpdateItemKey(item))) {
       return;
     }
-    this.actionStates.set(item.provider, { item, phase: "completed" });
+    this.actionStates.set(desktopAgentCLIUpdateItemKey(item), {
+      item,
+      phase: "completed"
+    });
     this.reconcile();
   }
 
@@ -411,42 +542,46 @@ export class DesktopAgentCLIUpdateNoticeService implements IAgentCLIUpdateNotice
     if (this.dismissedItemKeys.has(desktopAgentCLIUpdateItemKey(item))) {
       return;
     }
-    this.actionStates.set(item.provider, { item, phase: "failed" });
+    this.actionStates.set(desktopAgentCLIUpdateItemKey(item), {
+      item,
+      phase: "failed"
+    });
     this.reconcile();
   }
 
   private dismissItem(item: DesktopAgentCLIUpdateItem): void {
-    this.dismissedItemKeys.add(desktopAgentCLIUpdateItemKey(item));
-    this.clearCompletionTimer(item.provider);
-    this.actionStates.delete(item.provider);
+    const itemKey = desktopAgentCLIUpdateItemKey(item);
+    this.dismissedItemKeys.add(itemKey);
+    this.clearCompletionTimer(itemKey);
+    this.actionStates.delete(itemKey);
     this.reconcile();
   }
 
   private syncCompletionTimers(): void {
-    for (const provider of desktopManagedAgentProviders) {
-      const state = this.actionStates.get(provider);
+    for (const itemKey of this.actionStates.keys()) {
+      const state = this.actionStates.get(itemKey);
       if (state?.phase !== "completed") {
-        this.clearCompletionTimer(provider);
+        this.clearCompletionTimer(itemKey);
         continue;
       }
-      if (this.completionTimers.has(provider)) {
+      if (this.completionTimers.has(itemKey)) {
         continue;
       }
       const timer = setTimeout(() => {
-        this.completionTimers.delete(provider);
+        this.completionTimers.delete(itemKey);
         this.dismissItem(state.item);
       }, this.dependencies.completedNoticeDurationMs ?? DEFAULT_COMPLETED_NOTICE_DURATION_MS);
-      this.completionTimers.set(provider, timer);
+      this.completionTimers.set(itemKey, timer);
     }
   }
 
-  private clearCompletionTimer(provider: WorkspaceAgentProvider): void {
-    const timer = this.completionTimers.get(provider);
+  private clearCompletionTimer(itemKey: string): void {
+    const timer = this.completionTimers.get(itemKey);
     if (!timer) {
       return;
     }
     clearTimeout(timer);
-    this.completionTimers.delete(provider);
+    this.completionTimers.delete(itemKey);
   }
 
   private setSnapshot(snapshot: AgentCLIUpdateNoticeSnapshot): void {
@@ -457,6 +592,54 @@ export class DesktopAgentCLIUpdateNoticeService implements IAgentCLIUpdateNotice
     for (const listener of this.listeners) {
       listener();
     }
+  }
+
+  private async discoverExtensionUpdates(): Promise<boolean> {
+    const targetIds = new Set(this.eligibleSurfaceTargets.values());
+    if (targetIds.size === 0) {
+      return false;
+    }
+    const agentsByTarget = new Map(
+      this.dependencies.agentsService
+        .getSnapshot()
+        .agents.map((agent) => [agent.agentTargetId.trim(), agent])
+    );
+    let handled = false;
+    await Promise.all(
+      [...targetIds].map(async (agentTargetId) => {
+        this.extensionCheckedTargets.add(agentTargetId);
+        const agent = agentsByTarget.get(agentTargetId);
+        if (!agent || agent.setupKind !== "target_runtime") {
+          this.extensionItems.delete(agentTargetId);
+          return;
+        }
+        handled = true;
+        try {
+          const update =
+            await this.dependencies.tuttidClient.getAgentTargetRuntimeUpdate(
+              this.dependencies.workspaceId,
+              agentTargetId
+            );
+          const currentVersion = update.currentVersion?.trim() ?? "";
+          const latestVersion = update.latestVersion?.trim() ?? "";
+          if (!update.available || !currentVersion || !latestVersion) {
+            this.extensionItems.delete(agentTargetId);
+            return;
+          }
+          this.extensionItems.set(agentTargetId, {
+            agentTargetId,
+            currentVersion,
+            latestVersion,
+            provider: agent.provider,
+            source: "agent_extension"
+          });
+        } catch {
+          // Keep the last verified candidate during a transient refresh failure.
+        }
+      })
+    );
+    this.reconcile();
+    return handled;
   }
 }
 
@@ -483,6 +666,7 @@ function updateNoticeSnapshotsEqual(
         candidate !== undefined &&
         notice.agentTargetId === candidate.agentTargetId &&
         notice.currentVersion === candidate.currentVersion &&
+        notice.detailsTarget === candidate.detailsTarget &&
         notice.latestVersion === candidate.latestVersion &&
         notice.phase === candidate.phase
       );

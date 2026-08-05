@@ -13,6 +13,7 @@ import type {
   AgentGUIProviderUpdateNoticeAction
 } from "../../../types";
 import { projectAgentGUIAgentTargetName } from "../model/agentGuiTargetName";
+import { useOptionalAgentTargetSetupController } from "../../../shared/agentEnv/agentTargetSetupController";
 
 interface AgentGUIProviderUpdateNoticesProps {
   agentTargets: readonly AgentGUIAgentTarget[];
@@ -31,6 +32,7 @@ export function AgentGUIProviderUpdateNotices({
   ownerSeparator
 }: AgentGUIProviderUpdateNoticesProps): JSX.Element | null {
   const { t } = useTranslation();
+  const setupController = useOptionalAgentTargetSetupController();
   if (!onAction) {
     return null;
   }
@@ -59,6 +61,18 @@ export function AgentGUIProviderUpdateNotices({
         }).fullLabel;
         const updating = notice.phase === "updating";
         const completed = notice.phase === "completed";
+        const runAction = (action: AgentGUIProviderUpdateNoticeAction) => {
+          if (
+            action === "details" &&
+            notice.detailsTarget === "target-runtime" &&
+            setupController?.getSnapshot().agentTargetId ===
+              notice.agentTargetId
+          ) {
+            setupController.setDialogOpen(true);
+            return;
+          }
+          onAction({ action, notice });
+        };
         return (
           <section
             key={`${notice.agentTargetId}:${notice.latestVersion}`}
@@ -141,7 +155,7 @@ export function AgentGUIProviderUpdateNotices({
                   type="button"
                   size="xs"
                   disabled={updating}
-                  onClick={() => onAction({ action: "update", notice })}
+                  onClick={() => runAction("update")}
                 >
                   {updating ? (
                     <LoadingIcon className="size-4 animate-spin" />
@@ -158,7 +172,7 @@ export function AgentGUIProviderUpdateNotices({
                   type="button"
                   size="xs"
                   variant="ghost"
-                  onClick={() => onAction({ action: "later", notice })}
+                  onClick={() => runAction("later")}
                 >
                   {t("agentHost.agentGui.updateNoticeLater")}
                 </Button>
@@ -167,7 +181,7 @@ export function AgentGUIProviderUpdateNotices({
                 type="button"
                 size="xs"
                 variant="ghost"
-                onClick={() => onAction({ action: "details", notice })}
+                onClick={() => runAction("details")}
               >
                 {t("agentHost.agentGui.updateNoticeDetails")}
               </Button>
