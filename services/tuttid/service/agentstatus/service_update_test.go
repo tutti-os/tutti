@@ -60,7 +60,7 @@ func TestProviderStatusUpdateDiscoveryIsExplicitAndCached(t *testing.T) {
 }
 
 func TestTuttiAgentBelowMinimumRequiresManagedInstall(t *testing.T) {
-	service, _ := updateTestService(t, "0.0.2")
+	service, _ := updateTestService(t, "0.0.11")
 
 	snapshot, err := service.List(context.Background(), ListInput{Providers: []string{"tutti-agent"}})
 	if err != nil {
@@ -70,8 +70,8 @@ func TestTuttiAgentBelowMinimumRequiresManagedInstall(t *testing.T) {
 	if status.Availability.Status != AvailabilityNotInstalled || status.Availability.ReasonCode != "cli_version_unsupported" {
 		t.Fatalf("Availability = %#v, want minimum-version repair", status.Availability)
 	}
-	if status.CLI.Version != "0.0.2" || status.CLI.MinVersion != "0.0.11" {
-		t.Fatalf("CLI = %#v, want current 0.0.2 and minimum 0.0.11", status.CLI)
+	if status.CLI.Version != "0.0.11" || status.CLI.MinVersion != "0.0.12" {
+		t.Fatalf("CLI = %#v, want current 0.0.11 and minimum 0.0.12", status.CLI)
 	}
 	if !hasProviderAction(status.Actions, ActionInstall) {
 		t.Fatalf("Actions = %#v, want install", status.Actions)
@@ -117,7 +117,7 @@ func TestTuttiAgentUnknownVersionFailsClosed(t *testing.T) {
 			if status.Availability.Status != AvailabilityNotInstalled || status.Availability.ReasonCode != "cli_version_unsupported" {
 				t.Fatalf("Availability = %#v, want unknown-version repair", status.Availability)
 			}
-			if status.CLI.Version != "" || status.CLI.MinVersion != "0.0.11" || !hasProviderAction(status.Actions, ActionInstall) {
+			if status.CLI.Version != "" || status.CLI.MinVersion != "0.0.12" || !hasProviderAction(status.Actions, ActionInstall) {
 				t.Fatalf("CLI/actions = %#v/%#v, want unknown current version and managed install", status.CLI, status.Actions)
 			}
 
@@ -166,13 +166,13 @@ func TestTuttiAgentVersionFloorPrecedesAdapterFailure(t *testing.T) {
 	if status.Availability.ReasonCode != "cli_version_unsupported" {
 		t.Fatalf("Availability = %#v, want CLI floor before adapter failure", status.Availability)
 	}
-	if status.CLI.Version != "0.0.2" || status.CLI.MinVersion != "0.0.11" {
+	if status.CLI.Version != "0.0.2" || status.CLI.MinVersion != "0.0.12" {
 		t.Fatalf("CLI = %#v, want version evidence retained", status.CLI)
 	}
 }
 
 func TestCompatibleTuttiAgentDoesNotRequireManagedInstall(t *testing.T) {
-	for _, version := range []string{"0.0.11"} {
+	for _, version := range []string{"0.0.12"} {
 		t.Run(version, func(t *testing.T) {
 			service, _ := updateTestService(t, version)
 			snapshot, err := service.List(context.Background(), ListInput{Providers: []string{"tutti-agent"}})
@@ -218,10 +218,10 @@ func TestRunInstallActionUpgradesTuttiAgentBelowMinimumAndReprobes(t *testing.T)
 	var commands atomic.Int32
 	service.InstallCommand = func(_ context.Context, input InstallCommandInput) (InstallCommandResult, error) {
 		commands.Add(1)
-		if !strings.Contains(input.Command, "@tutti-os/tutti-agent@0.0.11") {
-			t.Fatalf("install command = %q, want exact managed Tutti Agent 0.0.11 package", input.Command)
+		if !strings.Contains(input.Command, "@tutti-os/tutti-agent@0.0.12") {
+			t.Fatalf("install command = %q, want exact managed Tutti Agent 0.0.12 package", input.Command)
 		}
-		writeUpdateTestCLI(t, binaryPath, "0.0.11")
+		writeUpdateTestCLI(t, binaryPath, "0.0.12")
 		return InstallCommandResult{ExitCode: 0, Stdout: "updated"}, nil
 	}
 
@@ -238,7 +238,7 @@ func TestRunInstallActionUpgradesTuttiAgentBelowMinimumAndReprobes(t *testing.T)
 		t.Fatalf("post-install List() error = %v", err)
 	}
 	status := onlyStatus(t, snapshot)
-	if status.Availability.Status != AvailabilityReady || status.CLI.Version != "0.0.11" {
+	if status.Availability.Status != AvailabilityReady || status.CLI.Version != "0.0.12" {
 		t.Fatalf("post-install status = %#v", status)
 	}
 }
