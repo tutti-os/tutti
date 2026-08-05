@@ -391,6 +391,7 @@ function launchOpenUrl(
   void requestWorkspaceBrowserLaunch({
     reuseIfOpen: event.reuseIfOpen,
     ...(source ? { source } : {}),
+    sourceNodeId: event.sourceNodeId,
     url: event.url,
     workspaceId
   });

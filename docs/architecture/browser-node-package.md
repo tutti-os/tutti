@@ -114,6 +114,14 @@ recent initialized Browser surface. If that surface's tab state is not
 available, it launches a new Browser surface instead of replacing the active
 page. Explicit non-reuse requests continue to launch a new surface.
 
+Workspace App popup events retain their source Browser Node identity while the
+Desktop launch coordinator normalizes the URL. The Workbench presenter uses the
+source node and normalized URL as the identity of a launched popup: concurrent
+duplicates share one launch, and a later repeat focuses the still-live Browser
+node without navigating it back to the original authorization URL. Distinct
+URLs keep their existing separate-window behavior, and closing the remembered
+Browser node permits the same URL to launch again.
+
 ## Package Entry Points
 
 The package uses multiple exports from one package rather than several small

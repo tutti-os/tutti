@@ -8,6 +8,7 @@ export interface WorkspaceBrowserOpenRequest {
     | "file_manager"
     | "terminal"
     | "workspace_app";
+  sourceNodeId?: string;
   url: string;
   workspaceId: string;
 }
@@ -57,6 +58,9 @@ export async function requestWorkspaceBrowserLaunch(
         kind: "open",
         reuseIfOpen: request.reuseIfOpen,
         ...(request.source ? { source: request.source } : {}),
+        ...(request.sourceNodeId?.trim()
+          ? { sourceNodeId: request.sourceNodeId.trim() }
+          : {}),
         url: normalizedUrl,
         workspaceId: normalizedWorkspaceId
       }
@@ -101,6 +105,9 @@ export async function requestWorkspaceBrowserHostFileLaunch(
         kind: "open",
         reuseIfOpen: request.reuseIfOpen,
         source: request.source ?? "file_manager",
+        ...(request.sourceNodeId?.trim()
+          ? { sourceNodeId: request.sourceNodeId.trim() }
+          : {}),
         url: normalizedUrl,
         workspaceId: normalizedWorkspaceId
       }
