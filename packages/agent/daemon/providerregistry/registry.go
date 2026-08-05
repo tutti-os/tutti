@@ -401,6 +401,20 @@ func Validate(descriptor ProviderDescriptor) error {
 		if descriptor.Status.Install.Kind != InstallerKindOfficialScript {
 			return fmt.Errorf("provider %q Windows installer fallback requires an official script installer", providerID)
 		}
+	case InstallerWindowsFallbackManagedNPM:
+		if descriptor.Status.Install.Kind != InstallerKindOfficialScript {
+			return fmt.Errorf("provider %q Windows installer fallback requires an official script installer", providerID)
+		}
+		if strings.TrimSpace(descriptor.Status.Install.PackageName) == "" || strings.TrimSpace(descriptor.Status.Install.BinaryName) == "" {
+			return fmt.Errorf("provider %q Windows managed npm fallback package and binary are required", providerID)
+		}
+	case InstallerWindowsFallbackPowerShell:
+		if descriptor.Status.Install.Kind != InstallerKindOfficialScript {
+			return fmt.Errorf("provider %q Windows installer fallback requires an official script installer", providerID)
+		}
+		if strings.TrimSpace(descriptor.Status.Install.WindowsPowerShellCommand) == "" {
+			return fmt.Errorf("provider %q Windows PowerShell installer command is required", providerID)
+		}
 	default:
 		return fmt.Errorf("provider %q installer Windows fallback %q is unsupported", providerID, descriptor.Status.Install.WindowsFallback)
 	}

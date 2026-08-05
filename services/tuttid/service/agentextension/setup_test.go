@@ -582,7 +582,11 @@ func TestTerminalLoginCommand(t *testing.T) {
 	if got := terminalLoginCommand([]string{"/opt/agent/bin/kimi", "acp"}, browserMethod, &declared); got != "" {
 		t.Fatalf("terminalLoginCommand with mismatched live type = %q", got)
 	}
-	if got := terminalLoginCommand([]string{"/opt/agent dir/bin/kimi"}, method, nil); got != `'/opt/agent dir/bin/kimi' login` {
+	wantPathWithSpaces := `'/opt/agent dir/bin/kimi' login`
+	if runtime.GOOS == "windows" {
+		wantPathWithSpaces = `"/opt/agent dir/bin/kimi" login`
+	}
+	if got := terminalLoginCommand([]string{"/opt/agent dir/bin/kimi"}, method, nil); got != wantPathWithSpaces {
 		t.Fatalf("terminalLoginCommand with spaces = %q", got)
 	}
 	if got := terminalLoginCommand([]string{"/opt/agent/bin/kimi"}, agentruntime.StandardACPAuthMethod{ID: "oauth"}, nil); got != "" {

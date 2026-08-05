@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 
 	"github.com/tutti-os/tutti/packages/agent/daemon/runtimecmd"
@@ -167,6 +168,27 @@ func packageJSONHasName(path string, packageName string) bool {
 }
 
 func resolveBinaryWithResolver(resolver runtimecmd.Resolver, binaryNames []string, overrides []string) string {
+	if runtime.GOOS == "windows" {
+		// npm prefixes can contain both a POSIX shell shim (`opencode`) and
+		// Windows launchers (`opencode.cmd`/`.ps1`). Prefer the Windows
+		// launcher before LookPath, whose fallback may select the extensionless
+		// POSIX file.
+		expanded := make([]string, 0, len(binaryNames)*5)
+		for _, binaryName := range binaryNames {
+			if filepath.Ext(strings.TrimSpace(binaryName)) != "" {
+				expanded = append(expanded, binaryName)
+				continue
+			}
+			expanded = append(expanded,
+				binaryName+".cmd",
+				binaryName+".exe",
+				binaryName+".bat",
+				binaryName+".ps1",
+				binaryName,
+			)
+		}
+		binaryNames = expanded
+	}
 	return resolver.ResolveBinary(binaryNames, overrides)
 }
 

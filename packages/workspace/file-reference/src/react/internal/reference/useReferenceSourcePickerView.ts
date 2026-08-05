@@ -640,8 +640,13 @@ export function useReferenceSourcePickerView({
       setBreadcrumbBySource((current) => ({ ...current, [sid]: [] }));
       controller.ensureSourceRoot(sid);
       setFocusedNode(null);
+      // Directory/"save here" pickers treat the source root as the current folder.
+      // Drop a stale nested selection so confirm maps to the root, not the old child.
+      if (selectionMode === "single") {
+        controller.clearSelection();
+      }
     },
-    [activeSourceId, controller]
+    [activeSourceId, controller, selectionMode]
   );
 
   const selectSourceRoot = useCallback(
@@ -651,8 +656,11 @@ export function useReferenceSourcePickerView({
       setBreadcrumbBySource((current) => ({ ...current, [sourceId]: [] }));
       controller.ensureSourceRoot(sourceId);
       setFocusedNode(null);
+      if (selectionMode === "single") {
+        controller.clearSelection();
+      }
     },
-    [controller]
+    [controller, selectionMode]
   );
 
   // 选中左栏二级分组:先切到该分组所属源(右侧内容随之切换),
@@ -761,61 +769,75 @@ export function useReferenceSourcePickerView({
     },
     [isOpeningReference]
   );
-  const confirm = useCallback(async () => {
-    if (confirmingRef.current) {
-      return;
-    }
-    if (selectableSelection.length === 0) {
-      controller.clearSelection();
-      return;
-    }
-    const confirmationGeneration = ++confirmationGenerationRef.current;
-    confirmingRef.current = true;
-    setIsConfirming(true);
-    setConfirmError(null);
-    try {
-      if (onConfirmBundles) {
-        const grouped = await controller.confirmGrouped(selectableSelection);
-        if (confirmationGeneration !== confirmationGenerationRef.current) {
-          return;
-        }
-        onConfirmBundles({
-          files: grouped.files.map(selectedReferenceToWorkspaceFileReference),
-          bundles: grouped.bundles.map((bundle) => ({
-            sourceId: bundle.root.ref.sourceId,
-            nodeId: bundle.root.ref.nodeId,
-            displayName: bundle.root.displayName,
-            iconUrl: bundle.root.iconUrl ?? null,
-            handle: bundle.handle,
-            // 展示用文件数:取节点 childCount(不再展开文件);缺省回退 0。
-            fileCount: bundle.root.childCount ?? 0
-          }))
-        });
-      } else {
-        const selected: SelectedReference[] =
-          await controller.confirm(selectableSelection);
-        if (confirmationGeneration !== confirmationGenerationRef.current) {
-          return;
-        }
-        onConfirm(selected.map(selectedReferenceToWorkspaceFileReference));
-      }
-      onClose();
-    } catch (error) {
-      if (confirmationGeneration !== confirmationGenerationRef.current) {
+  const confirm = useCallback(
+    async (overrideSelection?: readonly ReferenceNode[]) => {
+      if (confirmingRef.current) {
         return;
       }
-      setConfirmError(
-        error instanceof Error
-          ? error
-          : new Error("reference confirmation failed")
-      );
-    } finally {
-      if (confirmationGeneration === confirmationGenerationRef.current) {
-        confirmingRef.current = false;
-        setIsConfirming(false);
+      const selection =
+        overrideSelection && overrideSelection.length > 0
+          ? overrideSelection.filter((node) => isNodeSelectable?.(node) ?? true)
+          : selectableSelection;
+      if (selection.length === 0) {
+        controller.clearSelection();
+        return;
       }
-    }
-  }, [controller, onClose, onConfirm, onConfirmBundles, selectableSelection]);
+      const confirmationGeneration = ++confirmationGenerationRef.current;
+      confirmingRef.current = true;
+      setIsConfirming(true);
+      setConfirmError(null);
+      try {
+        if (onConfirmBundles) {
+          const grouped = await controller.confirmGrouped(selection);
+          if (confirmationGeneration !== confirmationGenerationRef.current) {
+            return;
+          }
+          onConfirmBundles({
+            files: grouped.files.map(selectedReferenceToWorkspaceFileReference),
+            bundles: grouped.bundles.map((bundle) => ({
+              sourceId: bundle.root.ref.sourceId,
+              nodeId: bundle.root.ref.nodeId,
+              displayName: bundle.root.displayName,
+              iconUrl: bundle.root.iconUrl ?? null,
+              handle: bundle.handle,
+              // 展示用文件数:取节点 childCount(不再展开文件);缺省回退 0。
+              fileCount: bundle.root.childCount ?? 0
+            }))
+          });
+        } else {
+          const selected: SelectedReference[] =
+            await controller.confirm(selection);
+          if (confirmationGeneration !== confirmationGenerationRef.current) {
+            return;
+          }
+          onConfirm(selected.map(selectedReferenceToWorkspaceFileReference));
+        }
+        onClose();
+      } catch (error) {
+        if (confirmationGeneration !== confirmationGenerationRef.current) {
+          return;
+        }
+        setConfirmError(
+          error instanceof Error
+            ? error
+            : new Error("reference confirmation failed")
+        );
+      } finally {
+        if (confirmationGeneration === confirmationGenerationRef.current) {
+          confirmingRef.current = false;
+          setIsConfirming(false);
+        }
+      }
+    },
+    [
+      controller,
+      isNodeSelectable,
+      onClose,
+      onConfirm,
+      onConfirmBundles,
+      selectableSelection
+    ]
+  );
 
   const previewController = useMemo(
     () =>

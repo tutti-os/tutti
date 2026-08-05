@@ -18,6 +18,7 @@ const (
 	TopicAgentCollaborationUpdated                      = "agent.collaboration.updated"
 	TopicAgentModelCatalogInvalidated                   = "agent.model.catalog.invalidated"
 	TopicAgentQuickPromptUpdated                        = "agent.quickprompt.updated"
+	TopicConnectorMarketChanged                         = "connector.market.changed"
 	TopicPreferencesAgentComposerDefaultsChanged        = "preferences.agent.composer.defaults.changed"
 	TopicPreferencesAgentComposerDefaultsPatchRequested = "preferences.agent.composer.defaults.patch.requested"
 	TopicPreferencesDesktopUpdateRequested              = "preferences.desktop.update.requested"
@@ -90,6 +91,16 @@ func NewStaticCatalog(definitions []TopicDefinition) StaticCatalog {
 
 func DefaultCatalog() StaticCatalog {
 	definitions := []TopicDefinition{
+		{
+			Name:               TopicConnectorMarketChanged,
+			ClientCanPublish:   false,
+			ClientCanSubscribe: true,
+			Version:            1,
+			directions:         []Direction{DirectionServerToClient},
+			validators: map[Direction]PayloadValidator{
+				DirectionServerToClient: validateConnectorMarketChangedPayload,
+			},
+		},
 		{
 			Name:               TopicAnalyticsDebugReported,
 			ClientCanPublish:   false,

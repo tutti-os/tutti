@@ -21,6 +21,10 @@ func newManagedProcessCommand(ctx context.Context, executable string, args ...st
 	if extension == ".cmd" || extension == ".bat" {
 		commandLine := windows.ComposeCommandLine(append([]string{executable}, args...))
 		command = exec.CommandContext(ctx, windowsCommandInterpreter(), "/D", "/S", "/C", commandLine)
+	} else if extension == ".ps1" {
+		command = exec.CommandContext(ctx, "powershell.exe", append([]string{
+			"-NoLogo", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", executable,
+		}, args...)...)
 	} else {
 		command = exec.CommandContext(ctx, executable, args...)
 	}

@@ -37,6 +37,13 @@ var ErrACPAuthMethodTerminal = errors.New("ACP auth method requires an interacti
 // classifier so only the explicit errors.Is mapping classifies it.
 var ErrACPSetupNoUsableModel = errors.New("ACP agent created a session without any usable model")
 
+// errACPSetupInteractiveAuthRequired lets setup finish as auth_required when
+// an agent advertises only terminal authentication methods. Calling
+// session/new before the user completes that flow is both unnecessary and,
+// for some Python agents, can block while trying to resolve an unconfigured
+// model provider.
+var errACPSetupInteractiveAuthRequired = errors.New("ACP setup requires interactive terminal authentication")
+
 type StandardACPSetupStatus string
 
 const (
@@ -81,6 +88,10 @@ func RunStandardACPSetup(
 	session Session,
 	methodID string,
 ) (StandardACPSetupResult, error) {
+	// Setup probes may be the first cold start of a managed Python runtime.
+	// Keep the longer timeout scoped to discovery/authentication; normal
+	// interactive ACP sessions retain the regular startup timeout.
+	config.StartupTimeout = 60 * time.Second
 	adapterValue, err := NewStandardACPAdapter(config, transport, host)
 	if err != nil {
 		return StandardACPSetupResult{}, err
@@ -98,6 +109,9 @@ func RunStandardACPSetup(
 	adapter.config.beforeNewSession = func(ctx context.Context, client *acpClient, session Session, initializeResult json.RawMessage) error {
 		methods = parseStandardACPAuthMethods(initializeResult)
 		if methodID == "" {
+			if standardACPSetupRequiresInteractiveAuth(methods) {
+				return errACPSetupInteractiveAuthRequired
+			}
 			return nil
 		}
 		method := findStandardACPAuthMethod(methods, methodID)
@@ -134,6 +148,9 @@ func RunStandardACPSetup(
 		}
 	}
 	if _, err := adapter.Start(ctx, session); err != nil {
+		if errors.Is(err, errACPSetupInteractiveAuthRequired) {
+			return StandardACPSetupResult{Status: StandardACPSetupAuthRequired, AuthMethods: methods}, nil
+		}
 		if errors.Is(err, ErrACPAuthMethodTerminal) {
 			return StandardACPSetupResult{Status: StandardACPSetupAuthRequired, AuthMethods: methods}, err
 		}
@@ -141,6 +158,14 @@ func RunStandardACPSetup(
 			if methodID != "" {
 				return StandardACPSetupResult{Status: StandardACPSetupAuthRequired, AuthMethods: methods}, err
 			}
+			return StandardACPSetupResult{Status: StandardACPSetupAuthRequired, AuthMethods: methods}, nil
+		}
+		// Some ACP agents advertise both a provider credential method and a
+		// terminal setup method. Before setup is completed, session/new may
+		// synchronously initialize the provider and exceed the probe timeout.
+		// Keep the install successful and expose the terminal setup action;
+		// explicit authenticate/setup attempts still return their real error.
+		if methodID == "" && standardACPSetupSessionNewTimedOut(err) && standardACPSetupHasInteractiveAuth(methods) {
 			return StandardACPSetupResult{Status: StandardACPSetupAuthRequired, AuthMethods: methods}, nil
 		}
 		if IsAuthenticationRequired(err) || standardACPSetupNeedsConfiguration(err, methods) {
@@ -157,6 +182,32 @@ func RunStandardACPSetup(
 		return StandardACPSetupResult{}, fmt.Errorf("close ACP setup session: %w", err)
 	}
 	return StandardACPSetupResult{Status: StandardACPSetupReady, AuthMethods: methods, Account: account}, nil
+}
+
+func standardACPSetupRequiresInteractiveAuth(methods []StandardACPAuthMethod) bool {
+	if len(methods) == 0 {
+		return false
+	}
+	for _, method := range methods {
+		if strings.TrimSpace(method.Type) != "terminal" {
+			return false
+		}
+	}
+	return true
+}
+
+func standardACPSetupHasInteractiveAuth(methods []StandardACPAuthMethod) bool {
+	for _, method := range methods {
+		if strings.TrimSpace(method.Type) == "terminal" {
+			return true
+		}
+	}
+	return false
+}
+
+func standardACPSetupSessionNewTimedOut(err error) bool {
+	return err != nil && errors.Is(err, context.DeadlineExceeded) &&
+		strings.Contains(strings.ToLower(err.Error()), "session/new")
 }
 
 func standardACPSetupNeedsConfiguration(err error, methods []StandardACPAuthMethod) bool {

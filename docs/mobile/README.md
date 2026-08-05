@@ -380,20 +380,20 @@ Connect 仍需把处理完成的构建分配给对应的内部或外部测试组
 
 ## 6. 调试时先判断问题属于哪一层
 
-| 现象                           | 首先检查                                                   |
-| ------------------------------ | ---------------------------------------------------------- |
-| 页面布局、点击、列表滚动不正确 | React Native component 和 state                            |
-| DTO 有值但消息渲染错误         | AgentGUI projection，不要在 screen 内临时修数据            |
-| JS 报 native module 不存在     | Native module 注册、Gradle AAR 依赖、重新安装 App          |
-| App 切后台后连接状态错误       | Android lifecycle adapter                                  |
-| 扫码未请求相机权限或立即返回   | Manifest `CAMERA`、App 权限和 ZXing `CaptureActivity`      |
-| 手动配对点击后只闪动           | `TuttiMobileSecurity`、设备 identity 注册和页面错误区      |
-| 同邮箱登录仍提示无法配对       | 确认 Mobile 与 Desktop 使用相同登录方式和同一账号 identity |
-| ICE 没有 candidate             | Manifest 网络权限、网络状态、DeviceLink 诊断               |
-| QUIC 握手失败                  | peer identity、证书 fingerprint、protocol epoch            |
-| P2P 失败但 Relay 成功          | 这是允许的 fallback，检查清洗后的 path 诊断                |
-| 手机和桌面会话状态不一致       | snapshot/event reconcile 和 Agent API，不修本地缓存        |
-| 创建、发送、取消语义不一致     | `packages/agent/host`，不能在移动端复制生命周期            |
+| 现象                           | 首先检查                                                     |
+| ------------------------------ | ------------------------------------------------------------ |
+| 页面布局、点击、列表滚动不正确 | React Native component 和 state                              |
+| DTO 有值但消息渲染错误         | AgentGUI projection，不要在 screen 内临时修数据              |
+| JS 报 native module 不存在     | Native module 注册、Gradle AAR 依赖、重新安装 App            |
+| App 切后台后连接状态错误       | Android lifecycle adapter                                    |
+| 扫码未请求相机权限或立即返回   | Manifest `CAMERA`、App 权限和 ZXing `PairingCaptureActivity` |
+| 手动配对点击后只闪动           | `TuttiMobileSecurity`、设备 identity 注册和页面错误区        |
+| 同邮箱登录仍提示无法配对       | 确认 Mobile 与 Desktop 使用相同登录方式和同一账号 identity   |
+| ICE 没有 candidate             | Manifest 网络权限、网络状态、DeviceLink 诊断                 |
+| QUIC 握手失败                  | peer identity、证书 fingerprint、protocol epoch              |
+| P2P 失败但 Relay 成功          | 这是允许的 fallback，检查清洗后的 path 诊断                  |
+| 手机和桌面会话状态不一致       | snapshot/event reconcile 和 Agent API，不修本地缓存          |
+| 创建、发送、取消语义不一致     | `packages/agent/host`，不能在移动端复制生命周期              |
 
 常用 ADB 命令：
 
@@ -413,14 +413,15 @@ adb install -r path/to/app-debug.apk
 Native bridge 只导出原始 Ed25519 公钥和签名结果。
 
 扫码属于页面发起、Native 完成的本地系统交互，不属于远端配对操作。Android 打开
-ZXing `CaptureActivity` 时 `MainActivity` 会暂停，但 App 进程仍在前台；
+ZXing `PairingCaptureActivity` 时 `MainActivity` 会暂停，但 App 进程仍在前台；
 `TuttiAppLifecycle` 因此不得发布后台事件。iOS 同样只向业务层投影整个
 `UIApplication` 的前后台语义，不暴露页面级过渡。设备服务使用显式 `scanning`
 阶段承接扫码结果，只有解析出配对码后才启动可被真实后台策略暂停的 claim/poll。
 已经发出的 claim 必须在回到前台后按 challenge 状态对账，不能盲目重试可能已经成功的
 POST；只读 poll 才可以在生命周期中断后安全重试。扫码 adapter 返回可取消
 operation；设备服务销毁时必须关闭原生扫描界面，并在旧 scanner callback 排空后才
-完成取消。手动输入框的展开和值属于 screen 临时状态，不进入设备服务快照。
+完成取消。扫码页内的“无法扫描？输入配对码”会关闭 Native scanner，并由 screen 打开
+共享的手动输入面板；输入框的展开和值属于 screen 临时状态，不进入设备服务快照。
 
 移动端为生命周期与配对阶段输出结构化 JavaScript 日志，只记录事件名、可枚举阶段、
 来源和脱敏错误码。禁止记录二维码、手动配对码、challenge id、secret 或 session。
@@ -623,8 +624,9 @@ Mobile 也点击“使用 GitHub 登录”并在平台浏览器认证会话中�
 相同邮箱不保证得到同一个账号 identity。Desktop 先在设置的开发者页打开
 “启用手机远程访问”，再进入「连接」并点击“配对手机”生成二维码。Mobile
 登录成功后点击配对，优先扫描 Desktop 二维码。首次扫码时允许 App 使用相机；如果
-当前环境无法使用相机，就在 Desktop 点击“复制配对码”，再在 Mobile 展开手动配对
-入口并粘贴。
+当前环境无法使用相机，就在 Desktop 点击“复制配对码”，再在 Mobile 的扫码页点击
+“无法扫描？输入配对码”并粘贴。相机权限被拒绝或扫码器不可用时，Mobile 会自动打开
+同一个手动输入面板。
 
 配对二维码是 5 分钟有效的一次性 challenge。Desktop 会在 challenge 到期或状态查询
 失败后撤下旧二维码；此时重新点击“配对手机”生成新码，不要继续使用之前复制或拍摄的

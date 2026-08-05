@@ -29,7 +29,11 @@ import (
 
 var safeKey = regexp.MustCompile(`^[a-z0-9](?:[a-z0-9._-]{0,62}[a-z0-9])?$`)
 
-const runtimeVersionProbeTimeout = 30 * time.Second
+// Some Python-based agents perform a cold-start import of their full CLI
+// before answering --version. On Windows Hermes can exceed 30s on the first
+// launch, which caused a valid install to be rolled back as incompatible.
+// Keep the probe bounded, but allow enough time for a cold managed runtime.
+const runtimeVersionProbeTimeout = 90 * time.Second
 
 type Manager struct {
 	Sources           []tuttitypes.AgentExtensionSource
@@ -361,6 +365,7 @@ func (m *Manager) runtimeBinding(installation Installation, command []string, ve
 		LaunchPermission:             launchPermission,
 		SetModelReasoningEffortMeta:  composerProfile.SetModelReasoningEffortMeta(), Capabilities: capabilities,
 		ExecutableIdentity: executableIdentity,
+		Env:                resolveRuntimeLaunchEnv(installation.Manifest.Runtime.Launch.Env),
 	}, nil
 }
 

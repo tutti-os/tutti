@@ -303,18 +303,26 @@ func (r *Registry) Invoke(ctx context.Context, request InvokeRequest) (CommandOu
 	command, ok := r.commands[commandID]
 	if !ok {
 		if r.AppCommands != nil {
-			if err := r.authorizeDynamicAgentSessionCommand(
-				ctx, request.Context, commandID,
-			); err != nil {
+			capability, err := r.authorizeDynamicCommand(ctx, request.Context, commandID)
+			if err != nil {
+				return CommandOutput{}, err
+			}
+			if err := validateCapabilityInput(capability.InputSchema, request.Input); err != nil {
 				return CommandOutput{}, err
 			}
 			return r.AppCommands.Invoke(ctx, request)
 		}
 		return CommandOutput{}, ErrCommandNotFound
 	}
+	if err := r.authorizeProviderCapability(ctx, request.Context, commandID, command.Capability); err != nil {
+		return CommandOutput{}, err
+	}
 	if err := r.authorizeAgentSessionCapability(
 		ctx, request.Context, command.Capability,
 	); err != nil {
+		return CommandOutput{}, err
+	}
+	if err := validateCapabilityInput(command.Capability.InputSchema, request.Input); err != nil {
 		return CommandOutput{}, err
 	}
 	if request.OutputMode == "" {
@@ -324,6 +332,27 @@ func (r *Registry) Invoke(ctx context.Context, request InvokeRequest) (CommandOu
 		request.Context.Source = "cli"
 	}
 	return command.Handler(ctx, request)
+}
+
+func (r *Registry) authorizeProviderCapability(
+	ctx context.Context,
+	invokeContext InvokeContext,
+	commandID string,
+	_ Capability,
+) error {
+	providerID := r.commandProviderID[commandID]
+	filter := r.providerFilters[providerID]
+	if providerID == "" || filter == nil {
+		return nil
+	}
+	// SkipCapabilityFilters is a discovery-only host escape hatch. Invocation
+	// always re-evaluates the provider policy with the escape hatch disabled.
+	invokeContext.SkipCapabilityFilters = false
+	allowedByProvider := r.filteredCapabilityIDsByProvider(ctx, invokeContext)
+	if r.capabilityVisible(commandID, allowedByProvider) {
+		return nil
+	}
+	return ErrCommandNotFound
 }
 
 func (r *Registry) resolveAgentSessionProjection(
@@ -367,25 +396,28 @@ func (r *Registry) authorizeAgentSessionCapability(
 	return nil
 }
 
-func (r *Registry) authorizeDynamicAgentSessionCommand(
+func (r *Registry) authorizeDynamicCommand(
 	ctx context.Context,
 	invokeContext InvokeContext,
 	commandID string,
-) error {
+) (Capability, error) {
 	projection, projected, err := r.resolveAgentSessionProjection(ctx, invokeContext)
-	if err != nil || !projected {
-		return err
+	if err != nil {
+		return Capability{}, err
 	}
-	invokeContext.IncludeIntegrationCapabilities = true
+	if projected {
+		invokeContext.IncludeIntegrationCapabilities = true
+	}
+	invokeContext.SkipCapabilityFilters = false
 	for _, capability := range r.AppCommands.Capabilities(ctx, invokeContext) {
 		if strings.TrimSpace(capability.ID) == commandID {
-			if projection.allows(capability) {
-				return nil
+			if !projected || projection.allows(capability) {
+				return capability, nil
 			}
 			break
 		}
 	}
-	return ErrCommandNotFound
+	return Capability{}, ErrCommandNotFound
 }
 
 type agentSessionCapabilityProjection struct {

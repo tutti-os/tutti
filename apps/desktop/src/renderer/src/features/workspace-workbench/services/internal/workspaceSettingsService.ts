@@ -175,6 +175,9 @@ export class WorkspaceSettingsService implements IWorkspaceSettingsService {
           ? options.provider
           : null;
       this.store.agentFocusRequestID += 1;
+    } else if (options?.pane === "connectors") {
+      this.store.activeSection = "agent";
+      this.store.agentTab = "connectors";
     } else if (
       options?.pane === "custom-agents" ||
       options?.pane === "workspace-agents"

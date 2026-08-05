@@ -1,9 +1,12 @@
 import type {
   Connector,
   ConnectorAuthorizationResult,
+  ConnectorMarketCatalogPage,
+  ConnectorMarketCategory,
   ConnectorMarketMutationInput,
   ConnectorMarketSnapshot,
   ConnectorMutationInput,
+  ConnectorWorkspaceMutationInput,
   ConnectorMutationResult,
   ConnectorOperation,
   ConnectorWorkspaceBindingResult,
@@ -14,6 +17,13 @@ export interface ConnectorMarketBackend {
   getSnapshot(input: {
     workspaceId?: string;
   }): Promise<ConnectorMarketSnapshot>;
+  listCategories(): Promise<ConnectorMarketCategory[]>;
+  listCatalogPage(input: {
+    sectionId: string;
+    pageSize: number;
+    pageToken?: string;
+    workspaceId?: string;
+  }): Promise<ConnectorMarketCatalogPage>;
   getConnector(input: {
     connectorKey: string;
     workspaceId?: string;
@@ -23,13 +33,13 @@ export interface ConnectorMarketBackend {
     input: ConnectorMarketMutationInput
   ): Promise<ConnectorMutationResult>;
   installConnector(
-    input: ConnectorMutationInput
+    input: ConnectorWorkspaceMutationInput
   ): Promise<ConnectorMutationResult>;
   uninstallConnector(
     input: ConnectorMutationInput
   ): Promise<ConnectorMutationResult>;
   beginAuthorization(
-    input: ConnectorMutationInput
+    input: ConnectorWorkspaceMutationInput
   ): Promise<ConnectorAuthorizationResult>;
   disconnectAuthorization(
     input: ConnectorMutationInput

@@ -565,7 +565,7 @@ func ValidateAppManifest(manifest AppManifest) error {
 	if !strings.HasPrefix(manifest.Runtime.HealthcheckPath, "/") {
 		return errors.New("app manifest runtime.healthcheckPath must start with /")
 	}
-	if profile := strings.TrimSpace(manifest.Runtime.Profile); profile != "" && profile != "node-static" && profile != "standalone" {
+	if profile := strings.TrimSpace(manifest.Runtime.Profile); profile != "" && profile != "connector-node-static" && profile != "standalone" {
 		return errors.New("app manifest runtime.profile must be node-static or standalone when set")
 	}
 	if manifest.Window != nil {

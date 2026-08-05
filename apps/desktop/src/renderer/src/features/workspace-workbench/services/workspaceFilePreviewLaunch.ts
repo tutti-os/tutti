@@ -42,6 +42,19 @@ export function isWorkspaceFilePreviewNodeTypeID(typeID: string): boolean {
 }
 
 /**
+ * The daemon transports Windows absolute paths as `/C:/...` so they remain
+ * unambiguous in its POSIX-shaped workspace API. Electron's local-file IPC
+ * expects the native Windows form, so strip only that transport prefix while
+ * leaving regular POSIX absolute paths unchanged.
+ */
+export function normalizeWorkspaceFilePreviewLocalPath(path: string): string {
+  return path
+    .trim()
+    .replaceAll("\\", "/")
+    .replace(/^\/([A-Za-z]:)(?=\/|$)/, "$1");
+}
+
+/**
  * Coerce unknown activation/snapshot payloads into a canonical preview target.
  * Accepts legacy `fileKind` (`image` | `text` | `video`) from pre-rename
  * snapshots and normalizes it to `previewKind`.

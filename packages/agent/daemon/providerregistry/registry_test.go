@@ -348,6 +348,11 @@ func TestMigratedOpenCodeDescriptorIsComplete(t *testing.T) {
 	if descriptor.Status.Kind != StatusKindOpenCodeCLI || descriptor.Status.Install.Kind != InstallerKindOfficialScript {
 		t.Fatalf("Status = %#v", descriptor.Status)
 	}
+	if descriptor.Status.Install.WindowsFallback != InstallerWindowsFallbackManagedNPM ||
+		descriptor.Status.Install.PackageName != "opencode-ai" ||
+		descriptor.Status.Install.BinaryName != "opencode" {
+		t.Fatalf("Windows installer fallback = %#v", descriptor.Status.Install)
+	}
 	if descriptor.ComposerProfile.ModelCatalog != ModelCatalogKindOpenCodeCLI ||
 		descriptor.ComposerProfile.ConfigOptionIDs.Model != "model" ||
 		descriptor.ComposerProfile.ConfigOptionIDs.Reasoning != "effort" {

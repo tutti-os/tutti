@@ -7,6 +7,8 @@ import "context"
 // and events; transports adapt their generated OpenAPI DTOs to this interface.
 type Service interface {
 	Snapshot(ctx context.Context, workspaceID string) (Snapshot, error)
+	ListCatalogCategories(ctx context.Context) ([]CatalogCategory, error)
+	ListCatalogPage(ctx context.Context, query CatalogPageQuery) (CatalogPage, error)
 	GetConnector(ctx context.Context, connectorKey, workspaceID string) (Connector, error)
 	GetOperation(ctx context.Context, operationID string) (Operation, error)
 	RefreshCatalog(ctx context.Context, mutation Mutation) (MutationResult, error)

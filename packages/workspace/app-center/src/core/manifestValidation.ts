@@ -214,7 +214,7 @@ function validateRuntime(
       path: "$.runtime.healthcheckPath"
     });
   }
-  if (profile && profile !== "node-static") {
+  if (profile && profile !== "connector-node-static") {
     issues.push({
       code: "manifest.runtime",
       message: "runtime.profile must be node-static when set.",
@@ -226,7 +226,7 @@ function validateRuntime(
     !healthcheckPath ||
     !isRelativePackagePath(bootstrap) ||
     !healthcheckPath.startsWith("/") ||
-    (profile !== undefined && profile !== "node-static")
+    (profile !== undefined && profile !== "connector-node-static")
   ) {
     return undefined;
   }

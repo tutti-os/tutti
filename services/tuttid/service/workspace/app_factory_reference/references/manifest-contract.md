@@ -53,7 +53,7 @@ Rules:
 - `runtime.bootstrap` must be a relative package path.
 - `runtime.bootstrap` is the single cross-platform package entrypoint. Fat packages select platform-native binaries inside that script using the host-provided `TUTTI_PLATFORM` value, such as `darwin-arm64` or `windows-amd64`.
 - `runtime.healthcheckPath` must start with `/`.
-- `runtime.profile` is optional. Use `"node-static"` only for apps whose bootstrap launches a Node/static server and does not need Python. Use `"standalone"` only for apps whose package includes its own executable server and does not need the managed Python or Node runtime. Omit it for the default baseline runtime.
+- `runtime.profile` is optional. Use `"connector-node-static"` only for apps whose bootstrap launches a Node/static server and does not need Python. Use `"standalone"` only for apps whose package includes its own executable server and does not need the managed Python or Node runtime. Omit it for the default baseline runtime.
 - `cli` is optional. Include it only when the app exposes commands through the Tutti CLI.
 - `cli.manifest` must be a relative package path to a `tutti.app.cli.v1` manifest, usually `tutti.cli.json`.
 - `references` is optional. Include it only when the app exposes browsable file references.

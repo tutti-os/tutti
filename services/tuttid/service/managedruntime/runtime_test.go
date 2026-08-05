@@ -228,7 +228,7 @@ func TestDefaultResolverPreloadsRuntimeProfileComponents(t *testing.T) {
       },
       "profiles": {
         "baseline": ["python", "node"],
-        "node-static": ["node"]
+        "connector-node-static": ["node"]
       }
     }
   }
@@ -246,7 +246,7 @@ func TestDefaultResolverPreloadsRuntimeProfileComponents(t *testing.T) {
 			}
 		},
 	}
-	if err := resolver.PreloadProfile(context.Background(), "node-static"); err != nil {
+	if err := resolver.PreloadProfile(context.Background(), "connector-node-static"); err != nil {
 		t.Fatalf("PreloadProfile() error = %v", err)
 	}
 
@@ -261,7 +261,7 @@ func TestDefaultResolverPreloadsRuntimeProfileComponents(t *testing.T) {
 		t.Fatal("node profile preload installed python")
 	}
 
-	nodeRuntime, err := resolver.ResolveProfile(context.Background(), "node-static")
+	nodeRuntime, err := resolver.ResolveProfile(context.Background(), "connector-node-static")
 	if err != nil {
 		t.Fatalf("ResolveProfile(node-static) error = %v", err)
 	}
@@ -312,7 +312,7 @@ func TestDefaultResolverReplacesNodeComponentWithBrokenCorepackWrapper(t *testin
       },
       "profiles": {
         "baseline": ["node"],
-        "node-static": ["node"]
+        "connector-node-static": ["node"]
       }
     }
   }

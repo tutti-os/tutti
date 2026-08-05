@@ -20,6 +20,22 @@ func TestNewInstallShellCommandUsesCmdInterpreter(t *testing.T) {
 	}
 }
 
+func TestLoginCommandDoesNotUsePOSIXSingleQuotesOnWindows(t *testing.T) {
+	command := joinLoginShellCommand([]string{`C:\\Users\\tester\\AppData\\Local\\opencode.CMD`, "auth", "login"})
+	want := `C:\\Users\\tester\\AppData\\Local\\opencode.CMD auth login`
+	if command != want {
+		t.Fatalf("login command = %q, want %q", command, want)
+	}
+}
+
+func TestLoginCommandQuotesWindowsPathsWithSpaces(t *testing.T) {
+	command := joinLoginShellCommand([]string{`C:\\Program Files\\opencode\\opencode.CMD`, "auth", "login"})
+	want := `"C:\\Program Files\\opencode\\opencode.CMD" auth login`
+	if command != want {
+		t.Fatalf("login command = %q, want %q", command, want)
+	}
+}
+
 func TestPlatformExecutableFileAcceptsPlainWindowsFile(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "command.exe")
 	if err := os.WriteFile(path, []byte("command"), 0o644); err != nil {

@@ -64,7 +64,11 @@ export interface DesktopAgentProviderStatusServiceDependencies {
 
 type AgentProviderStatusPollTimer = number | { unref?: () => void };
 
-const defaultRequestTimeoutMs = 15_000;
+// Provider status probes launch external CLIs/ACP adapters. On Windows a
+// first launch may include auth-file discovery and adapter startup and can
+// exceed 30 seconds; 15s caused a false "detecting" state even though the
+// daemon later returned a valid status.
+const defaultRequestTimeoutMs = 60_000;
 const pendingInstallStatusPollIntervalMs = 1_000;
 
 const defaultLoginStatusPollScheduler: AgentProviderStatusPollScheduler = {

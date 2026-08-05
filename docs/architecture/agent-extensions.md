@@ -405,6 +405,19 @@ publication links. A pre-existing regular file or foreign symlink at the user
 command path is therefore ignored and cannot prevent managed activation; Tutti
 still never overwrites, removes, or repoints that entry.
 
+### Declarative Launch Environment
+
+The optional v2 `runtime.launch.env` field is a bounded map from the target
+process environment key to a host-owned reference. Values must use the exact
+form `${env:TUTTI_*}`; Tutti resolves the referenced `TUTTI_*` variable at
+launch time and omits the entry when the host variable is unset. Manifests
+cannot read credentials or arbitrary environment variables, and they cannot
+embed literal paths or secrets in the package. Provider-specific mappings
+belong in the extension manifest, while the daemon only implements this
+generic, allowlisted resolution. For example, a Kimi extension can declare
+`KIMI_SHELL_PATH: "${env:TUTTI_MANAGED_POSIX_SHELL}"` without adding a Kimi
+branch to `tuttid`.
+
 Discovery skips this two-link managed entry when probing PATH, then resolves it
 through the managed activation record. It therefore remains `source=managed`
 and retains fingerprint verification instead of being mistaken for an

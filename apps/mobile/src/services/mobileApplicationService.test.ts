@@ -431,7 +431,7 @@ function createHarness(
     qrCodeScanner: {
       start: () => ({
         cancel: async () => undefined,
-        result: Promise.resolve("")
+        result: Promise.resolve({ kind: "scanned", value: "" })
       })
     },
     sessionStorage: {

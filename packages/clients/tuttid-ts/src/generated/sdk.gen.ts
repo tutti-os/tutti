@@ -193,6 +193,9 @@ import type {
   DetectModelPlanData,
   DetectModelPlanErrors,
   DetectModelPlanResponses,
+  DisconnectConnectorMarketAuthorizationData,
+  DisconnectConnectorMarketAuthorizationErrors,
+  DisconnectConnectorMarketAuthorizationResponses,
   DismissAccountRegistrationCreditsRewardData,
   DismissAccountRegistrationCreditsRewardErrors,
   DismissAccountRegistrationCreditsRewardResponses,
@@ -253,6 +256,15 @@ import type {
   GetAutomationRuleData,
   GetAutomationRuleErrors,
   GetAutomationRuleResponses,
+  GetConnectorMarketConnectorData,
+  GetConnectorMarketConnectorErrors,
+  GetConnectorMarketConnectorResponses,
+  GetConnectorMarketData,
+  GetConnectorMarketErrors,
+  GetConnectorMarketOperationData,
+  GetConnectorMarketOperationErrors,
+  GetConnectorMarketOperationResponses,
+  GetConnectorMarketResponses,
   GetDesktopPreferencesData,
   GetDesktopPreferencesErrors,
   GetDesktopPreferencesResponses,
@@ -355,6 +367,9 @@ import type {
   InstallAgentTargetRuntimeData,
   InstallAgentTargetRuntimeErrors,
   InstallAgentTargetRuntimeResponses,
+  InstallConnectorMarketConnectorData,
+  InstallConnectorMarketConnectorErrors,
+  InstallConnectorMarketConnectorResponses,
   InstallWorkspaceAppData,
   InstallWorkspaceAppErrors,
   InstallWorkspaceAppResponses,
@@ -388,6 +403,12 @@ import type {
   ListCollaborationRunsData,
   ListCollaborationRunsErrors,
   ListCollaborationRunsResponses,
+  ListConnectorMarketCatalogData,
+  ListConnectorMarketCatalogErrors,
+  ListConnectorMarketCatalogResponses,
+  ListConnectorMarketCategoriesData,
+  ListConnectorMarketCategoriesErrors,
+  ListConnectorMarketCategoriesResponses,
   ListMobileRemotePairingsData,
   ListMobileRemotePairingsErrors,
   ListMobileRemotePairingsResponses,
@@ -538,6 +559,9 @@ import type {
   RecoverWorkspaceAgentEditRetryData,
   RecoverWorkspaceAgentEditRetryErrors,
   RecoverWorkspaceAgentEditRetryResponses,
+  RefreshConnectorMarketData,
+  RefreshConnectorMarketErrors,
+  RefreshConnectorMarketResponses,
   RefreshDesktopUpdateAdmissionData,
   RefreshDesktopUpdateAdmissionErrors,
   RefreshDesktopUpdateAdmissionResponses,
@@ -613,6 +637,9 @@ import type {
   SetCollaborationRunAdoptionData,
   SetCollaborationRunAdoptionErrors,
   SetCollaborationRunAdoptionResponses,
+  SetConnectorMarketWorkspaceBindingData,
+  SetConnectorMarketWorkspaceBindingErrors,
+  SetConnectorMarketWorkspaceBindingResponses,
   SetModelPlanEnabledData,
   SetModelPlanEnabledErrors,
   SetModelPlanEnabledResponses,
@@ -625,6 +652,9 @@ import type {
   StartAgentSessionRecordingData,
   StartAgentSessionRecordingErrors,
   StartAgentSessionRecordingResponses,
+  StartConnectorMarketAuthorizationData,
+  StartConnectorMarketAuthorizationErrors,
+  StartConnectorMarketAuthorizationResponses,
   StartEnabledWorkspaceAppsData,
   StartEnabledWorkspaceAppsErrors,
   StartEnabledWorkspaceAppsResponses,
@@ -649,6 +679,9 @@ import type {
   TrackEventsData,
   TrackEventsErrors,
   TrackEventsResponses,
+  UninstallConnectorMarketConnectorData,
+  UninstallConnectorMarketConnectorErrors,
+  UninstallConnectorMarketConnectorResponses,
   UninstallWorkspaceAppData,
   UninstallWorkspaceAppErrors,
   UninstallWorkspaceAppResponses,
@@ -5207,6 +5240,224 @@ export const completeWorkspaceIssueTaskRun = <
       "Content-Type": "application/json",
       ...options.headers
     }
+  });
+
+/**
+ * Get the authoritative connector-market snapshot
+ */
+export const getConnectorMarket = <ThrowOnError extends boolean = false>(
+  options?: Options<GetConnectorMarketData, ThrowOnError>
+) =>
+  (options?.client ?? client).get<
+    GetConnectorMarketResponses,
+    GetConnectorMarketErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/connector-market",
+    ...options
+  });
+
+/**
+ * List server-owned connector-market sections
+ */
+export const listConnectorMarketCategories = <
+  ThrowOnError extends boolean = false
+>(
+  options?: Options<ListConnectorMarketCategoriesData, ThrowOnError>
+) =>
+  (options?.client ?? client).get<
+    ListConnectorMarketCategoriesResponses,
+    ListConnectorMarketCategoriesErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/connector-market/categories",
+    ...options
+  });
+
+/**
+ * List one server-owned connector-market section
+ */
+export const listConnectorMarketCatalog = <
+  ThrowOnError extends boolean = false
+>(
+  options: Options<ListConnectorMarketCatalogData, ThrowOnError>
+) =>
+  (options.client ?? client).get<
+    ListConnectorMarketCatalogResponses,
+    ListConnectorMarketCatalogErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/connector-market/catalog",
+    ...options
+  });
+
+/**
+ * Get one connector projection
+ */
+export const getConnectorMarketConnector = <
+  ThrowOnError extends boolean = false
+>(
+  options: Options<GetConnectorMarketConnectorData, ThrowOnError>
+) =>
+  (options.client ?? client).get<
+    GetConnectorMarketConnectorResponses,
+    GetConnectorMarketConnectorErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/connector-market/connectors/{connectorKey}",
+    ...options
+  });
+
+/**
+ * Refresh and accept the upstream connector catalog
+ */
+export const refreshConnectorMarket = <ThrowOnError extends boolean = false>(
+  options: Options<RefreshConnectorMarketData, ThrowOnError>
+) =>
+  (options.client ?? client).post<
+    RefreshConnectorMarketResponses,
+    RefreshConnectorMarketErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/connector-market:refresh",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers
+    }
+  });
+
+/**
+ * Install or update one connector
+ */
+export const installConnectorMarketConnector = <
+  ThrowOnError extends boolean = false
+>(
+  options: Options<InstallConnectorMarketConnectorData, ThrowOnError>
+) =>
+  (options.client ?? client).post<
+    InstallConnectorMarketConnectorResponses,
+    InstallConnectorMarketConnectorErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/connector-market/connectors/{connectorKey}:install",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers
+    }
+  });
+
+/**
+ * Uninstall one connector
+ */
+export const uninstallConnectorMarketConnector = <
+  ThrowOnError extends boolean = false
+>(
+  options: Options<UninstallConnectorMarketConnectorData, ThrowOnError>
+) =>
+  (options.client ?? client).post<
+    UninstallConnectorMarketConnectorResponses,
+    UninstallConnectorMarketConnectorErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/connector-market/connectors/{connectorKey}:uninstall",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers
+    }
+  });
+
+/**
+ * Start connector authorization
+ */
+export const startConnectorMarketAuthorization = <
+  ThrowOnError extends boolean = false
+>(
+  options: Options<StartConnectorMarketAuthorizationData, ThrowOnError>
+) =>
+  (options.client ?? client).post<
+    StartConnectorMarketAuthorizationResponses,
+    StartConnectorMarketAuthorizationErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/connector-market/connectors/{connectorKey}/authorization:start",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers
+    }
+  });
+
+/**
+ * Disconnect connector authorization
+ */
+export const disconnectConnectorMarketAuthorization = <
+  ThrowOnError extends boolean = false
+>(
+  options: Options<DisconnectConnectorMarketAuthorizationData, ThrowOnError>
+) =>
+  (options.client ?? client).post<
+    DisconnectConnectorMarketAuthorizationResponses,
+    DisconnectConnectorMarketAuthorizationErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/connector-market/connectors/{connectorKey}/authorization:disconnect",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers
+    }
+  });
+
+/**
+ * Enable or disable a connector for one workspace
+ */
+export const setConnectorMarketWorkspaceBinding = <
+  ThrowOnError extends boolean = false
+>(
+  options: Options<SetConnectorMarketWorkspaceBindingData, ThrowOnError>
+) =>
+  (options.client ?? client).post<
+    SetConnectorMarketWorkspaceBindingResponses,
+    SetConnectorMarketWorkspaceBindingErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/connector-market/connectors/{connectorKey}/workspace-binding:set",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers
+    }
+  });
+
+/**
+ * Get one durable connector-market operation
+ */
+export const getConnectorMarketOperation = <
+  ThrowOnError extends boolean = false
+>(
+  options: Options<GetConnectorMarketOperationData, ThrowOnError>
+) =>
+  (options.client ?? client).get<
+    GetConnectorMarketOperationResponses,
+    GetConnectorMarketOperationErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/connector-market/operations/{operationID}",
+    ...options
   });
 
 /**

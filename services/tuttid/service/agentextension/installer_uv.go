@@ -185,7 +185,7 @@ func (s *SetupService) executeUVInstallInPlace(
 		return fmt.Errorf("%w: installed executable escapes install root", ErrRuntimeVerifyFailed)
 	}
 	info, err := os.Lstat(realExecutable)
-	if err != nil || !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 || info.Mode()&0o111 == 0 {
+	if err != nil || !isExecutableFileInfo(info) || info.Mode()&os.ModeSymlink != 0 {
 		rollback()
 		return fmt.Errorf("%w: installed executable is not an ordinary file", ErrRuntimeVerifyFailed)
 	}

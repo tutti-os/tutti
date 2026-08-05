@@ -6,6 +6,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestRunStandardACPSetupAuthenticatesWithFreshAdvertisedMethod(t *testing.T) {
@@ -239,6 +240,21 @@ func TestStandardACPSetupMissingProviderRequiresAdvertisedTerminalConfiguration(
 		ID: "setup", Type: "terminal", Args: []string{"--setup"},
 	}}) {
 		t.Fatal("unrelated provider failures must remain runtime failures")
+	}
+}
+
+func TestStandardACPSetupSessionNewTimeoutWithTerminalConfigurationRequiresAuth(t *testing.T) {
+	t.Parallel()
+
+	err := &acpCallTimeoutError{Method: acpMethodNewSession, Timeout: time.Minute}
+	methods := []StandardACPAuthMethod{{ID: "anthropic", Name: "Anthropic"}, {
+		ID: "hermes-setup", Name: "Configure Hermes", Type: "terminal", Args: []string{"--setup"},
+	}}
+	if !standardACPSetupSessionNewTimedOut(err) {
+		t.Fatal("session/new timeout was not recognized")
+	}
+	if !standardACPSetupHasInteractiveAuth(methods) {
+		t.Fatal("terminal setup method was not recognized")
 	}
 }
 

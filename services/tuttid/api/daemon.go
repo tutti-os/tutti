@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strings"
 
+	market "github.com/tutti-os/tutti/packages/connector/market/daemon"
 	admissiondaemon "github.com/tutti-os/tutti/packages/desktop/update-admission/daemon"
 	tuttigenerated "github.com/tutti-os/tutti/services/tuttid/api/generated"
 	preferencesapi "github.com/tutti-os/tutti/services/tuttid/api/preferences"
@@ -72,6 +73,7 @@ type DaemonAPI struct {
 	CLIRegistry                   *cliservice.Registry
 	AnalyticsReporter             reporterservice.Reporter
 	DesktopUpdateAdmissionService DesktopUpdateAdmissionService
+	ConnectorMarketService        market.Service
 	// OnListenerReady starts daemon work that may wake an Agent whose next
 	// action calls back into tuttid. Wiring invokes it only after publishing
 	// listener information.

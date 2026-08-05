@@ -45,7 +45,7 @@ func (r Resolver) Env(overrides []string) []string {
 		pathGroups = append(pathGroups, r.fallbackExecutableDirs())
 	} else {
 		pathGroups = append(pathGroups, preferredExecutableDirs(env))
-		pathGroups = append(pathGroups, filepath.SplitList(envValue(baseEnv, pathKey)))
+		pathGroups = append(pathGroups, splitPathList(envValue(baseEnv, pathKey)))
 		pathGroups = append(pathGroups, r.fallbackExecutableDirs())
 	}
 	pathDirs := mergePathDirs(pathGroups...)
@@ -85,7 +85,7 @@ func (r Resolver) ResolveAll(command string, env []string) []string {
 func (r Resolver) ResolveAllNames(commandNames []string, env []string) []string {
 	result := []string{}
 	seen := map[string]struct{}{}
-	for _, dir := range filepath.SplitList(envValue(env, pathEnvKey(env))) {
+	for _, dir := range splitPathList(envValue(env, pathEnvKey(env))) {
 		for _, command := range commandNames {
 			command = strings.TrimSpace(command)
 			if command == "" || strings.ContainsAny(command, `/\\`) {
@@ -135,7 +135,7 @@ func (r Resolver) UserBinInstallDirs(overrides []string) []string {
 		pathValue = overridePath
 	}
 	candidates := [][]string{
-		filepath.SplitList(pathValue),
+		splitPathList(pathValue),
 	}
 	home, err := r.homeDir()
 	if err == nil && strings.TrimSpace(home) != "" {
@@ -202,6 +202,9 @@ func (r Resolver) fallbackExecutableDirs() []string {
 		}
 		homeDirs = append(homeDirs, nvmNodeBinDirs(home)...)
 		homeDirs = append(homeDirs, fnmNodeBinDirs(filepath.Join(home, ".fnm"))...)
+		// Cursor's native Windows installer places agent.ps1 and its versioned
+		// payload under %LOCALAPPDATA%\\cursor-agent rather than on PATH.
+		homeDirs = append(homeDirs, filepath.Join(home, "AppData", "Local", "cursor-agent"))
 	}
 	return append(homeDirs, dirs...)
 }
@@ -355,12 +358,12 @@ func envValueFrom(env []string, key string) (string, bool) {
 
 func pathGroupsFromEnv(env []string, key string, basePath string) [][]string {
 	groups := [][]string{}
-	baseDirs := filepath.SplitList(basePath)
+	baseDirs := splitPathList(basePath)
 	inheritedBaseDirs := []string{}
 	for i := len(env) - 1; i >= 0; i-- {
 		candidateKey, value, ok := strings.Cut(env[i], "=")
 		if ok && strings.EqualFold(candidateKey, key) {
-			dirs := filepath.SplitList(value)
+			dirs := splitPathList(value)
 			if prefix, inherited, ok := splitInheritedPath(dirs, baseDirs); ok {
 				groups = append(groups, prefix)
 				if len(inheritedBaseDirs) == 0 {
@@ -375,6 +378,18 @@ func pathGroupsFromEnv(env []string, key string, basePath string) [][]string {
 		groups = append(groups, inheritedBaseDirs)
 	}
 	return groups
+}
+
+// splitPathList follows the host separator but also accepts the colon form
+// emitted by MSYS/Unix-like test and launcher environments on Windows. A
+// native Windows path containing a drive letter or backslashes remains on the
+// normal semicolon path-list path.
+func splitPathList(value string) []string {
+	if runtime.GOOS == "windows" && !strings.Contains(value, ";") &&
+		strings.Contains(value, ":") && !strings.Contains(value, `\`) {
+		return strings.Split(value, ":")
+	}
+	return filepath.SplitList(value)
 }
 
 func splitInheritedPath(dirs []string, baseDirs []string) ([]string, []string, bool) {

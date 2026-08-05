@@ -102,7 +102,7 @@ func ensureManagedUVToolchain(ctx context.Context, client *http.Client, runtimeI
 // the marker ties the on-disk executable to that verified extraction.
 func verifiedManagedUV(uvPath, toolDir string, artifact tuttitypes.UVToolArtifact) bool {
 	info, err := os.Lstat(uvPath)
-	if err != nil || !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 || info.Mode()&0o111 == 0 {
+	if err != nil || !isExecutableFileInfo(info) || info.Mode()&os.ModeSymlink != 0 {
 		return false
 	}
 	markerBytes, err := os.ReadFile(filepath.Join(toolDir, uvToolchainVerifiedName))

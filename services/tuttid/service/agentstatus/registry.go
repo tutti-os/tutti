@@ -231,13 +231,24 @@ func installerSpecFromProviderDescriptor(descriptor providerregistry.InstallerDe
 			},
 		}, nil
 	case providerregistry.InstallerKindOfficialScript:
+		var windowsFallbackNPM *ManagedNPMPackageInstallerSpec
+		if descriptor.WindowsFallback == providerregistry.InstallerWindowsFallbackManagedNPM {
+			windowsFallbackNPM = &ManagedNPMPackageInstallerSpec{
+				PackageName:     descriptor.PackageName,
+				PackageVersion:  descriptor.RecommendedVersion,
+				BinaryName:      descriptor.BinaryName,
+				IncludeOptional: descriptor.IncludeOptional,
+			}
+		}
 		return InstallerSpec{
-			Kind:                 InstallerKindOfficialScript,
-			DisplayCommand:       descriptor.DisplayCommand,
-			FailureReasonMarkers: failureReasonMarkers,
-			ScriptURL:            descriptor.ScriptURL,
-			ScriptShell:          descriptor.ScriptShell,
-			WindowsFallback:      descriptor.WindowsFallback,
+			Kind:                     InstallerKindOfficialScript,
+			DisplayCommand:           descriptor.DisplayCommand,
+			FailureReasonMarkers:     failureReasonMarkers,
+			ScriptURL:                descriptor.ScriptURL,
+			ScriptShell:              descriptor.ScriptShell,
+			WindowsFallback:          descriptor.WindowsFallback,
+			WindowsPowerShellCommand: descriptor.WindowsPowerShellCommand,
+			ManagedNPM:               windowsFallbackNPM,
 		}, nil
 	case providerregistry.InstallerKindManagedNPM:
 		return InstallerSpec{

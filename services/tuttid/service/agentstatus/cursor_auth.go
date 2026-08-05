@@ -31,7 +31,11 @@ func runCursorCLICommand(
 	args []string,
 	env []string,
 ) ([]byte, bool) {
-	command := exec.CommandContext(ctx, binaryPath, args...)
+	// Cursor's Windows launcher is a .cmd shim. Go's direct process launch does
+	// not reliably execute batch files, and the resulting hung auth probe can
+	// consume the whole provider-status deadline. Use the same platform-aware
+	// launcher as install/runtime probes so Windows invokes cmd.exe /C call.
+	command := newInstallExecCommand(ctx, binaryPath, args...)
 	command.Env = env
 	output, err := command.Output()
 	if err != nil {

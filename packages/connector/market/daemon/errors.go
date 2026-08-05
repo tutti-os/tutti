@@ -5,7 +5,10 @@ import (
 	"fmt"
 )
 
-var ErrNotFound = errors.New("connector market resource not found")
+var (
+	ErrNotFound           = errors.New("connector market resource not found")
+	ErrOperationLeaseLost = errors.New("connector market operation lease lost")
+)
 
 type ErrorCode string
 

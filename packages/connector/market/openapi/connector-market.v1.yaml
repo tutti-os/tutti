@@ -26,6 +26,45 @@ paths:
           $ref: "#/components/responses/ConnectorMarketUnauthorizedError"
         "503":
           $ref: "#/components/responses/ConnectorMarketUnavailableError"
+  /v1/connector-market/categories:
+    get:
+      operationId: listConnectorMarketCategories
+      tags: [connector-market]
+      summary: List server-owned connector-market sections
+      responses:
+        "200":
+          description: Connector-market sections
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConnectorMarketCategoriesResponse"
+        "401":
+          $ref: "#/components/responses/ConnectorMarketUnauthorizedError"
+        "503":
+          $ref: "#/components/responses/ConnectorMarketUnavailableError"
+  /v1/connector-market/catalog:
+    get:
+      operationId: listConnectorMarketCatalog
+      tags: [connector-market]
+      summary: List one server-owned connector-market section
+      parameters:
+        - $ref: "#/components/parameters/ConnectorMarketSectionID"
+        - $ref: "#/components/parameters/ConnectorMarketPageSize"
+        - $ref: "#/components/parameters/ConnectorMarketPageToken"
+        - $ref: "#/components/parameters/ConnectorMarketWorkspaceID"
+      responses:
+        "200":
+          description: Connector-market section page
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConnectorMarketCatalogPage"
+        "400":
+          $ref: "#/components/responses/ConnectorMarketInvalidRequestError"
+        "401":
+          $ref: "#/components/responses/ConnectorMarketUnauthorizedError"
+        "503":
+          $ref: "#/components/responses/ConnectorMarketUnavailableError"
   /v1/connector-market/connectors/{connectorKey}:
     parameters:
       - $ref: "#/components/parameters/ConnectorMarketConnectorKey"
@@ -88,7 +127,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/ConnectorMarketMutationRequest"
+              $ref: "#/components/schemas/ConnectorMarketWorkspaceMutationRequest"
       responses:
         "202":
           description: Installation operation accepted
@@ -150,7 +189,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/ConnectorMarketMutationRequest"
+              $ref: "#/components/schemas/ConnectorMarketWorkspaceMutationRequest"
       responses:
         "200":
           description: Authorization attempt started
@@ -273,6 +312,29 @@ components:
       schema:
         type: string
         minLength: 1
+    ConnectorMarketSectionID:
+      name: sectionId
+      in: query
+      required: true
+      schema:
+        type: string
+        minLength: 1
+    ConnectorMarketPageSize:
+      name: pageSize
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+    ConnectorMarketPageToken:
+      name: pageToken
+      in: query
+      required: false
+      schema:
+        type: string
+        minLength: 1
   responses:
     ConnectorMarketInvalidRequestError:
       description: Invalid connector-market request
@@ -311,6 +373,63 @@ components:
           schema:
             $ref: "#/components/schemas/ConnectorMarketError"
   schemas:
+    ConnectorMarketCategory:
+      type: object
+      additionalProperties: false
+      required: [categoryId, kind, sortOrder, itemCount]
+      properties:
+        categoryId:
+          type: string
+          minLength: 1
+        kind:
+          type: string
+          enum: [category, featured]
+        sortOrder:
+          type: integer
+          format: int32
+        itemCount:
+          type: integer
+          format: int64
+          minimum: 0
+    ConnectorMarketCategoriesResponse:
+      type: object
+      additionalProperties: false
+      required: [categories]
+      properties:
+        categories:
+          type: array
+          items:
+            $ref: "#/components/schemas/ConnectorMarketCategory"
+    ConnectorMarketCatalogItem:
+      type: object
+      additionalProperties: false
+      required: [categoryId, featured, connector]
+      properties:
+        categoryId:
+          type: string
+          minLength: 1
+        featured:
+          type: boolean
+        connector:
+          $ref: "#/components/schemas/ConnectorMarketConnector"
+    ConnectorMarketCatalogPage:
+      type: object
+      additionalProperties: false
+      required: [sectionId, items, revision]
+      properties:
+        sectionId:
+          type: string
+          minLength: 1
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ConnectorMarketCatalogItem"
+        nextPageToken:
+          type: string
+        revision:
+          type: integer
+          format: int64
+          minimum: 0
     ConnectorMarketSnapshot:
       type: object
       additionalProperties: false
@@ -336,12 +455,12 @@ components:
       type: object
       additionalProperties: false
       required:
-        [key, manifest, installation, authorization, compatibility, revision]
+        [key, release, installation, authorization, compatibility, revision]
       properties:
         key:
           type: string
-        manifest:
-          $ref: "#/components/schemas/ConnectorMarketManifest"
+        release:
+          $ref: "#/components/schemas/ConnectorMarketRelease"
         installation:
           $ref: "#/components/schemas/ConnectorMarketInstallation"
         authorization:
@@ -354,17 +473,57 @@ components:
           type: integer
           format: int64
           minimum: 0
+    ConnectorMarketRelease:
+      type: object
+      additionalProperties: false
+      required:
+        [
+          schemaVersion,
+          releaseId,
+          connectorKey,
+          version,
+          releaseDigest,
+          manifestDigest,
+          manifest,
+          artifact,
+          publishedAt,
+          status
+        ]
+      properties:
+        schemaVersion:
+          type: string
+          enum: ["1"]
+        releaseId:
+          type: string
+          minLength: 1
+        connectorKey:
+          type: string
+        version:
+          type: string
+        releaseDigest:
+          type: string
+          pattern: "^[a-f0-9]{64}$"
+        manifestDigest:
+          type: string
+          pattern: "^[a-f0-9]{64}$"
+        manifest:
+          $ref: "#/components/schemas/ConnectorMarketManifest"
+        artifact:
+          $ref: "#/components/schemas/ConnectorMarketArtifact"
+        publishedAt:
+          type: string
+          format: date-time
+        status:
+          type: string
+          enum: [available, superseded]
     ConnectorMarketManifest:
       type: object
       additionalProperties: false
       required:
         [
           schemaVersion,
-          key,
-          version,
           displayName,
           permissions,
-          artifact,
           implementation,
           authorizationKind
         ]
@@ -372,10 +531,6 @@ components:
         schemaVersion:
           type: string
           enum: ["1"]
-        key:
-          type: string
-        version:
-          type: string
         displayName:
           type: string
         description:
@@ -384,8 +539,6 @@ components:
           type: array
           items:
             type: string
-        artifact:
-          $ref: "#/components/schemas/ConnectorMarketArtifact"
         implementation:
           $ref: "#/components/schemas/ConnectorMarketImplementation"
         authorizationKind:
@@ -395,7 +548,7 @@ components:
     ConnectorMarketArtifact:
       type: object
       additionalProperties: false
-      required: [key, sha256, sizeBytes]
+      required: [key, sha256, sizeBytes, mediaType]
       properties:
         key:
           type: string
@@ -407,6 +560,9 @@ components:
           type: integer
           format: int64
           minimum: 1
+        mediaType:
+          type: string
+          minLength: 1
     ConnectorMarketCompatibilityRequirements:
       type: object
       additionalProperties: false
@@ -429,6 +585,7 @@ components:
       properties:
         kind:
           type: string
+          enum: [builtin, managed_stdio, remote_streamable_http]
     ConnectorMarketInstallation:
       type: object
       additionalProperties: false
@@ -438,6 +595,11 @@ components:
           $ref: "#/components/schemas/ConnectorMarketInstallationState"
         installedVersion:
           type: string
+        installedReleaseId:
+          type: string
+        installedReleaseDigest:
+          type: string
+          pattern: "^[a-f0-9]{64}$"
         failureCode:
           type: string
     ConnectorMarketAuthorization:
@@ -471,7 +633,15 @@ components:
       type: object
       additionalProperties: false
       required:
-        [operationId, clientRequestId, kind, state, createdAt, updatedAt]
+        [
+          operationId,
+          clientRequestId,
+          kind,
+          state,
+          attempt,
+          createdAt,
+          updatedAt
+        ]
       properties:
         operationId:
           type: string
@@ -484,7 +654,13 @@ components:
         state:
           $ref: "#/components/schemas/ConnectorMarketOperationState"
         stage:
-          type: string
+          $ref: "#/components/schemas/ConnectorMarketOperationStage"
+        target:
+          $ref: "#/components/schemas/ConnectorMarketOperationTarget"
+        attempt:
+          type: integer
+          format: int32
+          minimum: 0
         failureCode:
           type: string
         createdAt:
@@ -493,6 +669,23 @@ components:
         updatedAt:
           type: string
           format: date-time
+    ConnectorMarketOperationTarget:
+      type: object
+      additionalProperties: false
+      required: [connectorKey, version, releaseId, releaseDigest]
+      properties:
+        connectorKey:
+          type: string
+        version:
+          type: string
+        releaseId:
+          type: string
+        releaseDigest:
+          type: string
+          pattern: "^[a-f0-9]{64}$"
+        artifactSha256:
+          type: string
+          pattern: "^[a-f0-9]{64}$"
     ConnectorMarketMutationRequest:
       type: object
       additionalProperties: false
@@ -505,6 +698,21 @@ components:
           type: integer
           format: int64
           minimum: 0
+    ConnectorMarketWorkspaceMutationRequest:
+      type: object
+      additionalProperties: false
+      required: [clientRequestId, expectedRevision, workspaceId]
+      properties:
+        clientRequestId:
+          type: string
+          minLength: 1
+        expectedRevision:
+          type: integer
+          format: int64
+          minimum: 0
+        workspaceId:
+          type: string
+          minLength: 1
     SetConnectorMarketWorkspaceBindingRequest:
       type: object
       additionalProperties: false
@@ -611,6 +819,19 @@ components:
     ConnectorMarketOperationState:
       type: string
       enum: [accepted, running, completed, failed]
+    ConnectorMarketOperationStage:
+      type: string
+      enum:
+        - accepted
+        - refreshing
+        - downloading
+        - prepared
+        - activating
+        - deactivating
+        - authorizing
+        - disconnecting
+        - completed
+        - failed
     ConnectorMarketErrorCode:
       type: string
       enum:

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
@@ -18,9 +19,10 @@ func TestTuttiAgentStartSetsExtraSkillRootsBeforeThread(t *testing.T) {
 	root := filepath.Join(t.TempDir(), "bundle", "skills")
 	session := testAppServerSession()
 	session.Provider = ProviderTuttiAgent
+	extraRoots := mustEncodeExtraRoots(t, root)
 	session.Env = []string{
 		"SESSION_ENV=1",
-		tuttiAgentExtraSkillRootsEnv + `=["` + root + `"]`,
+		tuttiAgentExtraSkillRootsEnv + "=" + extraRoots,
 	}
 	if _, err := adapter.Start(context.Background(), session); err != nil {
 		t.Fatalf("Start: %v", err)
@@ -56,12 +58,14 @@ func TestTuttiAgentStartStabilizesSystemSkillsBeforeThread(t *testing.T) {
 	home := filepath.Join(temporary, "run", "tutti-agent-home")
 	writeTestSystemSkills(t, filepath.Join(home, "skills", ".system"), "same-version")
 	stableStore := filepath.Join(temporary, "state", "system-skill-bundles")
+	managedSkillsRoot := filepath.Join(temporary, "stable-managed-skills")
 	session := testAppServerSession()
 	session.Provider = ProviderTuttiAgent
+	extraRoots := mustEncodeExtraRoots(t, managedSkillsRoot)
 	session.Env = []string{
 		tuttiAgentHomeEnv + "=" + home,
 		tuttiAgentStableSystemSkillsEnv + "=" + stableStore,
-		tuttiAgentExtraSkillRootsEnv + `=["/stable/managed-skills"]`,
+		tuttiAgentExtraSkillRootsEnv + "=" + extraRoots,
 	}
 	if _, err := adapter.Start(context.Background(), session); err != nil {
 		t.Fatalf("Start: %v", err)
@@ -71,19 +75,39 @@ func TestTuttiAgentStartStabilizesSystemSkillsBeforeThread(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if info.Mode()&os.ModeSymlink == 0 {
-		t.Fatalf("system skill root mode = %s, want symlink", info.Mode())
-	}
-	resolved, err := filepath.EvalSymlinks(systemRoot)
-	if err != nil {
-		t.Fatal(err)
-	}
-	canonicalStore, err := filepath.EvalSymlinks(stableStore)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.HasPrefix(resolved, filepath.Join(canonicalStore, "v1")+string(filepath.Separator)) {
-		t.Fatalf("stable system skill target = %q", resolved)
+	if runtime.GOOS == "windows" {
+		canonicalStore, err := filepath.EvalSymlinks(stableStore)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resolved, resolveErr := filepath.EvalSymlinks(systemRoot)
+		if resolveErr == nil && resolved != filepath.Clean(systemRoot) {
+			if !strings.HasPrefix(resolved, filepath.Join(canonicalStore, "v1")+string(filepath.Separator)) {
+				t.Fatalf("stable system skill link target = %q", resolved)
+			}
+		} else {
+			if info.Mode()&os.ModeSymlink != 0 {
+				t.Fatalf("system skill root mode = %s, want junction or directory copy", info.Mode())
+			}
+			if _, err := os.Stat(filepath.Join(systemRoot, "skill-creator", "SKILL.md")); err != nil {
+				t.Fatalf("copied system skill missing: %v", err)
+			}
+		}
+	} else {
+		if info.Mode()&os.ModeSymlink == 0 {
+			t.Fatalf("system skill root mode = %s, want symlink", info.Mode())
+		}
+		resolved, err := filepath.EvalSymlinks(systemRoot)
+		if err != nil {
+			t.Fatal(err)
+		}
+		canonicalStore, err := filepath.EvalSymlinks(stableStore)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.HasPrefix(resolved, filepath.Join(canonicalStore, "v1")+string(filepath.Separator)) {
+			t.Fatalf("stable system skill target = %q", resolved)
+		}
 	}
 	methods := appServerSentMethods(t, transport.conn)
 	assertAppServerMethodOrder(t, methods,
@@ -106,7 +130,7 @@ func TestTuttiAgentResumeSetsExtraSkillRootsBeforeThread(t *testing.T) {
 	session := testAppServerSession()
 	session.Provider = ProviderTuttiAgent
 	session.ProviderSessionID = "codex-thread-1"
-	session.Env = []string{tuttiAgentExtraSkillRootsEnv + `=["` + root + `"]`}
+	session.Env = []string{tuttiAgentExtraSkillRootsEnv + "=" + mustEncodeExtraRoots(t, root)}
 	if err := adapter.Resume(context.Background(), session); err != nil {
 		t.Fatalf("Resume: %v", err)
 	}
@@ -127,7 +151,7 @@ func TestTuttiAgentExtraSkillRootsFailureStopsBeforeThread(t *testing.T) {
 	adapter := NewTuttiAgentAppServerAdapterWithHostMetadata(transport, LegacyHostMetadata())
 	session := testAppServerSession()
 	session.Provider = ProviderTuttiAgent
-	session.Env = []string{tuttiAgentExtraSkillRootsEnv + `=["/stable/skills"]`}
+	session.Env = []string{tuttiAgentExtraSkillRootsEnv + "=" + mustEncodeExtraRoots(t, filepath.Join(t.TempDir(), "stable-skills"))}
 	_, err := adapter.Start(context.Background(), session)
 	if err == nil || !strings.Contains(err.Error(), "configure tutti-agent extra skill roots") {
 		t.Fatalf("Start error = %v, want extra roots failure", err)
@@ -151,6 +175,15 @@ func TestTuttiAgentExtraSkillRootsRejectInvalidMetadataBeforeSpawn(t *testing.T)
 	if len(transport.specs) != 0 {
 		t.Fatalf("process starts = %d, want validation before spawn", len(transport.specs))
 	}
+}
+
+func mustEncodeExtraRoots(t *testing.T, roots ...string) string {
+	t.Helper()
+	encoded, err := json.Marshal(roots)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(encoded)
 }
 
 func appServerStringSlice(value any) []string {

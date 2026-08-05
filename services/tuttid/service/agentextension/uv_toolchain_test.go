@@ -46,7 +46,7 @@ func TestResolveManagedUVToolchainDownloadsVerifiesAndCaches(t *testing.T) {
 		t.Fatalf("extracted uv bytes = %q, want %q", contents, uvBytes)
 	}
 	info, err := os.Lstat(uvPath)
-	if err != nil || !info.Mode().IsRegular() || info.Mode()&0o111 == 0 {
+	if err != nil || !isExecutableFileInfo(info) {
 		t.Fatalf("uv mode = %v, error = %v", info, err)
 	}
 	if _, err := os.Lstat(filepath.Join(toolDir, uvToolchainVerifiedName)); err != nil {

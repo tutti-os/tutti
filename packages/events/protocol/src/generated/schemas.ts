@@ -1708,6 +1708,26 @@ export const analyticsDebugReportedPayloadSchema = {
   }
 } as const;
 
+export const connectorMarketChangedPayloadSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["revision"],
+  properties: {
+    connectorKey: {
+      type: "string",
+      minLength: 1
+    },
+    operationId: {
+      type: "string",
+      minLength: 1
+    },
+    revision: {
+      type: "integer",
+      minimum: 1
+    }
+  }
+} as const;
+
 export const preferencesAgentComposerDefaultsChangedPayloadSchema = {
   type: "object",
   additionalProperties: false,
@@ -3332,6 +3352,7 @@ export const businessEventPayloadSchemas = {
     agentModelConfigurationChangedPayloadSchema,
   "agent.quickprompt.updated": agentQuickpromptUpdatedPayloadSchema,
   "analytics.debug.reported": analyticsDebugReportedPayloadSchema,
+  "connector.market.changed": connectorMarketChangedPayloadSchema,
   "preferences.agent.composer.defaults.changed":
     preferencesAgentComposerDefaultsChangedPayloadSchema,
   "preferences.agent.composer.defaults.patch.requested":

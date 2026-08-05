@@ -35,6 +35,13 @@ export {
   type CollaborationRunsClient
 } from "./collaborationRunsClient.ts";
 export {
+  ConnectorMarketClientError,
+  createConnectorMarketClient,
+  isConnectorMarketClientError,
+  type ConnectorMarketClient
+} from "./connectorMarketClient.ts";
+export type { ConnectorMarketChangedEventV1 } from "@tutti-os/event-protocol";
+export {
   createWorkspaceAgentConfigurationClient,
   type ModelPlanBillingMode,
   type ModelPlanPricing,

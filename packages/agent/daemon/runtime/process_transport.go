@@ -60,6 +60,9 @@ func (localProcessTransport) Start(ctx context.Context, spec ProcessSpec) (Proce
 	if len(spec.Command) == 0 || spec.Command[0] == "" {
 		return nil, errors.New("process command is required")
 	}
+	if len(spec.SensitiveInheritedFiles) != 0 {
+		return nil, errors.New("sensitive inherited files require the connector process transport")
+	}
 	select {
 	case <-ctx.Done():
 		return nil, ctx.Err()

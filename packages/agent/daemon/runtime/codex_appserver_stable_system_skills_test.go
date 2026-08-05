@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sync"
 	"testing"
 )
@@ -19,16 +20,31 @@ func TestStableSystemSkillsReuseCanonicalTargetAcrossHomes(t *testing.T) {
 			t.Fatalf("stabilizeTuttiAgentSystemSkills(%s): %v", session, err)
 		}
 		targets = append(targets, target)
-		resolved, err := filepath.EvalSymlinks(filepath.Join(home, "skills", ".system"))
-		if err != nil {
-			t.Fatal(err)
-		}
 		canonicalTarget, err := filepath.EvalSymlinks(target)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if resolved != canonicalTarget {
-			t.Fatalf("resolved system root = %q, want %q", resolved, canonicalTarget)
+		systemRoot := filepath.Join(home, "skills", ".system")
+		if runtime.GOOS == "windows" {
+			providerSnapshot, err := snapshotStableSystemSkills(systemRoot)
+			if err != nil {
+				t.Fatal(err)
+			}
+			stableSnapshot, err := snapshotStableSystemSkills(canonicalTarget)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if providerSnapshot.digest != stableSnapshot.digest {
+				t.Fatalf("copied system root digest = %q, want %q", providerSnapshot.digest, stableSnapshot.digest)
+			}
+		} else {
+			resolved, err := filepath.EvalSymlinks(systemRoot)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if resolved != canonicalTarget {
+				t.Fatalf("resolved system root = %q, want %q", resolved, canonicalTarget)
+			}
 		}
 	}
 	if targets[0] != targets[1] {
@@ -117,6 +133,9 @@ func TestStableSystemSkillsRejectSymlinkInProviderBundle(t *testing.T) {
 	root := filepath.Join(home, "skills", ".system")
 	writeTestSystemSkills(t, root, "same-version")
 	if err := os.Symlink(filepath.Join(root, "skill-creator", "SKILL.md"), filepath.Join(root, "alias")); err != nil {
+		if runtime.GOOS == "windows" {
+			t.Skipf("Windows symlink privilege unavailable: %v", err)
+		}
 		t.Fatal(err)
 	}
 	if _, _, err := stabilizeTuttiAgentSystemSkills(home, filepath.Join(t.TempDir(), "store")); err == nil {
@@ -125,6 +144,9 @@ func TestStableSystemSkillsRejectSymlinkInProviderBundle(t *testing.T) {
 }
 
 func TestSystemSkillReplacementPreservesBackupWhenActivationAndRestoreFail(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("symlink replacement requires a Windows symlink privilege")
+	}
 	parent := t.TempDir()
 	systemRoot := filepath.Join(parent, ".system")
 	writeTestSystemSkills(t, systemRoot, "same-version")
@@ -157,6 +179,38 @@ func TestSystemSkillReplacementPreservesBackupWhenActivationAndRestoreFail(t *te
 	if _, statErr := os.Stat(backupSkill); statErr != nil {
 		t.Fatalf("preserved backup skill: %v", statErr)
 	}
+}
+
+func TestStableSystemSkillsDirectoryCopyDoesNotRequireSymlinkPrivilege(t *testing.T) {
+	parent := t.TempDir()
+	systemRoot := filepath.Join(parent, "home", "skills", ".system")
+	writeTestSystemSkills(t, systemRoot, "same-version")
+	targetRoot := filepath.Join(t.TempDir(), ".system")
+	if err := copyStableSystemSkillDirectory(systemRoot, targetRoot); err != nil {
+		t.Fatalf("copyStableSystemSkillDirectory: %v", err)
+	}
+	if err := replaceSystemSkillRootWithDirectoryCopy(systemRoot, targetRoot); err != nil {
+		t.Fatalf("replaceSystemSkillRootWithDirectoryCopy: %v", err)
+	}
+	info, err := os.Lstat(systemRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		t.Fatalf("system root = %s, want regular directory", info.Mode())
+	}
+	if err := validateStableSystemSkillTarget(systemRoot, mustStableSystemSkillsDigest(t, targetRoot)); err != nil {
+		t.Fatalf("copied system skills validation: %v", err)
+	}
+}
+
+func mustStableSystemSkillsDigest(t *testing.T, root string) string {
+	t.Helper()
+	snapshot, err := snapshotStableSystemSkills(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return snapshot.digest
 }
 
 func writeSystemSkillsForConcurrentTest(t *testing.T, root string) {

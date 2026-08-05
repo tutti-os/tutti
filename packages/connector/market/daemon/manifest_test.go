@@ -7,22 +7,26 @@ import (
 
 func TestImplementationRegistryValidatesSupportedManifest(t *testing.T) {
 	registry := NewImplementationRegistry(map[string]ImplementationValidator{
-		"mcp_stdio": func(config map[string]any) error {
-			if config["command"] == "" {
-				return errors.New("command is required")
+		ImplementationKindManagedStdio: func(implementation Implementation) error {
+			if implementation.ManagedStdio == nil {
+				return errors.New("managed stdio is required")
 			}
 			return nil
 		},
 	})
 
 	err := registry.Validate(Manifest{
-		SchemaVersion:     "1",
-		Key:               "github",
-		Version:           "1.0.0",
-		DisplayName:       "GitHub",
-		Permissions:       []string{"repository.read"},
-		Artifact:          testArtifact(),
-		Implementation:    Implementation{Kind: "mcp_stdio", Config: map[string]any{"command": "github-mcp"}},
+		SchemaVersion: "1",
+		DisplayName:   "GitHub",
+		Permissions:   []string{"repository.read"},
+		Implementation: Implementation{
+			Kind: ImplementationKindManagedStdio,
+			ManagedStdio: &ManagedStdioImplementation{
+				Runtime:                  RuntimeRequirement{Language: "node", Profile: "connector-node-static", ABI: "node20-darwin-arm64"},
+				MCP:                      &ManagedMCPInterface{Entrypoint: "bin/github-mcp.js"},
+				CredentialBrokerProtocol: CredentialBrokerProtocolV1,
+			},
+		},
 		AuthorizationKind: "oauth2",
 	})
 	if err != nil {
@@ -34,18 +38,15 @@ func TestImplementationRegistryRejectsUnknownImplementation(t *testing.T) {
 	registry := NewImplementationRegistry(nil)
 	err := registry.Validate(Manifest{
 		SchemaVersion:     "1",
-		Key:               "github",
-		Version:           "1.0.0",
 		DisplayName:       "GitHub",
-		Artifact:          testArtifact(),
-		Implementation:    Implementation{Kind: "unknown"},
+		Implementation:    Implementation{Kind: "unknown", Builtin: &BuiltinImplementation{ProviderID: "github", MCP: true}},
 		AuthorizationKind: "none",
 	})
 	var domainError *DomainError
 	if !errors.As(err, &domainError) {
 		t.Fatalf("error = %v, want DomainError", err)
 	}
-	if domainError.Code != ErrorCodeUnsupportedImplementation {
+	if domainError.Code != ErrorCodeInvalidManifest {
 		t.Fatalf("code = %q", domainError.Code)
 	}
 }
@@ -55,6 +56,7 @@ func testArtifact() Artifact {
 		Key:       "connectors/github/1.0.0.tgz",
 		SHA256:    "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
 		SizeBytes: 1024,
+		MediaType: "application/vnd.tutti.connector+tar+gzip",
 	}
 }
 

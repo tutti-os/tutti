@@ -8,6 +8,7 @@ import type {
   ClockPort,
   MobileDiagnosticEvent,
   PairingPort,
+  QRCodeScanResult,
   QRCodeScannerPort
 } from "./servicePorts";
 
@@ -41,7 +42,7 @@ describe("DeviceService pairing lifecycle", () => {
   });
 
   test("keeps an Android scanner interaction alive across background and active transitions", async () => {
-    const scannerResult = deferred<string>();
+    const scannerResult = deferred<QRCodeScanResult>();
     const harness = createHarness({
       scanner: scannerFrom(scannerResult)
     });
@@ -51,7 +52,7 @@ describe("DeviceService pairing lifecycle", () => {
 
     harness.service.suspendRemoteOperations();
     expect(harness.service.getSnapshot().pairingState).toBe("scanning");
-    scannerResult.resolve(pairingCode);
+    scannerResult.resolve({ kind: "scanned", value: pairingCode });
     await flushPromises();
 
     expect(harness.claimCalls).toBe(0);
@@ -79,7 +80,7 @@ describe("DeviceService pairing lifecycle", () => {
   });
 
   test("starts only one scanner interaction while scanning", async () => {
-    const scannerResult = deferred<string>();
+    const scannerResult = deferred<QRCodeScanResult>();
     let scanCalls = 0;
     const harness = createHarness({
       scanner: {
@@ -98,19 +99,37 @@ describe("DeviceService pairing lifecycle", () => {
     expect(scanCalls).toBe(1);
 
     harness.service.dispose();
-    scannerResult.resolve(pairingCode);
+    scannerResult.resolve({ kind: "scanned", value: pairingCode });
     await Promise.all([first, duplicate]);
 
     expect(harness.claimCalls).toBe(0);
   });
 
+  test("returns to the app for manual pairing from the scanner", async () => {
+    const harness = createHarness({
+      scanner: {
+        start: () => ({
+          cancel: async () => undefined,
+          result: Promise.resolve({ kind: "manual" })
+        })
+      }
+    });
+
+    await expect(harness.service.scanAndPair()).resolves.toBe("manual");
+    expect(harness.claimCalls).toBe(0);
+    expect(harness.service.getSnapshot()).toMatchObject({
+      errorCode: null,
+      pairingState: "idle"
+    });
+  });
+
   test.each([
     ["SCAN_CANCELLED", null],
-    ["SCANNER_PERMISSION_DENIED", "camera_permission_required"],
-    ["SCAN_FAILED", "scanner_unavailable"]
+    ["SCANNER_PERMISSION_DENIED", "manual"],
+    ["SCAN_FAILED", "manual"]
   ] as const)(
     "maps scanner failure %s without attempting a claim",
-    async (code, errorCode) => {
+    async (code, result) => {
       const harness = createHarness({
         scanner: {
           start: () => ({
@@ -120,20 +139,21 @@ describe("DeviceService pairing lifecycle", () => {
         }
       });
 
-      await harness.service.scanAndPair();
+      const scanResult = await harness.service.scanAndPair();
       harness.service.resumeRemoteOperations();
       await flushPromises();
 
       expect(harness.claimCalls).toBe(0);
-      expect(harness.service.getSnapshot()).toMatchObject({
-        errorCode,
-        pairingState: "idle"
-      });
+      expect(scanResult).toBe(result === "manual" ? "manual" : null);
+      expect(harness.service.getSnapshot().pairingState).toBe("idle");
+      expect(harness.service.getSnapshot().errorCode).toBe(
+        result === "manual" ? null : result
+      );
     }
   );
 
   test("cancels the native scanner when the service is disposed", async () => {
-    const scannerResult = deferred<string>();
+    const scannerResult = deferred<QRCodeScanResult>();
     let cancelCalls = 0;
     const harness = createHarness({
       scanner: {
@@ -315,7 +335,7 @@ function createHarness({
   scanner = {
     start: () => ({
       cancel: async () => undefined,
-      result: Promise.resolve(pairingCode)
+      result: Promise.resolve({ kind: "scanned", value: pairingCode })
     })
   }
 }: {
@@ -392,7 +412,7 @@ function deferred<T>(): Deferred<T> {
   return { promise, reject, resolve };
 }
 
-function scannerFrom(result: Deferred<string>): QRCodeScannerPort {
+function scannerFrom(result: Deferred<QRCodeScanResult>): QRCodeScannerPort {
   return {
     start: () => ({
       cancel: async () => {

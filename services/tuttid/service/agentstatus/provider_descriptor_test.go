@@ -118,7 +118,11 @@ func TestOpenCodeStatusSpecComesFromProviderDescriptor(t *testing.T) {
 	}
 	if spec.Install.Kind != InstallerKindOfficialScript ||
 		spec.Install.ScriptURL != "https://opencode.ai/install" ||
-		spec.Install.ScriptShell != "bash" {
+		spec.Install.ScriptShell != "bash" ||
+		spec.Install.WindowsFallback != providerregistry.InstallerWindowsFallbackManagedNPM ||
+		spec.Install.ManagedNPM == nil ||
+		spec.Install.ManagedNPM.PackageName != "opencode-ai" ||
+		spec.Install.ManagedNPM.BinaryName != "opencode" {
 		t.Fatalf("Install = %#v", spec.Install)
 	}
 }

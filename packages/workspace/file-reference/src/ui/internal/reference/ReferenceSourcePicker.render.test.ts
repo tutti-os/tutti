@@ -208,6 +208,80 @@ test("reference source picker renders shared folder icons and content errors", a
       "directoryPicker.searchPlaceholder"
     );
 
+    const confirmedRoots: Array<
+      Array<{ path: string; kind: string; displayName: string }>
+    > = [];
+    let rootConfirmCloseCount = 0;
+    (
+      globalThis as { __referenceSourcePickerView?: unknown }
+    ).__referenceSourcePickerView = {
+      ...createFolderOnlyView(folderNode),
+      activeSourceId: "workspace",
+      activeTabLabel: "Workspace",
+      currentEntries: [],
+      currentNode: null,
+      focusedNode: null,
+      selection: [],
+      selectionCount: 0,
+      selectedGroupKey: null
+    };
+    await act(async () => {
+      root?.render(
+        createElement(ReferenceSourcePicker, {
+          aggregator: {},
+          confirmRootDirectoryPath: "/workspace",
+          copy: createCopy(),
+          fileManagerCopy: { t: (key: string) => key },
+          onClose() {
+            rootConfirmCloseCount += 1;
+          },
+          onConfirm(
+            refs: Array<{ path: string; kind: string; displayName: string }>
+          ) {
+            confirmedRoots.push(refs);
+          },
+          open: true,
+          purpose: "directory",
+          workspaceId: "workspace-directory-root-confirm-test"
+        } as unknown as ReferenceSourcePickerProps)
+      );
+    });
+    const rootConfirmBody = dom.window.document.body.textContent ?? "";
+    assert.match(rootConfirmBody, /Workspace/);
+    assert.match(rootConfirmBody, /\/workspace/);
+    assert.match(rootConfirmBody, /referencePicker\.previewFolder/);
+    assert.match(rootConfirmBody, /referencePicker\.emptyDirectory/);
+    assert.doesNotMatch(rootConfirmBody, /referencePicker\.selectGroupHint/);
+    assert.doesNotMatch(rootConfirmBody, /referencePicker\.emptyPreview/);
+    const rootConfirmButton = Array.from(
+      dom.window.document.querySelectorAll("button")
+    ).find((button) => button.textContent === "directoryPicker.confirm");
+    assert.ok(rootConfirmButton);
+    assert.equal(rootConfirmButton.disabled, false);
+    await act(async () => {
+      rootConfirmButton.dispatchEvent(
+        new dom.window.MouseEvent("click", { bubbles: true })
+      );
+    });
+    assert.deepEqual(confirmedRoots, [
+      [{ path: "/workspace", kind: "folder", displayName: "workspace" }]
+    ]);
+    assert.equal(rootConfirmCloseCount, 1);
+
+    (
+      globalThis as { __referenceSourcePickerView?: unknown }
+    ).__referenceSourcePickerView = {
+      ...createFolderOnlyView(folderNode),
+      canCreateDirectory: true,
+      capabilities: { directoryCreatable: true, filterable: true },
+      filterCategories: [
+        {
+          extensions: ["png"],
+          id: "image",
+          labelKey: "referencePicker.fileTypeImage"
+        }
+      ]
+    };
     let pickerCloseCount = 0;
     await act(async () => {
       root?.render(
@@ -601,7 +675,14 @@ function buildReferenceSourcePickerRenderModule(tempDir: string): string {
     "file-preview.mjs",
     `
       import { createElement } from "react";
-      export function WorkspaceFilePreviewSurface({ emptyMessage }) {
+      export function WorkspaceFilePreviewSurface({
+        directoryMessage,
+        emptyMessage,
+        state
+      }) {
+        if (state?.status === "directory") {
+          return createElement("div", null, directoryMessage);
+        }
         return createElement("div", null, emptyMessage);
       }
     `
@@ -752,6 +833,7 @@ function buildReferenceSourcePickerRenderModule(tempDir: string): string {
     tempDir,
     "core.mjs",
     `
+      export const SOURCE_ROOT_NODE_ID = "\\0source-root";
       export function base64UrlDecode(value) {
         return Buffer.from(value, "base64url").toString("utf8");
       }
@@ -774,7 +856,7 @@ function buildReferenceSourcePickerRenderModule(tempDir: string): string {
     "presentation.mjs",
     `
       export function formatReferenceNodePathText(node) {
-        return node.ref.nodeId;
+        return node.contextLabel || node.displayName || node.ref.nodeId;
       }
       export function formatReferencePreviewDateTime(value) {
         return String(value);
@@ -850,7 +932,7 @@ function buildReferenceSourcePickerRenderModule(tempDir: string): string {
       new RegExp(
         'import \\{\\s*base64UrlDecode[\\s\\S]*?\\} from "../../../core/index\\.ts";'
       ),
-      `import { base64UrlDecode, nodeRefKey } from "${coreUrl}";`
+      `import { base64UrlDecode, nodeRefKey, SOURCE_ROOT_NODE_ID } from "${coreUrl}";`
     )
     .replace(
       new RegExp(
@@ -928,6 +1010,8 @@ function createFolderOnlyView(node: ReferenceNode) {
     selectedGroupKey: "workspace:root",
     selection: [],
     selectionCount: 0,
+    activeSourceId: "workspace",
+    currentNode: null,
     setFilters: () => {},
     setFocusedNode: () => {},
     setSearchQuery: () => {},

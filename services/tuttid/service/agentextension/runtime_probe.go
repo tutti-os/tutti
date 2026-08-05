@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"runtime"
 	"strings"
 	"time"
 
@@ -46,7 +47,7 @@ func ProbeRuntime(
 	transport agentruntime.ProcessTransport,
 	host agentruntime.HostMetadata,
 ) (RuntimeProbeResult, error) {
-	return runRuntimeSetup(ctx, binding, agentTargetID, cwd, "", 20*time.Second, transport, host)
+	return runRuntimeSetup(ctx, binding, agentTargetID, cwd, "", 75*time.Second, transport, host)
 }
 
 func AuthenticateRuntime(
@@ -145,6 +146,9 @@ func terminalLoginCommand(
 }
 
 func shellQuote(value string) string {
+	if runtime.GOOS == "windows" {
+		return windowsShellQuote(value)
+	}
 	if value != "" && strings.IndexFunc(value, func(r rune) bool {
 		switch {
 		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9':
@@ -159,4 +163,18 @@ func shellQuote(value string) string {
 		return value
 	}
 	return "'" + strings.ReplaceAll(value, "'", `'\''`) + "'"
+}
+
+func windowsShellQuote(value string) string {
+	if value != "" && strings.IndexFunc(value, func(r rune) bool {
+		switch r {
+		case ' ', '\t', '"', '&', '|', '<', '>', '(', ')', '^', '%':
+			return true
+		default:
+			return false
+		}
+	}) == -1 {
+		return value
+	}
+	return `"` + strings.ReplaceAll(value, `"`, `\"`) + `"`
 }

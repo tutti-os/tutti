@@ -50,7 +50,7 @@ func (l OpenCodeCLIModelLister) ListModels(ctx context.Context) (AgentModelListR
 	if len(args) == 0 {
 		args = []string{"models"}
 	}
-	cmd := exec.CommandContext(processCtx, command, args...)
+	cmd := newProviderCLICommand(processCtx, command, args...)
 	cmd.Env = env
 	if cwd := strings.TrimSpace(l.Cwd); cwd != "" {
 		cmd.Dir = cwd

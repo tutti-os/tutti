@@ -14,6 +14,7 @@ export type BusinessEventTopic =
   | "agent.model.configuration.changed"
   | "agent.quickprompt.updated"
   | "analytics.debug.reported"
+  | "connector.market.changed"
   | "preferences.agent.composer.defaults.changed"
   | "preferences.agent.composer.defaults.patch.requested"
   | "preferences.desktop.update.requested"
@@ -461,6 +462,12 @@ export interface AnalyticsDebugReportedPayloadV1 {
   }[];
 }
 
+export interface ConnectorMarketChangedPayloadV1 {
+  connectorKey?: string;
+  operationId?: string;
+  revision: number;
+}
+
 export interface PreferencesAgentComposerDefaultsChangedPayloadV1 {
   agentTargetId: string;
 }
@@ -587,6 +594,12 @@ export type AnalyticsDebugReportedEventV1 = BusinessEventEnvelopeV1<
   1
 >;
 
+export type ConnectorMarketChangedEventV1 = BusinessEventEnvelopeV1<
+  "connector.market.changed",
+  ConnectorMarketChangedPayloadV1,
+  1
+>;
+
 export type PreferencesAgentComposerDefaultsChangedEventV1 =
   BusinessEventEnvelopeV1<
     "preferences.agent.composer.defaults.changed",
@@ -668,6 +681,7 @@ export type ServerToClientEventTopic =
   | "agent.model.configuration.changed"
   | "agent.quickprompt.updated"
   | "analytics.debug.reported"
+  | "connector.market.changed"
   | "preferences.agent.composer.defaults.changed"
   | "preferences.desktop.updated"
   | "user.project.updated"
@@ -690,6 +704,7 @@ export type ServerToClientEventV1 =
   | AgentModelConfigurationChangedEventV1
   | AgentQuickpromptUpdatedEventV1
   | AnalyticsDebugReportedEventV1
+  | ConnectorMarketChangedEventV1
   | PreferencesAgentComposerDefaultsChangedEventV1
   | PreferencesDesktopUpdatedEventV1
   | UserProjectUpdatedEventV1

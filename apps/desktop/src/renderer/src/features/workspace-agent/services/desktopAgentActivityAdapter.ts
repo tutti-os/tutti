@@ -56,7 +56,10 @@ export interface CreateDesktopAgentActivityAdapterInput {
   ) => void;
 }
 
-const defaultComposerOptionsRequestTimeoutMs = 15_000;
+// Cold ACP/model discovery is materially slower on Windows (Cursor can take
+// 30-45 seconds on its first authenticated launch). Keep the renderer from
+// reporting a false failure while the daemon is still probing the provider.
+const defaultComposerOptionsRequestTimeoutMs = 60_000;
 const agentActivitySessionListLimit = 100;
 const sessionForkOperationPollBackoffMs = [0, 200, 500, 1_000, 2_000] as const;
 const sessionForkOperationMaxConsecutiveReadFailures = 3;

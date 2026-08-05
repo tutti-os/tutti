@@ -5,6 +5,7 @@ info:
   description: Versioned local daemon API for tutti desktop, CLI, and approved local integrations.
 x-tutti-openapi-fragments:
   - packages/workspace/issue-manager/openapi/issue-manager.v1.yaml
+  - packages/connector/market/openapi/connector-market.v1.yaml
   - services/tuttid/api/openapi/mobile-remote-access.v1.yaml
 servers:
   - url: http://127.0.0.1:4545
@@ -1919,6 +1920,8 @@ paths:
             type: string
             enum:
               - pending
+            x-enum-varnames:
+              - ListWorkspaceWorkflowsParamsCheckpointStatusPending
           description: When omitted, returns every workflow for the source session. Pass pending to return only workflows with a pending checkpoint.
       responses:
         "200":

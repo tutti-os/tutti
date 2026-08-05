@@ -96,7 +96,7 @@ func stabilizeTuttiAgentSystemSkills(home string, storeRoot string) (string, str
 			return "", "", err
 		}
 	}
-	if err := replaceSystemSkillRootWithSymlink(systemRoot, target); err != nil {
+	if err := replaceSystemSkillRootWithStableTarget(systemRoot, target); err != nil {
 		return "", "", err
 	}
 	return target, snapshot.digest, nil
@@ -284,6 +284,82 @@ func validateStableSystemSkillSymlink(
 
 func replaceSystemSkillRootWithSymlink(systemRoot string, target string) error {
 	return replaceSystemSkillRootWithSymlinkUsingRename(systemRoot, target, os.Rename)
+}
+
+// replaceSystemSkillRootWithDirectoryCopy is the privilege-free fallback used
+// on Windows when a non-elevated Tutti daemon cannot create a directory
+// symlink. The target has already been validated against the content digest by
+// the caller, so copying it into the session home preserves the same trusted
+// bundle without requiring SeCreateSymbolicLinkPrivilege.
+func replaceSystemSkillRootWithDirectoryCopy(systemRoot string, target string) error {
+	parent := filepath.Dir(systemRoot)
+	staging, err := os.MkdirTemp(parent, ".system-stabilize-")
+	if err != nil {
+		return fmt.Errorf("create system skill copy staging directory: %w", err)
+	}
+	removeStaging := true
+	defer func() {
+		if removeStaging {
+			_ = os.RemoveAll(staging)
+		}
+	}()
+	replacement := filepath.Join(staging, "replacement")
+	backup := filepath.Join(staging, "original")
+	if err := copyStableSystemSkillDirectory(target, replacement); err != nil {
+		return fmt.Errorf("copy stable system skills: %w", err)
+	}
+	if err := os.Rename(systemRoot, backup); err != nil {
+		return fmt.Errorf("stage provider system skills for copy replacement: %w", err)
+	}
+	if err := os.Rename(replacement, systemRoot); err != nil {
+		restoreErr := os.Rename(backup, systemRoot)
+		if restoreErr != nil {
+			removeStaging = false
+			return errors.Join(
+				fmt.Errorf("activate stable system skill directory copy: %w", err),
+				fmt.Errorf("restore original system skills; backup preserved at %s: %w", backup, restoreErr),
+			)
+		}
+		return fmt.Errorf("activate stable system skill directory copy: %w", err)
+	}
+	return nil
+}
+
+func copyStableSystemSkillDirectory(source string, target string) error {
+	return filepath.WalkDir(source, func(path string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		relative, err := filepath.Rel(source, path)
+		if err != nil {
+			return err
+		}
+		if relative == "." {
+			return os.MkdirAll(target, 0o755)
+		}
+		destination := filepath.Join(target, relative)
+		if entry.Type()&os.ModeSymlink != 0 {
+			return fmt.Errorf("stable system skills contain symlink: %s", relative)
+		}
+		if entry.IsDir() {
+			return os.MkdirAll(destination, 0o755)
+		}
+		info, err := entry.Info()
+		if err != nil {
+			return err
+		}
+		if !info.Mode().IsRegular() {
+			return fmt.Errorf("stable system skills contain non-regular file: %s", relative)
+		}
+		content, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		if err := os.MkdirAll(filepath.Dir(destination), 0o755); err != nil {
+			return err
+		}
+		return os.WriteFile(destination, content, 0o644)
+	})
 }
 
 func replaceSystemSkillRootWithSymlinkUsingRename(

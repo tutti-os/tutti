@@ -32,6 +32,7 @@ export type WorkspaceSettingsGeneralFocusAnchor =
 export type WorkspaceSettingsAgentTab =
   | "general"
   | "agents"
+  | "connectors"
   | "customAgents"
   | "automation";
 

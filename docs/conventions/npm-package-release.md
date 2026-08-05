@@ -327,8 +327,9 @@ The stable package entrypoints are:
 @tutti-os/ui-react-hooks
 @tutti-os/connector-market
 @tutti-os/connector-market/contracts
+@tutti-os/connector-market/i18n
 @tutti-os/connector-market/openapi/connector-market.v1.yaml
-@tutti-os/connector-market/react
+@tutti-os/connector-market/renderer
 @tutti-os/connector-market/services
 @tutti-os/workspace-app-center
 @tutti-os/workspace-app-center/contracts

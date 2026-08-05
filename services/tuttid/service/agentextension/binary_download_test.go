@@ -36,7 +36,7 @@ func TestDownloadRuntimeBinaryAllowsHTTPSRedirectWithPinnedBytes(t *testing.T) {
 		t.Fatalf("download fingerprint = %#v", fingerprint)
 	}
 	info, err := os.Lstat(destination)
-	if err != nil || !info.Mode().IsRegular() || info.Mode()&0o111 == 0 {
+	if err != nil || !isExecutableFileInfo(info) {
 		t.Fatalf("downloaded executable mode = %v, error = %v", info, err)
 	}
 }

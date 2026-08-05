@@ -23,7 +23,7 @@ const tuttiAppRuntimeCacheRootEnv = "TUTTI_APP_RUNTIME_CACHE_ROOT"
 const tuttiAppRuntimeCatalogEnv = "TUTTI_APP_RUNTIME_CATALOG"
 const appRuntimeCatalogSchemaVersion = "tutti.app.runtimes.v2"
 const appRuntimeBaselineProfile = "baseline"
-const appRuntimeNodeStaticProfile = "node-static"
+const appRuntimeNodeStaticProfile = "connector-node-static"
 const defaultTuttiAppRuntimeCatalogURL = "https://d1x7gb6wqsqmnm.cloudfront.net/tutti-app-runtimes/catalog.json"
 
 const NodeStaticProfile = appRuntimeNodeStaticProfile
@@ -72,9 +72,10 @@ type appRuntimeCatalog struct {
 }
 
 type appRuntimeCatalogEntry struct {
-	Version    string                                `json:"version"`
-	Components map[string]appRuntimeCatalogComponent `json:"components"`
-	Profiles   map[string][]string                   `json:"profiles"`
+	Version     string                                `json:"version"`
+	Components  map[string]appRuntimeCatalogComponent `json:"components"`
+	Profiles    map[string][]string                   `json:"profiles"`
+	ProfileABIs map[string]string                     `json:"profileAbis,omitempty"`
 }
 
 type appRuntimeCatalogComponent struct {
@@ -82,6 +83,15 @@ type appRuntimeCatalogComponent struct {
 	ArtifactURL       string `json:"artifactUrl"`
 	ArtifactSHA256    string `json:"artifactSha256"`
 	ArtifactSizeBytes int64  `json:"artifactSizeBytes,omitempty"`
+	// Executables is required by signed v3 connector catalogs and ignored by
+	// legacy app-runtime v2 catalogs. Paths are component-relative.
+	Executables map[string]appRuntimeCatalogExecutable `json:"executables,omitempty"`
+}
+
+type appRuntimeCatalogExecutable struct {
+	Path      string `json:"path"`
+	SHA256    string `json:"sha256"`
+	SizeBytes int64  `json:"sizeBytes"`
 }
 
 var managedAppRuntimeDownloadLocks sync.Map

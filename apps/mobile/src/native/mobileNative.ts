@@ -1,5 +1,6 @@
 import { NativeModules } from "react-native";
 import type { AccountSession, DeviceIdentity } from "../services/mobileDomain";
+import type { QRCodeScanResult } from "../services/servicePorts";
 import type { AppLifecycleNative } from "./appLifecyclePort";
 export type { AccountSession, DeviceIdentity } from "../services/mobileDomain";
 
@@ -24,7 +25,7 @@ interface MobileSecurityNative {
     name: string,
     avatarURL: string
   ): Promise<void>;
-  scanQRCode(): Promise<string>;
+  scanQRCode(): Promise<QRCodeScanResult>;
   sign(message: string): Promise<string>;
   startBrowserLogin(
     appId: string,

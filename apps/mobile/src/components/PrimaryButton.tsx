@@ -1,8 +1,10 @@
 import { NativeButton, type ButtonSize } from "@tutti-os/ui-system/native";
+import type { ReactNode } from "react";
 import type { StyleProp, ViewStyle } from "react-native";
 
 interface PrimaryButtonProps {
   disabled?: boolean;
+  leading?: ReactNode;
   label: string;
   loading?: boolean;
   onPress(): void;
@@ -13,6 +15,7 @@ interface PrimaryButtonProps {
 
 export function PrimaryButton({
   disabled = false,
+  leading,
   label,
   loading = false,
   onPress,
@@ -23,6 +26,7 @@ export function PrimaryButton({
   return (
     <NativeButton
       disabled={disabled}
+      leading={leading}
       label={label}
       loading={loading}
       onPress={onPress}

@@ -99,6 +99,9 @@ importers:
       "@tutti-os/config-tsconfig":
         specifier: workspace:*
         version: link:../../packages/configs/tsconfig
+      "@tutti-os/connector-market":
+        specifier: workspace:*
+        version: link:../../packages/connector/market
       "@tutti-os/desktop-update-admission":
         specifier: workspace:*
         version: link:../../packages/desktop/update-admission
@@ -816,6 +819,12 @@ importers:
       "@tutti-os/infra":
         specifier: 0.1.0
         version: 0.1.0(lodash-es@4.18.1)(react@19.2.6)
+      "@tutti-os/ui-i18n-runtime":
+        specifier: workspace:*
+        version: link:../../ui/i18n-runtime
+      "@tutti-os/ui-system":
+        specifier: workspace:*
+        version: link:../../ui/system
       valtio:
         specifier: ^2.3.2
         version: 2.3.2(@types/react@19.2.15)(react@19.2.6)
@@ -832,6 +841,9 @@ importers:
       react:
         specifier: ^19.1.0
         version: 19.2.6
+      react-dom:
+        specifier: ^19.1.0
+        version: 19.2.6(react@19.2.6)
       tsx:
         specifier: ^4.22.3
         version: 4.22.3

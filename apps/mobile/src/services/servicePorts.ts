@@ -30,9 +30,13 @@ export interface LegacySessionCookiePort {
   clear(): Promise<void>;
 }
 
+export type QRCodeScanResult =
+  | { kind: "manual" }
+  | { kind: "scanned"; value: string };
+
 export interface QRCodeScanOperation {
   cancel(): Promise<void>;
-  result: Promise<string>;
+  result: Promise<QRCodeScanResult>;
 }
 
 export interface QRCodeScannerPort {

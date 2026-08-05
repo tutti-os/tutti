@@ -94,7 +94,7 @@ func (s Service) probeAdapterRuntimeCommand(
 		// Codex (invoked as `<binary> acp`), so they get the same real
 		// initialize handshake instead of only checking the process didn't
 		// exit.
-		result = s.probeStandardACPHandshake(ctx, result, command, env)
+		result = s.probeStandardACPHandshake(ctx, result, command, env, s.probeTimeoutForSpec(spec))
 	} else {
 		result = s.probeCommandWithReadyAfter(ctx, result, command, env, s.probeReadyAfterForSpec(spec))
 	}

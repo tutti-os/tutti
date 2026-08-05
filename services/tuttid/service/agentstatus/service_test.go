@@ -819,7 +819,7 @@ func TestServiceListStandardACPHandshakeProbe(t *testing.T) {
 			provider:   "cursor",
 			binaryName: "cursor-agent",
 			script:     "#!/bin/sh\ncase \"$*\" in\n*acp*) sleep 5 ;;\nesac\nexit 0\n",
-			wantStatus: AvailabilityNotInstalled,
+			wantStatus: AvailabilityUnknown,
 			wantReason: "acp_adapter_launch_failed",
 		},
 		{
@@ -829,7 +829,7 @@ func TestServiceListStandardACPHandshakeProbe(t *testing.T) {
 			script: "#!/bin/sh\ncase \"$*\" in\n" +
 				"*acp*) echo '{\"jsonrpc\":\"2.0\",\"id\":1,\"error\":{\"code\":-32000,\"message\":\"unsupported\"}}'; exit 1 ;;\n" +
 				"esac\nexit 0\n",
-			wantStatus: AvailabilityNotInstalled,
+			wantStatus: AvailabilityUnknown,
 			wantReason: "acp_adapter_launch_failed",
 		},
 		{
@@ -844,7 +844,7 @@ func TestServiceListStandardACPHandshakeProbe(t *testing.T) {
 			provider:   "opencode",
 			binaryName: "opencode",
 			script:     "#!/bin/sh\ncase \"$*\" in\n*acp*) sleep 5 ;;\nesac\nexit 0\n",
-			wantStatus: AvailabilityNotInstalled,
+			wantStatus: AvailabilityUnknown,
 			wantReason: "acp_adapter_launch_failed",
 		},
 		{
@@ -854,7 +854,7 @@ func TestServiceListStandardACPHandshakeProbe(t *testing.T) {
 			script: "#!/bin/sh\ncase \"$*\" in\n" +
 				"*acp*) echo '{\"jsonrpc\":\"2.0\",\"id\":1,\"error\":{\"code\":-32000,\"message\":\"unsupported\"}}'; exit 1 ;;\n" +
 				"esac\nexit 0\n",
-			wantStatus: AvailabilityNotInstalled,
+			wantStatus: AvailabilityUnknown,
 			wantReason: "acp_adapter_launch_failed",
 		},
 		{
@@ -871,7 +871,7 @@ func TestServiceListStandardACPHandshakeProbe(t *testing.T) {
 			script: "#!/bin/sh\ncase \"$*\" in\n" +
 				"*acp*) echo '{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{}}'; exit 0 ;;\n" +
 				"esac\nexit 0\n",
-			wantStatus: AvailabilityNotInstalled,
+			wantStatus: AvailabilityUnknown,
 			wantReason: "acp_adapter_launch_failed",
 		},
 		{
@@ -881,7 +881,7 @@ func TestServiceListStandardACPHandshakeProbe(t *testing.T) {
 			script: "#!/bin/sh\ncase \"$*\" in\n" +
 				"*acp*) echo '{\"id\":1,\"result\":{}}'; exit 0 ;;\n" +
 				"esac\nexit 0\n",
-			wantStatus: AvailabilityNotInstalled,
+			wantStatus: AvailabilityUnknown,
 			wantReason: "acp_adapter_launch_failed",
 		},
 		{
@@ -891,7 +891,7 @@ func TestServiceListStandardACPHandshakeProbe(t *testing.T) {
 			script: "#!/bin/sh\ncase \"$*\" in\n" +
 				"*acp*) echo '{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{}}'; exit 0 ;;\n" +
 				"esac\nexit 0\n",
-			wantStatus: AvailabilityNotInstalled,
+			wantStatus: AvailabilityUnknown,
 			wantReason: "acp_adapter_launch_failed",
 		},
 		{
@@ -901,7 +901,7 @@ func TestServiceListStandardACPHandshakeProbe(t *testing.T) {
 			script: "#!/bin/sh\ncase \"$*\" in\n" +
 				"*acp*) echo '{\"id\":1,\"result\":{}}'; exit 0 ;;\n" +
 				"esac\nexit 0\n",
-			wantStatus: AvailabilityNotInstalled,
+			wantStatus: AvailabilityUnknown,
 			wantReason: "acp_adapter_launch_failed",
 		},
 	} {
@@ -1453,6 +1453,9 @@ func TestServiceProbeTreatsTemporarilyUnsupportedProviderAsUnsupported(t *testin
 }
 
 func TestServiceRunActionInstallsThenProbesProvider(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("shell-script fixture and POSIX adapter probe are not a native Windows test")
+	}
 	home := t.TempDir()
 	binDir := filepath.Join(home, ".nvm", "versions", "node", "v24.12.0", "bin")
 	if err := os.MkdirAll(binDir, 0o755); err != nil {

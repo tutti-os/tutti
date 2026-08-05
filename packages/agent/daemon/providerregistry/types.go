@@ -109,6 +109,8 @@ type InstallerWindowsFallback string
 
 const (
 	InstallerWindowsFallbackManagedRuntime InstallerWindowsFallback = "managed_runtime"
+	InstallerWindowsFallbackManagedNPM     InstallerWindowsFallback = "managed_npm"
+	InstallerWindowsFallbackPowerShell     InstallerWindowsFallback = "powershell"
 )
 
 type StatusKind string
@@ -230,17 +232,18 @@ type StandardACPRuntimeDescriptor struct {
 }
 
 type InstallerDescriptor struct {
-	Kind                 InstallerKind
-	DisplayCommand       string
-	PackageName          string
-	BinaryName           string
-	RecommendedVersion   string
-	IncludeOptional      bool
-	ScriptURL            string
-	ScriptShell          string
-	WindowsFallback      InstallerWindowsFallback
-	ShellCommand         string
-	FailureReasonMarkers map[string][]string
+	Kind                     InstallerKind
+	DisplayCommand           string
+	PackageName              string
+	BinaryName               string
+	RecommendedVersion       string
+	IncludeOptional          bool
+	ScriptURL                string
+	ScriptShell              string
+	WindowsFallback          InstallerWindowsFallback
+	WindowsPowerShellCommand string
+	ShellCommand             string
+	FailureReasonMarkers     map[string][]string
 }
 
 func (d ProviderDescriptor) ManagedNPMDescriptor() (managednpm.Descriptor, bool) {

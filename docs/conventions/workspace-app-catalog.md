@@ -150,7 +150,7 @@ referenced package-local manifest locale files and writes their `name`,
 Center uses this catalog metadata for uninstalled remote apps, because it must
 not download or unzip the app package just to render localized catalog cards.
 
-Workspace app packages do not declare arbitrary runtime kinds or bundle Python/Node. Packages that only need the managed Node/static runtime may declare `runtime.profile: "node-static"`; all other managed runtime release and download rules belong to [Workspace App Runtime](./workspace-app-runtime.md).
+Workspace app packages do not declare arbitrary runtime kinds or bundle Python/Node. Packages that only need the managed Node/static runtime may declare `runtime.profile: "connector-node-static"`; all other managed runtime release and download rules belong to [Workspace App Runtime](./workspace-app-runtime.md).
 
 ## Release Flow
 
