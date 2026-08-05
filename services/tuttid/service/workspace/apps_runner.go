@@ -222,7 +222,7 @@ func (r *AppRunner) startProcess(ctx context.Context, key string, input AppStart
 	if err != nil {
 		_ = logFile.Close()
 		logAppRuntimeControl("workspace_app_runtime_start_failed", input, port, "cli_unavailable", err)
-		r.setFailed(key, "cli_unavailable", err)
+		r.setFailedForStart(key, start, "cli_unavailable", err)
 		return
 	}
 	tuttiAPIBaseURL := tuttiAPIBaseURLFromEnv()
