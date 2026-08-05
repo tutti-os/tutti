@@ -54,6 +54,9 @@ func (h *Host) CreateSession(ctx context.Context, workspaceID string, input Crea
 	}
 	claimMetadata := metadata
 	if isTypedGoal || len(normalized) == 0 {
+		if input.TurnCapabilityInvocation != nil {
+			return CreateSessionResult{}, ErrInvalidArgument
+		}
 		normalized = nil
 		claimMetadata = nil
 	}
@@ -179,6 +182,21 @@ func (h *Host) CreateSession(ctx context.Context, workspaceID string, input Crea
 			Session: session, Canonical: goalResult.Canonical,
 			Kind: "goalControl", GoalControl: &goalResult,
 		}, nil
+	}
+	augmentation, err := h.ensureTurnCapability(
+		ctx,
+		ref,
+		session,
+		claim.TurnID,
+		claim.ClientSubmitID,
+		input.TurnCapabilityInvocation,
+	)
+	if err != nil {
+		return CreateSessionResult{}, cleanup(err, true, true)
+	}
+	normalized, promptText, err = mergeTurnCapabilityPromptContent(normalized, augmentation)
+	if err != nil {
+		return CreateSessionResult{}, cleanup(err, true, true)
 	}
 	startedAt = h.now()
 	if err := h.runtime.ValidatePromptContent(ctx, RuntimeExecInput{WorkspaceID: workspaceID, AgentSessionID: session.ID, Content: normalized}); err != nil {
@@ -486,6 +504,21 @@ func (h *Host) sendInputSerialized(
 		return SendInputResult{}, err
 	}
 	h.observeStep(ctx, "message_send", "runtime_session_ready", ref.AgentSessionID, session.Provider, startedAt, nil)
+	augmentation, err := h.ensureTurnCapability(
+		ctx,
+		ref,
+		session,
+		claim.TurnID,
+		claim.ClientSubmitID,
+		input.TurnCapabilityInvocation,
+	)
+	if err != nil {
+		return SendInputResult{}, err
+	}
+	normalized, promptText, err = mergeTurnCapabilityPromptContent(normalized, augmentation)
+	if err != nil {
+		return SendInputResult{}, err
+	}
 	startedAt = h.now()
 	if err := h.runtime.ValidatePromptContent(ctx, RuntimeExecInput{WorkspaceID: ref.WorkspaceID, AgentSessionID: ref.AgentSessionID, Content: normalized}); err != nil {
 		h.observeStep(ctx, "message_send", "prompt_validated", ref.AgentSessionID, session.Provider, startedAt, err)

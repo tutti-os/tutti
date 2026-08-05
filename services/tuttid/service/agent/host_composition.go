@@ -183,6 +183,7 @@ func composeApplicationHost(
 	turnSubmissions, _ := canonical.(agenthost.TurnSubmissionStore)
 	effectiveHistory, _ := canonical.(agenthost.EffectiveHistoryStore)
 	historyRuntime, _ := runtime.(agenthost.RuntimeHistoryController)
+	turnCapabilities, _ := runtime.(agenthost.RuntimeTurnCapabilityPort)
 	return agenthost.New(agenthost.Config{
 		CanonicalStore: canonical, SessionManagement: sessionManagement,
 		SessionBatchManagement: sessionBatchManagement, SessionPurge: support.SessionPurge,
@@ -196,6 +197,7 @@ func composeApplicationHost(
 		TurnSubmissions:        turnSubmissions,
 		EffectiveHistory:       effectiveHistory,
 		Runtime:                runtime,
+		TurnCapabilities:       turnCapabilities,
 		HistoryRuntime:         historyRuntime,
 		RuntimePreparation:     support.RuntimePreparation, Attachments: support.Attachments,
 		SettingsPolicy: support.SettingsPolicy,
