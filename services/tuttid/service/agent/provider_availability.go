@@ -56,11 +56,12 @@ type ProviderAvailabilityError struct {
 }
 
 type ProviderAvailability struct {
-	Provider   string
-	Status     string
-	Checks     []ProviderAvailabilityCheck
-	LastError  *ProviderAvailabilityError
-	CapturedAt time.Time
+	Provider       string
+	Status         string
+	ExecutablePath string
+	Checks         []ProviderAvailabilityCheck
+	LastError      *ProviderAvailabilityError
+	CapturedAt     time.Time
 }
 
 type ProviderAvailabilityInput struct {
@@ -94,6 +95,13 @@ func (s *Service) invalidateProviderAvailability(provider string) {
 	if invalidator, ok := s.AvailabilityChecker.(ProviderAvailabilityInvalidator); ok {
 		invalidator.InvalidateProviderAvailability(provider)
 	}
+}
+
+// InvalidateProviderAvailabilityCache drops the agent service's derived
+// availability snapshot when the status service changes its source data.
+// It intentionally does not call back into the status service.
+func (s *Service) InvalidateProviderAvailabilityCache(provider string) {
+	s.providerAvailabilityCache.invalidate(provider)
 }
 
 func (s *Service) ListProviderAvailability(ctx context.Context, input ProviderAvailabilityInput) ([]ProviderAvailability, error) {
@@ -173,10 +181,11 @@ func providerAvailabilityFromAgentStatus(
 		checkedAt = status.Availability.CheckedAt.UTC()
 	}
 	result := ProviderAvailability{
-		Provider:   strings.TrimSpace(status.Provider),
-		Status:     providerAvailabilityStatusFromAgentStatus(status.Availability.Status),
-		Checks:     providerAvailabilityChecksFromAgentStatus(status),
-		CapturedAt: checkedAt,
+		Provider:       strings.TrimSpace(status.Provider),
+		Status:         providerAvailabilityStatusFromAgentStatus(status.Availability.Status),
+		ExecutablePath: strings.TrimSpace(status.CLI.BinaryPath),
+		Checks:         providerAvailabilityChecksFromAgentStatus(status),
+		CapturedAt:     checkedAt,
 	}
 	if result.Status != ProviderAvailabilityAvailable {
 		result.LastError = providerAvailabilityErrorFromAgentStatus(status)

@@ -69,6 +69,9 @@ func TestServiceListProviderAvailabilityUsesAgentStatusSnapshot(t *testing.T) {
 	if got.Provider != "codex" || got.Status != ProviderAvailabilityUnavailable {
 		t.Fatalf("availability = %#v, want codex unavailable", got)
 	}
+	if got.ExecutablePath != "/usr/local/bin/codex" {
+		t.Fatalf("executablePath = %q, want resolved CLI path", got.ExecutablePath)
+	}
 	if !got.CapturedAt.Equal(checkedAt) {
 		t.Fatalf("capturedAt = %s, want %s", got.CapturedAt, checkedAt)
 	}
@@ -191,6 +194,32 @@ func TestServiceInvalidatesProviderAvailabilityCaches(t *testing.T) {
 	}
 	if lister.callCount != 4 {
 		t.Fatalf("status lister calls = %d, want 4 after invalidating both cache shapes", lister.callCount)
+	}
+}
+
+func TestServiceInvalidatesOnlyProviderAvailabilityCacheFromStatusChange(t *testing.T) {
+	lister := &fakeAgentProviderStatusLister{
+		snapshot: agentstatusservice.Snapshot{
+			Providers: []agentstatusservice.ProviderStatus{{
+				Provider: "codex",
+				Availability: agentstatusservice.Availability{
+					Status: agentstatusservice.AvailabilityReady,
+				},
+			}},
+		},
+	}
+	service := newIsolatedAgentService(newFakeRuntime())
+	service.AvailabilityChecker = AgentStatusProviderAvailabilityChecker{Service: lister}
+
+	if _, err := service.ListProviderAvailability(context.Background(), ProviderAvailabilityInput{Provider: "codex"}); err != nil {
+		t.Fatalf("ListProviderAvailability first returned error: %v", err)
+	}
+	service.InvalidateProviderAvailabilityCache("codex")
+	if _, err := service.ListProviderAvailability(context.Background(), ProviderAvailabilityInput{Provider: "codex"}); err != nil {
+		t.Fatalf("ListProviderAvailability after status invalidation returned error: %v", err)
+	}
+	if lister.callCount != 2 {
+		t.Fatalf("status lister calls = %d, want 2 after cache invalidation", lister.callCount)
 	}
 }
 

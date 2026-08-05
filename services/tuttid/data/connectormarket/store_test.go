@@ -5,13 +5,40 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"net/url"
 	"path/filepath"
+	"runtime"
 	"sync"
 	"testing"
 	"time"
 
 	market "github.com/tutti-os/tutti/packages/connector/market/daemon"
 )
+
+func TestConnectorMarketSQLiteDSNUsesWindowsFileURI(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("Windows-specific SQLite file URI")
+	}
+	for _, test := range []struct {
+		name, databasePath, host, uriPath string
+	}{
+		{name: "drive path", databasePath: `Z:\Users\Example User\.tutti-dev\tuttid.db`, uriPath: "/Z:/Users/Example User/.tutti-dev/tuttid.db"},
+		{name: "UNC path", databasePath: `\\storage-host\tutti state\tuttid.db`, host: "storage-host", uriPath: "/tutti state/tuttid.db"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			dsn := connectorMarketSQLiteDSN(test.databasePath, url.Values{
+				"_pragma": {"busy_timeout(5000)", "foreign_keys(1)"},
+			})
+			parsed, err := url.Parse(dsn)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if parsed.Scheme != "file" || parsed.Host != test.host || parsed.Path != test.uriPath || len(parsed.Query()["_pragma"]) != 2 {
+				t.Fatalf("connector market SQLite DSN = %q", dsn)
+			}
+		})
+	}
+}
 
 func TestStoreMigrationDropsLegacyTrustTables(t *testing.T) {
 	ctx := context.Background()

@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -36,7 +37,7 @@ func Open(ctx context.Context, dbPath string) (*Store, error) {
 	query := url.Values{}
 	query.Add("_pragma", "busy_timeout(5000)")
 	query.Add("_pragma", "foreign_keys(1)")
-	dsn := (&url.URL{Scheme: "file", Path: dbPath, RawQuery: query.Encode()}).String()
+	dsn := connectorMarketSQLiteDSN(dbPath, query)
 	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("open connector market database: %w", err)
@@ -49,6 +50,23 @@ func Open(ctx context.Context, dbPath string) (*Store, error) {
 		return nil, err
 	}
 	return store, nil
+}
+
+func connectorMarketSQLiteDSN(dbPath string, query url.Values) string {
+	databaseURL := &url.URL{Scheme: "file", Path: dbPath, RawQuery: query.Encode()}
+	if runtime.GOOS == "windows" && filepath.IsAbs(dbPath) {
+		slashPath := filepath.ToSlash(dbPath)
+		if uncPath := strings.TrimPrefix(slashPath, "//"); uncPath != slashPath {
+			host, path, found := strings.Cut(uncPath, "/")
+			if found {
+				databaseURL.Host = host
+				databaseURL.Path = "/" + path
+			}
+		} else {
+			databaseURL.Path = "/" + slashPath
+		}
+	}
+	return databaseURL.String()
 }
 
 func (store *Store) Close() error {

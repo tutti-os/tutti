@@ -28,7 +28,16 @@ export class ConnectorMarketServiceStartupJob extends AbstractJob<ConnectorMarke
       this.market.start();
     }
     if (phase === "synchronizing") {
-      this._setBarrier(phase, makeBarrierByPromise(this.market.ensureLoaded()));
+      this._setBarrier(
+        phase,
+        makeBarrierByPromise(
+          this.market.ensureLoaded().catch(() => {
+            // Connector Market is optional at desktop startup. The service
+            // already records the load error for its own error state; do not
+            // let an unavailable catalog reject the global lifecycle barrier.
+          })
+        )
+      );
     }
   }
 }
