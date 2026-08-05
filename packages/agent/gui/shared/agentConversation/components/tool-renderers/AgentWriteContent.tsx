@@ -21,10 +21,11 @@ export function AgentWriteContent({
     stringValue(call.input?.file_path) ??
     stringValue(call.input?.filePath) ??
     null;
-  const contentFiles = files.filter((candidate) => candidate.content);
+  const contentFiles = files.filter((candidate) => candidate.content !== null);
   const contentPaths = new Set(contentFiles.map((candidate) => candidate.path));
   const patchFiles = files.filter(
-    (candidate) => candidate.unifiedDiff && !contentPaths.has(candidate.path)
+    (candidate) =>
+      candidate.unifiedDiff !== null && !contentPaths.has(candidate.path)
   );
   const fallbackContent =
     files.length === 0 ? call.summary.trim() || null : null;

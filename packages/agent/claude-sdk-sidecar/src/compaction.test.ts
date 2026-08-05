@@ -3,16 +3,23 @@ import test from "node:test";
 import { CompactionTracker } from "./compaction.ts";
 import type { ClaudeSDKSidecarEvent } from "./protocol.ts";
 
-test("compaction failure collapses a duplicated provider reason", () => {
-  const events: ClaudeSDKSidecarEvent[] = [];
-  const tracker = new CompactionTracker({
-    activeTurnId: () => "turn-1",
+function createTracker(
+  events: ClaudeSDKSidecarEvent[],
+  activeTurnId = () => "turn-1"
+): CompactionTracker {
+  return new CompactionTracker({
+    activeTurnId,
     ensureActive: () => {},
     clearPendingOrphans: () => {},
     getQuery: () => undefined,
     getModel: () => "sonnet",
     emit: (event) => events.push(event as ClaudeSDKSidecarEvent)
   });
+}
+
+test("compaction failure collapses a duplicated provider reason", () => {
+  const events: ClaudeSDKSidecarEvent[] = [];
+  const tracker = createTracker(events);
 
   tracker.handleSystemMessage("status", { status: "compacting" });
   tracker.handleSystemMessage("status", {
@@ -24,6 +31,96 @@ test("compaction failure collapses a duplicated provider reason", () => {
   assert.equal(
     events[1]?.payload?.content,
     "Compacting failed: Not enough messages to compact."
+  );
+});
+
+test("slash compact starts a progress banner before provider signals", () => {
+  const events: ClaudeSDKSidecarEvent[] = [];
+  const tracker = createTracker(events, () => "");
+
+  tracker.selectCommand("turn-compact", true);
+
+  assert.equal(events.length, 1);
+  assert.equal(events[0]?.type, "compact_started");
+  assert.equal(events[0]?.payload?.turnId, "turn-compact");
+});
+
+test("slash compact start is idempotent with later status compacting", () => {
+  const events: ClaudeSDKSidecarEvent[] = [];
+  const tracker = createTracker(events);
+
+  tracker.selectCommand("turn-1", true);
+  tracker.handleSystemMessage("status", { status: "compacting" });
+
+  assert.equal(events.length, 1);
+  assert.equal(events[0]?.type, "compact_started");
+});
+
+test("camelCase compactMetadata still publishes boundary usage", () => {
+  const events: ClaudeSDKSidecarEvent[] = [];
+  const tracker = createTracker(events);
+  tracker.selectCommand("turn-1", true);
+
+  tracker.handleSystemMessage("compact_boundary", {
+    compactMetadata: {
+      trigger: "manual",
+      preTokens: 48000,
+      postTokens: 1990
+    }
+  });
+
+  assert.equal(
+    events.some((event) => event.type === "compact_completed"),
+    true
+  );
+  const usage = events.find((event) => event.type === "usage_updated");
+  assert.deepEqual(usage?.payload?.contextWindow, {
+    usedTokens: 1990,
+    lastUsedTokens: 48000
+  });
+});
+
+test("local_command stdout marks compact failure before turn settle", () => {
+  const events: ClaudeSDKSidecarEvent[] = [];
+  const tracker = createTracker(events);
+  tracker.selectCommand("turn-1", true);
+
+  tracker.handleSystemMessage("local_command", {
+    content:
+      "<local-command-stdout>Not enough messages to compact.</local-command-stdout>"
+  });
+
+  assert.equal(
+    events.find((event) => event.type === "compact_failed")?.payload?.reason,
+    "Not enough messages to compact."
+  );
+});
+
+test("local_command_output Compacted completes the slash compact banner", () => {
+  const events: ClaudeSDKSidecarEvent[] = [];
+  const tracker = createTracker(events);
+  tracker.selectCommand("turn-1", true);
+
+  tracker.handleSystemMessage("local_command_output", {
+    content: "Compacted "
+  });
+
+  assert.equal(
+    events.some((event) => event.type === "compact_completed"),
+    true
+  );
+});
+
+test("assistant failure copy during slash compact emits compact_failed", () => {
+  const events: ClaudeSDKSidecarEvent[] = [];
+  const tracker = createTracker(events);
+  tracker.selectCommand("turn-1", true);
+
+  tracker.noteAssistantText("Not enough messages to compact.");
+
+  assert.equal(
+    events.find((event) => event.type === "compact_failed")?.payload?.reason,
+    "Not enough messages to compact."
   );
 });
 

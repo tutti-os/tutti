@@ -448,6 +448,36 @@ test("provider-accepted Goal state is valid before Session projection converges"
   );
 });
 
+test("accepted set yields to a later canonical terminal Goal observation", async () => {
+  const harness = createHarness();
+  harness.engine.controlGoal({
+    action: "set",
+    agentSessionId: "session-1",
+    clientSubmitId: "goal-submit-1",
+    objective: "ship it"
+  });
+  harness.resolveApplying(0, goal("ship it", "active"));
+  await flushMicrotasks();
+
+  harness.engine.dispatch({
+    session: session(goal("ship it", "complete"), 200),
+    type: "session/upserted"
+  });
+
+  assert.deepEqual(
+    selectSessionGoalControlPresentation(
+      harness.engine.getSnapshot(),
+      "session-1"
+    ),
+    {
+      agentSessionId: "session-1",
+      goal: goal("ship it", "complete"),
+      optimistic: false,
+      status: "accepted"
+    }
+  );
+});
+
 test("uncertain rejection stays retryable while pre-admission rejection fails", async () => {
   const uncertain = createHarness();
   uncertain.engine.controlGoal({
@@ -534,10 +564,10 @@ test("new-session Goal projection stops being optimistic after canonical hydrati
 
 function goal(
   objective: string,
-  status: "active" | "paused"
+  status: "active" | "paused" | "complete"
 ): {
   objective: string;
-  status: "active" | "paused";
+  status: "active" | "paused" | "complete";
 } {
   return { objective, status };
 }

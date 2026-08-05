@@ -52,6 +52,11 @@ import {
   setAgentComposerDefaults
 } from "./agent-session-replay-runner/runtime.mjs";
 import {
+  assertDesktopLogHasNoCatalogMismatch,
+  clearPreparedElectronEnv,
+  reconcileEventStreamCatalogForLaunch
+} from "./agent-session-replay-runner/event-stream-catalog.mjs";
+import {
   assertForbiddenPathAbsent,
   resolveAgentSessionReplayProjectRoot,
   resolveRecordScenarioProject,
@@ -59,12 +64,13 @@ import {
   verifyRecordedProjectBindingArtifacts
 } from "./agent-session-replay-runner/recording.mjs";
 import { bindManagedReplayShutdown } from "./agent-session-replay-runner/desktop-shutdown.mjs";
+import { acquireAgentSessionReplayProjectRoot } from "./agent-session-replay-runner/project-root.mjs";
 import { uiDriveScenario } from "./agent-session-replay-runner/ui-drive.mjs";
 
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const workspaceRoot = resolve(scriptDirectory, "..", "..");
-/** Agent user-project root; equals Tutti checkout unless PROJECT_ROOT env is set. */
-const projectRoot = resolveAgentSessionReplayProjectRoot(workspaceRoot);
+/** Run-bound Agent user-project root; assigned before a record/replay mode starts. */
+let projectRoot = resolveAgentSessionReplayProjectRoot();
 const defaultTimeoutMs = 180_000;
 const defaultStallTimeoutMs = 60_000;
 export const managedReplayReadyPrefix = "[tutti-agent-session-replay-ready] ";
@@ -114,22 +120,33 @@ export async function main(argv) {
     printUsage();
     return;
   }
-  configureWaitDiagnostics({
-    log,
-    stallTimeoutMs: options.stallTimeoutMs
+  const project = await acquireAgentSessionReplayProjectRoot({
+    keepRuntime: options.keepRuntime
   });
-  if (options.mode === "record") {
-    await recordCassette(options);
-  } else if (options.mode === "replay-workspace") {
-    await replayWorkspace(options);
-  } else if (options.mode === "ui-drive") {
-    await uiDriveScenario({
-      ...options,
-      artifactDirectory: options.cassetteDirectory,
-      workspaceRoot
+  projectRoot = project.root;
+  try {
+    configureWaitDiagnostics({
+      log,
+      stallTimeoutMs: options.stallTimeoutMs
     });
-  } else {
-    await replayCassette(options);
+    if (options.mode === "record") {
+      await recordCassette(options);
+    } else if (options.mode === "replay-workspace") {
+      await replayWorkspace(options);
+    } else if (options.mode === "ui-drive") {
+      await uiDriveScenario({
+        ...options,
+        artifactDirectory: options.cassetteDirectory,
+        workspaceRoot
+      });
+    } else {
+      await replayCassette(options);
+    }
+  } finally {
+    await project.dispose();
+    if (project.owned && options.keepRuntime) {
+      log(`project kept: ${project.root}`);
+    }
   }
 }
 
@@ -572,10 +589,25 @@ async function runReplayWorkspaceOrchestration(bootstrap, options) {
       )
     ])
   );
+  const catalogLaunch = await reconcileEventStreamCatalogForLaunch({
+    daemonPath: bootstrap.runtime.daemonPath,
+    managed: Boolean(options.managed),
+    preparedElectron: Boolean(desktopLaunch),
+    workspaceRoot
+  });
+  let effectiveDesktopLaunch = desktopLaunch;
+  if (catalogLaunch.fallbackToPnpmDev) {
+    log(
+      catalogLaunch.message ??
+        "stale prepared desktop out; falling back to pnpm-dev-desktop"
+    );
+    clearPreparedElectronEnv();
+    effectiveDesktopLaunch = undefined;
+  }
   const desktop = startDesktop({
-    args: desktopLaunch?.args,
+    args: effectiveDesktopLaunch?.args,
     cdpPort,
-    command: desktopLaunch?.command,
+    command: effectiveDesktopLaunch?.command,
     daemonPath: bootstrap.runtime.daemonPath,
     desktopLogPath: logPath,
     environment: {
@@ -601,6 +633,7 @@ async function runReplayWorkspaceOrchestration(bootstrap, options) {
       desktop,
       options.timeoutMs
     );
+    await assertDesktopLogHasNoCatalogMismatch(logPath);
     client = await CdpClient.connect(pageWebSocket);
     await client.send("Runtime.enable");
     await bootstrapRendererReplayWorkspace(
@@ -1415,10 +1448,25 @@ async function runDesktopAction(input) {
     input.mode === "replay"
       ? requiredReplayRegistrations(input.replayRegistrations)
       : null;
+  const catalogLaunch = await reconcileEventStreamCatalogForLaunch({
+    daemonPath: input.daemonPath,
+    managed: Boolean(input.keepDesktopOpen && input.desktopLaunch),
+    preparedElectron: Boolean(input.desktopLaunch),
+    workspaceRoot
+  });
+  let desktopLaunch = input.desktopLaunch;
+  if (catalogLaunch.fallbackToPnpmDev) {
+    log(
+      catalogLaunch.message ??
+        "stale prepared desktop out; falling back to pnpm-dev-desktop"
+    );
+    clearPreparedElectronEnv();
+    desktopLaunch = undefined;
+  }
   const desktop = startDesktop({
-    args: input.desktopLaunch?.args,
+    args: desktopLaunch?.args,
     cdpPort,
-    command: input.desktopLaunch?.command,
+    command: desktopLaunch?.command,
     daemonPath: input.daemonPath,
     desktopLogPath: input.logPath,
     environment:
@@ -1442,9 +1490,11 @@ async function runDesktopAction(input) {
     stateDirectory: input.runtime.stateDirectory,
     userDataDirectory: input.runtime.userDataDirectory
   });
-  const disposeManagedShutdown = input.keepDesktopOpen
-    ? bindManagedReplayShutdown(desktop)
-    : () => {};
+  // Desktop is spawned detached. Always bind shutdown so SIGTERM/abort and
+  // parent death stop Electron even when --keep-runtime leaves the temp dir.
+  // keepDesktopOpen only skips the normal finally stopProcessTree so the
+  // window can stay up for managed replay; signal/parent hooks still apply.
+  const disposeManagedShutdown = bindManagedReplayShutdown(desktop);
   let pageClient = null;
   let primaryError = null;
   let replayPlayback = null;
@@ -1457,6 +1507,9 @@ async function runDesktopAction(input) {
       desktop,
       input.timeoutMs
     );
+    // Catalog mismatch is logged as soon as the renderer handshake runs.
+    // Fail here instead of waiting for scenario assistantText timeouts.
+    await assertDesktopLogHasNoCatalogMismatch(input.logPath);
     pageClient = await CdpClient.connect(pageWebSocket);
     await pageClient.send("Runtime.enable");
     await pageClient.send("Page.enable");
@@ -2291,6 +2344,28 @@ function submitRequestedCausedSend(event, activityEvents) {
   );
 }
 
+/**
+ * Resolve the live Turn id from a session GET projection.
+ * Protocol v2 embeds Turns as `{ turnId }`; older fixtures used `{ id }`.
+ * After cancel/settle, `activeTurnId` is null and only `latestTurn` remains.
+ */
+export function replayObservedTurnId(session) {
+  if (!session || typeof session !== "object") return null;
+  const candidates = [
+    session.activeTurnId,
+    session.activeTurn?.turnId,
+    session.activeTurn?.id,
+    session.latestTurn?.turnId,
+    session.latestTurn?.id
+  ];
+  for (const candidate of candidates) {
+    if (typeof candidate === "string" && candidate.trim()) {
+      return candidate.trim();
+    }
+  }
+  return null;
+}
+
 function createReplayTurnIdentityTracker(plan, runtime) {
   const sessions = new Map(
     Object.entries(plan).map(([sessionId, session]) => [
@@ -2317,7 +2392,7 @@ function createReplayTurnIdentityTracker(plan, runtime) {
   const observeSessionTurn = (recordedSessionId, session) => {
     const identity = sessions.get(recordedSessionId);
     if (!identity) return;
-    const actualTurnId = session.activeTurnId ?? session.latestTurn?.id ?? null;
+    const actualTurnId = replayObservedTurnId(session);
     if (!actualTurnId || identity.actualTurnIds.has(actualTurnId)) return;
     const recordedTurnId =
       identity.recordedTurnIds[identity.mappedTurnIds.size];
@@ -2797,6 +2872,10 @@ export function createReplayPlaybackController(input) {
   };
 
   const reconcileTarget = async () => {
+    // Consume the newest control revision before landing. Otherwise a duplicate
+    // next command written during a fast seek can remain unread until after the
+    // target pauses, where it would be mistaken for a request to advance again.
+    await applyControl();
     if (targetCheckpoint === null) return;
     const checkpoint = input.checkpoints[targetCheckpoint];
     if (activityEventSequence > checkpoint.cursor.activityEventSequence) {
@@ -2991,7 +3070,6 @@ export function createReplayPlaybackController(input) {
       // next/resumes again.
       while (true) {
         await reconcileTarget();
-        await applyControl();
         const blockedByTarget =
           targetCheckpoint !== null &&
           sequence >
@@ -4478,8 +4556,12 @@ export function checkpointNeedsScreenshotSettle(checkpoint) {
   if (!checkpoint) return true;
   const kind = String(checkpoint.kind ?? "");
   const tags = Array.isArray(checkpoint.tags) ? checkpoint.tags : [];
+  // Match checkpointNeedsToolSettle: tool.started is often paused mid-stream
+  // before Bash/command input is painted (Claude tool_started arrives with
+  // {toolName} only; command lands on the next tool_updated). Hard-settling
+  // there deadlocks replay — provider is frozen until settle returns.
   return [kind, ...tags].some((token) =>
-    /(?:^|[.])(?:tool\.completed|tool\.started|turn\.terminal|turn\.completed)$/u.test(
+    /(?:^|[.])(?:tool\.completed|turn\.terminal|turn\.completed)$/u.test(
       String(token)
     )
   );
@@ -4798,6 +4880,6 @@ function printUsage() {
       `  --cassette-id <id>          Stable managed Replay Cassette identity\n` +
       `  --target-checkpoint <n> Fast-forward a replacement Cassette and pause at checkpoint n\n` +
       `  --screenshot-checkpoints Capture a PNG under artifacts/ after each inspectable checkpoint\n` +
-      `  --keep-runtime         Keep the isolated state and Electron userData\n`
+      `  --keep-runtime         Keep isolated state/userData/project dirs after exit (Electron still stops)\n`
   );
 }

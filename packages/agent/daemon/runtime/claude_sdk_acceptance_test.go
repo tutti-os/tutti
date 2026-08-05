@@ -3,11 +3,211 @@ package agentruntime
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
 	activityshared "github.com/tutti-os/tutti/packages/agent/daemon/activity/events"
 )
+
+func TestClaudeSDKProviderAcceptanceHoldsCompactBannerUntilIdentity(t *testing.T) {
+	t.Parallel()
+
+	adapter := NewClaudeCodeSDKAdapter(nil)
+	conn := newBlockingClaudeSDKConnection()
+	session, adapterSession := newClaudeSDKLifecycleTestSession(t, adapter, conn)
+	adapterSession.providerSessionID = session.ProviderSessionID
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	defer cancel()
+
+	emitted := make(chan activityshared.Event, 32)
+	barrierEntered := make(chan ProviderAcceptanceReceipt, 1)
+	execDone := make(chan error, 1)
+	go func() {
+		_, err := adapter.ExecWithProviderAcceptance(
+			ctx,
+			session,
+			[]PromptContentBlock{{Type: "text", Text: "/compact"}},
+			"/compact",
+			"turn-compact",
+			func(events []activityshared.Event) {
+				for _, event := range events {
+					emitted <- event
+				}
+			},
+			nil,
+			func(ProviderDispatchResult) {},
+			func(receipt ProviderAcceptanceReceipt) error {
+				barrierEntered <- receipt
+				return nil
+			},
+		)
+		execDone <- err
+	}()
+
+	waitForClaudeSDKSentRequest(t, conn, "exec")
+	select {
+	case event := <-emitted:
+		t.Fatalf("event %q escaped before durable acceptance", event.Type)
+	case <-time.After(25 * time.Millisecond):
+	}
+
+	conn.pushEvent(claudeSDKSidecarEvent{
+		Type: "compact_started",
+		Payload: map[string]any{
+			"turnId":  "turn-compact",
+			"content": "Compacting...",
+		},
+	})
+	select {
+	case event := <-emitted:
+		t.Fatalf("compact banner %q escaped before durable acceptance", event.Type)
+	case <-time.After(25 * time.Millisecond):
+	}
+
+	conn.pushEvent(claudeSDKSidecarEvent{
+		Type: "provider_turn_identity_resolved",
+		Payload: map[string]any{
+			"turnId":         "turn-compact",
+			"providerTurnId": "provider-compact",
+		},
+	})
+	select {
+	case <-barrierEntered:
+	case <-ctx.Done():
+		t.Fatal("timed out waiting for acceptance barrier")
+	}
+
+	var sawCompactRunning bool
+	var compactUnit *activityshared.ProviderInputUnitContext
+	var identityUnit *activityshared.ProviderInputUnitContext
+	deadline := time.After(2 * time.Second)
+	for !sawCompactRunning {
+		select {
+		case event := <-emitted:
+			if event.Type == activityshared.EventRootProviderTurnStarted &&
+				strings.TrimSpace(event.Payload.TurnID) == "turn-compact" {
+				identityUnit = event.ProviderInputUnit
+			}
+			if event.Type == activityshared.EventMessageAppended &&
+				payloadString(event.Payload.Metadata, "noticeCommand") == "compact" &&
+				payloadString(event.Payload.Metadata, "noticeCommandStatus") == "running" {
+				sawCompactRunning = true
+				compactUnit = event.ProviderInputUnit
+			}
+		case <-deadline:
+			t.Fatal("timed out waiting for held compact banner after acceptance")
+		}
+	}
+	if identityUnit != nil && compactUnit != nil && *identityUnit != *compactUnit {
+		t.Fatalf(
+			"flushed compact ProviderInputUnit=%#v, want acceptance unit %#v",
+			compactUnit,
+			identityUnit,
+		)
+	}
+
+	conn.pushEvent(claudeSDKSidecarEvent{
+		Type: "turn_completed",
+		Payload: map[string]any{
+			"turnId":         "turn-compact",
+			"providerTurnId": "provider-compact",
+			"stopReason":     "end_turn",
+		},
+	})
+	select {
+	case err := <-execDone:
+		if err != nil {
+			t.Fatalf("ExecWithProviderAcceptance: %v", err)
+		}
+	case <-ctx.Done():
+		t.Fatal("timed out waiting for turn completion")
+	}
+}
+
+func TestClaudeSDKEventMayPrecedeProviderAcceptanceAllowsCompactNotice(t *testing.T) {
+	t.Parallel()
+
+	session := standardTestSession(ProviderClaudeCode)
+	compact := claudeSDKCompactMessageEvent(
+		session,
+		"turn-compact",
+		"claude-sdk:compact:turn-compact",
+		messageStreamStateStreaming,
+		"running",
+		"",
+	)
+	if !claudeSDKEventMayPrecedeProviderAcceptance(compact) {
+		t.Fatalf("compact notice must be holdable before provider acceptance: %#v", compact)
+	}
+	if !claudeSDKEventsMayPrecedeProviderAcceptance([]activityshared.Event{compact}) {
+		t.Fatal("compact-only batch must precede provider acceptance")
+	}
+	if !isClaudeSDKCompactPrompt(
+		[]PromptContentBlock{{Type: "text", Text: "/compact"}},
+		"/compact",
+	) {
+		t.Fatal("expected /compact prompt detection")
+	}
+}
+
+func TestRestampClaudeSDKHeldEventsOntoAcceptanceUnit(t *testing.T) {
+	t.Parallel()
+
+	acceptance := &activityshared.ProviderInputUnitContext{
+		ConnectionID: "connection-1",
+		ChunkSeq:     62,
+		UnitIndex:    1,
+		EventIndex:   1,
+		UnitKind:     "protocol-message",
+	}
+	early := &activityshared.ProviderInputUnitContext{
+		ConnectionID: "connection-1",
+		ChunkSeq:     53,
+		UnitIndex:    1,
+		EventIndex:   1,
+		UnitKind:     "protocol-message",
+	}
+	held := []activityshared.Event{
+		{
+			Type:              activityshared.EventMessageAppended,
+			ProviderInputUnit: early,
+		},
+		{
+			Type: activityshared.EventTurnStarted,
+		},
+	}
+	restamped := restampClaudeSDKHeldEventsOntoAcceptanceUnit(held, acceptance)
+	if len(restamped) != 2 {
+		t.Fatalf("restamped=%#v", restamped)
+	}
+	for index, event := range restamped {
+		if event.ProviderInputUnit == nil ||
+			*event.ProviderInputUnit != *acceptance {
+			t.Fatalf(
+				"event[%d] ProviderInputUnit=%#v, want acceptance unit %#v",
+				index,
+				event.ProviderInputUnit,
+				acceptance,
+			)
+		}
+	}
+	if held[0].ProviderInputUnit == nil || *held[0].ProviderInputUnit != *early {
+		t.Fatalf("restamp mutated the held slice: %#v", held[0].ProviderInputUnit)
+	}
+	identity := []activityshared.Event{{
+		Type: activityshared.EventRootProviderTurnStarted,
+		Payload: activityshared.EventPayload{
+			TurnID:         "turn-compact",
+			ProviderTurnID: "provider-compact",
+		},
+		ProviderInputUnit: acceptance,
+	}}
+	if got := claudeSDKAcceptanceProviderInputUnit(identity, "turn-compact"); got == nil ||
+		*got != *acceptance {
+		t.Fatalf("acceptance unit=%#v, want %#v", got, acceptance)
+	}
+}
 
 func TestClaudeSDKProviderAcceptanceReportsPreDispatchFailures(t *testing.T) {
 	t.Parallel()

@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 	"sync"
 	"time"
@@ -60,6 +61,51 @@ type AgentLiveEventSource interface {
 	) error
 }
 
+// AttemptEventSource is a best-effort control-plane hint stream. The HTTP
+// attempt API remains authoritative; implementations only wake a caller to
+// refetch an attempt after a committed mutation.
+type AttemptEventSource interface {
+	Run(context.Context, string, string, func(string)) error
+}
+
+type RemoteAttemptDiagnostics interface {
+	Record(RemoteAttemptEvent)
+}
+
+type RemoteAttemptEvent struct {
+	AttemptID string
+	PairingID string
+	Stage     string
+	Outcome   string
+	ElapsedMS int64
+	Error     string
+}
+
+// SlogRemoteAttemptDiagnostics keeps timing details in the daemon's existing
+// structured log stream without coupling the service to a logging backend.
+type SlogRemoteAttemptDiagnostics struct {
+	Logger *slog.Logger
+}
+
+func (d SlogRemoteAttemptDiagnostics) Record(event RemoteAttemptEvent) {
+	logger := d.Logger
+	if logger == nil {
+		logger = slog.Default()
+	}
+	args := []any{
+		"event", "mobile_remote.device_link_stage",
+		"attempt_id", event.AttemptID,
+		"pairing_id", event.PairingID,
+		"stage", event.Stage,
+		"outcome", event.Outcome,
+		"elapsed_ms", event.ElapsedMS,
+	}
+	if event.Error != "" {
+		args = append(args, "error", event.Error)
+	}
+	logger.Info("mobile remote DeviceLink stage", args...)
+}
+
 type DeviceMetadata struct {
 	ReportedName  string
 	Platform      string
@@ -85,6 +131,8 @@ type Service struct {
 	RuntimeID       string
 	RelayOwner      RelayOwnerHost
 	AgentLiveEvents AgentLiveEventSource
+	AttemptEvents   AttemptEventSource
+	Diagnostics     RemoteAttemptDiagnostics
 	Metadata        DeviceMetadata
 	Now             func() time.Time
 	// RemotePollInterval is test-only tuning; zero uses the production default.

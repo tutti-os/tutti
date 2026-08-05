@@ -128,7 +128,7 @@ func (s Service) runManagedNPMPackageAction(
 		"npmPath", npmPath,
 		"installPrefix", installPrefix,
 		"nodeTarget", nodeTarget,
-		"runner", managedNPMInstallRunner(),
+		"runner", structuredInstallRunner(),
 	)
 	// Pin a dedicated, tutti-owned npm cache instead of the user's global ~/.npm,
 	// which on some machines holds root-owned files that make every user-mode npm

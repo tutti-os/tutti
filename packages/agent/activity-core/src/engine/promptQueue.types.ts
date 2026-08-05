@@ -15,6 +15,8 @@ export interface EngineQueuedPrompt {
   id: string;
   requiredSettingsPatch?: Readonly<AgentActivitySubmitSettingsPatch>;
   submitDiagnostics?: Readonly<AgentActivitySubmitDiagnostics>;
+  /** Exact canonical active Turn targeted by a native guidance send. */
+  targetTurnId?: string;
   runtimeContent?: readonly AgentPromptContentBlock[];
   visibleInQueue?: boolean;
 }
@@ -106,6 +108,8 @@ export interface PromptQueueSendCommand {
   displayPrompt?: string;
   guidance?: boolean;
   submitDiagnostics?: Readonly<AgentActivitySubmitDiagnostics>;
+  /** Exact canonical active Turn targeted by a native guidance send. */
+  targetTurnId?: string;
   promptId: string;
   requiredSettingsPatch?: Readonly<AgentActivitySubmitSettingsPatch>;
   timeoutMs?: number;

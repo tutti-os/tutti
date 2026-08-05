@@ -153,6 +153,22 @@ function projectSessionGoalControlPresentation(
       operation.status === "accepted" ||
       operation.status === "unknown")
   ) {
+    // A set/pause/resume control can stay accepted/applying (Claude
+    // accepted_only) while the provider later observes a terminal Goal.
+    // Prefer that canonical completion so the banner can hide; otherwise the
+    // stale optimistic "active" Goal shadows it forever.
+    if (
+      operation.action === "set" &&
+      isTerminalSessionGoalStatus(canonicalGoal?.status) &&
+      !isTerminalSessionGoalStatus(operation.optimisticGoal?.status)
+    ) {
+      return {
+        agentSessionId: id || null,
+        goal: canonicalGoal,
+        optimistic: false,
+        status: operation.status
+      };
+    }
     return {
       agentSessionId: id || null,
       goal: operation.optimisticGoal,
@@ -414,4 +430,17 @@ function sessionGoalControlSettlementsEqual(
     left.errorReason === right.errorReason &&
     left.status === right.status
   );
+}
+
+function isTerminalSessionGoalStatus(
+  status: string | null | undefined
+): boolean {
+  switch ((status ?? "").trim().toLowerCase()) {
+    case "complete":
+    case "completed":
+    case "done":
+      return true;
+    default:
+      return false;
+  }
 }

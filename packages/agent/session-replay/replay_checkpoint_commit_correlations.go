@@ -489,9 +489,13 @@ func committedObservationMatches(
 		for _, message := range delta.SessionMessages.Result.Messages {
 			callID, _ := message.Payload["callId"].(string)
 			status, _ := message.Payload["status"].(string)
+			// Prefer payload status then message.Status, then fold through the
+			// same vocabulary as call.status readiness so ACP "streaming"
+			// tool frames confirm call.started / tool.started commits.
 			if message.TurnID == event.TurnID &&
 				callID == event.CallID &&
-				firstNonEmpty(status, message.Status) == expectedStatus {
+				canonicalCallStatus(firstNonEmpty(status, message.Status)) ==
+					canonicalCallStatus(expectedStatus) {
 				return hasCommittedMutation(delta, "message", message.MessageID)
 			}
 		}

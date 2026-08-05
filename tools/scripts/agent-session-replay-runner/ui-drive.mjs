@@ -132,7 +132,7 @@ async function prepareAgentGuiSurface(client, agentTargetId, timeoutMs) {
  */
 export async function uiDriveScenario(options) {
   const workspaceRoot = options.workspaceRoot;
-  const projectRoot = resolveAgentSessionReplayProjectRoot(workspaceRoot);
+  const projectRoot = resolveAgentSessionReplayProjectRoot();
   const artifactDirectory = options.artifactDirectory;
   const agentTargetId = options.agentTargetId ?? "local:codex";
   const cassetteId = options.cassetteId ?? `${options.scenario}_ui`;

@@ -4,7 +4,7 @@ import { appLifecycle, deviceLink, mobileSecurity } from "./mobileNative";
 import { signInWithBrowser } from "../services/accountClient";
 import {
   claimPairing,
-  connectPairedDevice,
+  connectPairedDevice as connectPairedDeviceRequest,
   getPairingChallenge,
   listDevices,
   listPairings,
@@ -12,6 +12,7 @@ import {
 } from "../services/pairingClient";
 import { createRemoteTuttidClient } from "../services/remoteTuttidClient";
 import type { MobileServicePorts } from "../services/servicePorts";
+import { DeviceLinkAttemptEvents } from "../services/deviceLinkAttemptEvents";
 import { parseAgentLiveDeliveries } from "./agentLiveNativeBridge";
 import { accountBaseURL } from "../config";
 
@@ -20,6 +21,12 @@ const appLifecycleEvents = new NativeEventEmitter(appLifecycle);
 
 export function createMobileServicePorts(): MobileServicePorts {
   let nextAgentLiveSubscriptionGeneration = 0;
+  const diagnostics = {
+    record(event: Parameters<MobileServicePorts["diagnostics"]["record"]>[0]) {
+      console.info("[TuttiMobile]", JSON.stringify(event));
+    }
+  };
+  const attemptEvents = new DeviceLinkAttemptEvents();
   return {
     account: {
       signInWithBrowser
@@ -73,17 +80,17 @@ export function createMobileServicePorts(): MobileServicePorts {
         };
       }
     },
-    diagnostics: {
-      record(event) {
-        console.info("[TuttiMobile]", JSON.stringify(event));
-      }
-    },
+    diagnostics,
     legacySessionCookie: {
       clear: () => mobileSecurity.clearLegacySessionCookie(accountBaseURL)
     },
     pairing: {
       claimPairing,
-      connectPairedDevice,
+      connectPairedDevice: (sessionId, pairingId, isCurrent) =>
+        connectPairedDeviceRequest(sessionId, pairingId, isCurrent, {
+          attemptEvents,
+          diagnostics
+        }),
       getPairingChallenge,
       listDevices,
       listPairings,

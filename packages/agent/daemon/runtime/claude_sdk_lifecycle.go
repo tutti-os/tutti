@@ -57,6 +57,25 @@ func (a *ClaudeCodeSDKAdapter) Start(ctx context.Context, session Session) ([]ac
 	}
 	a.storeSession(session.AgentSessionID, adapterSession)
 	a.emitCommandSnapshot(claudeSDKCommandSnapshot(session.AgentSessionID, adapterSession.liveState))
+	// Continue-session tapes attach after the provider connection is already
+	// initialized, so their first outbound is exec. Skip the cold start
+	// bootstrap on attached-live-connection replay exactly as Codex/ACP do.
+	if processCassetteCaptureOrigin(conn) ==
+		ProcessCassetteCaptureOriginAttachedLiveConnection {
+		if !restore {
+			_ = conn.Close()
+			a.removeSession(session.AgentSessionID, adapterSession)
+			return nil, errors.New(
+				"attached live Claude replay requires a restored provider session id",
+			)
+		}
+		return []activityshared.Event{newSessionActivityEvent(
+			session,
+			EventSessionStarted,
+			SessionStatusReady,
+			claudeSDKRuntimeContext(session, adapterSession),
+		)}, nil
+	}
 	startPayload := map[string]any{
 		"agentSessionId":    session.AgentSessionID,
 		"providerSessionId": providerSessionID,

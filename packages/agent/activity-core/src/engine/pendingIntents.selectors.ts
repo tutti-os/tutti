@@ -142,6 +142,48 @@ export function selectLatestPendingSubmitForSession(
   return latest;
 }
 
+/**
+ * Select the implicit stop target without changing the broader pending-submit
+ * presentation semantics used by GUI consumers.
+ *
+ * A failed submit is proven not to produce a Turn. A submit with a known
+ * settled canonical Turn is likewise complete. Missing canonical state is not
+ * proof of completion because admission and activity events can arrive out of
+ * order.
+ */
+export function selectLatestStopTargetSubmitForSession(
+  state: AgentSessionEngineStateBase,
+  agentSessionId: string | null | undefined
+): PendingSubmitIntentRecord | null {
+  let latest: PendingSubmitIntentRecord | null = null;
+  for (const pending of selectPendingSubmitsForSession(state, agentSessionId)) {
+    if (!stopTargetMayStillProduceUnsettledTurn(state, pending)) continue;
+    if (
+      !latest ||
+      pending.requestedAtUnixMs > latest.requestedAtUnixMs ||
+      (pending.requestedAtUnixMs === latest.requestedAtUnixMs &&
+        pending.clientSubmitId.localeCompare(latest.clientSubmitId) > 0)
+    ) {
+      latest = pending;
+    }
+  }
+  return latest;
+}
+
+function stopTargetMayStillProduceUnsettledTurn(
+  state: AgentSessionEngineStateBase,
+  pending: PendingSubmitIntentRecord
+): boolean {
+  if (pending.status === "failed") return false;
+  const turnId = pending.turnId?.trim() ?? "";
+  if (!turnId) return true;
+  const turn =
+    state.sessionLifecycle.turnsById[
+      canonicalTurnKey(pending.agentSessionId, turnId)
+    ];
+  return turn?.phase !== "settled";
+}
+
 export function selectLatestActivationForSession(
   state: AgentSessionEngineStateBase,
   agentSessionId: string | null | undefined

@@ -3,6 +3,7 @@ import type {
   AgentTurnSummaryPatchChangeVM
 } from "../contracts/agentTurnSummaryRowVM";
 import { normalizeAgentPatchText } from "./agentPatchMetadata";
+import { isAgentUnifiedDiffText } from "./agentUnifiedDiffValidation";
 
 export function buildAgentTurnSummaryPatchDiff(
   batch: AgentTurnSummaryPatchBatchVM
@@ -19,7 +20,7 @@ function patchChangeToUnifiedDiff(
 ): string {
   const path = patchPathRelativeToCwd(change.path, cwd);
   const rawDiff = normalizeAgentPatchText(change.unifiedDiff ?? "").trim();
-  if (rawDiff && looksLikeUnifiedDiff(rawDiff)) {
+  if (rawDiff && isAgentUnifiedDiffText(rawDiff)) {
     return ensureTrailingNewline(
       wrapUnifiedDiff(path, change.changeType, rawDiff)
     );
@@ -132,15 +133,6 @@ function patchPathRelativeToCwd(path: string, cwd: string | null): string {
 
 function normalizePathForPatch(path: string): string {
   return path.trim().replaceAll("\\", "/").replace(/\/+$/, "");
-}
-
-function looksLikeUnifiedDiff(value: string): boolean {
-  return (
-    value.startsWith("diff --git ") ||
-    value.startsWith("@@ ") ||
-    value.startsWith("--- ") ||
-    value.includes("\n@@ ")
-  );
 }
 
 function splitPatchContentLines(content: string): string[] {

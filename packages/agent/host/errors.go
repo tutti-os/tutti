@@ -12,6 +12,8 @@ var (
 	ErrTurnNotFound                      = errors.New("workspace agent turn not found")
 	ErrProviderSessionNotEstablished     = errors.New("provider session was never established")
 	ErrSubmitDeliveryUnknown             = errors.New("agent submit delivery is still being confirmed")
+	ErrActiveTurnTargetRequired          = errors.New("active-turn guidance requires an exact target turn")
+	ErrActiveTurnTargetMismatch          = errors.New("active-turn guidance target is no longer active")
 	ErrSessionTitleTooLong               = errors.New("agent session title is too long")
 	ErrRuntimeSessionDisconnected        = errors.New("agent runtime session is disconnected")
 	ErrInteractionNotFound               = errors.New("agent interaction was not found")

@@ -250,6 +250,37 @@ describe("interaction submissions", () => {
 });
 
 describe("existing-session prompt submission", () => {
+  it("captures the exact active Turn for guidance before routing to the Engine", () => {
+    const goalControl = vi.fn(async () => undefined);
+    const { input, sessionEngine } = createGoalControlInput(
+      goalControl as never
+    );
+    input.activeEngineActiveTurn = { turnId: "turn-target" } as never;
+    const submitPrompt = vi
+      .spyOn(sessionEngine, "submitPrompt")
+      .mockReturnValue({ accepted: true, queued: false });
+    const { result } = renderHook(() =>
+      useAgentGUISubmitInteractionActions(input)
+    );
+
+    act(() =>
+      result.current.submitGuidancePrompt(
+        [{ type: "text", text: "steer this turn" }],
+        undefined,
+        { capabilityRefs: [{ capability: "tutti", source: "slash_command" }] }
+      )
+    );
+
+    expect(submitPrompt).toHaveBeenCalledWith(
+      expect.objectContaining({
+        agentSessionId: "session-1",
+        capabilityRefs: [{ capability: "tutti", source: "slash_command" }],
+        routing: "send_now",
+        targetTurnId: "turn-target"
+      })
+    );
+  });
+
   it("routes submission through the Engine semantic operation", () => {
     const goalControl = vi.fn(async () => undefined);
     const { input, draftByScopeKeyRef, sessionEngine, setDraftByScopeKey } =

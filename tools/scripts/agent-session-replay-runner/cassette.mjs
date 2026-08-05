@@ -1,8 +1,11 @@
 import { createHash } from "node:crypto";
-import { createReadStream } from "node:fs";
+import { createReadStream, realpathSync } from "node:fs";
 import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
-import { dirname, isAbsolute, join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { resolveAgentSessionReplayProjectRoot } from "./project-root.mjs";
+
+export { resolveAgentSessionReplayProjectRoot } from "./project-root.mjs";
 
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const workspaceRoot = resolve(scriptDirectory, "..", "..", "..");
@@ -25,25 +28,6 @@ const cassetteManifestName = cassettePolicy.files.cassetteManifest.path;
 const initialStateName = cassettePolicy.files.initialState.path;
 const maxCassetteBytes = cassettePolicy.limits.maxCassetteBytes;
 export const portableReplayCWDToken = "${REPLAY_CWD}";
-
-/**
- * Bound Agent user-project root for session-replay record/replay.
- * When `TUTTI_AGENT_SESSION_REPLAY_PROJECT_ROOT` is set (absolute), portable
- * `${REPLAY_CWD}` remaps there instead of the Tutti checkout. Set the same
- * env on replay so cassette remapping lands in the same project tree.
- */
-export function resolveAgentSessionReplayProjectRoot(
-  fallbackRoot = workspaceRoot
-) {
-  const fromEnv = process.env.TUTTI_AGENT_SESSION_REPLAY_PROJECT_ROOT?.trim();
-  if (!fromEnv) return resolve(fallbackRoot);
-  if (!isAbsolute(fromEnv)) {
-    throw new Error(
-      "TUTTI_AGENT_SESSION_REPLAY_PROJECT_ROOT must be an absolute path"
-    );
-  }
-  return resolve(fromEnv);
-}
 
 export async function verifyCassette(directory) {
   const manifest = JSON.parse(
@@ -339,6 +323,34 @@ function resolvePortableRailSectionKey(value, replayCWD) {
   );
 }
 
+function resolvePortableReplayPath(value, replayCWD) {
+  if (typeof value !== "string") return value;
+  let resolved = value;
+  let fromPortableToken = false;
+  if (value === portableReplayCWDToken) {
+    resolved = replayCWD;
+    fromPortableToken = true;
+  } else if (value.startsWith(`${portableReplayCWDToken}/`)) {
+    resolved = join(
+      replayCWD,
+      ...value.slice(portableReplayCWDToken.length + 1).split("/")
+    );
+    fromPortableToken = true;
+  }
+  if (
+    typeof resolved !== "string" ||
+    !resolved ||
+    (!fromPortableToken && !resolved.startsWith("/"))
+  ) {
+    return resolved;
+  }
+  try {
+    return realpathSync(resolved);
+  } catch {
+    return resolved;
+  }
+}
+
 export function parseActivityEvents(contents) {
   const events = parseJSONLines(contents);
   const eventKinds = new Map();
@@ -515,18 +527,6 @@ function promptImageExtension(mimeType) {
     default:
       return "";
   }
-}
-
-function resolvePortableReplayPath(value, replayCWD) {
-  if (typeof value !== "string") return value;
-  if (value === portableReplayCWDToken) return replayCWD;
-  if (value.startsWith(`${portableReplayCWDToken}/`)) {
-    return join(
-      replayCWD,
-      ...value.slice(portableReplayCWDToken.length + 1).split("/")
-    );
-  }
-  return value;
 }
 
 function stimulusPrompt(payload) {

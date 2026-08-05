@@ -859,8 +859,13 @@ func (n *acpTurnNormalizer) thinkingSnapshotEvent(session Session, turnID string
 const (
 	liveContentOperationMetadataKey    = "_tuttiLiveContentOperation"
 	liveToolOutputOperationMetadataKey = "_tuttiLiveToolOutputOperation"
-	liveMessageRoleMetadataKey         = "_tuttiLiveMessageRole"
-	liveMessageKindMetadataKey         = "_tuttiLiveMessageKind"
+	// liveToolProgressMetadataKey marks Claude tool_updated call.started
+	// events that stream input/progress onto an already-open tool call. Those
+	// must still project durable message updates, but must not mint another
+	// tool.started checkpoint (no matching commit → checkpoint_commit_unconfirmed).
+	liveToolProgressMetadataKey = "_tuttiLiveToolProgress"
+	liveMessageRoleMetadataKey  = "_tuttiLiveMessageRole"
+	liveMessageKindMetadataKey  = "_tuttiLiveMessageKind"
 )
 
 func attachTextLiveOperation(

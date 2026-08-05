@@ -70,6 +70,42 @@ describe("agent turn summary canonical projection", () => {
     ]);
   });
 
+  it("does not expose invalid file bodies as unified diffs", () => {
+    const body = "# README\n\n- bullet\n";
+    const rows = projectAgentTurnSummaryRowForTurn(
+      turn("turn-invalid-diff"),
+      {
+        files: [
+          {
+            path: "/workspace/README.md",
+            change: "created",
+            diff: body
+          },
+          {
+            path: "/workspace/obsolete.md",
+            change: "deleted",
+            unifiedDiff: body
+          }
+        ]
+      },
+      { workspaceRoot: "/workspace" }
+    );
+
+    expect(rows[0]?.files).toEqual([
+      expect.objectContaining({
+        path: "/workspace/README.md",
+        unifiedDiff: null,
+        content: body
+      }),
+      expect.objectContaining({
+        path: "/workspace/obsolete.md",
+        unifiedDiff: null,
+        oldString: body,
+        newString: ""
+      })
+    ]);
+  });
+
   it("keeps executable patch batches separate from canonical presentation", () => {
     const sourceTurn = turn("turn-patch", [
       {

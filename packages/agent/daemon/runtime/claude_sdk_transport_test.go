@@ -417,6 +417,66 @@ func TestClaudeCodeSDKAdapterClosesSyntheticTurnLifecycleWithoutExecWaiter(t *te
 	}
 }
 
+// After consume() clears the only known provider turn id, a synthetic
+// turn_completed that omits providerTurnId must still project completed
+// using the synthetic turn id (C06 steer continuation).
+func TestClaudeCodeSDKAdapterSyntheticTurnCompletedWithoutProviderTurnID(t *testing.T) {
+	adapter := NewClaudeCodeSDKAdapter(nil)
+	session := standardTestSession(ProviderClaudeCode)
+	adapterSession := &claudeSDKAdapterSession{
+		session:           session,
+		providerSessionID: "provider-session-1",
+		pendingRequests:   make(map[string]*pendingInteractiveRequest),
+		pendingResponses:  make(map[string]chan claudeSDKSidecarEvent),
+		turns:             make(map[string]*claudeSDKTurnWaiter),
+		liveState:         newClaudeSDKLiveState(),
+	}
+	adapter.storeSession(session.AgentSessionID, adapterSession)
+	adapter.beginClaudeSDKRootTurn(adapterSession, "root-turn-1", "provider-turn-1")
+	// Simulate the interrupted root turn consuming its provider identity
+	// before the synthetic continuation starts (C06 guide abort path).
+	if !adapter.consumeClaudeSDKRootProviderTurn(adapterSession, "provider-turn-1") {
+		t.Fatal("expected root provider turn to be known")
+	}
+
+	var published []activityshared.Event
+	adapter.SetSessionEventSink(func(agentSessionID string, events []activityshared.Event) {
+		if agentSessionID == session.AgentSessionID {
+			published = append(published, events...)
+		}
+	})
+
+	_ = adapter.dispatchClaudeSDKEvent(session.AgentSessionID, adapterSession, claudeSDKSidecarEvent{
+		Type: "turn_started",
+		Payload: map[string]any{
+			"turnId":    "synthetic-continuation-2",
+			"synthetic": true,
+		},
+	})
+	_ = adapter.dispatchClaudeSDKEvent(session.AgentSessionID, adapterSession, claudeSDKSidecarEvent{
+		Type: "turn_completed",
+		Payload: map[string]any{
+			"turnId":     "synthetic-continuation-2",
+			"stopReason": "end_turn",
+		},
+	})
+
+	var sawCompleted bool
+	for _, event := range published {
+		if event.Type != activityshared.EventRootProviderTurnCompleted {
+			continue
+		}
+		sawCompleted = true
+		if event.Payload.TurnID != "root-turn-1" ||
+			event.Payload.ProviderTurnID != "synthetic-continuation-2" {
+			t.Fatalf("completed = %#v", event.Payload)
+		}
+	}
+	if !sawCompleted {
+		t.Fatalf("published = %#v, want synthetic completed without payload providerTurnId", published)
+	}
+}
+
 func TestClaudeCodeSDKAdapterRoundTripUsesReaderDispatcherAfterExec(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()

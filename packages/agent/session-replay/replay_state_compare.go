@@ -36,6 +36,15 @@ func registerReplayIDs(replacements map[string]string, value map[string]any) {
 		for turnIndex, turnItem := range turns {
 			turn, _ := turnItem.(map[string]any)
 			registerReplayID(replacements, turn["id"], fmt.Sprintf("session:%d/turn:%d", sessionIndex, turnIndex))
+			// Claude goal clear/fork paths can remint rootProviderTurnId across
+			// record→replay even when the Tutti turn shape is equivalent. Treat
+			// it like other runtime IDs for final-state compare. If it already
+			// equals the Tutti turn id, keep the turn mapping (first wins).
+			registerReplayID(
+				replacements,
+				turn["rootProviderTurnId"],
+				fmt.Sprintf("session:%d/turn:%d/rootProviderTurn", sessionIndex, turnIndex),
+			)
 		}
 		messages, _ := session["messages"].([]any)
 		for messageIndex, messageItem := range messages {
@@ -83,9 +92,13 @@ func registerReplayArrayIDs(replacements map[string]string, value any, prefix st
 
 func registerReplayID(replacements map[string]string, value any, replacement string) {
 	id, ok := value.(string)
-	if ok && id != "" {
-		replacements[id] = replacement
+	if !ok || id == "" {
+		return
 	}
+	if _, exists := replacements[id]; exists {
+		return
+	}
+	replacements[id] = replacement
 }
 
 func replaceReplayIDs(value any, replacements map[string]string) {

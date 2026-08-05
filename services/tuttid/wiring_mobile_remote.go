@@ -34,8 +34,12 @@ func buildMobileRemoteService(
 	service := &mobileremoteservice.Service{
 		Account:         account,
 		AgentLiveEvents: mobileAgentLiveEventSource{events: events},
-		Identities:      identities,
-		RuntimeID:       deviceID,
+		AttemptEvents: mobileremoteservice.WebSocketAttemptEvents{
+			URL: os.Getenv("TUTTI_MOBILE_REALTIME_URL"),
+		},
+		Diagnostics: mobileremoteservice.SlogRemoteAttemptDiagnostics{},
+		Identities:  identities,
+		RuntimeID:   deviceID,
 		ControlPlane: &mobileremoteservice.HTTPControlPlane{
 			BaseURL: os.Getenv("TUTTI_MOBILE_CONTROL_PLANE_BASE_URL"),
 		},

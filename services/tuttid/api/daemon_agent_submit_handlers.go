@@ -235,17 +235,23 @@ func (api DaemonAPI) SendWorkspaceAgentSessionInput(ctx context.Context, request
 	}
 	clientSubmitID := strings.TrimSpace(request.Body.ClientSubmitId)
 	metadata := agentSubmitMetadata(request.Body.SubmitDiagnostics)
-	logSendAgentSubmitTrace("api.send.received", string(request.WorkspaceID), string(request.AgentSessionID), clientSubmitID, metadata, "", "", "", nil)
+	guidance := request.Body.Guidance != nil && *request.Body.Guidance
+	targetTurnID := ""
+	if guidance {
+		targetTurnID = strings.TrimSpace(stringPtrValue(request.Body.TurnId))
+	}
+	logSendAgentSubmitTrace("api.send.received", string(request.WorkspaceID), string(request.AgentSessionID), clientSubmitID, metadata, "", targetTurnID, "", nil)
 	result, err := api.AgentSessionService.SendInput(ctx, string(request.WorkspaceID), string(request.AgentSessionID), agentservice.SendInput{
 		CapabilityRefs: capabilityRefs,
 		Content:        agentPromptContentFromGenerated(request.Body.Content),
 		DisplayPrompt:  stringPtrValue(request.Body.DisplayPrompt),
-		Guidance:       request.Body.Guidance != nil && *request.Body.Guidance,
+		Guidance:       guidance,
+		TurnID:         targetTurnID,
 		ClientSubmitID: clientSubmitID,
 		Metadata:       metadata,
 	})
 	if err != nil {
-		logSendAgentSubmitTrace("api.send.failed", string(request.WorkspaceID), string(request.AgentSessionID), clientSubmitID, metadata, "", "", "", err)
+		logSendAgentSubmitTrace("api.send.failed", string(request.WorkspaceID), string(request.AgentSessionID), clientSubmitID, metadata, "", targetTurnID, "", err)
 		return writeSendWorkspaceAgentSessionInputError(err), nil
 	}
 	generatedSession, err := generatedAgentSession(result.Session)
@@ -270,7 +276,8 @@ func (api DaemonAPI) SendWorkspaceAgentSessionInput(ctx context.Context, request
 				"clientSubmitId": clientSubmitID,
 				"content":        request.Body.Content,
 				"displayPrompt":  request.Body.DisplayPrompt,
-				"guidance":       request.Body.Guidance,
+				"guidance":       guidance,
+				"turnId":         targetTurnID,
 			},
 		)
 	}

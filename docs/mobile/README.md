@@ -214,6 +214,24 @@ transport、Agent live Subscriber 和产品 adapter 的现有所有权，不把 
 `cocoapods_pathname_workaround.rb`；GitHub macOS runner 和本机 pnpm workspace
 都可能在 CocoaPods 生成工程时触发该符号链接解析缺陷。
 
+### 4.1 移动端连接竞速边界
+
+移动端连接分成两个边界，不能把控制面轮询和数据面建流混为一谈：
+
+| 边界                                       | 当前策略                                                                                                                                                            | 所有者                                                                 |
+| ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| DeviceLink attempt / Relay descriptor 准备 | direct attempt 与 Relay descriptor 并行；Relay 只有完成一次对端 Agent 请求/响应后才可成为可用路径；WebSocket 事件优先唤醒 direct attempt，丢失时仍按 500ms 轮询状态 | `apps/mobile/src/services/pairingClient.ts` + 原生 bridge              |
+| Agent HTTP / live 数据流                   | direct 与 Relay 的底层拨号仍可并行；两条路径先完成 DeviceLink transport probe，收到对端 ACK 后才选中，应用帧仍由原生 bridge 处理                                    | `packages/device-link/mobile` + `services/tuttid/service/mobileremote` |
+
+控制面 WebSocket 复用已上线的设备级 V2 长连接：握手携带当前 session cookie 和
+`deviceId`，只接收 `device_link.attempt.changed` 作为唤醒提示；HTTP attempt API
+仍是唯一事实来源，推送丢失、重连或乱序都由重读和 500ms 轮询兜底。paired-device
+attempt 不绑定 room，服务端按 `userId + deviceId` 精确投递，因此连接功能未开启时
+不会建立这条长连接。Relay descriptor 先准备好时，原生层先通过 DeviceLink
+transport probe 确认对端 tunnel，再让 Relay 参与连接结果竞速；具体 Agent 请求仍在
+探测成功后发送，direct attempt 仍在后台完成。TSH Desktop 的默认 3 秒 Relay 兜底策略
+属于另一套已上线产品策略，本改动不改变它。
+
 ### 账号浏览器认证边界
 
 Mobile 继续复用 Desktop 使用的托管 Web 登录页、localhost callback bridge 和账号
@@ -351,12 +369,14 @@ release keystore 必须在 GitHub 之外另做加密备份。GitHub Secret 的�
 
 在 iOS 真机上测试时，运行同一工作流并选择 `ios`。它使用仓库已有的 App Store
 Connect API Key 和 `IOS_DEVELOPMENT_TEAM` 仓库变量，让 Xcode 自动管理云签名并
-使用 `IOS_TEST_DEVICE_UDID` secret 幂等登记内部测试设备，再导出 development
-IPA。工作流上传保留 14 天的内部 artifact
-`tutti-mobile-ios-internal-<commit>`，其中包含 `tutti-mobile-internal.ipa` 和
-SHA-256 校验文件；不会创建 GitHub Release 或公开下载链接。IPA 只能安装到 Apple
-Developer 后台由该 secret 配置并包含在自动生成描述文件中的设备。选择 `all` 可
-同时构建两个平台。
+组合 GitHub Actions run number 和 attempt 作为唯一构建号，导出 App Store
+Connect IPA 并上传 TestFlight。工作流会确认签名后的 App 包含 release
+`main.jsbundle`，同时上传保留 14 天的私有 artifact
+`tutti-mobile-ios-testflight-<commit>`，其中包含
+`tutti-mobile-testflight.ipa` 和 SHA-256 校验文件；不会创建 GitHub Release 或公开
+下载链接。测试人员通过 TestFlight 安装，不需要预先登记设备 UDID；App Store
+Connect 仍需把处理完成的构建分配给对应的内部或外部测试组。选择 `all` 可同时构建
+两个平台。
 
 ## 6. 调试时先判断问题属于哪一层
 
@@ -482,6 +502,10 @@ Google Play 账号。以下事项等正式分发前再处理：
 - Android caller 已接入 create/get/update attempt、STUN 二次 gathering、真实
   DeviceLink request stream、端到端请求 deadline、prepare/connect generation
   fencing 和 Native 15 秒后台 grace period；
+- Android/iOS caller 已将 direct 与 Relay 的 Agent 数据流接入同一条即时竞速；控制面
+  Relay descriptor 先就绪时先做一次端到端 Agent 请求确认，不再把 WebSocket 101
+  当成成功，同时不等待 direct attempt 的 TTL；direct attempt 会在后台继续完成，
+  作为后续数据流竞速的 direct 候选；UI 和现有 DeviceLink path scope 保持不变；
 - 移动端已直接复用 `@tutti-os/client-tuttid-ts`，并从
   `@tutti-os/agent-gui` 复用安全的 Interaction answer model、无 DOM 的会话摘要和
   canonical 对话流 projection，完成 Personal 单 workspace 校验、按置顶/项目/最近分组的
@@ -489,8 +513,9 @@ Google Play 账号。以下事项等正式分发前再处理：
   消息读取、新建/切换、发送、停止和结构化 Interaction 提交；Native 对话流遵循同一份
   消息合并、思考、工具活动、处理态和 Turn summary 语义，并复用 AgentGUI 的
   `following` / `detached` 末尾跟随状态机；Mobile 只负责原生手势、滚动执行与展开状态。
-  会话列表标题显示当前电脑和连接状态；连接详情仅展示 Native ICE 分类后的路径范围、
-  端到端 P2P 通道和即时健康探测耗时，不暴露 candidate 或地址信息。
+  会话列表标题显示当前电脑和连接状态；连接详情继续复用现有路径、传输通道和即时
+  健康探测字段，不暴露 candidate 或地址信息；Relay 竞速属于 native transport
+  内部行为，不新增 UI 分支；
   切换会话会定位最新内容，流式更新只在 `following` 时跟随；主动上滑会在首个滚动帧前
   进入 `detached` 并提供回到底部入口，内容增长和近底部几何不能自行恢复跟随；加载历史
   消息时保持当前阅读锚点；
@@ -610,8 +635,8 @@ Mobile 也点击“使用 GitHub 登录”并在平台浏览器认证会话中�
 按顺序验证，每一步成功后再继续：
 
 1. Mobile 只显示当前手机 identity 拥有的同账号配对设备。
-2. 点击 Desktop 后成功建立 direct DeviceLink，并且仅在返回恰好一个 Personal
-   workspace 时进入会话列表；零个或多个 workspace 都明确失败。
+2. 点击 Desktop 后成功建立可用 DeviceLink，并且仅在返回恰好一个 Personal workspace
+   时进入会话列表；零个或多个 workspace 都明确失败。
 3. 会话列表可新建、切换会话，选择后进入独立详情页并正确显示历史对话流。
 4. 发送一条普通消息，Desktop 和 Mobile 最终显示同一个结果且没有重复消息。
 5. 在 Agent 运行时点击停止，两个端最终收敛到同一个 Turn 状态。
@@ -619,8 +644,8 @@ Mobile 也点击“使用 GitHub 登录”并在平台浏览器认证会话中�
 7. 将 App 切到后台少于 15 秒再返回，当前连接保持；切到后台超过 15 秒再返回，
    App 回到设备列表并可手动重连。
 8. 在 Desktop 移除手机配对，Mobile 刷新后不再显示该 Desktop，旧连接不可继续使用。
-9. 至少分别测试同一 Wi-Fi 和手机蜂窝网络。记录 direct P2P 是否成功；蜂窝或严格
-   NAT 失败但同一 Wi-Fi 成功时，将结果归入 Relay fallback 后续项，不改 Agent 协议。
+9. 至少分别测试同一 Wi-Fi 和手机蜂窝网络，确认 Agent HTTP/live 请求均可用；Relay
+   仅作为内部传输，不改变现有 UI 和 Agent DTO。
 
 验收失败时保留三个终端：Desktop、Metro、`adb logcat`。先记录失败发生在哪一层、
 操作步骤和用户可见错误，不要复制网络 candidate、IP、Agent 正文或任何账号材料。

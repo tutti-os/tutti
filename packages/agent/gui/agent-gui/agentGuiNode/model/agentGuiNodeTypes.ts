@@ -426,7 +426,8 @@ export type AgentGUIComposerSubmissionBlockedReason =
   | "agent_targets_loading"
   | "authentication_required"
   | "conversation_busy"
-  | "resume_unavailable";
+  | "resume_unavailable"
+  | "settings_update_pending";
 
 export interface AgentGUIComposerGate {
   /** Canonical busy projection captured with the same gate snapshot. */

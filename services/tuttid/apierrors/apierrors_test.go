@@ -32,6 +32,24 @@ func TestClassifyRuntimeOperationReconciliationIsRetryable(t *testing.T) {
 	}
 }
 
+func TestClassifyGuidanceTargetErrorsAsInvalidRequest(t *testing.T) {
+	for _, test := range []struct {
+		err    error
+		reason string
+	}{
+		{agentservice.ErrActiveTurnTargetRequired, ReasonAgentActiveTurnTargetRequired},
+		{agentservice.ErrActiveTurnTargetMismatch, ReasonAgentActiveTurnTargetMismatch},
+	} {
+		classified := Classify(test.err)
+		if classified.StatusCode != StatusInvalidRequest || classified.Code != tuttigenerated.InvalidRequest || classified.Reason != test.reason {
+			t.Fatalf("Classify(%v) = %#v, want invalid request reason %q", test.err, classified, test.reason)
+		}
+		if !errors.Is(classified, test.err) {
+			t.Fatalf("Classify(%v) did not preserve cause", test.err)
+		}
+	}
+}
+
 func TestClassifyWorktreeIsolationErrors(t *testing.T) {
 	tests := []struct {
 		err    error

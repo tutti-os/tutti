@@ -3,7 +3,9 @@ package api
 import (
 	"context"
 	"errors"
+	"strings"
 
+	storesqlite "github.com/tutti-os/tutti/packages/agent/store-sqlite"
 	tuttigenerated "github.com/tutti-os/tutti/services/tuttid/api/generated"
 	"github.com/tutti-os/tutti/services/tuttid/apierrors"
 	userprojectbiz "github.com/tutti-os/tutti/services/tuttid/biz/userproject"
@@ -214,14 +216,18 @@ func generatedUserProjects(projects []userprojectbiz.Project) []tuttigenerated.U
 }
 
 func generatedUserProject(project userprojectbiz.Project) tuttigenerated.UserProject {
+	normalizedPath := storesqlite.NormalizeProjectPath(project.Path)
+	if normalizedPath == "" {
+		normalizedPath = strings.TrimSpace(project.Path)
+	}
 	return tuttigenerated.UserProject{
 		CreatedAtUnixMs:  project.CreatedAtUnixMS,
 		Id:               project.ID,
 		Label:            project.Label,
 		LastUsedAtUnixMs: project.LastUsedAtUnixMS,
-		Path:             project.Path,
+		Path:             normalizedPath,
 		PinnedAtUnixMs:   project.PinnedAtUnixMS,
-		SectionKey:       userprojectbiz.SectionKeyFromPath(project.Path),
+		SectionKey:       userprojectbiz.SectionKeyFromPath(normalizedPath),
 		UpdatedAtUnixMs:  project.UpdatedAtUnixMS,
 	}
 }

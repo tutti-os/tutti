@@ -17,7 +17,7 @@ func (s *Store) ListSessionSection(
 		return SessionSectionPage{}, false, errors.New("workspace database is not initialized")
 	}
 	workspaceID := strings.TrimSpace(input.WorkspaceID)
-	sectionKey := strings.TrimSpace(input.SectionKey)
+	sectionKey := NormalizeRailSectionKey(strings.TrimSpace(input.SectionKey))
 	agentTargetID := strings.TrimSpace(input.AgentTargetID)
 	if workspaceID == "" || sectionKey == "" {
 		return SessionSectionPage{}, false, nil
@@ -416,7 +416,7 @@ func normalizeSessionSectionKeys(values []string) []string {
 	result := make([]string, 0, len(values))
 	seen := make(map[string]struct{}, len(values))
 	for _, value := range values {
-		sectionKey := strings.TrimSpace(value)
+		sectionKey := NormalizeRailSectionKey(strings.TrimSpace(value))
 		if sectionKey == "" {
 			continue
 		}
@@ -437,7 +437,7 @@ func (s *Store) ListSessionSectionDeletionCandidates(
 		return SessionSectionDeletionCandidates{}, false, errors.New("workspace database is not initialized")
 	}
 	workspaceID := strings.TrimSpace(input.WorkspaceID)
-	sectionKey := strings.TrimSpace(input.SectionKey)
+	sectionKey := NormalizeRailSectionKey(strings.TrimSpace(input.SectionKey))
 	agentTargetID := strings.TrimSpace(input.AgentTargetID)
 	if workspaceID == "" || sectionKey == "" || sectionKey == PinnedSessionPageKey {
 		return SessionSectionDeletionCandidates{}, false, nil

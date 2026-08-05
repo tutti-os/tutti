@@ -13,9 +13,17 @@ import { fakeDelegatedTaskQuery } from "./sessionRuntimeTestQueries.delegated.ts
 
 export function fakeGuidancePromptQuery(
   prompt: AsyncIterable<SDKUserMessage>,
-  prompts: string[]
-): AsyncIterable<SDKMessage> {
+  prompts: string[],
+  interrupts?: { count: number }
+): AsyncIterable<SDKMessage> & { interrupt: () => Promise<void> } {
+  let interrupted = false;
   return {
+    async interrupt() {
+      interrupted = true;
+      if (interrupts) {
+        interrupts.count += 1;
+      }
+    },
     async *[Symbol.asyncIterator]() {
       const iterator = prompt[Symbol.asyncIterator]();
       const firstPrompt = await iterator.next();
@@ -31,7 +39,17 @@ export function fakeGuidancePromptQuery(
         session_id: "provider-session-1"
       } as SDKMessage;
 
+      // guide() interrupts then enqueues; the next prompt read wakes after
+      // interrupt, so emit the real Claude abort result before the steer text.
       const guidancePrompt = await iterator.next();
+      if (interrupted) {
+        yield {
+          type: "result",
+          subtype: "error_during_execution",
+          is_error: true,
+          result: "interrupted"
+        } as unknown as SDKMessage;
+      }
       const guidancePromptMessage = guidancePrompt.value as SDKUserMessage & {
         uuid?: string;
       };
@@ -52,7 +70,7 @@ export function fakeGuidancePromptQuery(
       } as unknown as SDKMessage;
     },
     close() {}
-  } as AsyncIterable<SDKMessage>;
+  } as AsyncIterable<SDKMessage> & { interrupt: () => Promise<void> };
 }
 
 export function userPromptText(message: SDKUserMessage): string {
@@ -234,6 +252,81 @@ export function fakeFailedCompactQuery(
         status: null,
         compact_result: "failed",
         compact_error: "Not enough messages to compact."
+      } as unknown as SDKMessage;
+      yield consolidatedAssistant("assistant-compact-failed", "msg-compact", [
+        { type: "text", text: "Not enough messages to compact." }
+      ]);
+      yield {
+        type: "result",
+        subtype: "success"
+      } as unknown as SDKMessage;
+    },
+    close() {}
+  } as AsyncIterable<SDKMessage>;
+}
+
+// Claude Code 2.1.x often finishes a successful manual /compact with only a
+// result (plus an on-disk compact_boundary that never reaches the query
+// iterator). The progress banner must come from selectCommand, and the daemon
+// settles it when turn_completed arrives.
+export function fakeSilentCompactQuery(
+  prompt: AsyncIterable<SDKUserMessage>
+): AsyncIterable<SDKMessage> & {
+  getContextUsage: () => Promise<unknown>;
+  close: () => void;
+} {
+  return {
+    async *[Symbol.asyncIterator]() {
+      const firstPrompt = await prompt[Symbol.asyncIterator]().next();
+      const promptMessage = firstPrompt.value as SDKUserMessage & {
+        uuid?: string;
+      };
+      yield {
+        ...promptMessage,
+        uuid: promptMessage.uuid,
+        type: "user",
+        parent_tool_use_id: null,
+        session_id: "provider-session-1"
+      } as SDKMessage;
+      yield {
+        type: "result",
+        subtype: "success"
+      } as unknown as SDKMessage;
+    },
+    async getContextUsage() {
+      return {
+        totalTokens: 1_990,
+        maxTokens: 200_000,
+        rawMaxTokens: 200_000
+      };
+    },
+    close() {}
+  };
+}
+
+// Mirrors Claude Code 2.1.x compact failure: local_command stdout instead of
+// status/compact_result, with a successful result subtype.
+export function fakeLocalCommandFailedCompactQuery(
+  prompt: AsyncIterable<SDKUserMessage>
+): AsyncIterable<SDKMessage> {
+  return {
+    async *[Symbol.asyncIterator]() {
+      const firstPrompt = await prompt[Symbol.asyncIterator]().next();
+      const promptMessage = firstPrompt.value as SDKUserMessage & {
+        uuid?: string;
+      };
+      yield {
+        ...promptMessage,
+        uuid: promptMessage.uuid,
+        type: "user",
+        parent_tool_use_id: null,
+        session_id: "provider-session-1"
+      } as SDKMessage;
+      yield {
+        type: "system",
+        subtype: "local_command",
+        content:
+          "<local-command-stdout>Not enough messages to compact.</local-command-stdout>"
       } as unknown as SDKMessage;
       yield consolidatedAssistant("assistant-compact-failed", "msg-compact", [
         { type: "text", text: "Not enough messages to compact." }

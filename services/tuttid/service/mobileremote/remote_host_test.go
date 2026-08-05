@@ -12,6 +12,7 @@ import (
 	"time"
 
 	authbridge "github.com/tutti-os/tutti/packages/auth/bridge-go"
+	devicelink "github.com/tutti-os/tutti/packages/device-link"
 	authenticatedlink "github.com/tutti-os/tutti/packages/device-link/authenticated"
 	"github.com/tutti-os/tutti/packages/device-link/linkmanager"
 	mobileremotebiz "github.com/tutti-os/tutti/services/tuttid/biz/mobileremote"
@@ -197,6 +198,9 @@ func TestRemoteHostConnectsAuthenticatedLinkAndServesAgentHTTP(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if err := devicelink.ProbeStream(ctx, stream); err != nil {
+		t.Fatalf("probe DeviceLink stream: %v", err)
+	}
 	if err := writeRemoteFrame(stream, RemoteRequest{
 		ProtocolEpoch: ApplicationProtocolEpoch, Service: AgentHTTPService,
 		RequestID: "request-1", Method: http.MethodGet, Path: "/v1/workspaces",
@@ -217,16 +221,41 @@ func TestRemoteHostConnectsAuthenticatedLinkAndServesAgentHTTP(t *testing.T) {
 func TestRemoteHostAttemptCleanupDoesNotDeleteNewGeneration(t *testing.T) {
 	t.Parallel()
 	service := &Service{}
+	service.remoteHost.attemptWake = NewAttemptWake()
 	service.remoteHost.attempts = map[string]activeRemoteAttempt{
 		"attempt-1": {generation: 2},
 	}
+	service.remoteHost.attemptWake.Notify("attempt-1")
 	service.finishRemoteAttempt("attempt-1", 1)
 	if _, exists := service.remoteHost.attempts["attempt-1"]; !exists {
 		t.Fatal("old worker cleanup deleted the newer attempt generation")
 	}
+	if got := service.remoteHost.attemptWake.Version("attempt-1"); got != 1 {
+		t.Fatalf("old worker cleanup forgot current wake version: %d", got)
+	}
 	service.finishRemoteAttempt("attempt-1", 2)
 	if _, exists := service.remoteHost.attempts["attempt-1"]; exists {
 		t.Fatal("current worker cleanup did not delete its attempt")
+	}
+	if got := service.remoteHost.attemptWake.Version("attempt-1"); got != 0 {
+		t.Fatalf("current worker cleanup retained wake version: %d", got)
+	}
+}
+
+func TestRemoteHostAttemptChangeWakesDiscoveryAndRendezvous(t *testing.T) {
+	service := &Service{}
+	service.remoteHost.attemptWake = NewAttemptWake()
+	service.remoteHost.pollWake = make(chan struct{}, 1)
+
+	service.notifyRemoteAttemptChanged("attempt-1")
+
+	if got := service.remoteHost.attemptWake.Version("attempt-1"); got != 1 {
+		t.Fatalf("attempt wake version = %d, want 1", got)
+	}
+	select {
+	case <-service.remoteHost.pollWake:
+	default:
+		t.Fatal("attempt change did not wake owner discovery")
 	}
 }
 

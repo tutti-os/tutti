@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 )
@@ -322,6 +323,17 @@ func ensureCodexSessionConfig(configPath string, input PrepareInput) error {
 		next = planNext
 		changed = true
 	}
+	// Tutti launches the Codex app-server from the non-elevated desktop daemon.
+	// On Windows, the elevated sandbox implementation invokes a separate setup
+	// helper through ShellExecuteExW, which requires an interactive UAC consent
+	// flow that is not owned by the app-server protocol. Use the restricted,
+	// non-elevated implementation for Tutti-owned session homes so a hidden or
+	// canceled UAC prompt cannot prevent every command from starting. The
+	// Codex/Tutti permission mode and approval policy remain unchanged.
+	if windowsSandboxNext, windowsSandboxChanged := codexConfigWithTuttiWindowsSandbox(next); windowsSandboxChanged {
+		next = windowsSandboxNext
+		changed = true
+	}
 	if !changed {
 		return nil
 	}
@@ -329,6 +341,59 @@ func ensureCodexSessionConfig(configPath string, input PrepareInput) error {
 		return fmt.Errorf("write codex config: %w", err)
 	}
 	return nil
+}
+
+// codexConfigWithTuttiWindowsSandbox pins Tutti-owned Codex session homes to
+// the unelevated Windows sandbox implementation. This is intentionally applied
+// only on Windows and only to the copied per-session config, never to the
+// user's global ~/.codex/config.toml.
+func codexConfigWithTuttiWindowsSandbox(content string) (string, bool) {
+	if runtime.GOOS != "windows" {
+		return content, false
+	}
+
+	normalized := strings.ReplaceAll(content, "\r\n", "\n")
+	lines := strings.Split(normalized, "\n")
+	for sectionStart, line := range lines {
+		if strings.TrimSpace(line) != "[windows]" {
+			continue
+		}
+		sectionEnd := len(lines)
+		for index := sectionStart + 1; index < len(lines); index++ {
+			trimmed := strings.TrimSpace(lines[index])
+			if strings.HasPrefix(trimmed, "[") && strings.HasSuffix(trimmed, "]") {
+				sectionEnd = index
+				break
+			}
+		}
+		for index := sectionStart + 1; index < sectionEnd; index++ {
+			trimmed := strings.TrimSpace(lines[index])
+			if trimmed == "" || strings.HasPrefix(trimmed, "#") {
+				continue
+			}
+			if !codexConfigLineHasKey(trimmed, "sandbox") {
+				continue
+			}
+			if strings.TrimSpace(lines[index]) == `sandbox = "unelevated"` {
+				return content, false
+			}
+			next := append([]string{}, lines...)
+			next[index] = `sandbox = "unelevated"`
+			return strings.Join(next, "\n"), true
+		}
+		next := make([]string, 0, len(lines)+1)
+		next = append(next, lines[:sectionEnd]...)
+		next = append(next, `sandbox = "unelevated"`)
+		next = append(next, lines[sectionEnd:]...)
+		return strings.Join(next, "\n"), true
+	}
+
+	next := strings.TrimRight(normalized, "\n")
+	if next != "" {
+		next += "\n\n"
+	}
+	next += "[windows]\nsandbox = \"unelevated\"\n"
+	return next, true
 }
 
 func codexConfigWithTuttiConversationDetailMode(content string, conversationDetailMode string) (string, bool) {

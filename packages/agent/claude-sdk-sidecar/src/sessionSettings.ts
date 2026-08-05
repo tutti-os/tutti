@@ -175,6 +175,13 @@ export function querySettingsFromSessionSettings(
   } else if (settings.speed === "standard") {
     result.fastMode = false;
   }
+  // Bake effort into query create settings. Live applyFlagSettings(effort) on a
+  // quiet/resumed Claude query can return while still delaying the next prompt
+  // for tens of seconds, which trips host delivery confirmation (~30s).
+  const effortLevel = effortLevelValue(settings.effort);
+  if (effortLevel) {
+    result.effortLevel = effortLevel;
+  }
   return result;
 }
 

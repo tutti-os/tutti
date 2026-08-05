@@ -26,11 +26,13 @@ import {
   defaultDesktopFeatureFlags,
   defaultDesktopMinimizeAnimation,
   defaultDesktopWorkbenchShortcuts,
-  desktopFeatureFlagsEqual,
   desktopWorkbenchShortcutsEqual,
   desktopWorkbenchWindowSnappingEqual
 } from "../../../../../../shared/preferences/index.ts";
-import { withDesktopWorkspaceUiMode } from "../../../../../../shared/featureFlags/catalog.ts";
+import {
+  resolveDesktopWorkspaceUiMode,
+  withDesktopWorkspaceUiMode
+} from "../../../../../../shared/featureFlags/catalog.ts";
 import type { DesktopThemeSource, DesktopThemeState } from "@shared/theme";
 import {
   INotificationService,
@@ -78,7 +80,9 @@ export interface WorkspaceSettingsServiceDependencies {
   client: DesktopWorkspaceSettingsClient;
   onAgentTargetsChanged?: () => void | Promise<void>;
   replaceWorkspaceWindow?: (input: {
+    clientTs: number;
     mode: "agent" | "os";
+    previousMode: "agent" | "os";
     workspaceId: string;
   }) => Promise<void>;
 }
@@ -535,16 +539,19 @@ export class WorkspaceSettingsService implements IWorkspaceSettingsService {
     const currentFlags =
       this.desktopPreferences.store.changingFeatureFlags ??
       this.desktopPreferences.store.featureFlags;
-    const nextFlags = withDesktopWorkspaceUiMode(currentFlags, mode);
-    if (desktopFeatureFlagsEqual(currentFlags, nextFlags)) {
+    const previousMode = resolveDesktopWorkspaceUiMode(currentFlags);
+    if (previousMode === mode) {
       return;
     }
+    const nextFlags = withDesktopWorkspaceUiMode(currentFlags, mode);
 
     try {
       await this.desktopPreferences.setFeatureFlags(nextFlags);
       if (this.store.workspaceID) {
         await this.dependencies.replaceWorkspaceWindow?.({
+          clientTs: (this.reporterNow ?? Date.now)(),
           mode,
+          previousMode,
           workspaceId: this.store.workspaceID
         });
       }

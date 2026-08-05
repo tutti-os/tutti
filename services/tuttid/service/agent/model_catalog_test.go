@@ -392,6 +392,7 @@ func TestAgentModelCatalogListsTuttiAgentModelsFromLiveLister(t *testing.T) {
 func TestDefaultTuttiAgentModelListerUsesTuttiHomeAndClearsCodexHome(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
 	stateDir := filepath.Join(home, "state")
 	t.Setenv("TUTTI_STATE_DIR", stateDir)
 	userAgentHome := filepath.Join(home, ".tutti-agent")
@@ -542,6 +543,43 @@ func TestDefaultTuttiAgentModelListerBootstrapsExpiredTuttiAgentAuth(t *testing.
 	}
 	if !strings.Contains(string(loginJSON), `"access_token":"lat_new"`) {
 		t.Fatalf("login payload = %s, want issued access token", string(loginJSON))
+	}
+}
+
+func TestPrepareTuttiAgentModelListEnvRefreshesStaleCatalogAuth(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	stateDir := filepath.Join(home, "state")
+	t.Setenv("TUTTI_STATE_DIR", stateDir)
+
+	userAgentHome := filepath.Join(home, ".tutti-agent")
+	if err := os.MkdirAll(userAgentHome, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	accessExpiresAt := time.Now().Add(time.Hour).UTC().Format(time.RFC3339)
+	currentAuth := `{"tutti_llm":{"access_token":"lat_new","access_token_expires_at":` + strconv.Quote(accessExpiresAt) + `,"refresh_token":"lrt_new"}}`
+	if err := os.WriteFile(filepath.Join(userAgentHome, "auth.json"), []byte(currentAuth), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	catalogHome := filepath.Join(stateDir, "agent-model-catalog", "tutti-agent-home")
+	if err := os.MkdirAll(catalogHome, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(catalogHome, "auth.json"), []byte(`{"tutti_llm":{"access_token":"lat_old","refresh_token":"lrt_old"}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := prepareTuttiAgentModelListEnv(t.Context(), nil); err != nil {
+		t.Fatalf("prepareTuttiAgentModelListEnv() error = %v", err)
+	}
+	got, err := os.ReadFile(filepath.Join(catalogHome, "auth.json"))
+	if err != nil {
+		t.Fatalf("read catalog auth: %v", err)
+	}
+	if string(got) != currentAuth {
+		t.Fatal("catalog auth did not refresh from user auth")
 	}
 }
 

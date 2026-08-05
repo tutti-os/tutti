@@ -152,7 +152,16 @@ func (c *streamingReportCoalescer) stopTimer() {
 }
 
 func isCoalescibleStreamingReport(report agentsessionstore.ReportActivityInput) bool {
-	if len(report.TimelineItems) > 0 || len(report.StatePatches) > 0 || len(report.SessionAudits) > 0 || len(report.GoalReconcileRequests) > 0 || len(report.MessageUpdates) == 0 {
+	// ProviderObservations mint checkpoint candidates before enqueue. Coalescing
+	// only merges MessageUpdates, so a later observation-bearing report would
+	// drop its batches and leave checkpoint_commit_unconfirmed on publish
+	// (I10 child Bash tool.started after pending assistant streaming).
+	if len(report.TimelineItems) > 0 ||
+		len(report.StatePatches) > 0 ||
+		len(report.SessionAudits) > 0 ||
+		len(report.GoalReconcileRequests) > 0 ||
+		len(report.ProviderObservations) > 0 ||
+		len(report.MessageUpdates) == 0 {
 		return false
 	}
 	for _, update := range report.MessageUpdates {

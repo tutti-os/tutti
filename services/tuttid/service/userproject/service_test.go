@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	storesqlite "github.com/tutti-os/tutti/packages/agent/store-sqlite"
 	userprojectbiz "github.com/tutti-os/tutti/services/tuttid/biz/userproject"
 	workspacedata "github.com/tutti-os/tutti/services/tuttid/data/workspace"
 )
@@ -325,24 +326,27 @@ func TestServiceCheckPathReportsDirectoryStatusWithoutStore(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CheckPath(validDir) error = %v", err)
 	}
-	if !directory.Exists || !directory.IsDirectory || directory.Path != validDir {
-		t.Fatalf("CheckPath(validDir) = %#v, want existing directory", directory)
+	wantDir := storesqlite.NormalizeProjectPath(validDir)
+	if !directory.Exists || !directory.IsDirectory || directory.Path != wantDir {
+		t.Fatalf("CheckPath(validDir) = %#v, want existing directory %q", directory, wantDir)
 	}
 
 	file, err := service.CheckPath(ctx, CheckPathInput{Path: filePath})
 	if err != nil {
 		t.Fatalf("CheckPath(filePath) error = %v", err)
 	}
-	if !file.Exists || file.IsDirectory {
-		t.Fatalf("CheckPath(filePath) = %#v, want existing non-directory", file)
+	wantFile := storesqlite.NormalizeProjectPath(filePath)
+	if !file.Exists || file.IsDirectory || file.Path != wantFile {
+		t.Fatalf("CheckPath(filePath) = %#v, want existing non-directory %q", file, wantFile)
 	}
 
 	missing, err := service.CheckPath(ctx, CheckPathInput{Path: missingPath})
 	if err != nil {
 		t.Fatalf("CheckPath(missingPath) error = %v", err)
 	}
-	if missing.Exists || missing.IsDirectory || missing.Path != missingPath {
-		t.Fatalf("CheckPath(missingPath) = %#v, want missing path", missing)
+	wantMissing := storesqlite.NormalizeProjectPath(missingPath)
+	if missing.Exists || missing.IsDirectory || missing.Path != wantMissing {
+		t.Fatalf("CheckPath(missingPath) = %#v, want missing path %q", missing, wantMissing)
 	}
 }
 

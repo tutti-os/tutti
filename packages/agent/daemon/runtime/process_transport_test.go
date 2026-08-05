@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -198,6 +199,45 @@ func TestLocalProcessTransportDeliversFinalStdoutBeforeExit(t *testing.T) {
 	}
 	if stdout != "final-output" {
 		t.Fatalf("stdout before exit = %q, want final-output", stdout)
+	}
+}
+
+func TestLocalProcessTransportPreservesFinalStderrBeforeClose(t *testing.T) {
+	shPath, err := exec.LookPath("sh")
+	if err != nil {
+		t.Skip("sh is unavailable")
+	}
+
+	conn, err := NewLocalProcessTransport().Start(context.Background(), ProcessSpec{
+		Command: []string{shPath, "-c", "printf 'final-stderr\\n' >&2; exit 1"},
+	})
+	if err != nil {
+		t.Fatalf("start transport: %v", err)
+	}
+	if err := conn.Close(); err != nil {
+		t.Fatalf("close transport: %v", err)
+	}
+
+	var stderr string
+	var exitCode *int
+	for {
+		frame, err := conn.Recv()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			t.Fatalf("recv frame: %v", err)
+		}
+		stderr += string(frame.Stderr)
+		if frame.ExitCode != nil {
+			exitCode = frame.ExitCode
+		}
+	}
+	if stderr != "final-stderr\n" {
+		t.Fatalf("stderr before close = %q, want final-stderr", stderr)
+	}
+	if exitCode == nil || *exitCode != 1 {
+		t.Fatalf("exit code = %v, want 1", exitCode)
 	}
 }
 

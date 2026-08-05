@@ -125,6 +125,10 @@ Replay cursor atomically; canonical state alone cannot recover a Provider
 observation origin.
 
 Activity intent and correlated effects remain one indivisible boundary.
+The recorder does not cut a later Activity checkpoint while any earlier intent
+with declared effects is unresolved, even when an interleaved intent has
+already completed. This keeps every checkpoint plan valid against the complete
+ordered Activity lane rather than only the latest report batch.
 Provider checkpoints are anchored after decoded Provider Input Units, not raw
 transport frames.
 
@@ -164,3 +168,14 @@ validates and merges all semantic initial states before mutation, restores
 canonical Agent history through Host before normal recovery, and verifies the
 semantic expected state. The JavaScript runner injects the transient identity
 only into product Activity Event envelopes.
+The runner also binds every scenario to one user-project root outside the Tutti
+checkout. A caller may supply an absolute
+`TUTTI_AGENT_SESSION_REPLAY_PROJECT_ROOT`; otherwise the direct CLI creates a
+run-scoped Git project under the operating-system temporary directory and
+removes it on exit. `--keep-runtime` retains that project for diagnosis.
+Semantic settings readiness compares every recorded composer setting with the
+live canonical value but ignores live-only default fields. A Replay recorded
+before a provider began materializing a new default such as `speed` therefore
+remains valid, while a missing or changed recorded model, reasoning,
+permission, plan, or speed value that is not equivalent to an omitted default
+still fails closed.

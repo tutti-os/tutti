@@ -49,7 +49,7 @@ func TestOpenCodeAuthMarkerEmptyObjectRequiresLogin(t *testing.T) {
 	}
 }
 
-func TestTuttiAuthUsesValidatedMarkerWithoutStartingCLI(t *testing.T) {
+func TestTuttiAuthUsesValidatedMarkerWithoutSurfacingApplicationID(t *testing.T) {
 	home := t.TempDir()
 	authPath := filepath.Join(home, ".tutti-agent", "auth.json")
 	if err := os.MkdirAll(filepath.Dir(authPath), 0o700); err != nil {
@@ -76,7 +76,7 @@ func TestTuttiAuthUsesValidatedMarkerWithoutStartingCLI(t *testing.T) {
 		AuthMarkerPaths:      []string{"~/.tutti-agent/auth.json"},
 	}, true, "/definitely/not/a/tutti-agent-binary")
 
-	if auth.Status != AuthAuthenticated || auth.AccountLabel != "app" {
-		t.Fatalf("Auth = %#v, want authenticated app", auth)
+	if auth.Status != AuthAuthenticated || auth.AccountLabel != "" {
+		t.Fatalf("Auth = %#v, want authenticated without an account label", auth)
 	}
 }

@@ -574,7 +574,7 @@ func (s Service) runExternalAgentRegistryNPMInstaller(ctx context.Context, provi
 		"provider", provider,
 		"npmPath", appRuntime.NPM,
 		"installPrefix", npmSpec.PrefixDir,
-		"runner", managedNPMInstallRunner(),
+		"runner", structuredInstallRunner(),
 	)
 	baseEnv := managedruntime.ProcessEnv(append(appRuntime.EnvOverrides, envMapToList(npmSpec.Env)...)...)
 	// Use a dedicated, tutti-owned npm cache inside the install prefix rather than

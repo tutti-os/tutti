@@ -740,7 +740,7 @@ jobs:
   promote:
     name: Promote Release
     needs: [resolve, stage]
-    if: ${{ needs.stage.result == 'success' && needs.resolve.outputs.publication_mode == 'publish' }}
+    if: ${{ always() && needs.stage.result == 'success' && needs.resolve.outputs.publication_mode == 'publish' }}
     uses: ./.github/workflows/desktop-release-promote.yml
     with:
       release_tag: ${{ needs.resolve.outputs.release_tag }}
@@ -754,7 +754,7 @@ jobs:
   notify-draft-feishu:
     name: Notify Draft Release
     needs: [resolve, stage]
-    if: ${{ needs.stage.result == 'success' && needs.resolve.outputs.publication_mode == 'draft_only' && needs.resolve.outputs.notify_feishu == 'true' }}
+    if: ${{ always() && needs.stage.result == 'success' && needs.resolve.outputs.publication_mode == 'draft_only' && needs.resolve.outputs.notify_feishu == 'true' }}
     runs-on: ubuntu-latest
     env:
       FEISHU_WEBHOOK_URL: ${{ secrets.FEISHU_RELEASE_WEBHOOK_URL }}

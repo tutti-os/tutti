@@ -120,6 +120,11 @@ var providerReplayDescriptors = []ProviderReplayDescriptor{
 				"turnId",
 				"promptCorrelationId",
 				"goalOperationId",
+				// Inbound goal_command_started / turn identity use these
+				// aliases of the outbound goalOperationId. Remap them so
+				// GoalControlApplied can complete the live pending operation.
+				"operationId",
+				"sourceGoalOperationId",
 			},
 			// The adapter creates this identity before replay starts, but the
 			// recorded session_started response remains the Provider-owned value

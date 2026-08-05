@@ -219,6 +219,7 @@ export function useAgentGUISessionEngineState(input: {
     activeEngineRuntimeAvailability,
     activeEngineSession,
     activeEngineSessionDeleted,
+    activeEngineSettingsUpdate,
     activeGoalControlPresentation,
     activeLatestPendingSubmit,
     activePendingActivation,
@@ -288,7 +289,9 @@ const SESSION_SETTINGS_STATUS_SHOWS_OPTIMISTIC_VALUE = {
   failed: false,
   idle: false,
   inFlight: true,
-  unknown: true,
+  // Timed-out updates must not keep showing the optimistic value (e.g. High)
+  // or the composer looks settled while the durable session is still medium.
+  unknown: false,
   waitingForPromptSend: true,
   waitingForRuntime: true
 } satisfies Record<SessionSettingsUpdateStatus, boolean>;

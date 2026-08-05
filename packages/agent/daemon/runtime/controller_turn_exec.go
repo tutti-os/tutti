@@ -141,8 +141,13 @@ func (c *Controller) runProviderAcceptanceTurn(
 			))
 		}
 		if !reported && reportDispatch != nil {
+			// Durable submit already happened. Cancel may settle the adapter
+			// (turn_canceled) before Controller cancels runCtx, so err/ctx may
+			// not look canceled yet. Any exit without Applied/Rejected still
+			// means provider Turn identity never bound — report
+			// applied-without-provider-turn so Host does not poison delivery.
 			reportDispatch(ProviderDispatchResult{
-				Disposition: DispatchDispositionOutcomeUnknown,
+				Disposition: DispatchDispositionAppliedWithoutProviderTurn,
 			})
 		}
 		return events, err

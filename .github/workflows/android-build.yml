@@ -157,7 +157,7 @@ jobs:
           retention-days: 14
 
   ios:
-    name: Build internal iOS IPA
+    name: Build and upload iOS TestFlight
     if: inputs.platform == 'ios' || inputs.platform == 'all'
     runs-on: macos-26
     timeout-minutes: 60
@@ -221,139 +221,6 @@ jobs:
       - name: Build iOS framework and install pods
         run: pnpm --filter @tutti-os/mobile ios:pods
 
-      - name: Register internal iOS device
-        shell: bash
-        env:
-          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
-          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
-          IOS_TEST_DEVICE_UDID: ${{ secrets.IOS_TEST_DEVICE_UDID }}
-        run: |
-          if [[ -z "${IOS_TEST_DEVICE_UDID}" ]]; then
-            echo "IOS_TEST_DEVICE_UDID is required for development signing." >&2
-            exit 1
-          fi
-
-          node <<'NODE'
-          const crypto = require("node:crypto");
-          const fs = require("node:fs");
-
-          function encode(value) {
-            return Buffer.from(value).toString("base64url");
-          }
-
-          function createToken() {
-            const issuedAt = Math.floor(Date.now() / 1000);
-            const header = encode(
-              JSON.stringify({
-                alg: "ES256",
-                kid: process.env.APPLE_API_KEY_ID,
-                typ: "JWT",
-              }),
-            );
-            const payload = encode(
-              JSON.stringify({
-                aud: "appstoreconnect-v1",
-                exp: issuedAt + 600,
-                iat: issuedAt - 30,
-                iss: process.env.APPLE_API_ISSUER,
-              }),
-            );
-            const signingInput = `${header}.${payload}`;
-            const key = fs.readFileSync(process.env.APPLE_API_KEY_PATH, "utf8");
-            const signature = crypto.sign(
-              "sha256",
-              Buffer.from(signingInput),
-              {
-                dsaEncoding: "ieee-p1363",
-                key,
-              },
-            );
-            return `${signingInput}.${signature.toString("base64url")}`;
-          }
-
-          async function request(path, options = {}) {
-            const response = await fetch(
-              `https://api.appstoreconnect.apple.com${path}`,
-              {
-                ...options,
-                headers: {
-                  Authorization: `Bearer ${createToken()}`,
-                  "Content-Type": "application/json",
-                  ...options.headers,
-                },
-              },
-            );
-            if (!response.ok) {
-              const error = new Error(
-                `Apple Developer API request failed with HTTP ${response.status}`,
-              );
-              error.status = response.status;
-              throw error;
-            }
-            return response.json();
-          }
-
-          async function findDevice(udid) {
-            const query = new URLSearchParams({
-              "filter[udid]": udid,
-              limit: "1",
-            });
-            const existing = await request(`/v1/devices?${query}`);
-            return existing.data[0];
-          }
-
-          function assertEnabled(device) {
-            if (device.attributes.status !== "ENABLED") {
-              throw new Error(
-                "The configured internal iOS device is disabled in Apple Developer",
-              );
-            }
-          }
-
-          async function main() {
-            const udid = process.env.IOS_TEST_DEVICE_UDID;
-            const device = await findDevice(udid);
-            if (device) {
-              assertEnabled(device);
-              console.log("Internal iOS device is already registered");
-              return;
-            }
-
-            try {
-              await request("/v1/devices", {
-                body: JSON.stringify({
-                  data: {
-                    attributes: {
-                      name: "Tutti Internal iPhone",
-                      platform: "IOS",
-                      udid,
-                    },
-                    type: "devices",
-                  },
-                }),
-                method: "POST",
-              });
-            } catch (error) {
-              if (error.status !== 409) {
-                throw error;
-              }
-              const concurrentDevice = await findDevice(udid);
-              if (!concurrentDevice) {
-                throw error;
-              }
-              assertEnabled(concurrentDevice);
-              console.log("Internal iOS device was registered concurrently");
-              return;
-            }
-            console.log("Registered internal iOS device");
-          }
-
-          main().catch((error) => {
-            console.error(error.message);
-            process.exitCode = 1;
-          });
-          NODE
-
       - name: Archive iOS app
         shell: bash
         env:
@@ -373,11 +240,12 @@ jobs:
             -authenticationKeyIssuerID "${APPLE_API_ISSUER}" \
             DEVELOPMENT_TEAM="${IOS_DEVELOPMENT_TEAM}" \
             CODE_SIGN_STYLE=Automatic \
+            CURRENT_PROJECT_VERSION="${GITHUB_RUN_NUMBER}.${GITHUB_RUN_ATTEMPT}" \
             clean archive
 
           echo "IOS_ARCHIVE_PATH=${archive_path}" >> "${GITHUB_ENV}"
 
-      - name: Export internal IPA
+      - name: Export App Store Connect IPA
         shell: bash
         env:
           APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
@@ -389,9 +257,11 @@ jobs:
 
           plutil -create xml1 "${export_options}"
           plutil -insert destination -string export "${export_options}"
-          plutil -insert method -string debugging "${export_options}"
+          plutil -insert method -string app-store-connect "${export_options}"
           plutil -insert signingStyle -string automatic "${export_options}"
           plutil -insert teamID -string "${IOS_DEVELOPMENT_TEAM}" "${export_options}"
+          plutil -insert manageAppVersionAndBuildNumber -bool false "${export_options}"
+          plutil -insert uploadSymbols -bool true "${export_options}"
 
           xcodebuild \
             -exportArchive \
@@ -406,30 +276,58 @@ jobs:
           ipa_path="$(find "${export_dir}" -maxdepth 1 -name '*.ipa' -print -quit)"
           test -n "${ipa_path}"
           mkdir -p "${artifact_dir}"
-          cp "${ipa_path}" "${artifact_dir}/tutti-mobile-internal.ipa"
+          cp "${ipa_path}" "${artifact_dir}/tutti-mobile-testflight.ipa"
 
-      - name: Verify internal IPA
+      - name: Verify TestFlight IPA
         shell: bash
         run: |
           artifact_dir="${RUNNER_TEMP}/tutti-ios-artifact"
           verification_dir="${RUNNER_TEMP}/tutti-ios-verification"
           mkdir -p "${verification_dir}"
-          unzip -q "${artifact_dir}/tutti-mobile-internal.ipa" -d "${verification_dir}"
+          unzip -q "${artifact_dir}/tutti-mobile-testflight.ipa" -d "${verification_dir}"
           app_path="$(find "${verification_dir}/Payload" -maxdepth 1 -name '*.app' -print -quit)"
           test -n "${app_path}"
           test -f "${app_path}/embedded.mobileprovision"
+          test -f "${app_path}/main.jsbundle"
           codesign --verify --deep --strict "${app_path}"
           (
             cd "${artifact_dir}"
-            shasum -a 256 tutti-mobile-internal.ipa > SHA256SUMS
+            shasum -a 256 tutti-mobile-testflight.ipa > SHA256SUMS
           )
 
-      - name: Upload internal iOS artifact
+      - name: Upload to TestFlight
+        shell: bash
+        env:
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+        run: |
+          upload_dir="${RUNNER_TEMP}/tutti-ios-upload"
+          upload_options="${RUNNER_TEMP}/tutti-ios-upload-options.plist"
+
+          plutil -create xml1 "${upload_options}"
+          plutil -insert destination -string upload "${upload_options}"
+          plutil -insert method -string app-store-connect "${upload_options}"
+          plutil -insert signingStyle -string automatic "${upload_options}"
+          plutil -insert teamID -string "${IOS_DEVELOPMENT_TEAM}" "${upload_options}"
+          plutil -insert manageAppVersionAndBuildNumber -bool false "${upload_options}"
+          plutil -insert uploadSymbols -bool true "${upload_options}"
+
+          xcodebuild \
+            -exportArchive \
+            -archivePath "${IOS_ARCHIVE_PATH}" \
+            -exportPath "${upload_dir}" \
+            -exportOptionsPlist "${upload_options}" \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "${APPLE_API_KEY_PATH}" \
+            -authenticationKeyID "${APPLE_API_KEY_ID}" \
+            -authenticationKeyIssuerID "${APPLE_API_ISSUER}"
+
+      - name: Upload TestFlight IPA artifact
         uses: actions/upload-artifact@v4
         with:
-          name: tutti-mobile-ios-internal-${{ github.sha }}
+          name: tutti-mobile-ios-testflight-${{ github.sha }}
           path: |
-            ${{ runner.temp }}/tutti-ios-artifact/tutti-mobile-internal.ipa
+            ${{ runner.temp }}/tutti-ios-artifact/tutti-mobile-testflight.ipa
             ${{ runner.temp }}/tutti-ios-artifact/SHA256SUMS
           if-no-files-found: error
           retention-days: 14

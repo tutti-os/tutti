@@ -47,6 +47,7 @@ interface DeviceLinkNative {
     headersJSON: string,
     subprotocol: string
   ) => Promise<void>;
+  probeRelay(timeoutMillis: number): Promise<void>;
   connectLink(
     peerDescriptionJSON: string,
     caller: boolean,

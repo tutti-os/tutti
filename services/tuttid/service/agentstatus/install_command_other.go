@@ -28,6 +28,6 @@ func platformExecutableFile(info os.FileInfo) bool {
 	return info.Mode().Perm()&0o111 != 0
 }
 
-func managedNPMInstallRunner() string {
-	return "shell -lc"
+func structuredInstallRunner() string {
+	return "direct exec"
 }

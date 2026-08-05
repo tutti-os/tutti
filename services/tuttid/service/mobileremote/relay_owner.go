@@ -15,6 +15,7 @@ import (
 	"time"
 
 	deviceauthority "github.com/tutti-os/tutti/packages/clients/device-authority-go"
+	devicelink "github.com/tutti-os/tutti/packages/device-link"
 	"github.com/tutti-os/tutti/packages/device-link/relaytransport"
 )
 
@@ -429,7 +430,12 @@ func (s *Service) handleRelayStream(ctx context.Context, stream net.Conn) error 
 	if handler == nil {
 		return errors.New("mobile remote handler is unavailable")
 	}
-	return serveRemoteStreamWithAgentLive(ctx, stream, handler, pairingID, liveEvents)
+	return devicelink.ServeStreamProbe(ctx, stream, func(
+		ctx context.Context,
+		stream net.Conn,
+	) error {
+		return serveRemoteStreamWithAgentLive(ctx, stream, handler, pairingID, liveEvents)
+	})
 }
 
 func (s *Service) authorizeRelayPairing(_ context.Context, targetUserID, pairingID string) error {

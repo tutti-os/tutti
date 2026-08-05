@@ -15,7 +15,10 @@ import {
   selectEngineSession,
   selectEngineSessionSettingsUpdate
 } from "./sessionLifecycle.selectors.ts";
-import { selectPendingSubmitsForSession } from "./pendingIntents.selectors.ts";
+import {
+  selectLatestStopTargetSubmitForSession,
+  selectPendingSubmitsForSession
+} from "./pendingIntents.selectors.ts";
 import {
   selectEngineHasVisibleQueuedSubmit,
   selectEngineSubmitWouldBeVisibleInQueue
@@ -460,12 +463,21 @@ export function createAgentSessionEngine({
     if (!agentSessionId) {
       return;
     }
+    const activeTurn = selectEngineActiveTurn(publicSnapshot, agentSessionId);
+    const requestedClientSubmitId = input.clientSubmitId?.trim() || null;
+    const clientSubmitId =
+      requestedClientSubmitId ??
+      (!activeTurn
+        ? selectLatestStopTargetSubmitForSession(publicSnapshot, agentSessionId)
+            ?.clientSubmitId
+        : undefined);
     const requestedAtUnixMs = clock.nowUnixMs();
     const sequence = sessionStopCommandSequence++;
     dispatch({
       agentSessionId,
       awaitingTurnExpiresAtUnixMs: requestedAtUnixMs + SESSION_STOP_TIMEOUT_MS,
       commandId: `stop:${requestedAtUnixMs}:${sequence}`,
+      ...(clientSubmitId ? { clientSubmitId } : {}),
       timeoutMs: SESSION_STOP_TIMEOUT_MS,
       type: "session/stopRequested",
       workspaceId: engineIdentity.workspaceId
@@ -565,6 +577,9 @@ export function createAgentSessionEngine({
         : {}),
       requestedAtUnixMs,
       routing,
+      ...(input.targetTurnId?.trim()
+        ? { targetTurnId: input.targetTurnId.trim() }
+        : {}),
       ...(input.runtimeContent
         ? {
             runtimeContent: input.runtimeContent.map((block) => ({
