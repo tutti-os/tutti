@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"sync"
 	"time"
 
 	agentsessionstore "github.com/tutti-os/tutti/packages/agent/daemon/activity"
@@ -20,6 +21,7 @@ import (
 
 type ActivityProjection struct {
 	repo                         agentactivitybiz.Repository
+	analyticsReporterMu          sync.RWMutex
 	analyticsReporter            reporterservice.Reporter
 	publisher                    ActivityUpdatePublisher
 	sessionMessageObserver       SessionMessageObserver
@@ -119,13 +121,6 @@ func (p *ActivityProjection) SetPublisher(publisher ActivityUpdatePublisher) {
 		return
 	}
 	p.publisher = publisher
-}
-
-func (p *ActivityProjection) SetAnalyticsReporter(reporter reporterservice.Reporter) {
-	if p == nil {
-		return
-	}
-	p.analyticsReporter = reporter
 }
 
 func (p *ActivityProjection) SetSessionMessageObserver(observer SessionMessageObserver) {
@@ -365,7 +360,8 @@ func canonicalRailSection(placement *canonical.RailPlacement) *agentactivitybiz.
 }
 
 func (p *ActivityProjection) reportFailedRuntimeNodeResult(ctx context.Context, input canonical.ReportSessionStateInput) {
-	if p == nil || p.analyticsReporter == nil {
+	reporter := p.analyticsReporterSnapshot()
+	if reporter == nil {
 		return
 	}
 	if !isFailedAgentLifecycleStatus(input.State.LifecycleStatus) {
@@ -375,7 +371,7 @@ func (p *ActivityProjection) reportFailedRuntimeNodeResult(ctx context.Context, 
 	if errorMessage == "" {
 		errorMessage = "Agent runtime session failed."
 	}
-	agentnoderesult.Track(ctx, p.analyticsReporter, agentnoderesult.BuildParams(agentnoderesult.NodeResultInput{
+	agentnoderesult.Track(ctx, reporter, agentnoderesult.BuildParams(agentnoderesult.NodeResultInput{
 		AgentSessionID: input.AgentSessionID,
 		ErrorCode:      classifyRuntimeNodeErrorCode(errorMessage),
 		ErrorMessage:   errorMessage,

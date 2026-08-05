@@ -114,9 +114,10 @@ engine.
 
 `agent.turn_performance` is a daemon-owned, best-effort terminal summary. The
 `tuttid` `ActivityProjection` observes committed canonical Turn mutations and
-emits at most one event per terminal Turn in one daemon process. Renderer
-snapshots are not an analytics authority, and reporting, message reads, model
-normalization, or transport failure must never delay or fail the Turn.
+attempts at most one event per terminal Turn within its in-memory deduplication
+window. Renderer snapshots are not an analytics authority, and reporting,
+message reads, model normalization, or transport failure must never delay or
+fail the Turn.
 
 The client-submit timestamp, new/existing Session classification, and queue
 fact are kept only in a bounded, six-hour process-memory map keyed by the local
@@ -129,6 +130,17 @@ intentionally loses the entry: timing then falls back to the canonical Turn
 start, Session state becomes `unknown`, and queue state remains null. This is
 an accepted best-effort analytics degradation, not a reason to add a durable
 telemetry outbox.
+
+Both submit provenance and terminal-attempt deduplication are bounded to 4,096
+entries and expire after six hours through minute-granularity lazy pruning.
+The attempt timestamp means "handed to the best-effort reporting path", not
+"acknowledged by DataFinder": the shared `Reporter.Track` contract exposes no
+delivery acknowledgement. Repository-read failures and reporter panics remain
+deduplicated until expiry or capacity eviction to avoid retry storms from
+repeated dirty notifications. A missing or analytics-disabled `NoopReporter`
+does not claim an attempt or consume submit provenance. Expiry or eviction may
+allow a later dirty notification for an old settled Turn to make another
+best-effort attempt; this bounded behavior is intentional.
 
 The event contains only a strict content-free whitelist: normalized provider
 and catalog model (`custom` or `unknown` when a raw value is not safe),

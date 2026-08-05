@@ -111,7 +111,7 @@ func TestResolveAgentTurnAnalyticsModelRedactsNonCatalogValues(t *testing.T) {
 	}
 }
 
-func TestActivityProjectionClaimsTurnPerformanceOncePerProcess(t *testing.T) {
+func TestActivityProjectionClaimsTurnPerformanceOnceWithinRetentionWindow(t *testing.T) {
 	projection := NewActivityProjection(nil)
 	now := time.Now()
 	if _, claimed := projection.claimTurnPerformanceReport("turn", now); !claimed {
@@ -119,6 +119,283 @@ func TestActivityProjectionClaimsTurnPerformanceOncePerProcess(t *testing.T) {
 	}
 	if _, claimed := projection.claimTurnPerformanceReport("turn", now); claimed {
 		t.Fatal("turn performance report was not deduplicated")
+	}
+}
+
+func TestActivityProjectionTurnPerformanceAttemptsExpire(t *testing.T) {
+	projection := NewActivityProjection(nil)
+	base := time.Now()
+	if _, claimed := projection.claimTurnPerformanceReport("turn", base); !claimed {
+		t.Fatal("first turn performance attempt was not claimed")
+	}
+	if _, claimed := projection.claimTurnPerformanceReport(
+		"turn",
+		base.Add(agentTurnPerformanceStateTTL+agentTurnPerformancePruneInterval),
+	); !claimed {
+		t.Fatal("expired turn performance attempt was not claimable")
+	}
+	if got := len(projection.turnPerformanceState.attempted); got != 1 {
+		t.Fatalf("attempted entries = %d, want 1", got)
+	}
+}
+
+func TestActivityProjectionTurnPerformanceAttemptsAreBounded(t *testing.T) {
+	projection := NewActivityProjection(nil)
+	base := time.Now()
+	for index := 0; index <= agentTurnPerformanceStateMaxEntries; index++ {
+		key := fmt.Sprintf("turn-%d", index)
+		if _, claimed := projection.claimTurnPerformanceReport(
+			key,
+			base.Add(time.Duration(index)*time.Millisecond),
+		); !claimed {
+			t.Fatalf("turn performance attempt %q was not claimed", key)
+		}
+	}
+	if got := len(projection.turnPerformanceState.attempted); got != agentTurnPerformanceStateMaxEntries {
+		t.Fatalf("attempted entries = %d, want %d", got, agentTurnPerformanceStateMaxEntries)
+	}
+	if _, exists := projection.turnPerformanceState.attempted["turn-0"]; exists {
+		t.Fatal("oldest turn performance attempt was not evicted")
+	}
+	if _, exists := projection.turnPerformanceState.attempted[fmt.Sprintf("turn-%d", agentTurnPerformanceStateMaxEntries)]; !exists {
+		t.Fatal("newest turn performance attempt was not retained")
+	}
+}
+
+func TestActivityProjectionClaimsTurnPerformanceOnceConcurrently(t *testing.T) {
+	projection := NewActivityProjection(nil)
+	const count = 100
+	claimed := make(chan struct{}, count)
+	var group sync.WaitGroup
+	for index := 0; index < count; index++ {
+		group.Add(1)
+		go func() {
+			defer group.Done()
+			if _, ok := projection.claimTurnPerformanceReport("turn", time.Now()); ok {
+				claimed <- struct{}{}
+			}
+		}()
+	}
+	group.Wait()
+	close(claimed)
+	if got := len(claimed); got != 1 {
+		t.Fatalf("concurrent claims = %d, want 1", got)
+	}
+}
+
+type typedNilTurnPerformanceReporter struct{}
+
+func (*typedNilTurnPerformanceReporter) Track(context.Context, ...reporterservice.Event) {}
+
+func (*typedNilTurnPerformanceReporter) Close() error { return nil }
+
+func TestActivityProjectionDoesNotClaimTurnPerformanceWhenReporterDisabled(t *testing.T) {
+	tests := []struct {
+		name     string
+		reporter reporterservice.Reporter
+	}{
+		{name: "missing"},
+		{name: "noop pointer", reporter: &reporterservice.NoopReporter{}},
+		{name: "nil noop pointer", reporter: (*reporterservice.NoopReporter)(nil)},
+		{name: "noop value", reporter: reporterservice.NoopReporter{}},
+		{name: "typed nil reporter", reporter: (*typedNilTurnPerformanceReporter)(nil)},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			projection := NewActivityProjection(nil)
+			projection.SetAnalyticsReporter(tt.reporter)
+			projection.RecordTurnPerformanceProvenance("workspace-1", "session-1", "turn-1", map[string]any{
+				"clientSubmittedAtUnixMs": int64(1_000),
+			})
+			projection.scheduleAgentTurnPerformance(t.Context(), "workspace-1", "session-1", agentactivitybiz.Turn{
+				TurnID: "turn-1",
+				Phase:  agentactivitybiz.TurnPhaseSettled,
+			})
+
+			key := agentTurnPerformanceKey("workspace-1", "session-1", "turn-1")
+			projection.turnPerformanceState.mu.Lock()
+			defer projection.turnPerformanceState.mu.Unlock()
+			if got := len(projection.turnPerformanceState.attempted); got != 0 {
+				t.Fatalf("attempted entries = %d, want 0", got)
+			}
+			if _, exists := projection.turnPerformanceState.provenance[key]; !exists {
+				t.Fatal("disabled reporter consumed turn performance provenance")
+			}
+		})
+	}
+}
+
+func TestActivityProjectionAnalyticsReporterSnapshotIsConcurrentSafe(t *testing.T) {
+	projection := NewActivityProjection(nil)
+	reporterA := &turnPerformanceEventReporter{events: make(chan reporterservice.Event, 1)}
+	reporterB := &turnPerformanceEventReporter{events: make(chan reporterservice.Event, 1)}
+	start := make(chan struct{})
+	var group sync.WaitGroup
+	group.Add(2)
+	go func() {
+		defer group.Done()
+		<-start
+		for index := 0; index < 10_000; index++ {
+			if index%2 == 0 {
+				projection.SetAnalyticsReporter(reporterA)
+			} else {
+				projection.SetAnalyticsReporter(reporterB)
+			}
+		}
+	}()
+	go func() {
+		defer group.Done()
+		<-start
+		for index := 0; index < 10_000; index++ {
+			reporter := projection.analyticsReporterSnapshot()
+			if reporter != nil && reporter != reporterA && reporter != reporterB {
+				t.Errorf("unexpected analytics reporter snapshot %T", reporter)
+				return
+			}
+		}
+	}()
+	close(start)
+	group.Wait()
+}
+
+type unavailableTurnPerformanceRepository struct {
+	agentactivitybiz.Repository
+	getSessionCalls chan struct{}
+}
+
+func (r *unavailableTurnPerformanceRepository) GetSession(
+	context.Context,
+	string,
+	string,
+) (agentactivitybiz.Session, bool, error) {
+	r.getSessionCalls <- struct{}{}
+	return agentactivitybiz.Session{}, false, nil
+}
+
+func TestActivityProjectionFailedTurnPerformanceAttemptRemainsDeduplicatedUntilTTL(t *testing.T) {
+	reporter := &turnPerformanceEventReporter{events: make(chan reporterservice.Event, 1)}
+	repo := &unavailableTurnPerformanceRepository{getSessionCalls: make(chan struct{}, 2)}
+	projection := NewActivityProjection(repo)
+	projection.SetAnalyticsReporter(reporter)
+	turn := agentactivitybiz.Turn{TurnID: "turn-1", Phase: agentactivitybiz.TurnPhaseSettled}
+	projection.scheduleAgentTurnPerformanceWithLauncher(
+		t.Context(), "workspace-1", "session-1", turn, func(report func()) { report() },
+	)
+	if got := len(repo.getSessionCalls); got != 1 {
+		t.Fatalf("failed turn performance repository reads = %d, want 1", got)
+	}
+
+	key := agentTurnPerformanceKey("workspace-1", "session-1", "turn-1")
+	projection.turnPerformanceState.mu.Lock()
+	attemptedAt, exists := projection.turnPerformanceState.attempted[key]
+	projection.turnPerformanceState.mu.Unlock()
+	if !exists {
+		t.Fatal("failed turn performance report did not retain a bounded attempt")
+	}
+
+	projection.scheduleAgentTurnPerformanceWithLauncher(
+		t.Context(), "workspace-1", "session-1", turn, func(report func()) { report() },
+	)
+	projection.turnPerformanceState.mu.Lock()
+	if got := len(projection.turnPerformanceState.attempted); got != 1 {
+		projection.turnPerformanceState.mu.Unlock()
+		t.Fatalf("attempted entries after duplicate failure = %d, want 1", got)
+	}
+	if got := projection.turnPerformanceState.attempted[key]; !got.Equal(attemptedAt) {
+		projection.turnPerformanceState.mu.Unlock()
+		t.Fatalf("duplicate failure replaced attempted timestamp: got %v want %v", got, attemptedAt)
+	}
+	projection.turnPerformanceState.mu.Unlock()
+	if got := len(repo.getSessionCalls); got != 1 {
+		t.Fatalf("failed turn performance repository reads within TTL = %d, want 1", got)
+	}
+
+	if _, claimed := projection.claimTurnPerformanceReport(
+		key,
+		attemptedAt.Add(agentTurnPerformanceStateTTL+agentTurnPerformancePruneInterval),
+	); !claimed {
+		t.Fatal("failed turn performance attempt was not claimable after TTL")
+	}
+}
+
+type readableTurnPerformanceRepository struct {
+	agentactivitybiz.Repository
+}
+
+func (*readableTurnPerformanceRepository) GetSession(
+	context.Context,
+	string,
+	string,
+) (agentactivitybiz.Session, bool, error) {
+	return agentactivitybiz.Session{Provider: "codex"}, true, nil
+}
+
+func (*readableTurnPerformanceRepository) ListSessionMessages(
+	context.Context,
+	agentactivitybiz.ListSessionMessagesInput,
+) (agentactivitybiz.MessagePage, bool, error) {
+	return agentactivitybiz.MessagePage{}, true, nil
+}
+
+func TestActivityProjectionCapturesTurnPerformanceReporterBeforeLaunch(t *testing.T) {
+	first := &turnPerformanceEventReporter{events: make(chan reporterservice.Event, 1)}
+	second := &turnPerformanceEventReporter{events: make(chan reporterservice.Event, 1)}
+	projection := NewActivityProjection(&readableTurnPerformanceRepository{})
+	projection.SetAnalyticsReporter(first)
+	turn := agentactivitybiz.Turn{TurnID: "turn-1", Phase: agentactivitybiz.TurnPhaseSettled}
+	var report func()
+	projection.scheduleAgentTurnPerformanceWithLauncher(
+		t.Context(),
+		"workspace-1",
+		"session-1",
+		turn,
+		func(scheduled func()) { report = scheduled },
+	)
+	if report == nil {
+		t.Fatal("turn performance report was not scheduled")
+	}
+	projection.SetAnalyticsReporter(second)
+	report()
+	select {
+	case <-first.events:
+	default:
+		t.Fatal("captured reporter did not receive turn performance event")
+	}
+	select {
+	case event := <-second.events:
+		t.Fatalf("replacement reporter received captured event: %#v", event)
+	default:
+	}
+}
+
+type panickingTurnPerformanceReporter struct {
+	calls chan struct{}
+}
+
+func (r *panickingTurnPerformanceReporter) Track(context.Context, ...reporterservice.Event) {
+	r.calls <- struct{}{}
+	panic("turn performance reporter failure")
+}
+
+func (*panickingTurnPerformanceReporter) Close() error { return nil }
+
+func TestActivityProjectionPanickingTurnPerformanceReporterRemainsDeduplicated(t *testing.T) {
+	reporter := &panickingTurnPerformanceReporter{calls: make(chan struct{}, 2)}
+	projection := NewActivityProjection(&readableTurnPerformanceRepository{})
+	projection.SetAnalyticsReporter(reporter)
+	turn := agentactivitybiz.Turn{TurnID: "turn-1", Phase: agentactivitybiz.TurnPhaseSettled}
+	projection.scheduleAgentTurnPerformanceWithLauncher(
+		t.Context(), "workspace-1", "session-1", turn, func(report func()) { report() },
+	)
+	if got := len(reporter.calls); got != 1 {
+		t.Fatalf("panicking turn performance reporter calls = %d, want 1", got)
+	}
+
+	projection.scheduleAgentTurnPerformanceWithLauncher(
+		t.Context(), "workspace-1", "session-1", turn, func(report func()) { report() },
+	)
+	if got := len(reporter.calls); got != 1 {
+		t.Fatalf("panicking turn performance reporter calls within TTL = %d, want 1", got)
 	}
 }
 
@@ -344,10 +621,12 @@ func TestActivityProjectionReportsOneTerminalTurnPerformanceEvent(t *testing.T) 
 	if err != nil || !found {
 		t.Fatalf("read settled turn: found=%v error=%v", found, err)
 	}
-	projection.scheduleAgentTurnPerformance(ctx, "ws-performance", "session-1", turn)
+	projection.scheduleAgentTurnPerformanceWithLauncher(
+		ctx, "ws-performance", "session-1", turn, func(report func()) { report() },
+	)
 	select {
 	case duplicate := <-reporter.events:
 		t.Fatalf("duplicate terminal event = %#v", duplicate)
-	case <-time.After(50 * time.Millisecond):
+	default:
 	}
 }

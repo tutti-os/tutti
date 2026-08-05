@@ -8,6 +8,7 @@ import (
 	"time"
 
 	agentactivitybiz "github.com/tutti-os/tutti/packages/agent/store-sqlite"
+	reporterservice "github.com/tutti-os/tutti/services/tuttid/service/reporter"
 	turnperformance "github.com/tutti-os/tutti/services/tuttid/service/reporter/events/agent/turn_performance"
 )
 
@@ -30,7 +31,9 @@ type agentTurnPerformanceState struct {
 	mu           sync.Mutex
 	lastPrunedAt time.Time
 	provenance   map[string]agentTurnPerformanceProvenance
-	reported     map[string]struct{}
+	// attempted is a bounded best-effort dedupe window, not a delivery ledger.
+	// Reporter.Track does not expose transport acknowledgement.
+	attempted map[string]time.Time
 }
 
 func (p *ActivityProjection) SetTurnPerformanceModelCatalog(catalog AgentModelCatalog) {
@@ -59,7 +62,27 @@ func (p *ActivityProjection) scheduleAgentTurnPerformance(
 	agentSessionID string,
 	turn agentactivitybiz.Turn,
 ) {
-	if p == nil || turn.Backfilled || turn.Phase != agentactivitybiz.TurnPhaseSettled {
+	p.scheduleAgentTurnPerformanceWithLauncher(
+		ctx,
+		workspaceID,
+		agentSessionID,
+		turn,
+		func(report func()) { go report() },
+	)
+}
+
+func (p *ActivityProjection) scheduleAgentTurnPerformanceWithLauncher(
+	ctx context.Context,
+	workspaceID string,
+	agentSessionID string,
+	turn agentactivitybiz.Turn,
+	launch func(func()),
+) {
+	if p == nil || launch == nil || turn.Backfilled || turn.Phase != agentactivitybiz.TurnPhaseSettled {
+		return
+	}
+	reporter := p.analyticsReporterSnapshot()
+	if !agentTurnPerformanceReporterEnabled(reporter) {
 		return
 	}
 	key := agentTurnPerformanceKey(workspaceID, agentSessionID, turn.TurnID)
@@ -67,18 +90,29 @@ func (p *ActivityProjection) scheduleAgentTurnPerformance(
 		return
 	}
 	provenance, claimed := p.claimTurnPerformanceReport(key, time.Now())
-	if !claimed || p.analyticsReporter == nil {
+	if !claimed {
 		return
 	}
 	// Analytics reads, catalog resolution, and transport are detached from the
 	// commit callback. They are observational and must never delay the Turn.
-	go func() {
-		deferredCtx := context.WithoutCancel(ctx)
-		deferredCtx, cancel := context.WithTimeout(deferredCtx, 3*time.Second)
-		defer cancel()
-		defer func() { _ = recover() }()
-		p.reportAgentTurnPerformance(deferredCtx, workspaceID, agentSessionID, turn, provenance)
-	}()
+	launch(func() {
+		p.runAgentTurnPerformanceReport(ctx, reporter, workspaceID, agentSessionID, turn, provenance)
+	})
+}
+
+func (p *ActivityProjection) runAgentTurnPerformanceReport(
+	ctx context.Context,
+	reporter reporterservice.Reporter,
+	workspaceID string,
+	agentSessionID string,
+	turn agentactivitybiz.Turn,
+	provenance agentTurnPerformanceProvenance,
+) {
+	deferredCtx := context.WithoutCancel(ctx)
+	deferredCtx, cancel := context.WithTimeout(deferredCtx, 3*time.Second)
+	defer cancel()
+	defer func() { _ = recover() }()
+	p.reportAgentTurnPerformance(deferredCtx, reporter, workspaceID, agentSessionID, turn, provenance)
 }
 
 // RecordTurnPerformanceProvenance keeps the privacy-reviewed submit timing
@@ -136,13 +170,16 @@ func (p *ActivityProjection) claimTurnPerformanceReport(
 	p.turnPerformanceState.mu.Lock()
 	defer p.turnPerformanceState.mu.Unlock()
 	p.turnPerformanceState.pruneIfDueLocked(now)
-	if p.turnPerformanceState.reported == nil {
-		p.turnPerformanceState.reported = make(map[string]struct{})
+	if p.turnPerformanceState.attempted == nil {
+		p.turnPerformanceState.attempted = make(map[string]time.Time)
 	}
-	if _, reported := p.turnPerformanceState.reported[key]; reported {
+	if _, attempted := p.turnPerformanceState.attempted[key]; attempted {
 		return agentTurnPerformanceProvenance{}, false
 	}
-	p.turnPerformanceState.reported[key] = struct{}{}
+	if len(p.turnPerformanceState.attempted) >= agentTurnPerformanceStateMaxEntries {
+		p.turnPerformanceState.evictOldestAttemptedLocked()
+	}
+	p.turnPerformanceState.attempted[key] = now
 	provenance := p.turnPerformanceState.provenance[key]
 	delete(p.turnPerformanceState.provenance, key)
 	return provenance, true
@@ -157,6 +194,11 @@ func (s *agentTurnPerformanceState) pruneIfDueLocked(now time.Time) {
 	for key, provenance := range s.provenance {
 		if provenance.recordedAt.Before(cutoff) {
 			delete(s.provenance, key)
+		}
+	}
+	for key, attemptedAt := range s.attempted {
+		if attemptedAt.Before(cutoff) {
+			delete(s.attempted, key)
 		}
 	}
 }
@@ -175,6 +217,34 @@ func (s *agentTurnPerformanceState) evictOldestProvenanceLocked() {
 	}
 }
 
+func (s *agentTurnPerformanceState) evictOldestAttemptedLocked() {
+	var oldestKey string
+	var oldestAt time.Time
+	for key, attemptedAt := range s.attempted {
+		if oldestKey == "" || attemptedAt.Before(oldestAt) {
+			oldestKey = key
+			oldestAt = attemptedAt
+		}
+	}
+	if oldestKey != "" {
+		delete(s.attempted, oldestKey)
+	}
+}
+
+func agentTurnPerformanceReporterEnabled(reporter reporterservice.Reporter) bool {
+	// Analytics-disabled production wiring installs a non-nil NoopReporter.
+	// Do not consume provenance or allocate a dedupe attempt for dropped events.
+	if analyticsReporterIsNil(reporter) {
+		return false
+	}
+	switch reporter.(type) {
+	case reporterservice.NoopReporter, *reporterservice.NoopReporter:
+		return false
+	default:
+		return true
+	}
+}
+
 func agentTurnPerformanceKey(workspaceID string, agentSessionID string, turnID string) string {
 	workspaceID = strings.TrimSpace(workspaceID)
 	agentSessionID = strings.TrimSpace(agentSessionID)
@@ -187,6 +257,7 @@ func agentTurnPerformanceKey(workspaceID string, agentSessionID string, turnID s
 
 func (p *ActivityProjection) reportAgentTurnPerformance(
 	ctx context.Context,
+	reporter reporterservice.Reporter,
 	workspaceID string,
 	agentSessionID string,
 	turn agentactivitybiz.Turn,
@@ -204,7 +275,7 @@ func (p *ActivityProjection) reportAgentTurnPerformance(
 	model := resolveAgentTurnAnalyticsModel(ctx, p.turnPerformanceState.modelCatalog, session)
 	provider := normalizeAgentTurnProvider(session.Provider)
 	toolCallCount := summary.toolCallCount
-	turnperformance.Track(ctx, p.analyticsReporter, turnperformance.BuildParams(turnperformance.Input{
+	turnperformance.Track(ctx, reporter, turnperformance.BuildParams(turnperformance.Input{
 		FirstProgressMS:     summary.firstProgressMS,
 		HadLongIdle:         summary.hadLongIdle,
 		HadReconnect:        nil,
