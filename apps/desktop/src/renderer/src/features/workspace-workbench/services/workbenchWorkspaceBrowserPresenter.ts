@@ -8,82 +8,7 @@ import { workspaceBrowserNodeID } from "./workspaceWorkbenchNodeIds.ts";
 export function createWorkbenchWorkspaceBrowserPresenter(input: {
   host: WorkbenchHostHandle;
 }): WorkspaceBrowserLaunchHandler {
-  const workspaceAppNodeByOpenRequest = new Map<string, string>();
-  const workspaceAppOpenRequestInFlight = new Map<
-    string,
-    Promise<string | null>
-  >();
-
-  return (request) => {
-    const requestKey = workspaceAppOpenRequestKey(request);
-    if (!requestKey) {
-      return presentWorkspaceBrowser(input.host, request);
-    }
-
-    pruneClosedWorkspaceAppBrowserNodes(
-      input.host,
-      workspaceAppNodeByOpenRequest
-    );
-    const rememberedNodeId = workspaceAppNodeByOpenRequest.get(requestKey);
-    if (rememberedNodeId) {
-      input.host.focusNode(rememberedNodeId);
-      return rememberedNodeId;
-    }
-
-    const inFlight = workspaceAppOpenRequestInFlight.get(requestKey);
-    if (inFlight) {
-      return inFlight;
-    }
-
-    let openRequest!: Promise<string | null>;
-    openRequest = presentWorkspaceBrowser(input.host, request)
-      .then((nodeId) => {
-        if (nodeId) {
-          workspaceAppNodeByOpenRequest.set(requestKey, nodeId);
-        }
-        return nodeId;
-      })
-      .finally(() => {
-        if (workspaceAppOpenRequestInFlight.get(requestKey) === openRequest) {
-          workspaceAppOpenRequestInFlight.delete(requestKey);
-        }
-      });
-    workspaceAppOpenRequestInFlight.set(requestKey, openRequest);
-    return openRequest;
-  };
-}
-
-function workspaceAppOpenRequestKey(
-  request: WorkspaceBrowserLaunchRequest
-): string | null {
-  if (
-    request.kind !== "open" ||
-    request.source !== "workspace_app" ||
-    request.reuseIfOpen !== false
-  ) {
-    return null;
-  }
-  const sourceNodeId = request.sourceNodeId?.trim() ?? "";
-  return sourceNodeId
-    ? JSON.stringify([request.workspaceId, sourceNodeId, request.url])
-    : null;
-}
-
-function pruneClosedWorkspaceAppBrowserNodes(
-  host: WorkbenchHostHandle,
-  nodeByOpenRequest: Map<string, string>
-): void {
-  const liveBrowserNodeIds = new Set(
-    host
-      .getSnapshot()
-      .nodes.filter((node) => node.data.typeId === workspaceBrowserNodeID)
-      .map((node) => node.id)
-  );
-  for (const [requestKey, nodeId] of nodeByOpenRequest) {
-    if (!liveBrowserNodeIds.has(nodeId)) {
-      nodeByOpenRequest.delete(requestKey);
-    }
-  }
+  return (request) => presentWorkspaceBrowser(input.host, request);
 }
 
 async function presentWorkspaceBrowser(
@@ -94,6 +19,13 @@ async function presentWorkspaceBrowser(
     request.kind === "focus"
       ? resolveWorkspaceBrowserNodeId(host, request.preferredNodeId)
       : null;
+  if (
+    request.kind === "focus" &&
+    request.fallbackToCurrent === false &&
+    !preferredNodeId
+  ) {
+    return null;
+  }
   const existingNodeId =
     request.kind === "open" && request.reuseIfOpen === false
       ? null
