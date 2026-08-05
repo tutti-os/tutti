@@ -579,10 +579,6 @@ function ReadyWorkspaceWorkbenchWithSession({
         registerWorkspaceBrowserLaunchHandler(
           state.workspace.id,
           createWorkbenchWorkspaceBrowserPresenter({
-            browserPages: {
-              openPage: (request) =>
-                runtime.workbenchHostService.openBrowserPage(request)
-            },
             host
           })
         );

@@ -483,14 +483,15 @@ delimited by ---`, and the composer skill picker may show partial or
   attempt.
 - Fix:
   Carry the exact Workspace App source node through the Browser launch
-  coordinator. Coalesce in-flight launches by source node and normalized URL,
-  and remember the resulting Browser node so a later repeat focuses it without
-  restarting the authorization navigation. Prune closed nodes so a genuinely
-  retried attempt can open again.
+  coordinator. Let the workspace Browser service coalesce in-flight launches
+  by source node and normalized URL. Reuse the resulting Browser only while its
+  active page still shows the requested URL; a success/cancellation redirect or
+  a closed Browser invalidates the association so a genuine retry can open.
 - Validation:
   Cover concurrent identical requests, a later identical request while the
-  Browser is live, and distinct URLs from the same Workspace App. The first two
-  cases must launch once; distinct URLs must still launch separate Browsers.
+  Browser still shows the authorization URL, a success/cancellation redirect,
+  and distinct URLs from the same Workspace App. The first two cases must
+  launch once; a redirect and distinct URLs must allow a separate Browser.
 - References:
   [workspaceAppWindowOpen.ts](../../../apps/desktop/src/main/ipc/workspaceAppWindowOpen.ts)
   [workspaceBrowserService.ts](../../../apps/desktop/src/renderer/src/features/workspace-workbench/services/internal/workspaceBrowserService.ts)
