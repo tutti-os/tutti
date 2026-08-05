@@ -434,6 +434,38 @@ delimited by ---`, and the composer skill picker may show partial or
   [tabsStore.ts](../../../packages/browser/workbench-node/src/core/tabsStore.ts)
   [nodeController.ts](../../../packages/browser/workbench-node/src/core/nodeController.ts)
 
+### Workspace App authorization opens two Browser windows
+
+- Symptom:
+  One Workspace App connection action opens two internal Browser windows for
+  the same authorization URL, or clicking the connection action again while
+  its authorization page is still open creates another Browser window.
+- Quick checks:
+  Compare the `workspace app open-url IPC received` and `workspace app emitted
+  open-url` logs by source node and normalized URL. Two emissions close
+  together can come from the preload link interception and Electron's native
+  window-open fallback for one page action.
+- Root cause:
+  Workspace App popup events request a separate Browser window. Before the
+  presenter retained the popup source identity, concurrent duplicate events
+  could both observe no launched window and race through `launchNode`; a later
+  repeat also had no way to find the Browser already showing that authorization
+  attempt.
+- Fix:
+  Carry the exact Workspace App source node through the Browser launch
+  coordinator. Coalesce in-flight launches by source node and normalized URL,
+  and remember the resulting Browser node so a later repeat focuses it without
+  restarting the authorization navigation. Prune closed nodes so a genuinely
+  retried attempt can open again.
+- Validation:
+  Cover concurrent identical requests, a later identical request while the
+  Browser is live, and distinct URLs from the same Workspace App. The first two
+  cases must launch once; distinct URLs must still launch separate Browsers.
+- References:
+  [workspaceAppWindowOpen.ts](../../../apps/desktop/src/main/ipc/workspaceAppWindowOpen.ts)
+  [workspaceBrowserService.ts](../../../apps/desktop/src/renderer/src/features/workspace-workbench/services/internal/workspaceBrowserService.ts)
+  [workbenchWorkspaceBrowserPresenter.ts](../../../apps/desktop/src/renderer/src/features/workspace-workbench/services/workbenchWorkspaceBrowserPresenter.ts)
+
 ### Agent opening several pages repeatedly steals workspace focus
 
 - Symptom:

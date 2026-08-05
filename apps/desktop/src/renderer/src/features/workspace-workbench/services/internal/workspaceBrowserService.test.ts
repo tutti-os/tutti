@@ -164,6 +164,7 @@ test("workspace browser service opens Browser popups in tabs and launches app UR
       kind: "open",
       reuseIfOpen: false,
       source: "workspace_app",
+      sourceNodeId: "workspace-app:99",
       url: "https://example.com/app-popup",
       workspaceId: "workspace-browser-open-url"
     }

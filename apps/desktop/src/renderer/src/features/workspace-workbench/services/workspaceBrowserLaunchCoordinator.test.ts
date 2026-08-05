@@ -56,6 +56,8 @@ test("workspace browser launch coordinator preserves reuse preference", async ()
   assert.equal(
     await requestWorkspaceBrowserLaunch({
       reuseIfOpen: false,
+      source: "workspace_app",
+      sourceNodeId: " workspace-app:99 ",
       url: "https://example.com/new-window",
       workspaceId: "workspace-reuse"
     }),
@@ -67,6 +69,8 @@ test("workspace browser launch coordinator preserves reuse preference", async ()
     {
       kind: "open",
       reuseIfOpen: false,
+      source: "workspace_app",
+      sourceNodeId: "workspace-app:99",
       url: "https://example.com/new-window",
       workspaceId: "workspace-reuse"
     }
