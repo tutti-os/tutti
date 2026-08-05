@@ -3,6 +3,7 @@ package agent
 import (
 	"strings"
 
+	"github.com/tutti-os/tutti/packages/agent/daemon/providerregistry"
 	agenthost "github.com/tutti-os/tutti/packages/agent/host"
 )
 
@@ -16,7 +17,7 @@ const (
 // request rather than a plugin path. The runtime owns the final current-thread
 // check and the official App Server mention.
 func codexNativeTurnCapability(provider string, content []PromptContentBlock) ([]PromptContentBlock, *agenthost.TurnCapabilityInvocation) {
-	if strings.TrimSpace(provider) != "codex" || len(content) == 0 {
+	if !providerregistry.SupportsNativePluginTurn(provider) || len(content) == 0 {
 		return content, nil
 	}
 	for index, block := range content {

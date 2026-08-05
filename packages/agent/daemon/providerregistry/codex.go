@@ -13,12 +13,13 @@ func codexDescriptor() ProviderDescriptor {
 	return ProviderDescriptor{
 		Identity: canonicalProviderIdentity(CodexProviderID),
 		Runtime: RuntimeDescriptor{
-			Kind:                RuntimeKindCodexAppServer,
-			Name:                "codex-app-server",
-			Command:             []string{"codex", "app-server"},
-			ClientInfoName:      "codex_cli_rs",
-			AuthRequiredMessage: "Codex requires authentication. Run `codex login` on the host (or sync Codex credentials), then retry this session.",
-			NativeSessionFork:   true,
+			Kind:                   RuntimeKindCodexAppServer,
+			Name:                   "codex-app-server",
+			Command:                []string{"codex", "app-server"},
+			ClientInfoName:         "codex_cli_rs",
+			AuthRequiredMessage:    "Codex requires authentication. Run `codex login` on the host (or sync Codex credentials), then retry this session.",
+			TurnCapabilityStrategy: TurnCapabilityStrategyNativePlugin,
+			NativeSessionFork:      true,
 			AppServerFork: AppServerForkDescriptor{
 				UserAgentBrand:        "codex",
 				ThroughTurnMinVersion: CodexThroughTurnForkMinVersion,

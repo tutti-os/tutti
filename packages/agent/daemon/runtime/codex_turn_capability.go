@@ -3,6 +3,8 @@ package agentruntime
 import (
 	"context"
 	"strings"
+
+	"github.com/tutti-os/tutti/packages/agent/daemon/providerregistry"
 )
 
 type CodexTurnCapabilityInput struct {
@@ -29,7 +31,7 @@ func (c *Controller) EnsureCodexTurnCapability(ctx context.Context, input CodexT
 	}
 	defer release()
 	session, adapter, err := c.sessionAndAdapter(roomID, agentSessionID)
-	if err != nil || strings.TrimSpace(session.Provider) != "codex" {
+	if err != nil || !providerregistry.SupportsNativePluginTurn(session.Provider) {
 		return PromptContentBlock{}, ErrSessionNotFound
 	}
 	codex, ok := adapter.(*CodexAppServerAdapter)
