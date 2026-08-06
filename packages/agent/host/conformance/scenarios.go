@@ -1,18 +1,14 @@
 package conformance
 
 var (
-	createEmptySessionScenario        = Scenario{Name: "create empty session", run: runCreateEmptySession}
-	createWithInitialContentScenario  = Scenario{Name: "create with initial content", run: runCreateWithInitialContent}
-	createWithInitialGoalScenario     = Scenario{Name: "create with typed initial goal", run: runCreateWithInitialGoal}
-	createWithRailPlacementScenario   = Scenario{Name: "create with explicit rail placement", run: runCreateWithRailPlacement}
-	resumePersistedSessionScenario    = Scenario{Name: "resume persisted session", run: runResumePersistedSession}
-	sendInputScenario                 = Scenario{Name: "send input", run: runSendInput}
-	contextRecoveryBeforeSendScenario = Scenario{
-		Name: "pending runtime context recovery precedes new turn dispatch",
-		run:  runPendingRuntimeContextRecoveryPrecedesNewTurnDispatch,
-	}
-	sendConnectorOnlyInputScenario = Scenario{Name: "send connector-only input", run: runSendConnectorOnlyInput}
-	providerAcceptanceScenario     = Scenario{
+	createEmptySessionScenario       = Scenario{Name: "create empty session", run: runCreateEmptySession}
+	createWithInitialContentScenario = Scenario{Name: "create with initial content", run: runCreateWithInitialContent}
+	createWithInitialGoalScenario    = Scenario{Name: "create with typed initial goal", run: runCreateWithInitialGoal}
+	createWithRailPlacementScenario  = Scenario{Name: "create with explicit rail placement", run: runCreateWithRailPlacement}
+	resumePersistedSessionScenario   = Scenario{Name: "resume persisted session", run: runResumePersistedSession}
+	sendInputScenario                = Scenario{Name: "send input", run: runSendInput}
+	sendConnectorOnlyInputScenario   = Scenario{Name: "send connector-only input", run: runSendConnectorOnlyInput}
+	providerAcceptanceScenario       = Scenario{
 		Name: "new turns require durable provider acceptance",
 		run:  runNewTurnsRequireDurableProviderAcceptance,
 	}
@@ -63,7 +59,6 @@ func Scenarios() []Scenario {
 		createWithRailPlacementScenario,
 		resumePersistedSessionScenario,
 		sendInputScenario,
-		contextRecoveryBeforeSendScenario,
 		sendConnectorOnlyInputScenario,
 		guidanceTargetRequiredScenario,
 		guidanceExactTargetScenario,
@@ -161,6 +156,25 @@ func SessionForkScenarios() []SessionForkScenario {
 	}
 }
 
+// ContextRecoveryScenarios covers the optional runtime replacement capability
+// independently from the universal lifecycle catalog.
+func ContextRecoveryScenarios() []ContextRecoveryScenario {
+	return []ContextRecoveryScenario{
+		{
+			Name: "pending runtime context recovery precedes new turn dispatch",
+			run:  runPendingRuntimeContextRecoveryPrecedesNewTurnDispatch,
+		},
+		{
+			Name: "terminal canonical Goal is not planned for context recovery",
+			run:  runTerminalGoalIsNotPlannedForRuntimeContextRecovery,
+		},
+		{
+			Name: "diverged canonical Goal is rejected before context recovery",
+			run:  runDivergedGoalIsRejectedBeforeRuntimeContextRecovery,
+		},
+	}
+}
+
 // InteractionTreeScenarios covers the canonical cross-session interaction
 // read without expanding the base lifecycle Driver contract.
 func InteractionTreeScenarios() []InteractionTreeScenario {
@@ -190,7 +204,6 @@ func ApplicationCoreScenarios() []Scenario {
 		createWithRailPlacementScenario,
 		resumePersistedSessionScenario,
 		sendInputScenario,
-		contextRecoveryBeforeSendScenario,
 		sendConnectorOnlyInputScenario,
 		guidanceTargetRequiredScenario,
 		guidanceExactTargetScenario,

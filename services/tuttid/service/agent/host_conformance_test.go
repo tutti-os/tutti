@@ -49,6 +49,30 @@ func TestDirectHostApplicationCoreConformance(t *testing.T) {
 	}
 }
 
+func TestRuntimeContextRecoveryConformance(t *testing.T) {
+	for _, directHost := range []bool{false, true} {
+		name := "service adapter"
+		if directHost {
+			name = "direct host"
+		}
+		t.Run(name, func(t *testing.T) {
+			for _, scenario := range hostconformance.ContextRecoveryScenarios() {
+				scenario := scenario
+				t.Run(scenario.Name, func(t *testing.T) {
+					driver := &legacyHostConformanceDriver{t: t, directHost: directHost}
+					if err := hostconformance.RunContextRecovery(
+						context.Background(),
+						driver,
+						scenario,
+					); err != nil {
+						t.Fatal(err)
+					}
+				})
+			}
+		})
+	}
+}
+
 func TestHostHistoricalStateConformance(t *testing.T) {
 	for _, scenario := range hostconformance.HistoricalStateScenarios() {
 		scenario := scenario
@@ -273,7 +297,6 @@ type legacyHostConformanceDriver struct {
 
 func (d *legacyHostConformanceDriver) Reset(_ context.Context, fixture hostconformance.Fixture) error {
 	d.runtime = newFakeRuntime()
-	d.runtime.contextRecoveryPending = fixture.ContextRecoveryPending
 	d.runtime.guidanceTargetMismatch = fixture.GuidanceTargetMismatch
 	d.sessions = &fakeSessionReader{
 		sessions: map[string]PersistedSession{}, tombstoned: map[string]bool{}, deletedAt: map[string]int64{},
@@ -608,6 +631,69 @@ func (d *legacyHostConformanceDriver) Reset(_ context.Context, fixture hostconfo
 		}
 	}
 	return nil
+}
+
+func (d *legacyHostConformanceDriver) ResetContextRecovery(
+	ctx context.Context,
+	fixture hostconformance.ContextRecoveryFixture,
+) error {
+	if err := d.Reset(ctx, hostconformance.Fixture{Session: &fixture.Session}); err != nil {
+		return err
+	}
+	if status := strings.TrimSpace(fixture.ObservedGoalStatus); status != "" {
+		d.runtime.goalControlHook = func(
+			_ context.Context,
+			input RuntimeGoalControlInput,
+		) (RuntimeGoalControlResult, error) {
+			return RuntimeGoalControlResult{
+				AgentSessionID: input.AgentSessionID,
+				Goal: map[string]any{
+					"objective": input.Objective,
+					"status":    status,
+				},
+				Evidence:      map[string]any{"confidence": "authoritative"},
+				ProviderPhase: "applied",
+			}, nil
+		}
+	}
+	d.runtime.contextRecoveryPending = fixture.Pending
+	return nil
+}
+
+func (d *legacyHostConformanceDriver) ContextRecoveryMetrics() hostconformance.ContextRecoveryMetrics {
+	metrics := hostconformance.ContextRecoveryMetrics{
+		RecoveryCalls: len(d.runtime.contextRecoveryCalls),
+		ExecCalls:     len(d.runtime.execCalls),
+	}
+	if len(d.runtime.execProviderSessionIDs) > 0 {
+		metrics.LastExecProviderSessionID =
+			d.runtime.execProviderSessionIDs[len(d.runtime.execProviderSessionIDs)-1]
+	}
+	if len(d.runtime.contextRecoveryCalls) > 0 {
+		last := len(d.runtime.contextRecoveryCalls) - 1
+		metrics.LastActiveGoal = d.runtime.contextRecoveryCalls[last].ActiveGoal
+	}
+	return metrics
+}
+
+func (d *legacyHostConformanceDriver) RefreshContextRecoveryGoalObservation(
+	ctx context.Context,
+	ref agenthost.SessionRef,
+	goal map[string]any,
+) error {
+	d.goalNowUnixMS++
+	_, err := d.goalStore.ReconcileSessionGoalObservation(
+		ctx,
+		agentactivitybiz.GoalObservationReconcile{
+			WorkspaceID: ref.WorkspaceID, AgentSessionID: ref.AgentSessionID,
+			Observed: clonePayload(goal),
+			Evidence: map[string]any{
+				"source": "runtime_session_report", "confidence": "provider_observed",
+			},
+			OccurredAtUnixMS: d.goalNowUnixMS,
+		},
+	)
+	return err
 }
 
 func (d *legacyHostConformanceDriver) Create(
@@ -1156,11 +1242,7 @@ func (d *legacyHostConformanceDriver) Metrics() hostconformance.Metrics {
 		InteractiveCalls:      len(d.runtime.submitInteractiveCalls), UpdateSettingsCalls: len(d.runtime.updateSettingsCalls),
 		CloseCalls:       len(d.runtime.closeCalls),
 		GoalControlCalls: len(d.runtime.goalControlCalls), GoalReconcileCalls: len(d.runtime.goalReconcileCalls),
-		RecoverySteps:        append([]string(nil), (*d.recoverySteps)...),
-		ContextRecoveryCalls: len(d.runtime.contextRecoveryCalls),
-	}
-	if len(d.runtime.execProviderSessionIDs) > 0 {
-		metrics.LastExecProviderSessionID = d.runtime.execProviderSessionIDs[len(d.runtime.execProviderSessionIDs)-1]
+		RecoverySteps: append([]string(nil), (*d.recoverySteps)...),
 	}
 	if closeCallCount := len(d.runtime.closeCalls); closeCallCount > 0 {
 		metrics.LastClosePreservedCanonicalState = d.runtime.closeCalls[closeCallCount-1].PreserveCanonicalState
@@ -1310,6 +1392,24 @@ type conformanceRuntimeOperationStore struct {
 type conformanceGoalStateStore struct {
 	agenthost.GoalStateStore
 	steps *[]string
+}
+
+func (s *conformanceGoalStateStore) GetCompletedGoalControlOperationForRevision(
+	ctx context.Context,
+	workspaceID string,
+	agentSessionID string,
+	revision int64,
+) (agentactivitybiz.GoalControlOperation, bool, error) {
+	store, ok := s.GoalStateStore.(agenthost.GoalRevisionOperationStore)
+	if !ok {
+		return agentactivitybiz.GoalControlOperation{}, false, nil
+	}
+	return store.GetCompletedGoalControlOperationForRevision(
+		ctx,
+		workspaceID,
+		agentSessionID,
+		revision,
+	)
 }
 
 func (s *conformanceGoalStateStore) RequeueLeasedGoalControlOperationsOnStartup(ctx context.Context, now int64) (int64, error) {

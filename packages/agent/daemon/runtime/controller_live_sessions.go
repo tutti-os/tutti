@@ -12,6 +12,15 @@ import (
 
 func (c *Controller) ensureLiveAdapterSession(ctx context.Context, session Session, adapter Adapter) error {
 	probe, ok := adapter.(LiveSessionProbeAdapter)
+	if recoveryAdapter, ok := adapter.(ContextRecoveryAdapter); ok {
+		_, required, err := recoveryAdapter.PrepareContextRecovery(session)
+		if err != nil {
+			return err
+		}
+		if required {
+			return ErrContextRecoveryRequired
+		}
+	}
 	if !ok || probe.HasLiveSession(session) {
 		return c.applyRetainedGoalGenerationFencesOrClose(ctx, session, adapter)
 	}
@@ -276,12 +285,28 @@ func (c *Controller) recreateAdapterSessionWithNotice(
 	adapter Adapter,
 	notice func(Session) (activityshared.Event, bool),
 ) (Session, error) {
+	return c.recreateAdapterSessionWithStarter(
+		ctx,
+		session,
+		adapter,
+		adapter.Start,
+		notice,
+	)
+}
+
+func (c *Controller) recreateAdapterSessionWithStarter(
+	ctx context.Context,
+	session Session,
+	adapter Adapter,
+	start func(context.Context, Session) ([]activityshared.Event, error),
+	notice func(Session) (activityshared.Event, bool),
+) (Session, error) {
 	fresh := session
 	fresh.ProviderSessionID = ""
 	fresh.Status = SessionStatusReady
 	fresh.LastError = ""
 	fresh.UpdatedAtUnixMS = unixMS(now())
-	events, err := adapter.Start(ctx, fresh)
+	events, err := start(ctx, fresh)
 	if err != nil {
 		return Session{}, err
 	}
@@ -337,7 +362,15 @@ func (c *Controller) PrepareContextRecovery(
 	if err != nil {
 		return PrepareContextRecoveryResult{}, err
 	}
-	if !claudeSDKContextRecoveryPending(session.RuntimeContext) {
+	recoveryAdapter, ok := adapter.(ContextRecoveryAdapter)
+	if !ok {
+		return PrepareContextRecoveryResult{Session: session}, nil
+	}
+	prepared, required, err := recoveryAdapter.PrepareContextRecovery(session)
+	if err != nil {
+		return PrepareContextRecoveryResult{}, err
+	}
+	if !required {
 		return PrepareContextRecoveryResult{Session: session}, nil
 	}
 	if c.HasActiveTurn(roomID, agentSessionID) {
@@ -355,30 +388,73 @@ func (c *Controller) PrepareContextRecovery(
 		}
 	}
 
-	recovery := claudeSDKContextRecoveryFromRuntimeContext(session.RuntimeContext)
-	recovery.State = claudeSDKContextRecoveryStateHandoff
-	recovery.SourceProviderSessionID = firstNonEmptyString(
-		strings.TrimSpace(recovery.SourceProviderSessionID),
-		strings.TrimSpace(session.ProviderSessionID),
-	)
-	recovery.HandoffSent = false
-	session.RuntimeContext = clonePayload(session.RuntimeContext)
-	if session.RuntimeContext == nil {
-		session.RuntimeContext = map[string]any{}
-	}
-	session.RuntimeContext[claudeSDKContextRecoveryRuntimeKey] =
-		claudeSDKContextRecoveryRuntimeContext(recovery)
-
-	fresh, err := c.recreateAdapterSessionWithNotice(
+	fresh, err := c.recreateAdapterSessionWithStarter(
 		ctx,
-		session,
+		prepared,
 		adapter,
+		func(ctx context.Context, session Session) ([]activityshared.Event, error) {
+			return recoveryAdapter.StartContextRecovery(ctx, session, input.ActiveGoal)
+		},
 		nil,
 	)
 	if err != nil {
 		return PrepareContextRecoveryResult{}, err
 	}
 	return PrepareContextRecoveryResult{Session: fresh, Recovered: true}, nil
+}
+
+func (c *Controller) ContextRecoveryRequired(
+	ctx context.Context,
+	input PrepareContextRecoveryInput,
+) (bool, error) {
+	roomID := strings.TrimSpace(input.RoomID)
+	agentSessionID := strings.TrimSpace(input.AgentSessionID)
+	if c == nil || roomID == "" || agentSessionID == "" {
+		return false, errors.New("room id and agent session id are required")
+	}
+	session, adapter, err := c.sessionAndAdapter(roomID, agentSessionID)
+	if err != nil {
+		return false, err
+	}
+	recoveryAdapter, ok := adapter.(ContextRecoveryAdapter)
+	if !ok {
+		return false, nil
+	}
+	_, required, err := recoveryAdapter.PrepareContextRecovery(session)
+	if err != nil || !required {
+		return required, err
+	}
+	if err := c.flushSessionReports(ctx, session); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+func (c *Controller) ResumeContextRecoveryRequired(
+	ctx context.Context,
+	input ResumeInput,
+) (bool, error) {
+	provider := strings.TrimSpace(input.Provider)
+	if c == nil || provider == "" {
+		return false, errors.New("provider is required")
+	}
+	adapter, err := c.resolveAdapter(ctx, AdapterResolveInput{
+		Provider: provider, AgentTargetID: input.AgentTargetID,
+		CWD: input.CWD, ProviderTargetRef: clonePayload(input.ProviderTargetRef),
+	})
+	if err != nil || adapter == nil {
+		return false, err
+	}
+	recoveryAdapter, ok := adapter.(ContextRecoveryAdapter)
+	if !ok {
+		return false, nil
+	}
+	_, required, err := recoveryAdapter.PrepareContextRecovery(Session{
+		RoomID: input.RoomID, AgentSessionID: input.AgentSessionID,
+		Provider: provider, ProviderSessionID: input.ProviderSessionID,
+		RuntimeContext: clonePayload(input.RuntimeContext),
+	})
+	return required, err
 }
 
 // sessionRecreatedNoticeEvent builds the visible system notice that

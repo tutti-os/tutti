@@ -1,8 +1,64 @@
 import type { AgentActivityInteraction } from "@tutti-os/agent-activity-core";
+import type { AgentConversationVM } from "@tutti-os/agent-gui/conversation-projection";
 import { act, create, type ReactTestRenderer } from "react-test-renderer";
 import { Text } from "react-native";
 import { PrimaryButton } from "./PrimaryButton";
 import { MobileInteractionCard } from "./MobileConversationRows";
+import { MobileConversationTimeline } from "./MobileConversationTimeline";
+
+test("renders the typed context recovery notice on Native", () => {
+  let renderer: ReactTestRenderer;
+  act(() => {
+    renderer = create(
+      <MobileConversationTimeline
+        conversation={
+          {
+            rows: [
+              {
+                kind: "message",
+                id: "row-recovery",
+                turnId: "turn-recovery",
+                speaker: "assistant",
+                occurredAtUnixMs: 1,
+                thinking: [],
+                messages: [
+                  {
+                    kind: "message-content",
+                    id: "message-recovery",
+                    turnId: "turn-recovery",
+                    body: "",
+                    presentationKind: "turn-boundary",
+                    occurredAtUnixMs: 1,
+                    systemNotice: {
+                      noticeKind: "context_recovery_pending",
+                      semanticKind: "context-recovery-pending",
+                      severity: null,
+                      command: "compact",
+                      commandStatus: "failed",
+                      title: "Context compaction interrupted.",
+                      detail: "Maximum context length exceeded.",
+                      retryable: null
+                    }
+                  }
+                ]
+              }
+            ]
+          } as unknown as AgentConversationVM
+        }
+        media={{ loadingImageIds: [], sourcesByImageId: {} }}
+        onLinkPress={() => false}
+      />
+    );
+  });
+
+  const text = renderer!.root
+    .findAllByType(Text)
+    .map((node) => String(node.props.children))
+    .join("\n");
+  expect(text).toContain("Tutti is recovering this conversation's context");
+  expect(text).toContain("Tutti CLI");
+  expect(text).toContain("Maximum context length exceeded.");
+});
 
 test("keeps the explicit Interaction choices available after a failed response", () => {
   const submissions: Record<string, unknown>[] = [];

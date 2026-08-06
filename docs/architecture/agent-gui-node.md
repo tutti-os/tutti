@@ -513,10 +513,30 @@ serial rollover, not multiple concurrently active provider sessions:
 runtime-context recovery generation records that earlier Turns may belong to a
 previous provider session. AgentGUI keeps the same conversation visible, shows
 an explicit system notice before the next send, and the replacement provider
-may retrieve only the relevant canonical history through Tutti CLI. Until Turn
-bindings carry a provider-session generation, provider-native Fork from a
-recovered Claude Session fails closed instead of applying an old checkpoint to
-the replacement session.
+may retrieve only the relevant canonical history through Tutti CLI. Turn
+bindings carry the current provider-session identity and recovery generation:
+bindings from an earlier generation fail closed instead of applying an old
+checkpoint to the replacement session, while new Turns in the replacement
+session remain forkable. The provider adapter owns interpretation of its opaque
+runtime context, while Host owns Goal recovery: after a cheap pending-recovery
+probe and a durable report barrier, Host reads canonical Goal state and supplies a plan only for the exact
+durable generation whose observation is still `active`. Operation identity is
+resolved from the stable completed operation for that revision, not mutable
+observation evidence. Host requires a synced, pending-free desired/observed
+objective and its matching completed `set`, so delayed active observations
+cannot combine an old objective with a newer identity. The adapter applies that operation/revision only to the
+explicitly fresh provider session. Terminal
+Goal projections remain visible but are never planned or reactivated by
+recovery. Exec repeats the pending check while holding the runtime lifecycle
+lock, closing the probe-to-dispatch race. Controller
+owns only lifecycle serialization, live-process release, event publication,
+and retained admission fences.
+
+The canonical conversation projection maps the recovery notice to the typed
+`context-recovery-pending` semantic once. Desktop and Native renderers localize
+that same semantic and disclose both Tutti's fallback and the on-demand CLI
+history handoff; platform components do not reinterpret provider-specific raw
+notice fields.
 
 Provider-native subagents use child Sessions:
 

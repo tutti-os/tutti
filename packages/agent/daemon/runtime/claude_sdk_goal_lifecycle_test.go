@@ -899,6 +899,15 @@ func TestClaudeSDKGoalArmTurnCarriesDurableGoalIdentity(t *testing.T) {
 	if err := <-done; err != nil {
 		t.Fatalf("ApplyGoal set: %v", err)
 	}
+	persistedIdentity := payloadMap(
+		claudeSDKRuntimeContext(session, adapterSession),
+		claudeSDKGoalIdentityRuntimeKey,
+	)
+	if payloadString(persistedIdentity, "operationId") != "goal-op-7" ||
+		payloadInt64(persistedIdentity, "revision") != 7 ||
+		payloadInt64(persistedIdentity, "repairEpoch") != 2 {
+		t.Fatalf("persisted Goal identity = %#v", persistedIdentity)
+	}
 	turnID := payloadString(setRequest.Payload, "turnId")
 	promptCorrelationID := payloadString(setRequest.Payload, "promptCorrelationId")
 	if promptCorrelationID == "" || promptCorrelationID == turnID {

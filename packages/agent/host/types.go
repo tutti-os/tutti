@@ -308,6 +308,7 @@ type RuntimeResumeInput struct {
 	ProviderTargetRef      map[string]any
 	Metadata               storesqlite.SessionMetadata
 	InternalRuntimeContext map[string]any
+	ContextRecoveryGoal    *RuntimeContextRecoveryGoal
 	// RecreateIfMissing lets the runtime start a fresh provider session in place
 	// when the existing one can't be restored locally (imported conversations),
 	// instead of surfacing a non-recoverable restore error.
@@ -317,6 +318,17 @@ type RuntimeResumeInput struct {
 type RuntimeContextRecoveryInput struct {
 	WorkspaceID    string
 	AgentSessionID string
+	ActiveGoal     *RuntimeContextRecoveryGoal
+}
+
+// RuntimeContextRecoveryGoal is the exact canonical active Goal generation
+// Host authorizes a replacement provider session to restore. A nil plan means
+// recovery must not mutate provider Goal state.
+type RuntimeContextRecoveryGoal struct {
+	Objective   string
+	OperationID string
+	Revision    int64
+	RepairEpoch int64
 }
 
 type RuntimeContextRecoveryResult struct {

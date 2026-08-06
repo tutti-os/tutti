@@ -81,7 +81,7 @@ func TestClaudeCodeSDKAdapterMapsSyntheticTurnStarted(t *testing.T) {
 		t.Fatalf("events = %#v, want root provider turn start", events)
 	}
 	if events[0].Payload.TurnID != "root-turn-1" || events[0].Payload.ProviderTurnID != "synthetic-1" ||
-		string(events[0].Payload.ProviderTurnBindingJSON) != `{"schemaVersion":1}` ||
+		string(events[0].Payload.ProviderTurnBindingJSON) != `{"schemaVersion":2,"providerSessionId":"agent-session-1"}` ||
 		events[0].Payload.TurnPhase != string(activityshared.TurnPhaseRunning) {
 		t.Fatalf("turn started payload = %#v", events[0].Payload)
 	}
@@ -154,7 +154,7 @@ func TestClaudeCodeSDKAdapterMapsObservedProviderTurnIdentity(t *testing.T) {
 		events[0].Type != activityshared.EventRootProviderTurnStarted ||
 		events[0].Payload.TurnID != "canonical-turn-1" ||
 		events[0].Payload.ProviderTurnID != "persisted-claude-user-uuid" ||
-		string(events[0].Payload.ProviderTurnBindingJSON) != `{"schemaVersion":1}` {
+		string(events[0].Payload.ProviderTurnBindingJSON) != `{"schemaVersion":2,"providerSessionId":"agent-session-1"}` {
 		t.Fatalf("events = %#v, want observed provider identity", events)
 	}
 	if adapter.claudeSDKRootTurnID(adapterSession, "") != "canonical-turn-1" {
@@ -199,7 +199,7 @@ func TestClaudeCodeSDKAdapterMapsProviderTurnCheckpoint(t *testing.T) {
 		events[0].Payload.TurnID != "canonical-turn-1" ||
 		events[0].Payload.ProviderTurnID != "provider-prompt-1" ||
 		string(events[0].Payload.ProviderTurnBindingJSON) !=
-			`{"schemaVersion":1,"checkpointMessageId":"provider-system-1"}` {
+			`{"schemaVersion":2,"providerSessionId":"agent-session-1","checkpointMessageId":"provider-system-1"}` {
 		t.Fatalf("events = %#v, want provider checkpoint", events)
 	}
 }

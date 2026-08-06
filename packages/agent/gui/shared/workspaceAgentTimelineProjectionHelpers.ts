@@ -176,8 +176,16 @@ export function systemNoticeFromPayload(
     return null;
   }
   const source = stringRecordValue(payload, "source");
+  const noticeKind = stringRecordValue(payload, "noticeKind");
+  const semanticKind =
+    noticeKind === "context_recovery_pending" &&
+    commandSemantics?.command === "compact" &&
+    commandSemantics.commandStatus === "failed"
+      ? "context-recovery-pending"
+      : null;
   return {
-    noticeKind: stringRecordValue(payload, "noticeKind"),
+    noticeKind,
+    ...(semanticKind ? { semanticKind } : {}),
     severity: stringRecordValue(payload, "severity"),
     ...(source ? { source } : {}),
     ...(commandSemantics

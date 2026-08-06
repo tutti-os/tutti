@@ -80,23 +80,24 @@ type StartInput struct {
 }
 
 type ResumeInput struct {
-	RoomID            string
-	AgentSessionID    string
-	AgentTargetID     string
-	Provider          string
-	ProviderSessionID string
-	Resumable         bool
-	CWD               string
-	Env               []string
-	Title             string
-	Status            string
-	Visible           *bool
-	RuntimeContext    map[string]any
-	ProviderTargetRef map[string]any
-	PermissionModeID  string
-	Settings          *SessionSettings
-	CreatedAtUnixMS   int64
-	UpdatedAtUnixMS   int64
+	RoomID              string
+	AgentSessionID      string
+	AgentTargetID       string
+	Provider            string
+	ProviderSessionID   string
+	Resumable           bool
+	CWD                 string
+	Env                 []string
+	Title               string
+	Status              string
+	Visible             *bool
+	RuntimeContext      map[string]any
+	ProviderTargetRef   map[string]any
+	PermissionModeID    string
+	Settings            *SessionSettings
+	CreatedAtUnixMS     int64
+	UpdatedAtUnixMS     int64
+	ContextRecoveryGoal *ContextRecoveryGoal
 	// RecreateIfMissing creates a fresh provider session in place when the
 	// existing provider session can no longer be restored locally (e.g. an
 	// imported conversation), instead of returning a restore error.
@@ -106,6 +107,16 @@ type ResumeInput struct {
 type PrepareContextRecoveryInput struct {
 	RoomID         string
 	AgentSessionID string
+	ActiveGoal     *ContextRecoveryGoal
+}
+
+// ContextRecoveryGoal is the provider-neutral active Goal generation that
+// Host has authorized this fresh provider session to restore.
+type ContextRecoveryGoal struct {
+	Objective   string
+	OperationID string
+	Revision    int64
+	RepairEpoch int64
 }
 
 type PrepareContextRecoveryResult struct {
@@ -178,6 +189,7 @@ const (
 // supplied by the provider adapter and interpreted only by that adapter.
 type ProviderTurnBindingWriteInput struct {
 	Kind           string
+	Source         Session
 	ProviderTurnID string
 	Payload        map[string]any
 }

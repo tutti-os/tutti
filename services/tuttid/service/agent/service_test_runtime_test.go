@@ -618,6 +618,23 @@ func (f *fakeRuntime) PrepareContextRecovery(
 	}, nil
 }
 
+func (f *fakeRuntime) ContextRecoveryRequired(
+	_ context.Context,
+	input agenthost.RuntimeContextRecoveryInput,
+) (bool, error) {
+	if _, ok := f.sessions[input.WorkspaceID+":"+input.AgentSessionID]; !ok {
+		return false, agenthost.ErrSessionNotFound
+	}
+	return f.contextRecoveryPending, nil
+}
+
+func (f *fakeRuntime) ResumeContextRecoveryRequired(
+	_ context.Context,
+	_ agenthost.RuntimeResumeInput,
+) (bool, error) {
+	return f.contextRecoveryPending, nil
+}
+
 func (f *fakeRuntime) DurablyReportSubmitProvenance(_ context.Context, input RuntimeSubmitProvenanceInput) error {
 	f.provenanceCalls = append(f.provenanceCalls, input)
 	if f.provenanceHook != nil {

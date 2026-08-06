@@ -55,6 +55,51 @@ func TestProviderGoalAdoptionCompletesWithoutProviderRedispatch(t *testing.T) {
 	}
 }
 
+func TestCompletedGoalOperationLookupSurvivesObservationEvidenceReplacement(t *testing.T) {
+	t.Parallel()
+	store := openTestStore(t, testOptions(&staticProjectPaths{}))
+	ctx := context.Background()
+	if _, err := store.ReportSessionState(ctx, SessionStateReport{
+		WorkspaceID: "ws-recovery-identity", AgentSessionID: "session-recovery-identity",
+		Provider: "codex", ProviderSessionID: "thread-recovery-identity",
+		OccurredAtUnixMS: 10,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, changed, err := store.AdoptProviderGoalOperation(ctx, ProviderGoalAdoption{
+		OperationID: "goal-recovery-identity", WorkspaceID: "ws-recovery-identity",
+		AgentSessionID: "session-recovery-identity", ClientSubmitID: "provider-goal:recovery-identity",
+		Goal:             map[string]any{"objective": "ship it", "status": "active"},
+		OccurredAtUnixMS: 20,
+	}); err != nil || !changed {
+		t.Fatalf("adopt changed=%v error=%v", changed, err)
+	}
+	state, err := store.ReconcileSessionGoalObservation(ctx, GoalObservationReconcile{
+		WorkspaceID: "ws-recovery-identity", AgentSessionID: "session-recovery-identity",
+		Observed: map[string]any{"objective": "ship it", "status": "active"},
+		Evidence: map[string]any{
+			"source": "runtime_session_report", "confidence": "provider_observed",
+		},
+		OccurredAtUnixMS: 30,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if state.LastEvidence["operationId"] != nil {
+		t.Fatalf("runtime observation unexpectedly retained evidence identity: %#v", state.LastEvidence)
+	}
+	operation, found, err := store.GetCompletedGoalControlOperationForRevision(
+		ctx,
+		"ws-recovery-identity",
+		"session-recovery-identity",
+		state.Revision,
+	)
+	if err != nil || !found || operation.OperationID != "goal-recovery-identity" ||
+		operation.GoalRevision != state.Revision {
+		t.Fatalf("operation=%#v found=%v error=%v", operation, found, err)
+	}
+}
+
 func TestProviderGoalAdoptionRejectsConflictingActiveGeneration(t *testing.T) {
 	t.Parallel()
 	store := openTestStore(t, testOptions(&staticProjectPaths{}))

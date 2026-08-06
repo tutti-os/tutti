@@ -3758,21 +3758,41 @@ inline data URL instead`. Claude or standard ACP may instead receive no
   `tutti agent get --session-id "$TUTTI_AGENT_SESSION_ID" --json`; it must not
   claim unread history. Keep `ProviderSessionID` as the single current pointer,
   record the replaced provider id and recovery generation in runtime context,
-  and fail closed for provider-native Turn Fork after recovery until bindings
-  carry their provider-session generation.
+  and write provider-session identity plus recovery generation into new Turn
+  bindings so old-generation Fork fails closed while current-generation Fork
+  remains available. Claim the one-shot handoff before sending the first
+  replacement request so a fast terminal event cannot race the marker; roll it
+  back only on pre-acceptance failure. On daemon restart, detect pending
+  recovery before provider resume so the exhausted process is not launched and
+  immediately replaced. Probe the provider-private pending marker, then cross a
+  durable report barrier before Host reads canonical Goal state. If the durable observation is still `active`,
+  Host resolves the exact operation/revision from the stable completed
+  operation record, not replaceable observation evidence, and supplies it as
+  the recovery plan only when desired and observed objectives are synced,
+  pending-free, and match that completed `set`. The adapter applies it only after the fresh provider
+  session starts; reject recovery before release when that identity is absent.
+  Keep `complete` and `blocked` Goal projections for display, but never include
+  them in the plan. Recheck pending recovery inside Exec's lifecycle lock so a
+  compact failure appearing after the Host probe cannot dispatch to the
+  exhausted provider.
 - Validation:
   Cover a restore snapshot where `maxTokens=200000`, `rawMaxTokens` is about
   1M, and auto-compact is enabled. Confirm the published total uses the raw
   hard limit and diagnostics retain both values. Also cover overflow
   classification, visible recovery notice metadata, serialized rollover before
-  the next Turn, one-shot CLI handoff context, and recovered-session Fork
-  rejection.
+  the next Turn, one-shot CLI handoff context under a fast terminal event,
+  direct cold-start recovery without an old resume, active Goal reapplication,
+  queued terminal-report ordering, probe-to-Exec race closure, terminal Goal
+  non-reactivation, old-generation Fork rejection,
+  current-generation Fork acceptance, and the typed recovery notice in both
+  Desktop and Native projections.
 - References:
   [compaction.ts](../../../packages/agent/claude-sdk-sidecar/src/compaction.ts)
   [claude_sdk_live_state.go](../../../packages/agent/daemon/runtime/claude_sdk_live_state.go)
   [claude_sdk_context_recovery.go](../../../packages/agent/daemon/runtime/claude_sdk_context_recovery.go)
   [lifecycle.go](../../../packages/agent/host/lifecycle.go)
   [AgentMessageBlock.tsx](../../../packages/agent/gui/shared/agentConversation/components/AgentMessageBlock.tsx)
+  [MobileConversationTimeline.tsx](../../../apps/mobile/src/components/MobileConversationTimeline.tsx)
 
 ### Inactive Claude resume times out then later sends stay queued
 

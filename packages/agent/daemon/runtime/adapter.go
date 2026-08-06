@@ -172,6 +172,20 @@ type Adapter interface {
 	Cancel(context.Context, Session, string) ([]activityshared.Event, error)
 }
 
+// ContextRecoveryAdapter is an optional provider-owned rollover capability.
+// The adapter alone interprets its opaque RuntimeContext and prepares the
+// replacement session. Host supplies any canonical active Goal recovery plan;
+// Controller only serializes lifecycle admission, releases an existing live
+// process, and publishes the returned events.
+type ContextRecoveryAdapter interface {
+	PrepareContextRecovery(Session) (Session, bool, error)
+	StartContextRecovery(
+		context.Context,
+		Session,
+		*ContextRecoveryGoal,
+	) ([]activityshared.Event, error)
+}
+
 // SessionForkAdapter is an optional provider-native capability. Providers that
 // cannot prove an exact fork boundary do not implement it.
 type SessionForkAdapter interface {

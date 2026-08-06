@@ -253,6 +253,24 @@ func (s *observedGoalStateStore) CompleteGoalControlOperation(ctx context.Contex
 	return op, state, changed, err
 }
 
+func (s *observedGoalStateStore) GetCompletedGoalControlOperationForRevision(
+	ctx context.Context,
+	workspaceID string,
+	agentSessionID string,
+	revision int64,
+) (storesqlite.GoalControlOperation, bool, error) {
+	store, ok := s.GoalStateStore.(GoalRevisionOperationStore)
+	if !ok {
+		return storesqlite.GoalControlOperation{}, false, nil
+	}
+	return store.GetCompletedGoalControlOperationForRevision(
+		ctx,
+		workspaceID,
+		agentSessionID,
+		revision,
+	)
+}
+
 func (s *observedGoalStateStore) ReleaseGoalControlOperation(ctx context.Context, input storesqlite.ReleaseGoalControlOperationInput) (storesqlite.GoalControlOperation, bool, error) {
 	op, changed, err := s.GoalStateStore.ReleaseGoalControlOperation(ctx, input)
 	if err == nil && changed {

@@ -16,7 +16,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-func TestClaudeSessionForkTraversesProductionWiringAcrossRestart(t *testing.T) {
+func TestRecoveredClaudeSessionForkTraversesProductionWiringAcrossRestart(t *testing.T) {
 	ctx := t.Context()
 	db, err := sql.Open(
 		"sqlite",
@@ -94,7 +94,7 @@ func TestClaudeSessionForkTraversesProductionWiringAcrossRestart(t *testing.T) {
 	}
 	if childTurn.RootProviderTurnID != "child-prompt-1" ||
 		string(childTurn.ProviderTurnBindingJSON) !=
-			`{"checkpointMessageId":"checkpoint-claude-child","schemaVersion":1}` {
+			`{"checkpointMessageId":"checkpoint-claude-child","contextRecoveryGeneration":2,"providerSessionId":"claude-child","schemaVersion":2}` {
 		t.Fatalf(
 			"child provider binding=%#v, want remapped UUIDs",
 			childTurn,
@@ -261,6 +261,14 @@ func seedClaudeForkIntegrationSource(
 		Provider:          agentruntime.ProviderClaudeCode,
 		ProviderSessionID: "claude-source",
 		RuntimeContext: map[string]any{
+			"contextRecovery": map[string]any{
+				"version":                 float64(1),
+				"generation":              float64(2),
+				"state":                   "completed",
+				"trigger":                 "compact_context_overflow",
+				"boundaryTurnId":          "turn-before-recovery",
+				"sourceProviderSessionId": "claude-before-recovery",
+			},
 			"resumeCursor": map[string]any{
 				"kind":            "claude-agent-sdk",
 				"version":         float64(1),
@@ -297,7 +305,7 @@ func seedClaudeForkIntegrationSource(
 				RootTurnID:         "turn-source",
 				ProviderTurnID:     "source-prompt-1",
 				ProviderTurnBindingJSON: json.RawMessage(
-					`{"schemaVersion":1,"checkpointMessageId":"source-answer-1"}`,
+					`{"schemaVersion":2,"providerSessionId":"claude-source","contextRecoveryGeneration":2,"checkpointMessageId":"source-answer-1"}`,
 				),
 				Phase:            storesqlite.RootProviderTurnPhaseRunning,
 				OccurredAtUnixMS: 10,
@@ -336,7 +344,7 @@ func seedClaudeForkIntegrationSource(
 				RootTurnID:         "turn-source",
 				ProviderTurnID:     "source-prompt-1",
 				ProviderTurnBindingJSON: json.RawMessage(
-					`{"schemaVersion":1,"checkpointMessageId":"source-answer-1"}`,
+					`{"schemaVersion":2,"providerSessionId":"claude-source","contextRecoveryGeneration":2,"checkpointMessageId":"source-answer-1"}`,
 				),
 				Phase:            storesqlite.RootProviderTurnPhaseCompleted,
 				Outcome:          storesqlite.TurnOutcomeCompleted,

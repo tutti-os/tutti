@@ -44,7 +44,7 @@ func (a *ClaudeCodeSDKAdapter) Fork(
 	}
 	var sourceBinding claudeProviderTurnBinding
 	if json.Unmarshal(input.ProviderTurnBindingJSON, &sourceBinding) != nil ||
-		sourceBinding.SchemaVersion != providerTurnBindingSchemaVersion ||
+		!claudeProviderTurnBindingMatchesSource(sourceBinding, input.Source) ||
 		strings.TrimSpace(sourceBinding.CheckpointMessageID) == "" {
 		return result, ErrSessionForkUnsupported
 	}
@@ -75,9 +75,13 @@ func (a *ClaudeCodeSDKAdapter) Fork(
 		}
 		return result, err
 	}
+	result.ProviderSessionID = payloadString(event.Payload, "providerSessionId")
+	target := input.Source
+	target.ProviderSessionID = result.ProviderSessionID
 	targetTurnBindings, ok := a.claudeSDKPayloadTurnBindings(
 		event.Payload,
 		"targetProviderTurnBindings",
+		target,
 	)
 	if !ok {
 		result.DeliveryDisposition = SessionForkDeliveryUnknown
@@ -85,7 +89,6 @@ func (a *ClaudeCodeSDKAdapter) Fork(
 			"claude SDK fork returned invalid target provider turn bindings",
 		)
 	}
-	result.ProviderSessionID = payloadString(event.Payload, "providerSessionId")
 	result.TargetProviderTurnBindings = targetTurnBindings
 	result.StateBindingMode = payloadString(event.Payload, "stateBindingMode")
 	result.StateBindingReceipt = payloadString(event.Payload, "stateBindingReceipt")
@@ -146,6 +149,7 @@ func (a *ClaudeCodeSDKAdapter) statelessClaudeSDKForkRequest(
 func (a *ClaudeCodeSDKAdapter) claudeSDKPayloadTurnBindings(
 	payload map[string]any,
 	key string,
+	target Session,
 ) ([]SessionForkProviderTurnBinding, bool) {
 	raw, exists := payload[key]
 	if !exists {
@@ -181,6 +185,7 @@ func (a *ClaudeCodeSDKAdapter) claudeSDKPayloadTurnBindings(
 		bindingJSON, err := a.WriteProviderTurnBinding(
 			ProviderTurnBindingWriteInput{
 				Kind:           ProviderTurnBindingWriteForked,
+				Source:         target,
 				ProviderTurnID: providerTurnID,
 				Payload: map[string]any{
 					"checkpointMessageId": checkpointMessageID,

@@ -1,6 +1,8 @@
 package agentruntime
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -13,6 +15,7 @@ const (
 	claudeSDKContextRecoveryStateHandoff      = "handoff_pending"
 	claudeSDKContextRecoveryStateCompleted    = "completed"
 	claudeSDKContextRecoveryTriggerCompaction = "compact_context_overflow"
+	claudeSDKGoalIdentityRuntimeKey           = "goalIdentity"
 )
 
 type claudeSDKContextRecoveryState struct {
@@ -74,18 +77,22 @@ func (s *claudeSDKAdapterSession) markContextRecoveryPending(
 	return true
 }
 
-func (s *claudeSDKAdapterSession) markContextRecoveryHandoffSent() bool {
+func (s *claudeSDKAdapterSession) claimContextRecoveryHandoff() (
+	claudeSDKContextRecoveryState,
+	bool,
+) {
 	if s == nil {
-		return false
+		return claudeSDKContextRecoveryState{}, false
 	}
 	s.contextRecoveryMu.Lock()
 	defer s.contextRecoveryMu.Unlock()
 	if s.contextRecovery.State != claudeSDKContextRecoveryStateHandoff ||
 		s.contextRecovery.HandoffSent {
-		return false
+		return claudeSDKContextRecoveryState{}, false
 	}
+	claimed := s.contextRecovery
 	s.contextRecovery.HandoffSent = true
-	return true
+	return claimed, true
 }
 
 func (s *claudeSDKAdapterSession) resetContextRecoveryHandoffSent() {
@@ -135,14 +142,89 @@ func claudeSDKContextRecoveryRuntimeContext(
 	return payload
 }
 
-func claudeSDKContextRecoveryPending(runtimeContext map[string]any) bool {
-	return claudeSDKContextRecoveryFromRuntimeContext(runtimeContext).State ==
-		claudeSDKContextRecoveryStatePending
+func claudeSDKGoalIdentityFromRuntimeContext(
+	runtimeContext map[string]any,
+) goalOperationIdentity {
+	payload := payloadMap(runtimeContext, claudeSDKGoalIdentityRuntimeKey)
+	return goalOperationIdentity{
+		operationID: strings.TrimSpace(payloadString(payload, "operationId")),
+		revision:    payloadInt64(payload, "revision"),
+		repairEpoch: payloadInt64(payload, "repairEpoch"),
+	}
 }
 
-func claudeSDKContextRecoveryOccurred(runtimeContext map[string]any) bool {
-	return claudeSDKContextRecoveryFromRuntimeContext(runtimeContext).Generation > 0
+func claudeSDKGoalIdentityRuntimeContext(
+	identity goalOperationIdentity,
+) map[string]any {
+	if !identity.valid() {
+		return nil
+	}
+	return map[string]any{
+		"version":     1,
+		"operationId": strings.TrimSpace(identity.operationID),
+		"revision":    identity.revision,
+		"repairEpoch": identity.repairEpoch,
+	}
 }
+
+func (*ClaudeCodeSDKAdapter) PrepareContextRecovery(
+	session Session,
+) (Session, bool, error) {
+	recovery := claudeSDKContextRecoveryFromRuntimeContext(session.RuntimeContext)
+	if recovery.State != claudeSDKContextRecoveryStatePending {
+		return session, false, nil
+	}
+	recovery.State = claudeSDKContextRecoveryStateHandoff
+	recovery.SourceProviderSessionID = firstNonEmptyString(
+		strings.TrimSpace(recovery.SourceProviderSessionID),
+		strings.TrimSpace(session.ProviderSessionID),
+	)
+	recovery.HandoffSent = false
+	session.RuntimeContext = clonePayload(session.RuntimeContext)
+	if session.RuntimeContext == nil {
+		session.RuntimeContext = map[string]any{}
+	}
+	session.RuntimeContext[claudeSDKContextRecoveryRuntimeKey] =
+		claudeSDKContextRecoveryRuntimeContext(recovery)
+	return session, true, nil
+}
+
+func (a *ClaudeCodeSDKAdapter) StartContextRecovery(
+	ctx context.Context,
+	session Session,
+	goal *ContextRecoveryGoal,
+) ([]activityshared.Event, error) {
+	if goal != nil && (strings.TrimSpace(goal.Objective) == "" ||
+		strings.TrimSpace(goal.OperationID) == "" || goal.Revision <= 0 ||
+		goal.RepairEpoch < 0) {
+		return nil, errors.New("claude context recovery active Goal plan is invalid")
+	}
+	events, err := a.Start(ctx, session)
+	if err != nil {
+		return nil, err
+	}
+	recovered := applySessionEvents(session, events)
+	if goal == nil {
+		return events, nil
+	}
+	_, err = a.ApplyGoal(ctx, recovered, GoalApplyInput{
+		Action:      GoalControlSet,
+		Objective:   strings.TrimSpace(goal.Objective),
+		OperationID: strings.TrimSpace(goal.OperationID),
+		Revision:    goal.Revision,
+		RepairEpoch: goal.RepairEpoch,
+	})
+	if err != nil {
+		if adapterSession := a.getSession(session.AgentSessionID); adapterSession != nil {
+			a.removeSession(session.AgentSessionID, adapterSession)
+			_ = adapterSession.conn.Close()
+		}
+		return nil, fmt.Errorf("restore active Goal after Claude context recovery: %w", err)
+	}
+	return events, nil
+}
+
+var _ ContextRecoveryAdapter = (*ClaudeCodeSDKAdapter)(nil)
 
 func (a *ClaudeCodeSDKAdapter) claudeSDKCompactFailedEvents(
 	adapterSession *claudeSDKAdapterSession,

@@ -46,6 +46,7 @@ export interface AgentMessageContentVM {
   } | null;
   systemNotice?: {
     noticeKind: string | null;
+    semanticKind?: "context-recovery-pending" | null;
     severity: string | null;
     source?: string | null;
     command?: AgentActivityMessageSemantics["noticeCommand"] | null;

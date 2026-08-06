@@ -1341,6 +1341,38 @@ describe("projectWorkspaceAgentMessagesToConversationVM", () => {
     expect(compactMessage?.presentationKind).toBe("turn-boundary");
   });
 
+  it("projects context recovery as a typed cross-host system notice", () => {
+    const conversation = projectWorkspaceAgentMessagesToConversationVM({
+      activity: activity(),
+      session: session(),
+      workspaceRoot: "/workspace/demo",
+      messages: [
+        message({
+          messageId: "compact-recovery",
+          turnId: "turn-compact",
+          status: "failed",
+          semantics: {
+            noticeCommand: "compact",
+            noticeCommandStatus: "failed"
+          },
+          payload: {
+            kind: "agent_system_notice",
+            noticeKind: "context_recovery_pending",
+            title: "Context compaction interrupted.",
+            detail: "Maximum context length exceeded."
+          }
+        })
+      ]
+    });
+
+    const projected = conversation.rows.flatMap((row) =>
+      row.kind === "message" ? row.messages : []
+    )[0];
+    expect(projected?.systemNotice?.semanticKind).toBe(
+      "context-recovery-pending"
+    );
+  });
+
   it("prefers canonical message semantics over duplicated notice payload fields", () => {
     const conversation = projectWorkspaceAgentMessagesToConversationVM({
       activity: activity(),

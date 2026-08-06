@@ -642,12 +642,7 @@ function isContextCompactionInterruptedNotice(
 function isContextRecoveryPendingNotice(
   message: AgentMessageContentVM
 ): boolean {
-  const notice = message.systemNotice;
-  return (
-    notice?.noticeKind === "context_recovery_pending" &&
-    notice.command === "compact" &&
-    notice.commandStatus === "failed"
-  );
+  return message.systemNotice?.semanticKind === "context-recovery-pending";
 }
 
 function ContextCompactionDivider({

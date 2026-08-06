@@ -270,6 +270,14 @@ type RuntimeSessionLiveness interface {
 // this recovery may run; provider-specific rollover mechanics stay behind the
 // runtime adapter.
 type RuntimeContextRecoveryController interface {
+	ContextRecoveryRequired(
+		context.Context,
+		RuntimeContextRecoveryInput,
+	) (bool, error)
+	ResumeContextRecoveryRequired(
+		context.Context,
+		RuntimeResumeInput,
+	) (bool, error)
 	PrepareContextRecovery(
 		context.Context,
 		RuntimeContextRecoveryInput,
@@ -349,6 +357,18 @@ type GoalStateStore interface {
 	RecordGoalControlOperationEvidence(context.Context, storesqlite.GoalControlOperationEvidence) (storesqlite.GoalControlOperation, bool, error)
 	EnsureOrWakeGoalRepairOperation(context.Context, storesqlite.EnsureGoalRepairOperationInput) (storesqlite.GoalControlOperation, storesqlite.SessionGoalState, bool, error)
 	RequeueLeasedGoalControlOperationsOnStartup(context.Context, int64) (int64, error)
+}
+
+// GoalRevisionOperationStore exposes the stable operation identity for a
+// canonical Goal revision. It is separate from observation evidence because
+// later provider reports may legitimately replace that evidence.
+type GoalRevisionOperationStore interface {
+	GetCompletedGoalControlOperationForRevision(
+		context.Context,
+		string,
+		string,
+		int64,
+	) (storesqlite.GoalControlOperation, bool, error)
 }
 
 type GoalReconcileInboxStore interface {

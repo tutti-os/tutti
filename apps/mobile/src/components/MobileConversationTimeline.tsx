@@ -121,7 +121,11 @@ function MobileMessageRow({
       {messageBodies.map((message) => (
         <View key={message.id} style={styles.messageContent}>
           {message.systemNotice ? (
-            <Text style={styles.noticeTitle}>{message.systemNotice.title}</Text>
+            <Text style={styles.noticeTitle}>
+              {message.systemNotice.semanticKind === "context-recovery-pending"
+                ? t("contextRecoveryScheduled")
+                : message.systemNotice.title}
+            </Text>
           ) : null}
           {message.body.trim() ? (
             <MobileMarkdownText
@@ -136,7 +140,16 @@ function MobileMessageRow({
           {message.images?.length ? (
             <MobileConversationImages images={message.images} media={media} />
           ) : null}
-          {message.systemNotice?.detail ? (
+          {message.systemNotice?.semanticKind === "context-recovery-pending" ? (
+            <Text style={styles.noticeDetail}>
+              {[
+                t("contextRecoveryScheduledDetail"),
+                message.systemNotice.detail
+              ]
+                .filter(Boolean)
+                .join("\n")}
+            </Text>
+          ) : message.systemNotice?.detail ? (
             <Text style={styles.noticeDetail}>
               {message.systemNotice.detail}
             </Text>

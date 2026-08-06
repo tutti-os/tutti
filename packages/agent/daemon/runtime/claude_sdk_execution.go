@@ -117,10 +117,12 @@ func (a *ClaudeCodeSDKAdapter) exec(
 	}
 	recoveryHostContext := ""
 	if !isClaudeSDKCompactPrompt(content, visibleText) {
-		recoveryHostContext = renderClaudeSDKContextRecoveryHostContext(
-			session,
-			adapterSession.contextRecoverySnapshot(),
-		)
+		if recovery, claimed := adapterSession.claimContextRecoveryHandoff(); claimed {
+			recoveryHostContext = renderClaudeSDKContextRecoveryHostContext(
+				session,
+				recovery,
+			)
+		}
 	}
 	payload := claudeSDKExecPayload(
 		ctx,
@@ -136,15 +138,14 @@ func (a *ClaudeCodeSDKAdapter) exec(
 		Type:    "exec",
 		Payload: payload,
 	}); err != nil {
+		if recoveryHostContext != "" {
+			adapterSession.resetContextRecoveryHandoffSent()
+		}
 		reportNotDispatched()
 		a.unregisterClaudeSDKTurn(adapterSession, turnID, waiter)
 		events = append(events, a.claudeSDKRootProviderFailureEvents(adapterSession, session, turnID, promptCorrelationID, err)...)
 		return events, err
 	}
-	if recoveryHostContext != "" {
-		adapterSession.markContextRecoveryHandoffSent()
-	}
-
 	select {
 	case result := <-waiter.done:
 		if len(result.events) > 0 {

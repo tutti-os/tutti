@@ -1104,6 +1104,7 @@ describe("AgentTranscriptItemView render stability", () => {
           occurredAtUnixMs: 1,
           systemNotice: {
             noticeKind: "context_recovery_pending",
+            semanticKind: "context-recovery-pending",
             severity: null,
             command: "compact",
             commandStatus: "failed",

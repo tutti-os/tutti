@@ -227,6 +227,17 @@ func claudeSDKRuntimeContext(session Session, adapterSession *claudeSDKAdapterSe
 	}
 	if len(liveState.goal) > 0 {
 		context["goal"] = clonePayload(liveState.goal)
+		identity := goalOperationIdentity{}
+		if adapterSession != nil {
+			identity = goalOperationIdentity{
+				operationID: adapterSession.goalOperationID,
+				revision:    adapterSession.goalRevision,
+				repairEpoch: adapterSession.goalRepairEpoch,
+			}
+		}
+		if payload := claudeSDKGoalIdentityRuntimeContext(identity); len(payload) > 0 {
+			context[claudeSDKGoalIdentityRuntimeKey] = payload
+		}
 	}
 	if recovery := claudeSDKContextRecoveryRuntimeContext(
 		adapterSession.contextRecoverySnapshot(),

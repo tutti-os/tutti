@@ -59,6 +59,7 @@ func (a *ClaudeCodeSDKAdapter) RecoverProviderTurnBinding(
 	result.ProviderTurnBindingJSON, err = a.WriteProviderTurnBinding(
 		ProviderTurnBindingWriteInput{
 			Kind:           ProviderTurnBindingWriteRecovered,
+			Source:         input.Source,
 			ProviderTurnID: result.ProviderTurnID,
 			Payload: map[string]any{
 				"checkpointMessageId": checkpointMessageID,

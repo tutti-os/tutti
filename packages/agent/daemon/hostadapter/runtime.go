@@ -696,7 +696,8 @@ func runtimeResumeInput(input host.RuntimeResumeInput) agentruntime.ResumeInput 
 		RuntimeContext: cloneMap(input.RuntimeContext), ProviderTargetRef: cloneMap(input.ProviderTargetRef),
 		PermissionModeID: input.Settings.PermissionModeID, Settings: runtimeSettings(input.Settings),
 		CreatedAtUnixMS: input.CreatedAtUnixMS, UpdatedAtUnixMS: input.UpdatedAtUnixMS,
-		RecreateIfMissing: input.RecreateIfMissing,
+		ContextRecoveryGoal: runtimeContextRecoveryGoal(input.ContextRecoveryGoal),
+		RecreateIfMissing:   input.RecreateIfMissing,
 	}
 }
 

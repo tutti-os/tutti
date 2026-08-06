@@ -311,6 +311,36 @@ func (a serviceHostRuntime) PrepareContextRecovery(
 	}
 	return recovery.PrepareContextRecovery(ctx, input)
 }
+func (a serviceHostRuntime) ContextRecoveryRequired(
+	ctx context.Context,
+	input agenthost.RuntimeContextRecoveryInput,
+) (bool, error) {
+	recovery, ok := a.service.controller().(interface {
+		ContextRecoveryRequired(
+			context.Context,
+			agenthost.RuntimeContextRecoveryInput,
+		) (bool, error)
+	})
+	if !ok {
+		return false, nil
+	}
+	return recovery.ContextRecoveryRequired(ctx, input)
+}
+func (a serviceHostRuntime) ResumeContextRecoveryRequired(
+	ctx context.Context,
+	input agenthost.RuntimeResumeInput,
+) (bool, error) {
+	recovery, ok := a.service.controller().(interface {
+		ResumeContextRecoveryRequired(
+			context.Context,
+			agenthost.RuntimeResumeInput,
+		) (bool, error)
+	})
+	if !ok {
+		return false, nil
+	}
+	return recovery.ResumeContextRecoveryRequired(ctx, input)
+}
 func (a serviceHostRuntime) DurablyReportSubmitProvenance(ctx context.Context, input RuntimeSubmitProvenanceInput) error {
 	reporter, ok := a.service.controller().(interface {
 		DurablyReportSubmitProvenance(context.Context, RuntimeSubmitProvenanceInput) error

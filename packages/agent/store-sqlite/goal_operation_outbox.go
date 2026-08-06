@@ -19,6 +19,33 @@ func (s *Store) GetGoalControlOperation(ctx context.Context, workspaceID, operat
 	return getGoalControlOperation(ctx, s.db, strings.TrimSpace(workspaceID), strings.TrimSpace(operationID))
 }
 
+// GetCompletedGoalControlOperationForRevision returns the latest applied
+// operation identity for one durable Goal revision. Observation evidence is
+// intentionally not used because later runtime reports may replace it.
+func (s *Store) GetCompletedGoalControlOperationForRevision(
+	ctx context.Context,
+	workspaceID string,
+	agentSessionID string,
+	revision int64,
+) (GoalControlOperation, bool, error) {
+	if s == nil || s.db == nil {
+		return GoalControlOperation{}, false, errors.New("workspace database is not initialized")
+	}
+	return scanGoalControlOperation(s.db.QueryRowContext(
+		ctx,
+		goalControlOperationSelectSQL+`
+WHERE workspace_id = ? AND agent_session_id = ? AND goal_revision = ?
+  AND status = ? AND provider_phase = ? AND repair_required = 0
+ORDER BY repair_epoch DESC, completed_at_unix_ms DESC, operation_id DESC
+LIMIT 1`,
+		strings.TrimSpace(workspaceID),
+		strings.TrimSpace(agentSessionID),
+		revision,
+		GoalOperationStatusCompleted,
+		GoalProviderPhaseApplied,
+	))
+}
+
 func (s *Store) ListClaimableGoalControlOperations(ctx context.Context, input ListClaimableGoalControlOperationsInput) ([]GoalControlOperation, error) {
 	limit := input.Limit
 	if limit <= 0 || limit > 1000 {

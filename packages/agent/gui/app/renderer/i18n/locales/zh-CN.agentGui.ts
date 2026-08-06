@@ -589,9 +589,9 @@ export const zhCNAgentGui = {
   contextCompactionInProgress: "正在压缩上下文",
   contextCompactionCompleted: "已压缩上下文",
   contextCompactionInterrupted: "上下文压缩已中断",
-  contextRecoveryScheduled: "Tutti 正在准备新的 Claude 会话",
+  contextRecoveryScheduled: "Tutti 正在兜底恢复当前对话的上下文",
   contextRecoveryScheduledDetail:
-    "Claude Code 无法压缩当前对话。你下次发送消息时，Tutti 会切换到新的 Claude 会话，并允许它通过 Tutti CLI 按需读取相关旧对话",
+    "Provider 无法压缩当前对话；你下次发送消息时，Tutti 会切换到新的 Provider 会话，并允许它通过 Tutti CLI 按需读取相关旧对话",
   tuttiModeCheckpointWakeTaskSettled: "某任务已完成，待审查",
   tuttiModeCheckpointWakeTaskFailed: "某任务失败，待审查",
   tuttiModeCheckpointWakeTaskCanceled: "某任务已取消，待审查",
