@@ -163,7 +163,7 @@ func (l issueRunAgentLauncher) Launch(ctx context.Context, launch workspaceservi
 		Cwd:                  optionalString(launch.ExecutionDirectory),
 		Model:                optionalString(launch.Model),
 		ModelPlanID:          optionalString(launch.ModelPlanID),
-		Visible:              boolPointer(true),
+		Visible:              boolPointer(!launch.HideSession),
 		RailPlacement:        agentRailPlacementFromIssueRun(launch.RailPlacement),
 	})
 	if err == nil ||

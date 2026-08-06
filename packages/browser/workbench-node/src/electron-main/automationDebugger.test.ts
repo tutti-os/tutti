@@ -47,7 +47,7 @@ test("automation request guard intercepts redirects and subresources", async () 
       ? { allowed: true }
       : {
           allowed: false,
-          code: "private_network_blocked",
+          code: "blocked_by_policy",
           message: "blocked"
         }
   );

@@ -1,10 +1,19 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import {
+  createAgentSessionEngine,
+  normalizeAgentActivitySession
+} from "@tutti-os/agent-activity-core";
+import { createTestEngineCommandPort } from "../shared/testing/createTestAgentSessionEngine";
+import {
   messageCenterStackPreviewNodes,
   messageCenterStackPreviewText,
   WorkspaceAgentMessageCenterCard
 } from "./WorkspaceAgentMessageCenterCard";
+import {
+  buildWorkspaceAgentMessageCenterModelFromEngine,
+  selectWorkspaceAgentMessageCenterPresentation
+} from "./workspaceAgentMessageCenterEngineModel";
 import type { WorkspaceAgentMessageCenterItem } from "./workspaceAgentMessageCenterModel";
 
 describe("messageCenterStackPreviewText", () => {
@@ -63,6 +72,82 @@ describe("messageCenterStackPreviewNodes", () => {
       container.querySelector('[data-agent-mention-kind="workspace-app"]')
         ?.textContent
     ).toContain("AI 文档");
+  });
+});
+
+describe("WorkspaceAgentMessageCenterCard hidden delegate sessions", () => {
+  // The Issue task card path: a Tutti Mode delegate run session is hidden
+  // (visible=false) from ambient surfaces, but the card allowlists its exact
+  // target session, and the resulting item must render an answerable prompt.
+  it("renders an answerable pending prompt for an allowlisted hidden delegate session", () => {
+    const engine = createAgentSessionEngine({
+      clock: { nowUnixMs: () => 1 },
+      commandPort: createTestEngineCommandPort({
+        execute: async () => ({})
+      }),
+      identity: { origin: "test", workspaceId: "workspace-1" },
+      scheduler: { schedule: () => ({ cancel() {} }) }
+    });
+    engine.dispatch({
+      type: "session/snapshotReceived",
+      sessions: [
+        normalizeAgentActivitySession({
+          activeTurnId: "turn-1",
+          latestTurnInteractions: [],
+          workspaceId: "workspace-1",
+          agentSessionId: "delegate-1",
+          provider: "codex",
+          cwd: "/workspace",
+          title: "Delegated task",
+          visible: false,
+          activeTurn: {
+            turnId: "turn-1",
+            agentSessionId: "delegate-1",
+            origin: "user_prompt",
+            phase: "waiting",
+            startedAtUnixMs: 10,
+            updatedAtUnixMs: 21
+          },
+          pendingInteractions: [
+            {
+              requestId: "request-approval",
+              agentSessionId: "delegate-1",
+              turnId: "turn-1",
+              kind: "approval",
+              status: "pending",
+              toolName: "Bash",
+              input: {
+                command: "pnpm test",
+                options: [{ optionId: "allow", label: "Allow" }]
+              },
+              createdAtUnixMs: 21,
+              updatedAtUnixMs: 21
+            }
+          ]
+        })
+      ]
+    });
+
+    const model = buildWorkspaceAgentMessageCenterModelFromEngine(
+      selectWorkspaceAgentMessageCenterPresentation(engine.getSnapshot()),
+      { workspaceId: "workspace-1", sessionMessagesById: {} },
+      { includeHiddenSessionIds: ["delegate-1"] }
+    );
+    const delegateItem = model.items.find(
+      (candidate) => candidate.agentSessionId === "delegate-1"
+    );
+    expect(delegateItem?.pendingPrompt).not.toBeNull();
+
+    render(
+      <WorkspaceAgentMessageCenterCard
+        item={delegateItem!}
+        isSubmitting={false}
+        onOpenChat={() => undefined}
+        onSubmitPrompt={() => undefined}
+      />
+    );
+
+    expect(screen.getByRole("button", { name: "Allow" })).toBeTruthy();
   });
 });
 

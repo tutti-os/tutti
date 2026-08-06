@@ -55,6 +55,7 @@ describe("AgentInteractivePromptSurface", () => {
     const prompt = {
       kind: "approval" as const,
       id: "approval:request-approval",
+      agentSessionId: "session-1",
       turnId: "turn-1",
       requestId: "request-approval",
       callId: "request-approval",
@@ -112,8 +113,10 @@ describe("AgentInteractivePromptSurface", () => {
       })
     );
     expect(onSubmit).toHaveBeenCalledWith({
+      agentSessionId: "session-1",
       requestId: "request-approval",
-      optionId: "allow_once"
+      optionId: "allow_once",
+      turnId: "turn-1"
     });
   });
 

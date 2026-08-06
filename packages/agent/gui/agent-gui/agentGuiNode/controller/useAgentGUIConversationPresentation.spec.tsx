@@ -199,6 +199,35 @@ describe("useAgentGUIConversationPresentation", () => {
       "target-1": "session-1"
     });
   });
+
+  it("keeps a hidden transient conversation out of the rail while presenting its identity", () => {
+    const conversation = createConversation();
+    const hiddenTransient: AgentGUIConversationSummary = {
+      ...createConversation(),
+      hiddenFromRail: true,
+      id: "hidden-delegate-1",
+      title: "Delegated task"
+    };
+    const input = createInput(conversation);
+    const rendered = renderHook(() =>
+      useAgentGUIConversationPresentation({
+        ...input,
+        activeConversationId: hiddenTransient.id,
+        transientConversation: hiddenTransient
+      })
+    );
+
+    expect(
+      rendered.result.current.visibleConversations.map((entry) => entry.id)
+    ).toEqual([conversation.id]);
+    expect(rendered.result.current.activeConversation).toEqual(
+      expect.objectContaining({
+        id: "hidden-delegate-1",
+        provider: "codex",
+        title: "Delegated task"
+      })
+    );
+  });
 });
 
 function createInput(

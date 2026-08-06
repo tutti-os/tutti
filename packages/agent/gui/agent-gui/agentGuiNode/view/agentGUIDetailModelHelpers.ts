@@ -243,6 +243,13 @@ export function shouldShowAgentGUIStopButton(input: {
 export function isAgentGUIHomeStatusNoticeVisible(
   recovery: AgentGUISessionChrome["recovery"]
 ): boolean {
+  if (
+    recovery &&
+    "interactionScoped" in recovery &&
+    recovery.interactionScoped === true
+  ) {
+    return false;
+  }
   return (
     recovery?.kind === "agent-sharing-revoked" ||
     recovery?.kind === "transport-connecting" ||

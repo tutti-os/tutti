@@ -7,16 +7,29 @@ import type {
 import type { AgentAskUserQuestionVM } from "./agentAskUserQuestionItemVM";
 import type { AgentTranscriptRowVM } from "./agentTranscriptRowVM";
 
+export interface AgentInteractionResponseInput {
+  agentSessionId?: string;
+  turnId?: string;
+  requestId: string;
+  action?: string;
+  optionId?: string;
+  payload?: Record<string, unknown>;
+}
+
 export type AgentConversationPromptVM =
   | AgentApprovalItemVM
   | {
       kind: "ask-user";
+      agentSessionId?: string;
+      turnId?: string;
       requestId: string;
       title: string;
       questions: AgentAskUserQuestionVM[];
     }
   | {
       kind: "exit-plan";
+      agentSessionId?: string;
+      turnId?: string;
       requestId: string;
       title: string;
       // Permission-mode options the runtime offered for leaving plan mode

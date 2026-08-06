@@ -23,10 +23,7 @@ export {
   type BrowserNodeAutomationListenerInfo,
   type BrowserNodeAutomationServer
 } from "./automationServer.ts";
-export {
-  createBrowserNodeAutomationNetworkAuthorizer,
-  type BrowserNodeAutomationNetworkPolicyOptions
-} from "./automationNetworkPolicy.ts";
+export { createBrowserNodeAutomationNetworkAuthorizer } from "./automationNetworkPolicy.ts";
 export type {
   BrowserNodeAutomationAuthorizationInput,
   BrowserNodeAutomationAuthorizationResult,

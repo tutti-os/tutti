@@ -121,11 +121,9 @@ export function createBrowserNodeAutomationRegistry(
     args: Record<string, unknown>,
     target: RegisteredTarget
   ): Promise<void> => {
-    const resolveHost = resolveTargetHost(target);
     const result = await options.authorize?.({
       agentSessionId: normalizeOptional(input.agentSessionId),
       args,
-      ...(resolveHost ? { resolveHost } : {}),
       target: toSummary(target),
       tool: input.tool,
       workspaceId: input.workspaceId
@@ -240,12 +238,10 @@ export function createBrowserNodeAutomationRegistry(
               if (!options.authorizeRequest) {
                 throw new Error("Browser request authorization is unavailable");
               }
-              const resolveHost = resolveTargetHost(target);
               await target.driver.enableRequestGuard(async (url) =>
                 options.authorizeRequest!({
                   agentSessionId,
                   args: { url },
-                  ...(resolveHost ? { resolveHost } : {}),
                   target: toSummary(target),
                   tool: "navigate_page",
                   workspaceId
@@ -273,12 +269,10 @@ export function createBrowserNodeAutomationRegistry(
         const acquired = acquireLease(normalizedInput, target);
         try {
           if (options.authorizeRequest) {
-            const resolveHost = resolveTargetHost(target);
             await target.driver.enableRequestGuard(async (url) =>
               options.authorizeRequest!({
                 agentSessionId: normalizeOptional(input.agentSessionId),
                 args: { url },
-                ...(resolveHost ? { resolveHost } : {}),
                 target: toSummary(target),
                 tool: "navigate_page",
                 workspaceId
@@ -470,20 +464,6 @@ function assertAgentActive(
       "agent_session_released: Browser automation session is closed"
     );
   }
-}
-
-function resolveTargetHost(
-  target: RegisteredTarget
-): ((hostname: string) => Promise<readonly string[]>) | null {
-  const browserSession = target.contents.session;
-  const resolveHost = browserSession?.resolveHost;
-  if (!browserSession || !resolveHost) return null;
-  return async (hostname) => {
-    const result = await resolveHost.call(browserSession, hostname, {
-      cacheUsage: "allowed"
-    });
-    return result.endpoints.map((endpoint) => endpoint.address);
-  };
 }
 
 async function loadTargetUrl(

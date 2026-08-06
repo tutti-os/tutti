@@ -114,14 +114,9 @@ are disabled and retained Agent pages are closed, and later calls fail closed.
 
 `createBrowserNodeAutomationServer` publishes the registry on authenticated
 loopback and writes a private listener-info file for an explicitly configured
-daemon. `createBrowserNodeAutomationNetworkAuthorizer` provides the standard
-public HTTP/HTTPS policy and blocks private, link-local, metadata, multicast,
-and local-network pages from inspect/control calls. Loopback fails closed by
-default; hosts may permit a loopback URL only through the
-`isLoopbackUrlRouted` capability after sandbox-owned preview routing has
-accepted that exact URL. For registered targets, authorization resolves host
-names through the target's Chromium session rather than an unrelated process
-resolver. Hosts should also install the authorizer as the registry's
-`authorizeRequest` callback so the initial navigation, redirects,
-subresources, and script-initiated requests remain guarded for the lifetime of
-an automation lease.
+daemon. `createBrowserNodeAutomationNetworkAuthorizer` accepts public, private,
+local-network, metadata, and loopback HTTP/HTTPS targets alike, matching manual
+Browser navigation reachability. Hosts should also install the authorizer as
+the registry's `authorizeRequest` callback so the initial navigation,
+redirects, subresources, and script-initiated requests retain the HTTP/HTTPS
+protocol boundary for the lifetime of an automation lease.

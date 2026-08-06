@@ -1438,6 +1438,15 @@ for every host; history remains canonical and readable. A host must not map one
 Session's transport loss or revoked sharing relationship to the workspace-wide
 engine connection state.
 
+An interaction-scoped collaborative write gate is narrower than Session
+runtime availability. A Host projects it through AgentGUI's optional
+`interactionReadinessSource`, keyed by the exact canonical Interaction tuple,
+and rechecks the same Host authority at submission. AgentGUI owns only the
+generic blocked presentation and early event-time admission. The projection
+must not be copied into activity-core, canonical Interaction lifecycle, or a
+renderer transport-health store; a missing record from a supplied source is a
+fail-closed synchronizing result.
+
 ## Needs Attention Contract
 
 Agent Message Center counts user-actionable items, not all session messages.

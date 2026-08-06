@@ -69,7 +69,12 @@ type IssueRunLaunch struct {
 	PermissionModeID   string
 	WorktreeBase       string
 	WorktreeBranch     string
-	RailPlacement      *IssueRunRailPlacement
+	// HideSession creates the delegate Agent session with visible=false so it
+	// never enters the conversation rail. The session stays openable by id
+	// (task click-through opens it as a transient conversation). The zero
+	// value keeps today's visible-session behavior.
+	HideSession   bool
+	RailPlacement *IssueRunRailPlacement
 }
 
 // IssueRunRailPlacement is the source conversation's logical rail identity.

@@ -143,6 +143,20 @@ describe("Home status presentation", () => {
     ).toBe(false);
   });
 
+  it.each(["transport-connecting", "transport-unavailable"] as const)(
+    "keeps the pending prompt visible for interaction-scoped %s chrome",
+    (kind) => {
+      expect(
+        isAgentGUIHomeStatusNoticeVisible({
+          kind,
+          message: "Connection unavailable",
+          canRetry: false,
+          interactionScoped: true
+        })
+      ).toBe(false);
+    }
+  );
+
   it("projects target connection chrome onto the empty Home composer", () => {
     const inlineNoticeChrome = {
       auth: null,

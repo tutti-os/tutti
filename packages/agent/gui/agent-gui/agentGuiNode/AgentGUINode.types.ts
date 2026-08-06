@@ -16,6 +16,7 @@ import type {
   AgentGUIProviderRailAllPresentation,
   AgentGUIProviderRailMode,
   AgentGUIProviderReadinessGate,
+  AgentGUIInteractionReadinessSource,
   AgentGUIObservationGapSource,
   AgentGUITargetConnectionSource,
   AgentGUIHomeSuggestionId,
@@ -152,7 +153,14 @@ export interface AgentGUINodeHostCapabilities {
   providerReadinessGates?: Partial<
     Record<AgentGUIProvider, AgentGUIProviderReadinessGate | null>
   > | null;
+  /** Target-level connection for new-conversation and ordinary Composer admission. */
   targetConnectionSource?: AgentGUITargetConnectionSource | null;
+  /**
+   * Host-owned write readiness keyed by exact pending Interaction identity.
+   * When present for the displayed prompt, it takes precedence over target
+   * connection and exact-Turn observation-gap presentation.
+   */
+  interactionReadinessSource?: AgentGUIInteractionReadinessSource | null;
   /** Host-owned, ephemeral projection gap keyed by exact Session and Turn. */
   observationGapSource?: AgentGUIObservationGapSource | null;
   defaultAgentTargetId?: string | null;
@@ -434,6 +442,7 @@ export function areAgentGUINodePropsEqual(
     pc.comingSoonProviders === nc.comingSoonProviders &&
     pc.providerReadinessGates === nc.providerReadinessGates &&
     pc.targetConnectionSource === nc.targetConnectionSource &&
+    pc.interactionReadinessSource === nc.interactionReadinessSource &&
     pc.observationGapSource === nc.observationGapSource &&
     pc.defaultAgentTargetId === nc.defaultAgentTargetId &&
     pc.providerAuthAccountLabels === nc.providerAuthAccountLabels &&

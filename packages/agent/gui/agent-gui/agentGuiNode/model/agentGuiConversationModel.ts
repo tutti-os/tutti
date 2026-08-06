@@ -368,6 +368,7 @@ export function conversationSummaryFromAgentSession(
       : {}),
     pinnedAtUnixMs: session.pinnedAtUnixMs ?? null,
     needsUserAction: options.needsUserAction ?? false,
+    ...(session.visible === false ? { hiddenFromRail: true } : {}),
     sortTimeUnixMs: resolveWorkspaceAgentSessionSortTimeUnixMs(session),
     updatedAtUnixMs:
       session.updatedAtUnixMs || session.createdAtUnixMs || Date.now()

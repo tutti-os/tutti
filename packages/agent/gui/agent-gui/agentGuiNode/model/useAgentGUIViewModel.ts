@@ -78,6 +78,7 @@ export function useAgentGUIViewModel(
     [
       candidate.interaction.inlineNotice,
       candidate.interaction.isRespondingApproval,
+      candidate.interaction.isRespondingInteractivePrompt,
       candidate.interaction.pendingApproval,
       candidate.interaction.pendingInteractivePrompt,
       candidate.interaction.sessionChrome

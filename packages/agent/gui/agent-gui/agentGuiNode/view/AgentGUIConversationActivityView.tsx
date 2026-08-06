@@ -1,12 +1,10 @@
 import { memo, type ReactNode } from "react";
-import { useAgentActivitySessionMessages } from "../../../agentActivityRuntime";
 import type { UiLanguage } from "../../../contexts/settings/domain/agentSettings";
 import type { AgentGUINodeViewModel } from "../model/agentGuiNodeTypes";
 import type {
   AgentGUIConversationActivityPriorityReason,
   AgentGUIConversationActivityProjection
 } from "../model/agentGuiConversationActivityView";
-import { resolveAgentGUIConversationActivityMessage } from "../model/agentGuiConversationActivityMessage";
 import styles from "../AgentGUINode.styles";
 import type { AgentGUIConversationRailLabels } from "./agentGUIConversationRailLabels";
 import { AgentGUIConversationRailItem } from "./AgentGUIConversationRailItem";
@@ -164,23 +162,18 @@ const ActivityConversationItem = memo(function ActivityConversationItem({
   priorityReason,
   ...props
 }: ActivityItemProps): React.JSX.Element {
-  const messagesById = useAgentActivitySessionMessages(props.workspaceId, [
-    item.id
-  ]);
-  const message = resolveAgentGUIConversationActivityMessage(
-    messagesById[item.id] ?? []
-  );
   const projectLabel =
     item.railSectionKey &&
     item.project?.sectionKey === item.railSectionKey &&
     item.project.label.trim()
       ? item.project.label.trim()
       : null;
-  const secondary = message
-    ? { kind: "message" as const, text: message }
-    : projectLabel
-      ? { kind: "project" as const, text: projectLabel }
-      : { kind: "source" as const, text: props.labels.activityLocalSource };
+  const secondary = projectLabel
+    ? { kind: "project" as const, text: projectLabel }
+    : {
+        kind: "source" as const,
+        text: props.labels.activityConversationSource
+      };
   return (
     <AgentGUIConversationRailItem
       active={props.activeConversationId === item.id}

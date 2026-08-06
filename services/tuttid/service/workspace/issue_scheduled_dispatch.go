@@ -367,7 +367,10 @@ func (s IssueManagerService) tuttiModeLaunchesForRuns(
 			PermissionModeID:   task.PermissionModeID,
 			WorktreeBase:       worktreeBase,
 			WorktreeBranch:     worktreeBranch,
-			RailPlacement:      cloneIssueRunRailPlacement(sourceContext.RailPlacement),
+			// Tutti Mode fans out many delegate runs; they are managed from the
+			// Issue task view, not the conversation rail.
+			HideSession:   true,
+			RailPlacement: cloneIssueRunRailPlacement(sourceContext.RailPlacement),
 		})
 	}
 	return launches

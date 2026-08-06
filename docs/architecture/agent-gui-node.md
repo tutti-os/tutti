@@ -245,6 +245,12 @@ canonical Turn. The Host owns reconnect and catch-up fencing and must remove
 the gap only after the same Turn is authoritative again. When the capability
 is absent, AgentGUI preserves its existing lifecycle presentation.
 
+An exact pending Interaction is a separate admission scope. When its Host
+supplies interaction readiness, that exact result owns transport presentation
+and early write admission for the pending card. An observation gap may still
+govern the active Turn before or after that Interaction, but it cannot override
+the exact ready or blocked readiness result while the card is presented.
+
 ### 2.6 On-demand status
 
 AgentGUI owns one provider-neutral `AgentStatusController` for `/status`, Agent
@@ -805,18 +811,25 @@ revoked a Session's shared Agent relationship, the host projects
 that relationship. Device reconnect and automatic retry presentation begins
 only while the sharing relationship is active.
 
-AgentGUI projects a blocked target connection through the chrome above the
-composer and gives it precedence over other recovery, approval, or prompt
-notices because those actions cannot complete while the target is blocked.
-An explicitly terminal `unavailable` state appears immediately. Initial
-`connecting` appears only after a 300-millisecond controller delay so short
-background connections do not flash. A recoverable host retry, including a
-dormant low-frequency retry, remains a neutral `connecting` presentation and
-updates the visible retry attempt without restarting the delay. During the
-initial delay, the raw target state already blocks commands, but AgentGUI keeps
-the existing recovery, approval, or prompt chrome visible until the connection
-notice replaces it. Recovery removes the notice without a success banner. The
-notice does not offer a manual retry because transport recovery is host-owned.
+Outside an exact pending Interaction, AgentGUI projects a blocked target
+connection through the chrome above the composer and gives it precedence over
+other non-interaction recovery notices because ordinary Composer writes cannot
+complete while the target is blocked. An explicitly terminal `unavailable`
+state appears immediately. Initial `connecting` appears only after a
+300-millisecond controller delay so short background connections do not flash.
+A recoverable host retry, including a dormant low-frequency retry, remains a
+neutral `connecting` presentation and updates the visible retry attempt without
+restarting the delay. During the initial delay, the raw target state already
+blocks commands, but AgentGUI keeps the existing non-interaction recovery
+chrome visible until the connection notice replaces it. Recovery removes the
+notice without a success banner. The notice does not offer a manual retry
+because transport recovery is host-owned.
+
+When the Host supplies readiness for the exact approval or interactive prompt
+being presented, that readiness result is the sole transport-chrome and early
+write-admission authority for the card. Target connection and exact-Turn
+observation gaps continue to gate ordinary Composer commands, but neither may
+hide the card or override an exact ready or blocked interaction result.
 
 Session presentation derives one canonical Composer gate from target
 connection, Session runtime availability, provider readiness, ownership,
@@ -1889,6 +1902,31 @@ applies the append once, and then calls
 requests must clear only the acknowledged sequence; it must not let an older
 open-Session append mask a newer request.
 
+Collaborative Hosts may supply
+`hostCapabilities.interactionReadinessSource` for exact pending Interaction
+write admission. The source is keyed by
+`(workspaceId, agentSessionId, turnId, requestId)` and exposes only
+`ready` or `blocked(synchronizing | owner_offline | binding_revoked)`.
+AgentGUI does not compose presence, transport, or lifecycle facts. When the
+capability exists, a missing exact record fails closed as synchronizing;
+omitting the capability preserves ordinary local-Host behavior. AgentGUI reads
+the same source for presentation and again at the event-time submission
+boundary. This readiness is ephemeral Host policy and must not enter canonical
+Session, Turn, Interaction, or Engine state.
+
+While an exact approval or server-projected interactive prompt is presented,
+this capability owns its transport chrome. Target connection and observation
+gap sources still govern target discovery, ordinary composer writes, and
+sessions without an exact Interaction, but they must not override an exact
+ready or blocked result. Synchronizing and owner-offline results keep the
+pending card visible while disabling its actions; binding revocation is the
+terminal exception.
+
+If an approval and a server-projected prompt coexist, AgentGUI reads readiness
+for both exact identities. Each surface consumes only its own admission result;
+selecting one as the active prompt must not reuse its readiness for the sibling
+Interaction.
+
 Do not restore flat compatibility props or hide workflow inside a render slot.
 The optional `renderSlots.projectDirectoryPickerHeaderActions` slot is limited
 to host presentation beside the directory picker's title. AgentGUI owns picker
@@ -2288,6 +2326,12 @@ Every surface shares the exact interaction identity
 `(workspaceId, agentSessionId, turnId, requestId)` and submitting state.
 Provider request ids remain unchanged and may repeat across Turns; no adapter
 may recover a missing Turn by scanning for a session-wide request-id match.
+An optional Host interaction-readiness capability may block an owner-dependent
+response while preserving the canonical pending Interaction. Synchronizing
+uses the existing device-connecting presentation and disables mutation; it is
+not a terminal Interaction or Session outcome. Host submission adapters must
+recheck their authoritative projection immediately before transport dispatch;
+AgentGUI's early check does not replace Host or provider admission.
 An interactive provider callback must not block the transport's message reader
 while waiting for user input. If the provider can emit follow-up frames during
 that wait, the adapter keeps reading and joins them before publishing the

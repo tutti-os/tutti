@@ -264,7 +264,14 @@ export interface AgentGUITargetConnectionState {
   retryAttempt: number;
 }
 
-/** Host-owned, ephemeral device transport state keyed by exact Agent target. */
+/**
+ * Host-owned, ephemeral device transport state keyed by exact Agent target.
+ *
+ * This capability gates new-conversation and ordinary Composer writes. When an
+ * Interaction-readiness source is present for the displayed prompt, that exact
+ * readiness result has precedence over this target-level state for Interaction
+ * presentation and admission.
+ */
 export interface AgentGUITargetConnectionSource {
   getConnectionState(
     agentTargetId: string
@@ -293,6 +300,43 @@ export interface AgentGUIObservationGapSource {
     agentSessionId: string,
     turnId: string
   ): AgentGUIObservationGap | null;
+  subscribe(listener: () => void): () => void;
+}
+
+/** Exact canonical Interaction identity used for Host write admission. */
+export interface AgentGUIInteractionReadinessIdentity {
+  workspaceId: string;
+  agentSessionId: string;
+  turnId: string;
+  requestId: string;
+}
+
+export type AgentGUIInteractionReadinessReason =
+  | "synchronizing"
+  | "owner_offline"
+  | "binding_revoked";
+
+export type AgentGUIInteractionReadiness =
+  | { status: "ready" }
+  | {
+      status: "blocked";
+      reason: AgentGUIInteractionReadinessReason;
+    };
+
+/**
+ * Host-owned, ephemeral write readiness for an exact pending Interaction.
+ *
+ * When this capability is supplied, a missing exact record is unresolved and
+ * consumers fail closed as `blocked(synchronizing)`. Omit the whole source to
+ * preserve the default local-host admission behavior. For a displayed exact
+ * pending Interaction, this source is the sole transport-presentation and
+ * early-admission authority; target connection and Turn observation gaps must
+ * not override it.
+ */
+export interface AgentGUIInteractionReadinessSource {
+  getInteractionReadiness(
+    identity: AgentGUIInteractionReadinessIdentity
+  ): AgentGUIInteractionReadiness | null;
   subscribe(listener: () => void): () => void;
 }
 

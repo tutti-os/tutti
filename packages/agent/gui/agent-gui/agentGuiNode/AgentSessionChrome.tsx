@@ -3,6 +3,7 @@ import { Button } from "@tutti-os/ui-system";
 import { CastIcon } from "../../app/renderer/components/icons/CastIcon";
 import { cn } from "../../app/renderer/lib/utils";
 import { approvalOptionDisplayLabel } from "../../shared/agentConversation/approvalOptionPresentation";
+import type { AgentInteractionResponseInput } from "../../shared/agentConversation/contracts/agentConversationVM";
 import type { AgentGUISessionChrome } from "./model/agentGuiNodeTypes";
 import styles from "./AgentGUIChrome.styles";
 
@@ -18,7 +19,7 @@ interface AgentChromeNoticeProps {
 interface AgentSessionChromeProps {
   chrome: AgentGUISessionChrome;
   isRespondingApproval: boolean;
-  onSubmitApprovalOption: (requestId: string, optionId: string) => void;
+  onSubmitApprovalOption: (input: AgentInteractionResponseInput) => boolean;
   onAuthLogin?: () => void;
   onRetryActivation: () => void;
   onContinueInNewConversation: () => void;
@@ -178,10 +179,16 @@ export function AgentSessionChrome({
                 type="button"
                 disabled={isRespondingApproval}
                 onClick={() =>
-                  onSubmitApprovalOption(
-                    chrome.approval?.requestId ?? "",
-                    option.id
-                  )
+                  onSubmitApprovalOption({
+                    ...(chrome.approval?.agentSessionId
+                      ? { agentSessionId: chrome.approval.agentSessionId }
+                      : {}),
+                    optionId: option.id,
+                    requestId: chrome.approval?.requestId ?? "",
+                    ...(chrome.approval?.turnId
+                      ? { turnId: chrome.approval.turnId }
+                      : {})
+                  })
                 }
               >
                 {approvalOptionDisplayLabel(option)}

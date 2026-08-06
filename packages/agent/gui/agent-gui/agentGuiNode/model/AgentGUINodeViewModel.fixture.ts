@@ -82,6 +82,8 @@ export function groupAgentGUINodeViewModelFixture(
     },
     interaction: {
       isRespondingApproval: flat.isRespondingApproval,
+      isRespondingInteractivePrompt:
+        flat.isRespondingInteractivePrompt ?? flat.isRespondingApproval,
       pendingApproval: flat.pendingApproval,
       pendingInteractivePrompt: flat.pendingInteractivePrompt,
       sessionChrome: flat.sessionChrome,

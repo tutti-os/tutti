@@ -1,5 +1,8 @@
 import type { JSX } from "react";
-import type { AgentConversationPromptVM } from "../contracts/agentConversationVM";
+import type {
+  AgentConversationPromptVM,
+  AgentInteractionResponseInput
+} from "../contracts/agentConversationVM";
 import { AgentAskUserPromptSurface } from "./AgentAskUserPromptSurface";
 import {
   ApprovalPromptSurface,
@@ -24,12 +27,7 @@ export interface AgentInteractivePromptSurfaceProps {
   edgeGlow?: boolean;
   keyboardShortcuts?: boolean;
   isSubmitting: boolean;
-  onSubmit: (input: {
-    requestId: string;
-    action?: string;
-    optionId?: string;
-    payload?: Record<string, unknown>;
-  }) => void;
+  onSubmit: (input: AgentInteractionResponseInput) => boolean | void;
   labels: {
     approvalLead: string;
     fileChangeApprovalLead: string;
@@ -65,6 +63,19 @@ export function AgentInteractivePromptSurface({
 }): JSX.Element | null {
   "use memo";
 
+  const submitPrompt = (
+    input: AgentInteractionResponseInput
+  ): boolean | void => {
+    const agentSessionId =
+      "agentSessionId" in prompt ? prompt.agentSessionId?.trim() : "";
+    const turnId = "turnId" in prompt ? prompt.turnId?.trim() : "";
+    return onSubmit({
+      ...input,
+      ...(agentSessionId && turnId ? { agentSessionId, turnId } : {}),
+      requestId: prompt.requestId
+    });
+  };
+
   if (prompt.kind === "approval") {
     return (
       <ApprovalPromptSurface
@@ -73,7 +84,7 @@ export function AgentInteractivePromptSurface({
         edgeGlow={edgeGlow}
         keyboardShortcuts={keyboardShortcuts}
         isSubmitting={isSubmitting}
-        onSubmit={onSubmit}
+        onSubmit={submitPrompt}
         labels={labels}
       />
     );
@@ -86,7 +97,7 @@ export function AgentInteractivePromptSurface({
         embedded={embedded}
         edgeGlow={edgeGlow}
         isSubmitting={isSubmitting}
-        onSubmit={onSubmit}
+        onSubmit={submitPrompt}
         labels={labels}
       />
     );
@@ -99,7 +110,7 @@ export function AgentInteractivePromptSurface({
         embedded={embedded}
         edgeGlow={edgeGlow}
         isSubmitting={isSubmitting}
-        onSubmit={onSubmit}
+        onSubmit={submitPrompt}
         labels={labels}
       />
     );
@@ -112,7 +123,7 @@ export function AgentInteractivePromptSurface({
       embedded={embedded}
       edgeGlow={edgeGlow}
       isSubmitting={isSubmitting}
-      onSubmit={onSubmit}
+      onSubmit={submitPrompt}
       labels={labels}
     />
   );

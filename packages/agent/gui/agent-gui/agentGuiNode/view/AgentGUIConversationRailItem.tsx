@@ -93,7 +93,7 @@ interface AgentGUIConversationRailItemProps {
     priorityReason: AgentGUIConversationActivityPriorityReason | null;
     projectLabel: string | null;
     secondary: {
-      kind: "message" | "project" | "source";
+      kind: "project" | "source";
       text: string;
     };
   };

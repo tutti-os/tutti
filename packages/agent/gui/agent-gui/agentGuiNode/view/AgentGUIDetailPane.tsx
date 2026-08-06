@@ -30,6 +30,7 @@ import { useAgentGUITuttiWorkflow } from "./useAgentGUITuttiWorkflow";
 import type { AgentTranscriptVirtualScrollController } from "../../../shared/agentConversation/components/AgentTranscriptView";
 import type { AgentGUIDetailPaneProps } from "./AgentGUINodeView.types";
 import { useAgentGUIDetailEditRetry } from "./useAgentGUIDetailEditRetry";
+import { submitAgentInteractionResponseAndDismiss } from "../../../shared/agentConversation/interactionResponseAdmission";
 export const EMPTY_WORKSPACE_APP_ICONS: readonly AgentMessageMarkdownWorkspaceAppIcon[] =
   [];
 export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
@@ -110,6 +111,7 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
   ] = useState<string | null>(null);
   const {
     activePromptRequestId,
+    activePromptResponsePending,
     bottomDockLiftedPrompt,
     bottomDockReplacementPrompt,
     chromeLabels,
@@ -297,20 +299,16 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
     useOptionalStableEventCallback(onRequestGitBranches);
   const authLogin = useOptionalStableEventCallback(onAgentProviderLogin);
   const submitBottomDockInteractivePrompt = useCallback(
-    (input: {
-      requestId: string;
-      action?: string;
-      optionId?: string;
-      payload?: Record<string, unknown>;
-    }) => {
-      submitInteractivePrompt(input);
-      setBottomDockDismissedPromptRequestId(input.requestId);
+    (input: Parameters<typeof submitInteractivePrompt>[0]) => {
+      return submitAgentInteractionResponseAndDismiss({
+        response: input,
+        submit: submitInteractivePrompt,
+        dismiss: setBottomDockDismissedPromptRequestId
+      });
     },
     [submitInteractivePrompt]
   );
-  const isInteractionPending =
-    viewModel.interaction.isRespondingApproval ||
-    composerGate.runtime.status === "blocked";
+  const isInteractionPending = activePromptResponsePending;
   const homeComposerProviderTargets = homeTargetProjection.agentTargets;
   const selectedHomeComposerTarget = homeTargetProjection.selectedAgentTarget;
   const composerProviderTargets =
@@ -578,8 +576,7 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       viewModel.composer.isTuttiModeUpdating,
       viewModel.composer.tuttiModeEffect,
       viewModel.composer.tuttiModeSpeed,
-      viewModel.interaction.isRespondingApproval,
-      composerGate.runtime.status,
+      isInteractionPending,
       viewModel.composer.promptImagesSupported,
       viewModel.composer.queueStatus,
       viewModel.composer.queuedPrompts,

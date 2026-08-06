@@ -78,9 +78,12 @@ export function useAgentGUIConversationPresentation(
     const next = applyAgentGUIConversationProjects(mapped, input.userProjects, {
       isNoProjectPath: input.isNoProjectPath
     });
+    // Semantic conversations keep hidden entries so an explicitly opened
+    // invisible session resolves its real identity; the rail list never
+    // renders them.
     const visibleConversations = stableConversationSummaryList(
       visibleConversationsRef.current,
-      next
+      next.filter((conversation) => !conversation.hiddenFromRail)
     );
     visibleConversationsRef.current = visibleConversations;
     return { semanticConversations: next, visibleConversations };

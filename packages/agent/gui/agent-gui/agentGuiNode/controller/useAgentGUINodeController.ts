@@ -122,6 +122,7 @@ export function useAgentGUINodeController({
   comingSoonProviders,
   providerReadinessGates = null,
   targetConnectionSource = null,
+  interactionReadinessSource = null,
   observationGapSource = null,
   defaultAgentTargetId = null,
   composerAppendRequest = null,
@@ -275,10 +276,10 @@ export function useAgentGUINodeController({
   // Bridges submitInteractivePrompt (defined earlier) to the client-side plan
   // decision handlers (defined later); assigned after those callbacks.
   const planActionsRef = useRef<{
-    implement: () => void;
-    feedback: (text: string) => void;
-    skip: () => void;
-  }>({ implement: () => {}, feedback: () => {}, skip: () => {} });
+    implement: () => boolean;
+    feedback: (text: string) => boolean;
+    skip: () => boolean;
+  }>({ implement: () => false, feedback: () => false, skip: () => false });
   const composerCapabilities = useAgentGUIComposerCapabilities({
     activeConversationId,
     activeEngineSession,
@@ -371,7 +372,6 @@ export function useAgentGUINodeController({
       const session = activeEngineSession;
       if (
         !session ||
-        session.visible === false ||
         conversations.some(
           (conversation) => conversation.id === session.agentSessionId
         )
@@ -556,7 +556,7 @@ export function useAgentGUINodeController({
     const nextConversationCount = mergeVisibleConversations(
       conversations,
       transientConversation
-    ).length;
+    ).filter((conversation) => !conversation.hiddenFromRail).length;
     onDataChangeRef.current((current) =>
       current.conversationCount === nextConversationCount
         ? current
@@ -640,6 +640,7 @@ export function useAgentGUINodeController({
     normalizedProviderTargets,
     planActionsRef,
     planImplementationTurnIdRef,
+    interactionReadinessSource,
     prefillPromptRequest,
     reportActiveConversationCleared: reportAgentGUIActiveConversationCleared,
     sessionEngine,
@@ -712,6 +713,7 @@ export function useAgentGUINodeController({
     providerRailMode,
     providerReadinessGates,
     targetConnectionSource,
+    interactionReadinessSource,
     observationGapSource,
     agentTargetsLoading,
     selectedComposerTargetData,

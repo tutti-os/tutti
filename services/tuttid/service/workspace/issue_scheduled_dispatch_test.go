@@ -254,6 +254,9 @@ func TestTuttiModeLaunchPreservesSourceRailPlacement(t *testing.T) {
 	if launch.RailPlacement == placement {
 		t.Fatal("rail placement aliases the source snapshot")
 	}
+	if !launch.HideSession {
+		t.Fatal("Tutti Mode delegate launch must request a hidden session")
+	}
 }
 
 func TestScheduledRunDeliveryUsesSharedSeamAndRenewsDurableLease(t *testing.T) {

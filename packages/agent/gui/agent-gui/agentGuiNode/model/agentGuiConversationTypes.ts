@@ -52,6 +52,10 @@ export interface AgentGUIConversationSummary {
   hasUnreadCompletion?: boolean;
   unreadCompletionKey?: string | null;
   needsUserAction?: boolean;
+  // The backing session is invisible (session.visible === false). The summary
+  // still exists so an explicitly opened session presents its real identity,
+  // but it must never be rendered as a conversation rail row.
+  hiddenFromRail?: boolean;
   projectionSource?: "pending_activation";
   isImported?: boolean;
   activeTurn?: AgentActivitySession["activeTurn"];
@@ -133,6 +137,8 @@ export type AgentGUIInteractivePrompt =
   | AgentGUIApprovalRequest
   | {
       kind: "ask-user";
+      agentSessionId?: string;
+      turnId?: string;
       requestId: string;
       title: string;
       questions: AgentGUIInteractiveQuestion[];

@@ -15,8 +15,9 @@ recur and the repository now has implementation or debugging evidence for it.
 Use the focused runtime index or open one area directly:
 
 - [Agent Providers And Setup](./agent-provider-setup.md): Provider discovery, installation, authentication, models, configuration, and runtime reachability.
-  Includes Codex Model Plan Responses-to-Chat routing and extension
-  command/Skill palette hydration failures.
+  Includes Codex Model Plan Responses-to-Chat routing, oversized request
+  metadata compatibility, and extension command/Skill palette hydration
+  failures.
   Also covers uv-managed Extension installs that accidentally select an
   incompatible system Python.
   Also covers Kimi Code ACP sessions that advertise no model or hide provider
