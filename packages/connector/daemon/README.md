@@ -24,3 +24,7 @@ resolver.
 Remote runtimes inject `CapabilityPublicationController`; bootstrap awaits its
 fail-closed/open commands. Same-process Tutti runtimes remain compatible with
 the synchronous implementation-host publication gate.
+
+Account logout and switching use `Host.FenceForScope` to close remote
+publication, fail-close all processes, and force a later bootstrap even when
+the same account logs in again.

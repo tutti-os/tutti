@@ -260,6 +260,25 @@ func (host *Host) BootstrapForScope(ctx context.Context, scope market.OperationS
 	return nil
 }
 
+// FenceForScope closes publication and runtime authority for an account
+// boundary without deleting device installation truth. A later bootstrap,
+// including one for the same account, must perform full recovery before routes
+// can be published again.
+func (host *Host) FenceForScope(ctx context.Context, scope market.OperationScope) error {
+	if host == nil || host.Application == nil {
+		return errors.New("connector market host is unavailable")
+	}
+	host.bootstrapMu.Lock()
+	defer host.bootstrapMu.Unlock()
+	host.activationGate.setOpen(false)
+	host.bootstrapped = false
+	host.bootstrapScope = scope
+	publicationErr := host.applyCapabilityPublication(ctx, scope, false)
+	fenceErr := host.activationGate.FailClosed(ctx, time.Now().Add(10*time.Second))
+	projectionErr := host.Application.FenceInstalledRuntimesForScope(ctx, scope)
+	return errors.Join(publicationErr, fenceErr, projectionErr)
+}
+
 func (host *Host) applyCapabilityPublication(ctx context.Context, scope market.OperationScope, enabled bool) error {
 	if host.publication != nil {
 		return host.publication.ApplyCapabilityPublication(ctx, scope, enabled)

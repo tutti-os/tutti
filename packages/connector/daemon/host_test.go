@@ -16,6 +16,7 @@ type activationGateDelegate struct {
 	reconciles        int
 	reconcileFailures int
 	deactivations     int
+	failClosed        int
 	lastReconcile     market.RuntimeReconcileRequest
 }
 
@@ -39,7 +40,10 @@ func (delegate *activationGateDelegate) DeactivateRuntime(context.Context, marke
 	delegate.deactivations++
 	return nil
 }
-func (*activationGateDelegate) FailClosed(context.Context, time.Time) error { return nil }
+func (delegate *activationGateDelegate) FailClosed(context.Context, time.Time) error {
+	delegate.failClosed++
+	return nil
+}
 
 func TestActivationGateStagesRecoveryUntilInitialCatalogRefresh(t *testing.T) {
 	delegate := &activationGateDelegate{}
@@ -235,6 +239,20 @@ func TestBootstrapRestoresInstalledRuntimeWithoutRefreshingCatalog(t *testing.T)
 	}
 	if source.refreshes != 1 || runtime.reconciles != 3 {
 		t.Fatalf("refreshes=%d reconciles=%d, want catalog retry isolated from runtime", source.refreshes, runtime.reconciles)
+	}
+
+	accountScope := market.OperationScope{AccountID: "account-1"}
+	if err := host.FenceForScope(ctx, accountScope); err != nil {
+		t.Fatalf("account fence failed: %v", err)
+	}
+	if len(publication.values) == 0 || publication.values[len(publication.values)-1] || runtime.failClosed == 0 {
+		t.Fatalf("fence publication=%#v failClosed=%d", publication.values, runtime.failClosed)
+	}
+	if err := host.BootstrapForScope(ctx, accountScope); err != nil {
+		t.Fatalf("same-account bootstrap after fence failed: %v", err)
+	}
+	if runtime.reconciles != 4 || !publication.values[len(publication.values)-1] {
+		t.Fatalf("same-account recovery reconciles=%d publication=%#v", runtime.reconciles, publication.values)
 	}
 }
 
