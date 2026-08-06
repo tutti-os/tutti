@@ -21,6 +21,15 @@ export function DeviceScreen({ application, navigation }: Props) {
       setManualPairingOpen(false);
     }
   };
+  const closeManualPairing = () => {
+    setManualPairingCode("");
+    setManualPairingOpen(false);
+  };
+  const scanAndPair = async () => {
+    if ((await service.scanAndPair()) === "manual") {
+      setManualPairingOpen(true);
+    }
+  };
   const snapshot = useServiceSnapshot(application);
 
   useEffect(() => {
@@ -48,11 +57,11 @@ export function DeviceScreen({ application, navigation }: Props) {
       model={model}
       onConnect={(pairing, device) => void service.connect(pairing, device)}
       onManualPairingCodeChange={setManualPairingCode}
-      onManualPairingOpen={() => setManualPairingOpen(true)}
+      onManualPairingClose={closeManualPairing}
       onManualPairingSubmit={() => void submitManualPairingCode()}
       onOpenSettings={() => navigation.navigate("Settings")}
       onRefresh={() => void service.refresh()}
-      onScanPairingCode={() => void service.scanAndPair()}
+      onScanPairingCode={() => void scanAndPair()}
     />
   );
 }

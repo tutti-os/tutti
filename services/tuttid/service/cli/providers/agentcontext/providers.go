@@ -253,7 +253,7 @@ func agentCatalogRows(items []agentCatalogItem) []map[string]any {
 func agentCatalogValues(items []agentCatalogItem) []any {
 	values := make([]any, 0, len(items))
 	for _, item := range items {
-		values = append(values, map[string]any{
+		value := map[string]any{
 			"id":       item.Target.ID,
 			"name":     item.Target.Name,
 			"provider": item.Target.Provider,
@@ -262,7 +262,11 @@ func agentCatalogValues(items []agentCatalogItem) []any {
 				"reasonCode": providerAvailabilityReasonCode(item.Availability),
 				"detail":     providerAvailabilityDetail(item.Availability),
 			},
-		})
+		}
+		if executablePath := strings.TrimSpace(item.Availability.ExecutablePath); executablePath != "" {
+			value["executablePath"] = executablePath
+		}
+		values = append(values, value)
 	}
 	return values
 }

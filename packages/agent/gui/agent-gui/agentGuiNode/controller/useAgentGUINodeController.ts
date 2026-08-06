@@ -127,6 +127,7 @@ export function useAgentGUINodeController({
   composerAppendRequest = null,
   openSessionRequest = null,
   prefillPromptRequest = null,
+  codexSaverModeEntryEnabled = false,
   onDataChange,
   onComposerAppendHandled,
   onRememberComposerDefaults,
@@ -623,6 +624,7 @@ export function useAgentGUINodeController({
     agentHostApi,
     composerTargetDataFromProviderTarget,
     composerAppendRequest,
+    codexSaverModeEntryEnabled,
     onComposerAppendHandled,
     composerSupportPermissionModeChangeDeferred:
       composerSupport.permissionModeChangeDeferred,
@@ -694,6 +696,7 @@ export function useAgentGUINodeController({
     currentUserId,
     codeFor: activation.codeFor,
     composerTargetProvider: composerTargetData.provider,
+    codexSaverModeEntryEnabled,
     data,
     defaultAgentTargetId,
     errorFor: activation.errorFor,

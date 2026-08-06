@@ -34,7 +34,7 @@ type Route struct {
 	Models         []string
 }
 
-// ClientEndpoint is the temporary Responses endpoint injected into one Codex
+// ClientEndpoint is the temporary Responses endpoint injected into one agent
 // runtime. Token is random bearer authentication for this route, not the
 // upstream model-plan credential.
 type ClientEndpoint struct {

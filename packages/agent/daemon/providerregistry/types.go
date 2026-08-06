@@ -26,6 +26,15 @@ const (
 	StandardACPAdapterStrategyOpenCode StandardACPAdapterStrategy = "opencode"
 )
 
+// AppServerSkillRootsStrategy identifies optional app-server skill path
+// preparation owned by a provider descriptor. Runtime consumers dispatch on
+// this strategy, never on provider identity.
+type AppServerSkillRootsStrategy string
+
+const (
+	AppServerSkillRootsStrategyTuttiStable AppServerSkillRootsStrategy = "tutti_stable"
+)
+
 // EndpointConfigKind identifies an optional provider-owned config source for
 // endpoint discovery. Runtime consumers switch on this protocol/config shape,
 // never on provider identity.
@@ -93,6 +102,17 @@ const (
 	InstallerKindShellCommand   InstallerKind = "shell_command"
 )
 
+// InstallerWindowsFallback identifies a provider-owned Windows fallback for
+// an installer whose canonical command is Unix-only. Consumers dispatch on
+// this strategy rather than on provider identity.
+type InstallerWindowsFallback string
+
+const (
+	InstallerWindowsFallbackManagedRuntime InstallerWindowsFallback = "managed_runtime"
+	InstallerWindowsFallbackManagedNPM     InstallerWindowsFallback = "managed_npm"
+	InstallerWindowsFallbackPowerShell     InstallerWindowsFallback = "powershell"
+)
+
 type StatusKind string
 
 const (
@@ -152,6 +172,7 @@ type RuntimeDescriptor struct {
 	Command             []string
 	ClientInfoName      string
 	AuthRequiredMessage string
+	AppServerSkillRoots AppServerSkillRootsStrategy
 	// NativeSessionFork marks runtimes whose provider strategy may expose a
 	// native session-fork primitive. The live adapter must still attest the
 	// exact protocol/version before advertising any fork capability.
@@ -211,16 +232,18 @@ type StandardACPRuntimeDescriptor struct {
 }
 
 type InstallerDescriptor struct {
-	Kind                 InstallerKind
-	DisplayCommand       string
-	PackageName          string
-	BinaryName           string
-	RecommendedVersion   string
-	IncludeOptional      bool
-	ScriptURL            string
-	ScriptShell          string
-	ShellCommand         string
-	FailureReasonMarkers map[string][]string
+	Kind                     InstallerKind
+	DisplayCommand           string
+	PackageName              string
+	BinaryName               string
+	RecommendedVersion       string
+	IncludeOptional          bool
+	ScriptURL                string
+	ScriptShell              string
+	WindowsFallback          InstallerWindowsFallback
+	WindowsPowerShellCommand string
+	ShellCommand             string
+	FailureReasonMarkers     map[string][]string
 }
 
 func (d ProviderDescriptor) ManagedNPMDescriptor() (managednpm.Descriptor, bool) {
@@ -428,10 +451,6 @@ const (
 	ReasoningEffortOptionsStrictModelCatalog ReasoningEffortOptionsKind = "strict_model_catalog"
 )
 
-type ConfiguredModelOverrideKind string
-
-const ConfiguredModelOverrideCodexCustomProvider ConfiguredModelOverrideKind = "codex_custom_provider"
-
 // CapabilityCatalogKind identifies the protocol used to discover the
 // provider's dynamic composer capabilities.
 type CapabilityCatalogKind string
@@ -502,13 +521,15 @@ const (
 )
 
 type ComposerProfileDescriptor struct {
+	// SubagentSaverMode allows a session-scoped lower-cost custom role while
+	// leaving the main composer model unchanged.
+	SubagentSaverMode       bool
 	ModelSelection          bool
 	ModelCatalog            ModelCatalogKind
 	ReasoningEffort         bool
 	ReasoningEffortValues   []string
 	ReasoningEffortOptions  ReasoningEffortOptionsKind
 	DefaultReasoningEffort  string
-	ConfiguredModelOverride ConfiguredModelOverrideKind
 	Speed                   bool
 	SpeedValues             []string
 	DefaultSpeed            string

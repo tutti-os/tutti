@@ -20,3 +20,5 @@ export function agentProcessingLabels(t: TranslateFn) {
       t("agentHost.agentGui.processingElapsedSeconds", { seconds })
   };
 }
+
+export type AgentProcessingLabels = ReturnType<typeof agentProcessingLabels>;

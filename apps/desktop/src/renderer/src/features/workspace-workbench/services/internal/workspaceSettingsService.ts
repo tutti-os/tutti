@@ -26,11 +26,13 @@ import {
   defaultDesktopFeatureFlags,
   defaultDesktopMinimizeAnimation,
   defaultDesktopWorkbenchShortcuts,
-  desktopFeatureFlagsEqual,
   desktopWorkbenchShortcutsEqual,
   desktopWorkbenchWindowSnappingEqual
 } from "../../../../../../shared/preferences/index.ts";
-import { withDesktopWorkspaceUiMode } from "../../../../../../shared/featureFlags/catalog.ts";
+import {
+  resolveDesktopWorkspaceUiMode,
+  withDesktopWorkspaceUiMode
+} from "../../../../../../shared/featureFlags/catalog.ts";
 import type { DesktopThemeSource, DesktopThemeState } from "@shared/theme";
 import {
   INotificationService,
@@ -74,11 +76,23 @@ import { WorkspaceModelPlansController } from "./workspaceModelPlansController.t
 import { WorkspaceAgentsController } from "./workspaceAgentsController.ts";
 import { WorkspaceAutomationRulesController } from "./workspaceAutomationRulesController.ts";
 
+export interface WorkspaceUiModeChangeErrorInput {
+  error: unknown;
+  mode: "agent" | "os";
+  previousMode: "agent" | "os";
+  workspaceId: string | null;
+}
+
 export interface WorkspaceSettingsServiceDependencies {
   client: DesktopWorkspaceSettingsClient;
   onAgentTargetsChanged?: () => void | Promise<void>;
+  onWorkspaceUiModeChangeError?: (
+    input: WorkspaceUiModeChangeErrorInput
+  ) => void;
   replaceWorkspaceWindow?: (input: {
+    clientTs: number;
     mode: "agent" | "os";
+    previousMode: "agent" | "os";
     workspaceId: string;
   }) => Promise<void>;
 }
@@ -171,6 +185,9 @@ export class WorkspaceSettingsService implements IWorkspaceSettingsService {
           ? options.provider
           : null;
       this.store.agentFocusRequestID += 1;
+    } else if (options?.pane === "connectors") {
+      this.store.activeSection = "agent";
+      this.store.agentTab = "connectors";
     } else if (
       options?.pane === "custom-agents" ||
       options?.pane === "workspace-agents"
@@ -535,20 +552,29 @@ export class WorkspaceSettingsService implements IWorkspaceSettingsService {
     const currentFlags =
       this.desktopPreferences.store.changingFeatureFlags ??
       this.desktopPreferences.store.featureFlags;
-    const nextFlags = withDesktopWorkspaceUiMode(currentFlags, mode);
-    if (desktopFeatureFlagsEqual(currentFlags, nextFlags)) {
+    const previousMode = resolveDesktopWorkspaceUiMode(currentFlags);
+    if (previousMode === mode) {
       return;
     }
+    const nextFlags = withDesktopWorkspaceUiMode(currentFlags, mode);
 
     try {
       await this.desktopPreferences.setFeatureFlags(nextFlags);
       if (this.store.workspaceID) {
         await this.dependencies.replaceWorkspaceWindow?.({
+          clientTs: (this.reporterNow ?? Date.now)(),
           mode,
+          previousMode,
           workspaceId: this.store.workspaceID
         });
       }
-    } catch {
+    } catch (error) {
+      this.dependencies.onWorkspaceUiModeChangeError?.({
+        error,
+        mode,
+        previousMode,
+        workspaceId: this.store.workspaceID
+      });
       this.notifications.error({
         title: createActiveTranslator().t(
           "workspace.settings.general.workspaceUiModeSaveFailed"

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   normalizeTuttiExternalAtQueryInput,
+  normalizeTuttiExternalAtQueryDirectoryInput,
   normalizeTuttiExternalAtResolveInput,
   normalizeTuttiExternalAtInvalidation,
   normalizeTuttiExternalAgentActivityActivateSessionInput,
@@ -47,6 +48,29 @@ test("caps at query max results and deduplicates providers", () => {
       maxResults: tuttiExternalAtMaxResultsLimit,
       providers: ["file", "agent-session"]
     }
+  );
+});
+
+test("normalizes external at directory queries including the provider root", () => {
+  assert.deepEqual(
+    normalizeTuttiExternalAtQueryDirectoryInput({
+      directoryPath: "  ",
+      maxResults: tuttiExternalAtMaxResultsLimit + 10,
+      providerId: "file"
+    }),
+    {
+      directoryPath: "",
+      maxResults: tuttiExternalAtMaxResultsLimit,
+      providerId: "file"
+    }
+  );
+  assert.throws(
+    () =>
+      normalizeTuttiExternalAtQueryDirectoryInput({
+        directoryPath: "",
+        providerId: "unknown"
+      }),
+    /providerId is unsupported/
   );
 });
 

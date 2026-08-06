@@ -2,6 +2,7 @@ package api
 
 import (
 	"net/http"
+	"strings"
 
 	tuttigenerated "github.com/tutti-os/tutti/services/tuttid/api/generated"
 	tuttitypes "github.com/tutti-os/tutti/services/tuttid/types"
@@ -155,6 +156,8 @@ func RegisterRoutes(mux *http.ServeMux, routes Routes) {
 		}
 		wrapper.InvokeCliCommand(w, r)
 	})
+
+	registerConnectorMarketRoutes(mux, wrapper)
 
 	mux.HandleFunc("/v1/preferences/desktop", func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
@@ -728,5 +731,73 @@ func RegisterRoutes(mux *http.ServeMux, routes Routes) {
 			return
 		}
 		routes.OpenWorkspace(w, r, tuttigenerated.WorkspaceID(r.PathValue("workspaceID")))
+	})
+}
+
+func registerConnectorMarketRoutes(mux *http.ServeMux, wrapper *tuttigenerated.ServerInterfaceWrapper) {
+	mux.HandleFunc("/v1/connector-market", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			tuttitypes.WriteMethodNotAllowed(w)
+			return
+		}
+		wrapper.GetConnectorMarket(w, r)
+	})
+	mux.HandleFunc("/v1/connector-market/categories", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			tuttitypes.WriteMethodNotAllowed(w)
+			return
+		}
+		wrapper.ListConnectorMarketCategories(w, r)
+	})
+	mux.HandleFunc("/v1/connector-market/catalog", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			tuttitypes.WriteMethodNotAllowed(w)
+			return
+		}
+		wrapper.ListConnectorMarketCatalog(w, r)
+	})
+	mux.HandleFunc("/v1/connector-market:refresh", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			tuttitypes.WriteMethodNotAllowed(w)
+			return
+		}
+		wrapper.RefreshConnectorMarket(w, r)
+	})
+	mux.HandleFunc("/v1/connector-market/connectors/{connectorSegment}", func(w http.ResponseWriter, r *http.Request) {
+		segment := r.PathValue("connectorSegment")
+		switch {
+		case r.Method == http.MethodGet && !strings.Contains(segment, ":"):
+			r.SetPathValue("connectorKey", segment)
+			wrapper.GetConnectorMarketConnector(w, r)
+		case r.Method == http.MethodPost && strings.HasSuffix(segment, ":install"):
+			r.SetPathValue("connectorKey", strings.TrimSuffix(segment, ":install"))
+			wrapper.InstallConnectorMarketConnector(w, r)
+		case r.Method == http.MethodPost && strings.HasSuffix(segment, ":uninstall"):
+			r.SetPathValue("connectorKey", strings.TrimSuffix(segment, ":uninstall"))
+			wrapper.UninstallConnectorMarketConnector(w, r)
+		default:
+			tuttitypes.WriteMethodNotAllowed(w)
+		}
+	})
+	mux.HandleFunc("/v1/connector-market/connectors/{connectorKey}/authorization:start", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			tuttitypes.WriteMethodNotAllowed(w)
+			return
+		}
+		wrapper.StartConnectorMarketAuthorization(w, r)
+	})
+	mux.HandleFunc("/v1/connector-market/connectors/{connectorKey}/authorization:disconnect", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			tuttitypes.WriteMethodNotAllowed(w)
+			return
+		}
+		wrapper.DisconnectConnectorMarketAuthorization(w, r)
+	})
+	mux.HandleFunc("/v1/connector-market/operations/{operationID}", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			tuttitypes.WriteMethodNotAllowed(w)
+			return
+		}
+		wrapper.GetConnectorMarketOperation(w, r)
 	})
 }

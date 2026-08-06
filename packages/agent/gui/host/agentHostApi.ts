@@ -25,14 +25,22 @@ export type AgentHostClipboardApi = {
 
 export type AgentHostTerminalLoginHandle = {
   close: () => void;
-  completion: Promise<"ready" | "timed_out">;
+  completion: Promise<"ready" | "timed_out" | "unavailable">;
+};
+
+export type AgentHostTerminalStartupAction = {
+  type: "slash_command";
+  commandName: string;
+  readyText: string;
 };
 
 export type AgentHostTerminalLoginApi = {
+  supportedStartupActionTypes?: readonly AgentHostTerminalStartupAction["type"][];
   run: (input: {
     agentTargetId: string;
     command: string;
     cwd?: string;
+    startupAction?: AgentHostTerminalStartupAction;
   }) => AgentHostAsyncResult<AgentHostTerminalLoginHandle | void>;
 };
 
@@ -211,7 +219,6 @@ export type AgentHostWorkspaceApi = AgentHostRecord & {
 
 export interface AgentHostInputApi {
   account?: AgentHostAccountApi;
-  agentSessions?: AgentHostAgentSessionsApi;
   agentTargetSetup?: AgentHostAgentTargetSetupApi;
   clipboard: AgentHostClipboardApi;
   debug?: AgentHostDebugApi;
@@ -299,8 +306,10 @@ export interface AgentHostAgentTargetAuthMethod {
   description?: string | null;
   /** Provider-declared method kind (for example "terminal"). */
   type?: string | null;
-  /** Ready-to-run interactive sign-in command for terminal-type methods. */
+  /** Ready-to-run interactive sign-in launch command for terminal-type methods. */
   terminalCommand?: string | null;
+  /** Optional typed action submitted after the terminal runtime is ready. */
+  terminalStartupAction?: AgentHostTerminalStartupAction | null;
 }
 
 export interface AgentHostAgentTargetSetupState {
@@ -394,19 +403,6 @@ export type AgentHostUserProjectsApi = AgentHostRecord & {
     path: string | null;
   }) => AgentHostAsyncResult<void>;
   use: (input: { path: string }) => AgentHostAsyncResult<AgentHostUserProject>;
-};
-
-export type AgentHostAgentSessionsApi = AgentHostRecord & {
-  activate: (input: any) => AgentHostAsyncResult<any>;
-  getComposerOptions?: (input: any) => AgentHostAsyncResult<any>;
-  getState: (input: any) => AgentHostAsyncResult<any>;
-  onEvent?: (listener: (event: any) => void) => AgentHostUnsubscribe;
-  subscribeEvents: (
-    input: any,
-    listener: (event: any) => void
-  ) => AgentHostUnsubscribe;
-  unactivate: (input: any) => AgentHostAsyncResult<any>;
-  updateSettings: (input: any) => AgentHostAsyncResult<any>;
 };
 
 export interface AgentHostRuntimeApi {

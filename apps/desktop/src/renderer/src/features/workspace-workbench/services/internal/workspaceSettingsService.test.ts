@@ -316,9 +316,77 @@ test("WorkspaceSettingsService writes changed preferences", async () => {
   assert.deepEqual(writes, ["zh-CN", "left", "claude-code", "general", "dark"]);
 });
 
-test("WorkspaceSettingsService changes workspace UI mode without replacing other flags", async () => {
+test("WorkspaceSettingsService enables Agent mode, preserves other flags, and hands off persisted analytics", async () => {
   const writes: Array<Record<string, boolean>> = [];
-  const replacements: Array<{ mode: string; workspaceId: string }> = [];
+  const replacements: Array<{
+    clientTs: number;
+    mode: string;
+    previousMode: string;
+    workspaceId: string;
+  }> = [];
+  const reporterCalls: ReporterEventInput[][] = [];
+  const effects: string[] = [];
+  const service = new WorkspaceSettingsService(
+    {
+      client: createWorkspaceSettingsClient({}),
+      replaceWorkspaceWindow: async (input) => {
+        effects.push("replace");
+        replacements.push(input);
+      }
+    },
+    createDesktopPreferencesService({
+      onSetFeatureFlags: async (flags) => {
+        effects.push("save");
+        writes.push(flags);
+        return flags;
+      },
+      state: createPreferencesState({
+        featureFlags: { "lab.enabled": true }
+      })
+    }),
+    createNotificationRecorder().service,
+    {
+      async trackEvents(events) {
+        effects.push("track");
+        reporterCalls.push(events);
+      }
+    },
+    null,
+    () => 1749124800000
+  );
+
+  service.openPanel({ id: "workspace-1" });
+  reporterCalls.length = 0;
+  effects.length = 0;
+  await service.changeWorkspaceUiMode("agent");
+
+  assert.deepEqual(writes, [
+    {
+      "lab.enabled": true,
+      "workspace.standaloneAgentMode": true
+    }
+  ]);
+  assert.deepEqual(replacements, [
+    {
+      clientTs: 1749124800000,
+      mode: "agent",
+      previousMode: "os",
+      workspaceId: "workspace-1"
+    }
+  ]);
+  assert.deepEqual(reporterCalls, []);
+  assert.deepEqual(effects, ["save", "replace"]);
+});
+
+test("WorkspaceSettingsService hands off the reverse Agent-to-OS transition", async () => {
+  const writes: Array<Record<string, boolean>> = [];
+  const replacements: Array<{
+    clientTs: number;
+    mode: string;
+    previousMode: string;
+    workspaceId: string;
+  }> = [];
+  const reporterCalls: ReporterEventInput[][] = [];
   const service = new WorkspaceSettingsService(
     {
       client: createWorkspaceSettingsClient({}),
@@ -332,22 +400,183 @@ test("WorkspaceSettingsService changes workspace UI mode without replacing other
         return flags;
       },
       state: createPreferencesState({
-        featureFlags: { "lab.enabled": true }
+        featureFlags: { "workspace.standaloneAgentMode": true }
       })
-    })
+    }),
+    createNotificationRecorder().service,
+    createReporterService(reporterCalls),
+    null,
+    () => 1749124800000
   );
 
   service.openPanel({ id: "workspace-1" });
-  await service.changeWorkspaceUiMode("agent");
+  reporterCalls.length = 0;
+  await service.changeWorkspaceUiMode("os");
 
-  assert.deepEqual(writes, [
+  assert.deepEqual(writes, [{ "workspace.standaloneAgentMode": false }]);
+  assert.deepEqual(replacements, [
     {
-      "lab.enabled": true,
-      "workspace.standaloneAgentMode": true
+      clientTs: 1749124800000,
+      mode: "os",
+      previousMode: "agent",
+      workspaceId: "workspace-1"
     }
   ]);
+  assert.deepEqual(reporterCalls, []);
+});
+
+test("WorkspaceSettingsService does not persist, replace, or track an already selected UI mode", async () => {
+  let writes = 0;
+  let replacements = 0;
+  const reporterCalls: ReporterEventInput[][] = [];
+  const service = new WorkspaceSettingsService(
+    {
+      client: createWorkspaceSettingsClient({}),
+      replaceWorkspaceWindow: async () => {
+        replacements += 1;
+      }
+    },
+    createDesktopPreferencesService({
+      onSetFeatureFlags: async (flags) => {
+        writes += 1;
+        return flags;
+      },
+      state: createPreferencesState({ featureFlags: {} })
+    }),
+    createNotificationRecorder().service,
+    createReporterService(reporterCalls)
+  );
+
+  service.openPanel({ id: "workspace-1" });
+  reporterCalls.length = 0;
+  await service.changeWorkspaceUiMode("os");
+
+  assert.equal(writes, 0);
+  assert.equal(replacements, 0);
+  assert.deepEqual(reporterCalls, []);
+});
+
+test("WorkspaceSettingsService does not duplicate a UI mode change that is already pending", async () => {
+  let writes = 0;
+  let replacements = 0;
+  const reporterCalls: ReporterEventInput[][] = [];
+  const service = new WorkspaceSettingsService(
+    {
+      client: createWorkspaceSettingsClient({}),
+      replaceWorkspaceWindow: async () => {
+        replacements += 1;
+      }
+    },
+    createDesktopPreferencesService({
+      onSetFeatureFlags: async (flags) => {
+        writes += 1;
+        return flags;
+      },
+      state: createPreferencesState({
+        changingFeatureFlags: { "workspace.standaloneAgentMode": true },
+        featureFlags: {}
+      })
+    }),
+    createNotificationRecorder().service,
+    createReporterService(reporterCalls)
+  );
+
+  service.openPanel({ id: "workspace-1" });
+  reporterCalls.length = 0;
+  await service.changeWorkspaceUiMode("agent");
+
+  assert.equal(writes, 0);
+  assert.equal(replacements, 0);
+  assert.deepEqual(reporterCalls, []);
+});
+
+test("WorkspaceSettingsService does not replace or track when UI mode persistence fails", async () => {
+  let replacements = 0;
+  const reporterCalls: ReporterEventInput[][] = [];
+  const modeErrors: Array<{
+    error: unknown;
+    mode: string;
+    previousMode: string;
+    workspaceId: string | null;
+  }> = [];
+  const notifications = createNotificationRecorder();
+  const service = new WorkspaceSettingsService(
+    {
+      client: createWorkspaceSettingsClient({}),
+      replaceWorkspaceWindow: async () => {
+        replacements += 1;
+      },
+      onWorkspaceUiModeChangeError: (input) => {
+        modeErrors.push(input);
+      }
+    },
+    createDesktopPreferencesService({
+      onSetFeatureFlags: async () => {
+        throw new Error("save failed");
+      },
+      state: createPreferencesState({ featureFlags: {} })
+    }),
+    notifications.service,
+    createReporterService(reporterCalls)
+  );
+
+  service.openPanel({ id: "workspace-1" });
+  reporterCalls.length = 0;
+  await service.changeWorkspaceUiMode("agent");
+
+  assert.equal(replacements, 0);
+  assert.deepEqual(reporterCalls, []);
+  assert.equal(modeErrors.length, 1);
+  const modeError = modeErrors[0];
+  assert.ok(modeError);
+  assert.equal((modeError.error as Error).message, "save failed");
+  assert.deepEqual(modeErrors[0], {
+    error: modeError.error,
+    mode: "agent",
+    previousMode: "os",
+    workspaceId: "workspace-1"
+  });
+  assert.deepEqual(notifications.items, [
+    "We couldn't update the startup interface right now."
+  ]);
+});
+
+test("WorkspaceSettingsService hands off a persisted UI mode change even when replacement fails", async () => {
+  const replacements: unknown[] = [];
+  const reporterCalls: ReporterEventInput[][] = [];
+  const notifications = createNotificationRecorder();
+  const service = new WorkspaceSettingsService(
+    {
+      client: createWorkspaceSettingsClient({}),
+      replaceWorkspaceWindow: async (input) => {
+        replacements.push(input);
+        throw new Error("replace failed");
+      }
+    },
+    createDesktopPreferencesService({
+      state: createPreferencesState({ featureFlags: {} })
+    }),
+    notifications.service,
+    createReporterService(reporterCalls),
+    null,
+    () => 1749124800000
+  );
+
+  service.openPanel({ id: "workspace-1" });
+  reporterCalls.length = 0;
+  await service.changeWorkspaceUiMode("agent");
+
   assert.deepEqual(replacements, [
-    { mode: "agent", workspaceId: "workspace-1" }
+    {
+      clientTs: 1749124800000,
+      mode: "agent",
+      previousMode: "os",
+      workspaceId: "workspace-1"
+    }
+  ]);
+  assert.deepEqual(reporterCalls, []);
+  assert.deepEqual(notifications.items, [
+    "We couldn't update the startup interface right now."
   ]);
 });
 

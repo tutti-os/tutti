@@ -49,6 +49,8 @@ export interface AgentComposerReferenceProvenanceFilters {
 export interface AgentComposerSubmitOptions {
   requiredSettingsPatch?: AgentActivitySubmitSettingsPatch;
   capabilityRefs?: readonly AgentComposerCapabilityReference[];
+  /** Exact canonical active Turn captured for native guidance. */
+  targetTurnId?: string;
   /**
    * Immutable Tutti presentation captured by the composer that initiated the
    * submit. An explicit inactive snapshot is authoritative over stale draft
@@ -190,13 +192,14 @@ export interface AgentComposerProps {
       professionalLongRunning: string;
     };
     planModeLabel: string;
+    codexSaverModeLabel: string;
+    codexSaverModeDescription: string;
     tuttiModeLabel: string;
     tuttiModeDescription: string;
     tuttiModeRemove: string;
     tuttiBudgetTitle: string;
     tuttiBudgetEffectLabel: string;
     tuttiBudgetSpeedLabel: string;
-    tuttiBudgetPreviewTitle: string;
     tuttiBudgetPreviewHint: string;
     tuttiBudgetPreviewCost: string;
     tuttiBudgetPreviewBalance: string;
@@ -205,7 +208,6 @@ export interface AgentComposerProps {
     tuttiBudgetModelPreferenceCost: string;
     tuttiBudgetModelPreferenceBalance: string;
     tuttiBudgetModelPreferencePowerful: string;
-    tuttiBudgetModelPreferenceFastestSuitable: string;
     tuttiBudgetParallelismLabel: string;
     tuttiBudgetParallelismValue: (count: number) => string;
     planModeDescription?: string;
@@ -243,6 +245,9 @@ export interface AgentComposerProps {
     slashPaletteSkillsGroup: string;
     slashPalettePluginsGroup: string;
     slashPaletteConnectorsGroup: string;
+    slashPaletteConnectorConnected: string;
+    slashPaletteConnectorNotConnected: string;
+    slashPaletteConnectorUnsupported: string;
     slashPaletteMcpGroup: string;
     slashCommandCompactLabel: string;
     slashCommandContextLabel: string;
@@ -363,6 +368,7 @@ export interface AgentComposerProps {
     metadata?: AgentProjectPathChangeMetadata
   ) => void;
   onSettingsChange: (settings: {
+    codexSaverMode?: boolean;
     model?: string | null;
     reasoningEffort?: string | null;
     speed?: string | null;

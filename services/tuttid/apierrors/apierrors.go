@@ -96,6 +96,8 @@ const (
 	ReasonAgentProviderUnavailable                       = "agent_provider_unavailable"
 	ReasonAgentRuntimeOperationReconciling               = "agent_runtime_operation_reconciling"
 	ReasonAgentRuntimeOperationFailed                    = "agent_runtime_operation_failed"
+	ReasonAgentActiveTurnTargetRequired                  = "agent.active_turn_target_required"
+	ReasonAgentActiveTurnTargetMismatch                  = "agent.active_turn_target_mismatch"
 	ReasonWorkspaceAppNotFound                           = "workspace_app_not_found"
 	ReasonWorkspaceAppDeleteForbidden                    = "workspace_app_delete_forbidden"
 	ReasonWorkspaceAppIconInvalid                        = "workspace_app_icon_invalid"
@@ -530,6 +532,10 @@ func Classify(err error) *ProtocolError {
 		return InvalidRequest("agent.no_active_turn", WithCause(err))
 	case errors.Is(err, agentservice.ErrActiveTurnGuidanceUnsupported):
 		return InvalidRequest("agent.active_turn_guidance_unsupported", WithCause(err))
+	case errors.Is(err, agentservice.ErrActiveTurnTargetRequired):
+		return InvalidRequest(ReasonAgentActiveTurnTargetRequired, WithCause(err))
+	case errors.Is(err, agentservice.ErrActiveTurnTargetMismatch):
+		return InvalidRequest(ReasonAgentActiveTurnTargetMismatch, WithCause(err))
 	case errors.Is(err, agentservice.ErrSessionNotFound):
 		return WorkspaceNotFound(ReasonWorkspaceAgentSessionNotFound, WithCause(err))
 	case errors.Is(err, agentservice.ErrSessionSettingsRequireNewSession):

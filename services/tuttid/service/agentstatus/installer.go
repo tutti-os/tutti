@@ -2,7 +2,6 @@ package agentstatus
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -12,9 +11,10 @@ import (
 	"runtime"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/tutti-os/tutti/packages/agent/daemon/httpx"
-	"github.com/tutti-os/tutti/packages/agent/daemon/runtimecmd"
+	"github.com/tutti-os/tutti/packages/agent/daemon/providerregistry"
 	managedruntime "github.com/tutti-os/tutti/services/tuttid/service/managedruntime"
 )
 
@@ -37,170 +37,6 @@ type installerExecutionSummary struct {
 	Stdout   []string
 	Stderr   []string
 	ExitCode *int
-}
-
-func codexRuntimeSelectionNeedsUserInput(runtime providerRuntimeResolution) bool {
-	return runtime.CodexSelectionState == CodexRuntimeSelectionSelectionRequired ||
-		runtime.CodexSelectionState == CodexRuntimeSelectionStale
-}
-
-func (s Service) resolveProviderRuntime(ctx context.Context, spec ProviderSpec) providerRuntimeResolution {
-	resolver := s.commandResolver()
-	env := resolver.Env(spec.AdapterEnv)
-	if strings.TrimSpace(os.Getenv("TUTTI_MOCK_AGENT_UNBOUND")) == "1" && isCodexStatusSpec(spec) {
-		return providerRuntimeResolution{Env: env}
-	}
-	if strings.TrimSpace(spec.ExternalRegistryID) != "" {
-		return s.resolveExternalProviderRuntime(ctx, spec, resolver, env)
-	}
-	if isCodexStatusSpec(spec) && s.CodexRuntimeSelectionStore != nil {
-		selection, err := s.resolveCodexRuntimeSelection(ctx, spec)
-		result := providerRuntimeResolution{
-			AdapterEnv: cloneStrings(spec.AdapterEnv),
-			Env:        env,
-		}
-		if err != nil {
-			result.ReasonCode = "codex_runtime_selection_unavailable"
-			return result
-		}
-		result.ReasonCode = selection.ReasonCode
-		result.CodexSelectionExplicit = selection.Explicit
-		result.CodexSelectionState = selection.State
-		candidate, found := selection.candidate()
-		if !found {
-			return result
-		}
-		result.CLIPath = candidate.Candidate.LauncherPath
-		if !selection.Launchable {
-			return result
-		}
-		result.AdapterPath = candidate.Candidate.LauncherPath
-		result.AdapterCommand = cloneStrings(spec.AdapterCommand)
-		if len(result.AdapterCommand) > 0 {
-			result.AdapterCommand[0] = candidate.Candidate.LauncherPath
-		}
-		return result
-	}
-	cliPath := resolveBinaryWithResolver(resolver, spec.BinaryNames, nil)
-	adapterPath := resolveBinaryWithResolver(resolver, adapterBinaryNames(spec), spec.AdapterEnv)
-	if isCodexStatusSpec(spec) && len(spec.AdapterCommand) > 0 && s.executableFile(spec.AdapterCommand[0]) {
-		if cliPath == "" {
-			cliPath = spec.AdapterCommand[0]
-		}
-		if adapterPath == "" {
-			adapterPath = spec.AdapterCommand[0]
-		}
-	}
-	return providerRuntimeResolution{
-		CLIPath:        cliPath,
-		AdapterPath:    adapterPath,
-		AdapterVersion: resolveAdapterPackageVersion(adapterPath, spec.AdapterPackage),
-		AdapterCommand: cloneStrings(spec.AdapterCommand),
-		AdapterEnv:     cloneStrings(spec.AdapterEnv),
-		Env:            env,
-	}
-}
-
-func (s Service) resolveExternalProviderRuntime(
-	_ context.Context,
-	spec ProviderSpec,
-	resolver runtimecmd.Resolver,
-	env []string,
-) providerRuntimeResolution {
-	result := providerRuntimeResolution{
-		CLIPath:        resolveBinaryWithResolver(resolver, spec.BinaryNames, nil),
-		AdapterCommand: cloneStrings(spec.AdapterCommand),
-		AdapterEnv:     cloneStrings(spec.AdapterEnv),
-		ReasonCode:     spec.AdapterUnavailableReasonCode,
-		Env:            env,
-	}
-	if spec.AdapterInstall.RegistryNPM != nil {
-		npm := spec.AdapterInstall.RegistryNPM
-		result.AdapterPath = strings.TrimSpace(npm.PackageDir)
-		result.AdapterVersion = installedNPMPackageVersion(npm.PackageDir, spec.AdapterPackage.Name)
-		if result.AdapterVersion == "" || len(spec.AdapterCommand) == 0 {
-			result.AdapterPath = ""
-		}
-		return result
-	}
-	if len(spec.AdapterCommand) > 0 {
-		path := strings.TrimSpace(spec.AdapterCommand[0])
-		if path != "" && s.executableFile(path) {
-			result.AdapterPath = path
-			result.AdapterVersion = spec.AdapterPackage.Version
-		}
-	}
-	return result
-}
-
-func resolveAdapterPackageVersion(adapterPath string, requirement AdapterPackageRequirement) string {
-	if strings.TrimSpace(adapterPath) == "" || strings.TrimSpace(requirement.Name) == "" {
-		return ""
-	}
-	packageJSONPath := findAdapterPackageJSON(adapterPath, requirement.Name)
-	if packageJSONPath == "" {
-		return ""
-	}
-	content, err := os.ReadFile(packageJSONPath)
-	if err != nil {
-		return ""
-	}
-	var manifest struct {
-		Name    string `json:"name"`
-		Version string `json:"version"`
-	}
-	if err := json.Unmarshal(content, &manifest); err != nil {
-		return ""
-	}
-	if strings.TrimSpace(manifest.Name) != strings.TrimSpace(requirement.Name) {
-		return ""
-	}
-	return strings.TrimSpace(manifest.Version)
-}
-
-func findAdapterPackageJSON(adapterPath string, packageName string) string {
-	resolvedPath := strings.TrimSpace(adapterPath)
-	if resolved, err := filepath.EvalSymlinks(resolvedPath); err == nil {
-		resolvedPath = resolved
-	}
-	dir := filepath.Dir(resolvedPath)
-	for range 8 {
-		candidate := filepath.Join(dir, "package.json")
-		if packageJSONHasName(candidate, packageName) {
-			return candidate
-		}
-		parent := filepath.Dir(dir)
-		if parent == dir {
-			break
-		}
-		dir = parent
-	}
-	return ""
-}
-
-func packageJSONHasName(path string, packageName string) bool {
-	content, err := os.ReadFile(path)
-	if err != nil {
-		return false
-	}
-	var manifest struct {
-		Name string `json:"name"`
-	}
-	if err := json.Unmarshal(content, &manifest); err != nil {
-		return false
-	}
-	return strings.TrimSpace(manifest.Name) == strings.TrimSpace(packageName)
-}
-
-func resolveBinaryWithResolver(resolver runtimecmd.Resolver, binaryNames []string, overrides []string) string {
-	return resolver.ResolveBinary(binaryNames, overrides)
-}
-
-func adapterBinaryNames(spec ProviderSpec) []string {
-	if len(spec.AdapterBinaryNames) > 0 {
-		return cloneStrings(spec.AdapterBinaryNames)
-	}
-	return cloneStrings(spec.BinaryNames)
 }
 
 func (s Service) installMissingProviderRuntime(
@@ -312,12 +148,6 @@ func (s Service) installMissingProviderRuntime(
 			"stdout", trimActionOutput(result.Stdout),
 			"stderr", trimActionOutput(result.Stderr),
 		)
-		s.reportProviderSetupNodeResult(ctx, providerSetupNodeResultInput{
-			Node:      installNodeForTarget(installTarget),
-			Provider:  spec.Provider,
-			Result:    RunActionResult{Status: RunActionCompleted},
-			StartedAt: nodeStartedAt,
-		})
 		selectedInstallDir := current.InstallDir
 		resolvedSpec, _ := s.resolveProviderSpec(ctx, spec, false)
 		current = s.resolveProviderRuntime(ctx, resolvedSpec)
@@ -331,6 +161,28 @@ func (s Service) installMissingProviderRuntime(
 			"adapterVersion", current.AdapterVersion,
 			"installDir", current.InstallDir,
 		)
+		stillMissing := (installTarget == "cli" && strings.TrimSpace(current.CLIPath) == "") ||
+			(installTarget == "adapter" && strings.TrimSpace(current.AdapterPath) == "")
+		if stillMissing {
+			err := fmt.Errorf("provider %s is still unavailable after installer exited successfully", spec.Provider)
+			s.reportProviderSetupNodeResult(ctx, providerSetupNodeResultInput{
+				Node:     installNodeForTarget(installTarget),
+				Provider: spec.Provider,
+				Result: RunActionResult{
+					ReasonCode: "install_runtime_unavailable",
+					Status:     RunActionFailed,
+					Message:    err.Error(),
+				},
+				StartedAt: nodeStartedAt,
+			})
+			return summary, current, err
+		}
+		s.reportProviderSetupNodeResult(ctx, providerSetupNodeResultInput{
+			Node:      installNodeForTarget(installTarget),
+			Provider:  spec.Provider,
+			Result:    RunActionResult{Status: RunActionCompleted},
+			StartedAt: nodeStartedAt,
+		})
 	}
 }
 
@@ -523,10 +375,19 @@ func (s Service) shellCommandInstallerEnv(ctx context.Context, spec InstallerSpe
 
 func shellCommandUsesNPM(command string) bool {
 	fields := strings.Fields(command)
-	return len(fields) > 0 && fields[0] == npmBinaryName()
+	if len(fields) == 0 {
+		return false
+	}
+	// Registry/descriptors use the portable command name `npm`, while a
+	// Windows PATH lookup resolves it to npm.cmd. Treat both spellings as the
+	// same installer so managed Node is still prepended on Windows.
+	return strings.EqualFold(fields[0], "npm") || strings.EqualFold(fields[0], "npm.cmd")
 }
 
 func installerLockCommand(spec InstallerSpec) string {
+	if runtime.GOOS == "windows" && spec.Kind == InstallerKindOfficialScript && spec.WindowsFallback == providerregistry.InstallerWindowsFallbackManagedNPM && spec.ManagedNPM != nil {
+		return installerLockCommand(InstallerSpec{Kind: InstallerKindManagedNPMPackage, ManagedNPM: spec.ManagedNPM})
+	}
 	if spec.Kind == InstallerKindShellCommand {
 		return spec.ShellCommand
 	}
@@ -548,6 +409,39 @@ func installerLockCommand(spec InstallerSpec) string {
 }
 
 func (s Service) runOfficialScriptInstaller(ctx context.Context, provider string, spec InstallerSpec) (InstallCommandResult, error) {
+	if runtime.GOOS == "windows" {
+		switch spec.WindowsFallback {
+		case providerregistry.InstallerWindowsFallbackPowerShell:
+			command := strings.TrimSpace(spec.WindowsPowerShellCommand)
+			if command == "" {
+				return InstallCommandResult{ExitCode: 1, Stderr: "Windows PowerShell installer command is missing"}, nil
+			}
+			return s.installCommand(ctx, InstallCommandInput{
+				Args:     []string{"powershell.exe", "-NoLogo", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", command},
+				Env:      s.commandResolver().Env(nil),
+				OnStdout: activeActionStdoutAppender(ctx, provider),
+			})
+		case providerregistry.InstallerWindowsFallbackManagedRuntime:
+			// Some official Unix installers deliberately reject Windows. The daemon
+			// provisions the provider's verified native runtime from its descriptor,
+			// so use that same path instead of feeding a Unix installer to MSYS2.
+			return s.runManagedClaudeCodeInstaller(ctx)
+		case providerregistry.InstallerWindowsFallbackManagedNPM:
+			if spec.ManagedNPM == nil {
+				return InstallCommandResult{ExitCode: 1, Stderr: "Windows managed npm fallback is missing its package configuration"}, nil
+			}
+			return s.runManagedNPMPackageInstaller(ctx, provider, *spec.ManagedNPM, "")
+		default:
+			// Never send a Unix-only curl | bash installer to MSYS/bash on native
+			// Windows. That path produces misleading OS/POSIX-tool errors and can
+			// leave the provider half-installed. The provider can still be used via
+			// WSL or an already-installed native CLI when the resolver finds one.
+			return InstallCommandResult{
+				ExitCode: 1,
+				Stderr:   "this provider's official installer is Unix-only and cannot run on native Windows; install the CLI in WSL or provide an existing native CLI",
+			}, nil
+		}
+	}
 	installerFile, err := os.CreateTemp("", "tutti-agent-provider-install-*.sh")
 	if err != nil {
 		return InstallCommandResult{ExitCode: 1}, err
@@ -571,11 +465,58 @@ func (s Service) runOfficialScriptInstaller(ctx context.Context, provider string
 			Stderr:   err.Error(),
 		}, nil
 	}
+	command, args, env := officialScriptInvocation(
+		spec.ScriptShell,
+		scriptPath,
+		s.commandResolver().Env(nil),
+	)
 	return s.installCommand(ctx, InstallCommandInput{
-		Command:  joinShellCommand([]string{spec.ScriptShell, scriptPath}),
-		Env:      s.commandResolver().Env(nil),
+		Command:  command,
+		Args:     args,
+		Env:      env,
 		OnStdout: activeActionStdoutAppender(ctx, provider),
 	})
+}
+
+func (s Service) runManagedClaudeCodeInstaller(ctx context.Context) (InstallCommandResult, error) {
+	startedAt := time.Now()
+	slog.Info(
+		"claude code managed runtime install started",
+		"event", "tutti.claude_code.managed_install.started",
+	)
+	status, err := s.EnsureClaudeCodeBinary(ctx)
+	if err != nil {
+		slog.Warn(
+			"claude code managed runtime install failed",
+			"event", "tutti.claude_code.managed_install.failed",
+			"durationMs", time.Since(startedAt).Milliseconds(),
+			"error", err,
+		)
+		return InstallCommandResult{ExitCode: 1, Stderr: err.Error()}, nil
+	}
+	if strings.TrimSpace(status.Path) == "" {
+		err := fmt.Errorf("managed Claude Code runtime is unavailable (source=%s)", status.Source)
+		slog.Warn(
+			"claude code managed runtime install unavailable",
+			"event", "tutti.claude_code.managed_install.failed",
+			"durationMs", time.Since(startedAt).Milliseconds(),
+			"source", status.Source,
+			"error", err,
+		)
+		return InstallCommandResult{ExitCode: 1, Stderr: err.Error()}, nil
+	}
+	slog.Info(
+		"claude code managed runtime install completed",
+		"event", "tutti.claude_code.managed_install.completed",
+		"durationMs", time.Since(startedAt).Milliseconds(),
+		"source", status.Source,
+		"version", status.Version,
+		"path", status.Path,
+	)
+	return InstallCommandResult{
+		ExitCode: 0,
+		Stdout:   fmt.Sprintf("Claude Code managed runtime ready: %s", status.Path),
+	}, nil
 }
 
 func (s Service) runReleaseBinaryInstaller(
@@ -654,18 +595,33 @@ func (s Service) runExternalAgentRegistryNPMInstaller(ctx context.Context, provi
 	if err := os.MkdirAll(npmSpec.PrefixDir, 0o755); err != nil {
 		return InstallCommandResult{ExitCode: 1, Stderr: err.Error()}, nil
 	}
-	appRuntime, err := s.managedRuntimeResolver().Resolve(ctx)
+	resolver := s.managedRuntimeResolver()
+	var appRuntime managedruntime.ResolvedRuntime
+	var err error
+	if profileResolver, ok := resolver.(managedruntime.ProfileResolver); ok {
+		appRuntime, err = profileResolver.ResolveProfile(ctx, managedruntime.NodeStaticProfile)
+	} else {
+		appRuntime, err = resolver.Resolve(ctx)
+	}
 	if err != nil {
 		return InstallCommandResult{ExitCode: 1, Stderr: err.Error()}, nil
 	}
 	packageSpec := boundedNPMPackageSpec(npmSpec.Package)
-	command := joinShellCommand([]string{
+	commandArgs := []string{
 		appRuntime.NPM,
 		"--prefix",
 		npmSpec.PrefixDir,
 		"install",
 		packageSpec,
-	})
+	}
+	command := joinShellCommand(commandArgs)
+	slog.Info(
+		"agent provider external registry npm command prepared",
+		"provider", provider,
+		"npmPath", appRuntime.NPM,
+		"installPrefix", npmSpec.PrefixDir,
+		"runner", structuredInstallRunner(),
+	)
 	baseEnv := managedruntime.ProcessEnv(append(appRuntime.EnvOverrides, envMapToList(npmSpec.Env)...)...)
 	// Use a dedicated, tutti-owned npm cache inside the install prefix rather than
 	// the user's global ~/.npm, which on some machines holds root-owned files that
@@ -690,6 +646,7 @@ func (s Service) runExternalAgentRegistryNPMInstaller(ctx context.Context, provi
 		attemptCtx, cancel := context.WithTimeout(ctx, perRegistryInstallTimeout)
 		result, err = s.installCommand(attemptCtx, InstallCommandInput{
 			Command:  command,
+			Args:     commandArgs,
 			Env:      env,
 			OnStdout: activeActionStdoutAppender(ctx, provider),
 		})

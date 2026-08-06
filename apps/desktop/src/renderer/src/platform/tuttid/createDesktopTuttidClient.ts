@@ -1,5 +1,6 @@
 import {
   createTuttidClient,
+  type ConnectorMarketClient,
   type MobileRemoteAccessClient,
   type TuttidClient
 } from "@tutti-os/client-tuttid-ts";
@@ -8,7 +9,7 @@ import { createRestartAwareFetch } from "./createRestartAwareFetch.ts";
 
 export function createDesktopTuttidClient(
   runtimeApi: DesktopRuntimeApi
-): TuttidClient & MobileRemoteAccessClient {
+): TuttidClient & MobileRemoteAccessClient & ConnectorMarketClient {
   return createTuttidClient({
     fetch: createRestartAwareFetch(runtimeApi)
   });

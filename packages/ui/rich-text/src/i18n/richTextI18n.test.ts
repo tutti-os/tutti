@@ -10,6 +10,7 @@ import { resolveRichTextTriggerText } from "../editor/richTextTriggerText.ts";
 test("rich text i18n runtime resolves package-local defaults", () => {
   const i18n = createRichTextI18nRuntime();
 
+  assert.equal(i18n.t("richTextAt.loadFailed"), "Unable to load references");
   assert.equal(i18n.t("richTextAt.loading"), "Loading...");
   assert.equal(i18n.t("richTextAt.noMatches"), "No matches");
   assert.equal(
@@ -24,6 +25,7 @@ test("rich text i18n runtime follows merged host locale resources", () => {
   });
   const i18n = createRichTextI18nRuntime(runtime);
 
+  assert.equal(i18n.t("richTextAt.loadFailed"), "无法加载引用");
   assert.equal(i18n.t("richTextAt.loading"), "正在加载...");
   assert.equal(i18n.t("richTextAt.noMatches"), "没有匹配项");
 });
@@ -43,6 +45,7 @@ test("resolveRichTextTriggerText prefers overrides over i18n defaults", () => {
       i18n
     ),
     {
+      loadFailedLabel: "无法加载引用",
       loadingLabel: "正在加载...",
       noMatchesLabel: "Nothing here",
       removeReferenceActionLabel: "移除引用"

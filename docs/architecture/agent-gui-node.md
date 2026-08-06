@@ -196,6 +196,21 @@ explicit top-level `set`/`unset` patch. Omission preserves existing context;
 patches may update only provider-private keys and must never replace unrelated
 session metadata.
 
+### New-session launch settings
+
+Remembered composer defaults are target-scoped preferences, not active Session
+state. AgentGUI reads them only while composing a new Session and sends the
+resolved sparse settings through the normal activation command. A host-owned
+entry capability may additionally hide or disable an experimental control; the
+activation boundary must fail closed as well, so a remembered `true` value
+cannot outlive a disabled host entry. Provider support comes from the resolved
+composer descriptor rather than provider-name checks in shared UI code.
+
+Settings that affect provider preparation are immutable after launch. The
+daemon validates them against current product policy and resolved provider
+capability before runtime preparation; an active Session cannot reinterpret
+them through an in-place settings update.
+
 ### 2.4 Ownership map
 
 | Layer                           | Owns                                                                                          | Must not own                                      |
@@ -340,13 +355,16 @@ consumer of the hydrated feature flag and does not add a parallel event center.
 The main-process Replay composition module owns manager/access/control creation
 and all Replay IPC bindings; general runtime IPC supplies only Electron and
 daemon adapters. When disabled, Desktop main does not create the Replay process
-manager, access adapters, control writer, or Replay IPC handlers. The renderer does not create
-the Replay service, recording binding, recorder/observer maps, or Engine
-intent/command observer. Enabled composition creates the renderer recorder only
-for the lifetime of an active Recording and mounts isolated Replay observers
-only inside the Replay runtime. Changing the preference does not claim to
-recompose a running daemon or renderer; the next process composition applies
-the new value.
+manager, access adapters, control writer, or Replay IPC handlers, and the
+renderer keeps the replay activity bridge inert: it creates no recording
+binding, recorder map, or Engine observer. When enabled, the
+`agent-session-replay` feature-local activity bridge owns the recording binding,
+recorder map, and Engine observer fan-out; `WorkspaceAgentActivityService`
+remains the Activity Engine/reconcile facade and delegates that replay boundary
+to the bridge. The renderer creates recorder state only for the lifetime of an
+active Recording and mounts isolated Replay observers only inside the Replay
+runtime. Changing the preference does not claim to recompose a running daemon
+or renderer; the next process composition applies the new value.
 
 A Recording captures a time window over the root SessionGraph. Root Turn
 settlement, child creation, and Goal continuation do not complete it. Explicit
@@ -470,6 +488,16 @@ reloading the page.
 ### 3.1 Session
 
 A Session holds identity, target, provider metadata, cwd, title, settings, resume information, a Goal reference, and the current active Turn reference.
+
+Session title has an explicit ownership rule in the runtime. A user title
+(explicit rename) is immutable from the turn-execution path: a running turn may
+fold provider/event titles as candidates, but the controller's current Session
+is the only accepted state, and the turn-completion commit merges only the
+turn-owned lifecycle/status fields back. A title the user set is never
+overwritten by a late provider title or by a stale turn-completion snapshot,
+and neither the stream projection nor the durable report may carry a stale
+provider title over an established user title. On resume the runtime fails
+closed and treats a persisted title as user-established.
 
 A Session does not copy Turn phase/outcome, own pending Interactions, or persist lifecycle inferred from transcript.
 
@@ -802,6 +830,20 @@ queue submission while keeping the editor editable. Draft emptiness, upload
 progress/failure, project existence, and other draft-local conditions may
 disable submission, but must not change editor editability.
 
+Engine submitting and unconfirmed-submit selectors remain busy facts after a
+canonical Session first appears. Session existence or an `available` runtime
+must not create an idle frame before the exact Turn claims the submission. A
+viable new-Session activation with `initialTurnExpected` remains the same busy
+bridge while no canonical latest Turn exists. Goal-only activation deliberately
+does not expect a Turn. When a provider exposes an exact session-level
+`running`/`idle` observation before Turn identity, the daemon projects that
+typed, non-persistent runtime activity through `agent.activity.updated` after
+the associated state report wins canonical ordering. Desktop and Mobile Live
+consume the same event variant. The workspace Engine uses its occurrence time
+to reject reordering and prevents an older `running` observation from
+overriding a settled Turn. A disconnect clears the ephemeral observation,
+while canonical Turn state remains authoritative once it exists.
+
 ### 4.1 Read/write rules
 
 - reads use exported selectors or memoized `AgentActivitySnapshot`
@@ -1020,6 +1062,15 @@ The busy-session prompt queue is ephemeral durable-intent coordination in the wo
 
 - a normal prompt waits for canonical availability
 - a provider with native guidance capability may guide the active Turn
+- guidance captures the canonical `activeTurnId` at the interaction boundary
+  and carries it through the queue, activity adapter, daemon API, Agent Host,
+  and runtime Controller; `turnId` is required for every cross-process
+  guidance request and is never inferred from the latest Session snapshot
+- Host and the runtime Controller compare that target with the live active
+  Turn while holding the lifecycle admission lock. A mismatch is a typed
+  pre-provider rejection (`NotDispatched`), and a prepared submit claim is
+  removed so the failed guidance cannot strand the queue or be redirected to a
+  newer Turn
 - otherwise send-now performs exact cancel-then-send
 - user Stop pauses the queue; cancellation must not leak the next prompt
 - a prompt settings precondition is an explicit preparation stage, not a nested
@@ -1063,6 +1114,12 @@ internals. Surface identity such as a Desktop AgentGUI `nodeId` is
 adapter-owned diagnostic context: the Desktop runtime adapter enriches
 diagnostic payloads instead of passing it into the headless controller
 interface.
+
+The full AgentGUI surface reads the optional
+`AgentGUIRuntime.conversationRailQueryLimits.sectionRefreshLimitMax` backend
+contract and passes it to that same controller. A host whose section endpoint
+accepts less than AgentGUI's default refresh limit must declare its positive
+maximum instead of relying on transport rejection or adapter-side truncation.
 
 Resolved query results may be reused from the workspace cache. In-flight
 first-page entity payloads are controller-generation scoped and must not be
@@ -1189,6 +1246,32 @@ Tutti execution conflict leaves the whole selection and local collection
 unchanged. The conflict parser recognizes only the daemon's typed
 `tutti_execution_active` payload; archive/view commands remain an optional
 host capability until the generated execution adapter is present.
+
+### Conversation Rail Activity View
+
+`AgentGUIRuntime.conversationActivityViewEnabled` is the fail-closed host
+boundary for the Conversation Rail Activity View. Desktop opts in explicitly;
+external hosts that omit or disable it retain the ordinary Rail unchanged.
+
+The view is a presentation-only activation over the current workspace Engine:
+it reads visible root Session summaries, root-aggregated descendant
+working/waiting state, attention/read state, and already-cached Session
+messages. Opening it must not call list pagination or transcript hydration.
+Its membership input is the canonical mounted Engine summary collection, never
+the ordinary Rail's transient `runtimeRailConversations` overlay; stale page
+projections therefore cannot leak into Activity View.
+Membership and recency are snapshotted when the view opens; subsequent Engine
+pushes reconcile incrementally, while deletion removes a member immediately.
+Search temporarily takes over the content area and clearing search restores the
+same activation. Closing the view discards the activation and its retained-idle
+markers. A retained-idle marker stores the exact unread recency and expires as
+soon as that recency changes. Existing workspace, authenticated-user, Agent
+target, and Engine identities fence the activation internally; no Activity
+filter or additional host scope contract is introduced. Disabled hosts use an
+empty Activity selector and do not scan root Sessions. Activity rows omit the
+minute-clock subscription together with their hidden timestamp. The full
+product contract is recorded in
+`docs/specs/2026-08-05-agent-conversation-activity-view-prd.md`.
 
 The full first-page query is the only Rail read that resolves a navigation
 scope and clears its pending state. Targeted section refresh and pagination may
@@ -1455,6 +1538,15 @@ requests only `skills/list` and retains the ordinary Skill projection through
 the shared app-server transport, capability contract, cache, and structured
 prompt-item submission path.
 
+Tutti Desktop's slash connector section is a local-installation projection,
+not a Provider connector catalog. `services/tuttid/service/agent` reads the
+daemon-owned connector-market SQLite store through a read-only snapshot port,
+keeps only records whose installation state is `installed`, and replaces any
+Provider-reported connector capabilities before returning composer options.
+AgentGUI renders the resulting provider-neutral capability status; it does not
+scan external MCP, plugin, or package-manager configuration and does not infer
+installation from a remote market response.
+
 ### 5.3 Agent Directory and setup
 
 The host provides a complete, ordered Agent Directory with this load lifecycle:
@@ -1700,9 +1792,13 @@ projection cannot overwrite newer local input; a value not emitted locally
 remains an authoritative external replacement.
 
 An existing-Session composer derives input history from that Session's
-canonical user-message projection; it does not persist a second history store.
-The host must opt in explicitly; Desktop maps the default-off
-`lab.agentInputHistory` Lab preference to that capability.
+canonical user-message projection and its turnless Goal-control audit entries;
+it does not persist a second history store. These sources are merged by their
+timeline timestamps so Goal commands participate in the same Up/Down sequence
+as ordinary prompts.
+The host capability remains explicit so unsupported hosts can fail closed, but
+Tutti Desktop always supplies `sessionInputHistoryEnabled: true`; historical
+`lab.agentInputHistory` preference values do not hide or disable the feature.
 Bare Up/Down recalls older/newer structured drafts only from an empty composer
 or an unchanged recalled entry, and only when the collapsed caret is at a
 whole-document boundary. Palette handling and IME composition take precedence,
@@ -1877,6 +1973,18 @@ Engine migration preserves all host observability and product integration.
 
 `AgentHostApi` supplies host capabilities only: files, clipboard, project/account lookup, Agent Target setup/probes, diagnostics, and OS/Workbench helpers. It must not become a Session, Turn, timeline, or write source again.
 
+Terminal authentication is one such Host capability. AgentGUI receives an
+optional atomic `terminalStartupAction` containing a safe slash-command name
+and literal readiness marker, then returns it unchanged through
+`terminalLogin.run`; neither layer accepts or synthesizes raw terminal input.
+Hosts must explicitly list supported startup action types; an older Host that
+omits that capability may still expose the manual command fallback but cannot
+silently launch a typed action it does not implement.
+The Desktop Workbench presenter owns node launch, exact-session readiness
+matching, slash submission, diagnostics, and close cleanup. Its startup result
+must settle before the setup-readiness monitor starts, so timeout, cancellation,
+or transport failure cannot leave a second polling lifecycle behind.
+
 The optional quick-prompt library follows that host-capability boundary. Tutti
 Desktop projects the device-global `tuttid` quick-prompt CRUD service through
 `AgentHostApi.quickPrompts`; AgentGUI owns only the picker/editor presentation
@@ -2044,10 +2152,10 @@ home composer submit
   -> authoritative Session/Turn replaces optimistic projection
 ```
 
-Initial content is one user-owned submit flow, but provider acceptance is not the prompt's durability boundary. Once the submitted Turn and prompt are durably recorded, a deterministic provider rejection keeps the visible Session, failed Turn, and user prompt so the failure can be rendered and retried. Only a pre-dispatch startup/validation failure may compensate an empty provisional shell; an outcome-unknown delivery keeps its recovery claim instead of guessing whether the provider ran.
+Initial content is one user-owned submit flow, but provider acceptance is not the prompt's durability boundary. Once the submitted Turn and prompt are durably recorded, a deterministic provider rejection keeps the visible Session, failed Turn, and user prompt so the failure can be rendered as history. Host then discards the startup runtime without publishing canonical completion. AgentGUI may offer provider login for an authentication failure, but it does not offer manual activation retry for failed or canceled Sessions; the user starts a new conversation instead. Restarted Sessions already project their canonical canceled state, so this presentation rule does not require a separate provider-history query. Only a pre-dispatch startup/validation failure may compensate an empty provisional shell; an outcome-unknown delivery keeps its recovery claim instead of guessing whether the provider ran.
 The rejected submit claim is terminal and remains bound to that failed Turn, so
-retrying the same `clientSubmitId` reuses the persisted failure and never
-dispatches a second provider Turn.
+replaying the same `clientSubmitId` is an idempotent read of the persisted
+failure and never dispatches a second provider Turn.
 The initiating composer snapshots Tutti activation plus effect and speed with
 that submit. An explicit active or inactive submit snapshot is authoritative
 over a later read of mutable home-draft state; non-composer callers may fall

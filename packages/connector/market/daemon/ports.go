@@ -1,22 +1,75 @@
 package daemon
 
-import "context"
+import (
+	"context"
+	"time"
+)
 
 type CatalogSource interface {
+	ListCategories(context.Context) ([]CatalogCategory, error)
+	ListPage(context.Context, CatalogSourcePageQuery) (CatalogSourcePage, error)
 	Refresh(context.Context) (CatalogSnapshot, error)
+}
+
+type CatalogSourcePageQuery struct {
+	SectionID string
+	PageSize  int
+	PageToken string
+}
+
+type CatalogPageQuery struct {
+	SectionID string
+	PageSize  int
+	PageToken string
+}
+
+type CatalogCategory struct {
+	CategoryID string `json:"categoryId"`
+	Kind       string `json:"kind"`
+	SortOrder  int32  `json:"sortOrder"`
+	ItemCount  int64  `json:"itemCount"`
+}
+
+type CatalogEntry struct {
+	CategoryID string  `json:"categoryId"`
+	Featured   bool    `json:"featured"`
+	Release    Release `json:"release"`
+}
+
+type CatalogSourcePage struct {
+	SectionID     string
+	Entries       []CatalogEntry
+	NextPageToken string
+}
+
+type CatalogListing struct {
+	CategoryID string    `json:"categoryId"`
+	Featured   bool      `json:"featured"`
+	Connector  Connector `json:"connector"`
+}
+
+type CatalogPage struct {
+	SectionID     string           `json:"sectionId"`
+	Items         []CatalogListing `json:"items"`
+	NextPageToken string           `json:"nextPageToken,omitempty"`
+	Revision      uint64           `json:"revision"`
 }
 
 type CatalogSnapshot struct {
 	SourceRevision string
-	Manifests      []Manifest
+	Releases       []Release
 }
 
 type Repository interface {
-	Snapshot(ctx context.Context, workspaceID string) (Snapshot, error)
-	Connector(ctx context.Context, connectorKey, workspaceID string) (Connector, error)
+	Snapshot(ctx context.Context) (Snapshot, error)
+	Connector(ctx context.Context, connectorKey string) (Connector, error)
 	Operation(ctx context.Context, operationID string) (Operation, error)
+	ClaimOperation(ctx context.Context, operationID, owner string, now, leaseExpiresAt time.Time) (Operation, bool, error)
+	RenewOperationLease(ctx context.Context, operationID, owner string, token uint64, now, leaseExpiresAt time.Time) error
+	ReleaseOperationLease(ctx context.Context, operationID, owner string, token uint64) error
 	Transaction(ctx context.Context, fn func(Transaction) error) error
 	RecoverableOperations(ctx context.Context) ([]Operation, error)
+	InstalledRelease(ctx context.Context, connectorKey, releaseDigest string) (Release, error)
 }
 
 type Transaction interface {
@@ -32,17 +85,99 @@ type Transaction interface {
 	SaveConnector(Connector) error
 	DeleteConnector(connectorKey string) error
 	SaveOperation(Operation) error
-	SetWorkspaceBinding(connectorKey string, binding WorkspaceBinding) (Connector, error)
+	EnqueueConnectorMarketChanged(ChangedEvent) error
 }
 
-type ArtifactInstaller interface {
-	Install(ctx context.Context, manifest Manifest) error
-	Uninstall(ctx context.Context, connector Connector) error
+type ArtifactPreparer interface {
+	Prepare(ctx context.Context, request PrepareArtifactRequest) (PreparedArtifactReceipt, error)
+	Remove(ctx context.Context, request RemoveArtifactRequest) error
+}
+
+// CLIInstallationManager installs and resolves daemon-managed CLI packages.
+// Implementations must bind installation and launch to the same managed
+// runtime and keep package storage outside the user's global package manager.
+type CLIInstallationManager interface {
+	InstallCLI(ctx context.Context, request InstallCLIRequest) (CLIInstallationReceipt, error)
+	ResolveCLI(ctx context.Context, release Release) (CLIInstallationReceipt, error)
+	RemoveCLI(ctx context.Context, request RemoveCLIRequest) error
+}
+
+type InstallCLIRequest struct {
+	OperationID string
+	Release     Release
+}
+
+type RemoveCLIRequest struct {
+	OperationID   string
+	ConnectorKey  string
+	ReleaseDigest string
+}
+
+type PrepareArtifactRequest struct {
+	OperationID string
+	Release     Release
+}
+
+type RemoveArtifactRequest struct {
+	OperationID   string
+	ConnectorKey  string
+	Version       string
+	ReleaseDigest string
+}
+
+type RuntimeState string
+
+const (
+	RuntimeStateInactive RuntimeState = "inactive"
+	RuntimeStateActive   RuntimeState = "active"
+	RuntimeStateUnknown  RuntimeState = "unknown"
+)
+
+type RuntimeObservation struct {
+	State         RuntimeState
+	ReleaseDigest string
+}
+
+// ImplementationHost reconciles installed connector releases into global MCP
+// routes and CLI registrations.
+type ImplementationHost interface {
+	Reconcile(ctx context.Context, request RuntimeReconcileRequest) (RuntimeReceipt, error)
+	DeactivateRuntime(ctx context.Context, request RuntimeDeactivationRequest) error
+	// FailClosed stops all capability publication before best-effort fencing.
+	FailClosed(ctx context.Context, deadline time.Time) error
+}
+
+type RuntimeReconcileRequest struct {
+	OperationID  string
+	ConnectionID string
+	Connector    Connector
+	Enabled      bool
+	Generation   HostGeneration
+}
+
+type RuntimeDeactivationRequest struct {
+	ConnectionID  string
+	ConnectorKey  string
+	ReleaseDigest string
+	Generation    HostGeneration
+	Deadline      time.Time
 }
 
 type AuthorizationProvider interface {
-	Begin(ctx context.Context, connector Connector, clientRequestID string) (authorizationURL string, err error)
-	Disconnect(ctx context.Context, connector Connector) error
+	Begin(ctx context.Context, request AuthorizationStartRequest) (AuthorizationSession, error)
+	Disconnect(ctx context.Context, request AuthorizationDisconnectRequest) error
+}
+
+type AuthorizationStartRequest struct {
+	OperationID     string
+	ClientRequestID string
+	Connector       Connector
+	Release         Release
+}
+
+type AuthorizationDisconnectRequest struct {
+	OperationID string
+	Connector   Connector
 }
 
 type CompatibilityEvaluator interface {
@@ -53,12 +188,20 @@ type OperationScheduler interface {
 	Schedule(ctx context.Context, operationID string) error
 }
 
-type EventPublisher interface {
-	ConnectorMarketChanged(ctx context.Context, event ChangedEvent) error
-}
-
 type ChangedEvent struct {
 	ConnectorKey string `json:"connectorKey,omitempty"`
 	OperationID  string `json:"operationId,omitempty"`
 	Revision     uint64 `json:"revision"`
+}
+
+type ChangedEventRecord struct {
+	Sequence int64
+	Event    ChangedEvent
+}
+
+// ChangedEventOutbox is a host persistence extension. Events are appended by
+// Repository.Transaction and delivered after commit by a host-owned worker.
+type ChangedEventOutbox interface {
+	PendingChangedEvents(ctx context.Context, limit int) ([]ChangedEventRecord, error)
+	MarkChangedEventPublished(ctx context.Context, sequence int64, publishedAt time.Time) error
 }

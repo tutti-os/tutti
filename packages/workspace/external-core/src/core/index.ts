@@ -8,6 +8,7 @@ import {
   type TuttiExternalAgentActivityComposerOptionsInput,
   type TuttiExternalAgentActivitySendInput,
   type TuttiExternalAtQueryInput,
+  type TuttiExternalAtQueryDirectoryInput,
   type TuttiExternalAtResolveInput,
   type TuttiExternalAtInvalidation,
   type TuttiExternalBrowserOpenUrlInput,
@@ -105,6 +106,25 @@ export function normalizeTuttiExternalAtQueryInput(
     keyword: keywordValue,
     maxResults: normalizeMaxResults(input.maxResults),
     providers: normalizeProviders(input.providers)
+  };
+}
+
+export function normalizeTuttiExternalAtQueryDirectoryInput(
+  input: unknown
+): TuttiExternalAtQueryDirectoryInput {
+  if (!isRecord(input)) {
+    throw new Error("at.queryDirectory input must be an object.");
+  }
+  if (!isTuttiExternalAtProviderId(input.providerId)) {
+    throw new Error("at.queryDirectory providerId is unsupported.");
+  }
+  if (typeof input.directoryPath !== "string") {
+    throw new Error("at.queryDirectory directoryPath is required.");
+  }
+  return {
+    directoryPath: input.directoryPath.trim(),
+    maxResults: normalizeMaxResults(input.maxResults),
+    providerId: input.providerId
   };
 }
 

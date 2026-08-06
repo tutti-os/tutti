@@ -202,6 +202,20 @@ test("serializes rich text at matches without exposing raw item", () => {
   });
 });
 
+test("serializes provider-owned directory metadata for external apps", () => {
+  const match = createMatch({
+    directory: {
+      childCount: 3,
+      path: "/workspace/docs"
+    }
+  });
+
+  assert.deepEqual(serializeWorkspaceAppExternalAtMatch(match)?.directory, {
+    childCount: 3,
+    path: "/workspace/docs"
+  });
+});
+
 test("serializes mention item id from insert identity for external restore", () => {
   const match: RichTextTriggerQueryMatch = {
     providerId: "workspace-app",

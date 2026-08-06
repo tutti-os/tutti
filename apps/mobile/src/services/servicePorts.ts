@@ -30,9 +30,13 @@ export interface LegacySessionCookiePort {
   clear(): Promise<void>;
 }
 
+export type QRCodeScanResult =
+  | { kind: "manual" }
+  | { kind: "scanned"; value: string };
+
 export interface QRCodeScanOperation {
   cancel(): Promise<void>;
-  result: Promise<string>;
+  result: Promise<QRCodeScanResult>;
 }
 
 export interface QRCodeScannerPort {
@@ -147,6 +151,16 @@ export type MobileDiagnosticEvent =
         | "initial_connect"
         | "manual_retry"
         | "transport_lost";
+    }
+  | {
+      elapsedMs: number;
+      name: "device_link.stage";
+      stage:
+        | "direct_attempt_created"
+        | "direct_attempt_ready"
+        | "direct_connected"
+        | "relay_descriptor_ready"
+        | "relay_probe_ready";
     }
   | {
       name: "device_pairing.phase_changed";

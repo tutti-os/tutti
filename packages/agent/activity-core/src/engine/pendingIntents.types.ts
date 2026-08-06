@@ -241,6 +241,7 @@ export interface SubmitRequestedIntent {
   requestedAtUnixMs: number;
   requiredSettingsPatch?: Readonly<AgentActivitySubmitSettingsPatch>;
   routing?: "auto" | "immediate" | "send_now";
+  targetTurnId?: string;
   runtimeContent?: readonly AgentPromptContentBlock[];
   workspaceId: string;
 }

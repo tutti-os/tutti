@@ -322,6 +322,26 @@ func (c *codexAppServerClient) CollaborationModeList(
 	return caller.rawResult, nil
 }
 
+func (c *codexAppServerClient) SkillsExtraRootsSet(
+	ctx context.Context,
+	timeout time.Duration,
+	extraRoots []string,
+	handler acpMessageHandler,
+) (json.RawMessage, error) {
+	typedParams, err := codexProtoParams[codexproto.SkillsExtraRootsSetParams](map[string]any{
+		"extraRoots": append([]string(nil), extraRoots...),
+	})
+	if err != nil {
+		return nil, err
+	}
+	client, caller := c.typed(timeout, handler, false)
+	_, err = client.SkillsExtraRootsSet(ctx, typedParams)
+	if err != nil {
+		return nil, err
+	}
+	return caller.rawResult, nil
+}
+
 func (c *codexAppServerClient) ThreadStart(
 	ctx context.Context,
 	timeout time.Duration,

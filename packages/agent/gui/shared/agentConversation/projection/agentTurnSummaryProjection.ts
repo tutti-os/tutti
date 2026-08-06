@@ -10,6 +10,7 @@ import type {
   AgentTurnSummaryRowVM
 } from "../contracts/agentTurnSummaryRowVM";
 import { inferAgentPatchChangeType } from "../rules/agentPatchMetadata";
+import { isAgentUnifiedDiffText } from "../rules/agentUnifiedDiffValidation";
 import {
   fileChangeEntriesFromChanges,
   fileChangeTypeValue
@@ -140,37 +141,55 @@ function canonicalTurnFiles(
       continue;
     }
     const parts = splitFilePath(path);
+    const rawDiff = firstRawString(
+      file?.diff,
+      file?.patch,
+      file?.unifiedDiff,
+      file?.unified_diff
+    );
+    const unifiedDiff = firstValidUnifiedDiff(
+      file?.diff,
+      file?.patch,
+      file?.unifiedDiff,
+      file?.unified_diff
+    );
+    const explicitChangeType = normalizeChangeType(fileChangeTypeValue(file));
+    let oldString = firstPresentString(
+      literalStringValue(file.oldString),
+      literalStringValue(file.old_string)
+    );
+    let newString = firstPresentString(
+      literalStringValue(file.newString),
+      literalStringValue(file.new_string)
+    );
+    let content = literalStringValue(file.content);
+    const changeType =
+      explicitChangeType ??
+      (unifiedDiff ? inferAgentPatchChangeType(unifiedDiff) : "modified");
+    if (unifiedDiff === null && rawDiff !== null) {
+      if (changeType === "created") {
+        content ??= rawDiff;
+        newString ??= rawDiff;
+      } else if (changeType === "deleted") {
+        oldString ??= rawDiff;
+        newString ??= "";
+        content = null;
+      } else if (oldString === null && newString === null && content === null) {
+        content = rawDiff;
+      }
+    }
     byPath.set(path, {
       label: path,
       path,
       fileName: parts.fileName,
       directory: parts.directory,
-      changeType:
-        normalizeChangeType(
-          firstNonEmptyString(
-            stringValue(file.change),
-            stringValue(file.type),
-            stringValue(file.status)
-          )
-        ) ?? "modified",
+      changeType,
       toolName: null,
       messageId: `turn-summary:${turnId}:file:${index + 1}`,
-      unifiedDiff:
-        firstNonEmptyString(
-          stringValue(file.unifiedDiff),
-          stringValue(file.unified_diff),
-          stringValue(file.diff),
-          stringValue(file.patch)
-        ) ?? null,
-      oldString: firstPresentString(
-        literalStringValue(file.oldString),
-        literalStringValue(file.old_string)
-      ),
-      newString: firstPresentString(
-        literalStringValue(file.newString),
-        literalStringValue(file.new_string)
-      ),
-      content: literalStringValue(file.content),
+      unifiedDiff,
+      oldString,
+      newString,
+      content,
       occurredAtUnixMs: options.occurredAtUnixMs ?? null
     });
   }
@@ -286,13 +305,19 @@ function patchChangesFromChangeMap(
       return [];
     }
     const changeType = normalizeChangeType(fileChangeTypeValue(change));
+    const rawDiff = firstRawString(
+      change.unified_diff,
+      change.unifiedDiff,
+      change.diff,
+      change.patch
+    );
     const unifiedDiff =
-      firstNonEmptyString(
-        stringValue(change.unified_diff),
-        stringValue(change.unifiedDiff),
-        stringValue(change.diff),
-        stringValue(change.patch)
-      ) ?? null;
+      firstValidUnifiedDiff(
+        change.unified_diff,
+        change.unifiedDiff,
+        change.diff,
+        change.patch
+      ) ?? rawDiff;
     let oldString = firstPresentString(
       literalStringValue(change.old_string),
       literalStringValue(change.oldString)
@@ -336,4 +361,22 @@ function patchChangesFromChangeMap(
       }
     ];
   });
+}
+
+function firstRawString(...values: unknown[]): string | null {
+  for (const value of values) {
+    if (typeof value === "string") {
+      return value;
+    }
+  }
+  return null;
+}
+
+function firstValidUnifiedDiff(...values: unknown[]): string | null {
+  for (const value of values) {
+    if (typeof value === "string" && isAgentUnifiedDiffText(value)) {
+      return value;
+    }
+  }
+  return null;
 }

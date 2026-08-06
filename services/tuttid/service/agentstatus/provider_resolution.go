@@ -414,7 +414,7 @@ func resolvedExistingManagedNodeRuntime(root string, environ func() []string) (m
 	if !managedruntime.NodeReady(root) {
 		return managedruntime.ResolvedRuntime{}, false
 	}
-	baseEnv := []string(nil)
+	baseEnv := os.Environ()
 	if environ != nil {
 		baseEnv = environ()
 	}
@@ -441,12 +441,18 @@ func (s Service) resolveManagedRuntimeForProvider(ctx context.Context, require b
 			if root == "" {
 				root = managed.DefaultRoot()
 			}
-			if !managedruntime.RootReady(root) {
+			if !managedruntime.NodeReady(root) {
 				return managedruntime.ResolvedRuntime{}, false
 			}
 		}
 	}
-	runtime, err := resolver.Resolve(ctx)
+	var runtime managedruntime.ResolvedRuntime
+	var err error
+	if profileResolver, ok := resolver.(managedruntime.ProfileResolver); ok {
+		runtime, err = profileResolver.ResolveProfile(ctx, managedruntime.NodeStaticProfile)
+	} else {
+		runtime, err = resolver.Resolve(ctx)
+	}
 	if err != nil {
 		return managedruntime.ResolvedRuntime{}, false
 	}

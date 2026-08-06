@@ -25,20 +25,29 @@ func writeCodexModelCatalogConfig(t *testing.T, contents string) {
 	}
 }
 
-// A custom model_provider without a configured catalog cannot safely serve the
-// official Codex model/list ids. The composer must expose only its configured
-// model.
-func TestAgentModelCatalogCustomModelProviderExposesOnlyConfiguredModel(t *testing.T) {
+// Codex app-server owns model discovery even when requests are routed through
+// a custom model_provider. Tutti must not discard its model/list response.
+func TestAgentModelCatalogCustomModelProviderPreservesDiscoveredModels(t *testing.T) {
 	writeCodexModelCatalogConfig(t,
 		"model_provider = \"openrouter\"\n"+
-			"model = \"minimax/minimax-m2.5\"\n\n"+
+			"model = \"gpt-5.6-sol\"\n\n"+
 			"[model_providers.openrouter]\n"+
 			"base_url = \"https://openrouter.ai/api/v1\"\n")
 	lister := &fakeAgentModelLister{
 		models: []AgentModelOption{
-			{ID: "gpt-5.5", DisplayName: "GPT-5.5", IsDefault: true},
+			{
+				ID:          "gpt-5.6-sol",
+				DisplayName: "GPT-5.6 Sol",
+				SupportedReasoningEfforts: []AgentModelReasoningEffortOption{
+					{Value: "low"},
+					{Value: "medium"},
+					{Value: "high"},
+					{Value: "xhigh"},
+					{Value: "max"},
+				},
+			},
+			{ID: "gpt-5.5", DisplayName: "GPT-5.5"},
 			{ID: "gpt-5.4", DisplayName: "GPT-5.4"},
-			{ID: "gpt-5.2", DisplayName: "GPT-5.2"},
 		},
 	}
 	catalog := &CachedAgentModelCatalog{
@@ -52,14 +61,29 @@ func TestAgentModelCatalogCustomModelProviderExposesOnlyConfiguredModel(t *testi
 	if err != nil {
 		t.Fatalf("ListModels returned error: %v", err)
 	}
-	if len(result.Models) != 1 {
-		t.Fatalf("models = %#v, want only the configured custom-provider model", result.Models)
+	if len(result.Models) != 3 {
+		t.Fatalf("models = %#v, want the complete discovered catalog", result.Models)
 	}
-	if result.Models[0].ID != "minimax/minimax-m2.5" || !result.Models[0].IsDefault {
-		t.Fatalf("model = %#v, want configured minimax/minimax-m2.5 as default", result.Models[0])
+	if result.Models[0].ID != "gpt-5.6-sol" || !result.Models[0].IsDefault {
+		t.Fatalf("configured model = %#v, want gpt-5.6-sol as default", result.Models[0])
 	}
-	if result.Source != "codex-configured-model" {
-		t.Fatalf("source = %q, want codex-configured-model", result.Source)
+	wantEfforts := []string{"low", "medium", "high", "xhigh", "max"}
+	if len(result.Models[0].SupportedReasoningEfforts) != len(wantEfforts) {
+		t.Fatalf("reasoning efforts = %#v, want %v", result.Models[0].SupportedReasoningEfforts, wantEfforts)
+	}
+	for index, want := range wantEfforts {
+		if got := result.Models[0].SupportedReasoningEfforts[index].Value; got != want {
+			t.Fatalf("reasoning effort %d = %q, want %q", index, got, want)
+		}
+	}
+	for index, modelID := range []string{"gpt-5.5", "gpt-5.4"} {
+		model := result.Models[index+1]
+		if model.ID != modelID || model.IsDefault {
+			t.Fatalf("discovered model %d = %#v, want non-default %s", index+1, model, modelID)
+		}
+	}
+	if result.Source != "codex-cli" {
+		t.Fatalf("source = %q, want codex-cli", result.Source)
 	}
 }
 
@@ -101,7 +125,7 @@ func TestAgentModelCatalogCustomModelProviderKeepsConfiguredCatalog(t *testing.T
 	}
 }
 
-func TestAgentModelCatalogCustomModelProviderRejectsUnrelatedConfiguredCatalog(t *testing.T) {
+func TestAgentModelCatalogCustomModelProviderPreservesUnrelatedDiscoveredCatalog(t *testing.T) {
 	writeCodexModelCatalogConfig(t,
 		"model_provider = \"openrouter\"\n"+
 			"model = \"~moonshotai/kimi-latest\"\n"+
@@ -125,11 +149,18 @@ func TestAgentModelCatalogCustomModelProviderRejectsUnrelatedConfiguredCatalog(t
 	if err != nil {
 		t.Fatalf("ListModels returned error: %v", err)
 	}
-	if len(result.Models) != 1 || result.Models[0].ID != "~moonshotai/kimi-latest" || !result.Models[0].IsDefault {
-		t.Fatalf("models = %#v, want only configured model for unrelated catalog", result.Models)
+	if len(result.Models) != 3 {
+		t.Fatalf("models = %#v, want discovered models plus configured default", result.Models)
 	}
-	if result.Source != "codex-configured-model" {
-		t.Fatalf("source = %q, want codex-configured-model", result.Source)
+	if result.Models[0].ID != "gpt-5.5" || result.Models[0].IsDefault ||
+		result.Models[1].ID != "gpt-5.4" || result.Models[1].IsDefault {
+		t.Fatalf("discovered models = %#v, want preserved non-default catalog", result.Models[:2])
+	}
+	if result.Models[2].ID != "~moonshotai/kimi-latest" || !result.Models[2].IsDefault {
+		t.Fatalf("configured model = %#v, want appended default", result.Models[2])
+	}
+	if result.Source != "codex-cli" {
+		t.Fatalf("source = %q, want codex-cli", result.Source)
 	}
 }
 
@@ -361,6 +392,7 @@ func TestAgentModelCatalogListsTuttiAgentModelsFromLiveLister(t *testing.T) {
 func TestDefaultTuttiAgentModelListerUsesTuttiHomeAndClearsCodexHome(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
 	stateDir := filepath.Join(home, "state")
 	t.Setenv("TUTTI_STATE_DIR", stateDir)
 	userAgentHome := filepath.Join(home, ".tutti-agent")
@@ -511,6 +543,43 @@ func TestDefaultTuttiAgentModelListerBootstrapsExpiredTuttiAgentAuth(t *testing.
 	}
 	if !strings.Contains(string(loginJSON), `"access_token":"lat_new"`) {
 		t.Fatalf("login payload = %s, want issued access token", string(loginJSON))
+	}
+}
+
+func TestPrepareTuttiAgentModelListEnvRefreshesStaleCatalogAuth(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	stateDir := filepath.Join(home, "state")
+	t.Setenv("TUTTI_STATE_DIR", stateDir)
+
+	userAgentHome := filepath.Join(home, ".tutti-agent")
+	if err := os.MkdirAll(userAgentHome, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	accessExpiresAt := time.Now().Add(time.Hour).UTC().Format(time.RFC3339)
+	currentAuth := `{"tutti_llm":{"access_token":"lat_new","access_token_expires_at":` + strconv.Quote(accessExpiresAt) + `,"refresh_token":"lrt_new"}}`
+	if err := os.WriteFile(filepath.Join(userAgentHome, "auth.json"), []byte(currentAuth), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	catalogHome := filepath.Join(stateDir, "agent-model-catalog", "tutti-agent-home")
+	if err := os.MkdirAll(catalogHome, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(catalogHome, "auth.json"), []byte(`{"tutti_llm":{"access_token":"lat_old","refresh_token":"lrt_old"}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := prepareTuttiAgentModelListEnv(t.Context(), nil); err != nil {
+		t.Fatalf("prepareTuttiAgentModelListEnv() error = %v", err)
+	}
+	got, err := os.ReadFile(filepath.Join(catalogHome, "auth.json"))
+	if err != nil {
+		t.Fatalf("read catalog auth: %v", err)
+	}
+	if string(got) != currentAuth {
+		t.Fatal("catalog auth did not refresh from user auth")
 	}
 }
 

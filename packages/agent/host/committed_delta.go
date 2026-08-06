@@ -104,11 +104,65 @@ func ActivityStateDelta(input canonical.ReportSessionStateInput, reply canonical
 			WorkspaceID: result.RootTurn.WorkspaceID, AgentSessionID: result.RootTurn.AgentSessionID, Turn: result.RootTurn,
 		})
 	}
+	if goalOp := goalOperationFromActivityState(input, result); goalOp != nil {
+		delta.GoalOperation = goalOp
+	}
 	delta.addView(input.WorkspaceID, input.AgentSessionID)
 	if result.RootTurnAccepted {
 		delta.addView(input.WorkspaceID, result.RootTurn.AgentSessionID)
 	}
 	return delta
+}
+
+// goalOperationFromActivityState promotes bottom-up Goal observed updates
+// (reconcileObservedGoalFromSessionTx) into the typed GoalOperation seam so
+// session-replay can mint goal.completed / goal.running checkpoints.
+func goalOperationFromActivityState(
+	input canonical.ReportSessionStateInput,
+	result storesqlite.ActivityStateReportResult,
+) *GoalOperationCommitted {
+	sessionID := strings.TrimSpace(input.AgentSessionID)
+	workspaceID := strings.TrimSpace(input.WorkspaceID)
+	hasGoalMutation := false
+	for _, mutation := range result.CommitDelta.Mutations {
+		if mutation.EntityKind != storesqlite.MutationEntityGoalState {
+			continue
+		}
+		hasGoalMutation = true
+		if id := strings.TrimSpace(mutation.AgentSessionID); id != "" {
+			sessionID = id
+		}
+		if id := strings.TrimSpace(mutation.WorkspaceID); id != "" {
+			workspaceID = id
+		}
+	}
+	if !hasGoalMutation || sessionID == "" || workspaceID == "" {
+		return nil
+	}
+	observed := clonePayload(runtimeContextGoal(input.State.RuntimeContext))
+	if len(observed) == 0 {
+		return nil
+	}
+	return &GoalOperationCommitted{
+		Stage: GoalOperationReconciled,
+		State: storesqlite.SessionGoalState{
+			WorkspaceID:         workspaceID,
+			AgentSessionID:      sessionID,
+			Observed:            observed,
+			CommitTransactionID: strings.TrimSpace(result.TransactionID),
+		},
+	}
+}
+
+func runtimeContextGoal(runtimeContext map[string]any) map[string]any {
+	if len(runtimeContext) == 0 {
+		return nil
+	}
+	raw, ok := runtimeContext["goal"].(map[string]any)
+	if !ok || len(raw) == 0 {
+		return nil
+	}
+	return raw
 }
 
 func SessionMessagesDelta(input canonical.ReportSessionMessagesInput, reply canonical.ReportSessionMessagesReply, result storesqlite.MessageReportResult) CommittedDelta {

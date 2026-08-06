@@ -14,8 +14,14 @@ import (
 
 func TestBrowserNodeBackendCallsAuthenticatedDesktopHost(t *testing.T) {
 	var gotAuthorization string
+	var gotAgentTurnID string
 	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 		gotAuthorization = request.Header.Get("Authorization")
+		var payload struct {
+			AgentTurnID string `json:"agentTurnId"`
+		}
+		_ = json.NewDecoder(request.Body).Decode(&payload)
+		gotAgentTurnID = payload.AgentTurnID
 		_ = json.NewEncoder(response).Encode(map[string]any{
 			"result": map[string]any{"text": "pages"},
 		})
@@ -24,12 +30,12 @@ func TestBrowserNodeBackendCallsAuthenticatedDesktopHost(t *testing.T) {
 
 	listenerInfoPath := writeBrowserNodeListenerInfo(t, strings.TrimPrefix(server.URL, "http://"), "secret")
 	backend := newBrowserNodeHTTPBackend(listenerInfoPath)
-	result, err := backend.Call(context.Background(), "workspace-1", "agent-1", "list_pages", map[string]any{})
+	result, err := backend.Call(context.Background(), "workspace-1", "agent-1", "turn-1", "list_pages", map[string]any{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.Text != "pages" || gotAuthorization != "Bearer secret" {
-		t.Fatalf("result = %#v, authorization = %q", result, gotAuthorization)
+	if result.Text != "pages" || gotAuthorization != "Bearer secret" || gotAgentTurnID != "turn-1" {
+		t.Fatalf("result = %#v, authorization = %q, agentTurnId = %q", result, gotAuthorization, gotAgentTurnID)
 	}
 }
 
@@ -47,7 +53,7 @@ func TestBrowserNodeBackendWritesScreenshotToRequestedPath(t *testing.T) {
 
 	backend := newBrowserNodeHTTPBackend(writeBrowserNodeListenerInfo(t, strings.TrimPrefix(server.URL, "http://"), "secret"))
 	screenshotPath := filepath.Join(t.TempDir(), "screenshot.png")
-	if _, err := backend.Call(context.Background(), "workspace-1", "agent-1", "take_screenshot", map[string]any{"filePath": screenshotPath}); err != nil {
+	if _, err := backend.Call(context.Background(), "workspace-1", "agent-1", "turn-1", "take_screenshot", map[string]any{"filePath": screenshotPath}); err != nil {
 		t.Fatal(err)
 	}
 	got, err := os.ReadFile(screenshotPath)
@@ -86,7 +92,7 @@ func TestBrowserNodeBackendReleasesAgentLease(t *testing.T) {
 
 func TestBrowserNodeBackendRejectsNonLoopbackListener(t *testing.T) {
 	backend := newBrowserNodeHTTPBackend(writeBrowserNodeListenerInfo(t, "10.0.0.1:1234", "secret"))
-	_, err := backend.Call(context.Background(), "workspace-1", "agent-1", "list_pages", nil)
+	_, err := backend.Call(context.Background(), "workspace-1", "agent-1", "turn-1", "list_pages", nil)
 	if err == nil || !strings.Contains(err.Error(), "loopback") {
 		t.Fatalf("err = %v, want loopback rejection", err)
 	}

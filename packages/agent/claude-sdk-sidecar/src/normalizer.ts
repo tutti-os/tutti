@@ -289,6 +289,39 @@ export function answersFromInteractivePayload(
   return answers ?? {};
 }
 
+/**
+ * Claude AskUserQuestion has no question.id in its schema. Stamp Tutti-owned
+ * `contract-question-<hash>` ids at ingress (same algorithm as
+ * askUserQuestions.ts) so GUI answer keys and sidecar lookup share one
+ * contract instead of the renderer hashing while lookup expects `question-N`.
+ */
+export function stampAskUserQuestionInput(
+  toolInput: Record<string, unknown>
+): Record<string, unknown> {
+  const questions = Array.isArray(toolInput.questions)
+    ? toolInput.questions
+    : null;
+  if (!questions) {
+    return toolInput;
+  }
+  return {
+    ...toolInput,
+    questions: questions.map((value) => {
+      const question = recordValue(value);
+      if (!question) {
+        return value;
+      }
+      if (stringValue(question.id)) {
+        return question;
+      }
+      return {
+        ...question,
+        id: askUserContractId("question", question)
+      };
+    })
+  };
+}
+
 function answersByQuestionText(
   answersByQuestionId: Record<string, unknown>,
   toolInput?: Record<string, unknown>
@@ -300,22 +333,37 @@ function answersByQuestionText(
     return answersByQuestionId;
   }
   const answers: Record<string, unknown> = {};
-  questions.forEach((value, index) => {
+  questions.forEach((value) => {
     const question = recordValue(value);
     const questionText = stringValue(question?.question);
     if (!questionText) {
       return;
     }
-    const key = firstNonEmptyString(
-      stringValue(question?.id),
-      `question-${index + 1}`
-    );
+    const key =
+      stringValue(question?.id) || askUserContractId("question", question);
     if (!Object.hasOwn(answersByQuestionId, key)) {
       return;
     }
     answers[questionText] = sdkAnswerValue(answersByQuestionId[key]);
   });
   return answers;
+}
+
+/**
+ * Must stay byte-compatible with
+ * packages/agent/gui/shared/agentConversation/askUserQuestions.ts
+ * `askUserContractId` so ingress stamps match renderer-synthesized ids.
+ */
+function askUserContractId(
+  scope: "question" | "option",
+  value: unknown
+): string {
+  let hash = 0x811c9dc5;
+  for (const character of JSON.stringify(value)) {
+    hash ^= character.codePointAt(0) ?? 0;
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return `contract-${scope}-${(hash >>> 0).toString(36)}`;
 }
 
 function sdkAnswerValue(value: unknown): unknown {
@@ -326,15 +374,6 @@ function sdkAnswerValue(value: unknown): unknown {
       .join(", ");
   }
   return value;
-}
-
-function firstNonEmptyString(...values: Array<string | undefined>): string {
-  for (const value of values) {
-    if (value) {
-      return value;
-    }
-  }
-  return "";
 }
 
 function toolDisplayName(toolName: string): string {

@@ -113,7 +113,7 @@ func TestResolverResolveAllReturnsEveryExecutableMatchInPathOrder(t *testing.T) 
 
 	resolver := Resolver{IsExecutableFile: func(path string) bool {
 		info, err := os.Stat(path)
-		return err == nil && !info.IsDir() && info.Mode().Perm()&0o111 != 0
+		return err == nil && !info.IsDir()
 	}}
 	env := []string{"PATH=" + strings.Join([]string{firstDir, secondDir, firstDir}, string(os.PathListSeparator))}
 
@@ -142,7 +142,7 @@ func TestResolverResolveAllNamesKeepsDirectoryOrderBeforeLauncherVariant(t *test
 	}
 	resolver := Resolver{IsExecutableFile: func(path string) bool {
 		info, err := os.Stat(path)
-		return err == nil && !info.IsDir() && info.Mode().Perm()&0o111 != 0
+		return err == nil && !info.IsDir()
 	}}
 	env := []string{"PATH=" + strings.Join([]string{firstDir, secondDir}, string(os.PathListSeparator))}
 
@@ -352,9 +352,12 @@ func TestResolverMergesMultiplePathOverrides(t *testing.T) {
 		},
 	}
 
+	pathValueForTest := func(paths ...string) string {
+		return strings.Join(paths, string(os.PathListSeparator))
+	}
 	env := resolver.Env([]string{
-		"PATH=/state/bin:/usr/bin:/bin",
-		"PATH=/managed/node/bin:/usr/bin:/bin",
+		"PATH=" + pathValueForTest("/state/bin", "/usr/bin", "/bin"),
+		"PATH=" + pathValueForTest("/managed/node/bin", "/usr/bin", "/bin"),
 	})
 	pathCount := 0
 	pathValue := ""
@@ -370,10 +373,10 @@ func TestResolverMergesMultiplePathOverrides(t *testing.T) {
 	}
 	pathDirs := filepath.SplitList(pathValue)
 	if len(pathDirs) < 4 ||
-		pathDirs[0] != "/managed/node/bin" ||
-		pathDirs[1] != "/state/bin" ||
-		pathDirs[2] != "/usr/bin" ||
-		pathDirs[3] != "/bin" {
+		pathDirs[0] != filepath.Clean("/managed/node/bin") ||
+		pathDirs[1] != filepath.Clean("/state/bin") ||
+		pathDirs[2] != filepath.Clean("/usr/bin") ||
+		pathDirs[3] != filepath.Clean("/bin") {
 		t.Fatalf("PATH = %q, want override prefixes before inherited base path", pathValue)
 	}
 }

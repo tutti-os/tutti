@@ -255,8 +255,11 @@ func TestExtensionRuntimePreparerIsolatesSkillRootsPerSession(t *testing.T) {
 		if err != nil {
 			t.Fatalf("session %s tutti skill missing: %v", sessionID, err)
 		}
-		if !strings.Contains(string(skill), "The current AgentGUI session is `"+sessionID+"`.") {
-			t.Fatalf("session %s skill should be rendered with its own session id", sessionID)
+		if !strings.Contains(string(skill), "Read the current AgentGUI session id from `$TUTTI_AGENT_SESSION_ID`") {
+			t.Fatalf("session %s skill should resolve its session id at command time", sessionID)
+		}
+		if strings.Contains(string(skill), sessionID) {
+			t.Fatalf("session %s skill should not embed its session id", sessionID)
 		}
 	}
 
@@ -390,7 +393,11 @@ other: value
 	if err := yaml.Unmarshal([]byte(got), &parsed); err != nil {
 		t.Fatalf("merged YAML should parse: %v\n%s", err, got)
 	}
-	want := []string{"/user/first", "/tutti/root", "/home/.hermes/skills"}
+	want := []string{
+		"/user/first",
+		filepath.Clean(filepath.FromSlash("/tutti/root")),
+		filepath.Clean(filepath.FromSlash("/home/.hermes/skills")),
+	}
 	if !slices.Equal(parsed.Skills.ExternalDirs, want) {
 		t.Fatalf("external_dirs = %#v, want %#v\n%s", parsed.Skills.ExternalDirs, want, got)
 	}

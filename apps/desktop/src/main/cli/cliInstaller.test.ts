@@ -3,7 +3,22 @@ import { mkdir, mkdtemp, readFile, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import test from "node:test";
-import { ensureDesktopCliShim, resolveUserShimPath } from "./cliInstaller.ts";
+import {
+  ensureDesktopCliShim,
+  prepareDesktopCliTarget,
+  resolveUserShimPath
+} from "./cliInstaller.ts";
+
+test("prepareDesktopCliTarget resolves the packaged Windows executable", () => {
+  assert.equal(
+    prepareDesktopCliTarget({
+      isPackaged: true,
+      platform: "win32",
+      resourcesPath: "C:\\Program Files\\Tutti\\resources"
+    }),
+    join("C:\\Program Files\\Tutti\\resources", "bin", "tutti.exe")
+  );
+});
 
 test("ensureDesktopCliShim writes dev tutti-dev shim outside packaged app", async () => {
   const stateRootDir = await mkdtemp(join(tmpdir(), "tutti-cli-state-"));

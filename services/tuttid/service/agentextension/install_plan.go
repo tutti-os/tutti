@@ -138,6 +138,12 @@ func buildInstallPlan(targetID, runtimeInstallDir string, installation Installat
 		installCommand = append([]string{manifest.Runtime.Install.Runner}, installArgs...)
 	}
 	executable := filepath.Clean(resolve(manifest.Runtime.Launch.Executable))
+	// uv creates Windows console-script launchers with an .exe suffix. Extension
+	// manifests keep the portable executable name extensionless, so normalize
+	// the managed path before staging and verifying the runtime on Windows.
+	if runtime.GOOS == "windows" && manifest.Runtime.Install.Runner == "uv" && filepath.Ext(executable) == "" {
+		executable += ".exe"
+	}
 	if !pathWithin(executable, installRoot) {
 		return InstallPlan{}, errors.New("extension runtime executable escapes install root")
 	}
@@ -194,6 +200,7 @@ func managedRuntimeIdentity(
 		Launch: runtimeLaunchKey{
 			Executable: installation.Manifest.Runtime.Launch.Executable,
 			Args:       append([]string(nil), installation.Manifest.Runtime.Launch.Args...),
+			Env:        cloneStringMap(installation.Manifest.Runtime.Launch.Env),
 		},
 		PublishUserCommand: installation.Manifest.Runtime.Launch.PublishUserCommand,
 		Discovery:          profile,
@@ -262,12 +269,33 @@ func artifactURL(artifact *RuntimeBinaryArtifact) string {
 }
 
 func publishesUserCommand(manifest Manifest) bool {
+	// The managed runtime is launched through its explicit path inside Tutti.
+	// On Windows, the optional user-level command entry is a file symlink by
+	// default, which requires SeCreateSymbolicLinkPrivilege (or Developer
+	// Mode) and must not make an otherwise valid installation fail. Keep the
+	// legacy default on other platforms, while requiring an explicit opt-in on
+	// Windows when a manifest really needs a published user command.
+	if runtime.GOOS == "windows" && manifest.Runtime.Launch.PublishUserCommand == nil {
+		return false
+	}
 	return manifest.Runtime.Launch.PublishUserCommand == nil || *manifest.Runtime.Launch.PublishUserCommand
 }
 
 type runtimeLaunchKey struct {
-	Executable string   `json:"executable"`
-	Args       []string `json:"args"`
+	Executable string            `json:"executable"`
+	Args       []string          `json:"args"`
+	Env        map[string]string `json:"env,omitempty"`
+}
+
+func cloneStringMap(input map[string]string) map[string]string {
+	if len(input) == 0 {
+		return nil
+	}
+	result := make(map[string]string, len(input))
+	for key, value := range input {
+		result[key] = value
+	}
+	return result
 }
 
 func managedRuntimeRoot(runtimeInstallDir, agentKey, runtimeIdentity string) string {

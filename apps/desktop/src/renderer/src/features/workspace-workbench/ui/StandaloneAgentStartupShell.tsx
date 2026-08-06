@@ -6,10 +6,12 @@ const standaloneAgentStartupRailWidthPx = 332;
 
 export interface StandaloneAgentStartupShellProps {
   scope?: "body" | "window";
+  titleBarOverlay?: boolean;
 }
 
 export function StandaloneAgentStartupShell({
-  scope = "window"
+  scope = "window",
+  titleBarOverlay = false
 }: StandaloneAgentStartupShellProps): ReactNode {
   const { t } = useTranslation();
   const loadingLabel = t("common.loading");
@@ -25,6 +27,7 @@ export function StandaloneAgentStartupShell({
       className="workbench-window h-screen min-h-0 overflow-hidden bg-background"
       data-agent-gui-standalone-window="true"
       data-agent-gui-startup-shell="window"
+      data-tutti-titlebar-overlay={titleBarOverlay ? "true" : undefined}
       data-display-mode="floating"
       data-window-header-border="none"
       data-window-header-layout="overlay"
@@ -40,7 +43,7 @@ export function StandaloneAgentStartupShell({
       }}
     >
       <div className="workbench-window__header workbench-window__header--custom">
-        <StandaloneAgentStartupHeader />
+        <StandaloneAgentStartupHeader titleBarOverlay={titleBarOverlay} />
       </div>
       <div className="workbench-window__body flex h-full min-h-0 min-w-0 flex-col overflow-hidden">
         {body}
@@ -52,7 +55,11 @@ export function StandaloneAgentStartupShell({
   );
 }
 
-function StandaloneAgentStartupHeader(): ReactNode {
+function StandaloneAgentStartupHeader({
+  titleBarOverlay
+}: {
+  titleBarOverlay: boolean;
+}): ReactNode {
   return (
     <header
       className="agent-gui-workbench-header"
@@ -60,6 +67,7 @@ function StandaloneAgentStartupHeader(): ReactNode {
       data-agent-gui-workbench-header="true"
       data-agent-gui-workbench-header-collapsed="false"
       data-agent-gui-workbench-header-has-session="false"
+      data-tutti-titlebar-overlay={titleBarOverlay ? "true" : undefined}
       style={
         {
           "--agent-gui-workbench-header-rail-width": `${standaloneAgentStartupRailWidthPx}px`

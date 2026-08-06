@@ -250,6 +250,7 @@ func TestEmbeddedOnboardingArchiveMatchesCatalog(t *testing.T) {
 	requireZipEntryForTest(t, archive, "dist/index.html")
 	requireZipEntryForTest(t, archive, "bin/darwin-arm64/tutti-onboarding-server")
 	requireZipEntryForTest(t, archive, "bin/darwin-amd64/tutti-onboarding-server")
+	requireZipEntryForTest(t, archive, "bin/windows-amd64/tutti-onboarding-server.exe")
 
 	archiveManifestData := readZipEntryForTest(t, archive, "tutti.app.json")
 	archiveManifest, _, err := workspacebiz.ParseAppManifestJSON(archiveManifestData)
@@ -349,6 +350,33 @@ func TestCatalogLoadsRemoteAutomationWhenProvidedByCatalog(t *testing.T) {
 	}
 	if matchingApps[0].Distribution.Kind != DistributionRemote {
 		t.Fatalf("automation distribution = %#v, want remote", matchingApps[0].Distribution)
+	}
+}
+
+func TestCatalogNormalizesLegacyNodeStaticRuntimeProfile(t *testing.T) {
+	t.Setenv(remoteCatalogURLEnv, "")
+	manifest := remoteCatalogManifestForTest("legacy-node-static")
+	manifest.Runtime.Profile = "node-static"
+	setRemoteCatalogFileForTest(t, remoteCatalogDocumentForTest(remoteCatalogApp{
+		Manifest: manifest,
+		Distribution: remoteDistribution{
+			Kind:           string(DistributionRemote),
+			ArtifactURL:    "https://cdn.example.test/legacy-node-static.zip",
+			ArtifactSHA256: strings.Repeat("a", 64),
+			IconURL:        "https://cdn.example.test/legacy-node-static.png",
+		},
+	}))
+
+	apps, err := Catalog()
+	if err != nil {
+		t.Fatalf("Catalog() error = %v", err)
+	}
+	app := findCatalogAppForTest(apps, "legacy-node-static")
+	if app == nil {
+		t.Fatal("legacy-node-static app missing from catalog")
+	}
+	if app.Manifest.Runtime.Profile != "connector-node-static" {
+		t.Fatalf("runtime profile = %q, want connector-node-static", app.Manifest.Runtime.Profile)
 	}
 }
 

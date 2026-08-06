@@ -49,6 +49,7 @@ import type {
 } from "../../../workspaceWorkflow";
 import type { TuttiWorkflowDockLabels } from "../TuttiWorkflowDock";
 import type { AgentGUIComposerFooterAccessoryRenderer } from "./AgentGUIComposerFooterAccessory.types";
+import type { AgentProcessingLabels } from "./agentProcessingLabels";
 
 export type AgentMentionReferenceTargetResolver = (
   item: AgentContextMentionItem
@@ -74,7 +75,8 @@ export interface AgentGUIConversationRailLayout {
 // The provider-gate content labels (checking / install / login / coming-soon /
 // unavailable / runtime-selection) live on AgentGUIProviderReadinessLabels;
 // extend it rather than restating every key here.
-export interface AgentGUIViewLabels extends AgentGUIProviderReadinessLabels {
+export interface AgentGUIViewLabels
+  extends AgentGUIProviderReadinessLabels, AgentProcessingLabels {
   initialPlaceholder: string;
   followupPlaceholder: string;
   installRequiredPlaceholder: string;
@@ -121,6 +123,8 @@ export interface AgentGUIViewLabels extends AgentGUIProviderReadinessLabels {
     professionalLongRunning: string;
   };
   planModeLabel: string;
+  codexSaverModeLabel: string;
+  codexSaverModeDescription: string;
   normalModeLabel?: string;
   normalModeDescription?: string;
   tuttiModeLabel: string;
@@ -129,7 +133,6 @@ export interface AgentGUIViewLabels extends AgentGUIProviderReadinessLabels {
   tuttiBudgetTitle: string;
   tuttiBudgetEffectLabel: string;
   tuttiBudgetSpeedLabel: string;
-  tuttiBudgetPreviewTitle: string;
   tuttiBudgetPreviewHint: string;
   tuttiBudgetPreviewCost: string;
   tuttiBudgetPreviewBalance: string;
@@ -138,7 +141,6 @@ export interface AgentGUIViewLabels extends AgentGUIProviderReadinessLabels {
   tuttiBudgetModelPreferenceCost: string;
   tuttiBudgetModelPreferenceBalance: string;
   tuttiBudgetModelPreferencePowerful: string;
-  tuttiBudgetModelPreferenceFastestSuitable: string;
   tuttiBudgetParallelismLabel: string;
   tuttiBudgetParallelismValue: (count: number) => string;
   tuttiModeUpdateFailed: string;
@@ -218,6 +220,19 @@ export interface AgentGUIViewLabels extends AgentGUIProviderReadinessLabels {
   searchNoConversations: string;
   searchFailed: string;
   retrySearch: string;
+  activityPriority: string;
+  activityNothingNeedsAttention: string;
+  activityToday: string;
+  activityYesterday: string;
+  activityLocalSource: string;
+  activityStatusFailed: string;
+  activityStatusRecentlyActive: string;
+  activityStatusUnread: string;
+  activityStatusWaiting: string;
+  activityStatusWorking: string;
+  viewActivity: string;
+  viewActivityNeedsAttention: string;
+  turnOffActivityView: string;
   conversationUnavailable: string;
   fallbackAgentTitle: string;
   untitledConversationTitle: string;
@@ -270,17 +285,6 @@ export interface AgentGUIViewLabels extends AgentGUIProviderReadinessLabels {
   goalResumeAction: string;
   goalClearAction: string;
   goalRemoved: string;
-  processing: string;
-  processingPreparing: string;
-  processingSubmitting: string;
-  processingWaitingResponse: string;
-  processingThinking: string;
-  processingGenerating: string;
-  processingUsingTool: string;
-  processingWaitingTool: string;
-  processingReconnecting: string;
-  processingWaitingContinuation: string;
-  processingElapsedSeconds: (seconds: number) => string;
   turnSummary: string;
   userMessageLocator: string;
   planLead: string;
@@ -338,6 +342,9 @@ export interface AgentGUIViewLabels extends AgentGUIProviderReadinessLabels {
   slashPaletteSkillsGroup: string;
   slashPalettePluginsGroup: string;
   slashPaletteConnectorsGroup: string;
+  slashPaletteConnectorConnected: string;
+  slashPaletteConnectorNotConnected: string;
+  slashPaletteConnectorUnsupported: string;
   slashPaletteMcpGroup: string;
   slashCommandCompactLabel: string;
   slashCommandContextLabel: string;
@@ -470,6 +477,16 @@ export type InteractivePromptLabels = {
 export type AgentGUIConversationRailLabels = Pick<
   AgentGUIViewLabels,
   | "batchDeleteConversations"
+  | "activityPriority"
+  | "activityNothingNeedsAttention"
+  | "activityToday"
+  | "activityYesterday"
+  | "activityLocalSource"
+  | "activityStatusFailed"
+  | "activityStatusRecentlyActive"
+  | "activityStatusUnread"
+  | "activityStatusWaiting"
+  | "activityStatusWorking"
   | "batchDeleteConversationsBody"
   | "batchDeleteConversationsConfirm"
   | "batchDeleteConversationsTitle"
@@ -527,9 +544,12 @@ export type AgentGUIConversationRailLabels = Pick<
   | "showLessConversations"
   | "showMoreConversations"
   | "startConversation"
+  | "turnOffActivityView"
   | "unpinProject"
   | "unpinSession"
   | "untitledConversationTitle"
+  | "viewActivity"
+  | "viewActivityNeedsAttention"
 >;
 export interface AgentGUINodeViewProps {
   viewModel: AgentGUINodeViewModel;

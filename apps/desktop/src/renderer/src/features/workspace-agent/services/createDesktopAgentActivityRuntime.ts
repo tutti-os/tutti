@@ -119,6 +119,7 @@ export function createDesktopAgentActivityRuntime(
   );
   return {
     ...conversationRailRuntime,
+    conversationActivityViewEnabled: true,
     origin: AGENT_SESSION_ENGINE_LOCAL_ORIGIN,
     promptContentUploadSupport: {
       file: Boolean(archiveAgentPromptFile),

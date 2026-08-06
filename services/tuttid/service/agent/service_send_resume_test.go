@@ -8,6 +8,7 @@ import (
 	agenthost "github.com/tutti-os/tutti/packages/agent/host"
 	runtimeprep "github.com/tutti-os/tutti/packages/agent/runtimeprep"
 	agentactivitybiz "github.com/tutti-os/tutti/packages/agent/store-sqlite"
+	agenttargetbiz "github.com/tutti-os/tutti/services/tuttid/biz/agenttarget"
 	reporterservice "github.com/tutti-os/tutti/services/tuttid/service/reporter"
 )
 
@@ -437,6 +438,7 @@ func TestServiceResumesPersistedSessionWithPreparedRuntime(t *testing.T) {
 	runtime := newFakeRuntime()
 	var prepareInput runtimeprep.PrepareInput
 	service := newIsolatedAgentService(runtime)
+	service.AgentTargetStore = fakeAgentTargetStore{targets: defaultTestAgentTargets()}
 	service.RuntimePreparer = fakeRuntimePreparer{
 		input: &prepareInput,
 		result: runtimeprep.PreparedRuntime{
@@ -449,6 +451,7 @@ func TestServiceResumesPersistedSessionWithPreparedRuntime(t *testing.T) {
 			"ws-1:session-1": {
 				ID:                "session-1",
 				WorkspaceID:       "ws-1",
+				AgentTargetID:     agenttargetbiz.IDLocalCodex,
 				Provider:          "codex",
 				ProviderSessionID: "provider-session-1",
 				Cwd:               "/persisted/workdir",

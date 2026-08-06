@@ -148,7 +148,7 @@ func exposeCodexConfigDependencyFile(source, target string) error {
 	if err := os.MkdirAll(filepath.Dir(target), 0o700); err != nil {
 		return err
 	}
-	if err := os.Symlink(source, target); err != nil {
+	if err := exposeCodexFile(source, target, 0o600); err != nil {
 		if copyErr := copyFile(source, target, 0o600); copyErr != nil {
 			return fmt.Errorf("symlink failed: %v; copy failed: %w", err, copyErr)
 		}

@@ -1,2 +1,3 @@
 "scanner.title" = "扫描配对二维码";
 "scanner.cancel" = "取消";
+"scanner.manual" = "无法扫描？输入配对码";

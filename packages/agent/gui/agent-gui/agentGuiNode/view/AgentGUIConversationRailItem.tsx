@@ -1,6 +1,6 @@
 import { memo, useCallback, useMemo, useRef, useState } from "react";
 import { ExternalLink } from "lucide-react";
-import { NewWorkspaceLinedIcon, cn } from "@tutti-os/ui-system";
+import { FolderIcon, NewWorkspaceLinedIcon, cn } from "@tutti-os/ui-system";
 import { WorkspaceUserProjectSelect } from "@tutti-os/workspace-user-project/ui";
 import type { WorkspaceUserProjectI18nRuntime } from "@tutti-os/workspace-user-project/i18n";
 import { BareIconButton } from "@tutti-os/ui-system/components";
@@ -21,6 +21,7 @@ import {
 import { AgentTargetInfoTooltip } from "../../../shared/AgentTargetInfoTooltip";
 import type { UiLanguage } from "../../../contexts/settings/domain/agentSettings";
 import type { AgentGUINodeViewModel } from "../model/agentGuiNodeTypes";
+import type { AgentGUIConversationActivityPriorityReason } from "../model/agentGuiConversationActivityView";
 import type { AgentGUIViewLabels } from "../AgentGUINodeView";
 import type { AgentGUIConversationRailLabels } from "./agentGUIConversationRailLabels";
 import styles from "../AgentGUINode.styles";
@@ -87,6 +88,15 @@ interface AgentGUIConversationRailItemProps {
   ) => void;
   onCancelDeleteConversation: () => void;
   onConfirmDeleteConversation: () => void;
+  presentation?: {
+    kind: "activity";
+    priorityReason: AgentGUIConversationActivityPriorityReason | null;
+    projectLabel: string | null;
+    secondary: {
+      kind: "message" | "project" | "source";
+      text: string;
+    };
+  };
 }
 
 export const AgentGUIConversationRailItem = memo(
@@ -107,7 +117,8 @@ export const AgentGUIConversationRailItem = memo(
     onRequestDeleteConversation,
     onRequestRenameConversation,
     onCancelDeleteConversation,
-    onConfirmDeleteConversation
+    onConfirmDeleteConversation,
+    presentation
   }: AgentGUIConversationRailItemProps): React.JSX.Element {
     "use memo";
     const pinned = (item.pinnedAtUnixMs ?? 0) > 0;
@@ -249,9 +260,44 @@ export const AgentGUIConversationRailItem = memo(
       onOpenConversationWindow,
       onRequestRenameConversation
     });
+    const activityPresentation =
+      presentation?.kind === "activity" ? presentation : null;
+    const conversationTitle = agentGUIConversationRailTitle(
+      item,
+      labels,
+      uiLanguage
+    );
+    const activityStatusLabel = activityPresentation
+      ? agentGUIConversationActivityStatusLabel(
+          item,
+          activityPresentation.priorityReason,
+          labels
+        )
+      : null;
+    const activityAccessibleLabel = activityPresentation
+      ? [
+          conversationTitle,
+          activityPresentation.projectLabel,
+          activityStatusLabel
+        ]
+          .filter((value): value is string => Boolean(value))
+          .join(", ")
+      : undefined;
+    const conversationTitleRow = (
+      <span className={styles.conversationTitleRow}>
+        {conversationIconNode}
+        <span className={styles.conversationTitle}>{conversationTitle}</span>
+        {activityPresentation?.projectLabel ? (
+          <span className={styles.conversationActivityProjectLabel}>
+            {activityPresentation.projectLabel}
+          </span>
+        ) : null}
+      </span>
+    );
     const conversationSelect = (
       <button
         type="button"
+        aria-label={activityAccessibleLabel}
         className={styles.conversationSelect}
         onClick={handleSelect}
         onBlur={hasTargetInfo ? handleTargetInfoBlur : undefined}
@@ -261,13 +307,30 @@ export const AgentGUIConversationRailItem = memo(
         }}
         onFocus={hasTargetInfo ? handleTargetInfoFocus : undefined}
       >
-        <span className={styles.conversationTitleRow}>
-          {conversationIconNode}
-          <span className={styles.conversationTitle}>
-            {agentGUIConversationRailTitle(item, labels, uiLanguage)}
+        {activityPresentation ? (
+          <span className={styles.conversationActivityText}>
+            {conversationTitleRow}
+            <span
+              aria-hidden="true"
+              className={styles.conversationActivitySecondary}
+            >
+              {activityPresentation.secondary.kind === "project" ? (
+                <FolderIcon
+                  aria-hidden="true"
+                  className={styles.conversationActivitySecondaryIcon}
+                />
+              ) : null}
+              <span>{activityPresentation.secondary.text}</span>
+            </span>
           </span>
-        </span>
-        <AgentGUIConversationRailRelativeTime item={item} labels={labels} />
+        ) : (
+          conversationTitleRow
+        )}
+        <AgentGUIConversationRailRelativeTime
+          hideTime={Boolean(activityPresentation)}
+          item={item}
+          labels={labels}
+        />
       </button>
     );
     const conversationSelectWithTargetInfo =
@@ -293,6 +356,7 @@ export const AgentGUIConversationRailItem = memo(
         ref={setItemElement}
         className={styles.conversationItem}
         data-active={active}
+        data-presentation={activityPresentation?.kind}
         data-pinned={pinned}
         data-pending-delete={isPendingDeleteConversation}
         data-testid={`agent-gui-conversation-item-${item.id}`}
@@ -411,6 +475,23 @@ export const AgentGUIConversationRailItem = memo(
     );
   }
 );
+
+function agentGUIConversationActivityStatusLabel(
+  item: AgentGUINodeViewModel["rail"]["conversations"][number],
+  priorityReason: AgentGUIConversationActivityPriorityReason | null,
+  labels: AgentGUIConversationRailLabels
+): string | null {
+  if (item.needsUserAction || item.status === "waiting") {
+    return labels.activityStatusWaiting;
+  }
+  if (item.status === "working") return labels.activityStatusWorking;
+  if (item.status === "failed") return labels.activityStatusFailed;
+  if (item.hasUnreadCompletion) return labels.activityStatusUnread;
+  if (priorityReason !== null) {
+    return labels.activityStatusRecentlyActive;
+  }
+  return null;
+}
 
 export function AgentGUIProjectRailHeader({
   disabled,

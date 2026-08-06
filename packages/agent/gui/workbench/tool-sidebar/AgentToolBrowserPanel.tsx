@@ -17,6 +17,7 @@ import {
   type BrowserNodeSessionMode
 } from "@tutti-os/browser-node";
 import type { I18nRuntime } from "@tutti-os/ui-i18n-runtime";
+import { createAgentToolBrowserPage } from "./agentToolBrowserPage.ts";
 
 const LazyBrowserNode = lazy(() =>
   import("@tutti-os/browser-node/react").then(({ BrowserNode }) => ({
@@ -39,6 +40,7 @@ export interface AgentToolBrowserPanelProps {
   loadingFallback?: ReactNode;
   navigationActions?: ReactNode;
   nodeIdPrefix?: string;
+  onCloseRequest?: () => void;
   onControllerReady?: (controller: AgentToolBrowserController | null) => void;
   profileId?: string | null;
   sessionMode?: BrowserNodeSessionMode;
@@ -63,6 +65,7 @@ export function AgentToolBrowserPanel({
   loadingFallback = null,
   navigationActions,
   nodeIdPrefix = "browser:agent-tool",
+  onCloseRequest,
   onControllerReady,
   profileId = null,
   sessionMode = "shared",
@@ -96,23 +99,7 @@ export function AgentToolBrowserPanel({
         return "closed";
       },
       createPage(url) {
-        const resolvedUrl = url?.trim() || "about:blank";
-        const state = feature.tabsStore.ensureSurface(nodeId, defaultUrl);
-        const activeTab = state.tabs.find(
-          (tab) => tab.id === state.activeTabId
-        );
-        const activeRuntime = activeTab
-          ? feature.runtimeStore.getNodeState(activeTab.nodeId)
-          : null;
-        if (
-          state.tabs.length === 1 &&
-          activeTab?.defaultUrl === "about:blank" &&
-          !activeRuntime?.url
-        ) {
-          feature.tabsStore.syncDefaultUrl(nodeId, resolvedUrl);
-          return activeTab.nodeId;
-        }
-        return feature.tabsStore.addTab(nodeId, resolvedUrl).nodeId;
+        return createAgentToolBrowserPage(feature, nodeId, defaultUrl, url);
       },
       ownsPage: (pageNodeId) => getPage(pageNodeId) !== null,
       selectPage(pageNodeId) {
@@ -148,6 +135,7 @@ export function AgentToolBrowserPanel({
           hidden={hidden}
           navigationActions={navigationActions}
           nodeId={nodeId}
+          onCloseRequest={onCloseRequest}
           profileId={profileId}
           sessionMode={sessionMode}
           sessionPartition={sessionPartition}

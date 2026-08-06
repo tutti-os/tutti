@@ -946,6 +946,21 @@ func (e AgentTargetSource) Valid() bool {
 	}
 }
 
+// Defines values for AgentTargetTerminalStartupActionType.
+const (
+	AgentTargetTerminalStartupActionTypeSlashCommand AgentTargetTerminalStartupActionType = "slash_command"
+)
+
+// Valid indicates whether the value is a known member of the AgentTargetTerminalStartupActionType enum.
+func (e AgentTargetTerminalStartupActionType) Valid() bool {
+	switch e {
+	case AgentTargetTerminalStartupActionTypeSlashCommand:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ApiErrorDetailsCode.
 const (
 	AgentQuickPromptConflict              ApiErrorDetailsCode = "agent_quick_prompt_conflict"
@@ -1146,16 +1161,16 @@ func (e AutomationRuleTrigger) Valid() bool {
 
 // Defines values for CliCapabilitySourceKind.
 const (
-	App     CliCapabilitySourceKind = "app"
-	Builtin CliCapabilitySourceKind = "builtin"
+	CliCapabilitySourceKindApp     CliCapabilitySourceKind = "app"
+	CliCapabilitySourceKindBuiltin CliCapabilitySourceKind = "builtin"
 )
 
 // Valid indicates whether the value is a known member of the CliCapabilitySourceKind enum.
 func (e CliCapabilitySourceKind) Valid() bool {
 	switch e {
-	case App:
+	case CliCapabilitySourceKindApp:
 		return true
-	case Builtin:
+	case CliCapabilitySourceKindBuiltin:
 		return true
 	default:
 		return false
@@ -1321,6 +1336,342 @@ func (e CollaborationRunTriggerSource) Valid() bool {
 	case CollaborationRunTriggerSourcePolicy:
 		return true
 	case CollaborationRunTriggerSourceUser:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ConnectorMarketAuthorizationState.
+const (
+	ConnectorMarketAuthorizationStateConnected    ConnectorMarketAuthorizationState = "connected"
+	ConnectorMarketAuthorizationStateDisconnected ConnectorMarketAuthorizationState = "disconnected"
+	ConnectorMarketAuthorizationStateExpired      ConnectorMarketAuthorizationState = "expired"
+	ConnectorMarketAuthorizationStateFailed       ConnectorMarketAuthorizationState = "failed"
+	ConnectorMarketAuthorizationStateNotRequired  ConnectorMarketAuthorizationState = "not_required"
+	ConnectorMarketAuthorizationStatePending      ConnectorMarketAuthorizationState = "pending"
+)
+
+// Valid indicates whether the value is a known member of the ConnectorMarketAuthorizationState enum.
+func (e ConnectorMarketAuthorizationState) Valid() bool {
+	switch e {
+	case ConnectorMarketAuthorizationStateConnected:
+		return true
+	case ConnectorMarketAuthorizationStateDisconnected:
+		return true
+	case ConnectorMarketAuthorizationStateExpired:
+		return true
+	case ConnectorMarketAuthorizationStateFailed:
+		return true
+	case ConnectorMarketAuthorizationStateNotRequired:
+		return true
+	case ConnectorMarketAuthorizationStatePending:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ConnectorMarketCatalogState.
+const (
+	ConnectorMarketCatalogStateFailed     ConnectorMarketCatalogState = "failed"
+	ConnectorMarketCatalogStateReady      ConnectorMarketCatalogState = "ready"
+	ConnectorMarketCatalogStateRefreshing ConnectorMarketCatalogState = "refreshing"
+	ConnectorMarketCatalogStateStale      ConnectorMarketCatalogState = "stale"
+)
+
+// Valid indicates whether the value is a known member of the ConnectorMarketCatalogState enum.
+func (e ConnectorMarketCatalogState) Valid() bool {
+	switch e {
+	case ConnectorMarketCatalogStateFailed:
+		return true
+	case ConnectorMarketCatalogStateReady:
+		return true
+	case ConnectorMarketCatalogStateRefreshing:
+		return true
+	case ConnectorMarketCatalogStateStale:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ConnectorMarketCategoryKind.
+const (
+	Category ConnectorMarketCategoryKind = "category"
+	Featured ConnectorMarketCategoryKind = "featured"
+)
+
+// Valid indicates whether the value is a known member of the ConnectorMarketCategoryKind enum.
+func (e ConnectorMarketCategoryKind) Valid() bool {
+	switch e {
+	case Category:
+		return true
+	case Featured:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ConnectorMarketCompatibilityState.
+const (
+	Supported                 ConnectorMarketCompatibilityState = "supported"
+	UnsupportedImplementation ConnectorMarketCompatibilityState = "unsupported_implementation"
+	UnsupportedPlatform       ConnectorMarketCompatibilityState = "unsupported_platform"
+	UnsupportedProduct        ConnectorMarketCompatibilityState = "unsupported_product"
+	UnsupportedVersion        ConnectorMarketCompatibilityState = "unsupported_version"
+)
+
+// Valid indicates whether the value is a known member of the ConnectorMarketCompatibilityState enum.
+func (e ConnectorMarketCompatibilityState) Valid() bool {
+	switch e {
+	case Supported:
+		return true
+	case UnsupportedImplementation:
+		return true
+	case UnsupportedPlatform:
+		return true
+	case UnsupportedProduct:
+		return true
+	case UnsupportedVersion:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ConnectorMarketErrorCode.
+const (
+	ConnectorAuthorizationFailed       ConnectorMarketErrorCode = "connector_authorization_failed"
+	ConnectorImplementationUnsupported ConnectorMarketErrorCode = "connector_implementation_unsupported"
+	ConnectorIncompatible              ConnectorMarketErrorCode = "connector_incompatible"
+	ConnectorInstallFailed             ConnectorMarketErrorCode = "connector_install_failed"
+	ConnectorManifestInvalid           ConnectorMarketErrorCode = "connector_manifest_invalid"
+	ConnectorMarketInvalidRequest      ConnectorMarketErrorCode = "connector_market_invalid_request"
+	ConnectorMarketRevisionConflict    ConnectorMarketErrorCode = "connector_market_revision_conflict"
+	ConnectorMarketUnavailable         ConnectorMarketErrorCode = "connector_market_unavailable"
+	ConnectorMarketUpstreamUnavailable ConnectorMarketErrorCode = "connector_market_upstream_unavailable"
+	ConnectorNotFound                  ConnectorMarketErrorCode = "connector_not_found"
+	ConnectorOperationInProgress       ConnectorMarketErrorCode = "connector_operation_in_progress"
+)
+
+// Valid indicates whether the value is a known member of the ConnectorMarketErrorCode enum.
+func (e ConnectorMarketErrorCode) Valid() bool {
+	switch e {
+	case ConnectorAuthorizationFailed:
+		return true
+	case ConnectorImplementationUnsupported:
+		return true
+	case ConnectorIncompatible:
+		return true
+	case ConnectorInstallFailed:
+		return true
+	case ConnectorManifestInvalid:
+		return true
+	case ConnectorMarketInvalidRequest:
+		return true
+	case ConnectorMarketRevisionConflict:
+		return true
+	case ConnectorMarketUnavailable:
+		return true
+	case ConnectorMarketUpstreamUnavailable:
+		return true
+	case ConnectorNotFound:
+		return true
+	case ConnectorOperationInProgress:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ConnectorMarketImplementationKind.
+const (
+	ConnectorMarketImplementationKindBuiltin              ConnectorMarketImplementationKind = "builtin"
+	ConnectorMarketImplementationKindManagedStdio         ConnectorMarketImplementationKind = "managed_stdio"
+	ConnectorMarketImplementationKindRemoteStreamableHttp ConnectorMarketImplementationKind = "remote_streamable_http"
+)
+
+// Valid indicates whether the value is a known member of the ConnectorMarketImplementationKind enum.
+func (e ConnectorMarketImplementationKind) Valid() bool {
+	switch e {
+	case ConnectorMarketImplementationKindBuiltin:
+		return true
+	case ConnectorMarketImplementationKindManagedStdio:
+		return true
+	case ConnectorMarketImplementationKindRemoteStreamableHttp:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ConnectorMarketInstallationState.
+const (
+	ConnectorMarketInstallationStateFailed       ConnectorMarketInstallationState = "failed"
+	ConnectorMarketInstallationStateInstalled    ConnectorMarketInstallationState = "installed"
+	ConnectorMarketInstallationStateInstalling   ConnectorMarketInstallationState = "installing"
+	ConnectorMarketInstallationStateNotInstalled ConnectorMarketInstallationState = "not_installed"
+	ConnectorMarketInstallationStateUninstalling ConnectorMarketInstallationState = "uninstalling"
+	ConnectorMarketInstallationStateUpdating     ConnectorMarketInstallationState = "updating"
+)
+
+// Valid indicates whether the value is a known member of the ConnectorMarketInstallationState enum.
+func (e ConnectorMarketInstallationState) Valid() bool {
+	switch e {
+	case ConnectorMarketInstallationStateFailed:
+		return true
+	case ConnectorMarketInstallationStateInstalled:
+		return true
+	case ConnectorMarketInstallationStateInstalling:
+		return true
+	case ConnectorMarketInstallationStateNotInstalled:
+		return true
+	case ConnectorMarketInstallationStateUninstalling:
+		return true
+	case ConnectorMarketInstallationStateUpdating:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ConnectorMarketManifestSchemaVersion.
+const (
+	ConnectorMarketManifestSchemaVersionN1 ConnectorMarketManifestSchemaVersion = "1"
+)
+
+// Valid indicates whether the value is a known member of the ConnectorMarketManifestSchemaVersion enum.
+func (e ConnectorMarketManifestSchemaVersion) Valid() bool {
+	switch e {
+	case ConnectorMarketManifestSchemaVersionN1:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ConnectorMarketOperationKind.
+const (
+	DisconnectAuthorization ConnectorMarketOperationKind = "disconnect_authorization"
+	Install                 ConnectorMarketOperationKind = "install"
+	RefreshCatalog          ConnectorMarketOperationKind = "refresh_catalog"
+	StartAuthorization      ConnectorMarketOperationKind = "start_authorization"
+	Uninstall               ConnectorMarketOperationKind = "uninstall"
+)
+
+// Valid indicates whether the value is a known member of the ConnectorMarketOperationKind enum.
+func (e ConnectorMarketOperationKind) Valid() bool {
+	switch e {
+	case DisconnectAuthorization:
+		return true
+	case Install:
+		return true
+	case RefreshCatalog:
+		return true
+	case StartAuthorization:
+		return true
+	case Uninstall:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ConnectorMarketOperationStage.
+const (
+	ConnectorMarketOperationStageAccepted      ConnectorMarketOperationStage = "accepted"
+	ConnectorMarketOperationStageActivating    ConnectorMarketOperationStage = "activating"
+	ConnectorMarketOperationStageAuthorizing   ConnectorMarketOperationStage = "authorizing"
+	ConnectorMarketOperationStageCompleted     ConnectorMarketOperationStage = "completed"
+	ConnectorMarketOperationStageDeactivating  ConnectorMarketOperationStage = "deactivating"
+	ConnectorMarketOperationStageDisconnecting ConnectorMarketOperationStage = "disconnecting"
+	ConnectorMarketOperationStageDownloading   ConnectorMarketOperationStage = "downloading"
+	ConnectorMarketOperationStageFailed        ConnectorMarketOperationStage = "failed"
+	ConnectorMarketOperationStagePrepared      ConnectorMarketOperationStage = "prepared"
+	ConnectorMarketOperationStageRefreshing    ConnectorMarketOperationStage = "refreshing"
+)
+
+// Valid indicates whether the value is a known member of the ConnectorMarketOperationStage enum.
+func (e ConnectorMarketOperationStage) Valid() bool {
+	switch e {
+	case ConnectorMarketOperationStageAccepted:
+		return true
+	case ConnectorMarketOperationStageActivating:
+		return true
+	case ConnectorMarketOperationStageAuthorizing:
+		return true
+	case ConnectorMarketOperationStageCompleted:
+		return true
+	case ConnectorMarketOperationStageDeactivating:
+		return true
+	case ConnectorMarketOperationStageDisconnecting:
+		return true
+	case ConnectorMarketOperationStageDownloading:
+		return true
+	case ConnectorMarketOperationStageFailed:
+		return true
+	case ConnectorMarketOperationStagePrepared:
+		return true
+	case ConnectorMarketOperationStageRefreshing:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ConnectorMarketOperationState.
+const (
+	ConnectorMarketOperationStateAccepted  ConnectorMarketOperationState = "accepted"
+	ConnectorMarketOperationStateCompleted ConnectorMarketOperationState = "completed"
+	ConnectorMarketOperationStateFailed    ConnectorMarketOperationState = "failed"
+	ConnectorMarketOperationStateRunning   ConnectorMarketOperationState = "running"
+)
+
+// Valid indicates whether the value is a known member of the ConnectorMarketOperationState enum.
+func (e ConnectorMarketOperationState) Valid() bool {
+	switch e {
+	case ConnectorMarketOperationStateAccepted:
+		return true
+	case ConnectorMarketOperationStateCompleted:
+		return true
+	case ConnectorMarketOperationStateFailed:
+		return true
+	case ConnectorMarketOperationStateRunning:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ConnectorMarketReleaseSchemaVersion.
+const (
+	ConnectorMarketReleaseSchemaVersionN1 ConnectorMarketReleaseSchemaVersion = "1"
+)
+
+// Valid indicates whether the value is a known member of the ConnectorMarketReleaseSchemaVersion enum.
+func (e ConnectorMarketReleaseSchemaVersion) Valid() bool {
+	switch e {
+	case ConnectorMarketReleaseSchemaVersionN1:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ConnectorMarketReleaseStatus.
+const (
+	ConnectorMarketReleaseStatusAvailable  ConnectorMarketReleaseStatus = "available"
+	ConnectorMarketReleaseStatusSuperseded ConnectorMarketReleaseStatus = "superseded"
+)
+
+// Valid indicates whether the value is a known member of the ConnectorMarketReleaseStatus enum.
+func (e ConnectorMarketReleaseStatus) Valid() bool {
+	switch e {
+	case ConnectorMarketReleaseStatusAvailable:
+		return true
+	case ConnectorMarketReleaseStatusSuperseded:
 		return true
 	default:
 		return false
@@ -3367,6 +3718,30 @@ func (e WorkspaceAgentTurnPhase) Valid() bool {
 	}
 }
 
+// Defines values for WorkspaceAppFailurePhase.
+const (
+	Downloading WorkspaceAppFailurePhase = "downloading"
+	Installing  WorkspaceAppFailurePhase = "installing"
+	Runtime     WorkspaceAppFailurePhase = "runtime"
+	Starting    WorkspaceAppFailurePhase = "starting"
+)
+
+// Valid indicates whether the value is a known member of the WorkspaceAppFailurePhase enum.
+func (e WorkspaceAppFailurePhase) Valid() bool {
+	switch e {
+	case Downloading:
+		return true
+	case Installing:
+		return true
+	case Runtime:
+		return true
+	case Starting:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for WorkspaceAppCatalogLoadStatus.
 const (
 	WorkspaceAppCatalogLoadStatusDisabled WorkspaceAppCatalogLoadStatus = "disabled"
@@ -3972,25 +4347,25 @@ func (e WorkspaceWorkflowOperationKind) Valid() bool {
 
 // Defines values for WorkspaceWorkflowOperationStatus.
 const (
-	WorkspaceWorkflowOperationStatusCanceled  WorkspaceWorkflowOperationStatus = "canceled"
-	WorkspaceWorkflowOperationStatusFailed    WorkspaceWorkflowOperationStatus = "failed"
-	WorkspaceWorkflowOperationStatusPending   WorkspaceWorkflowOperationStatus = "pending"
-	WorkspaceWorkflowOperationStatusRunning   WorkspaceWorkflowOperationStatus = "running"
-	WorkspaceWorkflowOperationStatusSucceeded WorkspaceWorkflowOperationStatus = "succeeded"
+	Canceled  WorkspaceWorkflowOperationStatus = "canceled"
+	Failed    WorkspaceWorkflowOperationStatus = "failed"
+	Pending   WorkspaceWorkflowOperationStatus = "pending"
+	Running   WorkspaceWorkflowOperationStatus = "running"
+	Succeeded WorkspaceWorkflowOperationStatus = "succeeded"
 )
 
 // Valid indicates whether the value is a known member of the WorkspaceWorkflowOperationStatus enum.
 func (e WorkspaceWorkflowOperationStatus) Valid() bool {
 	switch e {
-	case WorkspaceWorkflowOperationStatusCanceled:
+	case Canceled:
 		return true
-	case WorkspaceWorkflowOperationStatusFailed:
+	case Failed:
 		return true
-	case WorkspaceWorkflowOperationStatusPending:
+	case Pending:
 		return true
-	case WorkspaceWorkflowOperationStatusRunning:
+	case Running:
 		return true
-	case WorkspaceWorkflowOperationStatusSucceeded:
+	case Succeeded:
 		return true
 	default:
 		return false
@@ -4543,6 +4918,9 @@ type AgentProviderComposerOptionsResponse struct {
 	Capabilities      *WorkspaceAgentCapabilities     `json:"capabilities,omitempty"`
 	CapabilityCatalog []AgentProviderCapabilityOption `json:"capabilityCatalog"`
 
+	// CodexSaverModeSupported Whether this resolved provider target supports the Codex Luna subagent saver mode; product entry policy is reported separately by the host
+	CodexSaverModeSupported *bool `json:"codexSaverModeSupported,omitempty"`
+
 	// Commands Commands advertised by the resolved runtime session.
 	Commands                []AgentProviderComposerCommandOption         `json:"commands"`
 	EffectiveSettings       AgentSessionComposerSettings                 `json:"effectiveSettings"`
@@ -4786,6 +5164,7 @@ type AgentSessionCassetteListResponse struct {
 // AgentSessionComposerSettings defines model for AgentSessionComposerSettings.
 type AgentSessionComposerSettings struct {
 	BrowserUse       *bool   `json:"browserUse,omitempty"`
+	CodexSaverMode   *bool   `json:"codexSaverMode,omitempty"`
 	Model            *string `json:"model,omitempty"`
 	PermissionModeId *string `json:"permissionModeId,omitempty"`
 	PlanMode         *bool   `json:"planMode,omitempty"`
@@ -4956,8 +5335,11 @@ type AgentTargetAuthMethod struct {
 	Id          string  `json:"id"`
 	Name        string  `json:"name"`
 
-	// TerminalCommand Ready-to-run interactive sign-in command for terminal-type methods.
+	// TerminalCommand Ready-to-run interactive sign-in launch command for terminal-type methods.
 	TerminalCommand *string `json:"terminalCommand,omitempty"`
+
+	// TerminalStartupAction Optional typed terminal action submitted after the interactive runtime reaches its declared ready marker.
+	TerminalStartupAction *AgentTargetTerminalStartupAction `json:"terminalStartupAction,omitempty"`
 
 	// Type Provider-declared method kind (for example "terminal").
 	Type *string `json:"type,omitempty"`
@@ -5062,6 +5444,16 @@ type AgentTargetSetupStatus string
 
 // AgentTargetSource defines model for AgentTargetSource.
 type AgentTargetSource string
+
+// AgentTargetTerminalStartupAction defines model for AgentTargetTerminalStartupAction.
+type AgentTargetTerminalStartupAction struct {
+	CommandName string                               `json:"commandName"`
+	ReadyText   string                               `json:"readyText"`
+	Type        AgentTargetTerminalStartupActionType `json:"type"`
+}
+
+// AgentTargetTerminalStartupActionType defines model for AgentTargetTerminalStartupAction.Type.
+type AgentTargetTerminalStartupActionType string
 
 // ApiErrorDetails defines model for ApiErrorDetails.
 type ApiErrorDetails struct {
@@ -5505,6 +5897,221 @@ type CompleteWorkspaceAppUploadResponse struct {
 	File WorkspaceAppUploadedFile `json:"file"`
 }
 
+// ConnectorMarketArtifact defines model for ConnectorMarketArtifact.
+type ConnectorMarketArtifact struct {
+	Key       string `json:"key"`
+	MediaType string `json:"mediaType"`
+	Sha256    string `json:"sha256"`
+	SizeBytes int64  `json:"sizeBytes"`
+}
+
+// ConnectorMarketAuthorization defines model for ConnectorMarketAuthorization.
+type ConnectorMarketAuthorization struct {
+	FailureCode *string                           `json:"failureCode,omitempty"`
+	State       ConnectorMarketAuthorizationState `json:"state"`
+}
+
+// ConnectorMarketAuthorizationResponse defines model for ConnectorMarketAuthorizationResponse.
+type ConnectorMarketAuthorizationResponse struct {
+	AuthorizationUrl *string                  `json:"authorizationUrl,omitempty"`
+	Connector        ConnectorMarketConnector `json:"connector"`
+	Operation        ConnectorMarketOperation `json:"operation"`
+	Revision         int64                    `json:"revision"`
+}
+
+// ConnectorMarketAuthorizationState defines model for ConnectorMarketAuthorizationState.
+type ConnectorMarketAuthorizationState string
+
+// ConnectorMarketCatalogItem defines model for ConnectorMarketCatalogItem.
+type ConnectorMarketCatalogItem struct {
+	CategoryId string                   `json:"categoryId"`
+	Connector  ConnectorMarketConnector `json:"connector"`
+	Featured   bool                     `json:"featured"`
+}
+
+// ConnectorMarketCatalogPage defines model for ConnectorMarketCatalogPage.
+type ConnectorMarketCatalogPage struct {
+	Items         []ConnectorMarketCatalogItem `json:"items"`
+	NextPageToken *string                      `json:"nextPageToken,omitempty"`
+	Revision      int64                        `json:"revision"`
+	SectionId     string                       `json:"sectionId"`
+}
+
+// ConnectorMarketCatalogState defines model for ConnectorMarketCatalogState.
+type ConnectorMarketCatalogState string
+
+// ConnectorMarketCategoriesResponse defines model for ConnectorMarketCategoriesResponse.
+type ConnectorMarketCategoriesResponse struct {
+	Categories []ConnectorMarketCategory `json:"categories"`
+}
+
+// ConnectorMarketCategory defines model for ConnectorMarketCategory.
+type ConnectorMarketCategory struct {
+	CategoryId string                      `json:"categoryId"`
+	ItemCount  int64                       `json:"itemCount"`
+	Kind       ConnectorMarketCategoryKind `json:"kind"`
+	SortOrder  int32                       `json:"sortOrder"`
+}
+
+// ConnectorMarketCategoryKind defines model for ConnectorMarketCategory.Kind.
+type ConnectorMarketCategoryKind string
+
+// ConnectorMarketCompatibility defines model for ConnectorMarketCompatibility.
+type ConnectorMarketCompatibility struct {
+	Reason *string                           `json:"reason,omitempty"`
+	State  ConnectorMarketCompatibilityState `json:"state"`
+}
+
+// ConnectorMarketCompatibilityRequirements defines model for ConnectorMarketCompatibilityRequirements.
+type ConnectorMarketCompatibilityRequirements struct {
+	MinimumHostVersion *string   `json:"minimumHostVersion,omitempty"`
+	Platforms          *[]string `json:"platforms,omitempty"`
+	Products           *[]string `json:"products,omitempty"`
+}
+
+// ConnectorMarketCompatibilityState defines model for ConnectorMarketCompatibilityState.
+type ConnectorMarketCompatibilityState string
+
+// ConnectorMarketConnector defines model for ConnectorMarketConnector.
+type ConnectorMarketConnector struct {
+	Authorization ConnectorMarketAuthorization `json:"authorization"`
+	Compatibility ConnectorMarketCompatibility `json:"compatibility"`
+	Installation  ConnectorMarketInstallation  `json:"installation"`
+	Key           string                       `json:"key"`
+	Release       ConnectorMarketRelease       `json:"release"`
+	Revision      int64                        `json:"revision"`
+}
+
+// ConnectorMarketConnectorResponse defines model for ConnectorMarketConnectorResponse.
+type ConnectorMarketConnectorResponse struct {
+	Connector ConnectorMarketConnector `json:"connector"`
+	Operation ConnectorMarketOperation `json:"operation"`
+	Revision  int64                    `json:"revision"`
+}
+
+// ConnectorMarketError defines model for ConnectorMarketError.
+type ConnectorMarketError struct {
+	Code      ConnectorMarketErrorCode `json:"code"`
+	Message   string                   `json:"message"`
+	Retryable bool                     `json:"retryable"`
+	Revision  *int64                   `json:"revision,omitempty"`
+}
+
+// ConnectorMarketErrorCode defines model for ConnectorMarketErrorCode.
+type ConnectorMarketErrorCode string
+
+// ConnectorMarketImplementation Public implementation discriminator; sensitive host configuration is never returned.
+type ConnectorMarketImplementation struct {
+	Kind ConnectorMarketImplementationKind `json:"kind"`
+}
+
+// ConnectorMarketImplementationKind defines model for ConnectorMarketImplementation.Kind.
+type ConnectorMarketImplementationKind string
+
+// ConnectorMarketInstallation defines model for ConnectorMarketInstallation.
+type ConnectorMarketInstallation struct {
+	FailureCode            *string                          `json:"failureCode,omitempty"`
+	InstalledReleaseDigest *string                          `json:"installedReleaseDigest,omitempty"`
+	InstalledReleaseId     *string                          `json:"installedReleaseId,omitempty"`
+	InstalledVersion       *string                          `json:"installedVersion,omitempty"`
+	State                  ConnectorMarketInstallationState `json:"state"`
+}
+
+// ConnectorMarketInstallationState defines model for ConnectorMarketInstallationState.
+type ConnectorMarketInstallationState string
+
+// ConnectorMarketManifest defines model for ConnectorMarketManifest.
+type ConnectorMarketManifest struct {
+	AuthorizationKind string                                    `json:"authorizationKind"`
+	Compatibility     *ConnectorMarketCompatibilityRequirements `json:"compatibility,omitempty"`
+	Description       *string                                   `json:"description,omitempty"`
+	DisplayName       string                                    `json:"displayName"`
+	IconUrl           string                                    `json:"iconUrl"`
+
+	// Implementation Public implementation discriminator; sensitive host configuration is never returned.
+	Implementation ConnectorMarketImplementation        `json:"implementation"`
+	Permissions    []string                             `json:"permissions"`
+	SchemaVersion  ConnectorMarketManifestSchemaVersion `json:"schemaVersion"`
+}
+
+// ConnectorMarketManifestSchemaVersion defines model for ConnectorMarketManifest.SchemaVersion.
+type ConnectorMarketManifestSchemaVersion string
+
+// ConnectorMarketMutationRequest defines model for ConnectorMarketMutationRequest.
+type ConnectorMarketMutationRequest struct {
+	ClientRequestId  string `json:"clientRequestId"`
+	ExpectedRevision int64  `json:"expectedRevision"`
+}
+
+// ConnectorMarketMutationResponse defines model for ConnectorMarketMutationResponse.
+type ConnectorMarketMutationResponse struct {
+	Connector *ConnectorMarketConnector `json:"connector,omitempty"`
+	Operation ConnectorMarketOperation  `json:"operation"`
+	Revision  int64                     `json:"revision"`
+}
+
+// ConnectorMarketOperation defines model for ConnectorMarketOperation.
+type ConnectorMarketOperation struct {
+	Attempt         int32                           `json:"attempt"`
+	ClientRequestId string                          `json:"clientRequestId"`
+	ConnectorKey    *string                         `json:"connectorKey,omitempty"`
+	CreatedAt       time.Time                       `json:"createdAt"`
+	FailureCode     *string                         `json:"failureCode,omitempty"`
+	Kind            ConnectorMarketOperationKind    `json:"kind"`
+	OperationId     string                          `json:"operationId"`
+	Stage           *ConnectorMarketOperationStage  `json:"stage,omitempty"`
+	State           ConnectorMarketOperationState   `json:"state"`
+	Target          *ConnectorMarketOperationTarget `json:"target,omitempty"`
+	UpdatedAt       time.Time                       `json:"updatedAt"`
+}
+
+// ConnectorMarketOperationKind defines model for ConnectorMarketOperationKind.
+type ConnectorMarketOperationKind string
+
+// ConnectorMarketOperationStage defines model for ConnectorMarketOperationStage.
+type ConnectorMarketOperationStage string
+
+// ConnectorMarketOperationState defines model for ConnectorMarketOperationState.
+type ConnectorMarketOperationState string
+
+// ConnectorMarketOperationTarget defines model for ConnectorMarketOperationTarget.
+type ConnectorMarketOperationTarget struct {
+	ArtifactSha256 *string `json:"artifactSha256,omitempty"`
+	ConnectorKey   string  `json:"connectorKey"`
+	ReleaseDigest  string  `json:"releaseDigest"`
+	ReleaseId      string  `json:"releaseId"`
+	Version        string  `json:"version"`
+}
+
+// ConnectorMarketRelease defines model for ConnectorMarketRelease.
+type ConnectorMarketRelease struct {
+	Artifact       ConnectorMarketArtifact             `json:"artifact"`
+	ConnectorKey   string                              `json:"connectorKey"`
+	Manifest       ConnectorMarketManifest             `json:"manifest"`
+	ManifestDigest string                              `json:"manifestDigest"`
+	PublishedAt    time.Time                           `json:"publishedAt"`
+	ReleaseDigest  string                              `json:"releaseDigest"`
+	ReleaseId      string                              `json:"releaseId"`
+	SchemaVersion  ConnectorMarketReleaseSchemaVersion `json:"schemaVersion"`
+	Status         ConnectorMarketReleaseStatus        `json:"status"`
+	Version        string                              `json:"version"`
+}
+
+// ConnectorMarketReleaseSchemaVersion defines model for ConnectorMarketRelease.SchemaVersion.
+type ConnectorMarketReleaseSchemaVersion string
+
+// ConnectorMarketReleaseStatus defines model for ConnectorMarketRelease.Status.
+type ConnectorMarketReleaseStatus string
+
+// ConnectorMarketSnapshot defines model for ConnectorMarketSnapshot.
+type ConnectorMarketSnapshot struct {
+	CatalogState   ConnectorMarketCatalogState `json:"catalogState"`
+	Connectors     []ConnectorMarketConnector  `json:"connectors"`
+	Operations     []ConnectorMarketOperation  `json:"operations"`
+	Revision       int64                       `json:"revision"`
+	SourceRevision *string                     `json:"sourceRevision,omitempty"`
+}
+
 // CopyWorkspaceFileEntryRequest defines model for CopyWorkspaceFileEntryRequest.
 type CopyWorkspaceFileEntryRequest struct {
 	Path string `json:"path"`
@@ -5622,8 +6229,11 @@ type CreateWorkspaceAgentSessionRequest struct {
 	// CapabilityRefs Structured capability references attached to the initial submission. They are persisted on the turn but never converted into provider prompt text.
 	CapabilityRefs *[]WorkspaceAgentCapabilityReference `json:"capabilityRefs,omitempty"`
 	ClientSubmitId string                               `json:"clientSubmitId"`
-	Cwd            *string                              `json:"cwd,omitempty"`
-	InitialContent []AgentPromptContentBlock            `json:"initialContent"`
+
+	// CodexSaverMode Enables the Codex Luna subagent saver mode for this session without changing the main model
+	CodexSaverMode *bool                     `json:"codexSaverMode,omitempty"`
+	Cwd            *string                   `json:"cwd,omitempty"`
+	InitialContent []AgentPromptContentBlock `json:"initialContent"`
 
 	// InitialDisplayPrompt Optional display-only text for the first turn (e.g. a folder bundle shown as one chip while initialContent carries the expanded files).
 	InitialDisplayPrompt *string `json:"initialDisplayPrompt,omitempty"`
@@ -5806,6 +6416,7 @@ type DeletedAgentConversationRetentionDays int
 
 // DesktopAgentComposerDefaults defines model for DesktopAgentComposerDefaults.
 type DesktopAgentComposerDefaults struct {
+	CodexSaverMode   *bool   `json:"codexSaverMode,omitempty"`
 	Model            *string `json:"model,omitempty"`
 	PermissionModeId *string `json:"permissionModeId,omitempty"`
 	ReasoningEffort  *string `json:"reasoningEffort,omitempty"`
@@ -7069,9 +7680,12 @@ type SendWorkspaceAgentSessionInputRequest struct {
 	// DisplayPrompt Optional display-only text shown in the conversation (e.g. a folder bundle rendered as one chip while content carries the expanded files).
 	DisplayPrompt *string `json:"displayPrompt,omitempty"`
 
-	// Guidance When true, send this input as guidance to the currently active turn instead of starting a new turn.
+	// Guidance When true, send this input as guidance to the exact active turn identified by turnId instead of starting a new turn.
 	Guidance          *bool                   `json:"guidance,omitempty"`
 	SubmitDiagnostics *AgentSubmitDiagnostics `json:"submitDiagnostics,omitempty"`
+
+	// TurnId Exact canonical active Turn targeted by guidance. Required when guidance is true; ignored for normal new-turn submits.
+	TurnId *string `json:"turnId,omitempty"`
 }
 
 // SendWorkspaceAgentSessionInputResponse defines model for SendWorkspaceAgentSessionInputResponse.
@@ -8026,12 +8640,13 @@ type WorkspaceAgentSessionGitBranchesResponse struct {
 
 // WorkspaceAgentSessionGoal Protocol v2 explicit field extracted from runtimeContext.
 type WorkspaceAgentSessionGoal struct {
-	DurationMs *int64                          `json:"durationMs,omitempty"`
-	Iterations *int                            `json:"iterations,omitempty"`
-	Objective  string                          `json:"objective"`
-	Reason     *string                         `json:"reason,omitempty"`
-	Status     WorkspaceAgentSessionGoalStatus `json:"status"`
-	Tokens     *int64                          `json:"tokens,omitempty"`
+	DurationMs      *int64                          `json:"durationMs,omitempty"`
+	Iterations      *int                            `json:"iterations,omitempty"`
+	Objective       string                          `json:"objective"`
+	Reason          *string                         `json:"reason,omitempty"`
+	StartedAtUnixMs *int64                          `json:"startedAtUnixMs,omitempty"`
+	Status          WorkspaceAgentSessionGoalStatus `json:"status"`
+	Tokens          *int64                          `json:"tokens,omitempty"`
 }
 
 // WorkspaceAgentSessionGoalStatus defines model for WorkspaceAgentSessionGoal.Status.
@@ -8304,6 +8919,7 @@ type WorkspaceApp struct {
 	DisplayName      string                       `json:"displayName"`
 	Enabled          bool                         `json:"enabled"`
 	Exportable       bool                         `json:"exportable"`
+	FailurePhase     *WorkspaceAppFailurePhase    `json:"failurePhase,omitempty"`
 	FailureReason    *string                      `json:"failureReason"`
 	IconUrl          *string                      `json:"iconUrl"`
 	InstallProgress  *WorkspaceAppInstallProgress `json:"installProgress,omitempty"`
@@ -8329,6 +8945,9 @@ type WorkspaceApp struct {
 	WindowMinHeight  *int                         `json:"windowMinHeight"`
 	WindowMinWidth   *int                         `json:"windowMinWidth"`
 }
+
+// WorkspaceAppFailurePhase defines model for WorkspaceApp.FailurePhase.
+type WorkspaceAppFailurePhase string
 
 // WorkspaceAppAgentPreferencesResponse defines model for WorkspaceAppAgentPreferencesResponse.
 type WorkspaceAppAgentPreferencesResponse struct {
@@ -8918,6 +9537,21 @@ type CliCommandID = string
 // CollaborationRunID defines model for CollaborationRunID.
 type CollaborationRunID = string
 
+// ConnectorMarketConnectorKey defines model for ConnectorMarketConnectorKey.
+type ConnectorMarketConnectorKey = string
+
+// ConnectorMarketOperationID defines model for ConnectorMarketOperationID.
+type ConnectorMarketOperationID = string
+
+// ConnectorMarketPageSize defines model for ConnectorMarketPageSize.
+type ConnectorMarketPageSize = int
+
+// ConnectorMarketPageToken defines model for ConnectorMarketPageToken.
+type ConnectorMarketPageToken = string
+
+// ConnectorMarketSectionID defines model for ConnectorMarketSectionID.
+type ConnectorMarketSectionID = string
+
 // IssueID defines model for IssueID.
 type IssueID = string
 
@@ -9023,6 +9657,24 @@ type AgentQuickPromptOperationError = ApiErrorResponse
 // AgentTargetNotFoundError defines model for AgentTargetNotFoundError.
 type AgentTargetNotFoundError = ApiErrorResponse
 
+// ConnectorMarketConflictError defines model for ConnectorMarketConflictError.
+type ConnectorMarketConflictError = ConnectorMarketError
+
+// ConnectorMarketInvalidRequestError defines model for ConnectorMarketInvalidRequestError.
+type ConnectorMarketInvalidRequestError = ConnectorMarketError
+
+// ConnectorMarketNotFoundError defines model for ConnectorMarketNotFoundError.
+type ConnectorMarketNotFoundError = ConnectorMarketError
+
+// ConnectorMarketUnauthorizedError defines model for ConnectorMarketUnauthorizedError.
+type ConnectorMarketUnauthorizedError = ConnectorMarketError
+
+// ConnectorMarketUnavailableError defines model for ConnectorMarketUnavailableError.
+type ConnectorMarketUnavailableError = ConnectorMarketError
+
+// ConnectorMarketUnprocessableError defines model for ConnectorMarketUnprocessableError.
+type ConnectorMarketUnprocessableError = ConnectorMarketError
+
 // InvalidRequestError defines model for InvalidRequestError.
 type InvalidRequestError = ApiErrorResponse
 
@@ -9118,6 +9770,13 @@ type ListCliCapabilitiesParams struct {
 
 	// IncludeIntegration Include integration-only commands while preserving provider availability filters. Intended for app-runtime integrations.
 	IncludeIntegration *bool `form:"includeIntegration,omitempty" json:"includeIntegration,omitempty"`
+}
+
+// ListConnectorMarketCatalogParams defines parameters for ListConnectorMarketCatalog.
+type ListConnectorMarketCatalogParams struct {
+	SectionId ConnectorMarketSectionID  `form:"sectionId" json:"sectionId"`
+	PageSize  *ConnectorMarketPageSize  `form:"pageSize,omitempty" json:"pageSize,omitempty"`
+	PageToken *ConnectorMarketPageToken `form:"pageToken,omitempty" json:"pageToken,omitempty"`
 }
 
 // ListWorkspaceAgentGeneratedFilesParams defines parameters for ListWorkspaceAgentGeneratedFiles.
@@ -9404,6 +10063,21 @@ type SetSystemAgentTargetEnabledJSONRequestBody = SetSystemAgentTargetEnabledReq
 
 // InvokeCliCommandJSONRequestBody defines body for InvokeCliCommand for application/json ContentType.
 type InvokeCliCommandJSONRequestBody = CliInvokeRequest
+
+// DisconnectConnectorMarketAuthorizationJSONRequestBody defines body for DisconnectConnectorMarketAuthorization for application/json ContentType.
+type DisconnectConnectorMarketAuthorizationJSONRequestBody = ConnectorMarketMutationRequest
+
+// StartConnectorMarketAuthorizationJSONRequestBody defines body for StartConnectorMarketAuthorization for application/json ContentType.
+type StartConnectorMarketAuthorizationJSONRequestBody = ConnectorMarketMutationRequest
+
+// InstallConnectorMarketConnectorJSONRequestBody defines body for InstallConnectorMarketConnector for application/json ContentType.
+type InstallConnectorMarketConnectorJSONRequestBody = ConnectorMarketMutationRequest
+
+// UninstallConnectorMarketConnectorJSONRequestBody defines body for UninstallConnectorMarketConnector for application/json ContentType.
+type UninstallConnectorMarketConnectorJSONRequestBody = ConnectorMarketMutationRequest
+
+// RefreshConnectorMarketJSONRequestBody defines body for RefreshConnectorMarket for application/json ContentType.
+type RefreshConnectorMarketJSONRequestBody = ConnectorMarketMutationRequest
 
 // RefreshDesktopUpdateAdmissionJSONRequestBody defines body for RefreshDesktopUpdateAdmission for application/json ContentType.
 type RefreshDesktopUpdateAdmissionJSONRequestBody = DesktopUpdateAdmissionRefreshRequest

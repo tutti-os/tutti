@@ -72,6 +72,15 @@
     "win": {
       "target": [
         "nsis"
+      ],
+      "extraResources": [
+        {
+          "from": "build/managed-posix-shell",
+          "to": "bin/managed-posix-shell",
+          "filter": [
+            "**/*"
+          ]
+        }
       ]
     },
     "linux": {
@@ -112,6 +121,7 @@
     "@tutti-os/browser-node": "workspace:*",
     "@tutti-os/client-tuttid-ts": "workspace:*",
     "@tutti-os/commerce": "workspace:*",
+    "@tutti-os/connector-market": "workspace:*",
     "@tutti-os/config-tsconfig": "workspace:*",
     "@tutti-os/desktop-update-admission": "workspace:*",
     "@tutti-os/ui-i18n-runtime": "workspace:*",

@@ -129,7 +129,11 @@ func resolveCodexLaunchers(resolver runtimecmd.Resolver, env []string) []string 
 
 func codexLauncherNames() []string {
 	if runtime.GOOS == "windows" {
-		return []string{"codex.exe", "codex.cmd", "codex.bat", "codex"}
+		// Windows package managers expose executable shims with one of these
+		// extensions. An extensionless file in an AppX resources directory is
+		// the non-Windows companion shipped beside codex.exe and cannot be
+		// launched by CreateProcess on Windows.
+		return []string{"codex.exe", "codex.cmd", "codex.bat"}
 	}
 	return []string{"codex"}
 }
@@ -225,6 +229,7 @@ func (c *codexRuntimeCandidateCollector) add(path string, source codexRuntimeCan
 	if path == "" {
 		return
 	}
+	path = materializeCodexWindowsAppsLauncher(path)
 	realPath := resolvedCodexLauncherPath(path)
 	packageRoot := codexPackageDirForBinary(realPath)
 	identity := codexRuntimeCandidateIdentity(path, realPath, packageRoot)

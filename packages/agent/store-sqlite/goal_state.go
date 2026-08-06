@@ -101,7 +101,11 @@ func (s *Store) PrepareGoalControlOperation(ctx context.Context, input GoalContr
 	tombstoned := false
 	switch input.Action {
 	case "set":
-		desired = map[string]any{"objective": input.Objective, "status": "active"}
+		desired = map[string]any{
+			"objective":       input.Objective,
+			"status":          "active",
+			"startedAtUnixMs": input.OccurredAtUnixMS,
+		}
 	case "clear":
 		desired = nil
 		tombstoned = true
@@ -385,6 +389,7 @@ func (s *Store) CompleteGoalControlOperation(ctx context.Context, input GoalCont
 		}
 		return op, state, false, nil
 	}
+	input.Observed = normalizeObservedGoalTiming(input.Observed, state, input.OccurredAtUnixMS)
 	terminalFence, err := goalRevisionTerminalFenceTx(ctx, tx, state.WorkspaceID, state.AgentSessionID, state.Revision)
 	if err != nil {
 		return GoalControlOperation{}, SessionGoalState{}, false, err
@@ -490,6 +495,7 @@ func (s *Store) ReconcileSessionGoalObservation(ctx context.Context, input GoalO
 			_ = tx.Rollback()
 			return state, nil
 		}
+		input.Observed = normalizeObservedGoalTiming(input.Observed, state, input.OccurredAtUnixMS)
 		terminalFence, err := goalRevisionTerminalFenceTx(ctx, tx, input.WorkspaceID, input.AgentSessionID, state.Revision)
 		if err != nil {
 			_ = tx.Rollback()
@@ -645,6 +651,7 @@ func reconcileObservedGoalFromSessionTx(ctx context.Context, tx *sql.Tx, session
 	if err != nil {
 		return err
 	}
+	observed = normalizeObservedGoalTiming(observed, state, occurredAt)
 	if !found {
 		syncStatus := GoalSyncStatusUnknown
 		if len(observed) > 0 {

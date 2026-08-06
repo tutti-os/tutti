@@ -78,8 +78,19 @@ const bundledWsDefines = {
   "process.env.WS_NO_UTF_8_VALIDATE": '"true"'
 };
 
+// TUTTI_DESKTOP_DEV_PORT pins the renderer dev server to an explicit port so
+// a second local checkout (or another electron-vite project) can keep the
+// default 5173. strictPort makes a collision fail loudly instead of silently
+// hopping to a port the Electron main process did not expect.
+const devServerPort = Number.parseInt(
+  process.env.TUTTI_DESKTOP_DEV_PORT ?? "",
+  10
+);
 const devServer = {
   host: "127.0.0.1",
+  ...(Number.isInteger(devServerPort) && devServerPort > 0
+    ? { port: devServerPort, strictPort: true }
+    : {}),
   hmr: {
     host: "127.0.0.1"
   }

@@ -243,8 +243,14 @@ sidecar state that can be recreated or cleaned up when the owning agent session
 is deleted. Provider-specific homes, generated skills, and cleanup manifests
 live under the matching run directory. Codex sessions use `codex-home` and
 receive it through `CODEX_HOME`; Tutti Agent sessions use `tutti-agent-home`
-and receive it through `TUTTI_AGENT_HOME`. `agent/attachments` stores persisted
-prompt attachments by agent session.
+and receive it through `TUTTI_AGENT_HOME`. `agent/skill-bundles/v1/<digest>`
+stores immutable, rebuildable Tutti-managed Skill bundles shared by equal
+content across Tutti Agent sessions; session cleanup never removes these
+entries. `agent/system-skill-bundles/v1/<digest>/.system` stores immutable,
+rebuildable snapshots of the embedded Skills installed by the active Tutti
+Agent binary; run-scoped homes link to the matching digest before thread
+startup. Session cleanup never removes either shared cache. `agent/attachments`
+stores persisted prompt attachments by agent session.
 
 ## Developer Agent Session Cassettes
 
@@ -389,6 +395,24 @@ Agent Extension setup uses these daemon-owned state paths:
 <state-dir>/agent/extension-runtime-actions/<scope-sha256>.json
 <state-dir>/agent/discovery/agent-extensions/
 ```
+
+Connector CLI packages use daemon-owned state rather than the user's global
+npm prefix. All CLI Connector installations bind to the one signed
+`connector-node-static` runtime under `<state-dir>/connectors/runtimes` and use:
+
+```text
+<state-dir>/connectors/node-packages/shared/pnpm-store/
+<state-dir>/connectors/node-packages/shared/corepack/
+<state-dir>/connectors/node-packages/shared/npm-cache/
+<state-dir>/connectors/node-packages/shared/pnpm-home/
+<state-dir>/connectors/node-packages/packages/<connector-key>/<release-digest>/
+```
+
+The shared directories deduplicate registry downloads and physical dependency
+content. The release directory remains isolated and contains only its lock,
+links/hardlinks, package metadata, generated bin entry, and installation
+receipt. Uninstall removes the release directory but preserves shared content
+for other installed connectors.
 
 The action filename hashes exact Target plus fixed extension installation
 identity; workspace identity remains inside the record, not in a directory

@@ -47,6 +47,18 @@ export interface RichTextTriggerGroupPageQueryInput extends RichTextTriggerQuery
   pageSize: number;
 }
 
+export interface RichTextTriggerDirectoryDescriptor {
+  /** Canonical provider-owned directory path used for direct-child queries. */
+  path: string;
+  /** Number of direct children when the provider can determine it. */
+  childCount?: number | null;
+}
+
+export interface RichTextTriggerDirectoryQueryInput extends RichTextTriggerQueryInput {
+  /** Empty string addresses the provider-owned root directory. */
+  directoryPath: string;
+}
+
 export interface RichTextMentionTriggerInsertResult {
   kind: "mention";
   mention: RichTextMentionInsert;
@@ -87,6 +99,14 @@ export interface RichTextTriggerProvider<TItem = unknown> {
   ):
     | Promise<RichTextTriggerQueryGroup<TItem>>
     | RichTextTriggerQueryGroup<TItem>;
+  /** Optional hierarchy contract for providers that expose directories. */
+  getItemDirectory?(
+    item: TItem
+  ): RichTextTriggerDirectoryDescriptor | null | undefined;
+  /** Lists direct children without overloading ranked keyword search. */
+  queryDirectory?(
+    input: RichTextTriggerDirectoryQueryInput
+  ): Promise<readonly TItem[]> | readonly TItem[];
   getItemKey(item: TItem): string;
   getItemLabel(item: TItem): string;
   getItemSubtitle?(item: TItem): string | null | undefined;
@@ -110,6 +130,7 @@ export interface RichTextTriggerQueryMatch<TItem = unknown> {
   keywords?: readonly string[];
   item: TItem;
   insertResult: RichTextTriggerInsertResult;
+  directory?: RichTextTriggerDirectoryDescriptor;
 }
 
 export interface RichTextTriggerRegistry {
@@ -118,5 +139,9 @@ export interface RichTextTriggerRegistry {
   listTriggerConfigs: () => readonly RichTextTriggerConfig[];
   query: (
     input: RichTextTriggerQueryInput
+  ) => Promise<readonly RichTextTriggerQueryMatch[]>;
+  queryDirectory?: (
+    providerId: string,
+    input: RichTextTriggerDirectoryQueryInput
   ) => Promise<readonly RichTextTriggerQueryMatch[]>;
 }

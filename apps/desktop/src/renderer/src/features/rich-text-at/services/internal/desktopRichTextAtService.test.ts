@@ -1581,6 +1581,189 @@ test("desktop rich text @ service honors abort before provider search starts", a
   assert.equal(searchCallCount, 0);
 });
 
+test("desktop file mention provider lists direct file and folder children", async () => {
+  const calls: Array<{ workspaceId: string; path?: string }> = [];
+  const service = new DesktopRichTextAtService({
+    tuttidClient: createTuttidClient({
+      async listWorkspaceFileDirectory(
+        workspaceId: string,
+        request?: { includeHidden?: boolean; path?: string }
+      ) {
+        calls.push({ workspaceId, path: request?.path });
+        return {
+          directoryPath: request?.path ?? "/workspace",
+          entries: [
+            { kind: "directory", name: "docs", path: "/workspace/docs" },
+            {
+              kind: "file",
+              name: "README.md",
+              path: "/workspace/README.md"
+            }
+          ],
+          root: "/workspace",
+          workspaceID: workspaceId
+        };
+      }
+    })
+  });
+  const [provider] = service.getProviders({
+    capabilities: ["file"],
+    surface: "workspace-app-external",
+    target: "workspace-app",
+    workspaceId: "workspace-1"
+  });
+  assert.ok(provider?.queryDirectory);
+
+  const rootItems = await provider.queryDirectory({
+    context: {},
+    directoryPath: "",
+    keyword: "",
+    trigger: "@"
+  });
+  const childItems = await provider.queryDirectory({
+    context: {},
+    directoryPath: "/workspace/docs",
+    keyword: "",
+    trigger: "@"
+  });
+
+  assert.deepEqual(calls, [
+    { workspaceId: "workspace-1", path: undefined },
+    { workspaceId: "workspace-1", path: "/workspace/docs" }
+  ]);
+  assert.deepEqual(rootItems, childItems);
+  assert.deepEqual(provider.getItemDirectory?.(rootItems[0]), {
+    path: "/workspace/docs"
+  });
+  assert.equal(provider.getItemDirectory?.(rootItems[1]), null);
+  assert.deepEqual(provider.toInsertResult(rootItems[0]), {
+    href: "/workspace/docs/",
+    kind: "markdown-link",
+    label: "docs"
+  });
+});
+
+test("workspace app file mention provider rejects directories outside its root", async () => {
+  const calls: Array<{ workspaceId: string; path?: string }> = [];
+  const service = new DesktopRichTextAtService({
+    tuttidClient: createTuttidClient({
+      async listWorkspaceFileDirectory(
+        workspaceId: string,
+        request?: { includeHidden?: boolean; path?: string }
+      ) {
+        calls.push({ workspaceId, path: request?.path });
+        return {
+          directoryPath: "/workspace",
+          entries: [],
+          root: "/workspace",
+          workspaceID: workspaceId
+        };
+      }
+    })
+  });
+  const [provider] = service.getProviders({
+    capabilities: ["file"],
+    surface: "workspace-app-external",
+    target: "workspace-app",
+    workspaceId: "workspace-1"
+  });
+  assert.ok(provider?.queryDirectory);
+
+  await assert.rejects(
+    Promise.resolve(
+      provider.queryDirectory({
+        context: {},
+        directoryPath: "/etc",
+        keyword: "",
+        trigger: "@"
+      })
+    ),
+    /escapes the provider root/
+  );
+  assert.deepEqual(calls, [{ workspaceId: "workspace-1", path: undefined }]);
+});
+
+test("workspace app file mention provider rejects directories resolved under another root", async () => {
+  const service = new DesktopRichTextAtService({
+    tuttidClient: createTuttidClient({
+      async listWorkspaceFileDirectory(
+        workspaceId: string,
+        request?: { includeHidden?: boolean; path?: string }
+      ) {
+        return request?.path
+          ? {
+              directoryPath: request.path,
+              entries: [],
+              root: "/",
+              workspaceID: workspaceId
+            }
+          : {
+              directoryPath: "/workspace",
+              entries: [],
+              root: "/workspace",
+              workspaceID: workspaceId
+            };
+      }
+    })
+  });
+  const [provider] = service.getProviders({
+    capabilities: ["file"],
+    surface: "workspace-app-external",
+    target: "workspace-app",
+    workspaceId: "workspace-1"
+  });
+  assert.ok(provider?.queryDirectory);
+
+  await assert.rejects(
+    Promise.resolve(
+      provider.queryDirectory({
+        context: {},
+        directoryPath: "/workspace/external-link",
+        keyword: "",
+        trigger: "@"
+      })
+    ),
+    /resolved outside the provider root/
+  );
+});
+
+test("desktop agent file mention provider keeps external absolute directory access", async () => {
+  const calls: Array<{ workspaceId: string; path?: string }> = [];
+  const service = new DesktopRichTextAtService({
+    tuttidClient: createTuttidClient({
+      async listWorkspaceFileDirectory(
+        workspaceId: string,
+        request?: { includeHidden?: boolean; path?: string }
+      ) {
+        calls.push({ workspaceId, path: request?.path });
+        return {
+          directoryPath: request?.path ?? "/workspace",
+          entries: [{ kind: "file", name: "hosts", path: "/etc/hosts" }],
+          root: request?.path ? "/" : "/workspace",
+          workspaceID: workspaceId
+        };
+      }
+    })
+  });
+  const [provider] = service.getProviders({
+    capabilities: ["file"],
+    surface: "desktop-agent-composer",
+    target: "agent-gui",
+    workspaceId: "workspace-1"
+  });
+  assert.ok(provider?.queryDirectory);
+
+  const items = await provider.queryDirectory({
+    context: {},
+    directoryPath: "/etc",
+    keyword: "",
+    trigger: "@"
+  });
+
+  assert.equal((items[0] as { path?: string } | undefined)?.path, "/etc/hosts");
+  assert.deepEqual(calls, [{ workspaceId: "workspace-1", path: "/etc" }]);
+});
+
 test("desktop rich text @ service passes abort signals through to tuttid search", async () => {
   let receivedSignal: AbortSignal | undefined;
   const service = new DesktopRichTextAtService({

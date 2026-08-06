@@ -5,7 +5,10 @@ import (
 	"fmt"
 )
 
-var ErrNotFound = errors.New("connector market resource not found")
+var (
+	ErrNotFound           = errors.New("connector market resource not found")
+	ErrOperationLeaseLost = errors.New("connector market operation lease lost")
+)
 
 type ErrorCode string
 
@@ -48,4 +51,20 @@ func NewDomainError(code ErrorCode, message string, retryable bool, cause error)
 		Retryable: retryable,
 		Cause:     cause,
 	}
+}
+
+func preserveCatalogSourceError(message string, err error) error {
+	var domainError *DomainError
+	if errors.As(err, &domainError) {
+		return err
+	}
+	return NewDomainError(ErrorCodeUpstreamUnavailable, message, true, err)
+}
+
+func errorCodeOr(err error, fallback ErrorCode) ErrorCode {
+	var domainError *DomainError
+	if errors.As(err, &domainError) {
+		return domainError.Code
+	}
+	return fallback
 }

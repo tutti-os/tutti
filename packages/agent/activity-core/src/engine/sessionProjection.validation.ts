@@ -270,6 +270,7 @@ function optionalGoal(value: unknown): boolean {
       typeof value.objective === "string" &&
       isOneOf(value.status, GOAL_STATUSES) &&
       optionalString(value.reason) &&
+      optionalFiniteNumber(value.startedAtUnixMs) &&
       optionalFiniteNumber(value.iterations) &&
       optionalFiniteNumber(value.durationMs) &&
       optionalFiniteNumber(value.tokens))

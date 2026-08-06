@@ -84,6 +84,22 @@ func (a *ClaudeCodeSDKAdapter) exec(
 	if event, ok := adapterSession.mirrorGoalSlashPrompt(session, visibleText); ok {
 		startEvents = append(startEvents, event)
 	}
+	// Emit the compacting banner up front (same rationale as Codex silent
+	// compact): Claude frequently finishes /compact without streaming
+	// status/boundary to the query iterator, and even when the sidecar emits
+	// compact_started immediately it arrives before provider-turn acceptance.
+	if isClaudeSDKCompactPrompt(content, visibleText) {
+		if compact, ok := a.compactMessageEvent(
+			adapterSession,
+			session,
+			turnID,
+			messageStreamStateStreaming,
+			"running",
+			"",
+		); ok {
+			startEvents = append(startEvents, compact)
+		}
+	}
 	emitEvents(a.stampTurnLifecycleSnapshots(adapterSession, startEvents))
 
 	providerContent, err := materializeProviderPromptImagesAtBoundary(ctx, content, a.promptImageMaterializer)
@@ -213,6 +229,7 @@ func (a *ClaudeCodeSDKAdapter) ExecWithProviderAcceptance(
 				accepted = acceptanceErr == nil
 				if accepted {
 					acceptedProviderTurnID = providerTurnID
+					a.signalClaudeSDKProviderTurnAccepted(adapterSession)
 				}
 			})
 			if acceptanceErr != nil {
@@ -239,8 +256,18 @@ func (a *ClaudeCodeSDKAdapter) ExecWithProviderAcceptance(
 		}
 		if emit != nil {
 			if len(pendingEvents) > 0 {
+				// acceptProviderTurn already recorded Replay observations at the
+				// acceptance ProviderInputUnit (turn.working). Held pre-acceptance
+				// events still carry earlier frame units (e.g. compact_started
+				// before identity). Re-observing them either regresses the provider
+				// cursor or coalesces compaction readiness onto turn.working with
+				// conflicting compaction.status predicates. Strip input-unit
+				// metadata so flush publishes transcript/state only.
 				published := make([]activityshared.Event, 0, len(pendingEvents)+len(events))
-				published = append(published, pendingEvents...)
+				published = append(
+					published,
+					stripClaudeSDKHeldEventProviderInputUnits(pendingEvents)...,
+				)
 				published = append(published, events...)
 				pendingEvents = nil
 				emit(published)
@@ -304,6 +331,20 @@ func (a *ClaudeCodeSDKAdapter) ExecWithProviderAcceptance(
 	return events, err
 }
 
+func stripClaudeSDKHeldEventProviderInputUnits(
+	events []activityshared.Event,
+) []activityshared.Event {
+	if len(events) == 0 {
+		return events
+	}
+	stripped := make([]activityshared.Event, len(events))
+	copy(stripped, events)
+	for index := range stripped {
+		stripped[index].ProviderInputUnit = nil
+	}
+	return stripped
+}
+
 func claudeSDKEventsMayPrecedeProviderAcceptance(
 	events []activityshared.Event,
 ) bool {
@@ -311,19 +352,37 @@ func claudeSDKEventsMayPrecedeProviderAcceptance(
 		return true
 	}
 	for _, event := range events {
-		if event.Type == EventTurnStarted {
-			continue
+		if !claudeSDKEventMayPrecedeProviderAcceptance(event) {
+			return false
 		}
-		if event.Type == activityshared.EventMessageAppended &&
-			strings.EqualFold(
-				strings.TrimSpace(string(event.Payload.Role)),
-				"user",
-			) {
-			continue
-		}
-		return false
 	}
 	return true
+}
+
+func claudeSDKEventMayPrecedeProviderAcceptance(event activityshared.Event) bool {
+	if event.Type == EventTurnStarted {
+		return true
+	}
+	if event.Type != activityshared.EventMessageAppended {
+		return false
+	}
+	if strings.EqualFold(
+		strings.TrimSpace(string(event.Payload.Role)),
+		"user",
+	) {
+		return true
+	}
+	// Slash /compact progress banners are emitted as soon as exec is selected,
+	// often before Claude persists a provider Turn identity. Hold them like the
+	// local user prompt instead of treating them as premature provider output.
+	command := strings.TrimSpace(payloadString(event.Payload.Metadata, "noticeCommand"))
+	source := strings.TrimSpace(payloadString(event.Payload.Metadata, "source"))
+	return command == "compact" || source == "compact"
+}
+
+func isClaudeSDKCompactPrompt(content []PromptContentBlock, visibleText string) bool {
+	prompt := strings.ToLower(strings.TrimSpace(promptTextForClaudeSDK(content, visibleText)))
+	return prompt == "/compact" || strings.HasPrefix(prompt, "/compact ")
 }
 
 func claudeSDKEventsContainTurnFailed(events []activityshared.Event) bool {
@@ -435,18 +494,43 @@ func (a *ClaudeCodeSDKAdapter) GuideActiveTurn(
 }
 
 func (a *ClaudeCodeSDKAdapter) Cancel(ctx context.Context, session Session, _ string) ([]activityshared.Event, error) {
+	return a.cancelClaudeSDKTurn(ctx, session, "", "")
+}
+
+func (a *ClaudeCodeSDKAdapter) cancelClaudeSDKTurn(
+	ctx context.Context,
+	session Session,
+	turnID string,
+	_ string,
+) ([]activityshared.Event, error) {
 	adapterSession := a.getSession(session.AgentSessionID)
 	if adapterSession == nil {
 		return nil, ErrSessionDisconnected
 	}
+	turnID = strings.TrimSpace(turnID)
+	if turnID == "" {
+		turnID = a.claudeSDKRootTurnID(adapterSession, "")
+	} else {
+		_ = a.claudeSDKRootTurnID(adapterSession, turnID)
+	}
 	cancelCtx, cancel := context.WithTimeout(ctx, claudeSDKGoalCommandTimeout)
 	defer cancel()
+	// Durable cancel settlement marks HasSettledTurn. Waiting here ensures
+	// root_provider_turn_id is already committed (Established) before that
+	// settlement, so a cancel→resend cannot hit provider_session_not_established.
+	if err := a.waitClaudeSDKProviderTurnAccepted(cancelCtx, adapterSession); err != nil {
+		return nil, err
+	}
+	payload := map[string]any{
+		"agentSessionId": session.AgentSessionID,
+	}
+	if turnID != "" {
+		payload["turnId"] = turnID
+	}
 	if err := a.roundTripClaudeSDK(cancelCtx, session.AgentSessionID, adapterSession, claudeSDKSidecarRequest{
-		ID:   newID(),
-		Type: "cancel",
-		Payload: map[string]any{
-			"agentSessionId": session.AgentSessionID,
-		},
+		ID:      newID(),
+		Type:    "cancel",
+		Payload: payload,
 	}); err != nil {
 		return nil, err
 	}
@@ -462,7 +546,7 @@ func (a *ClaudeCodeSDKAdapter) Cancel(ctx context.Context, session Session, _ st
 		claudeSDKTurnFinishInterrupted,
 		"user_interrupt",
 	)...)
-	a.markClaudeSDKTurnClosed(adapterSession, a.claudeSDKRootTurnID(adapterSession, ""), "cancel_requested")
+	a.markClaudeSDKTurnClosed(adapterSession, a.claudeSDKRootTurnID(adapterSession, turnID), "cancel_requested")
 	return a.stampTurnLifecycleSnapshots(adapterSession, events), nil
 }
 
@@ -473,6 +557,7 @@ func (a *ClaudeCodeSDKAdapter) CancelTargets(ctx context.Context, rootSession Se
 			if adapterSession == nil {
 				return TargetedCancelResult{}, ErrSessionDisconnected
 			}
+			rootTurnID := strings.TrimSpace(target.TurnID)
 			// services/tuttid owns the exact durable cancellation target set.
 			// Close those projection boundaries before asking the SDK to stop so
 			// cancellation-caused task/tool terminal events cannot race the
@@ -483,7 +568,7 @@ func (a *ClaudeCodeSDKAdapter) CancelTargets(ctx context.Context, rootSession Se
 			// Claude SDK exposes cancellation for the root query. That provider
 			// operation stops its nested Task executions as part of the same
 			// query; services/tuttid supplied the exact durable target set.
-			events, err := a.Cancel(ctx, rootSession, reason)
+			events, err := a.cancelClaudeSDKTurn(ctx, rootSession, rootTurnID, reason)
 			if err != nil {
 				return TargetedCancelResult{}, err
 			}

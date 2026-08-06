@@ -4,6 +4,19 @@ Host-neutral workspace app center contracts, validation, status mapping, view-mo
 
 The package does not construct daemon clients, access desktop preload APIs, resolve host paths, spawn processes, or register workbench or dock contributions.
 
+## Runtime Failure Semantics
+
+Runtime status remains a lifecycle status, so all terminal failures use
+`failed`. Hosts should attach `WorkspaceAppRuntimeError.failurePhase` to retain
+where the failure occurred: `downloading`, `installing`, `starting`, or
+`runtime`. Host adapters may carry the same phase on `WorkspaceAppCenterApp`
+before projecting the runtime state. The shared card uses that optional phase for accurate failure copy
+and falls back to a neutral runtime failure for older hosts.
+
+Do not add compound statuses such as `install_failed` or `start_failed`.
+Keeping outcome and failure phase orthogonal lets hosts preserve their existing
+install and runtime event hooks while sharing one compatible status machine.
+
 ## Runtime Refresh Policy
 
 `createWorkspaceAppCenterController` defaults to `refreshPolicy: "poll"` for

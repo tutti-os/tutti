@@ -33,7 +33,10 @@ export interface CreateDesktopHostServicesOptions {
   logger: DesktopLogger;
   tuttidClient: Pick<
     TuttidClient,
-    "getDesktopPreferences" | "getStartupWorkspace" | "putDesktopPreferences"
+    | "getDesktopPreferences"
+    | "getStartupWorkspace"
+    | "putDesktopPreferences"
+    | "trackEvents"
   >;
   preloadPath: string;
   rendererUrl?: string;
@@ -68,6 +71,11 @@ export async function createDesktopHostServices(
       rendererUrl: options.rendererUrl,
       workspaceAppPreloadPath: options.workspaceAppPreloadPath
     }),
+    onAnalyticsError(error) {
+      options.logger.warn("failed to record workspace UI mode analytics", {
+        error: error instanceof Error ? error.message : String(error)
+      });
+    },
     tuttidClient: options.tuttidClient
   });
 

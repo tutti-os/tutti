@@ -530,6 +530,54 @@ func TestClaudeCodeSDKAdapterCreatesAndSettlesChildSession(t *testing.T) {
 	}
 }
 
+func TestClaudeCodeSDKAdapterKeepsChildRunningWhenBackgroundProcessStillRunning(t *testing.T) {
+	adapter := NewClaudeCodeSDKAdapter(nil)
+	session := standardTestSession(ProviderClaudeCode)
+	adapterSession := &claudeSDKAdapterSession{
+		conn:            &recordingClaudeSDKConnection{},
+		pendingRequests: make(map[string]*pendingInteractiveRequest),
+		liveState:       newClaudeSDKLiveState(),
+	}
+	adapter.storeSession(session.AgentSessionID, adapterSession)
+
+	events, terminal, err := adapter.sidecarTurnEvents(adapterSession, session, "turn-task", claudeSDKSidecarEvent{
+		Type: "tool_completed",
+		Payload: map[string]any{
+			"turnId":     "turn-task",
+			"toolCallId": "toolu-agent",
+			"toolName":   "Agent",
+			"callType":   "subagent",
+			"status":     "completed",
+			"input": map[string]any{
+				"description":       "Touch file requiring approval",
+				"prompt":            "touch /tmp/example",
+				"run_in_background": false,
+			},
+			"metadata": map[string]any{
+				"adapter":  "claude-agent-sdk",
+				"toolName": "Agent",
+				"backgroundProcess": map[string]any{
+					"taskId": "task-sync-1",
+					"status": "running",
+				},
+			},
+		},
+	})
+	if err != nil || terminal {
+		t.Fatalf("tool_completed terminal=%v err=%v", terminal, err)
+	}
+	if len(events) < 2 || events[1].Type != activityshared.EventSessionStarted || events[1].SessionKind != "child" {
+		t.Fatalf("events = %#v, want child session start while background process is still running", events)
+	}
+	child := adapterSession.claudeSDKChildByKey("toolu-agent")
+	if child.Status != string(activityshared.ActivityStatusRunning) {
+		t.Fatalf("child status = %q, want running while backgroundProcess.status=running", child.Status)
+	}
+	if !child.Async {
+		t.Fatalf("child async = false, want true when backgroundProcess is still running")
+	}
+}
+
 func TestClaudeCodeSDKAdapterScopesChildApprovalBySDKAgentID(t *testing.T) {
 	adapter := NewClaudeCodeSDKAdapter(nil)
 	session := standardTestSession(ProviderClaudeCode)

@@ -6,7 +6,11 @@ import {
   useState,
   type ReactElement
 } from "react";
-import { WorkspaceFileReferencePicker } from "@tutti-os/workspace-file-reference/ui";
+import {
+  ReferenceSourcePicker,
+  WorkspaceFileReferencePicker,
+  type ReferenceGroupedSelection
+} from "@tutti-os/workspace-file-reference/ui";
 import type {
   WorkspaceFileReference,
   WorkspaceFileReferenceCopy
@@ -22,7 +26,8 @@ import type {
 import type {
   TuttiExternalAgentActivityComposerOptions,
   TuttiExternalAgentTargetCatalog,
-  TuttiExternalFileOpenInput
+  TuttiExternalFileOpenInput,
+  TuttiExternalReferenceSelectResult
 } from "@tutti-os/workspace-external-core/contracts";
 import { resolveWorkspaceMentionLinkAction } from "@contexts/workspace/presentation/renderer/actions/workspaceLinkActions";
 import { runDesktopAgentGUILinkAction } from "@renderer/features/workspace-agent/services/desktopAgentGUILinkActions.ts";
@@ -38,6 +43,8 @@ import { useWorkspaceWorkbenchHostService } from "./useWorkspaceWorkbenchHostSer
 import { useWorkspaceSettingsService } from "./useWorkspaceSettingsService";
 import { requestWorkspaceIssueManagerLaunch } from "../services/workspaceIssueManagerLaunchCoordinator";
 import { serializeWorkspaceAppExternalAgentIconUrl } from "../services/workspaceAppExternalAgentIconSerialization.ts";
+import { dispatchWorkspaceAppExternalAtRequest } from "../services/workspaceAppExternalAtRequest.ts";
+import { serializeWorkspaceAppExternalReferenceSelection } from "../services/workspaceAppExternalReferenceSerialization.ts";
 
 const workspaceFileReferenceLocaleKeyByPickerKey: Record<string, string> = {
   "actions.cancel": "common.cancel",
@@ -113,6 +120,10 @@ interface PendingFileSelect {
   resolve: (refs: WorkspaceFileReference[]) => void;
 }
 
+interface PendingReferenceSelect {
+  resolve: (refs: TuttiExternalReferenceSelectResult) => void;
+}
+
 export function WorkspaceAppExternalBridge({
   api,
   openFile,
@@ -130,6 +141,9 @@ export function WorkspaceAppExternalBridge({
   const [pendingFileSelect, setPendingFileSelect] =
     useState<PendingFileSelect | null>(null);
   const pendingFileSelectRef = useRef<PendingFileSelect | null>(null);
+  const [pendingReferenceSelect, setPendingReferenceSelect] =
+    useState<PendingReferenceSelect | null>(null);
+  const pendingReferenceSelectRef = useRef<PendingReferenceSelect | null>(null);
   const fileAdapter = useMemo(
     () =>
       hostService.createWorkspaceAppExternalFileReferenceAdapter(workspaceId),
@@ -139,11 +153,24 @@ export function WorkspaceAppExternalBridge({
     () => hostService.createWorkspaceAppExternalUserProjectApi(),
     [hostService]
   );
+  const referenceSourceAggregator = useMemo(
+    () =>
+      hostService.createWorkspaceAppExternalReferenceSourceAggregator({
+        appSourceLabel: t("workspace.referenceSources.appSourceLabel"),
+        localSourceLabel: t("workspace.referenceSources.localSourceLabel"),
+        projectSourceLabel: t("workspace.referenceSources.projectSourceLabel"),
+        workspaceId
+      }),
+    [hostService, t, workspaceId]
+  );
   const copy = useMemo<WorkspaceFileReferenceCopy>(
     () => ({
       t(key, values) {
         const localeKey =
-          workspaceFileReferenceLocaleKeyByPickerKey[key] ?? key;
+          workspaceFileReferenceLocaleKeyByPickerKey[key] ??
+          (key.startsWith("referencePicker.")
+            ? `agentHost.agentGui.${key}`
+            : key);
         return t(localeKey as Parameters<typeof t>[0], values);
       }
     }),
@@ -247,10 +274,49 @@ export function WorkspaceAppExternalBridge({
       new Promise<WorkspaceFileReference[]>((resolve) => {
         const pending: PendingFileSelect = { multiple, resolve };
         pendingFileSelectRef.current?.resolve([]);
+        pendingReferenceSelectRef.current?.resolve([]);
+        pendingReferenceSelectRef.current = null;
+        setPendingReferenceSelect(null);
         pendingFileSelectRef.current = pending;
         setPendingFileSelect(pending);
       }),
     []
+  );
+
+  const resolvePendingReferenceSelect = useCallback(
+    (refs: TuttiExternalReferenceSelectResult) => {
+      const pending = pendingReferenceSelectRef.current;
+      if (!pending) {
+        return;
+      }
+      pendingReferenceSelectRef.current = null;
+      setPendingReferenceSelect(null);
+      pending.resolve(refs);
+    },
+    []
+  );
+
+  const openReferenceSelect = useCallback(
+    () =>
+      new Promise<TuttiExternalReferenceSelectResult>((resolve) => {
+        const pending: PendingReferenceSelect = { resolve };
+        pendingReferenceSelectRef.current?.resolve([]);
+        pendingFileSelectRef.current?.resolve([]);
+        pendingFileSelectRef.current = null;
+        setPendingFileSelect(null);
+        pendingReferenceSelectRef.current = pending;
+        setPendingReferenceSelect(pending);
+      }),
+    []
+  );
+
+  const confirmReferenceSelect = useCallback(
+    (selection: ReferenceGroupedSelection) => {
+      resolvePendingReferenceSelect(
+        serializeWorkspaceAppExternalReferenceSelection(workspaceId, selection)
+      );
+    },
+    [resolvePendingReferenceSelect, workspaceId]
   );
 
   const handleRequest = useCallback(
@@ -333,13 +399,11 @@ export function WorkspaceAppExternalBridge({
         case "agentActivity.getSnapshot":
           return workspaceAgentActivityService.load(workspaceId);
         case "at.query":
-          return hostService.queryWorkspaceAppExternalAt({
-            query: request.input,
-            workspaceId
-          });
+        case "at.queryDirectory":
         case "at.resolve":
-          return hostService.resolveWorkspaceAppExternalAt({
-            mention: request.input,
+          return dispatchWorkspaceAppExternalAtRequest({
+            hostService,
+            request,
             workspaceId
           });
         case "files.select":
@@ -390,6 +454,8 @@ export function WorkspaceAppExternalBridge({
           }
           return undefined;
         }
+        case "references.select":
+          return openReferenceSelect();
         case "userProjects.checkPath":
           return userProjectsApi.checkPath?.(request.input);
         case "userProjects.create":
@@ -424,6 +490,7 @@ export function WorkspaceAppExternalBridge({
       hostService,
       openFile,
       openFileSelect,
+      openReferenceSelect,
       settingsService,
       userProjectsApi,
       workspaceAgentActivityService,
@@ -442,17 +509,32 @@ export function WorkspaceAppExternalBridge({
     return () => {
       pendingFileSelectRef.current?.resolve([]);
       pendingFileSelectRef.current = null;
+      pendingReferenceSelectRef.current?.resolve([]);
+      pendingReferenceSelectRef.current = null;
     };
   }, []);
 
   return (
-    <WorkspaceFileReferencePicker
-      copy={copy}
-      fileAdapter={fileAdapter}
-      open={pendingFileSelect !== null}
-      workspaceId={workspaceId}
-      onClose={() => resolvePendingFileSelect([])}
-      onConfirm={resolvePendingFileSelect}
-    />
+    <>
+      <WorkspaceFileReferencePicker
+        copy={copy}
+        fileAdapter={fileAdapter}
+        open={pendingFileSelect !== null}
+        workspaceId={workspaceId}
+        onClose={() => resolvePendingFileSelect([])}
+        onConfirm={resolvePendingFileSelect}
+      />
+      <ReferenceSourcePicker
+        aggregator={referenceSourceAggregator}
+        copy={copy}
+        open={pendingReferenceSelect !== null}
+        workspaceId={workspaceId}
+        onClose={() => resolvePendingReferenceSelect([])}
+        onConfirm={(references) =>
+          confirmReferenceSelect({ bundles: [], files: references })
+        }
+        onConfirmBundles={confirmReferenceSelect}
+      />
+    </>
   );
 }

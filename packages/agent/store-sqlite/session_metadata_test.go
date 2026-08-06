@@ -87,12 +87,12 @@ func TestSplitSessionRuntimeContextUsesClosedMetadataVocabularies(t *testing.T) 
 
 func TestDecodeSessionGoalUsesCanonicalValidation(t *testing.T) {
 	goal, err := DecodeSessionGoal(map[string]any{
-		"objective": "ship", "status": "paused", "iterations": 2,
+		"objective": "ship", "status": "paused", "startedAtUnixMs": 10, "iterations": 2,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if goal.Objective != "ship" || goal.Status != "paused" || goal.Iterations != 2 {
+	if goal.Objective != "ship" || goal.Status != "paused" || goal.StartedAtUnixMS != 10 || goal.Iterations != 2 {
 		t.Fatalf("goal=%#v", goal)
 	}
 	if _, err := DecodeSessionGoal(map[string]any{"objective": "ship", "status": "unknown"}); err == nil {

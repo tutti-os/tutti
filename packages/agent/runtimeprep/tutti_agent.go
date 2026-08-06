@@ -2,6 +2,7 @@ package runtimeprep
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -12,8 +13,10 @@ import (
 // tutti-agent provider. Account-token bootstrap remains a host responsibility
 // and can be injected through BeforePrepare.
 type TuttiAgentPreparer struct {
-	BeforePrepare     func(context.Context, PrepareInput)
-	ResolveAuthSource func(context.Context, PrepareInput) (string, error)
+	BeforePrepare               func(context.Context, PrepareInput)
+	ResolveAuthSource           func(context.Context, PrepareInput) (string, error)
+	StableSkillBundleRoot       string
+	StableSystemSkillBundleRoot string
 }
 
 func (TuttiAgentPreparer) Provider() string {
@@ -38,8 +41,17 @@ func (p TuttiAgentPreparer) Prepare(ctx context.Context, input ProviderPrepareIn
 	if err := prepareTuttiAgentHome(home, input.PrepareInput, authSource, authSourceConfigured); err != nil {
 		return ProviderPrepareResult{}, err
 	}
-	if _, err := installProviderNativeSkills(filepath.Join(home, "skills"), input.PrepareInput); err != nil {
-		return ProviderPrepareResult{}, fmt.Errorf("install tutti-agent native skills: %w", err)
+	extraSkillRoots := []string(nil)
+	if strings.TrimSpace(p.StableSkillBundleRoot) == "" {
+		if _, err := installProviderNativeSkills(filepath.Join(home, "skills"), input.PrepareInput); err != nil {
+			return ProviderPrepareResult{}, fmt.Errorf("install tutti-agent native skills: %w", err)
+		}
+	} else {
+		root, err := materializeStableProviderSkills(p.StableSkillBundleRoot, input.PrepareInput)
+		if err != nil {
+			return ProviderPrepareResult{}, fmt.Errorf("materialize tutti-agent stable skills: %w", err)
+		}
+		extraSkillRoots = []string{root}
 	}
 	logRuntimePrepareTrace("runtime_prepare.tutti_agent.home_prepared", input.PrepareInput, nil)
 	instructionsPath := filepath.Join(home, "AGENTS.md")
@@ -57,6 +69,20 @@ func (p TuttiAgentPreparer) Prepare(ctx context.Context, input ProviderPrepareIn
 	}
 	logRuntimePrepareTrace("runtime_prepare.tutti_agent.resolved", input.PrepareInput, nil)
 	env := []string{"TUTTI_AGENT_HOME=" + home}
+	if len(extraSkillRoots) > 0 {
+		encodedRoots, err := json.Marshal(extraSkillRoots)
+		if err != nil {
+			return ProviderPrepareResult{}, fmt.Errorf("encode tutti-agent extra skill roots: %w", err)
+		}
+		env = append(env, "TUTTI_AGENT_EXTRA_SKILL_ROOTS_JSON="+string(encodedRoots))
+	}
+	if root := strings.TrimSpace(p.StableSystemSkillBundleRoot); root != "" {
+		root = filepath.Clean(root)
+		if !filepath.IsAbs(root) {
+			return ProviderPrepareResult{}, fmt.Errorf("tutti-agent stable system skill bundle root must be absolute")
+		}
+		env = append(env, "TUTTI_AGENT_STABLE_SYSTEM_SKILLS_ROOT="+root)
+	}
 	if input.ModelEndpoint.supportsCodex() {
 		env = append(env, codexModelPlanAPIKeyEnv+"="+input.ModelEndpoint.APIKey)
 	}
@@ -125,15 +151,25 @@ func exposeTuttiAgentAuth(home string, source string, allowMissingSource bool) e
 		}
 	}
 	target := filepath.Join(home, "auth.json")
-	if current, err := os.Readlink(target); err == nil {
-		if current == source {
-			return nil
+	if info, err := os.Lstat(target); err == nil {
+		if info.Mode()&os.ModeSymlink != 0 {
+			current, readErr := os.Readlink(target)
+			if readErr != nil {
+				return fmt.Errorf("read tutti-agent auth target: %w", readErr)
+			}
+			if current == source {
+				return nil
+			}
+			return fmt.Errorf("tutti-agent auth target already links to a different source")
 		}
-		return fmt.Errorf("tutti-agent auth target already links to a different source")
+		// Windows uses a hard link when the process lacks symlink privilege.
+		// The target is run-scoped, so an existing regular file is already a
+		// materialized auth view and does not need to be replaced.
+		return nil
 	} else if !os.IsNotExist(err) {
 		return fmt.Errorf("inspect tutti-agent auth target: %w", err)
 	}
-	if err := os.Symlink(source, target); err != nil {
+	if err := exposeCodexFile(source, target, 0o600); err != nil {
 		return fmt.Errorf("expose tutti-agent auth.json: %w", err)
 	}
 	return nil
@@ -159,6 +195,14 @@ func ensureTuttiAgentSessionConfig(configPath string, input PrepareInput) error 
 	}
 	if planNext, planChanged := codexConfigWithModelPlanEndpoint(next, input.ModelEndpoint); planChanged {
 		next = planNext
+		changed = true
+	}
+	// Tutti Agent uses the same Codex-derived app-server sandbox runtime as
+	// Codex, but it is launched by Tutti's non-elevated desktop daemon. Keep
+	// the Windows implementation aligned with Codex session homes so an
+	// interactive UAC setup helper cannot block app-server startup.
+	if windowsSandboxNext, windowsSandboxChanged := codexConfigWithTuttiWindowsSandbox(next); windowsSandboxChanged {
+		next = windowsSandboxNext
 		changed = true
 	}
 	if !changed {

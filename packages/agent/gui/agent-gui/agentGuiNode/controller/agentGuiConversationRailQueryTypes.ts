@@ -10,7 +10,6 @@ export interface ConversationRailQueryScope {
   conversationFilter:
     | { kind: "all" }
     | { agentTargetId: string; kind: "agentTarget" };
-  sectionAgentTargetFallbackId: string | null;
   userProjects: readonly { id: string }[];
 }
 
@@ -47,7 +46,7 @@ export function resolveConversationRailQueryScope(
   const agentTargetId =
     scope.conversationFilter.kind === "agentTarget"
       ? scope.conversationFilter.agentTargetId.trim()
-      : (scope.sectionAgentTargetFallbackId?.trim() ?? "");
+      : "";
   const projectCollectionKey = userProjectCollectionKey(scope.userProjects);
   return {
     agentTargetId,

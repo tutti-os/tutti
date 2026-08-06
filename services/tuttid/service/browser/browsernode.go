@@ -19,7 +19,7 @@ import (
 const browserNodeResponseLimit = 64 * 1024 * 1024
 
 type browserNodeBackend interface {
-	Call(context.Context, string, string, string, map[string]any) (ToolResult, error)
+	Call(context.Context, string, string, string, string, map[string]any) (ToolResult, error)
 	ReleaseAgent(context.Context, string) error
 }
 
@@ -93,13 +93,14 @@ func newBrowserNodeHTTPBackend(listenerInfoPath string) browserNodeBackend {
 	}
 }
 
-func (b *browserNodeHTTPBackend) Call(ctx context.Context, workspaceID, agentSessionID, tool string, args map[string]any) (ToolResult, error) {
+func (b *browserNodeHTTPBackend) Call(ctx context.Context, workspaceID, agentSessionID, agentTurnID, tool string, args map[string]any) (ToolResult, error) {
 	info, err := b.readListenerInfo()
 	if err != nil {
 		return ToolResult{}, err
 	}
 	payload, err := json.Marshal(map[string]any{
 		"agentSessionId": strings.TrimSpace(agentSessionID),
+		"agentTurnId":    strings.TrimSpace(agentTurnID),
 		"args":           args,
 		"tool":           tool,
 		"workspaceId":    strings.TrimSpace(workspaceID),

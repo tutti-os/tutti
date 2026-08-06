@@ -11,6 +11,10 @@ var (
 		Name: "new turns require durable provider acceptance",
 		run:  runNewTurnsRequireDurableProviderAcceptance,
 	}
+	rejectedInitialSubmitScenario = Scenario{
+		Name: "rejected initial submit discards runtime without completing canonical session",
+		run:  runRejectedInitialSubmitDiscardsRuntime,
+	}
 	duplicateClientSubmitIDScenario     = Scenario{Name: "duplicate client submit id", run: runDuplicateClientSubmitID}
 	exactTurnCancelScenario             = Scenario{Name: "exact turn cancel", run: runExactTurnCancel}
 	interactiveResponseScenario         = Scenario{Name: "interactive response", run: runInteractiveResponse}
@@ -54,7 +58,11 @@ func Scenarios() []Scenario {
 		createWithRailPlacementScenario,
 		resumePersistedSessionScenario,
 		sendInputScenario,
+		guidanceTargetRequiredScenario,
+		guidanceExactTargetScenario,
+		guidanceTargetMismatchScenario,
 		providerAcceptanceScenario,
+		rejectedInitialSubmitScenario,
 		duplicateClientSubmitIDScenario,
 		exactTurnCancelScenario,
 		interactiveResponseScenario,
@@ -175,7 +183,11 @@ func ApplicationCoreScenarios() []Scenario {
 		createWithRailPlacementScenario,
 		resumePersistedSessionScenario,
 		sendInputScenario,
+		guidanceTargetRequiredScenario,
+		guidanceExactTargetScenario,
+		guidanceTargetMismatchScenario,
 		providerAcceptanceScenario,
+		rejectedInitialSubmitScenario,
 		duplicateClientSubmitIDScenario,
 		initialTitleCASScenario,
 		getSessionScenario,

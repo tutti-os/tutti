@@ -115,6 +115,7 @@ export interface QueuedComposerSettingsUpdate {
 }
 
 export interface AgentGUIComposerDefaults {
+  codexSaverMode?: boolean;
   model?: string | null;
   permissionModeId?: string | null;
   reasoningEffort?: string | null;
@@ -128,6 +129,7 @@ export interface AgentGUIRememberComposerDefaultsInput {
 }
 
 export const rememberComposerDefaultsFields = [
+  "codexSaverMode",
   "model",
   "permissionModeId",
   "reasoningEffort",
@@ -149,6 +151,10 @@ export function composerDefaultsPatchFromSettings(
   const patch: AgentGUIComposerDefaults = {};
   for (const field of rememberComposerDefaultsFields) {
     if (touched[field] === undefined) continue;
+    if (field === "codexSaverMode") {
+      patch.codexSaverMode = touched.codexSaverMode === true;
+      continue;
+    }
     const touchedValue = normalizeOptionalText(touched[field]);
     if (touchedValue === null) continue;
     const finalValue = normalizeOptionalText(finalSettings[field]);
@@ -165,6 +171,12 @@ export function overlayComposerDefaults(
   if (!optimistic) return base;
   const result = { ...base };
   for (const field of rememberComposerDefaultsFields) {
+    if (field === "codexSaverMode") {
+      if (typeof optimistic.codexSaverMode === "boolean") {
+        result.codexSaverMode = optimistic.codexSaverMode;
+      }
+      continue;
+    }
     const value = normalizeOptionalText(optimistic[field]);
     if (value !== null) {
       Object.assign(result, { [field]: value });
@@ -179,6 +191,15 @@ export function withoutAcknowledgedComposerDefaults(
 ): AgentSessionComposerSettings {
   const result = { ...settings };
   for (const field of rememberComposerDefaultsFields) {
+    if (field === "codexSaverMode") {
+      if (
+        typeof acknowledged.codexSaverMode === "boolean" &&
+        result.codexSaverMode === acknowledged.codexSaverMode
+      ) {
+        delete result.codexSaverMode;
+      }
+      continue;
+    }
     const acknowledgedValue = normalizeOptionalText(acknowledged[field]);
     if (
       acknowledgedValue !== null &&
@@ -188,6 +209,18 @@ export function withoutAcknowledgedComposerDefaults(
     }
   }
   return result;
+}
+
+export function normalizedComposerDefaultValue(
+  settings: AgentSessionComposerSettings | AgentGUIComposerDefaults,
+  field: AgentGUIComposerDefaultsField
+): string | null {
+  if (field === "codexSaverMode") {
+    return typeof settings.codexSaverMode === "boolean"
+      ? String(settings.codexSaverMode)
+      : null;
+  }
+  return normalizeOptionalText(settings[field]);
 }
 
 export function composerTargetDataFromProviderTarget(input: {

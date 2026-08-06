@@ -20,6 +20,14 @@ test("desktop agent activity runtime installs the complete conversation rail cap
   }
 });
 
+test("desktop agent activity runtime opts into conversation Activity View", () => {
+  const runtime = createDesktopAgentActivityRuntime(
+    createWorkspaceAgentActivityService()
+  );
+
+  assert.equal(runtime.conversationActivityViewEnabled, true);
+});
+
 test("desktop agent activity runtime forwards package diagnostics to renderer diagnostics", () => {
   const rendererDiagnostics: unknown[] = [];
   const runtime = createDesktopAgentActivityRuntime(

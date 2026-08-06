@@ -182,7 +182,7 @@ func generatedCliCapabilityVisibility(visibility cliservice.CapabilityVisibility
 func generatedCliCapabilitySource(source cliservice.CapabilitySource) tuttigenerated.CliCapabilitySource {
 	if source.Kind == cliservice.CapabilitySourceApp {
 		return tuttigenerated.CliCapabilitySource{
-			Kind:              tuttigenerated.App,
+			Kind:              tuttigenerated.CliCapabilitySourceKindApp,
 			AppId:             stringPointerIfNotBlank(source.AppID),
 			AppName:           stringPointerIfNotBlank(source.AppName),
 			IconUrl:           stringPointerIfNotBlank(source.IconURL),
@@ -192,7 +192,7 @@ func generatedCliCapabilitySource(source cliservice.CapabilitySource) tuttigener
 			DocumentationPath: stringPointerIfNotBlank(source.DocumentationPath),
 		}
 	}
-	return tuttigenerated.CliCapabilitySource{Kind: tuttigenerated.Builtin}
+	return tuttigenerated.CliCapabilitySource{Kind: tuttigenerated.CliCapabilitySourceKindBuiltin}
 }
 
 func generatedCliCapabilityOutput(output cliservice.CapabilityOutput) tuttigenerated.CliCapabilityOutput {

@@ -129,13 +129,13 @@ Rules:
 - explicit full validation remains available for releases, broad migrations,
   manual confidence checks, and checked force-push workflows
 
-TypeScript package tests and Go workspace tests use discovery-based runners
-instead of root package/module whitelists. Successful runs print compact
-summaries with the slowest lanes; complete lane logs and a machine-readable
-`latest.json` are stored under `.tmp/test-runs`. Every `go.work` module,
-including `packages/agent/daemon`, participates in the blocking Go test gate.
-The focused agent daemon command and its stabilization expectations are
-documented in [Testing](./testing.md).
+TypeScript package tests and full Go workspace tests use discovery-based
+runners instead of root package/module whitelists. Successful runs print
+compact summaries with the slowest lanes; complete lane logs and a
+machine-readable `latest.json` are stored under `.tmp/test-runs`. Every
+`go.work` module participates in explicit full Go gates. The focused agent
+daemon command and its stabilization expectations are documented in
+[Testing](./testing.md).
 
 For PR branches that often need rebasing or force-pushing, use
 `pnpm push:checked` instead of running `pnpm check:full` and `git push`
@@ -159,6 +159,14 @@ concurrently, prints compact summaries, and stores full logs under
 `.tmp/check-runs`. Repository policy, tool contracts, generated contracts, and
 architecture boundaries come from `tools/scripts/repository-checks.mjs`; PR CI
 uses the same selectors.
+
+Go package selection is also shared by local changed-aware validation and PR
+CI. Test module roots come from `go.work` at runtime; lint uses the repository's
+established lint-enabled module set. Ordinary Go source changes run the owning
+package; module manifest changes run the owning module; changes to the
+workspace, selector, workflow, or shared lint configuration run every test
+module and lint-enabled module. Tutti daemon lanes validate existing builtin
+app assets and generate them only when missing or when their source changed.
 
 Lanes that write the same generated artifact are serialized while unrelated
 lanes remain parallel. In particular, Tutti daemon Go tests and `build:go`

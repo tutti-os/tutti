@@ -50,6 +50,7 @@ import {
 import { registerIpcHandlers } from "./ipc/register";
 import { flushDesktopLogger, setupDesktopLogger } from "./logging";
 import { ensureMacosApplicationInstalled } from "./macosApplicationInstallGuard.ts";
+import { prepareDesktopCliTarget } from "./cli/cliInstaller.ts";
 import { ensureSingleInstance } from "./singleInstance";
 import {
   completeDesktopLoginCallbackUrl,
@@ -137,6 +138,10 @@ export async function bootstrapDesktopApp(): Promise<void> {
   if (developmentAppName) {
     app.setName(developmentAppName);
   }
+  // Preload cannot import Electron's main-only `app` module. Publish the
+  // already-resolved native name through the process environment so every
+  // renderer can use the same value as the Windows title bar.
+  process.env.TUTTI_DESKTOP_APP_NAME = app.getName();
   const logger = await setupDesktopLogger();
 
   // A single live desktop instance per environment. The managed tuttid daemon is
@@ -204,8 +209,13 @@ export async function bootstrapDesktopApp(): Promise<void> {
     process.arch
   );
   const managedAdmissionTarget = featureAvailabilityTarget;
+  const workspaceAppCliPath =
+    process.platform === "win32"
+      ? prepareDesktopCliTarget({ isPackaged: app.isPackaged })
+      : undefined;
   const daemonRuntime = await startDesktopDaemonRuntime({
     daemonRuntime: createDesktopDaemonRuntime({
+      ...(workspaceAppCliPath ? { workspaceAppCliPath } : {}),
       desktopUpdateAdmission: managedAdmissionTarget
         ? {
             ...managedAdmissionTarget,

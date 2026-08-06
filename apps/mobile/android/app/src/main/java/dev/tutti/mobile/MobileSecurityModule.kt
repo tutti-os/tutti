@@ -74,6 +74,19 @@ class MobileSecurityModule(
                 if (promise == null) {
                     return
                 }
+                if (
+                    result.originalIntent?.getBooleanExtra(
+                        PairingCaptureActivity.EXTRA_MANUAL_PAIRING,
+                        false,
+                    ) == true
+                ) {
+                    promise.resolve(
+                        Arguments.createMap().apply {
+                            putString("kind", "manual")
+                        },
+                    )
+                    return
+                }
                 val value = result.contents?.trim().orEmpty()
                 when {
                     result.originalIntent?.getBooleanExtra(
@@ -94,7 +107,13 @@ class MobileSecurityModule(
                             "EMPTY_QR_CODE",
                             "The scanned QR code is empty",
                         )
-                    else -> promise.resolve(value)
+                    else ->
+                        promise.resolve(
+                            Arguments.createMap().apply {
+                                putString("kind", "scanned")
+                                putString("value", value)
+                            },
+                        )
                 }
             }
         }
@@ -259,6 +278,8 @@ class MobileSecurityModule(
                     ScanOptions()
                     .setDesiredBarcodeFormats(
                         listOf(ScanOptions.QR_CODE),
+                    ).setCaptureActivity(
+                        PairingCaptureActivity::class.java,
                     ).setPrompt(
                         reactContext.getString(R.string.scan_pairing_qr),
                     ).setBeepEnabled(false)

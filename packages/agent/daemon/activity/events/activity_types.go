@@ -117,6 +117,13 @@ const (
 	ActivityStatusFailed    ActivityStatus = "failed"
 )
 
+type RuntimeActivityState string
+
+const (
+	RuntimeActivityStateIdle    RuntimeActivityState = "idle"
+	RuntimeActivityStateRunning RuntimeActivityState = "running"
+)
+
 type Event struct {
 	EventID              string
 	Type                 EventType
@@ -185,6 +192,7 @@ type EventPayload struct {
 	LeaseTTLSeconds         int
 	Title                   string
 	Interaction             *InteractionTransition
+	RuntimeActivity         RuntimeActivityState
 }
 
 type EventContext struct {

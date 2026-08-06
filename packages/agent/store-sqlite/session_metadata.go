@@ -41,12 +41,13 @@ type SessionUsageQuota struct {
 }
 
 type SessionGoal struct {
-	Objective  string `json:"objective"`
-	Status     string `json:"status"`
-	Reason     string `json:"reason,omitempty"`
-	Iterations int    `json:"iterations,omitempty"`
-	DurationMS int64  `json:"durationMs,omitempty"`
-	Tokens     int64  `json:"tokens,omitempty"`
+	Objective       string `json:"objective"`
+	Status          string `json:"status"`
+	Reason          string `json:"reason,omitempty"`
+	StartedAtUnixMS int64  `json:"startedAtUnixMs,omitempty"`
+	Iterations      int    `json:"iterations,omitempty"`
+	DurationMS      int64  `json:"durationMs,omitempty"`
+	Tokens          int64  `json:"tokens,omitempty"`
 }
 
 // DecodeSessionGoal validates and decodes the canonical goal payload shared by
@@ -137,7 +138,7 @@ func validateSessionGoal(value SessionGoal) error {
 	default:
 		return fmt.Errorf("unsupported goal status %q", value.Status)
 	}
-	if value.Iterations < 0 || value.DurationMS < 0 || value.Tokens < 0 {
+	if value.StartedAtUnixMS < 0 || value.Iterations < 0 || value.DurationMS < 0 || value.Tokens < 0 {
 		return fmt.Errorf("goal counters must be non-negative")
 	}
 	return nil

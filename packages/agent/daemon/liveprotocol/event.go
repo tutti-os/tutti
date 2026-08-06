@@ -15,6 +15,10 @@ func NewMessageDeltaEvent(data MessageDeltaData) (Event, error) {
 	return newTypedEvent(data.WorkspaceID, data.AgentSessionID, EventTypeMessageDelta, data)
 }
 
+func NewRuntimeActivityUpdateEvent(data RuntimeActivityUpdateData) (Event, error) {
+	return newTypedEvent(data.WorkspaceID, data.AgentSessionID, EventTypeRuntimeActivityUpdate, data)
+}
+
 func NewTurnUpdateEvent(data TurnUpdateData) (Event, error) {
 	return newTypedEvent(data.WorkspaceID, data.AgentSessionID, EventTypeTurnUpdate, data)
 }
@@ -91,6 +95,29 @@ func validateEvent(event Event) error {
 		return fmt.Errorf("%w: missing identity or data", ErrInvalidLiveEvent)
 	}
 	switch event.EventType {
+	case EventTypeRuntimeActivityUpdate:
+		_, err := requiredJSONFields(
+			event.Data,
+			"workspaceId",
+			"agentSessionId",
+			"eventType",
+			"state",
+			"occurredAtUnixMs",
+		)
+		if err != nil {
+			return err
+		}
+		var data RuntimeActivityUpdateData
+		if err := strictDecode(event.Data, &data); err != nil {
+			return err
+		}
+		if data.EventType != event.EventType ||
+			data.WorkspaceID != event.WorkspaceID ||
+			data.AgentSessionID != event.AgentSessionID ||
+			(data.State != "idle" && data.State != "running") ||
+			data.OccurredAtUnixMS <= 0 {
+			return fmt.Errorf("%w: invalid runtime activity update", ErrInvalidLiveEvent)
+		}
 	case EventTypeMessageDelta:
 		record, err := requiredJSONFields(
 			event.Data,

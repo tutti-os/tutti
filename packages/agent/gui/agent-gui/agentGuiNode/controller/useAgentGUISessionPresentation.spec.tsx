@@ -1,5 +1,9 @@
 import { act, renderHook } from "@testing-library/react";
-import { createAgentSessionEngine } from "@tutti-os/agent-activity-core";
+import {
+  createAgentSessionEngine,
+  type AgentActivityTurn,
+  type PendingActivationIntentRecord
+} from "@tutti-os/agent-activity-core";
 import { describe, expect, it, vi } from "vitest";
 import { createTestEngineCommandPort } from "../../../shared/testing/createTestAgentSessionEngine";
 import type {
@@ -73,6 +77,232 @@ describe("useAgentGUISessionPresentation", () => {
     });
   });
 
+  it("keeps a confirmed Session busy until its expected Turn exists", () => {
+    const sessionEngine = createAgentSessionEngine({
+      clock: { nowUnixMs: () => 1 },
+      commandPort: createTestEngineCommandPort({
+        execute: vi.fn(() => new Promise(() => undefined))
+      }),
+      identity: { origin: "test", workspaceId: "workspace-1" },
+      scheduler: { schedule: () => ({ cancel() {} }) }
+    });
+    const input = {
+      activeConversation: null,
+      activeConversationId: "session-1",
+      activeEngineActiveTurn: null,
+      activeEngineAvailability: "available",
+      activeEngineHasPendingInteractions: false,
+      activeEngineLatestTurn: null as AgentActivityTurn | null,
+      activeEngineRuntimeAvailability: null,
+      activeEngineRuntimeActivity: "idle" as "idle" | "running",
+      activeEngineSession: {
+        agentSessionId: "session-1",
+        goal: null,
+        resumable: true
+      },
+      activeEngineSettingsUpdate: null,
+      activeGoalControlPresentation: {
+        agentSessionId: "session-1",
+        goal: null,
+        optimistic: false,
+        status: "idle"
+      },
+      activeLatestPendingSubmitTurnId: null as string | null,
+      activeLiveState: "active",
+      activeMessages: [],
+      activePendingActivation: null as PendingActivationIntentRecord | null,
+      activeSessionState: null,
+      activeTimelineItems: [],
+      activationError: null,
+      activationErrorCode: null,
+      activationState: "active",
+      activityDisplayStatus: null,
+      agentActivityRuntime: {},
+      agentTargetsLoading: false,
+      composerSupport: {
+        model: false,
+        reasoningEffort: false,
+        permissionMode: false,
+        planMode: false,
+        planImplementation: false,
+        plan: false
+      },
+      conversation: null,
+      currentUserId: "user-1",
+      hasUnconfirmedSubmit: true,
+      isCreatingConversation: false,
+      isInterrupting: false,
+      isLoadingMessages: false,
+      isRespondingToInteraction: false,
+      isSubmitting: false,
+      lastRenderStateDiagnosticKeyRef: { current: null },
+      pendingApproval: null,
+      planImplementationTurnIdRef: { current: null },
+      providerReadinessGate: null,
+      selectedAgentTargetOwnerLabel: null,
+      selectedAgentTargetUnavailable: false,
+      selectedAgentTargetUnavailableReason: null,
+      serverInteractivePrompt: null,
+      sessionEngine,
+      targetConnectionAgentTargetId: null,
+      workspaceId: "workspace-1"
+    } as unknown as Parameters<typeof useAgentGUISessionPresentation>[0];
+
+    const rendered = renderHook(() => useAgentGUISessionPresentation(input));
+
+    expect(rendered.result.current.activeConversationBusy).toBe(true);
+
+    input.activeLatestPendingSubmitTurnId = "turn-1";
+    input.hasUnconfirmedSubmit = false;
+    rendered.rerender();
+
+    expect(rendered.result.current.activeConversationBusy).toBe(false);
+
+    input.activePendingActivation = {
+      agentSessionId: "session-1",
+      agentTargetId: "local:claude-code",
+      clientSubmitId: "submit-1",
+      content: [{ type: "text", text: "hello" }],
+      cwd: "/workspace",
+      errorCode: null,
+      errorMessage: null,
+      expiresAtUnixMs: Number.MAX_SAFE_INTEGER,
+      initialPromptRetracted: false,
+      initialTurnExpected: true,
+      mode: "new",
+      requestedAtUnixMs: 1,
+      requestId: "request-1",
+      status: "confirmed",
+      title: null,
+      workspaceId: "workspace-1"
+    };
+    rendered.rerender();
+    expect(rendered.result.current.activeConversationBusy).toBe(true);
+
+    input.activeEngineLatestTurn = {
+      agentSessionId: "session-1",
+      origin: "user_prompt",
+      outcome: "completed",
+      phase: "settled",
+      settledAtUnixMs: 3,
+      startedAtUnixMs: 2,
+      turnId: "turn-1",
+      updatedAtUnixMs: 3
+    };
+    rendered.rerender();
+
+    expect(rendered.result.current.activeConversationBusy).toBe(false);
+
+    input.activePendingActivation = null;
+    input.activeEngineLatestTurn = null;
+    input.activeEngineRuntimeActivity = "running";
+    rendered.rerender();
+    expect(rendered.result.current.activeConversationBusy).toBe(true);
+
+    input.activeEngineRuntimeActivity = "idle";
+    rendered.rerender();
+    expect(rendered.result.current.activeConversationBusy).toBe(false);
+  });
+
+  it("does not expose manual retry for failed activation", () => {
+    const sessionEngine = createAgentSessionEngine({
+      clock: { nowUnixMs: () => 1 },
+      commandPort: createTestEngineCommandPort({
+        execute: vi.fn(() => new Promise(() => undefined))
+      }),
+      identity: { origin: "test", workspaceId: "workspace-1" },
+      scheduler: { schedule: () => ({ cancel() {} }) }
+    });
+    const input = {
+      activeConversation: null,
+      activeConversationId: "session-rejected",
+      activeEngineActiveTurn: null,
+      activeEngineAvailability: "available",
+      activeEngineHasPendingInteractions: false,
+      activeEngineLatestTurn: null,
+      activeEngineRuntimeAvailability: null,
+      activeEngineSession: null,
+      activeGoalControlPresentation: {
+        agentSessionId: "session-rejected",
+        goal: null,
+        optimistic: false,
+        status: "idle"
+      },
+      activeLatestPendingSubmitTurnId: null,
+      activeLiveState: "failed",
+      activeMessages: [],
+      activePendingActivation: {
+        agentSessionId: "session-rejected",
+        agentTargetId: "local:claude-code",
+        clientSubmitId: "submit-rejected",
+        content: [{ type: "text", text: "hello" }],
+        cwd: "/workspace",
+        errorCode: "auth_required",
+        errorMessage: "Claude Code needs authentication",
+        expiresAtUnixMs: Number.MAX_SAFE_INTEGER,
+        initialPromptRetracted: false,
+        initialTurnExpected: true,
+        mode: "new",
+        requestedAtUnixMs: 1,
+        requestId: "request-rejected",
+        status: "failed",
+        title: null,
+        workspaceId: "workspace-1"
+      },
+      activeSessionState: null,
+      activeTimelineItems: [],
+      activationError: "Claude Code needs authentication",
+      activationErrorCode: "auth_required",
+      activationState: "failed",
+      activityDisplayStatus: null,
+      agentActivityRuntime: {},
+      agentTargetsLoading: false,
+      composerSupport: {
+        model: false,
+        reasoningEffort: false,
+        permissionMode: false,
+        planMode: false,
+        planImplementation: false,
+        plan: false
+      },
+      conversation: null,
+      currentUserId: "user-1",
+      isCreatingConversation: false,
+      isInterrupting: false,
+      isLoadingMessages: false,
+      isRespondingToInteraction: false,
+      isSubmitting: false,
+      lastRenderStateDiagnosticKeyRef: { current: null },
+      pendingApproval: null,
+      planImplementationTurnIdRef: { current: null },
+      providerReadinessGate: null,
+      selectedAgentTargetOwnerLabel: null,
+      selectedAgentTargetUnavailable: false,
+      selectedAgentTargetUnavailableReason: null,
+      serverInteractivePrompt: null,
+      sessionEngine,
+      targetConnectionAgentTargetId: null,
+      workspaceId: "workspace-1"
+    } as unknown as Parameters<typeof useAgentGUISessionPresentation>[0];
+
+    const rendered = renderHook(() => useAgentGUISessionPresentation(input));
+
+    expect(rendered.result.current.sessionChrome.auth).toEqual({
+      message: "Claude Code needs authentication"
+    });
+
+    input.activationError = "Provider rejected the initial request";
+    input.activationErrorCode = null;
+    rendered.rerender();
+
+    expect(rendered.result.current.sessionChrome.auth).toBeNull();
+    expect(rendered.result.current.sessionChrome.recovery).toEqual({
+      kind: "failed",
+      message: "Provider rejected the initial request",
+      canRetry: false
+    });
+  });
+
   it("makes a shared Agent composer editable in the same snapshot that its target connects", () => {
     const targetConnectionSource = new FakeTargetConnectionSource();
     const sessionEngine = createAgentSessionEngine({
@@ -92,6 +322,7 @@ describe("useAgentGUISessionPresentation", () => {
       activeEngineLatestTurn: null,
       activeEngineRuntimeAvailability: null,
       activeEngineSession: null,
+      activeEngineSettingsUpdate: null,
       activeGoalControlPresentation: {
         agentSessionId: null,
         goal: null,
@@ -200,6 +431,7 @@ describe("useAgentGUISessionPresentation", () => {
         goal: null,
         resumable: true
       },
+      activeEngineSettingsUpdate: null,
       activeGoalControlPresentation: {
         agentSessionId: "session-1",
         goal: null,
@@ -295,6 +527,7 @@ describe("useAgentGUISessionPresentation", () => {
         goal: null,
         resumable: true
       },
+      activeEngineSettingsUpdate: null,
       activeGoalControlPresentation: {
         agentSessionId: "session-1",
         goal: null,

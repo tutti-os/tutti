@@ -14,6 +14,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"sync/atomic"
 	"testing"
 
@@ -97,6 +98,55 @@ func newClaudeBinaryFixture(t *testing.T, extraEnv ...string) claudeBinaryFixtur
 func TestClaudeCodeRuntimeRootRequiresInjectedDirectory(t *testing.T) {
 	if _, err := (Service{}).claudeCodeRuntimeRoot(); err == nil {
 		t.Fatal("claudeCodeRuntimeRoot() error = nil")
+	}
+}
+
+func TestManagedClaudeCodeInstallerUsesProvisionedRuntime(t *testing.T) {
+	fixture := newClaudeBinaryFixture(t)
+	installedPath := fixture.installedBinaryPath()
+	if err := os.MkdirAll(filepath.Dir(installedPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(installedPath, fixture.payload, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeClaudeCodePointer(fixture.stateRoot, claudeSDKRuntimeDescriptor{
+		ClaudeVersion: testClaudeVersion,
+	}, installedPath); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := fixture.service.runManagedClaudeCodeInstaller(context.Background())
+	if err != nil {
+		t.Fatalf("runManagedClaudeCodeInstaller() error = %v", err)
+	}
+	if result.ExitCode != 0 || !strings.Contains(result.Stdout, installedPath) {
+		t.Fatalf("result = %#v, want successful managed runtime install", result)
+	}
+}
+
+func TestResolveProviderRuntimeUsesManagedClaudeCodePointer(t *testing.T) {
+	fixture := newClaudeBinaryFixture(t)
+	installedPath := fixture.installedBinaryPath()
+	if err := os.MkdirAll(filepath.Dir(installedPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(installedPath, fixture.payload, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeClaudeCodePointer(fixture.stateRoot, claudeSDKRuntimeDescriptor{
+		ClaudeVersion: testClaudeVersion,
+	}, installedPath); err != nil {
+		t.Fatal(err)
+	}
+
+	specs, err := fixture.service.selectProviderSpecs(context.Background(), []string{"claude-code"}, false)
+	if err != nil {
+		t.Fatalf("selectProviderSpecs() error = %v", err)
+	}
+	runtimeResolution := fixture.service.resolveProviderRuntime(context.Background(), specs[0])
+	if runtimeResolution.CLIPath != installedPath {
+		t.Fatalf("CLIPath = %q, want managed Claude binary %q", runtimeResolution.CLIPath, installedPath)
 	}
 }
 

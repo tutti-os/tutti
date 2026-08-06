@@ -186,6 +186,31 @@ successful terminal `flow_id` divided by distinct started `flow_id`. Daily
 logged-in users are distinct `uid` values on successful terminal events, with
 dashboard day boundaries evaluated in `Asia/Shanghai`.
 
+### Workspace UI mode changes
+
+The desktop reports `settings.workspace_ui_mode_changed` after the selected
+workspace UI mode has been persisted. The event carries `previous_mode`,
+`next_mode`, and an `action` that describes the standalone Agent mode:
+`"enabled"` when changing from OS to Agent and `"disabled"` when changing from
+Agent to OS. Selecting the already persisted mode or failing to persist the
+preference does not emit an event.
+
+The renderer records the durable preference change and passes the transition
+metadata in the same IPC request that replaces the current workspace window.
+The durable main process starts the analytics transport after the replacement
+window is ready and before destroying the previous renderer. This lets the new
+window's debug subscriber observe the event while ensuring old-window teardown
+cannot discard the handoff. The transport remains best-effort and is not
+awaited by the mode-switch product flow: a delayed or rejected analytics
+request must never delay replacement or turn a successful preference write
+into a save failure. If replacement fails before a new window is ready, main
+still reports the already-persisted change before returning the failure because
+the saved preference will apply when a workspace window is next opened. This
+event measures explicit mode changes through `previous_mode` and `next_mode`.
+It does not set the renderer-owned common `mode` field: after an earlier
+replacement failure, the durable preference and the actual native owner-window
+route can temporarily differ, and the main process must not guess that route.
+
 ## API Contract
 
 ### Renderer → tuttid

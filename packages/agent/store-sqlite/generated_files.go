@@ -27,7 +27,7 @@ func (s *Store) ListWorkspaceGeneratedFileTurns(
 		return GeneratedFileTurnList{}, false, fmt.Errorf("workspace database is not initialized")
 	}
 	workspaceID := strings.TrimSpace(input.WorkspaceID)
-	sectionKey := strings.TrimSpace(input.SectionKey)
+	sectionKey := NormalizeRailSectionKey(strings.TrimSpace(input.SectionKey))
 	if workspaceID == "" || sectionKey == "" || sectionKey == PinnedSessionPageKey {
 		return GeneratedFileTurnList{}, false, nil
 	}

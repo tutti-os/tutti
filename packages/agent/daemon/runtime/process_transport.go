@@ -10,7 +10,6 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
 
 	"github.com/tutti-os/tutti/packages/agent/daemon/runtimecmd"
@@ -31,7 +30,7 @@ func RunVerifiedExecutable(ctx context.Context, path string, args []string, iden
 		return nil, err
 	}
 	defer func() { _ = preparedExecutable.Close() }()
-	cmd := exec.CommandContext(ctx, preparedExecutable.path, args...)
+	cmd := newManagedProcessCommand(ctx, preparedExecutable.path, args...)
 	if preparedExecutable.file != nil {
 		cmd.ExtraFiles = []*os.File{preparedExecutable.file}
 	}
@@ -61,6 +60,9 @@ func (localProcessTransport) Start(ctx context.Context, spec ProcessSpec) (Proce
 	if len(spec.Command) == 0 || spec.Command[0] == "" {
 		return nil, errors.New("process command is required")
 	}
+	if len(spec.SensitiveInheritedFiles) != 0 {
+		return nil, errors.New("sensitive inherited files require the connector process transport")
+	}
 	select {
 	case <-ctx.Done():
 		return nil, ctx.Err()
@@ -82,7 +84,7 @@ func (localProcessTransport) Start(ctx context.Context, spec ProcessSpec) (Proce
 			_ = preparedExecutable.Close()
 		}
 	}()
-	cmd := exec.CommandContext(processCtx, preparedExecutable.path, spec.Command[1:]...)
+	cmd := newManagedProcessCommand(processCtx, preparedExecutable.path, spec.Command[1:]...)
 	if preparedExecutable.file != nil {
 		cmd.ExtraFiles = []*os.File{preparedExecutable.file}
 	}
@@ -341,18 +343,20 @@ func (c *localProcessConnection) Terminate() error {
 	if c == nil || c.cmd == nil || c.cmd.Process == nil {
 		return nil
 	}
-	return c.cmd.Process.Signal(syscall.SIGTERM)
+	return terminateManagedProcess(c.cmd)
 }
 
 func (c *localProcessConnection) Kill() error {
 	if c == nil {
 		return nil
 	}
-	c.cancel()
 	if c.cmd == nil || c.cmd.Process == nil {
+		c.cancel()
 		return nil
 	}
-	return c.cmd.Process.Kill()
+	err := killManagedProcessTree(c.cmd)
+	c.cancel()
+	return err
 }
 
 func (c *localProcessConnection) waitDone(timeout time.Duration) bool {
@@ -385,14 +389,8 @@ func (w processFrameWriter) Write(data []byte) (int, error) {
 	} else {
 		frame.Stderr = chunk
 	}
-	select {
-	case w.conn.frames <- frame:
-		return len(data), nil
-	case <-w.conn.closing:
-		// Closing intentionally discards unread diagnostics. Report the write as
-		// consumed so an orderly shutdown is not rewritten as a copy failure.
-		return len(data), nil
-	}
+	w.conn.sendFrame(frame)
+	return len(data), nil
 }
 
 func (c *localProcessConnection) wait() {
@@ -409,10 +407,31 @@ func (c *localProcessConnection) wait() {
 			exitCode = exitErr.ExitCode()
 		}
 	}
-	select {
-	case c.frames <- ProcessFrame{ExitCode: &exitCode}:
-	case <-c.closing:
-	}
+	c.sendFrame(ProcessFrame{ExitCode: &exitCode})
 	close(c.frames)
 	close(c.done)
+}
+
+// sendFrame preserves the output ordering guarantee even when Close has
+// started. Once closing is signaled, a send and the close signal are both
+// ready; choosing between them directly would make final stdout/stderr
+// diagnostics disappear nondeterministically. Prefer an available queue slot
+// before observing closing, and make one last non-blocking attempt after the
+// connection starts closing.
+func (c *localProcessConnection) sendFrame(frame ProcessFrame) {
+	select {
+	case c.frames <- frame:
+		return
+	default:
+	}
+
+	select {
+	case c.frames <- frame:
+		return
+	case <-c.closing:
+		select {
+		case c.frames <- frame:
+		default:
+		}
+	}
 }

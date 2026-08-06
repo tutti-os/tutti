@@ -32,6 +32,9 @@ export function tuttiCreateWorkspaceAgentSessionRequestFromActivity(
     ...(typeof input.browserUse === "boolean"
       ? { browserUse: input.browserUse }
       : {}),
+    ...(typeof input.codexSaverMode === "boolean"
+      ? { codexSaverMode: input.codexSaverMode }
+      : {}),
     ...(capabilityRefs.length > 0 ? { capabilityRefs } : {}),
     clientSubmitId: input.clientSubmitId,
     cwd: input.cwd ?? null,
@@ -82,6 +85,9 @@ export function tuttiCreateWorkspaceAgentSessionRequestFromActivation(
     ...(typeof input.settings?.browserUse === "boolean"
       ? { browserUse: input.settings.browserUse }
       : {}),
+    ...(typeof input.settings?.codexSaverMode === "boolean"
+      ? { codexSaverMode: input.settings.codexSaverMode }
+      : {}),
     capabilityRefs: input.capabilityRefs
       ? input.capabilityRefs.map((reference) => ({ ...reference }))
       : undefined,
@@ -124,6 +130,9 @@ export function tuttiSendWorkspaceAgentSessionInputRequestFromActivity(
     content: tuttiPromptContentBlocksFromActivity(input.content),
     displayPrompt: input.displayPrompt ?? null,
     ...(input.guidance === true ? { guidance: true } : {}),
+    ...(input.guidance === true && input.targetTurnId?.trim()
+      ? { turnId: input.targetTurnId.trim() }
+      : {}),
     ...(input.submitDiagnostics
       ? {
           submitDiagnostics: tuttiSubmitDiagnosticsFromActivity(

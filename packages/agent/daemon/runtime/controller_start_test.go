@@ -132,6 +132,58 @@ func TestControllerStartupOperationsDoNotBlockIndependentSessions(t *testing.T) 
 	}
 }
 
+func TestControllerCloseCanDiscardRuntimeWithoutCompletingCanonicalSession(t *testing.T) {
+	t.Parallel()
+
+	reporter := &recordingReporter{}
+	adapter := &recordingStartAdapter{provider: ProviderClaudeCode}
+	controller := NewController([]Adapter{adapter}, reporter)
+	if _, err := controller.Start(context.Background(), StartInput{
+		RoomID: "room-1", AgentSessionID: "agent-session-rejected", Provider: ProviderClaudeCode,
+	}); err != nil {
+		t.Fatalf("Start() error = %v", err)
+	}
+	reportsBeforeClose := len(reporter.snapshot())
+
+	if _, err := controller.Close(context.Background(), CloseInput{
+		RoomID: "room-1", AgentSessionID: "agent-session-rejected", PreserveCanonicalState: true,
+	}); err != nil {
+		t.Fatalf("Close() error = %v", err)
+	}
+	if adapter.closeCalls != 1 {
+		t.Fatalf("adapter close calls = %d, want 1", adapter.closeCalls)
+	}
+	if _, ok := controller.get("room-1", "agent-session-rejected"); ok {
+		t.Fatal("discarded runtime session remains live")
+	}
+	if reportsAfterClose := len(reporter.snapshot()); reportsAfterClose != reportsBeforeClose {
+		t.Fatalf("discard close reports = %d, want unchanged %d", reportsAfterClose, reportsBeforeClose)
+	}
+}
+
+func TestControllerDiscardRemovesRuntimeWhenProviderCloseFails(t *testing.T) {
+	t.Parallel()
+
+	closeErr := errors.New("provider close timed out")
+	adapter := &recordingStartAdapter{provider: ProviderClaudeCode, closeErr: closeErr}
+	controller := NewController([]Adapter{adapter}, nil)
+	if _, err := controller.Start(context.Background(), StartInput{
+		RoomID: "room-1", AgentSessionID: "agent-session-rejected", Provider: ProviderClaudeCode,
+	}); err != nil {
+		t.Fatalf("Start() error = %v", err)
+	}
+
+	_, err := controller.Close(context.Background(), CloseInput{
+		RoomID: "room-1", AgentSessionID: "agent-session-rejected", PreserveCanonicalState: true,
+	})
+	if !errors.Is(err, closeErr) {
+		t.Fatalf("Close() error = %v, want %v", err, closeErr)
+	}
+	if _, ok := controller.get("room-1", "agent-session-rejected"); ok {
+		t.Fatal("discarded runtime session remains registered after close failure")
+	}
+}
+
 func TestControllerStartupLockPreservesSameSessionSerialization(t *testing.T) {
 	tests := []struct {
 		name      string

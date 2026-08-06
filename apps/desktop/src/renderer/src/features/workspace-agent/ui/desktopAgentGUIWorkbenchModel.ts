@@ -89,6 +89,7 @@ export interface DesktopAgentGUIWorkbenchBodyProps {
     | "revealAgentSessionReplayCassette"
     | "sendAgentSessionReplayControl"
     | "setAgentSessionReplayPlayback"
+    | "isAgentSessionReplayRuntime"
     | "waitForAgentSessionReplay"
   >;
   trackAgentProviderChatReady?: (input: { provider: string }) => Promise<void>;

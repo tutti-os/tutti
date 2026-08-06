@@ -243,6 +243,34 @@ func TestValidateRuntimeContractRequiresExactUVPackage(t *testing.T) {
 	}
 }
 
+func TestRuntimeLaunchEnvironmentIsDeclarativeAndHostScoped(t *testing.T) {
+	manifest := testManifest()
+	manifest.Runtime.Launch.Env = map[string]string{
+		"KIMI_SHELL_PATH": "${env:TUTTI_MANAGED_POSIX_SHELL}",
+	}
+	if err := validateRuntimeContract(manifest); err != nil {
+		t.Fatalf("validateRuntimeContract(declarative launch environment) error = %v", err)
+	}
+	t.Setenv("TUTTI_MANAGED_POSIX_SHELL", `C:\Program Files\Tutti\bash.exe`)
+	got := resolveRuntimeLaunchEnv(manifest.Runtime.Launch.Env)
+	if !reflect.DeepEqual(got, []string{`KIMI_SHELL_PATH=C:\Program Files\Tutti\bash.exe`}) {
+		t.Fatalf("resolveRuntimeLaunchEnv() = %#v", got)
+	}
+
+	for name, value := range map[string]string{
+		"secret reference": "${env:ANTHROPIC_API_KEY}",
+		"literal value":    "C:\\Program Files\\Tutti\\bash.exe",
+	} {
+		t.Run(name, func(t *testing.T) {
+			invalid := manifest
+			invalid.Runtime.Launch.Env = map[string]string{"KIMI_SHELL_PATH": value}
+			if err := validateRuntimeContract(invalid); err == nil {
+				t.Fatal("validateRuntimeContract() error = nil, want launch environment rejection")
+			}
+		})
+	}
+}
+
 func TestValidateRuntimeContractAcceptsPinnedSignedBinaryArtifacts(t *testing.T) {
 	manifest := testManifest()
 	manifest.Runtime.Install.Runner = "binary"

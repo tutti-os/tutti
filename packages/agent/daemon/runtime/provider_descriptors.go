@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/tutti-os/tutti/packages/agent/daemon/providerregistry"
 )
@@ -61,6 +62,7 @@ func newAdapterFromProviderDescriptor(
 				command:                          append([]string(nil), descriptor.Runtime.Command...),
 				clientInfoName:                   descriptor.Runtime.ClientInfoName,
 				authRequiredMessage:              descriptor.Runtime.AuthRequiredMessage,
+				skillRootsStrategy:               descriptor.Runtime.AppServerSkillRoots,
 				rateLimits:                       providerDescriptorHasCapability(descriptor, CapabilityRateLimits),
 				nativeSessionFork:                descriptor.Runtime.NativeSessionFork,
 				sessionForkUserAgentBrand:        descriptor.Runtime.AppServerFork.UserAgentBrand,
@@ -172,6 +174,10 @@ type StandardACPAdapterConfig struct {
 	AgentTargetID                string
 	InstallationID               string
 	ExecutableIdentity           *ExecutableIdentity
+	Env                          []string
+	// StartupTimeout bounds initialize/session-new calls for setup probes.
+	// Zero keeps the normal ACP timeout.
+	StartupTimeout time.Duration
 }
 
 // NewStandardACPAdapter creates the generic, data-driven ACP adapter used by
@@ -198,6 +204,10 @@ func NewStandardACPAdapter(config StandardACPAdapterConfig, transport ProcessTra
 		}
 	}
 	host = normalizeHostMetadata(host)
+	startupTimeout := config.StartupTimeout
+	if startupTimeout <= 0 {
+		startupTimeout = acpStartCallTimeout
+	}
 	permissionModes := cloneStandardACPToolAliases(config.PermissionModes)
 	adapter := &standardACPAdapter{
 		config: standardACPConfig{
@@ -216,6 +226,7 @@ func NewStandardACPAdapter(config StandardACPAdapterConfig, transport ProcessTra
 			agentTargetID:                strings.TrimSpace(config.AgentTargetID),
 			installationID:               strings.TrimSpace(config.InstallationID),
 			executableIdentity:           cloneExecutableIdentity(config.ExecutableIdentity),
+			startupTimeout:               startupTimeout,
 			permissionModeID:             func(input string) string { return permissionModes[strings.ToLower(strings.TrimSpace(input))] },
 			planModeRuntimeID:            strings.TrimSpace(config.PlanModeRuntimeID),
 			planModeDisabledRuntimeID:    strings.TrimSpace(config.PlanModeDisabledRuntimeID),
@@ -224,7 +235,9 @@ func NewStandardACPAdapter(config StandardACPAdapterConfig, transport ProcessTra
 			launchPermission:             launchPermission,
 			setModelReasoningEffortMeta:  config.SetModelReasoningEffortMeta,
 			initializeParams:             func() map[string]any { return defaultACPInitializeParams(host) },
-			env:                          func(session Session) []string { return standardACPEnv(session, host) },
+			env: func(session Session) []string {
+				return append(standardACPEnv(session, host), config.Env...)
+			},
 		},
 		transport: transport, host: host, sessions: make(map[string]*standardACPSession),
 		inputUnits: providerInputUnitTrackerForTransport(transport),

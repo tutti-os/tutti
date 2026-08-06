@@ -70,10 +70,20 @@ export function createWorkspaceLaunchDesktopAdapters(
     async showWorkspaceWindow(workspaceID, input) {
       const windowKind =
         input?.windowKind ?? options.getPrimaryWorkspaceWindowKind();
-      if (windowKind === "agent") {
-        return await showStandaloneAgentWindow(options, { workspaceID });
+      try {
+        if (windowKind === "agent") {
+          return await showStandaloneAgentWindow(options, { workspaceID });
+        }
+        return await durableWorkspaceWindows.show(workspaceID);
+      } catch (error) {
+        getDesktopLogger().warn("failed to show workspace window", {
+          error: formatErrorMessage(error),
+          error_code: classifyDesktopErrorCode(error),
+          window_kind: windowKind,
+          workspace_id: workspaceID
+        });
+        throw error;
       }
-      return await durableWorkspaceWindows.show(workspaceID);
     },
 
     warnStartupWindowResolutionFailure(error) {

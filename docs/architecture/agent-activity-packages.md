@@ -218,7 +218,10 @@ It owns:
   when the current dispatch creates a new record, not when a rejected duplicate
   finds an older record for the same Session and mode. Prompt submission owns
   routing, the same confirmation window, and the accepted/queued result while
-  its caller retains the stable client submit identity. Stop, Interaction, and
+  its caller retains the stable client submit identity. The queue send command
+  uses a 90-second delivery timeout (aligned with new-Session activation) so
+  inactive-session Resume/Start can finish inside the 120-second confirmation
+  window. Stop, Interaction, and
   settings additionally own command identity plus the 30-second delivery
   timeout.
   Session stop owns the 30-second first-Turn waiting window and duplicate
@@ -267,7 +270,12 @@ display text.
 Desktop AgentGUI and Mobile call `stopSession` instead of constructing
 `session/stopRequested` protocol fields. The same method stops an active Turn
 or records a bounded request that cancels the first Turn produced by an
-in-flight activation.
+in-flight activation. When an implicit stop observes a submit admission without
+an active Turn, it retains only a submit that may still produce an unsettled
+Turn: definitive admission failure and a known settled canonical Turn are not
+stop targets. Missing or out-of-order canonical evidence remains eligible, and
+late activity messages correlate the exact submit identity before issuing the
+Turn cancel.
 Desktop AgentGUI and Mobile call `submitPrompt` for an existing Session instead
 of constructing `submit/requested` protocol fields or reading multiple Engine
 selectors to infer whether the submission was admitted. The Engine fixes the
@@ -441,9 +449,20 @@ intents. The runtime has no duplicate activation, submit, Goal, Interaction,
 settings, Tutti Mode, or unactivation callbacks. The effective `AgentHostApi`
 is limited to host
 capabilities such as files, clipboard, runtime metadata, account/project
-lookup, diagnostics, setup, and OS/Workbench helpers. Its input type still
-accepts a legacy `agentSessions` shape, but `toAgentHostRuntimeApi` strips that
-shape; production AgentGUI must not use it as an activity source.
+lookup, diagnostics, setup, and OS/Workbench helpers. The public
+`AgentHostInputApi` no longer exposes the legacy `agentSessions` activity
+lifecycle shape; production AgentGUI must not use the host capability contract
+as an activity source.
+Large pasted text is a separate runtime capability rather than an inference
+from generic file upload. `stagePastedText` returns one provider-readable
+locator: a local archive `path`, or an ordinary prepared remote-file `url`
+with optional object-store identity metadata. AgentGUI keeps the local path
+behavior as a read-file instruction, while a remote locator is emitted as an
+ordinary prepared file so shared hosts use their existing attachment transport;
+it must never be disguised as a local path. The conversation `displayPrompt`
+for a remote pasted-text asset carries only its safe preview mention; short-
+lived URLs and object-store locators remain in structured prompt content and
+must not enter caller-visible transcript projections.
 Device-global quick prompts are also an optional host capability rather than
 activity data. The desktop adapter combines the developer-gated preference,
 the generated `tuttid` client, and global invalidation events behind
@@ -470,6 +489,10 @@ Hosts must pass those calls through to the daemon section endpoints so project
 sections come from current user projects and session membership comes from
 persisted `rail_section_key`, not frontend cwd grouping or project-root
 filters.
+Hosts whose first-page section endpoint accepts less than AgentGUI's default
+refresh limit declare the positive backend maximum through
+`conversationRailQueryLimits.sectionRefreshLimitMax`; AgentGUI clamps adaptive
+same-scope and scope-switch refreshes before calling `listSessionSections`.
 The published `@tutti-os/agent-gui/conversation-rail-runtime` entrypoint owns
 the host-neutral Rail query/mutation cohort. Its stable host surface is the
 typed `createAgentConversationRailRuntime` factory plus the runtime/source
@@ -1034,6 +1057,17 @@ export interface AgentActivityAdapter {
 addition to its session and turn id. Desktop adapters must reject a successful
 transport response that omits that turn; they must not reconstruct it from the
 deprecated session-level lifecycle or submit-availability fields.
+
+`AgentActivitySendInput.targetTurnId` is the exact canonical active Turn target
+for guidance. AgentGUI captures it from the active Turn at the interaction
+boundary; Activity Core preserves it through queued intents (and captures the
+current active id when promoting an existing queued prompt to send-now) and
+emits it only on the guidance request. The Tutti adapter maps it to the daemon's
+`turnId`; ordinary new-Turn submits clear it. The daemon service, Host, and
+runtime Controller fail closed when guidance has no target or when the target
+is no longer active. That rejection is known `NotDispatched` provider
+delivery, so no provider call occurs and any prepared submit claim is cleaned
+up. A caller must not recover a target by reading a newer Session snapshot.
 
 `AgentSessionActivateEffectInput` requires `agentTargetId` for
 `mode: "new"`. Shared UI passes it through unchanged; trusted host or daemon code

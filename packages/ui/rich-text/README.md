@@ -104,6 +104,12 @@ interface RichTextTriggerProvider<TItem = unknown> {
   ) =>
     | Promise<RichTextTriggerQueryGroup<TItem>>
     | RichTextTriggerQueryGroup<TItem>;
+  getItemDirectory?: (
+    item: TItem
+  ) => RichTextTriggerDirectoryDescriptor | null | undefined;
+  queryDirectory?: (
+    input: RichTextTriggerDirectoryQueryInput
+  ) => Promise<readonly TItem[]> | readonly TItem[];
   getItemKey: (item: TItem) => string;
   getItemLabel: (item: TItem) => string;
   getItemSubtitle?: (item: TItem) => string | null | undefined;
@@ -124,6 +130,9 @@ Interpretation:
 - `queryGroups` optionally returns provider-owned groups with stable ids,
   labels, query-scoped totals, and independent cursors; `queryGroupPage`
   appends one cursor page without re-querying sibling groups
+- `getItemDirectory` and `queryDirectory` are an optional hierarchy contract:
+  the descriptor exposes a provider-owned canonical path and optional direct
+  child count, while the query lists only that directory's direct children
 - `getItemLabel` and `getItemSubtitle` decide the suggestion copy
 - `toInsertResult` maps a chosen item into a mention, markdown-link, or text
   insertion
@@ -135,6 +144,45 @@ Interpretation:
   limited to durable identity and scope
 - group ids, labels, totals, and cursors are candidate-panel metadata only;
   they must not be copied into mention identity, href, or persisted scope
+
+Directory navigation is opt-in at the editor boundary. Omitting
+`palette.directoryNavigation` preserves the ordinary ranked mention palette,
+even when a registered provider supports hierarchy. When enabled, an empty
+trigger browses the provider root, the row body still inserts a folder
+reference, and the row's hierarchy action or ArrowRight enters it. ArrowLeft
+and the header back action return to the parent. Non-empty queries continue to
+use ranked `query()` results.
+
+The editor only renders hierarchy hints and actions when the configured
+provider actually implements `queryDirectory`; older hosts therefore keep a
+clean flat-search fallback. Starting a keyword search, changing the directory
+provider, closing the query, or pressing Escape clears the browse stack.
+Directory failures remain an explicit localized error state rather than being
+presented as an authoritative empty directory.
+
+```tsx
+<RichTextTriggerEditor
+  value={draft}
+  onChange={setDraft}
+  palette={{
+    categories: [{ id: "file", label: labels.file, providerIds: ["file"] }],
+    defaultCategoryId: "file",
+    labels: {
+      tabHint: labels.tabHint,
+      cycleFilter: labels.cycleFilter,
+      moveSelection: labels.moveSelection
+    },
+    directoryNavigation: {
+      providerId: "file",
+      labels: {
+        back: labels.back,
+        enter: labels.enter,
+        navigateHierarchy: labels.navigateHierarchy
+      }
+    }
+  }}
+/>
+```
 
 Mention data:
 

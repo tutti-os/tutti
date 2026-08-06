@@ -9,9 +9,9 @@ const (
 	CursorTargetID                      = "local:cursor"
 	TuttiAgentProviderID                = canonical.TuttiAgentProviderID
 	TuttiAgentTargetID                  = "local:tutti-agent"
-	TuttiAgentMinVersion                = "0.0.10"
-	TuttiAgentRecommendedVersion        = "0.0.10"
-	TuttiAgentThroughTurnForkMinVersion = "0.0.10"
+	TuttiAgentMinVersion                = "0.0.12"
+	TuttiAgentRecommendedVersion        = "0.0.12"
+	TuttiAgentThroughTurnForkMinVersion = "0.0.11"
 	NexightProviderID                   = canonical.NexightProviderID
 	NexightTargetID                     = "local:nexight"
 	OpenClawProviderID                  = canonical.OpenClawProviderID
@@ -35,8 +35,20 @@ func cursorDescriptor() ProviderDescriptor {
 		},
 		Status: StatusDescriptor{
 			Kind: StatusKindGenericCLI, AuthOutputParserKind: AuthOutputParserKindCursor, AuthMarkerParserKind: AuthMarkerParserKindFileExists, AuthCommandRunnerKind: AuthCommandRunnerKindCursor, StaticSpecResolverKind: StaticSpecResolverKindCursor, BinaryNames: []string{"cursor-agent", "agent"}, AuthStatusCommand: []string{"status"}, AuthMarkerPaths: []string{"~/.cursor/cli-config.json"}, LoginArgs: []string{"login"},
-			Install: InstallerDescriptor{Kind: InstallerKindOfficialScript, DisplayCommand: "curl https://cursor.com/install -fsS | bash", ScriptURL: "https://cursor.com/install", ScriptShell: "bash"},
-			Update:  UpdateDescriptor{Capability: UpdateCapabilityUnsupported, UnsupportedReason: UpdateUnsupportedReasonOfficialScript},
+			Install: InstallerDescriptor{
+				Kind:            InstallerKindOfficialScript,
+				DisplayCommand:  "curl https://cursor.com/install -fsS | bash",
+				ScriptURL:       "https://cursor.com/install",
+				ScriptShell:     "bash",
+				WindowsFallback: InstallerWindowsFallbackPowerShell,
+				// Cursor's official Windows script uses Invoke-WebRequest for the
+				// archive download. On some Windows networks that cmdlet returns an
+				// EOF while the script still exits 0, leaving no CLI behind. Keep the
+				// official script's version/path logic, but use the inbox curl.exe
+				// downloader with bounded retries for the archive transfer.
+				WindowsPowerShellCommand: `$script = irm 'https://cursor.com/install?win32=true'; $script = $script.Replace('Invoke-WebRequest -Uri $fullUrl -OutFile $tempFile', 'curl.exe -fL --retry 3 --retry-delay 1 --retry-all-errors --output $tempFile $fullUrl; if ($LASTEXITCODE -ne 0) { throw "Cursor Agent download failed with exit code $LASTEXITCODE" }'); iex $script`,
+			},
+			Update: UpdateDescriptor{Capability: UpdateCapabilityUnsupported, UnsupportedReason: UpdateUnsupportedReasonOfficialScript},
 		},
 		ComposerProfile: ComposerProfileDescriptor{
 			// Cursor exposes its account-scoped model catalog from ACP session/new,
@@ -71,13 +83,15 @@ func tuttiAgentDescriptor() ProviderDescriptor {
 			Command:             []string{"tutti-agent", "app-server"},
 			ClientInfoName:      "tutti_agent",
 			AuthRequiredMessage: "Tutti Agent requires authentication. Sign in to Tutti on this device (or run `tutti-agent login`), then retry this session.",
+			AppServerSkillRoots: AppServerSkillRootsStrategyTuttiStable,
 			NativeSessionFork:   true,
 			AppServerFork: AppServerForkDescriptor{
 				UserAgentBrand:        "tutti-agent",
 				ThroughTurnMinVersion: TuttiAgentThroughTurnForkMinVersion,
 			},
 			Endpoint: RuntimeEndpointDescriptor{
-				ModelPlanProtocol: ModelPlanProtocolOpenAI,
+				ModelPlanProtocol:        ModelPlanProtocolOpenAI,
+				ModelPlanEndpointAdapter: ModelPlanEndpointAdapterResponsesToChatGateway,
 			},
 		},
 		Status: StatusDescriptor{

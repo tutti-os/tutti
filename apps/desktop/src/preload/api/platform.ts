@@ -5,6 +5,10 @@ import type { DesktopPlatformApi } from "../types";
 
 export function createPlatformDesktopApi(): DesktopPlatformApi {
   return {
+    // Electron's app name is set in the main process (for example, "Tutti Dev"
+    // in the development environment). Keep the renderer bound to that native
+    // value instead of duplicating the product name in UI code.
+    appName: process.env.TUTTI_DESKTOP_APP_NAME?.trim() ?? "",
     homeDirectory: homedir(),
     os: process.platform,
     resolveDroppedEntries(files: File[]) {

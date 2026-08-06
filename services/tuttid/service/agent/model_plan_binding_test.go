@@ -387,6 +387,9 @@ func TestGetComposerOptionsBoundPlanSkipsProviderNativeModelCatalog(t *testing.T
 	if options.EffectiveSettings.Model != "plan-default" {
 		t.Fatalf("effective model = %q, want plan-default", options.EffectiveSettings.Model)
 	}
+	if !options.CodexSaverModeSupported {
+		t.Fatal("Codex model-plan target must preserve subagent saver-mode support")
+	}
 	if len(options.ModelConfig.Options) != 2 || options.ModelConfig.Options[0].ID != "plan-default" {
 		t.Fatalf("model options = %#v, want bound plan models", options.ModelConfig.Options)
 	}

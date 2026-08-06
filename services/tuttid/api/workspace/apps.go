@@ -26,6 +26,7 @@ func GeneratedAppFromBiz(app workspacebiz.WorkspaceApp) tuttigenerated.Workspace
 		StateRevision:    app.StateRevision,
 		LaunchUrl:        app.Runtime.LaunchURL,
 		Port:             app.Runtime.Port,
+		FailurePhase:     generatedAppFailurePhase(app.Runtime.FailurePhase),
 		FailureReason:    app.Runtime.FailureReason,
 		LastError:        app.Runtime.LastError,
 		StartedAtUnixMs:  app.Runtime.StartedAtUnixMs,
@@ -42,6 +43,14 @@ func GeneratedAppFromBiz(app workspacebiz.WorkspaceApp) tuttigenerated.Workspace
 		References:       generatedAppReferencesStateFromBiz(app),
 		InstallProgress:  generatedAppInstallProgressFromBiz(app.InstallProgress),
 	}
+}
+
+func generatedAppFailurePhase(value *workspacebiz.AppFailurePhase) *tuttigenerated.WorkspaceAppFailurePhase {
+	if value == nil {
+		return nil
+	}
+	result := tuttigenerated.WorkspaceAppFailurePhase(*value)
+	return &result
 }
 
 func generatedAppAuthorsFromBiz(manifest workspacebiz.AppManifest) []tuttigenerated.WorkspaceAppAuthor {

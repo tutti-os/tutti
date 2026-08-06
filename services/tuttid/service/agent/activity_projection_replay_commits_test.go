@@ -9,8 +9,17 @@ import (
 )
 
 type replayCommitObserverStub struct {
-	deltas   []agenthost.CommittedDelta
-	contexts []replay.ProviderObservationCommitContext
+	deltas          []agenthost.CommittedDelta
+	contexts        []replay.ProviderObservationCommitContext
+	lifecycleDeltas []agenthost.CommittedDelta
+}
+
+func (o *replayCommitObserverStub) ObserveCommitted(
+	_ context.Context,
+	delta agenthost.CommittedDelta,
+) error {
+	o.lifecycleDeltas = append(o.lifecycleDeltas, delta)
+	return nil
 }
 
 func (o *replayCommitObserverStub) ObserveReplayCommitted(
@@ -21,6 +30,29 @@ func (o *replayCommitObserverStub) ObserveReplayCommitted(
 	o.deltas = append(o.deltas, delta)
 	o.contexts = append(o.contexts, replayContext)
 	return nil
+}
+
+func TestActivityProjectionForwardsReportedGoalCommitOnce(t *testing.T) {
+	projection := NewActivityProjection(&activityProjectionRepoStub{})
+	observer := &replayCommitObserverStub{}
+	projection.SetReplayCommitObserver(observer)
+	delta := agenthost.CommittedDelta{
+		TransactionID: "transaction-goal-reconciled",
+		ActivityState: &agenthost.ActivityStateCommitted{},
+		GoalOperation: &agenthost.GoalOperationCommitted{
+			Stage: agenthost.GoalOperationReconciled,
+		},
+	}
+
+	if err := projection.ObserveCommitted(context.Background(), delta); err != nil {
+		t.Fatal(err)
+	}
+	if len(observer.lifecycleDeltas) != 1 {
+		t.Fatalf("lifecycle commits = %d, want 1", len(observer.lifecycleDeltas))
+	}
+	if got := observer.lifecycleDeltas[0].TransactionID; got != delta.TransactionID {
+		t.Fatalf("forwarded transaction = %q, want %q", got, delta.TransactionID)
+	}
 }
 
 func TestActivityProjectionPairsReplayContextWithExactCommittedDelta(

@@ -1,4 +1,4 @@
-import { useEffect, useState, type JSX } from "react";
+import { useState, type JSX } from "react";
 import { CirclePause, CirclePlay, Pencil, Target, Trash2 } from "lucide-react";
 import { cn } from "../../app/renderer/lib/utils";
 import { useAgentConversationNowUnixMs } from "../../shared/agentConversation/components/AgentConversationClock";
@@ -24,6 +24,7 @@ export interface AgentGoalBannerProps {
   status: string;
   tokenBudget?: number;
   tokensUsed?: number;
+  startedAtUnixMs?: number;
   durationMs?: number;
   optimistic?: boolean;
   labels: AgentGoalBannerLabels;
@@ -131,16 +132,16 @@ export function describeGoal(input: {
  * with the codex desktop goal bar: "<status title> <objective> · <elapsed>"
  * plus icon controls for edit / pause-resume / delete.
  *
- * The elapsed time is the server-reported canonical durationMs; while the goal
- * is active the banner ticks it forward locally between goal updates.
- * Optimistic Goal projections never show or start the timer; after canonical
- * provider state arrives, an omitted zero-valued duration starts from zero.
+ * Active elapsed time is derived from the canonical Goal generation start, so
+ * remounting the workspace cannot reset the clock. Terminal states render the
+ * provider-reported duration. Optimistic projections do not start a timer.
  */
 export function AgentGoalBanner({
   objective,
   status,
   tokenBudget,
   tokensUsed,
+  startedAtUnixMs,
   durationMs,
   optimistic = false,
   labels,
@@ -154,45 +155,20 @@ export function AgentGoalBanner({
   const [editDraft, setEditDraft] = useState<string | null>(null);
   const normalizedStatus = normalizeGoalStatus(status);
   const isActive = normalizedStatus === "" || normalizedStatus === "active";
-  const serverSeconds = optimistic
-    ? null
-    : typeof durationMs === "number" && durationMs >= 0
-      ? Math.floor(durationMs / 1000)
-      : isActive
-        ? 0
-        : null;
-  const [elapsedBaseline, setElapsedBaseline] = useState(() => ({
-    isActive,
-    serverSeconds,
-    startedAtUnixMs: Date.now()
-  }));
-  useEffect(() => {
-    setElapsedBaseline((current) =>
-      current.isActive === isActive && current.serverSeconds === serverSeconds
-        ? current
-        : {
-            isActive,
-            serverSeconds,
-            startedAtUnixMs: Date.now()
-          }
-    );
-  }, [isActive, serverSeconds]);
+  const hasCanonicalStart =
+    !optimistic &&
+    typeof startedAtUnixMs === "number" &&
+    Number.isFinite(startedAtUnixMs) &&
+    startedAtUnixMs > 0;
   const nowUnixMs = useAgentConversationNowUnixMs(
-    isActive && serverSeconds !== null
+    isActive && hasCanonicalStart
   );
-  const baselineMatches =
-    elapsedBaseline.isActive === isActive &&
-    elapsedBaseline.serverSeconds === serverSeconds;
   const elapsedSeconds =
-    serverSeconds === null
-      ? null
-      : isActive && nowUnixMs !== null && baselineMatches
-        ? serverSeconds +
-          Math.max(
-            0,
-            Math.floor((nowUnixMs - elapsedBaseline.startedAtUnixMs) / 1_000)
-          )
-        : serverSeconds;
+    isActive && hasCanonicalStart && nowUnixMs !== null
+      ? Math.max(0, Math.floor((nowUnixMs - startedAtUnixMs) / 1_000))
+      : !optimistic && typeof durationMs === "number" && durationMs >= 0
+        ? Math.floor(durationMs / 1_000)
+        : null;
 
   const title = goalStatusTitle(status, labels);
   const description = describeGoal({

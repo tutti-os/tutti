@@ -63,8 +63,19 @@ in progress. Protocol-neutral session and interactive activity projection have
 their own modules, while Claude goal, command, usage, and interaction decoding
 stay inside the Claude SDK boundary.
 Claude Goal state comes only from provider-owned Goal observations. The
-sidecar normalizes both SDK `active_goal` messages and the native `/goal` Stop
-hook's top-level `goal_status` attachment into one `goal_observed` event. A
+sidecar normalizes both SDK `active_goal` messages and native `/goal`
+`goal_status` transcript attachments into one `goal_observed` event. Local
+Claude Agent SDK `0.3.220` streams omit those attachment records from the
+public `SDKMessage` iterator. The root `system/init` message supplies the
+provider Session ID and cwd; `goalTranscript.ts` mirrors the pinned SDK's local
+project-key algorithm to locate its JSONL. Restore starts from the already
+known provider Session ID, while a generation-scoped `SessionStart` callback
+can still supply the SDK-provided exact `transcript_path`. The reader consumes
+only rows appended after observation began, drains once before the root result
+settles, and continues following the file because Claude's native evaluator
+may flush the final `goal_status` just after the SDK result. Starting at the
+existing end of file prevents a restored session from replaying an old active
+or completed Goal. A
 non-null `active_goal` or `goal_status.met=false` keeps the condition active;
 `goal_status.met=true` completes it. A null `active_goal` is interpreted as
 explicit clear or completion using the exact command action and previous Goal
@@ -80,7 +91,9 @@ Context usage is published only when the provider reports a context-window
 limit or the live Session already has a provider-reported limit for the same
 model. Token deltas from a new Session do not synthesize a 200k or 1M
 denominator from the model name; AgentGUI keeps usage hidden until the first
-authoritative window arrives.
+authoritative window arrives. Restore/resume must not await that snapshot
+before `session_started`: Host Resume/Send completes on the start handshake,
+and usage may refresh asynchronously afterward.
 
 Model selection preserves requested and resolved state separately. The model
 config option's `currentValue` remains the user's selection, including
@@ -123,6 +136,8 @@ collaborators:
   configuration and mutable session settings.
 - `promptQueue.ts` and `turnLifecycle.ts`: prompt ordering and turn ownership.
 - `goalExecQueue.ts`: queued Goal command ordering and supersession.
+- `goalProjection.ts` and `goalTranscript.ts`: provider Goal normalization and
+  narrow recovery of SDK-omitted transcript evidence.
 - `queryGeneration.ts` and `queryHooks.ts`: one SDK Query execution generation,
   its prompt/abort resources, and generation-scoped SDK hooks.
 - `messageRouter.ts`, `messageProjection.ts`, `assistantStream.ts`, and
@@ -132,6 +147,8 @@ collaborators:
 - `interactive.ts` and `interactiveTurnResolver.ts`: approvals, interactive
   questions, and canonical Turn ownership resolution.
 - `compaction.ts` and `usage.ts`: context compaction and usage reporting.
+  Restore/resume publishes `session_started` before refreshing context usage;
+  `getContextUsage()` runs in the background and must not gate Host Resume.
 - `authDiagnostics.ts`, `errors.ts`, and `runtimeValues.ts`: diagnostics and
   small runtime value helpers.
 - `testDriver.ts`: isolated deterministic sidecar-driver behavior used by

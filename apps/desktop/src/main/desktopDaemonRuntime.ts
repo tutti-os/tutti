@@ -28,6 +28,7 @@ export interface DesktopUpdateAdmissionDaemonConfig {
 
 export function createDesktopDaemonRuntime(options?: {
   desktopUpdateAdmission?: DesktopUpdateAdmissionDaemonConfig;
+  workspaceAppCliPath?: string;
 }): DesktopDaemonRuntime {
   const daemonEndpoint = resolveDesktopDaemonEndpoint();
   const tuttidClient = createTuttidClient({
@@ -35,7 +36,8 @@ export function createDesktopDaemonRuntime(options?: {
     fetch: createDesktopDaemonFetch(() => daemonEndpoint)
   });
   const tuttid = createTuttidManager(daemonEndpoint, tuttidClient, {
-    desktopUpdateAdmission: options?.desktopUpdateAdmission
+    desktopUpdateAdmission: options?.desktopUpdateAdmission,
+    workspaceAppCliPath: options?.workspaceAppCliPath
   });
 
   return {

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestRunStandardACPSetupAuthenticatesWithFreshAdvertisedMethod(t *testing.T) {
@@ -199,6 +200,40 @@ func TestRunStandardACPSetupFlagsSessionWithoutUsableModel(t *testing.T) {
 	if method := result.AuthMethods[0]; method.Type != "terminal" || len(method.Args) != 1 || method.Args[0] != "login" {
 		t.Fatalf("terminal auth method = %#v", method)
 	}
+	if transport.conn.lastNewSessionParams == nil {
+		t.Fatal("probe must verify readiness through session/new")
+	}
+}
+
+func TestRunStandardACPSetupReadyWhenTerminalMethodRemainsAdvertised(t *testing.T) {
+	t.Parallel()
+
+	// Kimi Code continues advertising its terminal login method after setup.
+	// The method catalog is not an authentication verdict: a usable session/new
+	// result remains the authoritative ready signal.
+	transport := newStandardACPTransport("Example Agent", "setup-session")
+	transport.conn.authMethods = []map[string]any{{
+		"id": "login", "name": "Login with Example account",
+		"type": "terminal", "args": []any{"login"},
+	}}
+	transport.conn.models = map[string]any{
+		"availableModels": []any{map[string]any{"modelId": "example-model", "name": "Example Model"}},
+		"currentModelId":  "example-model",
+	}
+
+	result, err := runStandardACPSetupTest(t, transport, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Status != StandardACPSetupReady || len(result.AuthMethods) != 1 {
+		t.Fatalf("setup result = %#v", result)
+	}
+	if transport.conn.lastNewSessionParams == nil {
+		t.Fatal("probe must verify readiness through session/new")
+	}
+	if got := transport.conn.authenticatedMethodID(); got != "" {
+		t.Fatalf("authenticated method id = %q, want no ACP authenticate call", got)
+	}
 }
 
 func TestRunStandardACPSetupOffersTerminalConfigurationForMissingProvider(t *testing.T) {
@@ -226,6 +261,9 @@ func TestRunStandardACPSetupOffersTerminalConfigurationForMissingProvider(t *tes
 		len(method.Args) != 1 || method.Args[0] != "--setup" {
 		t.Fatalf("terminal configuration method = %#v", method)
 	}
+	if transport.conn.lastNewSessionParams == nil {
+		t.Fatal("probe must inspect session/new before classifying missing configuration")
+	}
 }
 
 func TestStandardACPSetupMissingProviderRequiresAdvertisedTerminalConfiguration(t *testing.T) {
@@ -239,6 +277,21 @@ func TestStandardACPSetupMissingProviderRequiresAdvertisedTerminalConfiguration(
 		ID: "setup", Type: "terminal", Args: []string{"--setup"},
 	}}) {
 		t.Fatal("unrelated provider failures must remain runtime failures")
+	}
+}
+
+func TestStandardACPSetupSessionNewTimeoutWithTerminalConfigurationRequiresAuth(t *testing.T) {
+	t.Parallel()
+
+	err := &acpCallTimeoutError{Method: acpMethodNewSession, Timeout: time.Minute}
+	methods := []StandardACPAuthMethod{{ID: "anthropic", Name: "Anthropic"}, {
+		ID: "hermes-setup", Name: "Configure Hermes", Type: "terminal", Args: []string{"--setup"},
+	}}
+	if !standardACPSetupSessionNewTimedOut(err) {
+		t.Fatal("session/new timeout was not recognized")
+	}
+	if !standardACPSetupHasInteractiveAuth(methods) {
+		t.Fatal("terminal setup method was not recognized")
 	}
 }
 

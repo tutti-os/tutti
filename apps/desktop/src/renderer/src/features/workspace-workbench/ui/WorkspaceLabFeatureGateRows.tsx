@@ -2,8 +2,8 @@ import { Switch } from "@tutti-os/ui-system";
 import { useTranslation } from "@renderer/i18n";
 import {
   EARLY_ACCESS_AGENT_INTEGRATIONS_FLAG,
-  LAB_AGENT_INPUT_HISTORY_FLAG,
   LAB_AUTOMATION_RULES_FLAG,
+  LAB_CONVERSATION_ACTIVITY_VIEW_FLAG,
   LAB_WORKBENCH_SHORTCUTS_FLAG,
   isFeatureEnabled
 } from "../../../../../shared/featureFlags/catalog.ts";
@@ -22,10 +22,10 @@ const featureGateRows = [
       "workspace.settings.lab.workbenchShortcutsDescription" as const
   },
   {
-    key: LAB_AGENT_INPUT_HISTORY_FLAG,
-    labelKey: "workspace.settings.lab.agentInputHistoryLabel" as const,
+    key: LAB_CONVERSATION_ACTIVITY_VIEW_FLAG,
+    labelKey: "workspace.settings.lab.conversationActivityViewLabel" as const,
     descriptionKey:
-      "workspace.settings.lab.agentInputHistoryDescription" as const
+      "workspace.settings.lab.conversationActivityViewDescription" as const
   },
   {
     key: EARLY_ACCESS_AGENT_INTEGRATIONS_FLAG,

@@ -356,6 +356,59 @@ describe("agentToolRenderData", () => {
     ]);
   });
 
+  it("chooses a valid later diff alias over an invalid body", () => {
+    const validDiff = "@@ -1 +1 @@\n-old\n+new";
+    const changes = getFileChangeRenderData(
+      makeCall({
+        payload: {
+          fileChanges: {
+            files: [
+              {
+                path: "src/a.ts",
+                change: "modified",
+                diff: "README\n- bullet\n",
+                unifiedDiff: validDiff
+              }
+            ]
+          }
+        }
+      })
+    );
+
+    expect(changes).toEqual([
+      expect.objectContaining({
+        path: "src/a.ts",
+        unifiedDiff: validDiff,
+        added: 1,
+        removed: 1
+      })
+    ]);
+  });
+
+  it("keeps an invalid created body as content instead of a patch", () => {
+    const body = "# README\n\n- bullet\n- another bullet\n";
+    const changes = getFileChangeRenderData(
+      makeCall({
+        payload: {
+          fileChanges: {
+            files: [{ path: "README.md", change: "created", diff: body }]
+          }
+        }
+      })
+    );
+
+    expect(changes).toEqual([
+      expect.objectContaining({
+        path: "README.md",
+        changeType: "created",
+        unifiedDiff: null,
+        content: "# README\n\n- bullet\n- another bullet",
+        added: 4,
+        removed: 0
+      })
+    ]);
+  });
+
   it("extracts file changes from structured patch output", () => {
     const changes = getFileChangeRenderData(
       makeCall({

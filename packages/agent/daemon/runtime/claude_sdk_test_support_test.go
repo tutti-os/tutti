@@ -107,7 +107,7 @@ func hasClaudeSDKEffortConfigOptions(runtimeContext map[string]any, currentValue
 }
 
 type recordingClaudeSDKTransport struct {
-	conn *scriptedClaudeSDKConnection
+	conn ProcessConnection
 	spec ProcessSpec
 }
 

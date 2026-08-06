@@ -541,8 +541,8 @@ func TestAgentComposerDefaultsPatchIntentUsesDedicatedMutationAndTargetInvalidat
 	if len(patcher.inputs) != 1 || patcher.inputs[0].AgentTargetID != "local:opencode" {
 		t.Fatalf("patch inputs = %#v", patcher.inputs)
 	}
-	permission := patcher.inputs[0].Patch[preferencesbiz.AgentComposerDefaultsFieldPermissionModeID]
-	if permission == nil || *permission != "full-access" {
+	permission, _ := patcher.inputs[0].Patch[preferencesbiz.AgentComposerDefaultsFieldPermissionModeID].(string)
+	if permission != "full-access" {
 		t.Fatalf("patch = %#v", patcher.inputs[0].Patch)
 	}
 
@@ -805,6 +805,7 @@ func TestWorkspaceAppPublisherIncludesReferencesState(t *testing.T) {
 	}
 
 	publisher := WorkspaceAppPublisher{Service: service}
+	failurePhase := workspacebiz.AppFailurePhaseRuntime
 	if err := publisher.PublishWorkspaceAppUpdated(context.Background(), "workspace-1", workspacebiz.WorkspaceApp{
 		Package: workspacebiz.AppPackage{
 			AppID:   "docs",
@@ -818,7 +819,8 @@ func TestWorkspaceAppPublisherIncludesReferencesState(t *testing.T) {
 			},
 		},
 		Runtime: workspacebiz.AppRuntimeState{
-			Status: workspacebiz.AppRuntimeStatusIdle,
+			Status:       workspacebiz.AppRuntimeStatusFailed,
+			FailurePhase: &failurePhase,
 		},
 	}); err != nil {
 		t.Fatalf("PublishWorkspaceAppUpdated() error = %v", err)
@@ -827,7 +829,8 @@ func TestWorkspaceAppPublisherIncludesReferencesState(t *testing.T) {
 	event := receiveEvent(t, session)
 	var payload struct {
 		App struct {
-			References struct {
+			FailurePhase *string `json:"failurePhase"`
+			References   struct {
 				ListSupported bool `json:"listSupported"`
 			} `json:"references"`
 		} `json:"app"`
@@ -837,6 +840,9 @@ func TestWorkspaceAppPublisherIncludesReferencesState(t *testing.T) {
 	}
 	if !payload.App.References.ListSupported {
 		t.Fatal("published references.listSupported = false, want true")
+	}
+	if payload.App.FailurePhase == nil || *payload.App.FailurePhase != "runtime" {
+		t.Fatalf("published failurePhase = %v, want runtime", payload.App.FailurePhase)
 	}
 }
 

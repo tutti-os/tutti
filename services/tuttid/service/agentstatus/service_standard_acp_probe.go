@@ -8,9 +8,9 @@ import (
 	"errors"
 	"fmt"
 	"math/rand/v2"
-	"os/exec"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // standardACPHandshakeClientName identifies probe-originated `initialize`
@@ -67,14 +67,18 @@ func (s Service) probeStandardACPHandshake(
 	result ProbeResult,
 	command []string,
 	env []string,
+	timeout time.Duration,
 ) ProbeResult {
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	probeCtx, cancel := context.WithTimeout(ctx, s.probeTimeout())
+	if timeout <= 0 {
+		timeout = s.probeTimeout()
+	}
+	probeCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	cmd := exec.CommandContext(probeCtx, command[0], command[1:]...)
+	cmd := newInstallExecCommand(probeCtx, command[0], command[1:]...)
 	cmd.Env = env
 	cmd.WaitDelay = defaultProbeWaitDelay
 

@@ -44,6 +44,7 @@ import { claudeSettingsEnv } from "./settingsEnv.ts";
 import { CompactionTracker } from "./compaction.ts";
 import { MessageProjection } from "./messageProjection.ts";
 import { SDKMessageRouter } from "./messageRouter.ts";
+import { claudeGoalTranscriptPath } from "./goalTranscript.ts";
 import { emit } from "./eventSink.ts";
 import {
   resolveClaudeTurnBindingByRecoveryToken,
@@ -91,10 +92,18 @@ export class SessionRuntime {
   private lastAssistantUuid = "";
   private resumeCursor: Record<string, unknown> | undefined;
   private readonly configuration: SessionConfiguration;
+  /**
+   * Serializes live apply_settings with turn-dispatch applyPendingFlags so a
+   * settings write and the next send cannot interleave on the same Claude
+   * query (half-applied flags + retired idle generation → submitted silence).
+   */
+  private configurationGate: Promise<void> = Promise.resolve();
   private readonly claudeOptions: SidecarClaudeOptions;
   private readonly queryFactory?: ClaudeQueryFactory;
   private readonly interactions: InteractiveCoordinator;
   private readonly router: SDKMessageRouter;
+  /** Set by guide() before interrupt; consumed by the next error result. */
+  private pendingGuidanceInterrupt = false;
   private readonly driver?: SidecarTestDriver;
   private readonly goalExecQueue: GoalExecQueue;
   private readonly providerTurnAcceptance: ProviderTurnAcceptanceCoordinator;
@@ -276,7 +285,21 @@ export class SessionRuntime {
           providerCheckpointMessageId
         ),
       ensureProviderTurnAcceptance: (phase) =>
-        this.ensureProviderTurnAcceptance(phase)
+        this.ensureProviderTurnAcceptance(phase),
+      peekGuidanceInterrupt: () => this.pendingGuidanceInterrupt,
+      clearGuidanceInterrupt: () => {
+        this.pendingGuidanceInterrupt = false;
+      },
+      resolveGoalTranscriptPath: (sessionId, providerCwd) =>
+        claudeGoalTranscriptPath({
+          sessionId,
+          cwd: providerCwd.trim() || this.cwd || process.cwd(),
+          env: {
+            ...process.env,
+            ...claudeSettingsEnv(this.cwd || process.cwd()),
+            ...this.env
+          }
+        })
     });
     this.claudeOptions = claudeOptions;
     this.queryFactory = queryFactory;
@@ -294,11 +317,13 @@ export class SessionRuntime {
       initialized: this.initialized,
       queryClosed: this.sessionClosed
     });
-    await this.ensureQuery({ initialize: true });
-    await this.configuration.applyPendingFlags();
     if (this.restore) {
-      await this.compaction.emitContextUsageSnapshot("");
+      await this.router.observeRootSession(this.providerSessionId, this.cwd);
     }
+    await this.ensureQuery({ initialize: true });
+    await this.runConfigurationTask(() =>
+      this.configuration.applyPendingFlags()
+    );
     emit({
       type: "session_started",
       payload: {
@@ -307,6 +332,13 @@ export class SessionRuntime {
         resumeCursor: this.currentResumeCursor()
       }
     });
+    // Restore must not await getContextUsage before session_started: the SDK
+    // call can hang for minutes with no timeout, and Host Resume/Send blocks
+    // on this start handshake. Refresh usage in the background like turn
+    // completion already does.
+    if (this.restore) {
+      void this.compaction.emitContextUsageSnapshot("");
+    }
     const generation = this.queryGeneration;
     if (generation && this.isQueryGenerationActive(generation)) {
       // The SDK publishes its per-user resolved model in system/init before it
@@ -392,11 +424,19 @@ export class SessionRuntime {
       settled: false
     };
     this.providerTurnAcceptance.markQueued(turnId);
+    // Continue/follow-up after a settled turn must not reuse a quiet Claude
+    // query that accepted the next prompt but emitted no further SDK messages.
+    // Retire the idle generation here (before enqueue) so ensureQuery resumes,
+    // while still leaving the previous generation alive long enough for late
+    // post-result traffic such as compact_boundary.
+    this.retireIdleQueryBeforeNextTurn();
     const executionEpoch = this.executionEpoch;
     this.turns.enqueue(turn);
     this.compaction.selectCommand(turnId, isCompactCommandPrompt(prompt));
     void this.ensureQuery()
-      .then(() => this.configuration.applyPendingFlags())
+      .then(() =>
+        this.runConfigurationTask(() => this.configuration.applyPendingFlags())
+      )
       .then(() => {
         const generation = this.queryGeneration;
         if (
@@ -429,6 +469,9 @@ export class SessionRuntime {
         generation.expectPromptEcho(turn.promptUuid);
         this.turns.expectProviderTurnIdentity(turn.turnId);
         this.providerTurnAcceptance.markDispatched(turn.turnId);
+        if (goal) {
+          this.router.trackGoalCommand(goal.action, prompt);
+        }
         generation.promptQueue.push({
           uuid: turn.promptUuid,
           type: "user",
@@ -475,14 +518,37 @@ export class SessionRuntime {
     }
     const executionEpoch = this.executionEpoch;
     void this.ensureQuery()
-      .then(() => this.configuration.applyPendingFlags())
-      .then(() => {
+      .then(() =>
+        this.runConfigurationTask(() => this.configuration.applyPendingFlags())
+      )
+      .then(async () => {
         const generation = this.queryGeneration;
         if (
           !generation ||
           !this.isQueryGenerationActive(generation) ||
           executionEpoch !== this.executionEpoch
         ) {
+          return;
+        }
+        // Preempt in-flight tool work before enqueueing guidance. Without
+        // interrupt, Bash/etc. finish first and the model often ignores the
+        // steered prompt — unlike Codex turn/steer which interrupts mid-turn.
+        // Mark the interrupt so the following error_during_execution result
+        // keeps this turn alive for the guided prompt (see messageRouter).
+        this.pendingGuidanceInterrupt = true;
+        try {
+          await generation.query?.interrupt?.();
+        } catch (error) {
+          this.pendingGuidanceInterrupt = false;
+          this.logAuthRefresh("guide.interrupt_failed", {
+            error: errorPayload(error)
+          });
+        }
+        if (
+          !this.isQueryGenerationActive(generation) ||
+          executionEpoch !== this.executionEpoch
+        ) {
+          this.pendingGuidanceInterrupt = false;
           return;
         }
         const sdkContent = sdkContentFromPromptBlocks(
@@ -527,6 +593,11 @@ export class SessionRuntime {
       if (!hasActiveTurn) {
         return false;
       }
+    } else if (!this.turns.activeTurn || this.turns.activeTurn.settled) {
+      // No live provider turn yet. Do not settle queued turns or tear down the
+      // query — that leaves HasSettledTurn without root_provider_turn_id and
+      // blocks cancel→resend with provider_session_not_established.
+      return false;
     } else {
       hasActiveTurn = this.turns.cancelQueued();
     }
@@ -575,6 +646,7 @@ export class SessionRuntime {
     this.providerTurnAcceptance.cancel();
     this.interactions.rejectAll(new Error("Tool use aborted"));
     this.activities.close();
+    await this.router.close();
     this.turns.close();
     const generation = this.queryGeneration;
     this.queryGeneration = undefined;
@@ -612,8 +684,35 @@ export class SessionRuntime {
   }
 
   async applySettings(payload: Record<string, unknown>): Promise<void> {
-    await this.configuration.apply(payload);
-    this.emitSessionState();
+    try {
+      await this.runConfigurationTask(async () => {
+        // Live applyFlagSettings on a quiet post-turn Claude query can hang
+        // indefinitely. Because the sidecar stdin loop awaits each request,
+        // that hang also blocks every later exec/settings round-trip and the
+        // daemon UpdateSettings HTTP call times out at ~30s. Retire the idle
+        // generation first so effort/speed stay as pending flags and are baked
+        // into the next turn's ensureQuery create-time settings (not a live
+        // applyFlagSettings on the resumed quiet query, which still delayed
+        // provider identity / delivery confirmation by ~90s).
+        this.retireIdleQueryBeforeNextTurn();
+        await this.configuration.apply(payload);
+        this.emitSessionState();
+      });
+    } catch (error) {
+      // A failed/canceled live settings write must not leave the next turn on a
+      // half-mutated idle query (submitted with no SDK traffic for minutes).
+      this.retireIdleQueryBeforeNextTurn();
+      throw error;
+    }
+  }
+
+  private runConfigurationTask<T>(task: () => Promise<T>): Promise<T> {
+    const run = this.configurationGate.then(task, task);
+    this.configurationGate = run.then(
+      () => undefined,
+      () => undefined
+    );
+    return run;
   }
 
   private consume(generation: QueryGeneration): void {
@@ -643,7 +742,8 @@ export class SessionRuntime {
             break;
           }
           const message = next.value;
-          if (!generation.shouldRouteMessage(message)) {
+          const shouldRoute = generation.shouldRouteMessage(message);
+          if (!shouldRoute) {
             continue;
           }
           await this.router.handle(message);
@@ -662,7 +762,9 @@ export class SessionRuntime {
           this.queryGeneration = undefined;
           generation.revoke();
           generation.closeQuery();
-          this.sessionClosed = true;
+          // Do not mark the Session closed here. A natural query iterator end
+          // (or a retired idle generation) must remain resumable for the next
+          // user turn; only SessionRuntime.close() makes the Session terminal.
           if (this.turns.activeTurn) {
             this.turns.settleActive(
               this.turns.cancelled ? "turn_canceled" : "turn_failed"
@@ -720,6 +822,12 @@ export class SessionRuntime {
     const querySettings = querySettingsFromSessionSettings(
       this.configuration.settings
     );
+    // Pending effort/speed from apply_settings after idle-retire must land in
+    // create-time settings above. Absorb them here so the post-ensureQuery
+    // applyPendingFlags path does not call applyFlagSettings on this quiet
+    // resumed generation (that delayed turn-2 identity past the 30s host
+    // delivery timeout in C05).
+    this.configuration.absorbPendingFlagsIntoQueryCreate();
     // One settings snapshot feeds both the executable resolution and the SDK
     // env, so the two can never disagree (and the settings hierarchy is read
     // once per query creation).
@@ -744,6 +852,7 @@ export class SessionRuntime {
         ? { pathToClaudeCodeExecutable: claudeExecutablePath }
         : {}),
       includePartialMessages: true,
+      includeHookEvents: true,
       canUseTool: (toolName, toolInput, callbackOptions) =>
         this.handleToolPermission(
           generation,
@@ -766,6 +875,10 @@ export class SessionRuntime {
       hooks: queryGenerationHooks({
         generation,
         isActive: () => this.isQueryGenerationActive(generation),
+        onSessionStart: async (input) => {
+          await this.router.observeSessionStartHook(input);
+          return { continue: true };
+        },
         onPostToolUse: (input, toolUseID) =>
           this.activities.handlePostToolUseHook(input, toolUseID),
         onTaskLifecycle: (input) =>
@@ -901,6 +1014,31 @@ export class SessionRuntime {
       !generation.revoked &&
       this.queryGeneration === generation
     );
+  }
+
+  private retireIdleQueryBeforeNextTurn(): void {
+    if (!this.queryGeneration) {
+      return;
+    }
+    // The session.start() initialization query must stay until the first turn
+    // uses it. Only retire after at least one root turn has already settled.
+    if (this.turns.turnCount === 0) {
+      return;
+    }
+    if (this.turns.activeTurn && !this.turns.activeTurn.settled) {
+      return;
+    }
+    if (this.turns.queue.some((turn) => !turn.settled)) {
+      return;
+    }
+    if (this.activities.hasPendingBackgroundContinuation()) {
+      return;
+    }
+    this.executionEpoch += 1;
+    this.resumeQueries = true;
+    QueryGeneration.retire(this.queryGeneration, () => {
+      this.queryGeneration = undefined;
+    });
   }
 
   private logAuthRefresh(

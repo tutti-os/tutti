@@ -78,6 +78,11 @@ type claudeSDKAdapterSession struct {
 	// WorkspaceAgentTurn ids.
 	rootTurnID        string
 	rootProviderTurns map[string]struct{}
+	// providerTurnAccepted closes after the current root turn's provider
+	// identity has crossed the durable acceptance barrier. Cancel waits on it
+	// so CompleteCancel cannot settle HasSettledTurn before Established.
+	// Guarded by the adapter mutex; recreate on each new root turn.
+	providerTurnAccepted chan struct{}
 	// goalArmTurnID is the sidecar turn carrying a queued /goal set command
 	// that has not settled yet; until it does, other turns settling must not
 	// be read as goal completion. Guarded by the adapter mutex.

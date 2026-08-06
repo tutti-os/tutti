@@ -78,7 +78,7 @@ export function findRichTextTriggerQuery(
 }
 
 export async function queryRichTextTriggerMatches(
-  registry: RichTextTriggerRegistry,
+  registry: Pick<RichTextTriggerRegistry, "query">,
   input: RichTextTriggerQueryInput
 ): Promise<readonly RichTextTriggerQueryMatch[]> {
   try {
@@ -86,4 +86,14 @@ export async function queryRichTextTriggerMatches(
   } catch {
     return [];
   }
+}
+
+export async function queryRichTextTriggerDirectoryMatches(
+  registry: {
+    queryDirectory?: RichTextTriggerRegistry["queryDirectory"];
+  },
+  providerId: string,
+  input: RichTextTriggerQueryInput & { directoryPath: string }
+): Promise<readonly RichTextTriggerQueryMatch[]> {
+  return (await registry.queryDirectory?.(providerId, input)) ?? [];
 }

@@ -29,6 +29,9 @@ func (s *Store) AdoptProviderGoalOperation(ctx context.Context, input ProviderGo
 	if objective == "" || status != "active" {
 		return GoalControlOperation{}, SessionGoalState{}, false, errors.New("provider goal adoption requires an active objective")
 	}
+	if jsonMapInt64(input.Goal, "startedAtUnixMs") <= 0 {
+		input.Goal["startedAtUnixMs"] = input.OccurredAtUnixMS
+	}
 	goalJSON, err := marshalNullableJSONMap(input.Goal)
 	if err != nil {
 		return GoalControlOperation{}, SessionGoalState{}, false, err

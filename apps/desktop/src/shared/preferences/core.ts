@@ -231,6 +231,7 @@ export const defaultDesktopAgentProvider: DesktopDefaultAgentProvider =
   "tutti-agent";
 
 export interface DesktopAgentComposerDefaults {
+  codexSaverMode?: boolean;
   model?: string;
   permissionModeId?: string;
   reasoningEffort?: string;
@@ -247,8 +248,10 @@ export type DesktopAgentComposerDefaultsByAgentTarget = Record<
 >;
 
 // Patch for one agent target's remembered defaults: undefined leaves a field
-// untouched, null (or empty) clears it, a non-empty string replaces it.
+// untouched; text fields use null (or empty) to clear, while the saver-mode
+// boolean is stored only when true.
 export interface DesktopAgentComposerDefaultsPatch {
+  codexSaverMode?: boolean;
   model?: string | null;
   permissionModeId?: string | null;
   reasoningEffort?: string | null;
@@ -256,6 +259,7 @@ export interface DesktopAgentComposerDefaultsPatch {
 }
 
 export const desktopAgentComposerDefaultsFields = [
+  "codexSaverMode",
   "model",
   "permissionModeId",
   "reasoningEffort",
@@ -563,6 +567,9 @@ export function normalizeDesktopAgentComposerDefaults(
   }
 
   const defaults: DesktopAgentComposerDefaults = {};
+  if (value.codexSaverMode === true) {
+    defaults.codexSaverMode = true;
+  }
   const model = normalizeOptionalText(value.model);
   const permissionModeId = normalizeOptionalText(value.permissionModeId);
   const reasoningEffort = normalizeOptionalText(value.reasoningEffort);
@@ -708,6 +715,14 @@ export function mergeDesktopAgentComposerDefaultsByAgentTarget(
   for (const field of desktopAgentComposerDefaultsFields) {
     const value = patch[field];
     if (value === undefined) {
+      continue;
+    }
+    if (field === "codexSaverMode") {
+      if (value === true) {
+        merged.codexSaverMode = true;
+      } else {
+        delete merged.codexSaverMode;
+      }
       continue;
     }
     const normalizedValue = normalizeOptionalText(value);

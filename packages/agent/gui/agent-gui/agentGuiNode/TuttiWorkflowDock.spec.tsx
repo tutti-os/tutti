@@ -75,7 +75,6 @@ const preferencePopoverLabels = {
   title: "Tutti preferences",
   effectLabel: "Effect",
   speedLabel: "Speed",
-  previewTitle: "Expected behavior",
   previewHint: "Derived from the request and Skills.",
   previewCost: "Economical",
   previewBalance: "Balanced",
@@ -84,7 +83,6 @@ const preferencePopoverLabels = {
   modelPreferenceCost: "Economical",
   modelPreferenceBalance: "Balanced",
   modelPreferencePowerful: "Most capable",
-  modelPreferenceFastestSuitable: "Fastest suitable",
   parallelismLabel: "Parallel target",
   parallelismValue: (count: number) =>
     count === 1 ? "1 agent" : `Up to ${count} agents`

@@ -43,6 +43,13 @@ const (
 	CatalogStateFailed     CatalogState = "failed"
 )
 
+type ReleaseStatus string
+
+const (
+	ReleaseStatusAvailable  ReleaseStatus = "available"
+	ReleaseStatusSuperseded ReleaseStatus = "superseded"
+)
+
 type OperationKind string
 
 const (
@@ -50,7 +57,6 @@ const (
 	OperationKindInstall                 OperationKind = "install"
 	OperationKindUninstall               OperationKind = "uninstall"
 	OperationKindStartAuthorization      OperationKind = "start_authorization"
-	OperationKindSetWorkspaceEnabled     OperationKind = "set_workspace_enabled"
 	OperationKindDisconnectAuthorization OperationKind = "disconnect_authorization"
 )
 
@@ -63,14 +69,42 @@ const (
 	OperationStateFailed    OperationState = "failed"
 )
 
+type OperationStage string
+
+const (
+	OperationStageAccepted      OperationStage = "accepted"
+	OperationStageRefreshing    OperationStage = "refreshing"
+	OperationStageDownloading   OperationStage = "downloading"
+	OperationStagePrepared      OperationStage = "prepared"
+	OperationStageActivating    OperationStage = "activating"
+	OperationStageDeactivating  OperationStage = "deactivating"
+	OperationStageAuthorizing   OperationStage = "authorizing"
+	OperationStageDisconnecting OperationStage = "disconnecting"
+	OperationStageCompleted     OperationStage = "completed"
+	OperationStageFailed        OperationStage = "failed"
+)
+
+// Release is the immutable catalog fact selected for an install operation.
+// Hosts map their generated remote-market DTOs into this host-neutral shape.
+type Release struct {
+	SchemaVersion  string        `json:"schemaVersion"`
+	ReleaseID      string        `json:"releaseId"`
+	ConnectorKey   string        `json:"connectorKey"`
+	Version        string        `json:"version"`
+	ReleaseDigest  string        `json:"releaseDigest"`
+	ManifestDigest string        `json:"manifestDigest"`
+	Manifest       Manifest      `json:"manifest"`
+	Artifact       Artifact      `json:"artifact"`
+	PublishedAt    time.Time     `json:"publishedAt"`
+	Status         ReleaseStatus `json:"status"`
+}
+
 type Manifest struct {
 	SchemaVersion     string                    `json:"schemaVersion"`
-	Key               string                    `json:"key"`
-	Version           string                    `json:"version"`
 	DisplayName       string                    `json:"displayName"`
+	IconURL           string                    `json:"iconUrl"`
 	Description       string                    `json:"description,omitempty"`
 	Permissions       []string                  `json:"permissions"`
-	Artifact          Artifact                  `json:"artifact"`
 	Implementation    Implementation            `json:"implementation"`
 	AuthorizationKind string                    `json:"authorizationKind"`
 	Compatibility     CompatibilityRequirements `json:"compatibility,omitempty"`
@@ -80,6 +114,7 @@ type Artifact struct {
 	Key       string `json:"key"`
 	SHA256    string `json:"sha256"`
 	SizeBytes int64  `json:"sizeBytes"`
+	MediaType string `json:"mediaType"`
 }
 
 type CompatibilityRequirements struct {
@@ -89,14 +124,95 @@ type CompatibilityRequirements struct {
 }
 
 type Implementation struct {
-	Kind   string         `json:"kind"`
-	Config map[string]any `json:"config,omitempty"`
+	Kind                 string                              `json:"kind"`
+	Builtin              *BuiltinImplementation              `json:"builtin,omitempty"`
+	ManagedStdio         *ManagedStdioImplementation         `json:"managedStdio,omitempty"`
+	RemoteStreamableHTTP *RemoteStreamableHTTPImplementation `json:"remoteStreamableHttp,omitempty"`
+}
+
+type BuiltinImplementation struct {
+	ProviderID string `json:"providerId"`
+	MCP        bool   `json:"mcp"`
+	CLI        bool   `json:"cli"`
+}
+
+type RuntimeRequirement struct {
+	Language     string `json:"language"`
+	Profile      string `json:"profile"`
+	ABI          string `json:"abi"`
+	VersionRange string `json:"versionRange,omitempty"`
+}
+
+type ManagedStdioImplementation struct {
+	Runtime                  RuntimeRequirement   `json:"runtime"`
+	MCP                      *ManagedMCPInterface `json:"mcp,omitempty"`
+	CLI                      *ManagedCLIInterface `json:"cli,omitempty"`
+	CredentialBrokerProtocol string               `json:"credentialBrokerProtocol,omitempty"`
+}
+
+type ManagedMCPInterface struct {
+	Entrypoint string   `json:"entrypoint"`
+	Arguments  []string `json:"arguments,omitempty"`
+}
+
+type ManagedCLIInterface struct {
+	Entrypoint string           `json:"entrypoint"`
+	Arguments  []string         `json:"arguments,omitempty"`
+	TimeoutMS  int              `json:"timeoutMs,omitempty"`
+	Install    *CLIInstallation `json:"install,omitempty"`
+	Commands   []CLICommand     `json:"commands,omitempty"`
+}
+
+// CLIInstallation is a typed installation command. The daemon compiles this
+// intent into a package-manager invocation; connector manifests never provide
+// an arbitrary shell command.
+type CLIInstallation struct {
+	Kind        string                   `json:"kind"`
+	NodePackage *NodePackageInstallation `json:"nodePackage,omitempty"`
+}
+
+type NodePackageInstallation struct {
+	Package   string                 `json:"package"`
+	Version   string                 `json:"version"`
+	Integrity string                 `json:"integrity"`
+	Launch    NodePackageLaunch      `json:"launch"`
+	Lifecycle []NodeLifecycleCommand `json:"lifecycle,omitempty"`
+}
+
+type NodePackageLaunch struct {
+	Kind       string `json:"kind"`
+	Entrypoint string `json:"entrypoint,omitempty"`
+	SHA256     string `json:"sha256,omitempty"`
+}
+
+// NodeLifecycleCommand allows a signed connector release to opt into a
+// specific Node script without granting a general-purpose lifecycle shell.
+type NodeLifecycleCommand struct {
+	Event              string   `json:"event"`
+	Entrypoint         string   `json:"entrypoint"`
+	Arguments          []string `json:"arguments,omitempty"`
+	AllowedExecutables []string `json:"allowedExecutables,omitempty"`
+}
+
+type CLICommand struct {
+	Name        string         `json:"name"`
+	Description string         `json:"description,omitempty"`
+	Arguments   []string       `json:"arguments,omitempty"`
+	InputSchema map[string]any `json:"inputSchema"`
+	TimeoutMS   int            `json:"timeoutMs"`
+}
+
+type RemoteStreamableHTTPImplementation struct {
+	Endpoint     string   `json:"endpoint"`
+	AllowedHosts []string `json:"allowedHosts"`
 }
 
 type Installation struct {
-	State            InstallationState `json:"state"`
-	InstalledVersion string            `json:"installedVersion,omitempty"`
-	FailureCode      string            `json:"failureCode,omitempty"`
+	State                  InstallationState `json:"state"`
+	InstalledVersion       string            `json:"installedVersion,omitempty"`
+	InstalledReleaseID     string            `json:"installedReleaseId,omitempty"`
+	InstalledReleaseDigest string            `json:"installedReleaseDigest,omitempty"`
+	FailureCode            string            `json:"failureCode,omitempty"`
 }
 
 type Authorization struct {
@@ -109,31 +225,112 @@ type Compatibility struct {
 	Reason string             `json:"reason,omitempty"`
 }
 
-type WorkspaceBinding struct {
-	WorkspaceID string `json:"workspaceId"`
-	Enabled     bool   `json:"enabled"`
-}
-
 type Connector struct {
-	Key              string            `json:"key"`
-	Manifest         Manifest          `json:"manifest"`
-	Installation     Installation      `json:"installation"`
-	Authorization    Authorization     `json:"authorization"`
-	Compatibility    Compatibility     `json:"compatibility"`
-	WorkspaceBinding *WorkspaceBinding `json:"workspaceBinding,omitempty"`
-	Revision         uint64            `json:"revision"`
+	Key           string        `json:"key"`
+	Release       Release       `json:"release"`
+	Installation  Installation  `json:"installation"`
+	Authorization Authorization `json:"authorization"`
+	Compatibility Compatibility `json:"compatibility"`
+	Revision      uint64        `json:"revision"`
 }
 
 type Operation struct {
-	OperationID     string         `json:"operationId"`
-	ClientRequestID string         `json:"clientRequestId"`
-	ConnectorKey    string         `json:"connectorKey,omitempty"`
-	Kind            OperationKind  `json:"kind"`
-	State           OperationState `json:"state"`
-	Stage           string         `json:"stage,omitempty"`
-	FailureCode     string         `json:"failureCode,omitempty"`
-	CreatedAt       time.Time      `json:"createdAt"`
-	UpdatedAt       time.Time      `json:"updatedAt"`
+	OperationID     string             `json:"operationId"`
+	ClientRequestID string             `json:"clientRequestId"`
+	ConnectorKey    string             `json:"connectorKey,omitempty"`
+	Kind            OperationKind      `json:"kind"`
+	State           OperationState     `json:"state"`
+	Stage           OperationStage     `json:"stage,omitempty"`
+	Target          *OperationTarget   `json:"target,omitempty"`
+	HostGeneration  HostGeneration     `json:"hostGeneration,omitempty"`
+	Execution       OperationExecution `json:"execution,omitempty"`
+	Attempt         uint32             `json:"attempt"`
+	LeaseOwner      string             `json:"leaseOwner,omitempty"`
+	LeaseToken      uint64             `json:"leaseToken,omitempty"`
+	LeaseExpiresAt  *time.Time         `json:"leaseExpiresAt,omitempty"`
+	FailureCode     string             `json:"failureCode,omitempty"`
+	CreatedAt       time.Time          `json:"createdAt"`
+	UpdatedAt       time.Time          `json:"updatedAt"`
+}
+
+// OperationTarget freezes the exact release identity at command acceptance so
+// a concurrent catalog refresh cannot change what an operation installs.
+type OperationTarget struct {
+	ConnectorKey   string   `json:"connectorKey"`
+	Version        string   `json:"version"`
+	ReleaseID      string   `json:"releaseId"`
+	ReleaseDigest  string   `json:"releaseDigest"`
+	ArtifactSHA256 string   `json:"artifactSha256,omitempty"`
+	Release        *Release `json:"release,omitempty"`
+}
+
+type OperationExecution struct {
+	PreparedArtifact     *PreparedArtifactReceipt  `json:"preparedArtifact,omitempty"`
+	CLIInstallation      *CLIInstallationReceipt   `json:"cliInstallation,omitempty"`
+	RuntimeActivation    *RuntimeActivationReceipt `json:"runtimeActivation,omitempty"`
+	AuthorizationSession *AuthorizationSession     `json:"authorizationSession,omitempty"`
+}
+
+type CLIInstallationReceipt struct {
+	SchemaVersion    string `json:"schemaVersion"`
+	OperationID      string `json:"operationId"`
+	ConnectorKey     string `json:"connectorKey"`
+	ReleaseDigest    string `json:"releaseDigest"`
+	RuntimeProfile   string `json:"runtimeProfile"`
+	RuntimeABI       string `json:"runtimeAbi"`
+	NodeVersion      string `json:"nodeVersion"`
+	NodeSHA256       string `json:"nodeSha256"`
+	Package          string `json:"package"`
+	PackageVersion   string `json:"packageVersion"`
+	PackageIntegrity string `json:"packageIntegrity"`
+	LaunchKind       string `json:"launchKind"`
+	InstallRoot      string `json:"installRoot"`
+	StoreRoot        string `json:"storeRoot"`
+	Entrypoint       string `json:"entrypoint"`
+	EntrypointSHA256 string `json:"entrypointSha256"`
+	EntrypointSize   int64  `json:"entrypointSizeBytes"`
+	LockSHA256       string `json:"lockSha256"`
+}
+
+type PreparedArtifactReceipt struct {
+	OperationID     string `json:"operationId"`
+	ConnectorKey    string `json:"connectorKey"`
+	Version         string `json:"version"`
+	ReleaseDigest   string `json:"releaseDigest"`
+	ArtifactSHA256  string `json:"artifactSha256"`
+	InventoryDigest string `json:"inventoryDigest"`
+	PreparedPath    string `json:"preparedPath"`
+}
+
+type RuntimeActivationReceipt struct {
+	OperationID   string `json:"operationId"`
+	ConnectorKey  string `json:"connectorKey"`
+	ReleaseDigest string `json:"releaseDigest"`
+	RuntimeID     string `json:"runtimeId,omitempty"`
+}
+
+// HostGeneration fences every MCP/CLI route and child process. BootEpoch
+// changes on daemon restart and Generation changes on reconcile or runtime
+// deactivation.
+type HostGeneration struct {
+	BootEpoch  string `json:"bootEpoch"`
+	Generation uint64 `json:"generation"`
+}
+
+type RuntimeReceipt struct {
+	OperationID   string         `json:"operationId"`
+	ConnectionID  string         `json:"connectionId"`
+	ConnectorKey  string         `json:"connectorKey"`
+	ReleaseDigest string         `json:"releaseDigest"`
+	Generation    HostGeneration `json:"generation"`
+	RouteIDs      []string       `json:"routeIds,omitempty"`
+}
+
+type AuthorizationSession struct {
+	OperationID      string `json:"operationId"`
+	ConnectorKey     string `json:"connectorKey"`
+	SessionID        string `json:"sessionId"`
+	AuthorizationURL string `json:"-"`
 }
 
 type Snapshot struct {
@@ -154,12 +351,6 @@ type ConnectorMutation struct {
 	ConnectorKey string `json:"connectorKey"`
 }
 
-type SetWorkspaceEnabledCommand struct {
-	ConnectorMutation
-	WorkspaceID string `json:"workspaceId"`
-	Enabled     bool   `json:"enabled"`
-}
-
 type MutationResult struct {
 	Connector *Connector `json:"connector,omitempty"`
 	Operation Operation  `json:"operation"`
@@ -171,10 +362,4 @@ type AuthorizationResult struct {
 	Operation        Operation `json:"operation"`
 	AuthorizationURL string    `json:"authorizationUrl,omitempty"`
 	Revision         uint64    `json:"revision"`
-}
-
-type WorkspaceBindingResult struct {
-	Connector Connector `json:"connector"`
-	Operation Operation `json:"operation"`
-	Revision  uint64    `json:"revision"`
 }

@@ -43,6 +43,8 @@ Use the focused runtime index or open one area directly:
   the durable transcript, and Claude Fork operations that fail because an empty
   query never creates a durable provider child. It also covers a Claude Query
   that keeps returning connection errors after the machine network recovers.
+  Also covers inactive Claude Resume timing out the queue send and leaving later
+  prompts stuck as 排队中 behind `uncertainDelivery`.
 - [Agent Approvals And Child Sessions](./agent-approvals-subagents.md): Approval gates, plan exits, root/parent/child event attribution, child sessions, and Message Center.
   Includes provider-native work that continues invisibly after root cancellation
   and late child creation racing the durable cancel boundary.

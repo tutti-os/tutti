@@ -580,6 +580,10 @@ Agent discovery and launch are target-first. `agent list --json` returns every
 enabled Agent Target in stable target order, including its exact agent id,
 display name, provider metadata, current runtime availability, and an explicit
 `defaultAgentTargetId` resolved from the current desktop preference. The
+JSON entry may also include `executablePath`, the host-resolved executable for
+that exact Agent Target. App-owned runtimes must treat it as opaque launch
+metadata instead of reconstructing paths or relying on their inherited `PATH`;
+older callers may ignore the optional field. The
 preference resolves to the exact built-in target id before considering another
 target that shares its provider, so a user-created agent cannot silently replace
 the desktop default. Preference-read failures use the built-in default instead

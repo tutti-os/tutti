@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
 	agenthost "github.com/tutti-os/tutti/packages/agent/host"
@@ -105,6 +106,12 @@ func (s *Service) UpdateSettings(ctx context.Context, workspaceID string, agentS
 	agentSessionID = strings.TrimSpace(agentSessionID)
 	if workspaceID == "" || agentSessionID == "" {
 		return Session{}, ErrInvalidArgument
+	}
+	// Saver mode installs process-start configuration and cannot be changed on
+	// an already-created Session. A new Session is required for the toggle to
+	// take effect.
+	if settings.CodexSaverMode != nil {
+		return Session{}, fmt.Errorf("%w: Codex saver mode requires a new session", ErrInvalidArgument)
 	}
 	release, err := s.acquireSessionSettingsLock(ctx, workspaceID, agentSessionID)
 	if err != nil {

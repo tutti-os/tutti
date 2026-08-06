@@ -1451,6 +1451,312 @@ test("WorkspaceAppCenterController clears pending install when backend job disap
   );
 });
 
+test("WorkspaceAppCenterController reports a pending install failure only through the install hook", async () => {
+  const installFailures: unknown[] = [];
+  const runtimeFailures: unknown[] = [];
+  const controller = createWorkspaceAppCenterController({
+    formatError,
+    gateway: createGateway({
+      async installWorkspaceApp() {
+        return createSnapshot({
+          apps: [
+            createApp({
+              appId: "app-1",
+              installed: false,
+              runtimeStatus: "installing",
+              stateRevision: 2
+            })
+          ]
+        });
+      }
+    }),
+    hooks: {
+      onAppInstallFailed(input) {
+        installFailures.push(input);
+      },
+      onAppRuntimeFailed(input) {
+        runtimeFailures.push(input);
+      }
+    },
+    refreshPolicy: "event"
+  });
+  controller.applySnapshot(
+    "workspace-1",
+    createSnapshot({
+      apps: [createApp({ appId: "app-1", installed: false })]
+    })
+  );
+  controller.beginWorkspacePolling("workspace-1");
+  await controller.installApp({ appId: "app-1", workspaceId: "workspace-1" });
+
+  controller.applyAppUpdate({
+    app: createApp({
+      appId: "app-1",
+      failurePhase: "downloading",
+      failureReason: "network interrupted",
+      installed: false,
+      runtimeStatus: "failed",
+      stateRevision: 3
+    }),
+    failureReason: "network interrupted",
+    operationCursor: {
+      desiredGeneration: 1,
+      operationId: "operation-install-failed",
+      sequence: 1
+    },
+    workspaceId: "workspace-1"
+  });
+
+  assert.equal(installFailures.length, 1);
+  assert.equal(runtimeFailures.length, 0);
+  controller.endWorkspacePolling("workspace-1");
+});
+
+test("WorkspaceAppCenterController reports a pending starting failure through the runtime hook", async () => {
+  const installedApps: unknown[] = [];
+  const installFailures: unknown[] = [];
+  const runtimeFailures: unknown[] = [];
+  const controller = createWorkspaceAppCenterController({
+    formatError,
+    gateway: createGateway({
+      async installWorkspaceApp() {
+        return createSnapshot({
+          apps: [
+            createApp({
+              appId: "app-1",
+              installed: false,
+              runtimeStatus: "installing",
+              stateRevision: 2
+            })
+          ]
+        });
+      }
+    }),
+    hooks: {
+      onAppInstalled(app) {
+        installedApps.push(app);
+      },
+      onAppInstallFailed(input) {
+        installFailures.push(input);
+      },
+      onAppRuntimeFailed(input) {
+        runtimeFailures.push(input);
+      }
+    },
+    refreshPolicy: "event"
+  });
+  controller.applySnapshot(
+    "workspace-1",
+    createSnapshot({
+      apps: [createApp({ appId: "app-1", installed: false })]
+    })
+  );
+  controller.beginWorkspacePolling("workspace-1");
+  await controller.installApp({ appId: "app-1", workspaceId: "workspace-1" });
+
+  controller.applyAppUpdate({
+    app: createApp({
+      appId: "app-1",
+      failurePhase: "starting",
+      failureReason: "health check failed",
+      installed: true,
+      runtimeStatus: "failed",
+      stateRevision: 3
+    }),
+    failureReason: "health check failed",
+    operationCursor: {
+      desiredGeneration: 1,
+      operationId: "operation-start-failed",
+      sequence: 1
+    },
+    workspaceId: "workspace-1"
+  });
+
+  assert.equal(installedApps.length, 1);
+  assert.equal(installFailures.length, 0);
+  assert.equal(runtimeFailures.length, 1);
+  controller.endWorkspacePolling("workspace-1");
+});
+
+test("WorkspaceAppCenterController reports a legacy pending installed failure through the runtime hook", async () => {
+  const installedApps: unknown[] = [];
+  const installFailures: unknown[] = [];
+  const runtimeFailures: unknown[] = [];
+  const controller = createWorkspaceAppCenterController({
+    formatError,
+    gateway: createGateway({
+      async installWorkspaceApp() {
+        return createSnapshot({
+          apps: [
+            createApp({
+              appId: "app-1",
+              installed: false,
+              runtimeStatus: "installing",
+              stateRevision: 2
+            })
+          ]
+        });
+      }
+    }),
+    hooks: {
+      onAppInstalled(app) {
+        installedApps.push(app);
+      },
+      onAppInstallFailed(input) {
+        installFailures.push(input);
+      },
+      onAppRuntimeFailed(input) {
+        runtimeFailures.push(input);
+      }
+    },
+    refreshPolicy: "event"
+  });
+  controller.applySnapshot(
+    "workspace-1",
+    createSnapshot({
+      apps: [createApp({ appId: "app-1", installed: false })]
+    })
+  );
+  controller.beginWorkspacePolling("workspace-1");
+  await controller.installApp({ appId: "app-1", workspaceId: "workspace-1" });
+
+  controller.applyAppUpdate({
+    app: createApp({
+      appId: "app-1",
+      failureReason: "legacy startup failed",
+      installed: true,
+      runtimeStatus: "failed",
+      stateRevision: 3
+    }),
+    failureReason: "legacy startup failed",
+    operationCursor: {
+      desiredGeneration: 1,
+      operationId: "operation-legacy-start-failed",
+      sequence: 1
+    },
+    workspaceId: "workspace-1"
+  });
+
+  assert.equal(installedApps.length, 1);
+  assert.equal(installFailures.length, 0);
+  assert.equal(runtimeFailures.length, 1);
+  controller.endWorkspacePolling("workspace-1");
+});
+
+test("WorkspaceAppCenterController classifies an external installing failure as an install failure", () => {
+  const installFailures: unknown[] = [];
+  const runtimeFailures: unknown[] = [];
+  const controller = createWorkspaceAppCenterController({
+    formatError,
+    gateway: createGateway(),
+    hooks: {
+      onAppInstallFailed(input) {
+        installFailures.push(input);
+      },
+      onAppRuntimeFailed(input) {
+        runtimeFailures.push(input);
+      }
+    },
+    refreshPolicy: "event"
+  });
+  controller.applySnapshot(
+    "workspace-1",
+    createSnapshot({
+      apps: [createApp({ appId: "app-1", installed: false })]
+    })
+  );
+  controller.beginWorkspacePolling("workspace-1");
+
+  controller.applyAppUpdate({
+    app: createApp({
+      appId: "app-1",
+      failurePhase: "installing",
+      failureReason: "archive verification failed",
+      installed: false,
+      runtimeStatus: "failed",
+      stateRevision: 2
+    }),
+    failureReason: "archive verification failed",
+    operationCursor: {
+      desiredGeneration: 1,
+      operationId: "operation-external-install-failed",
+      sequence: 1
+    },
+    workspaceId: "workspace-1"
+  });
+
+  assert.equal(installFailures.length, 1);
+  assert.equal(runtimeFailures.length, 0);
+  controller.endWorkspacePolling("workspace-1");
+});
+
+test("WorkspaceAppCenterController reports an installed update artifact failure as install failure", async () => {
+  const installedApps: unknown[] = [];
+  const installFailures: unknown[] = [];
+  const controller = createWorkspaceAppCenterController({
+    formatError,
+    gateway: createGateway({
+      async installWorkspaceApp() {
+        return createSnapshot({
+          apps: [
+            createApp({
+              appId: "app-1",
+              installed: true,
+              runtimeStatus: "installing",
+              stateRevision: 2,
+              updateAvailable: false
+            })
+          ]
+        });
+      }
+    }),
+    hooks: {
+      onAppInstalled(app) {
+        installedApps.push(app);
+      },
+      onAppInstallFailed(input) {
+        installFailures.push(input);
+      }
+    },
+    refreshPolicy: "event"
+  });
+  controller.applySnapshot(
+    "workspace-1",
+    createSnapshot({
+      apps: [createApp({ appId: "app-1", updateAvailable: true })]
+    })
+  );
+  controller.beginWorkspacePolling("workspace-1");
+  await controller.updateApp({
+    appId: "app-1",
+    trigger: "primary_action",
+    workspaceId: "workspace-1"
+  });
+
+  controller.applyAppUpdate({
+    app: createApp({
+      appId: "app-1",
+      failurePhase: "downloading",
+      failureReason: "download exhausted retries",
+      installed: true,
+      runtimeStatus: "failed",
+      stateRevision: 3,
+      updateAvailable: false
+    }),
+    failureReason: "download exhausted retries",
+    operationCursor: {
+      desiredGeneration: 1,
+      operationId: "operation-update-download-failed",
+      sequence: 1
+    },
+    workspaceId: "workspace-1"
+  });
+
+  assert.equal(installedApps.length, 0);
+  assert.equal(installFailures.length, 1);
+  controller.endWorkspacePolling("workspace-1");
+});
+
 test("WorkspaceAppCenterController preserves pending install progress across catalog refresh", async () => {
   const controller = createWorkspaceAppCenterController({
     formatError: formatError,

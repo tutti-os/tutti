@@ -7,5 +7,8 @@ export const enAgentGuiSlashPalette = {
   slashPaletteSkillsGroup: "Skills",
   slashPalettePluginsGroup: "Plugins",
   slashPaletteConnectorsGroup: "Connectors",
+  slashPaletteConnectorConnected: "Connected",
+  slashPaletteConnectorNotConnected: "Not connected",
+  slashPaletteConnectorUnsupported: "Unsupported",
   slashPaletteMcpGroup: "MCP"
 } as const;

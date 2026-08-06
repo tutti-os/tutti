@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  ConnectorMarketClientError,
   createTuttidClient,
   createClient,
   getTuttidErrorI18nCandidates,
@@ -2286,4 +2287,135 @@ test("getTuttidErrorI18nCandidates prefers reason-specific keys", () => {
     "errors.workspace_not_found.default",
     "errors.workspace_not_found"
   ]);
+});
+
+test("shared tuttid client preserves connector market read and install routes", async () => {
+  const snapshot = {
+    catalogState: "ready" as const,
+    connectors: [],
+    operations: [],
+    revision: 7,
+    sourceRevision: "sha256:catalog"
+  };
+  const mutation = {
+    operation: {
+      operationId: "operation-1",
+      clientRequestId: "request-1",
+      connectorKey: "notion",
+      kind: "install" as const,
+      state: "accepted" as const,
+      attempt: 0,
+      createdAt: "2026-08-03T00:00:00Z",
+      updatedAt: "2026-08-03T00:00:00Z"
+    },
+    revision: 8
+  };
+  const { client, requests } = captureClient((request) =>
+    jsonResponse(
+      request.method === "GET" ? snapshot : mutation,
+      request.method === "GET" ? 200 : 202
+    )
+  );
+
+  assert.deepEqual(await client.getConnectorMarket(), snapshot);
+  assert.deepEqual(
+    await client.installConnectorMarketConnector("notion", {
+      clientRequestId: "request-1",
+      expectedRevision: 7
+    }),
+    mutation
+  );
+  assertRequest(requests[0]!, {
+    authorization: null,
+    body: null,
+    method: "GET",
+    path: "/v1/connector-market",
+    query: {}
+  });
+  assertRequest(requests[1]!, {
+    authorization: null,
+    body: {
+      clientRequestId: "request-1",
+      expectedRevision: 7
+    },
+    method: "POST",
+    path: "/v1/connector-market/connectors/notion:install",
+    query: {}
+  });
+});
+
+test("shared tuttid connector client preserves structured market errors", async () => {
+  const details = {
+    code: "connector_market_revision_conflict" as const,
+    message: "connector market revision changed",
+    retryable: true,
+    revision: 12
+  };
+  const { client } = captureClient(jsonResponse(details, 409));
+
+  await assert.rejects(
+    client.installConnectorMarketConnector("notion", {
+      clientRequestId: "request-1",
+      expectedRevision: 11
+    }),
+    (error: unknown) => {
+      assert.ok(error instanceof ConnectorMarketClientError);
+      assert.equal(error.code, details.code);
+      assert.equal(error.retryable, true);
+      assert.equal(error.revision, 12);
+      assert.equal(error.statusCode, 409);
+      assert.deepEqual(error.details, details);
+      return true;
+    }
+  );
+});
+
+test("shared tuttid connector client preserves category and cursor pagination", async () => {
+  const categories = {
+    categories: [
+      {
+        categoryId: "development",
+        kind: "category" as const,
+        sortOrder: 20,
+        itemCount: 1
+      }
+    ]
+  };
+  const page = {
+    sectionId: "development",
+    items: [],
+    nextPageToken: "next-page",
+    revision: 8
+  };
+  const { client, requests } = captureClient((request) =>
+    jsonResponse(request.path.endsWith("/categories") ? categories : page)
+  );
+
+  assert.deepEqual(await client.listConnectorMarketCategories(), categories);
+  assert.deepEqual(
+    await client.listConnectorMarketCatalog({
+      sectionId: "development",
+      pageSize: 20,
+      pageToken: "cursor-1"
+    }),
+    page
+  );
+  assertRequest(requests[0]!, {
+    authorization: null,
+    body: null,
+    method: "GET",
+    path: "/v1/connector-market/categories",
+    query: {}
+  });
+  assertRequest(requests[1]!, {
+    authorization: null,
+    body: null,
+    method: "GET",
+    path: "/v1/connector-market/catalog",
+    query: {
+      pageSize: "20",
+      pageToken: "cursor-1",
+      sectionId: "development"
+    }
+  });
 });

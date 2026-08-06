@@ -18,3 +18,8 @@ export {
   type ReferenceProvenanceFilterControlProps,
   type ReferenceProvenanceFilterLabels
 } from "./internal/reference/ReferenceProvenanceFilterControl.tsx";
+export {
+  WorkspaceReferenceAddControl,
+  type WorkspaceReferenceAddControlLabels,
+  type WorkspaceReferenceAddControlProps
+} from "./internal/reference/WorkspaceReferenceAddControl.tsx";

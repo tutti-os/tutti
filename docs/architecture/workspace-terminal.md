@@ -707,8 +707,10 @@ These are deliberate boundaries for the current implementation:
 
 - renderer selection uses xterm's default renderer; dormant TSH WebGL and pixel
   snapping code stays out of V1
-- Windows ConPTY-specific behavior is deferred until Tutti needs local Windows
-  terminal support
+- local Windows terminals use the daemon-owned `TerminalProcessFactory`
+  boundary and its ConPTY implementation; terminal services and shared UI must
+  not import ConPTY-specific behavior (see
+  [Windows Platform Support](./windows-platform-support.md))
 - file link detection is shared, but cwd resolution, VM/local path mapping, and
   open policy stay in host adapters
 - drag/drop is a shared UI event hook only; each host decides accepted payloads,

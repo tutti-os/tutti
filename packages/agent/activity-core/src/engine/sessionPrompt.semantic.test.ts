@@ -89,14 +89,14 @@ test("semantic prompt submission owns scope, confirmation window, and send proje
         source: "test",
         submittedAtUnixMs: 100
       },
-      timeoutMs: 30_000,
+      timeoutMs: 90_000,
       type: "queue/sendPrompt",
       workspaceId: "workspace-1"
     }
   ]);
   assert.deepEqual(
     harness.scheduled.map((task) => task.delayMs),
-    [120_000, 30_000]
+    [120_000, 90_000]
   );
 });
 

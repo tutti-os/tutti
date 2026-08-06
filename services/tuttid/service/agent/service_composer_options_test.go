@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/tutti-os/tutti/packages/agent/daemon/providerregistry"
+	market "github.com/tutti-os/tutti/packages/connector/market/daemon"
 	agenttargetbiz "github.com/tutti-os/tutti/services/tuttid/biz/agenttarget"
 )
 
@@ -351,6 +352,37 @@ func TestServiceGetComposerOptionsIncludesCapabilityCatalogByDefault(t *testing.
 	}
 	if len(options.CapabilityCatalog) != 1 || options.CapabilityCatalog[0].ID != "connector:github" {
 		t.Fatalf("capability catalog = %#v", options.CapabilityCatalog)
+	}
+}
+
+func TestServiceGetComposerOptionsUsesLocalInstalledConnectorCatalog(t *testing.T) {
+	runtime := newFakeRuntime()
+	lister := &recordingComposerCapabilityLister{}
+	service := newIsolatedAgentService(runtime)
+	service.CapabilityLister = lister
+	service.InstalledConnectorSnapshots = installedConnectorSnapshotStub{
+		snapshot: market.Snapshot{Connectors: []market.Connector{
+			localConnectorFixture(
+				"notion",
+				market.InstallationStateInstalled,
+				market.AuthorizationStateDisconnected,
+				market.CompatibilityStateSupported,
+			),
+		}},
+	}
+
+	options, err := service.GetComposerOptions(context.Background(), ComposerOptionsInput{
+		Provider: "codex",
+	})
+	if err != nil {
+		t.Fatalf("GetComposerOptions returned error: %v", err)
+	}
+	if len(options.CapabilityCatalog) != 1 {
+		t.Fatalf("capability catalog = %#v, want only local DB connector", options.CapabilityCatalog)
+	}
+	connector := options.CapabilityCatalog[0]
+	if connector.ID != "connector:notion" || connector.Source != "local-db" || connector.Status != "authRequired" {
+		t.Fatalf("connector = %#v", connector)
 	}
 }
 

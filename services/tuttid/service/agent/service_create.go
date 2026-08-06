@@ -37,6 +37,12 @@ func (s *Service) CreateWithResult(ctx context.Context, workspaceID string, inpu
 	}
 	input.Provider = provider
 	input.ProviderTargetRef = launch.ProviderTargetRef
+	if valueBool(input.CodexSaverMode) && (!input.CodexSaverModeAllowed || !composerProviderSupportsSaverSubagentMode(provider)) {
+		return CreateSessionResult{}, fmt.Errorf("%w: Codex saver mode is unavailable", ErrInvalidArgument)
+	}
+	if !input.CodexSaverModeAllowed || !composerProviderSupportsSaverSubagentMode(provider) {
+		input.CodexSaverMode = nil
+	}
 	permissionModeExplicit := strings.TrimSpace(value(input.PermissionModeID)) != ""
 	if err := s.applyCreateSessionComposerDefaults(ctx, &input); err != nil {
 		return CreateSessionResult{}, err
@@ -168,6 +174,7 @@ func (s *Service) CreateWithResult(ctx context.Context, workspaceID string, inpu
 	logAgentSubmitTrace("service.create.runtime_prepared", workspaceID, input.AgentSessionID, input.ClientSubmitID, input.Metadata, map[string]any{"cwd": prepared.Cwd, "env_count": len(prepared.Env)})
 	ctx = withServicePreparedRuntime(ctx, s, prepared)
 	runtimeSettings := ComposerSettings{
+		CodexSaverMode:   valueBool(input.CodexSaverMode),
 		Model:            clampComposerModelForLaunch(provider, input.ProviderTargetRef, value(input.Model)),
 		PermissionModeID: value(input.PermissionModeID),
 		PlanMode:         clampComposerPlanModeForLaunch(provider, input.ProviderTargetRef, valueBool(input.PlanMode)),
@@ -184,7 +191,7 @@ func (s *Service) CreateWithResult(ctx context.Context, workspaceID string, inpu
 		PermissionModeID: input.PermissionModeID,
 		Model:            stringPointer(runtimeSettings.Model),
 		PlanMode:         boolPointer(runtimeSettings.PlanMode),
-		BrowserUse:       input.BrowserUse, ComputerUse: input.ComputerUse,
+		BrowserUse:       input.BrowserUse, ComputerUse: input.ComputerUse, CodexSaverMode: input.CodexSaverMode,
 		ProviderTargetRef:      input.ProviderTargetRef,
 		ReasoningEffort:        stringPointer(runtimeSettings.ReasoningEffort),
 		RuntimeContext:         stampAgentExtensionComposerScope(input.RuntimeContext, input.ProviderTargetRef, cwd, runtimeSettings),
@@ -310,6 +317,9 @@ func (s *Service) applyCreateSessionComposerDefaults(ctx context.Context, input 
 	}
 	if input.Speed == nil && strings.TrimSpace(defaults.Speed) != "" {
 		input.Speed = stringPointer(defaults.Speed)
+	}
+	if input.CodexSaverMode == nil && input.CodexSaverModeAllowed && composerProviderSupportsSaverSubagentMode(input.Provider) {
+		input.CodexSaverMode = boolPointer(defaults.CodexSaverMode)
 	}
 	return nil
 }
@@ -438,7 +448,7 @@ func (s *Service) prepareRuntimeWithModelEndpoint(
 	gatewayRegistered := false
 	if agentprovider.ModelPlanUsesResponsesToChatGateway(provider) && modelEndpointUsesOpenAIProtocol(planEndpoint) {
 		if s.ModelGateway == nil {
-			return preparedRuntime{}, errors.New("codex model-plan gateway is unavailable")
+			return preparedRuntime{}, fmt.Errorf("model-plan gateway is unavailable for provider %q", provider)
 		}
 		models := make([]string, 0, len(planEndpoint.Models)+1)
 		for _, model := range planEndpoint.Models {
@@ -460,7 +470,7 @@ func (s *Service) prepareRuntimeWithModelEndpoint(
 			Models:         models,
 		})
 		if err != nil {
-			return preparedRuntime{}, fmt.Errorf("register Codex model gateway route: %w", err)
+			return preparedRuntime{}, fmt.Errorf("register model-plan gateway route for provider %q: %w", provider, err)
 		}
 		endpointCopy := *planEndpoint
 		endpointCopy.BaseURL = clientEndpoint.BaseURL
@@ -481,6 +491,7 @@ func (s *Service) prepareRuntimeWithModelEndpoint(
 		PlanMode:                  clampComposerPlanModeForLaunch(provider, input.ProviderTargetRef, valueBool(input.PlanMode)),
 		BrowserUse:                s.clampComposerBrowserUseForLaunch(ctx, provider, input.ProviderTargetRef, input.BrowserUse),
 		ComputerUse:               s.clampComposerComputerUseForLaunch(ctx, provider, input.ProviderTargetRef, input.ComputerUse),
+		CodexSaverMode:            valueBool(input.CodexSaverMode),
 		ProviderTargetRef:         clonePayload(input.ProviderTargetRef),
 		ExtensionSkillRoots:       s.resolveExtensionSkillRoots(ctx, input.ProviderTargetRef),
 		ExtensionRuntimePrep:      s.resolveExtensionRuntimePrep(ctx, input.ProviderTargetRef),

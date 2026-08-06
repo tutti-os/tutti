@@ -35,6 +35,9 @@ export function normalizeQueuedPrompt(
     ...(prompt.submitDiagnostics
       ? { submitDiagnostics: { ...prompt.submitDiagnostics } }
       : {}),
+    ...(prompt.targetTurnId?.trim()
+      ? { targetTurnId: prompt.targetTurnId.trim() }
+      : {}),
     ...(prompt.runtimeContent
       ? { runtimeContent: prompt.runtimeContent.map((block) => ({ ...block })) }
       : {}),

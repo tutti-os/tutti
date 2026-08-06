@@ -22,18 +22,20 @@ export function AgentEditContent({
     stringValue(call.input?.file_path) ??
     stringValue(call.input?.filePath) ??
     null;
-  const patchFiles = files.filter((candidate) => candidate.unifiedDiff);
+  const patchFiles = files.filter(
+    (candidate) => candidate.unifiedDiff !== null
+  );
   const diffFiles = files.filter(
     (candidate) =>
-      !candidate.unifiedDiff &&
+      candidate.unifiedDiff === null &&
       candidate.oldString !== null &&
       candidate.newString !== null
   );
   const contentFiles = files.filter(
     (candidate) =>
-      !candidate.unifiedDiff &&
+      candidate.unifiedDiff === null &&
       !(candidate.oldString !== null && candidate.newString !== null) &&
-      candidate.content
+      candidate.content !== null
   );
   const hasRenderableContent =
     Boolean(path && files.length === 0) ||

@@ -6,9 +6,13 @@ import { zhCNAgentGuiRuntimeNotices } from "./zh-CN.agentGuiRuntimeNotices.ts";
 import { zhCNAgentGuiSlashPalette } from "./zh-CN.agentGuiSlashPalette.ts";
 import { zhCNAgentGuiSessionActions } from "./zh-CN.agentGuiSessionActions.ts";
 import { zhCNAgentGuiCollaboration } from "./zh-CN.agentGuiCollaboration.ts";
+import { zhCNAgentGuiProcessing } from "./zh-CN.agentGuiProcessing.ts";
 import { zhCNTuttiModePlan } from "./zh-CN.tuttiModePlan.ts";
 
 export const zhCNAgentGui = {
+  codexSaverModeLabel: "Codex 省额度模式",
+  codexSaverModeDescription:
+    "主模型保持不变；合适的独立子任务改用 Luna Max，按当前额度口径约为 Sol High 的 1/10。实际效果与速度因任务而异。",
   initialPlaceholder: "输入 @ 引用会话、文件、任务和应用",
   followupPlaceholder: "要求 {{provider}} 继续后续变更",
   installRequiredPlaceholder: "请先连接 {{provider}}，然后再发送消息",
@@ -267,7 +271,6 @@ export const zhCNAgentGui = {
   tuttiBudgetTitle: "Tutti 偏好",
   tuttiBudgetEffectLabel: "效果",
   tuttiBudgetSpeedLabel: "速度",
-  tuttiBudgetPreviewTitle: "预期行为",
   tuttiBudgetPreviewHint: "实际并行数量取决于任务依赖",
   tuttiBudgetPreviewCost: "经济型",
   tuttiBudgetPreviewBalance: "均衡型",
@@ -276,7 +279,6 @@ export const zhCNAgentGui = {
   tuttiBudgetModelPreferenceCost: "经济模型",
   tuttiBudgetModelPreferenceBalance: "均衡模型",
   tuttiBudgetModelPreferencePowerful: "最强模型",
-  tuttiBudgetModelPreferenceFastestSuitable: "最快合适",
   tuttiBudgetParallelismLabel: "并行目标",
   tuttiBudgetParallelismValue: "最多 {{count}} 个 Agent",
   tuttiBudgetParallelismValue_one: "{{count}} 个 Agent",
@@ -469,6 +471,19 @@ export const zhCNAgentGui = {
   searchNoConversations: "暂无相关会话",
   searchFailed: "无法搜索会话",
   retrySearch: "重试搜索",
+  activityPriority: "优先处理",
+  activityNothingNeedsAttention: "暂无需要你关注的会话",
+  activityToday: "今天",
+  activityYesterday: "昨天",
+  activityLocalSource: "本地",
+  activityStatusFailed: "执行失败",
+  activityStatusRecentlyActive: "最近活跃",
+  activityStatusUnread: "有未读结果",
+  activityStatusWaiting: "等待你处理",
+  activityStatusWorking: "正在运行",
+  viewActivity: "查看活动",
+  viewActivityNeedsAttention: "查看活动，有会话需要关注",
+  turnOffActivityView: "关闭活动视图",
   conversationUnavailable: "会话不可用。",
   contextPickerBrowseHint: "根据你输入的内容搜索工作区文件",
   contextPickerBrowseFileHint:
@@ -555,17 +570,7 @@ export const zhCNAgentGui = {
   goalResumeAction: "继续目标",
   goalClearAction: "删除目标",
   goalRemoved: "目标已移除",
-  processing: "正在规划下一步",
-  processingPreparing: "正在准备",
-  processingSubmitting: "正在提交",
-  processingWaitingResponse: "等待响应",
-  processingThinking: "正在思考",
-  processingGenerating: "正在生成回答",
-  processingUsingTool: "正在使用工具",
-  processingWaitingTool: "等待工具结果",
-  processingReconnecting: "正在重连",
-  processingWaitingContinuation: "等待继续响应",
-  processingElapsedSeconds: "{{seconds}} 秒",
+  ...zhCNAgentGuiProcessing,
   turnProcessedSeconds: "已处理 {{seconds}} 秒",
   turnProcessedMinutes: "已处理 {{minutes}} 分钟",
   turnProcessedMinutesSeconds: "已处理 {{minutes}} 分 {{seconds}} 秒",

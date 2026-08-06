@@ -167,6 +167,8 @@ func TestClaudeSDKCancelLiveTurnWaitsForProviderTerminal(t *testing.T) {
 	// The live turn is identified by the adapter's own registry, not by the
 	// Cancel argument (which is the cancel reason). Register a live turn and pass
 	// an unrelated reason to prove the terminal is stamped for the real turnID.
+	adapter.beginClaudeSDKRootTurn(adapterSession, "turn-live", "")
+	adapter.signalClaudeSDKProviderTurnAccepted(adapterSession)
 	adapter.registerClaudeSDKTurn(adapterSession, "turn-live", nil)
 
 	events, err := adapter.Cancel(context.Background(), session, "user")
@@ -179,6 +181,9 @@ func TestClaudeSDKCancelLiveTurnWaitsForProviderTerminal(t *testing.T) {
 	sent := conn.sentRequests()
 	if len(sent) != 1 || sent[0].Type != "cancel" {
 		t.Fatalf("sent requests = %#v, want one cancel", sent)
+	}
+	if payloadString(sent[0].Payload, "turnId") != "turn-live" {
+		t.Fatalf("cancel payload = %#v, want turnId=turn-live", sent[0].Payload)
 	}
 }
 
@@ -193,6 +198,8 @@ func TestClaudeSDKCancelUsesRegistryTurnNotReasonArg(t *testing.T) {
 	conn := &ackClaudeSDKConnection{}
 	session, adapterSession := newClaudeSDKLifecycleTestSession(t, adapter, conn)
 
+	adapter.beginClaudeSDKRootTurn(adapterSession, "turn-live", "")
+	adapter.signalClaudeSDKProviderTurnAccepted(adapterSession)
 	adapter.registerClaudeSDKTurn(adapterSession, "turn-live", nil)
 
 	// Reason is the free-form stop reason the controller passes, not a turnID.
@@ -214,6 +221,74 @@ func TestClaudeSDKCancelUsesRegistryTurnNotReasonArg(t *testing.T) {
 	if adapter.claudeSDKTurnWaiter(adapterSession, "turn-live") == nil {
 		t.Fatal("Cancel removed the live turn waiter; the sidecar settle would be dropped")
 	}
+	if payloadString(conn.sentRequests()[0].Payload, "turnId") != "turn-live" {
+		t.Fatalf("cancel payload = %#v, want registry turnId", conn.sentRequests()[0].Payload)
+	}
+}
+
+func TestClaudeSDKCancelWaitsForDurableProviderAcceptance(t *testing.T) {
+	t.Parallel()
+
+	adapter := NewClaudeCodeSDKAdapter(nil)
+	conn := &ackClaudeSDKConnection{}
+	session, adapterSession := newClaudeSDKLifecycleTestSession(t, adapter, conn)
+	adapter.beginClaudeSDKRootTurn(adapterSession, "turn-accept", "")
+	adapter.registerClaudeSDKTurn(adapterSession, "turn-accept", nil)
+
+	started := make(chan struct{})
+	done := make(chan error, 1)
+	go func() {
+		close(started)
+		_, err := adapter.Cancel(context.Background(), session, "user")
+		done <- err
+	}()
+	<-started
+	select {
+	case err := <-done:
+		t.Fatalf("Cancel returned before durable acceptance: %v", err)
+	case <-time.After(50 * time.Millisecond):
+	}
+	adapter.signalClaudeSDKProviderTurnAccepted(adapterSession)
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("Cancel after acceptance: %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("Cancel did not resume after durable acceptance")
+	}
+	sent := conn.sentRequests()
+	if len(sent) != 1 || sent[0].Type != "cancel" ||
+		payloadString(sent[0].Payload, "turnId") != "turn-accept" {
+		t.Fatalf("cancel after acceptance = %#v", sent)
+	}
+}
+
+func TestClaudeSDKCancelTargetsPassesExactTurnID(t *testing.T) {
+	t.Parallel()
+
+	adapter := NewClaudeCodeSDKAdapter(nil)
+	conn := &ackClaudeSDKConnection{}
+	session, adapterSession := newClaudeSDKLifecycleTestSession(t, adapter, conn)
+	adapter.beginClaudeSDKRootTurn(adapterSession, "turn-exact", "")
+	adapter.signalClaudeSDKProviderTurnAccepted(adapterSession)
+	adapter.registerClaudeSDKTurn(adapterSession, "turn-exact", nil)
+
+	result, err := adapter.CancelTargets(context.Background(), session, []CancelTarget{{
+		AgentSessionID: session.AgentSessionID,
+		TurnID:         "turn-exact",
+	}}, "user")
+	if err != nil {
+		t.Fatalf("CancelTargets: %v", err)
+	}
+	if len(result.ConfirmedTargets) != 1 {
+		t.Fatalf("confirmed = %#v", result.ConfirmedTargets)
+	}
+	sent := conn.sentRequests()
+	if len(sent) != 1 || sent[0].Type != "cancel" ||
+		payloadString(sent[0].Payload, "turnId") != "turn-exact" {
+		t.Fatalf("cancel payload = %#v, want exact turnId", sent)
+	}
 }
 
 // A cancel racing the turn's own settle must not fabricate a second,
@@ -225,6 +300,8 @@ func TestClaudeSDKCancelAfterSettleIsIdempotent(t *testing.T) {
 	conn := &ackClaudeSDKConnection{}
 	session, adapterSession := newClaudeSDKLifecycleTestSession(t, adapter, conn)
 
+	adapter.beginClaudeSDKRootTurn(adapterSession, "turn-1", "provider-turn-1")
+	adapter.signalClaudeSDKProviderTurnAccepted(adapterSession)
 	adapter.registerClaudeSDKTurn(adapterSession, "turn-1", nil)
 	_ = adapter.dispatchClaudeSDKEvent(session.AgentSessionID, adapterSession, claudeSDKSidecarEvent{
 		Type:    "turn_completed",
@@ -641,6 +718,44 @@ func TestClaudeSDKGoalCompletesOnlyFromProviderGoalObservation(t *testing.T) {
 	goal := adapter.localGoal(adapterSession)
 	if goal["status"] != "complete" || goal["iterations"] != int64(3) || goal["durationMs"] != int64(16_386) || goal["tokens"] != int64(1_479) || goal["reason"] != "all steps finished" {
 		t.Fatalf("goal_status completion mirror = %#v", goal)
+	}
+
+	adapter.applyLocalGoal(adapterSession, map[string]any{
+		"objective": "ship it", "status": "active", "startedAtUnixMs": int64(100),
+	})
+	updates, terminal, err = adapter.sidecarTurnEvents(adapterSession, session, "turn-goal", claudeSDKSidecarEvent{
+		Type: "goal_observed",
+		Payload: map[string]any{
+			"turnId": "turn-goal", "source": "goal_status", "updateType": "thread_goal_update",
+			"goal": map[string]any{"objective": "ship it", "status": "blocked"},
+		},
+	})
+	if err != nil || terminal {
+		t.Fatalf("blocked goal terminal=%v err=%v", terminal, err)
+	}
+	assertClaudeSDKGoalUpdateEvent(t, updates, "thread_goal_update")
+	goal = adapter.localGoal(adapterSession)
+	if goal["status"] != "blocked" || goal["startedAtUnixMs"] != int64(100) {
+		t.Fatalf("blocked goal mirror = %#v", goal)
+	}
+}
+
+func TestNormalizeClaudeGoalTimingPreservesGenerationStartAndTerminalDuration(t *testing.T) {
+	active := normalizeClaudeGoalTiming(
+		map[string]any{"objective": "ship it", "status": "active"},
+		map[string]any{"objective": "ship it", "status": "active", "startedAtUnixMs": int64(20)},
+		30,
+	)
+	if active["startedAtUnixMs"] != int64(20) {
+		t.Fatalf("active Goal timing = %#v", active)
+	}
+	blocked := normalizeClaudeGoalTiming(
+		map[string]any{"objective": "ship it", "status": "blocked"},
+		active,
+		50,
+	)
+	if blocked["startedAtUnixMs"] != int64(20) || blocked["durationMs"] != int64(30) {
+		t.Fatalf("blocked Goal timing = %#v", blocked)
 	}
 }
 

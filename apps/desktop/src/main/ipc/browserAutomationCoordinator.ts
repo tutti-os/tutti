@@ -11,6 +11,7 @@ import {
 } from "../../shared/contracts/ipc.ts";
 
 const requestTimeoutMs = 10_000;
+const maximumRevealedAgentTurns = 256;
 
 interface PendingRequest {
   reject(error: Error): void;
@@ -55,6 +56,7 @@ export function createDesktopBrowserAutomationCoordinator(
   const readyHostIds = new Map<string, Set<number>>();
   const readyWaiters = new Map<string, Set<() => void>>();
   const targetOwnerIds = new Map<string, number>();
+  const revealedAgentTurns = new Map<string, true>();
 
   const handleHostReady = (
     event: IpcMainEvent,
@@ -105,7 +107,10 @@ export function createDesktopBrowserAutomationCoordinator(
         targetKey(request.request.workspaceId, request.request.nodeId)
       );
     }
-    if (request.request.action === "create") {
+    if (
+      request.request.action === "create" &&
+      request.request.reveal !== false
+    ) {
       runtime.activateHost(event.sender);
     }
     request.resolve(response.nodeId);
@@ -220,6 +225,7 @@ export function createDesktopBrowserAutomationCoordinator(
       await send({
         action: "close",
         agentSessionId: target.agentSessionId ?? null,
+        agentTurnId: null,
         nodeId: target.nodeId,
         surfaceRole: target.surfaceRole,
         url: null,
@@ -246,21 +252,28 @@ export function createDesktopBrowserAutomationCoordinator(
       }
       readyWaiters.clear();
       targetOwnerIds.clear();
+      revealedAgentTurns.clear();
     },
     requestTarget(input) {
-      return send({
+      const request = {
         action: "create",
         agentSessionId: input.agentSessionId,
+        agentTurnId: input.agentTurnId,
         nodeId: input.requestedPageId ?? null,
         surfaceRole: "user",
         url: input.url ?? null,
         workspaceId: input.workspaceId
+      } satisfies Omit<DesktopBrowserAutomationRequest, "requestId">;
+      return send({
+        ...request,
+        reveal: shouldRevealBrowserHost(request, revealedAgentTurns)
       });
     },
     async selectTarget(target) {
       await send({
         action: "select",
         agentSessionId: target.agentSessionId ?? null,
+        agentTurnId: null,
         nodeId: target.nodeId,
         surfaceRole: target.surfaceRole,
         url: null,
@@ -268,6 +281,30 @@ export function createDesktopBrowserAutomationCoordinator(
       });
     }
   };
+}
+
+function shouldRevealBrowserHost(
+  request: Omit<DesktopBrowserAutomationRequest, "requestId">,
+  revealedAgentTurns: Map<string, true>
+): boolean {
+  const agentSessionId = request.agentSessionId?.trim() ?? "";
+  const agentTurnId = request.agentTurnId?.trim() ?? "";
+  if (!agentSessionId || !agentTurnId) {
+    return true;
+  }
+
+  const key = `${request.workspaceId}\u0000${agentSessionId}\u0000${agentTurnId}`;
+  if (revealedAgentTurns.has(key)) {
+    return false;
+  }
+  revealedAgentTurns.set(key, true);
+  if (revealedAgentTurns.size > maximumRevealedAgentTurns) {
+    const oldestKey = revealedAgentTurns.keys().next().value;
+    if (oldestKey !== undefined) {
+      revealedAgentTurns.delete(oldestKey);
+    }
+  }
+  return true;
 }
 
 function hostKey(workspaceId: string, surfaceRole: "agent" | "user"): string {

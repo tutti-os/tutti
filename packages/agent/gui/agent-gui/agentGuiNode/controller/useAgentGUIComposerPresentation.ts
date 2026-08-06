@@ -49,6 +49,7 @@ interface UseAgentGUIComposerPresentationInput {
   composerSupport: ReturnType<typeof composerSettingsSupportFromOptions>;
   composerOptionsLoading: boolean;
   composerTargetProvider: AgentGUIProvider;
+  codexSaverModeEntryEnabled?: boolean;
   data: AgentGUINodeData;
   defaultReasoningEffort: AgentSessionReasoningEffort | null;
   draftSettingsBySessionId: Record<string, AgentSessionComposerSettings>;
@@ -185,6 +186,9 @@ export function useAgentGUIComposerPresentation(
       normalizePermissionModeId(permissionConfig?.defaultValue);
     const protectedSettings = overlayComposerDefaults(
       {
+        codexSaverMode:
+          input.providerComposerOptions?.effectiveSettings?.codexSaverMode ===
+          true,
         model: draftModel,
         permissionModeId: selectedPermissionModeValue,
         reasoningEffort: optionsReasoningEffort,
@@ -209,6 +213,10 @@ export function useAgentGUIComposerPresentation(
     return {
       sessionSettings,
       draftSettings: {
+        codexSaverMode:
+          input.codexSaverModeEntryEnabled === true &&
+          input.providerComposerOptions?.codexSaverModeSupported === true &&
+          protectedSettings.codexSaverMode === true,
         model: presentedModel,
         reasoningEffort: presentedReasoningEffort,
         speed: presentedSpeed,
@@ -218,6 +226,9 @@ export function useAgentGUIComposerPresentation(
         permissionModeId: presentedPermissionMode
       },
       supportsModel: input.composerSupport.model,
+      supportsCodexSaverMode:
+        input.codexSaverModeEntryEnabled &&
+        input.providerComposerOptions?.codexSaverModeSupported === true,
       supportsReasoningEffort: input.composerSupport.reasoning,
       supportsSpeed: input.composerSupport.speed,
       supportsBrowser: input.composerSupport.browser,

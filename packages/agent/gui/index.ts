@@ -212,6 +212,7 @@ export type {
   AgentHostQuickPromptSnapshot,
   AgentHostQuickPromptsApi,
   AgentHostSelectFilesInput,
+  AgentHostTerminalStartupAction,
   AgentHostRuntimeApi,
   AgentHostUserProject,
   AgentProviderProbeListInput,

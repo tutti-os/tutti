@@ -1,23 +1,24 @@
 import type {
   Connector,
   ConnectorAuthorizationResult,
+  ConnectorMarketCatalogPage,
+  ConnectorMarketCategory,
   ConnectorMarketMutationInput,
   ConnectorMarketSnapshot,
   ConnectorMutationInput,
   ConnectorMutationResult,
-  ConnectorOperation,
-  ConnectorWorkspaceBindingResult,
-  SetConnectorWorkspaceEnabledInput
+  ConnectorOperation
 } from "./domain.ts";
 
 export interface ConnectorMarketBackend {
-  getSnapshot(input: {
-    workspaceId?: string;
-  }): Promise<ConnectorMarketSnapshot>;
-  getConnector(input: {
-    connectorKey: string;
-    workspaceId?: string;
-  }): Promise<Connector>;
+  getSnapshot(): Promise<ConnectorMarketSnapshot>;
+  listCategories(): Promise<ConnectorMarketCategory[]>;
+  listCatalogPage(input: {
+    sectionId: string;
+    pageSize: number;
+    pageToken?: string;
+  }): Promise<ConnectorMarketCatalogPage>;
+  getConnector(input: { connectorKey: string }): Promise<Connector>;
   getOperation(input: { operationId: string }): Promise<ConnectorOperation>;
   refreshCatalog(
     input: ConnectorMarketMutationInput
@@ -34,7 +35,4 @@ export interface ConnectorMarketBackend {
   disconnectAuthorization(
     input: ConnectorMutationInput
   ): Promise<ConnectorMutationResult>;
-  setWorkspaceEnabled(
-    input: SetConnectorWorkspaceEnabledInput
-  ): Promise<ConnectorWorkspaceBindingResult>;
 }

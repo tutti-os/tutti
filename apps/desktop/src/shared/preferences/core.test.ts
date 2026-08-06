@@ -6,11 +6,30 @@ import {
   desktopAgentConversationDetailModes,
   formatDesktopShortcutBinding,
   isDesktopAgentConversationDetailMode,
+  mergeDesktopAgentComposerDefaultsByAgentTarget,
   normalizeDesktopAgentConversationDetailMode,
   normalizeDesktopFeatureFlags,
   normalizeDesktopShortcutKey,
   normalizeDesktopWorkbenchShortcuts
 } from "./core.ts";
+
+test("Codex saver mode is remembered per agent target without clobbering model defaults", () => {
+  const enabled = mergeDesktopAgentComposerDefaultsByAgentTarget(
+    { "local:codex": { model: "gpt-5.6-sol" } },
+    "local:codex",
+    { codexSaverMode: true }
+  );
+  assert.deepEqual(enabled["local:codex"], {
+    codexSaverMode: true,
+    model: "gpt-5.6-sol"
+  });
+  const disabled = mergeDesktopAgentComposerDefaultsByAgentTarget(
+    enabled,
+    "local:codex",
+    { codexSaverMode: false }
+  );
+  assert.deepEqual(disabled["local:codex"], { model: "gpt-5.6-sol" });
+});
 
 test("desktop agent conversation detail mode defaults to coding", () => {
   assert.equal(defaultDesktopAgentConversationDetailMode, "coding");

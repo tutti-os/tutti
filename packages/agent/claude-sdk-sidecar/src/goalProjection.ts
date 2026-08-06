@@ -11,14 +11,15 @@ type GoalUpdateType =
 /**
  * Projects Claude-owned Goal observations into one sidecar event contract.
  *
- * Claude exposes two live shapes: SDK `active_goal` messages and the top-level
- * `goal_status` attachment emitted by the native /goal Stop hook.
+ * Claude exposes two provider shapes: internal SDK `active_goal` messages and
+ * top-level `goal_status` transcript attachments emitted by native /goal.
  * Keep both provider shapes inside this boundary; downstream runtime code only
  * sees normalized Goal state.
  */
 export class ClaudeGoalProjection {
   private readonly turns: TurnLifecycle;
   private readonly emit: ClaudeSDKSidecarEventEmitter;
+  private activeGoal: Record<string, unknown> | undefined;
 
   constructor(turns: TurnLifecycle, emit: ClaudeSDKSidecarEventEmitter) {
     this.turns = turns;
@@ -42,6 +43,35 @@ export class ClaudeGoalProjection {
     return true;
   }
 
+  /**
+   * Claude's native Goal evaluator may stop at the provider idle boundary
+   * without writing a terminal goal_status attachment. Once the transcript
+   * has been drained at that boundary, an otherwise-active Goal is blocked:
+   * it is no longer running, but remains resumable by the user.
+   */
+  handleProviderIdle(): boolean {
+    if (!this.activeGoal) {
+      return false;
+    }
+    this.emitObservation("thread_goal_update", "goal_status", {
+      ...this.activeGoal,
+      status: "blocked"
+    });
+    this.activeGoal = undefined;
+    return true;
+  }
+
+  trackGoalCommand(action: "set" | "clear", prompt: string): void {
+    if (action === "clear") {
+      this.activeGoal = undefined;
+      return;
+    }
+    const objective = prompt.replace(/^\s*\/goal(?:\s+|$)/i, "").trim();
+    if (objective) {
+      this.activeGoal = { objective, status: "active" };
+    }
+  }
+
   private handleActiveGoal(message: Record<string, unknown>): void {
     if (!Object.hasOwn(message, "value")) {
       return;
@@ -54,6 +84,7 @@ export class ClaudeGoalProjection {
           : "thread_goal_completed",
         "active_goal"
       );
+      this.activeGoal = undefined;
       return;
     }
     const value = recordValue(rawValue);
@@ -70,6 +101,7 @@ export class ClaudeGoalProjection {
     if (reason) {
       goal.reason = reason;
     }
+    this.activeGoal = goal;
     this.emitObservation("thread_goal_update", "active_goal", goal);
   }
 
@@ -89,6 +121,7 @@ export class ClaudeGoalProjection {
     if (typeof attachment.sentinel === "boolean") {
       goal.sentinel = attachment.sentinel;
     }
+    this.activeGoal = attachment.met ? undefined : goal;
     this.emitObservation("thread_goal_update", "goal_status", goal);
   }
 
@@ -101,7 +134,10 @@ export class ClaudeGoalProjection {
     this.emit({
       type: "goal_observed",
       payload: {
-        turnId: this.turns.activeId,
+        // Claude's native Goal evaluator can flush goal_status after the SDK
+        // result settles. Retain attribution to the latest root Turn when no
+        // newer Turn is active.
+        turnId: this.turns.lastTurnId,
         ...(this.turns.lastProviderTurnId
           ? { providerTurnId: this.turns.lastProviderTurnId }
           : {}),

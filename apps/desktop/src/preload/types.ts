@@ -129,6 +129,8 @@ export interface DesktopDockPreviewCacheApi {
 }
 
 export interface DesktopPlatformApi {
+  /** The native Electron application name, including the development suffix. */
+  appName: string;
   homeDirectory: string;
   os: NodeJS.Platform;
   resolveDroppedEntries(files: File[]): DesktopDroppedEntry[];
@@ -155,7 +157,9 @@ export interface DesktopHostWorkspaceApi {
     version?: string | null;
   }): Promise<void>;
   replaceWorkspaceWindow(input: {
+    clientTs: number;
     mode: "agent" | "os";
+    previousMode: "agent" | "os";
     workspaceId: string;
   }): Promise<void>;
   showWorkspace(workspaceID: string): Promise<void>;

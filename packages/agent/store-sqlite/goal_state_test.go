@@ -37,7 +37,8 @@ func TestProviderGoalAdoptionCompletesWithoutProviderRedispatch(t *testing.T) {
 		op.GoalRevision != 1 || state.Revision != 1 ||
 		state.SyncStatus != GoalSyncStatusSynced || state.PendingOperationID != "" ||
 		state.Desired["objective"] != "continue autonomously" ||
-		state.Observed["objective"] != "continue autonomously" {
+		state.Observed["objective"] != "continue autonomously" ||
+		jsonMapInt64(state.Observed, "startedAtUnixMs") != 20 {
 		t.Fatalf("adopted operation=%#v state=%#v", op, state)
 	}
 	claimable, err := store.ListClaimableGoalControlOperations(ctx, ListClaimableGoalControlOperationsInput{
@@ -234,7 +235,7 @@ func TestGoalControlOperationPersistsWithoutTurn(t *testing.T) {
 	if err != nil || !created || op.GoalRevision != 1 || state.Revision != 1 || state.SyncStatus != GoalSyncStatusPending {
 		t.Fatalf("prepare op=%#v state=%#v created=%v error=%v", op, state, created, err)
 	}
-	if state.Desired["objective"] != "ship it" || state.PendingOperationID != "goal-op-1" {
+	if state.Desired["objective"] != "ship it" || jsonMapInt64(state.Desired, "startedAtUnixMs") != 20 || state.PendingOperationID != "goal-op-1" {
 		t.Fatalf("desired state=%#v", state)
 	}
 	if op.ClientSubmitID != "submit-goal-1" {
@@ -271,6 +272,9 @@ func TestGoalControlOperationPersistsWithoutTurn(t *testing.T) {
 	})
 	if err != nil || !changed || op.Status != GoalOperationStatusCompleted || state.SyncStatus != GoalSyncStatusSynced || state.PendingOperationID != "" {
 		t.Fatalf("complete op=%#v state=%#v changed=%v error=%v", op, state, changed, err)
+	}
+	if jsonMapInt64(state.Observed, "startedAtUnixMs") != 20 {
+		t.Fatalf("completed Goal lost canonical start: %#v", state.Observed)
 	}
 
 	_, cleared, created, err := store.PrepareGoalControlOperation(ctx, GoalControlOperationPrepare{
@@ -328,6 +332,9 @@ func TestGoalAcceptedIgnoresSessionMetadataUntilHostCompletesOperation(t *testin
 	state, found, err := store.GetSessionGoalState(ctx, "ws-accepted", "session-accepted")
 	if err != nil || !found || state.SyncStatus != GoalSyncStatusApplying || state.PendingOperationID != "goal-op-accepted" {
 		t.Fatalf("reported state=%#v found=%v error=%v", state, found, err)
+	}
+	if jsonMapInt64(state.Observed, "startedAtUnixMs") != 20 {
+		t.Fatalf("runtime observation reset Goal start: %#v", state.Observed)
 	}
 	op, found, err := getGoalControlOperation(ctx, store.db, "ws-accepted", "goal-op-accepted")
 	if err != nil || !found || op.Status != GoalOperationStatusDispatched {
@@ -856,6 +863,9 @@ func TestGoalReconcileCASCompletesAuthoritativeTerminalLifecycleAndIgnoresOldObs
 	})
 	if err != nil || state.SyncStatus != GoalSyncStatusSynced || state.PendingOperationID != "" {
 		t.Fatalf("terminal lifecycle convergence state=%#v error=%v", state, err)
+	}
+	if jsonMapInt64(state.Observed, "startedAtUnixMs") != 20 || jsonMapInt64(state.Observed, "durationMs") != 20 {
+		t.Fatalf("terminal Goal timing=%#v", state.Observed)
 	}
 	stale, err := store.ReconcileSessionGoalObservation(ctx, GoalObservationReconcile{
 		WorkspaceID: "ws-cas", AgentSessionID: "session-cas",

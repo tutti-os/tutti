@@ -13,8 +13,6 @@ import (
 	preferencesbiz "github.com/tutti-os/tutti/services/tuttid/biz/preferences"
 	workspacebiz "github.com/tutti-os/tutti/services/tuttid/biz/workspace"
 	builtinapps "github.com/tutti-os/tutti/services/tuttid/builtin-apps"
-	tuttitypes "github.com/tutti-os/tutti/services/tuttid/types"
-	"golang.org/x/mod/semver"
 )
 
 func remoteBuiltinWorkspaceApp(builtin builtinapps.App) (workspacebiz.WorkspaceApp, error) {
@@ -53,37 +51,25 @@ func (s *AppCenterService) artifactFetcher() AppArtifactFetcher {
 func shouldUseRemoteBuiltin(appPackage workspacebiz.AppPackage, builtin builtinapps.App) bool {
 	return appPackage.Source == workspacebiz.AppPackageSourceBuiltin &&
 		builtin.Distribution.Kind == builtinapps.DistributionRemote &&
-		compareWorkspaceAppVersions(builtin.Manifest.Version, appPackage.Version) > 0
+		remoteCatalogVersionDiffers(builtin.Manifest.Version, appPackage.Version)
 }
 
-func shouldMaterializeRemoteBuiltin(appPackage workspacebiz.AppPackage, builtin builtinapps.App) bool {
+func (s *AppCenterService) shouldMaterializeRemoteBuiltin(appPackage workspacebiz.AppPackage, builtin builtinapps.App) bool {
 	if appPackage.Source != workspacebiz.AppPackageSourceBuiltin || builtin.Distribution.Kind != builtinapps.DistributionRemote {
 		return false
 	}
-	if compareWorkspaceAppVersions(builtin.Manifest.Version, appPackage.Version) > 0 {
+	if remoteCatalogVersionDiffers(builtin.Manifest.Version, appPackage.Version) {
 		return true
 	}
-	return validateExtractedAppPackage(appPackage.PackageDir, appPackage.Manifest) != nil
+	return validateExtractedAppPackage(s.ShellAdapter, appPackage.PackageDir, appPackage.Manifest) != nil
 }
 
-func compareWorkspaceAppVersions(left string, right string) int {
-	leftVersion, leftOK := tuttitypes.NormalizeSemver(left)
-	rightVersion, rightOK := tuttitypes.NormalizeSemver(right)
-	if !leftOK || !rightOK {
-		if strings.TrimSpace(left) == strings.TrimSpace(right) {
-			return 0
-		}
-		// Legacy non-SemVer packages have no safe ordering. Preserve the remote
-		// catalog's former authoritative-on-change behavior for those versions.
-		return 1
-	}
-	comparison := semver.Compare(leftVersion, rightVersion)
-	if comparison == 0 && strings.TrimSpace(left) != strings.TrimSpace(right) {
-		// Staging releases may differ only by SemVer build metadata. The remote
-		// catalog is authoritative for that equal-precedence build.
-		return 1
-	}
-	return comparison
+// remoteCatalogVersionDiffers reports whether the active catalog channel selected a
+// different package version than the locally installed builtin. App catalog channel
+// already chose production or staging; that selected catalog entry is authoritative,
+// including when its version is lower than a package installed from the other channel.
+func remoteCatalogVersionDiffers(catalogVersion string, packageVersion string) bool {
+	return strings.TrimSpace(catalogVersion) != strings.TrimSpace(packageVersion)
 }
 
 func (s *AppCenterService) materializeEmbeddedArchiveBuiltinPackage(ctx context.Context, builtin builtinapps.App) (workspacebiz.AppPackage, error) {
@@ -215,21 +201,21 @@ func (s *AppCenterService) materializeBuiltinArchivePackage(ctx context.Context,
 	if err != nil {
 		return workspacebiz.AppPackage{}, err
 	}
-	if err := validateExtractedAppPackage(packageRoot, manifest); err != nil {
+	if err := validateExtractedAppPackage(s.ShellAdapter, packageRoot, manifest); err != nil {
 		return workspacebiz.AppPackage{}, err
 	}
 	if manifest.AppID != builtin.Manifest.AppID || manifest.Version != builtin.Manifest.Version {
 		return workspacebiz.AppPackage{}, fmt.Errorf("remote builtin app manifest mismatch for %q", builtin.Manifest.AppID)
 	}
 
-	packageDir := s.packageCacheDir(manifest.AppID, manifest.Version)
-	if err := os.RemoveAll(packageDir); err != nil {
-		return workspacebiz.AppPackage{}, fmt.Errorf("replace builtin app package dir: %w", err)
+	packageDir, err := replaceWorkspaceAppPackageDir(s.packageCacheDir(manifest.AppID, manifest.Version))
+	if err != nil {
+		return workspacebiz.AppPackage{}, err
 	}
 	if err := copyDirectory(packageRoot, packageDir); err != nil {
 		return workspacebiz.AppPackage{}, fmt.Errorf("copy builtin app package: %w", err)
 	}
-	if err := validateExtractedAppPackage(packageDir, manifest); err != nil {
+	if err := validateExtractedAppPackage(s.ShellAdapter, packageDir, manifest); err != nil {
 		return workspacebiz.AppPackage{}, fmt.Errorf("validate copied builtin app package: %w", err)
 	}
 	appPackage := workspacebiz.AppPackage{

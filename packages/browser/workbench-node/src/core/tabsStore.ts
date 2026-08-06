@@ -64,6 +64,23 @@ export function createBrowserNodeTabsStore(): BrowserNodeTabsStore {
   ): BrowserNodeTabsState => {
     const existing = states.get(surfaceNodeId);
     if (existing) {
+      if (
+        options?.materializeCold &&
+        !existing.tabs.find((tab) => tab.id === existing.activeTabId)
+          ?.materializeCold
+      ) {
+        const state = {
+          ...existing,
+          tabs: existing.tabs.map((tab) =>
+            tab.id === existing.activeTabId
+              ? { ...tab, materializeCold: true }
+              : tab
+          )
+        };
+        states.set(surfaceNodeId, state);
+        emit();
+        return state;
+      }
       return existing;
     }
 

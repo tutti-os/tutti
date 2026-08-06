@@ -203,6 +203,7 @@ export type AgentActivitySnapshotListener = (
 ) => void;
 
 export type AgentActivityUpdatedEvent =
+  | AgentActivityRuntimeActivityUpdatedEvent
   | AgentActivitySessionReconcileRequiredEvent
   | AgentActivitySessionDeletedEvent
   | AgentActivitySessionAuditEvent
@@ -210,6 +211,19 @@ export type AgentActivityUpdatedEvent =
   | AgentActivityMessageUpdatedEvent
   | AgentActivityTurnUpdatedEvent
   | AgentActivityInteractionUpdatedEvent;
+
+export interface AgentActivityRuntimeActivityUpdatedEvent {
+  workspaceId: string;
+  agentSessionId: string;
+  eventType: "runtime_activity_update";
+  data: {
+    workspaceId: string;
+    agentSessionId: string;
+    eventType: "runtime_activity_update";
+    state: "idle" | "running";
+    occurredAtUnixMs: number;
+  };
+}
 
 export interface AgentActivitySessionReconcileRequiredEvent {
   workspaceId: string;
@@ -357,6 +371,7 @@ export interface AgentActivityCreateSessionInput {
   initialDisplayPrompt?: string | null;
   submitDiagnostics?: AgentActivitySubmitDiagnostics;
   browserUse?: boolean | null;
+  codexSaverMode?: boolean | null;
   model?: string | null;
   planMode?: boolean | null;
   permissionModeId?: string | null;
@@ -376,6 +391,8 @@ export interface AgentActivitySendInput {
   /** 仅展示用文本(bundle 折叠成一个 chip);content 仍带展开后的文件。 */
   displayPrompt?: string | null;
   guidance?: boolean;
+  /** Exact canonical active Turn targeted by guidance. */
+  targetTurnId?: string | null;
   submitDiagnostics?: AgentActivitySubmitDiagnostics;
   signal?: AbortSignal;
 }
@@ -578,6 +595,7 @@ export interface AgentActivityInteraction {
 }
 
 export type AgentActivitySessionSettings = {
+  codexSaverMode?: boolean | null;
   model?: string | null;
   permissionModeId?: string | null;
   planMode?: boolean | null;
@@ -618,6 +636,7 @@ export interface AgentActivitySessionGoal {
     | "budgetLimited"
     | "complete";
   reason?: string;
+  startedAtUnixMs?: number;
   iterations?: number;
   durationMs?: number;
   tokens?: number;

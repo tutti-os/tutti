@@ -59,7 +59,8 @@ export function projectDesktopAgentTargetSetupSnapshot(
       name: method.name,
       description: method.description ?? null,
       type: method.type ?? null,
-      terminalCommand: method.terminalCommand ?? null
+      terminalCommand: method.terminalCommand ?? null,
+      terminalStartupAction: method.terminalStartupAction ?? null
     })),
     account: snapshot.account
       ? {
@@ -197,31 +198,55 @@ export function createDesktopAgentHostApi({
       writeText: (text: string) => navigator.clipboard.writeText(text)
     },
     terminalLogin: {
+      supportedStartupActionTypes: ["slash_command"] as const,
       run: async (input: {
         agentTargetId: string;
         command: string;
         cwd?: string;
+        startupAction?: {
+          type: "slash_command";
+          commandName: string;
+          readyText: string;
+        };
       }) => {
         const launchHandle = await requestWorkspaceTerminalLoginLaunch({
           command: input.command,
           cwd: input.cwd,
+          startupAction: input.startupAction,
           workspaceId
         });
         if (!launchHandle) {
           throw new Error("Terminal login is unavailable in this window.");
         }
-        const readinessMonitor = createDesktopTerminalLoginReadinessMonitor({
-          watch: getAgentTargetSetupWatch(input.agentTargetId)
-        });
+        let readinessMonitor: ReturnType<
+          typeof createDesktopTerminalLoginReadinessMonitor
+        > | null = null;
         let closed = false;
+        const completion = launchHandle.startupCompletion.then(
+          async (startupResult) => {
+            if (closed) return "unavailable" as const;
+            if (startupResult === "timed_out") return "timed_out" as const;
+            if (
+              startupResult !== "submitted" &&
+              startupResult !== "not_required"
+            ) {
+              return "unavailable" as const;
+            }
+            readinessMonitor = createDesktopTerminalLoginReadinessMonitor({
+              watch: getAgentTargetSetupWatch(input.agentTargetId)
+            });
+            return readinessMonitor.completion;
+          },
+          () => "unavailable" as const
+        );
         return {
           close: () => {
             if (closed) return;
             closed = true;
-            readinessMonitor.cancel();
+            readinessMonitor?.cancel();
             launchHandle.close();
           },
-          completion: readinessMonitor.completion
+          completion
         };
       }
     },

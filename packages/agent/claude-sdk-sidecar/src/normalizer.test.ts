@@ -5,6 +5,7 @@ import {
   commandEntries,
   sdkContentFromPromptBlocks,
   speedFromFastModeState,
+  stampAskUserQuestionInput,
   toolPayload
 } from "./normalizer.ts";
 
@@ -353,7 +354,7 @@ test("answersFromInteractivePayload keys answers by question text for Claude SDK
         answers: ["React", "UI, daemon"],
         answersByQuestionId: {
           "framework-id": "React",
-          "question-2": ["UI", "daemon"]
+          "contract-question-x5nn4u": ["UI", "daemon"]
         }
       },
       {
@@ -374,6 +375,81 @@ test("answersFromInteractivePayload keys answers by question text for Claude SDK
     {
       "Which framework?": "React",
       "Which areas?": "UI, daemon"
+    }
+  );
+});
+
+test("stampAskUserQuestionInput fills missing question ids at Tutti ingress", () => {
+  assert.deepEqual(
+    stampAskUserQuestionInput({
+      questions: [
+        {
+          header: "I05 Choice",
+          multiSelect: false,
+          options: [
+            { description: "First preset option", label: "Preset one" },
+            { description: "Second preset option", label: "Preset two" }
+          ],
+          question: "What custom deterministic answer should I record?"
+        },
+        {
+          id: "kept-id",
+          question: "Already identified?"
+        }
+      ]
+    }),
+    {
+      questions: [
+        {
+          header: "I05 Choice",
+          multiSelect: false,
+          options: [
+            { description: "First preset option", label: "Preset one" },
+            { description: "Second preset option", label: "Preset two" }
+          ],
+          question: "What custom deterministic answer should I record?",
+          id: "contract-question-weuao6"
+        },
+        {
+          id: "kept-id",
+          question: "Already identified?"
+        }
+      ]
+    }
+  );
+});
+
+test("answersFromInteractivePayload maps answers after ingress question ids are stamped", () => {
+  const stamped = stampAskUserQuestionInput({
+    questions: [
+      {
+        header: "I05 Choice",
+        multiSelect: false,
+        options: [
+          { description: "First preset option", label: "Preset one" },
+          { description: "Second preset option", label: "Preset two" }
+        ],
+        question: "What custom deterministic answer should I record?"
+      }
+    ]
+  });
+  assert.equal(
+    (stamped.questions as Array<Record<string, unknown>>)[0]?.id,
+    "contract-question-weuao6"
+  );
+  assert.deepEqual(
+    answersFromInteractivePayload(
+      {
+        answers: ["Tutti I05 custom answer"],
+        answersByQuestionId: {
+          "contract-question-weuao6": "Tutti I05 custom answer"
+        }
+      },
+      stamped
+    ),
+    {
+      "What custom deterministic answer should I record?":
+        "Tutti I05 custom answer"
     }
   );
 });

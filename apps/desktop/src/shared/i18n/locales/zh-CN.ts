@@ -1185,6 +1185,9 @@ export const zhCN = {
         agentSessionForkDescription:
           "允许从支持的已完成轮次创建新的 Agent 会话",
         agentSessionForkLabel: "会话 Fork",
+        codexSaverModeDescription:
+          "在 Codex 输入框显示可记忆的省额度开关，将合适的子任务交给 Luna Max",
+        codexSaverModeLabel: "Codex 省额度模式",
         removeFileDefaultOpener: "移除 .{{extension}}",
         releaseChannelDescription: "选择稳定版更新；需要提前验收时可切到预览版",
         releaseChannelLabel: "发布渠道",
@@ -1208,12 +1211,12 @@ export const zhCN = {
         visibilityLabel: "显示开发者面板"
       },
       lab: {
-        agentInputHistoryDescription:
-          "在 Agent 输入框中使用上下键切换当前会话的历史输入",
-        agentInputHistoryLabel: "Agent 输入历史",
         backLabel: "返回",
         automationRulesDescription: "显示自动化规则配置与会话覆盖选项",
         automationRulesLabel: "自动化规则",
+        conversationActivityViewDescription:
+          "在 Agent 侧边栏中显示会话 Activity View",
+        conversationActivityViewLabel: "会话 Activity View",
         clearShortcutLabel: "清除 {{label}}",
         newAgentConversationShortcutLabel: "新建 Agent 对话",
         newSameTypeWindowShortcutLabel: "新建同类型窗口",

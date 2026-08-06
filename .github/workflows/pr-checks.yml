@@ -284,6 +284,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up pnpm
         uses: pnpm/action-setup@v4
@@ -302,33 +304,20 @@ jobs:
           cache-dependency-path: |
             go.work
             go.work.sum
-            packages/agent/activity-replication/go.mod
-            packages/agent/daemon/go.mod
-            packages/agent/daemon/go.sum
-            packages/agent/host/go.mod
-            packages/agent/host/go.sum
-            packages/agent/runtimeprep/go.mod
-            packages/agent/store-sqlite/go.mod
-            packages/agent/store-sqlite/canonical/go.mod
-            packages/auth/bridge-go/go.mod
-            packages/appcli/core/go.mod
-            packages/clients/device-authority-go/go.mod
-            packages/events/stream-go/go.mod
-            packages/workbench/service/go.mod
-            packages/workspace/files/go.mod
-            packages/workspace/issues/go.mod
-            apps/cli/go.mod
-            services/tuttid/go.mod
-            services/tuttid/go.sum
+            **/go.mod
+            **/go.sum
 
       - name: Install workspace dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Generate builtin apps
-        run: pnpm generate:builtin-apps
-
-      - name: Run Go workspace tests
-        run: pnpm test:go:prepared
+      - name: Run changed Go tests
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: >-
+          node ./tools/scripts/run-changed-go-validation.mjs
+          --base "${BASE_SHA}"
+          --kind test
+          --tail-lines 400
 
   go-lint:
     name: Go Lint
@@ -339,6 +328,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up pnpm
         uses: pnpm/action-setup@v4
@@ -357,24 +348,11 @@ jobs:
           cache-dependency-path: |
             go.work
             go.work.sum
-            packages/agent/activity-replication/go.mod
-            packages/agent/host/go.mod
-            packages/agent/host/go.sum
-            packages/agent/runtimeprep/go.mod
-            packages/agent/store-sqlite/canonical/go.mod
-            packages/appcli/core/go.mod
-            packages/clients/device-authority-go/go.mod
-            packages/workbench/service/go.mod
-            packages/workspace/files/go.mod
-            packages/workspace/issues/go.mod
-            services/tuttid/go.mod
-            services/tuttid/go.sum
+            **/go.mod
+            **/go.sum
 
       - name: Install workspace dependencies
         run: pnpm install --frozen-lockfile
-
-      - name: Generate builtin apps
-        run: pnpm generate:builtin-apps
 
       - name: Install pinned golangci-lint
         run: |
@@ -396,5 +374,11 @@ jobs:
           test -x "${install_dir}/golangci-lint"
           echo "${install_dir}" >> "${GITHUB_PATH}"
 
-      - name: Run Go lint
-        run: node ./tools/scripts/run-golangci-lint.mjs
+      - name: Run changed Go lint
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: >-
+          node ./tools/scripts/run-changed-go-validation.mjs
+          --base "${BASE_SHA}"
+          --kind lint
+          --tail-lines 400

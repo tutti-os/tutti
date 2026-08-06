@@ -57,13 +57,13 @@ describe("validateWorkspaceAppManifest", () => {
       runtime: {
         bootstrap: "bootstrap.sh",
         healthcheckPath: "/",
-        profile: "node-static"
+        profile: "connector-node-static"
       },
       version: "1.0.0"
     });
 
     assert.equal(result.valid, true);
-    assert.equal(result.manifest?.runtime.profile, "node-static");
+    assert.equal(result.manifest?.runtime.profile, "connector-node-static");
   });
 
   it("rejects unsupported runtime profile", () => {

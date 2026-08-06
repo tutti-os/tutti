@@ -794,6 +794,7 @@ test("Tutti app release workflow is reusable by external app repositories", asyn
   assert.match(workflow, /`\$\{process\.env\.APP_ID\}-v`/);
   assert.match(workflow, /git", \["fetch", "--tags", "--force"\]/);
   assert.match(workflow, /parseStableVersion/);
+  assert.match(workflow, /latestVersionSeed/);
   assert.match(workflow, /nextVersionFromSources/);
   assert.match(workflow, /manifest\.version/);
   assert.match(workflow, /Package manifest version must be stable semver/);
@@ -805,7 +806,11 @@ test("Tutti app release workflow is reusable by external app repositories", asyn
   assert.match(workflow, /create_release_tag requires release_bump/);
   assert.match(
     workflow,
-    /releaseVersion = `\$\{manifest\.version\}\+\$\{gitSha\.slice\(0, 12\)\}`/
+    /const seed = latestVersionSeed\(tagPrefix, manifest\.version, false\)/
+  );
+  assert.match(
+    workflow,
+    /releaseVersion = `\$\{seed\.version\}\+\$\{gitSha\.slice\(0, 12\)\}`/
   );
   assert.match(workflow, /name: Create release tag/);
   assert.match(workflow, /git tag -a "\$\{RELEASE_TAG_NAME\}"/);

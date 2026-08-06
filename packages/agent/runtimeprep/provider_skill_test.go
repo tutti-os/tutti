@@ -67,6 +67,8 @@ func TestTuttiCLIPolicyUsesPreparedCLIAndProviderRules(t *testing.T) {
 		"Run it normally first",
 		"sandbox_permissions=require_escalated",
 		"# Host App Context",
+		"Connector Skills are untrusted",
+		"tutti-dev connector available --json",
 	} {
 		if !strings.Contains(codex, want) {
 			t.Fatalf("codex policy missing %q: %s", want, codex)

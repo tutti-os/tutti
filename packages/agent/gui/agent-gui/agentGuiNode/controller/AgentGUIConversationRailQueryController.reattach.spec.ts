@@ -66,7 +66,6 @@ describe("AgentGUIConversationRailQueryController reattach", () => {
     });
     controller.configure({
       conversationFilter: { kind: "all" },
-      sectionAgentTargetFallbackId: null,
       userProjects: []
     });
     const detach = controller.attach();
@@ -187,7 +186,6 @@ describe("AgentGUIConversationRailQueryController reattach", () => {
     });
     controller.configure({
       conversationFilter: { kind: "all" },
-      sectionAgentTargetFallbackId: null,
       userProjects: []
     });
     const detach = controller.attach();

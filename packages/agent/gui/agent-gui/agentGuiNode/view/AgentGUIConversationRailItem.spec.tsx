@@ -116,6 +116,56 @@ describe("AgentGUIConversationRailItem interaction lock", () => {
     expect(container.textContent).toContain("Session 1");
   });
 
+  it("renders the Codex-aligned two-line Activity presentation without a timestamp", () => {
+    const secondary =
+      "Implemented the requested Activity View with a deliberately long cached response preview";
+    const { container } = renderRailItem({
+      isRailInteractionLocked: () => false,
+      item: { status: "working" },
+      presentation: {
+        kind: "activity",
+        priorityReason: "active",
+        projectLabel: "Tutti",
+        secondary: {
+          kind: "message",
+          text: secondary
+        }
+      }
+    });
+
+    expect(
+      container.querySelector('[data-presentation="activity"]')
+    ).not.toBeNull();
+    expect(container.textContent).toContain("Session 1Tutti");
+    expect(container.textContent).toContain(secondary);
+    expect(
+      screen.getByRole("button", { name: "Session 1, Tutti, Working" })
+    ).toBeTruthy();
+    expect(screen.getByRole("button").getAttribute("aria-label")).not.toContain(
+      secondary
+    );
+    expect(
+      container.querySelector(".agent-gui-node__conversation-time")
+    ).toBeNull();
+  });
+
+  it("announces a frozen Priority member as recently active after its live state clears", () => {
+    renderRailItem({
+      isRailInteractionLocked: () => false,
+      item: { status: "ready" },
+      presentation: {
+        kind: "activity",
+        priorityReason: "unread",
+        projectLabel: null,
+        secondary: { kind: "source", text: "Local" }
+      }
+    });
+
+    expect(
+      screen.getByRole("button", { name: "Session 1, Recently active" })
+    ).toBeTruthy();
+  });
+
   it("renders an open extension target icon through the monochrome mask", () => {
     const iconUrl = "data:image/svg+xml;base64,kilo-colored";
     const maskIconUrl = "data:image/svg+xml;base64,kilo-mask";
@@ -408,6 +458,9 @@ function renderRailItem(overrides: {
     conversation: AgentGUIConversationSummary
   ) => void;
   onSelectConversation?: (agentSessionId: string) => void;
+  presentation?: React.ComponentProps<
+    typeof AgentGUIConversationRailItem
+  >["presentation"];
   renderAgentTargetInfo?: AgentGUIAgentTargetInfoRenderer;
   targetInfoTargets?: readonly AgentGUIAgentTarget[];
 }) {
@@ -427,6 +480,7 @@ function renderRailItem(overrides: {
         ...overrides.item
       }}
       labels={RAIL_ITEM_LABELS}
+      presentation={overrides.presentation}
       registerItemElement={() => {}}
       uiLanguage="en"
       workspaceId="workspace-1"
@@ -461,6 +515,11 @@ function renderRailItem(overrides: {
 }
 
 const RAIL_ITEM_LABELS = {
+  activityStatusFailed: "Failed",
+  activityStatusRecentlyActive: "Recently active",
+  activityStatusUnread: "Unread result",
+  activityStatusWaiting: "Waiting for you",
+  activityStatusWorking: "Working",
   copiedToClipboard: "Copied",
   copyAsMarkdown: "Copy as Markdown",
   copyAsReference: "Copy as reference",

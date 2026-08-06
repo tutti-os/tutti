@@ -22,6 +22,8 @@
 		A10000000000000000000009 /* AppLifecycleModule.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000010 /* AppLifecycleModule.swift */; };
 		A10000000000000000000010 /* MobileWebAuthenticationSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000011 /* MobileWebAuthenticationSession.swift */; };
 		A10000000000000000000011 /* MobilePreferencesModule.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000012 /* MobilePreferencesModule.swift */; };
+		A10000000000000000000012 /* DeviceLinkRelayProbe.mm in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000013 /* DeviceLinkRelayProbe.mm */; settings = {COMPILER_FLAGS = "-fcxx-modules"; }; };
+		A10000000000000000000013 /* DeviceLinkFraming.mm in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000015 /* DeviceLinkFraming.mm */; settings = {COMPILER_FLAGS = "-fcxx-modules"; }; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -46,6 +48,10 @@
 		A20000000000000000000010 /* AppLifecycleModule.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AppLifecycleModule.swift; path = TuttiMobile/AppLifecycleModule.swift; sourceTree = "<group>"; };
 		A20000000000000000000011 /* MobileWebAuthenticationSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = MobileWebAuthenticationSession.swift; path = TuttiMobile/MobileWebAuthenticationSession.swift; sourceTree = "<group>"; };
 		A20000000000000000000012 /* MobilePreferencesModule.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = MobilePreferencesModule.swift; path = TuttiMobile/MobilePreferencesModule.swift; sourceTree = "<group>"; };
+		A20000000000000000000013 /* DeviceLinkRelayProbe.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; name = DeviceLinkRelayProbe.mm; path = TuttiMobile/DeviceLinkRelayProbe.mm; sourceTree = "<group>"; };
+		A20000000000000000000014 /* DeviceLinkRelayProbe.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = DeviceLinkRelayProbe.h; path = TuttiMobile/DeviceLinkRelayProbe.h; sourceTree = "<group>"; };
+		A20000000000000000000015 /* DeviceLinkFraming.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; name = DeviceLinkFraming.mm; path = TuttiMobile/DeviceLinkFraming.mm; sourceTree = "<group>"; };
+		A20000000000000000000016 /* DeviceLinkFraming.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = DeviceLinkFraming.h; path = TuttiMobile/DeviceLinkFraming.h; sourceTree = "<group>"; };
 		ED297162215061F000B7C4FE /* JavaScriptCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = JavaScriptCore.framework; path = System/Library/Frameworks/JavaScriptCore.framework; sourceTree = SDKROOT; };
 /* End PBXFileReference section */
 
@@ -68,6 +74,10 @@
 				761780EC2CA45674006654EE /* AppDelegate.swift */,
 				A20000000000000000000010 /* AppLifecycleModule.swift */,
 				A20000000000000000000005 /* DeviceLinkModule.mm */,
+				A20000000000000000000013 /* DeviceLinkRelayProbe.mm */,
+				A20000000000000000000014 /* DeviceLinkRelayProbe.h */,
+				A20000000000000000000015 /* DeviceLinkFraming.mm */,
+				A20000000000000000000016 /* DeviceLinkFraming.h */,
 				A20000000000000000000002 /* MobileBrowserAuthBridge.swift */,
 				A20000000000000000000011 /* MobileWebAuthenticationSession.swift */,
 				A20000000000000000000012 /* MobilePreferencesModule.swift */,
@@ -286,6 +296,8 @@
 				A10000000000000000000004 /* MobileNativeModules.m in Sources */,
 				A10000000000000000000009 /* AppLifecycleModule.swift in Sources */,
 				A10000000000000000000005 /* DeviceLinkModule.mm in Sources */,
+				A10000000000000000000012 /* DeviceLinkRelayProbe.mm in Sources */,
+				A10000000000000000000013 /* DeviceLinkFraming.mm in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

@@ -94,7 +94,7 @@ func (s Service) runManagedNPMPackageAction(
 			return InstallCommandResult{ExitCode: 1, Stderr: err.Error()}, nil
 		}
 	}
-	installPrefix := filepath.Dir(installBinDir)
+	installPrefix := runtimecmd.ResolveNPMGlobalLayout(installBinDir).PrefixDir
 	step := "install"
 	// Repair-in-place: when an existing @openai/codex launcher is already on
 	// PATH but its platform subpackage is missing (or it is outdated), installing
@@ -122,6 +122,14 @@ func (s Service) runManagedNPMPackageAction(
 		commandArgs = append(commandArgs, "--include=optional")
 	}
 	command := joinShellCommand(commandArgs)
+	slog.Info(
+		"agent provider managed npm command prepared",
+		"provider", provider,
+		"npmPath", npmPath,
+		"installPrefix", installPrefix,
+		"nodeTarget", nodeTarget,
+		"runner", structuredInstallRunner(),
+	)
 	// Pin a dedicated, tutti-owned npm cache instead of the user's global ~/.npm,
 	// which on some machines holds root-owned files that make every user-mode npm
 	// install fail with EACCES before any registry is hit.
@@ -148,6 +156,7 @@ func (s Service) runManagedNPMPackageAction(
 		attemptCtx, cancel := context.WithTimeout(ctx, perRegistryInstallTimeout)
 		result, err = s.installCommand(attemptCtx, InstallCommandInput{
 			Command: command,
+			Args:    commandArgs,
 			Env:     withAgentNPMRegistry(slices.Clone(baseEnv), registry),
 			OnStdout: func(output string) {
 				appendActiveActionStdout(ctx, provider, output)
@@ -178,6 +187,7 @@ func (s Service) runManagedNPMPackageAction(
 			attemptCtx, cancel = context.WithTimeout(ctx, perRegistryInstallTimeout)
 			result, err = s.installCommand(attemptCtx, InstallCommandInput{
 				Command: command,
+				Args:    commandArgs,
 				Env:     withAgentNPMRegistry(slices.Clone(baseEnv), registry),
 				OnStdout: func(output string) {
 					appendActiveActionStdout(ctx, provider, output)

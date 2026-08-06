@@ -101,7 +101,7 @@ func TestRegistryCapabilitiesKeepRegistrationOrder(t *testing.T) {
 	}
 }
 
-func TestRegistryProviderCapabilityFilterHidesStaticCapabilitiesOnlyFromList(t *testing.T) {
+func TestRegistryProviderCapabilityFilterGovernsDiscoveryAndInvocation(t *testing.T) {
 	provider := &filteringTestProvider{
 		testProvider: testProvider{
 			appID: "diagnostics",
@@ -137,12 +137,19 @@ func TestRegistryProviderCapabilityFilterHidesStaticCapabilitiesOnlyFromList(t *
 		t.Fatalf("filter contexts = %#v, want workspace ws-1", provider.contexts)
 	}
 
-	output, err := registry.Invoke(context.Background(), InvokeRequest{CommandID: "diagnostics.hidden"})
-	if err != nil {
-		t.Fatalf("Invoke hidden command: %v", err)
+	_, err = registry.Invoke(context.Background(), InvokeRequest{
+		CommandID: "diagnostics.hidden",
+		Context: InvokeContext{
+			Source:                "connector",
+			WorkspaceID:           "ws-1",
+			SkipCapabilityFilters: true,
+		},
+	})
+	if !errors.Is(err, ErrCommandNotFound) {
+		t.Fatalf("Invoke hidden command error = %v, want ErrCommandNotFound", err)
 	}
-	if output.Kind != OutputModePlain || output.Text != "ok" {
-		t.Fatalf("hidden command output = %#v", output)
+	if got := provider.contexts[len(provider.contexts)-1]; got.SkipCapabilityFilters {
+		t.Fatalf("invocation filter context = %#v, want skip disabled", got)
 	}
 }
 

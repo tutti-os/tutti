@@ -1,5 +1,4 @@
 import { stat } from "node:fs/promises";
-import { pathToFileURL } from "node:url";
 import { resolveWorkspaceFileDefaultApplicationIconExtension } from "@tutti-os/workspace-file-manager/services";
 import { resolveWorkspaceFileVisualKind } from "@tutti-os/workspace-file-preview";
 import { requestWorkerIconPngBytes } from "./iconWorker/iconWorkerClient.ts";
@@ -106,7 +105,7 @@ async function resolveImageThumbnailIconUrl(
     dependencies.readImageThumbnailPngBytes ?? readImageThumbnailPngBytes
   )(targetPath, imageThumbnailPixelSize);
   if (!thumbnailBytes) {
-    return pathToFileURL(targetPath).href;
+    return null;
   }
 
   const cachedThumbnailUrl = await cacheStore.write({
@@ -115,7 +114,7 @@ async function resolveImageThumbnailIconUrl(
     mimeType: "image/png"
   });
 
-  return cachedThumbnailUrl ?? pathToFileURL(targetPath).href;
+  return cachedThumbnailUrl;
 }
 
 async function statFile(

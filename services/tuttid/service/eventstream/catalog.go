@@ -18,6 +18,7 @@ const (
 	TopicAgentCollaborationUpdated                      = "agent.collaboration.updated"
 	TopicAgentModelCatalogInvalidated                   = "agent.model.catalog.invalidated"
 	TopicAgentQuickPromptUpdated                        = "agent.quickprompt.updated"
+	TopicConnectorMarketChanged                         = "connector.market.changed"
 	TopicPreferencesAgentComposerDefaultsChanged        = "preferences.agent.composer.defaults.changed"
 	TopicPreferencesAgentComposerDefaultsPatchRequested = "preferences.agent.composer.defaults.patch.requested"
 	TopicPreferencesDesktopUpdateRequested              = "preferences.desktop.update.requested"
@@ -90,6 +91,16 @@ func NewStaticCatalog(definitions []TopicDefinition) StaticCatalog {
 
 func DefaultCatalog() StaticCatalog {
 	definitions := []TopicDefinition{
+		{
+			Name:               TopicConnectorMarketChanged,
+			ClientCanPublish:   false,
+			ClientCanSubscribe: true,
+			Version:            1,
+			directions:         []Direction{DirectionServerToClient},
+			validators: map[Direction]PayloadValidator{
+				DirectionServerToClient: validateConnectorMarketChangedPayload,
+			},
+		},
 		{
 			Name:               TopicAnalyticsDebugReported,
 			ClientCanPublish:   false,
@@ -546,7 +557,7 @@ func validateAgentActivityUpdatedPayload(payload []byte) error {
 		return fmt.Errorf("agentSessionId is required")
 	}
 	switch strings.TrimSpace(decoded.EventType) {
-	case "session_reconcile_required", "session_deleted", "session_audit", "message_delta", "message_update", "turn_update", "interaction_update":
+	case "runtime_activity_update", "session_reconcile_required", "session_deleted", "session_audit", "message_delta", "message_update", "turn_update", "interaction_update":
 	default:
 		return fmt.Errorf("eventType is unsupported")
 	}
@@ -614,6 +625,8 @@ func validateAgentActivityUpdatedData(decoded agentActivityUpdatedPayload) error
 		return fmt.Errorf("data.eventType must match eventType")
 	}
 	switch eventType {
+	case "runtime_activity_update":
+		return validateAgentActivityRuntimeActivityUpdateData(decoded.Data)
 	case "session_reconcile_required":
 		var data agentActivitySessionUpdateData
 		if err := decodeJSONStrict(decoded.Data, &data); err != nil {

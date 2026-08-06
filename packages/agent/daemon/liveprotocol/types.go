@@ -31,12 +31,21 @@ type DeliveryKind uint8
 type EventType string
 
 const (
-	EventTypeMessageDelta        EventType = "message_delta"
-	EventTypeTurnUpdate          EventType = "turn_update"
-	EventTypeInteractionUpdate   EventType = "interaction_update"
-	EventTypeInteractionSnapshot EventType = "interaction_snapshot"
-	EventTypeSessionAudit        EventType = "session_audit"
+	EventTypeRuntimeActivityUpdate EventType = "runtime_activity_update"
+	EventTypeMessageDelta          EventType = "message_delta"
+	EventTypeTurnUpdate            EventType = "turn_update"
+	EventTypeInteractionUpdate     EventType = "interaction_update"
+	EventTypeInteractionSnapshot   EventType = "interaction_snapshot"
+	EventTypeSessionAudit          EventType = "session_audit"
 )
+
+type RuntimeActivityUpdateData struct {
+	WorkspaceID      string    `json:"workspaceId"`
+	AgentSessionID   string    `json:"agentSessionId"`
+	EventType        EventType `json:"eventType"`
+	State            string    `json:"state"`
+	OccurredAtUnixMS int64     `json:"occurredAtUnixMs"`
+}
 
 // Event is the normalized AgentGUI live event. Data is kept as JSON so the
 // transport stays independent from lifecycle vocabulary while DecodeEvent

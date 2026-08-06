@@ -131,7 +131,7 @@ func (s *Service) ListGeneratedFiles(
 	input ListGeneratedFilesInput,
 ) (GeneratedFileList, error) {
 	workspaceID = strings.TrimSpace(workspaceID)
-	sectionKey := strings.TrimSpace(input.SectionKey)
+	sectionKey := agentactivitybiz.NormalizeRailSectionKey(strings.TrimSpace(input.SectionKey))
 	if workspaceID == "" || sectionKey == "" || sectionKey == agentactivitybiz.PinnedSessionPageKey || input.Limit < 0 {
 		return GeneratedFileList{}, ErrInvalidArgument
 	}

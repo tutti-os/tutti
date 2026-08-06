@@ -104,15 +104,23 @@ func generatedAgentComposerDefaultsByAgentTarget(value map[string]preferencesbiz
 
 func generatedAgentComposerDefaultsPointer(value preferencesbiz.AgentComposerDefaults) *tuttigenerated.DesktopAgentComposerDefaults {
 	generated := tuttigenerated.DesktopAgentComposerDefaults{
+		CodexSaverMode:   optionalTruePointer(value.CodexSaverMode),
 		Model:            optionalStringPointer(value.Model),
 		PermissionModeId: optionalStringPointer(value.PermissionModeID),
 		ReasoningEffort:  optionalStringPointer(value.ReasoningEffort),
 		Speed:            optionalStringPointer(value.Speed),
 	}
-	if generated.Model == nil && generated.PermissionModeId == nil && generated.ReasoningEffort == nil && generated.Speed == nil {
+	if generated.CodexSaverMode == nil && generated.Model == nil && generated.PermissionModeId == nil && generated.ReasoningEffort == nil && generated.Speed == nil {
 		return nil
 	}
 	return &generated
+}
+
+func optionalTruePointer(value bool) *bool {
+	if !value {
+		return nil
+	}
+	return &value
 }
 
 func optionalStringPointer(value string) *string {

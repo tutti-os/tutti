@@ -5,6 +5,7 @@ import { execFileSync } from "node:child_process";
 
 import { createIsolatedGitEnvironment } from "./git-environment.mjs";
 import { selectedRepositoryCheckGroups } from "./repository-checks.mjs";
+import { isGoValidationRelevant } from "./run-check-changed-targets.mjs";
 
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const workspaceRoot = resolve(scriptDirectory, "../..");
@@ -39,7 +40,7 @@ export function classifyChangedFiles(
     runBoundaries: groups.has("boundaries"),
     runContracts: groups.has("contracts"),
     runGenerated: groups.has("generated"),
-    runGo: normalizedFiles.some(isGoRelevant),
+    runGo: normalizedFiles.some(isGoValidationRelevant),
     runPack: packSelection.packAll || packSelection.packageNames.length > 0,
     runTs: normalizedFiles.some(isTypeScriptRelevant),
     runTsTests: testSelection.testAll || testSelection.packageNames.length > 0,
@@ -182,15 +183,6 @@ export function isAgentSessionReplayRelevant(file) {
     /services\/tuttid\/data\/workspace\/\S*agent_session_(?:fixture|replay)\S*\.go$/u.test(
       file
     )
-  );
-}
-
-function isGoRelevant(file) {
-  return (
-    file.endsWith(".go") ||
-    /(?:^|\/)go\.(?:mod|sum)$/u.test(file) ||
-    ["go.work", "go.work.sum"].includes(file) ||
-    file.startsWith("services/tuttid/.golangci")
   );
 }
 

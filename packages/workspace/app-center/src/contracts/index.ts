@@ -49,6 +49,9 @@ export {
 } from "./catalog.ts";
 export {
   workspaceAppRuntimeStatuses,
+  type WorkspaceAppFailurePhase,
+  type WorkspaceAppInstallProgress,
+  type WorkspaceAppInstallUserPhase,
   type WorkspaceAppRuntimeError,
   type WorkspaceAppRuntimeState,
   type WorkspaceAppRuntimeStatus

@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { parseWorkspaceAppGuestPartition } from "./workspaceAppGuestContextRegistry.ts";
+import {
+  parseWorkspaceAppGuestPartition,
+  requireWorkspaceAppGuestContext
+} from "./workspaceAppGuestContextRegistry.ts";
 
 test("workspace app guest partitions decode workspace and app identifiers", () => {
   assert.deepEqual(
@@ -21,5 +24,16 @@ test("workspace app guest partitions reject missing scoped identifiers", () => {
   assert.equal(
     parseWorkspaceAppGuestPartition("persist:tutti-app:workspace:"),
     null
+  );
+});
+
+test("workspace app guest context rejects unregistered senders", () => {
+  assert.throws(
+    () =>
+      requireWorkspaceAppGuestContext({
+        id: 987_654,
+        isDestroyed: () => false
+      } as never),
+    /context is unavailable/
   );
 });

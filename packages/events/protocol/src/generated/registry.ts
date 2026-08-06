@@ -22,6 +22,8 @@ export const businessEventTopicAgentQuickpromptUpdated =
   "agent.quickprompt.updated" as const;
 export const businessEventTopicAnalyticsDebugReported =
   "analytics.debug.reported" as const;
+export const businessEventTopicConnectorMarketChanged =
+  "connector.market.changed" as const;
 export const businessEventTopicPreferencesAgentComposerDefaultsChanged =
   "preferences.agent.composer.defaults.changed" as const;
 export const businessEventTopicPreferencesAgentComposerDefaultsPatchRequested =
@@ -53,7 +55,7 @@ export interface BusinessEventDefinition {
   scope: BusinessEventScopeName;
 }
 
-export const businessEventCatalogRevision = "sha256:2e36dcc0d1c65637" as const;
+export const businessEventCatalogRevision = "sha256:d3cf3b4c5b26811b" as const;
 
 export const businessEventDefinitions = [
   {
@@ -104,6 +106,13 @@ export const businessEventDefinitions = [
     direction: "server->client",
     owner: "desktop",
     scope: "desktop"
+  },
+  {
+    topic: "connector.market.changed",
+    version: 1,
+    direction: "server->client",
+    owner: "core",
+    scope: "global"
   },
   {
     topic: "preferences.agent.composer.defaults.changed",
@@ -233,6 +242,13 @@ export const businessEventDefinitionByTopic = {
     direction: "server->client",
     owner: "desktop",
     scope: "desktop"
+  },
+  "connector.market.changed": {
+    topic: "connector.market.changed",
+    version: 1,
+    direction: "server->client",
+    owner: "core",
+    scope: "global"
   },
   "preferences.agent.composer.defaults.changed": {
     topic: "preferences.agent.composer.defaults.changed",

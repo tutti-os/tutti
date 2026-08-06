@@ -231,6 +231,60 @@ func TestEnrichStreamStateEventsWithSessionSnapshotFillsRuntimeContext(t *testin
 	}
 }
 
+func TestSessionTitleEnrichmentDoesNotCrossSessionBoundaries(t *testing.T) {
+	t.Parallel()
+
+	controller := NewController(nil, nil)
+	session := Session{
+		RoomID:         "room-1",
+		AgentSessionID: "root-session",
+		Provider:       ProviderCodex,
+		Title:          "Root title",
+		UserTitleSet:   true,
+	}
+	controller.store(session)
+
+	report := &agentsessionstore.ReportActivityInput{
+		StatePatches: []agentsessionstore.WorkspaceAgentStatePatch{
+			{AgentSessionID: "root-session", Title: "Stale root title"},
+			{AgentSessionID: "child-session", Title: "Child title"},
+		},
+	}
+	controller.enrichReportStatePatchesWithSessionMetadata(session, report)
+	if got := report.StatePatches[0].Title; got != "Root title" {
+		t.Fatalf("root report title = %q, want Root title", got)
+	}
+	if got := report.StatePatches[1].Title; got != "Child title" {
+		t.Fatalf("child report title = %q, want Child title", got)
+	}
+
+	stream := []StreamEvent{
+		{
+			EventType: StreamEventStatePatch,
+			Data: agentsessionstore.WorkspaceAgentStatePatch{
+				AgentSessionID: "root-session",
+				Title:          "Stale root title",
+			},
+		},
+		{
+			EventType: StreamEventStatePatch,
+			Data: agentsessionstore.WorkspaceAgentStatePatch{
+				AgentSessionID: "child-session",
+				Title:          "Child title",
+			},
+		},
+	}
+	controller.enrichStreamStateEventsWithSessionSnapshot(session, stream)
+	rootPatch := stream[0].Data.(agentsessionstore.WorkspaceAgentStatePatch)
+	childPatch := stream[1].Data.(agentsessionstore.WorkspaceAgentStatePatch)
+	if rootPatch.Title != "Root title" {
+		t.Fatalf("root stream title = %q, want Root title", rootPatch.Title)
+	}
+	if childPatch.Title != "Child title" {
+		t.Fatalf("child stream title = %q, want Child title", childPatch.Title)
+	}
+}
+
 func TestDeriveSessionStatusFromEvents(t *testing.T) {
 	t.Parallel()
 

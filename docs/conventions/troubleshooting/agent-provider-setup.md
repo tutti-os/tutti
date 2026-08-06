@@ -482,6 +482,43 @@ file or directory`. A failed `codex app-server` probe is diagnostic evidence,
   [runtimeprep tutti_agent.go](../../../packages/agent/runtimeprep/tutti_agent.go)
   [tuttid tuttiagent service.go](../../../services/tuttid/service/tuttiagent/service.go)
 
+### Managed npm install fails before reaching every registry
+
+- Symptom:
+  A Codex or Tutti Agent managed npm install fails immediately with exit code
+  `126`. On macOS or another Unix host, stderr contains
+  `dirname: command not found` followed by a malformed `node` path. Switching
+  npm registries produces the same failure without meaningful network delay.
+- Quick checks:
+  Inspect the prepared npm path and the install process `PATH`. Run the managed
+  npm launcher once with that exact environment. If adding `/usr/bin:/bin`
+  makes it work, the failure is local process setup rather than registry or
+  package availability. On Windows, confirm the structured runner uses
+  `cmd.exe /D /S /C call` for `npm.cmd` and retains the inherited `System32`
+  path.
+- Root cause:
+  Managed runtime overrides put the bundled Node directory first, but an
+  already-installed runtime fast path can accidentally build the override from
+  an empty base environment. Direct structured execution then exposes the
+  truncated `PATH`: the Unix npm launcher cannot resolve tools such as
+  `dirname`, while Windows batch launchers can lose commands supplied by the
+  host environment. A login shell can hide this defect by rebuilding `PATH`.
+- Fix:
+  Keep structured argv execution and the platform process adapters. When no
+  environment provider is injected, inherit the daemon process environment
+  before prepending managed runtime directories. Do not switch back to shell
+  command strings or hardcode a Unix path into shared installer policy.
+- Validation:
+  Execute a real POSIX npm-style launcher that calls `dirname` with the
+  production managed-runtime composition, test Windows `.cmd` argument
+  preservation, build the daemon natively, and cross-compile the Windows
+  agentstatus tests.
+- References:
+  [installer_codex_cli.go](../../../services/tuttid/service/agentstatus/installer_codex_cli.go)
+  [provider_resolution.go](../../../services/tuttid/service/agentstatus/provider_resolution.go)
+  [service_helpers.go](../../../services/tuttid/service/agentstatus/service_helpers.go)
+  [install_command_windows.go](../../../services/tuttid/service/agentstatus/install_command_windows.go)
+
 ### Tutti Agent unexpectedly loses login after a host auth read failure
 
 - Symptom:
@@ -839,9 +876,10 @@ file or directory`. A failed `codex app-server` probe is diagnostic evidence,
   top-level `model` from `~/.codex/config.toml`, while a directly initialized
   `codex app-server` connection returns multiple models from `model/list`.
 - Quick checks:
-  Confirm `model_provider` is empty or `openai`. A non-default provider without
-  `model_catalog_json` is intentionally limited to its configured model; use
-  the custom-provider entry below when a catalog is configured. Search daemon
+  Compare the composer options with a directly initialized Codex app-server
+  `model/list` response. The returned catalog remains authoritative when
+  `model_provider` is custom; `model_catalog_json` changes the catalog Codex
+  returns but is not required to prevent Tutti from trimming it. Search daemon
   logs for `composer model catalog lookup failed`, `Not initialized`, or a
   Codex `model/list` timeout, then compare the request sequence with the
   app-server initialization contract.
@@ -903,40 +941,40 @@ file or directory`. A failed `codex app-server` probe is diagnostic evidence,
   [codex_model_catalog.go](../../../services/tuttid/service/agent/codex_model_catalog.go)
   [codex_capability_catalog.go](../../../services/tuttid/service/agent/codex_capability_catalog.go)
 
-### Codex custom model_provider mixes models, duplicates replies, or shows metadata warnings
+### Codex custom model_provider hides app-server models, duplicates replies, or shows metadata warnings
 
 - Symptom:
   With `model_provider` set to a custom endpoint and `model` set to a vendor
-  model id, the composer mixes official GPT ids with the configured model, a
-  turn may show the same assistant reply twice, or the transcript repeatedly
-  displays `Model metadata for ... not found. Defaulting to fallback metadata`.
+  model id, the composer may show only the configured model even though Codex
+  `model/list` returns several models and their reasoning efforts. A turn may
+  also show the same assistant reply twice, or the transcript may repeatedly
+  display `Model metadata for ... not found. Defaulting to fallback metadata`.
 - Quick checks:
   Inspect top-level `model_provider`, `model`, and `model_catalog_json` in
-  `~/.codex/config.toml`.
+  `~/.codex/config.toml`, then compare Tutti's composer options with a direct
+  app-server `model/list` response.
   In persisted session messages, look for two completed assistant rows with
-  equivalent text but different message ids in one turn. Without a configured
-  catalog, the composer model options should contain only the configured model.
-  With a configured catalog, `codex app-server` should return that catalog from
-  `model/list`, including the top-level configured model.
+  equivalent text but different message ids in one turn. The composer should
+  preserve the models and `supportedReasoningEfforts` returned by app-server
+  regardless of whether the active `model_provider` is OpenAI or custom.
 - Root cause:
-  The model catalog either appended the configured custom model to Codex's
-  official `model/list`, or unconditionally collapsed a valid
-  `model_catalog_json` response to one configured model. Separately, Codex can
-  finalize an assistant item after an early stream boundary and replay the
-  answer again in `turn/completed`, sometimes with whitespace polish; treating
-  each report as a new segment creates duplicate bubbles. The model-metadata
-  warning is runtime diagnostic noise rather than an actionable user error.
+  A Tutti post-processing rule treated any non-default `model_provider` as
+  proof that Codex's discovered catalog was unrelated and collapsed it to the
+  top-level configured model. This also discarded per-model reasoning metadata.
+  Separately, Codex can finalize an assistant item after an early stream
+  boundary and replay the answer again in `turn/completed`, sometimes with
+  whitespace polish; treating each report as a new segment creates duplicate
+  bubbles. The model-metadata warning is runtime diagnostic noise rather than
+  an actionable user error.
 - Fix:
-  When a non-default `model_provider` and top-level `model` are configured
-  without `model_catalog_json`, expose only that model in the Codex catalog.
-  When `model_catalog_json` is configured and `model/list` includes the
-  configured model, preserve the returned catalog and mark that model as the
-  default. Continue falling back to the configured model if the returned list
-  is unrelated. Preserve the assistant message id for whitespace-equivalent
-  item-finalization text and ignore turn-final text after an assistant segment
-  has already completed. Filter the metadata fallback warning through the same
-  AgentGUI diagnostic-notice projection used for skills-context-budget
-  warnings.
+  Treat Codex app-server `model/list` as the authoritative catalog regardless
+  of `model_provider`. Preserve the full returned list and reasoning metadata;
+  use the top-level configured model only to select the default or as the
+  existing fallback when discovery fails. Preserve the assistant message id
+  for whitespace-equivalent item-finalization text and ignore turn-final text
+  after an assistant segment has already completed. Filter the metadata
+  fallback warning through the same AgentGUI diagnostic-notice projection used
+  for skills-context-budget warnings.
 - Validation:
   Run
   `go test ./packages/agent/daemon/runtime -run 'TestApplyAssistantFinalText|TestApplyAssistantTurnFinalText|TestCodexAppServerAdapterExecStreamsTurn'`,
@@ -2173,6 +2211,40 @@ invalid_grant`. Search `tuttid.log` for
   [manager.go](../../../services/tuttid/service/agentextension/manager.go)
   [wiring_daemon_api.go](../../../services/tuttid/wiring_daemon_api.go)
 
+### Kimi setup opens a browser before showing the platform selector
+
+- Symptom:
+  Clicking the Kimi setup action immediately opens the Kimi website instead of
+  showing the Kimi Code TUI selector for OAuth or a Platform API key.
+- Quick checks:
+  Inspect the exact terminal launch. `kimi login` and starting `kimi` followed
+  by `/login` are different interfaces: the former may start a device-code flow
+  and open a browser, while the latter opens the interactive platform selector
+  inside the running TUI. Confirm the installed runtime's `login --help` and
+  verify the welcome marker still appears before assuming the two paths are
+  equivalent.
+- Root cause:
+  A terminal authentication profile projected the TUI slash command as a CLI
+  subcommand. Provider-owned commands with the same spelling do not necessarily
+  share behavior across those two command surfaces.
+- Fix:
+  Declare the signed authentication method as `runtime-slash-command`, with one
+  safe command name and a bounded literal ready marker. Launch the bare runtime,
+  wait for that marker on the matching terminal session, then submit the
+  Desktop-generated slash command through the terminal transport. The daemon
+  and AgentGUI Host boundary must carry one typed startup action rather than
+  independent raw input and marker fields. Do not put raw terminal input or
+  shell source in the extension profile.
+- Validation:
+  Cover output split across terminal events, output received before the session
+  is armed, unrelated terminal sessions, timeout, and transport failure. In a
+  fresh isolated Kimi home, verify setup first shows the in-TUI platform
+  selector and opens a browser only after the user chooses OAuth.
+- References:
+  [agent-extensions.md](../../architecture/agent-extensions.md)
+  [runtime_probe.go](../../../services/tuttid/service/agentextension/runtime_probe.go)
+  [workbenchTerminalLoginPresenter.ts](../../../apps/desktop/src/renderer/src/features/workspace-workbench/services/workbenchTerminalLoginPresenter.ts)
+
 ### Kimi Code remains in setup or reports login after authentication
 
 - Symptom:
@@ -2217,3 +2289,34 @@ invalid_grant`. Search `tuttid.log` for
   [runtime-overrides.md](../runtime-overrides.md)
   [visible_error.go](../../../packages/agent/daemon/runtime/visible_error.go)
   [setup.go](../../../services/tuttid/service/agentextension/setup.go)
+
+### Terminal login succeeds but the setup terminal remains open
+
+- Symptom:
+  The provider's terminal login reports success and returns to its normal TUI,
+  but AgentGUI keeps the setup terminal open and continues polling the Target as
+  `auth_required`.
+- Quick checks:
+  Confirm the Desktop terminal diagnostic reports the startup action as
+  `submitted`, then inspect repeated Target setup probes. Compare the fresh ACP
+  `initialize` response with `session/new`: some runtimes keep advertising a
+  terminal login method even after authentication succeeds.
+- Root cause:
+  ACP `authMethods` is a catalog of available authentication methods, not the
+  current authentication state. Treating a terminal-only catalog as an
+  immediate `auth_required` verdict skips `session/new`, so a successfully
+  configured runtime can never become `ready` and the Host never closes its
+  login-terminal handle.
+- Fix:
+  Preserve the advertised methods for presentation, but verify readiness with
+  the bounded setup `session/new` probe. Continue mapping explicit
+  authentication, missing-model, missing-provider, and terminal-method timeout
+  outcomes to `auth_required`. Do not scrape terminal output or inject an exit
+  command to infer login completion.
+- Validation:
+  Cover a runtime that still advertises only a terminal login method while
+  `session/new` returns a usable model, plus unconfigured runtimes whose
+  `session/new` returns no usable model, a missing-provider error, or a timeout.
+- References:
+  [standard_acp_setup.go](../../../packages/agent/daemon/runtime/standard_acp_setup.go)
+  [desktopTerminalLoginReadinessMonitor.ts](../../../apps/desktop/src/renderer/src/features/workspace-agent/services/internal/desktopTerminalLoginReadinessMonitor.ts)

@@ -81,6 +81,10 @@ func RunStandardACPSetup(
 	session Session,
 	methodID string,
 ) (StandardACPSetupResult, error) {
+	// Setup probes may be the first cold start of a managed Python runtime.
+	// Keep the longer timeout scoped to discovery/authentication; normal
+	// interactive ACP sessions retain the regular startup timeout.
+	config.StartupTimeout = 60 * time.Second
 	adapterValue, err := NewStandardACPAdapter(config, transport, host)
 	if err != nil {
 		return StandardACPSetupResult{}, err
@@ -143,6 +147,14 @@ func RunStandardACPSetup(
 			}
 			return StandardACPSetupResult{Status: StandardACPSetupAuthRequired, AuthMethods: methods}, nil
 		}
+		// Some ACP agents advertise both a provider credential method and a
+		// terminal setup method. Before setup is completed, session/new may
+		// synchronously initialize the provider and exceed the probe timeout.
+		// Keep the install successful and expose the terminal setup action;
+		// explicit authenticate/setup attempts still return their real error.
+		if methodID == "" && standardACPSetupSessionNewTimedOut(err) && standardACPSetupHasInteractiveAuth(methods) {
+			return StandardACPSetupResult{Status: StandardACPSetupAuthRequired, AuthMethods: methods}, nil
+		}
 		if IsAuthenticationRequired(err) || standardACPSetupNeedsConfiguration(err, methods) {
 			if methodID != "" {
 				return StandardACPSetupResult{Status: StandardACPSetupAuthRequired, AuthMethods: methods}, err
@@ -157,6 +169,20 @@ func RunStandardACPSetup(
 		return StandardACPSetupResult{}, fmt.Errorf("close ACP setup session: %w", err)
 	}
 	return StandardACPSetupResult{Status: StandardACPSetupReady, AuthMethods: methods, Account: account}, nil
+}
+
+func standardACPSetupHasInteractiveAuth(methods []StandardACPAuthMethod) bool {
+	for _, method := range methods {
+		if strings.TrimSpace(method.Type) == "terminal" {
+			return true
+		}
+	}
+	return false
+}
+
+func standardACPSetupSessionNewTimedOut(err error) bool {
+	return err != nil && errors.Is(err, context.DeadlineExceeded) &&
+		strings.Contains(strings.ToLower(err.Error()), "session/new")
 }
 
 func standardACPSetupNeedsConfiguration(err error, methods []StandardACPAuthMethod) bool {

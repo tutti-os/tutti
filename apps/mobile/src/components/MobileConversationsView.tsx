@@ -638,13 +638,13 @@ function createStyles(theme: NativeTheme) {
     },
     chatButton: {
       backgroundColor: theme.color.text,
-      borderRadius: 22,
-      height: 44,
+      borderRadius: theme.control.large / 2,
+      height: theme.control.large,
       width: "100%"
     },
     chatButtonSlot: {
       flexShrink: 0,
-      height: 44,
+      height: theme.control.large,
       width: 104
     },
     chatIcon: { color: theme.color.background, fontSize: 18 },
@@ -832,21 +832,21 @@ function createStyles(theme: NativeTheme) {
       color: theme.color.text,
       flex: 1,
       fontSize: 15,
+      height: "100%",
       minWidth: 0,
-      minHeight: 40,
-      paddingVertical: 10
+      paddingVertical: 0
     },
     searchPill: {
       alignItems: "center",
       backgroundColor: theme.color.panelRaised,
       borderColor: theme.color.border,
-      borderRadius: 22,
+      borderRadius: theme.control.large / 2,
       borderWidth: StyleSheet.hairlineWidth,
       flex: 1,
       flexDirection: "row",
       gap: theme.space.small,
+      height: theme.control.large,
       minWidth: 0,
-      minHeight: 44,
       paddingHorizontal: theme.space.medium
     },
     section: { gap: 2 },

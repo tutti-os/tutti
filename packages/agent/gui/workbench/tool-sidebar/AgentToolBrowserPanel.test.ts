@@ -6,6 +6,7 @@ import type {
 } from "@tutti-os/browser-node";
 import type { I18nRuntime } from "@tutti-os/ui-i18n-runtime";
 import { createAgentToolBrowserFeature } from "./AgentToolBrowserPanel.tsx";
+import { createAgentToolBrowserPage } from "./agentToolBrowserPage.ts";
 
 describe("AgentToolBrowserPanel", () => {
   it("scopes host events to its browser surface and child tabs", () => {
@@ -68,6 +69,31 @@ describe("AgentToolBrowserPanel", () => {
     });
 
     expect(feature.chromeCookieImport?.prompt).toBe(prompt);
+  });
+
+  it("materializes an automation-created about:blank page", () => {
+    const feature = createAgentToolBrowserFeature({
+      browserApi: createBrowserApi(() => undefined),
+      i18n: { t: (key) => key } as I18nRuntime<string>,
+      nodeId: "browser:agent-tool:one"
+    });
+
+    const nodeId = createAgentToolBrowserPage(
+      feature,
+      "browser:agent-tool:one",
+      "about:blank",
+      null
+    );
+
+    expect(nodeId).toBe("browser:agent-tool:one:tab:1");
+    expect(
+      feature.tabsStore.getSurfaceState("browser:agent-tool:one")?.tabs
+    ).toEqual([
+      expect.objectContaining({
+        materializeCold: true,
+        nodeId
+      })
+    ]);
   });
 });
 

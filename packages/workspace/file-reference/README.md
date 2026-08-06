@@ -11,6 +11,11 @@ product-specific integration stay in the consuming host adapter.
 The package uses logical workspace paths and keeps reference picking reusable
 across shared workspace features such as the agent GUI and issue manager.
 
+Published React entry points use APIs available across the repository's
+supported React 19 hosts. Avoid runtime imports that only exist in a newer
+React minor: frameworks such as Next.js may alias React to their bundled
+runtime even when dependency resolution installs a newer version.
+
 It also provides host-neutral provenance filter contracts, an external-store
 controller, and a controlled filter view. Hosts inject available Agent/member
 options; source implementations declare which dimensions they can enforce and

@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="760" viewBox="0 0 1440 760">
+  <rect width="1440" height="760" fill="#0b1020"/>
+  <text x="72" y="86" fill="#f8fafc" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" font-size="38" font-weight="700">Codex 省额度模式 · 开关记忆证据</text>
+  <text x="72" y="132" fill="#94a3b8" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" font-size="21">应用与 daemon 完整重启后再次读取</text>
+  <rect x="72" y="184" width="1296" height="330" rx="18" fill="#111a31" stroke="#334155"/>
+  <text x="112" y="244" fill="#c4b5fd" font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="26">featureFlags.lab.codexSaverMode = true</text>
+  <text x="112" y="306" fill="#c4b5fd" font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="26">agentComposerDefaultsByAgentTarget.local:codex.codexSaverMode = true</text>
+  <text x="112" y="368" fill="#c4b5fd" font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="26">composer.codexSaverModeSupported = true</text>
+  <text x="112" y="430" fill="#c4b5fd" font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="26">composer.effectiveSettings.codexSaverMode = true</text>
+  <text x="112" y="492" fill="#93c5fd" font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="26">composer.effectiveSettings.model = gpt-5.6-sol</text>
+  <text x="72" y="590" fill="#cbd5e1" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" font-size="22">证据源：真实 Preferences API 与 Composer Options API；目标级记忆，不影响主模型选择。</text>
+  <text x="72" y="652" fill="#22c55e" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" font-size="27" font-weight="700">结论：跨新会话、应用重启后仍保持开启</text>
+</svg>

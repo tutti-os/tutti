@@ -5,6 +5,7 @@ import {
   SelectContent,
   SelectItem,
   SelectTrigger,
+  Switch,
   Tooltip,
   TooltipContent,
   TooltipProvider,
@@ -46,6 +47,7 @@ interface Props {
   composerControlsHardDisabled: boolean;
   inputDisabled: boolean;
   settingsControlsDisabled: boolean;
+  codexSaverModeDisabled: boolean;
   permissionModeControlsDisabled: boolean;
   isSendingTurn: boolean;
   isHeroLayout: boolean;
@@ -94,6 +96,7 @@ export function ComposerFooter({
   composerControlsHardDisabled,
   inputDisabled,
   settingsControlsDisabled,
+  codexSaverModeDisabled,
   permissionModeControlsDisabled,
   isSendingTurn,
   isHeroLayout,
@@ -311,6 +314,38 @@ export function ComposerFooter({
             </Select>
           ) : null}
           {quickPromptControl}
+          {composerSettings.supportsCodexSaverMode ? (
+            <TooltipProvider delayDuration={120}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <div
+                    className={cn(
+                      styles.composerMenuTrigger,
+                      "flex w-auto cursor-pointer items-center gap-2 px-2",
+                      codexSaverModeDisabled && "cursor-not-allowed opacity-60"
+                    )}
+                  >
+                    <span className="whitespace-nowrap text-xs">
+                      {labels.codexSaverModeLabel}
+                    </span>
+                    <Switch
+                      aria-label={labels.codexSaverModeLabel}
+                      checked={
+                        composerSettings.draftSettings.codexSaverMode === true
+                      }
+                      disabled={codexSaverModeDisabled}
+                      onCheckedChange={(enabled) =>
+                        onSettingsChange({ codexSaverMode: enabled })
+                      }
+                    />
+                  </div>
+                </TooltipTrigger>
+                <TooltipContent side="top" className="max-w-72">
+                  {labels.codexSaverModeDescription}
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          ) : null}
           {composerSettings.supportsPlanMode && isPlanModeActive ? (
             <button
               type="button"

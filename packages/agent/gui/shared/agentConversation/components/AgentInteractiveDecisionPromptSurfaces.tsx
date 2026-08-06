@@ -412,7 +412,12 @@ export function ExitPlanPromptSurface({
   }, [isSubmitting]);
 
   return (
-    <section className={interactivePromptClassName(embedded)}>
+    <section
+      className={interactivePromptClassName(embedded)}
+      data-agent-interaction-id={prompt.requestId}
+      data-agent-interaction-kind="exit-plan"
+      data-testid={`agent-exit-plan-${prompt.requestId}`}
+    >
       <div className={interactivePromptCardClassName(edgeGlow)}>
         <div className={styles.interactivePromptLead}>
           {stripPromptTitlePunctuation(labels.planLead)}
@@ -429,6 +434,7 @@ export function ExitPlanPromptSurface({
                   mode.label,
                   mode.description
                 )}
+                data-testid={`agent-exit-plan-confirm-${mode.id}`}
                 disabled={isSubmitting || submittingOptionId !== null}
                 onClick={() => {
                   setSubmittingOptionId(mode.id);
@@ -459,6 +465,7 @@ export function ExitPlanPromptSurface({
               placeholder={labels.feedbackPlaceholder}
               disabled={isSubmitting}
               className={styles.interactivePromptTextarea}
+              data-testid="agent-exit-plan-feedback"
               onChange={(event) => setFeedback(event.currentTarget.value)}
             />
             <div className={styles.interactivePromptActions}>
@@ -467,6 +474,7 @@ export function ExitPlanPromptSurface({
                 variant="secondary"
                 size="sm"
                 disabled={isSubmitting}
+                data-testid="agent-exit-plan-keep-planning"
                 onClick={() =>
                   onSubmit({
                     requestId: prompt.requestId,
@@ -496,6 +504,7 @@ export function ExitPlanPromptSurface({
               variant="secondary"
               size="sm"
               disabled={isSubmitting}
+              data-testid="agent-exit-plan-keep-planning"
               onClick={() =>
                 onSubmit({
                   requestId: prompt.requestId,

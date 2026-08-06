@@ -1,4 +1,5 @@
 import type { JSX, MouseEvent } from "react";
+import { ImageWithFallback } from "@tutti-os/ui-system";
 import { FileIcon, FolderFilledIcon } from "@tutti-os/ui-system/icons";
 
 type RichTextTriggerMenuItemProps = {
@@ -80,13 +81,16 @@ function RichTextTriggerMenuIcon({
       data-rich-text-trigger-icon="true"
     >
       {normalizedIconUrl ? (
-        <img
+        <ImageWithFallback
           alt=""
           className="block size-full object-cover object-center"
           decoding="async"
           draggable={false}
           loading="lazy"
           src={normalizedIconUrl}
+          fallback={
+            <span className="block size-3 rounded-[3px] bg-[var(--transparency-block)]" />
+          }
         />
       ) : (
         <span className="block size-3 rounded-[3px] bg-[var(--transparency-block)]" />

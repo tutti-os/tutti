@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef } from "react";
+import { selectWorkspaceAgentRootConversationSessions } from "@tutti-os/agent-activity-core";
 import {
   useAgentGUIRuntime,
   type AgentGUIRuntime
@@ -21,10 +22,19 @@ export interface AgentGUIConversationRailInput {
   conversationQuery: string;
   nodeId?: string | null;
   registerInteractionLockProbe?: (probe: (() => boolean) | null) => void;
-  sectionAgentTargetFallbackId: string | null;
   userProjects: AgentGUINodeViewModel["rail"]["userProjects"];
   workspaceId: string;
 }
+
+export interface AgentGUIConversationActivityRootFact {
+  needsUserAction: boolean;
+  status: AgentGUINodeViewModel["rail"]["conversations"][number]["status"];
+}
+
+const EMPTY_AGENT_GUI_CONVERSATION_ACTIVITY_ROOT_FACTS: ReadonlyMap<
+  string,
+  AgentGUIConversationActivityRootFact
+> = new Map();
 
 export function useAgentGUIConversationRailQuery({
   activeConversationId,
@@ -32,7 +42,6 @@ export function useAgentGUIConversationRailQuery({
   conversationQuery,
   nodeId,
   registerInteractionLockProbe,
-  sectionAgentTargetFallbackId,
   userProjects,
   workspaceId
 }: AgentGUIConversationRailInput) {
@@ -57,6 +66,8 @@ export function useAgentGUIConversationRailQuery({
         engine,
         getActiveConversationId: () => activeConversationIdRef.current,
         runtime: railRuntime,
+        sectionRefreshLimitMax:
+          runtime.conversationRailQueryLimits?.sectionRefreshLimitMax,
         workspaceId
       }),
     [engine, railRuntime, workspaceId]
@@ -86,17 +97,10 @@ export function useAgentGUIConversationRailQuery({
   useEffect(() => {
     controller.configure({
       conversationFilter,
-      sectionAgentTargetFallbackId,
       userProjects
     });
     controller.setSearchQuery(conversationQuery);
-  }, [
-    controller,
-    conversationFilter,
-    conversationQuery,
-    sectionAgentTargetFallbackId,
-    userProjects
-  ]);
+  }, [controller, conversationFilter, conversationQuery, userProjects]);
 
   const querySnapshot = useEngineSelector(
     controller,
@@ -126,24 +130,31 @@ export function useAgentGUIConversationRailQuery({
     (state) => projectRailConversations(state, querySnapshot),
     Object.is
   );
+  const selectActivityRootFacts = useMemo(
+    () =>
+      runtime.conversationActivityViewEnabled === true
+        ? selectAgentGUIConversationActivityRootFacts
+        : selectEmptyAgentGUIConversationActivityRootFacts,
+    [runtime.conversationActivityViewEnabled]
+  );
+  const activityRootFacts = useEngineSelector(
+    engine,
+    selectActivityRootFacts,
+    activityRootFactsEqual
+  );
   const requestedRailScopeKey = useMemo(
     () =>
       resolveConversationRailQueryScope(workspaceId, {
         conversationFilter,
-        sectionAgentTargetFallbackId,
         userProjects
       }).scopeKey,
-    [
-      conversationFilter,
-      sectionAgentTargetFallbackId,
-      userProjects,
-      workspaceId
-    ]
+    [conversationFilter, userProjects, workspaceId]
   );
   return useMemo(
     () => ({
       ...querySnapshot,
       batchDeletionAvailable: batchDeletionCapability.available,
+      activityRootFacts,
       isInteractionLocked: controller.isInteractionLocked,
       loadMoreSectionConversations: controller.loadMoreSectionConversations,
       railSearch: {
@@ -158,11 +169,51 @@ export function useAgentGUIConversationRailQuery({
     }),
     [
       batchDeletionCapability.available,
+      activityRootFacts,
       controller,
       querySnapshot,
       requestedRailScopeKey,
       runtimeRailConversations
     ]
+  );
+}
+
+function selectEmptyAgentGUIConversationActivityRootFacts(): ReadonlyMap<
+  string,
+  AgentGUIConversationActivityRootFact
+> {
+  return EMPTY_AGENT_GUI_CONVERSATION_ACTIVITY_ROOT_FACTS;
+}
+
+function selectAgentGUIConversationActivityRootFacts(
+  state: Parameters<typeof selectWorkspaceAgentRootConversationSessions>[0]
+): ReadonlyMap<string, AgentGUIConversationActivityRootFact> {
+  return new Map(
+    selectWorkspaceAgentRootConversationSessions(state)
+      .filter((item) => item.session.visible !== false)
+      .map((item) => [
+        item.session.agentSessionId,
+        {
+          needsUserAction: item.pendingInteractions.length > 0,
+          status: item.displayStatus === "idle" ? "ready" : item.displayStatus
+        }
+      ])
+  );
+}
+
+function activityRootFactsEqual(
+  left: ReadonlyMap<string, AgentGUIConversationActivityRootFact>,
+  right: ReadonlyMap<string, AgentGUIConversationActivityRootFact>
+): boolean {
+  return (
+    left.size === right.size &&
+    [...left].every(([id, fact]) => {
+      const candidate = right.get(id);
+      return (
+        candidate?.needsUserAction === fact.needsUserAction &&
+        candidate.status === fact.status
+      );
+    })
   );
 }
 

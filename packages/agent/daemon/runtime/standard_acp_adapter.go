@@ -82,6 +82,7 @@ type standardACPConfig struct {
 	agentTargetID                  string
 	installationID                 string
 	executableIdentity             *ExecutableIdentity
+	startupTimeout                 time.Duration
 }
 
 type standardACPMessageDiagnostics struct {

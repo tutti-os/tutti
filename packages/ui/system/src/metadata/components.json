@@ -133,6 +133,29 @@
       "storyboard": true
     },
     {
+      "id": "image-with-fallback",
+      "layer": "base",
+      "name": "ImageWithFallback",
+      "export": "ImageWithFallback",
+      "from": "@tutti-os/ui-system/components",
+      "category": "primitive",
+      "status": "stable",
+      "source": "src/components/image-with-fallback/index.tsx",
+      "description": "Decorative remote image primitive with a bounded same-URL retry and caller-owned fallback.",
+      "propsType": "ImageWithFallbackProps",
+      "useCases": [
+        "Remote application icons",
+        "Image thumbnails",
+        "Decorative remote media"
+      ],
+      "migrationHints": [
+        "Keep retryCount small and bounded; the default retries once.",
+        "Do not mutate the URL to force a retry because signed URLs may become invalid.",
+        "Provide a stable fallback for any image that is decorative or essential to row layout."
+      ],
+      "storyboard": true
+    },
+    {
       "id": "badge",
       "layer": "base",
       "name": "Badge",
@@ -2074,6 +2097,20 @@
       "useCases": ["Message center trigger"],
       "migrationHints": [],
       "iconVariant": "filled"
+    },
+    {
+      "id": "activity-view-lined-icon",
+      "layer": "base",
+      "name": "ActivityViewLinedIcon",
+      "export": "ActivityViewLinedIcon",
+      "from": "@tutti-os/ui-system/icons",
+      "category": "icon",
+      "status": "stable",
+      "source": "src/icons/system-icons.tsx",
+      "description": "Bell icon for toggling a conversation Activity View.",
+      "useCases": ["Conversation activity view toggle"],
+      "migrationHints": [],
+      "iconVariant": "lined"
     },
     {
       "id": "minimize-lined-icon",

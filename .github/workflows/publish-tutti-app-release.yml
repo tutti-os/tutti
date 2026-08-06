@@ -206,23 +206,27 @@ jobs:
             return 0;
           }
 
-          function nextVersionFromSources(prefix, bump, manifestVersion) {
+          function latestVersionSeed(prefix, manifestVersion, requireStableManifest) {
             execFileSync("git", ["fetch", "--tags", "--force"], { stdio: "inherit" });
             const tags = execFileSync("git", ["tag", "--list"], { encoding: "utf8" })
               .split("\n")
               .map((tag) => tag.trim())
               .filter((tag) => tag.startsWith(prefix));
+            const stableManifestVersion = String(manifestVersion || "")
+              .split("+", 1)[0]
+              .split("-", 1)[0];
             const manifestSeed = parseStableVersion(
-              manifestVersion,
+              stableManifestVersion,
               "package manifest"
             );
-            if (!manifestSeed) {
+            if (requireStableManifest && !manifestSeed) {
               fail(`Package manifest version must be stable semver x.y.z when release_bump is used, got ${manifestVersion}.`);
             }
             const tagSeeds = tags
               .map((tag) => parseStableVersion(tag.slice(prefix.length), `tag ${tag}`))
               .filter(Boolean);
-            const latest = [manifestSeed, ...tagSeeds].sort(compareVersions).at(-1) ?? {
+            const seeds = [...(manifestSeed ? [manifestSeed] : []), ...tagSeeds];
+            const latest = seeds.sort(compareVersions).at(-1) ?? {
               source: "default",
               version: "0.0.0",
               major: 0,
@@ -230,6 +234,11 @@ jobs:
               patch: 0
             };
             console.log(`Resolved release version seed ${latest.version} from ${latest.source}.`);
+            return latest;
+          }
+
+          function nextVersionFromSources(prefix, bump, manifestVersion) {
+            const latest = latestVersionSeed(prefix, manifestVersion, true);
 
             if (bump === "major") {
               return `${latest.major + 1}.0.0`;
@@ -266,7 +275,11 @@ jobs:
             if (shouldCreateTag) {
               fail("create_release_tag requires release_bump.");
             }
-            releaseVersion = `${manifest.version}+${gitSha.slice(0, 12)}`;
+            // Staging publishes do not bump. Seed from max(manifest, release tags)
+            // so staging stays on the same product line as production tags.
+            const tagPrefix = defaultTagPrefix();
+            const seed = latestVersionSeed(tagPrefix, manifest.version, false);
+            releaseVersion = `${seed.version}+${gitSha.slice(0, 12)}`;
           }
 
           if (!semverPattern.test(releaseVersion)) {

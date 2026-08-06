@@ -9,6 +9,7 @@ import (
 	agenthost "github.com/tutti-os/tutti/packages/agent/host"
 	agentactivitybiz "github.com/tutti-os/tutti/packages/agent/store-sqlite"
 	"github.com/tutti-os/tutti/packages/agent/store-sqlite/canonical"
+	eventstreamservice "github.com/tutti-os/tutti/services/tuttid/service/eventstream"
 )
 
 func TestActivityProjectionConsumesCanonicalViewInvalidation(t *testing.T) {
@@ -29,6 +30,98 @@ func TestActivityProjectionConsumesCanonicalViewInvalidation(t *testing.T) {
 	if len(publisher.events) != 1 || publisher.events[0].eventType != "session_reconcile_required" ||
 		publisher.events[0].payload["lastEventUnixMs"] != int64(42) {
 		t.Fatalf("canonical invalidation events=%#v", publisher.events)
+	}
+}
+
+func TestActivityProjectionPublishesRuntimeActivityObservation(t *testing.T) {
+	publisher := &activityUpdatePublisherStub{}
+	projection := NewActivityProjection(&activityProjectionRepoStub{})
+	projection.SetPublisher(publisher)
+	err := projection.ObserveCommitted(context.Background(), agenthost.CommittedDelta{
+		ActivityState: &agenthost.ActivityStateCommitted{
+			Input: canonical.ReportSessionStateInput{
+				WorkspaceID:    "workspace-1",
+				AgentSessionID: "session-1",
+				State: canonical.WorkspaceAgentSessionStateUpdate{
+					OccurredAtUnixMS: 42,
+					RuntimeActivity: &canonical.WorkspaceAgentRuntimeActivityObservation{
+						State: "running", OccurredAtUnixMS: 42,
+					},
+				},
+			},
+			Result: agentactivitybiz.ActivityStateReportResult{
+				State: agentactivitybiz.StateReportResult{
+					Accepted:        true,
+					StateApplied:    true,
+					LastEventUnixMS: 42,
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(publisher.events) != 2 {
+		t.Fatalf("published events=%#v, want runtime activity and reconcile", publisher.events)
+	}
+	event := publisher.events[0]
+	if event.eventType != "runtime_activity_update" || event.payload["state"] != "running" ||
+		event.payload["occurredAtUnixMs"] != int64(42) {
+		t.Fatalf("runtime activity event=%#v", event)
+	}
+}
+
+func TestActivityProjectionDoesNotPublishStaleRuntimeActivityObservation(t *testing.T) {
+	publisher := &activityUpdatePublisherStub{}
+	projection := NewActivityProjection(&activityProjectionRepoStub{})
+	projection.SetPublisher(publisher)
+	err := projection.ObserveCommitted(context.Background(), agenthost.CommittedDelta{
+		ActivityState: &agenthost.ActivityStateCommitted{
+			Input: canonical.ReportSessionStateInput{
+				WorkspaceID:    "workspace-1",
+				AgentSessionID: "session-1",
+				State: canonical.WorkspaceAgentSessionStateUpdate{
+					RuntimeActivity: &canonical.WorkspaceAgentRuntimeActivityObservation{
+						State: "running", OccurredAtUnixMS: 41,
+					},
+				},
+			},
+			Result: agentactivitybiz.ActivityStateReportResult{
+				State: agentactivitybiz.StateReportResult{
+					Accepted: true, StateApplied: false, LastEventUnixMS: 42,
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, event := range publisher.events {
+		if event.eventType == "runtime_activity_update" {
+			t.Fatalf("stale runtime activity was published: %#v", publisher.events)
+		}
+	}
+}
+
+func TestRuntimeActivityPayloadPassesEventstreamCatalog(t *testing.T) {
+	service := eventstreamservice.NewService(eventstreamservice.DefaultCatalog(), nil)
+	publisher := eventstreamservice.AgentActivityPublisher{Service: service}
+	err := publisher.PublishAgentActivityUpdated(
+		context.Background(),
+		"workspace-1",
+		"session-1",
+		"runtime_activity_update",
+		map[string]any{
+			"workspaceId":      "workspace-1",
+			"agentSessionId":   "session-1",
+			"eventType":        "runtime_activity_update",
+			"state":            "running",
+			"occurredAtUnixMs": int64(42),
+		},
+	)
+	if err != nil {
+		t.Fatalf("runtime activity payload failed eventstream validation: %v", err)
 	}
 }
 

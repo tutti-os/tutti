@@ -24,6 +24,56 @@
             "minLength": 1
           },
           "eventType": {
+            "const": "runtime_activity_update"
+          },
+          "data": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "workspaceId",
+              "agentSessionId",
+              "eventType",
+              "state",
+              "occurredAtUnixMs"
+            ],
+            "properties": {
+              "workspaceId": {
+                "type": "string",
+                "minLength": 1
+              },
+              "agentSessionId": {
+                "type": "string",
+                "minLength": 1
+              },
+              "eventType": {
+                "const": "runtime_activity_update"
+              },
+              "state": {
+                "type": "string",
+                "enum": ["idle", "running"]
+              },
+              "occurredAtUnixMs": {
+                "type": "integer",
+                "minimum": 1
+              }
+            }
+          }
+        }
+      },
+      {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["workspaceId", "agentSessionId", "eventType", "data"],
+        "properties": {
+          "workspaceId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "agentSessionId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "eventType": {
             "const": "session_reconcile_required"
           },
           "data": {

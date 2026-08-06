@@ -30,6 +30,7 @@ export function agentActivityComposerOptionsFromTuttidResult(
     result.capabilityCatalog
   );
   return {
+    codexSaverModeSupported: result.codexSaverModeSupported === true,
     provider: normalizeText(result.provider) ?? provider,
     capabilities: sessionCapabilitiesFromValue(result.capabilities),
     models: modelsFromConfig,
@@ -203,6 +204,9 @@ function composerSettingsFromValue(
     return null;
   }
   return {
+    ...(typeof settings.codexSaverMode === "boolean"
+      ? { codexSaverMode: settings.codexSaverMode }
+      : {}),
     model: normalizeText(settings.model),
     reasoningEffort: normalizeText(settings.reasoningEffort),
     speed: normalizeText(settings.speed),

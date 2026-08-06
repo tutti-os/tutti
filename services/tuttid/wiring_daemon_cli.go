@@ -88,7 +88,7 @@ func buildDaemonCLIRegistry(
 	if input.Browser != nil {
 		providers = append(
 			providers,
-			browsercli.NewProvider(input.Workspaces, input.Browser),
+			browsercli.NewProvider(input.Workspaces, input.Browser, input.AgentSessions),
 		)
 	}
 	if input.Computer != nil {

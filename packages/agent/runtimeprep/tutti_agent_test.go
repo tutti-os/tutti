@@ -4,13 +4,14 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
 
 func TestTuttiAgentPreparerUsesExplicitAuthSourceAndInstallsSkills(t *testing.T) {
 	userHome := t.TempDir()
-	t.Setenv("HOME", userHome)
+	setTestHome(t, userHome)
 	defaultAuthDir := filepath.Join(userHome, ".tutti-agent")
 	if err := os.MkdirAll(defaultAuthDir, 0o700); err != nil {
 		t.Fatal(err)
@@ -21,6 +22,9 @@ func TestTuttiAgentPreparerUsesExplicitAuthSourceAndInstallsSkills(t *testing.T)
 
 	runtimeRoot := t.TempDir()
 	authSource := filepath.Join(t.TempDir(), "auth.json")
+	if err := os.WriteFile(authSource, []byte(`{"token":"explicit"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	preparer := TuttiAgentPreparer{
 		ResolveAuthSource: func(context.Context, PrepareInput) (string, error) {
 			return authSource, nil
@@ -42,12 +46,23 @@ func TestTuttiAgentPreparerUsesExplicitAuthSourceAndInstallsSkills(t *testing.T)
 	}
 
 	home := filepath.Join(runtimeRoot, "tutti-agent-home")
-	linked, err := os.Readlink(filepath.Join(home, "auth.json"))
-	if err != nil {
-		t.Fatalf("read auth symlink: %v", err)
-	}
-	if linked != authSource {
-		t.Fatalf("auth symlink = %q, want %q", linked, authSource)
+	authPath := filepath.Join(home, "auth.json")
+	if runtime.GOOS == "windows" {
+		content, err := os.ReadFile(authPath)
+		if err != nil {
+			t.Fatalf("read materialized auth: %v", err)
+		}
+		if string(content) != `{"token":"explicit"}` {
+			t.Fatalf("materialized auth = %q", content)
+		}
+	} else {
+		linked, err := os.Readlink(authPath)
+		if err != nil {
+			t.Fatalf("read auth symlink: %v", err)
+		}
+		if linked != authSource {
+			t.Fatalf("auth symlink = %q, want %q", linked, authSource)
+		}
 	}
 	if _, err := os.Stat(filepath.Join(home, "skills", "tutti-cli", "SKILL.md")); err != nil {
 		t.Fatalf("native tutti-cli skill missing: %v", err)
@@ -63,6 +78,9 @@ func TestTuttiAgentPreparerUsesExplicitAuthSourceAndInstallsSkills(t *testing.T)
 		if strings.Contains(string(config), unexpected) {
 			t.Fatalf("managed config unexpectedly pinned %q: %s", unexpected, config)
 		}
+	}
+	if runtime.GOOS == "windows" && !containsConfigBlock(string(config), "[windows]\nsandbox = \"unelevated\"") {
+		t.Fatalf("Tutti Agent session config missing Windows sandbox fallback: %s", config)
 	}
 	if len(result.Env) == 0 || result.Env[0] != "TUTTI_AGENT_HOME="+home {
 		t.Fatalf("Prepare() env = %#v", result.Env)
@@ -87,7 +105,7 @@ func TestTuttiAgentPreparerRejectsRelativeAuthSource(t *testing.T) {
 
 func TestTuttiAgentPreparerDoesNotFallbackWhenExplicitAuthSourceIsEmpty(t *testing.T) {
 	userHome := t.TempDir()
-	t.Setenv("HOME", userHome)
+	setTestHome(t, userHome)
 	defaultHome := filepath.Join(userHome, ".tutti-agent")
 	if err := os.MkdirAll(defaultHome, 0o700); err != nil {
 		t.Fatal(err)
@@ -155,5 +173,45 @@ func TestPrepareTuttiAgentHomeRemovesLegacyPinnedProvider(t *testing.T) {
 		if strings.Contains(string(config), removed) {
 			t.Fatalf("legacy pinned config still contains %q:\n%s", removed, config)
 		}
+	}
+}
+
+func TestPrepareTuttiAgentHomeWritesResponsesModelPlanEndpoint(t *testing.T) {
+	home := t.TempDir()
+	endpoint := &ModelEndpointConfig{
+		PlanName: "Custom plan",
+		Protocol: "openai",
+		BaseURL:  "http://127.0.0.1:40000/v1",
+		APIKey:   "temporary-session-token",
+		WireAPI:  "responses",
+		Model:    "model-a",
+	}
+	if err := PrepareTuttiAgentHome(home, testResolvedInput(t, PrepareInput{
+		Provider:      "tutti-agent",
+		ModelEndpoint: endpoint,
+	})); err != nil {
+		t.Fatalf("PrepareTuttiAgentHome() error = %v", err)
+	}
+
+	configBytes, err := os.ReadFile(filepath.Join(home, "config.toml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	config := string(configBytes)
+	for _, expected := range []string{
+		`model_provider = "tutti-model-plan"`,
+		`model = "model-a"`,
+		`[model_providers.tutti-model-plan]`,
+		`name = "Custom plan"`,
+		`base_url = "http://127.0.0.1:40000/v1"`,
+		`env_key = "TUTTI_MODEL_PLAN_API_KEY"`,
+		`wire_api = "responses"`,
+	} {
+		if !strings.Contains(config, expected) {
+			t.Fatalf("config missing %q:\n%s", expected, config)
+		}
+	}
+	if strings.Contains(config, endpoint.APIKey) {
+		t.Fatalf("config contains the temporary credential:\n%s", config)
 	}
 }

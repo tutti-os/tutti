@@ -78,6 +78,13 @@ const styles = {
   conversationDeleteConfirmText:
     "agent-gui-node__conversation-delete-confirm-text",
   conversationActions: "agent-gui-node__conversation-actions",
+  conversationActivityProjectLabel:
+    "agent-gui-node__conversation-activity-project-label",
+  conversationActivitySecondary:
+    "agent-gui-node__conversation-activity-secondary",
+  conversationActivitySecondaryIcon:
+    "agent-gui-node__conversation-activity-secondary-icon",
+  conversationActivityText: "agent-gui-node__conversation-activity-text",
   conversationItem: "agent-gui-node__conversation-item",
   conversationList: "agent-gui-node__conversation-list",
   conversationMeta: "agent-gui-node__conversation-meta",
@@ -186,6 +193,10 @@ const styles = {
   railResizeHandle: "agent-gui-node__rail-resize-handle",
   railResizeHandleCollapsed: "agent-gui-node__rail-resize-handle--collapsed",
   railToolbar: "agent-gui-node__rail-toolbar",
+  activityEmpty: "agent-gui-node__activity-empty",
+  activityHeading: "agent-gui-node__activity-heading",
+  activityToggleButton: "agent-gui-node__activity-toggle-button",
+  activityToggleDot: "agent-gui-node__activity-toggle-dot",
   rowMeta: "agent-gui-node__row-meta",
   shell: "agent-gui-node__shell",
   timeline: "agent-gui-node__timeline",

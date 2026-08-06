@@ -94,10 +94,10 @@ async function packageBuiltin({ checkOnly = false } = {}) {
     await mkdir(generatedDir, { recursive: true });
     const tempZipPath = path.join(
       generatedDir,
-      `.${path.basename(zipPath)}.${process.pid}.${randomUUID()}.tmp`
+      `.${path.basename(zipPath)}.${process.pid}.${randomUUID()}.tmp.zip`
     );
     try {
-      await run("zip", ["-qry", tempZipPath, "."], { cwd: packageRoot });
+      await createPackageZip(tempZipPath);
       await rename(tempZipPath, zipPath);
     } finally {
       await rm(tempZipPath, { force: true });
@@ -213,7 +213,38 @@ async function sleep(ms) {
 }
 
 async function runViteBuild() {
-  await run("pnpm", ["exec", "vite", "build"], { cwd: appDir });
+  // Invoke Vite through the current Node runtime so packaging does not depend
+  // on a platform-specific pnpm/pnpm.cmd launcher.
+  await run(
+    process.execPath,
+    [path.join(appDir, "node_modules", "vite", "bin", "vite.js"), "build"],
+    { cwd: appDir }
+  );
+}
+
+async function createPackageZip(targetPath) {
+  if (process.platform !== "win32") {
+    await run("zip", ["-qry", targetPath, "."], { cwd: packageRoot });
+    return;
+  }
+  await run(
+    "powershell.exe",
+    [
+      "-NoLogo",
+      "-NoProfile",
+      "-NonInteractive",
+      "-Command",
+      "Compress-Archive -Path (Join-Path $env:TUTTI_PACKAGE_ROOT '*') -DestinationPath $env:TUTTI_PACKAGE_ZIP -Force"
+    ],
+    {
+      cwd: packageRoot,
+      env: {
+        ...process.env,
+        TUTTI_PACKAGE_ROOT: packageRoot,
+        TUTTI_PACKAGE_ZIP: targetPath
+      }
+    }
+  );
 }
 
 function generatedZipPath(manifest) {
@@ -311,9 +342,13 @@ async function copyCliManifest(manifest) {
 async function buildStandaloneServers() {
   const sourcePath = path.join(packageSourceDir, "server.go");
   await access(sourcePath);
-  for (const target of ["darwin-arm64", "darwin-amd64"]) {
+  for (const target of ["darwin-arm64", "darwin-amd64", "windows-amd64"]) {
     const [goos, goarch] = target.split("-");
     const targetDir = path.join(packageRoot, "bin", target);
+    const outputName =
+      goos === "windows"
+        ? "tutti-onboarding-server.exe"
+        : "tutti-onboarding-server";
     await mkdir(targetDir, { recursive: true });
     await run(
       "go",
@@ -323,7 +358,7 @@ async function buildStandaloneServers() {
         "-ldflags",
         "-s -w",
         "-o",
-        path.join(targetDir, "tutti-onboarding-server"),
+        path.join(targetDir, outputName),
         sourcePath
       ],
       {
@@ -372,9 +407,15 @@ async function validatePackageRoot(root) {
   if (agents.trim().length === 0) {
     throw new Error("AGENTS.md must be non-empty.");
   }
-  const bootstrapStat = await stat(path.join(root, "bootstrap.sh"));
-  if ((bootstrapStat.mode & 0o111) === 0) {
-    throw new Error("bootstrap.sh must be executable.");
+  const bootstrap = await readFile(path.join(root, "bootstrap.sh"));
+  if (bootstrap.includes(0x0d)) {
+    throw new Error("bootstrap.sh must use LF line endings.");
+  }
+  if (process.platform !== "win32") {
+    const bootstrapStat = await stat(path.join(root, "bootstrap.sh"));
+    if ((bootstrapStat.mode & 0o111) === 0) {
+      throw new Error("bootstrap.sh must be executable.");
+    }
   }
   await assertNoSymlinks(root);
 }

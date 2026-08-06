@@ -119,6 +119,12 @@ export interface AgentGUIProviderSkillOption {
   pluginName?: string;
   path?: string;
   kind?: "skill" | "connector";
+  status?:
+    | "available"
+    | "disabled"
+    | "authRequired"
+    | "setupRequired"
+    | "unsupported";
 }
 
 export interface AgentComposerTextBlock {
@@ -271,6 +277,7 @@ export interface AgentGUIComposerModelPlanVM {
 export interface AgentGUIComposerSettingsVM {
   sessionSettings: AgentSessionComposerSettings | null;
   draftSettings: {
+    codexSaverMode?: boolean;
     model: string | null;
     reasoningEffort: AgentSessionReasoningEffort | null;
     speed: AgentSessionSpeed | null;
@@ -282,6 +289,7 @@ export interface AgentGUIComposerSettingsVM {
     permissionModeId?: string | null;
   };
   supportsModel: boolean;
+  supportsCodexSaverMode?: boolean;
   supportsReasoningEffort: boolean;
   supportsSpeed: boolean;
   supportsPermissionMode?: boolean;
@@ -424,7 +432,8 @@ export type AgentGUIComposerSubmissionBlockedReason =
   | "agent_targets_loading"
   | "authentication_required"
   | "conversation_busy"
-  | "resume_unavailable";
+  | "resume_unavailable"
+  | "settings_update_pending";
 
 export interface AgentGUIComposerGate {
   /** Canonical busy projection captured with the same gate snapshot. */

@@ -26,7 +26,11 @@ test("create and send projections share one prompt allowlist", () => {
       clientSubmitId: "submit-1",
       initialContent: content,
       mode: "new",
-      settings: { browserUse: true, computerUse: true },
+      settings: {
+        browserUse: true,
+        codexSaverMode: true,
+        computerUse: true
+      },
       workspaceId: "workspace-1"
     } satisfies AgentSessionActivateEffectInput);
   const send = tuttiSendWorkspaceAgentSessionInputRequestFromActivity({
@@ -45,6 +49,7 @@ test("create and send projections share one prompt allowlist", () => {
     assert.deepEqual(projected, [{ text: "hello", type: "text" }]);
   }
   assert.equal(activationCreate.browserUse, true);
+  assert.equal(activationCreate.codexSaverMode, true);
   assert.equal("computerUse" in activationCreate, false);
   assert.deepEqual(send.capabilityRefs, [
     { capability: "tutti", source: "slash_command" }
@@ -62,6 +67,29 @@ test("request projection rejects local file blocks", () => {
       }),
     /File prompt blocks must be uploaded before submission/
   );
+});
+
+test("request projection carries the exact target only for guidance", () => {
+  const guidance = tuttiSendWorkspaceAgentSessionInputRequestFromActivity({
+    agentSessionId: "session-1",
+    clientSubmitId: "submit-guidance",
+    content: [activityTextBlock()],
+    guidance: true,
+    targetTurnId: "  turn-target  ",
+    workspaceId: "workspace-1"
+  });
+  assert.equal(guidance.guidance, true);
+  assert.equal(guidance.turnId, "turn-target");
+
+  const ordinary = tuttiSendWorkspaceAgentSessionInputRequestFromActivity({
+    agentSessionId: "session-1",
+    clientSubmitId: "submit-ordinary",
+    content: [activityTextBlock()],
+    targetTurnId: "turn-ignored",
+    workspaceId: "workspace-1"
+  });
+  assert.equal("guidance" in ordinary, false);
+  assert.equal("turnId" in ordinary, false);
 });
 
 function activityTextBlock(): AgentPromptContentBlock {

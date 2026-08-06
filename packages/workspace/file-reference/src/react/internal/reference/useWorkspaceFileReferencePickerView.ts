@@ -1,10 +1,4 @@
-import {
-  useCallback,
-  useEffect,
-  useEffectEvent,
-  useMemo,
-  useState
-} from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSnapshot } from "valtio";
 import type {
   WorkspaceFileReferenceAdapter,
@@ -71,11 +65,16 @@ export function useWorkspaceFileReferencePickerView({
   } = pickerSnapshot;
   const isLoading = mode === "search" ? isSearchLoading : isBrowseLoading;
 
-  const finalizeRequestedReferences = useEffectEvent(
+  const onCloseRef = useRef(onClose);
+  const onConfirmRef = useRef(onConfirm);
+  onCloseRef.current = onClose;
+  onConfirmRef.current = onConfirm;
+  const finalizeRequestedReferences = useCallback(
     (refs: WorkspaceFileReference[]) => {
-      onConfirm(uniqueWorkspaceFileReferences(refs));
-      onClose();
-    }
+      onConfirmRef.current(uniqueWorkspaceFileReferences(refs));
+      onCloseRef.current();
+    },
+    []
   );
 
   const setSearchQuery = useCallback(

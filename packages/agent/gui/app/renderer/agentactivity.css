@@ -5216,6 +5216,27 @@ aside.workspace-agents-status-panel
   user-select: none;
 }
 
+/*
+ * Windows keeps the native caption buttons, but Electron overlays them on the
+ * app-owned header when titleBarStyle is hidden. Match that overlay's height
+ * and reserve its right-side hit area so Agent content never sits underneath
+ * the native minimize/maximize/close buttons.
+ */
+.agent-gui-workbench-header[data-tutti-titlebar-overlay="true"] {
+  --agent-gui-workbench-header-height: 52px;
+  --tutti-titlebar-controls-inset: calc(
+    100vw - env(titlebar-area-width, calc(100vw - 138px)) + 10px
+  );
+  box-sizing: border-box;
+  padding-right: var(--tutti-titlebar-controls-inset);
+}
+
+.agent-gui-workbench-header[data-tutti-titlebar-overlay="true"]
+  .agent-gui-workbench-header__traffic-lights {
+  visibility: hidden;
+  pointer-events: none;
+}
+
 .agent-gui-workbench-header:active {
   cursor: grabbing;
 }
@@ -5285,6 +5306,19 @@ aside.workspace-agents-status-panel
   top: 0;
   right: 0;
   margin-left: 0;
+}
+
+/*
+ * The tool-sidebar actions are removed from the flex flow above. On Windows
+ * the native caption buttons occupy the right edge of the same overlay, so a
+ * bare `right: 0` puts those actions underneath minimize/restore/close. Move
+ * the absolute action group to the same safe edge used by the header padding.
+ */
+.agent-gui-workbench-header[data-tutti-titlebar-overlay="true"]
+  .agent-gui-workbench-header__secondary-accessory:has(
+    [data-agent-tool-sidebar-header="true"]
+  ) {
+  right: var(--tutti-titlebar-controls-inset);
 }
 
 /*
@@ -5967,12 +6001,50 @@ aside.workspace-agents-status-panel
 .agent-gui-node__rail-toolbar {
   --agent-gui-rail-control-radius: 6px;
 
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) max-content;
+  display: flex;
   align-items: center;
   gap: 10px;
   min-width: 0;
   padding: 2px 12px 16px 12px;
+}
+
+.agent-gui-node__activity-toggle-button {
+  position: relative;
+  flex: 0 0 32px;
+  width: 32px;
+  min-width: 32px;
+  height: 32px;
+  min-height: 32px;
+  border-radius: var(--agent-gui-rail-control-radius);
+  background: transparent;
+  color: var(--text-secondary);
+}
+
+.agent-gui-node__activity-toggle-button:hover,
+.agent-gui-node__activity-toggle-button:focus-visible {
+  background: var(--transparency-hover);
+  color: var(--text-primary);
+}
+
+.agent-gui-node__activity-toggle-button[data-active="true"] {
+  background: color-mix(in srgb, var(--agent-gui-accent) 12%, transparent);
+  color: var(--agent-gui-accent-strong);
+}
+
+.agent-gui-node__activity-toggle-button svg {
+  width: 18px;
+  height: 18px;
+}
+
+.agent-gui-node__activity-toggle-dot {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  width: 6px;
+  height: 6px;
+  border: 1px solid var(--agent-gui-session-sidepanel-background);
+  border-radius: 999px;
+  background: var(--agent-gui-accent);
 }
 
 .agent-gui-node__project-rail-header {
@@ -6315,6 +6387,29 @@ aside.workspace-agents-status-panel
   /* The native overlay scrollbar does not reserve a gutter on macOS, so the
      right inset must match the left side explicitly. */
   padding: 0 12px 18px 12px;
+}
+
+.agent-gui-node__activity-heading {
+  flex: 0 0 auto;
+  min-width: 0;
+  margin: 14px 0 0;
+  padding: 4px 10px 6px;
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 18px;
+}
+
+.agent-gui-node__activity-heading[data-first="true"] {
+  margin-top: 0;
+}
+
+.agent-gui-node__activity-empty {
+  min-width: 0;
+  padding: 8px 10px 10px;
+  color: var(--text-tertiary);
+  font-size: 12px;
+  line-height: 18px;
 }
 
 .agent-gui-node__conversation-section {
@@ -6779,6 +6874,74 @@ button.agent-gui-node__conversation-section-toggle:hover
   transition:
     background-color 140ms ease,
     border-color 140ms ease;
+}
+
+.agent-gui-node__conversation-item[data-presentation="activity"] {
+  height: auto;
+  min-height: 56px;
+  margin-bottom: 4px;
+}
+
+.agent-gui-node__conversation-item[data-presentation="activity"]
+  .agent-gui-node__conversation-select {
+  align-items: start;
+  min-height: 56px;
+  padding-top: 8px;
+  padding-bottom: 8px;
+}
+
+.agent-gui-node__conversation-activity-text {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+  overflow: hidden;
+}
+
+.agent-gui-node__conversation-activity-project-label {
+  display: block;
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-tertiary);
+  font-size: 12px;
+  line-height: 18px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agent-gui-node__conversation-activity-secondary {
+  display: flex;
+  align-items: flex-start;
+  min-width: 0;
+  max-height: 34px;
+  overflow: hidden;
+  color: var(--text-tertiary);
+  font-size: 12px;
+  line-height: 17px;
+}
+
+.agent-gui-node__conversation-activity-secondary > span {
+  display: -webkit-box;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.agent-gui-node__conversation-activity-secondary-icon {
+  display: block;
+  flex: 0 0 12px;
+  width: 12px;
+  height: 12px;
+  margin: 2px 4px 0 0;
+}
+
+.agent-gui-node__conversation-item[data-presentation="activity"]
+  .agent-gui-node__conversation-actions {
+  top: 4px;
+  transform: none;
 }
 
 .agent-gui-node__conversation-item:has(
@@ -11319,75 +11482,6 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
   padding: 8px 12px;
   font-size: 11px;
   line-height: 1.5;
-}
-
-/* Tutti intensity slider: stars pour out of the handle towards the left end
-   of the track. The stream container is sized from React (track start to the
-   handle's left edge); per-star duration/delay/drift come from CSS vars so a
-   fixed pool can run continuously while intensity changes only toggle
-   visibility. Stacking: the stream sits above the track (z-index 1) and below
-   the handle (the slider thumb rules raise it to z-index 2). */
-.agent-gui-intensity-star-stream {
-  position: absolute;
-  z-index: 1;
-  top: 50%;
-  left: 0;
-  width: max(0px, var(--agent-gui-star-stream-width, 0px));
-  /* Match the slider track box (h-5 = 1.25rem). The Radix thumb is
-     absolutely positioned, so the slider root -- and therefore this
-     overlay's positioning parent -- is exactly the track height;
-     centering on it keeps stars and their glow clipped to the track
-     instead of spilling above and below it. */
-  height: 1.25rem;
-  transform: translateY(-50%);
-  /* Mirror the slider track's rounded-full so the clipped star layer
-     shares the same capsule silhouette as the gradient track beneath it. */
-  border-radius: 9999px;
-  overflow: hidden;
-  pointer-events: none;
-}
-
-.agent-gui-intensity-star-stream__star {
-  position: absolute;
-  left: 100%;
-  opacity: 0;
-  filter: drop-shadow(0 0 3px currentColor) drop-shadow(0 0 6px currentColor);
-  animation: agent-gui-intensity-star-stream-flow
-    var(--agent-gui-star-duration, 2s) linear infinite;
-  animation-delay: var(--agent-gui-star-delay, 0s);
-}
-
-@keyframes agent-gui-intensity-star-stream-flow {
-  0% {
-    left: 100%;
-    opacity: 0;
-    transform: translateY(0) scale(0.5);
-  }
-
-  10% {
-    opacity: 0.95;
-  }
-
-  50% {
-    transform: translateY(var(--agent-gui-star-drift, 0px)) scale(1);
-  }
-
-  85% {
-    opacity: 0.95;
-  }
-
-  100% {
-    left: -16px;
-    opacity: 0;
-    transform: translateY(0) scale(0.6);
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .agent-gui-intensity-star-stream__star {
-    animation: none;
-    opacity: 0;
-  }
 }
 
 /* Fully occluded Workbench nodes stay mounted for instant switching, but their

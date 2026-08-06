@@ -100,6 +100,10 @@ import {
 import { createClient } from "./generated/client/index.ts";
 import { createAgentProvidersClient } from "./agentProvidersClient.ts";
 import { createCollaborationRunsClient } from "./collaborationRunsClient.ts";
+import {
+  createConnectorMarketClient,
+  type ConnectorMarketClient
+} from "./connectorMarketClient.ts";
 import { unwrapAccepted, unwrapData } from "./tuttidClientResponse.ts";
 import { createWorkspaceAppsClient } from "./workspaceAppsClient.ts";
 import { createWorkspaceAgentClient } from "./workspaceAgentClient.ts";
@@ -126,7 +130,7 @@ const defaultBaseUrl = "http://tuttid.local";
 
 export function createTuttidClient(
   input: CreateTuttidClientInput
-): TuttidClient & MobileRemoteAccessClient {
+): TuttidClient & MobileRemoteAccessClient & ConnectorMarketClient {
   const client = createClient({
     auth: input.auth,
     baseUrl: input.baseUrl ?? defaultBaseUrl,
@@ -135,6 +139,7 @@ export function createTuttidClient(
 
   return {
     ...createCollaborationRunsClient(client),
+    ...createConnectorMarketClient(client),
     ...createWorkspaceAgentConfigurationClient(client),
     ...createWorkspaceIssueOrchestrationClient(client),
     async listAgentQuickPrompts() {

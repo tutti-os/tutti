@@ -24,15 +24,22 @@ func normalizeRailPlacement(placement *RailPlacement) (*RailPlacement, error) {
 	}
 	switch normalized.Kind {
 	case RailPlacementKindConversations:
-		if normalized.ProjectPath != "" || normalized.SectionKey != storesqlite.RailSectionKeyConversations {
-			return nil, fmt.Errorf("%w: invalid conversations rail placement", ErrInvalidArgument)
-		}
+		normalized.ProjectPath = ""
+		normalized.SectionKey = storesqlite.RailSectionKeyConversations
 	case RailPlacementKindProject:
-		if normalized.ProjectPath == "" ||
-			normalized.SectionKey == "" ||
-			normalized.SectionKey == storesqlite.RailSectionKeyConversations {
+		normalized.ProjectPath = storesqlite.NormalizeProjectPath(normalized.ProjectPath)
+		if normalized.ProjectPath == "" {
+			key := storesqlite.NormalizeRailSectionKey(normalized.SectionKey)
+			if strings.HasPrefix(key, "project:") {
+				normalized.ProjectPath = storesqlite.NormalizeProjectPath(
+					strings.TrimPrefix(key, "project:"),
+				)
+			}
+		}
+		if normalized.ProjectPath == "" {
 			return nil, fmt.Errorf("%w: invalid project rail placement", ErrInvalidArgument)
 		}
+		normalized.SectionKey = storesqlite.RailSectionKeyForProject(normalized.ProjectPath)
 	default:
 		return nil, fmt.Errorf("%w: invalid rail placement kind", ErrInvalidArgument)
 	}
@@ -46,5 +53,6 @@ func railPlacementMatchesSession(placement *RailPlacement, session storesqlite.S
 	return strings.TrimSpace(session.RailSectionKind) == string(placement.Kind) &&
 		storesqlite.NormalizeProjectPath(session.RailProjectPath) ==
 			storesqlite.NormalizeProjectPath(placement.ProjectPath) &&
-		strings.TrimSpace(session.RailSectionKey) == placement.SectionKey
+		storesqlite.NormalizeRailSectionKey(session.RailSectionKey) ==
+			storesqlite.NormalizeRailSectionKey(placement.SectionKey)
 }

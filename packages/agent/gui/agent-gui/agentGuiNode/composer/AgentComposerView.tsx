@@ -542,6 +542,13 @@ export function AgentComposerView(input: Props): React.JSX.Element {
                 skillsGroupLabel={labels.slashPaletteSkillsGroup}
                 pluginsGroupLabel={labels.slashPalettePluginsGroup}
                 connectorsGroupLabel={labels.slashPaletteConnectorsGroup}
+                connectorConnectedLabel={labels.slashPaletteConnectorConnected}
+                connectorNotConnectedLabel={
+                  labels.slashPaletteConnectorNotConnected
+                }
+                connectorUnsupportedLabel={
+                  labels.slashPaletteConnectorUnsupported
+                }
                 mcpGroupLabel={labels.slashPaletteMcpGroup}
                 onHighlightChange={input.setHighlightedIndex}
                 onSelect={selectCommand}
@@ -620,6 +627,9 @@ export function AgentComposerView(input: Props): React.JSX.Element {
             composerControlsHardDisabled={composerControlsHardDisabled}
             inputDisabled={inputDisabled}
             settingsControlsDisabled={settingsControlsDisabled}
+            codexSaverModeDisabled={
+              settingsControlsDisabled || Boolean(input.props.agentSessionId)
+            }
             permissionModeControlsDisabled={permissionModeControlsDisabled}
             isSendingTurn={input.props.isSendingTurn}
             isHeroLayout={isHeroLayout}

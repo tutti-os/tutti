@@ -3,6 +3,7 @@ package agentstatus
 import (
 	"context"
 	"path/filepath"
+	"reflect"
 	"testing"
 
 	agentproviderbiz "github.com/tutti-os/tutti/services/tuttid/biz/agentprovider"
@@ -42,8 +43,8 @@ func TestCodexRuntimeSelectionUsesOnlyReadyCandidateForStatusAndLaunch(t *testin
 	home := t.TempDir()
 	broken := filepath.Join(home, "broken", "codex")
 	healthy := filepath.Join(home, "healthy", "codex")
-	writeCodexVersionFixture(t, broken, "0.142.0")
-	writeCodexVersionFixture(t, healthy, "0.142.0")
+	broken = writeCodexVersionFixture(t, broken, "0.142.0")
+	healthy = writeCodexVersionFixture(t, healthy, "0.142.0")
 	service := probeTestService(home)
 	service.Environ = func() []string {
 		return []string{"PATH=" + filepath.Dir(broken) + string(filepath.ListSeparator) + filepath.Dir(healthy)}
@@ -74,8 +75,8 @@ func TestCodexRuntimeSelectionRequiresAUserChoiceBeforeStatusOrLaunch(t *testing
 	home := t.TempDir()
 	first := filepath.Join(home, "first", "codex")
 	second := filepath.Join(home, "second", "codex")
-	writeCodexVersionFixture(t, first, "0.142.0")
-	writeCodexVersionFixture(t, second, "0.142.0")
+	first = writeCodexVersionFixture(t, first, "0.142.0")
+	second = writeCodexVersionFixture(t, second, "0.142.0")
 	service := probeTestService(home)
 	service.Environ = func() []string {
 		return []string{"PATH=" + filepath.Dir(first) + string(filepath.ListSeparator) + filepath.Dir(second)}
@@ -117,8 +118,8 @@ func TestCodexRuntimeSelectionPersistsOnlyAReadyCandidateFromTheCurrentCatalog(t
 	home := t.TempDir()
 	first := filepath.Join(home, "first", "codex")
 	second := filepath.Join(home, "second", "codex")
-	writeCodexVersionFixture(t, first, "0.142.0")
-	writeCodexVersionFixture(t, second, "0.142.0")
+	first = writeCodexVersionFixture(t, first, "0.142.0")
+	second = writeCodexVersionFixture(t, second, "0.142.0")
 	store := &memoryCodexRuntimeSelectionStore{}
 	service := probeTestService(home)
 	service.Environ = func() []string {
@@ -168,8 +169,8 @@ func TestCodexRuntimeSelectionDoesNotFallbackFromBrokenExplicitCandidate(t *test
 	home := t.TempDir()
 	broken := filepath.Join(home, "broken", "codex")
 	healthy := filepath.Join(home, "healthy", "codex")
-	writeCodexVersionFixture(t, broken, "0.142.0")
-	writeCodexVersionFixture(t, healthy, "0.142.0")
+	broken = writeCodexVersionFixture(t, broken, "0.142.0")
+	healthy = writeCodexVersionFixture(t, healthy, "0.142.0")
 	service := probeTestService(home)
 	service.Environ = func() []string {
 		return []string{"PATH=" + filepath.Dir(broken) + string(filepath.ListSeparator) + filepath.Dir(healthy)}
@@ -192,5 +193,38 @@ func TestCodexRuntimeSelectionDoesNotFallbackFromBrokenExplicitCandidate(t *test
 	runtime := service.resolveProviderRuntime(context.Background(), specs[0])
 	if runtime.AdapterPath != "" || runtime.CLIPath != broken || runtime.ReasonCode != "codex_runtime_selection_stale" || runtime.CodexSelectionState != CodexRuntimeSelectionStale {
 		t.Fatalf("status runtime = %#v; must retain the explicit broken candidate without fallback", runtime)
+	}
+}
+
+func TestSetCodexRuntimeSelectionInvalidatesDerivedAvailability(t *testing.T) {
+	home := t.TempDir()
+	launcher := filepath.Join(home, "codex")
+	launcher = writeCodexVersionFixture(t, launcher, "0.146.0")
+	service := probeTestService(home)
+	service.CodexRuntimeSelectionStore = &memoryCodexRuntimeSelectionStore{}
+	service.Environ = func() []string {
+		return []string{"PATH=" + filepath.Dir(launcher)}
+	}
+	service.CodexProtocolProbe = func(_ context.Context, _, _ []string) CodexProbeEvidence {
+		return CodexProbeEvidence{CommandStarted: true, ProtocolReady: true}
+	}
+	var invalidated []string
+	service.OnProviderStatusInvalidated = func(provider string) {
+		invalidated = append(invalidated, provider)
+	}
+
+	catalog, err := service.GetCodexRuntimeCatalog(context.Background(), agentproviderbiz.Codex)
+	if err != nil {
+		t.Fatalf("GetCodexRuntimeCatalog() error = %v", err)
+	}
+	if _, err := service.SetCodexRuntimeSelection(context.Background(), SetCodexRuntimeSelectionInput{
+		Provider:    agentproviderbiz.Codex,
+		CandidateID: catalog.Candidates[0].ID,
+		Revision:    catalog.Revision,
+	}); err != nil {
+		t.Fatalf("SetCodexRuntimeSelection() error = %v", err)
+	}
+	if !reflect.DeepEqual(invalidated, []string{agentproviderbiz.Codex}) {
+		t.Fatalf("invalidated providers = %#v, want codex", invalidated)
 	}
 }

@@ -272,6 +272,7 @@ type legacyHostConformanceDriver struct {
 
 func (d *legacyHostConformanceDriver) Reset(_ context.Context, fixture hostconformance.Fixture) error {
 	d.runtime = newFakeRuntime()
+	d.runtime.guidanceTargetMismatch = fixture.GuidanceTargetMismatch
 	d.sessions = &fakeSessionReader{
 		sessions: map[string]PersistedSession{}, tombstoned: map[string]bool{}, deletedAt: map[string]int64{},
 		parentByKey: map[string]string{},
@@ -291,6 +292,17 @@ func (d *legacyHostConformanceDriver) Reset(_ context.Context, fixture hostconfo
 	d.runtime.provenanceHook = func(input RuntimeSubmitProvenanceInput) error {
 		d.recordSubmittedTurn(input.WorkspaceID, input.AgentSessionID, input.TurnID)
 		return nil
+	}
+	if fixture.RejectInitialExec {
+		d.runtime.execHook = func(input RuntimeExecInput) (RuntimeExecResult, error) {
+			return RuntimeExecResult{
+				AgentSessionID: input.AgentSessionID,
+				TurnID:         input.TurnID,
+				ProviderDispatch: agenthost.RuntimeProviderDispatchResult{
+					Disposition: agenthost.RuntimeDispatchDispositionRejected,
+				},
+			}, errors.New("provider rejected initial submit")
+		}
 	}
 	d.commitObserver = &conformanceCommitObserver{fail: fixture.FailCommitObserver}
 	d.service.CommitObserver = d.commitObserver
@@ -427,6 +439,7 @@ func (d *legacyHostConformanceDriver) Reset(_ context.Context, fixture hostconfo
 		return nil
 	}
 	seed := *fixture.Session
+	d.runtime.guidanceTarget = strings.TrimSpace(seed.ActiveTurnID)
 	if err := canonicalStore.Create(context.Background(), workspacebiz.Summary{ID: seed.WorkspaceID, Name: "Host conformance"}); err != nil {
 		return err
 	}
@@ -1127,10 +1140,14 @@ func (d *legacyHostConformanceDriver) Metrics() hostconformance.Metrics {
 	metrics := hostconformance.Metrics{
 		StartCalls: len(d.runtime.startCalls), ResumeCalls: len(d.runtime.resumeCalls),
 		ExecCalls: len(d.runtime.execCalls), CancelCalls: len(d.runtime.cancelCalls),
-		InteractiveCalls: len(d.runtime.submitInteractiveCalls), UpdateSettingsCalls: len(d.runtime.updateSettingsCalls),
+		GuidanceProviderCalls: d.runtime.guidanceProviderCalls,
+		InteractiveCalls:      len(d.runtime.submitInteractiveCalls), UpdateSettingsCalls: len(d.runtime.updateSettingsCalls),
 		CloseCalls:       len(d.runtime.closeCalls),
 		GoalControlCalls: len(d.runtime.goalControlCalls), GoalReconcileCalls: len(d.runtime.goalReconcileCalls),
 		RecoverySteps: append([]string(nil), (*d.recoverySteps)...),
+	}
+	if closeCallCount := len(d.runtime.closeCalls); closeCallCount > 0 {
+		metrics.LastClosePreservedCanonicalState = d.runtime.closeCalls[closeCallCount-1].PreserveCanonicalState
 	}
 	if d.deletionGuard != nil {
 		metrics.DeleteAdmissionPlans = append([]agenthost.DeleteSessionsPlan(nil), d.deletionGuard.plans...)

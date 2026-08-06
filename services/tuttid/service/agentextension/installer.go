@@ -191,7 +191,7 @@ func (s *SetupService) executeInstall(
 		return fmt.Errorf("%w: installed executable escapes staging root", ErrRuntimeVerifyFailed)
 	}
 	info, err := os.Lstat(realExecutable)
-	if err != nil || !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 || info.Mode()&0o111 == 0 {
+	if err != nil || !isExecutableFileInfo(info) || info.Mode()&os.ModeSymlink != 0 {
 		return fmt.Errorf("%w: installed executable is not an ordinary file", ErrRuntimeVerifyFailed)
 	}
 	if verifiedFingerprint.SHA256 == "" {
@@ -330,7 +330,7 @@ func replaceInstallRoot(values []string, from, to string) []string {
 
 func cleanInstallEnvironment(scratch string) []string {
 	allowed := []string{
-		"PATH", "HOME", "TMPDIR", "HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "NO_PROXY",
+		"PATH", "HOME", "TMPDIR", "TEMP", "TMP", "HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "NO_PROXY",
 		"http_proxy", "https_proxy", "all_proxy", "no_proxy", "SSL_CERT_FILE", "NODE_EXTRA_CA_CERTS",
 	}
 	result := make([]string, 0, len(allowed)+5)
@@ -439,6 +439,16 @@ func activateManagedRuntimeWithCrashInjection(
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
+	// Windows refuses to rename a directory while a directory handle is open.
+	// The staging workspace intentionally keeps a verified handle for no-follow
+	// checks, so release it at the promotion boundary and reopen the promoted
+	// directory before continuing verification.
+	if err := staging.Close(); err != nil {
+		if hadPrevious {
+			_ = workspace.rename(backupName, plan.RuntimeIdentity)
+		}
+		return err
+	}
 	if err := workspace.rename(staging.name, plan.RuntimeIdentity); err != nil {
 		if hadPrevious {
 			_ = workspace.rename(backupName, plan.RuntimeIdentity)
@@ -447,12 +457,23 @@ func activateManagedRuntimeWithCrashInjection(
 	}
 	staging.path = finalRoot
 	staging.name = plan.RuntimeIdentity
+	promoted, err := workspace.openDirectoryName(plan.RuntimeIdentity)
+	if err != nil {
+		_ = workspace.remove(plan.RuntimeIdentity)
+		if hadPrevious {
+			_ = workspace.rename(backupName, plan.RuntimeIdentity)
+		}
+		return err
+	}
+	staging.file = promoted.file
+	promoted.file = nil
 	if injectCrash != nil {
 		if err := injectCrash(managedRuntimeAfterPromotionRename); err != nil {
 			return err
 		}
 	}
 	if err := staging.verify(); err != nil {
+		_ = staging.Close()
 		_ = workspace.remove(plan.RuntimeIdentity)
 		if hadPrevious {
 			_ = workspace.rename(backupName, plan.RuntimeIdentity)
@@ -461,6 +482,7 @@ func activateManagedRuntimeWithCrashInjection(
 	}
 	finalExecutable := filepath.Join(finalRoot, filepath.FromSlash(activation.ExecutableRelativePath))
 	if err := verifyRuntimeExecutableUnchanged(finalExecutable, activation.ExecutableFingerprint); err != nil {
+		_ = staging.Close()
 		_ = workspace.remove(plan.RuntimeIdentity)
 		if hadPrevious {
 			_ = workspace.rename(backupName, plan.RuntimeIdentity)
@@ -469,6 +491,7 @@ func activateManagedRuntimeWithCrashInjection(
 	}
 	if entry != nil {
 		if err := publishManagedRuntimeEntry(*entry); err != nil {
+			_ = staging.Close()
 			_ = workspace.remove(plan.RuntimeIdentity)
 			if hadPrevious {
 				_ = workspace.rename(backupName, plan.RuntimeIdentity)

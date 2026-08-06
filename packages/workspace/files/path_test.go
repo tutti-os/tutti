@@ -18,6 +18,7 @@ func TestNormalizeLogicalPathWithinRoot(t *testing.T) {
 		{name: "collapses duplicate separators", input: "/Users/test/project//src///", want: "/Users/test/project/src"},
 		{name: "cleans dot segments", input: "/Users/test/project/src/../docs", want: "/Users/test/project/docs"},
 		{name: "normalizes backslashes", input: "src\\App.tsx", want: "/src/App.tsx"},
+		{name: "normalizes Windows drive absolute path", input: `C:\\Users\\test\\project`, want: "/C:/Users/test/project"},
 	}
 
 	for _, tt := range tests {
@@ -36,6 +37,19 @@ func TestNormalizeLogicalPathWithinRoot(t *testing.T) {
 				t.Fatalf("NormalizeLogicalPath() = %q, want %q", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestNormalizeLogicalPathWithinWindowsRootAcceptsDriveAbsolutePath(t *testing.T) {
+	got, err := NormalizeLogicalPathWithinRoot(
+		`C:\\Users\\test\\project`,
+		`C:\\Users\\test\\project`,
+	)
+	if err != nil {
+		t.Fatalf("NormalizeLogicalPathWithinRoot() error = %v", err)
+	}
+	if got != "/C:/Users/test/project" {
+		t.Fatalf("NormalizeLogicalPathWithinRoot() = %q, want /C:/Users/test/project", got)
 	}
 }
 

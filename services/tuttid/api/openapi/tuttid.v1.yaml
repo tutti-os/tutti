@@ -5,6 +5,7 @@ info:
   description: Versioned local daemon API for tutti desktop, CLI, and approved local integrations.
 x-tutti-openapi-fragments:
   - packages/workspace/issue-manager/openapi/issue-manager.v1.yaml
+  - packages/connector/market/openapi/connector-market.v1.yaml
   - services/tuttid/api/openapi/mobile-remote-access.v1.yaml
 servers:
   - url: http://127.0.0.1:4545
@@ -1919,6 +1920,8 @@ paths:
             type: string
             enum:
               - pending
+            x-enum-varnames:
+              - ListWorkspaceWorkflowsParamsCheckpointStatusPending
           description: When omitted, returns every workflow for the source session. Pass pending to return only workflows with a pending checkpoint.
       responses:
         "200":
@@ -7844,6 +7847,8 @@ components:
       type: object
       additionalProperties: false
       properties:
+        codexSaverMode:
+          type: boolean
         model:
           type: string
         permissionModeId:
@@ -8550,7 +8555,35 @@ components:
         terminalCommand:
           type: string
           nullable: true
-          description: Ready-to-run interactive sign-in command for terminal-type methods.
+          description: Ready-to-run interactive sign-in launch command for terminal-type methods.
+        terminalStartupAction:
+          allOf:
+            - $ref: "#/components/schemas/AgentTargetTerminalStartupAction"
+          nullable: true
+          description: Optional typed terminal action submitted after the interactive runtime reaches its declared ready marker.
+    AgentTargetTerminalStartupAction:
+      type: object
+      additionalProperties: false
+      required:
+        - type
+        - commandName
+        - readyText
+      properties:
+        type:
+          type: string
+          enum:
+            - slash_command
+          x-enum-varnames:
+            - AgentTargetTerminalStartupActionTypeSlashCommand
+        commandName:
+          type: string
+          minLength: 1
+          maxLength: 64
+          pattern: "^[a-z0-9][a-z0-9._:-]{0,63}$"
+        readyText:
+          type: string
+          minLength: 1
+          maxLength: 256
     InstallAgentTargetRuntimeRequest:
       type: object
       additionalProperties: false
@@ -10059,6 +10092,14 @@ components:
         failureReason:
           type: string
           nullable: true
+        failurePhase:
+          type: string
+          nullable: true
+          enum:
+            - downloading
+            - installing
+            - starting
+            - runtime
         lastError:
           type: string
           nullable: true
@@ -10928,6 +10969,9 @@ components:
       type: object
       additionalProperties: false
       properties:
+        codexSaverMode:
+          type: boolean
+          nullable: true
         model:
           type: string
           nullable: true
@@ -11083,6 +11127,9 @@ components:
         - capabilityCatalog
         - behavior
       properties:
+        codexSaverModeSupported:
+          type: boolean
+          description: Whether this resolved provider target supports the Codex Luna subagent saver mode; product entry policy is reported separately by the host
         provider:
           $ref: "#/components/schemas/WorkspaceAgentProvider"
         modelConfig:
@@ -11887,6 +11934,9 @@ components:
       enum:
         - slash_command
         - badge_remove
+      x-enum-varnames:
+        - TuttiModeActivationSourceSlashCommand
+        - TuttiModeActivationSourceBadgeRemove
     TuttiModeActivationRevision:
       type: object
       additionalProperties: false
@@ -12762,6 +12812,8 @@ components:
           type: string
           enum:
             - slash_command
+          x-enum-varnames:
+            - WorkspaceAgentCapabilityReferenceSourceSlashCommand
     WorkspaceAgentCompletedCommand:
       type: object
       description: >-
@@ -13106,6 +13158,10 @@ components:
             - complete
         reason:
           type: string
+        startedAtUnixMs:
+          type: integer
+          format: int64
+          minimum: 0
         iterations:
           type: integer
           minimum: 0
@@ -13974,6 +14030,10 @@ components:
         - initialContent
         - clientSubmitId
       properties:
+        codexSaverMode:
+          type: boolean
+          nullable: true
+          description: Enables the Codex Luna subagent saver mode for this session without changing the main model
         agentSessionId:
           type: string
           format: uuid
@@ -14559,7 +14619,11 @@ components:
           description: Structured capability references attached to this submission. They are persisted on the turn but never converted into provider prompt text.
         guidance:
           type: boolean
-          description: When true, send this input as guidance to the currently active turn instead of starting a new turn.
+          description: When true, send this input as guidance to the exact active turn identified by turnId instead of starting a new turn.
+        turnId:
+          type: string
+          minLength: 1
+          description: Exact canonical active Turn targeted by guidance. Required when guidance is true; ignored for normal new-turn submits.
     AgentSubmitDiagnostics:
       type: object
       additionalProperties: false

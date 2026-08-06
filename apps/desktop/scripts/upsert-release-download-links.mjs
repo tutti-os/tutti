@@ -25,7 +25,7 @@ function removeManagedSection(body) {
   return body.replace(managedSectionPattern, "\n").trimEnd();
 }
 
-function findMacDmgAssetName(assetNames, pattern) {
+function findAssetName(assetNames, pattern) {
   return assetNames.find((name) => {
     pattern.lastIndex = 0;
     return pattern.test(name);
@@ -49,13 +49,17 @@ function resolveDesktopDownloadLinks(
     {
       label: "macOS Universal",
       pattern: /-mac-universal\.dmg$/i
+    },
+    {
+      label: "Windows (x64, unsigned)",
+      pattern: /-win-x64\.exe$/i
     }
   ];
   const normalizedBaseUrl = normalizeBaseUrl(releaseAssetBaseUrl);
 
   return desktopAssets
     .map(({ label, pattern }) => {
-      const assetName = findMacDmgAssetName(assetNames, pattern);
+      const assetName = findAssetName(assetNames, pattern);
       if (!assetName) {
         return null;
       }
@@ -140,7 +144,7 @@ export {
   SECTION_END,
   SECTION_START,
   buildUpdatedReleaseBody,
-  findMacDmgAssetName,
+  findAssetName,
   removeManagedSection,
   resolveDesktopDownloadLinks
 };

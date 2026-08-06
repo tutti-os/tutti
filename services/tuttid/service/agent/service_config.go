@@ -63,13 +63,18 @@ type ServiceSessionConfig struct {
 }
 
 type ServiceComposerConfig struct {
-	AvailabilityChecker           ProviderAvailabilityChecker
-	ModelCatalog                  AgentModelCatalog
+	AvailabilityChecker ProviderAvailabilityChecker
+	ModelCatalog        AgentModelCatalog
+	// ReplayMode makes cassette-provided model catalogs authoritative. It is
+	// set only for the isolated Replay daemon; normal sessions keep live
+	// catalog and discovery behavior.
+	ReplayMode                    bool
 	ModelCapabilities             ModelCapabilitiesResolver
 	AgentTargetStore              AgentTargetStore
 	WorkspaceAgentResolver        WorkspaceAgentResolver
 	AgentComposerDefaultsReader   AgentComposerDefaultsReader
 	CapabilityLister              ComposerCapabilityLister
+	InstalledConnectorSnapshots   InstalledConnectorSnapshotReader
 	ExtensionComposerProfiles     ExtensionComposerProfileResolver
 	ProviderAvailabilityCacheTTL  time.Duration
 	CapabilityCatalogCacheTTL     time.Duration
@@ -103,6 +108,7 @@ func (s *Service) applyConfig(config ServiceConfig) {
 	s.AnalyticsReporter = config.Observers.AnalyticsReporter
 	s.AvailabilityChecker = config.Composer.AvailabilityChecker
 	s.ModelCatalog = config.Composer.ModelCatalog
+	s.ReplayMode = config.Composer.ReplayMode
 	s.ModelCapabilities = config.Composer.ModelCapabilities
 	s.AgentTargetStore = config.Composer.AgentTargetStore
 	s.SessionInitializer = config.Sessions.Initializer
@@ -143,6 +149,7 @@ func (s *Service) applyConfig(config ServiceConfig) {
 	s.ModelGateway = config.Runtime.ModelGateway
 	s.ComputerUseAvailable = config.Runtime.ComputerUseAvailable
 	s.CapabilityLister = config.Composer.CapabilityLister
+	s.InstalledConnectorSnapshots = config.Composer.InstalledConnectorSnapshots
 	s.ExtensionComposerProfiles = config.Composer.ExtensionComposerProfiles
 	s.AgentComposerDefaultsReader = config.Composer.AgentComposerDefaultsReader
 	s.ProviderAvailabilityCacheTTL = config.Composer.ProviderAvailabilityCacheTTL

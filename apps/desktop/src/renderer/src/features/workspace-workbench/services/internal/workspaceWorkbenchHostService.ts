@@ -78,11 +78,17 @@ import type { RichTextTriggerProvider } from "@tutti-os/ui-rich-text/types";
 import { tuttiExternalAtProviderIds } from "@tutti-os/workspace-external-core/core";
 import type {
   TuttiExternalAtQueryInput,
+  TuttiExternalAtQueryDirectoryInput,
   TuttiExternalAtQueryResult,
   TuttiExternalAtResolveInput,
   TuttiExternalAtResolveResult
 } from "@tutti-os/workspace-external-core/contracts";
 import type { WorkspaceFileReferenceAdapter } from "@tutti-os/workspace-file-reference/contracts";
+import {
+  createReferenceSourceAggregator,
+  createStaticReferenceSourceRegistry,
+  type ReferenceSourceAggregator
+} from "@tutti-os/workspace-file-reference/core";
 import type { WorkspaceUserProjectApi } from "@tutti-os/workspace-user-project/contracts";
 import { serializeWorkspaceAppExternalAtMatch } from "./workspaceAppExternalAtSerialization.ts";
 import { requestWorkspaceWorkbenchNodeLaunch } from "../workspaceWorkbenchNodeLaunchCoordinator.ts";
@@ -108,6 +114,11 @@ import {
   type WorkspaceWorkbenchHostInputResolverDependencies
 } from "./workspaceWorkbenchHostInputResolver.ts";
 import { createWorkspaceDockRetentionController } from "./workspaceDockRetentionController.ts";
+import {
+  createAppArtifactReferenceSource,
+  createWorkspaceFileLocationReferenceSources
+} from "../../../agent-reference-sources/index.ts";
+import { loadDesktopWorkspaceFileLocationSections } from "../../../workspace-file-manager/services/desktopWorkspaceFileLocations.ts";
 
 export interface WorkspaceWorkbenchHostServiceDependencies extends WorkspaceWorkbenchHostInputResolverDependencies {
   hostNotificationsApi: Pick<DesktopHostNotificationsApi, "onNavigate">;
@@ -288,6 +299,40 @@ export class WorkspaceWorkbenchHostService implements IWorkspaceWorkbenchHostSer
     });
   }
 
+  createWorkspaceAppExternalReferenceSourceAggregator(input: {
+    appSourceLabel: string;
+    localSourceLabel: string;
+    projectSourceLabel: string;
+    workspaceId: string;
+  }): ReferenceSourceAggregator {
+    const adapter = this.createWorkspaceAppExternalFileReferenceAdapter(
+      input.workspaceId
+    );
+    return createReferenceSourceAggregator(
+      createStaticReferenceSourceRegistry([
+        ...createWorkspaceFileLocationReferenceSources({
+          adapter,
+          getLocationSections: () =>
+            loadDesktopWorkspaceFileLocationSections({
+              homeDirectory: this.dependencies.platformApi.homeDirectory,
+              workspaceUserProjectService:
+                this.dependencies.workspaceUserProjectService
+            }),
+          localLabel: input.localSourceLabel,
+          localOrder: 0,
+          projectLabel: input.projectSourceLabel,
+          projectOrder: -1
+        }),
+        createAppArtifactReferenceSource({
+          adapter,
+          label: input.appSourceLabel,
+          order: 1,
+          tuttidClient: this.dependencies.tuttidClient
+        })
+      ])
+    );
+  }
+
   createWorkspaceAppExternalUserProjectApi(): WorkspaceUserProjectApi {
     return createWorkspaceAppExternalUserProjectApi(
       this.dependencies.workspaceUserProjectService
@@ -321,6 +366,29 @@ export class WorkspaceWorkbenchHostService implements IWorkspaceWorkbenchHostSer
           workspaceId: input.workspaceId
         }
       }
+    });
+    return matches
+      .map(serializeWorkspaceAppExternalAtMatch)
+      .filter(
+        (result): result is TuttiExternalAtQueryResult => result !== null
+      );
+  }
+
+  async queryWorkspaceAppExternalAtDirectory(input: {
+    query: TuttiExternalAtQueryDirectoryInput;
+    workspaceId: string;
+  }): Promise<TuttiExternalAtQueryResult[]> {
+    const providers = this.createWorkspaceAppExternalAtProviders(
+      new Set([input.query.providerId]),
+      input.workspaceId
+    );
+    const registry = createRichTextTriggerRegistry(providers);
+    const matches = await registry.queryDirectory(input.query.providerId, {
+      context: { metadata: { workspaceId: input.workspaceId } },
+      directoryPath: input.query.directoryPath,
+      keyword: "",
+      maxResults: input.query.maxResults,
+      trigger: "@"
     });
     return matches
       .map(serializeWorkspaceAppExternalAtMatch)

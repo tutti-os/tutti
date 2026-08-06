@@ -39,6 +39,7 @@ type installProgressTracker struct {
 	service     *AppCenterService
 	workspaceID string
 	appID       string
+	generation  uint64
 	plan        installProgressPlan
 
 	mu              sync.Mutex
@@ -59,11 +60,12 @@ type streamDownloadProgress struct {
 	total int64
 }
 
-func (s *AppCenterService) newInstallProgressTracker(workspaceID string, appID string, plan installProgressPlan) *installProgressTracker {
+func (s *AppCenterService) newInstallProgressTracker(workspaceID string, appID string, generation uint64, plan installProgressPlan) *installProgressTracker {
 	tracker := &installProgressTracker{
 		service:     s,
 		workspaceID: workspaceID,
 		appID:       appID,
+		generation:  generation,
 		plan:        plan,
 		userPhase:   workspacebiz.AppInstallUserPhaseDownloading,
 	}
@@ -104,7 +106,7 @@ func (s *AppCenterService) installNeedsPackageDownload(ctx context.Context, appI
 	if remoteErr != nil || !ok {
 		return false
 	}
-	return shouldMaterializeRemoteBuiltin(appPackage, remoteBuiltin)
+	return s.shouldMaterializeRemoteBuiltin(appPackage, remoteBuiltin)
 }
 
 func (s *AppCenterService) installNeedsRuntimeDownload() bool {
@@ -267,7 +269,7 @@ func (t *installProgressTracker) finishStarting() {
 }
 
 func (t *installProgressTracker) clear() {
-	t.service.clearInstallProgress(t.workspaceID, t.appID)
+	t.service.clearInstallProgress(t.workspaceID, t.appID, t.generation)
 }
 
 func (t *installProgressTracker) recalculateLocked() {
@@ -389,7 +391,7 @@ func (t *installProgressTracker) publishLocked(force bool) {
 	t.lastPublishTime = time.Now()
 	t.lastPublished = t.overallPercent
 	progress := t.snapshotLocked()
-	t.service.publishInstallProgress(context.Background(), t.workspaceID, t.appID, progress, force)
+	t.service.publishInstallProgress(context.Background(), t.workspaceID, t.appID, t.generation, progress, force)
 }
 
 func roundInstallProgressPercent(value float64) float64 {
@@ -409,13 +411,23 @@ func maxInt64(left int64, right int64) int64 {
 	return right
 }
 
-func (s *AppCenterService) publishInstallProgress(ctx context.Context, workspaceID string, appID string, progress workspacebiz.AppInstallProgress, checkpoint bool) {
+func (s *AppCenterService) publishInstallProgress(ctx context.Context, workspaceID string, appID string, generation uint64, progress workspacebiz.AppInstallProgress, checkpoint bool) {
+	unlock := s.installPublishLocks.Lock(appRuntimeKey(workspaceID, appID))
+	defer unlock()
+
+	job, ok := s.installJob(workspaceID, appID)
+	if !ok || job.Generation != generation || job.Status != workspaceAppInstallJobInstalling {
+		return
+	}
+	if !s.setInstallJobPhase(workspaceID, appID, generation, progress.UserPhase) {
+		return
+	}
 	app, err := s.workspaceAppProjectionForInstall(ctx, workspaceID, appID)
 	if err != nil {
 		return
 	}
-	if shouldSkipInstallProgressPublish(app.Runtime.Status, progress) {
-		s.clearInstallJobProgress(workspaceID, appID)
+	if shouldSkipInstallProgressPublish(app.Runtime, job) {
+		s.clearInstallProgressLocked(workspaceID, appID, generation)
 		slog.Info(
 			"workspace_app_install_progress_publish_skipped",
 			"workspaceId", workspaceID,
@@ -423,11 +435,14 @@ func (s *AppCenterService) publishInstallProgress(ctx context.Context, workspace
 			"runtimeStatus", app.Runtime.Status,
 			"userPhase", progress.UserPhase,
 			"overallPercent", progress.OverallPercent,
-			"reason", "runtime_already_running",
+			"reason", "runtime_terminal",
 		)
 		return
 	}
-	s.setInstallJobProgress(workspaceID, appID, progress)
+	if !s.setInstallJobProgress(workspaceID, appID, generation, progress) {
+		return
+	}
+	s.markInstallProgressSent(workspaceID, appID, generation)
 	progressCopy := progress
 	app.InstallProgress = &progressCopy
 	publishedApp := s.publishAppIfChanged(ctx, workspaceID, appID, app)
@@ -447,14 +462,24 @@ func (s *AppCenterService) publishInstallProgress(ctx context.Context, workspace
 	}
 }
 
-func (s *AppCenterService) clearInstallProgress(workspaceID string, appID string) {
-	s.clearInstallJobProgress(workspaceID, appID)
+func (s *AppCenterService) clearInstallProgress(workspaceID string, appID string, generation uint64) {
+	unlock := s.installPublishLocks.Lock(appRuntimeKey(workspaceID, appID))
+	defer unlock()
+	s.clearInstallProgressLocked(workspaceID, appID, generation)
+}
+
+func (s *AppCenterService) clearInstallProgressLocked(workspaceID string, appID string, generation uint64) {
+	wasSent := s.installProgressWasSent(workspaceID, appID, generation)
+	if !s.clearInstallJobProgress(workspaceID, appID, generation) {
+		return
+	}
+	defer s.clearInstallProgressSent(workspaceID, appID, generation)
 	ctx := context.Background()
 	app, err := s.workspaceAppProjectionForInstall(ctx, workspaceID, appID)
 	if err != nil {
 		return
 	}
-	if app.InstallProgress == nil {
+	if app.InstallProgress == nil && !wasSent {
 		slog.Info(
 			"workspace_app_install_progress_clear_skipped",
 			"workspaceId", workspaceID,
@@ -475,9 +500,37 @@ func (s *AppCenterService) clearInstallProgress(workspaceID string, appID string
 	)
 }
 
-func shouldSkipInstallProgressPublish(status workspacebiz.AppRuntimeStatus, progress workspacebiz.AppInstallProgress) bool {
-	return status == workspacebiz.AppRuntimeStatusRunning &&
-		progress.UserPhase == workspacebiz.AppInstallUserPhaseStarting
+func shouldSkipInstallProgressPublish(runtime workspacebiz.AppRuntimeState, job workspaceAppInstallJob) bool {
+	switch runtime.Status {
+	case workspacebiz.AppRuntimeStatusStopping:
+		return true
+	case workspacebiz.AppRuntimeStatusFailed,
+		workspacebiz.AppRuntimeStatusRunning,
+		workspacebiz.AppRuntimeStatusInstalledPendingRestart:
+		return !runtimeMatchesInstallBaseline(runtime, job)
+	default:
+		return false
+	}
+}
+
+func runtimeMatchesInstallBaseline(runtime workspacebiz.AppRuntimeState, job workspaceAppInstallJob) bool {
+	switch runtime.Status {
+	case workspacebiz.AppRuntimeStatusFailed,
+		workspacebiz.AppRuntimeStatusRunning,
+		workspacebiz.AppRuntimeStatusInstalledPendingRestart:
+	default:
+		return false
+	}
+	statusMatches := runtime.Status == job.BaselineRuntimeStatus ||
+		(runtime.Status == workspacebiz.AppRuntimeStatusInstalledPendingRestart &&
+			job.BaselineRuntimeStatus == workspacebiz.AppRuntimeStatusRunning)
+	if !statusMatches {
+		return false
+	}
+	if runtime.UpdatedAtUnixMs == nil || job.BaselineRuntimeUpdatedAtUnixMs == nil {
+		return runtime.UpdatedAtUnixMs == nil && job.BaselineRuntimeUpdatedAtUnixMs == nil
+	}
+	return *runtime.UpdatedAtUnixMs == *job.BaselineRuntimeUpdatedAtUnixMs
 }
 
 func (s *AppCenterService) registerActiveInstallTracker(workspaceID string, appID string, tracker *installProgressTracker) {
@@ -490,11 +543,13 @@ func (s *AppCenterService) registerActiveInstallTracker(workspaceID string, appI
 	s.activeInstallTrackers[key] = tracker
 }
 
-func (s *AppCenterService) unregisterActiveInstallTracker(workspaceID string, appID string) {
+func (s *AppCenterService) unregisterActiveInstallTracker(workspaceID string, appID string, tracker *installProgressTracker) {
 	key := appRuntimeKey(workspaceID, appID)
 	s.installMu.Lock()
 	defer s.installMu.Unlock()
-	delete(s.activeInstallTrackers, key)
+	if s.activeInstallTrackers[key] == tracker {
+		delete(s.activeInstallTrackers, key)
+	}
 }
 
 func (s *AppCenterService) activeInstallTracker(workspaceID string, appID string) *installProgressTracker {
@@ -529,7 +584,7 @@ func (s *AppCenterService) withActiveInstallJobProgress(app workspacebiz.Workspa
 	if !ok ||
 		job.Status != workspaceAppInstallJobInstalling ||
 		job.Progress == nil ||
-		!shouldAttachActiveInstallProgress(app.Runtime.Status) {
+		(!shouldAttachActiveInstallProgress(app.Runtime.Status) && !runtimeMatchesInstallBaseline(app.Runtime, job)) {
 		return app
 	}
 	progressCopy := *job.Progress

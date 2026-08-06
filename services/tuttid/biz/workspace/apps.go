@@ -261,6 +261,7 @@ type AppRuntimeState struct {
 	Status          AppRuntimeStatus
 	LaunchURL       *string
 	Port            *int
+	FailurePhase    *AppFailurePhase
 	FailureReason   *string
 	LastError       *string
 	StartedAtUnixMs *int64
@@ -274,6 +275,15 @@ const (
 	AppInstallUserPhaseDownloading AppInstallUserPhase = "downloading"
 	AppInstallUserPhaseInstalling  AppInstallUserPhase = "installing"
 	AppInstallUserPhaseStarting    AppInstallUserPhase = "starting"
+)
+
+type AppFailurePhase string
+
+const (
+	AppFailurePhaseDownloading AppFailurePhase = "downloading"
+	AppFailurePhaseInstalling  AppFailurePhase = "installing"
+	AppFailurePhaseStarting    AppFailurePhase = "starting"
+	AppFailurePhaseRuntime     AppFailurePhase = "runtime"
 )
 
 type AppInstallProgress struct {
@@ -501,6 +511,7 @@ func ParseAppManifestJSON(data []byte) (AppManifest, string, error) {
 	if err := json.Unmarshal(data, &manifest); err != nil {
 		return AppManifest{}, "", fmt.Errorf("parse app manifest json: %w", err)
 	}
+	manifest = NormalizeAppManifestRuntimeProfile(manifest)
 	if err := ValidateAppManifest(manifest); err != nil {
 		return AppManifest{}, "", err
 	}
@@ -509,6 +520,16 @@ func ParseAppManifestJSON(data []byte) (AppManifest, string, error) {
 		return AppManifest{}, "", fmt.Errorf("serialize app manifest json: %w", err)
 	}
 	return manifest, string(normalized), nil
+}
+
+// NormalizeAppManifestRuntimeProfile keeps legacy catalog and package manifests
+// readable while ensuring downstream runtime resolution sees one canonical
+// profile name.
+func NormalizeAppManifestRuntimeProfile(manifest AppManifest) AppManifest {
+	if strings.TrimSpace(manifest.Runtime.Profile) == "node-static" {
+		manifest.Runtime.Profile = "connector-node-static"
+	}
+	return manifest
 }
 
 func validateAppManifestReferencesJSON(raw map[string]json.RawMessage) error {
@@ -556,7 +577,7 @@ func ValidateAppManifest(manifest AppManifest) error {
 		return errors.New("app manifest runtime.bootstrap is required")
 	}
 	bootstrap := strings.TrimSpace(manifest.Runtime.Bootstrap)
-	if strings.HasPrefix(bootstrap, "/") || strings.Contains(bootstrap, "..") {
+	if !isRelativePackagePath(bootstrap) {
 		return errors.New("app manifest runtime.bootstrap must be a relative package path")
 	}
 	if strings.TrimSpace(manifest.Runtime.HealthcheckPath) == "" {
@@ -565,8 +586,8 @@ func ValidateAppManifest(manifest AppManifest) error {
 	if !strings.HasPrefix(manifest.Runtime.HealthcheckPath, "/") {
 		return errors.New("app manifest runtime.healthcheckPath must start with /")
 	}
-	if profile := strings.TrimSpace(manifest.Runtime.Profile); profile != "" && profile != "node-static" && profile != "standalone" {
-		return errors.New("app manifest runtime.profile must be node-static or standalone when set")
+	if profile := strings.TrimSpace(manifest.Runtime.Profile); profile != "" && profile != "connector-node-static" && profile != "standalone" {
+		return errors.New("app manifest runtime.profile must be connector-node-static or standalone when set")
 	}
 	if manifest.Window != nil {
 		minimizeBehavior := strings.TrimSpace(manifest.Window.MinimizeBehavior)
@@ -684,7 +705,7 @@ func validateAppManifestLocalizationInfo(info *AppManifestLocalizationInfo) erro
 
 func isRelativePackagePath(value string) bool {
 	trimmed := strings.TrimSpace(value)
-	if trimmed == "" || filepath.IsAbs(trimmed) || strings.HasPrefix(trimmed, `\`) {
+	if trimmed == "" || filepath.IsAbs(trimmed) || filepath.VolumeName(trimmed) != "" || hasWindowsVolumePrefix(trimmed) || strings.HasPrefix(trimmed, `\`) {
 		return false
 	}
 	for _, part := range strings.FieldsFunc(trimmed, func(char rune) bool {
@@ -695,6 +716,10 @@ func isRelativePackagePath(value string) bool {
 		}
 	}
 	return true
+}
+
+func hasWindowsVolumePrefix(path string) bool {
+	return len(path) >= 2 && ((path[0] >= 'a' && path[0] <= 'z') || (path[0] >= 'A' && path[0] <= 'Z')) && path[1] == ':'
 }
 
 func isRelativeURLPath(value string) bool {

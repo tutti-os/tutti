@@ -64,6 +64,11 @@ type Fixture struct {
 	CompleteGoalOnSet      bool
 	EmptyPauseResumeGoal   bool
 	FailCommitObserver     bool
+	RejectInitialExec      bool
+	// GuidanceTargetMismatch makes the test runtime reject guidance whose
+	// explicit TurnID is not the Session.ActiveTurnID. It models the runtime
+	// target race without exposing a runtime/provider API to scenarios.
+	GuidanceTargetMismatch bool
 	WorktreeGCSweepErr     error
 	DeleteAdmissionErr     error
 	DeleteSessionPlans     [][]string
@@ -119,9 +124,12 @@ type InteractiveObservation struct {
 }
 
 type Metrics struct {
-	StartCalls                         int
-	ResumeCalls                        int
-	ExecCalls                          int
+	StartCalls  int
+	ResumeCalls int
+	ExecCalls   int
+	// GuidanceProviderCalls counts guidance dispatches that passed the
+	// runtime's exact-target gate. ExecCalls includes the rejected gate check.
+	GuidanceProviderCalls              int
 	CancelCalls                        int
 	InteractiveCalls                   int
 	UpdateSettingsCalls                int
@@ -136,6 +144,7 @@ type Metrics struct {
 	LastInteractiveRequestID           string
 	LastInitialTitle                   string
 	LastExecRequiresProviderAcceptance bool
+	LastClosePreservedCanonicalState   bool
 	LastResumeRecreate                 bool
 	RecoverySteps                      []string
 	DeleteAdmissionPlans               []agenthost.DeleteSessionsPlan

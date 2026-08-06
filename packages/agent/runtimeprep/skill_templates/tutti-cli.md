@@ -175,6 +175,6 @@ For syntax and flags, use `{{.CLICommand}} <scope> --help` or `{{.CLICommand}} <
 
 For app id mapping, read this skill's `command-guide.md`; it preserves `App id:` metadata.
 
-The current AgentGUI session is `{{.AgentSessionID}}`.
+Read the current AgentGUI session id from `$TUTTI_AGENT_SESSION_ID` when required.
 The current AgentGUI agent target id is `{{.AgentTargetID}}`.
 The current AgentGUI provider is `{{.Provider}}`.

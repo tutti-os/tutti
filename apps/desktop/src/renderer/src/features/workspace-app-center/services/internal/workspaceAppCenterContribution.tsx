@@ -455,7 +455,7 @@ function WorkspaceAppCenterTab({
   return (
     <div
       className={cn(
-        "group flex h-7 min-w-[104px] max-w-[220px] items-center gap-1.5 rounded-md border px-2 text-xs transition-colors",
+        "group flex h-7 min-w-[104px] max-w-[220px] items-center rounded-md border text-xs transition-colors",
         active
           ? "border-[var(--line-2)] bg-[var(--background-fronted)] text-[var(--text-primary)]"
           : "border-transparent text-[var(--text-secondary)] hover:bg-[var(--transparency-hover)] hover:text-[var(--text-primary)]"
@@ -465,7 +465,7 @@ function WorkspaceAppCenterTab({
     >
       <button
         aria-selected={active}
-        className="flex min-w-0 flex-1 items-center gap-1.5 text-left"
+        className="flex h-full min-w-0 flex-1 items-center gap-1.5 px-2 text-left"
         role="tab"
         title={title}
         type="button"
@@ -477,7 +477,7 @@ function WorkspaceAppCenterTab({
       {onClose && closeLabel ? (
         <button
           aria-label={closeLabel}
-          className="flex size-5 shrink-0 items-center justify-center rounded text-[var(--text-tertiary)] hover:bg-[var(--transparency-hover)] hover:text-[var(--text-primary)]"
+          className="mr-1 flex size-5 shrink-0 items-center justify-center rounded text-[var(--text-tertiary)] hover:bg-[var(--transparency-hover)] hover:text-[var(--text-primary)]"
           title={closeLabel}
           type="button"
           onClick={(event) => {

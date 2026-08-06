@@ -159,6 +159,93 @@ func TestCompactToolCallPayloadKeepsBusinessProjectionWithoutProviderEnvelopes(t
 	}
 }
 
+func TestCompactToolCallPayloadNormalizesRawCreatedBody(t *testing.T) {
+	content := "# Liying\n\n- 自我介绍\n- 欢迎来到我的 README\n"
+	got := CompactToolCallPayload("completed", map[string]any{
+		"fileChanges": map[string]any{
+			"files": []any{map[string]any{
+				"path":        "/workspace/README.md",
+				"change":      "created",
+				"unifiedDiff": content,
+			}},
+		},
+	})
+	fileChanges, ok := got["fileChanges"].(map[string]any)
+	if !ok {
+		t.Fatalf("fileChanges = %#v, want canonical fileChanges", got["fileChanges"])
+	}
+	files, ok := fileChanges["files"].([]any)
+	if !ok || len(files) != 1 {
+		t.Fatalf("files = %#v, want one file", fileChanges["files"])
+	}
+	file, ok := files[0].(map[string]any)
+	if !ok {
+		t.Fatalf("file = %#v, want object", files[0])
+	}
+	if file["change"] != "added" || file["newString"] != content {
+		t.Fatalf("file = %#v, want added file with body in newString", file)
+	}
+	if _, exists := file["diff"]; exists {
+		t.Fatalf("file retained invalid diff: %#v", file)
+	}
+	if _, exists := file["unifiedDiff"]; exists {
+		t.Fatalf("file retained invalid unifiedDiff: %#v", file)
+	}
+}
+
+func TestCompactToolCallPayloadNormalizesNestedKindAndValidDiffAlias(t *testing.T) {
+	valid := "@@ -1 +1 @@\n-old\n+new"
+	got := CompactToolCallPayload("completed", map[string]any{
+		"fileChanges": map[string]any{
+			"files": []any{map[string]any{
+				"path":        "/workspace/app.ts",
+				"kind":        map[string]any{"type": "update"},
+				"diff":        "README\n- bullet\n",
+				"unifiedDiff": valid,
+			}},
+		},
+	})
+	files := got["fileChanges"].(map[string]any)["files"].([]any)
+	file := files[0].(map[string]any)
+	if file["change"] != "modified" || file["unifiedDiff"] != valid {
+		t.Fatalf("file = %#v, want nested kind and valid diff alias normalized", file)
+	}
+}
+
+func TestNormalizeToolFileChangesDeduplicatesAndCancelsCreatedFiles(t *testing.T) {
+	got := normalizeToolFileChanges(map[string]any{
+		"files": []any{
+			map[string]any{"path": "/workspace/a.txt", "change": "added", "newString": "a"},
+			map[string]any{"path": "/workspace/a.txt", "change": "deleted"},
+			map[string]any{"path": "/workspace/b.txt", "change": "added", "newString": "b"},
+		},
+	})
+	files := got["files"].([]any)
+	if len(files) != 1 || files[0].(map[string]any)["path"] != "/workspace/b.txt" {
+		t.Fatalf("normalized files = %#v, want only the surviving file", files)
+	}
+}
+
+func TestCompactToolCallPayloadPreservesInvalidModifiedBodyWithoutDiff(t *testing.T) {
+	body := "README\n- bullet\n"
+	got := CompactToolCallPayload("completed", map[string]any{
+		"fileChanges": map[string]any{
+			"files": []any{map[string]any{
+				"path":   "/workspace/README.md",
+				"change": "modified",
+				"diff":   body,
+			}},
+		},
+	})
+	file := got["fileChanges"].(map[string]any)["files"].([]any)[0].(map[string]any)
+	if file["content"] != body || file["change"] != "modified" {
+		t.Fatalf("file = %#v, want invalid body preserved as content", file)
+	}
+	if _, exists := file["diff"]; exists {
+		t.Fatalf("file retained invalid diff: %#v", file)
+	}
+}
+
 func TestCompactToolCallPayloadCompactsNestedTaskSteps(t *testing.T) {
 	got := CompactToolCallPayload("completed", map[string]any{
 		"callId":   "call-parent",

@@ -6,6 +6,7 @@ import {
   createWorkspaceFilePreviewInstanceID,
   createWorkspaceFilePreviewLaunchRequest,
   isWorkspaceFilePreviewTarget,
+  normalizeWorkspaceFilePreviewLocalPath,
   workspaceTextFileNodeTypeID
 } from "./workspaceFilePreviewLaunch.ts";
 
@@ -43,6 +44,21 @@ test("workspace file preview launch requests preserve the original file target",
 
   assert.equal(request.typeId, workspaceTextFileNodeTypeID);
   assert.equal(request.payload, target);
+});
+
+test("workspace file preview local paths normalize Windows drive transport paths", () => {
+  assert.equal(
+    normalizeWorkspaceFilePreviewLocalPath("/C:/Users/test/notes.txt"),
+    "C:/Users/test/notes.txt"
+  );
+  assert.equal(
+    normalizeWorkspaceFilePreviewLocalPath("C:\\Users\\test\\notes.txt"),
+    "C:/Users/test/notes.txt"
+  );
+  assert.equal(
+    normalizeWorkspaceFilePreviewLocalPath("/Users/test/notes.txt"),
+    "/Users/test/notes.txt"
+  );
 });
 
 test("workspace file preview activation accepts video targets", () => {

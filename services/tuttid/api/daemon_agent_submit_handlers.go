@@ -96,6 +96,8 @@ func (api DaemonAPI) CreateWorkspaceAgentSession(ctx context.Context, request tu
 		PermissionModeID:           request.Body.PermissionModeId,
 		PlanMode:                   request.Body.PlanMode,
 		BrowserUse:                 request.Body.BrowserUse,
+		CodexSaverMode:             request.Body.CodexSaverMode,
+		CodexSaverModeAllowed:      api.codexSaverModeEnabled(ctx),
 		ReasoningEffort:            request.Body.ReasoningEffort,
 		RuntimeContext:             createSessionRuntimeContext(request.Body.NoProject),
 		RailPlacement:              railPlacementFromGenerated(request.Body.RailPlacement),
@@ -123,6 +125,7 @@ func (api DaemonAPI) CreateWorkspaceAgentSession(ctx context.Context, request tu
 		stimulusPayload := map[string]any{
 			"agentTargetId":              agentTargetID,
 			"browserUse":                 request.Body.BrowserUse,
+			"codexSaverMode":             request.Body.CodexSaverMode,
 			"capabilityRefs":             request.Body.CapabilityRefs,
 			"clientSubmitId":             clientSubmitID,
 			"content":                    request.Body.InitialContent,
@@ -240,17 +243,23 @@ func (api DaemonAPI) SendWorkspaceAgentSessionInput(ctx context.Context, request
 		metadata = map[string]any{}
 	}
 	metadata["sessionState"] = "existing"
-	logSendAgentSubmitTrace("api.send.received", string(request.WorkspaceID), string(request.AgentSessionID), clientSubmitID, metadata, "", "", "", nil)
+	guidance := request.Body.Guidance != nil && *request.Body.Guidance
+	targetTurnID := ""
+	if guidance {
+		targetTurnID = strings.TrimSpace(stringPtrValue(request.Body.TurnId))
+	}
+	logSendAgentSubmitTrace("api.send.received", string(request.WorkspaceID), string(request.AgentSessionID), clientSubmitID, metadata, "", targetTurnID, "", nil)
 	result, err := api.AgentSessionService.SendInput(ctx, string(request.WorkspaceID), string(request.AgentSessionID), agentservice.SendInput{
 		CapabilityRefs: capabilityRefs,
 		Content:        agentPromptContentFromGenerated(request.Body.Content),
 		DisplayPrompt:  stringPtrValue(request.Body.DisplayPrompt),
-		Guidance:       request.Body.Guidance != nil && *request.Body.Guidance,
+		Guidance:       guidance,
+		TurnID:         targetTurnID,
 		ClientSubmitID: clientSubmitID,
 		Metadata:       metadata,
 	})
 	if err != nil {
-		logSendAgentSubmitTrace("api.send.failed", string(request.WorkspaceID), string(request.AgentSessionID), clientSubmitID, metadata, "", "", "", err)
+		logSendAgentSubmitTrace("api.send.failed", string(request.WorkspaceID), string(request.AgentSessionID), clientSubmitID, metadata, "", targetTurnID, "", err)
 		return writeSendWorkspaceAgentSessionInputError(err), nil
 	}
 	generatedSession, err := generatedAgentSession(result.Session)
@@ -275,7 +284,8 @@ func (api DaemonAPI) SendWorkspaceAgentSessionInput(ctx context.Context, request
 				"clientSubmitId": clientSubmitID,
 				"content":        request.Body.Content,
 				"displayPrompt":  request.Body.DisplayPrompt,
-				"guidance":       request.Body.Guidance,
+				"guidance":       guidance,
+				"turnId":         targetTurnID,
 			},
 		)
 	}

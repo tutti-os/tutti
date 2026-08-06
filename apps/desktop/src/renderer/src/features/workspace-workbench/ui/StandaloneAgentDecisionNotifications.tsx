@@ -1,4 +1,4 @@
-import { useMemo, useRef, type ReactNode } from "react";
+import { useMemo, useRef, useSyncExternalStore, type ReactNode } from "react";
 import {
   buildWorkspaceAgentMessageCenterModelFromEngine,
   selectWorkspaceAgentMessageCenterPresentation,
@@ -9,6 +9,8 @@ import {
 } from "@tutti-os/agent-gui/agent-message-center";
 import type { I18nRuntime } from "@tutti-os/ui-i18n-runtime";
 import type { WorkspaceAgentActivityService } from "@renderer/features/workspace-agent";
+import { IAgentsService } from "@renderer/features/workspace-agent/services/agentsService.interface.ts";
+import { useService } from "@tutti-os/infra/di";
 import { useWorkspaceAgentDecisionNotifications } from "./useWorkspaceAgentDecisionNotifications.tsx";
 
 const MESSAGE_CENTER_VISIBLE_HISTORY_MS = 7 * 24 * 60 * 60 * 1000;
@@ -25,6 +27,12 @@ export function StandaloneAgentDecisionNotifications({
   messageCenterOpen: boolean;
   workspaceId: string;
 }): ReactNode {
+  const agentsService = useService(IAgentsService);
+  const agentDirectory = useSyncExternalStore(
+    (listener) => agentsService.subscribe(listener),
+    () => agentsService.getSnapshot(),
+    () => agentsService.getSnapshot()
+  );
   const sessionEngine = useMemo(
     () => activityService.getSessionEngine(workspaceId),
     [activityService, workspaceId]
@@ -52,6 +60,7 @@ export function StandaloneAgentDecisionNotifications({
         workspaceId
       },
       {
+        agentPresentations: agentDirectory.agents,
         itemCutoffUnixMs,
         promptFallbackLabels: {
           constraintHeader: i18n.t(
@@ -70,7 +79,13 @@ export function StandaloneAgentDecisionNotifications({
     );
     modelRef.current = stableModel;
     return stableModel;
-  }, [i18n, itemCutoffUnixMs, presentation, workspaceId]);
+  }, [
+    agentDirectory.agents,
+    i18n,
+    itemCutoffUnixMs,
+    presentation,
+    workspaceId
+  ]);
 
   useWorkspaceAgentDecisionNotifications({
     messageCenterOpen,

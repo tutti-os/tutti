@@ -378,10 +378,29 @@ func NormalizeRailSectionKey(sectionKey string) string {
 
 func normalizeAgentSessionRailSection(section RailSection) RailSection {
 	section.Kind = strings.TrimSpace(section.Kind)
-	section.ProjectPath = NormalizeProjectPath(section.ProjectPath)
-	section.Key = strings.TrimSpace(section.Key)
-	if section.Kind == RailSectionKindConversations {
+	switch section.Kind {
+	case RailSectionKindConversations:
 		section.ProjectPath = ""
+		section.Key = RailSectionKeyConversations
+	case RailSectionKindProject:
+		section.ProjectPath = NormalizeProjectPath(section.ProjectPath)
+		if section.ProjectPath == "" {
+			key := NormalizeRailSectionKey(strings.TrimSpace(section.Key))
+			if strings.HasPrefix(key, "project:") {
+				section.ProjectPath = NormalizeProjectPath(strings.TrimPrefix(key, "project:"))
+			}
+		}
+		if section.ProjectPath != "" {
+			// Key is derived from the project path so symlink path forms
+			// (for example macOS /var vs /private/var) cannot diverge from
+			// the path used for user-project section matching.
+			section.Key = RailSectionKeyForProject(section.ProjectPath)
+		} else {
+			section.Key = strings.TrimSpace(section.Key)
+		}
+	default:
+		section.ProjectPath = NormalizeProjectPath(section.ProjectPath)
+		section.Key = strings.TrimSpace(section.Key)
 	}
 	return section
 }
@@ -392,8 +411,7 @@ func isValidAgentSessionRailSection(section RailSection) bool {
 		return section.ProjectPath == "" && section.Key == RailSectionKeyConversations
 	case RailSectionKindProject:
 		return section.ProjectPath != "" &&
-			section.Key != "" &&
-			section.Key != RailSectionKeyConversations
+			section.Key == RailSectionKeyForProject(section.ProjectPath)
 	default:
 		return false
 	}

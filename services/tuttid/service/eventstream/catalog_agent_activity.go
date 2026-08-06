@@ -1,6 +1,12 @@
 package eventstream
 
-import tuttigenerated "github.com/tutti-os/tutti/services/tuttid/api/generated"
+import (
+	"encoding/json"
+	"fmt"
+	"strings"
+
+	tuttigenerated "github.com/tutti-os/tutti/services/tuttid/api/generated"
+)
 
 type agentActivityUpdatedDataHeader struct {
 	WorkspaceID    string `json:"workspaceId"`
@@ -12,6 +18,26 @@ type agentActivitySessionUpdateData struct {
 	agentActivityUpdatedDataHeader
 	AgentTargetID   string `json:"agentTargetId,omitempty"`
 	LastEventUnixMS *int64 `json:"lastEventUnixMs"`
+}
+
+type agentActivityRuntimeActivityUpdateData struct {
+	agentActivityUpdatedDataHeader
+	State            string `json:"state"`
+	OccurredAtUnixMS *int64 `json:"occurredAtUnixMs"`
+}
+
+func validateAgentActivityRuntimeActivityUpdateData(raw json.RawMessage) error {
+	var data agentActivityRuntimeActivityUpdateData
+	if err := decodeJSONStrict(raw, &data); err != nil {
+		return fmt.Errorf("decode runtime_activity_update data: %w", err)
+	}
+	if !isOneOf(strings.TrimSpace(data.State), "idle", "running") {
+		return fmt.Errorf("data.state is invalid")
+	}
+	if data.OccurredAtUnixMS == nil || *data.OccurredAtUnixMS <= 0 {
+		return fmt.Errorf("data.occurredAtUnixMs is required")
+	}
+	return nil
 }
 
 type agentActivitySessionDeletedData struct {

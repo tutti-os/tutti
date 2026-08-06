@@ -47,6 +47,20 @@ export interface TuttiExternalAtQueryInput {
   providers?: readonly TuttiExternalAtProviderId[];
 }
 
+export interface TuttiExternalAtQueryDirectoryInput {
+  /** Empty string addresses the provider-owned root directory. */
+  directoryPath: string;
+  maxResults?: number;
+  providerId: TuttiExternalAtProviderId;
+}
+
+export interface TuttiExternalAtDirectoryDescriptor {
+  /** Canonical provider-owned directory path used for direct-child queries. */
+  path: string;
+  /** Number of direct children when the provider can determine it. */
+  childCount?: number | null;
+}
+
 export interface TuttiExternalAtQueryResult {
   providerId: TuttiExternalAtProviderId;
   itemId: string;
@@ -54,6 +68,7 @@ export interface TuttiExternalAtQueryResult {
   subtitle?: string;
   thumbnailUrl?: string | null;
   insert: TuttiExternalAtInsertResult;
+  directory?: TuttiExternalAtDirectoryDescriptor;
 }
 
 export interface TuttiExternalAtResolveInput {
@@ -225,6 +240,24 @@ export interface TuttiExternalReferenceOpenInput {
   href: string;
 }
 
+export type TuttiExternalReferenceSelection =
+  | {
+      selectionKind: "path";
+      reference: WorkspaceFileReference;
+    }
+  | {
+      selectionKind: "workspace-reference";
+      displayName: string;
+      fileCount?: number;
+      groupId?: string;
+      id: string;
+      source: "app";
+      workspaceId: string;
+    };
+
+export type TuttiExternalReferenceSelectResult =
+  TuttiExternalReferenceSelection[];
+
 export type TuttiExternalAgentAvailabilityStatus =
   | "ready"
   | "checking"
@@ -385,6 +418,9 @@ export interface TuttiExternalBridge {
     query(
       input: TuttiExternalAtQueryInput
     ): Promise<TuttiExternalAtQueryResult[]>;
+    queryDirectory?(
+      input: TuttiExternalAtQueryDirectoryInput
+    ): Promise<TuttiExternalAtQueryResult[]>;
     resolve?(
       input: TuttiExternalAtResolveInput
     ): Promise<TuttiExternalAtResolveResult | null>;
@@ -417,6 +453,7 @@ export interface TuttiExternalBridge {
     openFeature(input: TuttiExternalWorkspaceOpenFeatureInput): Promise<void>;
   };
   references: {
+    select?(): Promise<TuttiExternalReferenceSelectResult>;
     open(input: TuttiExternalReferenceOpenInput): Promise<void>;
   };
   pdf: {
@@ -517,6 +554,13 @@ export type TuttiExternalRendererRequest =
     }
   | {
       appId: string;
+      input: TuttiExternalAtQueryDirectoryInput;
+      operation: "at.queryDirectory";
+      requestId: string;
+      workspaceId: string;
+    }
+  | {
+      appId: string;
       input: TuttiExternalFileSelectInput;
       operation: "files.select";
       requestId: string;
@@ -540,6 +584,12 @@ export type TuttiExternalRendererRequest =
       appId: string;
       input: TuttiExternalReferenceOpenInput;
       operation: "references.open";
+      requestId: string;
+      workspaceId: string;
+    }
+  | {
+      appId: string;
+      operation: "references.select";
       requestId: string;
       workspaceId: string;
     }

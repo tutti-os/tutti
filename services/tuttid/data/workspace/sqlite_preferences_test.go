@@ -434,6 +434,35 @@ func TestSQLiteStorePatchAgentComposerDefaultsForTargetInitializesMissingPrefere
 	}
 }
 
+func TestSQLiteStorePatchAgentComposerDefaultsForTargetPersistsCodexSaverMode(t *testing.T) {
+	t.Parallel()
+	store := openTestSQLiteStore(t)
+	if _, err := store.PatchAgentComposerDefaultsForTarget(context.Background(), "local:codex", preferencesbiz.AgentComposerDefaultsPatch{
+		preferencesbiz.AgentComposerDefaultsFieldCodexSaverMode: true,
+	}); err != nil {
+		t.Fatalf("enable saver mode: %v", err)
+	}
+	got, err := store.GetDesktopPreferences(context.Background())
+	if err != nil {
+		t.Fatalf("GetDesktopPreferences() error = %v", err)
+	}
+	if !got.AgentComposerDefaultsByAgentTarget["local:codex"].CodexSaverMode {
+		t.Fatalf("defaults = %#v", got.AgentComposerDefaultsByAgentTarget)
+	}
+	if _, err := store.PatchAgentComposerDefaultsForTarget(context.Background(), "local:codex", preferencesbiz.AgentComposerDefaultsPatch{
+		preferencesbiz.AgentComposerDefaultsFieldCodexSaverMode: false,
+	}); err != nil {
+		t.Fatalf("disable saver mode: %v", err)
+	}
+	got, err = store.GetDesktopPreferences(context.Background())
+	if err != nil {
+		t.Fatalf("GetDesktopPreferences() error = %v", err)
+	}
+	if got.AgentComposerDefaultsByAgentTarget["local:codex"].CodexSaverMode {
+		t.Fatalf("defaults = %#v, want saver mode cleared", got.AgentComposerDefaultsByAgentTarget)
+	}
+}
+
 func TestSQLiteStorePatchAgentComposerDefaultsForTargetSerializesConcurrentFields(t *testing.T) {
 	t.Parallel()
 

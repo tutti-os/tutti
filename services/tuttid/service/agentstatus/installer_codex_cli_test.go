@@ -36,14 +36,14 @@ func TestCodexNPMPrefixFromPackageDir(t *testing.T) {
 
 	cases := map[string]string{
 		// Unix npm global layout: <prefix>/lib/node_modules/@openai/codex
-		filepath.Join("/Users/x/.nvm/versions/node/v24.12.0", "lib", "node_modules", "@openai", "codex"): "/Users/x/.nvm/versions/node/v24.12.0",
-		filepath.Join("/Users/x/.local", "lib", "node_modules", "@openai", "codex"):                      "/Users/x/.local",
-		filepath.Join("/usr/local", "lib", "node_modules", "@openai", "codex"):                           "/usr/local",
+		filepath.FromSlash("/Users/x/.nvm/versions/node/v24.12.0/lib/node_modules/@openai/codex"): filepath.FromSlash("/Users/x/.nvm/versions/node/v24.12.0"),
+		filepath.FromSlash("/Users/x/.local/lib/node_modules/@openai/codex"):                      filepath.FromSlash("/Users/x/.local"),
+		filepath.FromSlash("/usr/local/lib/node_modules/@openai/codex"):                           filepath.FromSlash("/usr/local"),
 		// Windows npm global layout: <prefix>/node_modules/@openai/codex (no lib)
-		filepath.Join("C:/Users/x/AppData/Roaming/npm", "node_modules", "@openai", "codex"): "C:/Users/x/AppData/Roaming/npm",
+		filepath.FromSlash("C:/Users/x/AppData/Roaming/npm/node_modules/@openai/codex"): filepath.FromSlash("C:/Users/x/AppData/Roaming/npm"),
 		// Not npm's global layout -> no prefix derivable.
-		filepath.Join("/tmp/standalone/codex"): "",
-		"/node_modules/@openai/codex":          "",
+		filepath.Join("/tmp/standalone/codex"):            "",
+		filepath.FromSlash("/node_modules/@openai/codex"): "",
 	}
 	for in, want := range cases {
 		if got := npmGlobalPrefixFromPackageDir(in); got != want {

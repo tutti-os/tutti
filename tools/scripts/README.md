@@ -35,6 +35,12 @@ Current examples include:
 - `build-tutti-app-release.mjs` for packaging an external Tutti app into a zip plus `release.json` and `latest.json`
 - `build-tutti-app-catalog.mjs` for merging app `release.json` files into the App Center remote catalog
 - `build-tutti-app-runtime-catalog.mjs` for merging managed app runtime artifact metadata into the runtime download catalog
+- `apps/desktop/scripts/vendor-managed-posix-shell.mjs` for assembling the
+  pinned minimal managed POSIX shell used by packaged Windows Desktop adapters;
+  CI downloads and verifies the archive from
+  `config/tutti.managed-posix-shell.lock.json`, while local packaging may set
+  `TUTTI_MSYS2_BASE_ARCHIVE` to an already downloaded matching archive
+  (the caller passes the target platform explicitly)
 - `capture-electron-trace.mjs` for recording desktop Electron performance
   traces through CDP stream mode without opening the DevTools Performance export
   UI

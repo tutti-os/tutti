@@ -16,10 +16,12 @@ export interface ConversationSection {
 export function ConversationMeta({
   item,
   nowMs,
-  labels
+  labels,
+  hideTime = false
 }: {
   item: AgentGUINodeViewModel["rail"]["conversations"][number];
   nowMs: number;
+  hideTime?: boolean;
   labels: Pick<
     AgentGUIViewLabels,
     | "relativeTimeJustNow"
@@ -29,7 +31,7 @@ export function ConversationMeta({
     | "relativeTimeMonths"
     | "relativeTimeYears"
   >;
-}): React.JSX.Element {
+}): React.JSX.Element | null {
   "use memo";
   const kind = conversationMetaKind(item);
 
@@ -84,7 +86,7 @@ export function ConversationMeta({
     );
   }
 
-  return (
+  return hideTime ? null : (
     <span
       className={styles.conversationMeta}
       data-kind={kind}

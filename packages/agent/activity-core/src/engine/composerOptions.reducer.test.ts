@@ -61,10 +61,14 @@ test("a settled result stores options and marks the target ready", () => {
     commandType: "composerOptions/load",
     correlationId: "target-1",
     outcome: "succeeded",
-    value: options()
+    value: options({ codexSaverModeSupported: true })
   }).state;
   assert.equal(state.entriesByTargetKey["target-1"]?.status, "ready");
   assert.equal(state.optionsByTargetKey["target-1"]?.provider, "codex");
+  assert.equal(
+    state.optionsByTargetKey["target-1"]?.codexSaverModeSupported,
+    true
+  );
 });
 
 test("a failed load reaches a terminal error state", () => {

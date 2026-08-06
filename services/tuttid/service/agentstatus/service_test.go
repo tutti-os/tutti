@@ -157,7 +157,7 @@ func TestDefaultRegistryUsesTuttiAgentManagedNPMInstaller(t *testing.T) {
 }
 
 func TestServiceListUsesDescriptorOwnedDaemonLoginAction(t *testing.T) {
-	service, _ := updateTestService(t, "0.0.10")
+	service, _ := updateTestService(t, providerregistry.TuttiAgentMinVersion)
 
 	snapshot, err := service.List(context.Background(), ListInput{Providers: []string{"tutti-agent"}})
 	if err != nil {
@@ -819,7 +819,7 @@ func TestServiceListStandardACPHandshakeProbe(t *testing.T) {
 			provider:   "cursor",
 			binaryName: "cursor-agent",
 			script:     "#!/bin/sh\ncase \"$*\" in\n*acp*) sleep 5 ;;\nesac\nexit 0\n",
-			wantStatus: AvailabilityNotInstalled,
+			wantStatus: AvailabilityUnknown,
 			wantReason: "acp_adapter_launch_failed",
 		},
 		{
@@ -829,7 +829,7 @@ func TestServiceListStandardACPHandshakeProbe(t *testing.T) {
 			script: "#!/bin/sh\ncase \"$*\" in\n" +
 				"*acp*) echo '{\"jsonrpc\":\"2.0\",\"id\":1,\"error\":{\"code\":-32000,\"message\":\"unsupported\"}}'; exit 1 ;;\n" +
 				"esac\nexit 0\n",
-			wantStatus: AvailabilityNotInstalled,
+			wantStatus: AvailabilityUnknown,
 			wantReason: "acp_adapter_launch_failed",
 		},
 		{
@@ -844,7 +844,7 @@ func TestServiceListStandardACPHandshakeProbe(t *testing.T) {
 			provider:   "opencode",
 			binaryName: "opencode",
 			script:     "#!/bin/sh\ncase \"$*\" in\n*acp*) sleep 5 ;;\nesac\nexit 0\n",
-			wantStatus: AvailabilityNotInstalled,
+			wantStatus: AvailabilityUnknown,
 			wantReason: "acp_adapter_launch_failed",
 		},
 		{
@@ -854,7 +854,7 @@ func TestServiceListStandardACPHandshakeProbe(t *testing.T) {
 			script: "#!/bin/sh\ncase \"$*\" in\n" +
 				"*acp*) echo '{\"jsonrpc\":\"2.0\",\"id\":1,\"error\":{\"code\":-32000,\"message\":\"unsupported\"}}'; exit 1 ;;\n" +
 				"esac\nexit 0\n",
-			wantStatus: AvailabilityNotInstalled,
+			wantStatus: AvailabilityUnknown,
 			wantReason: "acp_adapter_launch_failed",
 		},
 		{
@@ -871,7 +871,7 @@ func TestServiceListStandardACPHandshakeProbe(t *testing.T) {
 			script: "#!/bin/sh\ncase \"$*\" in\n" +
 				"*acp*) echo '{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{}}'; exit 0 ;;\n" +
 				"esac\nexit 0\n",
-			wantStatus: AvailabilityNotInstalled,
+			wantStatus: AvailabilityUnknown,
 			wantReason: "acp_adapter_launch_failed",
 		},
 		{
@@ -881,7 +881,7 @@ func TestServiceListStandardACPHandshakeProbe(t *testing.T) {
 			script: "#!/bin/sh\ncase \"$*\" in\n" +
 				"*acp*) echo '{\"id\":1,\"result\":{}}'; exit 0 ;;\n" +
 				"esac\nexit 0\n",
-			wantStatus: AvailabilityNotInstalled,
+			wantStatus: AvailabilityUnknown,
 			wantReason: "acp_adapter_launch_failed",
 		},
 		{
@@ -891,7 +891,7 @@ func TestServiceListStandardACPHandshakeProbe(t *testing.T) {
 			script: "#!/bin/sh\ncase \"$*\" in\n" +
 				"*acp*) echo '{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{}}'; exit 0 ;;\n" +
 				"esac\nexit 0\n",
-			wantStatus: AvailabilityNotInstalled,
+			wantStatus: AvailabilityUnknown,
 			wantReason: "acp_adapter_launch_failed",
 		},
 		{
@@ -901,7 +901,7 @@ func TestServiceListStandardACPHandshakeProbe(t *testing.T) {
 			script: "#!/bin/sh\ncase \"$*\" in\n" +
 				"*acp*) echo '{\"id\":1,\"result\":{}}'; exit 0 ;;\n" +
 				"esac\nexit 0\n",
-			wantStatus: AvailabilityNotInstalled,
+			wantStatus: AvailabilityUnknown,
 			wantReason: "acp_adapter_launch_failed",
 		},
 	} {
@@ -1453,6 +1453,9 @@ func TestServiceProbeTreatsTemporarilyUnsupportedProviderAsUnsupported(t *testin
 }
 
 func TestServiceRunActionInstallsThenProbesProvider(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("shell-script fixture and POSIX adapter probe are not a native Windows test")
+	}
 	home := t.TempDir()
 	binDir := filepath.Join(home, ".nvm", "versions", "node", "v24.12.0", "bin")
 	if err := os.MkdirAll(binDir, 0o755); err != nil {
@@ -1998,7 +2001,15 @@ func TestServiceResolveProviderCommandFallsBackToManagedNodeForCodex(t *testing.
 func TestServiceResolveProviderCommandFallsBackToManagedNodeForTuttiAgent(t *testing.T) {
 	home := t.TempDir()
 	binDir := filepath.Join(home, "bin")
-	writeExecutable(t, filepath.Join(binDir, "tutti-agent"), "#!/usr/bin/env node\n")
+	agentBinaryName := "tutti-agent"
+	if runtime.GOOS == "windows" {
+		agentBinaryName += ".cmd"
+	}
+	agentContents := "#!/usr/bin/env node\n"
+	if runtime.GOOS == "windows" {
+		agentContents = "@echo off\r\ncall \"%TUTTI_APP_NODE%\" --version\r\n"
+	}
+	writeExecutable(t, filepath.Join(binDir, agentBinaryName), agentContents)
 	runtimeRoot := fakeManagedRuntimeRoot(t)
 
 	service := probeTestService(home)
@@ -2027,23 +2038,45 @@ func TestServiceResolveProviderCommandFallsBackToManagedNodeForTuttiAgent(t *tes
 func TestServiceListUsesManagedNodeForTuttiAgentVersionProbe(t *testing.T) {
 	home := t.TempDir()
 	binDir := filepath.Join(home, "bin")
-	writeExecutable(t, filepath.Join(binDir, "tutti-agent"), "#!/usr/bin/env node\n")
+	agentBinaryName := "tutti-agent"
+	if runtime.GOOS == "windows" {
+		agentBinaryName += ".cmd"
+	}
+	agentContents := "#!/usr/bin/env node\n"
+	if runtime.GOOS == "windows" {
+		agentContents = "@echo off\r\ncall \"%TUTTI_APP_NODE%\" --version\r\n"
+	}
+	writeExecutable(t, filepath.Join(binDir, agentBinaryName), agentContents)
 	runtimeRoot := fakeManagedRuntimeRoot(t)
-	writeExecutable(
-		t,
-		filepath.Join(runtimeRoot, "node", "bin", nodeBinaryNameForTest()),
-		"#!/bin/sh\necho 'tutti-agent 0.0.10'\n",
-	)
 
 	service := probeTestService(home)
 	service.Environ = func() []string {
 		return []string{"PATH=" + binDir}
 	}
-	service.ManagedRuntime = fakeManagedRuntimeResolver(t, runtimeRoot)
+	if runtime.GOOS == "windows" {
+		nodePath := filepath.Join(home, "managed-node.cmd")
+		writeExecutable(t, nodePath, "@echo off\r\necho tutti-agent "+providerregistry.TuttiAgentMinVersion+"\r\n")
+		service.ManagedRuntime = staticManagedRuntimeResolver{runtime: managedruntime.ResolvedRuntime{
+			Root:    runtimeRoot,
+			Node:    nodePath,
+			NPM:     filepath.Join(home, "npm.cmd"),
+			BinDirs: []string{filepath.Dir(nodePath)},
+			EnvOverrides: []string{
+				"TUTTI_APP_NODE=" + nodePath,
+				"PATH=" + filepath.Dir(nodePath),
+			},
+		}}
+	} else {
+		writeExecutable(
+			t,
+			filepath.Join(runtimeRoot, "node", "bin", nodeBinaryNameForTest()),
+			"#!/bin/sh\necho 'tutti-agent "+providerregistry.TuttiAgentMinVersion+"'\n",
+		)
+		service.ManagedRuntime = fakeManagedRuntimeResolver(t, runtimeRoot)
+	}
 	service.RunAuthStatusCommand = func(context.Context, ProviderSpec, string) (AuthInfo, bool) {
 		return AuthInfo{Status: AuthAuthenticated}, true
 	}
-
 	snapshot, err := service.List(context.Background(), ListInput{
 		Providers:    []string{"tutti-agent"},
 		ForceRefresh: true,
@@ -2052,8 +2085,8 @@ func TestServiceListUsesManagedNodeForTuttiAgentVersionProbe(t *testing.T) {
 		t.Fatalf("List() error = %v", err)
 	}
 	status := onlyStatus(t, snapshot)
-	if status.CLI.Version != "0.0.10" {
-		t.Fatalf("CLI.Version = %q, want 0.0.10", status.CLI.Version)
+	if status.CLI.Version != providerregistry.TuttiAgentMinVersion {
+		t.Fatalf("CLI.Version = %q, want %s", status.CLI.Version, providerregistry.TuttiAgentMinVersion)
 	}
 	if status.Availability.Status != AvailabilityReady {
 		t.Fatalf(
@@ -3111,7 +3144,17 @@ func standardACPFakeScript(extraBody string) string {
 
 func isTestExecutable(path string) bool {
 	stat, err := os.Stat(path)
-	return err == nil && !stat.IsDir() && stat.Mode().Perm()&0111 != 0
+	if err != nil || stat.IsDir() {
+		return false
+	}
+	// Windows does not expose Unix executable permission bits. The production
+	// implementation uses the Windows platform rule as well, so test fixtures
+	// must not reject an ordinary file merely because Mode().Perm() has no 0111
+	// bits.
+	if runtime.GOOS == "windows" {
+		return true
+	}
+	return stat.Mode().Perm()&0111 != 0
 }
 
 func fileExistsForTest(path string) bool {
@@ -3134,7 +3177,13 @@ func isTestExecutableUnderHome(home string) func(string) bool {
 			return false
 		}
 		stat, err := os.Stat(path)
-		return err == nil && !stat.IsDir() && stat.Mode().Perm()&0111 != 0
+		if err != nil || stat.IsDir() {
+			return false
+		}
+		if runtime.GOOS == "windows" {
+			return true
+		}
+		return stat.Mode().Perm()&0111 != 0
 	}
 }
 
@@ -3196,10 +3245,14 @@ func fakeManagedRuntimeRoot(t *testing.T) string {
 	writeExecutable(t, filepath.Join(root, "python", "bin", pythonBinaryNameForTest()), "#!/bin/sh\nexit 0\n")
 	writeExecutable(t, filepath.Join(root, "node", "bin", nodeBinaryNameForTest()), "#!/bin/sh\nexit 0\n")
 	writeExecutable(t, filepath.Join(root, "node", "bin", npmBinaryNameForTest()), "#!/bin/sh\nexit 0\n")
+	corepackContents := "#!/bin/sh\nexec \"$(dirname \"$0\")/node\" \"$(dirname \"$0\")/../lib/node_modules/corepack/dist/corepack.js\" \"$@\"\n"
+	if runtime.GOOS == "windows" {
+		corepackContents = `@IF EXIST "%~dp0\node.exe" ("%~dp0\node.exe" "%~dp0\node_modules\corepack\dist\corepack.js" %*)`
+	}
 	writeExecutable(
 		t,
 		filepath.Join(root, "node", "bin", corepackBinaryNameForTest()),
-		"#!/bin/sh\nexec \"$(dirname \"$0\")/node\" \"$(dirname \"$0\")/../lib/node_modules/corepack/dist/corepack.js\" \"$@\"\n",
+		corepackContents,
 	)
 	return root
 }

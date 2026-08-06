@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 )
@@ -26,12 +27,27 @@ func (CodexPreparer) Prepare(_ context.Context, input ProviderPrepareInput) (Pro
 	if err := prepareCodexHome(codexHome, input.PrepareInput); err != nil {
 		return ProviderPrepareResult{}, err
 	}
+	if input.CodexSaverMode {
+		rolePath, err := installCodexLunaWorkerRole(codexHome)
+		if err != nil {
+			return ProviderPrepareResult{}, err
+		}
+		if err := ensureCodexSaverDefaultRole(filepath.Join(codexHome, "config.toml")); err != nil {
+			return ProviderPrepareResult{}, err
+		}
+		if input.Manifest != nil {
+			input.Manifest.RecordManagedFile(rolePath, "codex-agent-role", true)
+		}
+	}
 	logRuntimePrepareTrace("runtime_prepare.codex.home_prepared", input.PrepareInput, nil)
 	instructionsPath := filepath.Join(codexHome, "AGENTS.md")
 	logRuntimePrepareTrace("runtime_prepare.codex.instructions_write_requested", input.PrepareInput, nil)
 	policy, err := tuttiCLIPolicy(input.PrepareInput)
 	if err != nil {
 		return ProviderPrepareResult{}, err
+	}
+	if input.CodexSaverMode {
+		policy = strings.TrimSpace(policy) + "\n\n" + codexSaverModePolicy
 	}
 	writeResult, err := input.Store.WriteManagedBlock(instructionsPath, policy)
 	if err != nil {
@@ -162,9 +178,9 @@ func exposeUserCodexFiles(codexHome string) error {
 		if _, err := os.Lstat(target); err == nil {
 			continue
 		}
-		if err := os.Symlink(source, target); err != nil {
+		if err := exposeCodexFile(source, target, 0o600); err != nil {
 			if copyErr := copyFile(source, target, 0o600); copyErr != nil {
-				return fmt.Errorf("expose codex %s: symlink failed: %v; copy failed: %w", name, err, copyErr)
+				return fmt.Errorf("expose codex %s: link failed: %v; copy failed: %w", name, err, copyErr)
 			}
 		}
 	}
@@ -229,7 +245,7 @@ func exposeCodexImportedRolloutFile(codexHome string, sourcePath string) error {
 	if err := os.MkdirAll(filepath.Dir(target), 0o700); err != nil {
 		return fmt.Errorf("create codex imported rollout parent dir: %w", err)
 	}
-	if err := os.Symlink(sourcePath, target); err != nil {
+	if err := exposeCodexFile(sourcePath, target, 0o600); err != nil {
 		return fmt.Errorf("expose codex imported rollout file: %w", err)
 	}
 	return nil
@@ -252,7 +268,7 @@ func exposeUserCodexPluginState(codexHome string, userCodexHome string) error {
 		if err := os.MkdirAll(filepath.Dir(target), 0o700); err != nil {
 			return fmt.Errorf("create codex plugin state parent: %w", err)
 		}
-		if err := os.Symlink(source, target); err != nil {
+		if err := exposeCodexDirectory(source, target); err != nil {
 			return fmt.Errorf("expose codex plugin state %s: %w", rel, err)
 		}
 	}
@@ -307,6 +323,17 @@ func ensureCodexSessionConfig(configPath string, input PrepareInput) error {
 		next = planNext
 		changed = true
 	}
+	// Tutti launches the Codex app-server from the non-elevated desktop daemon.
+	// On Windows, the elevated sandbox implementation invokes a separate setup
+	// helper through ShellExecuteExW, which requires an interactive UAC consent
+	// flow that is not owned by the app-server protocol. Use the restricted,
+	// non-elevated implementation for Tutti-owned session homes so a hidden or
+	// canceled UAC prompt cannot prevent every command from starting. The
+	// Codex/Tutti permission mode and approval policy remain unchanged.
+	if windowsSandboxNext, windowsSandboxChanged := codexConfigWithTuttiWindowsSandbox(next); windowsSandboxChanged {
+		next = windowsSandboxNext
+		changed = true
+	}
 	if !changed {
 		return nil
 	}
@@ -314,6 +341,59 @@ func ensureCodexSessionConfig(configPath string, input PrepareInput) error {
 		return fmt.Errorf("write codex config: %w", err)
 	}
 	return nil
+}
+
+// codexConfigWithTuttiWindowsSandbox pins Tutti-owned Codex session homes to
+// the unelevated Windows sandbox implementation. This is intentionally applied
+// only on Windows and only to the copied per-session config, never to the
+// user's global ~/.codex/config.toml.
+func codexConfigWithTuttiWindowsSandbox(content string) (string, bool) {
+	if runtime.GOOS != "windows" {
+		return content, false
+	}
+
+	normalized := strings.ReplaceAll(content, "\r\n", "\n")
+	lines := strings.Split(normalized, "\n")
+	for sectionStart, line := range lines {
+		if strings.TrimSpace(line) != "[windows]" {
+			continue
+		}
+		sectionEnd := len(lines)
+		for index := sectionStart + 1; index < len(lines); index++ {
+			trimmed := strings.TrimSpace(lines[index])
+			if strings.HasPrefix(trimmed, "[") && strings.HasSuffix(trimmed, "]") {
+				sectionEnd = index
+				break
+			}
+		}
+		for index := sectionStart + 1; index < sectionEnd; index++ {
+			trimmed := strings.TrimSpace(lines[index])
+			if trimmed == "" || strings.HasPrefix(trimmed, "#") {
+				continue
+			}
+			if !codexConfigLineHasKey(trimmed, "sandbox") {
+				continue
+			}
+			if strings.TrimSpace(lines[index]) == `sandbox = "unelevated"` {
+				return content, false
+			}
+			next := append([]string{}, lines...)
+			next[index] = `sandbox = "unelevated"`
+			return strings.Join(next, "\n"), true
+		}
+		next := make([]string, 0, len(lines)+1)
+		next = append(next, lines[:sectionEnd]...)
+		next = append(next, `sandbox = "unelevated"`)
+		next = append(next, lines[sectionEnd:]...)
+		return strings.Join(next, "\n"), true
+	}
+
+	next := strings.TrimRight(normalized, "\n")
+	if next != "" {
+		next += "\n\n"
+	}
+	next += "[windows]\nsandbox = \"unelevated\"\n"
+	return next, true
 }
 
 func codexConfigWithTuttiConversationDetailMode(content string, conversationDetailMode string) (string, bool) {
@@ -598,68 +678,6 @@ func codexConfigStringAssignmentValueAt(lines []string, index int, key string) (
 	return "", index, false
 }
 
-// Consume a complete multiline TOML array so stale marker entries do not remain
-// after replacing project_root_markers with the session-scoped override.
-func codexConfigAssignmentEndLine(lines []string, startIndex int) int {
-	if startIndex < 0 || startIndex >= len(lines) {
-		return startIndex
-	}
-	_, value, ok := strings.Cut(lines[startIndex], "=")
-	if !ok {
-		return startIndex
-	}
-	depth := tomlSquareBracketDelta(value)
-	if depth <= 0 {
-		return startIndex
-	}
-	for index := startIndex + 1; index < len(lines); index++ {
-		depth += tomlSquareBracketDelta(lines[index])
-		if depth <= 0 {
-			return index
-		}
-	}
-	return startIndex
-}
-
-func tomlSquareBracketDelta(line string) int {
-	depth := 0
-	escaped := false
-	quote := rune(0)
-	for _, char := range line {
-		switch quote {
-		case '"':
-			if escaped {
-				escaped = false
-				continue
-			}
-			if char == '\\' {
-				escaped = true
-				continue
-			}
-			if char == '"' {
-				quote = 0
-			}
-			continue
-		case '\'':
-			if char == '\'' {
-				quote = 0
-			}
-			continue
-		}
-		switch char {
-		case '#':
-			return depth
-		case '"', '\'':
-			quote = char
-		case '[':
-			depth++
-		case ']':
-			depth--
-		}
-	}
-	return depth
-}
-
 func exposeUserCodexSkillFolders(targetRoot string, input PrepareInput) error {
 	userHome, err := os.UserHomeDir()
 	if err != nil || strings.TrimSpace(userHome) == "" {
@@ -710,7 +728,7 @@ func exposeUserCodexSkillFolders(targetRoot string, input PrepareInput) error {
 		} else if !os.IsNotExist(err) {
 			return fmt.Errorf("inspect codex skill %s: %w", name, err)
 		}
-		if err := os.Symlink(source, target); err != nil {
+		if err := exposeCodexDirectory(source, target); err != nil {
 			return fmt.Errorf("expose codex skill %s: %w", name, err)
 		}
 	}

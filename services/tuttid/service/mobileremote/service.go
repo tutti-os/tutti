@@ -7,11 +7,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 	"sync"
 	"time"
 
 	authbridge "github.com/tutti-os/tutti/packages/auth/bridge-go"
+	deviceauthority "github.com/tutti-os/tutti/packages/clients/device-authority-go"
 	mobileremotebiz "github.com/tutti-os/tutti/services/tuttid/biz/mobileremote"
 )
 
@@ -28,6 +30,24 @@ type IdentityStore interface {
 	LoadOrCreate(context.Context) (mobileremotebiz.DeviceIdentity, error)
 }
 
+// DeviceAuthorityClient is the narrow control-plane dependency used by the
+// Relay owner lifecycle. The shared client owns signing and wire validation;
+// the mobile-remote service owns demand, lease, and reconnect policy.
+type DeviceAuthorityClient interface {
+	EnsureDeviceAuthority(context.Context, deviceauthority.EnsureDeviceAuthorityRequest) (deviceauthority.DeviceAuthorityResult, error)
+	RegisterDeviceGatewayIdentity(context.Context, deviceauthority.RegisterDeviceGatewayIdentityRequest) (deviceauthority.DeviceGatewayIdentityResult, error)
+	IssueDeviceGatewayOwnerTunnelToken(context.Context, deviceauthority.IssueDeviceGatewayOwnerTunnelTokenRequest) (deviceauthority.DeviceGatewayOwnerTunnelTokenResult, error)
+	RenewDeviceAuthorityLease(context.Context, deviceauthority.RenewDeviceAuthorityLeaseRequest) (deviceauthority.RenewDeviceAuthorityLeaseResult, error)
+}
+
+// RelayOwnerHost is the demand-counted owner tunnel supplied by the shared
+// relay transport. Mobile Remote acquires it only while the user-enabled
+// connection feature is running.
+type RelayOwnerHost interface {
+	Acquire(context.Context, string) error
+	Release(string) error
+}
+
 // AgentLiveEventSource feeds already-validated agent.activity.updated
 // envelopes into one workspace-scoped DeviceLink stream. The source establishes
 // its subscription before calling ready, then emits every subsequent envelope.
@@ -39,6 +59,51 @@ type AgentLiveEventSource interface {
 		func() error,
 		func([]byte) error,
 	) error
+}
+
+// AttemptEventSource is a best-effort control-plane hint stream. The HTTP
+// attempt API remains authoritative; implementations only wake a caller to
+// refetch an attempt after a committed mutation.
+type AttemptEventSource interface {
+	Run(context.Context, string, string, func(string)) error
+}
+
+type RemoteAttemptDiagnostics interface {
+	Record(RemoteAttemptEvent)
+}
+
+type RemoteAttemptEvent struct {
+	AttemptID string
+	PairingID string
+	Stage     string
+	Outcome   string
+	ElapsedMS int64
+	Error     string
+}
+
+// SlogRemoteAttemptDiagnostics keeps timing details in the daemon's existing
+// structured log stream without coupling the service to a logging backend.
+type SlogRemoteAttemptDiagnostics struct {
+	Logger *slog.Logger
+}
+
+func (d SlogRemoteAttemptDiagnostics) Record(event RemoteAttemptEvent) {
+	logger := d.Logger
+	if logger == nil {
+		logger = slog.Default()
+	}
+	args := []any{
+		"event", "mobile_remote.device_link_stage",
+		"attempt_id", event.AttemptID,
+		"pairing_id", event.PairingID,
+		"stage", event.Stage,
+		"outcome", event.Outcome,
+		"elapsed_ms", event.ElapsedMS,
+	}
+	if event.Error != "" {
+		args = append(args, "error", event.Error)
+	}
+	logger.Info("mobile remote DeviceLink stage", args...)
 }
 
 type DeviceMetadata struct {
@@ -62,7 +127,12 @@ type Service struct {
 	Account         AccountSessionSource
 	Identities      IdentityStore
 	ControlPlane    ControlPlane
+	DeviceAuthority DeviceAuthorityClient
+	RuntimeID       string
+	RelayOwner      RelayOwnerHost
 	AgentLiveEvents AgentLiveEventSource
+	AttemptEvents   AttemptEventSource
+	Diagnostics     RemoteAttemptDiagnostics
 	Metadata        DeviceMetadata
 	Now             func() time.Time
 	// RemotePollInterval is test-only tuning; zero uses the production default.

@@ -22,10 +22,10 @@ func (s *Service) ValidateAgentComposerDefaultsPatch(
 	}
 	settings := ComposerSettings{}
 	for field, value := range patch {
-		if value == nil {
+		if value == nil || field == preferencesbiz.AgentComposerDefaultsFieldCodexSaverMode {
 			continue
 		}
-		selected := strings.TrimSpace(*value)
+		selected := agentComposerDefaultsPatchText(value)
 		switch field {
 		case preferencesbiz.AgentComposerDefaultsFieldModel:
 			settings.Model = selected
@@ -50,8 +50,15 @@ func (s *Service) ValidateAgentComposerDefaultsPatch(
 		if value == nil {
 			continue
 		}
-		selected := strings.TrimSpace(*value)
+		selected := agentComposerDefaultsPatchText(value)
 		switch field {
+		case preferencesbiz.AgentComposerDefaultsFieldCodexSaverMode:
+			if _, ok := value.(bool); !ok {
+				return fmt.Errorf("%w: codex saver mode must be boolean", ErrInvalidArgument)
+			}
+			if !composerProviderSupportsSaverSubagentMode(launch.Provider) {
+				return fmt.Errorf("%w: codex saver mode is only supported by Codex", ErrInvalidArgument)
+			}
 		case preferencesbiz.AgentComposerDefaultsFieldModel:
 			if providerTargetRefKind(launch.ProviderTargetRef) == "agent_extension" {
 				observedModels, observed := s.liveComposerModelOptionsForTarget(
@@ -82,6 +89,18 @@ func (s *Service) ValidateAgentComposerDefaultsPatch(
 		}
 	}
 	return nil
+}
+
+func agentComposerDefaultsPatchText(value any) string {
+	switch typed := value.(type) {
+	case string:
+		return strings.TrimSpace(typed)
+	case *string:
+		if typed != nil {
+			return strings.TrimSpace(*typed)
+		}
+	}
+	return ""
 }
 
 func validateComposerDefaultOption(

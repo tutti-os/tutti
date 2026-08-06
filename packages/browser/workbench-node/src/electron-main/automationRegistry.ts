@@ -92,6 +92,7 @@ export function createBrowserNodeAutomationRegistry(
     }
     const requestedNodeId = await options.requestTarget?.({
       agentSessionId: normalizeOptional(input.agentSessionId),
+      agentTurnId: normalizeOptional(input.agentTurnId),
       requestedPageId: null,
       workspaceId: input.workspaceId
     });
@@ -214,6 +215,7 @@ export function createBrowserNodeAutomationRegistry(
         }
         const nodeId = await options.requestTarget({
           agentSessionId,
+          agentTurnId: normalizeOptional(input.agentTurnId),
           requestedPageId,
           url: "about:blank",
           workspaceId

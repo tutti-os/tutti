@@ -58,6 +58,115 @@ test("available canonical lifecycle sends an enqueued prompt immediately", () =>
   );
 });
 
+test("user settings inFlight blocks drain until settings settle to idle", () => {
+  let lifecycle = canonicalLifecycle("settled", 1);
+  lifecycle = sessionLifecycleReducer(lifecycle, {
+    agentSessionId: "session-1",
+    commandId: "settings-1",
+    settings: { reasoningEffort: "high" },
+    type: "session/settingsUpdateRequested",
+    workspaceId: "workspace-1"
+  }).state;
+  assert.equal(
+    lifecycle.operationBySessionId["session-1"]?.settingsUpdate.status,
+    "inFlight"
+  );
+
+  const queued = reduce(
+    createInitialPromptQueueState(),
+    enqueue("prompt-1"),
+    lifecycle
+  );
+  assert.deepEqual(queued.commands, []);
+  assert.equal(
+    queued.state.recordsBySessionId["session-1"]?.prompts[0]?.id,
+    "prompt-1"
+  );
+
+  const acceptedSession = {
+    ...activitySession("settled", 2, "turn-1"),
+    settings: { reasoningEffort: "high" }
+  };
+  const settledLifecycle = sessionLifecycleReducer(
+    lifecycle,
+    {
+      commandId: "settings-1",
+      commandType: "session/updateSettings",
+      correlationId: "session-1",
+      outcome: "succeeded",
+      type: "engine/commandResult",
+      value: { agentSessionId: "session-1", session: acceptedSession }
+    },
+    {
+      queueSendNowRequiresCancel: false,
+      settingsResultValidation: {
+        kind: "valid",
+        session: acceptedSession
+      }
+    }
+  ).state;
+  assert.equal(
+    settledLifecycle.operationBySessionId["session-1"]?.settingsUpdate.status,
+    "idle"
+  );
+
+  const drained = reduce(
+    queued.state,
+    {
+      commandId: "settings-1",
+      commandType: "session/updateSettings",
+      correlationId: "session-1",
+      outcome: "succeeded",
+      type: "engine/commandResult",
+      value: { agentSessionId: "session-1", session: acceptedSession }
+    },
+    settledLifecycle
+  );
+  assert.equal(drained.commands[0]?.type, "queue/sendPrompt");
+});
+
+test("settings timeout leaves drain blocked until an explicit settings retry settles", () => {
+  let lifecycle = canonicalLifecycle("settled", 1);
+  lifecycle = sessionLifecycleReducer(lifecycle, {
+    agentSessionId: "session-1",
+    commandId: "settings-1",
+    settings: { reasoningEffort: "high" },
+    type: "session/settingsUpdateRequested",
+    workspaceId: "workspace-1"
+  }).state;
+  lifecycle = sessionLifecycleReducer(lifecycle, {
+    commandId: "settings-1",
+    commandType: "session/updateSettings",
+    correlationId: "session-1",
+    outcome: "timedOut",
+    type: "engine/commandResult"
+  }).state;
+  assert.equal(
+    lifecycle.operationBySessionId["session-1"]?.settingsUpdate.status,
+    "unknown"
+  );
+
+  const queued = reduce(
+    createInitialPromptQueueState(),
+    enqueue("prompt-1"),
+    lifecycle
+  );
+  assert.deepEqual(queued.commands, []);
+
+  const stillBlocked = reduce(
+    queued.state,
+    {
+      commandId: "settings-1",
+      commandType: "session/updateSettings",
+      correlationId: "session-1",
+      outcome: "timedOut",
+      type: "engine/commandResult"
+    },
+    lifecycle
+  );
+  assert.deepEqual(stillBlocked.commands, []);
+});
+
 test("queued capability settings and diagnostics survive delivery", () => {
   const queued = reduce(
     createInitialPromptQueueState(),
@@ -147,6 +256,7 @@ test("send-now native guidance can send against a canonical active turn", () => 
   ).state;
   const guided = reduce(state, sendNow("prompt-guidance"), lifecycle);
   assert.equal(send(guided.commands[0]).guidance, true);
+  assert.equal(send(guided.commands[0]).targetTurnId, "turn-1");
 });
 
 test("drain after settle strips a stale guidance flag from the queue head", () => {
@@ -563,6 +673,88 @@ test("confirmation without exact turn id stays uncertain across expiry", () => {
     expired.state.recordsBySessionId["session-1"]?.uncertainDelivery?.promptId,
     "prompt-1"
   );
+});
+
+test("owned reconcile without turn proof drops timed-out send and drains later prompts", () => {
+  const available = canonicalLifecycle("settled", 1);
+  const first = reduce(
+    createInitialPromptQueueState(),
+    submit("prompt-1"),
+    available
+  );
+  let state = reduce(first.state, enqueue("prompt-2"), available).state;
+  const timedOut = reduce(
+    state,
+    commandResult(commandId(first.commands[0]), "queue/sendPrompt", "timedOut"),
+    available
+  );
+  assert.equal(timedOut.commands[0]?.type, "session/reconcile");
+  assert.equal(
+    timedOut.state.recordsBySessionId["session-1"]?.uncertainDelivery?.promptId,
+    "prompt-1"
+  );
+
+  const reconciled = reduce(
+    timedOut.state,
+    commandResult(
+      commandId(timedOut.commands[0]),
+      "session/reconcile",
+      "succeeded"
+    ),
+    available
+  );
+  assert.equal(
+    reconciled.state.recordsBySessionId["session-1"]?.uncertainDelivery,
+    null
+  );
+  assert.deepEqual(
+    reconciled.state.recordsBySessionId["session-1"]?.prompts.map(
+      (prompt) => prompt.id
+    ),
+    ["prompt-2"]
+  );
+  assert.equal(send(reconciled.commands[0]).promptId, "prompt-2");
+});
+
+test("failed owned reconcile releases uncertainty into a retryable failed head", () => {
+  const available = canonicalLifecycle("settled", 1);
+  const sending = reduce(
+    createInitialPromptQueueState(),
+    submit("prompt-1"),
+    available
+  );
+  const timedOut = reduce(
+    sending.state,
+    commandResult(
+      commandId(sending.commands[0]),
+      "queue/sendPrompt",
+      "timedOut"
+    ),
+    available
+  );
+  const reconcileFailed = reduce(
+    timedOut.state,
+    commandResult(
+      commandId(timedOut.commands[0]),
+      "session/reconcile",
+      "failed",
+      { errorMessage: "reconcile unavailable" }
+    ),
+    available
+  );
+  assert.equal(
+    reconcileFailed.state.recordsBySessionId["session-1"]?.uncertainDelivery,
+    null
+  );
+  assert.equal(
+    reconcileFailed.state.recordsBySessionId["session-1"]?.failedPromptId,
+    "prompt-1"
+  );
+  assert.equal(
+    reconcileFailed.state.recordsBySessionId["session-1"]?.failureMessage,
+    "reconcile unavailable"
+  );
+  assert.deepEqual(reconcileFailed.commands, []);
 });
 
 test("session removal cleans queue-owned delivery state", () => {

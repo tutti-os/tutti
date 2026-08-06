@@ -373,6 +373,53 @@ func TestRemoteProtocolProjectsCanonicalOnlyEventAsDiscontinuity(t *testing.T) {
 	}
 }
 
+func TestRemoteProtocolStreamsRuntimeActivityUpdate(t *testing.T) {
+	t.Parallel()
+	publisher, err := liveprotocol.NewPublisher(liveprotocol.PublisherConfig{
+		StreamID: "stream-1", BindingID: "binding-1", Epoch: 1,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	server, client := net.Pipe()
+	done := make(chan error, 1)
+	go func() {
+		done <- publishAgentActivityEnvelope(
+			server,
+			publisher,
+			"workspace-1",
+			[]byte(`{
+				"workspaceId":"workspace-1",
+				"agentSessionId":"session-1",
+				"eventType":"runtime_activity_update",
+				"data":{
+					"workspaceId":"workspace-1",
+					"agentSessionId":"session-1",
+					"eventType":"runtime_activity_update",
+					"state":"running",
+					"occurredAtUnixMs":10
+				}
+			}`),
+		)
+	}()
+	frame := readAgentLiveTestFrame(t, client)
+	if len(frame.Deliveries) != 1 ||
+		frame.Deliveries[0].Kind != liveprotocol.DeliveryKindEvent {
+		t.Fatalf("unexpected runtime activity frame: %+v", frame)
+	}
+	event, err := liveprotocol.DecodeEvent(frame.Deliveries[0].Event)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if event.EventType != liveprotocol.EventTypeRuntimeActivityUpdate {
+		t.Fatalf("event type = %q", event.EventType)
+	}
+	_ = client.Close()
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestRemoteProtocolPreservesCanonicalSessionDeletion(t *testing.T) {
 	t.Parallel()
 	publisher, err := liveprotocol.NewPublisher(liveprotocol.PublisherConfig{

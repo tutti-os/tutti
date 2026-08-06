@@ -230,6 +230,7 @@ describe("AgentGoalBanner", () => {
   describe("elapsed ticking", () => {
     beforeEach(() => {
       vi.useFakeTimers();
+      vi.setSystemTime(10_000);
     });
     afterEach(() => {
       vi.useRealTimers();
@@ -240,7 +241,7 @@ describe("AgentGoalBanner", () => {
         <AgentGoalBanner
           objective="Ship it"
           status="active"
-          durationMs={2000}
+          startedAtUnixMs={8_000}
           labels={labels}
         />
       );
@@ -272,9 +273,14 @@ describe("AgentGoalBanner", () => {
       ).toBe("Ship it · 40s");
     });
 
-    it("starts an active goal at zero when the optional duration is omitted", () => {
+    it("starts an active goal from its canonical generation time", () => {
       render(
-        <AgentGoalBanner objective="Ship it" status="active" labels={labels} />
+        <AgentGoalBanner
+          objective="Ship it"
+          status="active"
+          startedAtUnixMs={10_000}
+          labels={labels}
+        />
       );
 
       const description = () =>
@@ -291,6 +297,7 @@ describe("AgentGoalBanner", () => {
         <AgentGoalBanner
           objective="Ship it"
           status="active"
+          startedAtUnixMs={6_000}
           durationMs={4000}
           optimistic={true}
           labels={labels}
@@ -309,6 +316,7 @@ describe("AgentGoalBanner", () => {
         <AgentGoalBanner
           objective="Ship it"
           status="active"
+          startedAtUnixMs={6_000}
           durationMs={7000}
           optimistic={false}
           labels={labels}
@@ -319,6 +327,37 @@ describe("AgentGoalBanner", () => {
         vi.advanceTimersByTime(2000);
       });
       expect(description()).toBe("Ship it · 9s");
+    });
+
+    it("keeps elapsed time across unmount and remount", () => {
+      const first = render(
+        <AgentGoalBanner
+          objective="Ship it"
+          status="active"
+          startedAtUnixMs={8_000}
+          labels={labels}
+        />
+      );
+
+      act(() => {
+        vi.advanceTimersByTime(3_000);
+      });
+      expect(
+        screen.getByTestId("agent-gui-goal-banner-description").textContent
+      ).toBe("Ship it · 5s");
+
+      first.unmount();
+      render(
+        <AgentGoalBanner
+          objective="Ship it"
+          status="active"
+          startedAtUnixMs={8_000}
+          labels={labels}
+        />
+      );
+      expect(
+        screen.getByTestId("agent-gui-goal-banner-description").textContent
+      ).toBe("Ship it · 5s");
     });
   });
 });

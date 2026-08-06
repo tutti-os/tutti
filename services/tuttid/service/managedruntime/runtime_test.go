@@ -47,6 +47,36 @@ func TestDefaultResolverInjectsBaselineRuntime(t *testing.T) {
 	}
 }
 
+func TestDefaultResolverUsesExistingNodeProfileWithoutCatalog(t *testing.T) {
+	root := t.TempDir()
+	nodeBinDir := filepath.Join(root, "node", "bin")
+	if err := os.MkdirAll(nodeBinDir, 0o755); err != nil {
+		t.Fatalf("mkdir node bin dir: %v", err)
+	}
+	writeExecutable(t, filepath.Join(nodeBinDir, nodeBinaryName()))
+	writeExecutable(t, filepath.Join(nodeBinDir, npmBinaryName()))
+	writeCorepackWrapper(t, filepath.Join(nodeBinDir, corepackBinaryName()))
+
+	resolved, err := DefaultResolver{
+		RuntimeRoot: root,
+		Environ: func() []string {
+			return []string{
+				tuttiAppRuntimeCatalogEnv + "=",
+				"PATH=/usr/bin:/bin",
+			}
+		},
+	}.ResolveProfile(context.Background(), appRuntimeNodeStaticProfile)
+	if err != nil {
+		t.Fatalf("ResolveProfile() error = %v", err)
+	}
+	if resolved.Node != filepath.Join(nodeBinDir, nodeBinaryName()) {
+		t.Fatalf("resolved Node = %q, want existing managed node", resolved.Node)
+	}
+	if resolved.Python != "" {
+		t.Fatalf("resolved Python = %q, want node-only profile", resolved.Python)
+	}
+}
+
 func TestDefaultResolverRejectsMissingRuntime(t *testing.T) {
 	_, err := DefaultResolver{
 		Environ: func() []string {
@@ -198,7 +228,7 @@ func TestDefaultResolverPreloadsRuntimeProfileComponents(t *testing.T) {
       },
       "profiles": {
         "baseline": ["python", "node"],
-        "node-static": ["node"]
+        "connector-node-static": ["node"]
       }
     }
   }
@@ -216,7 +246,7 @@ func TestDefaultResolverPreloadsRuntimeProfileComponents(t *testing.T) {
 			}
 		},
 	}
-	if err := resolver.PreloadProfile(context.Background(), "node-static"); err != nil {
+	if err := resolver.PreloadProfile(context.Background(), "connector-node-static"); err != nil {
 		t.Fatalf("PreloadProfile() error = %v", err)
 	}
 
@@ -231,7 +261,7 @@ func TestDefaultResolverPreloadsRuntimeProfileComponents(t *testing.T) {
 		t.Fatal("node profile preload installed python")
 	}
 
-	nodeRuntime, err := resolver.ResolveProfile(context.Background(), "node-static")
+	nodeRuntime, err := resolver.ResolveProfile(context.Background(), "connector-node-static")
 	if err != nil {
 		t.Fatalf("ResolveProfile(node-static) error = %v", err)
 	}
@@ -282,7 +312,7 @@ func TestDefaultResolverReplacesNodeComponentWithBrokenCorepackWrapper(t *testin
       },
       "profiles": {
         "baseline": ["node"],
-        "node-static": ["node"]
+        "connector-node-static": ["node"]
       }
     }
   }

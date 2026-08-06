@@ -47,6 +47,11 @@ test("desktop agent host api routes terminal login through the launch coordinato
   const requests: Array<{
     command: string;
     cwd?: string;
+    startupAction?: {
+      type: "slash_command";
+      commandName: string;
+      readyText: string;
+    };
     workspaceId: string;
   }> = [];
   const unregister = registerWorkspaceTerminalLoginLaunchHandler(
@@ -56,17 +61,32 @@ test("desktop agent host api routes terminal login through the launch coordinato
       return {
         close: () => {
           closeCalls.push("close");
-        }
+        },
+        startupCompletion: Promise.resolve("submitted")
       };
     }
   );
   try {
     const handle = await api.terminalLogin?.run({
       agentTargetId: "extension:kimi-code",
-      command: "/opt/kimi/bin/kimi login"
+      command: "/opt/kimi/bin/kimi",
+      startupAction: {
+        type: "slash_command",
+        commandName: "login",
+        readyText: "Welcome to Kimi Code!"
+      }
     });
     assert.deepEqual(requests, [
-      { command: "/opt/kimi/bin/kimi login", cwd: undefined, workspaceId }
+      {
+        command: "/opt/kimi/bin/kimi",
+        cwd: undefined,
+        startupAction: {
+          type: "slash_command",
+          commandName: "login",
+          readyText: "Welcome to Kimi Code!"
+        },
+        workspaceId
+      }
     ]);
     assert.equal(await handle?.completion, "ready");
     handle?.close();
@@ -83,6 +103,41 @@ test("desktop agent host api routes terminal login through the launch coordinato
       }) ?? Promise.reject(new Error("missing terminalLogin")),
     /Terminal login is unavailable/
   );
+});
+
+test("desktop agent host api stops before readiness polling when terminal startup fails", async () => {
+  let setupRefreshes = 0;
+  const api = createAgentHostApi({
+    tuttidClient: createTuttidClient({
+      async getAgentTargetSetup(_workspaceId, agentTargetId) {
+        setupRefreshes += 1;
+        return readyAgentTargetSetup(agentTargetId);
+      }
+    })
+  });
+  const unregister = registerWorkspaceTerminalLoginLaunchHandler(
+    workspaceId,
+    async () => ({
+      close() {},
+      startupCompletion: Promise.resolve("write_failed")
+    })
+  );
+  try {
+    const handle = await api.terminalLogin?.run({
+      agentTargetId: "extension:kimi-code",
+      command: "/opt/kimi/bin/kimi",
+      startupAction: {
+        type: "slash_command",
+        commandName: "login",
+        readyText: "Welcome to Kimi Code!"
+      }
+    });
+
+    assert.equal(await handle?.completion, "unavailable");
+    assert.equal(setupRefreshes, 0);
+  } finally {
+    unregister();
+  }
 });
 
 type DesktopAgentHostApiUnderTest = AgentHostInputApi & {
@@ -184,7 +239,7 @@ test("desktop agent host api writes images through the host clipboard", async ()
 test("desktop agent host api does not inject legacy agent data host apis", () => {
   const api = createAgentHostApi();
 
-  assert.equal(api.agentSessions, undefined);
+  assert.equal("agentSessions" in api, false);
   assert.equal("workspaceAgents" in api, false);
 });
 
@@ -219,7 +274,12 @@ test("desktop agent host api explicitly projects daemon target setup snapshots",
         id: "login",
         name: "Login with Kimi account",
         type: "terminal",
-        terminalCommand: "/opt/kimi-code/bin/kimi login"
+        terminalCommand: "/opt/kimi-code/bin/kimi",
+        terminalStartupAction: {
+          type: "slash_command",
+          commandName: "login",
+          readyText: "Welcome to Kimi Code!"
+        }
       }
     ],
     account: {
@@ -269,14 +329,20 @@ test("desktop agent host api explicitly projects daemon target setup snapshots",
         name: "Log in with Google",
         description: "Personal account",
         type: null,
-        terminalCommand: null
+        terminalCommand: null,
+        terminalStartupAction: null
       },
       {
         id: "login",
         name: "Login with Kimi account",
         description: null,
         type: "terminal",
-        terminalCommand: "/opt/kimi-code/bin/kimi login"
+        terminalCommand: "/opt/kimi-code/bin/kimi",
+        terminalStartupAction: {
+          type: "slash_command",
+          commandName: "login",
+          readyText: "Welcome to Kimi Code!"
+        }
       }
     ],
     account: {

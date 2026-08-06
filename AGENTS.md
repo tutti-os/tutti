@@ -38,6 +38,14 @@ workspace agent timeline, agent approvals, or interactive agent prompts, read
 `packages/agent/gui/AGENTS.md`, before planning or editing, even when no file
 path is supplied.
 
+If a request mentions Microsoft Windows support, Windows packaging, ConPTY,
+platform-specific process behavior, or managed POSIX shell portability, read
+`docs/architecture/windows-platform-support.md` before planning or editing.
+Keep product logic platform-neutral: callers depend on capability interfaces,
+and operating-system differences stay in the narrow owning adapter or
+composition root. Do not scatter OS checks, executable suffixes, path literals,
+or user-directory assumptions through business logic.
+
 ## Agent Host Boundary
 
 Agent application-core lifecycle semantics have a single owner:

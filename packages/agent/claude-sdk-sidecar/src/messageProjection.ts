@@ -143,6 +143,7 @@ export class MessageProjection {
     if (block.type === "text") {
       if (!parentToolUseID) {
         const content = stringValue(block.text);
+        this.compaction.noteAssistantText(content);
         if (failed) {
           this.assistant.failContent(
             "assistant",

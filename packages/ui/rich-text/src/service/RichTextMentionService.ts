@@ -5,6 +5,7 @@ import type {
 } from "../types/mention.ts";
 import type {
   RichTextTriggerConfig,
+  RichTextTriggerDirectoryQueryInput,
   RichTextTriggerProvider,
   RichTextTriggerQueryInput,
   RichTextTriggerQueryMatch
@@ -64,6 +65,10 @@ export interface RichTextMentionService {
   listTriggerConfigs(): readonly RichTextTriggerConfig[];
   query(
     input: RichTextTriggerQueryInput
+  ): Promise<readonly RichTextTriggerQueryMatch[]>;
+  queryDirectory?(
+    providerId: string,
+    input: RichTextTriggerDirectoryQueryInput
   ): Promise<readonly RichTextTriggerQueryMatch[]>;
   resolve(identity: RichTextMentionIdentity): Promise<RichTextMentionSnapshot>;
   getSnapshot(identity: RichTextMentionIdentity): RichTextMentionSnapshot;
@@ -278,6 +283,29 @@ export function createRichTextMentionService(
         emit({
           name: "mention_query_completed",
           providerId: "*",
+          outcome: "error",
+          cacheStatus: "miss",
+          durationMs: Math.max(0, now() - startedAt)
+        });
+        throw error;
+      }
+    },
+    async queryDirectory(providerId, queryInput) {
+      const startedAt = now();
+      try {
+        const matches = await registry.queryDirectory(providerId, queryInput);
+        emit({
+          name: "mention_query_completed",
+          providerId,
+          outcome: "success",
+          cacheStatus: "miss",
+          durationMs: Math.max(0, now() - startedAt)
+        });
+        return matches;
+      } catch (error) {
+        emit({
+          name: "mention_query_completed",
+          providerId,
           outcome: "error",
           cacheStatus: "miss",
           durationMs: Math.max(0, now() - startedAt)

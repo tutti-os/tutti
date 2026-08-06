@@ -193,7 +193,7 @@ desktop daemons.
 Current packages:
 
 - `packages/connector/market`: connector catalog, installation,
-  authorization, compatibility, workspace-binding, operation, OpenAPI, and
+  authorization, compatibility, operation, OpenAPI, and
   renderer state contracts shared by Tutti and external hosts
 
 Catalog endpoints, local persistence, credentials, installation directories,

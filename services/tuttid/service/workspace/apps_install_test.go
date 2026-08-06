@@ -302,7 +302,7 @@ func TestAppCenterServiceSerializesSameRemoteBuiltinPackageInstall(t *testing.T)
 	}
 
 	packageDir := service.packageCacheDir("large-builtin", "1.1.0")
-	if err := validateExtractedAppPackage(packageDir, mustReadManifestForTest(t, packageDir)); err != nil {
+	if err := validateExtractedAppPackage(NewPlatformAppShellAdapter(), packageDir, mustReadManifestForTest(t, packageDir)); err != nil {
 		t.Fatalf("copied package validation error = %v", err)
 	}
 }
@@ -466,6 +466,9 @@ func TestAppCenterServiceInstallCancelsPackageDownloadAfterRuntimePreloadFailure
 		if ok && job.Status == workspaceAppInstallJobFailed {
 			if !strings.Contains(job.FailureReason, runtimeErr.Error()) {
 				t.Fatalf("FailureReason = %q, want runtime preload error", job.FailureReason)
+			}
+			if job.FailurePhase != workspacebiz.AppFailurePhaseDownloading {
+				t.Fatalf("FailurePhase = %q, want downloading", job.FailurePhase)
 			}
 			return
 		}

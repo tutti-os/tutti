@@ -1,9 +1,24 @@
 import { spawn } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
-import { access, cp, mkdir, mkdtemp, rm, stat } from "node:fs/promises";
+import {
+  access,
+  cp,
+  mkdir,
+  mkdtemp,
+  readFile,
+  rm,
+  stat,
+  writeFile
+} from "node:fs/promises";
+import { homedir } from "node:os";
 import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { buildDaemon, stopProcessTree } from "../run-agent-gui-performance.mjs";
+
+const hostAccountAuthEnvironment =
+  "TUTTI_AGENT_SESSION_REPLAY_HOST_ACCOUNT_AUTH";
+const skipHostAccountAuthEnvironment =
+  "TUTTI_AGENT_SESSION_REPLAY_SKIP_HOST_ACCOUNT_AUTH";
 
 export const replayListenerInfoPath = (stateDirectory) =>
   join(stateDirectory, "run", "tuttid.listener.json");
@@ -126,9 +141,87 @@ export async function initializeCleanDatabase(
           ),
         { seedWorkspace }
       );
+      // Isolated runtimes start without Tutti account session; reuse the local
+      // desktop login when present so connector-market / host-auth paths work.
+      const hostAccountStarted = performance.now();
+      const hostAccount = await seedHostAccountSession(runtime.stateDirectory);
+      logTiming(
+        "initialize-clean-database.seed-host-account",
+        performance.now() - hostAccountStarted,
+        hostAccount
+      );
     },
     { seedWorkspace, workspaceId }
   );
+}
+
+/**
+ * Copy the developer machine Tutti account session into an isolated replay
+ * state dir when available. Missing/invalid host auth is a soft skip so CI
+ * and machines without a login still boot.
+ */
+export async function seedHostAccountSession(
+  stateDirectory,
+  { env = process.env, homeDirectory = homedir() } = {}
+) {
+  if (isTruthyEnv(env[skipHostAccountAuthEnvironment])) {
+    return { action: "skipped-disabled" };
+  }
+
+  const sourcePath = resolveHostAccountAuthPath(env, homeDirectory);
+  let raw;
+  try {
+    raw = await readFile(sourcePath, "utf8");
+  } catch (error) {
+    if (error?.code === "ENOENT") {
+      return { action: "skipped-missing", sourcePath };
+    }
+    throw error;
+  }
+
+  let session;
+  try {
+    session = JSON.parse(raw);
+  } catch {
+    return { action: "skipped-invalid", sourcePath };
+  }
+  if (
+    typeof session?.session_id !== "string" ||
+    !session.session_id.trim() ||
+    typeof session?.cookie !== "string" ||
+    !session.cookie.trim()
+  ) {
+    return { action: "skipped-invalid", sourcePath };
+  }
+
+  const accountDirectory = join(stateDirectory, "account");
+  const destinationPath = join(accountDirectory, "auth.json");
+  await mkdir(accountDirectory, { recursive: true });
+  await writeFile(destinationPath, `${JSON.stringify(session, null, 2)}\n`, {
+    mode: 0o600
+  });
+  return { action: "copied", sourcePath, destinationPath };
+}
+
+export function resolveHostAccountAuthPath(
+  env = process.env,
+  homeDirectory = homedir()
+) {
+  const override = env[hostAccountAuthEnvironment]?.trim();
+  if (override) {
+    return override;
+  }
+  // Replay Desktop always sets TUTTI_ENV=development, whose DefaultStateDir is
+  // ~/.tutti-dev — mirror that when picking the host session to reuse.
+  return join(homeDirectory, ".tutti-dev", "account", "auth.json");
+}
+
+function isTruthyEnv(value) {
+  if (value === undefined || value === null) {
+    return false;
+  }
+  const normalized = String(value).trim().toLowerCase();
+  return normalized !== "" && normalized !== "0" && normalized !== "false";
 }
 
 async function ensureMigratedDatabaseTemplate(workspaceRoot, daemonPath) {

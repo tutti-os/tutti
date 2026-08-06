@@ -54,6 +54,7 @@ func (p WorkspaceAppPublisher) PublishWorkspaceAppUpdated(ctx context.Context, w
 			StateRevision:    app.StateRevision,
 			LaunchUrl:        app.Runtime.LaunchURL,
 			Port:             app.Runtime.Port,
+			FailurePhase:     workspaceAppFailurePhaseString(app.Runtime.FailurePhase),
 			FailureReason:    app.Runtime.FailureReason,
 			LastError:        app.Runtime.LastError,
 			StartedAtUnixMs:  app.Runtime.StartedAtUnixMs,
@@ -81,6 +82,14 @@ func (p WorkspaceAppPublisher) PublishWorkspaceAppUpdated(ctx context.Context, w
 	return p.Service.PublishFromServerScoped(ctx, TopicWorkspaceAppUpdated, payload, EventScope{
 		WorkspaceID: workspaceID,
 	})
+}
+
+func workspaceAppFailurePhaseString(value *workspacebiz.AppFailurePhase) *string {
+	if value == nil {
+		return nil
+	}
+	result := string(*value)
+	return &result
 }
 
 func generatedEventAppAuthors(manifest workspacebiz.AppManifest) []struct {

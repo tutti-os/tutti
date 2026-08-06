@@ -15,15 +15,28 @@ export TUTTI_APP_DATA_DIR="$app_data_dir"
 export TUTTI_APP_HOST="$app_host"
 export TUTTI_APP_PORT="$app_port"
 
-os_name="$(uname -s)"
-arch_name="$(uname -m)"
-case "$os_name:$arch_name" in
-  Darwin:arm64) platform="darwin-arm64" ;;
-  Darwin:x86_64) platform="darwin-amd64" ;;
+platform="${TUTTI_PLATFORM:-}"
+if [ -z "$platform" ]; then
+  os_name="$(uname -s)"
+  arch_name="$(uname -m)"
+  case "$os_name:$arch_name" in
+    Darwin:arm64) platform="darwin-arm64" ;;
+    Darwin:x86_64) platform="darwin-amd64" ;;
+    MINGW*:x86_64|MSYS*:x86_64) platform="windows-amd64" ;;
+    *)
+      echo "unsupported tutti-onboarding platform: $os_name $arch_name" >&2
+      exit 1
+      ;;
+  esac
+fi
+
+case "$platform" in
+  darwin-arm64|darwin-amd64) executable="tutti-onboarding-server" ;;
+  windows-amd64) executable="tutti-onboarding-server.exe" ;;
   *)
-    echo "unsupported tutti-onboarding platform: $os_name $arch_name" >&2
+    echo "unsupported tutti-onboarding platform: $platform" >&2
     exit 1
     ;;
 esac
 
-exec "$app_package_dir/bin/$platform/tutti-onboarding-server"
+exec "$app_package_dir/bin/$platform/$executable"

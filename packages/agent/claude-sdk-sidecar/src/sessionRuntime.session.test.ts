@@ -1,5 +1,12 @@
 import assert from "node:assert/strict";
+import { appendFile, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import test from "node:test";
+import type {
+  Options as ClaudeQueryOptions,
+  SDKMessage
+} from "@anthropic-ai/claude-agent-sdk";
 import { withSidecarEventSinkForTest } from "./eventSink.ts";
 import { SessionRuntime } from "./sessionRuntime.ts";
 import { sidecarClaudeOptionsFromPayload } from "./options.ts";
@@ -14,7 +21,9 @@ import {
   fakeDeferredContextUsageQuery,
   fakeFailedCompactQuery,
   fakeGuidancePromptQuery,
+  fakeLocalCommandFailedCompactQuery,
   fakePermissionCheckQuery,
+  fakeSilentCompactQuery,
   fakeStatusOnlyCompactQuery
 } from "./sessionRuntimeTestQueries.session.ts";
 import { waitForEvent } from "./sessionRuntimeTestQueries.nested.ts";
@@ -978,6 +987,7 @@ test("SDK api_retry authentication error fails before retrying", async () => {
 test("guidance prompt stays on the active SDK turn", async () => {
   const events: Array<{ type: string; payload?: Record<string, unknown> }> = [];
   const prompts: string[] = [];
+  const interrupts = { count: 0 };
   const restoreSink = withSidecarEventSinkForTest((event) =>
     events.push(event)
   );
@@ -997,7 +1007,7 @@ test("guidance prompt stays on the active SDK turn", async () => {
       },
       sidecarClaudeOptionsFromPayload({}),
       undefined,
-      ({ prompt }) => fakeGuidancePromptQuery(prompt, prompts)
+      ({ prompt }) => fakeGuidancePromptQuery(prompt, prompts, interrupts)
     );
 
     await session.start();
@@ -1006,12 +1016,24 @@ test("guidance prompt stays on the active SDK turn", async () => {
     await waitForEvent(events, "turn_completed");
 
     assert.deepEqual(prompts, ["start working", "prefer the focused path"]);
+    assert.equal(interrupts.count, 1);
     const completed = events.find((event) => event.type === "turn_completed");
     assert.equal(completed?.payload?.turnId, "turn-1");
     assert.equal(
       events.some(
         (event) =>
           event.type === "turn_completed" && event.payload?.turnId !== "turn-1"
+      ),
+      false
+    );
+    assert.equal(
+      events.some((event) => event.type === "turn_failed"),
+      false
+    );
+    assert.equal(
+      events.some(
+        (event) =>
+          event.type === "turn_started" && event.payload?.synthetic === true
       ),
       false
     );
@@ -1187,6 +1209,83 @@ test("SDK active_goal messages normalize provider goal lifecycle", async () => {
   }
 });
 
+test("provider idle blocks an active Goal without a terminal verdict", async () => {
+  const events: Array<{ type: string; payload?: Record<string, unknown> }> = [];
+  const restoreSink = withSidecarEventSinkForTest((event) =>
+    events.push(event)
+  );
+  try {
+    const session = new SessionRuntime(
+      "provider-session-goal-timeout",
+      "/repo",
+      {},
+      false,
+      false,
+      {
+        model: "",
+        permissionModeId: "default",
+        planMode: false,
+        effort: "",
+        speed: ""
+      },
+      sidecarClaudeOptionsFromPayload({}),
+      undefined,
+      ({ prompt }) => ({
+        async *[Symbol.asyncIterator]() {
+          const outbound = await prompt[Symbol.asyncIterator]().next();
+          yield {
+            ...outbound.value,
+            uuid: "provider-goal-timeout-turn",
+            type: "user",
+            parent_tool_use_id: null,
+            session_id: "provider-session-goal-timeout"
+          } as never;
+          yield { type: "result", subtype: "success" } as never;
+          yield {
+            type: "system",
+            subtype: "session_state_changed",
+            state: "idle",
+            session_id: "provider-session-goal-timeout"
+          } as never;
+        },
+        close() {}
+      })
+    );
+
+    await session.start();
+    session.exec(
+      "goal-timeout-turn",
+      "/goal finish the task",
+      undefined,
+      undefined,
+      {
+        operationId: "goal-timeout-operation",
+        revision: 1,
+        action: "set"
+      }
+    );
+    await waitForCondition(
+      () =>
+        events.some(
+          (event) =>
+            event.type === "goal_observed" &&
+            isRecord(event.payload?.goal) &&
+            event.payload.goal.status === "blocked"
+        ),
+      "blocked Goal at provider idle"
+    );
+
+    const updates = events.filter((event) => event.type === "goal_observed");
+    assert.equal(updates.length, 1);
+    assert.deepEqual(updates[0]?.payload?.goal, {
+      objective: "finish the task",
+      status: "blocked"
+    });
+  } finally {
+    restoreSink();
+  }
+});
+
 test("SDK active_goal clear keeps the exact goal command action", async () => {
   const events: Array<{ type: string; payload?: Record<string, unknown> }> = [];
   const restoreSink = withSidecarEventSinkForTest((event) =>
@@ -1247,8 +1346,18 @@ test("SDK active_goal clear keeps the exact goal command action", async () => {
   }
 });
 
-test("native goal_status attachments normalize the live Stop hook lifecycle", async () => {
+test("system init follows goal_status written after SDK result", async () => {
   const events: Array<{ type: string; payload?: Record<string, unknown> }> = [];
+  const tempDirectory = await mkdtemp(
+    join(tmpdir(), "tutti-claude-goal-transcript-")
+  );
+  const transcriptDirectory = join(tempDirectory, "projects", "-repo");
+  const transcriptPath = join(
+    transcriptDirectory,
+    "provider-session-goal-status.jsonl"
+  );
+  await mkdir(transcriptDirectory, { recursive: true });
+  await writeFile(transcriptPath, "", "utf8");
   const restoreSink = withSidecarEventSinkForTest((event) =>
     events.push(event)
   );
@@ -1256,7 +1365,7 @@ test("native goal_status attachments normalize the live Stop hook lifecycle", as
     const session = new SessionRuntime(
       "provider-session-goal-status",
       "/repo",
-      {},
+      { CLAUDE_CONFIG_DIR: tempDirectory },
       false,
       false,
       {
@@ -1270,6 +1379,21 @@ test("native goal_status attachments normalize the live Stop hook lifecycle", as
       undefined,
       ({ prompt }) => ({
         async *[Symbol.asyncIterator]() {
+          yield {
+            type: "system",
+            subtype: "init",
+            session_id: "provider-session-goal-status",
+            cwd: "/repo",
+            model: "haiku"
+          } as never;
+          yield {
+            type: "system",
+            subtype: "init",
+            session_id: "provider-subagent-goal-status",
+            parent_tool_use_id: "toolu-delegated-agent",
+            cwd: "/subagent",
+            model: "haiku"
+          } as never;
           const outbound = await prompt[Symbol.asyncIterator]().next();
           yield {
             ...outbound.value,
@@ -1278,36 +1402,46 @@ test("native goal_status attachments normalize the live Stop hook lifecycle", as
             parent_tool_use_id: null,
             session_id: "provider-session-goal-status"
           } as never;
-          yield {
-            type: "attachment",
-            attachment: {
-              type: "goal_status",
-              condition: "count to three"
-            }
-          } as never;
-          yield {
-            type: "attachment",
-            attachment: {
-              type: "goal_status",
-              met: false,
-              condition: "count to three",
-              reason: "only reached two",
-              iterations: 2
-            }
-          } as never;
-          yield {
-            type: "attachment",
-            attachment: {
-              type: "goal_status",
-              met: true,
-              condition: "count to three",
-              reason: "counted one number per turn",
-              iterations: 3,
-              durationMs: 16_386,
-              tokens: 1_479
-            }
-          } as never;
+          await appendFile(
+            transcriptPath,
+            `${JSON.stringify({
+              type: "attachment",
+              uuid: "goal-status-sentinel",
+              sessionId: "provider-session-goal-status",
+              attachment: {
+                type: "goal_status",
+                met: false,
+                sentinel: true,
+                condition: "count to three"
+              }
+            })}\n`,
+            "utf8"
+          );
           yield { type: "result", subtype: "success" } as never;
+          await appendFile(
+            transcriptPath,
+            `${JSON.stringify({
+              type: "attachment",
+              uuid: "goal-status-complete",
+              sessionId: "provider-session-goal-status",
+              attachment: {
+                type: "goal_status",
+                met: true,
+                condition: "count to three",
+                reason: "counted one number per turn",
+                iterations: 3,
+                durationMs: 16_386,
+                tokens: 1_479
+              }
+            })}\n`,
+            "utf8"
+          );
+          yield {
+            type: "system",
+            subtype: "session_state_changed",
+            state: "idle",
+            session_id: "provider-session-goal-status"
+          } as never;
         },
         close() {}
       })
@@ -1326,19 +1460,22 @@ test("native goal_status attachments normalize the live Stop hook lifecycle", as
       }
     );
     await waitForEvent(events, "turn_completed");
+    await waitForCondition(
+      () =>
+        events.some(
+          (event) =>
+            event.type === "goal_observed" &&
+            isRecord(event.payload?.goal) &&
+            event.payload.goal.status === "complete"
+        ),
+      "late transcript goal completion"
+    );
 
     const updates = events.filter((event) => event.type === "goal_observed");
     assert.equal(updates.length, 2);
-    assert.deepEqual(updates[0]?.payload?.goal, {
-      objective: "count to three",
-      status: "active",
-      reason: "only reached two",
-      iterations: 2
-    });
     assert.deepEqual(updates[1]?.payload, {
       turnId: "goal-status-turn",
       providerTurnId: "provider-goal-status-turn",
-      action: "set",
       source: "goal_status",
       updateType: "thread_goal_update",
       goal: {
@@ -1350,8 +1487,126 @@ test("native goal_status attachments normalize the live Stop hook lifecycle", as
         tokens: 1_479
       }
     });
+    assert.ok(
+      events.findIndex(
+        (event) =>
+          event.type === "goal_observed" &&
+          isRecord(event.payload?.goal) &&
+          event.payload.goal.status === "active"
+      ) < events.findIndex((event) => event.type === "turn_completed"),
+      "the sentinel goal evidence must be emitted before the root turn settles"
+    );
+    assert.ok(
+      events.findIndex(
+        (event) =>
+          event.type === "goal_observed" &&
+          isRecord(event.payload?.goal) &&
+          event.payload.goal.status === "complete"
+      ) > events.findIndex((event) => event.type === "turn_completed"),
+      "the final goal evidence may arrive after the SDK result"
+    );
   } finally {
     restoreSink();
+    await rm(tempDirectory, { recursive: true, force: true });
+  }
+});
+
+test("resume tails the known session transcript without system init", async () => {
+  const events: Array<{ type: string; payload?: Record<string, unknown> }> = [];
+  const tempDirectory = await mkdtemp(
+    join(tmpdir(), "tutti-claude-goal-resume-")
+  );
+  const transcriptDirectory = join(tempDirectory, "projects", "-repo");
+  const transcriptPath = join(
+    transcriptDirectory,
+    "provider-session-goal-resume.jsonl"
+  );
+  await mkdir(transcriptDirectory, { recursive: true });
+  await writeFile(
+    transcriptPath,
+    `${JSON.stringify({
+      type: "attachment",
+      uuid: "historical-goal-status",
+      attachment: {
+        type: "goal_status",
+        met: false,
+        condition: "historical goal"
+      }
+    })}\n`,
+    "utf8"
+  );
+  const restoreSink = withSidecarEventSinkForTest((event) =>
+    events.push(event)
+  );
+  try {
+    const session = new SessionRuntime(
+      "provider-session-goal-resume",
+      "/repo",
+      { CLAUDE_CONFIG_DIR: tempDirectory },
+      true,
+      false,
+      {
+        model: "",
+        permissionModeId: "default",
+        planMode: false,
+        effort: "",
+        speed: ""
+      },
+      sidecarClaudeOptionsFromPayload({}),
+      undefined,
+      ({ prompt }) => ({
+        async *[Symbol.asyncIterator]() {
+          const outbound = await prompt[Symbol.asyncIterator]().next();
+          yield {
+            ...outbound.value,
+            uuid: "provider-goal-resume-turn",
+            type: "user",
+            parent_tool_use_id: null,
+            session_id: "provider-session-goal-resume"
+          } as never;
+          await appendFile(
+            transcriptPath,
+            `${JSON.stringify({
+              type: "attachment",
+              uuid: "current-goal-status",
+              attachment: {
+                type: "goal_status",
+                met: true,
+                condition: "resume goal"
+              }
+            })}\n`,
+            "utf8"
+          );
+          yield { type: "result", subtype: "success" } as never;
+        },
+        close() {}
+      })
+    );
+
+    await session.start();
+    session.exec(
+      "goal-resume-turn",
+      "/goal resume goal",
+      undefined,
+      undefined,
+      {
+        operationId: "goal-op-resume",
+        revision: 1,
+        action: "set"
+      }
+    );
+    await waitForEvent(events, "turn_completed");
+
+    const updates = events.filter((event) => event.type === "goal_observed");
+    assert.equal(updates.length, 1);
+    assert.equal(updates[0]?.payload?.source, "goal_status");
+    assert.deepEqual(updates[0]?.payload?.goal, {
+      objective: "resume goal",
+      status: "complete"
+    });
+  } finally {
+    restoreSink();
+    await rm(tempDirectory, { recursive: true, force: true });
   }
 });
 
@@ -1364,6 +1619,7 @@ test("query enables bypass permission capability for later live mode switch", as
   let capturedOptions:
     | {
         allowDangerouslySkipPermissions?: boolean;
+        includeHookEvents?: boolean;
         permissionMode?: string;
       }
     | undefined;
@@ -1396,6 +1652,7 @@ test("query enables bypass permission capability for later live mode switch", as
 
     assert.equal(capturedOptions?.permissionMode, "default");
     assert.equal(capturedOptions?.allowDangerouslySkipPermissions, true);
+    assert.equal(capturedOptions?.includeHookEvents, true);
   } finally {
     if (previousSandbox === undefined) {
       delete process.env.IS_SANDBOX;
@@ -1648,6 +1905,61 @@ test("context usage prefers result modelUsage window over SDK maxTokens", async 
   }
 });
 
+test("restore start emits session_started without waiting for context usage", async () => {
+  const events: Array<{ type: string; payload?: Record<string, unknown> }> = [];
+  const contextUsageResolvers: Array<(value: unknown) => void> = [];
+  const restoreSink = withSidecarEventSinkForTest((event) =>
+    events.push(event)
+  );
+  try {
+    const session = new SessionRuntime(
+      "provider-session-restore",
+      "/repo",
+      {},
+      true,
+      false,
+      {
+        model: "haiku",
+        permissionModeId: "default",
+        planMode: false,
+        effort: "",
+        speed: ""
+      },
+      sidecarClaudeOptionsFromPayload({}),
+      undefined,
+      ({ prompt }) =>
+        fakeDeferredContextUsageQuery(prompt, contextUsageResolvers)
+    );
+
+    const started = session.start();
+    await waitForCondition(
+      () => events.some((event) => event.type === "session_started"),
+      "session_started before context usage resolves"
+    );
+    await started;
+    assert.equal(
+      events.some((event) => event.type === "usage_updated"),
+      false,
+      "restore start must not wait for getContextUsage"
+    );
+    assert.equal(contextUsageResolvers.length, 1);
+
+    contextUsageResolvers[0]?.({ totalTokens: 12_345, maxTokens: 200_000 });
+    await waitForCondition(
+      () =>
+        events.some(
+          (event) =>
+            event.type === "usage_updated" &&
+            isRecord(event.payload?.contextWindow) &&
+            event.payload.contextWindow.usedTokens === 12_345
+        ),
+      "background restore context usage"
+    );
+  } finally {
+    restoreSink();
+  }
+});
+
 test("turn completion does not wait for context usage and stale snapshots are dropped", async () => {
   const events: Array<{ type: string; payload?: Record<string, unknown> }> = [];
   const contextUsageResolvers: Array<(value: unknown) => void> = [];
@@ -1721,6 +2033,162 @@ test("turn completion does not wait for context usage and stale snapshots are dr
       ),
       false,
       "the delayed first-turn snapshot must not overwrite the newer turn"
+    );
+  } finally {
+    restoreSink();
+  }
+});
+
+test("follow-up after settled turn resumes a fresh Claude query", async () => {
+  const events: Array<{ type: string; payload?: Record<string, unknown> }> = [];
+  const restoreSink = withSidecarEventSinkForTest((event) =>
+    events.push(event)
+  );
+  let queryCount = 0;
+  let resumedOptions: ClaudeQueryOptions | undefined;
+  try {
+    const session = new SessionRuntime(
+      "provider-session-continue",
+      "/repo",
+      {},
+      false,
+      false,
+      {
+        model: "",
+        permissionModeId: "default",
+        planMode: false,
+        effort: "",
+        speed: ""
+      },
+      sidecarClaudeOptionsFromPayload({}),
+      undefined,
+      ({ prompt, options }) => {
+        queryCount += 1;
+        if (queryCount === 1) {
+          return fakeSimpleResultQuery(prompt, {
+            text: "first reply"
+          });
+        }
+        resumedOptions = options;
+        return fakeSimpleResultQuery(prompt, {
+          text: "continue reply"
+        });
+      }
+    );
+
+    await session.start();
+    session.exec("turn-1", "first");
+    await waitForEvent(events, "turn_completed");
+    assert.equal(queryCount, 1);
+
+    session.exec("turn-2", "follow-up in the same conversation");
+    await waitForCondition(
+      () =>
+        events.some(
+          (event) =>
+            event.type === "turn_completed" &&
+            event.payload?.turnId === "turn-2"
+        ) ||
+        events.some(
+          (event) =>
+            event.type === "turn_failed" && event.payload?.turnId === "turn-2"
+        ),
+      `follow-up turn terminal; events=${JSON.stringify(events)}`
+    );
+    assert.equal(
+      events.some(
+        (event) =>
+          event.type === "turn_completed" && event.payload?.turnId === "turn-2"
+      ),
+      true,
+      `follow-up should complete; events=${JSON.stringify(events)}`
+    );
+
+    assert.equal(queryCount, 2);
+    assert.equal(resumedOptions?.resume, "provider-session-1");
+    assert.equal(Object.hasOwn(resumedOptions ?? {}, "sessionId"), false);
+  } finally {
+    restoreSink();
+  }
+});
+
+test("settings effort after idle-retire bakes into resumed query settings without applyFlagSettings", async () => {
+  const events: Array<{ type: string; payload?: Record<string, unknown> }> = [];
+  const restoreSink = withSidecarEventSinkForTest((event) =>
+    events.push(event)
+  );
+  let queryCount = 0;
+  let resumedOptions: ClaudeQueryOptions | undefined;
+  const applyFlagSettingsCalls: unknown[] = [];
+  try {
+    const session = new SessionRuntime(
+      "provider-session-effort",
+      "/repo",
+      {},
+      false,
+      false,
+      {
+        model: "",
+        permissionModeId: "default",
+        planMode: false,
+        effort: "medium",
+        speed: "standard"
+      },
+      sidecarClaudeOptionsFromPayload({}),
+      undefined,
+      ({ prompt, options }) => {
+        queryCount += 1;
+        const query = fakeSimpleResultQuery(prompt, {
+          text: queryCount === 1 ? "first reply" : "high effort reply"
+        }) as AsyncIterable<SDKMessage> & {
+          applyFlagSettings?: (settings: unknown) => Promise<void>;
+          close?: () => void;
+        };
+        query.applyFlagSettings = async (settings) => {
+          applyFlagSettingsCalls.push(settings);
+        };
+        if (queryCount > 1) {
+          resumedOptions = options;
+        }
+        return query;
+      }
+    );
+
+    await session.start();
+    session.exec("turn-1", "first");
+    await waitForEvent(events, "turn_completed");
+    applyFlagSettingsCalls.length = 0;
+
+    await session.applySettings({ effort: "high" });
+    session.exec("turn-2", "follow-up after effort change");
+    await waitForCondition(
+      () =>
+        events.some(
+          (event) =>
+            event.type === "turn_completed" &&
+            event.payload?.turnId === "turn-2"
+        ) ||
+        events.some(
+          (event) =>
+            event.type === "turn_failed" && event.payload?.turnId === "turn-2"
+        ),
+      `effort follow-up terminal; events=${JSON.stringify(events)}`
+    );
+
+    assert.equal(queryCount, 2);
+    assert.equal(resumedOptions?.resume, "provider-session-1");
+    assert.deepEqual(
+      (resumedOptions as { settings?: Record<string, unknown> } | undefined)
+        ?.settings,
+      {
+        effortLevel: "high",
+        fastMode: false
+      }
+    );
+    assert.deepEqual(
+      applyFlagSettingsCalls,
+      [],
+      "resumed quiet query must not receive live applyFlagSettings"
     );
   } finally {
     restoreSink();
@@ -1918,6 +2386,100 @@ test("compact failure preserves the status reason and assistant response", async
   }
 });
 
+test("silent slash compact still emits a progress banner before result", async () => {
+  // Real Claude Code 2.1.x can finish /compact with only result + getContextUsage
+  // and never stream status:compacting or compact_boundary to the query
+  // iterator. Without an immediate compact_started, AgentGUI shows only the
+  // turn duration footer and no compaction divider.
+  const events: Array<{ type: string; payload?: Record<string, unknown> }> = [];
+  const restoreSink = withSidecarEventSinkForTest((event) =>
+    events.push(event)
+  );
+  try {
+    const session = new SessionRuntime(
+      "provider-session-1",
+      "/repo",
+      {},
+      false,
+      false,
+      {
+        model: "",
+        permissionModeId: "default",
+        planMode: false,
+        effort: "",
+        speed: ""
+      },
+      sidecarClaudeOptionsFromPayload({}),
+      undefined,
+      ({ prompt }) => fakeSilentCompactQuery(prompt)
+    );
+
+    await session.start();
+    session.exec("turn-silent-compact", "/compact");
+    await waitForEvent(events, "compact_started");
+    await waitForEvent(events, "turn_completed");
+
+    assert.equal(
+      events.find((event) => event.type === "compact_started")?.payload?.turnId,
+      "turn-silent-compact"
+    );
+    const usage = events.find(
+      (event) =>
+        event.type === "usage_updated" && isRecord(event.payload?.contextWindow)
+    );
+    assert.equal(usage?.payload?.turnId, "turn-silent-compact");
+    assert.equal(
+      (usage?.payload?.contextWindow as { usedTokens?: number } | undefined)
+        ?.usedTokens,
+      1_990
+    );
+  } finally {
+    restoreSink();
+  }
+});
+
+test("local_command compact failure still emits compact_failed", async () => {
+  const events: Array<{ type: string; payload?: Record<string, unknown> }> = [];
+  const restoreSink = withSidecarEventSinkForTest((event) =>
+    events.push(event)
+  );
+  try {
+    const session = new SessionRuntime(
+      "provider-session-1",
+      "/repo",
+      {},
+      false,
+      false,
+      {
+        model: "",
+        permissionModeId: "default",
+        planMode: false,
+        effort: "",
+        speed: ""
+      },
+      sidecarClaudeOptionsFromPayload({}),
+      undefined,
+      ({ prompt }) => fakeLocalCommandFailedCompactQuery(prompt)
+    );
+
+    await session.start();
+    session.exec("turn-local-command-failed", "/compact");
+    await waitForEvent(events, "compact_failed");
+    await waitForEvent(events, "turn_completed");
+
+    assert.equal(
+      events.find((event) => event.type === "compact_failed")?.payload?.reason,
+      "Not enough messages to compact."
+    );
+    assert.equal(
+      events.find((event) => event.type === "compact_started")?.payload?.turnId,
+      "turn-local-command-failed"
+    );
+  } finally {
+    restoreSink();
+  }
+});
+
 test("bypass permission mode allows ordinary tools without approval", async () => {
   const events: Array<{ type: string; payload?: Record<string, unknown> }> = [];
   const restoreSink = withSidecarEventSinkForTest((event) =>
@@ -2020,6 +2582,10 @@ test("bypass permission mode still surfaces AskUserQuestion", async () => {
     const request = events.find(
       (event) => event.type === "user_input_requested"
     );
+    const requestQuestions = (
+      request?.payload?.input as { questions?: Array<Record<string, unknown>> }
+    )?.questions;
+    assert.equal(requestQuestions?.[0]?.id, "contract-question-1412lhw");
     session.submitInteractive(
       "turn-1",
       String(request?.payload?.requestId ?? ""),
@@ -2027,7 +2593,7 @@ test("bypass permission mode still surfaces AskUserQuestion", async () => {
       "Yes",
       {
         answers: ["Yes"],
-        answersByQuestionId: { "question-1": "Yes" }
+        answersByQuestionId: { "contract-question-1412lhw": "Yes" }
       }
     );
     await waitForEvent(events, "turn_completed");
@@ -2043,7 +2609,8 @@ test("bypass permission mode still surfaces AskUserQuestion", async () => {
           {
             header: "Confirm",
             question: "Delete everything?",
-            options: [{ label: "Yes", description: "Delete files" }]
+            options: [{ label: "Yes", description: "Delete files" }],
+            id: "contract-question-1412lhw"
           }
         ],
         answers: { "Delete everything?": "Yes" }

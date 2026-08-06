@@ -1,3 +1,4 @@
 <resources>
     <string name="scan_pairing_qr">扫描电脑上显示的配对二维码</string>
+    <string name="scan_pairing_manual">无法扫描？输入配对码</string>
 </resources>

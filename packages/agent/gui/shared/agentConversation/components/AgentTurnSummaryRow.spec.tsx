@@ -1219,4 +1219,54 @@ describe("AgentTurnSummaryRow", () => {
       screen.queryByText("agentHost.agentTool.details.loadingDiff")
     ).toBeNull();
   });
+
+  it("counts raw created content as additions instead of deletions", () => {
+    const content = [
+      "# 你好，我是 Liying 👋",
+      "",
+      "欢迎来到我的个人主页！",
+      "",
+      "我是 **Liying**，一名对学习、探索和创造充满热情的人。很高兴认识你！",
+      "",
+      "## 关于我",
+      "",
+      "- 👤 名字：Liying",
+      "- 🌱 正在持续学习与成长",
+      "- ✨ 喜欢尝试新事物、记录想法",
+      "",
+      "感谢你的访问！"
+    ].join("\n");
+
+    render(
+      <AgentTurnSummaryRow
+        row={{
+          kind: "turn-summary",
+          id: "turn-summary:raw-created-content",
+          turnId: "turn-raw-created-content",
+          fileCount: 1,
+          modifiedCount: 0,
+          createdCount: 1,
+          occurredAtUnixMs: 40,
+          files: [
+            {
+              label: "README.md",
+              path: "/workspace/README.md",
+              fileName: "README.md",
+              directory: "/workspace",
+              changeType: "created",
+              toolName: "Edit",
+              messageId: "call:raw-created-content",
+              unifiedDiff: content,
+              occurredAtUnixMs: 40
+            }
+          ]
+        }}
+        workspaceRoot="/workspace"
+        label="Changed files"
+      />
+    );
+
+    expect(screen.getAllByText("+13")).toHaveLength(2);
+    expect(screen.queryByText("-3")).toBeNull();
+  });
 });

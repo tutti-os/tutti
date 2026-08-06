@@ -68,6 +68,16 @@ func (s *claudeSDKAdapterSession) claudeSDKToolEvents(session Session, turnID st
 	return events
 }
 
+func markClaudeSDKToolProgressUpdate(event *activityshared.Event) {
+	if event == nil {
+		return
+	}
+	if event.Payload.Metadata == nil {
+		event.Payload.Metadata = map[string]any{}
+	}
+	event.Payload.Metadata[liveToolProgressMetadataKey] = true
+}
+
 func (s *claudeSDKAdapterSession) claudeSDKTaskLifecycleEvents(session Session, turnID string, sidecarType string, payload map[string]any) []activityshared.Event {
 	if s == nil {
 		return nil
@@ -141,7 +151,13 @@ func (s *claudeSDKAdapterSession) updateClaudeSDKChildFromTool(session Session, 
 	}
 	input := payloadMap(payload, "input")
 	parentToolUseID := firstNonEmptyString(payloadString(payload, "toolCallId"), payloadString(payload, "callId"))
-	async := metadata["subagentAsync"] == true || payloadBoolValue(input, "run_in_background")
+	backgroundProcess := payloadMap(metadata, "backgroundProcess")
+	// Sync Agent launches may still emit tool_completed with a running
+	// backgroundProcess while the child is waiting on approval. Keep the
+	// child "running" so the subagent card matches the pending interaction.
+	async := metadata["subagentAsync"] == true ||
+		payloadBoolValue(input, "run_in_background") ||
+		payloadString(backgroundProcess, "status") == "running"
 	status := string(activityshared.ActivityStatusRunning)
 	if sidecarType == "tool_failed" {
 		status = string(activityshared.ActivityStatusFailed)

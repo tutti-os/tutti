@@ -348,6 +348,11 @@ func TestMigratedOpenCodeDescriptorIsComplete(t *testing.T) {
 	if descriptor.Status.Kind != StatusKindOpenCodeCLI || descriptor.Status.Install.Kind != InstallerKindOfficialScript {
 		t.Fatalf("Status = %#v", descriptor.Status)
 	}
+	if descriptor.Status.Install.WindowsFallback != InstallerWindowsFallbackManagedNPM ||
+		descriptor.Status.Install.PackageName != "opencode-ai" ||
+		descriptor.Status.Install.BinaryName != "opencode" {
+		t.Fatalf("Windows installer fallback = %#v", descriptor.Status.Install)
+	}
 	if descriptor.ComposerProfile.ModelCatalog != ModelCatalogKindOpenCodeCLI ||
 		descriptor.ComposerProfile.ConfigOptionIDs.Model != "model" ||
 		descriptor.ComposerProfile.ConfigOptionIDs.Reasoning != "effort" {
@@ -495,11 +500,13 @@ func TestResolveModelPlanProtocolOnlyForPreparedProviders(t *testing.T) {
 	if !ok || addressing != ModelPlanModelAddressingProviderPrefixed {
 		t.Fatalf("ResolveModelPlanModelAddressing(opencode) = %q, %v; want provider_prefixed", addressing, ok)
 	}
-	adapter, ok := ResolveModelPlanEndpointAdapter(CodexProviderID)
-	if !ok || adapter != ModelPlanEndpointAdapterResponsesToChatGateway {
-		t.Fatalf("ResolveModelPlanEndpointAdapter(codex) = %q, %v; want responses_to_chat_gateway", adapter, ok)
+	for _, provider := range []string{CodexProviderID, TuttiAgentProviderID} {
+		adapter, ok := ResolveModelPlanEndpointAdapter(provider)
+		if !ok || adapter != ModelPlanEndpointAdapterResponsesToChatGateway {
+			t.Fatalf("ResolveModelPlanEndpointAdapter(%q) = %q, %v; want responses_to_chat_gateway", provider, adapter, ok)
+		}
 	}
-	for _, provider := range []string{ClaudeCodeProviderID, TuttiAgentProviderID, OpenCodeProviderID, "unknown"} {
+	for _, provider := range []string{ClaudeCodeProviderID, OpenCodeProviderID, "unknown"} {
 		if adapter, ok := ResolveModelPlanEndpointAdapter(provider); ok {
 			t.Fatalf("ResolveModelPlanEndpointAdapter(%q) = %q, true; want direct endpoint", provider, adapter)
 		}

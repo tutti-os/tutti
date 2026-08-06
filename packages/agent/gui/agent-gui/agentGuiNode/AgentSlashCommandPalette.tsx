@@ -6,6 +6,7 @@ import {
   ListChecks,
   Minimize2,
   Monitor,
+  Plug,
   Search,
   Target,
   ZapIcon
@@ -55,6 +56,9 @@ interface AgentSlashCommandPaletteProps {
   skillsGroupLabel: string;
   pluginsGroupLabel: string;
   connectorsGroupLabel: string;
+  connectorConnectedLabel: string;
+  connectorNotConnectedLabel: string;
+  connectorUnsupportedLabel: string;
   mcpGroupLabel: string;
   onHighlightChange: (index: number) => void;
   onSelect: (command: AgentSessionCommand) => void;
@@ -101,6 +105,9 @@ export function AgentSlashCommandPalette({
   skillsGroupLabel,
   pluginsGroupLabel,
   connectorsGroupLabel,
+  connectorConnectedLabel,
+  connectorNotConnectedLabel,
+  connectorUnsupportedLabel,
   mcpGroupLabel,
   onHighlightChange,
   onSelect,
@@ -171,6 +178,11 @@ export function AgentSlashCommandPalette({
           entry.type === "capability" && entry.disabled === true;
         const groupType = entryGroupType(entry);
         const entryIcon = slashPaletteEntryIcon(entry);
+        const connectorStatus = connectorStatusPresentation(entry, {
+          connected: connectorConnectedLabel,
+          notConnected: connectorNotConnectedLabel,
+          unsupported: connectorUnsupportedLabel
+        });
         const groupHeader =
           showGroupHeaders && firstEntryIndexByType.get(groupType) === index ? (
             <div
@@ -260,6 +272,18 @@ export function AgentSlashCommandPalette({
                   </span>
                 ) : null}
               </span>
+              {connectorStatus ? (
+                <span
+                  className={cn(
+                    "ml-1 shrink-0 text-[11px] font-medium",
+                    connectorStatus.available
+                      ? "text-[var(--state-success)]"
+                      : "text-[var(--text-secondary)]"
+                  )}
+                >
+                  {connectorStatus.label}
+                </span>
+              ) : null}
               {entry.type === "capability" &&
               entry.settingsLabel &&
               onSelectCapabilitySettings ? (
@@ -381,6 +405,12 @@ function slashPaletteEntryIcon(entry: AgentSlashPaletteEntry): ReactNode {
       <Globe className={SLASH_PALETTE_ICON_CLASS} />
     );
   }
+  if (
+    entry.type === "skill" &&
+    (entry.skill.sourceKind === "connector" || entry.skill.kind === "connector")
+  ) {
+    return <Plug className={SLASH_PALETTE_ICON_CLASS} />;
+  }
   if (entry.type !== "command") {
     return null;
   }
@@ -400,4 +430,27 @@ function slashPaletteEntryIcon(entry: AgentSlashPaletteEntry): ReactNode {
     default:
       return null;
   }
+}
+
+function connectorStatusPresentation(
+  entry: AgentSlashPaletteEntry,
+  labels: {
+    connected: string;
+    notConnected: string;
+    unsupported: string;
+  }
+): { available: boolean; label: string } | null {
+  if (
+    entry.type !== "skill" ||
+    (entry.skill.sourceKind !== "connector" && entry.skill.kind !== "connector")
+  ) {
+    return null;
+  }
+  if (entry.skill.status === "unsupported") {
+    return { available: false, label: labels.unsupported };
+  }
+  if (entry.skill.status === "available") {
+    return { available: true, label: labels.connected };
+  }
+  return { available: false, label: labels.notConnected };
 }

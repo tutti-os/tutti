@@ -117,6 +117,57 @@ describe("descriptor-backed skill invocation", () => {
       }
     ]);
   });
+
+  it("projects local connector capabilities with connection status", () => {
+    const options = {
+      provider: "tutti-agent",
+      behavior: {},
+      skills: [],
+      capabilityCatalog: [
+        {
+          id: "connector:github",
+          name: "github",
+          label: "GitHub",
+          kind: "connector",
+          status: "available",
+          trigger: "/github",
+          invocation: "textTrigger",
+          description: "Repositories and pull requests",
+          source: "local-db"
+        },
+        {
+          id: "connector:notion",
+          name: "notion",
+          label: "Notion",
+          kind: "connector",
+          status: "authRequired",
+          trigger: "/notion",
+          invocation: "textTrigger",
+          source: "local-db"
+        }
+      ]
+    } as unknown as AgentActivityComposerOptions;
+
+    expect(providerSkillsFromComposerOptions(options)).toEqual([
+      {
+        name: "GitHub",
+        trigger: "/github",
+        invocation: "textTrigger",
+        sourceKind: "connector",
+        kind: "connector",
+        status: "available",
+        description: "Repositories and pull requests"
+      },
+      {
+        name: "Notion",
+        trigger: "/notion",
+        invocation: "textTrigger",
+        sourceKind: "connector",
+        kind: "connector",
+        status: "authRequired"
+      }
+    ]);
+  });
 });
 
 describe("permissionModeOptions", () => {

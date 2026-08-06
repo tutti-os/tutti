@@ -5,13 +5,11 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/creack/pty"
 	"github.com/google/uuid"
 )
 
@@ -122,12 +120,21 @@ func (s TerminalStream) Close() {
 }
 
 type TerminalService struct {
-	manager *terminalSessionManager
+	ProcessFactory TerminalProcessFactory
+	manager        *terminalSessionManager
+}
+
+func NewTerminalService(factory TerminalProcessFactory) *TerminalService {
+	return &TerminalService{ProcessFactory: factory}
 }
 
 func (s *TerminalService) ensureManager() *terminalSessionManager {
 	if s.manager == nil {
-		s.manager = newTerminalSessionManager()
+		factory := s.ProcessFactory
+		if factory == nil {
+			factory = NewPlatformTerminalProcessFactory()
+		}
+		s.manager = newTerminalSessionManager(factory)
 	}
 	return s.manager
 }
@@ -226,13 +233,15 @@ func normalizeWorkspaceID(workspaceID string) (string, error) {
 }
 
 type terminalSessionManager struct {
-	mu       sync.Mutex
-	sessions map[string]*terminalRuntimeSession
+	processFactory TerminalProcessFactory
+	mu             sync.Mutex
+	sessions       map[string]*terminalRuntimeSession
 }
 
-func newTerminalSessionManager() *terminalSessionManager {
+func newTerminalSessionManager(factory TerminalProcessFactory) *terminalSessionManager {
 	return &terminalSessionManager{
-		sessions: make(map[string]*terminalRuntimeSession),
+		processFactory: factory,
+		sessions:       make(map[string]*terminalRuntimeSession),
 	}
 }
 
@@ -252,30 +261,23 @@ func (m *terminalSessionManager) list(workspaceID string) []TerminalSession {
 func (m *terminalSessionManager) create(workspaceID string, cwd string, input CreateTerminalInput) (TerminalSession, error) {
 	cols := normalizeTerminalDimension(input.Cols, defaultTerminalCols)
 	rows := normalizeTerminalDimension(input.Rows, defaultTerminalRows)
-	shell := defaultShellPath()
-	shellArgs := resolveTerminalShellInvocation(shell)
+	shellSpec := m.processFactory.DefaultShell()
+	shell := shellSpec.Executable
+	shellArgs := shellSpec.Args
 	now := time.Now().UTC()
 	id := uuid.NewString()
 
-	cmd := exec.Command(shell, shellArgs...)
-	cmd.Dir = cwd
-	cmd.Env = terminalProcessEnv(cwd)
-
-	file, err := pty.StartWithSize(cmd, &pty.Winsize{
-		Cols: uint16(cols),
-		Rows: uint16(rows),
-	})
+	process, err := m.processFactory.Start(shell, shellArgs, cwd, terminalProcessEnv(cwd), cols, rows)
 	if err != nil {
 		return TerminalSession{}, fmt.Errorf("start terminal pty: %w", err)
 	}
 
 	session := &terminalRuntimeSession{
 		cols:        cols,
-		command:     cmd,
 		createdAt:   now,
 		cwd:         cwd,
-		file:        file,
 		id:          id,
+		process:     process,
 		profileID:   trimOptionalString(input.ProfileID),
 		rows:        rows,
 		shell:       shell,
@@ -289,7 +291,7 @@ func (m *terminalSessionManager) create(workspaceID string, cwd string, input Cr
 	m.mu.Unlock()
 
 	if initialInput := strings.TrimRight(derefString(input.InitialInput), "\x00"); initialInput != "" {
-		_, _ = file.Write([]byte(initialInput))
+		_, _ = process.Write([]byte(initialInput))
 	}
 	go session.readLoop()
 	go session.waitLoop()
@@ -313,8 +315,8 @@ func (m *terminalSessionManager) terminate(workspaceID string, terminalID string
 
 	shouldBroadcastExit := false
 	session.mu.Lock()
-	if session.command.Process != nil && !isEndedTerminalStatus(session.status) {
-		_ = session.command.Process.Kill()
+	if session.process != nil && !isEndedTerminalStatus(session.status) {
+		_ = session.process.Kill()
 		now := time.Now().UTC()
 		session.endedAt = &now
 		session.updatedAt = &now
@@ -322,7 +324,9 @@ func (m *terminalSessionManager) terminate(workspaceID string, terminalID string
 		shouldBroadcastExit = true
 	}
 	session.mu.Unlock()
-	_ = session.file.Close()
+	if session.process != nil {
+		_ = session.process.Close()
+	}
 
 	if shouldBroadcastExit {
 		session.broadcast(TerminalStreamEvent{
@@ -347,10 +351,13 @@ func (m *terminalSessionManager) resize(workspaceID string, terminalID string, i
 	session.cols = cols
 	session.rows = rows
 	session.touchLocked()
-	file := session.file
+	process := session.process
 	session.mu.Unlock()
 
-	if err := pty.Setsize(file, &pty.Winsize{Cols: uint16(cols), Rows: uint16(rows)}); err != nil {
+	if process == nil {
+		return TerminalSession{}, ErrTerminalNotRunning
+	}
+	if err := process.Resize(cols, rows); err != nil {
 		return TerminalSession{}, fmt.Errorf("resize terminal pty: %w", err)
 	}
 	return session.snapshot(), nil

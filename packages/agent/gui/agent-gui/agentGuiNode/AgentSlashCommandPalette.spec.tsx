@@ -15,6 +15,9 @@ describe("AgentSlashCommandPalette", () => {
         skillsGroupLabel="Skills"
         pluginsGroupLabel="Plugins"
         connectorsGroupLabel="Connectors"
+        connectorConnectedLabel="Connected"
+        connectorNotConnectedLabel="Not connected"
+        connectorUnsupportedLabel="Unsupported"
         mcpGroupLabel="MCP"
         highlightedIndex={0}
         entries={[
@@ -62,6 +65,9 @@ describe("AgentSlashCommandPalette", () => {
         skillsGroupLabel="Skills"
         pluginsGroupLabel="Plugins"
         connectorsGroupLabel="Connectors"
+        connectorConnectedLabel="Connected"
+        connectorNotConnectedLabel="Not connected"
+        connectorUnsupportedLabel="Unsupported"
         mcpGroupLabel="MCP"
         highlightedIndex={0}
         entries={[
@@ -110,6 +116,9 @@ describe("AgentSlashCommandPalette", () => {
         skillsGroupLabel="Skills"
         pluginsGroupLabel="Plugins"
         connectorsGroupLabel="Connectors"
+        connectorConnectedLabel="Connected"
+        connectorNotConnectedLabel="Not connected"
+        connectorUnsupportedLabel="Unsupported"
         mcpGroupLabel="MCP"
         highlightedIndex={0}
         entries={[
@@ -153,6 +162,9 @@ describe("AgentSlashCommandPalette", () => {
         skillsGroupLabel="Skills"
         pluginsGroupLabel="Plugins"
         connectorsGroupLabel="Connectors"
+        connectorConnectedLabel="Connected"
+        connectorNotConnectedLabel="Not connected"
+        connectorUnsupportedLabel="Unsupported"
         mcpGroupLabel="MCP"
         highlightedIndex={0}
         entries={[
@@ -186,7 +198,8 @@ describe("AgentSlashCommandPalette", () => {
               name: "Google Drive",
               trigger: "$google-drive",
               sourceKind: "connector",
-              kind: "connector"
+              kind: "connector",
+              status: "available"
             }
           }
         ]}
@@ -205,6 +218,9 @@ describe("AgentSlashCommandPalette", () => {
       "before:inset-x-3",
       "before:border-t",
       "before:border-[var(--border-1)]"
+    );
+    expect(screen.getByText("Connected")).toHaveClass(
+      "text-[var(--state-success)]"
     );
   });
 });

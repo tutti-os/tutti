@@ -15,6 +15,9 @@ resolution after selection are documented in
   desktop sources and transport adapters.
 - AgentGUI consumes injected picker capabilities. It does not fetch daemon
   references or interpret source-specific node ids.
+- External workspace apps request the host-owned picker through
+  `tuttiExternal.references.select()` and receive only serialized selections;
+  they do not construct a desktop source registry or query artifact APIs.
 - Daemon and workspace-app APIs own artifact listing and search; desktop maps
   those responses into the shared source contract.
 
@@ -53,6 +56,20 @@ desktop source registry
   -> composer mention
   -> workspace-reference runtime resolution when required
 ```
+
+Tutti Desktop composes a restricted registry for external workspace apps:
+`user-project`, `workspace-file`, and `app-artifact`. `issue-file` remains
+available to owning Desktop surfaces but is deliberately excluded from this
+external picker. A selected file or folder crosses the bridge as a concrete
+`WorkspaceFileReference`; a selected application group crosses as a lazy
+`workspace-reference` handle with app/group identity and workspace scope.
+External apps append those values to the prompt through the shared rich-text
+helper and must not enumerate a whole application artifact group eagerly.
+
+The standard external-app composer plus control is also host-neutral. With an
+app-owned upload callback it presents Upload and Browse actions; without one it
+opens Browse directly. The control owns only this interaction shape and icons.
+Apps continue to own localized labels, their upload pipeline, and prompt state.
 
 List-style app and issue sources adapt their backend responses through the
 shared `ReferenceListBackend` / `createReferenceListSource` protocol. Local
@@ -141,12 +158,25 @@ create copy from the `workspaceFileManager` namespace.
 
 ### Composer Mention Directory Navigation
 
-The compact AgentGUI `@` palette uses `AgentContextMentionProvider` instead of
-the full reference picker, but it preserves the same ownership boundary. A file
+The generic hierarchy contract belongs to `@tutti-os/ui-rich-text`. A file
 provider that supports directory browsing exposes both `getItemDirectory()`
 and `queryDirectory()`. The descriptor supplies the provider-owned canonical
 directory path and, when known, its direct-child count; `queryDirectory()`
 lists that directory's direct children without overloading keyword search.
+The shared `RichTextTriggerEditor` owns an optional browse stack when a consumer
+enables `palette.directoryNavigation`; consumers that omit the option retain
+the ordinary flat trigger behavior.
+
+The compact AgentGUI `@` palette uses `AgentContextMentionProvider` instead of
+the full reference picker and consumes the same shared provider contract, but
+keeps its existing controller-owned browse lifecycle. External workspace apps
+receive the optional contract through `tuttiExternal.at.queryDirectory()` and
+enable it on their shared editor. The bridge transports provider results and
+canonical paths; it does not infer hierarchy or own an app-side browse stack.
+For workspace apps, the empty path addresses the host file-provider root and
+subsequent directory paths must remain inside that root. AgentGUI continues to
+use its separately composed host provider when it needs explicitly supported
+external absolute paths.
 
 AgentGUI owns only the ephemeral browse stack and turns those provider results
 into enter/back navigation rows. The palette renders the supplied count and
@@ -154,6 +184,14 @@ navigation affordance, but does not infer hierarchy from a path, a trailing
 separator, cached tree depth, or already loaded rows. Search results remain
 ordinary insertable mentions unless the provider explicitly marks them as
 navigable directories.
+
+Across both AgentGUI and shared-editor consumers, selection and hierarchy are
+separate actions: selecting a folder row inserts its folder path, while the
+dedicated row affordance or ArrowRight enters it. ArrowLeft and the header back
+action return to the parent. Non-empty input always uses the existing ranked
+keyword query and clears the ephemeral browse stack; clearing back to the bare
+trigger resumes browse from the provider root. Closing the query, pressing
+Escape, or changing the configured directory provider also clears that stack.
 
 Directory navigation owns a request lifecycle that is independent from
 keyword-search and root-browse provider queries. Entering another directory,
@@ -166,8 +204,9 @@ Directory reads do not inherit the short provider-search timeout or its
 partial-result fallback. They remain loading until the provider completes or
 the directory lifecycle explicitly cancels them. A successful authoritative
 empty result is the only state presented as an empty directory; provider
-failure remains an error, and a file provider without `queryDirectory()` fails
-closed instead of falling back to keyword search.
+failure remains an error. A file provider without `queryDirectory()` exposes no
+hierarchy controls and retains the ordinary flat keyword-search behavior for
+compatibility with older hosts.
 
 The compact palette browse cache is presentation-only. Every user-opened `@`
 browse paints a matching cached entry synchronously when one exists and always

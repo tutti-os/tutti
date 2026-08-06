@@ -119,6 +119,7 @@ exec "$TUTTI_APP_PYTHON" "$TUTTI_APP_PACKAGE_DIR/server.py"
 		"workspaceName": "Runner Workspace",
 		"appHost":       "127.0.0.1",
 		"appBaseUrl":    *state.LaunchURL,
+		"platform":      runtime.GOOS + "-" + runtime.GOARCH,
 	} {
 		if probeValues[key] != want {
 			t.Fatalf("probe[%s] = %q, want %q", key, probeValues[key], want)
@@ -552,6 +553,81 @@ func TestAppRunnerFinishStartIgnoresReplacedStart(t *testing.T) {
 	}
 }
 
+type barrierAppRuntimeResolver struct {
+	started  chan struct{}
+	release  chan error
+	finished chan struct{}
+}
+
+func (r *barrierAppRuntimeResolver) Resolve(context.Context) (ResolvedAppRuntime, error) {
+	close(r.started)
+	err := <-r.release
+	close(r.finished)
+	return ResolvedAppRuntime{}, err
+}
+
+func TestAppRunnerStoppedStartCannotPublishLateStartupFailure(t *testing.T) {
+	root := t.TempDir()
+	resolver := &barrierAppRuntimeResolver{
+		started: make(chan struct{}), release: make(chan error, 1), finished: make(chan struct{}),
+	}
+	runner := &AppRunner{RuntimeResolver: resolver}
+	input := AppStartInput{
+		WorkspaceID: "ws-runner", AppID: "stale-start", PackageDir: filepath.Join(root, "package"),
+		RuntimeDir: filepath.Join(root, "runtime"), DataDir: filepath.Join(root, "data"),
+		DatabaseDir: filepath.Join(root, "database"), LogDir: filepath.Join(root, "logs"),
+	}
+	if _, err := runner.Start(context.Background(), input); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-resolver.started:
+	case <-time.After(time.Second):
+		t.Fatal("runtime resolver did not start")
+	}
+	stopped, err := runner.Stop(context.Background(), input.WorkspaceID, input.AppID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stopped.Status != workspacebiz.AppRuntimeStatusIdle {
+		t.Fatalf("Stop() status = %q, want idle", stopped.Status)
+	}
+	resolver.release <- errors.New("late runtime resolution failure")
+	select {
+	case <-resolver.finished:
+	case <-time.After(time.Second):
+		t.Fatal("runtime resolver did not finish")
+	}
+	time.Sleep(20 * time.Millisecond)
+	state := runner.State(input.WorkspaceID, input.AppID)
+	if state.Status != workspacebiz.AppRuntimeStatusIdle || state.FailureReason != nil || state.LastError != nil {
+		t.Fatalf("late startup failure replaced stopped state: %#v", state)
+	}
+}
+
+func TestAppRunnerReplacedStartCannotCommitState(t *testing.T) {
+	runner := &AppRunner{}
+	runner.ensure()
+	key := appRuntimeKey("ws-runner", "restarted")
+	oldStart := &appStart{cancel: func() {}}
+	newStart := &appStart{cancel: func() {}}
+	runner.mu.Lock()
+	runner.starts[key] = newStart
+	runner.states[key] = workspacebiz.AppRuntimeState{Status: workspacebiz.AppRuntimeStatusPreparing}
+	runner.mu.Unlock()
+
+	if _, committed := runner.setStateForStart(key, oldStart, workspacebiz.AppRuntimeState{Status: workspacebiz.AppRuntimeStatusStarting}); committed {
+		t.Fatal("replaced start committed starting state")
+	}
+	if _, committed := runner.setFailedForStart(key, oldStart, "healthcheck", errors.New("late health failure")); committed {
+		t.Fatal("replaced start committed failure state")
+	}
+	state := runner.State("ws-runner", "restarted")
+	if state.Status != workspacebiz.AppRuntimeStatusPreparing || state.FailureReason != nil {
+		t.Fatalf("replacement state was overwritten: %#v", state)
+	}
+}
+
 func TestAppRunnerStartWithoutRestartReusesStartingProcess(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("bootstrap.sh runner test is POSIX-only")
@@ -704,6 +780,145 @@ sleep 30
 	if state.FailureReason == nil || *state.FailureReason != "healthcheck" {
 		t.Fatalf("FailureReason = %v, want healthcheck", state.FailureReason)
 	}
+	if state.FailurePhase == nil || *state.FailurePhase != workspacebiz.AppFailurePhaseStarting {
+		t.Fatalf("FailurePhase = %v, want starting", state.FailurePhase)
+	}
+}
+
+func TestAppRunnerDoesNotReturnToRunningAfterStopStarts(t *testing.T) {
+	key := appRuntimeKey("ws-runner", "stopping")
+	start := &appStart{cancel: func() {}}
+	process := &appProcess{stopRequested: true}
+	runner := &AppRunner{
+		processes: map[string]*appProcess{key: process},
+		starts:    map[string]*appStart{key: start},
+		states: map[string]workspacebiz.AppRuntimeState{
+			key: {Status: workspacebiz.AppRuntimeStatusStopping},
+		},
+	}
+
+	if runner.setRunningIfProcessCurrent(key, start, process, workspacebiz.AppRuntimeState{Status: workspacebiz.AppRuntimeStatusRunning}) {
+		t.Fatal("stopping process was moved back to running")
+	}
+	if state := runner.State("ws-runner", "stopping"); state.Status != workspacebiz.AppRuntimeStatusStopping {
+		t.Fatalf("runner status = %q, want stopping", state.Status)
+	}
+}
+
+func TestAppRunnerMarksExitAfterRunningAsRuntimeFailure(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("bootstrap.sh runner test is POSIX-only")
+	}
+	if _, err := exec.LookPath("python3"); err != nil {
+		t.Skip("python3 is required for runner process exit test")
+	}
+
+	root := t.TempDir()
+	packageDir := filepath.Join(root, "package")
+	if err := os.MkdirAll(packageDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(packageDir, "bootstrap.sh"), []byte(`#!/bin/sh
+set -eu
+exec "$TUTTI_APP_PYTHON" "$TUTTI_APP_PACKAGE_DIR/server.py"
+`), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(packageDir, "server.py"), []byte(`import os
+import socket
+import time
+
+server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+server.bind(("127.0.0.1", int(os.environ["TUTTI_APP_PORT"])))
+server.listen(1)
+connection, _ = server.accept()
+with connection:
+    connection.recv(4096)
+    connection.sendall(b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok")
+time.sleep(0.2)
+raise SystemExit(17)
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	t.Setenv(tuttiAppRuntimeRootEnv, createManagedAppRuntimeFixture(t, root))
+	runner := &AppRunner{HealthcheckTimeout: 5 * time.Second}
+	_, err := runner.Start(context.Background(), AppStartInput{
+		WorkspaceID: "ws-runner", AppID: "exits", PackageDir: packageDir,
+		Bootstrap: "bootstrap.sh", HealthcheckPath: "/ready",
+		RuntimeDir: filepath.Join(root, "runtime"), DataDir: filepath.Join(root, "data"),
+		DatabaseDir: filepath.Join(root, "database"), LogDir: filepath.Join(root, "logs"),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitForRunnerStatus(t, runner, "ws-runner", "exits", workspacebiz.AppRuntimeStatusRunning)
+	state := waitForRunnerStatus(t, runner, "ws-runner", "exits", workspacebiz.AppRuntimeStatusFailed)
+	if state.FailurePhase == nil || *state.FailurePhase != workspacebiz.AppFailurePhaseRuntime {
+		t.Fatalf("FailurePhase = %v, want runtime", state.FailurePhase)
+	}
+	if state.FailureReason == nil || *state.FailureReason != "process_exit" {
+		t.Fatalf("FailureReason = %v, want process_exit", state.FailureReason)
+	}
+}
+
+func TestAppRunnerMarksCleanExitAfterRunningAsRuntimeFailure(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("bootstrap.sh runner test is POSIX-only")
+	}
+	if _, err := exec.LookPath("python3"); err != nil {
+		t.Skip("python3 is required for runner process exit test")
+	}
+
+	root := t.TempDir()
+	packageDir := filepath.Join(root, "package")
+	if err := os.MkdirAll(packageDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(packageDir, "bootstrap.sh"), []byte(`#!/bin/sh
+set -eu
+exec "$TUTTI_APP_PYTHON" "$TUTTI_APP_PACKAGE_DIR/server.py"
+`), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(packageDir, "server.py"), []byte(`import os
+import socket
+import time
+
+server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+server.bind(("127.0.0.1", int(os.environ["TUTTI_APP_PORT"])))
+server.listen(1)
+connection, _ = server.accept()
+with connection:
+    connection.recv(4096)
+    connection.sendall(b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok")
+time.sleep(0.2)
+raise SystemExit(0)
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	t.Setenv(tuttiAppRuntimeRootEnv, createManagedAppRuntimeFixture(t, root))
+	runner := &AppRunner{HealthcheckTimeout: 5 * time.Second}
+	_, err := runner.Start(context.Background(), AppStartInput{
+		WorkspaceID: "ws-runner", AppID: "clean-exit", PackageDir: packageDir,
+		Bootstrap: "bootstrap.sh", HealthcheckPath: "/ready",
+		RuntimeDir: filepath.Join(root, "runtime"), DataDir: filepath.Join(root, "data"),
+		DatabaseDir: filepath.Join(root, "database"), LogDir: filepath.Join(root, "logs"),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitForRunnerStatus(t, runner, "ws-runner", "clean-exit", workspacebiz.AppRuntimeStatusRunning)
+	state := waitForRunnerStatus(t, runner, "ws-runner", "clean-exit", workspacebiz.AppRuntimeStatusFailed)
+	if state.FailurePhase == nil || *state.FailurePhase != workspacebiz.AppFailurePhaseRuntime {
+		t.Fatalf("FailurePhase = %v, want runtime", state.FailurePhase)
+	}
+	if state.LastError == nil || !strings.Contains(*state.LastError, "status 0") {
+		t.Fatalf("LastError = %v, want unexpected clean exit", state.LastError)
+	}
 }
 
 func TestAppRunnerStopDuringHealthcheckLeavesAppIdle(t *testing.T) {
@@ -824,14 +1039,47 @@ func TestTuttiCLIShimPathUsesDevelopmentCommand(t *testing.T) {
 	}
 }
 
-func TestTuttiCLIShimPathUsesWindowsCommandExtension(t *testing.T) {
-	stateDir := t.TempDir()
-	t.Setenv("TUTTI_STATE_DIR", stateDir)
-	t.Setenv("TUTTI_ENV", "production")
+func TestWorkspaceAppCLIPathUsesNativeWindowsExecutable(t *testing.T) {
+	target := filepath.Join(t.TempDir(), "Tutti CLI.exe")
+	if err := os.WriteFile(target, []byte("fixture"), 0o755); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+	t.Setenv("TUTTI_WORKSPACE_APP_CLI_PATH", target)
 
-	want := filepath.Join(stateDir, "bin", "tutti.cmd")
-	if got := tuttiCLIShimPathForPlatform("windows"); got != want {
-		t.Fatalf("tuttiCLIShimPathForPlatform() = %q, want %q", got, want)
+	got, err := workspaceAppCLIPathForPlatform("windows")
+	if err != nil {
+		t.Fatalf("workspaceAppCLIPathForPlatform() error = %v", err)
+	}
+	if got != target {
+		t.Fatalf("workspaceAppCLIPathForPlatform() = %q, want %q", got, target)
+	}
+}
+
+func TestWorkspaceAppCLIPathRejectsWindowsBatchShim(t *testing.T) {
+	target := filepath.Join(t.TempDir(), "tutti.cmd")
+	if err := os.WriteFile(target, []byte("@echo off"), 0o755); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+	t.Setenv("TUTTI_WORKSPACE_APP_CLI_PATH", target)
+
+	if _, err := workspaceAppCLIPathForPlatform("windows"); err == nil || !strings.Contains(err.Error(), ".exe") {
+		t.Fatalf("workspaceAppCLIPathForPlatform() error = %v, want .exe validation", err)
+	}
+}
+
+func TestWorkspaceAppCLIEnvOverridesIncludeWindowsListenerPath(t *testing.T) {
+	listenerPath := filepath.Join(t.TempDir(), "run", "tuttid.listener.json")
+	t.Setenv("TUTTID_LISTENER_INFO_PATH", listenerPath)
+
+	overrides := workspaceAppCLIEnvOverrides("windows", `C:\Program Files\Tutti\tutti.exe`)
+	if got := envValue(overrides, "TUTTI_CLI"); got != `C:\Program Files\Tutti\tutti.exe` {
+		t.Fatalf("TUTTI_CLI = %q", got)
+	}
+	if got := envValue(overrides, "TUTTID_LISTENER_INFO_PATH"); got != listenerPath {
+		t.Fatalf("TUTTID_LISTENER_INFO_PATH = %q, want %q", got, listenerPath)
+	}
+	if got := envValue(overrides, "TUTTI_STATE_DIR"); got != "" {
+		t.Fatalf("TUTTI_STATE_DIR = %q, want omitted", got)
 	}
 }
 
@@ -909,6 +1157,7 @@ func pythonAppReadyServerScript(healthcheckPath string, writeProbe bool) string 
                 "legacyWorkspaceRoot": os.environ.get("NEX" + "TOP_WORKSPACE_ROOT", ""),
                 "appHost": os.environ["TUTTI_APP_HOST"],
                 "appBaseUrl": os.environ["TUTTI_APP_BASE_URL"],
+                "platform": os.environ["TUTTI_PLATFORM"],
                 "packageDir": os.environ["TUTTI_APP_PACKAGE_DIR"],
                 "runtimeDir": os.environ["TUTTI_APP_RUNTIME_DIR"],
                 "dataDir": os.environ["TUTTI_APP_DATA_DIR"],

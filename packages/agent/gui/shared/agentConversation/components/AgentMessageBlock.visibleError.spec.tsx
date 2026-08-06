@@ -350,6 +350,18 @@ describe("AgentVisibleErrorMessage", () => {
     });
   });
 
+  it("recovers a failed Claude 522 response into a timeout card", () => {
+    const rawError =
+      'API Error: 522 {"title":"Error 522: Connection timed out"}';
+    const { getByText, queryByText } = renderBlock(
+      buildFailedTextRow(rawError),
+      "claude-code"
+    );
+
+    expect(getByText("Claude Code request timed out")).toBeTruthy();
+    expect(queryByText(rawError)).toBeNull();
+  });
+
   it("recovers Claude SDK's completed login notice into the wizard card", () => {
     const { getByText, queryByText } = renderBlock(
       buildCompletedTextRow("Not logged in · Please run /login"),

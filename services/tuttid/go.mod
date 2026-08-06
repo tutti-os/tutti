@@ -5,6 +5,7 @@ go 1.24.3
 toolchain go1.24.5
 
 require (
+	github.com/UserExistsError/conpty v0.1.4
 	github.com/coder/websocket v1.8.14
 	github.com/creack/pty v1.1.24
 	github.com/gofrs/flock v0.13.0
@@ -20,7 +21,9 @@ require (
 	github.com/tutti-os/tutti/packages/analytics/reporter-go v0.0.0
 	github.com/tutti-os/tutti/packages/appcli/core v0.0.0
 	github.com/tutti-os/tutti/packages/auth/bridge-go v0.0.0
+	github.com/tutti-os/tutti/packages/clients/device-authority-go v0.0.0
 	github.com/tutti-os/tutti/packages/commerce v0.0.0
+	github.com/tutti-os/tutti/packages/connector/market v0.0.0
 	github.com/tutti-os/tutti/packages/device-link v0.0.0
 	github.com/tutti-os/tutti/packages/desktop/update-admission v0.0.0
 	github.com/tutti-os/tutti/packages/events/stream-go v0.0.0
@@ -132,7 +135,11 @@ replace github.com/tutti-os/tutti/packages/appcli/core => ../../packages/appcli/
 
 replace github.com/tutti-os/tutti/packages/auth/bridge-go => ../../packages/auth/bridge-go
 
+replace github.com/tutti-os/tutti/packages/clients/device-authority-go => ../../packages/clients/device-authority-go
+
 replace github.com/tutti-os/tutti/packages/commerce => ../../packages/commerce
+
+replace github.com/tutti-os/tutti/packages/connector/market => ../../packages/connector/market
 
 replace github.com/tutti-os/tutti/packages/device-link => ../../packages/device-link
 

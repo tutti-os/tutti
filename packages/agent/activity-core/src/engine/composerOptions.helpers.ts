@@ -9,6 +9,7 @@ export function cloneAgentActivityComposerOptions(
 ): AgentActivityComposerOptions {
   return {
     provider: options.provider,
+    codexSaverModeSupported: options.codexSaverModeSupported,
     capabilities: options.capabilities ? { ...options.capabilities } : null,
     models: options.models.map((option) => ({ ...option })),
     reasoningEfforts: options.reasoningEfforts.map((option) => ({ ...option })),

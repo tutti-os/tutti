@@ -17,7 +17,8 @@ import Paragraph from "@tiptap/extension-paragraph";
 import Text from "@tiptap/extension-text";
 import type { Editor as TiptapEditor } from "@tiptap/react";
 import { EditorContent, useEditor } from "@tiptap/react";
-import { ViewportMenuSurface } from "@tutti-os/ui-system/components";
+import { Button, ViewportMenuSurface } from "@tutti-os/ui-system/components";
+import { ArrowLeftIcon } from "@tutti-os/ui-system/icons";
 import { cn } from "@tutti-os/ui-system/utils";
 import {
   MentionPaletteFromState,
@@ -52,9 +53,15 @@ import {
 } from "../core/richTextDocument.ts";
 import {
   findRichTextTriggerQuery,
+  queryRichTextTriggerDirectoryMatches,
   queryRichTextTriggerMatches
 } from "./richTextTriggerQuery.ts";
 import { isRichTextImeComposing } from "./richTextIme.ts";
+import {
+  enterRichTextTriggerDirectory,
+  exitRichTextTriggerDirectory,
+  resolveRichTextTriggerDirectoryItemAction
+} from "./richTextTriggerDirectoryNavigation.ts";
 import {
   resolveRichTextTriggerText,
   type RichTextTriggerTextOverrides
@@ -111,6 +118,15 @@ export interface RichTextTriggerEditorPaletteOptions {
     listbox?: string;
   };
   maxHeightPx?: number;
+  /** Optional, provider-owned directory navigation. Disabled when omitted. */
+  directoryNavigation?: {
+    providerId: string;
+    labels: {
+      back: string;
+      enter: string;
+      navigateHierarchy: string;
+    };
+  };
 }
 
 type RichTextEditorTriggerQueryState = {
@@ -193,10 +209,25 @@ export function RichTextTriggerEditor({
     resolveDefaultPaletteCategoryId(palette)
   );
   const [isLoading, setIsLoading] = useState(false);
+  const [hasQueryError, setHasQueryError] = useState(false);
+  const [directoryBrowsePaths, setDirectoryBrowsePaths] = useState<
+    readonly string[]
+  >([]);
   const [resolvedMenuAnchor, setResolvedMenuAnchor] =
     useState<RichTextTriggerResolvedMenuPlacement | null>(null);
 
   latestOnChangeRef.current = onChange;
+
+  const directoryNavigationProviderId =
+    palette?.directoryNavigation?.providerId.trim() ?? "";
+  const directoryNavigationProvider = directoryNavigationProviderId
+    ? registry.getProvider(directoryNavigationProviderId)
+    : undefined;
+  const hasDirectoryNavigationCapability = Boolean(
+    directoryNavigationProviderId &&
+    registry.queryDirectory &&
+    directoryNavigationProvider?.queryDirectory
+  );
 
   const resetMenuPlacement = useCallback(() => {
     setResolvedMenuAnchor(null);
@@ -371,6 +402,7 @@ export function RichTextTriggerEditor({
       setMatches([]);
       setActiveIndex(0);
       setIsLoading(false);
+      setHasQueryError(false);
       return;
     }
 
@@ -378,13 +410,19 @@ export function RichTextTriggerEditor({
       setMatches([]);
       setActiveIndex(0);
       setIsLoading(false);
+      setHasQueryError(false);
       return;
     }
 
     const abortController = new AbortController();
     setIsLoading(true);
+    setHasQueryError(false);
 
-    void queryRichTextTriggerMatches(registry, {
+    const shouldBrowseDirectory =
+      query.trigger === "@" &&
+      query.keyword.length === 0 &&
+      hasDirectoryNavigationCapability;
+    const queryInput = {
       abortSignal: abortController.signal,
       keyword: query.keyword,
       maxResults,
@@ -398,7 +436,19 @@ export function RichTextTriggerEditor({
         ),
         documentText: serializeRichTextDocumentToContent(editor.getJSON())
       }
-    })
+    } as const;
+    const matchesPromise = shouldBrowseDirectory
+      ? queryRichTextTriggerDirectoryMatches(
+          registry,
+          directoryNavigationProviderId,
+          {
+            ...queryInput,
+            directoryPath: directoryBrowsePaths.at(-1) ?? ""
+          }
+        )
+      : queryRichTextTriggerMatches(registry, queryInput);
+
+    void matchesPromise
       .then((nextMatches) => {
         if (abortController.signal.aborted) {
           return;
@@ -409,6 +459,14 @@ export function RichTextTriggerEditor({
             ? 0
             : Math.max(0, Math.min(current, nextMatches.length - 1))
         );
+      })
+      .catch(() => {
+        if (abortController.signal.aborted) {
+          return;
+        }
+        setMatches([]);
+        setActiveIndex(0);
+        setHasQueryError(true);
       })
       .finally(() => {
         if (!abortController.signal.aborted) {
@@ -425,27 +483,62 @@ export function RichTextTriggerEditor({
     minQueryLength,
     activeTriggerConfigs.length,
     query,
-    registry
+    registry,
+    directoryNavigationProviderId,
+    hasDirectoryNavigationCapability,
+    directoryBrowsePaths
   ]);
+
+  useEffect(() => {
+    setDirectoryBrowsePaths((current) => (current.length === 0 ? current : []));
+  }, [directoryNavigationProviderId]);
+
+  useEffect(() => {
+    if (query !== null && query.trigger === "@" && query.keyword.length === 0) {
+      return;
+    }
+    setDirectoryBrowsePaths((current) => (current.length === 0 ? current : []));
+  }, [query?.keyword, query?.trigger]);
 
   const resolvedPaletteCategoryId = resolveActivePaletteCategoryId(
     palette,
     activePaletteCategoryId
   );
-  const paletteState = useMemo(
-    () =>
-      palette
-        ? buildMentionPaletteModelFromTriggerMatches({
-            activeCategoryId: resolvedPaletteCategoryId,
-            categories: palette.categories,
-            matches,
-            loading: isLoading,
-            query: query?.keyword ?? "",
-            mode: "results"
-          })
-        : null,
-    [isLoading, matches, palette, query?.keyword, resolvedPaletteCategoryId]
+  const isDirectoryBrowseMode = Boolean(
+    hasDirectoryNavigationCapability &&
+    query?.trigger === "@" &&
+    query.keyword.length === 0
   );
+  const paletteState = useMemo(() => {
+    if (!palette) {
+      return null;
+    }
+    const nextState = buildMentionPaletteModelFromTriggerMatches({
+      activeCategoryId: resolvedPaletteCategoryId,
+      categories: palette.categories,
+      matches,
+      loading: isLoading,
+      query: query?.keyword ?? "",
+      mode: isDirectoryBrowseMode ? "browse" : "results"
+    });
+    if (!hasQueryError) {
+      return nextState;
+    }
+    return {
+      ...nextState,
+      status: "error",
+      error: text.loadFailedLabel
+    } satisfies MentionPaletteState<RichTextTriggerQueryMatch>;
+  }, [
+    hasQueryError,
+    isDirectoryBrowseMode,
+    isLoading,
+    matches,
+    palette,
+    query?.keyword,
+    resolvedPaletteCategoryId,
+    text.loadFailedLabel
+  ]);
 
   useEffect(() => {
     const defaultCategoryId = resolveDefaultPaletteCategoryId(palette);
@@ -535,6 +628,17 @@ export function RichTextTriggerEditor({
     if (!editor || !query) {
       return;
     }
+    const directoryProviderId = palette?.directoryNavigation?.providerId;
+    if (
+      directoryProviderId &&
+      resolveRichTextTriggerDirectoryItemAction({
+        interaction: "select",
+        match,
+        providerId: directoryProviderId
+      }) !== "insert"
+    ) {
+      return;
+    }
 
     const content = renderInsertResultAsEditorContent(
       match.providerId,
@@ -553,7 +657,44 @@ export function RichTextTriggerEditor({
     setActiveIndex(0);
     setHighlightedPaletteKey(null);
     setIsLoading(false);
+    setHasQueryError(false);
     resetMenuPlacement();
+  };
+
+  const navigateIntoDirectory = (match: RichTextTriggerQueryMatch): boolean => {
+    const directory = match.directory;
+    if (
+      !editor ||
+      !query ||
+      !directory ||
+      !hasDirectoryNavigationCapability ||
+      resolveRichTextTriggerDirectoryItemAction({
+        interaction: "navigate",
+        match,
+        providerId: palette?.directoryNavigation?.providerId ?? ""
+      }) !== "enter"
+    ) {
+      return false;
+    }
+    if (query.keyword.length > 0) {
+      editor
+        .chain()
+        .focus()
+        .insertContentAt({ from: query.from, to: query.to }, query.trigger)
+        .run();
+    }
+    setDirectoryBrowsePaths((current) =>
+      enterRichTextTriggerDirectory(current, directory.path)
+    );
+    return true;
+  };
+
+  const navigateBackDirectory = (): boolean => {
+    if (query?.keyword || directoryBrowsePaths.length === 0) {
+      return false;
+    }
+    setDirectoryBrowsePaths(exitRichTextTriggerDirectory);
+    return true;
   };
 
   const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
@@ -571,6 +712,8 @@ export function RichTextTriggerEditor({
       setActiveIndex(0);
       setHighlightedPaletteKey(null);
       setIsLoading(false);
+      setHasQueryError(false);
+      setDirectoryBrowsePaths([]);
       resetMenuPlacement();
       return;
     }
@@ -627,6 +770,21 @@ export function RichTextTriggerEditor({
         if (match) {
           event.preventDefault();
           applyMatch(match);
+        }
+        return;
+      }
+
+      if (event.key === "ArrowLeft") {
+        if (navigateBackDirectory()) {
+          event.preventDefault();
+        }
+        return;
+      }
+
+      if (event.key === "ArrowRight") {
+        const match = selectedPaletteMatch(paletteState, highlightedPaletteKey);
+        if (match && navigateIntoDirectory(match)) {
+          event.preventDefault();
         }
         return;
       }
@@ -713,19 +871,74 @@ export function RichTextTriggerEditor({
               labels={{
                 loading: text.loadingLabel,
                 empty: palette.labels.empty ?? text.noMatchesLabel,
-                error: palette.labels.empty ?? text.noMatchesLabel,
+                error: text.loadFailedLabel,
                 tabHint: palette.labels.tabHint,
                 listbox: palette.labels.listbox
               }}
               hintLabels={{
                 cycleFilter: palette.labels.cycleFilter,
-                moveSelection: palette.labels.moveSelection
+                moveSelection: palette.labels.moveSelection,
+                navigateHierarchy: hasDirectoryNavigationCapability
+                  ? palette.directoryNavigation?.labels.navigateHierarchy
+                  : undefined
               }}
               maxHeightPx={palette.maxHeightPx ?? 320}
-              renderItem={(match) =>
-                renderMentionRow(
-                  richTextTriggerQueryMatchToMentionRowItem(match)
-                )
+              renderItem={(match) => {
+                const directory = match.directory;
+                return renderMentionRow(
+                  richTextTriggerQueryMatchToMentionRowItem(match, {
+                    getChildCountLabel: () =>
+                      directory?.childCount == null
+                        ? null
+                        : String(directory.childCount),
+                    getFileEntryKind: () =>
+                      directory ? "directory" : undefined
+                  }),
+                  directory &&
+                    hasDirectoryNavigationCapability &&
+                    match.providerId === palette.directoryNavigation?.providerId
+                    ? {
+                        navigateIntoLabel:
+                          palette.directoryNavigation.labels.enter,
+                        onNavigateInto: () => navigateIntoDirectory(match)
+                      }
+                    : undefined
+                );
+              }}
+              headerActions={
+                directoryBrowsePaths.length > 0 &&
+                hasDirectoryNavigationCapability &&
+                palette.directoryNavigation ? (
+                  <Button
+                    type="button"
+                    aria-label={palette.directoryNavigation.labels.back}
+                    title={palette.directoryNavigation.labels.back}
+                    size="sm"
+                    variant="ghost"
+                    onMouseDown={(event) => event.preventDefault()}
+                    onClick={() => navigateBackDirectory()}
+                  >
+                    <ArrowLeftIcon size={14} />
+                    <span>{palette.directoryNavigation.labels.back}</span>
+                  </Button>
+                ) : undefined
+              }
+              onNavigateHierarchy={
+                hasDirectoryNavigationCapability && palette.directoryNavigation
+                  ? (delta) => {
+                      if (delta === -1) {
+                        navigateBackDirectory();
+                        return;
+                      }
+                      const match = selectedPaletteMatch(
+                        paletteState,
+                        highlightedPaletteKey
+                      );
+                      if (match) {
+                        navigateIntoDirectory(match);
+                      }
+                    }
+                  : undefined
               }
               callbacks={{
                 onHighlightChange: setHighlightedPaletteKey,
@@ -810,6 +1023,27 @@ function firstPaletteItemKey(
     }
   }
   return state.categories[0] ? `category:${state.categories[0].id}` : null;
+}
+
+function selectedPaletteMatch(
+  state: MentionPaletteState<RichTextTriggerQueryMatch>,
+  highlightedKey: string | null
+): RichTextTriggerQueryMatch | null {
+  const entry = findMentionPaletteEntry({
+    state,
+    key: highlightedKey,
+    getItemKey: getPaletteMatchKey
+  });
+  if (entry?.type !== "item" || !entry.groupId) {
+    return null;
+  }
+  const group = state.groups.find(
+    (candidate) => candidate.id === entry.groupId
+  );
+  return (
+    group?.items[typeof entry.itemIndex === "number" ? entry.itemIndex : -1] ??
+    null
+  );
 }
 
 function nextPaletteCategoryId(

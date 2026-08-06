@@ -5,6 +5,8 @@ export type {
   RichTextTrigger,
   RichTextTriggerBoundary,
   RichTextTriggerConfig,
+  RichTextTriggerDirectoryDescriptor,
+  RichTextTriggerDirectoryQueryInput,
   RichTextTriggerGroupedQueryResult,
   RichTextTriggerGroupPageQueryInput,
   RichTextTriggerInsertResult,

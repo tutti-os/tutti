@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"runtime"
 	"strings"
+
+	"github.com/tutti-os/tutti/packages/agent/daemon/providerregistry"
 )
 
 type InstallerKind string
@@ -18,16 +20,18 @@ const (
 )
 
 type InstallerSpec struct {
-	Kind                 InstallerKind
-	DisplayCommand       string
-	ShellCommand         string
-	ScriptURL            string
-	ScriptShell          string
-	ReleaseBinary        *ReleaseBinaryInstallerSpec
-	RegistryNPM          *ExternalAgentRegistryNPMInstallerSpec
-	CodexCLI             *CodexCLILatestInstallerSpec
-	ManagedNPM           *ManagedNPMPackageInstallerSpec
-	FailureReasonMarkers map[string][]string
+	Kind                     InstallerKind
+	DisplayCommand           string
+	ShellCommand             string
+	ScriptURL                string
+	ScriptShell              string
+	WindowsFallback          providerregistry.InstallerWindowsFallback
+	WindowsPowerShellCommand string
+	ReleaseBinary            *ReleaseBinaryInstallerSpec
+	RegistryNPM              *ExternalAgentRegistryNPMInstallerSpec
+	CodexCLI                 *CodexCLILatestInstallerSpec
+	ManagedNPM               *ManagedNPMPackageInstallerSpec
+	FailureReasonMarkers     map[string][]string
 }
 
 type ExternalAgentRegistryNPMInstallerSpec struct {
@@ -73,6 +77,12 @@ func (s InstallerSpec) displayCommand() string {
 	case InstallerKindShellCommand:
 		return firstNonBlank(s.DisplayCommand, s.ShellCommand)
 	case InstallerKindOfficialScript:
+		if runtime.GOOS == "windows" && s.WindowsFallback == providerregistry.InstallerWindowsFallbackManagedNPM && s.ManagedNPM != nil {
+			return managedNPMInstallDisplayCommand(*s.ManagedNPM)
+		}
+		if runtime.GOOS == "windows" && s.WindowsFallback == providerregistry.InstallerWindowsFallbackPowerShell {
+			return firstNonBlank(s.WindowsPowerShellCommand, s.DisplayCommand, s.ScriptURL)
+		}
 		return firstNonBlank(s.DisplayCommand, s.ScriptURL)
 	case InstallerKindGitHubReleaseBinary:
 		if asset, ok := s.releaseAsset(runtime.GOOS, runtime.GOARCH); ok {
@@ -108,6 +118,14 @@ func (s InstallerSpec) displayCommand() string {
 	}
 }
 
+func managedNPMInstallDisplayCommand(spec ManagedNPMPackageInstallerSpec) string {
+	parts := []string{"npm install -g", managedNPMPackageSpec(spec)}
+	if spec.IncludeOptional {
+		parts = append(parts, "--include=optional")
+	}
+	return strings.Join(parts, " ")
+}
+
 func (s InstallerSpec) releaseAsset(goos string, goarch string) (ReleaseBinaryAsset, bool) {
 	if s.ReleaseBinary == nil || len(s.ReleaseBinary.Assets) == 0 {
 		return ReleaseBinaryAsset{}, false
@@ -132,6 +150,9 @@ func validateInstallerSpec(spec InstallerSpec) error {
 		}
 		if strings.TrimSpace(spec.ScriptShell) == "" {
 			return fmt.Errorf("official script shell is required")
+		}
+		if spec.WindowsFallback == providerregistry.InstallerWindowsFallbackPowerShell && strings.TrimSpace(spec.WindowsPowerShellCommand) == "" {
+			return fmt.Errorf("windows PowerShell installer command is required")
 		}
 	case InstallerKindGitHubReleaseBinary:
 		if spec.ReleaseBinary == nil {

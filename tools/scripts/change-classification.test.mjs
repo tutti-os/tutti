@@ -87,6 +87,19 @@ test("workflow and hook changes select repository tool contracts", () => {
   }
 });
 
+test("Go CI and shared selector changes select Go validation", () => {
+  for (const file of [
+    ".github/workflows/pr-checks.yml",
+    "tools/scripts/run-changed-go-validation.mjs",
+    "tools/scripts/run-check-changed-targets.mjs"
+  ]) {
+    const classification = classifyChangedFiles([file], {
+      releasePackages
+    });
+    assert.equal(classification.runGo, true, file);
+  }
+});
+
 test("Agent Session Replay changes select the current-build closed loop", () => {
   for (const file of [
     "packages/agent/session-replay/cassette.go",

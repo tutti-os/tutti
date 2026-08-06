@@ -24,16 +24,21 @@ export interface SessionCancelState {
   expiryId: string | null;
   requestedSessionVersion: number | null;
   requestedWorkspaceId: string | null;
+  targetClientSubmitId: string | null;
   turnId: string | null;
   status: SessionCancelStatus;
 }
 
 export interface SessionOperationState {
   runtimeAvailability: SessionRuntimeAvailability;
+  runtimeActivity: SessionRuntimeActivity;
+  runtimeActivityOccurredAtUnixMs: number;
   cancel: SessionCancelState;
   operationError: string | null;
   settingsUpdate: SessionSettingsUpdateState;
 }
+
+export type SessionRuntimeActivity = "idle" | "running";
 
 /**
  * Host-projected, session-scoped availability for commands that must reach the
@@ -216,6 +221,7 @@ export interface SessionCancelRequestedIntent {
   agentSessionId: string;
   commandId: string;
   awaitingTurnExpiresAtUnixMs: number;
+  clientSubmitId?: string;
   timeoutMs?: number;
   workspaceId: string;
 }
@@ -225,6 +231,7 @@ export interface SessionStopRequestedIntent {
   agentSessionId: string;
   commandId: string;
   awaitingTurnExpiresAtUnixMs: number;
+  clientSubmitId?: string;
   timeoutMs?: number;
   workspaceId: string;
 }
@@ -274,6 +281,14 @@ export interface SessionRuntimeAvailabilityChangedIntent {
   availability: SessionRuntimeAvailability;
 }
 
+export interface SessionRuntimeActivityChangedIntent {
+  type: "session/runtimeActivityChanged";
+  agentSessionId: string;
+  state: SessionRuntimeActivity;
+  /** Zero clears the disconnected transport's transient observation and fence. */
+  occurredAtUnixMs: number;
+}
+
 export type SessionLifecycleIntent =
   | InteractionUpsertedIntent
   | InteractionResponseRequestedIntent
@@ -284,6 +299,7 @@ export type SessionLifecycleIntent =
   | SessionHistoryAuthoritativeSnapshotReceivedIntent
   | SessionMetadataPatchedIntent
   | SessionRemovedIntent
+  | SessionRuntimeActivityChangedIntent
   | SessionRuntimeAvailabilityChangedIntent
   | SessionSettingsActivationRequestedIntent
   | SessionSettingsPreconditionRequestedIntent

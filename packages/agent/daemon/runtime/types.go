@@ -106,6 +106,9 @@ type ResumeInput struct {
 type CloseInput struct {
 	RoomID         string
 	AgentSessionID string
+	// PreserveCanonicalState removes the live runtime without emitting a
+	// session_completed event over an already-durable terminal state.
+	PreserveCanonicalState bool
 }
 
 // SessionForkCapabilities reports provider-native fork boundaries supported by
@@ -331,6 +334,7 @@ type UpdateSettingsInput struct {
 }
 
 type SessionSettings struct {
+	CodexSaverMode         bool   `json:"codexSaverMode,omitempty"`
 	Model                  string `json:"model,omitempty"`
 	ReasoningEffort        string `json:"reasoningEffort,omitempty"`
 	Speed                  string `json:"speed,omitempty"`
@@ -395,6 +399,13 @@ type Session struct {
 	// InitialTitleEstablished prevents a first-submit title candidate from
 	// overwriting a title established concurrently in this runtime.
 	InitialTitleEstablished bool `json:"-"`
+	// UserTitleSet records that the title was explicitly set by the user through
+	// SetTitle. It is runtime-only (never persisted): once set, provider/event
+	// title candidates are no longer applied, so a late provider title cannot
+	// revert a user rename. On resume the value fails closed to the established
+	// title so a restarted runtime never lets a provider title clobber a
+	// persisted user title.
+	UserTitleSet bool `json:"-"`
 }
 
 type SessionInteractivePrompt struct {

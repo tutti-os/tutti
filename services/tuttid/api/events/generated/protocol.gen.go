@@ -6,7 +6,7 @@ import "encoding/json"
 
 const (
 	BusinessEventProtocolVersion = 1
-	BusinessEventCatalogRevision = "sha256:2e36dcc0d1c65637"
+	BusinessEventCatalogRevision = "sha256:d3cf3b4c5b26811b"
 )
 
 type Topic string
@@ -19,6 +19,7 @@ const (
 	TopicAgentModelConfigurationChanged                 Topic = "agent.model.configuration.changed"
 	TopicAgentQuickpromptUpdated                        Topic = "agent.quickprompt.updated"
 	TopicAnalyticsDebugReported                         Topic = "analytics.debug.reported"
+	TopicConnectorMarketChanged                         Topic = "connector.market.changed"
 	TopicPreferencesAgentComposerDefaultsChanged        Topic = "preferences.agent.composer.defaults.changed"
 	TopicPreferencesAgentComposerDefaultsPatchRequested Topic = "preferences.agent.composer.defaults.patch.requested"
 	TopicPreferencesDesktopUpdateRequested              Topic = "preferences.desktop.update.requested"
@@ -209,6 +210,7 @@ type WorkspaceWorkspaceApp struct {
 	LaunchUrl       *string  `json:"launchUrl"`
 	Port            *int     `json:"port"`
 	FailureReason   *string  `json:"failureReason"`
+	FailurePhase    *string  `json:"failurePhase,omitempty"`
 	LastError       *string  `json:"lastError"`
 	StartedAtUnixMs *int64   `json:"startedAtUnixMs"`
 	UpdatedAtUnixMs *int64   `json:"updatedAtUnixMs"`
@@ -292,6 +294,12 @@ type AnalyticsDebugReportedPayload struct {
 	} `json:"events"`
 }
 
+type ConnectorMarketChangedPayload struct {
+	ConnectorKey *string `json:"connectorKey,omitempty"`
+	OperationId  *string `json:"operationId,omitempty"`
+	Revision     int     `json:"revision"`
+}
+
 type PreferencesAgentComposerDefaultsChangedPayload struct {
 	AgentTargetId string `json:"agentTargetId"`
 }
@@ -299,6 +307,7 @@ type PreferencesAgentComposerDefaultsChangedPayload struct {
 type PreferencesAgentComposerDefaultsPatchRequestedPayload struct {
 	AgentTargetId string `json:"agentTargetId"`
 	Patch         struct {
+		CodexSaverMode   *bool   `json:"codexSaverMode,omitempty"`
 		Model            *string `json:"model,omitempty"`
 		PermissionModeId *string `json:"permissionModeId,omitempty"`
 		ReasoningEffort  *string `json:"reasoningEffort,omitempty"`
@@ -422,6 +431,15 @@ type AnalyticsDebugReportedEvent struct {
 	EmittedAt string                        `json:"emittedAt"`
 	Scope     *EventScope                   `json:"scope,omitempty"`
 	Payload   AnalyticsDebugReportedPayload `json:"payload"`
+}
+
+type ConnectorMarketChangedEvent struct {
+	ID        string                        `json:"id"`
+	Topic     Topic                         `json:"topic"`
+	Version   int                           `json:"version"`
+	EmittedAt string                        `json:"emittedAt"`
+	Scope     *EventScope                   `json:"scope,omitempty"`
+	Payload   ConnectorMarketChangedPayload `json:"payload"`
 }
 
 type PreferencesAgentComposerDefaultsChangedEvent struct {
@@ -632,6 +650,13 @@ var BusinessEventDefinitions = []EventDefinition{
 		Scope:     ScopeNameDesktop,
 	},
 	{
+		Topic:     TopicConnectorMarketChanged,
+		Version:   1,
+		Direction: DirectionServerToClient,
+		Owner:     "core",
+		Scope:     ScopeNameGlobal,
+	},
+	{
 		Topic:     TopicPreferencesAgentComposerDefaultsChanged,
 		Version:   1,
 		Direction: DirectionServerToClient,
@@ -718,17 +743,18 @@ var businessEventDefinitionByTopic = map[Topic]EventDefinition{
 	TopicAgentModelConfigurationChanged:                 BusinessEventDefinitions[4],
 	TopicAgentQuickpromptUpdated:                        BusinessEventDefinitions[5],
 	TopicAnalyticsDebugReported:                         BusinessEventDefinitions[6],
-	TopicPreferencesAgentComposerDefaultsChanged:        BusinessEventDefinitions[7],
-	TopicPreferencesAgentComposerDefaultsPatchRequested: BusinessEventDefinitions[8],
-	TopicPreferencesDesktopUpdateRequested:              BusinessEventDefinitions[9],
-	TopicPreferencesDesktopUpdated:                      BusinessEventDefinitions[10],
-	TopicUserProjectUpdated:                             BusinessEventDefinitions[11],
-	TopicWorkspaceAppUpdated:                            BusinessEventDefinitions[12],
-	TopicWorkspaceAppfactoryJobUpdated:                  BusinessEventDefinitions[13],
-	TopicWorkspaceIssueUpdated:                          BusinessEventDefinitions[14],
-	TopicWorkspaceTuttimodeUpdated:                      BusinessEventDefinitions[15],
-	TopicWorkspaceWorkbenchNodeLaunchRequested:          BusinessEventDefinitions[16],
-	TopicWorkspaceWorkflowUpdated:                       BusinessEventDefinitions[17],
+	TopicConnectorMarketChanged:                         BusinessEventDefinitions[7],
+	TopicPreferencesAgentComposerDefaultsChanged:        BusinessEventDefinitions[8],
+	TopicPreferencesAgentComposerDefaultsPatchRequested: BusinessEventDefinitions[9],
+	TopicPreferencesDesktopUpdateRequested:              BusinessEventDefinitions[10],
+	TopicPreferencesDesktopUpdated:                      BusinessEventDefinitions[11],
+	TopicUserProjectUpdated:                             BusinessEventDefinitions[12],
+	TopicWorkspaceAppUpdated:                            BusinessEventDefinitions[13],
+	TopicWorkspaceAppfactoryJobUpdated:                  BusinessEventDefinitions[14],
+	TopicWorkspaceIssueUpdated:                          BusinessEventDefinitions[15],
+	TopicWorkspaceTuttimodeUpdated:                      BusinessEventDefinitions[16],
+	TopicWorkspaceWorkbenchNodeLaunchRequested:          BusinessEventDefinitions[17],
+	TopicWorkspaceWorkflowUpdated:                       BusinessEventDefinitions[18],
 }
 
 var ClientToServerTopics = []Topic{
@@ -744,6 +770,7 @@ var ServerToClientTopics = []Topic{
 	TopicAgentModelConfigurationChanged,
 	TopicAgentQuickpromptUpdated,
 	TopicAnalyticsDebugReported,
+	TopicConnectorMarketChanged,
 	TopicPreferencesAgentComposerDefaultsChanged,
 	TopicPreferencesDesktopUpdated,
 	TopicUserProjectUpdated,
@@ -792,6 +819,8 @@ func IsServerToClientTopic(topic Topic) bool {
 		return true
 	case TopicAnalyticsDebugReported:
 		return true
+	case TopicConnectorMarketChanged:
+		return true
 	case TopicPreferencesAgentComposerDefaultsChanged:
 		return true
 	case TopicPreferencesDesktopUpdated:
@@ -831,6 +860,8 @@ func PayloadPrototypeForTopic(topic Topic) (any, bool) {
 		return &AgentQuickpromptUpdatedPayload{}, true
 	case TopicAnalyticsDebugReported:
 		return &AnalyticsDebugReportedPayload{}, true
+	case TopicConnectorMarketChanged:
+		return &ConnectorMarketChangedPayload{}, true
 	case TopicPreferencesAgentComposerDefaultsChanged:
 		return &PreferencesAgentComposerDefaultsChangedPayload{}, true
 	case TopicPreferencesAgentComposerDefaultsPatchRequested:
@@ -874,6 +905,8 @@ func EventPrototypeForTopic(topic Topic) (any, bool) {
 		return &AgentQuickpromptUpdatedEvent{}, true
 	case TopicAnalyticsDebugReported:
 		return &AnalyticsDebugReportedEvent{}, true
+	case TopicConnectorMarketChanged:
+		return &ConnectorMarketChangedEvent{}, true
 	case TopicPreferencesAgentComposerDefaultsChanged:
 		return &PreferencesAgentComposerDefaultsChangedEvent{}, true
 	case TopicPreferencesAgentComposerDefaultsPatchRequested:

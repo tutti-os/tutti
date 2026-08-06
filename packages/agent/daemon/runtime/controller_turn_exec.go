@@ -140,8 +140,13 @@ func (c *Controller) runProviderAcceptanceTurn(
 			))
 		}
 		if !reported && reportDispatch != nil {
+			// Durable submit already happened. Cancel may settle the adapter
+			// (turn_canceled) before Controller cancels runCtx, so err/ctx may
+			// not look canceled yet. Any exit without Applied/Rejected still
+			// means provider Turn identity never bound — report
+			// applied-without-provider-turn so Host does not poison delivery.
 			reportDispatch(ProviderDispatchResult{
-				Disposition: DispatchDispositionOutcomeUnknown,
+				Disposition: DispatchDispositionAppliedWithoutProviderTurn,
 			})
 		}
 		return events, err
@@ -211,9 +216,13 @@ func (c *Controller) runBlockingExecTurn(
 			session.UpdatedAtUnixMS = unixMS(now())
 		}
 		session = c.preserveCurrentSessionSettings(session)
-		if !c.storeTurnSession(session, turnID) {
+		accepted, ok := c.storeTurnSession(session, turnID)
+		if !ok {
 			return
 		}
+		// Publish and report the accepted snapshot, never the stale exec copy:
+		// the controller's current session is the only accepted state.
+		session = accepted
 		emitted = append(emitted, events...)
 		if !c.isProvisionalSession(session) {
 			c.publish(session, events)
@@ -276,16 +285,16 @@ func (c *Controller) runBlockingExecTurn(
 			// Turn for the durable aggregation path to settle. The direct Turn
 			// failure is authoritative, so release the in-memory active-turn fence
 			// immediately after its event has been reported.
-			c.finishTurn(session, turnID)
+			_, _ = c.finishTurn(session, turnID)
 			return
 		}
 		// Exec returning closes only the provider invocation. The controller's
 		// active root turn remains addressable for guidance/cancel until the
 		// daemon commits and reconciles canonical root settlement.
-		c.storeTurnSession(session, turnID)
+		_, _ = c.storeTurnSession(session, turnID)
 		return
 	}
-	c.finishTurn(session, turnID)
+	_, _ = c.finishTurn(session, turnID)
 }
 
 func (c *Controller) isProvisionalSession(session Session) bool {
@@ -308,16 +317,17 @@ func (c *Controller) runAsyncExecTurn(ctx context.Context, session Session, adap
 	var mu sync.Mutex
 	finished := false
 	var emittedSummary agentSubmitRuntimeEventSummary
-	finish := func(next Session) bool {
+	finish := func(next Session) (Session, bool) {
 		if finished {
-			return false
+			return Session{}, false
 		}
 		finished = true
-		if !c.finishTurn(next, turnID) {
-			return false
+		accepted, ok := c.finishTurn(next, turnID)
+		if !ok {
+			return Session{}, false
 		}
-		emittedSummary.log("runtime.async_events_emitted.summary", next, turnID, metadata)
-		return true
+		emittedSummary.log("runtime.async_events_emitted.summary", accepted, turnID, metadata)
+		return accepted, true
 	}
 	emit := func(events []activityshared.Event) {
 		if len(events) == 0 {
@@ -337,18 +347,24 @@ func (c *Controller) runAsyncExecTurn(ctx context.Context, session Session, adap
 		terminal := turnHasTerminalEvent(events, turnID) ||
 			turnLifecycleSnapshotSettledTurn(events, turnID) ||
 			turnSteeredIntoActiveTurn(events, turnID)
+		var accepted Session
+		var ok bool
 		if terminal {
 			// Remove the controller's active-turn record before publishing a
 			// terminal/ready session. Consumers must never observe a ready session
 			// while HasActiveTurn still reports the finished turn.
 			emittedSummary.observe(events, session)
-			if !finish(session) {
-				return
-			}
+			accepted, ok = finish(session)
 		} else {
-			if !c.storeTurnSession(session, turnID) {
-				return
-			}
+			accepted, ok = c.storeTurnSession(session, turnID)
+		}
+		if !ok {
+			return
+		}
+		// Publish and report the accepted snapshot, never the stale exec copy:
+		// the controller's current session is the only accepted state.
+		session = accepted
+		if !terminal {
 			emittedSummary.observe(events, session)
 		}
 		c.publish(session, events)

@@ -157,8 +157,9 @@ func (a agentRuntimeAdapter) CanResume(input agentservice.RuntimeResumeInput) bo
 
 func (a agentRuntimeAdapter) Close(ctx context.Context, input agentservice.RuntimeCloseInput) error {
 	if _, err := a.controller.Close(ctx, agentruntime.CloseInput{
-		RoomID:         input.WorkspaceID,
-		AgentSessionID: input.AgentSessionID,
+		RoomID:                 input.WorkspaceID,
+		AgentSessionID:         input.AgentSessionID,
+		PreserveCanonicalState: input.PreserveCanonicalState,
 	}); err != nil {
 		return mapAgentRuntimeError(err)
 	}
@@ -666,6 +667,12 @@ func mapAgentRuntimeError(err error) error {
 	}
 	if errors.Is(err, agentruntime.ErrActiveTurnGuidanceUnsupported) {
 		return agentservice.ErrActiveTurnGuidanceUnsupported
+	}
+	if errors.Is(err, agentruntime.ErrActiveTurnTargetRequired) {
+		return agentservice.ErrActiveTurnTargetRequired
+	}
+	if errors.Is(err, agentruntime.ErrActiveTurnTargetMismatch) {
+		return agentservice.ErrActiveTurnTargetMismatch
 	}
 	if errors.Is(err, agentruntime.ErrSessionSettingsRequireNewSession) {
 		return agentservice.ErrSessionSettingsRequireNewSession

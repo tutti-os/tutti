@@ -49,7 +49,7 @@ func TestCodexAppServerForkCapabilitiesRequireExactSupportedRuntime(t *testing.T
 	t.Run("supported tutti agent", func(t *testing.T) {
 		transport := &multiProcAppServerTransport{}
 		transport.setConfigure(func(server *fakeCodexAppServer) {
-			server.userAgent = "tutti_agent/0.0.10"
+			server.userAgent = tuttiAgentForkUserAgent()
 		})
 		adapter := NewTuttiAgentAppServerAdapterWithHostMetadata(
 			transport,
@@ -132,7 +132,7 @@ func TestTuttiAgentAppServerForkCapabilitiesUsePersistedRuntimeAttestation(
 	source.Provider = ProviderTuttiAgent
 	source.ProviderSessionID = "codex-thread-1"
 	source.RuntimeContext = map[string]any{
-		"agent": map[string]any{"userAgent": "tutti_agent/0.0.10"},
+		"agent": map[string]any{"userAgent": tuttiAgentForkUserAgent()},
 	}
 
 	capabilities, err := adapter.ForkCapabilities(t.Context(), source)
@@ -229,7 +229,7 @@ func TestCodexAppServerForkThroughProviderTurn(t *testing.T) {
 func TestTuttiAgentAppServerForkThroughProviderTurn(t *testing.T) {
 	transport := &multiProcAppServerTransport{}
 	transport.setConfigure(func(server *fakeCodexAppServer) {
-		server.userAgent = "tutti_agent/0.0.10"
+		server.userAgent = tuttiAgentForkUserAgent()
 		server.threadReadTurnIDs = []string{
 			"provider-turn-1",
 			"provider-turn-2",
@@ -634,9 +634,9 @@ func TestTuttiAgentAppServerUserAgentVersionGate(t *testing.T) {
 		userAgent string
 		want      bool
 	}{
-		{userAgent: "tutti_agent/0.0.10", want: true},
+		{userAgent: tuttiAgentForkUserAgent(), want: true},
 		{
-			userAgent: "tutti_agent/0.0.10 (Mac OS 26.5.0; arm64) dumb",
+			userAgent: tuttiAgentForkUserAgent() + " (Mac OS 26.5.0; arm64) dumb",
 			want:      true,
 		},
 		{userAgent: "tutti-agent/0.0.9", want: false},

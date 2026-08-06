@@ -51,7 +51,7 @@ func TestRuntimeVersionProbeErrorClassifiesTimeoutAndCancellation(t *testing.T) 
 			errors.New("signal: killed"),
 		)
 		if !errors.Is(err, context.DeadlineExceeded) ||
-			!strings.Contains(err.Error(), "runtime version probe timed out after 30s") {
+			!strings.Contains(err.Error(), "runtime version probe timed out after 1m30s") {
 			t.Fatalf("runtimeVersionProbeError() = %v", err)
 		}
 	})

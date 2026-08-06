@@ -115,7 +115,7 @@ func TestSQLiteWorkspaceStoreInitializesCanonicalRuntimeSession(t *testing.T) {
 			Version:     1,
 			Kind:        agenthost.RailPlacementKindProject,
 			ProjectPath: "/workspace/app",
-			SectionKey:  "project:workspace-1:/workspace/app",
+			SectionKey:  "project:/workspace/app",
 		},
 	})
 	if err != nil {
@@ -127,8 +127,9 @@ func TestSQLiteWorkspaceStoreInitializesCanonicalRuntimeSession(t *testing.T) {
 	if persisted.LastEventUnixMS != 1234 || persisted.Settings["reasoningEffort"] != "ultra" || persisted.Settings["speed"] != "standard" {
 		t.Fatalf("persisted canonical fields = %#v", persisted)
 	}
-	if persisted.RailSectionKey != "project:workspace-1:/workspace/app" {
-		t.Fatalf("persisted rail section key = %q", persisted.RailSectionKey)
+	wantRailKey := storesqlite.RailSectionKeyForProject("/workspace/app")
+	if persisted.RailSectionKey != wantRailKey {
+		t.Fatalf("persisted rail section key = %q, want %q", persisted.RailSectionKey, wantRailKey)
 	}
 	if persisted.Metadata.Visible {
 		t.Fatalf("provisional session visibility = true, want false")

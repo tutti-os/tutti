@@ -1,12 +1,9 @@
 import { Fragment, memo, useEffect, useMemo, useRef, useState } from "react";
 import { Button as SystemButton } from "@tutti-os/ui-system";
 import { ScrollArea } from "@tutti-os/ui-system/components";
-import { CreateChatIcon } from "@tutti-os/ui-system/icons";
-import { Button } from "../../../app/renderer/components/ui/button";
 import type { UiLanguage } from "../../../contexts/settings/domain/agentSettings";
 import type { WorkspaceLinkAction } from "../../../actions/workspaceLinkActions";
 import type { WorkspaceUserProjectI18nRuntime } from "@tutti-os/workspace-user-project/i18n";
-import { TaskSearchField } from "../../RoomIssueNode/TaskSearchField";
 import { AgentConversationListSkeleton } from "../AgentConversationListSkeleton";
 import type { AgentGUINodeViewModel } from "../model/agentGuiNodeTypes";
 import { matchesAgentGUIConversationSummaryFilter } from "../model/agentGuiConversationFilter";
@@ -31,6 +28,8 @@ import { agentGUIConversationRailViewScopeKey } from "../model/agentGuiConversat
 import type { useAgentGUIConversationRailQuery } from "../controller/useAgentGUIConversationRailQuery";
 import { useAgentGUIProjectDrag } from "../controller/useAgentGUIProjectDrag";
 import { AgentGUIConversationRailSection } from "./AgentGUIConversationRailSection";
+import { AgentGUIConversationActivityView } from "./AgentGUIConversationActivityView";
+import { AgentGUIConversationRailToolbar } from "./AgentGUIConversationRailToolbar";
 import { AgentGUIConversationRailSectionPresentationProvider } from "./agentGUIConversationRailSectionPresentationContext";
 import { AgentGUIProjectActionConfirmationDialog } from "./AgentGUIProjectActionConfirmationDialog";
 import { AgentGUIProjectRailHeader } from "./AgentGUIConversationRailItem";
@@ -44,22 +43,11 @@ import type { AgentGUIConversationRailLabels } from "./agentGUIConversationRailL
 import styles from "../AgentGUINode.styles";
 import { useAgentGUIConversationRailViewState } from "./useAgentGUIConversationRailViewState";
 import { useAgentGUIProjectMenuState } from "./useAgentGUIProjectMenuState";
-
-function useDelayedBoolean(value: boolean, delayMs: number): boolean {
-  const [delayedValue, setDelayedValue] = useState(false);
-  useEffect(() => {
-    if (!value) {
-      setDelayedValue(false);
-      return;
-    }
-    // timing: caller-provided debounce before reflecting the value as true
-    const timer = window.setTimeout(() => setDelayedValue(true), delayMs);
-    return () => window.clearTimeout(timer);
-  }, [delayMs, value]);
-  return delayedValue;
-}
+import { useAgentGUIConversationActivityView } from "../controller/useAgentGUIConversationActivityView";
+import { useDelayedBoolean } from "../controller/useDelayedBoolean";
 
 export interface AgentGUIConversationRailControllerProps {
+  activityContextKey?: string;
   conversations: AgentGUINodeViewModel["rail"]["conversations"];
   nodeId?: string | null;
   footer?: React.ReactNode;
@@ -81,7 +69,6 @@ export interface AgentGUIConversationRailControllerProps {
   agentTargets: AgentGUINodeViewModel["rail"]["agentTargets"];
   agentTargetsLoading: AgentGUINodeViewModel["rail"]["agentTargetsLoading"];
   conversationFilter: AgentGUINodeViewModel["rail"]["conversationFilter"];
-  sectionAgentTargetFallbackId: string | null;
   /**
    * Lets the host subtree observe the rail query controller's interaction
    * lock (e.g. so header-dispatched session actions honor the same lock).
@@ -158,6 +145,7 @@ export type AgentGUIConversationRailState = Omit<
 
 export const AgentGUIConversationRailPane = memo(
   function AgentGUIConversationRailPane({
+    activityContextKey = "",
     conversations,
     footer,
     workspaceId,
@@ -176,7 +164,6 @@ export const AgentGUIConversationRailPane = memo(
     createConversationDisabled,
     isCollapsed,
     conversationFilter,
-    sectionAgentTargetFallbackId,
     conversationQuery,
     railQuery,
     onCreateConversation,
@@ -238,6 +225,17 @@ export const AgentGUIConversationRailPane = memo(
     }
     const railConversationEntities = [...railConversationEntitiesById.values()];
     const hasConversationQuery = conversationQuery.trim().length > 0;
+    const railViewScopeKey = agentGUIConversationRailViewScopeKey({
+      conversationFilter,
+      workspaceId
+    });
+    const activityView = useAgentGUIConversationActivityView({
+      conversations,
+      hasConversationQuery,
+      identityKey: `${workspaceId}\u0000${activityContextKey}`,
+      rootFacts: railQuery.activityRootFacts,
+      scopeKey: railViewScopeKey
+    });
     const backendSearchActive = hasConversationQuery && railSearch.enabled;
     const railInteractionsLocked = isInteractionLocked();
     const projectDragBaseLocked =
@@ -419,11 +417,6 @@ export const AgentGUIConversationRailPane = memo(
             isConversationRailProjectPinned(section.project)
           )
       );
-    const railViewScopeKey = agentGUIConversationRailViewScopeKey({
-      conversationFilter,
-      sectionAgentTargetFallbackId,
-      workspaceId
-    });
     const groupedConversationIdentityKey = useMemo(
       () =>
         `${groupedConversations
@@ -437,7 +430,7 @@ export const AgentGUIConversationRailPane = memo(
     const sectionAgentTargetId =
       conversationFilter.kind === "agentTarget"
         ? conversationFilter.agentTargetId.trim()
-        : (sectionAgentTargetFallbackId?.trim() ?? "");
+        : "";
     const requestSectionBatchDeletion = useStableEventCallback(
       (section: ConversationSection) => {
         if (
@@ -527,26 +520,14 @@ export const AgentGUIConversationRailPane = memo(
         className={styles.rail}
         aria-hidden={isCollapsed ? "true" : undefined}
       >
-        <div className={styles.railToolbar}>
-          <TaskSearchField
-            value={conversationQuery}
-            placeholder={labels.searchPlaceholder}
-            onChange={onConversationQueryChange}
-          />
-          <Button
-            type="button"
-            variant="secondary"
-            size="dialog"
-            className={styles.newConversationIconButton}
-            data-testid="agent-gui-new-conversation"
-            title={labels.newConversation}
-            disabled={createConversationDisabled}
-            onClick={() => onCreateConversation()}
-          >
-            <CreateChatIcon aria-hidden="true" />
-            <span>{labels.newConversation}</span>
-          </Button>
-        </div>
+        <AgentGUIConversationRailToolbar
+          activityView={activityView}
+          conversationQuery={conversationQuery}
+          createConversationDisabled={createConversationDisabled}
+          labels={labels}
+          onConversationQueryChange={onConversationQueryChange}
+          onCreateConversation={() => onCreateConversation()}
+        />
         <ScrollArea
           scrollbarMode="native"
           className="min-h-0 flex-1 [&_[data-orientation=vertical][data-slot=scroll-area-scrollbar]]:opacity-100"
@@ -557,7 +538,30 @@ export const AgentGUIConversationRailPane = memo(
             onDrop: dropProject
           }}
         >
-          {shouldShowConversationSkeleton ? (
+          {activityView.presentationActive && activityView.projection ? (
+            <AgentGUIConversationActivityView
+              activeConversationId={activeConversationId}
+              conversationsById={activityView.conversationsById}
+              isDeletingConversation={isDeletingConversation}
+              isRailInteractionLocked={isInteractionLocked}
+              labels={labels}
+              pendingDeleteConversationId={pendingDeleteConversationId}
+              projection={activityView.projection}
+              registerItemElement={
+                railViewState.registerConversationItemElement
+              }
+              uiLanguage={uiLanguage}
+              workspaceId={workspaceId}
+              onCancelDeleteConversation={onCancelDeleteConversation}
+              onConfirmDeleteConversation={onConfirmDeleteConversation}
+              onMarkConversationUnread={onMarkConversationUnread}
+              onOpenConversationWindow={onOpenConversationWindow}
+              onRequestDeleteConversation={onRequestDeleteConversation}
+              onRequestRenameConversation={onRequestRenameConversation}
+              onSelectConversation={onSelectConversation}
+              onToggleConversationPinned={onToggleConversationPinned}
+            />
+          ) : shouldShowConversationSkeleton ? (
             <AgentConversationListSkeleton
               label={labels.loadingConversations}
             />

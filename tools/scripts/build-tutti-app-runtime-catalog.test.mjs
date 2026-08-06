@@ -108,6 +108,9 @@ test("Tutti app runtime workflow publishes immutable artifacts and mutable catal
   assert.match(workflow, /workflow_dispatch:/);
   assert.match(workflow, /config\/tutti\.app-runtime\.lock\.json/);
   assert.match(workflow, /uv python install --no-bin "\$\{PYTHON_VERSION\}"/);
+  assert.match(workflow, /python-\$env:PYTHON_VERSION-windows\.tar\.gz/);
+  assert.match(workflow, /PYTHON_WINDOWS_ARCHIVE_SHA256/);
+  assert.match(workflow, /tar -xzf \$archivePath/);
   assert.match(workflow, /SHASUMS256\.txt/);
   assert.match(
     workflow,
@@ -125,6 +128,7 @@ test("Tutti app runtime workflow publishes immutable artifacts and mutable catal
   assert.match(workflow, /corepack\/dist\/corepack\.js/);
   assert.match(workflow, /\$\{node_staging\}\/node\/bin\/npm" --version/);
   assert.match(workflow, /"node-static": \["node"\]/);
+  assert.match(workflow, /baseline = @\('python', 'node'\)/);
   assert.match(workflow, /\$\{node_staging\}\/node\/bin\/npx" --version/);
   assert.match(workflow, /\$\{node_staging\}\/node\/bin\/corepack" --version/);
   assert.match(workflow, /path: downloaded-tutti-app-runtime/);

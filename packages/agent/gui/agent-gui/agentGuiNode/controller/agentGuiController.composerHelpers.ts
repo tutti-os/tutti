@@ -226,22 +226,32 @@ export function providerSkillsFromComposerOptions(
         : {})
     })),
     ...(options.capabilityCatalog ?? [])
-      .filter(
-        (capability) =>
+      .filter((capability) => {
+        if (capability.kind === "connector") {
+          return (
+            capability.invocation !== "none" && Boolean(capability.trigger)
+          );
+        }
+        return (
+          capability.kind === "skill" &&
           capability.invocation === "promptItem" &&
-          (capability.kind === "skill" || capability.kind === "connector") &&
           capability.status === "available" &&
           Boolean(capability.trigger) &&
           Boolean(capability.path)
-      )
+        );
+      })
       .map((capability): AgentGUIProviderSkillOption => {
         const isConnector = capability.kind === "connector";
         return {
           name: isConnector ? capability.label : capability.name,
           trigger: capability.trigger!,
-          invocation: "promptItem",
+          invocation:
+            capability.invocation === "textTrigger"
+              ? "textTrigger"
+              : "promptItem",
           sourceKind: isConnector ? "connector" : "plugin",
           kind: isConnector ? "connector" : "skill",
+          ...(isConnector ? { status: capability.status } : {}),
           ...(capability.description
             ? { description: capability.description }
             : {}),
@@ -266,7 +276,8 @@ export function areProviderSkillOptionsEqual(
     left.description === right.description &&
     left.pluginName === right.pluginName &&
     left.path === right.path &&
-    left.kind === right.kind
+    left.kind === right.kind &&
+    left.status === right.status
   );
 }
 
@@ -402,6 +413,7 @@ export function sameComposerSettings(
   right: AgentSessionComposerSettings | null
 ): boolean {
   return (
+    left?.codexSaverMode === right?.codexSaverMode &&
     (left?.model ?? null) === (right?.model ?? null) &&
     (left?.reasoningEffort ?? null) === (right?.reasoningEffort ?? null) &&
     (left?.speed ?? null) === (right?.speed ?? null) &&
@@ -423,6 +435,7 @@ export function buildNodeDefaultComposerSettings(
   // (normalizeComposerSettingsForProvider and the session create path).
   const composerOverrides = nodeComposerOverridesForProvider(data) ?? {};
   return {
+    codexSaverMode: composerOverrides.codexSaverMode === true,
     model: normalizeOptionalText(composerOverrides.model),
     reasoningEffort:
       (normalizeOptionalText(
@@ -479,6 +492,7 @@ export function nodeDataFromComposerSettings(
 ): AgentGUINodeData {
   // Generic cleanup only — provider-level clamping is owned by the daemon.
   const composerOverrides = {
+    codexSaverMode: settings.codexSaverMode === true,
     model: normalizeOptionalText(settings.model),
     reasoningEffort: normalizeOptionalText(settings.reasoningEffort),
     speed: normalizeOptionalText(settings.speed),

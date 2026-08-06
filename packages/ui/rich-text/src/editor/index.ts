@@ -1,5 +1,6 @@
 export {
   RichTextTriggerEditor,
+  type RichTextTriggerEditorPaletteOptions,
   type RichTextTriggerEditorProps
 } from "./RichTextTriggerEditor.tsx";
 export {

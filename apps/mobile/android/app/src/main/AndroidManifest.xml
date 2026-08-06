@@ -48,5 +48,11 @@
         />
       </intent-filter>
     </activity>
+    <activity
+      android:name=".PairingCaptureActivity"
+      android:screenOrientation="unspecified"
+      android:stateNotNeeded="true"
+      android:theme="@style/zxing_CaptureTheme"
+      android:windowSoftInputMode="stateAlwaysHidden" />
   </application>
 </manifest>

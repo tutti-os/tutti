@@ -60,6 +60,26 @@ test("reuses expensive projections when unrelated engine slices change", () => {
   );
 });
 
+test("reuses the legacy Session array when only runtime activity changes", () => {
+  const project = createAgentActivitySnapshotProjector("workspace-1");
+  const populatedState = rootEngineReducer(
+    createInitialAgentSessionEngineState(),
+    {
+      type: "session/snapshotReceived",
+      sessions: [session()]
+    }
+  ).state;
+  const populated = project(populatedState);
+  const runtimeState = rootEngineReducer(populatedState, {
+    type: "session/runtimeActivityChanged",
+    agentSessionId: "session-1",
+    state: "running",
+    occurredAtUnixMs: 30
+  }).state;
+
+  assert.equal(project(runtimeState).sessions, populated.sessions);
+});
+
 function session(): AgentActivitySession {
   const turn = {
     agentSessionId: "session-1",

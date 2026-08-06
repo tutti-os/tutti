@@ -29,3 +29,29 @@ test("blank host plansDirectory keeps the Claude SDK default", () => {
   assert.equal(settings.plansDirectory, "");
   assert.deepEqual(querySettingsFromSessionSettings(settings), {});
 });
+
+test("query create settings include effortLevel for the next resumed query", () => {
+  assert.deepEqual(
+    querySettingsFromSessionSettings({
+      model: "",
+      permissionModeId: "default",
+      planMode: false,
+      effort: "high",
+      speed: "standard"
+    }),
+    {
+      effortLevel: "high",
+      fastMode: false
+    }
+  );
+  assert.deepEqual(
+    querySettingsFromSessionSettings({
+      model: "",
+      permissionModeId: "default",
+      planMode: false,
+      effort: "",
+      speed: ""
+    }),
+    {}
+  );
+});

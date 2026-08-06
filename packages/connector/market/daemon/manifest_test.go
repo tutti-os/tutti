@@ -2,27 +2,35 @@ package daemon
 
 import (
 	"errors"
+	"strings"
 	"testing"
 )
 
+const testConnectorIconURL = "data:image/png;base64,iVBORw0KGgo="
+
 func TestImplementationRegistryValidatesSupportedManifest(t *testing.T) {
 	registry := NewImplementationRegistry(map[string]ImplementationValidator{
-		"mcp_stdio": func(config map[string]any) error {
-			if config["command"] == "" {
-				return errors.New("command is required")
+		ImplementationKindManagedStdio: func(implementation Implementation) error {
+			if implementation.ManagedStdio == nil {
+				return errors.New("managed stdio is required")
 			}
 			return nil
 		},
 	})
 
 	err := registry.Validate(Manifest{
-		SchemaVersion:     "1",
-		Key:               "github",
-		Version:           "1.0.0",
-		DisplayName:       "GitHub",
-		Permissions:       []string{"repository.read"},
-		Artifact:          testArtifact(),
-		Implementation:    Implementation{Kind: "mcp_stdio", Config: map[string]any{"command": "github-mcp"}},
+		SchemaVersion: "1",
+		DisplayName:   "GitHub",
+		IconURL:       testConnectorIconURL,
+		Permissions:   []string{"repository.read"},
+		Implementation: Implementation{
+			Kind: ImplementationKindManagedStdio,
+			ManagedStdio: &ManagedStdioImplementation{
+				Runtime:                  RuntimeRequirement{Language: "node", Profile: "connector-node-static", ABI: "node20-darwin-arm64"},
+				MCP:                      &ManagedMCPInterface{Entrypoint: "bin/github-mcp.js"},
+				CredentialBrokerProtocol: CredentialBrokerProtocolV1,
+			},
+		},
 		AuthorizationKind: "oauth2",
 	})
 	if err != nil {
@@ -30,23 +38,97 @@ func TestImplementationRegistryValidatesSupportedManifest(t *testing.T) {
 	}
 }
 
+func TestValidateUniquePermissionsAcceptsScopedPermissions(t *testing.T) {
+	permissions := []string{"repository.read", "network:*", "network:larksuite.com", "filesystem:workspace"}
+	if err := validateUniquePermissions(permissions); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestValidateUniquePermissionsRejectsMalformedScopes(t *testing.T) {
+	for _, permission := range []string{"Network:*", "network:", "network:*.example.com", "network:example.com:443", "network:example/com"} {
+		t.Run(permission, func(t *testing.T) {
+			if err := validateUniquePermissions([]string{permission}); err == nil {
+				t.Fatalf("permission %q unexpectedly passed validation", permission)
+			}
+		})
+	}
+}
+
+func TestValidateUniquePermissionsRejectsDuplicates(t *testing.T) {
+	if err := validateUniquePermissions([]string{"network:*", "network:*"}); err == nil {
+		t.Fatal("duplicate permission unexpectedly passed validation")
+	}
+}
+
 func TestImplementationRegistryRejectsUnknownImplementation(t *testing.T) {
 	registry := NewImplementationRegistry(nil)
 	err := registry.Validate(Manifest{
 		SchemaVersion:     "1",
-		Key:               "github",
-		Version:           "1.0.0",
 		DisplayName:       "GitHub",
-		Artifact:          testArtifact(),
-		Implementation:    Implementation{Kind: "unknown"},
+		IconURL:           testConnectorIconURL,
+		Implementation:    Implementation{Kind: "unknown", Builtin: &BuiltinImplementation{ProviderID: "github", MCP: true}},
 		AuthorizationKind: "none",
 	})
 	var domainError *DomainError
 	if !errors.As(err, &domainError) {
 		t.Fatalf("error = %v, want DomainError", err)
 	}
-	if domainError.Code != ErrorCodeUnsupportedImplementation {
+	if domainError.Code != ErrorCodeInvalidManifest {
 		t.Fatalf("code = %q", domainError.Code)
+	}
+}
+
+func TestManagedCLIAllowsTypedNodePackageWithoutActionMappings(t *testing.T) {
+	manifest := Manifest{SchemaVersion: "1", DisplayName: "Lark", IconURL: testConnectorIconURL, AuthorizationKind: "none",
+		Implementation: Implementation{Kind: ImplementationKindManagedStdio, ManagedStdio: &ManagedStdioImplementation{
+			Runtime: RuntimeRequirement{Language: "node", Profile: "connector-node-static", ABI: "node22-darwin-arm64",
+				VersionRange: ">=22.0.0 <23.0.0"},
+			CLI: &ManagedCLIInterface{Entrypoint: "lark-cli", TimeoutMS: 120_000,
+				Install: &CLIInstallation{Kind: "node_package", NodePackage: &NodePackageInstallation{
+					Package: "@larksuite/cli", Version: "1.0.83",
+					Integrity: "sha512-qbJYoJtNch6dV8RvYBO2wpcKO9+6Io3Cuf5alYFzvLbtkSntOKqoc+xHI7p6wRq4oH4F9fydgNJbTGy79ibPdg==",
+					Launch: NodePackageLaunch{Kind: "native", Entrypoint: "bin/lark-cli",
+						SHA256: strings.Repeat("a", 64)},
+					Lifecycle: []NodeLifecycleCommand{{Event: "postinstall", Entrypoint: "scripts/install.js",
+						AllowedExecutables: []string{"curl", "tar"}}},
+				}},
+			},
+		}}}
+	if err := ValidateManifestShape(manifest); err != nil {
+		t.Fatal(err)
+	}
+	if len(manifest.Implementation.ManagedStdio.CLI.Commands) != 0 {
+		t.Fatal("typed CLI install unexpectedly requires command mappings")
+	}
+}
+
+func TestManagedCLIRequiresExplicitNodeVersionAndExactIntegrity(t *testing.T) {
+	manifest := Manifest{
+		SchemaVersion: "1", DisplayName: "Lark", IconURL: testConnectorIconURL, AuthorizationKind: "none",
+		Implementation: Implementation{
+			Kind: ImplementationKindManagedStdio,
+			ManagedStdio: &ManagedStdioImplementation{
+				Runtime: RuntimeRequirement{Language: "node", Profile: "connector-node-static", ABI: "node22-darwin-arm64"},
+				CLI: &ManagedCLIInterface{
+					Entrypoint: "lark-cli", TimeoutMS: 120_000,
+					Install: &CLIInstallation{Kind: "node_package", NodePackage: &NodePackageInstallation{
+						Package: "@larksuite/cli", Version: "1.0.83", Integrity: "sha512-invalid",
+						Launch: NodePackageLaunch{Kind: "native", Entrypoint: "bin/lark-cli",
+							SHA256: strings.Repeat("a", 64)},
+					}},
+				},
+			},
+		},
+	}
+	err := ValidateManifestShape(manifest)
+	if err == nil || !strings.Contains(err.Error(), "versionRange") {
+		t.Fatalf("error = %v, want explicit Node versionRange rejection", err)
+	}
+	manifest.Implementation.ManagedStdio.Runtime.VersionRange = ">=22.0.0 <23.0.0"
+	err = ValidateManifestShape(manifest)
+	if err == nil || !strings.Contains(err.Error(), "sha512") {
+		t.Fatalf("error = %v, want exact integrity rejection", err)
 	}
 }
 
@@ -55,6 +137,7 @@ func testArtifact() Artifact {
 		Key:       "connectors/github/1.0.0.tgz",
 		SHA256:    "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
 		SizeBytes: 1024,
+		MediaType: "application/vnd.tutti.connector+tar+gzip",
 	}
 }
 

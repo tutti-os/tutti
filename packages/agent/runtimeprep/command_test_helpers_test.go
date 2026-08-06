@@ -2,6 +2,7 @@ package runtimeprep
 
 import (
 	"context"
+	"runtime"
 	"testing"
 )
 
@@ -15,6 +16,17 @@ func newTestPreparer(stateDir string) *DefaultPreparer {
 	preparer := NewDefaultPreparer(stateDir)
 	preparer.CommandCatalog = staticCommandCatalog(testCommandCapabilities())
 	return preparer
+}
+
+// setTestHome keeps tests isolated on Windows too. os.UserHomeDir uses
+// USERPROFILE there, so changing HOME alone still points the implementation
+// at the developer's real profile and makes tests read live Codex state.
+func setTestHome(t *testing.T, home string) {
+	t.Helper()
+	t.Setenv("HOME", home)
+	if runtime.GOOS == "windows" {
+		t.Setenv("USERPROFILE", home)
+	}
 }
 
 func testInputWithCommands(t testingT, input PrepareInput) PrepareInput {
@@ -90,6 +102,10 @@ func testCommandCapabilities() []CommandCapability {
 		command("agent-context.agent.respond", []string{"agent", "respond"}, []string{"session-id", "request-id", "value"}, nil),
 		command("agent-context.agent.turn-resources", []string{"agent", "turn-resources"}, []string{"session-id", "turn-id"}, nil),
 		command("agent-context.agent.active-peers", []string{"agent", "active-peers"}, nil, nil),
+		command("connector.available", []string{"connector", "available"}, nil, nil),
+		command("connector.skills", []string{"connector", "skills"}, []string{"connector"}, nil),
+		command("connector.skill.read", []string{"connector", "skill", "read"}, []string{"connector", "skill"}, nil),
+		command("connector.invoke", []string{"connector", "invoke"}, []string{"connector", "capability"}, []string{"input-json"}),
 		command("browser.open", []string{"browser", "open"}, []string{"url"}, nil),
 		command("browser.navigate", []string{"browser", "navigate"}, []string{"url"}, nil),
 		command("browser.snapshot", []string{"browser", "snapshot"}, nil, nil),

@@ -5,6 +5,7 @@ import {
   recordValue
 } from "./normalizer.ts";
 import { ClaudeGoalProjection } from "./goalProjection.ts";
+import { ClaudeGoalTranscript } from "./goalTranscript.ts";
 import type { ClaudeSDKSidecarEventEmitter } from "./protocol.ts";
 import {
   readQueuedTaskNotificationPrompt,
@@ -46,6 +47,11 @@ export class SDKMessageRouter {
   private readonly compaction: CompactionTracker;
   private readonly emit: ClaudeSDKSidecarEventEmitter;
   private readonly goals: ClaudeGoalProjection;
+  private readonly goalTranscript: ClaudeGoalTranscript;
+  private readonly resolveGoalTranscriptPath: (
+    sessionId: string,
+    cwd: string
+  ) => string;
   private readonly emitProviderCheckpointEvent: (
     turnId: string,
     providerTurnId: string,
@@ -54,6 +60,8 @@ export class SDKMessageRouter {
   private readonly ensureProviderTurnAcceptance: (
     phase: ObservableProviderTurnPhase
   ) => Promise<void>;
+  private readonly peekGuidanceInterrupt: () => boolean;
+  private readonly clearGuidanceInterrupt: () => void;
   private contextUsageGeneration = 0;
   private activeRootAssistantError = "";
   private activeRootConnectionRetry = false;
@@ -80,6 +88,13 @@ export class SDKMessageRouter {
     ensureProviderTurnAcceptance: (
       phase: ObservableProviderTurnPhase
     ) => Promise<void>;
+    /**
+     * guide()-initiated interrupt is pending. The next root result should
+     * clear it; an error_during_execution result must not settle the turn.
+     */
+    peekGuidanceInterrupt?: () => boolean;
+    clearGuidanceInterrupt?: () => void;
+    resolveGoalTranscriptPath: (sessionId: string, cwd: string) => string;
   }) {
     this.getProviderSessionId = options.getProviderSessionId;
     this.setProviderSessionId = options.setProviderSessionId;
@@ -95,8 +110,15 @@ export class SDKMessageRouter {
     this.compaction = options.compaction;
     this.emit = options.emit;
     this.goals = new ClaudeGoalProjection(options.turns, options.emit);
+    this.goalTranscript = new ClaudeGoalTranscript((message) => {
+      this.goals.handle(message);
+    });
     this.emitProviderCheckpointEvent = options.emitProviderCheckpoint;
     this.ensureProviderTurnAcceptance = options.ensureProviderTurnAcceptance;
+    this.peekGuidanceInterrupt = options.peekGuidanceInterrupt ?? (() => false);
+    this.clearGuidanceInterrupt =
+      options.clearGuidanceInterrupt ?? (() => undefined);
+    this.resolveGoalTranscriptPath = options.resolveGoalTranscriptPath;
   }
 
   async handle(message: SDKMessage): Promise<void> {
@@ -118,6 +140,15 @@ export class SDKMessageRouter {
     }
 
     const rawMessage = message as unknown as Record<string, unknown>;
+    const systemSubtype =
+      message.type === "system" ? stringValue(rawMessage.subtype) : "";
+    if (
+      !parentToolUseID &&
+      sessionId &&
+      (systemSubtype === "init" || systemSubtype === "compact_boundary")
+    ) {
+      await this.observeRootSession(sessionId, stringValue(rawMessage.cwd));
+    }
     if (this.goals.handle(rawMessage)) {
       return;
     }
@@ -134,7 +165,6 @@ export class SDKMessageRouter {
 
     if (message.type === "system") {
       const raw = message as unknown as Record<string, unknown>;
-      const systemSubtype = stringValue(raw.subtype);
       const sdkErrorStatus =
         typeof raw.error_status === "number" ? raw.error_status : undefined;
       const sdkAssistantError = stringValue(raw.error);
@@ -171,11 +201,18 @@ export class SDKMessageRouter {
       if (
         systemSubtype === "session_state_changed" &&
         stringValue(raw.state) === "idle" &&
-        this.activities.clearBackgroundContinuation()
+        !parentToolUseID
       ) {
-        this.turns.settleActive("turn_completed", {
-          stopReason: "background_agent_idle"
-        });
+        // idle is Claude's final evaluator boundary. Drain the transcript one
+        // last time before deciding that an active Goal has no terminal
+        // verdict; a goal_status written just before idle must win.
+        await this.goalTranscript.drain();
+        this.goals.handleProviderIdle();
+        if (this.activities.clearBackgroundContinuation()) {
+          this.turns.settleActive("turn_completed", {
+            stopReason: "background_agent_idle"
+          });
+        }
       }
       this.projection.handleSystemMessage(raw);
       // session_state_changed is an SDK live-state notification. It can carry
@@ -262,8 +299,48 @@ export class SDKMessageRouter {
     }
 
     if (message.type === "result") {
+      if (!parentToolUseID) {
+        // The local SDK stream drops goal_status attachments. Drain the
+        // provider transcript before settling the root Turn so downstream
+        // Goal state observes the terminal evidence in causal order.
+        await this.goalTranscript.drain();
+      }
       await this.handleResult(message, parentToolUseID);
     }
+  }
+
+  async observeSessionStartHook(input: unknown): Promise<void> {
+    const hookInput = recordValue(input);
+    const agentId = stringValue(hookInput?.agent_id);
+    const transcriptPath = stringValue(hookInput?.transcript_path);
+    // Programmatic hooks also run inside delegated agents. Their transcript
+    // must never retarget the root Session's Goal observer.
+    if (agentId) {
+      return;
+    }
+    if (transcriptPath) {
+      await this.goalTranscript.start(transcriptPath);
+    }
+  }
+
+  async observeRootSession(sessionId: string, cwd: string): Promise<void> {
+    const normalizedSessionId = sessionId.trim();
+    if (!normalizedSessionId) {
+      return;
+    }
+    const transcriptPath = this.resolveGoalTranscriptPath(
+      normalizedSessionId,
+      cwd
+    );
+    await this.goalTranscript.start(transcriptPath);
+  }
+
+  async close(): Promise<void> {
+    await this.goalTranscript.close();
+  }
+
+  trackGoalCommand(action: "set" | "clear", prompt: string): void {
+    this.goals.trackGoalCommand(action, prompt);
   }
 
   private emitLifecycleObservation(
@@ -625,23 +702,39 @@ export class SDKMessageRouter {
       pendingBackgroundContinuation &&
       this.turns.activeTurn?.synthetic !== true;
     if (this.turns.cancelled) {
+      this.clearGuidanceInterrupt();
       this.turns.settleActive("turn_canceled");
       this.turns.clearCancelled();
     } else if (!succeeded) {
-      this.turns.settleActive("turn_failed", {
-        error:
-          result.errors?.[0] ||
-          (result.is_error ? result.result : "") ||
-          assistantError ||
-          "Claude SDK turn failed",
-        ...(assistantError ? { code: assistantError } : {}),
-        ...(typeof result.api_error_status === "number"
-          ? { apiErrorStatus: result.api_error_status }
-          : {}),
-        ...(rejectedBeforeAcceptance ? { dispatchDisposition: "rejected" } : {})
-      });
+      // guide() interrupts in-flight tool work before enqueueing steer text.
+      // Claude reports that abort as error_during_execution; settling here
+      // would end the canonical turn and force a synthetic continuation that
+      // record/replay cannot close with turn.terminal (C06).
+      const guidanceInterrupt =
+        this.peekGuidanceInterrupt() &&
+        result.subtype === "error_during_execution";
+      this.clearGuidanceInterrupt();
+      if (!guidanceInterrupt) {
+        this.turns.settleActive("turn_failed", {
+          error:
+            result.errors?.[0] ||
+            (result.is_error ? result.result : "") ||
+            assistantError ||
+            "Claude SDK turn failed",
+          ...(assistantError ? { code: assistantError } : {}),
+          ...(typeof result.api_error_status === "number"
+            ? { apiErrorStatus: result.api_error_status }
+            : {}),
+          ...(rejectedBeforeAcceptance
+            ? { dispatchDisposition: "rejected" }
+            : {})
+        });
+      }
     } else if (!retainRootForBackgroundContinuation) {
+      this.clearGuidanceInterrupt();
       this.turns.settleActive("turn_completed", { stopReason: "end_turn" });
+    } else {
+      this.clearGuidanceInterrupt();
     }
     if (completedSyntheticContinuation) {
       this.activities.clearBackgroundContinuation();

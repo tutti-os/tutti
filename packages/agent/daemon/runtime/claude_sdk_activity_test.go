@@ -31,6 +31,41 @@ func TestClaudeCodeSDKAdapterMapsSessionTitleUpdated(t *testing.T) {
 	}
 }
 
+func TestClaudeCodeSDKAdapterProjectsSDKRuntimeActivityWithoutTurnIdentity(t *testing.T) {
+	adapter := NewClaudeCodeSDKAdapter(nil)
+	adapterSession := &claudeSDKAdapterSession{liveState: newClaudeSDKLiveState()}
+	session := standardTestSession(ProviderClaudeCode)
+
+	for _, state := range []string{"running", "idle"} {
+		events, terminal, err := adapter.sidecarTurnEvents(adapterSession, session, "", claudeSDKSidecarEvent{
+			Type: "sdk_lifecycle_observed",
+			Payload: map[string]any{
+				"sdkMessageType":    "system",
+				"sdkMessageSubtype": "session_state_changed",
+				"state":             state,
+			},
+		})
+		if err != nil || terminal {
+			t.Fatalf("state=%q terminal=%v err=%v", state, terminal, err)
+		}
+		if len(events) != 1 || events[0].Type != activityshared.EventSessionUpdated {
+			t.Fatalf("state=%q events=%#v, want session.updated", state, events)
+		}
+		if got := string(events[0].Payload.RuntimeActivity); got != state {
+			t.Fatalf("state=%q runtime activity=%q", state, got)
+		}
+		if _, persisted := claudeSDKRuntimeContext(session, adapterSession)["runtimeActivityState"]; persisted {
+			t.Fatalf("state=%q leaked into persistent runtime context", state)
+		}
+		report := reportActivityInput(session, events)
+		if len(report.StatePatches) != 1 || report.StatePatches[0].RuntimeActivity == nil ||
+			report.StatePatches[0].RuntimeActivity.State != state ||
+			report.StatePatches[0].RuntimeActivity.OccurredAtUnixMS <= 0 {
+			t.Fatalf("state=%q report runtime activity=%#v", state, report.StatePatches)
+		}
+	}
+}
+
 func TestClaudeCodeSDKAdapterPreservesResolvedModelDescriptor(t *testing.T) {
 	adapterSession := &claudeSDKAdapterSession{
 		liveState: newClaudeSDKLiveState(),

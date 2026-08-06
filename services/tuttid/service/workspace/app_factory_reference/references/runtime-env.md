@@ -6,6 +6,8 @@ Use these environment variables:
 
 - `TUTTI_APP_HOST`: host to bind, normally `127.0.0.1`.
 - `TUTTI_APP_PORT`: port to bind.
+- `TUTTI_PLATFORM`: host artifact key for fat packages, such as
+  `darwin-arm64`, `darwin-amd64`, or `windows-amd64`.
 - `TUTTI_APP_BASE_URL`: local base URL.
 - `TUTTI_APP_ID`: current workspace app id from `tutti.app.json`.
 - `TUTTI_APP_INSTALLATION_ID`: current `<workspace-id>:<app-id>` installation id.
@@ -30,6 +32,12 @@ The host does not copy its complete daemon environment into an app process. It i
 The runner does not inject a workspace filesystem root. Use `TUTTI_WORKSPACE_ID` only as identity metadata and use `TUTTI_CLI` for explicit workspace-scoped capabilities. When a caller supplies an absolute input path, treat it as opaque caller data; do not derive a workspace root or default output location from it. Relative path inputs must be resolved by the caller against its own working directory before invoking the app.
 
 `PATH` includes the managed runtime bin directories, but generated apps must still use the explicit `TUTTI_APP_NODE`, `TUTTI_APP_NPM`, and, when applicable, `TUTTI_APP_PYTHON` variables. Do not rely on system `node`, `npm`, `python`, or `python3` commands.
+
+On Windows, Tutti runs the same LF-terminated `bootstrap.sh` through its managed
+shell adapter. Keep the script POSIX-compatible and use only shell built-ins or
+the documented command subset in
+`docs/conventions/workspace-app-runtime.md`. Do not depend on Git for Windows,
+WSL, or a user-installed Bash.
 
 Read `TUTTI_APP_SERVER_TOKEN` only in the app server process. Never send it to browser code, persist it, or write it to logs. It remains available for non-Agent app-scoped daemon resources. Agent catalog and composer discovery must not use this token, daemon URL, workspace ID, or app ID; call the `@tutti-os/agent-acp-kit/tutti` facade, which owns `TUTTI_CLI` execution.
 

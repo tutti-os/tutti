@@ -5,6 +5,7 @@ import {
   managedAgentRoundedIconUrl,
   type WorkspaceAgentMessageCenterItem
 } from "@tutti-os/agent-gui/agent-message-center";
+import { resolveWorkspaceAgentDecisionIdentity } from "./workspaceAgentDecisionNotificationIdentity.ts";
 
 export interface WorkspaceAgentDecisionSubmitInput {
   action?: string;
@@ -41,9 +42,12 @@ export function buildWorkspaceAgentDecisionNotification(
   if (!prompt) {
     return null;
   }
-  const agentName =
-    formatWorkspaceAgentProviderName(item.provider) || labels.fallbackAgentName;
-  const agentIconUrl = managedAgentRoundedIconUrl(item.provider);
+  const { agentIconUrl, agentName } = resolveWorkspaceAgentDecisionIdentity({
+    agentAvatarUrl: item.agentAvatarUrl,
+    agentName: item.agentName,
+    fallbackAgentIconUrl: managedAgentRoundedIconUrl(undefined),
+    fallbackAgentName: labels.fallbackAgentName
+  });
   const conversationTitle = item.title.trim();
   switch (prompt.kind) {
     case "approval":
@@ -133,13 +137,4 @@ function approvalNotificationDescription(
     return labels.commandLabel;
   }
   return title;
-}
-
-function formatWorkspaceAgentProviderName(provider: string): string {
-  return provider
-    .trim()
-    .split(/[-_\s]+/)
-    .filter(Boolean)
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(" ");
 }

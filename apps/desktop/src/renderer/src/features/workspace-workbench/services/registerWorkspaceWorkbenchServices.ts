@@ -23,7 +23,10 @@ import { createDesktopWorkspaceSettingsClient } from "./internal/adapters/deskto
 import { AccountService } from "./internal/accountService";
 import { MobileRemoteAccessService } from "./internal/mobileRemoteAccessService";
 import { WorkspaceWorkbenchHostService } from "./internal/workspaceWorkbenchHostService";
-import { WorkspaceSettingsService } from "./internal/workspaceSettingsService";
+import {
+  WorkspaceSettingsService,
+  type WorkspaceUiModeChangeErrorInput
+} from "./internal/workspaceSettingsService";
 import { IAccountService } from "./accountService.interface";
 import { IMobileRemoteAccessService } from "./mobileRemoteAccessService.interface";
 import { IWorkbenchHostCoordinator } from "./workbenchHostCoordinator.interface.ts";
@@ -126,6 +129,26 @@ export function registerWorkspaceWorkbenchServices(
           tuttidClient: input.tuttidClient
         }),
         onAgentTargetsChanged: input.onAgentTargetsChanged,
+        onWorkspaceUiModeChangeError({
+          error,
+          mode,
+          previousMode,
+          workspaceId
+        }: WorkspaceUiModeChangeErrorInput) {
+          void input.runtimeApi
+            .logRendererDiagnostic({
+              details: {
+                error: error instanceof Error ? error.message : String(error),
+                mode,
+                previousMode,
+                workspaceId
+              },
+              event: "workspace.settings.ui_mode_change_failed",
+              level: "warn",
+              source: "workspace-settings"
+            })
+            .catch(() => undefined);
+        },
         replaceWorkspaceWindow: input.hostWorkspaceApi.replaceWorkspaceWindow
       }
     ])

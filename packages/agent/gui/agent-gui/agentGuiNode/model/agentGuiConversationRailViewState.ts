@@ -36,13 +36,12 @@ const EMPTY_SCOPED_RAIL_VIEW_STATE: AgentGUIConversationRailScopedViewState = {
 
 export function agentGUIConversationRailViewScopeKey(input: {
   conversationFilter: AgentGUIConversationFilter;
-  sectionAgentTargetFallbackId: string | null;
   workspaceId: string;
 }): string {
   const filterScope =
     input.conversationFilter.kind === "agentTarget"
       ? `agentTarget:${input.conversationFilter.agentTargetId.trim()}`
-      : `all:${input.sectionAgentTargetFallbackId?.trim() ?? ""}`;
+      : "all";
   return `${input.workspaceId.trim()}:${filterScope}`;
 }
 

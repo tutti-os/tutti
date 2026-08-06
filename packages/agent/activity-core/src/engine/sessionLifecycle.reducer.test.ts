@@ -1162,6 +1162,161 @@ test("cancel requested before turn creation waits for a v2 turn entity", () => {
   assert.ok(started.commands.some((command) => command.type === "turn/cancel"));
 });
 
+test("stop for a pending submit waits for that submit instead of the next unrelated turn", () => {
+  let state = reduce(createInitialSessionLifecycleState(), {
+    type: "session/snapshotReceived",
+    sessions: [session(null, 1)]
+  }).state;
+  const waiting = reduce(state, {
+    type: "session/stopRequested",
+    agentSessionId: "session-1",
+    awaitingTurnExpiresAtUnixMs: 30_000,
+    clientSubmitId: "submit-1",
+    commandId: "stop-1",
+    workspaceId: "workspace-1"
+  });
+  assert.equal(
+    waiting.state.operationBySessionId["session-1"]?.cancel
+      .targetClientSubmitId,
+    "submit-1"
+  );
+
+  const unrelated = reduce(waiting.state, {
+    type: "session/upserted",
+    session: session(activeTurn(2), 2)
+  });
+  assert.equal(unrelated.commands.length, 0);
+  assert.equal(
+    unrelated.state.operationBySessionId["session-1"]?.cancel.status,
+    "awaitingTurn"
+  );
+
+  const turn = { ...activeTurn(4), turnId: "turn-2" };
+  const matched = reduce(waiting.state, {
+    commandId: "send-1",
+    commandType: "queue/sendPrompt",
+    correlationId: "submit-1",
+    outcome: "succeeded",
+    type: "engine/commandResult",
+    value: { session: session(turn, 4), turn, turnId: turn.turnId }
+  });
+  assert.deepEqual(matched.commands.at(-1), {
+    agentSessionId: "session-1",
+    commandId: "stop-1",
+    timeoutMs: 30_000,
+    turnId: "turn-2",
+    type: "turn/cancel",
+    workspaceId: "workspace-1"
+  });
+  assert.equal(
+    matched.state.operationBySessionId["session-1"]?.cancel.turnId,
+    "turn-2"
+  );
+});
+
+test("stop for a submit still resolves after send admission times out", () => {
+  let state = reduce(createInitialSessionLifecycleState(), {
+    type: "session/snapshotReceived",
+    sessions: [session(null, 1)]
+  }).state;
+  state = reduce(state, {
+    type: "session/stopRequested",
+    agentSessionId: "session-1",
+    awaitingTurnExpiresAtUnixMs: 30_000,
+    clientSubmitId: "submit-1",
+    commandId: "stop-1",
+    workspaceId: "workspace-1"
+  }).state;
+
+  state = reduce(state, {
+    commandId: "send-1",
+    commandType: "queue/sendPrompt",
+    correlationId: "submit-1",
+    errorCode: "aborted",
+    errorMessage: "admission timed out",
+    outcome: "timedOut",
+    type: "engine/commandResult"
+  }).state;
+
+  const message = reduce(state, {
+    messages: [
+      {
+        agentSessionId: "session-1",
+        kind: "user_prompt",
+        messageId: "message-1",
+        occurredAtUnixMs: 2,
+        payload: { clientSubmitId: "submit-1" },
+        role: "user",
+        turnId: "turn-2",
+        version: 1
+      }
+    ],
+    type: "message/snapshotReceived"
+  });
+  assert.equal(
+    message.state.operationBySessionId["session-1"]?.cancel.turnId,
+    "turn-2"
+  );
+  assert.equal(message.commands.length, 0);
+
+  const turn = { ...activeTurn(4), turnId: "turn-2" };
+  const matched = reduce(message.state, {
+    type: "turn/upserted",
+    turn
+  });
+  assert.deepEqual(matched.commands.at(-1), {
+    agentSessionId: "session-1",
+    commandId: "stop-1",
+    timeoutMs: 30_000,
+    turnId: "turn-2",
+    type: "turn/cancel",
+    workspaceId: "workspace-1"
+  });
+});
+
+test("stop target correlation ignores a message from another workspace", () => {
+  let state = reduce(createInitialSessionLifecycleState(), {
+    type: "session/snapshotReceived",
+    sessions: [session(null, 1)]
+  }).state;
+  state = reduce(state, {
+    type: "session/stopRequested",
+    agentSessionId: "session-1",
+    awaitingTurnExpiresAtUnixMs: 30_000,
+    clientSubmitId: "submit-1",
+    commandId: "stop-1",
+    workspaceId: "workspace-1"
+  }).state;
+
+  const message = {
+    agentSessionId: "session-1",
+    kind: "user_prompt",
+    messageId: "message-1",
+    occurredAtUnixMs: 2,
+    payload: { clientSubmitId: "submit-1" },
+    role: "user",
+    turnId: "turn-2",
+    version: 1
+  };
+  const ignored = reduce(state, {
+    messages: [{ ...message, workspaceId: "workspace-other" }],
+    type: "message/snapshotReceived"
+  });
+  assert.equal(
+    ignored.state.operationBySessionId["session-1"]?.cancel.turnId,
+    null
+  );
+
+  const matched = reduce(ignored.state, {
+    messages: [{ ...message, workspaceId: "workspace-1" }],
+    type: "message/snapshotReceived"
+  });
+  assert.equal(
+    matched.state.operationBySessionId["session-1"]?.cancel.turnId,
+    "turn-2"
+  );
+});
+
 for (const provider of ["cursor", "codex", "claude-code"]) {
   test(`stop requested before ${provider} activation survives snapshots and cancels the first turn`, () => {
     const waiting = reduce(createInitialSessionLifecycleState(), {

@@ -176,9 +176,14 @@ func checkpointKindPriority(kind string) int {
 	// keeps turn.terminal as the primary kind (ValidatePublishedCheckpointPlan).
 	case "turn.terminal", "turn.canceled",
 		"goal.completed", "goal.cleared",
-		"child-session.completed",
-		"compaction.completed", "compaction.canceled":
+		"child-session.completed":
 		return 60
+	// Compaction notices often share the Claude acceptance unit with
+	// root_provider_turn.started (held /compact banners restamped onto the
+	// identity chunk). Keep turn.working as the primary trigger so replay can
+	// match the started observation; compaction stays in tags/readiness.
+	case "compaction.completed", "compaction.canceled":
+		return 8
 	case "interaction.pending", "interaction.superseded":
 		return 50
 	case "plan.waiting":

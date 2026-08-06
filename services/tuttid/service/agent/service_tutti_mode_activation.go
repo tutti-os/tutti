@@ -90,11 +90,14 @@ func (s *Service) prepareTuttiModeExec(ctx context.Context, workspaceID, agentSe
 			return "", tuttimodeactivationbiz.TurnSnapshot{}, err
 		}
 		if expectedTurnID := strings.TrimSpace(canonicalTurnID); expectedTurnID != "" && expectedTurnID != turnID {
-			return "", tuttimodeactivationbiz.TurnSnapshot{}, fmt.Errorf(
-				"%w: active turn changed from %q to %q before guidance dispatch",
+			return "", tuttimodeactivationbiz.TurnSnapshot{}, errors.Join(
 				ErrSubmitRejectedBeforeAcceptance,
-				expectedTurnID,
-				turnID,
+				fmt.Errorf(
+					"%w: active turn changed from %q to %q before guidance dispatch",
+					ErrActiveTurnTargetMismatch,
+					expectedTurnID,
+					turnID,
+				),
 			)
 		}
 		return turnID, snapshot, nil

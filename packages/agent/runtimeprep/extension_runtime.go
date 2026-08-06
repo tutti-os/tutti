@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path"
 	"path/filepath"
 	"regexp"
 	"slices"
@@ -291,11 +292,24 @@ func ValidateExtensionRuntimePrep(prep ExtensionRuntimePrep) error {
 }
 
 func validateExtensionRuntimeRelPath(value string, label string) error {
-	cleaned := filepath.Clean(filepath.FromSlash(strings.TrimSpace(value)))
-	if cleaned == "." || cleaned == "" || filepath.IsAbs(cleaned) || cleaned == ".." || strings.HasPrefix(cleaned, ".."+string(filepath.Separator)) {
+	trimmed := strings.TrimSpace(value)
+	portable := strings.ReplaceAll(trimmed, `\`, "/")
+	cleaned := filepath.Clean(filepath.FromSlash(trimmed))
+	// Runtime descriptors use slash-separated paths, so reject absolute
+	// spellings from both the descriptor syntax and the host OS.
+	if cleaned == "." || cleaned == "" || isPortableAbsolutePath(trimmed, portable) || cleaned == ".." || strings.HasPrefix(cleaned, ".."+string(filepath.Separator)) {
 		return fmt.Errorf("%s must be a safe relative path", label)
 	}
 	return nil
+}
+
+func isPortableAbsolutePath(trimmed, portable string) bool {
+	return filepath.IsAbs(filepath.FromSlash(trimmed)) || path.IsAbs(portable) || portableDrivePath(portable)
+}
+
+func portableDrivePath(value string) bool {
+	return len(value) >= 2 && value[1] == ':' &&
+		((value[0] >= 'a' && value[0] <= 'z') || (value[0] >= 'A' && value[0] <= 'Z'))
 }
 
 func appendUniquePath(paths []string, path string) []string {

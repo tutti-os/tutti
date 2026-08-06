@@ -120,9 +120,29 @@ func StandardProfile() DeploymentProfile {
 		Intro:     "This directory is being used by a Tutti AgentGUI session.",
 		HostFacts: DefaultHostFacts(),
 		Packs: []CapabilityPack{
-			CoreSkillsPack(), TuttiDesktopHostPack(), BrowserUsePack(), ComputerUsePack(),
+			CoreSkillsPack(), ConnectorDiscoveryPack(), TuttiDesktopHostPack(), BrowserUsePack(), ComputerUsePack(),
 		},
 	}
+}
+
+// ConnectorDiscoveryPack teaches an Agent the stable two-level Broker flow.
+// Connector-owned Skills remain lazy and untrusted; they are never injected
+// into the initial provider context.
+func ConnectorDiscoveryPack() CapabilityPack {
+	return CapabilityPack{Name: "connector-discovery", Resolve: func(_ context.Context, input PrepareInput) (CapabilityContribution, error) {
+		if input.commandCapabilities == nil || !input.commandCapabilities.HasAll(
+			"connector.available", "connector.skills", "connector.skill.read", "connector.invoke",
+		) {
+			return CapabilityContribution{Enabled: false}, nil
+		}
+		policy, err := renderPolicyTemplate("policy_templates/connector-discovery.md", input)
+		if err != nil {
+			return CapabilityContribution{}, err
+		}
+		return CapabilityContribution{Enabled: true, PolicySections: []PolicySection{{
+			Anchor: PolicyAnchorSkillStrategy, Key: "connector-discovery", Order: 100, Body: policy,
+		}}}, nil
+	}}
 }
 
 // CoreSkillsPack contributes the provider-neutral Tutti CLI and mention

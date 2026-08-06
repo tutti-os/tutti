@@ -453,6 +453,7 @@ export type DesktopWorkbenchWindowSnappingShortcutPreset =
   | "commandShiftArrows";
 
 export type DesktopAgentComposerDefaults = {
+  codexSaverMode?: boolean;
   model?: string;
   permissionModeId?: string;
   reasoningEffort?: string;
@@ -716,9 +717,19 @@ export type AgentTargetAuthMethod = {
    */
   type?: string | null;
   /**
-   * Ready-to-run interactive sign-in command for terminal-type methods.
+   * Ready-to-run interactive sign-in launch command for terminal-type methods.
    */
   terminalCommand?: string | null;
+  /**
+   * Optional typed terminal action submitted after the interactive runtime reaches its declared ready marker.
+   */
+  terminalStartupAction?: AgentTargetTerminalStartupAction | null;
+};
+
+export type AgentTargetTerminalStartupAction = {
+  type: "slash_command";
+  commandName: string;
+  readyText: string;
 };
 
 export type InstallAgentTargetRuntimeRequest = {
@@ -1391,6 +1402,7 @@ export type WorkspaceApp = {
   launchUrl: string | null;
   port: number | null;
   failureReason: string | null;
+  failurePhase?: "downloading" | "installing" | "starting" | "runtime";
   lastError: string | null;
   startedAtUnixMs: number | null;
   updatedAtUnixMs: number | null;
@@ -1748,6 +1760,7 @@ export type WorkspaceAgentSource = "user" | "legacy_binding";
 export type WorkspaceAgentProvider = string;
 
 export type AgentSessionComposerSettings = {
+  codexSaverMode?: boolean | null;
   model?: string | null;
   permissionModeId?: string | null;
   planMode?: boolean | null;
@@ -1820,6 +1833,10 @@ export type GetWorkspaceAppFactoryAgentTargetComposerOptionsRequest = {
 };
 
 export type AgentProviderComposerOptionsResponse = {
+  /**
+   * Whether this resolved provider target supports the Codex Luna subagent saver mode; product entry policy is reported separately by the host
+   */
+  codexSaverModeSupported?: boolean;
   provider: WorkspaceAgentProvider;
   modelConfig: AgentProviderComposerConfig;
   permissionConfig: PermissionConfig;
@@ -2756,6 +2773,7 @@ export type WorkspaceAgentSessionGoal = {
     | "budgetLimited"
     | "complete";
   reason?: string;
+  startedAtUnixMs?: number;
   iterations?: number;
   durationMs?: number;
   tokens?: number;
@@ -3087,6 +3105,10 @@ export type WorkspaceAgentInitialGoalControl = {
 };
 
 export type CreateWorkspaceAgentSessionRequest = {
+  /**
+   * Enables the Codex Luna subagent saver mode for this session without changing the main model
+   */
+  codexSaverMode?: boolean | null;
   agentSessionId: string;
   /**
    * Required target-first session launch authority. The daemon derives provider and providerTargetRef from the stored agent target launchRef and rejects mismatched provider values.
@@ -3312,9 +3334,13 @@ export type SendWorkspaceAgentSessionInputRequest = {
    */
   capabilityRefs?: Array<WorkspaceAgentCapabilityReference>;
   /**
-   * When true, send this input as guidance to the currently active turn instead of starting a new turn.
+   * When true, send this input as guidance to the exact active turn identified by turnId instead of starting a new turn.
    */
   guidance?: boolean;
+  /**
+   * Exact canonical active Turn targeted by guidance. Required when guidance is true; ignored for normal new-turn submits.
+   */
+  turnId?: string;
 };
 
 export type AgentSubmitDiagnostics = {
@@ -4526,6 +4552,229 @@ export type CancelIssueManagerExecutionResponse = {
   canceledRunCount: number;
 };
 
+export type ConnectorMarketCategory = {
+  categoryId: string;
+  kind: "category" | "featured";
+  sortOrder: number;
+  itemCount: number;
+};
+
+export type ConnectorMarketCategoriesResponse = {
+  categories: Array<ConnectorMarketCategory>;
+};
+
+export type ConnectorMarketCatalogItem = {
+  categoryId: string;
+  featured: boolean;
+  connector: ConnectorMarketConnector;
+};
+
+export type ConnectorMarketCatalogPage = {
+  sectionId: string;
+  items: Array<ConnectorMarketCatalogItem>;
+  nextPageToken?: string;
+  revision: number;
+};
+
+export type ConnectorMarketSnapshot = {
+  catalogState: ConnectorMarketCatalogState;
+  connectors: Array<ConnectorMarketConnector>;
+  operations: Array<ConnectorMarketOperation>;
+  revision: number;
+  sourceRevision?: string;
+};
+
+export type ConnectorMarketConnector = {
+  key: string;
+  release: ConnectorMarketRelease;
+  installation: ConnectorMarketInstallation;
+  authorization: ConnectorMarketAuthorization;
+  compatibility: ConnectorMarketCompatibility;
+  revision: number;
+};
+
+export type ConnectorMarketRelease = {
+  schemaVersion: "1";
+  releaseId: string;
+  connectorKey: string;
+  version: string;
+  releaseDigest: string;
+  manifestDigest: string;
+  manifest: ConnectorMarketManifest;
+  artifact: ConnectorMarketArtifact;
+  publishedAt: string;
+  status: "available" | "superseded";
+};
+
+export type ConnectorMarketManifest = {
+  schemaVersion: "1";
+  displayName: string;
+  iconUrl: string;
+  description?: string;
+  permissions: Array<string>;
+  implementation: ConnectorMarketImplementation;
+  authorizationKind: string;
+  compatibility?: ConnectorMarketCompatibilityRequirements;
+};
+
+export type ConnectorMarketArtifact = {
+  key: string;
+  sha256: string;
+  sizeBytes: number;
+  mediaType: string;
+};
+
+export type ConnectorMarketCompatibilityRequirements = {
+  products?: Array<string>;
+  platforms?: Array<string>;
+  minimumHostVersion?: string;
+};
+
+/**
+ * Public implementation discriminator; sensitive host configuration is never returned.
+ */
+export type ConnectorMarketImplementation = {
+  kind: "builtin" | "managed_stdio" | "remote_streamable_http";
+};
+
+export type ConnectorMarketInstallation = {
+  state: ConnectorMarketInstallationState;
+  installedVersion?: string;
+  installedReleaseId?: string;
+  installedReleaseDigest?: string;
+  failureCode?: string;
+};
+
+export type ConnectorMarketAuthorization = {
+  state: ConnectorMarketAuthorizationState;
+  failureCode?: string;
+};
+
+export type ConnectorMarketCompatibility = {
+  state: ConnectorMarketCompatibilityState;
+  reason?: string;
+};
+
+export type ConnectorMarketOperation = {
+  operationId: string;
+  clientRequestId: string;
+  connectorKey?: string;
+  kind: ConnectorMarketOperationKind;
+  state: ConnectorMarketOperationState;
+  stage?: ConnectorMarketOperationStage;
+  target?: ConnectorMarketOperationTarget;
+  attempt: number;
+  failureCode?: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type ConnectorMarketOperationTarget = {
+  connectorKey: string;
+  version: string;
+  releaseId: string;
+  releaseDigest: string;
+  artifactSha256?: string;
+};
+
+export type ConnectorMarketMutationRequest = {
+  clientRequestId: string;
+  expectedRevision: number;
+};
+
+export type ConnectorMarketMutationResponse = {
+  connector?: ConnectorMarketConnector;
+  operation: ConnectorMarketOperation;
+  revision: number;
+};
+
+export type ConnectorMarketAuthorizationResponse = {
+  connector: ConnectorMarketConnector;
+  operation: ConnectorMarketOperation;
+  authorizationUrl?: string;
+  revision: number;
+};
+
+export type ConnectorMarketConnectorResponse = {
+  connector: ConnectorMarketConnector;
+  operation: ConnectorMarketOperation;
+  revision: number;
+};
+
+export type ConnectorMarketError = {
+  code: ConnectorMarketErrorCode;
+  message: string;
+  retryable: boolean;
+  revision?: number;
+};
+
+export type ConnectorMarketCatalogState =
+  | "ready"
+  | "refreshing"
+  | "stale"
+  | "failed";
+
+export type ConnectorMarketInstallationState =
+  | "not_installed"
+  | "installing"
+  | "installed"
+  | "updating"
+  | "uninstalling"
+  | "failed";
+
+export type ConnectorMarketAuthorizationState =
+  | "not_required"
+  | "disconnected"
+  | "pending"
+  | "connected"
+  | "expired"
+  | "failed";
+
+export type ConnectorMarketCompatibilityState =
+  | "supported"
+  | "unsupported_product"
+  | "unsupported_platform"
+  | "unsupported_version"
+  | "unsupported_implementation";
+
+export type ConnectorMarketOperationKind =
+  | "refresh_catalog"
+  | "install"
+  | "uninstall"
+  | "start_authorization"
+  | "disconnect_authorization";
+
+export type ConnectorMarketOperationState =
+  | "accepted"
+  | "running"
+  | "completed"
+  | "failed";
+
+export type ConnectorMarketOperationStage =
+  | "accepted"
+  | "refreshing"
+  | "downloading"
+  | "prepared"
+  | "activating"
+  | "deactivating"
+  | "authorizing"
+  | "disconnecting"
+  | "completed"
+  | "failed";
+
+export type ConnectorMarketErrorCode =
+  | "connector_market_invalid_request"
+  | "connector_not_found"
+  | "connector_market_revision_conflict"
+  | "connector_operation_in_progress"
+  | "connector_incompatible"
+  | "connector_manifest_invalid"
+  | "connector_implementation_unsupported"
+  | "connector_market_upstream_unavailable"
+  | "connector_install_failed"
+  | "connector_authorization_failed"
+  | "connector_market_unavailable";
+
 export type MobileRemotePairingChallenge = {
   challengeId: string;
   targetUserDeviceId: string;
@@ -4658,6 +4907,16 @@ export type IssueManagerStatusFilter2 = IssueManagerStatusFilter;
  * Case-insensitive substring search over the visible title only.
  */
 export type IssueManagerSearchQuery = string;
+
+export type ConnectorMarketConnectorKey = string;
+
+export type ConnectorMarketOperationId = string;
+
+export type ConnectorMarketSectionId = string;
+
+export type ConnectorMarketPageSize = number;
+
+export type ConnectorMarketPageToken = string;
 
 export type MobileRemoteChallengeId = string;
 
@@ -15834,6 +16093,416 @@ export type CompleteWorkspaceIssueTaskRunResponses = {
 
 export type CompleteWorkspaceIssueTaskRunResponse =
   CompleteWorkspaceIssueTaskRunResponses[keyof CompleteWorkspaceIssueTaskRunResponses];
+
+export type GetConnectorMarketData = {
+  body?: never;
+  path?: never;
+  query?: never;
+  url: "/v1/connector-market";
+};
+
+export type GetConnectorMarketErrors = {
+  /**
+   * Invalid connector-market request
+   */
+  400: ConnectorMarketError;
+  /**
+   * Daemon authorization is required
+   */
+  401: ConnectorMarketError;
+  /**
+   * Connector-market capability is temporarily unavailable
+   */
+  503: ConnectorMarketError;
+};
+
+export type GetConnectorMarketError =
+  GetConnectorMarketErrors[keyof GetConnectorMarketErrors];
+
+export type GetConnectorMarketResponses = {
+  /**
+   * Connector-market snapshot
+   */
+  200: ConnectorMarketSnapshot;
+};
+
+export type GetConnectorMarketResponse =
+  GetConnectorMarketResponses[keyof GetConnectorMarketResponses];
+
+export type ListConnectorMarketCategoriesData = {
+  body?: never;
+  path?: never;
+  query?: never;
+  url: "/v1/connector-market/categories";
+};
+
+export type ListConnectorMarketCategoriesErrors = {
+  /**
+   * Daemon authorization is required
+   */
+  401: ConnectorMarketError;
+  /**
+   * Connector-market capability is temporarily unavailable
+   */
+  503: ConnectorMarketError;
+};
+
+export type ListConnectorMarketCategoriesError =
+  ListConnectorMarketCategoriesErrors[keyof ListConnectorMarketCategoriesErrors];
+
+export type ListConnectorMarketCategoriesResponses = {
+  /**
+   * Connector-market sections
+   */
+  200: ConnectorMarketCategoriesResponse;
+};
+
+export type ListConnectorMarketCategoriesResponse =
+  ListConnectorMarketCategoriesResponses[keyof ListConnectorMarketCategoriesResponses];
+
+export type ListConnectorMarketCatalogData = {
+  body?: never;
+  path?: never;
+  query: {
+    sectionId: string;
+    pageSize?: number;
+    pageToken?: string;
+  };
+  url: "/v1/connector-market/catalog";
+};
+
+export type ListConnectorMarketCatalogErrors = {
+  /**
+   * Invalid connector-market request
+   */
+  400: ConnectorMarketError;
+  /**
+   * Daemon authorization is required
+   */
+  401: ConnectorMarketError;
+  /**
+   * Connector-market capability is temporarily unavailable
+   */
+  503: ConnectorMarketError;
+};
+
+export type ListConnectorMarketCatalogError =
+  ListConnectorMarketCatalogErrors[keyof ListConnectorMarketCatalogErrors];
+
+export type ListConnectorMarketCatalogResponses = {
+  /**
+   * Connector-market section page
+   */
+  200: ConnectorMarketCatalogPage;
+};
+
+export type ListConnectorMarketCatalogResponse =
+  ListConnectorMarketCatalogResponses[keyof ListConnectorMarketCatalogResponses];
+
+export type GetConnectorMarketConnectorData = {
+  body?: never;
+  path: {
+    connectorKey: string;
+  };
+  query?: never;
+  url: "/v1/connector-market/connectors/{connectorKey}";
+};
+
+export type GetConnectorMarketConnectorErrors = {
+  /**
+   * Invalid connector-market request
+   */
+  400: ConnectorMarketError;
+  /**
+   * Daemon authorization is required
+   */
+  401: ConnectorMarketError;
+  /**
+   * Connector or operation was not found
+   */
+  404: ConnectorMarketError;
+  /**
+   * Connector-market capability is temporarily unavailable
+   */
+  503: ConnectorMarketError;
+};
+
+export type GetConnectorMarketConnectorError =
+  GetConnectorMarketConnectorErrors[keyof GetConnectorMarketConnectorErrors];
+
+export type GetConnectorMarketConnectorResponses = {
+  /**
+   * Connector projection
+   */
+  200: ConnectorMarketConnector;
+};
+
+export type GetConnectorMarketConnectorResponse =
+  GetConnectorMarketConnectorResponses[keyof GetConnectorMarketConnectorResponses];
+
+export type RefreshConnectorMarketData = {
+  body: ConnectorMarketMutationRequest;
+  path?: never;
+  query?: never;
+  url: "/v1/connector-market:refresh";
+};
+
+export type RefreshConnectorMarketErrors = {
+  /**
+   * Invalid connector-market request
+   */
+  400: ConnectorMarketError;
+  /**
+   * Daemon authorization is required
+   */
+  401: ConnectorMarketError;
+  /**
+   * Revision conflict or operation already in progress
+   */
+  409: ConnectorMarketError;
+  /**
+   * Connector-market capability is temporarily unavailable
+   */
+  503: ConnectorMarketError;
+};
+
+export type RefreshConnectorMarketError =
+  RefreshConnectorMarketErrors[keyof RefreshConnectorMarketErrors];
+
+export type RefreshConnectorMarketResponses = {
+  /**
+   * Refresh operation accepted
+   */
+  202: ConnectorMarketMutationResponse;
+};
+
+export type RefreshConnectorMarketResponse =
+  RefreshConnectorMarketResponses[keyof RefreshConnectorMarketResponses];
+
+export type InstallConnectorMarketConnectorData = {
+  body: ConnectorMarketMutationRequest;
+  path: {
+    connectorKey: string;
+  };
+  query?: never;
+  url: "/v1/connector-market/connectors/{connectorKey}:install";
+};
+
+export type InstallConnectorMarketConnectorErrors = {
+  /**
+   * Invalid connector-market request
+   */
+  400: ConnectorMarketError;
+  /**
+   * Daemon authorization is required
+   */
+  401: ConnectorMarketError;
+  /**
+   * Connector or operation was not found
+   */
+  404: ConnectorMarketError;
+  /**
+   * Revision conflict or operation already in progress
+   */
+  409: ConnectorMarketError;
+  /**
+   * Connector is incompatible or its manifest cannot be installed
+   */
+  422: ConnectorMarketError;
+  /**
+   * Connector-market capability is temporarily unavailable
+   */
+  503: ConnectorMarketError;
+};
+
+export type InstallConnectorMarketConnectorError =
+  InstallConnectorMarketConnectorErrors[keyof InstallConnectorMarketConnectorErrors];
+
+export type InstallConnectorMarketConnectorResponses = {
+  /**
+   * Installation operation accepted
+   */
+  202: ConnectorMarketMutationResponse;
+};
+
+export type InstallConnectorMarketConnectorResponse =
+  InstallConnectorMarketConnectorResponses[keyof InstallConnectorMarketConnectorResponses];
+
+export type UninstallConnectorMarketConnectorData = {
+  body: ConnectorMarketMutationRequest;
+  path: {
+    connectorKey: string;
+  };
+  query?: never;
+  url: "/v1/connector-market/connectors/{connectorKey}:uninstall";
+};
+
+export type UninstallConnectorMarketConnectorErrors = {
+  /**
+   * Invalid connector-market request
+   */
+  400: ConnectorMarketError;
+  /**
+   * Daemon authorization is required
+   */
+  401: ConnectorMarketError;
+  /**
+   * Connector or operation was not found
+   */
+  404: ConnectorMarketError;
+  /**
+   * Revision conflict or operation already in progress
+   */
+  409: ConnectorMarketError;
+  /**
+   * Connector-market capability is temporarily unavailable
+   */
+  503: ConnectorMarketError;
+};
+
+export type UninstallConnectorMarketConnectorError =
+  UninstallConnectorMarketConnectorErrors[keyof UninstallConnectorMarketConnectorErrors];
+
+export type UninstallConnectorMarketConnectorResponses = {
+  /**
+   * Uninstallation operation accepted
+   */
+  202: ConnectorMarketMutationResponse;
+};
+
+export type UninstallConnectorMarketConnectorResponse =
+  UninstallConnectorMarketConnectorResponses[keyof UninstallConnectorMarketConnectorResponses];
+
+export type StartConnectorMarketAuthorizationData = {
+  body: ConnectorMarketMutationRequest;
+  path: {
+    connectorKey: string;
+  };
+  query?: never;
+  url: "/v1/connector-market/connectors/{connectorKey}/authorization:start";
+};
+
+export type StartConnectorMarketAuthorizationErrors = {
+  /**
+   * Invalid connector-market request
+   */
+  400: ConnectorMarketError;
+  /**
+   * Daemon authorization is required
+   */
+  401: ConnectorMarketError;
+  /**
+   * Connector or operation was not found
+   */
+  404: ConnectorMarketError;
+  /**
+   * Revision conflict or operation already in progress
+   */
+  409: ConnectorMarketError;
+  /**
+   * Connector-market capability is temporarily unavailable
+   */
+  503: ConnectorMarketError;
+};
+
+export type StartConnectorMarketAuthorizationError =
+  StartConnectorMarketAuthorizationErrors[keyof StartConnectorMarketAuthorizationErrors];
+
+export type StartConnectorMarketAuthorizationResponses = {
+  /**
+   * Authorization attempt started
+   */
+  200: ConnectorMarketAuthorizationResponse;
+};
+
+export type StartConnectorMarketAuthorizationResponse =
+  StartConnectorMarketAuthorizationResponses[keyof StartConnectorMarketAuthorizationResponses];
+
+export type DisconnectConnectorMarketAuthorizationData = {
+  body: ConnectorMarketMutationRequest;
+  path: {
+    connectorKey: string;
+  };
+  query?: never;
+  url: "/v1/connector-market/connectors/{connectorKey}/authorization:disconnect";
+};
+
+export type DisconnectConnectorMarketAuthorizationErrors = {
+  /**
+   * Invalid connector-market request
+   */
+  400: ConnectorMarketError;
+  /**
+   * Daemon authorization is required
+   */
+  401: ConnectorMarketError;
+  /**
+   * Connector or operation was not found
+   */
+  404: ConnectorMarketError;
+  /**
+   * Revision conflict or operation already in progress
+   */
+  409: ConnectorMarketError;
+  /**
+   * Connector-market capability is temporarily unavailable
+   */
+  503: ConnectorMarketError;
+};
+
+export type DisconnectConnectorMarketAuthorizationError =
+  DisconnectConnectorMarketAuthorizationErrors[keyof DisconnectConnectorMarketAuthorizationErrors];
+
+export type DisconnectConnectorMarketAuthorizationResponses = {
+  /**
+   * Authorization disconnection accepted
+   */
+  202: ConnectorMarketMutationResponse;
+};
+
+export type DisconnectConnectorMarketAuthorizationResponse =
+  DisconnectConnectorMarketAuthorizationResponses[keyof DisconnectConnectorMarketAuthorizationResponses];
+
+export type GetConnectorMarketOperationData = {
+  body?: never;
+  path: {
+    operationID: string;
+  };
+  query?: never;
+  url: "/v1/connector-market/operations/{operationID}";
+};
+
+export type GetConnectorMarketOperationErrors = {
+  /**
+   * Invalid connector-market request
+   */
+  400: ConnectorMarketError;
+  /**
+   * Daemon authorization is required
+   */
+  401: ConnectorMarketError;
+  /**
+   * Connector or operation was not found
+   */
+  404: ConnectorMarketError;
+  /**
+   * Connector-market capability is temporarily unavailable
+   */
+  503: ConnectorMarketError;
+};
+
+export type GetConnectorMarketOperationError =
+  GetConnectorMarketOperationErrors[keyof GetConnectorMarketOperationErrors];
+
+export type GetConnectorMarketOperationResponses = {
+  /**
+   * Connector-market operation
+   */
+  200: ConnectorMarketOperation;
+};
+
+export type GetConnectorMarketOperationResponse =
+  GetConnectorMarketOperationResponses[keyof GetConnectorMarketOperationResponses];
 
 export type StartMobileRemotePairingData = {
   body?: never;

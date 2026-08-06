@@ -41,6 +41,46 @@ func goalStateConverged(desired, observed map[string]any, tombstoned bool) bool 
 	return false
 }
 
+// normalizeObservedGoalTiming keeps one durable clock for each Goal
+// generation. Provider observations often omit timing, so preserve the
+// canonical desired/observed start for the same objective and stamp only a
+// genuinely provider-created Goal at its first observation.
+func normalizeObservedGoalTiming(observed map[string]any, state SessionGoalState, occurredAt int64) map[string]any {
+	if len(observed) == 0 {
+		return nil
+	}
+	normalized := cloneJSONMap(observed)
+	objective := strings.TrimSpace(asJSONMapString(normalized, "objective"))
+	startedAt := jsonMapInt64(normalized, "startedAtUnixMs")
+	if startedAt <= 0 && objective != "" {
+		for _, candidate := range []map[string]any{state.Desired, state.Observed} {
+			if objective == strings.TrimSpace(asJSONMapString(candidate, "objective")) {
+				if candidateStart := jsonMapInt64(candidate, "startedAtUnixMs"); candidateStart > 0 {
+					startedAt = candidateStart
+					break
+				}
+			}
+		}
+	}
+	if startedAt <= 0 {
+		startedAt = occurredAt
+	}
+	normalized["startedAtUnixMs"] = startedAt
+	status := strings.TrimSpace(asJSONMapString(normalized, "status"))
+	if status != "" && status != "active" && jsonMapInt64(normalized, "durationMs") <= 0 {
+		previousStatus := strings.TrimSpace(asJSONMapString(state.Observed, "status"))
+		if objective == strings.TrimSpace(asJSONMapString(state.Observed, "objective")) && status == previousStatus {
+			if previousDuration := jsonMapInt64(state.Observed, "durationMs"); previousDuration > 0 {
+				normalized["durationMs"] = previousDuration
+			}
+		}
+		if jsonMapInt64(normalized, "durationMs") <= 0 && occurredAt >= startedAt {
+			normalized["durationMs"] = occurredAt - startedAt
+		}
+	}
+	return normalized
+}
+
 func providerPhaseForCompletion(succeeded bool) string {
 	if succeeded {
 		return GoalProviderPhaseApplied

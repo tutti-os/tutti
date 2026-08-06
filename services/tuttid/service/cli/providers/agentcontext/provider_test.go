@@ -1137,7 +1137,11 @@ func TestStartCommandLeavesComposerDefaultsToAgentService(t *testing.T) {
 }
 
 func TestAgentsCommandReturnsAvailability(t *testing.T) {
-	sessions := &fakeAgentSessions{}
+	sessions := &fakeAgentSessions{availability: []agentservice.ProviderAvailability{{
+		Provider:       "codex",
+		Status:         agentservice.ProviderAvailabilityAvailable,
+		ExecutablePath: "/resolved/bin/codex",
+	}}}
 	command := newTestProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, sessions).newAgentsCommand()
 
 	output, err := command.Handler(context.Background(), cliservice.InvokeRequest{
@@ -1150,6 +1154,9 @@ func TestAgentsCommandReturnsAvailability(t *testing.T) {
 	agents := output.Value["agents"].([]any)
 	if len(agents) != 1 || agents[0].(map[string]any)["id"] != agenttargetbiz.IDLocalCodex {
 		t.Fatalf("agents = %#v", agents)
+	}
+	if agents[0].(map[string]any)["executablePath"] != "/resolved/bin/codex" {
+		t.Fatalf("agent executablePath = %#v", agents[0].(map[string]any)["executablePath"])
 	}
 	if output.Value["defaultAgentTargetId"] != agenttargetbiz.IDLocalTuttiAgent {
 		t.Fatalf("defaultAgentTargetId = %#v, want global default %q", output.Value["defaultAgentTargetId"], agenttargetbiz.IDLocalTuttiAgent)
@@ -2279,7 +2286,7 @@ func TestGetCommandValidatesProgressiveViewSelectors(t *testing.T) {
 }
 
 func TestSendCommandConvertsImageFilesToPromptContentBlocks(t *testing.T) {
-	sessions := &fakeAgentSessions{}
+	sessions := &fakeAgentSessions{getSession: agentservice.Session{ID: "SESSION-1", ActiveTurnID: "turn-active"}}
 	command := newTestProvider(
 		fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}},
 		sessions,
@@ -2306,6 +2313,9 @@ func TestSendCommandConvertsImageFilesToPromptContentBlocks(t *testing.T) {
 	}
 	if !sessions.sendInput.Guidance {
 		t.Fatalf("send guidance = false, want true")
+	}
+	if sessions.sendInput.TurnID != "turn-active" {
+		t.Fatalf("send guidance turn id = %q, want turn-active", sessions.sendInput.TurnID)
 	}
 	if _, err := uuid.Parse(sessions.sendInput.ClientSubmitID); err != nil {
 		t.Fatalf("client submit id = %q, want UUID: %v", sessions.sendInput.ClientSubmitID, err)
@@ -2369,7 +2379,7 @@ func TestSendCommandExposesGuidanceFlagInSchema(t *testing.T) {
 		t.Fatalf("guidance type = %#v, want boolean", guidance["type"])
 	}
 	description, _ := guidance["description"].(string)
-	if !strings.Contains(description, "currently active turn") {
+	if !strings.Contains(description, "exact active turn") {
 		t.Fatalf("guidance description = %#v", guidance["description"])
 	}
 }

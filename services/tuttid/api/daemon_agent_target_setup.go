@@ -132,6 +132,13 @@ func projectAgentTargetSetupSnapshot(snapshot agentextensionservice.SetupSnapsho
 		if method.TerminalCommand != "" {
 			projected.TerminalCommand = &method.TerminalCommand
 		}
+		if action := method.TerminalStartupAction; action != nil {
+			projected.TerminalStartupAction = &tuttigenerated.AgentTargetTerminalStartupAction{
+				Type:        tuttigenerated.AgentTargetTerminalStartupActionType(action.Type),
+				CommandName: action.CommandName,
+				ReadyText:   action.ReadyText,
+			}
+		}
 		result.AuthMethods = append(result.AuthMethods, projected)
 	}
 	if snapshot.Account != nil {

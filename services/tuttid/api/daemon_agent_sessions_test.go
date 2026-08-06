@@ -60,6 +60,9 @@ func TestDaemonAPIGeneratedRoutesSendAgentSessionInputForwardsGuidance(t *testin
 				if !input.Guidance {
 					t.Fatal("input guidance = false, want true")
 				}
+				if input.TurnID != "turn-target" {
+					t.Fatalf("input turn id = %q, want turn-target", input.TurnID)
+				}
 				if input.ClientSubmitID != "submit-1" {
 					t.Fatalf("client submit id = %q, want submit-1", input.ClientSubmitID)
 				}
@@ -108,6 +111,7 @@ func TestDaemonAPIGeneratedRoutesSendAgentSessionInputForwardsGuidance(t *testin
 				"text": "guide current turn",
 			}},
 			"guidance": true,
+			"turnId":   "turn-target",
 		},
 	)
 	if recorder.Code != http.StatusOK {
@@ -122,6 +126,61 @@ func TestDaemonAPIGeneratedRoutesSendAgentSessionInputForwardsGuidance(t *testin
 	if turnResponse.TurnId != "turn-guidance" || turnResponse.Turn.TurnId != "turn-guidance" {
 		t.Fatalf("turn response = %#v, want exact guidance turn", turnResponse)
 	}
+}
+
+func TestDaemonAPIGeneratedRoutesMapsMissingGuidanceTarget(t *testing.T) {
+	mux := http.NewServeMux()
+	RegisterRoutes(mux, NewRoutes(DaemonAPI{
+		AgentSessionService: stubAgentSessionService{
+			sendInputFn: func(_ context.Context, _, _ string, input agentservice.SendInput) (agentservice.SendInputResult, error) {
+				if !input.Guidance || input.TurnID != "" {
+					t.Fatalf("guidance input = %#v, want missing target", input)
+				}
+				return agentservice.SendInputResult{}, agentservice.ErrActiveTurnTargetRequired
+			},
+		},
+	}))
+
+	recorder := performGeneratedRouteRequest(
+		t, mux, http.MethodPost,
+		"/v1/workspaces/ws-1/agent-sessions/agent-session-1/input",
+		map[string]any{
+			"content":  []map[string]any{{"type": "text", "text": "stale guidance"}},
+			"guidance": true,
+		},
+	)
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d; body: %s", recorder.Code, http.StatusBadRequest, recorder.Body.String())
+	}
+	assertGeneratedRouteError(t, recorder, tuttigenerated.InvalidRequest, "agent.active_turn_target_required", "active-turn guidance requires an exact target turn")
+}
+
+func TestDaemonAPIGeneratedRoutesMapsMismatchedGuidanceTarget(t *testing.T) {
+	mux := http.NewServeMux()
+	RegisterRoutes(mux, NewRoutes(DaemonAPI{
+		AgentSessionService: stubAgentSessionService{
+			sendInputFn: func(_ context.Context, _, _ string, input agentservice.SendInput) (agentservice.SendInputResult, error) {
+				if input.TurnID != "turn-stale" {
+					t.Fatalf("guidance target = %q, want turn-stale", input.TurnID)
+				}
+				return agentservice.SendInputResult{}, agentservice.ErrActiveTurnTargetMismatch
+			},
+		},
+	}))
+
+	recorder := performGeneratedRouteRequest(
+		t, mux, http.MethodPost,
+		"/v1/workspaces/ws-1/agent-sessions/agent-session-1/input",
+		map[string]any{
+			"content":  []map[string]any{{"type": "text", "text": "stale guidance"}},
+			"guidance": true,
+			"turnId":   "turn-stale",
+		},
+	)
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d; body: %s", recorder.Code, http.StatusBadRequest, recorder.Body.String())
+	}
+	assertGeneratedRouteError(t, recorder, tuttigenerated.InvalidRequest, "agent.active_turn_target_mismatch", "active-turn guidance target is no longer active")
 }
 
 func TestDaemonAPIGeneratedRoutesSendTypedGoalReturnsOperationWithoutTurn(t *testing.T) {

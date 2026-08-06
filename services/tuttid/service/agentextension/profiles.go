@@ -160,11 +160,14 @@ type AuthenticationProfile struct {
 }
 
 type AuthenticationMethodProfile struct {
-	ID      string `json:"id"`
-	Type    string `json:"type"`
-	Command struct {
-		Strategy string   `json:"strategy"`
-		Args     []string `json:"args"`
+	ID          string `json:"id"`
+	Name        string `json:"name,omitempty"`
+	Description string `json:"description,omitempty"`
+	Type        string `json:"type"`
+	Command     struct {
+		Strategy  string   `json:"strategy"`
+		Args      []string `json:"args"`
+		ReadyText string   `json:"readyText,omitempty"`
 	} `json:"command"`
 }
 
@@ -557,22 +560,48 @@ func validateAuthenticationProfile(profile AuthenticationProfile) error {
 			return errors.New("authentication method id must be unique")
 		}
 		seen[id] = struct{}{}
+		if method.Name != "" && !validAuthenticationPresentation(method.Name, 128) {
+			return errors.New("authentication method name is invalid")
+		}
+		if method.Description != "" && !validAuthenticationPresentation(method.Description, 512) {
+			return errors.New("authentication method description is invalid")
+		}
 		if strings.TrimSpace(method.Type) != "terminal" {
 			return errors.New("authentication method type is unsupported")
 		}
-		if strings.TrimSpace(method.Command.Strategy) != "runtime-subcommand" {
-			return errors.New("authentication terminal command strategy is unsupported")
-		}
-		if len(method.Command.Args) == 0 || len(method.Command.Args) > 16 {
-			return errors.New("authentication terminal command must declare 1..16 args")
-		}
-		for _, argument := range method.Command.Args {
-			if !validAuthenticationCommandArgument(argument) {
-				return errors.New("authentication terminal command arg is invalid")
+		strategy := strings.TrimSpace(method.Command.Strategy)
+		switch strategy {
+		case "runtime-subcommand":
+			if len(method.Command.Args) == 0 || len(method.Command.Args) > 16 {
+				return errors.New("authentication terminal command must declare 1..16 args")
 			}
+			for _, argument := range method.Command.Args {
+				if !validAuthenticationCommandArgument(argument) {
+					return errors.New("authentication terminal command arg is invalid")
+				}
+			}
+			if method.Command.ReadyText != "" {
+				return errors.New("authentication runtime subcommand must not declare ready text")
+			}
+		case "runtime-slash-command":
+			if len(method.Command.Args) != 1 || !composerSlashCommandName.MatchString(method.Command.Args[0]) {
+				return errors.New("authentication runtime slash command must declare one safe command name")
+			}
+			if !validAuthenticationPresentation(method.Command.ReadyText, 256) {
+				return errors.New("authentication runtime slash command ready text is invalid")
+			}
+		default:
+			return errors.New("authentication terminal command strategy is unsupported")
 		}
 	}
 	return nil
+}
+
+func validAuthenticationPresentation(value string, maxRunes int) bool {
+	if value == "" || value != strings.TrimSpace(value) || utf8.RuneCountInString(value) > maxRunes {
+		return false
+	}
+	return !strings.ContainsFunc(value, unicode.IsControl)
 }
 
 func validAuthenticationCommandArgument(argument string) bool {

@@ -63,9 +63,12 @@ records the submit provenance and lossless replay envelope on a
 cancellation-independent context. An explicit rejection settles an existing
 canonical Turn as failed and transitions its submit claim to terminal
 `rejected`; replaying the same `ClientSubmitID` returns that failed Turn without
-provider dispatch. An outcome-unknown result retains the prepared submit claim
-for reconciliation and never blindly redispatches. Only a new provisional
-Session with no visible message or provider identity may be compensated away.
+provider dispatch. For an initial-Session rejection, Host then closes the
+startup runtime with canonical completion suppressed: the failed Session, Turn,
+and prompt remain historical facts, but that runtime cannot be reactivated.
+An outcome-unknown result retains the prepared submit claim for reconciliation
+and never blindly redispatches. Only a new provisional Session with no visible
+message or provider identity may be compensated away.
 
 Adapters must carry the structured action/objective instead of reconstructing
 it from presentation text. `ParseTypedGoalControl` remains the compatibility
@@ -222,6 +225,15 @@ message. Host passes it to both runtime execution and durable submit-provenance
 reporting; adapters must derive the same message sequence from that occurrence
 regardless of which report reaches storage first. `ClientSubmitID` identifies
 the submission but is not itself an ordering value.
+
+Guidance is a mutation of an existing canonical Turn, not a request to steer
+whatever happens to be current when transport completes. `SendInput.Guidance`
+therefore requires an explicit `TurnID` at the Host boundary. Host and the
+runtime Controller compare that identity with the live active Turn under the
+session lifecycle lock before provider admission. A mismatch returns a typed
+`NotDispatched` result, makes zero provider calls, and removes a prepared
+submit claim; callers must surface the rejection or retry with a newly captured
+target rather than silently redirecting the guidance.
 Accepted runtime Session reports reconcile their Goal snapshot through the
 canonical bottom-up observation path without overwriting a newer desired
 intent. When that changes the public Goal projection, the same transaction

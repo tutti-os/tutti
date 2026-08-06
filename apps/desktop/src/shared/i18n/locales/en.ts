@@ -1263,6 +1263,9 @@ export const en = {
         agentSessionForkDescription:
           "Allow creating a new Agent conversation from a supported completed turn.",
         agentSessionForkLabel: "Session Fork",
+        codexSaverModeDescription:
+          "Show a remembered Codex composer switch that delegates suitable subtasks to Luna Max.",
+        codexSaverModeLabel: "Codex saver mode",
         removeFileDefaultOpener: "Remove .{{extension}}",
         releaseChannelDescription:
           "Choose stable release updates, or opt in to preview builds for internal verification.",
@@ -1289,13 +1292,13 @@ export const en = {
         visibilityLabel: "Show developer panel"
       },
       lab: {
-        agentInputHistoryDescription:
-          "Use Up and Down in Agent input to recall earlier prompts from the current session.",
-        agentInputHistoryLabel: "Agent input history",
         backLabel: "Back",
         automationRulesDescription:
           "Shows Automation Rule configuration and session overrides.",
         automationRulesLabel: "Automation Rules",
+        conversationActivityViewDescription:
+          "Shows the Activity View for conversations in the Agent sidebar.",
+        conversationActivityViewLabel: "Conversation Activity View",
         clearShortcutLabel: "Clear {{label}}",
         newAgentConversationShortcutLabel: "New Agent conversation",
         newSameTypeWindowShortcutLabel: "New same-type window",

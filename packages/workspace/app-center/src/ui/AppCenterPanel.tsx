@@ -20,6 +20,7 @@ import {
   DialogHeader,
   DialogTitle,
   FileCreateIcon,
+  ImageWithFallback,
   ImportLinedIcon as ImportIcon,
   Input,
   OpenSessionsIcon as OpenSessionsFilledIcon,
@@ -1419,13 +1420,16 @@ function AppCenterAgentProviderIcon({
   }
 
   return (
-    <img
+    <ImageWithFallback
       alt=""
       aria-hidden="true"
       className="size-4 shrink-0 rounded-[4px] object-contain"
       decoding="async"
       draggable={false}
       src={normalizedIconUrl}
+      fallback={
+        <span aria-hidden="true" className="size-4 shrink-0 rounded-[4px]" />
+      }
     />
   );
 }

@@ -453,6 +453,22 @@ func (s Service) claudeCodeRuntimeRoot() (string, error) {
 	return root, nil
 }
 
+// managedClaudeCodeExecutable returns the verified native binary selected by
+// the pointer written by EnsureClaudeCodeBinary. Status/action flows use the
+// same path as runtimeprep so a Windows install is visible as installed and
+// login/model discovery do not fall back to PATH-only lookup.
+func (s Service) managedClaudeCodeExecutable() string {
+	pointer, err := readClaudeCodePointer(s.claudeCodeStateRoot())
+	if err != nil {
+		return ""
+	}
+	executable := filepath.Clean(strings.TrimSpace(pointer.Executable))
+	if executable == "." || !s.executableFile(executable) {
+		return ""
+	}
+	return executable
+}
+
 func writeClaudeCodePointer(stateRoot string, descriptor claudeSDKRuntimeDescriptor, executable string) error {
 	pointer := claudeCodeBinaryPointer{
 		Version:    descriptor.ClaudeVersion,

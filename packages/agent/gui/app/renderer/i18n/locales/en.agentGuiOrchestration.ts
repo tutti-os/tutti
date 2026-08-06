@@ -1,6 +1,9 @@
 import { enTuttiModePlan } from "./en.tuttiModePlan.ts";
 
 export const enAgentGuiOrchestration = {
+  codexSaverModeLabel: "Codex saver mode",
+  codexSaverModeDescription:
+    "Keep the selected main model. Suitable self-contained subtasks use Luna Max at roughly one-tenth the current quota cost of Sol High. Quality and speed vary by task.",
   planModeLabel: "Plan Mode",
   normalModeLabel: "Normal",
   normalModeDescription: "Execute the request directly",
@@ -11,7 +14,6 @@ export const enAgentGuiOrchestration = {
   tuttiBudgetTitle: "Tutti preferences",
   tuttiBudgetEffectLabel: "Effect",
   tuttiBudgetSpeedLabel: "Speed",
-  tuttiBudgetPreviewTitle: "Expected behavior",
   tuttiBudgetPreviewHint: "Actual parallelism depends on task dependencies.",
   tuttiBudgetPreviewCost: "Economical",
   tuttiBudgetPreviewBalance: "Balanced",
@@ -20,7 +22,6 @@ export const enAgentGuiOrchestration = {
   tuttiBudgetModelPreferenceCost: "Economical",
   tuttiBudgetModelPreferenceBalance: "Balanced",
   tuttiBudgetModelPreferencePowerful: "Most capable",
-  tuttiBudgetModelPreferenceFastestSuitable: "Fastest suitable",
   tuttiBudgetParallelismLabel: "Parallel target",
   tuttiBudgetParallelismValue: "Up to {{count}} agents",
   tuttiBudgetParallelismValue_one: "{{count}} agent",
