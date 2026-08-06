@@ -557,6 +557,33 @@ than starting duplicate polls. Closing remains controlled, and the Dialog
 stays mounted through ready transitions so its pointer/scroll lock can clean
 up. Active conversations are never replaced by setup UI.
 
+### User-controlled runtime updates
+
+An existing remote Extension installation is not automatically activated when
+the latest compatible signed release raises the declared Agent CLI Runtime
+version and the selected runtime has not already reached that version. Startup
+and background reconciliation keep the verified active installation and let the
+Target-scoped runtime-update resource report the current and available Runtime
+versions. First installation, local development snapshots, and metadata-only
+Extension releases retain their existing reconciliation behavior.
+
+`GET /v1/workspaces/{workspaceID}/agent-targets/{agentTargetID}/runtime-update`
+is read-only. `POST` on the same resource revalidates the requested versions,
+downloads and verifies the signed Extension package, installs the candidate
+Runtime through the existing managed setup pipeline, and performs the ACP probe
+before changing `active.json` or the system Agent Target. Failure leaves the old
+installation active. A successful user-confirmed update records a managed
+Runtime preference on the new fixed installation so a broadly compatible older
+local executable cannot silently win the next launch. The user-owned local
+installation is never overwritten or removed.
+
+Desktop projects this state through the same exact-Target AgentGUI update notice
+used by built-in Providers. The notice is absent when no update is available,
+is shown only on an eligible empty Home surface, and keeps active conversations
+undisturbed. Update execution, failure, retry, completion, and later dismissal
+therefore retain the shared presentation contract without adding
+Provider-specific renderer branches.
+
 ## Activation And Failure Behavior
 
 Source defaults come from generated configuration. A source with `enabled:

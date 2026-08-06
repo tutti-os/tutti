@@ -69,6 +69,17 @@ func (s *FileInstallationStore) ReadInstallation(installationID string) (agentex
 }
 
 func (s *FileInstallationStore) PutActive(installation agentextensionbiz.Installation) error {
+	if err := s.PutInstallation(installation); err != nil {
+		return err
+	}
+	packageDir, err := s.PackageDir(installation.AgentKey, installation.Version)
+	if err != nil {
+		return err
+	}
+	return writeInstallation(filepath.Join(filepath.Dir(packageDir), "active.json"), installation)
+}
+
+func (s *FileInstallationStore) PutInstallation(installation agentextensionbiz.Installation) error {
 	packageDir, err := s.PackageDir(installation.AgentKey, installation.Version)
 	if err != nil {
 		return err
@@ -76,10 +87,7 @@ func (s *FileInstallationStore) PutActive(installation agentextensionbiz.Install
 	if installation.ID != installation.AgentKey+"@"+installation.Version || filepath.Clean(installation.PackageDir) != packageDir {
 		return errors.New("agent extension installation record identity is invalid")
 	}
-	if err := writeInstallation(filepath.Join(packageDir, "installation.json"), installation); err != nil {
-		return err
-	}
-	return writeInstallation(filepath.Join(filepath.Dir(packageDir), "active.json"), installation)
+	return writeInstallation(filepath.Join(packageDir, "installation.json"), installation)
 }
 
 func (s *FileInstallationStore) root() (string, error) {

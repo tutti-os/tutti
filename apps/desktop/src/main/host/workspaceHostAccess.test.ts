@@ -122,6 +122,12 @@ function createTransportClient(
     async getAgentTargetSetup() {
       throw new Error("not used");
     },
+    async getAgentTargetRuntimeUpdate() {
+      throw new Error("not used");
+    },
+    async updateAgentTargetRuntime() {
+      throw new Error("not used");
+    },
     async installAgentTargetRuntime() {
       throw new Error("not used");
     },

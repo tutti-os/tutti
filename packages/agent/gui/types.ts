@@ -229,6 +229,23 @@ export interface AgentGUIAgentTarget {
   unavailableReason?: string;
 }
 
+export type AgentGUIProviderUpdateNoticePhase =
+  | "available"
+  | "updating"
+  | "failed"
+  | "completed";
+
+/** Host-projected, credential-free CLI update state for one exact Agent target. */
+export interface AgentGUIProviderUpdateNotice {
+  agentTargetId: string;
+  currentVersion: string;
+  latestVersion: string;
+  phase: AgentGUIProviderUpdateNoticePhase;
+  detailsTarget?: "provider-environment" | "target-runtime";
+}
+
+export type AgentGUIProviderUpdateNoticeAction = "update" | "later" | "details";
+
 /**
  * Product-neutral surfaces where a Host may enrich an exact Agent target.
  * AgentGUI owns the trigger, positioning, and interaction behavior; the Host

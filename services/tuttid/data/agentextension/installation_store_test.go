@@ -77,3 +77,49 @@ func TestFileInstallationStoreRejectsTraversalAndUnknownFields(t *testing.T) {
 		t.Fatal("unknown field accepted")
 	}
 }
+
+func TestFileInstallationStorePersistsCandidateWithoutChangingActive(t *testing.T) {
+	store := NewFileInstallationStore(t.TempDir())
+	activePackageDir, err := store.PackageDir("generic", "1.2.3")
+	if err != nil {
+		t.Fatal(err)
+	}
+	active := agentextensionbiz.Installation{
+		SchemaVersion: "tutti.agent.installation.v1",
+		ID:            "generic@1.2.3",
+		AgentKey:      "generic",
+		Version:       "1.2.3",
+		Provider:      "acp:generic",
+		PackageDir:    activePackageDir,
+	}
+	active.Manifest.AgentKey = active.AgentKey
+	active.Manifest.Version = active.Version
+	if err := store.PutActive(active); err != nil {
+		t.Fatal(err)
+	}
+
+	candidatePackageDir, err := store.PackageDir("generic", "1.3.0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	candidate := active
+	candidate.ID = "generic@1.3.0"
+	candidate.Version = "1.3.0"
+	candidate.PackageDir = candidatePackageDir
+	candidate.Manifest.Version = candidate.Version
+	if err := store.PutInstallation(candidate); err != nil {
+		t.Fatal(err)
+	}
+
+	persistedCandidate, err := store.ReadInstallation(candidate.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	persistedActive, err := store.ReadActive(active.AgentKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if persistedCandidate.ID != candidate.ID || persistedActive.ID != active.ID {
+		t.Fatalf("candidate = %q active = %q", persistedCandidate.ID, persistedActive.ID)
+	}
+}

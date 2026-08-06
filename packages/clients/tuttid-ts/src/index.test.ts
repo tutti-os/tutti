@@ -617,6 +617,52 @@ test("shared tuttid client preserves target, turn, goal, and auth route contract
   });
 });
 
+test("shared tuttid client checks and applies an exact Agent Target runtime update", async () => {
+  const available = {
+    workspaceId: "ws-1",
+    agentTargetId: "extension:kimi-code",
+    available: true,
+    currentVersion: "1.49.0",
+    latestVersion: "1.50.0"
+  };
+  const updated = {
+    ...available,
+    available: false,
+    currentVersion: "1.50.0"
+  };
+  const { client, requests } = captureClient((request) =>
+    jsonResponse(request.method === "POST" ? updated : available)
+  );
+
+  assert.deepEqual(
+    await client.getAgentTargetRuntimeUpdate("ws-1", "extension:kimi-code"),
+    available
+  );
+  assert.deepEqual(
+    await client.updateAgentTargetRuntime("ws-1", "extension:kimi-code", {
+      currentVersion: "1.49.0",
+      latestVersion: "1.50.0"
+    }),
+    updated
+  );
+  const path =
+    "/v1/workspaces/ws-1/agent-targets/extension%3Akimi-code/runtime-update";
+  assertRequest(requests[0]!, {
+    authorization: null,
+    body: null,
+    method: "GET",
+    path,
+    query: {}
+  });
+  assertRequest(requests[1]!, {
+    authorization: null,
+    body: { currentVersion: "1.49.0", latestVersion: "1.50.0" },
+    method: "POST",
+    path,
+    query: {}
+  });
+});
+
 test("shared tuttid client lists CLI capabilities with discovery options", async () => {
   let requestPath = "";
   let requestQueryEntries: Record<string, string> = {};

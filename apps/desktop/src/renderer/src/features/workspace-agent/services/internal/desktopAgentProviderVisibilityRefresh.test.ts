@@ -78,6 +78,73 @@ test("managed provider reconciliation preserves a fresh application snapshot", a
   assert.deepEqual(reconcileCalls, []);
 });
 
+test("update discovery satisfies stale activation reconciliation with one request path", async () => {
+  const reconcileCalls: unknown[] = [];
+  let updateDiscoveryCalls = 0;
+  const lifecycle = createLifecycleHarness();
+  bindDesktopManagedAgentProviderVisibilityRefresh(
+    {
+      getSnapshot() {
+        return {
+          capturedAt: "2026-07-16T05:00:00Z",
+          defaultProvider: "codex",
+          error: null,
+          isLoading: false,
+          pendingActions: [],
+          statuses: []
+        };
+      },
+      async reconcileStatuses(providers) {
+        reconcileCalls.push(providers);
+        return null;
+      }
+    },
+    lifecycle,
+    {
+      minIntervalMs: 0,
+      refreshForActivation: async () => {
+        updateDiscoveryCalls += 1;
+        return true;
+      }
+    }
+  );
+
+  lifecycle.emit({
+    kind: "focused",
+    occurredAt: Date.parse("2026-07-16T06:00:00Z")
+  });
+  await flushAsyncWork();
+
+  assert.equal(updateDiscoveryCalls, 1);
+  assert.deepEqual(reconcileCalls, []);
+});
+
+test("falls back to ordinary reconciliation when update discovery fails", async () => {
+  const reconcileCalls: unknown[] = [];
+  const lifecycle = createLifecycleHarness();
+  bindDesktopManagedAgentProviderVisibilityRefresh(
+    {
+      async reconcileStatuses(providers) {
+        reconcileCalls.push(providers);
+        return null;
+      }
+    },
+    lifecycle,
+    {
+      minIntervalMs: 0,
+      refreshForActivation: async () => false
+    }
+  );
+
+  lifecycle.emit({ kind: "focused", occurredAt: 1_000 });
+  await flushAsyncWork();
+
+  assert.deepEqual(
+    reconcileCalls,
+    desktopManagedAgentProviders.map((provider) => [provider])
+  );
+});
+
 test("managed provider reconciliation stops scheduling when the window hides", async () => {
   const lifecycle = createLifecycleHarness();
   const reconcileCalls: unknown[] = [];

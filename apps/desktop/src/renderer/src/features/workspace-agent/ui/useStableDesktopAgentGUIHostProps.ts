@@ -33,12 +33,14 @@ export type DesktopAgentGUIHostProps = {
     | "providerAuthAccountLabels"
     | "mentionService"
     | "workspaceAppIcons"
+    | "agentProviderUpdateNotices"
   >;
   hostActions: Pick<
     AgentGUIProps["hostActions"],
     | "onComposerAppendHandled"
     | "onAgentConfigMenuOpen"
     | "onAgentEnvPanelOpen"
+    | "onAgentProviderUpdateNoticeAction"
     | "onAgentProviderLogin"
     | "onCapabilitySettingsRequest"
     | "onClose"
@@ -116,12 +118,16 @@ export function useStableDesktopAgentGUIHostProps({
       defaultAgentTargetId: nextHostCapabilities.defaultAgentTargetId,
       providerAuthAccountLabels: nextHostCapabilities.providerAuthAccountLabels,
       mentionService: nextHostCapabilities.mentionService,
-      workspaceAppIcons: nextHostCapabilities.workspaceAppIcons
+      workspaceAppIcons: nextHostCapabilities.workspaceAppIcons,
+      agentProviderUpdateNotices:
+        nextHostCapabilities.agentProviderUpdateNotices
     },
     hostActions: {
       onComposerAppendHandled: nextHostActions.onComposerAppendHandled,
       onAgentConfigMenuOpen: nextHostActions.onAgentConfigMenuOpen,
       onAgentEnvPanelOpen: nextHostActions.onAgentEnvPanelOpen,
+      onAgentProviderUpdateNoticeAction:
+        nextHostActions.onAgentProviderUpdateNoticeAction,
       onAgentProviderLogin: nextHostActions.onAgentProviderLogin,
       onCapabilitySettingsRequest: nextHostActions.onCapabilitySettingsRequest,
       onClose: nextHostActions.onClose,

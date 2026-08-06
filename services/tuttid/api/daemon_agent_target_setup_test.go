@@ -12,9 +12,11 @@ import (
 )
 
 type stubAgentTargetSetupService struct {
-	getFn          func(context.Context, agentextensionservice.InstallPlanInput) (agentextensionservice.SetupSnapshot, error)
-	installFn      func(context.Context, agentextensionservice.InstallInput) (agentextensionservice.SetupSnapshot, error)
-	authenticateFn func(context.Context, agentextensionservice.AuthenticateInput) (agentextensionservice.SetupSnapshot, error)
+	getFn                func(context.Context, agentextensionservice.InstallPlanInput) (agentextensionservice.SetupSnapshot, error)
+	installFn            func(context.Context, agentextensionservice.InstallInput) (agentextensionservice.SetupSnapshot, error)
+	authenticateFn       func(context.Context, agentextensionservice.AuthenticateInput) (agentextensionservice.SetupSnapshot, error)
+	getRuntimeUpdateFn   func(context.Context, agentextensionservice.RuntimeUpdateInput) (agentextensionservice.RuntimeUpdateSnapshot, error)
+	applyRuntimeUpdateFn func(context.Context, agentextensionservice.ApplyRuntimeUpdateInput) (agentextensionservice.RuntimeUpdateSnapshot, error)
 }
 
 func (s stubAgentTargetSetupService) Authenticate(ctx context.Context, input agentextensionservice.AuthenticateInput) (agentextensionservice.SetupSnapshot, error) {
@@ -27,6 +29,14 @@ func (s stubAgentTargetSetupService) GetSetup(ctx context.Context, input agentex
 
 func (s stubAgentTargetSetupService) Install(ctx context.Context, input agentextensionservice.InstallInput) (agentextensionservice.SetupSnapshot, error) {
 	return s.installFn(ctx, input)
+}
+
+func (s stubAgentTargetSetupService) GetRuntimeUpdate(ctx context.Context, input agentextensionservice.RuntimeUpdateInput) (agentextensionservice.RuntimeUpdateSnapshot, error) {
+	return s.getRuntimeUpdateFn(ctx, input)
+}
+
+func (s stubAgentTargetSetupService) ApplyRuntimeUpdate(ctx context.Context, input agentextensionservice.ApplyRuntimeUpdateInput) (agentextensionservice.RuntimeUpdateSnapshot, error) {
+	return s.applyRuntimeUpdateFn(ctx, input)
 }
 
 func TestDaemonAPIGeneratedRoutesAgentTargetSetupInstallAndAuthenticate(t *testing.T) {
@@ -157,6 +167,52 @@ func TestDaemonAPIGeneratedRouteMapsAgentTargetSetupErrors(t *testing.T) {
 				t.Fatalf("status = %d, want %d; body: %s", recorder.Code, test.want, recorder.Body.String())
 			}
 		})
+	}
+}
+
+func TestDaemonAPIGeneratedRoutesAgentTargetRuntimeUpdate(t *testing.T) {
+	var capturedGet agentextensionservice.RuntimeUpdateInput
+	var capturedApply agentextensionservice.ApplyRuntimeUpdateInput
+	service := stubAgentTargetSetupService{
+		getRuntimeUpdateFn: func(_ context.Context, input agentextensionservice.RuntimeUpdateInput) (agentextensionservice.RuntimeUpdateSnapshot, error) {
+			capturedGet = input
+			return agentextensionservice.RuntimeUpdateSnapshot{
+				WorkspaceID: input.WorkspaceID, AgentTargetID: input.AgentTargetID,
+				Available: true, CurrentVersion: "1.49.0", LatestVersion: "1.50.0",
+			}, nil
+		},
+		applyRuntimeUpdateFn: func(_ context.Context, input agentextensionservice.ApplyRuntimeUpdateInput) (agentextensionservice.RuntimeUpdateSnapshot, error) {
+			capturedApply = input
+			return agentextensionservice.RuntimeUpdateSnapshot{
+				WorkspaceID: input.WorkspaceID, AgentTargetID: input.AgentTargetID,
+				CurrentVersion: "1.50.0", LatestVersion: "1.50.0",
+			}, nil
+		},
+	}
+	mux := http.NewServeMux()
+	RegisterRoutes(mux, NewRoutes(DaemonAPI{AgentTargetSetupService: service}))
+	path := "/v1/workspaces/workspace-1/agent-targets/extension:kimi-code/runtime-update"
+
+	getRecorder := performGeneratedRouteRequest(t, mux, http.MethodGet, path, nil)
+	if getRecorder.Code != http.StatusOK {
+		t.Fatalf("GET status = %d; body: %s", getRecorder.Code, getRecorder.Body.String())
+	}
+	var getResponse tuttigenerated.AgentTargetRuntimeUpdateSnapshot
+	decodeGeneratedRouteResponse(t, getRecorder, &getResponse)
+	if capturedGet.AgentTargetID != "extension:kimi-code" || !getResponse.Available ||
+		getResponse.CurrentVersion == nil || *getResponse.CurrentVersion != "1.49.0" ||
+		getResponse.LatestVersion == nil || *getResponse.LatestVersion != "1.50.0" {
+		t.Fatalf("captured GET = %#v response = %#v", capturedGet, getResponse)
+	}
+
+	postRecorder := performGeneratedRouteRequest(t, mux, http.MethodPost, path, map[string]any{
+		"currentVersion": "1.49.0", "latestVersion": "1.50.0",
+	})
+	if postRecorder.Code != http.StatusOK {
+		t.Fatalf("POST status = %d; body: %s", postRecorder.Code, postRecorder.Body.String())
+	}
+	if capturedApply.AgentTargetID != "extension:kimi-code" || capturedApply.CurrentVersion != "1.49.0" || capturedApply.LatestVersion != "1.50.0" {
+		t.Fatalf("captured update = %#v", capturedApply)
 	}
 }
 

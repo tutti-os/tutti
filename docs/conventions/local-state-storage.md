@@ -373,13 +373,18 @@ Agent Extension executables are user-local programs rather than daemon state:
         claude
 ```
 
-A compatible user-local executable remains preferred; otherwise one explicitly
-confirmed, pinned runtime is installed per extension version and reused across
-development, production, and all workspaces. Runtime installation never writes
-under a user project. Setup action records, extension packages, discovery CWDs,
-and session state remain under the selected `~/.tutti[-dev]` state root. The
-Claude SDK sidecar's `current.json` pointer is state metadata, while its pinned
-native executable uses the shared user-local runtime root.
+A compatible user-local executable remains preferred by default; otherwise one
+explicitly confirmed, pinned runtime is installed per extension version and
+reused across development, production, and all workspaces. A user-confirmed
+runtime update persists `preferManagedRuntime` in the active Extension's
+`installation.json`; compatible metadata-only Extension releases carry that
+choice forward and resolve the verified managed Runtime before a compatible
+local executable. Runtime installation never writes under a user project, and
+this preference never overwrites or removes the local CLI. Setup action records,
+extension packages, discovery CWDs, and session state remain under the selected
+`~/.tutti[-dev]` state root. The Claude SDK sidecar's `current.json` pointer is
+state metadata, while its pinned native executable uses the shared user-local
+runtime root.
 
 Agent Extension activation publishes its command through the stable two-link
 chain above. Development and production share that command and underlying

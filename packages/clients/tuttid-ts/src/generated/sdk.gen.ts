@@ -250,6 +250,9 @@ import type {
   GetAgentSessionReplayTransportPlaybackData,
   GetAgentSessionReplayTransportPlaybackErrors,
   GetAgentSessionReplayTransportPlaybackResponses,
+  GetAgentTargetRuntimeUpdateData,
+  GetAgentTargetRuntimeUpdateErrors,
+  GetAgentTargetRuntimeUpdateResponses,
   GetAgentTargetSetupData,
   GetAgentTargetSetupErrors,
   GetAgentTargetSetupResponses,
@@ -688,6 +691,9 @@ import type {
   UpdateAgentSessionReplayTransportPlaybackData,
   UpdateAgentSessionReplayTransportPlaybackErrors,
   UpdateAgentSessionReplayTransportPlaybackResponses,
+  UpdateAgentTargetRuntimeData,
+  UpdateAgentTargetRuntimeErrors,
+  UpdateAgentTargetRuntimeResponses,
   UpdateAutomationRuleData,
   UpdateAutomationRuleErrors,
   UpdateAutomationRuleResponses,
@@ -1409,6 +1415,50 @@ export const authenticateAgentTargetRuntime = <
   >({
     security: [{ scheme: "bearer", type: "http" }],
     url: "/v1/workspaces/{workspaceID}/agent-targets/{agentTargetID}/setup/authenticate",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers
+    }
+  });
+
+/**
+ * Check an Agent Extension runtime update
+ *
+ * Compares the exact runtime currently selected for the Target with the latest compatible signed Agent Extension release. This operation never activates a release or mutates a runtime.
+ *
+ */
+export const getAgentTargetRuntimeUpdate = <
+  ThrowOnError extends boolean = false
+>(
+  options: Options<GetAgentTargetRuntimeUpdateData, ThrowOnError>
+) =>
+  (options.client ?? client).get<
+    GetAgentTargetRuntimeUpdateResponses,
+    GetAgentTargetRuntimeUpdateErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/agent-targets/{agentTargetID}/runtime-update",
+    ...options
+  });
+
+/**
+ * Update an Agent Extension runtime
+ *
+ * Revalidates the requested signed release, installs and probes its managed runtime, then atomically switches the Target installation. The previous installation remains active if preparation or verification fails.
+ *
+ */
+export const updateAgentTargetRuntime = <ThrowOnError extends boolean = false>(
+  options: Options<UpdateAgentTargetRuntimeData, ThrowOnError>
+) =>
+  (options.client ?? client).post<
+    UpdateAgentTargetRuntimeResponses,
+    UpdateAgentTargetRuntimeErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/agent-targets/{agentTargetID}/runtime-update",
     ...options,
     headers: {
       "Content-Type": "application/json",

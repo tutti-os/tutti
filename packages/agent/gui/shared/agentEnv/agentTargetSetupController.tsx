@@ -84,6 +84,10 @@ export function useAgentTargetSetupController(): AgentTargetSetupController {
   return controller;
 }
 
+export function useOptionalAgentTargetSetupController(): AgentTargetSetupController | null {
+  return useContext(AgentTargetSetupControllerContext);
+}
+
 export function useCreateAgentTargetSetupController(
   agentTarget: AgentGUIAgentTarget | null
 ): AgentTargetSetupController {

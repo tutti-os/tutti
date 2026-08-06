@@ -708,6 +708,14 @@ export type AgentTargetSetupSnapshot = {
   action: AgentTargetSetupAction | null;
 };
 
+export type AgentTargetRuntimeUpdateSnapshot = {
+  workspaceId: string;
+  agentTargetId: string;
+  available: boolean;
+  currentVersion: string | null;
+  latestVersion: string | null;
+};
+
 export type AgentTargetAuthMethod = {
   id: string;
   name: string;
@@ -740,6 +748,11 @@ export type InstallAgentTargetRuntimeRequest = {
 export type AuthenticateAgentTargetRuntimeRequest = {
   methodId: string;
   clientActionId: string;
+};
+
+export type UpdateAgentTargetRuntimeRequest = {
+  currentVersion: string;
+  latestVersion: string;
 };
 
 export type ListWorkspacesResponse = {
@@ -6351,6 +6364,106 @@ export type AuthenticateAgentTargetRuntimeResponses = {
 
 export type AuthenticateAgentTargetRuntimeResponse =
   AuthenticateAgentTargetRuntimeResponses[keyof AuthenticateAgentTargetRuntimeResponses];
+
+export type GetAgentTargetRuntimeUpdateData = {
+  body?: never;
+  path: {
+    workspaceID: string;
+    agentTargetID: string;
+  };
+  query?: never;
+  url: "/v1/workspaces/{workspaceID}/agent-targets/{agentTargetID}/runtime-update";
+};
+
+export type GetAgentTargetRuntimeUpdateErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * Workspace id was not found
+   */
+  404: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Workspace operation failed in an upstream adapter or command
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type GetAgentTargetRuntimeUpdateError =
+  GetAgentTargetRuntimeUpdateErrors[keyof GetAgentTargetRuntimeUpdateErrors];
+
+export type GetAgentTargetRuntimeUpdateResponses = {
+  /**
+   * Current Target runtime update state
+   */
+  200: AgentTargetRuntimeUpdateSnapshot;
+};
+
+export type GetAgentTargetRuntimeUpdateResponse =
+  GetAgentTargetRuntimeUpdateResponses[keyof GetAgentTargetRuntimeUpdateResponses];
+
+export type UpdateAgentTargetRuntimeData = {
+  body: UpdateAgentTargetRuntimeRequest;
+  path: {
+    workspaceID: string;
+    agentTargetID: string;
+  };
+  query?: never;
+  url: "/v1/workspaces/{workspaceID}/agent-targets/{agentTargetID}/runtime-update";
+};
+
+export type UpdateAgentTargetRuntimeErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * Workspace id was not found
+   */
+  404: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Workspace operation failed in an upstream adapter or command
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type UpdateAgentTargetRuntimeError =
+  UpdateAgentTargetRuntimeErrors[keyof UpdateAgentTargetRuntimeErrors];
+
+export type UpdateAgentTargetRuntimeResponses = {
+  /**
+   * Updated Target runtime state
+   */
+  200: AgentTargetRuntimeUpdateSnapshot;
+};
+
+export type UpdateAgentTargetRuntimeResponse =
+  UpdateAgentTargetRuntimeResponses[keyof UpdateAgentTargetRuntimeResponses];
 
 export type ListWorkspacesData = {
   body?: never;

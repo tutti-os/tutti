@@ -5403,6 +5403,15 @@ type AgentTargetProvider = string
 // AgentTargetRuntimeSource defines model for AgentTargetRuntimeSource.
 type AgentTargetRuntimeSource string
 
+// AgentTargetRuntimeUpdateSnapshot defines model for AgentTargetRuntimeUpdateSnapshot.
+type AgentTargetRuntimeUpdateSnapshot struct {
+	AgentTargetId  string  `json:"agentTargetId"`
+	Available      bool    `json:"available"`
+	CurrentVersion *string `json:"currentVersion"`
+	LatestVersion  *string `json:"latestVersion"`
+	WorkspaceId    string  `json:"workspaceId"`
+}
+
 // AgentTargetSetupAction defines model for AgentTargetSetupAction.
 type AgentTargetSetupAction struct {
 	ActionId        string                       `json:"actionId"`
@@ -7995,6 +8004,12 @@ type UpdateAgentSessionReplayTransportPlaybackRequestSpeed float64
 // UpdateAgentSessionReplayTransportPlaybackRequestTimingMode defines model for UpdateAgentSessionReplayTransportPlaybackRequest.TimingMode.
 type UpdateAgentSessionReplayTransportPlaybackRequestTimingMode string
 
+// UpdateAgentTargetRuntimeRequest defines model for UpdateAgentTargetRuntimeRequest.
+type UpdateAgentTargetRuntimeRequest struct {
+	CurrentVersion string `json:"currentVersion"`
+	LatestVersion  string `json:"latestVersion"`
+}
+
 // UpdateIssueManagerIssueRequest defines model for UpdateIssueManagerIssueRequest.
 type UpdateIssueManagerIssueRequest struct {
 	Content *string             `json:"content,omitempty"`
@@ -10180,6 +10195,9 @@ type UpdateWorkspaceAgentSessionTuttiModeActivationJSONRequestBody = UpdateTutti
 
 // UpdateWorkspaceAgentSessionVisibilityJSONRequestBody defines body for UpdateWorkspaceAgentSessionVisibility for application/json ContentType.
 type UpdateWorkspaceAgentSessionVisibilityJSONRequestBody = UpdateWorkspaceAgentSessionVisibilityRequest
+
+// UpdateAgentTargetRuntimeJSONRequestBody defines body for UpdateAgentTargetRuntime for application/json ContentType.
+type UpdateAgentTargetRuntimeJSONRequestBody = UpdateAgentTargetRuntimeRequest
 
 // AuthenticateAgentTargetRuntimeJSONRequestBody defines body for AuthenticateAgentTargetRuntime for application/json ContentType.
 type AuthenticateAgentTargetRuntimeJSONRequestBody = AuthenticateAgentTargetRuntimeRequest

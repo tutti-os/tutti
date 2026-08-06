@@ -886,6 +886,8 @@ function createDependenciesStub(): {
       setSystemAgentTargetEnabled: fail,
       updateAgentQuickPrompt: fail,
       getAgentTargetSetup: fail,
+      getAgentTargetRuntimeUpdate: fail,
+      updateAgentTargetRuntime: fail,
       installAgentTargetRuntime: fail,
       authenticateAgentTargetRuntime: fail,
       startAccountLogin: fail,

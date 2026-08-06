@@ -32,6 +32,7 @@ export interface DiagnosticsConsentStore {
 export interface AgentProviderStatusRequestInput {
   providers?: readonly WorkspaceAgentProvider[];
   includeNetwork?: boolean;
+  includeUpdates?: boolean;
   refresh?: boolean;
 }
 
@@ -236,6 +237,7 @@ function statusRequestDetails(input: AgentProviderStatusRequestInput) {
   const providers = [...new Set(input.providers ?? [])].sort();
   return {
     includeNetwork: input.includeNetwork === true,
+    includeUpdates: input.includeUpdates === true,
     providerCount: providers.length,
     providers,
     requestScope: providers.length > 0 ? "providers" : "all"

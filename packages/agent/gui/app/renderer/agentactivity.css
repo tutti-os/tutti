@@ -10402,12 +10402,23 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
      Wrapped titles, composer controls, and readiness actions then grow down. */
   --agent-gui-empty-hero-anchor-block-size: 398px;
 
+  position: relative;
   display: flex;
   width: 100%;
   min-height: 100%;
   align-items: center;
   justify-content: center;
   padding: 24px clamp(32px, 4vw, 48px) 40px;
+}
+
+.agent-gui-node__empty-hero-update-notices {
+  position: absolute;
+  z-index: 2;
+  top: -8px;
+  left: 50%;
+  width: min(600px, calc(100% - 64px));
+  min-width: 0;
+  transform: translateX(-50%);
 }
 
 .agent-gui-node__empty-hero-body {

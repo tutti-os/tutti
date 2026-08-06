@@ -303,6 +303,141 @@ test("local-only refresh preserves prior includeUpdates discovery", async () => 
   );
 });
 
+test("local-only refresh drops update discovery after the CLI runtime changes", async () => {
+  const discoveredUpdate = {
+    capability: "supported" as const,
+    currentVersion: "1.0.0",
+    lastCheckedAt: "2026-07-19T00:00:00.000Z",
+    latestVersion: "1.1.0",
+    reasonCode: null,
+    source: "npm" as const,
+    unsupportedReason: null,
+    updateAvailable: true
+  };
+  const service = new DesktopAgentProviderStatusService({
+    tuttidClient: createTuttidClient({
+      snapshots: [
+        createStatusResponse([
+          createProviderStatus({
+            actions: [{ id: "update", kind: "daemon_action" }],
+            availability: "ready",
+            cliBinaryPath: "/usr/local/bin/codex",
+            cliVersion: "1.0.0",
+            update: discoveredUpdate
+          })
+        ]),
+        createStatusResponse([
+          createProviderStatus({
+            actions: [],
+            availability: "ready",
+            cliBinaryPath: "/usr/local/bin/codex",
+            cliVersion: "1.1.0",
+            update: {
+              ...discoveredUpdate,
+              currentVersion: "1.1.0",
+              lastCheckedAt: null,
+              latestVersion: null,
+              updateAvailable: null
+            }
+          })
+        ])
+      ]
+    }),
+    terminalCommandRunner: {
+      async runTerminalCommand() {}
+    }
+  });
+
+  await service.checkUpdates(["codex"]);
+  await service.refresh(["codex"]);
+
+  assert.equal(service.getStatus("codex")?.cli.version, "1.1.0");
+  assert.equal(service.getStatus("codex")?.update.currentVersion, "1.1.0");
+  assert.equal(service.getStatus("codex")?.update.updateAvailable, null);
+  assert.equal(
+    service
+      .getStatus("codex")
+      ?.actions.some((action) => action.id === "update"),
+    false
+  );
+});
+
+test("a later ordinary response does not make an earlier update response stale", async () => {
+  const updateStatusRequest = createDeferred<AgentProviderStatusListResponse>();
+  const ordinaryStatusRequest =
+    createDeferred<AgentProviderStatusListResponse>();
+  const service = new DesktopAgentProviderStatusService({
+    tuttidClient: {
+      getAgentProviderStatuses: (request) =>
+        request?.includeUpdates
+          ? updateStatusRequest.promise
+          : ordinaryStatusRequest.promise
+    } as Partial<TuttidClient> as TuttidClient,
+    terminalCommandRunner: {
+      async runTerminalCommand() {}
+    }
+  });
+
+  const updateCheck = service.checkUpdates(["codex"]);
+  const ordinaryRefresh = service.refresh(["codex"]);
+  ordinaryStatusRequest.resolve(
+    createStatusResponse([createRuntimeStatus({ updateAvailable: null })])
+  );
+  await ordinaryRefresh;
+
+  updateStatusRequest.resolve(
+    createStatusResponse([createRuntimeStatus({ updateAvailable: true })])
+  );
+  await updateCheck;
+
+  assert.equal(service.getStatus("codex")?.update.updateAvailable, true);
+  assert.equal(
+    service
+      .getStatus("codex")
+      ?.actions.some((action) => action.id === "update"),
+    true
+  );
+});
+
+test("an update response is retained until a later ordinary response supplies the runtime", async () => {
+  const updateStatusRequest = createDeferred<AgentProviderStatusListResponse>();
+  const ordinaryStatusRequest =
+    createDeferred<AgentProviderStatusListResponse>();
+  const service = new DesktopAgentProviderStatusService({
+    tuttidClient: {
+      getAgentProviderStatuses: (request) =>
+        request?.includeUpdates
+          ? updateStatusRequest.promise
+          : ordinaryStatusRequest.promise
+    } as Partial<TuttidClient> as TuttidClient,
+    terminalCommandRunner: {
+      async runTerminalCommand() {}
+    }
+  });
+
+  const updateCheck = service.checkUpdates(["codex"]);
+  const ordinaryRefresh = service.refresh(["codex"]);
+  updateStatusRequest.resolve(
+    createStatusResponse([createRuntimeStatus({ updateAvailable: true })])
+  );
+  await updateCheck;
+
+  assert.equal(service.getStatus("codex"), null);
+
+  ordinaryStatusRequest.resolve(
+    createStatusResponse([createRuntimeStatus({ updateAvailable: null })])
+  );
+  await ordinaryRefresh;
+
+  assert.equal(service.getStatus("codex")?.update.updateAvailable, true);
+  assert.equal(
+    service
+      .getStatus("codex")
+      ?.actions.some((action) => action.id === "update"),
+    true
+  );
+});
+
 test("runAction update tracks pending progress and refreshes with includeUpdates", async () => {
   const requests: Array<{
     includeUpdates?: boolean;
@@ -1717,6 +1852,7 @@ test("provider status requests log duration, scope, and cache hits", async () =>
       {
         details: {
           includeNetwork: false,
+          includeUpdates: false,
           providerCount: 1,
           providers: ["codex"],
           requestId: 1,
@@ -1729,6 +1865,7 @@ test("provider status requests log duration, scope, and cache hits", async () =>
           appliedProviderCount: 1,
           durationMs: 45,
           includeNetwork: false,
+          includeUpdates: false,
           providerCount: 1,
           providers: ["codex"],
           requestId: 1,
@@ -1742,6 +1879,7 @@ test("provider status requests log duration, scope, and cache hits", async () =>
         details: {
           cachedProviderCount: 1,
           includeNetwork: false,
+          includeUpdates: false,
           providerCount: 1,
           providers: ["codex"],
           requestScope: "providers"
@@ -1782,6 +1920,7 @@ test("failed provider status requests log duration without the error message", a
     durationMs: 60,
     errorType: "TypeError",
     includeNetwork: false,
+    includeUpdates: false,
     providerCount: 1,
     providers: ["codex"],
     requestId: 1,
@@ -2555,7 +2694,9 @@ function createProviderStatus(input: {
   actions: AgentProviderStatus["actions"];
   adapterInstalled?: boolean;
   availability: AgentProviderStatus["availability"]["status"];
+  cliBinaryPath?: string | null;
   cliInstalled?: boolean;
+  cliVersion?: string | null;
   network?: AgentProviderStatus["network"];
   provider?: WorkspaceAgentProvider;
   reasonCode?: string;
@@ -2582,7 +2723,11 @@ function createProviderStatus(input: {
       status: input.availability
     },
     cli: {
-      installed: cliInstalled
+      installed: cliInstalled,
+      ...(input.cliBinaryPath !== undefined
+        ? { binaryPath: input.cliBinaryPath }
+        : {}),
+      ...(input.cliVersion !== undefined ? { version: input.cliVersion } : {})
     },
     network: input.network,
     provider: input.provider ?? "codex",
@@ -2597,6 +2742,30 @@ function createProviderStatus(input: {
       updateAvailable: null
     }
   };
+}
+
+function createRuntimeStatus(input: {
+  updateAvailable: boolean | null;
+}): AgentProviderStatus {
+  const updateAvailable = input.updateAvailable;
+  return createProviderStatus({
+    actions:
+      updateAvailable === true ? [{ id: "update", kind: "daemon_action" }] : [],
+    availability: "ready",
+    cliBinaryPath: "/usr/local/bin/codex",
+    cliVersion: "1.0.0",
+    update: {
+      capability: "supported",
+      currentVersion: "1.0.0",
+      lastCheckedAt:
+        updateAvailable === null ? null : "2026-07-19T00:00:00.000Z",
+      latestVersion: updateAvailable === true ? "1.1.0" : null,
+      reasonCode: null,
+      source: "npm",
+      unsupportedReason: null,
+      updateAvailable
+    }
+  });
 }
 
 function createDeferred<T>(): {

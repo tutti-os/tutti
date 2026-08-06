@@ -8,6 +8,7 @@ export {
 export type { AgentAnalyticsErrorFields } from "./agentAnalyticsError.ts";
 export { IAgentsService } from "./services/agentsService.interface";
 export { IAgentEnvService } from "./services/agentEnvService.interface";
+export { IAgentCLIUpdateNoticeService } from "./services/agentCLIUpdateNoticeService.interface";
 export { IAgentProviderStatusService } from "./services/agentProviderStatusService.interface";
 export { IAgentQuickPromptService } from "./services/agentQuickPromptService.interface";
 export { createDesktopAgentGUIWorkbenchHostInput } from "./services/createDesktopAgentGUIWorkbenchHostInput";

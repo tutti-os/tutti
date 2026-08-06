@@ -23,6 +23,13 @@ vi.mock("./AgentTargetSetupGate.tsx", () => ({
   )
 }));
 
+vi.mock("../../../i18n/index", () => ({
+  useTranslation: () => ({
+    t: (key: string) =>
+      key === "agentHost.agentGui.updateNoticeRegionLabel" ? "CLI updates" : key
+  })
+}));
+
 describe("AgentGUIEmptyHeroPane notices", () => {
   it("does not render an unresolved target label in the Home title", () => {
     render(
@@ -118,5 +125,83 @@ describe("AgentGUIEmptyHeroPane notices", () => {
       status.compareDocumentPosition(composer) &
         Node.DOCUMENT_POSITION_FOLLOWING
     ).toBeTruthy();
+  });
+
+  it("shows Host update notices only on the ready empty Home surface", () => {
+    const props = {
+      isActive: true,
+      isVisible: true,
+      provider: "codex" as const,
+      showAllProviders: false,
+      agentTargets: [
+        {
+          agentTargetId: "local:codex",
+          label: "Codex",
+          provider: "codex" as const,
+          ref: { kind: "local", provider: "codex" as const },
+          targetId: "local:codex"
+        }
+      ],
+      selectedAgentTarget: null,
+      labels: {
+        empty: "What can Agent help with?",
+        emptyForProvider: () => "What can Agent help with?",
+        emptyProvider: "Agent",
+        emptyProviderForProvider: () => "Agent",
+        providerSwitchLabel: "Select Agent",
+        providerGateCheckingTitle: "Checking Agent",
+        providerGateCheckingDescription: "Checking Agent readiness",
+        providerGateCheckingAgentsDescription: "Checking Agent readiness",
+        sharedAgentOwnerSeparator: "'s"
+      } as unknown as AgentGUIViewLabels,
+      noticeChrome: null,
+      isRespondingApproval: false,
+      onSubmitApprovalOption: vi.fn(),
+      onRetryActivation: vi.fn(),
+      onContinueInNewConversation: vi.fn(),
+      chromeLabels: {} as never,
+      composerProps: {} as AgentComposerProps,
+      suggestions: [],
+      onSelectSuggestion: vi.fn(),
+      updateNotices: [
+        {
+          agentTargetId: "local:codex",
+          currentVersion: "1.2.3",
+          latestVersion: "1.3.0",
+          phase: "available" as const
+        }
+      ],
+      onUpdateNoticeAction: vi.fn()
+    };
+    const { rerender } = render(
+      <AgentGUIEmptyHomePane {...props} providerReadinessGate={null} />
+    );
+
+    expect(
+      screen.getByRole("region", { name: "CLI updates" })
+    ).toBeInTheDocument();
+
+    rerender(
+      <AgentGUIEmptyHomePane
+        {...props}
+        providerReadinessGate={{ status: "checking" }}
+      />
+    );
+
+    expect(
+      screen.queryByRole("region", { name: "CLI updates" })
+    ).not.toBeInTheDocument();
+
+    rerender(
+      <AgentGUIEmptyHomePane
+        {...props}
+        onUpdateNoticeAction={undefined}
+        providerReadinessGate={null}
+      />
+    );
+
+    expect(
+      screen.queryByRole("region", { name: "CLI updates" })
+    ).not.toBeInTheDocument();
   });
 });
