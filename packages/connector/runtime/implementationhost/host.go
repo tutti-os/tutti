@@ -51,20 +51,6 @@ type CredentialFile struct {
 	ExpiresAt time.Time
 }
 
-// AuthorizationObserver receives runtime-side credential binding outcomes.
-// The owning product may project them upstream; this Host does not become the
-// account authorization truth source.
-type AuthorizationObserver interface {
-	ObserveAuthorization(context.Context, AuthorizationObservation)
-}
-
-type AuthorizationObservation struct {
-	ConnectorKey string
-	ConnectionID string
-	State        market.AuthorizationState
-	ObservedAt   time.Time
-}
-
 type ReconcileRequest struct {
 	Runtime market.RuntimeReconcileRequest
 	// CredentialGrant is consumed by Reconcile and erased before it returns.
@@ -78,6 +64,7 @@ type Config struct {
 	Processes         agentruntime.ProcessTransport
 	Credentials       CredentialBroker
 	Authorization     AuthorizationObserver
+	Routes            RouteObserver
 	Commands          *CommandRegistry
 	StateRoot         string
 	MCPStartupTimeout time.Duration
@@ -89,6 +76,7 @@ type Host struct {
 	processes         agentruntime.ProcessTransport
 	credentials       CredentialBroker
 	authorization     AuthorizationObserver
+	routeObserver     RouteObserver
 	mcpStartupTimeout time.Duration
 	routes            *connectorruntime.RouteTable
 	snapshots         *connectorruntime.ExecutionSnapshotter
@@ -143,6 +131,7 @@ func New(config Config) (*Host, error) {
 	config.Commands.attach(routes)
 	return &Host{artifacts: config.Artifacts, planner: planner, processes: config.Processes, credentials: config.Credentials,
 		authorization:     config.Authorization,
+		routeObserver:     config.Routes,
 		mcpStartupTimeout: config.MCPStartupTimeout, routes: routes, snapshots: snapshots}, nil
 }
 
@@ -414,7 +403,14 @@ func listMCPTools(ctx context.Context, client *mcp.StdioClient) ([]mcpTool, erro
 
 func (host *Host) monitorMCPRoute(route *connectorRoute, client *mcp.StdioClient) {
 	<-client.Done()
+	unexpected := host.routes.IsCurrent(route)
 	_ = host.routes.RetireExact(route, time.Now().Add(3*time.Second))
+	if unexpected && host.routeObserver != nil {
+		host.routeObserver.ObserveRoute(context.Background(), RouteObservation{
+			ConnectorKey: route.connectorKey, ConnectionID: route.connectionID,
+			ReleaseDigest: route.releaseDigest, Generation: route.generation, ObservedAt: time.Now().UTC(),
+		})
+	}
 }
 
 func (host *Host) attachCLI(route *connectorRoute, managed *market.ManagedStdioImplementation,
