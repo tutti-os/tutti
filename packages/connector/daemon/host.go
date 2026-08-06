@@ -22,6 +22,8 @@ type HostConfig struct {
 	Compatibility          market.CompatibilityEvaluator
 	ImplementationRegistry market.ImplementationRegistry
 	Outbox                 market.ChangedEventOutbox
+	Lifecycle              market.LifecycleCleanupStore
+	LifecyclePolicy        LifecycleCleanupPolicy
 	Publisher              ChangedEventPublisher
 }
 
@@ -31,6 +33,7 @@ type Host struct {
 	cancel               context.CancelFunc
 	scheduler            *OperationScheduler
 	outboxDone           chan struct{}
+	lifecycleDone        chan struct{}
 	closeOnce            sync.Once
 	bootstrapMu          sync.Mutex
 	bootstrapped         bool
@@ -122,8 +125,8 @@ func NewHost(parent context.Context, config HostConfig) (*Host, error) {
 	if parent == nil {
 		parent = context.Background()
 	}
-	if config.Outbox == nil || config.Publisher == nil {
-		return nil, errors.New("connector market outbox and publisher are required")
+	if config.Outbox == nil || config.Lifecycle == nil || config.Publisher == nil {
+		return nil, errors.New("connector market outbox, lifecycle cleanup, and publisher are required")
 	}
 	hostContext, cancel := context.WithCancel(parent)
 	scheduler := NewOperationScheduler(hostContext)
@@ -152,6 +155,7 @@ func NewHost(parent context.Context, config HostConfig) (*Host, error) {
 		cancel:             cancel,
 		scheduler:          scheduler,
 		outboxDone:         make(chan struct{}),
+		lifecycleDone:      make(chan struct{}),
 		repository:         config.Repository,
 		implementationHost: config.ImplementationHost,
 		activationGate:     activationGate,
@@ -164,6 +168,11 @@ func NewHost(parent context.Context, config HostConfig) (*Host, error) {
 	go func() {
 		defer close(host.outboxDone)
 		dispatcher.Run(hostContext)
+	}()
+	cleanupWorker := LifecycleCleanupWorker{Store: config.Lifecycle, Policy: config.LifecyclePolicy}
+	go func() {
+		defer close(host.lifecycleDone)
+		cleanupWorker.Run(hostContext)
 	}()
 	return host, nil
 }
@@ -370,6 +379,7 @@ func (host *Host) Close() {
 			_ = closer.Close()
 		}
 		<-host.outboxDone
+		<-host.lifecycleDone
 		host.scheduler.Wait()
 	})
 }

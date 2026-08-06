@@ -25,6 +25,7 @@ type Store struct {
 
 var _ market.Repository = (*Store)(nil)
 var _ market.ChangedEventOutbox = (*Store)(nil)
+var _ market.LifecycleCleanupStore = (*Store)(nil)
 
 func Open(ctx context.Context, dbPath string) (*Store, error) {
 	dbPath = strings.TrimSpace(dbPath)
@@ -92,6 +93,11 @@ VALUES (1, 0, 'stale', '') ON CONFLICT(id) DO NOTHING`,
   connector_key TEXT PRIMARY KEY,
   connector_json TEXT NOT NULL
 )`,
+		`CREATE TABLE IF NOT EXISTS connector_market_installed_releases (
+  connector_key TEXT PRIMARY KEY,
+  release_digest TEXT NOT NULL,
+  release_json TEXT NOT NULL
+)`,
 		`CREATE TABLE IF NOT EXISTS connector_market_operations (
   operation_id TEXT PRIMARY KEY,
   client_request_id TEXT NOT NULL UNIQUE,
@@ -101,6 +107,7 @@ VALUES (1, 0, 'stale', '') ON CONFLICT(id) DO NOTHING`,
   lease_owner TEXT NOT NULL,
 	lease_token INTEGER NOT NULL DEFAULT 0,
   lease_expires_at_unix_ms INTEGER,
+	updated_at_unix_ms INTEGER NOT NULL DEFAULT 0,
   operation_json TEXT NOT NULL
 )`,
 		`CREATE UNIQUE INDEX IF NOT EXISTS connector_market_one_active_operation
@@ -124,7 +131,7 @@ ON connector_market_outbox(published_at_unix_ms, sequence)`,
 		!strings.Contains(strings.ToLower(err.Error()), "duplicate column") {
 		return fmt.Errorf("migrate connector market operation lease token: %w", err)
 	}
-	return nil
+	return store.migrateLifecycle(ctx)
 }
 
 func (store *Store) Snapshot(ctx context.Context) (market.Snapshot, error) {
@@ -299,29 +306,18 @@ WHERE operation_id = ? AND lease_owner = ? AND lease_token = ?`, operationID, ow
 }
 
 func (store *Store) InstalledRelease(ctx context.Context, connectorKey, releaseDigest string) (market.Release, error) {
-	rows, err := store.db.QueryContext(ctx, `SELECT operation_json FROM connector_market_operations WHERE connector_key = ? AND kind = ? AND state = ? ORDER BY operation_id DESC`,
-		connectorKey, market.OperationKindInstall, market.OperationStateCompleted)
+	var payload string
+	err := store.db.QueryRowContext(ctx, `
+SELECT release_json FROM connector_market_installed_releases
+WHERE connector_key = ? AND release_digest = ?`, connectorKey, releaseDigest).Scan(&payload)
 	if err != nil {
-		return market.Release{}, err
+		return market.Release{}, mapNotFound(err)
 	}
-	defer rows.Close()
-	for rows.Next() {
-		var payload string
-		if err := rows.Scan(&payload); err != nil {
-			return market.Release{}, err
-		}
-		operation, err := decodeOperation(payload)
-		if err != nil {
-			return market.Release{}, err
-		}
-		if operation.Target != nil && operation.Target.Release != nil && operation.Target.ReleaseDigest == releaseDigest {
-			return *operation.Target.Release, nil
-		}
+	var release market.Release
+	if err := json.Unmarshal([]byte(payload), &release); err != nil {
+		return market.Release{}, fmt.Errorf("decode installed connector release: %w", err)
 	}
-	if err := rows.Err(); err != nil {
-		return market.Release{}, err
-	}
-	return market.Release{}, market.ErrNotFound
+	return release, nil
 }
 
 func (store *Store) RecoverableOperations(ctx context.Context) ([]market.Operation, error) {
@@ -614,20 +610,22 @@ func saveOperationOn(ctx context.Context, tx *sql.Tx, operation market.Operation
 	result, err := tx.ExecContext(ctx, `
 INSERT INTO connector_market_operations (
   operation_id, client_request_id, connector_key, kind, state,
-  lease_owner, lease_token, lease_expires_at_unix_ms, operation_json
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+  lease_owner, lease_token, lease_expires_at_unix_ms, updated_at_unix_ms, operation_json
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(operation_id) DO UPDATE SET
   state = excluded.state,
   lease_owner = excluded.lease_owner,
 	lease_token = excluded.lease_token,
   lease_expires_at_unix_ms = excluded.lease_expires_at_unix_ms,
+	updated_at_unix_ms = excluded.updated_at_unix_ms,
 	operation_json = excluded.operation_json
 WHERE excluded.lease_token = 0 OR (
   connector_market_operations.lease_owner = excluded.lease_owner AND
   connector_market_operations.lease_token = excluded.lease_token
 )`,
 		operation.OperationID, operation.ClientRequestID, operation.ConnectorKey,
-		operation.Kind, operation.State, operation.LeaseOwner, operation.LeaseToken, leaseExpiresAt, string(payload))
+		operation.Kind, operation.State, operation.LeaseOwner, operation.LeaseToken, leaseExpiresAt,
+		operation.UpdatedAt.UTC().UnixMilli(), string(payload))
 	if err != nil {
 		return err
 	}
@@ -638,7 +636,7 @@ WHERE excluded.lease_token = 0 OR (
 	if operation.LeaseToken > 0 && changed != 1 {
 		return market.ErrOperationLeaseLost
 	}
-	return nil
+	return saveInstalledReleaseEvidenceOn(ctx, tx, operation)
 }
 
 func decodeConnector(payload string) (market.Connector, error) {

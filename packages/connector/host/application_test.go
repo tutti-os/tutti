@@ -46,6 +46,40 @@ func TestApplicationInstallIsDurableAndIdempotent(t *testing.T) {
 	}
 }
 
+func TestApplicationClientRequestIDIsReusableOnlyAfterTerminalRetention(t *testing.T) {
+	repository := newMemoryRepository(testConnector("github"))
+	scheduler := &memoryScheduler{}
+	application := newTestApplication(t, repository, scheduler, &memoryInstallRuntime{}, CatalogSnapshot{})
+	command := ConnectorMutation{Mutation: Mutation{ClientRequestID: "request-retained", ExpectedRevision: 0}, ConnectorKey: "github"}
+	accepted, err := application.Install(context.Background(), command)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := application.ExecuteOperation(context.Background(), accepted.Operation.OperationID); err != nil {
+		t.Fatal(err)
+	}
+	retried, err := application.Install(context.Background(), command)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if retried.Operation.OperationID != accepted.Operation.OperationID || retried.Operation.State != OperationStateCompleted {
+		t.Fatalf("retained retry = %#v, want completed operation %q", retried.Operation, accepted.Operation.OperationID)
+	}
+
+	// Lifecycle cleanup removes the idempotency key with its terminal result.
+	// A caller reusing that key after the documented window starts a new
+	// operation and must provide the current revision like any fresh command.
+	delete(repository.operations, accepted.Operation.OperationID)
+	command.ExpectedRevision = repository.revision
+	afterRetention, err := application.Install(context.Background(), command)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if afterRetention.Operation.OperationID == accepted.Operation.OperationID || afterRetention.Operation.State != OperationStateAccepted {
+		t.Fatalf("post-retention operation = %#v", afterRetention.Operation)
+	}
+}
+
 func TestApplicationExecutesAcceptedInstall(t *testing.T) {
 	repository := newMemoryRepository(testConnector("github"))
 	scheduler := &memoryScheduler{}

@@ -228,6 +228,29 @@ which stage to resume. Install and uninstall return verifiable results to the
 application; artifact helpers do not write the business repository or publish
 events directly.
 
+`accepted` and `running` rows have no age-based expiry. The SQLite repository
+protects them with one-active-operation constraints plus renewable,
+token-fenced leases, and daemon startup reschedules every recoverable row. The
+cleanup path is therefore intentionally unable to select an active operation.
+
+Terminal operation results are retained for 24 hours after `updatedAt`, with
+the cutoff inclusive. This is the supported `GET operation` result window and
+the `clientRequestId` idempotency window: repeating the same command identity
+inside the window returns the original operation; after the row expires the
+identity is treated as a new command and normal revision validation applies.
+The renderer polls non-terminal operations with a 250 ms to 2 second backoff. A
+permanent missing result, or a reconnect after the result window, converges
+from the authoritative connector/snapshot projection instead of relying on
+operation history.
+
+Installed release evidence is a current business fact, not operation history.
+The SQLite store records one complete release record per currently installed
+connector in `connector_market_installed_releases`; install completion updates
+it and uninstall completion removes it in the same transaction as the business
+transition. Runtime recovery therefore remains valid after the corresponding
+completed install operation has expired, including when the accepted catalog
+has advanced to a newer release.
+
 Authorization operations must follow the same recovery rule or remain fully
 synchronous without leaving a recoverable `running` operation. A provider uses
 the operation or client request identity to resume without creating duplicate
@@ -239,14 +262,32 @@ Business state and its invalidation event are written to a durable outbox in
 the same SQLite transaction. The host publisher delivers outbox entries through
 its existing event stream and records delivery progress.
 
-Events carry a monotonic revision or sequence and remain invalidation hints.
-Reconnect supports replay from a known sequence; a retention gap tells the
-renderer to reload a full daemon snapshot. The daemon snapshot, not the event,
-is always authoritative.
+Pending outbox entries never expire. Published entries are delivery receipts,
+not the replay or diagnostic authority, and are retained for one hour before
+becoming eligible for deletion. Publication failures and cleanup summaries are
+written as structured daemon logs; the business database is not an unbounded
+diagnostic archive.
 
-Until durable replay exists, a transitional host may publish best-effort events
-only if the renderer also refreshes on daemon reconnect, window resume, and
-command completion. Revision fencing remains required.
+Events carry a monotonic revision or sequence and remain invalidation hints.
+The current host does not use published outbox rows as a replay store, so the
+renderer refreshes on daemon reconnect, window resume, and command completion.
+A future durable replay transport may resume from a known sequence and must
+signal a retention gap so the renderer can reload a full daemon snapshot. The
+daemon snapshot, not the event, is always authoritative, and revision fencing
+remains required.
+
+Lifecycle cleanup runs once when the daemon host starts and then hourly. Each
+SQLite transaction deletes at most 500 eligible terminal operations and 500
+eligible published events, ordered by their indexed terminal/publication time
+and stable identity. A run repeats bounded transactions until neither category
+fills its batch, so an existing expired backlog drains without enlarging a
+transaction. The delete predicates are repeated outside the bounded subqueries
+so a row must still be terminal or published when the write occurs.
+The active-operation partial unique index, terminal-time cleanup index,
+pending-outbox index, and published-outbox cleanup index keep admission,
+delivery, and maintenance scans separate. Multiple daemon/store connections
+may race cleanup safely through SQLite write serialization and idempotent
+predicates.
 
 ## Renderer Boundary
 

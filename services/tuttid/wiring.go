@@ -312,7 +312,7 @@ func (w *tuttiWiring) buildWorkspaceModule(ctx context.Context) error {
 		Repository: connectorMarketStore, CatalogSource: connectorCatalog,
 		ArtifactPreparer: artifactPreparer, CLIInstallations: nodePackageInstaller, ImplementationHost: connectorRuntime,
 		Authorization: connectorAuthorization, Compatibility: compatibility,
-		ImplementationRegistry: implementations, Outbox: connectorMarketStore,
+		ImplementationRegistry: implementations, Outbox: connectorMarketStore, Lifecycle: connectorMarketStore,
 		Publisher: eventstreamservice.ConnectorMarketPublisher{Service: events},
 	})
 	if err != nil {

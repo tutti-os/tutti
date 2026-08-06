@@ -205,3 +205,22 @@ type ChangedEventOutbox interface {
 	PendingChangedEvents(ctx context.Context, limit int) ([]ChangedEventRecord, error)
 	MarkChangedEventPublished(ctx context.Context, sequence int64, publishedAt time.Time) error
 }
+
+// LifecycleCleanupStore removes only terminal operation results and events
+// whose publication has already been recorded. Active operations and pending
+// events are deliberately outside this contract so cleanup cannot weaken
+// crash recovery or at-least-once event delivery.
+type LifecycleCleanupStore interface {
+	CleanupLifecycle(ctx context.Context, request LifecycleCleanupRequest) (LifecycleCleanupResult, error)
+}
+
+type LifecycleCleanupRequest struct {
+	TerminalOperationsUpdatedThrough time.Time
+	PublishedEventsPublishedThrough  time.Time
+	BatchSize                        int
+}
+
+type LifecycleCleanupResult struct {
+	TerminalOperationsDeleted int64
+	PublishedEventsDeleted    int64
+}

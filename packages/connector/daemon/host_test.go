@@ -146,6 +146,17 @@ func TestBootstrapRestoresInstalledRuntimeWithoutRefreshingCatalog(t *testing.T)
 	}); err != nil {
 		t.Fatal(err)
 	}
+	cleanup, err := store.CleanupLifecycle(ctx, market.LifecycleCleanupRequest{
+		TerminalOperationsUpdatedThrough: time.Now().UTC(),
+		PublishedEventsPublishedThrough:  time.Now().UTC(),
+		BatchSize:                        10,
+	})
+	if err != nil || cleanup.TerminalOperationsDeleted != 1 {
+		t.Fatalf("pre-restart lifecycle cleanup = %#v, error = %v", cleanup, err)
+	}
+	if _, err := store.Operation(ctx, operation.OperationID); !errors.Is(err, market.ErrNotFound) {
+		t.Fatalf("terminal operation survived cleanup: %v", err)
+	}
 
 	source := &countingCatalogSource{release: release, refreshErr: errors.New("catalog returned 403")}
 	runtime := &activationGateDelegate{reconcileFailures: 1}
@@ -158,6 +169,7 @@ func TestBootstrapRestoresInstalledRuntimeWithoutRefreshingCatalog(t *testing.T)
 		Compatibility:          rejectingCompatibility{},
 		ImplementationRegistry: market.NewImplementationRegistry(nil),
 		Outbox:                 store,
+		Lifecycle:              store,
 		Publisher:              discardChangedEventPublisher{},
 	})
 	if err != nil {
