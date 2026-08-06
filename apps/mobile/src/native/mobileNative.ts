@@ -13,9 +13,11 @@ export interface BrowserLoginCompletion {
 
 interface MobileSecurityNative {
   readonly clientVersion: string;
+  readonly clientVersionCode?: number;
   cancelQRCodeScan(): Promise<void>;
   clearLegacySessionCookie(accountBaseURL: string): Promise<void>;
   clearSession(): Promise<void>;
+  installUpdate?(apkURL: string, sha256: string): Promise<void>;
   getOrCreateIdentity(): Promise<DeviceIdentity>;
   loadSession(): Promise<AccountSession | null>;
   saveSession(

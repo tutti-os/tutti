@@ -311,9 +311,11 @@ screen composition and product-specific interaction.
   it does not duplicate the computer list. The account service's avatar URL is
   persisted with the secure session on both platforms, while sessions written
   before that field existed continue to use the account-label fallback.
-  Software Update is an informational settings row until a signed release
-  manifest and updater service are introduced; the UI must not claim that an
-  update check ran before that application capability exists.
+  Android Software Update is a user-triggered check against the HTTPS mobile
+  release pointer. When a newer release is available, the App downloads the
+  checksum-verified APK and opens the Android package installer; Android also
+  verifies the APK's release signature and the user must confirm the
+  installation. It does not check or download in the background.
 - Mobile Settings exposes the device-local theme preference directly in the App
   section. The row opens a compact single-choice sheet for system, light, and
   dark modes; selection applies immediately across the full app and status bar.
@@ -349,13 +351,35 @@ screen composition and product-specific interaction.
   generic allow/deny commands.
 
 需要在没有本机开发环境的真机上测试时，可从 GitHub Actions 手动运行
-`Mobile Internal Build` 并选择 `android`。它只上传保留 14 天的内部 artifact
-`tutti-mobile-internal-<commit>`，其中的 `app-release.apk` 已嵌入 JavaScript
-bundle，可直接侧载；不会创建 GitHub Release 或公开下载链接。所有 Android
-artifact 使用同一把长期 release key 签名，因此可覆盖升级并为后续自动更新保留
-稳定的应用身份。CI 同时用仓库级 `github.run_number` 写入单调递增的 Android
-`versionCode`；`versionName` 仍由应用源码管理。工作流从 GitHub Actions Secrets
-读取以下四项，缺失任何一项都会在构建前失败，不得回退到临时 key 或 unsigned APK：
+`Mobile Internal Build` 并选择 `android`。默认情况下它上传保留 14 天的内部
+artifact `tutti-mobile-internal-<commit>`，其中的 `app-release.apk` 已嵌入
+JavaScript bundle，可直接侧载。所有 Android artifact 使用同一把长期 release key
+签名，因此正式 release 之间可以覆盖升级。CI 用仓库级 `github.run_number` 写入
+单调递增的 Android `versionCode`，并使用 workflow 的 `android_version_name` 作为
+`versionName`。
+
+需要发布给 App 内手动更新时，在同一个 workflow 中将 `publish_android` 设为 `true`。
+它会把 APK 上传到不可变的版本目录，并更新：
+
+```text
+https://<mobile-release-base-url>/latest.json
+```
+
+`latest.json` 使用 `tutti.android.mobile.latest.v1`，包含 `versionName`、
+`versionCode`、APK URL、APK 大小和 SHA-256。版本目录使用长期 immutable 缓存，
+根目录指针使用短缓存，遵循 Desktop release 的发布模式。当前 App 内置的检查地址是
+`https://d1x7gb6wqsqmnm.cloudfront.net/tutti-mobile-release-assets/latest.json`，
+所以 `TUTTI_MOBILE_RELEASE_ASSETS_BASE_URL` 必须指向同一个
+`tutti-mobile-release-assets` 前缀。发布需要以下仓库变量：
+
+- `AWS_REGION`
+- `TUTTI_ARTIFACTS_AWS_ROLE_ARN`
+- `TUTTI_MOBILE_RELEASE_ASSETS_BASE_URL`
+- `TUTTI_MOBILE_RELEASE_ASSETS_S3_BUCKET`
+- `TUTTI_MOBILE_RELEASE_ASSETS_S3_PREFIX`
+
+工作流从 GitHub Actions Secrets 读取以下四项，缺失任何一项都会在构建前失败，
+不得回退到临时 key 或 unsigned APK：
 
 - `ANDROID_RELEASE_KEYSTORE_BASE64`
 - `ANDROID_RELEASE_KEYSTORE_PASSWORD`
@@ -366,6 +390,11 @@ release keystore 必须在 GitHub 之外另做加密备份。GitHub Secret 的�
 丢失私钥后将无法向已经安装该签名版本的用户提供原地升级。仓库只提交可公开的
 `apps/mobile/android/release-certificate.pem`；CI 会把 APK 的证书指纹与它比对，
 防止 Actions Secrets 被误换后产出另一条无法升级的签名链。
+
+Android 更新要求安装包保持相同的 application ID 和 release 签名，并且新包的
+`versionCode` 高于已安装版本。已经安装 debug 签名包的设备不能直接覆盖安装
+release 包，需要先卸载 debug 包。普通 Android 设备会在下载完成后显示系统安装
+确认，不支持静默安装。
 
 在 iOS 真机上测试时，运行同一工作流并选择 `ios`。它使用仓库已有的 App Store
 Connect API Key 和 `IOS_DEVELOPMENT_TEAM` 仓库变量，让 Xcode 自动管理云签名并

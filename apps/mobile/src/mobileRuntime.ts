@@ -1,7 +1,10 @@
 import { InstantiationService, ServiceCollection } from "@tutti-os/infra/di";
 import { createMobileServicePorts } from "./native/createMobileServicePorts";
+import { mobileSecurity } from "./native/mobileNative";
 import { createMobileThemePreferencePort } from "./native/mobileThemePreferencePort";
+import { mobileUpdateFeedURL } from "./config";
 import { MobileApplicationService } from "./services/mobileApplicationService";
+import { MobileUpdateService } from "./services/mobileUpdateService";
 import { IMobileApplicationService } from "./services/mobileServiceIdentifiers";
 import { MobileThemePreferenceService } from "./services/mobileThemePreferenceService";
 
@@ -15,6 +18,17 @@ export const mobileApplicationService = new MobileApplicationService(
 export const mobileThemePreferenceService = new MobileThemePreferenceService(
   createMobileThemePreferencePort()
 );
+export const mobileUpdateService = new MobileUpdateService({
+  currentVersionCode: mobileSecurity.clientVersionCode ?? 0,
+  currentVersionName: mobileSecurity.clientVersion,
+  feedURL: mobileUpdateFeedURL,
+  installer: mobileSecurity.installUpdate
+    ? {
+        install: (apkURL, sha256) =>
+          mobileSecurity.installUpdate!(apkURL, sha256)
+      }
+    : undefined
+});
 rootServices.set(IMobileApplicationService, mobileApplicationService);
 
 void mobileApplicationService.start();

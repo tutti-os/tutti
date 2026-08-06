@@ -7,6 +7,7 @@ import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.util.Base64
 import android.util.Log
+import androidx.core.content.FileProvider
 import com.facebook.react.bridge.Arguments
 import com.facebook.react.bridge.BaseActivityEventListener
 import com.facebook.react.bridge.Promise
@@ -18,16 +19,23 @@ import com.facebook.react.modules.network.ForwardingCookieHandler
 import com.google.zxing.client.android.Intents
 import com.journeyapps.barcodescanner.ScanContract
 import com.journeyapps.barcodescanner.ScanOptions
+import java.io.BufferedInputStream
+import java.io.File
+import java.io.FileOutputStream
+import java.net.HttpURLConnection
 import java.net.URI
+import java.net.URL
 import java.nio.charset.StandardCharsets
 import java.security.KeyPair
 import java.security.KeyPairGenerator
 import java.security.KeyStore
+import java.security.MessageDigest
 import java.security.PrivateKey
 import java.security.Signature
 import java.security.spec.ECGenParameterSpec
 import java.util.Locale
 import java.util.UUID
+import java.util.concurrent.Executors
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
@@ -39,6 +47,7 @@ class MobileSecurityModule(
 ) : ReactContextBaseJavaModule(reactContext) {
     private val browserAuthBridge = MobileBrowserAuthBridge(reactContext)
     private val store = SecureStore(reactContext)
+    private val updateExecutor = Executors.newSingleThreadExecutor()
     private var scanPromise: Promise? = null
     private var scanCancellationPromise: Promise? = null
     private var scanActivity: Activity? = null
@@ -127,8 +136,56 @@ class MobileSecurityModule(
     override fun getConstants(): Map<String, Any> =
         mapOf(
             "clientVersion" to BuildConfig.VERSION_NAME,
+            "clientVersionCode" to BuildConfig.VERSION_CODE,
             "localeIdentifier" to Locale.getDefault().toLanguageTag(),
         )
+
+    @ReactMethod
+    fun installUpdate(
+        apkURL: String,
+        expectedSHA256: String,
+        promise: Promise,
+    ) {
+        updateExecutor.execute {
+            try {
+                val apkFile = downloadUpdate(apkURL, expectedSHA256)
+                UiThreadUtil.runOnUiThread {
+                    try {
+                        val activity = reactContext.currentActivity
+                        require(activity != null) { "No active Android activity" }
+                        val uri = FileProvider.getUriForFile(
+                            reactContext,
+                            "${BuildConfig.APPLICATION_ID}.fileprovider",
+                            apkFile,
+                        )
+                        activity.startActivity(
+                            Intent(Intent.ACTION_VIEW).apply {
+                                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                setDataAndType(
+                                    uri,
+                                    "application/vnd.android.package-archive",
+                                )
+                            },
+                        )
+                        promise.resolve(null)
+                    } catch (cause: Throwable) {
+                        promise.reject(
+                            "UPDATE_INSTALL_FAILED",
+                            "Unable to open the Android package installer",
+                            cause,
+                        )
+                    }
+                }
+            } catch (cause: Throwable) {
+                promise.reject(
+                    "UPDATE_DOWNLOAD_FAILED",
+                    cause.message ?: "Unable to download the Android update",
+                    cause,
+                )
+            }
+        }
+    }
 
     @ReactMethod
     fun getOrCreateIdentity(promise: Promise) {
@@ -339,6 +396,7 @@ class MobileSecurityModule(
     }
 
     override fun invalidate() {
+        updateExecutor.shutdownNow()
         reactContext.removeActivityEventListener(activityEventListener)
         browserAuthBridge.close()
         UiThreadUtil.runOnUiThread {
@@ -360,7 +418,67 @@ class MobileSecurityModule(
         super.invalidate()
     }
 
+    private fun downloadUpdate(apkURL: String, expectedSHA256: String): File {
+        val url = URL(apkURL.trim())
+        require(url.protocol == "https:") { "Update URL must use HTTPS" }
+        val expected = expectedSHA256.trim().lowercase(Locale.ROOT)
+        require(expected.matches(Regex("[a-f0-9]{64}"))) {
+            "Update SHA-256 is invalid"
+        }
+
+        val connection = url.openConnection() as HttpURLConnection
+        connection.connectTimeout = UPDATE_CONNECT_TIMEOUT_MS
+        connection.readTimeout = UPDATE_READ_TIMEOUT_MS
+        connection.requestMethod = "GET"
+        connection.setRequestProperty(
+            "Accept",
+            "application/vnd.android.package-archive",
+        )
+        try {
+            val responseCode = connection.responseCode
+            require(responseCode in 200..299) {
+                "Update download failed with HTTP $responseCode"
+            }
+
+            val updateDirectory = File(reactContext.cacheDir, "updates")
+            require(updateDirectory.mkdirs() || updateDirectory.isDirectory) {
+                "Unable to create update cache directory"
+            }
+            val temporaryFile = File(updateDirectory, "tutti-update.apk.part")
+            val apkFile = File(updateDirectory, "tutti-update.apk")
+            val digest = MessageDigest.getInstance("SHA-256")
+            BufferedInputStream(connection.inputStream).use { input ->
+                FileOutputStream(temporaryFile).use { output ->
+                    val buffer = ByteArray(UPDATE_BUFFER_SIZE)
+                    while (true) {
+                        val count = input.read(buffer)
+                        if (count < 0) break
+                        digest.update(buffer, 0, count)
+                        output.write(buffer, 0, count)
+                    }
+                }
+            }
+
+            require(toHex(digest.digest()) == expected) {
+                temporaryFile.delete()
+                "Downloaded update checksum does not match"
+            }
+            require(!apkFile.exists() || apkFile.delete()) {
+                "Unable to replace the cached Android update"
+            }
+            require(temporaryFile.renameTo(apkFile)) {
+                "Unable to finalize the downloaded Android update"
+            }
+            return apkFile
+        } finally {
+            connection.disconnect()
+        }
+    }
+
     companion object {
+        private const val UPDATE_BUFFER_SIZE = 32 * 1024
+        private const val UPDATE_CONNECT_TIMEOUT_MS = 15_000
+        private const val UPDATE_READ_TIMEOUT_MS = 60_000
         private const val QR_SCAN_REQUEST_CODE_MIN = 51731
         private const val QR_SCAN_REQUEST_CODE_MAX = 60000
 
@@ -374,6 +492,9 @@ class MobileSecurityModule(
             }
             return "${uri.scheme}://${uri.rawAuthority}/"
         }
+
+        private fun toHex(bytes: ByteArray): String =
+            bytes.joinToString("") { byte -> "%02x".format(byte.toInt() and 0xff) }
     }
 }
 
