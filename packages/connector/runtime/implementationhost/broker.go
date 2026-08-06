@@ -23,6 +23,14 @@ type ConnectorSummary struct {
 	Description string `json:"description"`
 }
 
+type CapabilitySummary struct {
+	ID          string         `json:"id"`
+	Kind        string         `json:"kind"`
+	Name        string         `json:"name"`
+	Description string         `json:"description"`
+	InputSchema map[string]any `json:"inputSchema"`
+}
+
 type SkillSummary struct {
 	Name        string `json:"name"`
 	Title       string `json:"title"`
@@ -83,6 +91,14 @@ func (broker *ConnectorBroker) Skills(connectorKey string) ([]SkillSummary, erro
 	return result, nil
 }
 
+func (broker *ConnectorBroker) Capabilities(connectorKey string) ([]CapabilitySummary, error) {
+	connectorKey = strings.TrimSpace(connectorKey)
+	if _, err := broker.activeRoute(connectorKey); err != nil {
+		return nil, err
+	}
+	return broker.commands.CapabilitiesForConnector(connectorKey), nil
+}
+
 func (broker *ConnectorBroker) ReadSkill(connectorKey, skillName string) (Skill, error) {
 	route, err := broker.activeRoute(connectorKey)
 	if err != nil {
@@ -106,7 +122,7 @@ func (broker *ConnectorBroker) ReadSkill(connectorKey, skillName string) (Skill,
 	return Skill{}, command.InvalidInput("connector_skill_not_found", "Connector Skill was not found", nil)
 }
 
-func (broker *ConnectorBroker) Invoke(ctx context.Context, connectorKey, capabilityName string,
+func (broker *ConnectorBroker) Invoke(ctx context.Context, connectorKey, capabilityID string,
 	input map[string]any, invokeContext command.InvokeContext) (command.Output, error) {
 	connectorKey = strings.TrimSpace(connectorKey)
 	if _, err := broker.activeRoute(connectorKey); err != nil {
@@ -117,7 +133,7 @@ func (broker *ConnectorBroker) Invoke(ctx context.Context, connectorKey, capabil
 		return command.Output{}, err
 	}
 	defer release()
-	return broker.commands.InvokeNamed(ctx, connectorKey, strings.TrimSpace(capabilityName), command.InvokeRequest{
+	return broker.commands.InvokeConnector(ctx, connectorKey, strings.TrimSpace(capabilityID), command.InvokeRequest{
 		Input: input, Context: invokeContext,
 	})
 }

@@ -33,7 +33,7 @@ func TestConnectorBrokerAdaptsPublicDiscoverySkillsAndInvocation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if capabilities := broker.Capabilities(context.Background(), cliservice.InvokeContext{}); len(capabilities) != 4 {
+	if capabilities := broker.Capabilities(context.Background(), cliservice.InvokeContext{}); len(capabilities) != 5 {
 		t.Fatalf("broker capabilities = %#v", capabilities)
 	}
 	available, err := broker.Invoke(context.Background(), cliservice.InvokeRequest{CommandID: connectorAvailableCommandID})
@@ -43,6 +43,16 @@ func TestConnectorBrokerAdaptsPublicDiscoverySkillsAndInvocation(t *testing.T) {
 	connectors, ok := available.Value["connectors"].([]implementationhost.ConnectorSummary)
 	if !ok || len(connectors) != 1 || connectors[0].Name != "Demo Package" {
 		t.Fatalf("available = %#v", available.Value)
+	}
+	discovered, err := broker.Invoke(context.Background(), cliservice.InvokeRequest{CommandID: connectorCapabilitiesCommandID,
+		Input: map[string]any{"connector": "github"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	capabilities, ok := discovered.Value["capabilities"].([]implementationhost.CapabilitySummary)
+	if !ok || len(capabilities) != 1 || capabilities[0].ID != "connector.github.cli.status" ||
+		capabilities[0].Kind != "cli" || capabilities[0].Name != "status" || capabilities[0].InputSchema["type"] != "object" {
+		t.Fatalf("capabilities = %#v", discovered.Value)
 	}
 	skills, err := broker.Invoke(context.Background(), cliservice.InvokeRequest{CommandID: connectorSkillsCommandID,
 		Input: map[string]any{"connector": "github"}})
@@ -55,9 +65,14 @@ func TestConnectorBrokerAdaptsPublicDiscoverySkillsAndInvocation(t *testing.T) {
 		t.Fatalf("read = %#v err = %v", read.Value, err)
 	}
 	invoked, err := broker.Invoke(context.Background(), cliservice.InvokeRequest{CommandID: connectorInvokeCommandID,
-		Input: map[string]any{"connector": "github", "capability": "status", "input-json": `{}`}})
+		Input: map[string]any{"connector": "github", "capability": "connector.github.cli.status", "input-json": `{}`}})
 	if err != nil || invoked.Value["ok"] != true {
 		t.Fatalf("invoke = %#v err = %v", invoked.Value, err)
+	}
+	_, err = broker.Invoke(context.Background(), cliservice.InvokeRequest{CommandID: connectorInvokeCommandID,
+		Input: map[string]any{"connector": "github", "capability": "status", "input-json": `{}`}})
+	if got := cliservice.InvokeErrorReason(err); got != "connector_capability_not_found" {
+		t.Fatalf("short capability id error = %q, want connector_capability_not_found: %v", got, err)
 	}
 }
 

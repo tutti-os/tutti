@@ -177,8 +177,7 @@ func TestManagedCLIRequiresExplicitNodeVersionAndExactIntegrity(t *testing.T) {
 
 func testArtifact() Artifact {
 	return Artifact{
-		StorageRealm: "tutti.connector.artifacts.v1",
-		Key:          "connectors/github/1.0.0.tgz", ObjectVersion: "version-1",
+		Key:       "connectors/github/1.0.0.tgz",
 		SHA256:    "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
 		SizeBytes: 1024,
 		MediaType: "application/vnd.tutti.connector+tar+gzip",

@@ -12,10 +12,11 @@ import (
 )
 
 const (
-	connectorAvailableCommandID = "connector.available"
-	connectorSkillsCommandID    = "connector.skills"
-	connectorSkillReadCommandID = "connector.skill.read"
-	connectorInvokeCommandID    = "connector.invoke"
+	connectorAvailableCommandID    = "connector.available"
+	connectorCapabilitiesCommandID = "connector.capabilities"
+	connectorSkillsCommandID       = "connector.skills"
+	connectorSkillReadCommandID    = "connector.skill.read"
+	connectorInvokeCommandID       = "connector.invoke"
 )
 
 type ConnectorBroker struct {
@@ -36,12 +37,14 @@ func NewConnectorBroker(commands *ConnectorCommandRegistry) (*ConnectorBroker, e
 func (*ConnectorBroker) Capabilities(context.Context, cliservice.InvokeContext) []cliservice.Capability {
 	return []cliservice.Capability{
 		brokerCapability(connectorAvailableCommandID, []string{"connector", "available"}, "List installed connectors available to every Agent", objectSchema(nil, nil)),
+		brokerCapability(connectorCapabilitiesCommandID, []string{"connector", "capabilities"}, "List an installed connector's canonical capabilities", objectSchema(
+			map[string]any{"connector": map[string]any{"type": "string"}}, []string{"connector"})),
 		brokerCapability(connectorSkillsCommandID, []string{"connector", "skills"}, "List a connector's Skills", objectSchema(
 			map[string]any{"connector": map[string]any{"type": "string"}}, []string{"connector"})),
 		brokerCapability(connectorSkillReadCommandID, []string{"connector", "skill", "read"}, "Read one connector Skill", objectSchema(
 			map[string]any{"connector": map[string]any{"type": "string"}, "skill": map[string]any{"type": "string"}}, []string{"connector", "skill"})),
 		brokerCapability(connectorInvokeCommandID, []string{"connector", "invoke"}, "Invoke an installed connector capability", objectSchema(
-			map[string]any{"connector": map[string]any{"type": "string"}, "capability": map[string]any{"type": "string"},
+			map[string]any{"connector": map[string]any{"type": "string"}, "capability": map[string]any{"type": "string", "description": "Canonical connector capability id"},
 				"input-json": map[string]any{"type": "string", "description": "JSON object passed to the connector capability"}},
 			[]string{"connector", "capability"})),
 	}
@@ -58,6 +61,13 @@ func (broker *ConnectorBroker) Invoke(ctx context.Context, request cliservice.In
 			return cliservice.CommandOutput{}, serviceError(err)
 		}
 		return jsonValue(map[string]any{"connectors": connectors, "nextCursor": nil}), nil
+	case connectorCapabilitiesCommandID:
+		capabilities, err := broker.broker.Capabilities(stringInput(request.Input, "connector"))
+		if err != nil {
+			return cliservice.CommandOutput{}, serviceError(err)
+		}
+		return jsonValue(map[string]any{"connectorKey": stringInput(request.Input, "connector"),
+			"capabilities": capabilities, "nextCursor": nil}), nil
 	case connectorSkillsCommandID:
 		skills, err := broker.broker.Skills(stringInput(request.Input, "connector"))
 		if err != nil {

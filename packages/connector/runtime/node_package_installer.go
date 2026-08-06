@@ -36,7 +36,7 @@ type NodePackageInstallerConfig struct {
 	Timeout     time.Duration
 }
 
-// NodePackageInstaller compiles signed node_package intents into pnpm
+// NodePackageInstaller compiles validated node_package intents into pnpm
 // invocations. All connectors share one content-addressed store and one
 // Corepack cache while retaining a release-scoped node_modules link tree.
 type NodePackageInstaller struct {
@@ -540,7 +540,7 @@ func verifyPnpmLock(path, packageName, version, integrity string) (string, error
 		normalized := strings.TrimPrefix(key, "/")
 		if normalized == wanted || strings.HasPrefix(normalized, wanted+"(") {
 			if entry.Resolution.Integrity != integrity {
-				return "", errors.New("connector package integrity does not match signed manifest")
+				return "", errors.New("connector package integrity does not match the published manifest")
 			}
 			found = true
 			break

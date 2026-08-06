@@ -85,8 +85,7 @@ func directFetcherTestRelease() connectorhost.Release {
 		Version:       "1.0.0",
 		ReleaseDigest: strings.Repeat("a", 64),
 		Artifact: connectorhost.Artifact{
-			StorageRealm: "tutti.connector.artifacts.v1",
-			Key:          "connectors/github/1.0.0.zip", ObjectVersion: "version-1",
+			Key:       "connectors/github/1.0.0.zip",
 			SHA256:    strings.Repeat("b", 64),
 			SizeBytes: 3,
 			MediaType: "application/zip",

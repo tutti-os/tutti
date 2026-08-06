@@ -177,8 +177,7 @@ func connectorMarketTestConnector() market.Connector {
 				AuthorizationKind: "oauth2",
 			},
 			Artifact: market.Artifact{
-				StorageRealm: "tutti.connector.artifacts.v1",
-				Key:          "connectors/notion/1.0.0.tar.gz", ObjectVersion: "version-1",
+				Key:       "connectors/notion/1.0.0.tar.gz",
 				SHA256:    digest,
 				SizeBytes: 128,
 				MediaType: "application/gzip",

@@ -83,14 +83,6 @@ func (application *Application) executeRefresh(ctx context.Context, operation Op
 		if err := tx.SaveOperation(storedOperation); err != nil {
 			return err
 		}
-		if catalog.TrustState != nil {
-			if strings.TrimSpace(catalog.MarketType) == "" {
-				return invalidManifest("connector catalog trust state market is required", nil)
-			}
-			if err := tx.SaveCatalogTrustState(catalog.MarketType, *catalog.TrustState); err != nil {
-				return err
-			}
-		}
 		if err := tx.SaveCatalogRevision(catalog.SourceRevision); err != nil {
 			return err
 		}

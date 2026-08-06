@@ -207,9 +207,7 @@ function connectorFixture(): Connector {
     key: "github",
     release: {
       artifact: {
-        storageRealm: "tutti.connector.artifacts.v1",
         key: "connectors/github.tgz",
-        objectVersion: "version-1",
         mediaType: "application/vnd.tutti.connector+tar+gzip",
         sha256:
           "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",

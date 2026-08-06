@@ -25,7 +25,6 @@ type Store struct {
 
 var _ market.Repository = (*Store)(nil)
 var _ market.ChangedEventOutbox = (*Store)(nil)
-var _ market.CatalogTrustStateStore = (*Store)(nil)
 
 func Open(ctx context.Context, dbPath string) (*Store, error) {
 	dbPath = strings.TrimSpace(dbPath)
@@ -81,10 +80,6 @@ func (store *Store) migrate(ctx context.Context) error {
 	statements := []string{
 		`DROP TABLE IF EXISTS connector_market_catalog_trust`,
 		`DROP TABLE IF EXISTS connector_market_security_revocations`,
-		`CREATE TABLE IF NOT EXISTS connector_market_catalog_trust_v2 (
-  market_type TEXT PRIMARY KEY,
-  trust_json TEXT NOT NULL
-)`,
 		`CREATE TABLE IF NOT EXISTS connector_market_metadata (
   id INTEGER PRIMARY KEY CHECK (id = 1),
   revision INTEGER NOT NULL,
@@ -181,36 +176,6 @@ SELECT operation_json FROM connector_market_operations WHERE operation_id = ?`, 
 		return market.Operation{}, mapNotFound(err)
 	}
 	return decodeOperation(payload)
-}
-
-func (store *Store) LoadCatalogTrustState(ctx context.Context, marketType string) (market.CatalogTrustState, bool, error) {
-	if store == nil || store.db == nil {
-		return market.CatalogTrustState{}, false, errors.New("connector market store is unavailable")
-	}
-	var payload string
-	err := store.db.QueryRowContext(ctx, `SELECT trust_json FROM connector_market_catalog_trust_v2 WHERE market_type = ?`, strings.TrimSpace(marketType)).Scan(&payload)
-	if errors.Is(err, sql.ErrNoRows) {
-		return market.CatalogTrustState{}, false, nil
-	}
-	if err != nil {
-		return market.CatalogTrustState{}, false, fmt.Errorf("load connector catalog trust state: %w", err)
-	}
-	var state market.CatalogTrustState
-	if err := json.Unmarshal([]byte(payload), &state); err != nil || state.KeyringVersion == 0 || state.Sequence == 0 ||
-		len(state.EnvelopeDigest) != 64 || state.IssuedAt.IsZero() || state.ExpiresAt.IsZero() || state.NextUpdateAt.IsZero() ||
-		state.ObservedAt.IsZero() || state.WallHighWater.IsZero() {
-		return market.CatalogTrustState{}, false, errors.New("connector catalog trust state is invalid")
-	}
-	return state, true, nil
-}
-
-func (store *Store) SaveCatalogTrustState(ctx context.Context, marketType string, state market.CatalogTrustState) error {
-	if store == nil || store.db == nil {
-		return errors.New("connector market store is unavailable")
-	}
-	return store.Transaction(ctx, func(transaction market.Transaction) error {
-		return transaction.SaveCatalogTrustState(marketType, state)
-	})
 }
 
 func (store *Store) ClaimOperation(
@@ -531,50 +496,6 @@ func (transaction *transaction) SaveCatalogRevision(sourceRevision string) error
 	_, err := transaction.tx.ExecContext(transaction.ctx, `
 UPDATE connector_market_metadata SET source_revision = ? WHERE id = ?`, sourceRevision, metadataID)
 	return err
-}
-
-func (transaction *transaction) SaveCatalogTrustState(marketType string, state market.CatalogTrustState) error {
-	if strings.TrimSpace(marketType) == "" || state.KeyringVersion == 0 || state.Sequence == 0 ||
-		len(state.EnvelopeDigest) != 64 || state.IssuedAt.IsZero() || state.ExpiresAt.IsZero() || state.NextUpdateAt.IsZero() ||
-		state.ObservedAt.IsZero() || state.WallHighWater.IsZero() {
-		return errors.New("connector catalog trust state is invalid")
-	}
-	marketType = strings.TrimSpace(marketType)
-	var existingPayload string
-	err := transaction.tx.QueryRowContext(transaction.ctx, `
-SELECT trust_json FROM connector_market_catalog_trust_v2 WHERE market_type = ?`, marketType).Scan(&existingPayload)
-	if err != nil && !errors.Is(err, sql.ErrNoRows) {
-		return fmt.Errorf("load connector catalog trust state for update: %w", err)
-	}
-	if err == nil {
-		var existing market.CatalogTrustState
-		if decodeErr := json.Unmarshal([]byte(existingPayload), &existing); decodeErr != nil || existing.KeyringVersion == 0 || existing.Sequence == 0 ||
-			len(existing.EnvelopeDigest) != 64 || existing.IssuedAt.IsZero() || existing.ExpiresAt.IsZero() || existing.NextUpdateAt.IsZero() ||
-			existing.ObservedAt.IsZero() || existing.WallHighWater.IsZero() {
-			return errors.New("stored connector catalog trust state is invalid")
-		}
-		if existing.KeyringVersion > state.KeyringVersion || existing.Sequence > state.Sequence ||
-			(existing.Sequence == state.Sequence && existing.EnvelopeDigest != state.EnvelopeDigest) {
-			return errors.New("connector catalog trust state rollback or equivocation rejected")
-		}
-		if existing.WallHighWater.After(state.WallHighWater) {
-			state.WallHighWater = existing.WallHighWater
-		}
-		if existing.ObservedAt.After(state.ObservedAt) {
-			state.ObservedAt = existing.ObservedAt
-		}
-	}
-	payload, err := json.Marshal(state)
-	if err != nil {
-		return err
-	}
-	_, err = transaction.tx.ExecContext(transaction.ctx, `
-INSERT INTO connector_market_catalog_trust_v2 (market_type, trust_json) VALUES (?, ?)
-ON CONFLICT(market_type) DO UPDATE SET trust_json = excluded.trust_json`, marketType, string(payload))
-	if err != nil {
-		return fmt.Errorf("save connector catalog trust state: %w", err)
-	}
-	return nil
 }
 
 func (transaction *transaction) SetCatalogState(state market.CatalogState) error {

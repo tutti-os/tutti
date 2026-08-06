@@ -103,6 +103,7 @@ func testCommandCapabilities() []CommandCapability {
 		command("agent-context.agent.turn-resources", []string{"agent", "turn-resources"}, []string{"session-id", "turn-id"}, nil),
 		command("agent-context.agent.active-peers", []string{"agent", "active-peers"}, nil, nil),
 		command("connector.available", []string{"connector", "available"}, nil, nil),
+		command("connector.capabilities", []string{"connector", "capabilities"}, []string{"connector"}, nil),
 		command("connector.skills", []string{"connector", "skills"}, []string{"connector"}, nil),
 		command("connector.skill.read", []string{"connector", "skill", "read"}, []string{"connector", "skill"}, nil),
 		command("connector.invoke", []string{"connector", "invoke"}, []string{"connector", "capability"}, []string{"input-json"}),

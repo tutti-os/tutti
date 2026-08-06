@@ -16,17 +16,20 @@ Connector market uses two independent APIs:
   owned by one desktop host
 
 The remote market service owns its versioned API schema and generated client.
-The shared connector package may provide a default `CatalogSource` adapter over
-that generated client, but must not copy or redefine the remote schema. Remote
-transport DTOs and local daemon DTOs remain separate.
+It exposes the reusable `/v1/market/categories`, `/v1/market/items`, and
+`/v1/market/items/{item_type}/{item_key}` read boundary for both connectors and
+Skills. Connector catalog requests always use `itemType=connector`; Skill
+consumers use `itemType=skill`. The shared connector package may provide a
+default `CatalogSource` adapter over that generated client, but must not copy or
+redefine the remote schema. Remote transport DTOs and local daemon DTOs remain
+separate.
 
-Catalog acceptance is independently fail-closed in each daemon. Tutti reads a
-versioned JSON keyring (`{"version":1,"keys":{"keyId":"lowercase-hex"}}`)
-from `TUTTI_CONNECTOR_MARKET_SIGNING_KEYRING_JSON`, verifies the
-`Ed25519-SHA256` domain-separated snapshot and release signatures, and checks
-that the signed snapshot contains exactly the active release projection. A
-missing keyring never blocks local runtime recovery, but remote catalog refresh
-remains unavailable until trust roots are configured.
+Published connectors use the remote market manifest v2 envelope: one
+market-neutral `payload.implementation` and no `supportedMarkets` field. The
+daemon rejects the legacy connector v1 envelope instead of adapting
+`payload.implementations[market]`. At the boundary it projects the accepted v2
+publication into the local daemon's stable connector-manifest v1 DTO; these
+schema versions belong to different APIs and do not imply compatibility.
 
 The renderer never calls the remote market. The local daemon is authoritative
 for every state rendered by the desktop application.
@@ -94,15 +97,15 @@ artifact contains connector metadata and skills, not the CLI npm package. The
 daemon inserts one additional, replay-safe stage between artifact preparation
 and route reconciliation:
 
-This is the pre-release connector manifest schema v1 contract. It includes
-required icons, typed package installation, explicit Node ranges, and
-mapping-free generic CLI. Because v1 has not shipped yet, these are intentional
-breaking changes to its earlier draft rather than a new protocol major.
+The local daemon connector-manifest v1 contract includes required icons, typed
+package installation, explicit Node ranges, and mapping-free generic CLI. It is
+an internal host projection of the remote market v2 publication rather than a
+copy of the server envelope.
 
 ```text
-signed node_package intent
+typed node_package intent
     -> resolve connector-node-static
-    -> verify the signed Node executable, ABI, and version range
+    -> verify the managed Node executable, ABI, and version range
     -> run fixed pnpm through that Node (never a user shell/npm)
     -> shared content-addressed store + release-scoped link tree
     -> verify package name, exact version, sha512 integrity, lock, and bin entry
@@ -157,6 +160,10 @@ CLI manifests do not require action mappings. When `commands` is absent, the
 host publishes one generic, verified `connector.<key>.cli.run` capability and
 the installed Skill supplies the CLI arguments and workflow. The host rejects
 NUL-bearing arguments and non-interactive `--yes`/`--force` overrides.
+Capability IDs are opaque canonical identifiers: invocation matches the full ID
+exactly and never derives a short name by splitting the ID. The selected
+connector remains a separate routing and policy boundary, and invocation fails
+when the canonical ID belongs to a different connector.
 
 The initial Lark profile is representative: it pins `@larksuite/cli@1.0.83`
 and its npm sha512 integrity, requires the shared Node 22 profile, runs only the
@@ -171,16 +178,17 @@ expanded bytes, and compression ratio. Artifact code is not executed before
 verification and preparation complete.
 
 The staging and active directories must be on the same filesystem when atomic
-rename is used. Activation failure preserves the previous active version.
-Before download, the daemon posts workspace authority plus connector key,
-release digest, artifact digest, and immutable object version to
-`/v1/connector-market/artifact-grants`. TSH revalidates durable membership and
-the current signed projection, then returns a short-lived GET URL whose reply
-identity must still match the signed release. The client never derives a URL
-from the object key and never forwards account cookies to the granted download
-origin. Tutti obtains the durable workspace authority from
-`TUTTI_CONNECTOR_MARKET_WORKSPACE_ID`; a missing value fails installation
-closed without affecting local runtime recovery.
+rename is used. Activation failure preserves the previous active version. The
+daemon resolves the artifact key against its configured artifact base URL. The
+production base URL is the public-assets CloudFront prefix
+`https://d27a59zdy4534h.cloudfront.net/tutti/connector-market/`; CloudFront
+serves immutable versioned objects from the private `tsh-public-assets` S3
+origin. The daemon never addresses S3 directly. Downloading is an ordinary
+direct GET without workspace identity. Operations persist the artifact key,
+release identity, digest, and size; the preparer verifies the downloaded bytes
+before installation. Staging and local integration may override the CDN prefix
+with `TUTTI_CONNECTOR_ARTIFACT_BASE_URL`; production should leave the public
+CloudFront default in place.
 
 `connector/host` owns the implementation-host port and durable reconcile
 semantics; `connector/runtime` owns portable artifact and managed-runtime
@@ -336,16 +344,18 @@ boot epoch. Startup requires one successful catalog refresh before restoring
 routes; later refresh failures preserve installed last-known-good capabilities
 while the daemon retries.
 
-The public `connector available`, `connector skills`, `connector skill read`,
-and `connector invoke` commands expose installed connectors through the local
-daemon CLI channel to every Agent and the local Tutti CLI. Discovery returns
-connector summary first, Skill frontmatter metadata second, and full `SKILL.md`
-content only on explicit read. Connector invocations use a bounded, serialized
-admission gate by default.
+The public `connector available`, `connector capabilities`, `connector skills`,
+`connector skill read`, and `connector invoke` commands expose installed
+connectors through the local daemon CLI channel to every Agent and the local
+Tutti CLI. Discovery returns connector summary first, canonical capability
+metadata on request, Skill frontmatter metadata next, and full `SKILL.md`
+content only on explicit read. `connector invoke --capability` accepts only the
+canonical ID returned by capability discovery. Connector invocations use a
+bounded, serialized admission gate by default.
 
 The first production compatibility boundary is deliberately narrow:
 `managed_stdio` connectors are installable when their runtime contract is
-supported. Authorized connectors must declare a signed connector-owned
+supported. Authorized connectors must declare a connector-owned
 credential broker and exact HTTPS authorization hosts. Durable
 event replay is still follow-up hardening; renderer reconnect, resume, command
 completion, and revision-fenced invalidations therefore trigger authoritative

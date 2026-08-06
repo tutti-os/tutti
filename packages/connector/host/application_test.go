@@ -457,16 +457,12 @@ func TestApplicationRejectsStaleRevisionBeforeMutation(t *testing.T) {
 	}
 }
 
-func TestApplicationCatalogPageJoinsPlacementWithAcceptedConnector(t *testing.T) {
+func TestApplicationCatalogPageCachesNewConnectorForImmediateInstall(t *testing.T) {
+	repository := newMemoryRepository()
 	release := testReleaseWithImplementation("github", "1.0.0", ImplementationKindManagedStdio)
-	connector := newCatalogConnector(release)
-	connector.Revision = 7
-	repository := newMemoryRepository(connector)
-	repository.revision = 7
 	source := catalogSourceStub{page: CatalogSourcePage{
-		SectionID: "development",
-		Entries: []CatalogEntry{{CategoryID: "development", ConnectorKey: release.ConnectorKey, Version: release.Version,
-			ArtifactSHA256: release.Artifact.SHA256, ArtifactSizeBytes: release.Artifact.SizeBytes}},
+		SectionID:     "development",
+		Entries:       []CatalogEntry{{CategoryID: "development", Release: release}},
 		NextPageToken: "next-page",
 	}}
 	application := newTestApplicationWithCatalogSource(t, repository, &memoryScheduler{}, &memoryInstallRuntime{}, source)
@@ -477,31 +473,19 @@ func TestApplicationCatalogPageJoinsPlacementWithAcceptedConnector(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if page.Revision != 7 || page.NextPageToken != "next-page" || len(page.Items) != 1 || page.Items[0].Connector.Key != "github" {
+	if page.Revision != 1 || page.NextPageToken != "next-page" || len(page.Items) != 1 || page.Items[0].Connector.Key != "github" {
 		t.Fatalf("page = %#v", page)
+	}
+	if _, err := repository.Connector(context.Background(), "github"); err != nil {
+		t.Fatalf("cached connector: %v", err)
 	}
 
 	repeated, err := application.ListCatalogPage(context.Background(), CatalogPageQuery{SectionID: "development", PageSize: 20})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if repeated.Revision != 7 || repository.revision != 7 || repository.transactionCalls != 0 {
+	if repeated.Revision != 1 || repository.revision != 1 {
 		t.Fatalf("repeated page revision = %d, repository revision = %d", repeated.Revision, repository.revision)
-	}
-}
-
-func TestApplicationCatalogPageRejectsPlacementOutsideAcceptedCatalog(t *testing.T) {
-	release := testReleaseWithImplementation("github", "1.0.0", ImplementationKindManagedStdio)
-	source := catalogSourceStub{page: CatalogSourcePage{SectionID: "development", Entries: []CatalogEntry{{
-		CategoryID: "development", ConnectorKey: release.ConnectorKey, Version: release.Version,
-		ArtifactSHA256: release.Artifact.SHA256, ArtifactSizeBytes: release.Artifact.SizeBytes,
-	}}}}
-	application := newTestApplicationWithCatalogSource(t, newMemoryRepository(), &memoryScheduler{}, &memoryInstallRuntime{}, source)
-
-	_, err := application.ListCatalogPage(context.Background(), CatalogPageQuery{SectionID: "development", PageSize: 20})
-	var domainError *DomainError
-	if !errors.As(err, &domainError) || domainError.Code != ErrorCodeInvalidManifest || domainError.Retryable {
-		t.Fatalf("error = %#v", err)
 	}
 }
 
@@ -1104,10 +1088,6 @@ func (transaction *memoryTransaction) ActiveOperation(connectorKey string) (*Ope
 
 func (transaction *memoryTransaction) SaveCatalogRevision(sourceRevision string) error {
 	transaction.sourceRevision = sourceRevision
-	return nil
-}
-
-func (*memoryTransaction) SaveCatalogTrustState(string, CatalogTrustState) error {
 	return nil
 }
 

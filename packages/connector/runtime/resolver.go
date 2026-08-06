@@ -36,15 +36,15 @@ type ConnectorExecutable struct {
 	SizeBytes int64
 }
 
-// VerifyRuntimeABI binds a connector's signed runtime requirement to the
+// VerifyRuntimeABI binds a connector's published runtime requirement to the
 // locally resolved runtime before any connector-controlled entrypoint starts.
 func VerifyRuntimeABI(requirement connectorhost.RuntimeRequirement, resolved ResolvedConnectorRuntime) error {
 	if requirement.Profile != resolved.Profile || requirement.ABI != resolved.ABI {
-		return errors.New("connector runtime ABI does not match the signed local runtime")
+		return errors.New("connector runtime ABI does not match the verified local runtime")
 	}
 	if requirement.Language == "node" && strings.TrimSpace(requirement.VersionRange) != "" &&
 		!nodeVersionSatisfies(resolved.Components["node"], requirement.VersionRange) {
-		return errors.New("connector Node version requirement does not match the signed local runtime")
+		return errors.New("connector Node version requirement does not match the verified local runtime")
 	}
 	return nil
 }

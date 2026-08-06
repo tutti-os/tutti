@@ -56,6 +56,8 @@ type Host struct {
 
 type connectorCommand struct {
 	capability command.Capability
+	kind       string
+	name       string
 	invoke     command.Handler
 }
 
@@ -345,7 +347,8 @@ func (host *Host) attachMCP(ctx context.Context, route *connectorRoute, managed 
 			release()
 			return errors.New("connector MCP tool capability id is duplicated")
 		}
-		route.capabilities[commandID] = connectorCommand{capability: connectorCapability(commandID, route.connectorKey, tool.Name, tool.Description, tool.InputSchema),
+		route.capabilities[commandID] = connectorCommand{capability: connectorCapability(commandID, route.connectorKey, "mcp", tool.Name, tool.Description, tool.InputSchema),
+			kind: "mcp", name: tool.Name,
 			invoke: func(callCtx context.Context, request command.InvokeRequest) (command.Output, error) {
 				if !host.routeCurrent(route) {
 					return command.Output{}, command.ErrServiceUnavailable
@@ -455,7 +458,8 @@ func (host *Host) attachCLI(route *connectorRoute, managed *market.ManagedStdioI
 			return fmt.Errorf("connector CLI input schema is unsupported: %w", err)
 		}
 		route.capabilities[commandID] = connectorCommand{capability: connectorCapability(commandID, route.connectorKey,
-			manifestCommand.Name, manifestCommand.Description, manifestCommand.InputSchema),
+			"cli", manifestCommand.Name, manifestCommand.Description, manifestCommand.InputSchema),
+			kind: "cli", name: manifestCommand.Name,
 			invoke: func(callCtx context.Context, request command.InvokeRequest) (command.Output, error) {
 				if !host.routeCurrent(route) {
 					return command.Output{}, command.ErrServiceUnavailable
@@ -496,8 +500,8 @@ func (host *Host) attachGenericCLI(route *connectorRoute, managed *market.Manage
 		"args": map[string]any{"type": "array", "items": map[string]any{"type": "string"},
 			"description": "CLI arguments described by the installed connector skill"}},
 		"required": []string{"args"}, "additionalProperties": false}
-	route.capabilities[commandID] = connectorCommand{capability: connectorCapability(commandID, route.connectorKey, "run",
-		"Run the installed connector CLI with skill-defined arguments", inputSchema),
+	route.capabilities[commandID] = connectorCommand{capability: connectorCapability(commandID, route.connectorKey, "cli", "run",
+		"Run the installed connector CLI with skill-defined arguments", inputSchema), kind: "cli", name: "run",
 		invoke: func(callCtx context.Context, request command.InvokeRequest) (command.Output, error) {
 			if !host.routeCurrent(route) {
 				return command.Output{}, command.ErrServiceUnavailable
@@ -641,13 +645,9 @@ func jsonOutput(raw []byte) (command.Output, error) {
 	return command.Output{Value: map[string]any{"result": value}}, nil
 }
 
-func connectorCapability(routeID, connectorKey, name, description string, inputSchema map[string]any) command.Capability {
+func connectorCapability(routeID, connectorKey, kind, name, description string, inputSchema map[string]any) command.Capability {
 	if strings.TrimSpace(description) == "" {
 		description = "Connector command " + name
-	}
-	kind := "cli"
-	if strings.Contains(routeID, ".mcp.") {
-		kind = "mcp"
 	}
 	return command.Capability{ID: routeID, Path: []string{"connector", connectorKey, kind, name}, Summary: description,
 		Description: description, InputSchema: inputSchema,
@@ -756,6 +756,27 @@ func (registry *CommandRegistry) Capabilities() []command.Capability {
 	return result
 }
 
+func (registry *CommandRegistry) CapabilitiesForConnector(connectorKey string) []CapabilitySummary {
+	seen := make(map[string]struct{})
+	result := make([]CapabilitySummary, 0)
+	for _, route := range registry.activeRoutes() {
+		if route.connectorKey != connectorKey {
+			continue
+		}
+		for _, registered := range route.capabilities {
+			if _, duplicate := seen[registered.capability.ID]; duplicate {
+				continue
+			}
+			seen[registered.capability.ID] = struct{}{}
+			result = append(result, CapabilitySummary{ID: registered.capability.ID, Kind: registered.kind,
+				Name: registered.name, Description: registered.capability.Description,
+				InputSchema: registered.capability.InputSchema})
+		}
+	}
+	sort.Slice(result, func(left, right int) bool { return result[left].ID < result[right].ID })
+	return result
+}
+
 func (registry *CommandRegistry) Invoke(ctx context.Context, request command.InvokeRequest) (command.Output, error) {
 	routes := registry.activeRoutes()
 	if len(routes) == 0 {
@@ -769,29 +790,34 @@ func (registry *CommandRegistry) Invoke(ctx context.Context, request command.Inv
 	return command.Output{}, command.ErrNotFound
 }
 
-func (registry *CommandRegistry) InvokeNamed(ctx context.Context, connectorKey, capabilityName string,
+func (registry *CommandRegistry) InvokeConnector(ctx context.Context, connectorKey, capabilityID string,
 	request command.InvokeRequest) (command.Output, error) {
 	matches := make([]connectorCommand, 0, 1)
+	connectorMismatch := false
 	routes := registry.activeRoutes()
 	if len(routes) == 0 {
 		return command.Output{}, command.ErrServiceUnavailable
 	}
 	for _, route := range routes {
 		if route.connectorKey != connectorKey {
+			if _, found := route.capabilities[capabilityID]; found {
+				connectorMismatch = true
+			}
 			continue
 		}
-		for _, registered := range route.capabilities {
-			parts := strings.Split(registered.capability.ID, ".")
-			if len(parts) >= 4 && strings.Join(parts[3:], ".") == capabilityName {
-				matches = append(matches, registered)
-			}
+		if registered, found := route.capabilities[capabilityID]; found {
+			matches = append(matches, registered)
 		}
 	}
 	if len(matches) == 0 {
+		if connectorMismatch {
+			return command.Output{}, command.InvalidInput("connector_capability_connector_mismatch",
+				"Connector capability does not belong to the selected connector", nil)
+		}
 		return command.Output{}, command.InvalidInput("connector_capability_not_found", "Connector capability was not found", nil)
 	}
 	if len(matches) > 1 {
-		return command.Output{}, command.InvalidInput("connector_capability_ambiguous", "Connector capability name is ambiguous", nil)
+		return command.Output{}, command.InvalidInput("connector_capability_ambiguous", "Connector capability id is ambiguous", nil)
 	}
 	return matches[0].invoke(ctx, request)
 }

@@ -158,7 +158,7 @@ func testNodePackageRelease(connectorKey, digest string) market.Release {
 	return market.Release{
 		SchemaVersion: "1", ReleaseID: connectorKey + "@1.0.0", ConnectorKey: connectorKey,
 		Version: "1.0.0", ReleaseDigest: digest, ManifestDigest: strings.Repeat("3", 64),
-		Artifact: market.Artifact{StorageRealm: "tutti.connector.artifacts.v1", Key: connectorKey + ".zip", ObjectVersion: "version-1",
+		Artifact: market.Artifact{Key: connectorKey + ".zip",
 			SHA256: strings.Repeat("4", 64), SizeBytes: 1, MediaType: "application/zip"},
 		PublishedAt: time.Unix(1, 0).UTC(), Status: market.ReleaseStatusAvailable,
 		Manifest: market.Manifest{

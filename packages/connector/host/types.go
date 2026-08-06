@@ -111,12 +111,10 @@ type Manifest struct {
 }
 
 type Artifact struct {
-	StorageRealm  string `json:"storageRealm"`
-	Key           string `json:"key"`
-	ObjectVersion string `json:"objectVersion"`
-	SHA256        string `json:"sha256"`
-	SizeBytes     int64  `json:"sizeBytes"`
-	MediaType     string `json:"mediaType"`
+	Key       string `json:"key"`
+	SHA256    string `json:"sha256"`
+	SizeBytes int64  `json:"sizeBytes"`
+	MediaType string `json:"mediaType"`
 }
 
 type CompatibilityRequirements struct {
@@ -197,7 +195,7 @@ type NodePackageLaunch struct {
 	SHA256     string `json:"sha256,omitempty"`
 }
 
-// NodeLifecycleCommand allows a signed connector release to opt into a
+// NodeLifecycleCommand allows a published connector release to opt into a
 // specific Node script without granting a general-purpose lifecycle shell.
 type NodeLifecycleCommand struct {
 	Event      string   `json:"event"`

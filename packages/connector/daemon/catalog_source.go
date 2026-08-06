@@ -3,7 +3,6 @@ package daemon
 import (
 	"bytes"
 	"context"
-	"crypto/ed25519"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -13,17 +12,14 @@ import (
 	"net/http"
 	"net/url"
 	"path"
-	"reflect"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	market "github.com/tutti-os/tutti/packages/connector/host"
 )
 
-const connectorCatalogPath = "/v1/connector-market/releases"
-const connectorPlacementPath = "/v1/market/items"
+const connectorCatalogPath = "/v1/market/items"
 const connectorCategoriesPath = "/v1/market/categories"
 const maxCatalogResponseBytes = 8 << 20
 
@@ -34,12 +30,6 @@ type CatalogSourceConfig struct {
 	ExpectedMarketType string
 	HTTPClient         *http.Client
 	AuthorizeRequest   RequestAuthorizer
-	// TrustedSigningKeys are pinned Ed25519 connector-market roots keyed by
-	// keyId. An empty keyring keeps the local daemon usable but fails every
-	// remote catalog acceptance closed.
-	TrustedSigningKeys           map[string]ed25519.PublicKey
-	TrustedSigningKeyringVersion uint64
-	TrustStateStore              market.CatalogTrustStateReader
 }
 
 type CatalogSource struct {
@@ -47,9 +37,6 @@ type CatalogSource struct {
 	expectedMarketType string
 	httpClient         *http.Client
 	authorizeRequest   RequestAuthorizer
-	trustVerifier      *catalogTrustVerifier
-	trustStateStore    market.CatalogTrustStateReader
-	trustMu            sync.Mutex
 }
 
 var _ market.CatalogSource = (*CatalogSource)(nil)
@@ -70,38 +57,58 @@ func NewCatalogSource(config CatalogSourceConfig) (*CatalogSource, error) {
 	if client == nil {
 		return nil, errors.New("connector market HTTP client is required")
 	}
-	verifier, err := newCatalogTrustVerifier(config.TrustedSigningKeyringVersion, config.TrustedSigningKeys)
-	if err != nil {
-		return nil, err
-	}
-	if verifier != nil && config.TrustStateStore == nil {
-		return nil, errors.New("connector market durable trust state store is required")
-	}
 	return &CatalogSource{baseURL: baseURL, expectedMarketType: expectedMarketType,
-		httpClient: client, authorizeRequest: config.AuthorizeRequest, trustVerifier: verifier,
-		trustStateStore: config.TrustStateStore}, nil
+		httpClient: client, authorizeRequest: config.AuthorizeRequest}, nil
 }
 
 func (source *CatalogSource) Refresh(ctx context.Context) (market.CatalogSnapshot, error) {
-	payload, trustState, err := source.listReleases(ctx)
+	categories, err := source.ListCategories(ctx)
 	if err != nil {
 		return market.CatalogSnapshot{}, err
 	}
-	releases := make([]market.Release, 0, len(payload.Releases))
-	seen := make(map[string]struct{}, len(payload.Releases))
-	for _, item := range payload.Releases {
-		release, mapErr := source.mapRelease(item)
-		if mapErr != nil {
-			return market.CatalogSnapshot{}, mapErr
+	releases := make([]market.Release, 0)
+	seen := make(map[string]struct{})
+	primarySections := 0
+	for _, category := range categories {
+		if category.Kind != "category" {
+			continue
 		}
-		if _, duplicate := seen[release.ConnectorKey]; duplicate {
-			return market.CatalogSnapshot{}, errors.New("connector market catalog contains duplicate active connector releases")
+		primarySections++
+		pageToken := ""
+		seenPageTokens := make(map[string]struct{})
+		for {
+			page, pageErr := source.ListPage(ctx, market.CatalogSourcePageQuery{SectionID: category.CategoryID, PageSize: 100, PageToken: pageToken})
+			if pageErr != nil {
+				return market.CatalogSnapshot{}, pageErr
+			}
+			for _, entry := range page.Entries {
+				if _, exists := seen[entry.Release.ConnectorKey]; exists {
+					return market.CatalogSnapshot{}, errors.New("connector market catalog contains duplicate primary placements")
+				}
+				seen[entry.Release.ConnectorKey] = struct{}{}
+				releases = append(releases, entry.Release)
+			}
+			if page.NextPageToken == "" {
+				break
+			}
+			if _, exists := seenPageTokens[page.NextPageToken]; exists {
+				return market.CatalogSnapshot{}, errors.New("connector market catalog returned a cyclic page token")
+			}
+			seenPageTokens[page.NextPageToken] = struct{}{}
+			pageToken = page.NextPageToken
 		}
-		seen[release.ConnectorKey] = struct{}{}
-		releases = append(releases, release)
 	}
-	return market.CatalogSnapshot{SourceRevision: payload.Snapshot.SignedSnapshot.SHA256, Releases: releases,
-		MarketType: payload.MarketType, TrustState: &trustState}, nil
+	if primarySections == 0 {
+		return market.CatalogSnapshot{}, errors.New("connector market catalog returned no primary categories")
+	}
+	revisionHash := sha256.New()
+	for _, release := range releases {
+		_, _ = io.WriteString(revisionHash, release.ConnectorKey)
+		_, _ = io.WriteString(revisionHash, "\x00")
+		_, _ = io.WriteString(revisionHash, release.ReleaseDigest)
+		_, _ = io.WriteString(revisionHash, "\n")
+	}
+	return market.CatalogSnapshot{SourceRevision: hex.EncodeToString(revisionHash.Sum(nil)), Releases: releases}, nil
 }
 
 func (source *CatalogSource) ListCategories(ctx context.Context) ([]market.CatalogCategory, error) {
@@ -137,7 +144,7 @@ func (source *CatalogSource) ListPage(ctx context.Context, input market.CatalogS
 		query.Set("pageToken", token)
 	}
 	var payload wireMarketResponse
-	if _, err := source.getJSON(ctx, connectorPlacementPath, query, &payload); err != nil {
+	if _, err := source.getJSON(ctx, connectorCatalogPath, query, &payload); err != nil {
 		return market.CatalogSourcePage{}, err
 	}
 	if payload.MarketType != source.expectedMarketType {
@@ -145,32 +152,16 @@ func (source *CatalogSource) ListPage(ctx context.Context, input market.CatalogS
 	}
 	entries := make([]market.CatalogEntry, 0, len(payload.Items))
 	for _, item := range payload.Items {
+		release, err := mapItem(item)
+		if err != nil {
+			return market.CatalogSourcePage{}, err
+		}
 		if strings.TrimSpace(item.CategoryID) == "" {
 			return market.CatalogSourcePage{}, errors.New("connector market item category is missing")
 		}
-		if item.ItemType != "connector" || item.ItemKey == "" || item.Version == "" || item.Artifact == nil ||
-			!isSHA256Hex(item.Artifact.SHA256) || item.Artifact.SizeBytes <= 0 {
-			return market.CatalogSourcePage{}, errors.New("connector market placement identity is incomplete")
-		}
-		entries = append(entries, market.CatalogEntry{CategoryID: item.CategoryID, Featured: item.Featured, ConnectorKey: item.ItemKey,
-			Version: item.Version, ArtifactSHA256: item.Artifact.SHA256, ArtifactSizeBytes: int64(item.Artifact.SizeBytes)})
+		entries = append(entries, market.CatalogEntry{CategoryID: item.CategoryID, Featured: item.Featured, Release: release})
 	}
 	return market.CatalogSourcePage{SectionID: strings.TrimSpace(input.SectionID), Entries: entries, NextPageToken: payload.NextPageToken}, nil
-}
-
-func (source *CatalogSource) listReleases(ctx context.Context) (wireConnectorCatalogResponse, market.CatalogTrustState, error) {
-	var payload wireConnectorCatalogResponse
-	if _, err := source.getJSON(ctx, connectorCatalogPath, nil, &payload); err != nil {
-		return wireConnectorCatalogResponse{}, market.CatalogTrustState{}, err
-	}
-	if payload.MarketType != source.expectedMarketType {
-		return wireConnectorCatalogResponse{}, market.CatalogTrustState{}, errors.New("connector market type does not match configured market")
-	}
-	trustState, err := source.verifyProjection(ctx, payload)
-	if err != nil {
-		return wireConnectorCatalogResponse{}, market.CatalogTrustState{}, fmt.Errorf("verify connector catalog trust: %w", err)
-	}
-	return payload, trustState, nil
 }
 
 func (source *CatalogSource) getJSON(ctx context.Context, requestPath string, query url.Values, target any) ([]byte, error) {
@@ -209,8 +200,10 @@ func (source *CatalogSource) getJSON(ctx context.Context, requestPath string, qu
 	if len(payloadBytes) > maxCatalogResponseBytes {
 		return nil, errors.New("decode connector market catalog: response exceeds size limit")
 	}
+	// This is a remote API client boundary. Ignore additive response fields and
+	// validate only the values the client consumes; manifest major versions
+	// remain the compatibility boundary for semantic changes.
 	decoder := json.NewDecoder(bytes.NewReader(payloadBytes))
-	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(target); err != nil {
 		return nil, fmt.Errorf("decode connector market catalog: %w", err)
 	}
@@ -220,63 +213,49 @@ func (source *CatalogSource) getJSON(ctx context.Context, requestPath string, qu
 	return payloadBytes, nil
 }
 
-func (source *CatalogSource) mapRelease(item wireConnectorRelease) (market.Release, error) {
-	if item.ConnectorKey == "" || item.Version == "" || item.ReleaseID == "" || item.Artifact == nil {
-		return market.Release{}, errors.New("connector release identity is incomplete")
+func mapItem(item wireMarketItem) (market.Release, error) {
+	if item.ItemType != "connector" || item.ItemKey == "" || item.Version == "" || item.Artifact == nil || !safeArtifactKey(item.Artifact.Key) {
+		return market.Release{}, errors.New("connector market item identity is incomplete")
 	}
-	if err := validateSignedDocumentDigest(item.SignedEnvelope); err != nil || item.SignedEnvelope.SHA256 != item.ReleaseDigest {
-		return market.Release{}, errors.New("connector release signed envelope digest is invalid")
-	}
-	manifestHash := sha256.Sum256([]byte(item.Manifest.CanonicalBytes))
-	manifestEnvelopeDigest := hex.EncodeToString(manifestHash[:])
-	if item.Manifest.SHA256 != manifestEnvelopeDigest {
-		return market.Release{}, errors.New("connector release canonical manifest digest is invalid")
-	}
-	var signedPayload wireReleaseEnvelopePayload
-	if err := decodeStrictJSON([]byte(item.SignedEnvelope.CanonicalBytes), &signedPayload); err != nil {
-		return market.Release{}, fmt.Errorf("decode connector release envelope: %w", err)
-	}
-	if signedPayload.SchemaVersion != "1" || signedPayload.ItemType != "connector" ||
-		signedPayload.ItemKey != item.ConnectorKey || signedPayload.Version != item.Version ||
-		signedPayload.ManifestSHA256 != item.Manifest.SHA256 || !safeArtifactKey(signedPayload.ArtifactKey) ||
-		item.Artifact.ObjectVersion == "" || item.Artifact.ObjectVersion != signedPayload.ArtifactObjectVersion ||
-		item.Artifact.SHA256 != signedPayload.ArtifactSHA256 || int64(item.Artifact.SizeBytes) != signedPayload.ArtifactSizeBytes ||
-		item.Artifact.MediaType != signedPayload.ArtifactMediaType {
-		return market.Release{}, errors.New("connector release projection does not match the signed envelope")
+	manifestBytes, err := json.Marshal(item.Manifest)
+	if err != nil {
+		return market.Release{}, err
 	}
 	var connectorManifest wireConnectorMarketManifest
-	if err := decodeStrictJSON([]byte(item.Manifest.CanonicalBytes), &connectorManifest); err != nil {
+	// Connector manifest v2 is extensible. Unknown fields cannot alter the
+	// semantics of fields already defined by v2; a breaking semantic change
+	// requires a new schemaVersion, which is rejected explicitly below.
+	decoder := json.NewDecoder(bytes.NewReader(manifestBytes))
+	if err := decoder.Decode(&connectorManifest); err != nil {
 		return market.Release{}, fmt.Errorf("decode connector market manifest: %w", err)
 	}
-	if connectorManifest.SchemaVersion != "1" || connectorManifest.ItemType != "connector" ||
-		connectorManifest.ItemKey != item.ConnectorKey || connectorManifest.Version != item.Version ||
-		!containsString(connectorManifest.SupportedMarkets, source.expectedMarketType) {
-		return market.Release{}, errors.New("connector manifest identity or market does not match release")
+	if connectorManifest.SchemaVersion != "2" || connectorManifest.ItemType != "connector" ||
+		connectorManifest.ItemKey != item.ItemKey || connectorManifest.Version != item.Version {
+		return market.Release{}, errors.New("connector manifest identity does not match item")
 	}
 	if !isSHA256Hex(connectorManifest.Payload.PackageManifestSHA256) {
 		return market.Release{}, errors.New("connector manifest package digest is invalid")
 	}
-	implementation, ok := connectorManifest.Payload.Implementations[source.expectedMarketType]
-	if !ok {
-		return market.Release{}, errors.New("connector manifest does not provide the configured market implementation")
+	if connectorManifest.Payload.Implementation == nil {
+		return market.Release{}, errors.New("connector manifest does not provide an implementation")
 	}
-	if !reflect.DeepEqual(connectorManifest.Payload.Permissions, signedPayload.Permissions) {
-		return market.Release{}, errors.New("connector manifest permissions do not match the signed envelope")
-	}
+	releaseDigest := sha256.Sum256([]byte(item.ItemKey + "\x00" + item.Version + "\x00" + item.Artifact.SHA256))
 	iconURL := connectorManifest.Display.IconURL
-	if connectorManifest.SchemaVersion == "1" && strings.TrimSpace(iconURL) == "" {
+	if strings.TrimSpace(iconURL) == "" {
 		iconURL = legacyConnectorIconURL
 	}
-	manifest := market.Manifest{SchemaVersion: connectorManifest.SchemaVersion, DisplayName: connectorManifest.Display.Name, IconURL: iconURL,
+	// The server's v2 envelope is the generic, market-neutral publication
+	// contract. The daemon projects it into the stable host manifest contract;
+	// the two schema versions intentionally describe different boundaries.
+	manifest := market.Manifest{SchemaVersion: "1", DisplayName: connectorManifest.Display.Name, IconURL: iconURL,
 		Description: connectorManifest.Display.Description, Permissions: connectorManifest.Payload.Permissions,
-		Implementation: implementation, AuthorizationKind: connectorManifest.Payload.Authorization.Kind,
+		Implementation: *connectorManifest.Payload.Implementation, AuthorizationKind: connectorManifest.Payload.Authorization.Kind,
 		Compatibility: connectorManifest.Payload.Compatibility}
-	release := market.Release{SchemaVersion: "1", ReleaseID: item.ReleaseID,
-		ConnectorKey: item.ConnectorKey, Version: item.Version,
-		ReleaseDigest: item.ReleaseDigest, ManifestDigest: connectorManifest.Payload.PackageManifestSHA256,
-		Manifest: manifest, Artifact: market.Artifact{StorageRealm: signedPayload.ArtifactStorageRealm, Key: signedPayload.ArtifactKey,
-			ObjectVersion: signedPayload.ArtifactObjectVersion, SHA256: signedPayload.ArtifactSHA256,
-			SizeBytes: signedPayload.ArtifactSizeBytes, MediaType: signedPayload.ArtifactMediaType},
+	release := market.Release{SchemaVersion: "1", ReleaseID: item.ItemKey + "@" + item.Version,
+		ConnectorKey: item.ItemKey, Version: item.Version,
+		ReleaseDigest: hex.EncodeToString(releaseDigest[:]), ManifestDigest: connectorManifest.Payload.PackageManifestSHA256,
+		Manifest: manifest, Artifact: market.Artifact{Key: item.Artifact.Key, SHA256: item.Artifact.SHA256,
+			SizeBytes: int64(item.Artifact.SizeBytes), MediaType: artifactMediaType(item.Artifact.Key)},
 		PublishedAt: time.UnixMilli(int64(item.PublishedAtMS)).UTC(), Status: market.ReleaseStatusAvailable}
 	if err := market.ValidateReleaseShape(release); err != nil {
 		return market.Release{}, err
@@ -284,91 +263,10 @@ func (source *CatalogSource) mapRelease(item wireConnectorRelease) (market.Relea
 	return release, nil
 }
 
-func validateSignedDocumentDigest(document wireSignedDocument) error {
-	digest := sha256.Sum256([]byte(document.CanonicalBytes))
-	if !isSHA256Hex(document.SHA256) || hex.EncodeToString(digest[:]) != document.SHA256 ||
-		strings.TrimSpace(document.KeyID) == "" || strings.TrimSpace(document.Algorithm) == "" || strings.TrimSpace(document.Signature) == "" {
-		return errors.New("signed document evidence is incomplete")
-	}
-	return nil
-}
-
-func decodeStrictJSON(payload []byte, target any) error {
-	decoder := json.NewDecoder(bytes.NewReader(payload))
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(target); err != nil {
-		return err
-	}
-	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
-		return errors.New("trailing JSON value")
-	}
-	return nil
-}
-
 type wireMarketResponse struct {
 	MarketType    string           `json:"marketType"`
 	Items         []wireMarketItem `json:"items"`
 	NextPageToken string           `json:"nextPageToken"`
-}
-
-type wireConnectorCatalogResponse struct {
-	MarketType string `json:"marketType"`
-	Snapshot   struct {
-		SignedSnapshot wireSignedDocument `json:"signedSnapshot"`
-	} `json:"snapshot"`
-	Releases []wireConnectorRelease `json:"releases"`
-}
-
-type wireSignedDocument struct {
-	CanonicalBytes string `json:"canonicalBytes"`
-	SHA256         string `json:"sha256"`
-	KeyID          string `json:"keyId"`
-	Algorithm      string `json:"algorithm"`
-	Signature      string `json:"signature"`
-}
-
-type wireCanonicalDocument struct {
-	CanonicalBytes string `json:"canonicalBytes"`
-	SHA256         string `json:"sha256"`
-}
-
-type wireConnectorArtifactProjection struct {
-	ObjectVersion string    `json:"objectVersion"`
-	SHA256        string    `json:"sha256"`
-	SizeBytes     wireInt64 `json:"sizeBytes"`
-	MediaType     string    `json:"mediaType"`
-}
-
-type wireConnectorRelease struct {
-	ConnectorKey   string                           `json:"connectorKey"`
-	ReleaseDigest  string                           `json:"releaseDigest"`
-	SignedEnvelope wireSignedDocument               `json:"signedEnvelope"`
-	Version        string                           `json:"version"`
-	Manifest       wireCanonicalDocument            `json:"manifest"`
-	Artifact       *wireConnectorArtifactProjection `json:"artifact"`
-	PublishedAtMS  wireInt64                        `json:"publishedAtMs"`
-	ReleaseID      string                           `json:"releaseId"`
-}
-
-type wireReleaseEnvelopePayload struct {
-	SchemaVersion         string   `json:"schemaVersion"`
-	ItemType              string   `json:"itemType"`
-	ItemKey               string   `json:"itemKey"`
-	Version               string   `json:"version"`
-	PublisherSubject      string   `json:"publisherSubject"`
-	SourceRepository      string   `json:"sourceRepository"`
-	CommitSHA             string   `json:"commitSha"`
-	WorkflowRef           string   `json:"workflowRef"`
-	ProvenanceDigest      string   `json:"provenanceDigest"`
-	ArtifactKey           string   `json:"artifactKey"`
-	ArtifactStorageRealm  string   `json:"artifactStorageRealm"`
-	ArtifactObjectVersion string   `json:"artifactObjectVersion"`
-	ArtifactSHA256        string   `json:"artifactSha256"`
-	ArtifactSizeBytes     int64    `json:"artifactSizeBytes"`
-	ArtifactMediaType     string   `json:"artifactMediaType"`
-	ManifestSHA256        string   `json:"manifestSha256"`
-	TrustTier             string   `json:"trustTier"`
-	Permissions           []string `json:"permissions"`
 }
 
 type wireMarketCategoriesResponse struct {
@@ -419,13 +317,12 @@ func (value *wireInt64) UnmarshalJSON(payload []byte) error {
 }
 
 type wireConnectorMarketManifest struct {
-	SchemaVersion    string                       `json:"schemaVersion"`
-	ItemType         string                       `json:"itemType"`
-	ItemKey          string                       `json:"itemKey"`
-	Version          string                       `json:"version"`
-	Display          wireConnectorDisplay         `json:"display"`
-	SupportedMarkets []string                     `json:"supportedMarkets"`
-	Payload          wireConnectorManifestPayload `json:"payload"`
+	SchemaVersion string                       `json:"schemaVersion"`
+	ItemType      string                       `json:"itemType"`
+	ItemKey       string                       `json:"itemKey"`
+	Version       string                       `json:"version"`
+	Display       wireConnectorDisplay         `json:"display"`
+	Payload       wireConnectorManifestPayload `json:"payload"`
 }
 
 type wireConnectorDisplay struct {
@@ -439,7 +336,7 @@ type wireConnectorManifestPayload struct {
 	PackageManifestSHA256 string                           `json:"packageManifestSha256"`
 	Authorization         wireConnectorAuthorization       `json:"authorization"`
 	Compatibility         market.CompatibilityRequirements `json:"compatibility"`
-	Implementations       map[string]market.Implementation `json:"implementations"`
+	Implementation        *market.Implementation           `json:"implementation"`
 }
 
 type wireConnectorAuthorization struct {
@@ -448,13 +345,15 @@ type wireConnectorAuthorization struct {
 
 const legacyConnectorIconURL = "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2NCA2NCI+PHJlY3Qgd2lkdGg9IjY0IiBoZWlnaHQ9IjY0IiByeD0iMTQiIGZpbGw9IiM2YjcyODAiLz48cGF0aCBkPSJNMTggMjBoMjh2MjRIMTh6IiBmaWxsPSJub25lIiBzdHJva2U9IndoaXRlIiBzdHJva2Utd2lkdGg9IjQiLz48L3N2Zz4="
 
-func containsString(values []string, wanted string) bool {
-	for _, value := range values {
-		if value == wanted {
-			return true
-		}
+func artifactMediaType(key string) string {
+	switch {
+	case strings.HasSuffix(strings.ToLower(key), ".zip"):
+		return "application/zip"
+	case strings.HasSuffix(strings.ToLower(key), ".tar.gz"), strings.HasSuffix(strings.ToLower(key), ".tgz"):
+		return "application/gzip"
+	default:
+		return "application/octet-stream"
 	}
-	return false
 }
 
 func isLoopbackHost(host string) bool {

@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"reflect"
 	"strings"
 	"sync"
 	"time"
@@ -131,32 +132,71 @@ func (application *Application) ListCatalogPage(ctx context.Context, query Catal
 	if page.SectionID != query.SectionID {
 		return CatalogPage{}, invalidManifest("connector catalog page section does not match the request", nil)
 	}
-	snapshot, err := application.config.Repository.Snapshot(ctx)
-	if err != nil {
-		return CatalogPage{}, err
-	}
 	seen := make(map[string]struct{}, len(page.Entries))
-	result := CatalogPage{SectionID: page.SectionID, Items: make([]CatalogListing, 0, len(page.Entries)), NextPageToken: page.NextPageToken, Revision: snapshot.Revision}
+	compatibilityByKey := make(map[string]Compatibility, len(page.Entries))
 	for _, entry := range page.Entries {
-		connectorKey := strings.TrimSpace(entry.ConnectorKey)
-		if strings.TrimSpace(entry.CategoryID) == "" || connectorKey == "" || strings.TrimSpace(entry.Version) == "" ||
-			!artifactSHA256Pattern.MatchString(entry.ArtifactSHA256) || entry.ArtifactSizeBytes <= 0 {
-			return CatalogPage{}, invalidManifest("connector catalog placement identity is incomplete", nil)
+		if strings.TrimSpace(entry.CategoryID) == "" {
+			return CatalogPage{}, invalidManifest("connector catalog item category is required", nil)
 		}
-		if _, exists := seen[connectorKey]; exists {
+		if _, exists := seen[entry.Release.ConnectorKey]; exists {
 			return CatalogPage{}, invalidManifest("connector catalog page contains duplicate connectors", nil)
 		}
-		seen[connectorKey] = struct{}{}
-		connector, err := application.config.Repository.Connector(ctx, connectorKey)
-		if errors.Is(err, ErrNotFound) {
-			return CatalogPage{}, invalidManifest("connector catalog placement is not present in the accepted catalog", nil)
+		seen[entry.Release.ConnectorKey] = struct{}{}
+		if err := ValidateReleaseShape(entry.Release); err != nil {
+			return CatalogPage{}, err
 		}
+		compatibility, err := application.compatibilityFor(entry.Release.Manifest)
 		if err != nil {
 			return CatalogPage{}, err
 		}
-		if connector.Release.Version != entry.Version || connector.Release.Artifact.SHA256 != entry.ArtifactSHA256 ||
-			connector.Release.Artifact.SizeBytes != entry.ArtifactSizeBytes {
-			return CatalogPage{}, invalidManifest("connector catalog placement does not match the accepted release", nil)
+		compatibilityByKey[entry.Release.ConnectorKey] = compatibility
+	}
+
+	// Browsing is a cache-aside catalog sync. Persisting newly observed releases
+	// makes an item immediately installable without waiting for the background
+	// authoritative refresh; unseen items are never removed by a partial page.
+	var revision uint64
+	err = application.config.Repository.Transaction(ctx, func(tx Transaction) error {
+		revision = tx.Revision()
+		changed := make([]Connector, 0, len(page.Entries))
+		for _, entry := range page.Entries {
+			connector, lookupErr := tx.Connector(entry.Release.ConnectorKey)
+			if lookupErr != nil && !errors.Is(lookupErr, ErrNotFound) {
+				return lookupErr
+			}
+			if errors.Is(lookupErr, ErrNotFound) {
+				connector = newCatalogConnector(entry.Release)
+			}
+			compatibility := compatibilityByKey[entry.Release.ConnectorKey]
+			if lookupErr == nil && reflect.DeepEqual(connector.Release, entry.Release) && reflect.DeepEqual(connector.Compatibility, compatibility) {
+				continue
+			}
+			connector.Release = entry.Release
+			connector.Authorization = authorizationForManifest(connector.Authorization, entry.Release.Manifest.AuthorizationKind)
+			connector.Compatibility = compatibility
+			changed = append(changed, connector)
+		}
+		if len(changed) == 0 {
+			return nil
+		}
+		revision = tx.AdvanceRevision()
+		for _, connector := range changed {
+			connector.Revision = revision
+			if err := tx.SaveConnector(connector); err != nil {
+				return err
+			}
+		}
+		return tx.EnqueueConnectorMarketChanged(ChangedEvent{Revision: revision})
+	})
+	if err != nil {
+		return CatalogPage{}, err
+	}
+
+	result := CatalogPage{SectionID: page.SectionID, Items: make([]CatalogListing, 0, len(page.Entries)), NextPageToken: page.NextPageToken, Revision: revision}
+	for _, entry := range page.Entries {
+		connector, err := application.config.Repository.Connector(ctx, entry.Release.ConnectorKey)
+		if err != nil {
+			return CatalogPage{}, err
 		}
 		result.Items = append(result.Items, CatalogListing{CategoryID: entry.CategoryID, Featured: entry.Featured, Connector: connector})
 	}

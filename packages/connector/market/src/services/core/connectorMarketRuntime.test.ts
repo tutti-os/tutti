@@ -214,9 +214,7 @@ function connector(key: string, overrides: Partial<Connector> = {}): Connector {
     key,
     release: {
       artifact: {
-        storageRealm: "tutti.connector.artifacts.v1",
         key: `connectors/${key}.tgz`,
-        objectVersion: "version-1",
         mediaType: "application/vnd.tutti.connector+tar+gzip",
         sha256:
           "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",

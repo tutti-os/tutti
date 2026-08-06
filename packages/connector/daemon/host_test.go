@@ -203,8 +203,7 @@ func hostTestRelease() market.Release {
 			},
 		},
 		Artifact: market.Artifact{
-			StorageRealm: connectorArtifactRealm,
-			Key:          "connectors/github/1.0.0.tgz", ObjectVersion: "version-1",
+			Key:       "connectors/github/1.0.0.tgz",
 			SHA256:    "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
 			SizeBytes: 1024,
 			MediaType: "application/vnd.tutti.connector+tar+gzip",

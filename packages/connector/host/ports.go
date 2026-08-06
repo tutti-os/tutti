@@ -31,12 +31,9 @@ type CatalogCategory struct {
 }
 
 type CatalogEntry struct {
-	CategoryID        string `json:"categoryId"`
-	Featured          bool   `json:"featured"`
-	ConnectorKey      string `json:"connectorKey"`
-	Version           string `json:"version"`
-	ArtifactSHA256    string `json:"artifactSha256"`
-	ArtifactSizeBytes int64  `json:"artifactSizeBytes"`
+	CategoryID string  `json:"categoryId"`
+	Featured   bool    `json:"featured"`
+	Release    Release `json:"release"`
 }
 
 type CatalogSourcePage struct {
@@ -61,31 +58,6 @@ type CatalogPage struct {
 type CatalogSnapshot struct {
 	SourceRevision string
 	Releases       []Release
-	MarketType     string
-	TrustState     *CatalogTrustState
-}
-
-// CatalogTrustState is the durable anti-rollback checkpoint accepted from a
-// signed remote catalog. It is persisted independently from presentation data
-// so daemon restarts cannot reopen a replay window.
-type CatalogTrustState struct {
-	KeyringVersion uint64    `json:"keyringVersion"`
-	Sequence       uint64    `json:"sequence"`
-	EnvelopeDigest string    `json:"envelopeDigest"`
-	IssuedAt       time.Time `json:"issuedAt"`
-	ExpiresAt      time.Time `json:"expiresAt"`
-	NextUpdateAt   time.Time `json:"nextUpdateAt"`
-	ObservedAt     time.Time `json:"observedAt"`
-	WallHighWater  time.Time `json:"wallHighWater"`
-}
-
-type CatalogTrustStateReader interface {
-	LoadCatalogTrustState(context.Context, string) (CatalogTrustState, bool, error)
-}
-
-type CatalogTrustStateStore interface {
-	CatalogTrustStateReader
-	SaveCatalogTrustState(context.Context, string, CatalogTrustState) error
 }
 
 type Repository interface {
@@ -109,7 +81,6 @@ type Transaction interface {
 	OperationByClientRequestID(clientRequestID string) (*Operation, error)
 	ActiveOperation(connectorKey string) (*Operation, error)
 	SaveCatalogRevision(sourceRevision string) error
-	SaveCatalogTrustState(marketType string, state CatalogTrustState) error
 	SetCatalogState(state CatalogState) error
 	SaveConnector(Connector) error
 	DeleteConnector(connectorKey string) error

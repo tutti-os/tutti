@@ -34,7 +34,7 @@ func completeImplementationHostTestRelease(release market.Release) market.Releas
 	if managed := release.Manifest.Implementation.ManagedStdio; managed != nil && managed.CLI != nil {
 		managed.Runtime.VersionRange = ">=20.0.0 <21.0.0"
 	}
-	release.Artifact = market.Artifact{StorageRealm: "tutti.connector.artifacts.v1", Key: "connectors/github/1.0.0.zip", ObjectVersion: "version-1",
+	release.Artifact = market.Artifact{Key: "connectors/github/1.0.0.zip",
 		SHA256: "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", SizeBytes: 1024, MediaType: "application/vnd.tutti.connector+zip"}
 	release.PublishedAt = time.Unix(1, 0).UTC()
 	release.Status = market.ReleaseStatusAvailable

@@ -12,7 +12,7 @@ transport, HTTP client/proxy policy, state roots, and product-facing command
 transport. Runtime code must not import `services/tuttid` or expose host
 filesystem paths as a cross-machine protocol.
 
-Authorized `managed_stdio` Connectors declare a signed, connector-owned
+Authorized `managed_stdio` Connectors declare a connector-owned
 credential broker entrypoint. The broker translates its provider-specific
 flow into the `tutti.connector.credentials.v1` event protocol. Tutti validates
 every authorization URL against the manifest's exact HTTPS host allowlist and
@@ -23,6 +23,6 @@ system `PATH`.
 
 Connector installation, MCP, CLI, and credential-broker processes intentionally
 do not use an OS process sandbox. `NewConnectorProcessTransport()` preserves
-the security boundary through pinned packages, signed artifact receipts,
+the security boundary through pinned packages, verified artifact receipts,
 immutable execution snapshots, executable SHA-256/size verification, an
 explicit environment, process groups, timeouts, and bounded output.

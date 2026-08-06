@@ -104,12 +104,11 @@ func validateReleaseShape(release Release, validateIcon bool) error {
 	if release.PublishedAt.IsZero() {
 		return invalidManifest("publishedAt is required", nil)
 	}
-	if release.Artifact.StorageRealm != "tutti.connector.artifacts.v1" ||
-		strings.TrimSpace(release.Artifact.Key) == "" || strings.TrimSpace(release.Artifact.ObjectVersion) == "" ||
+	if strings.TrimSpace(release.Artifact.Key) == "" ||
 		!artifactSHA256Pattern.MatchString(release.Artifact.SHA256) ||
 		release.Artifact.SizeBytes <= 0 ||
 		strings.TrimSpace(release.Artifact.MediaType) == "" {
-		return invalidManifest("artifact realm, key, objectVersion, lowercase SHA-256, positive sizeBytes, and mediaType are required", nil)
+		return invalidManifest("artifact key, lowercase SHA-256, positive sizeBytes, and mediaType are required", nil)
 	}
 	return validateManifestShape(release.Manifest, validateIcon)
 }
