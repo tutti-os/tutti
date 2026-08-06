@@ -136,13 +136,51 @@ func TestCatalogSourceRejectsLegacyConnectorManifestV1(t *testing.T) {
 }`), &manifest); err != nil {
 		t.Fatal(err)
 	}
-	_, err := mapItem(wireMarketItem{
+	source := &CatalogSource{executionTarget: "darwin-arm64"}
+	_, err := source.mapItem(wireMarketItem{
 		ItemType: "connector", ItemKey: "github", Version: "1.0.0", Manifest: manifest,
 		Artifact:      &wireArtifact{Key: "connectors/github/1.0.0.zip", SHA256: strings.Repeat("c", 64), SizeBytes: 123},
 		PublishedAtMS: 1785801600000,
 	})
 	if err == nil {
 		t.Fatal("legacy connector manifest v1 was accepted")
+	}
+}
+
+func TestCatalogSourceSelectsExactV3ExecutionTarget(t *testing.T) {
+	source := &CatalogSource{expectedMarketType: "overseas", executionTarget: "linux-arm64"}
+	manifest := wireConnectorMarketManifest{
+		SchemaVersion: "3",
+		Payload: wireConnectorManifestPayload{TargetImplementations: map[string]market.Implementation{
+			"darwin-arm64": {Kind: market.ImplementationKindManagedStdio},
+			"linux-arm64":  {Kind: market.ImplementationKindBuiltin},
+		}},
+	}
+	implementation, err := source.resolveManifestImplementation(manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if implementation.Kind != market.ImplementationKindBuiltin {
+		t.Fatalf("implementation = %#v", implementation)
+	}
+	delete(manifest.Payload.TargetImplementations, "linux-arm64")
+	if _, err := source.resolveManifestImplementation(manifest); err == nil || !strings.Contains(err.Error(), "linux-arm64") {
+		t.Fatalf("resolveManifestImplementation() error = %v, want missing exact target", err)
+	}
+}
+
+func TestCatalogSourceKeepsV2MarketNeutralImplementation(t *testing.T) {
+	implementation := market.Implementation{Kind: market.ImplementationKindManagedStdio}
+	source := &CatalogSource{expectedMarketType: "domestic", executionTarget: "darwin-arm64"}
+	got, err := source.resolveManifestImplementation(wireConnectorMarketManifest{
+		SchemaVersion: "2",
+		Payload:       wireConnectorManifestPayload{Implementation: &implementation},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Kind != implementation.Kind {
+		t.Fatalf("implementation = %#v", got)
 	}
 }
 
@@ -155,6 +193,9 @@ func TestCatalogSourceRejectsInvalidConfiguration(t *testing.T) {
 	}
 	if _, err := NewCatalogSource(CatalogSourceConfig{BaseURL: "https://example.test", ExpectedMarketType: "overseas"}); err == nil || !strings.Contains(err.Error(), "HTTP client") {
 		t.Fatalf("expected missing HTTP client error, got %v", err)
+	}
+	if _, err := NewCatalogSource(CatalogSourceConfig{BaseURL: "https://example.test", ExpectedMarketType: "overseas", HTTPClient: http.DefaultClient, ExecutionTarget: "linux-aarch64"}); err == nil || !strings.Contains(err.Error(), "execution target") {
+		t.Fatalf("expected invalid execution target error, got %v", err)
 	}
 }
 

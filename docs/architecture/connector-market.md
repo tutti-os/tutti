@@ -34,6 +34,15 @@ schema versions belong to different APIs and do not imply compatibility.
 The renderer never calls the remote market. The local daemon is authoritative
 for every state rendered by the desktop application.
 
+Connector Manifest v3 keeps one signed release and adds an execution-target
+matrix keyed by canonical Go platform tuples such as `darwin-arm64` and
+`linux-arm64`. The catalog adapter selects the daemon's exact target and
+projects it into the existing single-implementation host contract before
+validation or installation. Target selection never falls back across OS or
+architecture boundaries because runtime ABIs and native executable checksums
+are target-specific release facts. Manifest v1 and market-neutral v2 remain
+read-compatible at this boundary.
+
 ## Ownership
 
 The shared Connector modules own:

@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"net/url"
 	"path"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -30,6 +31,9 @@ type CatalogSourceConfig struct {
 	ExpectedMarketType string
 	HTTPClient         *http.Client
 	AuthorizeRequest   RequestAuthorizer
+	// ExecutionTarget selects a Connector v3 target. Empty defaults to the
+	// daemon process GOOS/GOARCH, which is the correct target for desktop Tutti.
+	ExecutionTarget string
 }
 
 type CatalogSource struct {
@@ -37,6 +41,7 @@ type CatalogSource struct {
 	expectedMarketType string
 	httpClient         *http.Client
 	authorizeRequest   RequestAuthorizer
+	executionTarget    string
 }
 
 var _ market.CatalogSource = (*CatalogSource)(nil)
@@ -57,8 +62,18 @@ func NewCatalogSource(config CatalogSourceConfig) (*CatalogSource, error) {
 	if client == nil {
 		return nil, errors.New("connector market HTTP client is required")
 	}
+	executionTarget := strings.TrimSpace(config.ExecutionTarget)
+	var executionTargetErr error
+	if executionTarget == "" {
+		executionTarget, executionTargetErr = market.ExecutionTarget(runtime.GOOS, runtime.GOARCH)
+	} else {
+		executionTarget, executionTargetErr = market.NormalizeExecutionTarget(executionTarget)
+	}
+	if executionTargetErr != nil {
+		return nil, executionTargetErr
+	}
 	return &CatalogSource{baseURL: baseURL, expectedMarketType: expectedMarketType,
-		httpClient: client, authorizeRequest: config.AuthorizeRequest}, nil
+		httpClient: client, authorizeRequest: config.AuthorizeRequest, executionTarget: executionTarget}, nil
 }
 
 func (source *CatalogSource) Refresh(ctx context.Context) (market.CatalogSnapshot, error) {
@@ -152,7 +167,7 @@ func (source *CatalogSource) ListPage(ctx context.Context, input market.CatalogS
 	}
 	entries := make([]market.CatalogEntry, 0, len(payload.Items))
 	for _, item := range payload.Items {
-		release, err := mapItem(item)
+		release, err := source.mapItem(item)
 		if err != nil {
 			return market.CatalogSourcePage{}, err
 		}
@@ -213,7 +228,7 @@ func (source *CatalogSource) getJSON(ctx context.Context, requestPath string, qu
 	return payloadBytes, nil
 }
 
-func mapItem(item wireMarketItem) (market.Release, error) {
+func (source *CatalogSource) mapItem(item wireMarketItem) (market.Release, error) {
 	if item.ItemType != "connector" || item.ItemKey == "" || item.Version == "" || item.Artifact == nil || !safeArtifactKey(item.Artifact.Key) {
 		return market.Release{}, errors.New("connector market item identity is incomplete")
 	}
@@ -222,22 +237,21 @@ func mapItem(item wireMarketItem) (market.Release, error) {
 		return market.Release{}, err
 	}
 	var connectorManifest wireConnectorMarketManifest
-	// Connector manifest v2 is extensible. Unknown fields cannot alter the
-	// semantics of fields already defined by v2; a breaking semantic change
-	// requires a new schemaVersion, which is rejected explicitly below.
+	// Connector market manifests are extensible. Unknown fields cannot alter
+	// the semantics of known fields; breaking changes require a new major.
 	decoder := json.NewDecoder(bytes.NewReader(manifestBytes))
 	if err := decoder.Decode(&connectorManifest); err != nil {
 		return market.Release{}, fmt.Errorf("decode connector market manifest: %w", err)
 	}
-	if connectorManifest.SchemaVersion != "2" || connectorManifest.ItemType != "connector" ||
-		connectorManifest.ItemKey != item.ItemKey || connectorManifest.Version != item.Version {
+	if connectorManifest.ItemType != "connector" || connectorManifest.ItemKey != item.ItemKey || connectorManifest.Version != item.Version {
 		return market.Release{}, errors.New("connector manifest identity does not match item")
 	}
 	if !isSHA256Hex(connectorManifest.Payload.PackageManifestSHA256) {
 		return market.Release{}, errors.New("connector manifest package digest is invalid")
 	}
-	if connectorManifest.Payload.Implementation == nil {
-		return market.Release{}, errors.New("connector manifest does not provide an implementation")
+	implementation, err := source.resolveManifestImplementation(connectorManifest)
+	if err != nil {
+		return market.Release{}, err
 	}
 	releaseDigest := sha256.Sum256([]byte(item.ItemKey + "\x00" + item.Version + "\x00" + item.Artifact.SHA256))
 	iconURL := connectorManifest.Display.IconURL
@@ -245,11 +259,11 @@ func mapItem(item wireMarketItem) (market.Release, error) {
 		iconURL = legacyConnectorIconURL
 	}
 	// The server's v2 envelope is the generic, market-neutral publication
-	// contract. The daemon projects it into the stable host manifest contract;
-	// the two schema versions intentionally describe different boundaries.
+	// contract. V3 selects one target first. Both project into the stable host
+	// manifest contract; these schema versions describe different boundaries.
 	manifest := market.Manifest{SchemaVersion: "1", DisplayName: connectorManifest.Display.Name, IconURL: iconURL,
 		Description: connectorManifest.Display.Description, Permissions: connectorManifest.Payload.Permissions,
-		Implementation: *connectorManifest.Payload.Implementation, AuthorizationKind: connectorManifest.Payload.Authorization.Kind,
+		Implementation: implementation, AuthorizationKind: connectorManifest.Payload.Authorization.Kind,
 		Compatibility: connectorManifest.Payload.Compatibility}
 	release := market.Release{SchemaVersion: "1", ReleaseID: item.ItemKey + "@" + item.Version,
 		ConnectorKey: item.ItemKey, Version: item.Version,
@@ -261,6 +275,24 @@ func mapItem(item wireMarketItem) (market.Release, error) {
 		return market.Release{}, err
 	}
 	return release, nil
+}
+
+func (source *CatalogSource) resolveManifestImplementation(manifest wireConnectorMarketManifest) (market.Implementation, error) {
+	payload := manifest.Payload
+	switch manifest.SchemaVersion {
+	case "2":
+		if payload.Implementation == nil || len(payload.TargetImplementations) != 0 {
+			return market.Implementation{}, errors.New("connector v2 manifest must provide one market-neutral implementation")
+		}
+		return *payload.Implementation, nil
+	case "3":
+		if payload.Implementation != nil || len(payload.TargetImplementations) == 0 {
+			return market.Implementation{}, errors.New("connector v3 manifest must provide targetImplementations")
+		}
+		return market.ResolveTargetImplementation(source.executionTarget, payload.TargetImplementations)
+	default:
+		return market.Implementation{}, fmt.Errorf("connector manifest schemaVersion %q is unsupported", manifest.SchemaVersion)
+	}
 }
 
 type wireMarketResponse struct {
@@ -336,7 +368,8 @@ type wireConnectorManifestPayload struct {
 	PackageManifestSHA256 string                           `json:"packageManifestSha256"`
 	Authorization         wireConnectorAuthorization       `json:"authorization"`
 	Compatibility         market.CompatibilityRequirements `json:"compatibility"`
-	Implementation        *market.Implementation           `json:"implementation"`
+	Implementation        *market.Implementation           `json:"implementation,omitempty"`
+	TargetImplementations map[string]market.Implementation `json:"targetImplementations,omitempty"`
 }
 
 type wireConnectorAuthorization struct {

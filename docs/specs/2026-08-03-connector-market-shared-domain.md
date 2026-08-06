@@ -29,9 +29,11 @@ The Connector Market service owns the authoritative, versioned schema and
 publishes a generated Go client. It exposes published market items with
 immutable artifact keys, digests, and sizes.
 
-This is the first production connector release contract. The existing
-unreleased connector publish and read shape is replaced directly by the
-market-neutral connector `schemaVersion: "2"`; there is no dual-read period.
+Market-neutral connector `schemaVersion: "2"` declares one implementation.
+Connector `schemaVersion: "3"` keeps the same release identity and listing
+model while declaring an implementation matrix keyed by execution target.
+Hosts retain v1/v2 read compatibility and normalize the selected v3 target into
+the existing single-implementation runtime contract.
 
 A release descriptor must bind at least:
 
