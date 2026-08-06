@@ -6,7 +6,8 @@ import type {
   ConnectorMarketBackend,
   ConnectorMarketChangedEvent,
   ConnectorMarketEventSource,
-  ConnectorMarketSnapshot
+  ConnectorMarketSnapshot,
+  ConnectorOperation
 } from "../contracts/index.ts";
 import {
   ConnectorMarketBusyError,
@@ -362,6 +363,149 @@ test("late event subscription reconciles the authoritative snapshot and disposes
   events.emit({ type: "connector.market.changed", revision: 3 });
   await Promise.resolve();
   assert.equal(loads, 2);
+});
+
+test("reconciles connector-scoped events without reloading the catalog", async () => {
+  const events = new TestEventSource();
+  let snapshotCalls = 0;
+  let categoryCalls = 0;
+  let connectorCalls = 0;
+  let operationCalls = 0;
+  let current = connector("github", 1);
+  let currentOperation: ConnectorOperation = {
+    operationId: "operation-install-1",
+    clientRequestId: "request-install-1",
+    connectorKey: "github",
+    kind: "install",
+    state: "running",
+    stage: "downloading",
+    attempt: 1,
+    createdAt: "2026-08-03T00:00:00Z",
+    updatedAt: "2026-08-03T00:00:01Z"
+  };
+  const service = new ConnectorMarketService({
+    backend: backendWith({
+      getSnapshot: async () => {
+        snapshotCalls += 1;
+        return snapshot(1, [connector("github", 1)]);
+      },
+      listCategories: async () => {
+        categoryCalls += 1;
+        return [];
+      },
+      getConnector: async () => {
+        connectorCalls += 1;
+        return current;
+      },
+      getOperation: async () => {
+        operationCalls += 1;
+        return currentOperation;
+      }
+    }),
+    events
+  });
+
+  await service.ensureLoaded();
+  service.start();
+  await waitFor(() => snapshotCalls === 2);
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  current = connector("github", 3);
+  current.installation = {
+    state: "failed",
+    failureCode: "connector_install_failed"
+  };
+  currentOperation = {
+    ...currentOperation,
+    state: "failed",
+    stage: "failed",
+    updatedAt: "2026-08-03T00:00:03Z"
+  };
+  events.emit({
+    type: "connector.market.changed",
+    connectorKey: "github",
+    operationId: currentOperation.operationId,
+    revision: 3
+  });
+  await waitFor(() => service.dataStore.revision === 3);
+
+  assert.equal(snapshotCalls, 2);
+  assert.equal(categoryCalls, 2);
+  assert.equal(connectorCalls, 1);
+  assert.equal(operationCalls, 1);
+  assert.equal(
+    service.dataStore.connectorsByKey.github?.installation.state,
+    "failed"
+  );
+  assert.equal(
+    service.dataStore.operationsByConnectorKey.github?.stage,
+    "failed"
+  );
+  service.dispose();
+});
+
+test("keeps the visible catalog ready while a background reload is pending", async () => {
+  const backgroundPage =
+    deferred<Awaited<ReturnType<ConnectorMarketBackend["listCatalogPage"]>>>();
+  let revision = 1;
+  let pageCalls = 0;
+  const service = new ConnectorMarketService({
+    backend: backendWith({
+      getSnapshot: async () =>
+        snapshot(revision, [connector("github", revision)]),
+      listCategories: async () => [
+        {
+          categoryId: "development",
+          kind: "category",
+          sortOrder: 20,
+          itemCount: 1
+        }
+      ],
+      listCatalogPage: async () => {
+        pageCalls += 1;
+        if (pageCalls > 1) {
+          return backgroundPage.promise;
+        }
+        return {
+          sectionId: "development",
+          items: [
+            {
+              categoryId: "development",
+              featured: false,
+              connector: connector("github", 1)
+            }
+          ],
+          revision: 1
+        };
+      }
+    }),
+    events: new TestEventSource()
+  });
+
+  await service.ensureLoaded();
+  revision = 2;
+  service.start();
+  await waitFor(() => pageCalls === 2);
+
+  assert.equal(service.dataStore.loadState, "ready");
+  assert.equal(service.dataStore.catalogSections[0]?.loadState, "ready");
+  assert.deepEqual(service.dataStore.catalogSections[0]?.connectorKeys, [
+    "github"
+  ]);
+
+  backgroundPage.resolve({
+    sectionId: "development",
+    items: [
+      {
+        categoryId: "development",
+        featured: false,
+        connector: connector("github", 2)
+      }
+    ],
+    revision: 2
+  });
+  await waitFor(() => service.dataStore.revision === 2);
+  assert.equal(service.dataStore.catalogSections[0]?.loadState, "ready");
+  service.dispose();
 });
 
 test("does not publish an in-flight response after disposal", async () => {

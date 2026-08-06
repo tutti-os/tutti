@@ -10,6 +10,7 @@ import (
 	"mime"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strings"
 	"time"
 
@@ -22,6 +23,8 @@ var ErrPromptImageUnsupported = errors.New("agent prompt image input is unsuppor
 const clientSubmitUserMessageIDPrefix = "client-submit:user:"
 
 const maxProviderPromptImageBytes int64 = 20 << 20
+
+var runtimeConnectorKeyPattern = regexp.MustCompile(`^[a-z][a-z0-9._-]{0,127}$`)
 
 type canonicalSubmitFactContextKey struct{}
 
@@ -106,6 +109,12 @@ func normalizeRuntimePromptContent(content []PromptContentBlock) []PromptContent
 				Name: name,
 				Path: path,
 			})
+		case "connector":
+			connectorKey := strings.TrimSpace(block.ConnectorKey)
+			if !runtimeConnectorKeyPattern.MatchString(connectorKey) {
+				continue
+			}
+			out = append(out, PromptContentBlock{Type: "connector", ConnectorKey: connectorKey})
 		}
 	}
 	return out
@@ -153,9 +162,41 @@ func normalizeRuntimePromptContentForValidation(content []PromptContentBlock) []
 				Name: name,
 				Path: path,
 			})
+		case "connector":
+			connectorKey := strings.TrimSpace(block.ConnectorKey)
+			if !runtimeConnectorKeyPattern.MatchString(connectorKey) {
+				continue
+			}
+			out = append(out, PromptContentBlock{Type: "connector", ConnectorKey: connectorKey})
 		}
 	}
 	return out
+}
+
+func projectRuntimeConnectorPromptContent(content []PromptContentBlock) []PromptContentBlock {
+	connectorKeys := make([]string, 0)
+	seen := make(map[string]struct{})
+	providerContent := make([]PromptContentBlock, 0, len(content)+1)
+	for _, block := range content {
+		if block.Type != "connector" {
+			providerContent = append(providerContent, block)
+			continue
+		}
+		connectorKey := strings.TrimSpace(block.ConnectorKey)
+		if _, ok := seen[connectorKey]; ok {
+			continue
+		}
+		seen[connectorKey] = struct{}{}
+		connectorKeys = append(connectorKeys, connectorKey)
+	}
+	if len(connectorKeys) == 0 {
+		return providerContent
+	}
+	instruction := fmt.Sprintf(
+		"Selected local connector(s): %s. For this request, use only these installed Tutti connectors for their corresponding external services. Follow the injected Connectors policy: discover the connector with `tutti connector available`, read its connector Skill, and invoke its capabilities through the Tutti connector broker. Never substitute a user-global executable, a similarly named global Skill, or a provider-native connector.",
+		strings.Join(connectorKeys, ", "),
+	)
+	return append([]PromptContentBlock{{Type: "text", Text: instruction}}, providerContent...)
 }
 
 func validatePromptContentImagesForPreflight(content []PromptContentBlock) error {
@@ -465,6 +506,11 @@ func promptContentForActivity(content []PromptContentBlock) []map[string]any {
 				item["name"] = strings.TrimSpace(block.Name)
 			}
 			out = append(out, item)
+		case "connector":
+			out = append(out, map[string]any{
+				"type":         "connector",
+				"connectorKey": block.ConnectorKey,
+			})
 		}
 	}
 	return out

@@ -719,6 +719,9 @@ func agentPromptContentFromGenerated(content []tuttigenerated.AgentPromptContent
 		if block.Path != nil {
 			item.Path = *block.Path
 		}
+		if block.ConnectorKey != nil {
+			item.ConnectorKey = *block.ConnectorKey
+		}
 		result = append(result, item)
 	}
 	return result

@@ -28,17 +28,18 @@ type HostConfig struct {
 type Host struct {
 	Application *market.Application
 
-	cancel               context.CancelFunc
-	scheduler            *OperationScheduler
-	outboxDone           chan struct{}
-	closeOnce            sync.Once
-	bootstrapMu          sync.Mutex
-	bootstrapped         bool
-	refreshWorkerStarted bool
-	repository           market.Repository
-	implementationHost   market.ImplementationHost
-	activationGate       *activationGateHost
-	publicationGate      capabilityPublicationGate
+	cancel                   context.CancelFunc
+	scheduler                *OperationScheduler
+	outboxDone               chan struct{}
+	closeOnce                sync.Once
+	bootstrapMu              sync.Mutex
+	bootstrapped             bool
+	bootstrapCatalogAccepted bool
+	refreshWorkerStarted     bool
+	repository               market.Repository
+	implementationHost       market.ImplementationHost
+	activationGate           *activationGateHost
+	publicationGate          capabilityPublicationGate
 }
 
 type capabilityPublicationGate interface {
@@ -223,8 +224,11 @@ func (host *Host) Bootstrap(ctx context.Context) error {
 	if err := host.recoverAndWait(ctx); err != nil {
 		return err
 	}
-	if err := host.refreshAndWait(ctx); err != nil {
-		return err
+	if !host.bootstrapCatalogAccepted {
+		if err := host.refreshAndWait(ctx); err != nil {
+			return err
+		}
+		host.bootstrapCatalogAccepted = true
 	}
 	host.activationGate.setOpen(true)
 	if err := host.Application.ReconcileInstalledRuntimes(ctx); err != nil {
@@ -235,6 +239,7 @@ func (host *Host) Bootstrap(ctx context.Context) error {
 	}
 	host.activationGate.markRecovered()
 	host.bootstrapped = true
+	host.bootstrapCatalogAccepted = false
 	committed = true
 	return nil
 }
@@ -306,8 +311,28 @@ func (host *Host) refreshAndWait(ctx context.Context) error {
 	}
 }
 
+func (host *Host) refreshAndReconcileInstalled(ctx context.Context, catalogAccepted bool) (bool, error) {
+	if !catalogAccepted {
+		if err := host.refreshAndWait(ctx); err != nil {
+			return false, err
+		}
+		catalogAccepted = true
+	}
+	if err := host.Application.ReconcileInstalledRuntimes(ctx); err != nil {
+		return catalogAccepted, err
+	}
+	if host.activationGate.requiresRecovery() {
+		if host.publicationGate != nil {
+			host.publicationGate.SetCapabilityPublication(true)
+		}
+		host.activationGate.markRecovered()
+	}
+	return false, nil
+}
+
 func (host *Host) runCatalogRefreshWorker() {
 	retry := time.Minute
+	catalogAccepted := false
 	for {
 		host.bootstrapMu.Lock()
 		bootstrapped := host.bootstrapped
@@ -337,16 +362,8 @@ func (host *Host) runCatalogRefreshWorker() {
 		case <-timer.C:
 		}
 		refreshContext, cancel := context.WithTimeout(host.scheduler.ctx, 45*time.Second)
-		err := host.refreshAndWait(refreshContext)
-		if err == nil {
-			err = host.Application.ReconcileInstalledRuntimes(refreshContext)
-			if err == nil && host.activationGate.requiresRecovery() {
-				if host.publicationGate != nil {
-					host.publicationGate.SetCapabilityPublication(true)
-				}
-				host.activationGate.markRecovered()
-			}
-		}
+		var err error
+		catalogAccepted, err = host.refreshAndReconcileInstalled(refreshContext, catalogAccepted)
 		cancel()
 		if err != nil && !errors.Is(err, context.Canceled) {
 			slog.Warn("connector market scheduled refresh failed", "error", err)

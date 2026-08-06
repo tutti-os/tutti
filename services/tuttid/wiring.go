@@ -2,8 +2,6 @@ package main
 
 import (
 	"context"
-	"crypto/ed25519"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -45,9 +43,6 @@ import (
 	tuttitypes "github.com/tutti-os/tutti/services/tuttid/types"
 )
 
-const connectorRuntimeProductionKeyID = "tutti-runtime-prod-2026-01"
-const connectorRuntimeProductionPublicKeyHex = "2b9f4f23d9c3d4c38881bf4a87d92f02c0769a998736fe04718b58379df2c44a"
-const connectorRuntimeCatalogURL = "https://d1x7gb6wqsqmnm.cloudfront.net/tutti-app-runtimes/connector-v3/catalog.json"
 const connectorMarketDefaultBaseURL = "https://api.tutti.sh/api/desktop"
 const connectorArtifactBaseURL = "https://d27a59zdy4534h.cloudfront.net/tutti/connector-market/"
 
@@ -219,9 +214,6 @@ func (w *tuttiWiring) buildWorkspaceModule(ctx context.Context) error {
 		providerAuthWatcher.Close()
 		return fmt.Errorf("open connector market store: %w", err)
 	}
-	if service, ok := api.AgentSessionService.(*agentservice.Service); ok {
-		service.InstalledConnectorSnapshots = connectorMarketStore
-	}
 	connectorMarketBaseURL := strings.TrimSpace(os.Getenv("TUTTI_CONNECTOR_MARKET_BASE_URL"))
 	if connectorMarketBaseURL == "" {
 		connectorMarketBaseURL = connectorMarketDefaultBaseURL
@@ -269,14 +261,8 @@ func (w *tuttiWiring) buildWorkspaceModule(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("configure connector artifact preparer: %w", err)
 	}
-	runtimePublicKey, err := hex.DecodeString(connectorRuntimeProductionPublicKeyHex)
-	if err != nil || len(runtimePublicKey) != ed25519.PublicKeySize {
-		return errors.New("embedded connector runtime production trust root is invalid")
-	}
 	runtimeResolver, err := managedruntimeservice.NewConnectorRuntimeResolver(managedruntimeservice.ConnectorRuntimeResolverConfig{
-		RuntimeRoot: filepath.Join(connectorStateRoot, "runtimes"), CatalogURL: connectorRuntimeCatalogURL,
-		CatalogPublicKey: ed25519.PublicKey(runtimePublicKey), CatalogKeyID: connectorRuntimeProductionKeyID,
-		ApplicationVersion: tuttitypes.ResolveAppVersion(),
+		Resolver: managedruntimeservice.DefaultResolver{},
 	})
 	if err != nil {
 		return fmt.Errorf("configure connector managed runtime: %w", err)
@@ -323,6 +309,9 @@ func (w *tuttiWiring) buildWorkspaceModule(ctx context.Context) error {
 		agentRuntime.Close()
 		providerAuthWatcher.Close()
 		return fmt.Errorf("start connector market host: %w", err)
+	}
+	if service, ok := api.AgentSessionService.(*agentservice.Service); ok {
+		service.ConnectorMarketSnapshots = connectorMarketHost.Application
 	}
 	api.ConnectorMarketService = connectorMarketHost.Application
 	existingAccountLoginCompleted := accountService.OnLoginCompleted

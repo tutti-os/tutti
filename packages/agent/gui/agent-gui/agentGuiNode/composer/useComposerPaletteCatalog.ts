@@ -251,7 +251,20 @@ export function useComposerPaletteCatalog({
         };
       }
     );
-    return [...commandEntries, ...skillEntries];
+    const connectorEntries = skillEntries.filter(
+      (entry) =>
+        entry.type === "skill" &&
+        (entry.skill.sourceKind === "connector" ||
+          entry.skill.kind === "connector")
+    );
+    const nonConnectorSkillEntries = skillEntries.filter(
+      (entry) => !connectorEntries.includes(entry)
+    );
+    return [
+      ...commandEntries,
+      ...connectorEntries,
+      ...nonConnectorSkillEntries
+    ];
   }, [
     capabilityMenuState?.browserUse?.connectionMode,
     capabilityMenuState?.computerUse?.authorization,

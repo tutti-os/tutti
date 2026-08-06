@@ -435,10 +435,12 @@ export interface AgentComposerProps {
   referenceProvenanceFilters?: AgentComposerReferenceProvenanceFilters | null;
 }
 
-export type AgentComposerCapabilitySettingsTarget = Exclude<
-  AgentSlashCommandCapability["capability"],
-  "tutti"
->;
+export type AgentComposerCapabilitySettingsTarget =
+  | Exclude<AgentSlashCommandCapability["capability"], "tutti">
+  | {
+      kind: "connector";
+      connectorKey: string;
+    };
 
 export interface AgentComposerCapabilityMenuState {
   browserUse?: {

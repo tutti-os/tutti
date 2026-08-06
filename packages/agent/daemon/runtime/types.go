@@ -364,6 +364,7 @@ type PromptContentBlock struct {
 	AttachmentID string `json:"attachmentId,omitempty"`
 	Name         string `json:"name,omitempty"`
 	Path         string `json:"path,omitempty"`
+	ConnectorKey string `json:"connectorKey,omitempty"`
 }
 
 type Session struct {

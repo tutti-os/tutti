@@ -11,22 +11,25 @@ import { ConnectorMarketToolbar } from "./toolbar/ConnectorMarketToolbar.tsx";
 export interface ConnectorMarketPanelProps {
   className?: string;
   i18n: ConnectorMarketI18nRuntime;
+  onTryConnector?: (connectorKey: string) => void;
   root: IConnectorMarketRoot;
 }
 
 export function ConnectorMarketPanel({
   className,
   i18n,
+  onTryConnector,
   root
 }: ConnectorMarketPanelProps) {
   const services = useMemo(
     () => ({
       i18n,
       market: root.market,
+      onTryConnector,
       uiState: root.uiState,
       view: root.view
     }),
-    [i18n, root]
+    [i18n, onTryConnector, root]
   );
 
   return (

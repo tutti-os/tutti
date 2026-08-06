@@ -1,6 +1,7 @@
 import { proxy } from "valtio/vanilla";
 
 import type {
+  ConnectorMarketChangedEvent,
   ConnectorMarketEventSource,
   ConnectorMutationResult
 } from "../contracts/index.ts";
@@ -14,6 +15,7 @@ import {
   applyConnectorMarketCatalogPage,
   applyConnectorMarketCategories,
   applyConnectorMutationResult,
+  applyConnector,
   clearConnectorMarketStoreState,
   createConnectorMarketStoreState,
   normalizeConnectorMarketError,
@@ -41,6 +43,11 @@ export class ConnectorMarketService implements IConnectorMarketService {
   private readonly createRequestId: () => string;
   private readonly reportDiagnostic: (error: unknown) => void;
   private readonly connectorMutations = new Map<string, symbol>();
+  private readonly pendingConnectorEvents = new Map<
+    string,
+    ConnectorMarketChangedEvent
+  >();
+  private readonly connectorEventLoads = new Map<string, Promise<void>>();
   private eventUnsubscribe: (() => void) | null = null;
   private eventConnectionUnsubscribe: (() => void) | null = null;
   private refreshInFlight: Promise<void> | null = null;
@@ -226,6 +233,8 @@ export class ConnectorMarketService implements IConnectorMarketService {
     this.disposed = true;
     this.dataGeneration += 1;
     this.connectorMutations.clear();
+    this.pendingConnectorEvents.clear();
+    this.connectorEventLoads.clear();
     this.refreshInFlight = null;
     this.sectionLoads.clear();
     this.eventUnsubscribe?.();
@@ -292,23 +301,41 @@ export class ConnectorMarketService implements IConnectorMarketService {
         this.dependencies.backend.getSnapshot(),
         this.dependencies.backend.listCategories()
       ]);
+      const pages = await Promise.all(
+        categories
+          .filter((category) => category.itemCount > 0)
+          .map((category) =>
+            this.dependencies.backend.listCatalogPage({
+              sectionId: category.categoryId,
+              pageSize: 20
+            })
+          )
+      );
       if (!this.isCurrent(generation)) {
+        return;
+      }
+      // Background reconciliation must not replace visible catalog data with
+      // transient empty/loading sections. Fetch the complete first page set,
+      // then publish one authoritative state transition.
+      if (next.revision < this.dataStore.revision) {
         return;
       }
       applyConnectorMarketSnapshot(this.dataStore, next);
       applyConnectorMarketCategories(this.dataStore, categories);
-      await Promise.all(
-        categories
-          .filter((category) => category.itemCount > 0)
-          .map((category) =>
-            this.loadCatalogPage(generation, category.categoryId)
-          )
-      );
+      for (const page of pages) {
+        applyConnectorMarketCatalogPage(this.dataStore, page);
+      }
     } catch (error) {
       if (!this.isCurrent(generation)) {
         return;
       }
-      this.dataStore.loadState = "error";
+      if (
+        showLoading ||
+        this.dataStore.loadState === "idle" ||
+        this.dataStore.loadState === "loading"
+      ) {
+        this.dataStore.loadState = "error";
+      }
       this.recordError(error);
       throw error;
     }
@@ -347,6 +374,81 @@ export class ConnectorMarketService implements IConnectorMarketService {
     }
     this.authoritativeLoadEpoch += 1;
     void this.load(false).catch(() => undefined);
+  }
+
+  private requestConnectorEventLoad(event: ConnectorMarketChangedEvent): void {
+    const connectorKey = event.connectorKey;
+    if (!connectorKey || this.disposed) {
+      return;
+    }
+    // If a full snapshot is already being assembled, make it take one more
+    // pass after this connector-scoped revision instead of publishing an older
+    // snapshot over the targeted result.
+    this.authoritativeLoadEpoch += 1;
+    const pending = this.pendingConnectorEvents.get(connectorKey);
+    if (!pending || event.revision > pending.revision) {
+      this.pendingConnectorEvents.set(connectorKey, event);
+    }
+    if (this.connectorEventLoads.has(connectorKey)) {
+      return;
+    }
+    let promise!: Promise<void>;
+    promise = this.runConnectorEventLoadLoop(connectorKey).finally(() => {
+      if (this.connectorEventLoads.get(connectorKey) === promise) {
+        this.connectorEventLoads.delete(connectorKey);
+      }
+    });
+    this.connectorEventLoads.set(connectorKey, promise);
+  }
+
+  private async runConnectorEventLoadLoop(connectorKey: string): Promise<void> {
+    while (!this.disposed) {
+      const event = this.pendingConnectorEvents.get(connectorKey);
+      if (!event) {
+        return;
+      }
+      this.pendingConnectorEvents.delete(connectorKey);
+      try {
+        await this.loadConnectorEvent(event);
+      } catch (error) {
+        if (!this.disposed) {
+          this.recordError(error);
+        }
+      }
+    }
+  }
+
+  private async loadConnectorEvent(
+    event: ConnectorMarketChangedEvent
+  ): Promise<void> {
+    const connectorKey = event.connectorKey;
+    if (!connectorKey) {
+      return;
+    }
+    const generation = this.dataGeneration;
+    const [connector, operation] = await Promise.all([
+      this.dependencies.backend.getConnector({ connectorKey }),
+      event.operationId
+        ? this.dependencies.backend.getOperation({
+            operationId: event.operationId
+          })
+        : Promise.resolve(null)
+    ]);
+    if (
+      !this.isCurrent(generation) ||
+      event.revision <= this.dataStore.revision
+    ) {
+      return;
+    }
+    const current = this.dataStore.connectorsByKey[connectorKey];
+    if (!current || connector.revision >= current.revision) {
+      applyConnector(this.dataStore, connector);
+    }
+    if (operation?.connectorKey === connectorKey) {
+      this.dataStore.operationsByConnectorKey[connectorKey] = operation;
+    }
+    this.dataStore.revision = event.revision;
+    this.dataStore.lastError = null;
   }
 
   private async runConnectorMutation(
@@ -418,6 +520,10 @@ export class ConnectorMarketService implements IConnectorMarketService {
     return (
       events?.subscribe((event) => {
         if (this.disposed || event.revision <= this.dataStore.revision) {
+          return;
+        }
+        if (event.connectorKey) {
+          this.requestConnectorEventLoad(event);
           return;
         }
         this.requestAuthoritativeLoad();

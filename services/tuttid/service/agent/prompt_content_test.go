@@ -33,6 +33,29 @@ func TestNormalizePromptContentAcceptsImagePath(t *testing.T) {
 	}
 }
 
+func TestNormalizePromptContentAcceptsConnectorOnlyInput(t *testing.T) {
+	content, text, err := normalizePromptContent([]PromptContentBlock{{
+		Type: "connector", ConnectorKey: " lark-cli ",
+	}})
+	if err != nil {
+		t.Fatalf("normalizePromptContent() error = %v, want nil", err)
+	}
+	if len(content) != 1 || content[0].Type != "connector" || content[0].ConnectorKey != "lark-cli" {
+		t.Fatalf("content = %#v, want normalized connector", content)
+	}
+	if text != "" {
+		t.Fatalf("text = %q, want connector to stay structured", text)
+	}
+}
+
+func TestNormalizePromptContentRejectsInvalidConnectorKey(t *testing.T) {
+	if _, _, err := normalizePromptContent([]PromptContentBlock{{
+		Type: "connector", ConnectorKey: "../../global-cli",
+	}}); !errors.Is(err, ErrInvalidArgument) {
+		t.Fatalf("normalizePromptContent() error = %v, want ErrInvalidArgument", err)
+	}
+}
+
 func TestNormalizePromptContentAcceptsHTTPSImageURL(t *testing.T) {
 	signedURL := "https://bucket.example/image.png?X-Amz-Signature=secret"
 	content, _, err := normalizePromptContent([]PromptContentBlock{{

@@ -2,21 +2,48 @@ package agent
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
 	market "github.com/tutti-os/tutti/packages/connector/market/daemon"
 )
 
-// InstalledConnectorSnapshotReader is the narrow, read-only boundary used by
-// composer options. Production wires the local connector-market SQLite store
-// directly, so Provider-owned connector catalogs cannot become slash entries.
-type InstalledConnectorSnapshotReader interface {
-	Snapshot(context.Context) (market.Snapshot, error)
+func (s *Service) validatePromptConnectors(ctx context.Context, content []PromptContentBlock) error {
+	requested := make(map[string]struct{})
+	for _, block := range content {
+		if block.Type == "connector" {
+			requested[strings.TrimSpace(block.ConnectorKey)] = struct{}{}
+		}
+	}
+	if len(requested) == 0 {
+		return nil
+	}
+	if s == nil || s.ConnectorMarketSnapshots == nil {
+		return fmt.Errorf("%w: local connector state is unavailable", ErrInvalidArgument)
+	}
+	snapshot, err := s.ConnectorMarketSnapshots.Snapshot(ctx)
+	if err != nil {
+		return fmt.Errorf("read local connector state: %w", err)
+	}
+	for _, connector := range snapshot.Connectors {
+		key := strings.TrimSpace(connector.Key)
+		if _, ok := requested[key]; !ok {
+			continue
+		}
+		if localConnectorCapabilityStatus(connector) != "available" {
+			return fmt.Errorf("%w: local connector %q is not ready", ErrInvalidArgument, key)
+		}
+		delete(requested, key)
+	}
+	for key := range requested {
+		return fmt.Errorf("%w: local connector %q is not installed", ErrInvalidArgument, key)
+	}
+	return nil
 }
 
-func installedConnectorCapabilityOptions(
+func localConnectorCapabilityOptions(
 	ctx context.Context,
-	source InstalledConnectorSnapshotReader,
+	source market.SnapshotReader,
 ) ([]ComposerCapabilityOption, error) {
 	if source == nil {
 		return nil, nil
@@ -27,9 +54,6 @@ func installedConnectorCapabilityOptions(
 	}
 	options := make([]ComposerCapabilityOption, 0, len(snapshot.Connectors))
 	for _, connector := range snapshot.Connectors {
-		if connector.Installation.State != market.InstallationStateInstalled {
-			continue
-		}
 		key := strings.TrimSpace(connector.Key)
 		if key == "" {
 			continue
@@ -43,8 +67,9 @@ func installedConnectorCapabilityOptions(
 			Kind:        "connector",
 			Name:        key,
 			Label:       label,
+			IconURL:     strings.TrimSpace(connector.Release.Manifest.IconURL),
 			Description: strings.TrimSpace(connector.Release.Manifest.Description),
-			Status:      installedConnectorCapabilityStatus(connector),
+			Status:      localConnectorCapabilityStatus(connector),
 			Source:      "local-db",
 			Trigger:     "/" + key,
 			Invocation:  "textTrigger",
@@ -53,10 +78,13 @@ func installedConnectorCapabilityOptions(
 	return options, nil
 }
 
-func installedConnectorCapabilityStatus(connector market.Connector) string {
+func localConnectorCapabilityStatus(connector market.Connector) string {
 	if connector.Compatibility.State != "" &&
 		connector.Compatibility.State != market.CompatibilityStateSupported {
 		return "unsupported"
+	}
+	if connector.Installation.State != market.InstallationStateInstalled {
+		return "setupRequired"
 	}
 	switch connector.Authorization.State {
 	case market.AuthorizationStateNotRequired, market.AuthorizationStateConnected:

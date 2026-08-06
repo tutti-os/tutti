@@ -7,6 +7,7 @@ import {
   useSyncExternalStore
 } from "react";
 import { useService } from "@tutti-os/infra/di";
+import { IConnectorMarketModule } from "@tutti-os/connector-market/services";
 import type {
   WorkspaceAgentProvider,
   WorkspaceSummary
@@ -152,6 +153,7 @@ export function useWorkspaceWorkbenchShellRuntime({
     useWorkspaceAppCenterService();
   const { state: desktopPreferencesState } = useDesktopPreferencesService();
   const { service: workspaceSettingsService } = useWorkspaceSettingsService();
+  const connectorMarketModule = useService(IConnectorMarketModule);
   const agentsService = useService(IAgentsService);
   const workspaceAppSurfaceHost = useService(IWorkspaceAppSurfaceHost);
   const workspaceFilePreviewSurfaceHost = useService(
@@ -176,6 +178,14 @@ export function useWorkspaceWorkbenchShellRuntime({
   );
   const handleCapabilitySettingsRequest = useCallback(
     (target: WorkspaceWorkbenchCapabilitySettingsTarget) => {
+      if (typeof target !== "string") {
+        workspaceSettingsService.openPanel(
+          { id: state.workspace.id },
+          { pane: "connectors" }
+        );
+        connectorMarketModule.root.uiState.openConnector(target.connectorKey);
+        return;
+      }
       workspaceSettingsService.openPanel(
         { id: state.workspace.id },
         {
@@ -184,7 +194,7 @@ export function useWorkspaceWorkbenchShellRuntime({
         }
       );
     },
-    [state.workspace.id, workspaceSettingsService]
+    [connectorMarketModule, state.workspace.id, workspaceSettingsService]
   );
   const shellRuntimeControllerRef =
     useRef<WorkspaceWorkbenchShellRuntimeController | null>(null);

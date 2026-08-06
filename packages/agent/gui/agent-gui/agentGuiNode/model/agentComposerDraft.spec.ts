@@ -308,6 +308,55 @@ describe("agentComposerDraft", () => {
     });
   });
 
+  it("projects a selected local connector into a structured prompt block", () => {
+    expect(
+      projectAgentComposerDraftSubmission({
+        draft: buildAgentComposerDraft({
+          prompt: "/lark-cli list my calendar events"
+        }),
+        skills: [
+          {
+            name: "lark-cli",
+            trigger: "/lark-cli",
+            connectorKey: "lark-cli",
+            invocation: "textTrigger",
+            sourceKind: "connector",
+            kind: "connector",
+            status: "available"
+          }
+        ]
+      })
+    ).toEqual({
+      content: [
+        { type: "text", text: "list my calendar events" },
+        { type: "connector", connectorKey: "lark-cli" }
+      ],
+      displayPrompt: "/lark-cli list my calendar events"
+    });
+  });
+
+  it("allows a local connector-only submission", () => {
+    expect(
+      projectAgentComposerDraftSubmission({
+        draft: buildAgentComposerDraft({ prompt: "/lark-cli" }),
+        skills: [
+          {
+            name: "lark-cli",
+            trigger: "/lark-cli",
+            connectorKey: "lark-cli",
+            invocation: "textTrigger",
+            sourceKind: "connector",
+            kind: "connector",
+            status: "available"
+          }
+        ]
+      })
+    ).toEqual({
+      content: [{ type: "connector", connectorKey: "lark-cli" }],
+      displayPrompt: "/lark-cli"
+    });
+  });
+
   it("omits display prompts for native skill prefixes and ordinary text", () => {
     const skill = {
       name: "review-code",

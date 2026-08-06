@@ -175,7 +175,11 @@ export function AgentSlashCommandPalette({
       {entries.map((entry, index) => {
         const isHighlighted = index === highlightedIndex;
         const isDisabled =
-          entry.type === "capability" && entry.disabled === true;
+          (entry.type === "capability" && entry.disabled === true) ||
+          (entry.type === "skill" &&
+            (entry.skill.sourceKind === "connector" ||
+              entry.skill.kind === "connector") &&
+            entry.skill.status === "unsupported");
         const groupType = entryGroupType(entry);
         const entryIcon = slashPaletteEntryIcon(entry);
         const connectorStatus = connectorStatusPresentation(entry, {
@@ -272,7 +276,27 @@ export function AgentSlashCommandPalette({
                   </span>
                 ) : null}
               </span>
-              {connectorStatus ? (
+              {connectorStatus &&
+              !connectorStatus.available &&
+              entry.type === "skill" &&
+              entry.skill.status !== "unsupported" ? (
+                <button
+                  aria-label={connectorStatus.label}
+                  className={paletteStyles.settingsButton}
+                  title={connectorStatus.label}
+                  type="button"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onSelectSkill(entry.skill);
+                  }}
+                  onMouseDown={(event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                  }}
+                >
+                  {connectorStatus.label}
+                </button>
+              ) : connectorStatus ? (
                 <span
                   className={cn(
                     "ml-1 shrink-0 text-[11px] font-medium",
@@ -409,7 +433,23 @@ function slashPaletteEntryIcon(entry: AgentSlashPaletteEntry): ReactNode {
     entry.type === "skill" &&
     (entry.skill.sourceKind === "connector" || entry.skill.kind === "connector")
   ) {
-    return <Plug className={SLASH_PALETTE_ICON_CLASS} />;
+    const iconUrl = entry.skill.iconUrl?.trim();
+    return (
+      <span className="relative flex size-4 items-center justify-center">
+        <Plug className={SLASH_PALETTE_ICON_CLASS} />
+        {iconUrl ? (
+          <img
+            alt=""
+            aria-hidden="true"
+            className="absolute inset-0 size-4 rounded-[3px] object-contain"
+            src={iconUrl}
+            onError={(event) => {
+              event.currentTarget.style.display = "none";
+            }}
+          />
+        ) : null}
+      </span>
+    );
   }
   if (entry.type !== "command") {
     return null;

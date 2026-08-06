@@ -1538,14 +1538,17 @@ requests only `skills/list` and retains the ordinary Skill projection through
 the shared app-server transport, capability contract, cache, and structured
 prompt-item submission path.
 
-Tutti Desktop's slash connector section is a local-installation projection,
+Tutti Desktop's slash connector section is a local catalog projection,
 not a Provider connector catalog. `services/tuttid/service/agent` reads the
-daemon-owned connector-market SQLite store through a read-only snapshot port,
-keeps only records whose installation state is `installed`, and replaces any
-Provider-reported connector capabilities before returning composer options.
-AgentGUI renders the resulting provider-neutral capability status; it does not
-scan external MCP, plugin, or package-manager configuration and does not infer
-installation from a remote market response.
+daemon-owned connector-market application through its read-only snapshot port;
+the Agent service never opens or receives the underlying repository directly.
+It projects manifest presentation (including the catalog icon) plus installation,
+authorization, and compatibility into a provider-neutral capability option, and
+replaces any Provider-reported connector capabilities before returning composer
+options. This keeps installable connectors visible in the slash menu while
+ensuring that only installed and authorized connectors can be invoked. AgentGUI
+does not scan external MCP, plugin, or package-manager configuration and does not
+infer installation from a remote market response.
 
 ### 5.3 Agent Directory and setup
 

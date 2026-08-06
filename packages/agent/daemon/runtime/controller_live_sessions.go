@@ -318,8 +318,9 @@ func (c *Controller) ValidatePromptContent(_ context.Context, input ExecInput) e
 	if len(content) == 0 {
 		return fmt.Errorf("prompt is required")
 	}
+	providerContent := projectRuntimeConnectorPromptContent(content)
 	if promptAdapter, ok := adapter.(PromptContentAdapter); ok {
-		return promptAdapter.ValidatePromptContent(session, content)
+		return promptAdapter.ValidatePromptContent(session, providerContent)
 	}
 	return nil
 }

@@ -509,6 +509,7 @@ export function WorkspaceSettingsPanel({
                   accountState.user ? (
                   <ConnectorMarketPanel
                     i18n={connectorMarketI18n}
+                    onTryConnector={() => settingsService.closePanel()}
                     root={connectorMarketModule.root}
                   />
                 ) : settingsState.agentTab === "customAgents" ? (

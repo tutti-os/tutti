@@ -132,6 +132,7 @@ describe("descriptor-backed skill invocation", () => {
           status: "available",
           trigger: "/github",
           invocation: "textTrigger",
+          iconUrl: "data:image/png;base64,Z2l0aHVi",
           description: "Repositories and pull requests",
           source: "local-db"
         },
@@ -151,15 +152,18 @@ describe("descriptor-backed skill invocation", () => {
     expect(providerSkillsFromComposerOptions(options)).toEqual([
       {
         name: "GitHub",
+        connectorKey: "github",
         trigger: "/github",
         invocation: "textTrigger",
         sourceKind: "connector",
         kind: "connector",
         status: "available",
+        iconUrl: "data:image/png;base64,Z2l0aHVi",
         description: "Repositories and pull requests"
       },
       {
         name: "Notion",
+        connectorKey: "notion",
         trigger: "/notion",
         invocation: "textTrigger",
         sourceKind: "connector",

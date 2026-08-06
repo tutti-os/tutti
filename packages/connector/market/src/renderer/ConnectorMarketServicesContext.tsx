@@ -8,6 +8,7 @@ export interface ConnectorMarketServices extends Omit<
   "_serviceBrand"
 > {
   i18n: ConnectorMarketI18nRuntime;
+  onTryConnector?: (connectorKey: string) => void;
 }
 
 const ConnectorMarketServicesContext =

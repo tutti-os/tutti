@@ -77,6 +77,7 @@ export interface ConnectorAuthorizationDialogView extends ConnectorDialogBaseVie
 }
 
 export interface ConnectorInstallationDialogView extends ConnectorDialogBaseView {
+  installing: boolean;
   kind: "installation";
 }
 

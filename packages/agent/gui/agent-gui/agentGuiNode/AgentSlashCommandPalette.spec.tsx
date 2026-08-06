@@ -154,6 +154,7 @@ describe("AgentSlashCommandPalette", () => {
   });
 
   it("separates catalog skills, plugins, and connectors into source groups", () => {
+    const onSelectSkill = vi.fn();
     render(
       <AgentSlashCommandPalette
         label="Slash commands"
@@ -196,17 +197,32 @@ describe("AgentSlashCommandPalette", () => {
             label: "google-drive",
             skill: {
               name: "Google Drive",
+              connectorKey: "google-drive",
+              iconUrl: "data:image/png;base64,ZHJpdmU=",
               trigger: "$google-drive",
               sourceKind: "connector",
               kind: "connector",
               status: "available"
+            }
+          },
+          {
+            type: "skill",
+            key: "skill:notion",
+            label: "Notion",
+            skill: {
+              name: "Notion",
+              connectorKey: "notion",
+              trigger: "/notion",
+              sourceKind: "connector",
+              kind: "connector",
+              status: "setupRequired"
             }
           }
         ]}
         onHighlightChange={vi.fn()}
         onSelect={vi.fn()}
         onSelectCapability={vi.fn()}
-        onSelectSkill={vi.fn()}
+        onSelectSkill={onSelectSkill}
       />
     );
 
@@ -221,6 +237,13 @@ describe("AgentSlashCommandPalette", () => {
     );
     expect(screen.getByText("Connected")).toHaveClass(
       "text-[var(--state-success)]"
+    );
+    expect(
+      screen.getByRole("option", { name: /google-drive/i }).querySelector("img")
+    ).toHaveAttribute("src", "data:image/png;base64,ZHJpdmU=");
+    screen.getByRole("button", { name: "Not connected" }).click();
+    expect(onSelectSkill).toHaveBeenCalledWith(
+      expect.objectContaining({ connectorKey: "notion" })
     );
   });
 });

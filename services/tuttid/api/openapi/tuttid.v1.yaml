@@ -11318,6 +11318,8 @@ components:
           minLength: 1
         description:
           type: string
+        iconUrl:
+          type: string
         status:
           type: string
           enum:
@@ -14657,6 +14659,7 @@ components:
             - image
             - skill
             - mention
+            - connector
         text:
           type: string
         mimeType:
@@ -14679,6 +14682,11 @@ components:
           type: string
         path:
           type: string
+        connectorKey:
+          type: string
+          minLength: 1
+          pattern: "^[a-z][a-z0-9._-]{0,127}$"
+          description: Stable key of an installed local connector selected for this prompt.
     WorkspaceAgentSessionAttachmentResponse:
       type: object
       additionalProperties: false

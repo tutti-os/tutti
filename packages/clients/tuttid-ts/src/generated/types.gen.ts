@@ -1924,6 +1924,7 @@ export type AgentProviderCapabilityOption = {
   name: string;
   label: string;
   description?: string;
+  iconUrl?: string;
   status:
     | "available"
     | "disabled"
@@ -3353,7 +3354,7 @@ export type AgentSubmitDiagnostics = {
 };
 
 export type AgentPromptContentBlock = {
-  type: "text" | "image" | "skill" | "mention";
+  type: "text" | "image" | "skill" | "mention" | "connector";
   text?: string;
   mimeType?: "image/png" | "image/jpeg" | "image/webp";
   /**
@@ -3367,6 +3368,10 @@ export type AgentPromptContentBlock = {
   attachmentId?: string;
   name?: string;
   path?: string;
+  /**
+   * Stable key of an installed local connector selected for this prompt.
+   */
+  connectorKey?: string;
 };
 
 export type WorkspaceAgentSessionAttachmentResponse = {

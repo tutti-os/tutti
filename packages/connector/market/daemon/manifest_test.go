@@ -79,6 +79,23 @@ func TestImplementationRegistryRejectsUnknownImplementation(t *testing.T) {
 	}
 }
 
+func TestRuntimeReleaseValidationDoesNotRequirePresentationIcon(t *testing.T) {
+	release := testReleaseWithImplementation("github", "1.0.0", ImplementationKindManagedStdio)
+	release.Manifest.IconURL = ""
+
+	if err := ValidateReleaseShape(release); err == nil || !strings.Contains(err.Error(), "iconUrl") {
+		t.Fatalf("full release validation error = %v, want iconUrl rejection", err)
+	}
+	if err := ValidateRuntimeReleaseShape(release); err != nil {
+		t.Fatalf("runtime release validation rejected presentation-only icon: %v", err)
+	}
+
+	release.Manifest.Permissions = []string{"network:*", "network:*"}
+	if err := ValidateRuntimeReleaseShape(release); err == nil || !strings.Contains(err.Error(), "unique") {
+		t.Fatalf("runtime release validation error = %v, want duplicate permission rejection", err)
+	}
+}
+
 func TestManagedCLIAllowsTypedNodePackageWithoutActionMappings(t *testing.T) {
 	manifest := Manifest{SchemaVersion: "1", DisplayName: "Lark", IconURL: testConnectorIconURL, AuthorizationKind: "none",
 		Implementation: Implementation{Kind: ImplementationKindManagedStdio, ManagedStdio: &ManagedStdioImplementation{

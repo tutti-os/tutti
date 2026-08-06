@@ -7,6 +7,7 @@ var (
 	createWithRailPlacementScenario  = Scenario{Name: "create with explicit rail placement", run: runCreateWithRailPlacement}
 	resumePersistedSessionScenario   = Scenario{Name: "resume persisted session", run: runResumePersistedSession}
 	sendInputScenario                = Scenario{Name: "send input", run: runSendInput}
+	sendConnectorOnlyInputScenario   = Scenario{Name: "send connector-only input", run: runSendConnectorOnlyInput}
 	providerAcceptanceScenario       = Scenario{
 		Name: "new turns require durable provider acceptance",
 		run:  runNewTurnsRequireDurableProviderAcceptance,
@@ -58,6 +59,7 @@ func Scenarios() []Scenario {
 		createWithRailPlacementScenario,
 		resumePersistedSessionScenario,
 		sendInputScenario,
+		sendConnectorOnlyInputScenario,
 		guidanceTargetRequiredScenario,
 		guidanceExactTargetScenario,
 		guidanceTargetMismatchScenario,
@@ -183,6 +185,7 @@ func ApplicationCoreScenarios() []Scenario {
 		createWithRailPlacementScenario,
 		resumePersistedSessionScenario,
 		sendInputScenario,
+		sendConnectorOnlyInputScenario,
 		guidanceTargetRequiredScenario,
 		guidanceExactTargetScenario,
 		guidanceTargetMismatchScenario,

@@ -320,6 +320,27 @@ func runSendInput(ctx context.Context, driver Driver) error {
 	return nil
 }
 
+func runSendConnectorOnlyInput(ctx context.Context, driver Driver) error {
+	if err := driver.Reset(ctx, liveSessionFixture("session-send-connector", "")); err != nil {
+		return err
+	}
+	result, err := driver.SendInput(ctx, agenthost.SessionRef{
+		WorkspaceID: "workspace-1", AgentSessionID: "session-send-connector",
+	}, agenthost.SendInput{
+		Content: []agenthost.PromptContentBlock{{Type: "connector", ConnectorKey: "lark-cli"}},
+	})
+	if err != nil {
+		return fmt.Errorf("send connector-only input: %w", err)
+	}
+	if result.Session.SessionID != "session-send-connector" || result.TurnID == "" {
+		return fmt.Errorf("send connector-only input result = %#v", result)
+	}
+	if metrics := driver.Metrics(); metrics.ExecCalls != 1 {
+		return fmt.Errorf("send connector-only input exec calls=%d", metrics.ExecCalls)
+	}
+	return nil
+}
+
 func runNewTurnsRequireDurableProviderAcceptance(
 	ctx context.Context,
 	driver Driver,

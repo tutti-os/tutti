@@ -41,7 +41,7 @@ func (darwinConnectorProcessSandbox) Apply(command *exec.Cmd, spec ProcessSpec) 
 }
 
 func darwinConnectorSandboxProfile(policy ConnectorSandboxPolicy, executable string) (string, error) {
-	secondaryExecutables, err := normalizedSandboxPaths(policy.AllowedExecutables)
+	secondaryExecutables, err := normalizedSandboxExecutablePaths(policy.AllowedExecutables)
 	if err != nil {
 		return "", err
 	}
@@ -66,6 +66,10 @@ func darwinConnectorSandboxProfile(policy ConnectorSandboxPolicy, executable str
 	// dyld probes the root directory before resolving the pinned executable.
 	// literal "/" admits only that directory entry read, not descendant data.
 	profile.WriteString("(allow file-read-data file-read-metadata (literal \"/\"))\n")
+	// macOS name resolution probes the /var symlink before reaching resolver
+	// state under /private/var. Admit only the link metadata; descendants remain
+	// governed by the explicit fixed/read/write paths below.
+	profile.WriteString("(allow file-read-metadata (literal \"/var\"))\n")
 	fixedPaths := []string{"/System", "/usr/lib", "/usr/share", "/Library/Apple", "/private/etc/ssl", "/etc/ssl", "/private/var/db/timezone", "/dev/null", "/dev/random", "/dev/urandom"}
 	metadataPaths := append(append([]string{}, fixedPaths...), readPaths...)
 	metadataPaths = append(metadataPaths, writePaths...)
@@ -74,6 +78,15 @@ func darwinConnectorSandboxProfile(policy ConnectorSandboxPolicy, executable str
 	}
 	for _, fixed := range fixedPaths {
 		profile.WriteString("(allow file-read* (subpath " + strconv.Quote(fixed) + "))\n")
+	}
+	// Child-process stdio set to "ignore" is implemented by opening /dev/null
+	// for writing. The null device discards the bytes and does not expand the
+	// sandbox's access to persistent files.
+	profile.WriteString("(allow file-write* (literal \"/dev/null\"))\n")
+	for _, allowed := range secondaryExecutables {
+		// Reading the explicitly admitted pathname is required before exec when
+		// the PATH-selected command is itself a symlink (for example tar).
+		profile.WriteString("(allow file-read* (literal " + strconv.Quote(allowed) + "))\n")
 	}
 	for _, path := range readPaths {
 		profile.WriteString("(allow file-read* (subpath " + strconv.Quote(path) + "))\n")
@@ -85,6 +98,33 @@ func darwinConnectorSandboxProfile(policy ConnectorSandboxPolicy, executable str
 		profile.WriteString("(allow network*)\n")
 	}
 	return profile.String(), nil
+}
+
+func normalizedSandboxExecutablePaths(values []string) ([]string, error) {
+	result := make([]string, 0, len(values)*2)
+	seen := map[string]struct{}{}
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" || !filepath.IsAbs(value) || strings.ContainsRune(value, '\x00') {
+			return nil, fmt.Errorf("connector sandbox path %q is invalid", value)
+		}
+		cleaned := filepath.Clean(value)
+		resolved, err := filepath.EvalSymlinks(cleaned)
+		if err != nil {
+			return nil, fmt.Errorf("resolve connector sandbox path %q: %w", value, err)
+		}
+		// posix_spawn may authorize the PATH-selected symlink before the kernel
+		// resolves its target. Pin both names to the same explicitly admitted
+		// executable instead of granting process-exec to their parent directory.
+		for _, candidate := range []string{cleaned, filepath.Clean(resolved)} {
+			if _, exists := seen[candidate]; exists {
+				continue
+			}
+			seen[candidate] = struct{}{}
+			result = append(result, candidate)
+		}
+	}
+	return result, nil
 }
 
 func sandboxPathAncestors(paths []string) []string {

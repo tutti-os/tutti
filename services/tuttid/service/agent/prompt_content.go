@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"github.com/google/uuid"
@@ -21,6 +22,8 @@ const (
 	maxPromptAttachmentSourceBytes int64 = 20 << 20
 	promptAttachmentSourceDirName        = "agent-prompt-assets"
 )
+
+var connectorPromptKeyPattern = regexp.MustCompile(`^[a-z][a-z0-9._-]{0,127}$`)
 
 type PromptAttachmentStore struct {
 	RootDir       string
@@ -175,6 +178,16 @@ func normalizePromptContent(content []PromptContentBlock) ([]PromptContentBlock,
 				Type: strings.TrimSpace(block.Type),
 				Name: name,
 				Path: path,
+			})
+		case "connector":
+			connectorKey := strings.TrimSpace(block.ConnectorKey)
+			if !connectorPromptKeyPattern.MatchString(connectorKey) {
+				return nil, "", ErrInvalidArgument
+			}
+			hasInput = true
+			normalized = append(normalized, PromptContentBlock{
+				Type:         "connector",
+				ConnectorKey: connectorKey,
 			})
 		default:
 			return nil, "", ErrInvalidArgument

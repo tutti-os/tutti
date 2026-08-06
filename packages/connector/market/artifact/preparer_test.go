@@ -63,6 +63,45 @@ func TestPreparerVerifiesPromotesAndReusesContentAddressedArtifact(t *testing.T)
 	}
 }
 
+func TestResolvePreparedAllowsLegacyReleaseWithoutIcon(t *testing.T) {
+	manifest := []byte(`{"schemaVersion":"1","connectorKey":"github"}`)
+	archive := testZIP(t, map[string][]byte{
+		packagedManifestPath: manifest,
+		"bin/connector":      []byte("executable"),
+	})
+	release := testRelease(archive, manifest)
+	preparer, err := NewPreparer(Config{
+		RootDir: t.TempDir(),
+		Fetcher: &memoryFetcher{body: archive, mediaType: release.Artifact.MediaType},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	prepared, err := preparer.Prepare(context.Background(), market.PrepareArtifactRequest{
+		OperationID: "operation-1",
+		Release:     release,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	legacyRelease := release
+	legacyRelease.Manifest.IconURL = ""
+	resolved, err := preparer.ResolvePrepared(context.Background(), legacyRelease)
+	if err != nil {
+		t.Fatalf("ResolvePrepared() rejected legacy presentation metadata: %v", err)
+	}
+	if resolved.PreparedPath != prepared.PreparedPath {
+		t.Fatalf("resolved path = %q, want %q", resolved.PreparedPath, prepared.PreparedPath)
+	}
+	if _, err := preparer.Prepare(context.Background(), market.PrepareArtifactRequest{
+		OperationID: "operation-2",
+		Release:     legacyRelease,
+	}); err == nil || !strings.Contains(err.Error(), "iconUrl") {
+		t.Fatalf("Prepare() error = %v, want full icon validation", err)
+	}
+}
+
 func TestPreparerRejectsArchivePathTraversal(t *testing.T) {
 	manifest := []byte(`{"schemaVersion":"1","connectorKey":"github"}`)
 	archive := testZIP(t, map[string][]byte{

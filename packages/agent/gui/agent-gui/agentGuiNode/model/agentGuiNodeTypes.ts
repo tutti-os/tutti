@@ -105,6 +105,10 @@ export interface AgentGUIComposerSettingOption {
 export interface AgentGUIProviderSkillOption {
   name: string;
   trigger: string;
+  /** Stable daemon connector key used for host-owned setup navigation. */
+  connectorKey?: string;
+  /** Presentation icon projected by the connector catalog. */
+  iconUrl?: string;
   /** Daemon-issued invocation contract; never infer this from provider id. */
   invocation?: "promptItem" | "textTrigger";
   sourceKind:

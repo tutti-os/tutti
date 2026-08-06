@@ -2,11 +2,17 @@ package daemon
 
 import "context"
 
+// SnapshotReader is the read-only connector-market state boundary used by
+// consumers that must not depend on repository persistence details.
+type SnapshotReader interface {
+	Snapshot(ctx context.Context) (Snapshot, error)
+}
+
 // Service is the host-neutral connector-market application boundary. Host
 // daemons provide ports for persistence, artifacts, authorization, scheduling,
 // and events; transports adapt their generated OpenAPI DTOs to this interface.
 type Service interface {
-	Snapshot(ctx context.Context) (Snapshot, error)
+	SnapshotReader
 	ListCatalogCategories(ctx context.Context) ([]CatalogCategory, error)
 	ListCatalogPage(ctx context.Context, query CatalogPageQuery) (CatalogPage, error)
 	GetConnector(ctx context.Context, connectorKey string) (Connector, error)

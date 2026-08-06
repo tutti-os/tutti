@@ -92,6 +92,24 @@ test("request projection carries the exact target only for guidance", () => {
   assert.equal("turnId" in ordinary, false);
 });
 
+test("request projection preserves a structured local connector selection", () => {
+  const projected = tuttiSendWorkspaceAgentSessionInputRequestFromActivity({
+    agentSessionId: "session-1",
+    clientSubmitId: "submit-connector",
+    content: [
+      { text: "list my calendar events", type: "text" },
+      { connectorKey: "lark-cli", type: "connector" }
+    ],
+    displayPrompt: "/lark-cli list my calendar events",
+    workspaceId: "workspace-1"
+  });
+  assert.deepEqual(projected.content, [
+    { text: "list my calendar events", type: "text" },
+    { connectorKey: "lark-cli", type: "connector" }
+  ]);
+  assert.equal(projected.displayPrompt, "/lark-cli list my calendar events");
+});
+
 function activityTextBlock(): AgentPromptContentBlock {
   return {
     assetId: "asset-1",

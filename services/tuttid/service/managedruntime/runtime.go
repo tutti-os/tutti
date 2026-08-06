@@ -83,15 +83,6 @@ type appRuntimeCatalogComponent struct {
 	ArtifactURL       string `json:"artifactUrl"`
 	ArtifactSHA256    string `json:"artifactSha256"`
 	ArtifactSizeBytes int64  `json:"artifactSizeBytes,omitempty"`
-	// Executables is required by signed v3 connector catalogs and ignored by
-	// legacy app-runtime v2 catalogs. Paths are component-relative.
-	Executables map[string]appRuntimeCatalogExecutable `json:"executables,omitempty"`
-}
-
-type appRuntimeCatalogExecutable struct {
-	Path      string `json:"path"`
-	SHA256    string `json:"sha256"`
-	SizeBytes int64  `json:"sizeBytes"`
 }
 
 var managedAppRuntimeDownloadLocks sync.Map

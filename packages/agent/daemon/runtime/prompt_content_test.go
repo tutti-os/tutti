@@ -77,6 +77,30 @@ func TestNormalizeRuntimePromptContentPreservesURLOnlyImage(t *testing.T) {
 	}
 }
 
+func TestProjectRuntimeConnectorPromptContentUsesTuttiBroker(t *testing.T) {
+	content := normalizeRuntimePromptContent([]PromptContentBlock{
+		{Type: "text", Text: "list my calendar events"},
+		{Type: "connector", ConnectorKey: " lark-cli "},
+	})
+	projected := projectRuntimeConnectorPromptContent(content)
+	if len(projected) != 2 {
+		t.Fatalf("projected content = %#v, want instruction and user text", projected)
+	}
+	if projected[0].Type != "text" || !strings.Contains(projected[0].Text, "lark-cli") ||
+		!strings.Contains(projected[0].Text, "Tutti connector broker") ||
+		!strings.Contains(projected[0].Text, "Never substitute a user-global executable") {
+		t.Fatalf("connector instruction = %#v", projected[0])
+	}
+	if projected[1].Text != "list my calendar events" {
+		t.Fatalf("user prompt = %#v, want preserved text", projected[1])
+	}
+	for _, block := range projected {
+		if block.Type == "connector" {
+			t.Fatalf("provider content leaked connector block: %#v", projected)
+		}
+	}
+}
+
 func TestProviderPromptImageHTTPClientUsesSystemNetworkForReservedAddress(t *testing.T) {
 	t.Parallel()
 

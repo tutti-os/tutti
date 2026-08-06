@@ -66,6 +66,18 @@ func (registry ImplementationRegistry) Validate(manifest Manifest) error {
 }
 
 func ValidateReleaseShape(release Release) error {
+	return validateReleaseShape(release, true)
+}
+
+// ValidateRuntimeReleaseShape validates the durable execution contract while
+// deliberately excluding icon presentation policy. Installed releases may
+// predate the current icon requirements, but runtime identity, artifact,
+// permission, authorization, and implementation checks must remain strict.
+func ValidateRuntimeReleaseShape(release Release) error {
+	return validateReleaseShape(release, false)
+}
+
+func validateReleaseShape(release Release, validateIcon bool) error {
 	if release.SchemaVersion != "1" {
 		return invalidManifest("schemaVersion must be 1", nil)
 	}
@@ -98,17 +110,21 @@ func ValidateReleaseShape(release Release) error {
 		strings.TrimSpace(release.Artifact.MediaType) == "" {
 		return invalidManifest("artifact key, lowercase SHA-256, positive sizeBytes, and mediaType are required", nil)
 	}
-	return ValidateManifestShape(release.Manifest)
+	return validateManifestShape(release.Manifest, validateIcon)
 }
 
 func ValidateManifestShape(manifest Manifest) error {
+	return validateManifestShape(manifest, true)
+}
+
+func validateManifestShape(manifest Manifest, validateIcon bool) error {
 	if manifest.SchemaVersion != "1" {
 		return invalidManifest("manifest schemaVersion must be 1", nil)
 	}
 	if strings.TrimSpace(manifest.DisplayName) == "" {
 		return invalidManifest("displayName is required", nil)
 	}
-	if !isSafeConnectorIconURL(manifest.IconURL) {
+	if validateIcon && !isSafeConnectorIconURL(manifest.IconURL) {
 		return invalidManifest("iconUrl must be a PNG, WebP, or SVG data URL", nil)
 	}
 	if err := validateUniquePermissions(manifest.Permissions); err != nil {

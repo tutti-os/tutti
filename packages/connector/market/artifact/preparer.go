@@ -75,7 +75,7 @@ func (preparer *Preparer) ResolvePrepared(ctx context.Context, release market.Re
 	if err := ctx.Err(); err != nil {
 		return market.PreparedArtifactReceipt{}, err
 	}
-	if err := market.ValidateReleaseShape(release); err != nil {
+	if err := market.ValidateRuntimeReleaseShape(release); err != nil {
 		return market.PreparedArtifactReceipt{}, err
 	}
 	target, err := preparer.preparedPath(release)

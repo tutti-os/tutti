@@ -303,3 +303,18 @@ func TestDaemonAPIGeneratedRoutesGetAgentProviderComposerOptionsLeavesTargetDefa
 		t.Fatalf("permissionConfig = %#v", response.PermissionConfig)
 	}
 }
+
+func TestGeneratedAgentProviderCapabilityOptionsProjectsIconURL(t *testing.T) {
+	options := generatedAgentProviderCapabilityOptions([]agentservice.ComposerCapabilityOption{{
+		ID:         "connector:github",
+		Kind:       "connector",
+		Name:       "github",
+		Label:      "GitHub",
+		IconURL:    "data:image/png;base64,Z2l0aHVi",
+		Status:     "available",
+		Invocation: "textTrigger",
+	}})
+	if len(options) != 1 || options[0].IconUrl == nil || *options[0].IconUrl != "data:image/png;base64,Z2l0aHVi" {
+		t.Fatalf("options = %#v, want connector icon URL", options)
+	}
+}

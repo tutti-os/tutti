@@ -81,6 +81,10 @@ func (s *Service) CreateWithResult(ctx context.Context, workspaceID string, inpu
 			s.reportAgentServiceNodeFailure(ctx, input.AgentSessionID, "session_create", "content_normalized", provider, nodeStartedAt, err)
 			return CreateSessionResult{}, err
 		}
+		if err := s.validatePromptConnectors(ctx, normalizedContent); err != nil {
+			s.reportAgentServiceNodeFailure(ctx, input.AgentSessionID, "session_create", "connectors_validated", provider, nodeStartedAt, err)
+			return CreateSessionResult{}, err
+		}
 		s.reportAgentServiceNodeSuccess(ctx, input.AgentSessionID, "session_create", "content_normalized", provider, nodeStartedAt)
 	}
 	logAgentSubmitTrace("service.create.content_normalized", workspaceID, input.AgentSessionID, input.ClientSubmitID, input.Metadata, map[string]any{"content_block_count": len(normalizedContent)})

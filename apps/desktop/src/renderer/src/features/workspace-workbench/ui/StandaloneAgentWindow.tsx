@@ -45,6 +45,7 @@ import {
   type IWorkspaceAppCenterService
 } from "@renderer/features/workspace-app-center";
 import { useService } from "@tutti-os/infra/di";
+import { IConnectorMarketModule } from "@tutti-os/connector-market/services";
 import { IWorkspaceFileManagerService } from "@renderer/features/workspace-file-manager";
 import { IWorkspaceFilePreviewSurfaceHost } from "@renderer/features/workspace-file-preview";
 import type {
@@ -176,6 +177,7 @@ export function StandaloneAgentWindow({
   );
   const workspaceFileManagerService = useService(IWorkspaceFileManagerService);
   const { service: workspaceSettingsService } = useWorkspaceSettingsService();
+  const connectorMarketModule = useService(IConnectorMarketModule);
   const workspaceId = workspace.id;
   const mentionService = useMemo(
     () =>
@@ -674,6 +676,14 @@ export function StandaloneAgentWindow({
   );
   const handleCapabilitySettingsRequest = useCallback(
     (target: WorkspaceWorkbenchCapabilitySettingsTarget) => {
+      if (typeof target !== "string") {
+        workspaceSettingsService.openPanel(
+          { id: workspaceId },
+          { pane: "connectors" }
+        );
+        connectorMarketModule.root.uiState.openConnector(target.connectorKey);
+        return;
+      }
       workspaceSettingsService.openPanel(
         { id: workspaceId },
         {
@@ -682,7 +692,7 @@ export function StandaloneAgentWindow({
         }
       );
     },
-    [workspaceId, workspaceSettingsService]
+    [connectorMarketModule, workspaceId, workspaceSettingsService]
   );
   const handleDuplicateStandaloneWindow = useCallback(() => {
     void hostWindowApi.openAgentWindow({

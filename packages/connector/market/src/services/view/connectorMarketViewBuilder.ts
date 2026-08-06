@@ -190,6 +190,7 @@ function buildConnectorDialogView(
   if (!connectorHasInstalledArtifact(connector)) {
     return {
       ...base,
+      installing: connector.installation.state === "installing",
       kind: "installation"
     };
   }

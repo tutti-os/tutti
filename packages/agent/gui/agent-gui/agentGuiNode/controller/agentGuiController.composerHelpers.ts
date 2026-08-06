@@ -244,6 +244,7 @@ export function providerSkillsFromComposerOptions(
         const isConnector = capability.kind === "connector";
         return {
           name: isConnector ? capability.label : capability.name,
+          ...(isConnector ? { connectorKey: capability.name } : {}),
           trigger: capability.trigger!,
           invocation:
             capability.invocation === "textTrigger"
@@ -252,6 +253,9 @@ export function providerSkillsFromComposerOptions(
           sourceKind: isConnector ? "connector" : "plugin",
           kind: isConnector ? "connector" : "skill",
           ...(isConnector ? { status: capability.status } : {}),
+          ...(isConnector && capability.iconUrl
+            ? { iconUrl: capability.iconUrl }
+            : {}),
           ...(capability.description
             ? { description: capability.description }
             : {}),
@@ -270,6 +274,8 @@ export function areProviderSkillOptionsEqual(
 ): boolean {
   return (
     left.name === right.name &&
+    left.connectorKey === right.connectorKey &&
+    left.iconUrl === right.iconUrl &&
     left.trigger === right.trigger &&
     left.invocation === right.invocation &&
     left.sourceKind === right.sourceKind &&

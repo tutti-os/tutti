@@ -750,7 +750,7 @@ func runtimePromptContent(input []host.PromptContentBlock) []agentruntime.Prompt
 	for _, block := range input {
 		content = append(content, agentruntime.PromptContentBlock{
 			Type: block.Type, Text: block.Text, MimeType: block.MimeType, Data: block.Data, URL: block.URL,
-			AttachmentID: block.AttachmentID, Name: block.Name, Path: block.Path,
+			AttachmentID: block.AttachmentID, Name: block.Name, Path: block.Path, ConnectorKey: block.ConnectorKey,
 		})
 	}
 	return content

@@ -360,7 +360,7 @@ func TestServiceGetComposerOptionsUsesLocalInstalledConnectorCatalog(t *testing.
 	lister := &recordingComposerCapabilityLister{}
 	service := newIsolatedAgentService(runtime)
 	service.CapabilityLister = lister
-	service.InstalledConnectorSnapshots = installedConnectorSnapshotStub{
+	service.ConnectorMarketSnapshots = connectorMarketSnapshotStub{
 		snapshot: market.Snapshot{Connectors: []market.Connector{
 			localConnectorFixture(
 				"notion",

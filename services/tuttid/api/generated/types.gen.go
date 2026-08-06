@@ -111,15 +111,18 @@ func (e AgentPromptContentBlockMimeType) Valid() bool {
 
 // Defines values for AgentPromptContentBlockType.
 const (
-	AgentPromptContentBlockTypeImage   AgentPromptContentBlockType = "image"
-	AgentPromptContentBlockTypeMention AgentPromptContentBlockType = "mention"
-	AgentPromptContentBlockTypeSkill   AgentPromptContentBlockType = "skill"
-	AgentPromptContentBlockTypeText    AgentPromptContentBlockType = "text"
+	AgentPromptContentBlockTypeConnector AgentPromptContentBlockType = "connector"
+	AgentPromptContentBlockTypeImage     AgentPromptContentBlockType = "image"
+	AgentPromptContentBlockTypeMention   AgentPromptContentBlockType = "mention"
+	AgentPromptContentBlockTypeSkill     AgentPromptContentBlockType = "skill"
+	AgentPromptContentBlockTypeText      AgentPromptContentBlockType = "text"
 )
 
 // Valid indicates whether the value is a known member of the AgentPromptContentBlockType enum.
 func (e AgentPromptContentBlockType) Valid() bool {
 	switch e {
+	case AgentPromptContentBlockTypeConnector:
+		return true
 	case AgentPromptContentBlockTypeImage:
 		return true
 	case AgentPromptContentBlockTypeMention:
@@ -4722,6 +4725,9 @@ type AgentModelBinding struct {
 type AgentPromptContentBlock struct {
 	AttachmentId *string `json:"attachmentId,omitempty"`
 
+	// ConnectorKey Stable key of an installed local connector selected for this prompt.
+	ConnectorKey *string `json:"connectorKey,omitempty"`
+
 	// Data Base64-encoded image bytes. Mutually exclusive with url.
 	Data     *string                          `json:"data,omitempty"`
 	MimeType *AgentPromptContentBlockMimeType `json:"mimeType,omitempty"`
@@ -4838,6 +4844,7 @@ type AgentProviderAvailabilityStatus string
 // AgentProviderCapabilityOption defines model for AgentProviderCapabilityOption.
 type AgentProviderCapabilityOption struct {
 	Description *string                                 `json:"description,omitempty"`
+	IconUrl     *string                                 `json:"iconUrl,omitempty"`
 	Id          string                                  `json:"id"`
 	Invocation  AgentProviderCapabilityOptionInvocation `json:"invocation"`
 	Kind        AgentProviderCapabilityOptionKind       `json:"kind"`
