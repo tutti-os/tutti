@@ -117,8 +117,7 @@ describe("AgentGUIConversationRailItem interaction lock", () => {
   });
 
   it("renders the Codex-aligned two-line Activity presentation without a timestamp", () => {
-    const secondary =
-      "Implemented the requested Activity View with a deliberately long cached response preview";
+    const secondary = "Tutti";
     const { container } = renderRailItem({
       isRailInteractionLocked: () => false,
       item: { status: "working" },
@@ -127,7 +126,7 @@ describe("AgentGUIConversationRailItem interaction lock", () => {
         priorityReason: "active",
         projectLabel: "Tutti",
         secondary: {
-          kind: "message",
+          kind: "project",
           text: secondary
         }
       }
@@ -141,9 +140,6 @@ describe("AgentGUIConversationRailItem interaction lock", () => {
     expect(
       screen.getByRole("button", { name: "Session 1, Tutti, Working" })
     ).toBeTruthy();
-    expect(screen.getByRole("button").getAttribute("aria-label")).not.toContain(
-      secondary
-    );
     expect(
       container.querySelector(".agent-gui-node__conversation-time")
     ).toBeNull();
