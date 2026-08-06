@@ -222,7 +222,7 @@ export interface AgentGUIViewLabels extends AgentGUIProviderReadinessLabels {
   activityNothingNeedsAttention: string;
   activityToday: string;
   activityYesterday: string;
-  activityLocalSource: string;
+  activityConversationSource: string;
   activityStatusFailed: string;
   activityStatusRecentlyActive: string;
   activityStatusUnread: string;
@@ -480,7 +480,7 @@ export type AgentGUIConversationRailLabels = Pick<
   | "activityNothingNeedsAttention"
   | "activityToday"
   | "activityYesterday"
-  | "activityLocalSource"
+  | "activityConversationSource"
   | "activityStatusFailed"
   | "activityStatusRecentlyActive"
   | "activityStatusUnread"

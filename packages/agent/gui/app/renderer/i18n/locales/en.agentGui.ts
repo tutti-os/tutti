@@ -444,7 +444,7 @@ export const enAgentGui = {
   activityNothingNeedsAttention: "Nothing needs attention",
   activityToday: "Today",
   activityYesterday: "Yesterday",
-  activityLocalSource: "Local",
+  activityConversationSource: "Conversation",
   activityStatusFailed: "Failed",
   activityStatusRecentlyActive: "Recently active",
   activityStatusUnread: "Unread result",

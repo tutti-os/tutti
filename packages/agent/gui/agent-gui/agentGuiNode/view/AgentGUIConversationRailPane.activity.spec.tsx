@@ -208,7 +208,7 @@ const PROJECT_I18N = {
 } as never;
 
 const LABELS = {
-  activityLocalSource: "Local",
+  activityConversationSource: "Conversation",
   activityNothingNeedsAttention: "Nothing needs attention",
   activityPriority: "Priority",
   activityStatusFailed: "Failed",

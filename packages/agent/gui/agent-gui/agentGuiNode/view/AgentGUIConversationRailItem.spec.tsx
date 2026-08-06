@@ -153,7 +153,7 @@ describe("AgentGUIConversationRailItem interaction lock", () => {
         kind: "activity",
         priorityReason: "unread",
         projectLabel: null,
-        secondary: { kind: "source", text: "Local" }
+        secondary: { kind: "source", text: "Conversation" }
       }
     });
 

@@ -170,7 +170,10 @@ const ActivityConversationItem = memo(function ActivityConversationItem({
       : null;
   const secondary = projectLabel
     ? { kind: "project" as const, text: projectLabel }
-    : { kind: "source" as const, text: props.labels.activityLocalSource };
+    : {
+        kind: "source" as const,
+        text: props.labels.activityConversationSource
+      };
   return (
     <AgentGUIConversationRailItem
       active={props.activeConversationId === item.id}

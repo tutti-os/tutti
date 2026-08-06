@@ -178,7 +178,7 @@ function conversation(id: string): AgentGUIConversationSummary {
 }
 
 const LABELS = {
-  activityLocalSource: "Local",
+  activityConversationSource: "Conversation",
   activityNothingNeedsAttention: "Nothing needs attention",
   activityPriority: "Priority",
   activityStatusFailed: "Failed",

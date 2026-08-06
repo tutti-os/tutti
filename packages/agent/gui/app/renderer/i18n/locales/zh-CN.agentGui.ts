@@ -474,7 +474,7 @@ export const zhCNAgentGui = {
   activityNothingNeedsAttention: "暂无需要你关注的会话",
   activityToday: "今天",
   activityYesterday: "昨天",
-  activityLocalSource: "本地",
+  activityConversationSource: "对话",
   activityStatusFailed: "执行失败",
   activityStatusRecentlyActive: "最近活跃",
   activityStatusUnread: "有未读结果",

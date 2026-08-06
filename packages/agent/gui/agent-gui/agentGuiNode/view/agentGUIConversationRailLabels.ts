@@ -13,7 +13,9 @@ export function agentGUIConversationRailLabels(
     ),
     activityToday: t("agentHost.agentGui.activityToday"),
     activityYesterday: t("agentHost.agentGui.activityYesterday"),
-    activityLocalSource: t("agentHost.agentGui.activityLocalSource"),
+    activityConversationSource: t(
+      "agentHost.agentGui.activityConversationSource"
+    ),
     activityStatusFailed: t("agentHost.agentGui.activityStatusFailed"),
     activityStatusRecentlyActive: t(
       "agentHost.agentGui.activityStatusRecentlyActive"
