@@ -506,6 +506,18 @@ closed and treats a persisted title as user-established.
 
 A Session does not copy Turn phase/outcome, own pending Interactions, or persist lifecycle inferred from transcript.
 
+A long-lived canonical Tutti Session may replace its active provider session
+between Turns when that provider can no longer continue its context. This is a
+serial rollover, not multiple concurrently active provider sessions:
+`providerSessionId` remains the pointer to the current provider session and a
+runtime-context recovery generation records that earlier Turns may belong to a
+previous provider session. AgentGUI keeps the same conversation visible, shows
+an explicit system notice before the next send, and the replacement provider
+may retrieve only the relevant canonical history through Tutti CLI. Until Turn
+bindings carry a provider-session generation, provider-native Fork from a
+recovered Claude Session fails closed instead of applying an old checkpoint to
+the replacement session.
+
 Provider-native subagents use child Sessions:
 
 - `rootAgentSessionId` / `rootTurnId`: root execution

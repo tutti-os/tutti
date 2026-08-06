@@ -314,6 +314,16 @@ type RuntimeResumeInput struct {
 	RecreateIfMissing bool
 }
 
+type RuntimeContextRecoveryInput struct {
+	WorkspaceID    string
+	AgentSessionID string
+}
+
+type RuntimeContextRecoveryResult struct {
+	Session   ProviderRuntimeSession
+	Recovered bool
+}
+
 type RuntimeExecInput struct {
 	WorkspaceID                     string
 	AgentSessionID                  string

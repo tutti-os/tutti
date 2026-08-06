@@ -320,6 +320,44 @@ func runSendInput(ctx context.Context, driver Driver) error {
 	return nil
 }
 
+func runPendingRuntimeContextRecoveryPrecedesNewTurnDispatch(
+	ctx context.Context,
+	driver Driver,
+) error {
+	fixture := liveSessionFixture("session-context-recovery", "")
+	fixture.ContextRecoveryPending = true
+	if err := driver.Reset(ctx, fixture); err != nil {
+		return err
+	}
+	_, err := driver.SendInput(
+		ctx,
+		agenthost.SessionRef{
+			WorkspaceID: "workspace-1", AgentSessionID: "session-context-recovery",
+		},
+		agenthost.SendInput{Content: []agenthost.PromptContentBlock{{
+			Type: "text", Text: "continue after recovery",
+		}}},
+	)
+	if err != nil {
+		return fmt.Errorf("send input after context recovery: %w", err)
+	}
+	metrics := driver.Metrics()
+	if metrics.ContextRecoveryCalls != 1 || metrics.ExecCalls != 1 {
+		return fmt.Errorf(
+			"context recovery calls=%d exec calls=%d, want one recovery before one exec",
+			metrics.ContextRecoveryCalls,
+			metrics.ExecCalls,
+		)
+	}
+	if metrics.LastExecProviderSessionID != "recovered-provider-session-context-recovery" {
+		return fmt.Errorf(
+			"exec provider session=%q, want recovered provider session",
+			metrics.LastExecProviderSessionID,
+		)
+	}
+	return nil
+}
+
 func runSendConnectorOnlyInput(ctx context.Context, driver Driver) error {
 	if err := driver.Reset(ctx, liveSessionFixture("session-send-connector", "")); err != nil {
 		return err

@@ -261,6 +261,21 @@ func isResumeRecreatableError(err error) bool {
 // silently forgot the conversation, so a visible system notice is appended
 // alongside the started events.
 func (c *Controller) recreateAdapterSession(ctx context.Context, session Session, adapter Adapter) error {
+	_, err := c.recreateAdapterSessionWithNotice(
+		ctx,
+		session,
+		adapter,
+		sessionRecreatedNoticeEvent,
+	)
+	return err
+}
+
+func (c *Controller) recreateAdapterSessionWithNotice(
+	ctx context.Context,
+	session Session,
+	adapter Adapter,
+	notice func(Session) (activityshared.Event, bool),
+) (Session, error) {
 	fresh := session
 	fresh.ProviderSessionID = ""
 	fresh.Status = SessionStatusReady
@@ -268,17 +283,19 @@ func (c *Controller) recreateAdapterSession(ctx context.Context, session Session
 	fresh.UpdatedAtUnixMS = unixMS(now())
 	events, err := adapter.Start(ctx, fresh)
 	if err != nil {
-		return err
+		return Session{}, err
 	}
 	fresh = applySessionEvents(fresh, events)
 	c.invalidateAppliedGoalGenerationFences(fresh)
 	if err := c.applyRetainedGoalGenerationFencesOrClose(ctx, fresh, adapter); err != nil {
-		return err
+		return Session{}, err
 	}
 	fresh.Status = SessionStatusReady
 	fresh.UpdatedAtUnixMS = unixMS(now())
-	if notice, ok := sessionRecreatedNoticeEvent(fresh); ok {
-		events = append(events, notice)
+	if notice != nil {
+		if event, ok := notice(fresh); ok {
+			events = append(events, event)
+		}
 	}
 	c.store(fresh)
 	c.publish(fresh, events)
@@ -287,7 +304,81 @@ func (c *Controller) recreateAdapterSession(ctx context.Context, session Session
 		c.publishAdapterCommandSnapshot(fresh, adapter)
 	}
 	c.enqueueSessionReport(ctx, fresh, events)
-	return nil
+	return fresh, nil
+}
+
+// PrepareContextRecovery performs the Host-requested provider-session
+// rollover only between Turns. The canonical Tutti Session remains stable;
+// ProviderSessionID is replaced with the new active provider pointer while
+// the recovery generation in RuntimeContext records that older Turns belong
+// to an earlier Claude session.
+func (c *Controller) PrepareContextRecovery(
+	ctx context.Context,
+	input PrepareContextRecoveryInput,
+) (PrepareContextRecoveryResult, error) {
+	roomID := strings.TrimSpace(input.RoomID)
+	agentSessionID := strings.TrimSpace(input.AgentSessionID)
+	if c == nil || roomID == "" || agentSessionID == "" {
+		return PrepareContextRecoveryResult{}, errors.New(
+			"room id and agent session id are required",
+		)
+	}
+	releaseLifecycleLock, err := c.acquireLifecycleLockContext(
+		ctx,
+		roomID,
+		agentSessionID,
+	)
+	if err != nil {
+		return PrepareContextRecoveryResult{}, err
+	}
+	defer releaseLifecycleLock()
+
+	session, adapter, err := c.sessionAndAdapter(roomID, agentSessionID)
+	if err != nil {
+		return PrepareContextRecoveryResult{}, err
+	}
+	if !claudeSDKContextRecoveryPending(session.RuntimeContext) {
+		return PrepareContextRecoveryResult{Session: session}, nil
+	}
+	if c.HasActiveTurn(roomID, agentSessionID) {
+		return PrepareContextRecoveryResult{}, ErrSessionActiveTurn
+	}
+	releaseAdapter, probe, ok := liveSessionReleaseAdapter(adapter)
+	if !ok {
+		return PrepareContextRecoveryResult{}, errors.New(
+			"context recovery requires live-session replacement support",
+		)
+	}
+	if probe.HasLiveSession(session) {
+		if err := releaseAdapter.ReleaseLiveSession(ctx, session); err != nil {
+			return PrepareContextRecoveryResult{}, err
+		}
+	}
+
+	recovery := claudeSDKContextRecoveryFromRuntimeContext(session.RuntimeContext)
+	recovery.State = claudeSDKContextRecoveryStateHandoff
+	recovery.SourceProviderSessionID = firstNonEmptyString(
+		strings.TrimSpace(recovery.SourceProviderSessionID),
+		strings.TrimSpace(session.ProviderSessionID),
+	)
+	recovery.HandoffSent = false
+	session.RuntimeContext = clonePayload(session.RuntimeContext)
+	if session.RuntimeContext == nil {
+		session.RuntimeContext = map[string]any{}
+	}
+	session.RuntimeContext[claudeSDKContextRecoveryRuntimeKey] =
+		claudeSDKContextRecoveryRuntimeContext(recovery)
+
+	fresh, err := c.recreateAdapterSessionWithNotice(
+		ctx,
+		session,
+		adapter,
+		nil,
+	)
+	if err != nil {
+		return PrepareContextRecoveryResult{}, err
+	}
+	return PrepareContextRecoveryResult{Session: fresh, Recovered: true}, nil
 }
 
 // sessionRecreatedNoticeEvent builds the visible system notice that

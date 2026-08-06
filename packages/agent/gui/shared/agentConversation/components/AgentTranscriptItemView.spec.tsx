@@ -1091,6 +1091,41 @@ describe("AgentTranscriptItemView render stability", () => {
     expect(detail.className).not.toContain("whitespace-nowrap");
   });
 
+  it("tells the user when Tutti schedules Claude context recovery", () => {
+    const { getByRole } = render(
+      <AgentMessageBlock
+        workspaceRoot="/workspace/demo"
+        basePath="/workspace/demo"
+        row={assistantMessageRow({
+          kind: "message-content",
+          id: "assistant-notice-context-recovery",
+          turnId: "turn-1",
+          body: "Context compaction interrupted.",
+          occurredAtUnixMs: 1,
+          systemNotice: {
+            noticeKind: "context_recovery_pending",
+            severity: null,
+            command: "compact",
+            commandStatus: "failed",
+            title: "Provider compact failure",
+            detail: "Maximum context length exceeded.",
+            retryable: null
+          }
+        })}
+        thinkingLabel="Thought process"
+      />
+    );
+
+    const notice = getByRole("status");
+    expect(notice.textContent).toContain(
+      "agentHost.agentGui.contextRecoveryScheduled"
+    );
+    expect(notice.textContent).toContain(
+      "agentHost.agentGui.contextRecoveryScheduledDetail"
+    );
+    expect(notice.textContent).toContain("Maximum context length exceeded.");
+  });
+
   it("does not let a legacy title override canonical compact status", () => {
     const { getByText, queryByText } = render(
       <AgentMessageBlock

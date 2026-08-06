@@ -273,6 +273,7 @@ type legacyHostConformanceDriver struct {
 
 func (d *legacyHostConformanceDriver) Reset(_ context.Context, fixture hostconformance.Fixture) error {
 	d.runtime = newFakeRuntime()
+	d.runtime.contextRecoveryPending = fixture.ContextRecoveryPending
 	d.runtime.guidanceTargetMismatch = fixture.GuidanceTargetMismatch
 	d.sessions = &fakeSessionReader{
 		sessions: map[string]PersistedSession{}, tombstoned: map[string]bool{}, deletedAt: map[string]int64{},
@@ -1155,7 +1156,11 @@ func (d *legacyHostConformanceDriver) Metrics() hostconformance.Metrics {
 		InteractiveCalls:      len(d.runtime.submitInteractiveCalls), UpdateSettingsCalls: len(d.runtime.updateSettingsCalls),
 		CloseCalls:       len(d.runtime.closeCalls),
 		GoalControlCalls: len(d.runtime.goalControlCalls), GoalReconcileCalls: len(d.runtime.goalReconcileCalls),
-		RecoverySteps: append([]string(nil), (*d.recoverySteps)...),
+		RecoverySteps:        append([]string(nil), (*d.recoverySteps)...),
+		ContextRecoveryCalls: len(d.runtime.contextRecoveryCalls),
+	}
+	if len(d.runtime.execProviderSessionIDs) > 0 {
+		metrics.LastExecProviderSessionID = d.runtime.execProviderSessionIDs[len(d.runtime.execProviderSessionIDs)-1]
 	}
 	if closeCallCount := len(d.runtime.closeCalls); closeCallCount > 0 {
 		metrics.LastClosePreservedCanonicalState = d.runtime.closeCalls[closeCallCount-1].PreserveCanonicalState

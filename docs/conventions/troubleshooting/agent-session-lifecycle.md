@@ -3722,6 +3722,58 @@ inline data URL instead`. Claude or standard ACP may instead receive no
   [claude_sdk_turn.go](../../../packages/agent/daemon/runtime/claude_sdk_turn.go)
   [AgentMessageBlock.tsx](../../../packages/agent/gui/shared/agentConversation/components/AgentMessageBlock.tsx)
 
+### Claude auto-compact misses a large resumed session
+
+- Symptom:
+  After an idle Claude Session is resumed, the first ordinary prompt fails
+  because messages plus the requested completion exceed the model context
+  limit. Running `/compact` immediately afterwards can fail for the same
+  reason, leaving every later prompt unable to proceed.
+- Quick checks:
+  Inspect `agent_session.claude_sdk.usage_update`. Compare
+  `raw_used_tokens`, `raw_max_tokens`, `sdk_max_tokens`, and
+  `auto_compact_threshold_tokens`, and confirm `compacts_automatically` is
+  true. A resumed 1M Session reporting `sdk_max_tokens=200000` but
+  `raw_max_tokens` near 1M is a context-accounting distinction, not proof that
+  the model has only a 200k hard limit.
+- Root cause:
+  Claude Code 2.1.220 can keep an inherited/default-model resumed Session too
+  close to its 1M hard limit before native auto-compaction runs. Restored
+  system, tool, plugin, and prompt content can then cross the remaining gap in
+  one request, leaving too little room for the compact request itself. The SDK
+  control snapshot separately reports `maxTokens` and `rawMaxTokens`; treating
+  the former as the hard model window also hides this condition in telemetry.
+- Diagnostics:
+  Publish `rawMaxTokens` as the fallback hard context total when result
+  `modelUsage` is unavailable, and retain the SDK max, native threshold, and
+  effective auto-compact flag in daemon diagnostics.
+- Fix:
+  Keep Claude Code's native auto-compact threshold unchanged. When `/compact`
+  fails specifically because the context is already over its hard limit, mark
+  a pending recovery generation and render an explicit notice that Tutti will
+  help on the next message. Host then replaces the active Claude provider
+  session between Turns while retaining the canonical Tutti Session. The first
+  ordinary prompt to the replacement includes private host context telling
+  Claude to retrieve only relevant earlier Turns with
+  `tutti agent get --session-id "$TUTTI_AGENT_SESSION_ID" --json`; it must not
+  claim unread history. Keep `ProviderSessionID` as the single current pointer,
+  record the replaced provider id and recovery generation in runtime context,
+  and fail closed for provider-native Turn Fork after recovery until bindings
+  carry their provider-session generation.
+- Validation:
+  Cover a restore snapshot where `maxTokens=200000`, `rawMaxTokens` is about
+  1M, and auto-compact is enabled. Confirm the published total uses the raw
+  hard limit and diagnostics retain both values. Also cover overflow
+  classification, visible recovery notice metadata, serialized rollover before
+  the next Turn, one-shot CLI handoff context, and recovered-session Fork
+  rejection.
+- References:
+  [compaction.ts](../../../packages/agent/claude-sdk-sidecar/src/compaction.ts)
+  [claude_sdk_live_state.go](../../../packages/agent/daemon/runtime/claude_sdk_live_state.go)
+  [claude_sdk_context_recovery.go](../../../packages/agent/daemon/runtime/claude_sdk_context_recovery.go)
+  [lifecycle.go](../../../packages/agent/host/lifecycle.go)
+  [AgentMessageBlock.tsx](../../../packages/agent/gui/shared/agentConversation/components/AgentMessageBlock.tsx)
+
 ### Inactive Claude resume times out then later sends stay queued
 
 - Symptom:

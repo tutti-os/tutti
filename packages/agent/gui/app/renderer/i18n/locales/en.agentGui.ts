@@ -569,6 +569,9 @@ export const enAgentGui = {
   contextCompactionInProgress: "Compacting context",
   contextCompactionCompleted: "Context compacted.",
   contextCompactionInterrupted: "Context compaction interrupted.",
+  contextRecoveryScheduled: "Tutti is preparing a fresh Claude session",
+  contextRecoveryScheduledDetail:
+    "Claude Code could not compact this conversation. On your next message, Tutti will switch to a fresh Claude session and let it retrieve relevant earlier turns through Tutti CLI.",
   tuttiModeCheckpointWakeTaskSettled: "A task finished — review needed",
   tuttiModeCheckpointWakeTaskFailed: "A task failed — review needed",
   tuttiModeCheckpointWakeTaskCanceled: "A task was canceled — review needed",

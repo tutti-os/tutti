@@ -282,6 +282,11 @@ func (s *claudeSDKAdapterSession) logUsageUpdate(
 		rawContextSource = contextWindow
 	}
 	rawUsed, _ := firstInt64Value(rawContextSource, "usedTokens", "used_tokens", "used", "totalTokens", "total_tokens", "total")
+	sdkMaxTokens, _ := firstInt64Value(rawContextSource, "sdkMaxTokens", "sdk_max_tokens")
+	rawMaxTokens, _ := firstInt64Value(rawContextSource, "rawMaxTokens", "raw_max_tokens")
+	autoCompactThresholdTokens, _ := firstInt64Value(rawContextSource, "autoCompactThresholdTokens", "auto_compact_threshold_tokens")
+	_, autoCompactKnown := rawContextSource["compactsAutomatically"]
+	compactsAutomatically := payloadBoolValue(rawContextSource, "compactsAutomatically")
 	rawTotal := claudeSDKContextWindowTokens(payload, contextModel)
 	if rawTotal <= 0 {
 		rawTotal = claudeSDKContextWindowTokens(usageSource, contextModel)
@@ -305,6 +310,11 @@ func (s *claudeSDKAdapterSession) logUsageUpdate(
 		"usage_keys", sortedPayloadKeys(usageSource),
 		"raw_used_tokens", rawUsed,
 		"raw_total_tokens", rawTotal,
+		"sdk_max_tokens", sdkMaxTokens,
+		"raw_max_tokens", rawMaxTokens,
+		"auto_compact_threshold_tokens", autoCompactThresholdTokens,
+		"auto_compact_known", autoCompactKnown,
+		"compacts_automatically", compactsAutomatically,
 		"raw_input_tokens", rawInput,
 		"raw_output_tokens", rawOutput,
 		"raw_cache_read_input_tokens", rawCacheRead,

@@ -35,6 +35,13 @@ func (*ClaudeCodeSDKAdapter) CanForkProviderTurn(
 	_ context.Context,
 	input ProviderTurnForkabilityInput,
 ) (bool, error) {
+	// A recovered Tutti Session may span multiple Claude provider sessions.
+	// Historical Turn bindings do not currently carry their provider-session
+	// generation, so fail closed instead of attaching an old checkpoint to the
+	// replacement provider session.
+	if claudeSDKContextRecoveryOccurred(input.Source.RuntimeContext) {
+		return false, nil
+	}
 	if strings.TrimSpace(input.ProviderTurnID) == "" {
 		return false, nil
 	}

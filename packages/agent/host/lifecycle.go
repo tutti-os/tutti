@@ -511,6 +511,10 @@ func (h *Host) sendInputSerialized(
 	}
 	execResult, err := func() (RuntimeExecResult, error) {
 		defer releaseStartup()
+		session, err = h.prepareRuntimeContextRecovery(ctx, ref, session, input.Guidance)
+		if err != nil {
+			return RuntimeExecResult{}, err
+		}
 		turnID := strings.TrimSpace(input.TurnID)
 		if turnID == "" && !input.Guidance {
 			turnID = uuid.NewString()

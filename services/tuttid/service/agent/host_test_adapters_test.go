@@ -296,6 +296,21 @@ func (a serviceHostRuntime) Exec(ctx context.Context, input RuntimeExecInput) (R
 	result, err := a.service.controller().Exec(ctx, input)
 	return result, normalizeRuntimeError(err)
 }
+func (a serviceHostRuntime) PrepareContextRecovery(
+	ctx context.Context,
+	input agenthost.RuntimeContextRecoveryInput,
+) (agenthost.RuntimeContextRecoveryResult, error) {
+	recovery, ok := a.service.controller().(interface {
+		PrepareContextRecovery(
+			context.Context,
+			agenthost.RuntimeContextRecoveryInput,
+		) (agenthost.RuntimeContextRecoveryResult, error)
+	})
+	if !ok {
+		return agenthost.RuntimeContextRecoveryResult{}, nil
+	}
+	return recovery.PrepareContextRecovery(ctx, input)
+}
 func (a serviceHostRuntime) DurablyReportSubmitProvenance(ctx context.Context, input RuntimeSubmitProvenanceInput) error {
 	reporter, ok := a.service.controller().(interface {
 		DurablyReportSubmitProvenance(context.Context, RuntimeSubmitProvenanceInput) error

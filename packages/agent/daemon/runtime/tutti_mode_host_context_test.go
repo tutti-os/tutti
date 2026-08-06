@@ -351,6 +351,7 @@ func TestClaudeSDKExecPayloadKeepsTuttiContextSeparateFromUserInput(t *testing.T
 		"provider-turn-1",
 		content,
 		"what mode is active?",
+		"",
 	)
 	if got := asString(payload["prompt"]); got != "what mode is active?" {
 		t.Fatalf("prompt = %q, want original user text", got)

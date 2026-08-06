@@ -265,6 +265,17 @@ type RuntimeSessionLiveness interface {
 	RuntimeSessionLive(workspaceID, agentSessionID string) bool
 }
 
+// RuntimeContextRecoveryController replaces one exhausted provider context
+// between Turns while retaining the canonical Tutti Session. Host owns when
+// this recovery may run; provider-specific rollover mechanics stay behind the
+// runtime adapter.
+type RuntimeContextRecoveryController interface {
+	PrepareContextRecovery(
+		context.Context,
+		RuntimeContextRecoveryInput,
+	) (RuntimeContextRecoveryResult, error)
+}
+
 // RuntimeHistoryController is an optional semantic capability. Host lifecycle
 // code never invokes provider-specific history methods directly.
 type RuntimeHistoryController interface {

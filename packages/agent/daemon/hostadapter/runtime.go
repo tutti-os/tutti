@@ -53,6 +53,7 @@ type RuntimeController struct {
 var (
 	_ host.RuntimeController                       = (*RuntimeController)(nil)
 	_ host.RuntimeHistoryController                = (*RuntimeController)(nil)
+	_ host.RuntimeContextRecoveryController        = (*RuntimeController)(nil)
 	_ host.RuntimeProviderTurnAcceptanceReconciler = (*RuntimeController)(nil)
 	_ host.RuntimeSessionLiveness                  = (*RuntimeController)(nil)
 	_ host.RuntimeSubmitProvenanceReporter         = (*RuntimeController)(nil)

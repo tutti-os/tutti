@@ -101,6 +101,8 @@ type claudeSDKAdapterSession struct {
 	fencedGoalIdentities map[goalOperationIdentity]struct{}
 	fencedGoalTurns      map[string]claudeSDKGoalTurnFenceState
 	goalTurnBindings     map[string]claudeSDKGoalTurnBinding
+	contextRecovery      claudeSDKContextRecoveryState
+	contextRecoveryMu    sync.Mutex
 }
 
 type claudeSDKGoalTurnFenceState uint8

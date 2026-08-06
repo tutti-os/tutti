@@ -115,7 +115,22 @@ func (a *ClaudeCodeSDKAdapter) exec(
 		events = append(events, a.claudeSDKRootProviderFailureEvents(adapterSession, session, turnID, promptCorrelationID, err)...)
 		return events, err
 	}
-	payload := claudeSDKExecPayload(ctx, session, turnID, promptCorrelationID, providerContent, visibleText)
+	recoveryHostContext := ""
+	if !isClaudeSDKCompactPrompt(content, visibleText) {
+		recoveryHostContext = renderClaudeSDKContextRecoveryHostContext(
+			session,
+			adapterSession.contextRecoverySnapshot(),
+		)
+	}
+	payload := claudeSDKExecPayload(
+		ctx,
+		session,
+		turnID,
+		promptCorrelationID,
+		providerContent,
+		visibleText,
+		recoveryHostContext,
+	)
 	if err := adapterSession.send(claudeSDKSidecarRequest{
 		ID:      newID(),
 		Type:    "exec",
@@ -125,6 +140,9 @@ func (a *ClaudeCodeSDKAdapter) exec(
 		a.unregisterClaudeSDKTurn(adapterSession, turnID, waiter)
 		events = append(events, a.claudeSDKRootProviderFailureEvents(adapterSession, session, turnID, promptCorrelationID, err)...)
 		return events, err
+	}
+	if recoveryHostContext != "" {
+		adapterSession.markContextRecoveryHandoffSent()
 	}
 
 	select {
@@ -147,6 +165,7 @@ func (a *ClaudeCodeSDKAdapter) exec(
 			claudeSDKTurnFinishInterrupted,
 			"user_interrupt",
 		)...)
+		adapterSession.resetContextRecoveryHandoffSent()
 		a.unregisterClaudeSDKTurn(adapterSession, turnID, waiter)
 		return events, ctx.Err()
 	}
@@ -403,6 +422,7 @@ func claudeSDKExecPayload(
 	promptCorrelationID string,
 	content []PromptContentBlock,
 	visibleText string,
+	recoveryHostContext string,
 ) map[string]any {
 	payload := map[string]any{
 		"agentSessionId":      session.AgentSessionID,
@@ -411,13 +431,21 @@ func claudeSDKExecPayload(
 		"prompt":              promptTextForClaudeSDK(content, visibleText),
 		"content":             promptContentForClaudeSDK(content, visibleText),
 	}
+	hostContexts := make([]string, 0, 2)
 	if hostContext := renderTuttiModeHostContext(tuttiModeTurnSnapshotFromContext(ctx)); hostContext != "" {
-		payload["hostContext"] = hostContext
+		hostContexts = append(hostContexts, hostContext)
+	}
+	if recoveryHostContext = strings.TrimSpace(recoveryHostContext); recoveryHostContext != "" {
+		hostContexts = append(hostContexts, recoveryHostContext)
+	}
+	if len(hostContexts) > 0 {
+		payload["hostContext"] = strings.Join(hostContexts, "\n")
 	}
 	return payload
 }
 
 func (a *ClaudeCodeSDKAdapter) claudeSDKRootProviderFailureEvents(adapterSession *claudeSDKAdapterSession, session Session, turnID string, providerTurnID string, err error) []activityshared.Event {
+	adapterSession.resetContextRecoveryHandoffSent()
 	events := a.finishClaudeSDKTurnLifecycle(adapterSession, session, turnID, claudeSDKTurnFinishFailed, "provider_transport_failed")
 	activeProviderTurnID := a.activeClaudeSDKRootProviderTurnID(adapterSession)
 	if activeProviderTurnID != "" {

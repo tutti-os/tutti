@@ -276,6 +276,44 @@ func TestClaudeCodeSDKAdapterMapsCompactLifecycleAsSystemNotice(t *testing.T) {
 	}
 }
 
+func TestClaudeCodeSDKAdapterMarksOverflowCompactionForVisibleRecovery(t *testing.T) {
+	adapter := NewClaudeCodeSDKAdapter(nil)
+	adapterSession := &claudeSDKAdapterSession{
+		providerSessionID: "claude-provider-old",
+		liveState:         newClaudeSDKLiveState(),
+	}
+	session := standardTestSession(ProviderClaudeCode)
+	session.ProviderSessionID = "claude-provider-old"
+
+	events, terminal, err := adapter.sidecarTurnEvents(
+		adapterSession,
+		session,
+		"turn-overflow",
+		claudeSDKSidecarEvent{
+			Type: "compact_failed",
+			Payload: map[string]any{
+				"turnId":                  "turn-overflow",
+				"reason":                  "Maximum context length exceeded.",
+				"contextRecoveryRequired": true,
+			},
+		},
+	)
+	if err != nil || terminal || len(events) != 2 {
+		t.Fatalf("overflow compact events=%#v terminal=%v err=%v", events, terminal, err)
+	}
+	if events[0].Payload.Metadata["noticeKind"] != "context_recovery_pending" {
+		t.Fatalf("overflow notice metadata=%#v", events[0].Payload.Metadata)
+	}
+	if events[1].Type != activityshared.EventSessionUpdated {
+		t.Fatalf("overflow recovery marker event=%#v", events[1])
+	}
+	state := claudeSDKContextRecoveryFromRuntimeContext(events[1].Payload.Metadata)
+	if state.Generation != 1 || state.State != claudeSDKContextRecoveryStatePending ||
+		state.SourceProviderSessionID != "claude-provider-old" {
+		t.Fatalf("overflow recovery state=%#v", state)
+	}
+}
+
 func TestClaudeCodeSDKAdapterSettlesActiveCompactWithTurn(t *testing.T) {
 	tests := []struct {
 		name             string

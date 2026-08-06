@@ -103,6 +103,16 @@ type ResumeInput struct {
 	RecreateIfMissing bool
 }
 
+type PrepareContextRecoveryInput struct {
+	RoomID         string
+	AgentSessionID string
+}
+
+type PrepareContextRecoveryResult struct {
+	Session   Session
+	Recovered bool
+}
+
 type CloseInput struct {
 	RoomID         string
 	AgentSessionID string

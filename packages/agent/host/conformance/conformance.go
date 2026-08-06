@@ -65,6 +65,7 @@ type Fixture struct {
 	EmptyPauseResumeGoal   bool
 	FailCommitObserver     bool
 	RejectInitialExec      bool
+	ContextRecoveryPending bool
 	// GuidanceTargetMismatch makes the test runtime reject guidance whose
 	// explicit TurnID is not the Session.ActiveTurnID. It models the runtime
 	// target race without exposing a runtime/provider API to scenarios.
@@ -146,6 +147,8 @@ type Metrics struct {
 	LastExecRequiresProviderAcceptance bool
 	LastClosePreservedCanonicalState   bool
 	LastResumeRecreate                 bool
+	ContextRecoveryCalls               int
+	LastExecProviderSessionID          string
 	RecoverySteps                      []string
 	DeleteAdmissionPlans               []agenthost.DeleteSessionsPlan
 	DeleteReports                      []agenthost.DeleteSessionsReport

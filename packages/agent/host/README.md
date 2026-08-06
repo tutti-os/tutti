@@ -80,6 +80,15 @@ empty; only an explicit title or the first eligible prompt establishes one.
 For typed initial Goal, the display prompt (or a synthesized `/goal` command)
 is the eligible prompt and is established before provider startup, even though
 the Goal path does not create a Turn.
+
+Runtime context recovery is another between-Turn lifecycle transition owned by
+Host. Before dispatching a new non-guidance Turn, Host asks the optional
+`RuntimeContextRecoveryController` to replace a provider session that was
+marked unrecoverable by the preceding Turn. The canonical Tutti Session and its
+history remain stable; `ProviderSessionID` continues to name only the current
+active provider session, while runtime context records a recovery generation
+and the replaced provider id. Guidance never triggers this rollover, and the
+replacement must finish under the Session lock before the new Turn is sent.
 `CreateSessionInput.RailPlacement` optionally carries the caller-selected,
 versioned canonical rail identity. Host validates it before provider startup
 and persists its opaque `SectionKey` exactly on first creation. An idempotent

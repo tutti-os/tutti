@@ -49,6 +49,22 @@ func TestProviderTurnBindingHooksOwnForkability(t *testing.T) {
 	if err != nil || !forkable {
 		t.Fatalf("Claude checkpoint binding forkable=%v error=%v", forkable, err)
 	}
+	forkable, err = claude.CanForkProviderTurn(
+		t.Context(),
+		ProviderTurnForkabilityInput{
+			Source: Session{RuntimeContext: map[string]any{
+				claudeSDKContextRecoveryRuntimeKey: map[string]any{
+					"generation": 1,
+					"state":      claudeSDKContextRecoveryStateCompleted,
+				},
+			}},
+			ProviderTurnID:          "claude-prompt",
+			ProviderTurnBindingJSON: checkpoint,
+		},
+	)
+	if err != nil || forkable {
+		t.Fatalf("recovered Claude session binding forkable=%v error=%v", forkable, err)
+	}
 
 	codex := new(CodexAppServerAdapter)
 	binding, err := codex.WriteProviderTurnBinding(

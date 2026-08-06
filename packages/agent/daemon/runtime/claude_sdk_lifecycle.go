@@ -54,6 +54,7 @@ func (a *ClaudeCodeSDKAdapter) Start(ctx context.Context, session Session) ([]ac
 		pendingResponses:  make(map[string]chan claudeSDKSidecarEvent),
 		turns:             make(map[string]*claudeSDKTurnWaiter),
 		liveState:         newClaudeSDKLiveState(),
+		contextRecovery:   claudeSDKContextRecoveryFromRuntimeContext(session.RuntimeContext),
 	}
 	a.storeSession(session.AgentSessionID, adapterSession)
 	a.emitCommandSnapshot(claudeSDKCommandSnapshot(session.AgentSessionID, adapterSession.liveState))

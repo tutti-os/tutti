@@ -535,6 +535,20 @@ function AgentSystemNoticeMessage({
       />
     );
   }
+  if (isContextRecoveryPendingNotice(message)) {
+    const recoveryDetail = [
+      translate("agentHost.agentGui.contextRecoveryScheduledDetail"),
+      detail
+    ]
+      .filter(Boolean)
+      .join("\n");
+    return (
+      <ContextCompactionDivider
+        text={translate("agentHost.agentGui.contextRecoveryScheduled")}
+        detail={recoveryDetail}
+      />
+    );
+  }
   if (isContextCompactionInterruptedNotice(message)) {
     return (
       <ContextCompactionDivider
@@ -622,6 +636,17 @@ function isContextCompactionInterruptedNotice(
   return (
     notice?.command === "compact" &&
     (notice.commandStatus === "failed" || notice.commandStatus === "canceled")
+  );
+}
+
+function isContextRecoveryPendingNotice(
+  message: AgentMessageContentVM
+): boolean {
+  const notice = message.systemNotice;
+  return (
+    notice?.noticeKind === "context_recovery_pending" &&
+    notice.command === "compact" &&
+    notice.commandStatus === "failed"
   );
 }
 

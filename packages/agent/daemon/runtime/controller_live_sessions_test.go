@@ -323,6 +323,7 @@ type releasableAdapter struct {
 	validateRelease            chan struct{}
 	execStarted                chan string
 	execRelease                chan struct{}
+	startCalls                 int
 }
 
 func newReleasableAdapter() *releasableAdapter {
@@ -341,11 +342,58 @@ func (*releasableAdapter) Provider() string { return ProviderCodex }
 func (a *releasableAdapter) Start(_ context.Context, session Session) ([]activityshared.Event, error) {
 	session.ProviderSessionID = "provider-session-" + session.AgentSessionID
 	a.mu.Lock()
+	a.startCalls++
 	a.live[session.AgentSessionID] = true
 	a.mu.Unlock()
 	return []activityshared.Event{
 		newSessionActivityEvent(session, EventSessionStarted, SessionStatusReady, nil),
 	}, nil
+}
+
+func TestControllerPrepareContextRecoveryReplacesLiveProviderBetweenTurns(t *testing.T) {
+	t.Parallel()
+
+	adapter := newReleasableAdapter()
+	controller := NewController([]Adapter{adapter}, nil)
+	started := startReleasableSession(t, controller, "context-recovery-session")
+	controller.mu.Lock()
+	key := sessionKey(started.Session.RoomID, started.Session.AgentSessionID)
+	pending := controller.sessions[key]
+	pending.RuntimeContext = map[string]any{
+		claudeSDKContextRecoveryRuntimeKey: claudeSDKContextRecoveryRuntimeContext(
+			claudeSDKContextRecoveryState{
+				Generation:              1,
+				State:                   claudeSDKContextRecoveryStatePending,
+				Trigger:                 claudeSDKContextRecoveryTriggerCompaction,
+				SourceProviderSessionID: pending.ProviderSessionID,
+			},
+		),
+	}
+	controller.sessions[key] = pending
+	controller.mu.Unlock()
+
+	result, err := controller.PrepareContextRecovery(
+		t.Context(),
+		PrepareContextRecoveryInput{
+			RoomID:         started.Session.RoomID,
+			AgentSessionID: started.Session.AgentSessionID,
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !result.Recovered || adapter.releaseCalls != 1 || adapter.startCalls != 2 {
+		t.Fatalf(
+			"recovery=%#v releaseCalls=%d startCalls=%d",
+			result,
+			adapter.releaseCalls,
+			adapter.startCalls,
+		)
+	}
+	state := claudeSDKContextRecoveryFromRuntimeContext(result.Session.RuntimeContext)
+	if state.State != claudeSDKContextRecoveryStateHandoff || state.Generation != 1 {
+		t.Fatalf("recovery state=%#v", state)
+	}
 }
 
 func (a *releasableAdapter) Resume(_ context.Context, session Session) error {
