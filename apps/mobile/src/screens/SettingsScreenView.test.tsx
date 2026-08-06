@@ -70,14 +70,29 @@ test("uses the agreed downward-swipe threshold", () => {
   expect(shouldDismissThemeSheetSwipe(48)).toBe(true);
 });
 
+test("makes software update a manual action", () => {
+  let renderer: ReactTestRenderer;
+  act(() => {
+    renderer = create(settingsView());
+  });
+
+  const row = renderer!.root.find(
+    (node) =>
+      node.type === NativeListRow && node.props.title === "Software update"
+  );
+  expect(row.props.disabled).toBe(false);
+  expect(row.props.onPress).toEqual(expect.any(Function));
+  expect(row.props.description).toBe("Version 0.1.0");
+});
+
 function settingsView(
   onThemePreferenceChange: (preference: MobileThemePreference) => void = () =>
     undefined
 ) {
   return (
     <SettingsScreenView
-      appVersion="0.1.0"
       onBack={() => undefined}
+      onSoftwareUpdatePress={() => undefined}
       onSignOut={() => undefined}
       onThemePreferenceChange={onThemePreferenceChange}
       session={{
@@ -87,6 +102,8 @@ function settingsView(
         sessionId: "session-1",
         userId: "user-1"
       }}
+      softwareUpdateDescription="Version 0.1.0"
+      softwareUpdateDisabled={false}
       themePreference="system"
     />
   );

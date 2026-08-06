@@ -17,6 +17,7 @@ def missingReleaseSigningVariables = releaseSigningEnvironment.findAll { _, valu
     value == null || value.trim().isEmpty()
 }.keySet()
 def androidVersionCode = (System.getenv("TUTTI_ANDROID_VERSION_CODE") ?: "1").toInteger()
+def androidVersionName = System.getenv("TUTTI_ANDROID_VERSION_NAME") ?: "0.1.0"
 
 tasks.register("verifyMobileGoAar") {
     doLast {
@@ -61,7 +62,7 @@ android {
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode androidVersionCode
-        versionName "0.1.0"
+        versionName androidVersionName
     }
     signingConfigs {
         release {
@@ -97,6 +98,7 @@ tasks.matching { task -> task.name == "preReleaseBuild" }.configureEach {
 
 dependencies {
     implementation("androidx.browser:browser:1.10.0")
+    implementation("androidx.core:core-ktx:1.16.0")
     implementation("androidx.lifecycle:lifecycle-process:2.6.2")
     implementation("com.facebook.react:react-android")
     implementation("com.facebook.react:hermes-android")

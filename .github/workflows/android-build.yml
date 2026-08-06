@@ -12,9 +12,20 @@ on:
           - android
           - ios
           - all
+      publish_android:
+        description: Publish the Android APK and latest.json to the public release feed
+        required: true
+        type: boolean
+        default: false
+      android_version_name:
+        description: Stable Android version name when publishing, such as 0.1.1
+        required: true
+        type: string
+        default: 0.1.0
 
 permissions:
   contents: read
+  id-token: write
 
 concurrency:
   group: mobile-internal-build-${{ inputs.platform }}-${{ github.ref }}
@@ -108,6 +119,7 @@ jobs:
           TUTTI_ANDROID_RELEASE_KEY_ALIAS: ${{ secrets.ANDROID_RELEASE_KEY_ALIAS }}
           TUTTI_ANDROID_RELEASE_KEY_PASSWORD: ${{ secrets.ANDROID_RELEASE_KEY_PASSWORD }}
           TUTTI_ANDROID_VERSION_CODE: ${{ github.run_number }}
+          TUTTI_ANDROID_VERSION_NAME: ${{ inputs.android_version_name }}
         run: |
           pnpm --filter @tutti-os/mobile android:aar
           cd apps/mobile/android
@@ -145,6 +157,111 @@ jobs:
       - name: Generate APK checksum
         working-directory: apps/mobile/android/app/build/outputs/apk/release
         run: sha256sum app-release.apk > SHA256SUMS
+
+      - name: Validate Android release publishing configuration
+        if: inputs.publish_android && (inputs.platform == 'android' || inputs.platform == 'all')
+        env:
+          AWS_REGION: ${{ vars.AWS_REGION }}
+          TUTTI_ARTIFACTS_AWS_ROLE_ARN: ${{ vars.TUTTI_ARTIFACTS_AWS_ROLE_ARN }}
+          TUTTI_MOBILE_RELEASE_ASSETS_BASE_URL: ${{ vars.TUTTI_MOBILE_RELEASE_ASSETS_BASE_URL }}
+          TUTTI_MOBILE_RELEASE_ASSETS_S3_BUCKET: ${{ vars.TUTTI_MOBILE_RELEASE_ASSETS_S3_BUCKET }}
+          TUTTI_MOBILE_RELEASE_ASSETS_S3_PREFIX: ${{ vars.TUTTI_MOBILE_RELEASE_ASSETS_S3_PREFIX }}
+          TUTTI_ANDROID_VERSION_NAME: ${{ inputs.android_version_name }}
+        run: |
+          for name in AWS_REGION TUTTI_ARTIFACTS_AWS_ROLE_ARN TUTTI_MOBILE_RELEASE_ASSETS_BASE_URL TUTTI_MOBILE_RELEASE_ASSETS_S3_BUCKET TUTTI_MOBILE_RELEASE_ASSETS_S3_PREFIX; do
+            if [[ -z "${!name:-}" ]]; then
+              echo "Missing required Android release publishing variable: ${name}" >&2
+              exit 1
+            fi
+          done
+          if [[ ! "${TUTTI_ANDROID_VERSION_NAME}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "android_version_name must be stable semver x.y.z." >&2
+            exit 1
+          fi
+
+      - name: Build Android release pointer
+        if: inputs.publish_android && (inputs.platform == 'android' || inputs.platform == 'all')
+        env:
+          TUTTI_ANDROID_VERSION_CODE: ${{ github.run_number }}
+          TUTTI_ANDROID_VERSION_NAME: ${{ inputs.android_version_name }}
+          TUTTI_MOBILE_RELEASE_ASSETS_BASE_URL: ${{ vars.TUTTI_MOBILE_RELEASE_ASSETS_BASE_URL }}
+        run: |
+          node tools/scripts/build-mobile-release-latest.mjs \
+            --apk apps/mobile/android/app/build/outputs/apk/release/app-release.apk \
+            --base-url "${TUTTI_MOBILE_RELEASE_ASSETS_BASE_URL}" \
+            --output mobile-release-latest.json \
+            --tag "tutti-mobile-v${TUTTI_ANDROID_VERSION_NAME}" \
+            --version-code "${TUTTI_ANDROID_VERSION_CODE}" \
+            --version-name "${TUTTI_ANDROID_VERSION_NAME}"
+
+      - name: Configure AWS credentials for Android release
+        if: inputs.publish_android && (inputs.platform == 'android' || inputs.platform == 'all')
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-region: ${{ vars.AWS_REGION }}
+          role-to-assume: ${{ vars.TUTTI_ARTIFACTS_AWS_ROLE_ARN }}
+
+      - name: Prevent Android release rollback
+        if: inputs.publish_android && (inputs.platform == 'android' || inputs.platform == 'all')
+        env:
+          TUTTI_MOBILE_RELEASE_ASSETS_S3_BUCKET: ${{ vars.TUTTI_MOBILE_RELEASE_ASSETS_S3_BUCKET }}
+          TUTTI_MOBILE_RELEASE_ASSETS_S3_PREFIX: ${{ vars.TUTTI_MOBILE_RELEASE_ASSETS_S3_PREFIX }}
+          TUTTI_ANDROID_VERSION_CODE: ${{ github.run_number }}
+          TUTTI_ANDROID_VERSION_NAME: ${{ inputs.android_version_name }}
+        run: |
+          prefix="${TUTTI_MOBILE_RELEASE_ASSETS_S3_PREFIX%/}"
+          pointer_path="s3://${TUTTI_MOBILE_RELEASE_ASSETS_S3_BUCKET}/${prefix}/latest.json"
+          candidate_tag="tutti-mobile-v${TUTTI_ANDROID_VERSION_NAME}"
+          if aws s3 cp "${pointer_path}" current-mobile-release-pointer.json 2> current-mobile-pointer-download.err; then
+            export RELEASE_VERSION_CODE="${TUTTI_ANDROID_VERSION_CODE}"
+            export RELEASE_TAG="${candidate_tag}"
+            node <<'NODE'
+          const fs = require("node:fs");
+          const current = JSON.parse(fs.readFileSync("current-mobile-release-pointer.json", "utf8"));
+          const currentCode = Number(current.versionCode);
+          const candidateCode = Number(process.env.RELEASE_VERSION_CODE);
+          if (!Number.isSafeInteger(currentCode) || currentCode <= 0) {
+            throw new Error("Existing Android release pointer has an invalid versionCode.");
+          }
+          if (!Number.isSafeInteger(candidateCode) || candidateCode <= 0) {
+            throw new Error("Candidate Android release has an invalid versionCode.");
+          }
+          if (candidateCode < currentCode) {
+            throw new Error(`Refusing to move Android release from versionCode ${currentCode} back to ${candidateCode}.`);
+          }
+          if (current.tag === process.env.RELEASE_TAG && candidateCode > currentCode) {
+            throw new Error(`Android version ${process.env.RELEASE_TAG} already has a published release.`);
+          }
+          if (candidateCode === currentCode && current.tag !== process.env.RELEASE_TAG) {
+            throw new Error(`Android versionCode ${candidateCode} is already published by ${current.tag}.`);
+          }
+          NODE
+          elif ! grep -Eq "(404|NoSuchKey|Not Found)" current-mobile-pointer-download.err; then
+            cat current-mobile-pointer-download.err >&2
+            exit 1
+          fi
+
+      - name: Publish Android release assets and pointer
+        if: inputs.publish_android && (inputs.platform == 'android' || inputs.platform == 'all')
+        env:
+          TUTTI_MOBILE_RELEASE_ASSETS_S3_BUCKET: ${{ vars.TUTTI_MOBILE_RELEASE_ASSETS_S3_BUCKET }}
+          TUTTI_MOBILE_RELEASE_ASSETS_S3_PREFIX: ${{ vars.TUTTI_MOBILE_RELEASE_ASSETS_S3_PREFIX }}
+          TUTTI_ANDROID_VERSION_NAME: ${{ inputs.android_version_name }}
+        run: |
+          prefix="${TUTTI_MOBILE_RELEASE_ASSETS_S3_PREFIX%/}"
+          remote_dir="s3://${TUTTI_MOBILE_RELEASE_ASSETS_S3_BUCKET}/${prefix}/tutti-mobile-v${TUTTI_ANDROID_VERSION_NAME}"
+          pointer_path="s3://${TUTTI_MOBILE_RELEASE_ASSETS_S3_BUCKET}/${prefix}/latest.json"
+          aws s3 cp apps/mobile/android/app/build/outputs/apk/release/app-release.apk \
+            "${remote_dir}/app-release.apk" \
+            --cache-control "public, max-age=31536000, immutable" \
+            --content-type "application/vnd.android.package-archive"
+          aws s3 cp apps/mobile/android/app/build/outputs/apk/release/SHA256SUMS \
+            "${remote_dir}/SHA256SUMS" \
+            --cache-control "public, max-age=31536000, immutable" \
+            --content-type "text/plain"
+          aws s3 cp mobile-release-latest.json "${pointer_path}" \
+            --cache-control "public, max-age=60" \
+            --content-type "application/json"
 
       - name: Upload internal Android artifact
         uses: actions/upload-artifact@v4
