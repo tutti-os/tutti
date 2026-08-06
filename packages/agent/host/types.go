@@ -578,10 +578,11 @@ type RailPlacement struct {
 // import paths, workspace resolution, identity, and transport state are not
 // part of this type.
 type CreateSessionInput struct {
-	AgentSessionID string
-	AgentTargetID  string
-	Provider       string
-	InitialContent []PromptContentBlock
+	AgentSessionID           string
+	AgentTargetID            string
+	Provider                 string
+	InitialContent           []PromptContentBlock
+	TurnCapabilityInvocation *TurnCapabilityInvocation
 	// InitialGoalControl applies a Goal mutation after creating the Session
 	// without opening an initial Turn. It is mutually exclusive with
 	// InitialContent; ClientSubmitID is the durable mutation identity.
@@ -612,12 +613,13 @@ type CreateSessionInput struct {
 }
 
 type SendInput struct {
-	CapabilityRefs    []CapabilityReference
-	TurnID            string
-	TuttiModeSnapshot *TuttiModeTurnSnapshot
-	Content           []PromptContentBlock
-	DisplayPrompt     string
-	Metadata          map[string]any
+	CapabilityRefs           []CapabilityReference
+	TurnCapabilityInvocation *TurnCapabilityInvocation
+	TurnID                   string
+	TuttiModeSnapshot        *TuttiModeTurnSnapshot
+	Content                  []PromptContentBlock
+	DisplayPrompt            string
+	Metadata                 map[string]any
 	// ClientSubmitID is the caller-owned idempotency identity. When present it
 	// overrides any legacy clientSubmitId value carried in Metadata.
 	ClientSubmitID string

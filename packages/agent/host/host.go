@@ -23,6 +23,7 @@ type Config struct {
 	SessionForkState       SessionForkProviderStateBinder
 	SessionForkAttachments SessionForkAttachmentStager
 	Runtime                RuntimeController
+	TurnCapabilities       RuntimeTurnCapabilityPort
 	HistoryRuntime         RuntimeHistoryController
 	RuntimePreparation     RuntimePreparationPort
 	SettingsPolicy         SettingsPolicy
@@ -77,6 +78,7 @@ type Host struct {
 	sessionForkState       SessionForkProviderStateBinder
 	sessionForkAttachments SessionForkAttachmentStager
 	runtime                RuntimeController
+	turnCapabilities       RuntimeTurnCapabilityPort
 	historyRuntime         RuntimeHistoryController
 	preparation            RuntimePreparationPort
 	settingsPolicy         SettingsPolicy
@@ -126,6 +128,7 @@ func New(config Config) *Host {
 		sessionForkContext: config.SessionForkContext, sessionForkState: config.SessionForkState,
 		sessionForkAttachments: config.SessionForkAttachments,
 		runtime:                config.Runtime,
+		turnCapabilities:       config.TurnCapabilities,
 		historyRuntime:         config.HistoryRuntime,
 		sessionForkRecovery:    config.SessionForkRecovery,
 		preparation:            config.RuntimePreparation, settingsPolicy: config.SettingsPolicy, attachments: config.Attachments,

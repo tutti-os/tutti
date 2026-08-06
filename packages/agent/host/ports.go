@@ -257,6 +257,12 @@ type RuntimeController interface {
 	Close(context.Context, RuntimeCloseInput) error
 }
 
+// RuntimeTurnCapabilityPort performs provider-owned capability readiness for
+// one already claimed Turn. Host owns the claim, lock, and ordinary Exec call.
+type RuntimeTurnCapabilityPort interface {
+	EnsureTurnCapability(context.Context, RuntimeTurnCapabilityInput) (RuntimeTurnCapabilityResult, error)
+}
+
 // RuntimeSessionLiveness distinguishes a registered runtime Session from a
 // live provider connection. It is required when Goal generation fencing is
 // configured: background recovery must never guess liveness and reconnect an

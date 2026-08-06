@@ -37,6 +37,17 @@ func (s *Service) SendInput(ctx context.Context, workspaceID string, agentSessio
 		s.reportAgentServiceNodeFailure(ctx, agentSessionID, "message_send", "content_normalized", "", nodeStartedAt, err)
 		return SendInputResult{}, err
 	}
+	runtimeSession, _ := s.controller().Session(workspaceID, agentSessionID)
+	provider := runtimeSession.Provider
+	if strings.TrimSpace(provider) == "" {
+		if persistedSession, getErr := s.Get(ctx, workspaceID, agentSessionID); getErr == nil {
+			provider = persistedSession.Provider
+		}
+	}
+	var turnCapability *agenthost.TurnCapabilityInvocation
+	if !input.Guidance {
+		normalizedContent, turnCapability = codexNativeTurnCapability(provider, normalizedContent)
+	}
 	s.reportAgentServiceNodeSuccess(ctx, agentSessionID, "message_send", "content_normalized", "", nodeStartedAt)
 	logAgentSubmitTrace("service.send.content_normalized", workspaceID, agentSessionID, input.ClientSubmitID, input.Metadata, map[string]any{
 		"content_block_count": len(normalizedContent),
@@ -45,12 +56,11 @@ func (s *Service) SendInput(ctx context.Context, workspaceID string, agentSessio
 		CapabilityRefs: append([]CapabilityReference(nil), input.CapabilityRefs...),
 		Content:        normalizedContent, DisplayPrompt: input.DisplayPrompt,
 		Metadata: cloneMetadata(input.Metadata), ClientSubmitID: input.ClientSubmitID, Guidance: input.Guidance,
-		TurnID: input.TurnID,
+		TurnID: input.TurnID, TurnCapabilityInvocation: turnCapability,
 	}
 	var preparedTurnID string
 	var preparedSnapshot tuttimodeactivationbiz.TurnSnapshot
 	if _, typedGoal := agenthost.ParseTypedGoalControl(normalizedContent, input.Guidance); !typedGoal {
-		runtimeSession, _ := s.controller().Session(workspaceID, agentSessionID)
 		existingCanonicalTurnID, claimErr := s.existingSubmitCanonicalTurnID(ctx, workspaceID, agentSessionID, input.ClientSubmitID, input.Metadata)
 		if claimErr != nil {
 			return SendInputResult{}, claimErr
@@ -100,7 +110,7 @@ func (s *Service) SendInput(ctx context.Context, workspaceID string, agentSessio
 		return SendInputResult{}, ErrSubmitDeliveryUnknown
 	}
 	turnID := hostResult.TurnID
-	provider := strings.TrimSpace(hostResult.Session.Provider)
+	provider = strings.TrimSpace(hostResult.Session.Provider)
 	logAgentSubmitTrace("service.send.runtime_session_ready", workspaceID, agentSessionID, input.ClientSubmitID, input.Metadata, nil)
 	logAgentSubmitTrace("service.send.prompt_validated", workspaceID, agentSessionID, input.ClientSubmitID, input.Metadata, nil)
 	logAgentSubmitTrace("service.send.prompt_prepared", workspaceID, agentSessionID, input.ClientSubmitID, input.Metadata, map[string]any{"content_block_count": len(normalizedContent)})

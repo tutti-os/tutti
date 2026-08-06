@@ -83,6 +83,7 @@ func (s *Service) CreateWithResult(ctx context.Context, workspaceID string, inpu
 		}
 		s.reportAgentServiceNodeSuccess(ctx, input.AgentSessionID, "session_create", "content_normalized", provider, nodeStartedAt)
 	}
+	normalizedContent, turnCapability := codexNativeTurnCapability(provider, normalizedContent)
 	logAgentSubmitTrace("service.create.content_normalized", workspaceID, input.AgentSessionID, input.ClientSubmitID, input.Metadata, map[string]any{"content_block_count": len(normalizedContent)})
 	requestedModel := value(input.Model)
 	nodeStartedAt := time.Now()
@@ -186,7 +187,8 @@ func (s *Service) CreateWithResult(ctx context.Context, workspaceID string, inpu
 	hostInput := agenthost.CreateSessionInput{
 		AgentSessionID: input.AgentSessionID, AgentTargetID: input.AgentTargetID, Provider: input.Provider,
 		InitialContent: normalizedContent, InitialGoalControl: input.InitialGoalControl, InitialDisplayPrompt: input.InitialDisplayPrompt,
-		Metadata: input.Metadata, ClientSubmitID: input.ClientSubmitID,
+		TurnCapabilityInvocation: turnCapability,
+		Metadata:                 input.Metadata, ClientSubmitID: input.ClientSubmitID,
 		CapabilityRefs: append([]CapabilityReference(nil), input.CapabilityRefs...), Title: input.Title, Cwd: stringPointer(prepared.Cwd),
 		PermissionModeID: input.PermissionModeID,
 		Model:            stringPointer(runtimeSettings.Model),

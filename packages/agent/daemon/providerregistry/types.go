@@ -16,6 +16,16 @@ const (
 	RuntimeKindClaudeSDK      RuntimeKind = "claude_sdk"
 )
 
+// TurnCapabilityStrategy identifies provider-owned capabilities that may be
+// attached to the current Turn. Consumers dispatch on this strategy rather
+// than comparing provider identities in lifecycle or adapter code.
+type TurnCapabilityStrategy string
+
+const (
+	TurnCapabilityStrategyNone         TurnCapabilityStrategy = ""
+	TurnCapabilityStrategyNativePlugin TurnCapabilityStrategy = "native_plugin_turn"
+)
+
 type StandardACPAdapterStrategy string
 
 const (
@@ -167,12 +177,13 @@ const (
 type IdentityDescriptor = canonical.ProviderIdentity
 
 type RuntimeDescriptor struct {
-	Kind                RuntimeKind
-	Name                string
-	Command             []string
-	ClientInfoName      string
-	AuthRequiredMessage string
-	AppServerSkillRoots AppServerSkillRootsStrategy
+	Kind                   RuntimeKind
+	Name                   string
+	Command                []string
+	ClientInfoName         string
+	AuthRequiredMessage    string
+	TurnCapabilityStrategy TurnCapabilityStrategy
+	AppServerSkillRoots    AppServerSkillRootsStrategy
 	// NativeSessionFork marks runtimes whose provider strategy may expose a
 	// native session-fork primitive. The live adapter must still attest the
 	// exact protocol/version before advertising any fork capability.

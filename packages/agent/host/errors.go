@@ -33,6 +33,8 @@ var (
 	ErrEditRetryInProgress               = errors.New("agent history edit is still being confirmed")
 	ErrEditRetryResendPending            = errors.New("agent history was rolled back but the edited turn still needs to be resent")
 	ErrEditRetryRecoveryRequired         = errors.New("agent provider history diverged and requires explicit recovery")
+	ErrTurnCapabilityUnsupported         = errors.New("agent runtime does not support turn capabilities")
+	ErrTurnCapabilityUnavailable         = errors.New("requested turn capability is unavailable")
 )
 
 // ProviderError preserves a provider-owned failure across the runtime adapter
