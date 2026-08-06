@@ -75,6 +75,53 @@ export function MobileFolderGlyph({
   );
 }
 
+export function MobileSearchGlyph({
+  color,
+  size = 20
+}: {
+  color: string;
+  size?: number;
+}) {
+  const ringSize = size * 0.58;
+  const strokeWidth = Math.max(1.7, size * 0.1);
+  return (
+    <View
+      accessibilityElementsHidden
+      importantForAccessibility="no-hide-descendants"
+      style={{ height: size, width: size }}
+    >
+      <View
+        style={[
+          styles.searchRing,
+          {
+            borderColor: color,
+            borderRadius: ringSize / 2,
+            borderWidth: strokeWidth,
+            height: ringSize,
+            left: size * 0.08,
+            top: size * 0.08,
+            width: ringSize
+          }
+        ]}
+      />
+      <View
+        style={[
+          styles.searchHandle,
+          {
+            backgroundColor: color,
+            borderRadius: strokeWidth / 2,
+            height: strokeWidth,
+            left: size * 0.55,
+            top: size * 0.65,
+            transform: [{ rotate: "45deg" }],
+            width: size * 0.34
+          }
+        ]}
+      />
+    </View>
+  );
+}
+
 export function MobileQRCodeGlyph({
   color,
   size = 20
@@ -281,6 +328,12 @@ const styles = StyleSheet.create({
   },
   pairingRing: {
     borderWidth: 1,
+    position: "absolute"
+  },
+  searchHandle: {
+    position: "absolute"
+  },
+  searchRing: {
     position: "absolute"
   }
 });

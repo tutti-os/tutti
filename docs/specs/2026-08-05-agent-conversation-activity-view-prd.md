@@ -33,6 +33,8 @@ Native Mobile 会话首页从本次实现起固定使用 Activity View。Mobile 
 
 搜索仍然临时接管内容区，但由共享 Conversation Rail query controller 负责服务端分页查询，从而可以查找当前 Engine 尚未载入的历史会话；清空搜索后恢复 Activity View。该 Mobile 差异只改变承载视图和历史搜索入口，不改变 canonical session、attention/read 或 pin durable owner；Desktop 的普通 Rail 和 Activity View 行为不变。
 
+Mobile Activity 会话行不显示单独的 `...` 操作按钮。普通点击进入会话，长按会话行打开重命名和删除操作列表。存在项目归属时，项目名以文件夹图标加项目名的形式显示在标题下方；没有项目归属时显示“对话”来源标识。
+
 ### 1.1 Codex 体验同构原则
 
 Codex.app 当前正式安装版是本功能所有**可观察产品行为**的 golden reference。入口位置与形态、按钮状态、coachmark、菜单结构与默认值、分组、排序、空状态、批量操作、选中保留、滚动、实时更新与列表稳定策略、加载反馈、键盘与无障碍行为均默认逐项复刻，不由 Tutti 另行定义“更合理”的标准。

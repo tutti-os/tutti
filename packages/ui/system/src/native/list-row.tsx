@@ -15,6 +15,7 @@ export interface NativeListRowProps {
   description?: ReactNode;
   disabled?: boolean;
   leading?: ReactNode;
+  onLongPress?(): void;
   onPress?(): void;
   selected?: boolean;
   style?: StyleProp<ViewStyle>;
@@ -28,6 +29,7 @@ export function NativeListRow({
   description,
   disabled = false,
   leading,
+  onLongPress,
   onPress,
   selected = false,
   style,
@@ -37,7 +39,7 @@ export function NativeListRow({
 }: NativeListRowProps) {
   const theme = useNativeTheme();
   const styles = createStyles(theme);
-  const interactive = onPress !== undefined;
+  const interactive = onLongPress !== undefined || onPress !== undefined;
 
   return (
     <Pressable
@@ -45,6 +47,7 @@ export function NativeListRow({
       accessibilityRole={interactive ? "button" : undefined}
       accessibilityState={{ disabled, selected }}
       disabled={!interactive || disabled}
+      onLongPress={onLongPress}
       onPress={onPress}
       style={({ pressed }) => [
         styles.row,

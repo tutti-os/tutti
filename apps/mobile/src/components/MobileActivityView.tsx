@@ -26,6 +26,7 @@ import {
   MobileKeyboardAvoidingView,
   mobileKeyboardDismissMode
 } from "./MobileKeyboardAvoidingView";
+import { MobileFolderGlyph, MobileSearchGlyph } from "./MobileLocationGlyphs";
 import {
   searchConversationIds,
   useMobileActivityViewModel
@@ -241,7 +242,7 @@ export function MobileActivityView({
 
       <View style={styles.bottomDock}>
         <View style={styles.searchPill}>
-          <Text style={styles.searchIcon}>⌕</Text>
+          <MobileSearchGlyph color={theme.color.textSecondary} size={20} />
           <TextInput
             onChangeText={(value) => {
               setSearchDraft(value);
@@ -553,29 +554,32 @@ function ActivityRow({
   return (
     <NativeListRow
       accessibilityLabel={`${title}, ${secondary}, ${status}`}
-      description={secondary}
+      description={
+        projectLabel ? (
+          <View style={styles.projectDescription}>
+            <MobileFolderGlyph color={styles.projectLabel.color} size={14} />
+            <Text numberOfLines={1} style={styles.projectLabel}>
+              {projectLabel}
+            </Text>
+          </View>
+        ) : (
+          secondary
+        )
+      }
+      onLongPress={() => onRequestActions(conversation.id)}
       onPress={() => onSelectSession(conversation.id)}
       title={title}
       titleNumberOfLines={1}
       trailing={
-        <View style={styles.trailing}>
-          {statusStyle ? (
+        statusStyle ? (
+          <View style={styles.trailing}>
             <View
               accessibilityLabel={status}
               accessibilityRole="image"
               style={[styles.sessionStatusDot, statusStyle]}
             />
-          ) : null}
-          <NativeIconButton
-            accessibilityLabel={t("moreActions")}
-            icon={<Text style={styles.moreIcon}>⋯</Text>}
-            onPress={(event) => {
-              event.stopPropagation();
-              onRequestActions(conversation.id);
-            }}
-            style={styles.moreButton}
-          />
-        </View>
+          </View>
+        ) : undefined
       }
     />
   );

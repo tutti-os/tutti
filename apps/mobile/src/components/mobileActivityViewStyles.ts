@@ -82,8 +82,6 @@ export function createMobileActivityStyles(theme: NativeTheme) {
     list: { gap: theme.space.medium, paddingBottom: theme.space.medium },
     loadMore: { alignItems: "center", padding: theme.space.medium },
     loadMoreLabel: { color: theme.color.accent, fontWeight: "600" },
-    moreButton: { height: 44, width: 40 },
-    moreIcon: { color: theme.color.muted, fontSize: 14 },
     pendingDot: { backgroundColor: theme.color.accent },
     pressed: { opacity: 0.7 },
     renameInput: {
@@ -99,7 +97,6 @@ export function createMobileActivityStyles(theme: NativeTheme) {
       flex: 1,
       padding: theme.space.medium
     },
-    searchIcon: { color: theme.color.textSecondary, fontSize: 18 },
     searchInput: {
       color: theme.color.text,
       flex: 1,
@@ -132,6 +129,17 @@ export function createMobileActivityStyles(theme: NativeTheme) {
       padding: theme.space.large
     },
     sheetTitle: { color: theme.color.textSecondary, fontWeight: "600" },
+    projectDescription: {
+      alignItems: "center",
+      flexDirection: "row",
+      flexShrink: 1,
+      gap: theme.space.small / 2
+    },
+    projectLabel: {
+      color: theme.color.muted,
+      flexShrink: 1,
+      fontSize: theme.space.small
+    },
     statusButton: {
       alignItems: "center",
       height: 40,
