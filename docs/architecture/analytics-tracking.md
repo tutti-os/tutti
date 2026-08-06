@@ -116,20 +116,22 @@ engine.
 `tuttid` `ActivityProjection` observes committed canonical Turn mutations and
 attempts at most one event per terminal Turn within its in-memory deduplication
 window. Renderer snapshots are not an analytics authority, and reporting,
-message reads, model normalization, or transport failure must never delay or
-fail the Turn.
+message reads, parameter normalization, or transport failure must never delay
+or fail the Turn. Terminal reporting never queries the live provider model
+catalog or starts provider discovery processes.
 
 The client-submit timestamp, new/existing Session classification, and queue
-fact are kept only in a bounded, six-hour process-memory map keyed by the local
-Turn identity. Runtime execution records the entry before provider dispatch;
-terminal observation consumes and deletes it. These fields must not be copied
-into canonical message payloads or SQLite rows, and the raw client-submit time
-must not be copied into local submit-trace logs. The terminal summary itself
-continues through the existing DataFinder reporter transport. A daemon restart
-intentionally loses the entry: timing then falls back to the canonical Turn
-start, Session state becomes `unknown`, and queue state remains null. This is
-an accepted best-effort analytics degradation, not a reason to add a durable
-telemetry outbox.
+fact, plus the runtime provider and selected model snapshot, are kept only in a
+bounded, six-hour process-memory map keyed by the local Turn identity. Runtime
+execution records the entry before provider dispatch; terminal observation
+consumes and deletes it. These fields must not be copied into canonical message
+payloads or SQLite rows, and the raw client-submit time must not be copied into
+local submit-trace logs. The terminal summary itself continues through the
+existing DataFinder reporter transport. A daemon restart intentionally loses
+the entry: timing then falls back to the canonical Turn start, Session state
+becomes `unknown`, queue state remains null, and provider/model fall back to the
+current canonical Session projection. This is an accepted best-effort analytics
+degradation, not a reason to add a durable telemetry outbox.
 
 Both submit provenance and terminal-attempt deduplication are bounded to 4,096
 entries and expire after six hours through minute-granularity lazy pruning.
@@ -142,8 +144,9 @@ does not claim an attempt or consume submit provenance. Expiry or eviction may
 allow a later dirty notification for an old settled Turn to make another
 best-effort attempt; this bounded behavior is intentional.
 
-The event contains only a strict content-free whitelist: normalized provider
-and catalog model (`custom` or `unknown` when a raw value is not safe),
+The event contains only a strict content-free whitelist: the normalized
+provider and safe model identifier captured at submission (`custom` for local
+`~` model references and `unknown` when unavailable or unsafe),
 new/existing/unknown Session state, client-submit or canonical-Turn timing
 source, first visible progress, assistant-text TTFT, total duration, outcome,
 maximum idle duration, long-idle and tool-call facts, queue state, and nullable

@@ -81,33 +81,28 @@ func TestAgentTurnAnalyticsOutcomeUsesStructuredErrorCodeOnly(t *testing.T) {
 	}
 }
 
-type turnPerformanceModelCatalog struct {
-	result AgentModelCatalogResult
-	err    error
-}
-
-func (c turnPerformanceModelCatalog) ListModels(context.Context, AgentModelCatalogInput) (AgentModelCatalogResult, error) {
-	return c.result, c.err
-}
-
-func TestResolveAgentTurnAnalyticsModelRedactsNonCatalogValues(t *testing.T) {
-	catalog := turnPerformanceModelCatalog{result: AgentModelCatalogResult{
-		Source: "codex-cli", Models: []AgentModelOption{{ID: "gpt-5"}},
-	}}
-	if got := resolveAgentTurnAnalyticsModel(context.Background(), catalog, agentactivitybiz.Session{Provider: "codex", Model: "gpt-5"}); got != "gpt-5" {
-		t.Fatalf("catalog model = %q", got)
+func TestAgentTurnAnalyticsRuntimeIdentityUsesSubmitSnapshotWithoutCatalogLookup(t *testing.T) {
+	provider, model := agentTurnAnalyticsRuntimeIdentity(agentTurnPerformanceProvenance{
+		provider:                 "codex",
+		model:                    "gpt-5",
+		runtimeIdentityAvailable: true,
+	}, agentactivitybiz.Session{Provider: "opencode", Model: "changed-after-submit"})
+	if provider != "codex" || model != "gpt-5" {
+		t.Fatalf("submit identity = %q/%q", provider, model)
 	}
-	if got := resolveAgentTurnAnalyticsModel(context.Background(), catalog, agentactivitybiz.Session{Provider: "codex", Model: "private-model-name"}); got != "custom" {
+
+	provider, model = agentTurnAnalyticsRuntimeIdentity(
+		agentTurnPerformanceProvenance{},
+		agentactivitybiz.Session{Provider: "acp:gemini", Model: "https://private.example/model"},
+	)
+	if provider != "acp:gemini" || model != "unknown" {
+		t.Fatalf("restart fallback identity = %q/%q", provider, model)
+	}
+	if got := normalizeAgentTurnModel("private-model-name"); got != "private-model-name" {
+		t.Fatalf("safe model = %q", got)
+	}
+	if got := normalizeAgentTurnModel("~/private-model"); got != "custom" {
 		t.Fatalf("custom model = %q", got)
-	}
-	unsafeCatalog := turnPerformanceModelCatalog{result: AgentModelCatalogResult{
-		Source: "extension", Models: []AgentModelOption{{ID: "https://private.example/model"}},
-	}}
-	if got := resolveAgentTurnAnalyticsModel(context.Background(), unsafeCatalog, agentactivitybiz.Session{Provider: "acp:example", Model: "https://private.example/model"}); got != "unknown" {
-		t.Fatalf("unsafe catalog model = %q", got)
-	}
-	if got := normalizeAgentTurnProvider("acp:gemini"); got != "acp:gemini" {
-		t.Fatalf("extension provider = %q", got)
 	}
 }
 
@@ -204,8 +199,9 @@ func TestActivityProjectionDoesNotClaimTurnPerformanceWhenReporterDisabled(t *te
 		t.Run(tt.name, func(t *testing.T) {
 			projection := NewActivityProjection(nil)
 			projection.SetAnalyticsReporter(tt.reporter)
-			projection.RecordTurnPerformanceProvenance("workspace-1", "session-1", "turn-1", map[string]any{
-				"clientSubmittedAtUnixMs": int64(1_000),
+			projection.RecordTurnPerformanceProvenance(TurnPerformanceProvenanceInput{
+				WorkspaceID: "workspace-1", AgentSessionID: "session-1", TurnID: "turn-1",
+				Metadata: map[string]any{"clientSubmittedAtUnixMs": int64(1_000)},
 			})
 			projection.scheduleAgentTurnPerformance(t.Context(), "workspace-1", "session-1", agentactivitybiz.Turn{
 				TurnID: "turn-1",
@@ -401,14 +397,19 @@ func TestActivityProjectionPanickingTurnPerformanceReporterRemainsDeduplicated(t
 
 func TestActivityProjectionTurnPerformanceProvenanceIsMemoryOnlyAndConsumed(t *testing.T) {
 	projection := NewActivityProjection(nil)
-	projection.RecordTurnPerformanceProvenance("workspace-1", "session-1", "turn-1", map[string]any{
-		"clientSubmittedAtUnixMs": int64(1_000),
-		"sessionState":            "existing",
-		"queued":                  false,
+	projection.RecordTurnPerformanceProvenance(TurnPerformanceProvenanceInput{
+		WorkspaceID: "workspace-1", AgentSessionID: "session-1", TurnID: "turn-1",
+		Metadata: map[string]any{
+			"clientSubmittedAtUnixMs": int64(1_000),
+			"sessionState":            "existing",
+			"queued":                  false,
+		},
+		Provider: "codex", Model: "gpt-5", RuntimeIdentityAvailable: true,
 	})
 	key := agentTurnPerformanceKey("workspace-1", "session-1", "turn-1")
 	provenance, claimed := projection.claimTurnPerformanceReport(key, time.Now())
 	if !claimed || provenance.clientSubmittedAtUnixMS != 1_000 || provenance.sessionState != "existing" ||
+		!provenance.runtimeIdentityAvailable || provenance.provider != "codex" || provenance.model != "gpt-5" ||
 		provenance.wasQueued == nil || *provenance.wasQueued {
 		t.Fatalf("consumed provenance = %#v claimed=%v", provenance, claimed)
 	}
@@ -461,10 +462,13 @@ func TestActivityProjectionTurnPerformanceStateIsConcurrentSafe(t *testing.T) {
 		recorded.Add(1)
 		go func(index int) {
 			defer recorded.Done()
-			projection.RecordTurnPerformanceProvenance("workspace-1", "session-1", fmt.Sprintf("turn-%d", index), map[string]any{
-				"clientSubmittedAtUnixMs": int64(index + 1),
-				"sessionState":            "existing",
-				"queued":                  false,
+			projection.RecordTurnPerformanceProvenance(TurnPerformanceProvenanceInput{
+				WorkspaceID: "workspace-1", AgentSessionID: "session-1", TurnID: fmt.Sprintf("turn-%d", index),
+				Metadata: map[string]any{
+					"clientSubmittedAtUnixMs": int64(index + 1),
+					"sessionState":            "existing",
+					"queued":                  false,
+				},
 			})
 		}(index)
 	}
@@ -531,10 +535,14 @@ func TestActivityProjectionReportsOneTerminalTurnPerformanceEvent(t *testing.T) 
 	reporter := &turnPerformanceEventReporter{events: make(chan reporterservice.Event, 2)}
 	projection := NewActivityProjection(store)
 	projection.SetAnalyticsReporter(reporter)
-	projection.RecordTurnPerformanceProvenance("ws-performance", "session-1", "turn-1", map[string]any{
-		"clientSubmittedAtUnixMs": int64(500),
-		"queued":                  false,
-		"sessionState":            "new",
+	projection.RecordTurnPerformanceProvenance(TurnPerformanceProvenanceInput{
+		WorkspaceID: "ws-performance", AgentSessionID: "session-1", TurnID: "turn-1",
+		Metadata: map[string]any{
+			"clientSubmittedAtUnixMs": int64(500),
+			"queued":                  false,
+			"sessionState":            "new",
+		},
+		Provider: "codex", Model: "gpt-5", RuntimeIdentityAvailable: true,
 	})
 	activeTurnID := "turn-1"
 	if err := projection.Report(ctx, agentsessionstore.ReportActivityInput{
@@ -594,7 +602,7 @@ func TestActivityProjectionReportsOneTerminalTurnPerformanceEvent(t *testing.T) 
 	}
 	if event.Params["ttft_ms"] != int64(2_500) || event.Params["total_duration_ms"] != int64(4_500) ||
 		event.Params["timing_start_source"] != "client_submit" || event.Params["session_state"] != "new" ||
-		event.Params["was_queued"] != false {
+		event.Params["was_queued"] != false || event.Params["provider"] != "codex" || event.Params["model"] != "gpt-5" {
 		t.Fatalf("timing params = %#v", event.Params)
 	}
 	for _, forbidden := range []string{"workspace_id", "agent_session_id", "turn_id", "prompt", "response", "content"} {

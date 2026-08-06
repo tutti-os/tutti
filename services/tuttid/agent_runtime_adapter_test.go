@@ -147,22 +147,14 @@ type submitProvenanceAdapterTestReporter struct {
 }
 
 type turnPerformanceRecorderStub struct {
-	workspaceID    string
-	agentSessionID string
-	turnID         string
-	metadata       map[string]any
+	input agentservice.TurnPerformanceProvenanceInput
 }
 
 func (r *turnPerformanceRecorderStub) RecordTurnPerformanceProvenance(
-	workspaceID string,
-	agentSessionID string,
-	turnID string,
-	metadata map[string]any,
+	input agentservice.TurnPerformanceProvenanceInput,
 ) {
-	r.workspaceID = workspaceID
-	r.agentSessionID = agentSessionID
-	r.turnID = turnID
-	r.metadata = cloneRuntimeContext(metadata)
+	input.Metadata = cloneRuntimeContext(input.Metadata)
+	r.input = input
 }
 
 func (*submitProvenanceAdapterTestReporter) Report(context.Context, agentsessionstore.ReportActivityInput) error {
@@ -418,6 +410,7 @@ func TestAgentRuntimeAdapterRecordsTurnPerformanceBeforeExecution(t *testing.T) 
 	)
 	if _, err := controller.Start(t.Context(), agentruntime.StartInput{
 		RoomID: "workspace-1", AgentSessionID: "session-1", Provider: "submit-provenance-test", CWD: t.TempDir(),
+		Settings: &agentruntime.SessionSettings{Model: "test-model"},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -435,9 +428,11 @@ func TestAgentRuntimeAdapterRecordsTurnPerformanceBeforeExecution(t *testing.T) 
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if recorder.workspaceID != "workspace-1" || recorder.agentSessionID != "session-1" || recorder.turnID != "turn-1" ||
-		recorder.metadata["clientSubmittedAtUnixMs"] != int64(1_000) || recorder.metadata["sessionState"] != "existing" ||
-		recorder.metadata["queued"] != true {
+	if recorder.input.WorkspaceID != "workspace-1" || recorder.input.AgentSessionID != "session-1" ||
+		recorder.input.TurnID != "turn-1" || recorder.input.Provider != "submit-provenance-test" ||
+		recorder.input.Model != "test-model" || !recorder.input.RuntimeIdentityAvailable ||
+		recorder.input.Metadata["clientSubmittedAtUnixMs"] != int64(1_000) ||
+		recorder.input.Metadata["sessionState"] != "existing" || recorder.input.Metadata["queued"] != true {
 		t.Fatalf("recorded performance provenance = %#v", recorder)
 	}
 }

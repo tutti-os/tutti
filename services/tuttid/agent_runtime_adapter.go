@@ -18,7 +18,7 @@ type agentRuntimeAdapter struct {
 }
 
 type agentTurnPerformanceRecorder interface {
-	RecordTurnPerformanceProvenance(string, string, string, map[string]any)
+	RecordTurnPerformanceProvenance(agentservice.TurnPerformanceProvenanceInput)
 }
 
 func (a agentRuntimeAdapter) ObserveRootTurnSettled(_ context.Context, workspaceID string, agentSessionID string, turn agentactivitybiz.Turn) {
@@ -177,12 +177,20 @@ func (a agentRuntimeAdapter) Exec(ctx context.Context, input agentservice.Runtim
 		"content_block_count": len(input.Content),
 	})
 	if !input.Guidance && a.turnPerformanceRecorder != nil {
-		a.turnPerformanceRecorder.RecordTurnPerformanceProvenance(
-			input.WorkspaceID,
-			input.AgentSessionID,
-			input.TurnID,
-			input.Metadata,
-		)
+		provenance := agentservice.TurnPerformanceProvenanceInput{
+			WorkspaceID:    input.WorkspaceID,
+			AgentSessionID: input.AgentSessionID,
+			TurnID:         input.TurnID,
+			Metadata:       input.Metadata,
+		}
+		if session, ok := a.controller.Session(input.WorkspaceID, input.AgentSessionID); ok {
+			provenance.Provider = session.Provider
+			if session.Settings != nil {
+				provenance.Model = session.Settings.Model
+			}
+			provenance.RuntimeIdentityAvailable = true
+		}
+		a.turnPerformanceRecorder.RecordTurnPerformanceProvenance(provenance)
 	}
 	runtimeMetadata := cloneRuntimeContext(input.Metadata)
 	delete(runtimeMetadata, "clientSubmittedAtUnixMs")

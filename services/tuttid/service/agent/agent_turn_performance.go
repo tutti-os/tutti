@@ -20,14 +20,16 @@ const (
 )
 
 type agentTurnPerformanceProvenance struct {
-	clientSubmittedAtUnixMS int64
-	recordedAt              time.Time
-	sessionState            string
-	wasQueued               *bool
+	clientSubmittedAtUnixMS  int64
+	model                    string
+	provider                 string
+	recordedAt               time.Time
+	runtimeIdentityAvailable bool
+	sessionState             string
+	wasQueued                *bool
 }
 
 type agentTurnPerformanceState struct {
-	modelCatalog AgentModelCatalog
 	mu           sync.Mutex
 	lastPrunedAt time.Time
 	provenance   map[string]agentTurnPerformanceProvenance
@@ -36,10 +38,16 @@ type agentTurnPerformanceState struct {
 	attempted map[string]time.Time
 }
 
-func (p *ActivityProjection) SetTurnPerformanceModelCatalog(catalog AgentModelCatalog) {
-	if p != nil {
-		p.turnPerformanceState.modelCatalog = catalog
-	}
+// TurnPerformanceProvenanceInput carries submit-time analytics facts that must
+// remain process-local and must not enter canonical messages or provider metadata.
+type TurnPerformanceProvenanceInput struct {
+	WorkspaceID              string
+	AgentSessionID           string
+	TurnID                   string
+	Metadata                 map[string]any
+	Provider                 string
+	Model                    string
+	RuntimeIdentityAvailable bool
 }
 
 type agentTurnPerformanceSummary struct {
@@ -93,7 +101,7 @@ func (p *ActivityProjection) scheduleAgentTurnPerformanceWithLauncher(
 	if !claimed {
 		return
 	}
-	// Analytics reads, catalog resolution, and transport are detached from the
+	// Analytics reads, parameter normalization, and transport are detached from the
 	// commit callback. They are observational and must never delay the Turn.
 	launch(func() {
 		p.runAgentTurnPerformanceReport(ctx, reporter, workspaceID, agentSessionID, turn, provenance)
@@ -115,36 +123,37 @@ func (p *ActivityProjection) runAgentTurnPerformanceReport(
 	p.reportAgentTurnPerformance(deferredCtx, reporter, workspaceID, agentSessionID, turn, provenance)
 }
 
-// RecordTurnPerformanceProvenance keeps the privacy-reviewed submit timing
-// dimensions in process memory only. Terminal reporting consumes the entry;
-// daemon restart deliberately loses it and falls back to canonical Turn time.
+// RecordTurnPerformanceProvenance keeps the privacy-reviewed submit facts and
+// runtime identity in process memory only. Terminal reporting consumes the
+// entry; daemon restart deliberately loses it and falls back to canonical state.
 func (p *ActivityProjection) RecordTurnPerformanceProvenance(
-	workspaceID string,
-	agentSessionID string,
-	turnID string,
-	metadata map[string]any,
+	input TurnPerformanceProvenanceInput,
 ) {
 	if p == nil {
 		return
 	}
-	key := agentTurnPerformanceKey(workspaceID, agentSessionID, turnID)
+	key := agentTurnPerformanceKey(input.WorkspaceID, input.AgentSessionID, input.TurnID)
 	if key == "" {
 		return
 	}
 	provenance := agentTurnPerformanceProvenance{
-		clientSubmittedAtUnixMS: metadataInt64(metadata, "clientSubmittedAtUnixMs"),
-		recordedAt:              time.Now(),
+		clientSubmittedAtUnixMS:  metadataInt64(input.Metadata, "clientSubmittedAtUnixMs"),
+		model:                    strings.TrimSpace(input.Model),
+		provider:                 strings.TrimSpace(input.Provider),
+		recordedAt:               time.Now(),
+		runtimeIdentityAvailable: input.RuntimeIdentityAvailable,
 	}
-	if sessionState, ok := metadata["sessionState"].(string); ok {
+	if sessionState, ok := input.Metadata["sessionState"].(string); ok {
 		provenance.sessionState = normalizedAgentTurnSessionState(sessionState)
 	} else {
 		provenance.sessionState = "unknown"
 	}
-	if queued, ok := metadata["queued"].(bool); ok {
+	if queued, ok := input.Metadata["queued"].(bool); ok {
 		queuedCopy := queued
 		provenance.wasQueued = &queuedCopy
 	}
-	if provenance.clientSubmittedAtUnixMS <= 0 && provenance.sessionState == "unknown" && provenance.wasQueued == nil {
+	if provenance.clientSubmittedAtUnixMS <= 0 && !provenance.runtimeIdentityAvailable &&
+		provenance.sessionState == "unknown" && provenance.wasQueued == nil {
 		return
 	}
 	p.turnPerformanceState.record(key, provenance)
@@ -272,8 +281,7 @@ func (p *ActivityProjection) reportAgentTurnPerformance(
 		return
 	}
 	summary := buildAgentTurnPerformanceSummary(turn, messages, provenance)
-	model := resolveAgentTurnAnalyticsModel(ctx, p.turnPerformanceState.modelCatalog, session)
-	provider := normalizeAgentTurnProvider(session.Provider)
+	provider, model := agentTurnAnalyticsRuntimeIdentity(provenance, session)
 	toolCallCount := summary.toolCallCount
 	turnperformance.Track(ctx, reporter, turnperformance.BuildParams(turnperformance.Input{
 		FirstProgressMS:     summary.firstProgressMS,
@@ -466,30 +474,28 @@ func normalizeAgentTurnProvider(provider string) string {
 	return provider
 }
 
-func resolveAgentTurnAnalyticsModel(ctx context.Context, catalog AgentModelCatalog, session agentactivitybiz.Session) string {
-	model := strings.TrimSpace(session.Model)
-	if model == "" || catalog == nil {
-		return "unknown"
+func agentTurnAnalyticsRuntimeIdentity(
+	provenance agentTurnPerformanceProvenance,
+	session agentactivitybiz.Session,
+) (string, string) {
+	provider := session.Provider
+	model := session.Model
+	if provenance.runtimeIdentityAvailable {
+		provider = provenance.provider
+		model = provenance.model
 	}
-	result, err := catalog.ListModels(ctx, AgentModelCatalogInput{
-		Provider: strings.TrimSpace(session.Provider),
-		Cwd:      session.Cwd,
-	})
-	if err != nil {
-		return "unknown"
-	}
-	if strings.EqualFold(strings.TrimSpace(result.Source), "codex-configured-model") || strings.HasPrefix(model, "~") {
+	return normalizeAgentTurnProvider(provider), normalizeAgentTurnModel(model)
+}
+
+func normalizeAgentTurnModel(model string) string {
+	model = strings.TrimSpace(model)
+	if strings.HasPrefix(model, "~") {
 		return "custom"
 	}
-	for _, option := range result.Models {
-		if id := strings.TrimSpace(option.ID); id == model {
-			if safeAgentTurnAnalyticsModelID(id) {
-				return id
-			}
-			return "unknown"
-		}
+	if !safeAgentTurnAnalyticsModelID(model) {
+		return "unknown"
 	}
-	return "custom"
+	return model
 }
 
 func safeAgentTurnAnalyticsModelID(model string) bool {
