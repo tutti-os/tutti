@@ -39,18 +39,25 @@ test("listDesktopWorkspaceAgentProbes resolves provider aliases through the cata
   assert.equal(result.providers[0]?.provider, "opencode");
 });
 
-test("listDesktopWorkspaceAgentProbes keeps extension usage provider-neutral", async () => {
-  const result = await listDesktopWorkspaceAgentProbes({
-    includeUsage: true,
-    providers: ["acp:kimi-code"],
-    refresh: true,
-    workspaceId: "workspace-1"
-  });
+test("listDesktopWorkspaceAgentProbes resolves Kimi API billing", async () => {
+  const previousModel = process.env.KIMI_MODEL_NAME;
+  try {
+    process.env.KIMI_MODEL_NAME = "kimi-for-coding";
+    const result = await listDesktopWorkspaceAgentProbes({
+      includeUsage: true,
+      providers: ["acp:kimi-code"],
+      refresh: true,
+      workspaceId: "workspace-1"
+    });
 
-  assert.equal(result.providers.length, 1);
-  assert.equal(result.providers[0]?.provider, "acp:kimi-code");
-  assert.equal(result.providers[0]?.availability.status, "unknown");
-  assert.equal(result.providers[0]?.lastError?.code, "unsupported");
+    assert.equal(result.providers.length, 1);
+    assert.equal(result.providers[0]?.provider, "acp:kimi-code");
+    assert.equal(result.providers[0]?.availability.status, "available");
+    assert.equal(result.providers[0]?.usage?.billingMode, "api");
+  } finally {
+    if (previousModel === undefined) delete process.env.KIMI_MODEL_NAME;
+    else process.env.KIMI_MODEL_NAME = previousModel;
+  }
 });
 
 test("listDesktopWorkspaceAgentProbes maps Codex OAuth usage windows", async () => {

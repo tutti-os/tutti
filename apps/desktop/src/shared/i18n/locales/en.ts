@@ -352,6 +352,7 @@ export const en = {
       stageInstallDone: "CLI installed",
       stageAdapterDone: "Adapter installed",
       stageLoginDone: "Signed in",
+      apiUsageBilling: "API Usage Billing",
       stageLoginDoneApiBilling: "API billing configured",
       stageReadyDone: "Ready",
       networkCheckRegistry: "Install source",
