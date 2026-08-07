@@ -52,7 +52,7 @@ test("workspace app native window-open requests dispatch Browser Node open-url e
     {
       channel: desktopIpcChannels.browser.event,
       payload: {
-        reuseIfOpen: false,
+        reuseIfOpen: true,
         sourceNodeId: "workspace-app:99",
         type: "open-url",
         url: "https://www.producthunt.com/products/google-labs"
@@ -91,7 +91,7 @@ test("workspace app preload open-url requests dispatch Browser Node open-url eve
     {
       channel: desktopIpcChannels.browser.event,
       payload: {
-        reuseIfOpen: false,
+        reuseIfOpen: true,
         sourceNodeId: "workspace-app:99",
         type: "open-url",
         url: "https://www.producthunt.com/products/vc-boom"
