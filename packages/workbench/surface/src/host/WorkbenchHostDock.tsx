@@ -51,6 +51,7 @@ import {
   resolveWorkbenchHostDockScrollState,
   type WorkbenchHostDockScrollState
 } from "./dockScrollState.ts";
+import { resolveWorkbenchHostDockItemsWidth } from "./dockItemsWidth.ts";
 import {
   createWorkbenchHostExternalStateLookupInput,
   readWorkbenchHostExternalState
@@ -344,9 +345,20 @@ export function WorkbenchHostDock({
     }
 
     let frameId: number | null = null;
+    let retryId: number | null = null;
     const updateDockFrameSize = () => {
       frameId = null;
       if (isDockVisualMutationActive(dockMeasureRef.current)) {
+        // Presence and magnification animations mutate the dock size while
+        // they run and fire no further resize events once they settle.
+        // Retry instead of dropping the measurement so the plate does not
+        // get stuck at a stale (usually narrower) frame size.
+        if (retryId === null) {
+          retryId = window.setTimeout(() => {
+            retryId = null;
+            scheduleUpdate();
+          }, dockVisualMutationRetryMs);
+        }
         return;
       }
       const rect = element.getBoundingClientRect();
@@ -377,6 +389,9 @@ export function WorkbenchHostDock({
     return () => {
       if (frameId !== null) {
         window.cancelAnimationFrame(frameId);
+      }
+      if (retryId !== null) {
+        window.clearTimeout(retryId);
       }
       resizeObserver?.disconnect();
       window.removeEventListener("resize", scheduleUpdate);
@@ -1059,15 +1074,25 @@ export function WorkbenchHostDock({
     }
 
     let frameId: number | null = null;
+    let retryId: number | null = null;
     const scheduleUpdate = () => {
-      if (isDockVisualMutationActive(dockMeasureRef.current)) {
-        return;
-      }
       if (frameId !== null) {
         return;
       }
       frameId = window.requestAnimationFrame(() => {
         frameId = null;
+        if (isDockVisualMutationActive(dockMeasureRef.current)) {
+          // Keep retrying while presence/magnification animations run;
+          // dropping the update leaves a stale scroll state (and fade mask)
+          // after the animation settles.
+          if (retryId === null) {
+            retryId = window.setTimeout(() => {
+              retryId = null;
+              scheduleUpdate();
+            }, dockVisualMutationRetryMs);
+          }
+          return;
+        }
         updateDockScrollState();
       });
     };
@@ -1085,6 +1110,9 @@ export function WorkbenchHostDock({
     return () => {
       if (frameId !== null) {
         window.cancelAnimationFrame(frameId);
+      }
+      if (retryId !== null) {
+        window.clearTimeout(retryId);
       }
       resizeObserver?.disconnect();
       window.removeEventListener("resize", scheduleUpdate);
@@ -3432,23 +3460,6 @@ function useDockBounce(slotRefs: RefObject<Map<string, HTMLElement>>) {
   return { triggerDockBounce };
 }
 
-function resolveWorkbenchHostDockItemsWidth(
-  items: readonly WorkbenchHostDockItem[]
-): number {
-  if (items.length === 0) {
-    return dockItemsHorizontalPaddingPx;
-  }
-
-  const itemWidth = items.reduce(
-    (sum, item) =>
-      sum +
-      (item.kind === "separator" ? dockSeparatorOuterWidthPx : dockSlotWidthPx),
-    0
-  );
-  const gapWidth = Math.max(0, items.length - 1) * dockItemsGapPx;
-  return itemWidth + gapWidth + dockItemsHorizontalPaddingPx;
-}
-
 const dockHoverPanelOpenDelayMs = 120;
 const dockHoverPanelCloseDelayMs = 160;
 const dockHoverPanelHitSlopPx = 12;
@@ -3487,11 +3498,8 @@ function createHoverPanelBridgeRect(anchor: DOMRect, panel: DOMRect): DOMRect {
 }
 const dockPresenceAnimationMs = 300;
 const minimizedDockSlotLayoutAnimationMs = 720;
-const dockItemsGapPx = 10.8;
-const dockItemsHorizontalPaddingPx = 12.6;
-const dockSeparatorOuterWidthPx = 8.1;
-const dockSlotWidthPx = 43.2;
 const desktopDockPlateChromeWidth = 15.3;
+const dockVisualMutationRetryMs = 120;
 
 interface WorkbenchHostDockPlateStyle extends CSSProperties {
   "--desktop-dock-frame-size"?: string;
