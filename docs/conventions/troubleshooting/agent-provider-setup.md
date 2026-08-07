@@ -1470,12 +1470,18 @@ invalid_grant`. Search `tuttid.log` for
   managed provider reads its request-local OAuth access token in Electron main,
   requests the configured Coding Plan `/usages` endpoint, and projects only
   provider-neutral quota percentages/reset times. Tokens, API keys, and raw
-  responses never cross renderer IPC and are never logged.
+  responses never cross renderer IPC and are never logged. Kimi owns OAuth
+  refresh, so the probe must not treat its point-in-time `expires_at` value or a
+  usage-endpoint authorization rejection as Agent login authority. If Kimi
+  rewrites the credential while a request is in flight, retry once with the new
+  token; otherwise keep the Agent available and degrade only the limits row.
 - Validation:
   Cover managed inline/nested OAuth configuration, Coding Plan summary/window
-  mapping, API billing without an account request, expired credentials, and
-  the renderer's localized API billing label. Run the Desktop tests,
-  typecheck, i18n check, build, and changed-aware push-ready gate.
+  mapping, API billing without an account request, a concurrent credential
+  refresh, an unchanged unauthorized token that does not become
+  `session_expired`, and the renderer's localized API billing label. Run the
+  Desktop tests, typecheck, i18n check, build, and changed-aware push-ready
+  gate.
 - References:
   [kimiProviderAccount.ts](../../../apps/desktop/src/main/kimiProviderAccount.ts)
   [kimiProviderUsageProbe.ts](../../../apps/desktop/src/main/kimiProviderUsageProbe.ts)

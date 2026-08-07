@@ -141,7 +141,7 @@ api_key = "must-not-be-projected"
   }
 });
 
-test("probeKimiCodeProvider classifies expired Coding Plan credentials", async () => {
+test("probeKimiCodeProvider follows a Kimi credential refresh race", async () => {
   const home = await mkdtemp(join(tmpdir(), "tutti-kimi-expired-"));
   const previousHome = process.env.KIMI_CODE_HOME;
   const previousModel = process.env.KIMI_MODEL_NAME;
@@ -161,6 +161,29 @@ provider = "managed:kimi-code"
       join(home, "credentials", "kimi-code.json"),
       JSON.stringify({ access_token: "expired-token", expires_at: 1 })
     );
+    let requestCount = 0;
+    setOutboundFetcherForTesting(async (_url, init) => {
+      requestCount += 1;
+      const authorization = new Headers(init?.headers).get("Authorization");
+      if (requestCount === 1) {
+        assert.equal(authorization, "Bearer expired-token");
+        await writeFile(
+          join(home, "credentials", "kimi-code.json"),
+          JSON.stringify({
+            access_token: "refreshed-token",
+            expires_at: 4_102_444_800
+          })
+        );
+        return new Response("", { status: 401 });
+      }
+      assert.equal(authorization, "Bearer refreshed-token");
+      return new Response(
+        JSON.stringify({
+          usage: { limit: 100, resetAt: "2026-08-14T08:00:00.000Z", used: 25 }
+        }),
+        { status: 200 }
+      );
+    });
 
     const result = await probeKimiCodeProvider(
       {
@@ -172,9 +195,59 @@ provider = "managed:kimi-code"
       500
     );
 
-    assert.equal(result.availability.status, "unavailable");
-    assert.equal(result.lastError?.code, "session_expired");
+    assert.equal(requestCount, 2);
+    assert.equal(result.availability.status, "available");
+    assert.equal(result.lastError, undefined);
+    assert.equal(result.usage?.quotas?.[0]?.percentRemaining, 75);
     assert.equal(JSON.stringify(result).includes("expired-token"), false);
+    assert.equal(JSON.stringify(result).includes("refreshed-token"), false);
+  } finally {
+    restoreEnvironment("KIMI_CODE_HOME", previousHome);
+    restoreEnvironment("KIMI_MODEL_NAME", previousModel);
+    await rm(home, { force: true, recursive: true });
+  }
+});
+
+test("probeKimiCodeProvider keeps usage rejection separate from login state", async () => {
+  const home = await mkdtemp(join(tmpdir(), "tutti-kimi-unauthorized-"));
+  const previousHome = process.env.KIMI_CODE_HOME;
+  const previousModel = process.env.KIMI_MODEL_NAME;
+  try {
+    process.env.KIMI_CODE_HOME = home;
+    delete process.env.KIMI_MODEL_NAME;
+    await mkdir(join(home, "credentials"), { recursive: true });
+    await writeFile(
+      join(home, "config.toml"),
+      `default_model = "kimi-code/kimi-for-coding"
+
+[models."kimi-code/kimi-for-coding"]
+provider = "managed:kimi-code"
+`
+    );
+    await writeFile(
+      join(home, "credentials", "kimi-code.json"),
+      JSON.stringify({ access_token: "unchanged-token", expires_at: 1 })
+    );
+    let requestCount = 0;
+    setOutboundFetcherForTesting(async () => {
+      requestCount += 1;
+      return new Response("", { status: 401 });
+    });
+
+    const result = await probeKimiCodeProvider(
+      {
+        includeUsage: true,
+        providers: ["acp:kimi-code"],
+        refresh: true,
+        workspaceId: "workspace-1"
+      },
+      500
+    );
+
+    assert.equal(requestCount, 1);
+    assert.equal(result.availability.status, "available");
+    assert.equal(result.lastError?.code, "execution_failed");
+    assert.equal(JSON.stringify(result).includes("unchanged-token"), false);
   } finally {
     restoreEnvironment("KIMI_CODE_HOME", previousHome);
     restoreEnvironment("KIMI_MODEL_NAME", previousModel);

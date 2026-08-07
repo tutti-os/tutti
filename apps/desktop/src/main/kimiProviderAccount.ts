@@ -20,7 +20,6 @@ interface KimiConfigSnapshot {
 
 interface KimiOAuthCredentialsFile {
   access_token?: unknown;
-  expires_at?: unknown;
 }
 
 export type KimiBillingTarget =
@@ -90,10 +89,6 @@ export async function loadKimiOAuthAccessToken(
   const accessToken = stringValue(credentials.access_token);
   if (!accessToken) {
     throw new Error("Kimi OAuth credentials do not contain an access token.");
-  }
-  const expiresAt = numberValue(credentials.expires_at);
-  if (expiresAt !== null && expiresAt > 0 && expiresAt * 1_000 <= Date.now()) {
-    throw new Error("Kimi OAuth access token is expired.");
   }
   return accessToken;
 }
@@ -292,13 +287,4 @@ async function readOptionalFile(path: string): Promise<string> {
 
 function stringValue(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
-}
-
-function numberValue(value: unknown): number | null {
-  if (typeof value === "number" && Number.isFinite(value)) return value;
-  if (typeof value === "string" && value.trim()) {
-    const parsed = Number(value);
-    return Number.isFinite(parsed) ? parsed : null;
-  }
-  return null;
 }

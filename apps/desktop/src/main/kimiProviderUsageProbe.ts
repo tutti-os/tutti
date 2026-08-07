@@ -13,6 +13,8 @@ import { outboundFetch } from "./net/outboundFetch.ts";
 const KIMI_PROVIDER = "acp:kimi-code";
 const KIMI_USAGE_TIMEOUT_MS = 8_000;
 
+class KimiUsageAuthorizationError extends Error {}
+
 export async function probeKimiCodeProvider(
   input: AgentProviderProbeListInput,
   capturedAtUnixMs: number,
@@ -67,7 +69,10 @@ export async function probeKimiCodeProvider(
   }
 
   try {
-    const payload = await fetchKimiUsage(target.baseUrl, accessToken);
+    const payload = await fetchKimiUsageWithCredentialRefresh(
+      target,
+      accessToken
+    );
     attempts.push({ strategy: "kimi-coding-plan-usage", success: true });
     return {
       attempts,
@@ -97,6 +102,29 @@ export async function probeKimiCodeProvider(
   }
 }
 
+async function fetchKimiUsageWithCredentialRefresh(
+  target: Extract<
+    Awaited<ReturnType<typeof resolveKimiBillingTarget>>,
+    { billingMode: "subscription" }
+  >,
+  accessToken: string
+): Promise<unknown> {
+  try {
+    return await fetchKimiUsage(target.baseUrl, accessToken);
+  } catch (error) {
+    if (!(error instanceof KimiUsageAuthorizationError)) throw error;
+
+    let refreshedToken: string;
+    try {
+      refreshedToken = await loadKimiOAuthAccessToken(target);
+    } catch {
+      throw error;
+    }
+    if (refreshedToken === accessToken) throw error;
+    return fetchKimiUsage(target.baseUrl, refreshedToken);
+  }
+}
+
 async function fetchKimiUsage(
   baseUrl: string,
   accessToken: string
@@ -113,7 +141,9 @@ async function fetchKimiUsage(
     });
     const text = await response.text();
     if (response.status === 401 || response.status === 403) {
-      throw new Error("Kimi OAuth token is expired or unauthorized.");
+      throw new KimiUsageAuthorizationError(
+        "Kimi Coding Plan usage request was unauthorized."
+      );
     }
     if (response.status === 429) {
       throw new Error("Kimi Coding Plan usage API is rate limited.");
@@ -332,10 +362,8 @@ function numberValue(value: unknown): number | null {
 }
 
 function kimiProbeErrorCode(error: unknown): string {
+  if (error instanceof KimiUsageAuthorizationError) return "execution_failed";
   const message = errorMessage(error).toLowerCase();
-  if (message.includes("unauthorized") || message.includes("expired")) {
-    return "session_expired";
-  }
   if (message.includes("timed out")) return "timeout";
   if (message.includes("json")) return "parse_failed";
   return "execution_failed";

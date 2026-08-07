@@ -764,9 +764,12 @@ provider-private runtime context to render usage. Desktop-owned account probes
 may enrich the current account limits before or without a Session, but each
 provider adapter must stay in Electron main and project only provider-neutral
 billing mode, quota windows, and stable error codes. Credentials and raw
-provider responses must never enter AgentGUI, renderer IPC, or logs. Existing
-session control state is read from the daemon; pre-session edits remain in the
-engine-owned activation/draft record until the daemon confirms the session.
+provider responses must never enter AgentGUI, renderer IPC, or logs. A
+provider-owned access-token snapshot is not runtime authentication authority:
+an account probe may retry a newer credential, but an unchanged expiry or
+authorization rejection degrades only account limits. Existing session control
+state is read from the daemon; pre-session edits remain in the engine-owned
+activation/draft record until the daemon confirms the session.
 `AgentHostWorkspaceAgent*` types may only appear in compatibility or projection
 layers while the legacy Agent GUI internals are being migrated. Production read
 paths must not call `workspaceAgents.list`,
