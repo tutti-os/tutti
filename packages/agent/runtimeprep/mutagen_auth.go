@@ -45,6 +45,7 @@ type AuthFileProjector interface {
 // keep process execution and filesystem privilege failures unit-testable.
 type MutagenAuthFileProjector struct {
 	StateDir          string
+	AllowDownload     bool
 	ResolveExecutable func(context.Context) (string, error)
 	Run               func(context.Context, string, []string, []string) ([]byte, error)
 	Symlink           func(string, string) error
@@ -52,6 +53,51 @@ type MutagenAuthFileProjector struct {
 	HTTPClient        *http.Client
 	DownloadURL       string
 	ArchiveSHA256     string
+}
+
+type authFileSnapshot struct {
+	content []byte
+	digest  [sha256.Size]byte
+}
+
+func readValidAuthFile(path string) (authFileSnapshot, error) {
+	content, err := os.ReadFile(path)
+	if err != nil {
+		return authFileSnapshot{}, err
+	}
+	var value any
+	if err := json.Unmarshal(content, &value); err != nil {
+		return authFileSnapshot{}, fmt.Errorf("invalid auth JSON at %s: %w", path, err)
+	}
+	if _, ok := value.(map[string]any); !ok {
+		return authFileSnapshot{}, fmt.Errorf("auth JSON at %s must be an object", path)
+	}
+	return authFileSnapshot{content: content, digest: sha256.Sum256(content)}, nil
+}
+
+func writeAuthFileAtomically(path string, content []byte) error {
+	temporary, err := os.CreateTemp(filepath.Dir(path), ".auth-*.tmp")
+	if err != nil {
+		return err
+	}
+	temporaryPath := temporary.Name()
+	defer os.Remove(temporaryPath)
+	if err := temporary.Chmod(0o600); err != nil {
+		_ = temporary.Close()
+		return err
+	}
+	if _, err := temporary.Write(content); err != nil {
+		_ = temporary.Close()
+		return err
+	}
+	if err := temporary.Sync(); err != nil {
+		_ = temporary.Close()
+		return err
+	}
+	if err := temporary.Close(); err != nil {
+		return err
+	}
+	return replaceRuntimeAuthFile(temporaryPath, path)
 }
 
 func (p MutagenAuthFileProjector) Project(ctx context.Context, input AuthFileProjection) (func(context.Context) error, error) {
@@ -77,7 +123,6 @@ func (p MutagenAuthFileProjector) Project(ctx context.Context, input AuthFilePro
 	if targetErr != nil && !os.IsNotExist(targetErr) {
 		return nil, fmt.Errorf("inspect auth target: %w", targetErr)
 	}
-	createdTarget := false
 	symlink := p.Symlink
 	if symlink == nil {
 		symlink = os.Symlink
@@ -94,52 +139,68 @@ func (p MutagenAuthFileProjector) Project(ctx context.Context, input AuthFilePro
 	if targetExists && targetInfo.Mode()&os.ModeSymlink != 0 {
 		return nil, errors.New("auth target symlink has no recoverable Mutagen session marker")
 	}
-	if !targetExists {
-		if err := copyFile(input.SourcePath, input.TargetPath, 0o600); err != nil {
-			return nil, fmt.Errorf("seed Mutagen auth target: %w", err)
-		}
-		createdTarget = true
+	baseline, err := readValidAuthFile(input.SourcePath)
+	if err != nil {
+		return nil, fmt.Errorf("read stable auth baseline: %w", err)
+	}
+	if err := writeAuthFileAtomically(input.TargetPath, baseline.content); err != nil {
+		return nil, fmt.Errorf("seed auth target: %w", err)
 	}
 	if err := p.projectLock(input); err != nil {
-		if createdTarget {
-			_ = os.Remove(input.TargetPath)
-		}
+		p.removeProjectionTargets(input)
 		return nil, err
 	}
 	executable, err := p.resolveExecutable(ctx)
 	if err != nil {
-		if createdTarget {
-			p.removeProjectionTargets(input)
-		}
-		return nil, err
+		return p.copyFallbackCleanup(input, baseline), nil
 	}
 	sessionName := mutagenAuthSessionName(input.SourcePath, input.TargetPath)
 	if _, err := p.run(ctx, executable, []string{
 		"sync", "create", "--name=" + sessionName, "--sync-mode=two-way-safe",
 		"--no-global-configuration", input.SourcePath, input.TargetPath,
 	}); err != nil {
-		if createdTarget {
-			p.removeProjectionTargets(input)
-		}
+		p.removeProjectionTargets(input)
 		return nil, fmt.Errorf("create Mutagen auth session: %w", err)
 	}
 	// Establish the common baseline before the provider can refresh the token;
 	// create may return while Mutagen's initial scan is still in progress.
 	if _, err := p.run(ctx, executable, []string{"sync", "flush", sessionName}); err != nil {
 		_, _ = p.run(ctx, executable, []string{"sync", "terminate", sessionName})
-		if createdTarget {
-			p.removeProjectionTargets(input)
-		}
+		p.removeProjectionTargets(input)
 		return nil, fmt.Errorf("initialize Mutagen auth session: %w", err)
 	}
 	if err := os.WriteFile(markerPath, []byte(sessionName+"\n"), 0o600); err != nil {
 		_, _ = p.run(ctx, executable, []string{"sync", "terminate", sessionName})
-		if createdTarget {
-			p.removeProjectionTargets(input)
-		}
+		p.removeProjectionTargets(input)
 		return nil, fmt.Errorf("persist Mutagen auth session marker: %w", err)
 	}
 	return p.cleanupCallback(executable, sessionName, markerPath), nil
+}
+
+func (p MutagenAuthFileProjector) copyFallbackCleanup(input AuthFileProjection, baseline authFileSnapshot) func(context.Context) error {
+	return func(context.Context) error {
+		run, err := readValidAuthFile(input.TargetPath)
+		if err != nil {
+			return fmt.Errorf("read runtime auth for copy fallback; runtime preserved: %w", err)
+		}
+		if run.digest == baseline.digest {
+			return nil
+		}
+		stable, err := readValidAuthFile(input.SourcePath)
+		if err != nil {
+			return fmt.Errorf("read stable auth for copy fallback; runtime preserved: %w", err)
+		}
+		if stable.digest == run.digest {
+			return nil
+		}
+		if stable.digest != baseline.digest {
+			return errors.New("auth changed in both stable and runtime homes without Mutagen; both files preserved for recovery")
+		}
+		if err := writeAuthFileAtomically(input.SourcePath, run.content); err != nil {
+			return fmt.Errorf("copy refreshed runtime auth to stable home; runtime preserved: %w", err)
+		}
+		return nil
+	}
 }
 
 func (p MutagenAuthFileProjector) cleanupCallback(executable, sessionName, markerPath string) func(context.Context) error {
@@ -315,7 +376,10 @@ func (p MutagenAuthFileProjector) resolveExecutable(ctx context.Context) (string
 		return path, nil
 	}
 	if runtime.GOOS != "windows" || runtime.GOARCH != "amd64" {
-		return "", fmt.Errorf("automatic Mutagen installation is not yet supported on %s/%s; configure TUTTI_MUTAGEN_BIN", runtime.GOOS, runtime.GOARCH)
+		return "", fmt.Errorf("Mutagen is unavailable on %s/%s", runtime.GOOS, runtime.GOARCH)
+	}
+	if !p.AllowDownload {
+		return "", errors.New("Mutagen is unavailable")
 	}
 	return p.installWindowsAMD64(ctx)
 }

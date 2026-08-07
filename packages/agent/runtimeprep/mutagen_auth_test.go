@@ -7,6 +7,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -69,6 +70,108 @@ func TestMutagenAuthProjectorUsesTwoWaySafeAndFlushesBeforeTerminate(t *testing.
 	}
 	if !reflect.DeepEqual(operations, wantOperations) {
 		t.Fatalf("operations = %#v, want %#v", operations, wantOperations)
+	}
+}
+
+func TestMutagenAuthProjectorFallsBackToGuardedCopy(t *testing.T) {
+	root := t.TempDir()
+	source := filepath.Join(root, "stable", "auth.json")
+	target := filepath.Join(root, "run", "auth.json")
+	if err := os.MkdirAll(filepath.Dir(source), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(source, []byte(`{"token":"stable"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	projector := MutagenAuthFileProjector{
+		StateDir:          root,
+		Symlink:           func(string, string) error { return os.ErrPermission },
+		ResolveExecutable: func(context.Context) (string, error) { return "", errors.New("missing") },
+	}
+	cleanup, err := projector.Project(context.Background(), AuthFileProjection{SourcePath: source, TargetPath: target})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cleanup == nil {
+		t.Fatal("cleanup = nil, want copy fallback cleanup")
+	}
+	if content, err := os.ReadFile(target); err != nil || string(content) != `{"token":"stable"}` {
+		t.Fatalf("seeded auth = %q, %v", content, err)
+	}
+	if err := os.WriteFile(target, []byte(`{"token":"refreshed"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := cleanup(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if content, err := os.ReadFile(source); err != nil || string(content) != `{"token":"refreshed"}` {
+		t.Fatalf("stable auth = %q, %v", content, err)
+	}
+}
+
+func TestMutagenAuthProjectorCopyFallbackPreservesConcurrentChanges(t *testing.T) {
+	root := t.TempDir()
+	source := filepath.Join(root, "stable", "auth.json")
+	target := filepath.Join(root, "run", "auth.json")
+	if err := os.MkdirAll(filepath.Dir(source), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(source, []byte(`{"token":"baseline"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	projector := MutagenAuthFileProjector{
+		StateDir:          root,
+		Symlink:           func(string, string) error { return os.ErrPermission },
+		ResolveExecutable: func(context.Context) (string, error) { return "", errors.New("missing") },
+	}
+	cleanup, err := projector.Project(context.Background(), AuthFileProjection{SourcePath: source, TargetPath: target})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(source, []byte(`{"token":"new-stable"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(target, []byte(`{"token":"new-run"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := cleanup(context.Background()); err == nil || !strings.Contains(err.Error(), "both files preserved") {
+		t.Fatalf("cleanup error = %v, want preserved conflict", err)
+	}
+	if content, _ := os.ReadFile(source); string(content) != `{"token":"new-stable"}` {
+		t.Fatalf("stable auth overwritten: %q", content)
+	}
+	if content, _ := os.ReadFile(target); string(content) != `{"token":"new-run"}` {
+		t.Fatalf("runtime auth overwritten: %q", content)
+	}
+}
+
+func TestMutagenAuthProjectorCopyFallbackRejectsInvalidRuntimeJSON(t *testing.T) {
+	root := t.TempDir()
+	source := filepath.Join(root, "stable", "auth.json")
+	target := filepath.Join(root, "run", "auth.json")
+	if err := os.MkdirAll(filepath.Dir(source), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(source, []byte(`{"token":"stable"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	projector := MutagenAuthFileProjector{
+		StateDir:          root,
+		Symlink:           func(string, string) error { return os.ErrPermission },
+		ResolveExecutable: func(context.Context) (string, error) { return "", errors.New("missing") },
+	}
+	cleanup, err := projector.Project(context.Background(), AuthFileProjection{SourcePath: source, TargetPath: target})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(target, []byte("not-json"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := cleanup(context.Background()); err == nil || !strings.Contains(err.Error(), "invalid auth JSON") {
+		t.Fatalf("cleanup error = %v, want invalid JSON", err)
+	}
+	if content, _ := os.ReadFile(source); string(content) != `{"token":"stable"}` {
+		t.Fatalf("stable auth overwritten: %q", content)
 	}
 }
 

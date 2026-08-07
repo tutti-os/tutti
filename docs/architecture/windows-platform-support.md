@@ -153,7 +153,10 @@ that same absolute path. Release staging downloads the official archive and
 license texts, verifies their pinned SHA-256 digests, and packages only the
 Windows amd64 executable and notices. Runtime execution therefore has no
 Mutagen download dependency, while an explicit `TUTTI_MUTAGEN_BIN` remains an
-operator override.
+operator override. If the packaged or configured executable is unavailable,
+runtime preparation uses a guarded per-run auth copy and copies a valid
+refreshed credential back only when the stable source has not changed
+concurrently.
 
 ### Browser and Files
 
