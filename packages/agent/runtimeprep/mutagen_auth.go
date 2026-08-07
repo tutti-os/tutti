@@ -111,10 +111,16 @@ func (p MutagenAuthFileProjector) Project(ctx context.Context, input AuthFilePro
 			return nil, errors.New("invalid persisted Mutagen auth session marker")
 		}
 		executable, err := p.resolveExecutable(ctx)
-		if err != nil {
-			return nil, err
+		if err == nil {
+			return p.cleanupCallback(executable, sessionName, markerPath), nil
 		}
-		return p.cleanupCallback(executable, sessionName, markerPath), nil
+		// The marker can outlive the bundled or cached Mutagen executable after
+		// an upgrade or an interrupted shutdown. Drop only the marker and keep
+		// the runtime auth file; the normal guarded-copy path below refreshes it
+		// from the stable source before the provider starts.
+		if err := os.Remove(markerPath); err != nil && !os.IsNotExist(err) {
+			return nil, fmt.Errorf("remove unavailable Mutagen session marker: %w", err)
+		}
 	} else if !os.IsNotExist(err) {
 		return nil, fmt.Errorf("read Mutagen auth session marker: %w", err)
 	}

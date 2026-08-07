@@ -175,6 +175,46 @@ func TestMutagenAuthProjectorCopyFallbackRejectsInvalidRuntimeJSON(t *testing.T)
 	}
 }
 
+func TestMutagenAuthProjectorFallsBackFromPersistedMarkerWhenMutagenIsUnavailable(t *testing.T) {
+	root := t.TempDir()
+	source := filepath.Join(root, "stable", "auth.json")
+	target := filepath.Join(root, "run", "auth.json")
+	if err := os.MkdirAll(filepath.Dir(source), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Dir(target), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(source, []byte(`{"token":"stable"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(target, []byte(`{"token":"stale-run"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	marker := filepath.Join(filepath.Dir(target), mutagenSessionMarker)
+	if err := os.WriteFile(marker, []byte("stale-session\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	projector := MutagenAuthFileProjector{
+		StateDir:          root,
+		Symlink:           func(string, string) error { return os.ErrPermission },
+		ResolveExecutable: func(context.Context) (string, error) { return "", errors.New("missing") },
+	}
+	cleanup, err := projector.Project(context.Background(), AuthFileProjection{SourcePath: source, TargetPath: target})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cleanup == nil {
+		t.Fatal("cleanup = nil, want copy fallback cleanup")
+	}
+	if _, err := os.Stat(marker); !os.IsNotExist(err) {
+		t.Fatalf("marker still exists: %v", err)
+	}
+	if content, err := os.ReadFile(target); err != nil || string(content) != `{"token":"stable"}` {
+		t.Fatalf("refreshed runtime auth = %q, %v", content, err)
+	}
+}
+
 func TestMutagenAuthProjectorPreservesSessionOnConflict(t *testing.T) {
 	root := t.TempDir()
 	source := filepath.Join(root, "stable", "auth.json")
