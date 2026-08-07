@@ -109,6 +109,9 @@ export async function runManagedAgentInstallBootstrap(
   if (status.availability.status !== "not_installed") {
     return;
   }
+  if (status.activeAction !== null && status.activeAction !== undefined) {
+    return;
+  }
   if (service.isActionPending(provider, installActionId)) {
     return;
   }
