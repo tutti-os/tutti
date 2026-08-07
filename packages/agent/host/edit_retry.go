@@ -109,14 +109,6 @@ func (h *Host) GetEditRetryAvailability(ctx context.Context, ref SessionRef) (Ed
 		result.ReasonCode = EditRetryReasonCodeTurnNotSettled
 		return result, nil
 	}
-	children, err := h.store.ListChildSessions(ctx, ref.WorkspaceID, ref.AgentSessionID)
-	if err != nil {
-		return result, err
-	}
-	if len(children) != 0 {
-		result.ReasonCode = EditRetryReasonCodeTurnNotLatest
-		return result, nil
-	}
 	turns, err := h.effectiveHistory.ListEffectiveSessionTurns(ctx, ref.WorkspaceID, ref.AgentSessionID)
 	if err != nil {
 		return result, err
@@ -130,6 +122,14 @@ func (h *Host) GetEditRetryAvailability(ctx context.Context, ref SessionRef) (Ed
 		turn.Origin != storesqlite.TurnOriginUserPrompt ||
 		strings.TrimSpace(turn.RootProviderTurnID) == "" {
 		result.ReasonCode = EditRetryReasonCodeTurnNotSettled
+		return result, nil
+	}
+	children, err := h.store.ListChildSessions(ctx, ref.WorkspaceID, ref.AgentSessionID)
+	if err != nil {
+		return result, err
+	}
+	if editRetryHasTargetDescendant(children, turn.TurnID) {
+		result.ReasonCode = EditRetryReasonCodeTurnNotLatest
 		return result, nil
 	}
 	envelope, found, err := h.turnSubmissions.GetTurnSubmission(ctx, ref.WorkspaceID, ref.AgentSessionID, turn.TurnID)

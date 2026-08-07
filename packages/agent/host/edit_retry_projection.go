@@ -8,19 +8,34 @@ import (
 	storesqlite "github.com/tutti-os/tutti/packages/agent/store-sqlite"
 )
 
-func editRetryProviderTurnIDs(turns []storesqlite.Turn, targetTurnID string) ([]string, error) {
+func editRetryProviderHistoryBoundary(
+	turns []storesqlite.Turn,
+	targetTurnID string,
+	snapshot RuntimeHistorySnapshot,
+) ([]string, error) {
 	if len(turns) == 0 || turns[len(turns)-1].TurnID != strings.TrimSpace(targetTurnID) {
 		return nil, ErrEditRetryNotEligible
 	}
-	result := make([]string, 0, len(turns))
-	for _, turn := range turns {
-		providerTurnID := strings.TrimSpace(turn.RootProviderTurnID)
-		if providerTurnID == "" {
-			return nil, errors.New("effective history contains a turn without provider provenance")
-		}
-		result = append(result, providerTurnID)
+	providerTurnIDs := runtimeHistoryTurnIDs(snapshot)
+	if len(providerTurnIDs) == 0 {
+		return nil, errors.New("provider effective history is empty")
 	}
-	return result, nil
+	boundaryProviderTurnID := strings.TrimSpace(turns[len(turns)-1].RootProviderTurnID)
+	if boundaryProviderTurnID == "" ||
+		providerTurnIDs[len(providerTurnIDs)-1] != boundaryProviderTurnID {
+		return nil, errors.New("provider latest turn does not match the canonical edit boundary")
+	}
+	return providerTurnIDs, nil
+}
+
+func editRetryHasTargetDescendant(children []storesqlite.Session, targetTurnID string) bool {
+	targetTurnID = strings.TrimSpace(targetTurnID)
+	for _, child := range children {
+		if strings.TrimSpace(child.RootTurnID) == targetTurnID {
+			return true
+		}
+	}
+	return false
 }
 
 func runtimeHistoryTurnIDs(snapshot RuntimeHistorySnapshot) []string {

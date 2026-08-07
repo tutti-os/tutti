@@ -51,6 +51,229 @@ func TestEditRetrySagaPreservesNonTextAndUsesDirectReceipt(t *testing.T) {
 	}
 }
 
+func TestEditRetrySagaTrustsProviderPrefixWhenBoundaryMatches(t *testing.T) {
+	host, store, runtime := newHostEditRetryFixtureWithHistoricalChild(t)
+	if _, err := store.ReportActivityState(t.Context(), storesqlite.ActivityStateReport{
+		Session: storesqlite.SessionStateReport{
+			WorkspaceID: "workspace-1", AgentSessionID: "session-1",
+			Kind: storesqlite.SessionKindRoot, Provider: "codex",
+			ProviderSessionID: "thread-1", OccurredAtUnixMS: 4,
+		},
+		Turn: &storesqlite.TurnTransition{
+			WorkspaceID: "workspace-1", AgentSessionID: "session-1",
+			TurnID: "turn-latest", Phase: storesqlite.TurnPhaseRunning,
+			Origin: storesqlite.TurnOriginUserPrompt, StartedAtUnixMS: 4, OccurredAtUnixMS: 4,
+		},
+		RootProviderTurn: &storesqlite.RootProviderTurnTransition{
+			WorkspaceID: "workspace-1", RootAgentSessionID: "session-1",
+			RootTurnID: "turn-latest", ProviderTurnID: "provider-latest",
+			Phase: storesqlite.RootProviderTurnPhaseRunning, OccurredAtUnixMS: 4,
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.ReportActivityState(t.Context(), storesqlite.ActivityStateReport{
+		Session: storesqlite.SessionStateReport{
+			WorkspaceID: "workspace-1", AgentSessionID: "session-1",
+			Kind: storesqlite.SessionKindRoot, Provider: "codex",
+			ProviderSessionID: "thread-1", OccurredAtUnixMS: 5,
+		},
+		Turn: &storesqlite.TurnTransition{
+			WorkspaceID: "workspace-1", AgentSessionID: "session-1",
+			TurnID: "turn-latest", Phase: storesqlite.TurnPhaseSettled,
+			Outcome: storesqlite.TurnOutcomeCompleted, Origin: storesqlite.TurnOriginUserPrompt,
+			SettledAtUnixMS: 5, OccurredAtUnixMS: 5,
+		},
+		RootProviderTurn: &storesqlite.RootProviderTurnTransition{
+			WorkspaceID: "workspace-1", RootAgentSessionID: "session-1",
+			RootTurnID: "turn-latest", ProviderTurnID: "provider-latest",
+			Phase:   storesqlite.RootProviderTurnPhaseCompleted,
+			Outcome: storesqlite.TurnOutcomeCompleted, OccurredAtUnixMS: 5,
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := store.RecordTurnSubmission(t.Context(), storesqlite.TurnSubmission{
+		WorkspaceID: "workspace-1", AgentSessionID: "session-1", TurnID: "turn-latest",
+		ContentJSON: `[{"type":"text","text":"latest"}]`, DisplayPrompt: "latest",
+		CapabilityRefsJSON: `[]`, TuttiModeSnapshotJSON: `null`,
+		ClientSubmitID: "submit-latest", CreatedAtUnixMS: 5, UpdatedAtUnixMS: 5,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	runtime.mu.Lock()
+	runtime.providerTurns = []agenthost.RuntimeHistoryTurn{
+		{ID: "provider-older"},
+		{ID: "provider-historical"},
+		{ID: "provider-latest"},
+	}
+	runtime.mu.Unlock()
+
+	availability, err := host.GetEditRetryAvailability(
+		t.Context(),
+		agenthost.SessionRef{WorkspaceID: "workspace-1", AgentSessionID: "session-1"},
+	)
+	if err != nil {
+		t.Fatalf("GetEditRetryAvailability() error = %v", err)
+	}
+	if !availability.Eligible || availability.TurnID != "turn-latest" {
+		t.Fatalf("GetEditRetryAvailability() = %#v, want latest turn eligible", availability)
+	}
+
+	result, err := host.EditRetry(
+		t.Context(),
+		agenthost.SessionRef{WorkspaceID: "workspace-1", AgentSessionID: "session-1"},
+		"turn-latest",
+		agenthost.EditRetryInput{
+			EditedText: "edited latest", ClientOperationID: "edit-remapped-prefix",
+			ExpectedHistoryRevision: 0,
+		},
+	)
+	if err != nil {
+		t.Fatalf("EditRetry() error = %v", err)
+	}
+	if result.State != agenthost.EditRetryStateCompleted {
+		t.Fatalf("EditRetry() result = %#v, want completed", result)
+	}
+}
+
+func TestEditRetryRejectsProviderHistoryWhenTargetIsNotLatest(t *testing.T) {
+	host, _, runtime := newHostEditRetryFixture(t)
+	runtime.mu.Lock()
+	runtime.providerTurns = []agenthost.RuntimeHistoryTurn{
+		{ID: "provider-original"},
+		{ID: "provider-newer"},
+	}
+	runtime.mu.Unlock()
+
+	_, err := host.EditRetry(
+		t.Context(),
+		agenthost.SessionRef{
+			WorkspaceID: "workspace-1", AgentSessionID: "session-1",
+		},
+		"turn-original",
+		agenthost.EditRetryInput{
+			EditedText: "edited prompt", ClientOperationID: "edit-provider-not-latest",
+			ExpectedHistoryRevision: 0,
+		},
+	)
+	if err == nil {
+		t.Fatal("EditRetry() error = nil, want provider boundary rejection")
+	}
+	runtime.mu.Lock()
+	defer runtime.mu.Unlock()
+	if runtime.historyReads != 1 || runtime.rollbackCalls != 0 ||
+		runtime.execCalls != 0 {
+		t.Fatalf(
+			"provider calls reads=%d rollback=%d exec=%d, want 1/0/0",
+			runtime.historyReads,
+			runtime.rollbackCalls,
+			runtime.execCalls,
+		)
+	}
+}
+
+func TestEditRetryRejectsDescendantsRootedAtTargetTurnBeforeProviderRead(t *testing.T) {
+	tests := []struct {
+		name       string
+		descendant hostEditRetryDescendantMode
+	}{
+		{name: "direct", descendant: hostEditRetryDescendantDirect},
+		{name: "nested", descendant: hostEditRetryDescendantNested},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			host, _, runtime := newHostEditRetryFixtureWithOptions(
+				t,
+				hostEditRetryFixtureOptions{descendant: test.descendant},
+			)
+			availability, err := host.GetEditRetryAvailability(
+				t.Context(),
+				agenthost.SessionRef{
+					WorkspaceID: "workspace-1", AgentSessionID: "session-1",
+				},
+			)
+			if err != nil {
+				t.Fatalf("GetEditRetryAvailability() error = %v", err)
+			}
+			if availability.Eligible ||
+				availability.ReasonCode != agenthost.EditRetryReasonCodeTurnNotLatest {
+				t.Fatalf("GetEditRetryAvailability() = %#v, want target descendant rejection", availability)
+			}
+
+			_, err = host.EditRetry(
+				t.Context(),
+				agenthost.SessionRef{
+					WorkspaceID: "workspace-1", AgentSessionID: "session-1",
+				},
+				"turn-original",
+				agenthost.EditRetryInput{
+					EditedText: "edited prompt", ClientOperationID: "edit-descendant-" + test.name,
+					ExpectedHistoryRevision: 0,
+				},
+			)
+			if !errors.Is(err, agenthost.ErrEditRetryNotEligible) {
+				t.Fatalf("EditRetry() error = %v, want not eligible", err)
+			}
+			runtime.mu.Lock()
+			defer runtime.mu.Unlock()
+			if runtime.historyReads != 0 || runtime.rollbackCalls != 0 ||
+				runtime.execCalls != 0 {
+				t.Fatalf(
+					"provider calls reads=%d rollback=%d exec=%d, want 0/0/0",
+					runtime.historyReads,
+					runtime.rollbackCalls,
+					runtime.execCalls,
+				)
+			}
+		})
+	}
+}
+
+func TestEditRetryIgnoresTombstonedTargetDescendant(t *testing.T) {
+	host, _, runtime := newHostEditRetryFixtureWithOptions(
+		t,
+		hostEditRetryFixtureOptions{
+			descendant:          hostEditRetryDescendantDirect,
+			tombstoneDescendant: true,
+		},
+	)
+	availability, err := host.GetEditRetryAvailability(
+		t.Context(),
+		agenthost.SessionRef{WorkspaceID: "workspace-1", AgentSessionID: "session-1"},
+	)
+	if err != nil {
+		t.Fatalf("GetEditRetryAvailability() error = %v", err)
+	}
+	if !availability.Eligible || availability.TurnID != "turn-original" {
+		t.Fatalf("GetEditRetryAvailability() = %#v, want eligible", availability)
+	}
+	result, err := host.EditRetry(
+		t.Context(),
+		agenthost.SessionRef{WorkspaceID: "workspace-1", AgentSessionID: "session-1"},
+		"turn-original",
+		agenthost.EditRetryInput{
+			EditedText: "edited prompt", ClientOperationID: "edit-tombstoned-descendant",
+			ExpectedHistoryRevision: 0,
+		},
+	)
+	if err != nil {
+		t.Fatalf("EditRetry() error = %v", err)
+	}
+	if result.State != agenthost.EditRetryStateCompleted {
+		t.Fatalf("EditRetry() result = %#v, want completed", result)
+	}
+	runtime.mu.Lock()
+	defer runtime.mu.Unlock()
+	if runtime.rollbackCalls != 1 || runtime.execCalls != 1 {
+		t.Fatalf(
+			"provider calls rollback=%d exec=%d, want 1/1",
+			runtime.rollbackCalls,
+			runtime.execCalls,
+		)
+	}
+}
+
 func TestEditRetrySagaDoesNotRedispatchAmbiguousRollback(t *testing.T) {
 	host, _, runtime := newHostEditRetryFixture(t)
 	runtime.mu.Lock()
@@ -339,6 +562,29 @@ func TestEditRetrySagaRetriesDefinitivelyNotDispatchedReplacement(t *testing.T) 
 }
 
 func newHostEditRetryFixture(t *testing.T) (*agenthost.Host, *storesqlite.Store, *hostEditRetryRuntime) {
+	return newHostEditRetryFixtureWithOptions(t, hostEditRetryFixtureOptions{})
+}
+
+func newHostEditRetryFixtureWithHistoricalChild(t *testing.T) (*agenthost.Host, *storesqlite.Store, *hostEditRetryRuntime) {
+	return newHostEditRetryFixtureWithOptions(t, hostEditRetryFixtureOptions{
+		descendant: hostEditRetryDescendantDirect,
+	})
+}
+
+type hostEditRetryDescendantMode string
+
+const (
+	hostEditRetryDescendantNone   hostEditRetryDescendantMode = ""
+	hostEditRetryDescendantDirect hostEditRetryDescendantMode = "direct"
+	hostEditRetryDescendantNested hostEditRetryDescendantMode = "nested"
+)
+
+type hostEditRetryFixtureOptions struct {
+	descendant          hostEditRetryDescendantMode
+	tombstoneDescendant bool
+}
+
+func newHostEditRetryFixtureWithOptions(t *testing.T, options hostEditRetryFixtureOptions) (*agenthost.Host, *storesqlite.Store, *hostEditRetryRuntime) {
 	t.Helper()
 	db, err := sql.Open("sqlite", filepath.Join(t.TempDir(), "edit-retry.db"))
 	if err != nil {
@@ -376,6 +622,48 @@ func newHostEditRetryFixture(t *testing.T) (*agenthost.Host, *storesqlite.Store,
 	}); err != nil {
 		t.Fatal(err)
 	}
+	if options.descendant != hostEditRetryDescendantNone {
+		if _, err := store.ReportSessionState(t.Context(), storesqlite.SessionStateReport{
+			WorkspaceID: "workspace-1", AgentSessionID: "child-historical",
+			Kind: storesqlite.SessionKindChild, Provider: "codex",
+			ProviderSessionID:  "thread-child-historical",
+			RootAgentSessionID: "session-1", RootTurnID: "turn-original",
+			ParentAgentSessionID: "session-1", ParentTurnID: "turn-original",
+			ParentToolCallID: "call-historical", OccurredAtUnixMS: 2,
+		}); err != nil {
+			t.Fatal(err)
+		}
+		if options.descendant == hostEditRetryDescendantNested {
+			if _, err := store.ReportActivityState(t.Context(), storesqlite.ActivityStateReport{
+				Session: storesqlite.SessionStateReport{
+					WorkspaceID: "workspace-1", AgentSessionID: "child-historical",
+					Kind: storesqlite.SessionKindChild, Provider: "codex",
+					ProviderSessionID:  "thread-child-historical",
+					RootAgentSessionID: "session-1", RootTurnID: "turn-original",
+					ParentAgentSessionID: "session-1", ParentTurnID: "turn-original",
+					ParentToolCallID: "call-historical", OccurredAtUnixMS: 2,
+				},
+				Turn: &storesqlite.TurnTransition{
+					WorkspaceID: "workspace-1", AgentSessionID: "child-historical",
+					TurnID: "turn-child", Phase: storesqlite.TurnPhaseRunning,
+					Origin: storesqlite.TurnOriginUserPrompt, StartedAtUnixMS: 2,
+					OccurredAtUnixMS: 2,
+				},
+			}); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := store.ReportSessionState(t.Context(), storesqlite.SessionStateReport{
+				WorkspaceID: "workspace-1", AgentSessionID: "child-nested",
+				Kind: storesqlite.SessionKindChild, Provider: "codex",
+				ProviderSessionID:  "thread-child-nested",
+				RootAgentSessionID: "session-1", RootTurnID: "turn-original",
+				ParentAgentSessionID: "child-historical", ParentTurnID: "turn-child",
+				ParentToolCallID: "call-nested", OccurredAtUnixMS: 2,
+			}); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
 	if _, err := store.ReportActivityState(t.Context(), storesqlite.ActivityStateReport{
 		Session: storesqlite.SessionStateReport{
 			WorkspaceID: "workspace-1", AgentSessionID: "session-1",
@@ -406,6 +694,11 @@ func newHostEditRetryFixture(t *testing.T) (*agenthost.Host, *storesqlite.Store,
 		CreatedAtUnixMS: 3, UpdatedAtUnixMS: 3,
 	}); err != nil {
 		t.Fatal(err)
+	}
+	if options.tombstoneDescendant {
+		if removed, err := store.DeleteSession(t.Context(), "workspace-1", "child-historical"); err != nil || !removed {
+			t.Fatalf("DeleteSession(child-historical) removed=%v error=%v", removed, err)
+		}
 	}
 	runtime := &hostEditRetryRuntime{
 		store: store, providerTurns: []agenthost.RuntimeHistoryTurn{{ID: "provider-original"}},

@@ -180,13 +180,14 @@ SELECT (
   AND NOT EXISTS(
     SELECT 1 FROM workspace_agent_sessions
     WHERE workspace_id = ? AND root_agent_session_id = ?
+      AND root_turn_id = ?
       AND session_kind = 'child' AND deleted_at_unix_ms = 0
   )
 )
 `, input.WorkspaceID, input.AgentSessionID, input.TurnID,
 		input.WorkspaceID, input.AgentSessionID, input.TurnID,
 		input.WorkspaceID, input.AgentSessionID, turn.StartedAtUnixMS, turn.StartedAtUnixMS, input.TurnID,
-		input.WorkspaceID, input.AgentSessionID).Scan(&validSubject); err != nil {
+		input.WorkspaceID, input.AgentSessionID, input.TurnID).Scan(&validSubject); err != nil {
 		return fmt.Errorf("validate edit retry subject: %w", err)
 	}
 	if validSubject != 1 {
