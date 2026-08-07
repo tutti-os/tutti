@@ -8,6 +8,7 @@ import {
 } from "@tutti-os/ui-rich-text/core";
 import { getAgentCustomMentionKind } from "../../../shared/agentCustomMentionKinds";
 import { translate } from "../../../i18n/index";
+import { AGENT_PASTED_TEXT_MENTION_KIND } from "../../../shared/pastedTextKinds";
 import type {
   AgentContextMentionItem,
   AgentComposerFileMentionStatus,
@@ -429,6 +430,19 @@ export function parseMentionItemFromHref(input: {
       workspaceId,
       targetId,
       name
+    };
+  }
+  if (resource === AGENT_PASTED_TEXT_MENTION_KIND) {
+    const path = mention.scope?.path?.trim() ?? "";
+    if (!targetId || !path) {
+      return null;
+    }
+    return {
+      kind: "pasted-text",
+      href,
+      targetId,
+      name,
+      path
     };
   }
   if (resource === "workspace-reference") {
