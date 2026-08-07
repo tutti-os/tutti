@@ -1741,14 +1741,16 @@ func TestDefaultPreparerCursorUsesRuntimePluginDir(t *testing.T) {
 
 	preparer := newTestPreparer(stateDir)
 	preparer.CLICommand = "tutti-dev"
-	prepared, err := preparer.Prepare(t.Context(), PrepareInput{
+	prepareInput := PrepareInput{
 		WorkspaceID:    "workspace-1",
 		AgentSessionID: "cursor-session-1",
 		AgentTargetID:  "local:cursor",
 		Provider:       "cursor",
 		Cwd:            cwd,
+		CLICommand:     preparer.CLICommand,
 		BrowserUse:     true,
-	})
+	}
+	prepared, err := preparer.Prepare(t.Context(), prepareInput)
 	if err != nil {
 		t.Fatalf("Prepare() error = %v", err)
 	}
@@ -1782,6 +1784,7 @@ func TestDefaultPreparerCursorUsesRuntimePluginDir(t *testing.T) {
 	}
 	if !strings.Contains(string(pluginManifest), `"name": "tutti-cli"`) ||
 		!strings.Contains(string(pluginManifest), `"skills": "./skills/"`) ||
+		!strings.Contains(string(pluginManifest), `"rules": []`) ||
 		!strings.Contains(string(pluginManifest), `"displayName": "Tutti CLI"`) {
 		t.Fatalf("cursor plugin manifest = %q", string(pluginManifest))
 	}
@@ -1790,6 +1793,43 @@ func TestDefaultPreparerCursorUsesRuntimePluginDir(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(pluginDir, "hooks")); !os.IsNotExist(err) {
 		t.Fatalf("cursor ACP plugin hooks should remain dormant, stat error = %v", err)
+	}
+	contextPath := envValue(prepared.Env, cursorPromptContextFileEnv)
+	if contextPath != filepath.Join(pluginDir, "tutti-context.md") {
+		t.Fatalf("cursor prompt context path = %q, want plugin-owned context file", contextPath)
+	}
+	promptContext, err := os.ReadFile(contextPath)
+	if err != nil {
+		t.Fatalf("cursor prompt context missing: %v", err)
+	}
+	expectedInput := prepareInput
+	expectedInput.hostFacts, err = normalizeHostFacts(preparer.Profile.HostFacts)
+	if err != nil {
+		t.Fatalf("normalizeHostFacts() error = %v", err)
+	}
+	expectedPolicy, err := tuttiCLIPolicy(testResolvedInput(t, expectedInput))
+	if err != nil {
+		t.Fatalf("tuttiCLIPolicy() error = %v", err)
+	}
+	if !strings.HasPrefix(string(promptContext), strings.TrimSpace(expectedPolicy)+"\n\n## Available Skills\n") {
+		t.Fatalf("cursor prompt context does not start with resolved policy: %s", string(promptContext))
+	}
+	skillEntries, err := os.ReadDir(filepath.Join(pluginDir, "skills"))
+	if err != nil {
+		t.Fatalf("read cursor plugin skills: %v", err)
+	}
+	catalog := strings.SplitN(string(promptContext), "## Available Skills\n", 2)
+	if len(catalog) != 2 {
+		t.Fatalf("cursor prompt context missing dynamic Skill catalog: %s", string(promptContext))
+	}
+	if got := strings.Count(catalog[1], "\n- "); got != len(skillEntries) {
+		t.Fatalf("cursor prompt context catalog entries = %d, want %d", got, len(skillEntries))
+	}
+	for _, entry := range skillEntries {
+		skillFile := filepath.Join(pluginDir, "skills", entry.Name(), "SKILL.md")
+		if !strings.Contains(catalog[1], "`"+skillFile+"`") {
+			t.Fatalf("cursor prompt context missing materialized Skill path %q", skillFile)
+		}
 	}
 	pluginSkill, err := os.ReadFile(filepath.Join(pluginDir, "skills", "tutti-cli", "SKILL.md"))
 	if err != nil {

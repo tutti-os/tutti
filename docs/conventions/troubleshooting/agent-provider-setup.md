@@ -693,20 +693,30 @@ file or directory`. A failed `codex app-server` probe is diagnostic evidence,
   `cwd/AGENTS.md`, which dirtied tracked repositories.
 - Fix:
   Materialize Tutti Cursor skills as a session-scoped Cursor plugin with
-  `.cursor-plugin/plugin.json` and `skills/*/SKILL.md`; expose it through
-  `TUTTI_CURSOR_PLUGIN_DIR`, and start Cursor ACP as
+  `.cursor-plugin/plugin.json` and `skills/*/SKILL.md`. Generate the canonical
+  runtime policy and its materialized Skill catalog from the same resolved
+  capability profile instead of maintaining a Cursor-specific Skill catalog.
+  Reconcile the session-owned root on every prepare so resume replaces current
+  managed Skills and removes stale managed entries without touching unmanaged
+  directories.
+  Expose the plugin through `TUTTI_CURSOR_PLUGIN_DIR`, start Cursor ACP as
   `cursor-agent --plugin-dir <plugin-dir> acp`. Keep user/project
   `.cursor/skills` discoverable for composer options, but never write Tutti
   injected skills or Tutti runtime instructions into the workspace cwd for
-  Cursor sessions. Cursor Agent `2026.07.01-41b2de7` does not load plugin hooks
-  in ACP mode, so do not advertise the dormant background-Task guard in the
-  plugin manifest and do not claim that background Task is blocked. Do not
-  install the hook into user or project Cursor configuration as a workaround.
+  Cursor sessions. Cursor ACP does not project plugin Skills or Rules into the
+  model context, so append the prepared policy and dynamic catalog to the first
+  provider-only ACP prompt; never project it as user-visible content. Cursor
+  Agent `2026.07.01-41b2de7` does not load plugin hooks in ACP mode, so do not
+  advertise the dormant background-Task guard in the plugin manifest and do not
+  claim that background Task is blocked. Do not install the hook into user or
+  project Cursor configuration as a workaround.
 - Validation:
-  Add `runtimeprep` coverage that Cursor prepare creates the runtime plugin
-  while leaving project `.cursor/skills` and `AGENTS.md` untouched, runtime
-  coverage that Cursor ACP includes `--plugin-dir`, and agent service coverage
-  that Cursor composer skill discovery includes plugin skills. Then run
+  Add `runtimeprep` coverage that Cursor prepare creates the runtime plugin and
+  dynamic prompt context while leaving project `.cursor/skills` and `AGENTS.md`
+  untouched; add runtime coverage that Cursor ACP includes `--plugin-dir` and
+  injects the prepared context only on its first provider prompt, and agent
+  service coverage that Cursor composer skill discovery includes plugin skills.
+  Then run
   `cd packages/agent/runtimeprep && go test ./...`,
   `cd services/tuttid && go test ./service/agent`, and
   `go test ./packages/agent/daemon/runtime`.

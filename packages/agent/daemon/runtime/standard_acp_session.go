@@ -53,15 +53,20 @@ func (a *standardACPAdapter) Start(ctx context.Context, session Session) ([]acti
 			}
 		}
 	}()
+	initialPromptContext, err := a.resolveInitialPromptContext(session)
+	if err != nil {
+		return nil, err
+	}
 	acpSession := &standardACPSession{
-		client:           client,
-		agentInfo:        acpAgentInfo(initializeResult),
-		promptImage:      standardACPProviderPromptImageSupported(a.config.provider, initializeResult),
-		sessionClose:     standardACPSessionCloseSupported(initializeResult),
-		acpLiveState:     standardACPInitialLiveState(),
-		pendingApprovals: make(map[string]*pendingACPApproval),
-		permissionModeID: strings.TrimSpace(session.PermissionModeID),
-		planMode:         session.SettingsValue().PlanMode,
+		client:               client,
+		agentInfo:            acpAgentInfo(initializeResult),
+		promptImage:          standardACPProviderPromptImageSupported(a.config.provider, initializeResult),
+		sessionClose:         standardACPSessionCloseSupported(initializeResult),
+		acpLiveState:         standardACPInitialLiveState(),
+		pendingApprovals:     make(map[string]*pendingACPApproval),
+		permissionModeID:     strings.TrimSpace(session.PermissionModeID),
+		planMode:             session.SettingsValue().PlanMode,
+		initialPromptContext: initialPromptContext,
 	}
 	a.storeSession(session.AgentSessionID, acpSession)
 
@@ -190,6 +195,10 @@ func (a *standardACPAdapter) Resume(ctx context.Context, session Session) error 
 			}
 		}
 	}()
+	initialPromptContext, err := a.resolveInitialPromptContext(session)
+	if err != nil {
+		return err
+	}
 	if attachedCheckpoint {
 		liveState := standardACPInitialLiveState()
 		liveState.currentMode = firstNonEmpty(
@@ -206,6 +215,7 @@ func (a *standardACPAdapter) Resume(ctx context.Context, session Session) error 
 			pendingApprovals:     make(map[string]*pendingACPApproval),
 			permissionModeID:     strings.TrimSpace(session.PermissionModeID),
 			planMode:             session.SettingsValue().PlanMode,
+			initialPromptContext: initialPromptContext,
 		}
 		started = true
 		keepSession = true
@@ -214,15 +224,16 @@ func (a *standardACPAdapter) Resume(ctx context.Context, session Session) error 
 		return nil
 	}
 	acpSession := &standardACPSession{
-		client:            client,
-		providerSessionID: session.ProviderSessionID,
-		agentInfo:         acpAgentInfo(initializeResult),
-		promptImage:       standardACPProviderPromptImageSupported(a.config.provider, initializeResult),
-		sessionClose:      standardACPSessionCloseSupported(initializeResult),
-		acpLiveState:      standardACPInitialLiveState(),
-		pendingApprovals:  make(map[string]*pendingACPApproval),
-		permissionModeID:  strings.TrimSpace(session.PermissionModeID),
-		planMode:          session.SettingsValue().PlanMode,
+		client:               client,
+		providerSessionID:    session.ProviderSessionID,
+		agentInfo:            acpAgentInfo(initializeResult),
+		promptImage:          standardACPProviderPromptImageSupported(a.config.provider, initializeResult),
+		sessionClose:         standardACPSessionCloseSupported(initializeResult),
+		acpLiveState:         standardACPInitialLiveState(),
+		pendingApprovals:     make(map[string]*pendingACPApproval),
+		permissionModeID:     strings.TrimSpace(session.PermissionModeID),
+		planMode:             session.SettingsValue().PlanMode,
+		initialPromptContext: initialPromptContext,
 	}
 	if previousSession != nil {
 		acpSession.acpLiveState = cloneACPLiveState(previousSession.acpLiveState)

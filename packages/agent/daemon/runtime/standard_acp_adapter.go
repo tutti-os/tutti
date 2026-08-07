@@ -44,6 +44,10 @@ type standardACPConfig struct {
 	// the resolved command (e.g. codex-acp `--config model=...` flags that can
 	// only be applied at process start).
 	commandWithSettings func([]string, Session) []string
+	// initialPromptContext resolves provider-owned context that ACP v1 cannot
+	// carry through a developer/system channel. It is appended to the first
+	// provider prompt only and never projected as user-visible content.
+	initialPromptContext func(Session) (string, error)
 	// finalizeEnv applies provider-owned environment composition after session,
 	// target, and managed-runtime overrides have been resolved.
 	finalizeEnv func([]string, Session) ([]string, error)
@@ -140,6 +144,38 @@ type standardACPSession struct {
 	// planMode denies permission-gated operations even when the provider emits
 	// a request while its planning workflow is active.
 	planMode bool
+	// initialPromptContext remains pending until the provider accepts its first
+	// prompt. A failed transport call leaves it pending for the next attempt.
+	initialPromptContext string
+}
+
+func (a *standardACPAdapter) resolveInitialPromptContext(session Session) (string, error) {
+	if a == nil || a.config.initialPromptContext == nil {
+		return "", nil
+	}
+	context, err := a.config.initialPromptContext(session)
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(context), nil
+}
+
+func (a *standardACPAdapter) pendingInitialPromptContext(session *standardACPSession) string {
+	if a == nil || session == nil {
+		return ""
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return session.initialPromptContext
+}
+
+func (a *standardACPAdapter) consumeInitialPromptContext(session *standardACPSession) {
+	if a == nil || session == nil {
+		return
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	session.initialPromptContext = ""
 }
 
 func (a *standardACPAdapter) stampTurnLifecycleSnapshots(acpSession *standardACPSession, events []activityshared.Event) []activityshared.Event {
