@@ -276,41 +276,34 @@ func TestClaudeCodeSDKAdapterMapsCompactLifecycleAsSystemNotice(t *testing.T) {
 	}
 }
 
-func TestClaudeCodeSDKAdapterMarksOverflowCompactionForVisibleRecovery(t *testing.T) {
+func TestClaudeCodeSDKAdapterMapsContextOverflowAsHandoffRequired(t *testing.T) {
 	adapter := NewClaudeCodeSDKAdapter(nil)
-	adapterSession := &claudeSDKAdapterSession{
-		providerSessionID: "claude-provider-old",
-		liveState:         newClaudeSDKLiveState(),
-	}
+	adapterSession := &claudeSDKAdapterSession{liveState: newClaudeSDKLiveState()}
 	session := standardTestSession(ProviderClaudeCode)
-	session.ProviderSessionID = "claude-provider-old"
 
-	events, terminal, err := adapter.sidecarTurnEvents(
-		adapterSession,
-		session,
-		"turn-overflow",
-		claudeSDKSidecarEvent{
-			Type: "compact_failed",
-			Payload: map[string]any{
-				"turnId":                  "turn-overflow",
-				"reason":                  "Maximum context length exceeded.",
-				"contextRecoveryRequired": true,
-			},
+	_, _, err := adapter.sidecarTurnEvents(adapterSession, session, "turn-compact", claudeSDKSidecarEvent{
+		Type:    "compact_started",
+		Payload: map[string]any{"turnId": "turn-compact"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	failed, terminal, err := adapter.sidecarTurnEvents(adapterSession, session, "turn-compact", claudeSDKSidecarEvent{
+		Type: "compact_failed",
+		Payload: map[string]any{
+			"turnId":                 "turn-compact",
+			"reason":                 "Maximum context length exceeded.",
+			"contextHandoffRequired": true,
 		},
-	)
-	if err != nil || terminal || len(events) != 2 {
-		t.Fatalf("overflow compact events=%#v terminal=%v err=%v", events, terminal, err)
+	})
+	if err != nil || terminal || len(failed) != 1 {
+		t.Fatalf("compact_failed events=%#v terminal=%v err=%v", failed, terminal, err)
 	}
-	if events[0].Payload.Metadata["noticeKind"] != "context_recovery_pending" {
-		t.Fatalf("overflow notice metadata=%#v", events[0].Payload.Metadata)
-	}
-	if events[1].Type != activityshared.EventSessionUpdated {
-		t.Fatalf("overflow recovery marker event=%#v", events[1])
-	}
-	state := claudeSDKContextRecoveryFromRuntimeContext(events[1].Payload.Metadata)
-	if state.Generation != 1 || state.State != claudeSDKContextRecoveryStatePending ||
-		state.SourceProviderSessionID != "claude-provider-old" {
-		t.Fatalf("overflow recovery state=%#v", state)
+	metadata := failed[0].Payload.Metadata
+	if metadata["noticeKind"] != "context_handoff_required" ||
+		metadata["severity"] != "error" ||
+		metadata["retryable"] != false {
+		t.Fatalf("compact_failed metadata=%#v, want terminal handoff error", metadata)
 	}
 }
 

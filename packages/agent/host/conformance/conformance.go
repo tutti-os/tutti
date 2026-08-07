@@ -218,38 +218,6 @@ type SessionForkScenario struct {
 	run  func(context.Context, SessionForkDriver) error
 }
 
-// ContextRecoveryFixture seeds the optional provider-context rollover at the
-// public Host boundary without forcing every lifecycle driver to emulate it.
-type ContextRecoveryFixture struct {
-	Session            SessionSeed
-	Pending            bool
-	ObservedGoalStatus string
-}
-
-type ContextRecoveryMetrics struct {
-	RecoveryCalls             int
-	ExecCalls                 int
-	LastExecProviderSessionID string
-	LastActiveGoal            *agenthost.RuntimeContextRecoveryGoal
-}
-
-type ContextRecoveryDriver interface {
-	ResetContextRecovery(context.Context, ContextRecoveryFixture) error
-	GoalControl(context.Context, agenthost.GoalControlInput) (GoalObservation, error)
-	RefreshContextRecoveryGoalObservation(
-		context.Context,
-		agenthost.SessionRef,
-		map[string]any,
-	) error
-	SendInput(context.Context, agenthost.SessionRef, agenthost.SendInput) (SendObservation, error)
-	ContextRecoveryMetrics() ContextRecoveryMetrics
-}
-
-type ContextRecoveryScenario struct {
-	Name string
-	run  func(context.Context, ContextRecoveryDriver) error
-}
-
 // InteractionTreeDriver is separate from the lifecycle Driver because tree
 // snapshots are a read capability that consumers can adopt independently.
 type InteractionTreeDriver interface {
@@ -282,23 +250,6 @@ func RunSessionFork(
 	}
 	if scenario.run == nil {
 		return fmt.Errorf("agent host session fork conformance scenario %q has no runner", scenario.Name)
-	}
-	return scenario.run(ctx, driver)
-}
-
-func RunContextRecovery(
-	ctx context.Context,
-	driver ContextRecoveryDriver,
-	scenario ContextRecoveryScenario,
-) error {
-	if driver == nil {
-		return fmt.Errorf("agent host context recovery conformance driver is required")
-	}
-	if scenario.run == nil {
-		return fmt.Errorf(
-			"agent host context recovery conformance scenario %q has no runner",
-			scenario.Name,
-		)
 	}
 	return scenario.run(ctx, driver)
 }

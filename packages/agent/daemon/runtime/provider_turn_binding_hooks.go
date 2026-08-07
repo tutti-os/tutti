@@ -7,16 +7,11 @@ import (
 	"strings"
 )
 
-const (
-	providerTurnBindingSchemaVersion       = 1
-	claudeProviderTurnBindingSchemaVersion = 2
-)
+const providerTurnBindingSchemaVersion = 1
 
 type claudeProviderTurnBinding struct {
-	SchemaVersion             int    `json:"schemaVersion"`
-	ProviderSessionID         string `json:"providerSessionId,omitempty"`
-	ContextRecoveryGeneration int64  `json:"contextRecoveryGeneration,omitempty"`
-	CheckpointMessageID       string `json:"checkpointMessageId,omitempty"`
+	SchemaVersion       int    `json:"schemaVersion"`
+	CheckpointMessageID string `json:"checkpointMessageId,omitempty"`
 }
 
 func (*ClaudeCodeSDKAdapter) WriteProviderTurnBinding(
@@ -26,12 +21,7 @@ func (*ClaudeCodeSDKAdapter) WriteProviderTurnBinding(
 		return nil, errors.New("claude provider turn id is required")
 	}
 	binding := claudeProviderTurnBinding{
-		SchemaVersion:             claudeProviderTurnBindingSchemaVersion,
-		ProviderSessionID:         strings.TrimSpace(input.Source.ProviderSessionID),
-		ContextRecoveryGeneration: claudeSDKContextRecoveryFromRuntimeContext(input.Source.RuntimeContext).Generation,
-	}
-	if binding.ProviderSessionID == "" {
-		return nil, errors.New("claude provider session id is required")
+		SchemaVersion: providerTurnBindingSchemaVersion,
 	}
 	if input.Payload != nil {
 		binding.CheckpointMessageID = strings.TrimSpace(
@@ -52,31 +42,8 @@ func (*ClaudeCodeSDKAdapter) CanForkProviderTurn(
 	if err := json.Unmarshal(input.ProviderTurnBindingJSON, &binding); err != nil {
 		return false, nil
 	}
-	if strings.TrimSpace(binding.CheckpointMessageID) == "" {
-		return false, nil
-	}
-	return claudeProviderTurnBindingMatchesSource(binding, input.Source), nil
-}
-
-func claudeProviderTurnBindingMatchesSource(
-	binding claudeProviderTurnBinding,
-	source Session,
-) bool {
-	generation := claudeSDKContextRecoveryFromRuntimeContext(
-		source.RuntimeContext,
-	).Generation
-	switch binding.SchemaVersion {
-	case providerTurnBindingSchemaVersion:
-		// Historical v1 bindings predate provider-session identity. They remain
-		// usable only before the first rollover; afterwards they fail closed.
-		return generation == 0
-	case claudeProviderTurnBindingSchemaVersion:
-		return strings.TrimSpace(binding.ProviderSessionID) != "" &&
-			binding.ProviderSessionID == strings.TrimSpace(source.ProviderSessionID) &&
-			binding.ContextRecoveryGeneration == generation
-	default:
-		return false
-	}
+	return binding.SchemaVersion == providerTurnBindingSchemaVersion &&
+		strings.TrimSpace(binding.CheckpointMessageID) != "", nil
 }
 
 type appServerProviderTurnBinding struct {
@@ -139,7 +106,6 @@ func (c *Controller) providerTurnBindingJSON(
 	if !ok {
 		return nil
 	}
-	input.Source = session
 	binding, err := writer.WriteProviderTurnBinding(input)
 	if err != nil {
 		return nil

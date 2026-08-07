@@ -156,25 +156,6 @@ func SessionForkScenarios() []SessionForkScenario {
 	}
 }
 
-// ContextRecoveryScenarios covers the optional runtime replacement capability
-// independently from the universal lifecycle catalog.
-func ContextRecoveryScenarios() []ContextRecoveryScenario {
-	return []ContextRecoveryScenario{
-		{
-			Name: "pending runtime context recovery precedes new turn dispatch",
-			run:  runPendingRuntimeContextRecoveryPrecedesNewTurnDispatch,
-		},
-		{
-			Name: "terminal canonical Goal is not planned for context recovery",
-			run:  runTerminalGoalIsNotPlannedForRuntimeContextRecovery,
-		},
-		{
-			Name: "diverged canonical Goal is rejected before context recovery",
-			run:  runDivergedGoalIsRejectedBeforeRuntimeContextRecovery,
-		},
-	}
-}
-
 // InteractionTreeScenarios covers the canonical cross-session interaction
 // read without expanding the base lifecycle Driver contract.
 func InteractionTreeScenarios() []InteractionTreeScenario {

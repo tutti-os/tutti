@@ -53,7 +53,6 @@ type RuntimeController struct {
 var (
 	_ host.RuntimeController                       = (*RuntimeController)(nil)
 	_ host.RuntimeHistoryController                = (*RuntimeController)(nil)
-	_ host.RuntimeContextRecoveryController        = (*RuntimeController)(nil)
 	_ host.RuntimeProviderTurnAcceptanceReconciler = (*RuntimeController)(nil)
 	_ host.RuntimeSessionLiveness                  = (*RuntimeController)(nil)
 	_ host.RuntimeSubmitProvenanceReporter         = (*RuntimeController)(nil)
@@ -696,8 +695,7 @@ func runtimeResumeInput(input host.RuntimeResumeInput) agentruntime.ResumeInput 
 		RuntimeContext: cloneMap(input.RuntimeContext), ProviderTargetRef: cloneMap(input.ProviderTargetRef),
 		PermissionModeID: input.Settings.PermissionModeID, Settings: runtimeSettings(input.Settings),
 		CreatedAtUnixMS: input.CreatedAtUnixMS, UpdatedAtUnixMS: input.UpdatedAtUnixMS,
-		ContextRecoveryGoal: runtimeContextRecoveryGoal(input.ContextRecoveryGoal),
-		RecreateIfMissing:   input.RecreateIfMissing,
+		RecreateIfMissing: input.RecreateIfMissing,
 	}
 }
 

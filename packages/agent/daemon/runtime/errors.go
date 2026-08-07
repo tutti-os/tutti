@@ -9,7 +9,6 @@ const (
 
 var (
 	ErrSessionDisconnected           = errors.New("agent session is not connected")
-	ErrContextRecoveryRequired       = errors.New("agent session requires Host-planned context recovery")
 	ErrInteractiveRequestNotLive     = errors.New("interactive request is no longer live")
 	ErrInteractiveAlreadyAnswered    = errors.New("interactive request has already been answered")
 	ErrSessionNoActiveTurn           = errors.New("agent session has no active turn")

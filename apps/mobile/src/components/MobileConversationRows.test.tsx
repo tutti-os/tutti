@@ -6,7 +6,7 @@ import { PrimaryButton } from "./PrimaryButton";
 import { MobileInteractionCard } from "./MobileConversationRows";
 import { MobileConversationTimeline } from "./MobileConversationTimeline";
 
-test("renders the typed context recovery notice on Native", () => {
+test("renders context overflow with new-conversation handoff guidance", () => {
   let renderer: ReactTestRenderer;
   act(() => {
     renderer = create(
@@ -16,28 +16,28 @@ test("renders the typed context recovery notice on Native", () => {
             rows: [
               {
                 kind: "message",
-                id: "row-recovery",
-                turnId: "turn-recovery",
+                id: "row-handoff-required",
+                turnId: "turn-handoff-required",
                 speaker: "assistant",
                 occurredAtUnixMs: 1,
                 thinking: [],
                 messages: [
                   {
                     kind: "message-content",
-                    id: "message-recovery",
-                    turnId: "turn-recovery",
+                    id: "message-handoff-required",
+                    turnId: "turn-handoff-required",
                     body: "",
                     presentationKind: "turn-boundary",
                     occurredAtUnixMs: 1,
                     systemNotice: {
-                      noticeKind: "context_recovery_pending",
-                      semanticKind: "context-recovery-pending",
-                      severity: null,
+                      noticeKind: "context_handoff_required",
+                      semanticKind: "context-handoff-required",
+                      severity: "error",
                       command: "compact",
                       commandStatus: "failed",
                       title: "Context compaction interrupted.",
                       detail: "Maximum context length exceeded.",
-                      retryable: null
+                      retryable: false
                     }
                   }
                 ]
@@ -55,8 +55,8 @@ test("renders the typed context recovery notice on Native", () => {
     .findAllByType(Text)
     .map((node) => String(node.props.children))
     .join("\n");
-  expect(text).toContain("Tutti is recovering this conversation's context");
-  expect(text).toContain("Tutti CLI");
+  expect(text).toContain("This conversation has reached its context limit");
+  expect(text).toContain("@mention this conversation");
   expect(text).toContain("Maximum context length exceeded.");
 });
 

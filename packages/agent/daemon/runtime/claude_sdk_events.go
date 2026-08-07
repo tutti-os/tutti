@@ -265,7 +265,16 @@ func (a *ClaudeCodeSDKAdapter) sidecarTurnEvents(adapterSession *claudeSDKAdapte
 		}
 		return []activityshared.Event{compact}, false, nil
 	case "compact_failed":
-		return a.claudeSDKCompactFailedEvents(adapterSession, session, rootTurnID, event.Payload), false, nil
+		detail := payloadString(event.Payload, "reason")
+		if detail == "" {
+			detail = strings.TrimSpace(strings.TrimPrefix(payloadString(event.Payload, "content"), "Compacting failed:"))
+		}
+		compact, ok := a.compactMessageEvent(adapterSession, session, rootTurnID, messageStreamStateFailed, "failed", detail)
+		if !ok {
+			return nil, false, nil
+		}
+		markClaudeSDKContextHandoffRequired(&compact, event.Payload)
+		return []activityshared.Event{compact}, false, nil
 	case "assistant_delta":
 		messageID := firstNonEmptyString(payloadString(event.Payload, "messageId"), adapterSession.assistantMessageID(providerTurnID))
 		content := firstNonEmpty(payloadString(event.Payload, "snapshot"), payloadString(event.Payload, "content"))
@@ -381,12 +390,10 @@ func (a *ClaudeCodeSDKAdapter) sidecarTurnEvents(adapterSession *claudeSDKAdapte
 			"adapter":    claudeSDKSidecarAdapterName,
 			"stopReason": firstNonEmpty(payloadString(event.Payload, "stopReason"), "end_turn"),
 		}))
-		events = appendClaudeSDKContextRecoveryCompletedEvent(events, adapterSession, session)
 		a.forgetClaudeSDKGoalTurnBinding(adapterSession, eventTurnID)
 		return events, true, nil
 	case "turn_canceled":
 		if boundProviderTurnID == "" {
-			adapterSession.resetContextRecoveryHandoffSent()
 			return a.finishClaudeSDKTurnLifecycle(
 				adapterSession,
 				session,
@@ -399,13 +406,11 @@ func (a *ClaudeCodeSDKAdapter) sidecarTurnEvents(adapterSession *claudeSDKAdapte
 		events = append(events, claudeSDKRootProviderTurnCompletedEvent(session, rootTurnID, boundProviderTurnID, activityshared.TurnOutcomeCanceled, map[string]any{
 			"adapter": claudeSDKSidecarAdapterName,
 		}))
-		events = appendClaudeSDKContextRecoveryCompletedEvent(events, adapterSession, session)
 		events = append(events, a.goalEventsOnArmTurnFailed(adapterSession, session, firstNonEmptyString(eventTurnID, strings.TrimSpace(turnID), providerTurnID))...)
 		a.forgetClaudeSDKGoalTurnBinding(adapterSession, eventTurnID)
 		return events, true, nil
 	case "turn_failed":
 		if boundProviderTurnID == "" {
-			adapterSession.resetContextRecoveryHandoffSent()
 			events := a.finishClaudeSDKTurnLifecycle(
 				adapterSession,
 				session,
@@ -430,7 +435,6 @@ func (a *ClaudeCodeSDKAdapter) sidecarTurnEvents(adapterSession *claudeSDKAdapte
 			"adapter": claudeSDKSidecarAdapterName,
 			"error":   payloadString(event.Payload, "error"),
 		}))
-		events = appendClaudeSDKContextRecoveryCompletedEvent(events, adapterSession, session)
 		events = append(events, a.goalEventsOnArmTurnFailed(adapterSession, session, firstNonEmptyString(eventTurnID, strings.TrimSpace(turnID), providerTurnID))...)
 		a.forgetClaudeSDKGoalTurnBinding(adapterSession, eventTurnID)
 		return events, true, nil

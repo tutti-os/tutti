@@ -37,7 +37,7 @@ test("compaction failure collapses a duplicated provider reason", () => {
   );
 });
 
-test("context overflow compact failure requests Tutti recovery", () => {
+test("context overflow compact failure requires a new-conversation handoff", () => {
   const events: ClaudeSDKSidecarEvent[] = [];
   const tracker = createTracker(events);
 
@@ -47,10 +47,10 @@ test("context overflow compact failure requests Tutti recovery", () => {
   );
 
   const failure = events.find((event) => event.type === "compact_failed");
-  assert.equal(failure?.payload?.contextRecoveryRequired, true);
+  assert.equal(failure?.payload?.contextHandoffRequired, true);
 });
 
-test("non-overflow compact failure does not request Tutti recovery", () => {
+test("non-overflow compact failure does not require a handoff", () => {
   assert.equal(
     isContextOverflowCompactionFailure("Not enough messages to compact."),
     false

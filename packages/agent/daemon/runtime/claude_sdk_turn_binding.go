@@ -38,7 +38,6 @@ func (a *ClaudeCodeSDKAdapter) claudeSDKRootProviderTurnStartedEvent(
 	)
 	binding, err := a.WriteProviderTurnBinding(ProviderTurnBindingWriteInput{
 		Kind:           ProviderTurnBindingWriteStarted,
-		Source:         session,
 		ProviderTurnID: providerTurnID,
 	})
 	if err == nil {
@@ -64,7 +63,6 @@ func (a *ClaudeCodeSDKAdapter) claudeSDKRootProviderTurnCheckpointEvent(
 	}
 	binding, err := a.WriteProviderTurnBinding(ProviderTurnBindingWriteInput{
 		Kind:           ProviderTurnBindingWriteCheckpoint,
-		Source:         session,
 		ProviderTurnID: providerTurnID,
 		Payload: map[string]any{
 			"checkpointMessageId": checkpointMessageID,

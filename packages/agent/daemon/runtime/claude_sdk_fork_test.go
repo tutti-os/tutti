@@ -60,18 +60,11 @@ func TestClaudeSDKForkReturnsProviderOwnedIdentityEvidence(t *testing.T) {
 	adapter := NewClaudeCodeSDKAdapter(claudeSDKForkTestTransport{conn: conn})
 	source := standardTestSession(ProviderClaudeCode)
 	source.ProviderSessionID = "claude-source"
-	source.RuntimeContext = map[string]any{
-		claudeSDKContextRecoveryRuntimeKey: map[string]any{
-			"version":    1,
-			"generation": int64(2),
-			"state":      claudeSDKContextRecoveryStateCompleted,
-		},
-	}
 
 	result, err := adapter.Fork(t.Context(), SessionForkInput{
 		Source: source, ProviderTurnID: "prompt-2",
 		ProviderTurnBindingJSON: json.RawMessage(
-			`{"schemaVersion":2,"providerSessionId":"claude-source","contextRecoveryGeneration":2,"checkpointMessageId":"answer-2"}`,
+			`{"schemaVersion":1,"checkpointMessageId":"answer-2"}`,
 		),
 		TargetTitle: "Claude session (2)",
 	})
@@ -88,13 +81,13 @@ func TestClaudeSDKForkReturnsProviderOwnedIdentityEvidence(t *testing.T) {
 				{
 					ProviderTurnID: "child-prompt-1",
 					ProviderTurnBindingJSON: json.RawMessage(
-						`{"schemaVersion":2,"providerSessionId":"claude-child","contextRecoveryGeneration":2,"checkpointMessageId":"child-answer-1"}`,
+						`{"schemaVersion":1,"checkpointMessageId":"child-answer-1"}`,
 					),
 				},
 				{
 					ProviderTurnID: "child-prompt-2",
 					ProviderTurnBindingJSON: json.RawMessage(
-						`{"schemaVersion":2,"providerSessionId":"claude-child","contextRecoveryGeneration":2,"checkpointMessageId":"child-answer-2"}`,
+						`{"schemaVersion":1,"checkpointMessageId":"child-answer-2"}`,
 					),
 				},
 			},
@@ -128,7 +121,7 @@ func TestClaudeSDKForkPreservesUnknownDispositionAfterDispatch(t *testing.T) {
 	result, err := adapter.Fork(t.Context(), SessionForkInput{
 		Source: source, ProviderTurnID: "prompt-1",
 		ProviderTurnBindingJSON: json.RawMessage(
-			`{"schemaVersion":2,"providerSessionId":"claude-source","checkpointMessageId":"answer-1"}`,
+			`{"schemaVersion":1,"checkpointMessageId":"answer-1"}`,
 		),
 		TargetTitle: "Child",
 	})
@@ -181,7 +174,7 @@ func TestClaudeSDKForkedChildCanResumeAndStartTurn(t *testing.T) {
 	result, err := adapter.Fork(t.Context(), SessionForkInput{
 		Source: source, ProviderTurnID: "prompt-1",
 		ProviderTurnBindingJSON: json.RawMessage(
-			`{"schemaVersion":2,"providerSessionId":"claude-source","checkpointMessageId":"answer-1"}`,
+			`{"schemaVersion":1,"checkpointMessageId":"answer-1"}`,
 		),
 		TargetTitle: "Child",
 	})

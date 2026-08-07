@@ -401,20 +401,6 @@ func (s *SQLiteStore) GetGoalControlOperation(ctx context.Context, workspaceID, 
 	return s.agentReadStore().GetGoalControlOperation(ctx, workspaceID, operationID)
 }
 
-func (s *SQLiteStore) GetCompletedGoalControlOperationForRevision(
-	ctx context.Context,
-	workspaceID string,
-	agentSessionID string,
-	revision int64,
-) (agentactivitybiz.GoalControlOperation, bool, error) {
-	return s.agentReadStore().GetCompletedGoalControlOperationForRevision(
-		ctx,
-		workspaceID,
-		agentSessionID,
-		revision,
-	)
-}
-
 func (s *SQLiteStore) ListClaimableGoalControlOperations(ctx context.Context, input agentactivitybiz.ListClaimableGoalControlOperationsInput) ([]agentactivitybiz.GoalControlOperation, error) {
 	return s.agentReadStore().ListClaimableGoalControlOperations(ctx, input)
 }

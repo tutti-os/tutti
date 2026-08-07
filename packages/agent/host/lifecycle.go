@@ -372,7 +372,7 @@ func (h *Host) ensureRuntimeSessionLocked(ctx context.Context, ref SessionRef) (
 		return ProviderRuntimeSession{}, err
 	}
 	defer release()
-	resumeInput := RuntimeResumeInput{
+	result, err := h.runtime.Resume(ctx, RuntimeResumeInput{
 		WorkspaceID: ref.WorkspaceID, AgentSessionID: ref.AgentSessionID,
 		AgentTargetID: strings.TrimSpace(canonicalSession.AgentTargetID), Provider: strings.TrimSpace(canonicalSession.Provider),
 		ProviderSessionID: strings.TrimSpace(canonicalSession.ProviderSessionID), Resumable: evidence.Established, Cwd: prepared.Cwd,
@@ -382,11 +382,7 @@ func (h *Host) ensureRuntimeSessionLocked(ctx context.Context, ref SessionRef) (
 		Visible: boolPointer(canonicalSession.Metadata.Visible), RuntimeContext: cloneMap(firstMap(prepared.RuntimeContext, canonicalSession.InternalRuntimeContext)),
 		ProviderTargetRef: cloneMap(prepared.ProviderTargetRef), Metadata: canonicalSession.Metadata,
 		InternalRuntimeContext: cloneMap(canonicalSession.InternalRuntimeContext), RecreateIfMissing: policy.Mode == ResumeModeRecreate,
-	}
-	if resumeInput, err = h.prepareRuntimeResumeContextRecovery(ctx, ref, resumeInput); err != nil {
-		return ProviderRuntimeSession{}, err
-	}
-	result, err := h.runtime.Resume(ctx, resumeInput)
+	})
 	if err != nil {
 		return ProviderRuntimeSession{}, err
 	}
@@ -515,10 +511,6 @@ func (h *Host) sendInputSerialized(
 	}
 	execResult, err := func() (RuntimeExecResult, error) {
 		defer releaseStartup()
-		session, err = h.prepareRuntimeContextRecovery(ctx, ref, session, input.Guidance)
-		if err != nil {
-			return RuntimeExecResult{}, err
-		}
 		turnID := strings.TrimSpace(input.TurnID)
 		if turnID == "" && !input.Guidance {
 			turnID = uuid.NewString()

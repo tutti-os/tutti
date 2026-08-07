@@ -60,9 +60,6 @@ type fakeRuntime struct {
 	closeHook              func(RuntimeCloseInput)
 	validateErr            error
 	validateCalls          []RuntimeExecInput
-	contextRecoveryPending bool
-	contextRecoveryCalls   []agenthost.RuntimeContextRecoveryInput
-	execProviderSessionIDs []string
 }
 
 type fakeAgentTargetStore struct {
@@ -546,12 +543,6 @@ func (f *fakeRuntime) CanResume(input RuntimeResumeInput) bool {
 
 func (f *fakeRuntime) Exec(_ context.Context, input RuntimeExecInput) (RuntimeExecResult, error) {
 	f.execCalls = append(f.execCalls, input)
-	if session, ok := f.sessions[input.WorkspaceID+":"+input.AgentSessionID]; ok {
-		f.execProviderSessionIDs = append(
-			f.execProviderSessionIDs,
-			strings.TrimSpace(session.ProviderSessionID),
-		)
-	}
 	if input.Guidance && f.guidanceTargetMismatch && strings.TrimSpace(input.TurnID) != strings.TrimSpace(f.guidanceTarget) {
 		return RuntimeExecResult{
 			AgentSessionID: input.AgentSessionID,
@@ -594,45 +585,6 @@ func (f *fakeRuntime) Exec(_ context.Context, input RuntimeExecInput) (RuntimeEx
 		TurnID:         turnID,
 		TurnLifecycle:  TurnLifecycle{Phase: "submitted"},
 	}, nil
-}
-
-func (f *fakeRuntime) PrepareContextRecovery(
-	_ context.Context,
-	input agenthost.RuntimeContextRecoveryInput,
-) (agenthost.RuntimeContextRecoveryResult, error) {
-	f.contextRecoveryCalls = append(f.contextRecoveryCalls, input)
-	key := input.WorkspaceID + ":" + input.AgentSessionID
-	session, ok := f.sessions[key]
-	if !ok {
-		return agenthost.RuntimeContextRecoveryResult{}, agenthost.ErrSessionNotFound
-	}
-	if !f.contextRecoveryPending {
-		return agenthost.RuntimeContextRecoveryResult{Session: session}, nil
-	}
-	f.contextRecoveryPending = false
-	session.ProviderSessionID = "recovered-" + strings.TrimSpace(session.ProviderSessionID)
-	f.sessions[key] = session
-	return agenthost.RuntimeContextRecoveryResult{
-		Session:   session,
-		Recovered: true,
-	}, nil
-}
-
-func (f *fakeRuntime) ContextRecoveryRequired(
-	_ context.Context,
-	input agenthost.RuntimeContextRecoveryInput,
-) (bool, error) {
-	if _, ok := f.sessions[input.WorkspaceID+":"+input.AgentSessionID]; !ok {
-		return false, agenthost.ErrSessionNotFound
-	}
-	return f.contextRecoveryPending, nil
-}
-
-func (f *fakeRuntime) ResumeContextRecoveryRequired(
-	_ context.Context,
-	_ agenthost.RuntimeResumeInput,
-) (bool, error) {
-	return f.contextRecoveryPending, nil
 }
 
 func (f *fakeRuntime) DurablyReportSubmitProvenance(_ context.Context, input RuntimeSubmitProvenanceInput) error {

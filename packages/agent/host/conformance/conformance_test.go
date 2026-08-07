@@ -44,24 +44,6 @@ func TestPublishedScenarioCatalogsHaveUniqueNames(t *testing.T) {
 	}
 }
 
-func TestPublishedContextRecoveryScenarioCatalogHasUniqueNames(t *testing.T) {
-	t.Parallel()
-	scenarios := ContextRecoveryScenarios()
-	if len(scenarios) != 3 {
-		t.Fatalf("context recovery scenarios=%#v", scenarios)
-	}
-	seen := make(map[string]struct{}, len(scenarios))
-	for _, scenario := range scenarios {
-		if scenario.Name == "" {
-			t.Fatal("context recovery scenario name is empty")
-		}
-		if _, duplicate := seen[scenario.Name]; duplicate {
-			t.Fatalf("duplicate context recovery scenario name %q", scenario.Name)
-		}
-		seen[scenario.Name] = struct{}{}
-	}
-}
-
 func TestPublishedInteractionTreeScenarioCatalogHasUniqueNames(t *testing.T) {
 	t.Parallel()
 	scenarios := InteractionTreeScenarios()

@@ -296,51 +296,6 @@ func (a serviceHostRuntime) Exec(ctx context.Context, input RuntimeExecInput) (R
 	result, err := a.service.controller().Exec(ctx, input)
 	return result, normalizeRuntimeError(err)
 }
-func (a serviceHostRuntime) PrepareContextRecovery(
-	ctx context.Context,
-	input agenthost.RuntimeContextRecoveryInput,
-) (agenthost.RuntimeContextRecoveryResult, error) {
-	recovery, ok := a.service.controller().(interface {
-		PrepareContextRecovery(
-			context.Context,
-			agenthost.RuntimeContextRecoveryInput,
-		) (agenthost.RuntimeContextRecoveryResult, error)
-	})
-	if !ok {
-		return agenthost.RuntimeContextRecoveryResult{}, nil
-	}
-	return recovery.PrepareContextRecovery(ctx, input)
-}
-func (a serviceHostRuntime) ContextRecoveryRequired(
-	ctx context.Context,
-	input agenthost.RuntimeContextRecoveryInput,
-) (bool, error) {
-	recovery, ok := a.service.controller().(interface {
-		ContextRecoveryRequired(
-			context.Context,
-			agenthost.RuntimeContextRecoveryInput,
-		) (bool, error)
-	})
-	if !ok {
-		return false, nil
-	}
-	return recovery.ContextRecoveryRequired(ctx, input)
-}
-func (a serviceHostRuntime) ResumeContextRecoveryRequired(
-	ctx context.Context,
-	input agenthost.RuntimeResumeInput,
-) (bool, error) {
-	recovery, ok := a.service.controller().(interface {
-		ResumeContextRecoveryRequired(
-			context.Context,
-			agenthost.RuntimeResumeInput,
-		) (bool, error)
-	})
-	if !ok {
-		return false, nil
-	}
-	return recovery.ResumeContextRecoveryRequired(ctx, input)
-}
 func (a serviceHostRuntime) DurablyReportSubmitProvenance(ctx context.Context, input RuntimeSubmitProvenanceInput) error {
 	reporter, ok := a.service.controller().(interface {
 		DurablyReportSubmitProvenance(context.Context, RuntimeSubmitProvenanceInput) error

@@ -291,7 +291,7 @@ export class CompactionTracker {
         turnId: normalized,
         reason,
         ...(isContextOverflowCompactionFailure(reason)
-          ? { contextRecoveryRequired: true }
+          ? { contextHandoffRequired: true }
           : {}),
         content: reason ? `Compacting failed: ${reason}` : "Compacting failed."
       }

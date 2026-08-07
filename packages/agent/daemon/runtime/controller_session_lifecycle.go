@@ -193,28 +193,6 @@ func (c *Controller) Resume(ctx context.Context, input ResumeInput) (Session, er
 		session.PermissionModeID = session.Settings.PermissionModeID
 	}
 	c.invalidateAppliedGoalGenerationFences(session)
-	if recoveryAdapter, ok := adapter.(ContextRecoveryAdapter); ok {
-		prepared, required, recoveryErr := recoveryAdapter.PrepareContextRecovery(session)
-		if recoveryErr != nil {
-			return Session{}, recoveryErr
-		}
-		if required {
-			fresh, recoveryErr := c.recreateAdapterSessionWithStarter(
-				ctx,
-				prepared,
-				adapter,
-				func(ctx context.Context, session Session) ([]activityshared.Event, error) {
-					return recoveryAdapter.StartContextRecovery(
-						ctx,
-						session,
-						input.ContextRecoveryGoal,
-					)
-				},
-				nil,
-			)
-			return fresh, recoveryErr
-		}
-	}
 	if err := adapter.Resume(ctx, session); err != nil {
 		if !input.RecreateIfMissing || !isResumeRecreatableError(err) {
 			return Session{}, err

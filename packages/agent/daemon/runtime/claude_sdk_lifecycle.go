@@ -41,9 +41,6 @@ func (a *ClaudeCodeSDKAdapter) Start(ctx context.Context, session Session) ([]ac
 	}
 	trackInputUnits := providerInputUnitsEnabled(conn)
 	conn = wrapProviderLaunchCleanup(conn, cleanup)
-	liveState := newClaudeSDKLiveState()
-	liveState.goal = clonePayload(payloadMap(session.RuntimeContext, "goal"))
-	goalIdentity := claudeSDKGoalIdentityFromRuntimeContext(session.RuntimeContext)
 	adapterSession := &claudeSDKAdapterSession{
 		conn:              conn,
 		reader:            newClaudeSDKLineReader(conn, trackInputUnits),
@@ -56,11 +53,7 @@ func (a *ClaudeCodeSDKAdapter) Start(ctx context.Context, session Session) ([]ac
 		pendingRequests:   make(map[string]*pendingInteractiveRequest),
 		pendingResponses:  make(map[string]chan claudeSDKSidecarEvent),
 		turns:             make(map[string]*claudeSDKTurnWaiter),
-		liveState:         liveState,
-		goalOperationID:   goalIdentity.operationID,
-		goalRevision:      goalIdentity.revision,
-		goalRepairEpoch:   goalIdentity.repairEpoch,
-		contextRecovery:   claudeSDKContextRecoveryFromRuntimeContext(session.RuntimeContext),
+		liveState:         newClaudeSDKLiveState(),
 	}
 	a.storeSession(session.AgentSessionID, adapterSession)
 	a.emitCommandSnapshot(claudeSDKCommandSnapshot(session.AgentSessionID, adapterSession.liveState))

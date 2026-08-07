@@ -54,9 +54,9 @@ const messages = {
     connectionSynchronizingTitle: "Syncing the latest data",
     connectionStatus: "Status",
     connectionTransport: "Channel",
-    contextRecoveryScheduled: "Tutti is recovering this conversation's context",
-    contextRecoveryScheduledDetail:
-      "The provider could not compact this conversation. On your next message, Tutti will switch to a fresh provider session and let it retrieve relevant earlier turns through Tutti CLI.",
+    contextHandoffRequired: "This conversation has reached its context limit",
+    contextHandoffRequiredDetail:
+      "This conversation can't continue. Start a new conversation and @mention this conversation to hand off its context.",
     connectionTransportP2p: "End-to-end encrypted P2P",
     statusConnected: "Connected",
     statusFailed: "Connection failed",
@@ -225,9 +225,9 @@ const messages = {
     cancel: "取消",
     canceled: "已取消",
     connected: "已配对",
-    contextRecoveryScheduled: "Tutti 正在兜底恢复当前对话的上下文",
-    contextRecoveryScheduledDetail:
-      "Provider 无法压缩当前对话；你下次发送消息时，Tutti 会切换到新的 Provider 会话，并允许它通过 Tutti CLI 按需读取相关旧对话",
+    contextHandoffRequired: "当前对话已达到上下文上限",
+    contextHandoffRequiredDetail:
+      "当前对话无法继续，请新建对话，并在新对话中 @当前对话 以交接上下文",
     completed: "已完成",
     copy: "复制",
     copyAsMarkdown: "复制为 Markdown",

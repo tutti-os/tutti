@@ -535,18 +535,22 @@ function AgentSystemNoticeMessage({
       />
     );
   }
-  if (isContextRecoveryPendingNotice(message)) {
-    const recoveryDetail = [
-      translate("agentHost.agentGui.contextRecoveryScheduledDetail"),
-      detail
-    ]
-      .filter(Boolean)
-      .join("\n");
+  if (isContextHandoffRequiredNotice(message)) {
     return (
-      <ContextCompactionDivider
-        text={translate("agentHost.agentGui.contextRecoveryScheduled")}
-        detail={recoveryDetail}
-      />
+      <section
+        role="alert"
+        className={`box-border w-full min-w-0 rounded-[8px] border p-3 text-[13px] leading-5 text-[var(--text-primary)] ${SYSTEM_NOTICE_CLASS_NAME}`}
+      >
+        <div className="font-medium text-[var(--state-danger)]">
+          {translate("agentHost.agentGui.contextHandoffRequired")}
+        </div>
+        <div className="mt-1 text-[var(--text-secondary)]">
+          {translate("agentHost.agentGui.contextHandoffRequiredDetail")}
+        </div>
+        {detail ? (
+          <AgentMessageDetailsDisclosure detail={detail} className="mt-2" />
+        ) : null}
+      </section>
     );
   }
   if (isContextCompactionInterruptedNotice(message)) {
@@ -639,10 +643,10 @@ function isContextCompactionInterruptedNotice(
   );
 }
 
-function isContextRecoveryPendingNotice(
+function isContextHandoffRequiredNotice(
   message: AgentMessageContentVM
 ): boolean {
-  return message.systemNotice?.semanticKind === "context-recovery-pending";
+  return message.systemNotice?.semanticKind === "context-handoff-required";
 }
 
 function ContextCompactionDivider({

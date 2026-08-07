@@ -506,37 +506,14 @@ closed and treats a persisted title as user-established.
 
 A Session does not copy Turn phase/outcome, own pending Interactions, or persist lifecycle inferred from transcript.
 
-A long-lived canonical Tutti Session may replace its active provider session
-between Turns when that provider can no longer continue its context. This is a
-serial rollover, not multiple concurrently active provider sessions:
-`providerSessionId` remains the pointer to the current provider session and a
-runtime-context recovery generation records that earlier Turns may belong to a
-previous provider session. AgentGUI keeps the same conversation visible, shows
-an explicit system notice before the next send, and the replacement provider
-may retrieve only the relevant canonical history through Tutti CLI. Turn
-bindings carry the current provider-session identity and recovery generation:
-bindings from an earlier generation fail closed instead of applying an old
-checkpoint to the replacement session, while new Turns in the replacement
-session remain forkable. The provider adapter owns interpretation of its opaque
-runtime context, while Host owns Goal recovery: after a cheap pending-recovery
-probe and a durable report barrier, Host reads canonical Goal state and supplies a plan only for the exact
-durable generation whose observation is still `active`. Operation identity is
-resolved from the stable completed operation for that revision, not mutable
-observation evidence. Host requires a synced, pending-free desired/observed
-objective and its matching completed `set`, so delayed active observations
-cannot combine an old objective with a newer identity. The adapter applies that operation/revision only to the
-explicitly fresh provider session. Terminal
-Goal projections remain visible but are never planned or reactivated by
-recovery. Exec repeats the pending check while holding the runtime lifecycle
-lock, closing the probe-to-dispatch race. Controller
-owns only lifecycle serialization, live-process release, event publication,
-and retained admission fences.
-
-The canonical conversation projection maps the recovery notice to the typed
-`context-recovery-pending` semantic once. Desktop and Native renderers localize
-that same semantic and disclose both Tutti's fallback and the on-demand CLI
-history handoff; platform components do not reinterpret provider-specific raw
-notice fields.
+If provider-native compaction fails because the current context is already over
+its hard limit, the provider adapter projects one typed
+`context-handoff-required` system notice with error severity. AgentGUI localizes
+the failure and tells the user to start a new conversation and mention the
+exhausted Session there. Tutti does not replace the provider session or
+automatically redispatch the user's next message: the fresh root Session and
+its canonical `agent-session` mention make the handoff explicit and preserve
+the user's control over what continues.
 
 Provider-native subagents use child Sessions:
 

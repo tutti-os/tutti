@@ -1341,14 +1341,14 @@ describe("projectWorkspaceAgentMessagesToConversationVM", () => {
     expect(compactMessage?.presentationKind).toBe("turn-boundary");
   });
 
-  it("projects context recovery as a typed cross-host system notice", () => {
+  it("projects context overflow as a typed handoff-required notice", () => {
     const conversation = projectWorkspaceAgentMessagesToConversationVM({
       activity: activity(),
       session: session(),
       workspaceRoot: "/workspace/demo",
       messages: [
         message({
-          messageId: "compact-recovery",
+          messageId: "compact-handoff-required",
           turnId: "turn-compact",
           status: "failed",
           semantics: {
@@ -1357,7 +1357,8 @@ describe("projectWorkspaceAgentMessagesToConversationVM", () => {
           },
           payload: {
             kind: "agent_system_notice",
-            noticeKind: "context_recovery_pending",
+            noticeKind: "context_handoff_required",
+            severity: "error",
             title: "Context compaction interrupted.",
             detail: "Maximum context length exceeded."
           }
@@ -1368,8 +1369,11 @@ describe("projectWorkspaceAgentMessagesToConversationVM", () => {
     const projected = conversation.rows.flatMap((row) =>
       row.kind === "message" ? row.messages : []
     )[0];
-    expect(projected?.systemNotice?.semanticKind).toBe(
-      "context-recovery-pending"
+    expect(projected?.systemNotice).toEqual(
+      expect.objectContaining({
+        semanticKind: "context-handoff-required",
+        severity: "error"
+      })
     );
   });
 

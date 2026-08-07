@@ -80,32 +80,6 @@ empty; only an explicit title or the first eligible prompt establishes one.
 For typed initial Goal, the display prompt (or a synthesized `/goal` command)
 is the eligible prompt and is established before provider startup, even though
 the Goal path does not create a Turn.
-
-Runtime context recovery is another between-Turn lifecycle transition owned by
-Host. Before dispatching a new non-guidance Turn, Host asks the optional
-`RuntimeContextRecoveryController` to replace a provider session that was
-marked unrecoverable by the preceding Turn. The canonical Tutti Session and its
-history remain stable; `ProviderSessionID` continues to name only the current
-active provider session, while runtime context records a recovery generation
-and the replaced provider id. Guidance never triggers this rollover, and the
-replacement must finish under the Session lock before the new Turn is sent.
-The runtime Controller does not interpret provider-private recovery fields: an
-optional provider adapter prepares the opaque transition and starts the fresh
-context. A cheap provider probe runs first so Host reads canonical Goal state
-only when rollover is actually pending. A durable report barrier runs before
-that read so queued terminal Goal observations cannot be overtaken. Host then supplies an active Goal
-recovery plan only when the durable observation is still `active`, using the
-same operation/revision identity resolved from the stable completed-operation
-record rather than replaceable observation evidence. The desired and observed
-objective must be converged with no pending operation, and the completed
-operation must be the matching `set`; terminal `complete` and
-`blocked` projections remain visible but are not planned for reactivation. An
-active Goal without that identity rejects recovery before the old session is
-released. Runtime Exec repeats the pending check under its lifecycle lock and
-fails closed if recovery becomes necessary after Host's probe. This optional
-behavior is covered by
-`ContextRecoveryScenarios`, not
-the universal lifecycle conformance catalog.
 `CreateSessionInput.RailPlacement` optionally carries the caller-selected,
 versioned canonical rail identity. Host validates it before provider startup
 and persists its opaque `SectionKey` exactly on first creation. An idempotent
@@ -359,12 +333,9 @@ No provider Turn is ever selected by index. The SQLite repair is an idempotent
 empty-binding compare-and-swap and rejects provider Turn identities already
 owned by another canonical Turn. Recovery and provider-owned Fork results pass
 through the owning Agent's binding writer. Claude stores its checkpoint inside
-its private JSON payload together with provider-session identity and recovery
-generation. A binding from an older generation fails closed, while a binding
-written by a Turn in the current replacement session remains forkable. Codex
-and Tutti Agent `thread/fork(lastTurnId)` use the shared app-server payload
-schema and provider Turn id while retaining separate runtime version
-attestations and isolated provider homes.
+its private JSON payload; Codex and Tutti Agent `thread/fork(lastTurnId)` use
+the shared app-server payload schema and provider Turn id while retaining
+separate runtime version attestations and isolated provider homes.
 Target titles use one lineage-family sequence (`Title (2)`, `Title (3)`, ...)
 rather than restarting the suffix when a child Session becomes the next source.
 Every fail-closed boundary rejection retains a stable, content-free reason
