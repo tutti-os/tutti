@@ -46,6 +46,7 @@ type ComposerConfigOption struct {
 
 type ComposerConfigOptionValue struct {
 	Description                string
+	ConsumptionMultiplier      string
 	ID                         string
 	Label                      string
 	Value                      string

@@ -133,6 +133,7 @@ func composerModelOptionsFromCanonicalCatalog(models []modelcatalog.ModelOption)
 			Label:                      label,
 			Value:                      value,
 			Description:                strings.TrimSpace(model.Description),
+			ConsumptionMultiplier:      strings.TrimSpace(model.ConsumptionMultiplier),
 			SupportsImageInput:         model.SupportsImageInput,
 			SupportsReasoningEffort:    supportsReasoningEffort,
 			ReasoningEffort:            strings.TrimSpace(model.DefaultReasoningEffort),
@@ -167,10 +168,11 @@ func composerConfigOptionValuesFromAny(input any) []ComposerConfigOptionValue {
 			id = value
 		}
 		options = append(options, ComposerConfigOptionValue{
-			ID:          id,
-			Label:       label,
-			Value:       value,
-			Description: strings.TrimSpace(stringFromAny(optionMap["description"])),
+			ID:                    id,
+			Label:                 label,
+			Value:                 value,
+			Description:           strings.TrimSpace(stringFromAny(optionMap["description"])),
+			ConsumptionMultiplier: strings.TrimSpace(stringFromAny(optionMap["consumptionMultiplier"])),
 		})
 	}
 	return options

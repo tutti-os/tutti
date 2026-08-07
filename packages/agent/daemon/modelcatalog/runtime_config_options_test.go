@@ -13,6 +13,7 @@ func TestRuntimeConfigOptionModelRoundTripPreservesCapabilities(t *testing.T) {
 		ID:                         "gpt-5.6-sol",
 		DisplayName:                "GPT-5.6-Sol",
 		Description:                "Frontier coding model",
+		ConsumptionMultiplier:      "0.71",
 		DefaultReasoningEffort:     "low",
 		DefaultSpeed:               "standard",
 		IsDefault:                  true,
@@ -45,7 +46,7 @@ func TestRuntimeConfigOptionModelRoundTripPreservesCapabilities(t *testing.T) {
 		t.Fatalf("ParseRuntimeConfigOptionModels() = (%#v, %t), want one advertised model", models, advertised)
 	}
 	got := models[0]
-	if got.ID != model.ID || got.DisplayName != model.DisplayName || got.Description != model.Description || !got.IsDefault {
+	if got.ID != model.ID || got.DisplayName != model.DisplayName || got.Description != model.Description || got.ConsumptionMultiplier != model.ConsumptionMultiplier || !got.IsDefault {
 		t.Fatalf("round-trip identity = %#v, want %#v", got, model)
 	}
 	if !got.ReasoningEffortsAdvertised || got.DefaultReasoningEffort != "low" {

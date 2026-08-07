@@ -98,6 +98,7 @@ export interface AgentGUIComposerSettingOption {
   value: string;
   label: string;
   description?: string;
+  consumptionMultiplier?: string;
   supportsImageInput?: boolean;
   /** Bound plan identity for options aggregated from model access plans. */
   modelPlanId?: string | null;

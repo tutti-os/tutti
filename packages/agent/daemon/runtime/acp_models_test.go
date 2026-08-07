@@ -10,8 +10,9 @@ func TestApplyACPModelsResultProjectsModelConfigOption(t *testing.T) {
 	applyACPModelsResult(&state, json.RawMessage(`{
 		"models": {
 			"availableModels": [
-				{"modelId":"auto-gemini-3","name":"Auto (Gemini 3)","description":"Routes automatically"},
-				{"modelId":"gemini-3-pro-preview","name":"Gemini 3 Pro"}
+				{"modelId":"auto-gemini-3","name":"Auto (Gemini 3)","description":"Routes automatically\nwithout rewriting"},
+				{"modelId":"gemini-3-pro-preview","name":"Gemini 3 Pro","description":"Frontier model · x0.71 credits"},
+				{"modelId":"hy3","name":"Hy3","description":"0.00x Credits"}
 			],
 			"currentModelId":"auto-gemini-3"
 		}
@@ -21,11 +22,20 @@ func TestApplyACPModelsResultProjectsModelConfigOption(t *testing.T) {
 		t.Fatal("modelsAPI = false, want true")
 	}
 	options := extractModelOptionsFromRuntimeDescriptorsForTest(state.configOptionDescriptors)
-	if len(options) != 2 {
-		t.Fatalf("model options = %#v, want two", options)
+	if len(options) != 3 {
+		t.Fatalf("model options = %#v, want three", options)
 	}
 	if options[0]["value"] != "auto-gemini-3" || options[0]["label"] != "Auto (Gemini 3)" {
 		t.Fatalf("first model option = %#v", options[0])
+	}
+	if options[0]["description"] != "Routes automatically\nwithout rewriting" {
+		t.Fatalf("ordinary model description = %#v, want verbatim text", options[0]["description"])
+	}
+	if options[1]["description"] != "Frontier model" || options[1]["consumptionMultiplier"] != "0.71" {
+		t.Fatalf("model consumption metadata = %#v", options[1])
+	}
+	if _, present := options[2]["description"]; present || options[2]["consumptionMultiplier"] != "0.00" {
+		t.Fatalf("credit-only model metadata = %#v", options[2])
 	}
 	if state.configOptions["model"] != "auto-gemini-3" {
 		t.Fatalf("current model = %#v, want auto-gemini-3", state.configOptions["model"])

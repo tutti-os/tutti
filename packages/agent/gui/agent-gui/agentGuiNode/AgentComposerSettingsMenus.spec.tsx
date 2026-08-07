@@ -102,7 +102,7 @@ describe("AgentModelReasoningDropdown", () => {
     expect(screen.getByText("Model selection")).toBeInTheDocument();
   });
 
-  it("shows ACP credits as a model consumption multiplier", async () => {
+  it("shows the typed model consumption multiplier", async () => {
     render(
       <TooltipProvider delayDuration={0}>
         <AgentModelReasoningDropdown
@@ -112,7 +112,7 @@ describe("AgentModelReasoningDropdown", () => {
               {
                 label: "Hy3",
                 value: "hy3",
-                description: "X0.71 Credits"
+                consumptionMultiplier: "0.71"
               }
             ],
             draftSettings: {
@@ -139,7 +139,6 @@ describe("AgentModelReasoningDropdown", () => {
     expect(tooltip).toHaveTextContent("Hy3");
     expect(tooltip).toHaveTextContent("Consumption rate");
     expect(tooltip).toHaveTextContent("0.71x multiplier");
-    expect(tooltip).not.toHaveTextContent("X0.71 Credits");
   });
 });
 

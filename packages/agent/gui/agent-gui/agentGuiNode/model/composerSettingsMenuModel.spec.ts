@@ -186,14 +186,14 @@ describe("buildComposerModelMenuModel", () => {
     });
   });
 
-  it("presents ACP credit descriptions as a consumption multiplier", () => {
+  it("presents the typed model consumption multiplier", () => {
     const menu = buildComposerModelMenuModel(
       vm({
         availableModels: [
           {
             value: "hy3",
             label: "Hy3",
-            description: "X0.71 Credits"
+            consumptionMultiplier: "0.71"
           }
         ],
         selectedModelValue: "hy3"
