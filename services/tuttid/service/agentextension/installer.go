@@ -162,7 +162,12 @@ func (s *SetupService) executeInstall(
 		if runner == nil {
 			runner = localInstallCommandRunner{}
 		}
-		if err := runner.Run(installCtx, command, scratch, cleanInstallEnvironment(scratch)); err != nil {
+		baseEnv := cleanInstallEnvironment(scratch)
+		if isNPMRunner(plan.Runner) {
+			if err := s.runNPMInstallWithRegistryFallback(installCtx, runner, command, scratch, staging, baseEnv, plan); err != nil {
+				return err
+			}
+		} else if err := runner.Run(installCtx, command, scratch, baseEnv); err != nil {
 			return fmt.Errorf("%w: %w", ErrRuntimeInstallFailed, err)
 		}
 	}
