@@ -100,6 +100,7 @@ its draft state, title, description encoding, head commit, and CI status.
 - All new requirements and features across Tutti projects must first reuse existing `@tutti-os/ui-system` components, semantic color tokens, typography, spacing, and other established UI conventions. Before introducing bespoke UI or raw color values, inspect the existing UI System exports and tokens; if the required capability is missing, prefer extending the shared UI System with a reusable primitive or token and document the rationale.
 - User-visible copy must go through the relevant i18n layer. Do not hardcode UI text, dialog text, status labels, empty states, or user-facing errors.
 - Chinese user-facing UI copy must not end with a Chinese full stop (。); keep this punctuation rule consistent across settings and other product surfaces.
+- When adding or removing a direct `tsh-server` API dependency, update the matching stable `operationId` entry for repository `tutti` in the companion `tsh-server/.github/client-sensitive-operations.json` change. Keep the registry repository-level only; trace the concrete Tutti modules, business flows, compatibility risks, and tests from code when analyzing a server change. If an API has no stable `operationId`, establish it in `tsh-server` before registering the dependency.
 - Change `services/tuttid/api/openapi/tuttid.v1.yaml` before daemon HTTP request/response contracts.
 - Document new supported runtime/env overrides in the matching durable convention doc.
 - Business-code files should stay at or below `800` lines as measured by the
