@@ -65,6 +65,7 @@ import {
   textFromReactNode
 } from "./AgentMessageMarkdownRenderers";
 import { MarkdownMedia } from "./AgentMessageMarkdownMedia";
+import type { AgentConversationUnavailableImageRenderer } from "./agentConversation/contracts/agentConversationUnavailableImage";
 import { remarkLiteralAutolinkBoundary } from "./remarkLiteralAutolinkBoundary";
 import { cachedMarkdownParser } from "./cachedMarkdownParser";
 export { resetCachedMarkdownImagesForTests } from "./AgentMessageMarkdownMedia";
@@ -121,6 +122,7 @@ interface AgentMessageMarkdownProps {
   inline?: boolean;
   normalizePlainIssueMentionTitle?: boolean;
   enableImageZoom?: boolean;
+  renderUnavailableImage?: AgentConversationUnavailableImageRenderer;
   streaming?: boolean;
 }
 
@@ -160,6 +162,7 @@ export function AgentMessageMarkdown({
   inline = false,
   normalizePlainIssueMentionTitle = false,
   enableImageZoom = false,
+  renderUnavailableImage,
   streaming = false
 }: AgentMessageMarkdownProps): JSX.Element {
   "use memo";
@@ -261,7 +264,11 @@ export function AgentMessageMarkdown({
       ),
       code: (props: MarkdownDomProps<"code">) => <MarkdownCode {...props} />,
       img: (props: MarkdownDomProps<"img">) => (
-        <MarkdownMedia {...props} enableZoom={enableImageZoom} />
+        <MarkdownMedia
+          {...props}
+          enableZoom={enableImageZoom}
+          renderUnavailableImage={renderUnavailableImage}
+        />
       ),
       p: (props: MarkdownDomProps<"p">) => (
         <MarkdownParagraph {...props} inline={inline} />
@@ -283,6 +290,7 @@ export function AgentMessageMarkdown({
       handleLinkClick,
       inline,
       mermaidStreaming,
+      renderUnavailableImage,
       workspaceAppIcons
     ]
   );

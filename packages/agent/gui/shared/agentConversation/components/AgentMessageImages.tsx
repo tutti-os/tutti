@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type JSX } from "react";
+import { useCallback, useEffect, useMemo, useState, type JSX } from "react";
 import { LoaderCircle } from "lucide-react";
 import { useOptionalAgentGUIRuntime } from "../../../agentActivityRuntime";
 import { ZoomableImage } from "../../../app/renderer/components/ZoomableImage";
@@ -7,15 +7,30 @@ import type {
   AgentMessageContentVM,
   AgentMessageImageVM
 } from "../contracts/agentMessageRowVM";
+import type {
+  AgentConversationUnavailableImageReason,
+  AgentConversationUnavailableImageRenderer
+} from "../contracts/agentConversationUnavailableImage";
+import { resolveAgentConversationUnavailableImageRenderer } from "./AgentConversationUnavailableImageFallback";
+
+interface AgentMessageImageFailure {
+  identity: string;
+  reason: AgentConversationUnavailableImageReason;
+}
 
 export function AgentUserImageGrid({
-  message
+  message,
+  renderUnavailableImage
 }: {
   message: AgentMessageContentVM;
+  renderUnavailableImage?: AgentConversationUnavailableImageRenderer;
 }): JSX.Element {
   "use memo";
   const images = message.images ?? [];
-  const { loadingIds, sources } = useAgentMessageImageSources(images);
+  const unavailableImageRenderer =
+    resolveAgentConversationUnavailableImageRenderer(renderUnavailableImage);
+  const { failures, loadingIds, markLoadFailed, sources } =
+    useAgentMessageImageSources(images);
   const columnCount = Math.min(Math.max(images.length, 1), 4);
   const thumbnailWidth = images.length === 1 ? "160px" : "80px";
   return (
@@ -28,15 +43,30 @@ export function AgentUserImageGrid({
       {images.map((image) => {
         const src = sources.get(image.id) ?? imageSourceUrl(image);
         const loading = !src && loadingIds.has(image.id);
+        const failure = failures.get(image.id);
+        const failureReason =
+          failure?.identity === imageIdentity(image) ? failure.reason : null;
+        const alt = image.name?.trim() || "image";
+        const unavailable =
+          !loading && (!src || failureReason)
+            ? unavailableImageRenderer({
+                source: "user-message",
+                reason: failureReason ?? "unavailable",
+                alt
+              })
+            : null;
         return (
           <div key={image.id} className={styles.userImageThumbnail}>
-            {src ? (
+            {!loading && (!src || failureReason) ? (
+              <>{unavailable}</>
+            ) : src ? (
               <ZoomableImage
                 src={src}
-                alt={image.name?.trim() || "image"}
+                alt={alt}
                 className="block max-h-20 w-full rounded-[7px] object-contain"
                 draggable={false}
                 downloadName={image.name?.trim() || "image.png"}
+                onError={() => markLoadFailed(image)}
               />
             ) : loading ? (
               <div
@@ -60,24 +90,41 @@ export function AgentUserImageGrid({
 }
 
 function useAgentMessageImageSources(images: readonly AgentMessageImageVM[]): {
+  failures: ReadonlyMap<string, AgentMessageImageFailure>;
   loadingIds: ReadonlySet<string>;
+  markLoadFailed: (image: AgentMessageImageVM) => void;
   sources: ReadonlyMap<string, string>;
 } {
   const runtime = useOptionalAgentGUIRuntime();
   const [sources, setSources] = useState<Map<string, string>>(() => new Map());
   const [loadingIds, setLoadingIds] = useState<Set<string>>(() => new Set());
+  const [failures, setFailures] = useState<
+    Map<string, AgentMessageImageFailure>
+  >(() => new Map());
   const missingImages = useMemo(
     () =>
       images.filter(
         (image) =>
           !imageSourceUrl(image) &&
           !sources.has(image.id) &&
+          failures.get(image.id)?.identity !== imageIdentity(image) &&
           image.workspaceId &&
           image.agentSessionId &&
           (image.attachmentId || image.path)
       ),
-    [images, sources]
+    [failures, images, sources]
   );
+
+  const markLoadFailed = useCallback((image: AgentMessageImageVM): void => {
+    setFailures((current) => {
+      const next = new Map(current);
+      next.set(image.id, {
+        identity: imageIdentity(image),
+        reason: "load-failed"
+      });
+      return next;
+    });
+  }, []);
 
   useEffect(() => {
     if (
@@ -114,8 +161,26 @@ function useAgentMessageImageSources(images: readonly AgentMessageImageVM[]): {
             );
             return next;
           });
+          setFailures((current) => {
+            if (!current.has(image.id)) {
+              return current;
+            }
+            const next = new Map(current);
+            next.delete(image.id);
+            return next;
+          });
         })
-        .catch(() => {})
+        .catch(() => {
+          if (canceled) return;
+          setFailures((current) => {
+            const next = new Map(current);
+            next.set(image.id, {
+              identity: imageIdentity(image),
+              reason: "read-failed"
+            });
+            return next;
+          });
+        })
         .finally(() => {
           if (canceled) return;
           setLoadingIds((current) => {
@@ -130,7 +195,18 @@ function useAgentMessageImageSources(images: readonly AgentMessageImageVM[]): {
     };
   }, [missingImages, runtime]);
 
-  return { loadingIds, sources };
+  return { failures, loadingIds, markLoadFailed, sources };
+}
+
+function imageIdentity(image: AgentMessageImageVM): string {
+  const data = image.data?.trim() ?? "";
+  return [
+    image.id,
+    image.attachmentId?.trim() ?? "",
+    image.path?.trim() ?? "",
+    image.url?.trim() ?? "",
+    data ? `${data.length}:${data.slice(0, 24)}` : ""
+  ].join("\u0000");
 }
 
 function imageDataUrl(image: AgentMessageImageVM): string | null {

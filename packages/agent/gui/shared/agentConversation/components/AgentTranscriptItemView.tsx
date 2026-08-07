@@ -5,6 +5,7 @@ import type { AgentGUIProviderSkillOption } from "../../../agent-gui/agentGuiNod
 import { resolveAgentConversationLinkAction } from "../actions/agentConversationLinkActions";
 import type { AgentTranscriptRowVM } from "../contracts/agentTranscriptRowVM";
 import type { AgentConversationParticipantPresentation } from "../contracts/agentConversationParticipantPresentation";
+import type { AgentConversationUnavailableImageRenderer } from "../contracts/agentConversationUnavailableImage";
 import { AgentGeneratedImageRow } from "./AgentGeneratedImageRow";
 import { AgentGoalControlRow } from "./AgentGoalControlRow";
 import { AgentMessageBlock } from "./AgentMessageBlock";
@@ -32,6 +33,7 @@ interface AgentTranscriptItemViewProps {
   workspaceAppIcons?: readonly AgentMessageMarkdownWorkspaceAppIcon[];
   showRawTimelineJson?: boolean;
   participantPresentation?: AgentConversationParticipantPresentation;
+  renderUnavailableImage?: AgentConversationUnavailableImageRenderer;
   showParticipantHeader?: boolean;
   isActiveTurn?: boolean;
   processingPaused?: boolean;
@@ -54,6 +56,7 @@ export const AgentTranscriptItemView = memo(function AgentTranscriptItemView({
   workspaceAppIcons,
   showRawTimelineJson = false,
   participantPresentation,
+  renderUnavailableImage,
   showParticipantHeader,
   isActiveTurn = false,
   processingPaused = false,
@@ -80,7 +83,12 @@ export const AgentTranscriptItemView = memo(function AgentTranscriptItemView({
   );
   switch (row.kind) {
     case "generated-image":
-      return <AgentGeneratedImageRow row={row} />;
+      return (
+        <AgentGeneratedImageRow
+          row={row}
+          renderUnavailableImage={renderUnavailableImage}
+        />
+      );
     case "goal-control":
       return (
         <AgentGoalControlRow
@@ -106,6 +114,7 @@ export const AgentTranscriptItemView = memo(function AgentTranscriptItemView({
           showRawTimelineJson={showRawTimelineJson}
           rawTimelineJsonLabel={labels.rawTimelineJson}
           participantPresentation={participantPresentation}
+          renderUnavailableImage={renderUnavailableImage}
           showParticipantHeader={showParticipantHeader}
           isActiveTurn={isActiveTurn}
           footerAction={footerAction}

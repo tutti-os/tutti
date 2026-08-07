@@ -3,6 +3,7 @@ import type { WorkspaceLinkAction } from "../../../contexts/workspace/presentati
 import type { AgentMessageMarkdownWorkspaceAppIcon } from "../../AgentMessageMarkdown";
 import type { AgentConversationVM } from "../contracts/agentConversationVM";
 import type { AgentConversationParticipantPresentation } from "../contracts/agentConversationParticipantPresentation";
+import type { AgentConversationUnavailableImageRenderer } from "../contracts/agentConversationUnavailableImage";
 import type { AgentConversationFollowEndMode } from "../agentConversationFollowEndController";
 import { AgentTranscriptSkeleton } from "./AgentTranscriptSkeleton";
 import {
@@ -36,6 +37,8 @@ export interface AgentConversationFlowProps {
   workspaceAppIcons?: readonly AgentMessageMarkdownWorkspaceAppIcon[];
   showRawTimelineJson?: boolean;
   participantPresentation?: AgentConversationParticipantPresentation;
+  /** Host-owned presentation for transcript images that cannot be rendered. */
+  renderUnavailableImage?: AgentConversationUnavailableImageRenderer;
   followEndMode?: AgentConversationFollowEndMode;
   forkThroughTurnPendingTurnIds?: readonly string[];
   virtualListLayoutRevision?: number;
@@ -68,6 +71,7 @@ export const AgentConversationFlow = memo(function AgentConversationFlow({
   workspaceAppIcons,
   showRawTimelineJson = false,
   participantPresentation,
+  renderUnavailableImage,
   followEndMode,
   forkThroughTurnPendingTurnIds,
   virtualListLayoutRevision,
@@ -105,6 +109,7 @@ export const AgentConversationFlow = memo(function AgentConversationFlow({
         showRawTimelineJson={showRawTimelineJson}
         followEndMode={followEndMode}
         participantPresentation={participantPresentation}
+        renderUnavailableImage={renderUnavailableImage}
         virtualListLayoutRevision={virtualListLayoutRevision}
         virtualScrollControllerRef={virtualScrollControllerRef}
       />

@@ -1490,6 +1490,18 @@ text, but they are not an additional transcript text block when the canonical
 structured content already renders the same image. Explicit display prompts
 remain transcript content and continue to replace expanded rich prompt text.
 
+Standalone conversation hosts may supply
+`AgentConversationFlow.renderUnavailableImage` to own the presentation for an
+image that AgentGUI cannot render. The same renderer covers structured user
+message images, assistant Markdown images, and image-generation tool artifacts.
+AgentGUI retains loading state and invokes the renderer only after the source is
+known to be unavailable, a host read fails, or the browser image load fails. The
+renderer receives only the image-source category, stable failure reason, and
+alternative text; local paths and raw errors do not cross this presentation
+slot. Omitting the renderer uses AgentGUI's neutral unavailable-image fallback;
+a host renderer replaces that fallback, and a host that intentionally wants no
+failure presentation may return `null` from its renderer.
+
 Standalone hosts may opt a transcript into participant avatars through the
 `agent-conversation` entrypoint's explicit presentation contract. Omitted or
 disabled presentation preserves the existing transcript DOM. Enabled

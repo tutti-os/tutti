@@ -1,4 +1,10 @@
-import { useContext, useEffect, useState, type JSX } from "react";
+import {
+  useContext,
+  useEffect,
+  useState,
+  type JSX,
+  type SyntheticEvent
+} from "react";
 import { ZoomableImage } from "../app/renderer/components/ZoomableImage";
 import { cn } from "../app/renderer/lib/utils";
 import { useTranslation } from "../i18n/index";
@@ -22,6 +28,8 @@ import {
   retainCachedMarkdownMedia,
   type MarkdownMediaState
 } from "./agentMessageMarkdownLinks";
+import type { AgentConversationUnavailableImageRenderer } from "./agentConversation/contracts/agentConversationUnavailableImage";
+import { resolveAgentConversationUnavailableImageRenderer } from "./agentConversation/components/AgentConversationUnavailableImageFallback";
 
 export function resetCachedMarkdownImagesForTests(): void {
   resetCachedMarkdownMediaForTests();
@@ -34,12 +42,16 @@ export function MarkdownMedia({
   className,
   title,
   enableZoom = false,
+  renderUnavailableImage,
   ...props
 }: MarkdownDomProps<"img"> & {
   enableZoom?: boolean;
+  renderUnavailableImage?: AgentConversationUnavailableImageRenderer;
 }): JSX.Element {
   "use memo";
   const { t } = useTranslation();
+  const unavailableImageRenderer =
+    resolveAgentConversationUnavailableImageRenderer(renderUnavailableImage);
   const isInsideLink = useContext(MarkdownLinkContext);
   const agentHostApi = useOptionalAgentHostApi() ?? getOptionalAgentHostApi();
   const workspacePath =
@@ -58,6 +70,30 @@ export function MarkdownMedia({
       ? (peekCachedMarkdownMediaState(workspacePath) ?? { status: "loading" })
       : null
   );
+  const [failedRenderableSrc, setFailedRenderableSrc] = useState<string | null>(
+    null
+  );
+  const normalizedAlt = typeof alt === "string" ? alt : "";
+  const mediaKind = workspacePath
+    ? resolveMarkdownMediaKind(workspacePath)
+    : fallbackMediaKind;
+  const renderUnavailable = (
+    reason: "unavailable" | "read-failed" | "load-failed"
+  ): JSX.Element => (
+    <>
+      {unavailableImageRenderer({
+        source: "assistant-markdown",
+        reason,
+        alt: normalizedAlt
+      })}
+    </>
+  );
+  const handleImageError = (event: SyntheticEvent<HTMLImageElement>): void => {
+    props.onError?.(event);
+    setFailedRenderableSrc(
+      event.currentTarget.getAttribute("src") || event.currentTarget.src
+    );
+  };
 
   useEffect(() => {
     if (!workspacePath || !readWorkspaceImage) {
@@ -154,6 +190,19 @@ export function MarkdownMedia({
       );
     }
 
+    if (renderUnavailableImage && (workspacePath || !resolvedSrc)) {
+      return renderUnavailable("unavailable");
+    }
+    if (!resolvedSrc) {
+      return renderUnavailable("unavailable");
+    }
+    if (
+      typeof resolvedSrc === "string" &&
+      failedRenderableSrc === resolvedSrc
+    ) {
+      return renderUnavailable("load-failed");
+    }
+
     if (!shouldEnableZoom) {
       return (
         <img
@@ -162,6 +211,7 @@ export function MarkdownMedia({
           alt={alt}
           title={title}
           className={className}
+          onError={handleImageError}
         />
       );
     }
@@ -175,6 +225,7 @@ export function MarkdownMedia({
         downloadName={resolveMarkdownImageDownloadName(src, alt)}
         className={className}
         wrapElement="span"
+        onError={handleImageError}
       />
     );
   }
@@ -197,6 +248,10 @@ export function MarkdownMedia({
       );
     }
 
+    if (failedRenderableSrc === state.src) {
+      return renderUnavailable("load-failed");
+    }
+
     if (!shouldEnableZoom) {
       return (
         <img
@@ -208,6 +263,7 @@ export function MarkdownMedia({
             "mt-2 block max-h-[360px] max-w-full rounded-[8px] bg-[var(--transparency-block)] object-contain",
             className
           )}
+          onError={handleImageError}
         />
       );
     }
@@ -224,7 +280,14 @@ export function MarkdownMedia({
           className
         )}
         wrapElement="span"
+        onError={handleImageError}
       />
+    );
+  }
+
+  if (state?.status === "error" && mediaKind !== "video") {
+    return renderUnavailable(
+      state.reason === "read-failed" ? "read-failed" : "unavailable"
     );
   }
 
