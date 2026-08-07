@@ -6,33 +6,62 @@ import {
   isLocalImagePath,
   resolveImageGenerationPreviewSrc
 } from "../../imageGenerationTool";
+import type {
+  AgentConversationUnavailableImageReason,
+  AgentConversationUnavailableImageRenderer
+} from "../contracts/agentConversationUnavailableImage";
+import { resolveAgentConversationUnavailableImageRenderer } from "./AgentConversationUnavailableImageFallback";
+
+type AgentGeneratedImagePreviewState =
+  | { status: "loading" }
+  | { status: "ready"; src: string }
+  | {
+      status: "error";
+      reason: AgentConversationUnavailableImageReason;
+    };
 
 interface AgentGeneratedImagePreviewProps {
   uri: string;
   mimeType: string | null;
   alt: string;
   className: string;
+  renderUnavailableImage?: AgentConversationUnavailableImageRenderer;
 }
 
 export function AgentGeneratedImagePreview({
   uri,
   mimeType,
   alt,
-  className
+  className,
+  renderUnavailableImage
 }: AgentGeneratedImagePreviewProps): JSX.Element | null {
   "use memo";
+  const unavailableImageRenderer =
+    resolveAgentConversationUnavailableImageRenderer(renderUnavailableImage);
   const agentHostApi = useOptionalAgentHostApi();
   const localPath = isLocalImagePath(uri) ? uri.trim() : null;
   const readWorkspaceImage = localPath
     ? agentHostApi?.workspace?.readFile
     : undefined;
-  const [src, setSrc] = useState<string | null>(() =>
-    !localPath ? resolveImageGenerationPreviewSrc(uri) : null
-  );
+  const [state, setState] = useState<AgentGeneratedImagePreviewState>(() => {
+    const src = resolveImageGenerationPreviewSrc(uri);
+    if (localPath && readWorkspaceImage) {
+      return { status: "loading" };
+    }
+    if (src) {
+      return { status: "ready", src };
+    }
+    return { status: "error", reason: "unavailable" };
+  });
 
   useEffect(() => {
     if (!localPath || !readWorkspaceImage) {
-      setSrc(resolveImageGenerationPreviewSrc(uri));
+      const src = resolveImageGenerationPreviewSrc(uri);
+      setState(
+        src
+          ? { status: "ready", src }
+          : { status: "error", reason: "unavailable" }
+      );
       return;
     }
 
@@ -64,15 +93,15 @@ export function AgentGeneratedImagePreview({
         objectUrl = URL.createObjectURL(
           new Blob([arrayBuffer], { type: resolvedMimeType })
         );
-        setSrc(objectUrl);
+        setState({ status: "ready", src: objectUrl });
       } catch {
         if (!canceled) {
-          setSrc(null);
+          setState({ status: "error", reason: "read-failed" });
         }
       }
     }
 
-    setSrc(null);
+    setState({ status: "loading" });
     void loadWorkspaceImage();
 
     return () => {
@@ -83,8 +112,32 @@ export function AgentGeneratedImagePreview({
     };
   }, [localPath, mimeType, readWorkspaceImage, uri]);
 
-  if (!src) {
+  if (localPath && !readWorkspaceImage && renderUnavailableImage) {
+    return (
+      <>
+        {unavailableImageRenderer({
+          source: "image-generation-tool",
+          reason: "unavailable",
+          alt
+        })}
+      </>
+    );
+  }
+
+  if (state.status === "loading") {
     return null;
+  }
+
+  if (state.status === "error") {
+    return (
+      <>
+        {unavailableImageRenderer({
+          source: "image-generation-tool",
+          reason: state.reason,
+          alt
+        })}
+      </>
+    );
   }
 
   return (
@@ -92,8 +145,9 @@ export function AgentGeneratedImagePreview({
       alt={alt}
       className={className}
       downloadName={localPath ? localPath.split(/[\\/]/).pop() : "image.png"}
-      src={src}
+      src={state.src}
       wrapElement="span"
+      onError={() => setState({ status: "error", reason: "load-failed" })}
     />
   );
 }

@@ -23,6 +23,7 @@ import type {
   AgentConversationParticipantIdentity,
   AgentConversationParticipantPresentation
 } from "../contracts/agentConversationParticipantPresentation";
+import type { AgentConversationUnavailableImageRenderer } from "../contracts/agentConversationUnavailableImage";
 import { AgentMessageDetailsDisclosure } from "./AgentMessageDetailsDisclosure";
 import { AgentToolGroupRow } from "./AgentToolGroupRow";
 import {
@@ -70,6 +71,7 @@ interface AgentMessageBlockProps {
   showRawTimelineJson?: boolean;
   rawTimelineJsonLabel?: string;
   participantPresentation?: AgentConversationParticipantPresentation;
+  renderUnavailableImage?: AgentConversationUnavailableImageRenderer;
   showParticipantHeader?: boolean;
   isActiveTurn?: boolean;
   footerAction?: ReactNode;
@@ -90,6 +92,7 @@ export function AgentMessageBlock({
   showRawTimelineJson = false,
   rawTimelineJsonLabel = "",
   participantPresentation,
+  renderUnavailableImage,
   showParticipantHeader = true,
   isActiveTurn = false,
   footerAction
@@ -214,7 +217,10 @@ export function AgentMessageBlock({
         : null;
     const renderedContent =
       isUser && message.contentKind === "image-grid" ? (
-        <AgentUserImageGrid message={message} />
+        <AgentUserImageGrid
+          message={message}
+          renderUnavailableImage={renderUnavailableImage}
+        />
       ) : isUser &&
         message.contentKind === "tutti-checkpoint-wake" &&
         message.checkpointWake ? (
@@ -284,6 +290,7 @@ export function AgentMessageBlock({
           }}
           workspaceAppIcons={workspaceAppIcons}
           enableImageZoom
+          renderUnavailableImage={renderUnavailableImage}
           streaming={
             isActiveTurn ||
             message.statusKind === "working" ||

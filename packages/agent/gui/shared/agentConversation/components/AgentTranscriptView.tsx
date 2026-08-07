@@ -15,6 +15,7 @@ import type { AgentMessageMarkdownWorkspaceAppIcon } from "../../AgentMessageMar
 import type { AgentGUIProviderSkillOption } from "../../../agent-gui/agentGuiNode/model/agentGuiNodeTypes";
 import type { AgentConversationVM } from "../contracts/agentConversationVM";
 import type { AgentConversationParticipantPresentation } from "../contracts/agentConversationParticipantPresentation";
+import type { AgentConversationUnavailableImageRenderer } from "../contracts/agentConversationUnavailableImage";
 import type { AgentConversationFollowEndMode } from "../agentConversationFollowEndController";
 import { AgentTranscriptItemView } from "./AgentTranscriptItemView";
 import {
@@ -68,7 +69,6 @@ import { useAgentObservationGap } from "../AgentObservationGapContext";
 const AGENT_TRANSCRIPT_DISCLOSURE_TURN_GAP_PX = 24;
 const AGENT_TRANSCRIPT_LEGACY_TURN_GAP_PX = 12;
 const AGENT_TRANSCRIPT_FALLBACK_TURN_COUNT = 3;
-
 export type {
   AgentTranscriptAttachmentLocator,
   AgentTranscriptTurnAttachment
@@ -91,6 +91,7 @@ export interface AgentTranscriptViewProps {
   workspaceAppIcons?: readonly AgentMessageMarkdownWorkspaceAppIcon[];
   showRawTimelineJson?: boolean;
   participantPresentation?: AgentConversationParticipantPresentation;
+  renderUnavailableImage?: AgentConversationUnavailableImageRenderer;
   followEndMode?: AgentConversationFollowEndMode;
   forkThroughTurnPendingTurnIds?: readonly string[];
   virtualListLayoutRevision?: number;
@@ -243,6 +244,7 @@ export function areAgentTranscriptViewPropsEqual(
     previous.followEndMode === next.followEndMode &&
     previous.virtualListLayoutRevision === next.virtualListLayoutRevision &&
     previous.virtualScrollControllerRef === next.virtualScrollControllerRef &&
+    previous.renderUnavailableImage === next.renderUnavailableImage &&
     participantPresentationEqual(
       previous.participantPresentation,
       next.participantPresentation
@@ -265,6 +267,7 @@ export const AgentTranscriptView = memo(function AgentTranscriptView({
   workspaceAppIcons,
   showRawTimelineJson = false,
   participantPresentation,
+  renderUnavailableImage,
   followEndMode,
   forkThroughTurnPendingTurnIds = [],
   virtualListLayoutRevision = 0,
@@ -554,6 +557,7 @@ export const AgentTranscriptView = memo(function AgentTranscriptView({
           workspaceAppIcons={workspaceAppIcons}
           showRawTimelineJson={showRawTimelineJson}
           participantPresentation={participantPresentation}
+          renderUnavailableImage={renderUnavailableImage}
           showParticipantHeader={showParticipantHeader}
           isActiveTurn={isActiveTurn}
           processingPaused={

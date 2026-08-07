@@ -1,12 +1,15 @@
 import type { JSX } from "react";
 import { translate } from "../../../i18n/index";
 import type { AgentGeneratedImageRowVM } from "../contracts/agentGeneratedImageRowVM";
+import type { AgentConversationUnavailableImageRenderer } from "../contracts/agentConversationUnavailableImage";
 import { AgentGeneratedImagePreview } from "./AgentGeneratedImagePreview";
 
 export function AgentGeneratedImageRow({
-  row
+  row,
+  renderUnavailableImage
 }: {
   row: AgentGeneratedImageRowVM;
+  renderUnavailableImage?: AgentConversationUnavailableImageRenderer;
 }): JSX.Element {
   "use memo";
   return (
@@ -19,6 +22,7 @@ export function AgentGeneratedImageRow({
         mimeType={row.mimeType}
         alt={translate("agentHost.agentTool.details.imagePreviewAlt")}
         className="block max-h-[560px] max-w-full rounded-[10px] border border-[var(--line-2)] bg-[var(--background-panel)] object-contain"
+        renderUnavailableImage={renderUnavailableImage}
       />
     </div>
   );

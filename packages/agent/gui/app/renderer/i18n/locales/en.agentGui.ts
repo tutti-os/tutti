@@ -12,6 +12,7 @@ import { enAgentGuiUsageStatus } from "./en.agentGuiUsageStatus.ts";
 
 export const enAgentGui = {
   imageDownloaded: "Image downloaded",
+  imagePreviewUnavailable: "Image preview is temporarily unavailable",
   initialPlaceholder: "Type @ to reference sessions, files, tasks, and apps",
   followupPlaceholder: "Request follow-up changes from {{provider}}",
   installRequiredPlaceholder: "Connect {{provider}} to send messages",
