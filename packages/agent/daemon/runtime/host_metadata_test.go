@@ -40,7 +40,7 @@ func TestHostMetadataCustomizesACPParamsAndEnv(t *testing.T) {
 	if clientInfo["name"] != "business-desktop" || clientInfo["title"] != "Business" || clientInfo["version"] != "2.3.4" {
 		t.Fatalf("clientInfo = %#v, want custom metadata", clientInfo)
 	}
-	if got := standardACPEnv(Session{RoomID: "workspace-1"}, host); len(got) != 4 || got[3] != "BUSINESS_WORKSPACE_ID=workspace-1" {
+	if got := standardACPEnv(Session{RoomID: "workspace-1"}, host); len(got) != 6 || got[5] != "BUSINESS_WORKSPACE_ID=workspace-1" {
 		t.Fatalf("standard env = %#v, want custom workspace env", got)
 	}
 	if got := openclawGatewayChatSessionKey(Session{AgentSessionID: "session-1"}, host); got != "agent:main:business-session-1" {
@@ -60,7 +60,7 @@ func TestHostMetadataHelpersDoNotApplyLegacyDefaults(t *testing.T) {
 	if clientInfo["name"] == "tsh-desktop" || clientInfo["title"] == "tsh" || clientInfo["version"] == "0.1.0" {
 		t.Fatalf("clientInfo = %#v, want no legacy defaults", clientInfo)
 	}
-	if got := standardACPEnv(Session{RoomID: "workspace-1"}, host); len(got) != 3 {
+	if got := standardACPEnv(Session{RoomID: "workspace-1"}, host); len(got) != 5 {
 		t.Fatalf("standard env = %#v, want no legacy workspace env", got)
 	}
 	if got := openclawGatewayChatSessionKey(Session{AgentSessionID: "session-1"}, host); got == "agent:main:tsh-session-1" {

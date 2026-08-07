@@ -1299,6 +1299,9 @@ export const en = {
         conversationActivityViewDescription:
           "Shows the Activity View for conversations in the Agent sidebar.",
         conversationActivityViewLabel: "Conversation Activity View",
+        connectorsDescription:
+          "Shows Connectors in Agent settings and the Agent composer.",
+        connectorsLabel: "Connectors",
         clearShortcutLabel: "Clear {{label}}",
         newAgentConversationShortcutLabel: "New Agent conversation",
         newSameTypeWindowShortcutLabel: "New same-type window",

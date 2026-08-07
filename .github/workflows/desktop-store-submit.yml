@@ -206,6 +206,24 @@ jobs:
           if ($applicationDisplayName -ne 'Tutti') {
             throw "Installed application display name mismatch: $applicationDisplayName"
           }
+          $storeAssets = @(
+            'StoreLogo.png',
+            'Square44x44Logo.png',
+            'Square150x150Logo.png',
+            'Wide310x150Logo.png'
+          )
+          foreach ($assetName in $storeAssets) {
+            $sourceAsset = Join-Path $PWD "apps\desktop\build\appx\$assetName"
+            $packagedAsset = Join-Path $manifestRoot "assets\$assetName"
+            if (-not (Test-Path -LiteralPath $packagedAsset -PathType Leaf)) {
+              throw "Store package is missing branded asset: $assetName"
+            }
+            $sourceHash = (Get-FileHash -LiteralPath $sourceAsset -Algorithm SHA256).Hash
+            $packagedHash = (Get-FileHash -LiteralPath $packagedAsset -Algorithm SHA256).Hash
+            if ($packagedHash -ne $sourceHash) {
+              throw "Store package did not use branded asset: $assetName"
+            }
+          }
           $loginProtocol = $manifest.SelectSingleNode("//*[local-name()='Protocol' and @Name='tutti']")
           if ($null -eq $loginProtocol) {
             throw "Store manifest does not register the tutti login protocol"

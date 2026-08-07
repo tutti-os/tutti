@@ -9,6 +9,9 @@ import {
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
   AskLinedIcon,
   LockLayoutLinedIcon,
@@ -152,30 +155,64 @@ export function WorkspaceHelpMenu({
           {t("workspace.settings.nav.about")}
         </DropdownMenuItem>
         <DropdownMenuSeparator />
-        <DropdownMenuItem
-          disabled={settingsState.developerLogs.exporting}
-          onSelect={() =>
-            exportLogs({
-              includeAgentSessions: true,
-              scope: "recent-10-minutes"
-            })
-          }
-        >
-          {t(
-            "workspace.settings.developer.exportRecentTenMinutesLogsWithSessions"
-          )}
-        </DropdownMenuItem>
-        <DropdownMenuItem
-          disabled={settingsState.developerLogs.exporting}
-          onSelect={() =>
-            exportLogs({
-              includeAgentSessions: false,
-              scope: "recent-10-minutes"
-            })
-          }
-        >
-          {t("workspace.settings.developer.exportRecentTenMinutesLogsOnly")}
-        </DropdownMenuItem>
+        <DropdownMenuSub>
+          <DropdownMenuSubTrigger>
+            {t("desktop.menu.exportRecentTenMinutesLogs")}
+          </DropdownMenuSubTrigger>
+          <DropdownMenuSubContent className="w-52">
+            <DropdownMenuItem
+              disabled={settingsState.developerLogs.exporting}
+              onSelect={() =>
+                exportLogs({
+                  includeAgentSessions: false,
+                  scope: "recent-10-minutes"
+                })
+              }
+            >
+              {t("desktop.menu.logsOnly")}
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              disabled={settingsState.developerLogs.exporting}
+              onSelect={() =>
+                exportLogs({
+                  includeAgentSessions: true,
+                  scope: "recent-10-minutes"
+                })
+              }
+            >
+              {t("desktop.menu.logsWithAgentSessions")}
+            </DropdownMenuItem>
+          </DropdownMenuSubContent>
+        </DropdownMenuSub>
+        <DropdownMenuSub>
+          <DropdownMenuSubTrigger>
+            {t("desktop.menu.exportRecentThreeDaysLogs")}
+          </DropdownMenuSubTrigger>
+          <DropdownMenuSubContent className="w-52">
+            <DropdownMenuItem
+              disabled={settingsState.developerLogs.exporting}
+              onSelect={() =>
+                exportLogs({
+                  includeAgentSessions: false,
+                  scope: "recent-3-days"
+                })
+              }
+            >
+              {t("desktop.menu.logsOnly")}
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              disabled={settingsState.developerLogs.exporting}
+              onSelect={() =>
+                exportLogs({
+                  includeAgentSessions: true,
+                  scope: "recent-3-days"
+                })
+              }
+            >
+              {t("desktop.menu.logsWithAgentSessions")}
+            </DropdownMenuItem>
+          </DropdownMenuSubContent>
+        </DropdownMenuSub>
       </DropdownMenuContent>
     </DropdownMenu>
   );

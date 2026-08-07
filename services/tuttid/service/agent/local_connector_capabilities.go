@@ -6,7 +6,22 @@ import (
 	"strings"
 
 	market "github.com/tutti-os/tutti/packages/connector/host"
+	preferencesbiz "github.com/tutti-os/tutti/services/tuttid/biz/preferences"
 )
+
+func (s *Service) connectorCatalogVisible(ctx context.Context) (bool, error) {
+	if s == nil || s.DesktopPreferencesReader == nil {
+		return false, nil
+	}
+	preferences, err := s.DesktopPreferencesReader.Get(ctx)
+	if err != nil {
+		return false, err
+	}
+	return preferencesbiz.IsLabFlagEnabled(
+		preferences.FeatureFlags,
+		preferencesbiz.LabFlagConnectors,
+	), nil
+}
 
 func (s *Service) validatePromptConnectors(ctx context.Context, content []PromptContentBlock) error {
 	requested := make(map[string]struct{})

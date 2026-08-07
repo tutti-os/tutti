@@ -83,6 +83,16 @@ export function useComposerPaletteCatalog({
     editorHandleRef.current?.getPromptTextBeforeSelection() ?? "";
   const skillQueryDraft = promptBeforeSelection || paletteDraftPrompt;
   const skillQueryMatch = getAgentComposerTriggerQueryMatch(skillQueryDraft);
+  const presentationSkills = useMemo(
+    () =>
+      capabilityMenuState?.connectors?.enabled === false
+        ? availableSkills.filter(
+            (skill) =>
+              skill.sourceKind !== "connector" && skill.kind !== "connector"
+          )
+        : availableSkills,
+    [availableSkills, capabilityMenuState?.connectors?.enabled]
+  );
   const resolvedSlashCommands = useMemo(
     () =>
       resolveSlashCommandsForProvider({
@@ -124,11 +134,11 @@ export function useComposerPaletteCatalog({
       skillQueryMatch === null
         ? []
         : filterProviderSkillsForTrigger({
-            skills: availableSkills,
+            skills: presentationSkills,
             query: skillQueryMatch.query,
             triggerPrefix: skillQueryMatch.prefix
           }),
-    [availableSkills, skillQueryMatch]
+    [presentationSkills, skillQueryMatch]
   );
   const availableCapabilities = useMemo<AgentCapabilityTokenOption[]>(() => {
     if (capabilityControlsReadOnly) {

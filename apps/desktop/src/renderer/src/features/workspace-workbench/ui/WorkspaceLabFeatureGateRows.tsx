@@ -3,6 +3,7 @@ import { useTranslation } from "@renderer/i18n";
 import {
   EARLY_ACCESS_AGENT_INTEGRATIONS_FLAG,
   LAB_AUTOMATION_RULES_FLAG,
+  LAB_CONNECTORS_FLAG,
   LAB_CONVERSATION_ACTIVITY_VIEW_FLAG,
   LAB_WORKBENCH_SHORTCUTS_FLAG,
   isFeatureEnabled
@@ -20,6 +21,11 @@ const featureGateRows = [
     labelKey: "workspace.settings.lab.workbenchShortcutsLabel" as const,
     descriptionKey:
       "workspace.settings.lab.workbenchShortcutsDescription" as const
+  },
+  {
+    key: LAB_CONNECTORS_FLAG,
+    labelKey: "workspace.settings.lab.connectorsLabel" as const,
+    descriptionKey: "workspace.settings.lab.connectorsDescription" as const
   },
   {
     key: LAB_CONVERSATION_ACTIVITY_VIEW_FLAG,

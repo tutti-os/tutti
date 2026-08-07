@@ -12,6 +12,8 @@ import { enAgentGuiUsageStatus } from "./en.agentGuiUsageStatus.ts";
 
 export const enAgentGui = {
   imageDownloaded: "Image downloaded",
+  imageLoadFailed: "Image failed to load",
+  retryImage: "Retry",
   initialPlaceholder: "Type @ to reference sessions, files, tasks, and apps",
   followupPlaceholder: "Request follow-up changes from {{provider}}",
   installRequiredPlaceholder: "Connect {{provider}} to send messages",

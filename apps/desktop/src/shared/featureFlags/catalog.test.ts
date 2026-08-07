@@ -16,6 +16,7 @@ import {
   LAB_ENABLED_FLAG,
   LAB_AGENT_SESSION_FORK_FLAG,
   LAB_AUTOMATION_RULES_FLAG,
+  LAB_CONNECTORS_FLAG,
   LAB_CONVERSATION_ACTIVITY_VIEW_FLAG,
   MOBILE_REMOTE_ACCESS_SETTINGS_FLAG,
   isStableAgentExtensionTarget,
@@ -106,6 +107,7 @@ test("labFeatureDefinitions excludes the master switch", () => {
 test("experimental Agent features require independent Lab opt-ins", () => {
   const flags = [
     LAB_AUTOMATION_RULES_FLAG,
+    LAB_CONNECTORS_FLAG,
     LAB_CONVERSATION_ACTIVITY_VIEW_FLAG
   ];
 

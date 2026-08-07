@@ -8,9 +8,15 @@ import (
 )
 
 const (
-	nexightACPCommand     = "nexight-acp"
-	codexAgentRoutingEnv  = "TUTTI_AGENT_ROUTING=1"
-	codexRoutingPreload   = "LD_PRELOAD=" + runtimepaths.BundlePreloadSOPath
+	nexightACPCommand    = "nexight-acp"
+	codexAgentRoutingEnv = "TUTTI_AGENT_ROUTING=1"
+	codexRoutingPreload  = "LD_PRELOAD=" + runtimepaths.BundlePreloadSOPath
+	// Standard ACP providers run headlessly and must never block on a Git
+	// credential or terminal prompt while building workspace context.
+	gitTerminalPromptEnv = "GIT_TERMINAL_PROMPT=0"
+	// Workspace snapshots are read-only; avoid waiting on optional Git index
+	// locks held by another desktop/runtime process.
+	gitOptionalLocksEnv   = "GIT_OPTIONAL_LOCKS=0"
 	acpMethodInitialize   = "initialize"
 	acpMethodAuthenticate = "authenticate"
 	acpMethodNewSession   = "session/new"

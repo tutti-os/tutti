@@ -275,7 +275,13 @@ func (s *Service) GetComposerOptions(ctx context.Context, input ComposerOptionsI
 	capabilityErrors := []string(nil)
 	if composerOptionsIncludeCapabilityCatalog(input) {
 		capabilityCatalog, capabilityErrors = s.listComposerCapabilityOptions(ctx, provider, input.Cwd, skills)
-		if s.ConnectorMarketSnapshots != nil {
+		connectorsVisible, err := s.connectorCatalogVisible(ctx)
+		if err != nil {
+			capabilityErrors = append(capabilityErrors, "load connector visibility: "+err.Error())
+		}
+		if !connectorsVisible {
+			capabilityCatalog = replaceComposerConnectorCapabilities(capabilityCatalog, nil)
+		} else if s.ConnectorMarketSnapshots != nil {
 			localConnectors, err := localConnectorCapabilityOptions(ctx, s.ConnectorMarketSnapshots)
 			if err != nil {
 				capabilityErrors = append(capabilityErrors, "load local connectors: "+err.Error())

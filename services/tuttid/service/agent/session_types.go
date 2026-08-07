@@ -75,6 +75,7 @@ type Service struct {
 	ConnectorMarketSnapshots       market.SnapshotReader
 	ExtensionComposerProfiles      ExtensionComposerProfileResolver
 	AgentComposerDefaultsReader    AgentComposerDefaultsReader
+	DesktopPreferencesReader       DesktopPreferencesReader
 	ProviderAvailabilityCacheTTL   time.Duration
 	CapabilityCatalogCacheTTL      time.Duration
 	LiveModelCacheTTL              time.Duration
@@ -179,6 +180,10 @@ type AgentTargetStore interface {
 
 type AgentComposerDefaultsReader interface {
 	GetAgentComposerDefaultsForTarget(context.Context, string) (preferencesbiz.AgentComposerDefaults, error)
+}
+
+type DesktopPreferencesReader interface {
+	Get(context.Context) (preferencesbiz.DesktopPreferences, error)
 }
 
 type WorkspaceAgentResolver interface {

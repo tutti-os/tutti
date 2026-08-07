@@ -254,6 +254,9 @@ func buildDaemonAPI(
 		return tuttiapi.DaemonAPI{}, nil, nil, nil, fmt.Errorf("create agent runtime: %w", err)
 	}
 	agentRuntimePreparer := runtimeprep.NewDefaultPreparer(tuttitypes.DefaultStateDir())
+	agentRuntimePreparer.RegisterProvider(runtimeprep.CodexPreparer{
+		AuthProjector: runtimeprep.MutagenAuthFileProjector{StateDir: tuttitypes.DefaultStateDir()},
+	})
 	agentRuntimePreparer.RegisterProvider(tuttiagentservice.NewPreparer(tuttitypes.DefaultStateDir()))
 	configureAgentRuntimeAvailability(agentRuntimePreparer, browserService, computerService)
 	userProjectService := userprojectservice.Service{
@@ -381,6 +384,7 @@ func buildDaemonAPI(
 			AgentTargetStore:            agentTargetStore,
 			WorkspaceAgentResolver:      workspaceAgents,
 			AgentComposerDefaultsReader: preferences,
+			DesktopPreferencesReader:    preferences,
 			ExtensionComposerProfiles: agentExtensionComposerProfileResolver{
 				manager: agentExtensionManager,
 			},
@@ -753,7 +757,8 @@ func buildDaemonAPI(
 		Apps: appCenterService, Events: events,
 		ManagedCredentials: managedCredentials,
 		AgentSessions:      agentSessionService, AgentTargets: agentTargets,
-		Preferences: preferences, TuttiModePlans: tuttiModePlans,
+		AgentTargetSetup: agentTargetSetup,
+		Preferences:      preferences, TuttiModePlans: tuttiModePlans,
 		TuttiModeExecutions:  tuttiModeExecutions,
 		TuttiModeActivations: tuttiModeActivations,
 		Browser:              browserService, Computer: computerService,

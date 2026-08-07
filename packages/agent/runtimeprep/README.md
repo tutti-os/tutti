@@ -64,6 +64,17 @@ runtimeprep leaves auth unprojected and does not fall back to the VM user's
 `~/.tutti-agent`. Tutti Agent preparation also materializes the same resolved
 native Skills used by the other supported providers.
 
+The desktop injects `MutagenAuthFileProjector` for this credential projection.
+It first attempts a file symlink. When Windows denies that operation, it seeds
+the run file once and starts an official Mutagen `two-way-safe` session with
+the default real-time watcher. Cleanup flushes the session and refuses to
+delete the run home if Mutagen reports a conflict; otherwise it terminates the
+session before runtime deletion. `.refresh.lock` is always a symlink or hard
+link to the stable lock so both homes coordinate through one OS file object.
+Mutagen resolution prefers `TUTTI_MUTAGEN_BIN`, then `PATH`; Windows amd64 can
+download the pinned v0.18.1 archive into `<state>/bin` after SHA-256
+verification. Other automatic-download platforms remain to be confirmed.
+
 When `TuttiAgentPreparer.StableSkillBundleRoot` is configured, Tutti-managed
 Skills are content-addressed under
 `<root>/v1/<sha256>/skills` instead of the run-scoped home. Preparation emits

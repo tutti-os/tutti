@@ -442,7 +442,8 @@ export function resolveComputerMcpDaemonEnv(): Record<string, string> {
 }
 
 export function resolveManagedPosixShellDaemonEnv(
-  runtime?: DesktopElectronAppRuntime
+  runtime?: DesktopElectronAppRuntime,
+  options: ResolveLaunchSpecOptions = {}
 ): Record<string, string> {
   if (process.env.TUTTI_MANAGED_POSIX_SHELL?.trim()) {
     return {};
@@ -453,13 +454,12 @@ export function resolveManagedPosixShellDaemonEnv(
   } catch {
     return {};
   }
-  if (!appRuntime.isPackaged) {
-    return {};
-  }
-  const runtimeRoot = resolve(
-    appRuntime.resourcesPath,
-    vendoredManagedPosixShellRootRelPath
-  );
+  const runtimeRoot = appRuntime.isPackaged
+    ? resolve(appRuntime.resourcesPath, vendoredManagedPosixShellRootRelPath)
+    : resolve(
+        options.repoRoot ?? resolveRepoRoot(),
+        "apps/desktop/build/managed-posix-shell"
+      );
   let executable: unknown;
   try {
     const metadata = JSON.parse(

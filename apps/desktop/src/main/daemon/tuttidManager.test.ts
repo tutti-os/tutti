@@ -317,6 +317,44 @@ test("resolveManagedPosixShellDaemonEnv points the daemon at the packaged shell"
   }
 });
 
+test("resolveManagedPosixShellDaemonEnv points direct dev at the prepared shell", async () => {
+  const previousEnv = { ...process.env };
+  try {
+    delete process.env.TUTTI_MANAGED_POSIX_SHELL;
+    const repoRoot = await mkdtemp(join(tmpdir(), "tutti-repo-"));
+    const runtimeRoot = join(
+      repoRoot,
+      "apps",
+      "desktop",
+      "build",
+      "managed-posix-shell"
+    );
+    const shell = join(runtimeRoot, "usr", "bin", "bash.exe");
+    await mkdir(dirname(shell), { recursive: true });
+    await writeFile(shell, "stub\n");
+    await writeFile(
+      join(runtimeRoot, "runtime.json"),
+      JSON.stringify({
+        schemaVersion: "tutti.managed-posix-shell.v1",
+        executable: "usr/bin/bash.exe"
+      })
+    );
+
+    const got = resolveManagedPosixShellDaemonEnv(
+      {
+        isPackaged: false,
+        resourcesPath: join(tmpdir(), "electron-resources")
+      },
+      { repoRoot }
+    );
+    assert.deepEqual(got, {
+      TUTTI_MANAGED_POSIX_SHELL: shell
+    });
+  } finally {
+    restoreEnv(previousEnv);
+  }
+});
+
 test("resolveManagedPosixShellDaemonEnv rejects an executable outside its runtime root", async () => {
   const previousEnv = { ...process.env };
   try {

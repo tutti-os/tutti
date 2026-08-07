@@ -93,6 +93,7 @@ import {
   EARLY_ACCESS_AGENT_INTEGRATIONS_FLAG,
   isFeatureEnabled,
   LAB_ENABLED_FLAG,
+  LAB_CONNECTORS_FLAG,
   LAB_WORKBENCH_SHORTCUTS_FLAG,
   LAB_AUTOMATION_RULES_FLAG,
   MOBILE_REMOTE_ACCESS_SETTINGS_FLAG,
@@ -208,6 +209,9 @@ export function WorkspaceSettingsPanel({
   const agentProviderStatusService = useService(IAgentProviderStatusService);
   const agentEnvService = useService(IAgentEnvService);
   const connectorMarketModule = useService(IConnectorMarketModule);
+  const connectorsVisible =
+    accountState.user !== null &&
+    isFeatureEnabled(pendingFeatureFlags, LAB_CONNECTORS_FLAG);
   const automationRulesEnabled = isFeatureEnabled(
     pendingFeatureFlags,
     LAB_AUTOMATION_RULES_FLAG
@@ -249,10 +253,10 @@ export function WorkspaceSettingsPanel({
   }, [automationRulesEnabled, settingsService, settingsState.agentTab]);
 
   useEffect(() => {
-    if (!accountState.user && settingsState.agentTab === "connectors") {
+    if (!connectorsVisible && settingsState.agentTab === "connectors") {
       settingsService.selectAgentTab("general");
     }
-  }, [accountState.user, settingsService, settingsState.agentTab]);
+  }, [connectorsVisible, settingsService, settingsState.agentTab]);
 
   const handleVersionTap = () => {
     if (settingsState.developerPanelVisible) {
@@ -436,7 +440,7 @@ export function WorkspaceSettingsPanel({
                       value: "agents" as const,
                       label: t("workspace.settings.agent.tabs.agents")
                     },
-                    ...(accountState.user
+                    ...(connectorsVisible
                       ? [
                           {
                             value: "connectors" as const,
@@ -510,7 +514,7 @@ export function WorkspaceSettingsPanel({
                     }
                   />
                 ) : settingsState.agentTab === "connectors" &&
-                  accountState.user ? (
+                  connectorsVisible ? (
                   <ConnectorMarketPanel
                     i18n={connectorMarketI18n}
                     onError={handleConnectorMarketError}

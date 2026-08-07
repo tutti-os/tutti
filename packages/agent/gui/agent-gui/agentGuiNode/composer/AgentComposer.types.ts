@@ -456,6 +456,13 @@ export interface AgentComposerCapabilityMenuState {
     authorization?: AgentComposerComputerUseAuthorizationState | null;
     installed?: boolean | null;
   };
+  /**
+   * Host-owned connector visibility override. Missing preserves the existing
+   * catalog behavior for hosts that have not adopted this optional field.
+   */
+  connectors?: {
+    enabled?: boolean | null;
+  };
   tuttiMode?: {
     enabled?: boolean | null;
   };

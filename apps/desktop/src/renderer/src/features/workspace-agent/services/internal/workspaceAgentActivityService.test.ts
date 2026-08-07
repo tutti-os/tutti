@@ -1450,6 +1450,10 @@ test("WorkspaceAgentActivityService starts session-event streams and forwards ca
     {
       scope: null,
       topic: "connector.market.changed"
+    },
+    {
+      scope: null,
+      topic: "preferences.desktop.updated"
     }
   ]);
   assert.equal(connectCalls, 1);
@@ -1939,7 +1943,7 @@ test("WorkspaceAgentActivityService dispose releases every event stream subscrip
   });
 
   service.onSessionEvent("ws-1", () => {});
-  assert.equal(activeSubscriptions.size, 6);
+  assert.equal(activeSubscriptions.size, 7);
 
   service.dispose();
   service.dispose();

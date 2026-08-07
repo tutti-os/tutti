@@ -10,6 +10,7 @@ import {
   AGENT_EXTENSION_ACTIVATION_FLAGS,
   AGENT_EXTENSION_GEMINI_FLAG,
   AGENT_QUICK_PROMPT_LIBRARY_FLAG,
+  LAB_CONNECTORS_FLAG,
   LAB_ENABLED_FLAG,
   MOBILE_REMOTE_ACCESS_SETTINGS_FLAG
 } from "../../../../../../shared/featureFlags/catalog.ts";
@@ -1342,16 +1343,29 @@ test("WorkspaceSettingsService Agents deep-link works without a provider (blank 
   assert.equal(service.store.agentFocusProvider, null);
 });
 
-test("WorkspaceSettingsService deep-links to the connector market panel", () => {
-  const service = new WorkspaceSettingsService({
-    client: createWorkspaceSettingsClient({})
-  });
+test("WorkspaceSettingsService gates the Connectors deep-link with its Lab flag", () => {
+  const disabled = new WorkspaceSettingsService(
+    { client: createWorkspaceSettingsClient({}) },
+    createDesktopPreferencesService({
+      state: createPreferencesState({ featureFlags: {} })
+    })
+  );
+  disabled.openPanel({ id: "workspace-1" }, { pane: "connectors" });
+  assert.equal(disabled.store.activeSection, "agent");
+  assert.equal(disabled.store.agentTab, "general");
 
-  service.openPanel({ id: "workspace-1" }, { pane: "connectors" });
-
-  assert.equal(service.store.open, true);
-  assert.equal(service.store.activeSection, "agent");
-  assert.equal(service.store.agentTab, "connectors");
+  const enabled = new WorkspaceSettingsService(
+    { client: createWorkspaceSettingsClient({}) },
+    createDesktopPreferencesService({
+      state: createPreferencesState({
+        featureFlags: { [LAB_CONNECTORS_FLAG]: true }
+      })
+    })
+  );
+  enabled.openPanel({ id: "workspace-1" }, { pane: "connectors" });
+  assert.equal(enabled.store.open, true);
+  assert.equal(enabled.store.activeSection, "agent");
+  assert.equal(enabled.store.agentTab, "connectors");
 });
 
 test("WorkspaceSettingsService deep-links to Custom Agents and Automation", () => {

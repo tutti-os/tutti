@@ -73,6 +73,15 @@ func (f fakeAgentComposerDefaultsReader) GetAgentComposerDefaultsForTarget(_ con
 	return f[strings.TrimSpace(agentTargetID)], nil
 }
 
+type fakeDesktopPreferencesReader struct {
+	preferences preferencesbiz.DesktopPreferences
+	err         error
+}
+
+func (f fakeDesktopPreferencesReader) Get(context.Context) (preferencesbiz.DesktopPreferences, error) {
+	return f.preferences, f.err
+}
+
 func (f fakeAgentTargetStore) GetAgentTarget(_ context.Context, id string) (agenttargetbiz.Target, error) {
 	if f.err != nil {
 		return agenttargetbiz.Target{}, f.err

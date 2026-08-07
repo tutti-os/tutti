@@ -30,6 +30,8 @@ import {
   desktopWorkbenchWindowSnappingEqual
 } from "../../../../../../shared/preferences/index.ts";
 import {
+  isFeatureEnabled,
+  LAB_CONNECTORS_FLAG,
   resolveDesktopWorkspaceUiMode,
   withDesktopWorkspaceUiMode
 } from "../../../../../../shared/featureFlags/catalog.ts";
@@ -187,7 +189,12 @@ export class WorkspaceSettingsService implements IWorkspaceSettingsService {
       this.store.agentFocusRequestID += 1;
     } else if (options?.pane === "connectors") {
       this.store.activeSection = "agent";
-      this.store.agentTab = "connectors";
+      const flags =
+        this.desktopPreferences.store.changingFeatureFlags ??
+        this.desktopPreferences.store.featureFlags;
+      this.store.agentTab = isFeatureEnabled(flags, LAB_CONNECTORS_FLAG)
+        ? "connectors"
+        : "general";
     } else if (
       options?.pane === "custom-agents" ||
       options?.pane === "workspace-agents"

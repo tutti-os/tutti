@@ -88,7 +88,8 @@ import {
   LAB_CONVERSATION_ACTIVITY_VIEW_FLAG,
   isFeatureEnabled,
   LAB_AGENT_SESSION_FORK_FLAG,
-  LAB_CODEX_SAVER_MODE_FLAG
+  LAB_CODEX_SAVER_MODE_FLAG,
+  LAB_CONNECTORS_FLAG
 } from "../../../../../shared/featureFlags/catalog.ts";
 
 const AgentSessionReplayNodeReadiness = lazy(() =>
@@ -536,8 +537,11 @@ function DesktopAgentGUISurfaceImpl({
       : (prefillPromptRequest?.sequence ?? null));
   const capabilityMenuState = useMemo<
     AgentGUIProps["hostCapabilities"]["capabilityMenuState"]
-  >(
-    () => ({
+  >(() => {
+    const featureFlags =
+      desktopPreferencesState.changingFeatureFlags ??
+      desktopPreferencesState.featureFlags;
+    return {
       browserUse: {
         connectionMode: desktopPreferencesState.browserUseConnectionMode
       },
@@ -545,12 +549,19 @@ function DesktopAgentGUISurfaceImpl({
         authorization: resolveComputerUseAuthorizationState(computerUseStatus),
         installed: computerUseStatus?.installed ?? null
       },
+      connectors: {
+        enabled: isFeatureEnabled(featureFlags, LAB_CONNECTORS_FLAG)
+      },
       tuttiMode: {
         enabled: true
       }
-    }),
-    [computerUseStatus, desktopPreferencesState.browserUseConnectionMode]
-  );
+    };
+  }, [
+    computerUseStatus,
+    desktopPreferencesState.browserUseConnectionMode,
+    desktopPreferencesState.changingFeatureFlags,
+    desktopPreferencesState.featureFlags
+  ]);
   const handleAgentEnvPanelOpen = useCallback<
     NonNullable<AgentGUIProps["hostActions"]["onAgentEnvPanelOpen"]>
   >((input) => agentEnvService.open(input), [agentEnvService]);

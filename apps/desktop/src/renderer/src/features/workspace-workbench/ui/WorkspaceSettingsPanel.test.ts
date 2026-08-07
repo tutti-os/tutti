@@ -28,7 +28,7 @@ test("workspace settings gives Model an independent Plan-only section", () => {
   assert.doesNotMatch(panelSource, /WorkspaceAgentModelBindingSection/);
 });
 
-test("workspace settings places signed-in Connectors between Agent Runtime and Custom Agents", () => {
+test("workspace settings places enabled signed-in Connectors between Agent Runtime and Custom Agents", () => {
   const general = panelSource.indexOf('value: "general" as const');
   const runtimes = panelSource.indexOf('value: "agents" as const');
   const connectors = panelSource.indexOf('value: "connectors" as const');
@@ -58,11 +58,15 @@ test("workspace settings places signed-in Connectors between Agent Runtime and C
   );
   assert.match(
     panelSource,
-    /accountState\.user[\s\S]{0,220}value: "connectors" as const/
+    /connectorsVisible[\s\S]{0,220}value: "connectors" as const/
   );
   assert.match(
     panelSource,
-    /!accountState\.user[\s\S]{0,120}agentTab === "connectors"[\s\S]{0,120}selectAgentTab\("general"\)/
+    /!connectorsVisible[\s\S]{0,120}agentTab === "connectors"[\s\S]{0,120}selectAgentTab\("general"\)/
+  );
+  assert.match(
+    panelSource,
+    /accountState\.user !== null[\s\S]{0,120}LAB_CONNECTORS_FLAG/
   );
   assert.doesNotMatch(runtimeTabSource, /WorkspaceAgentsSection/);
 });

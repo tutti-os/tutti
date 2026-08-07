@@ -28,6 +28,7 @@
         }
       ],
       "runtimeFiles": [
+        "etc/fstab",
         "usr/bin/bash.exe",
         "usr/bin/cat.exe",
         "usr/bin/cp.exe",

@@ -79,6 +79,29 @@ provider-status-focus-refresh --all-process-time-profile` on macOS when a
   [manager.go](../../../services/tuttid/service/agentextension/manager.go)
   [runtime_version_cache.go](../../../services/tuttid/service/agentextension/runtime_version_cache.go)
 
+### Workspace Apps repeatedly probe extension authentication
+
+- Symptom:
+  Several Workspace Apps opening together repeatedly start the same Extension
+  ACP process. A logged-in target can intermittently become unavailable when
+  duplicate setup probes exhaust the caller timeout.
+- Root cause:
+  Older Apps consume only the broad Agent catalog, while newer Apps refine an
+  exact target. If the broad catalog exposes installation readiness without
+  authentication, old Apps can also show an unconfigured extension as usable.
+- Fix:
+  Resolve installed extension authentication for broad and exact
+  `agent list` requests, run broad probes concurrently, coalesce them by
+  workspace and target in the daemon, and retain the result for a short bounded
+  interval. Preserve `auth_required` as the canonical reason code even when the
+  runtime supplies a more specific diagnostic reason. Explicit refresh bypasses
+  the short cache.
+- Validation:
+  Broad and exact-target requests within the cache window should share one setup
+  probe per target. A ready Kimi target reports `available`; an unconfigured
+  Hermes target reports `unavailable` with `auth_required` in both response
+  shapes. A refreshed broad request probes each installed extension once.
+
 ### An extension Agent is installed in the terminal but Tutti cannot detect it
 
 - Symptom:

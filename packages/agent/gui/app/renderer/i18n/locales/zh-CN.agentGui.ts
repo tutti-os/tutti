@@ -11,6 +11,8 @@ import { zhCNTuttiModePlan } from "./zh-CN.tuttiModePlan.ts";
 
 export const zhCNAgentGui = {
   imageDownloaded: "图片已下载",
+  imageLoadFailed: "图片加载失败",
+  retryImage: "重试",
   codexSaverModeLabel: "Codex 省额度模式",
   codexSaverModeDescription:
     "主模型保持不变；合适的独立子任务改用 Luna Max，按当前额度口径约为 Sol High 的 1/10。实际效果与速度因任务而异。",

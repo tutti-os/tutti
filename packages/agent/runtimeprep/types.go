@@ -189,6 +189,7 @@ type ProviderPrepareInput struct {
 }
 
 type ProviderPrepareResult struct {
-	Cwd string
-	Env []string
+	Cwd     string
+	Env     []string
+	Cleanup func(context.Context) error
 }

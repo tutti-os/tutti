@@ -10,6 +10,7 @@ import (
 	agenttargetbiz "github.com/tutti-os/tutti/services/tuttid/biz/agenttarget"
 	preferencesbiz "github.com/tutti-os/tutti/services/tuttid/biz/preferences"
 	agentservice "github.com/tutti-os/tutti/services/tuttid/service/agent"
+	agentextensionservice "github.com/tutti-os/tutti/services/tuttid/service/agentextension"
 	cliservice "github.com/tutti-os/tutti/services/tuttid/service/cli"
 )
 
@@ -45,12 +46,22 @@ type AgentTargetLister interface {
 	List(context.Context) ([]agenttargetbiz.Target, error)
 }
 
+type AgentTargetSetupReader interface {
+	GetSetup(context.Context, agentextensionservice.InstallPlanInput) (agentextensionservice.SetupSnapshot, error)
+}
+
 type Provider struct {
-	workspaces      cliservice.WorkspaceCatalog
-	sessions        AgentSessions
-	launchPublisher AgentGUILaunchPublisher
-	preferences     DesktopPreferencesReader
-	agentTargets    AgentTargetLister
+	workspaces                 cliservice.WorkspaceCatalog
+	sessions                   AgentSessions
+	launchPublisher            AgentGUILaunchPublisher
+	preferences                DesktopPreferencesReader
+	agentTargets               AgentTargetLister
+	extensionAvailabilityCache *extensionAvailabilityCache
+}
+
+func (p Provider) WithAgentTargetSetup(setup AgentTargetSetupReader) Provider {
+	p.extensionAvailabilityCache = newExtensionAvailabilityCache(setup)
+	return p
 }
 
 func NewProviderWithAgentTargets(

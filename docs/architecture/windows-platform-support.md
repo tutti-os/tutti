@@ -95,6 +95,14 @@ starting `tuttid.exe`. The Windows
 managed command directory through `PATH`. Apps do not depend on Git for Windows
 or WSL, and the manifest does not duplicate platform entrypoints.
 
+Windows direct development uses the same managed runtime. The desktop `predev`
+hook prepares `apps/desktop/build/managed-posix-shell`, and the Electron main
+process resolves that runtime when it builds the daemon launch environment.
+Therefore `pnpm dev` does not depend on a caller remembering a separate shell
+export; the daemon still receives `TUTTI_MANAGED_POSIX_SHELL` before it starts.
+Windows staging and E2E acceptance should continue to use the dedicated E2E
+launcher because it also owns state isolation, cleanup, and readiness checks.
+
 The package is fat because it contains every currently shipped platform
 artifact. `TUTTI_PLATFORM` selects the artifact at runtime. Adding a future
 platform key should add an artifact and build job, not another app lifecycle.
