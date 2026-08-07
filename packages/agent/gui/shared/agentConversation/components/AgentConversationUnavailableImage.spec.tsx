@@ -18,13 +18,13 @@ describe("Agent conversation unavailable-image renderer", () => {
     } as unknown as typeof window.agentHostApi;
   });
 
-  it("renders the default fallback for a path-only user image", () => {
+  it("renders the default broken-image fallback for a path-only user image", () => {
     render(<AgentUserImageGrid message={userImageMessage()} />);
 
     expectDefaultFallback("user-message", "unavailable");
   });
 
-  it("renders the default fallback when a local Markdown image read fails", async () => {
+  it("renders the default broken-image fallback when a local Markdown image read fails", async () => {
     render(
       <AgentMessageMarkdown content="![generated image](/workspace/output/imagegen/dance.png)" />
     );
@@ -33,14 +33,14 @@ describe("Agent conversation unavailable-image renderer", () => {
     expectDefaultFallback("assistant-markdown", "read-failed");
   });
 
-  it("renders the default fallback when an image-generation artifact read fails", async () => {
+  it("renders the default broken-image fallback when an image-generation artifact read fails", async () => {
     render(<AgentGeneratedImageRow row={generatedImageRow()} />);
 
     await screen.findByTestId("agent-conversation-unavailable-image");
     expectDefaultFallback("image-generation-tool", "read-failed");
   });
 
-  it("renders the default fallback after a browser image load failure", async () => {
+  it("renders the default broken-image fallback after a browser image load failure", async () => {
     render(<AgentGeneratedImageRow row={remoteGeneratedImageRow()} />);
 
     fireEvent.error(screen.getByRole("img"));
@@ -122,9 +122,13 @@ describe("Agent conversation unavailable-image renderer", () => {
 
 function expectDefaultFallback(source: string, reason: string): void {
   const fallback = screen.getByTestId("agent-conversation-unavailable-image");
-  expect(fallback).toHaveTextContent(
+  expect(fallback).not.toHaveTextContent(
     "Image preview is temporarily unavailable"
   );
+  expect(fallback).toHaveAccessibleName(
+    "Image preview is temporarily unavailable"
+  );
+  expect(fallback.querySelector("svg")).not.toBeNull();
   expect(fallback).toHaveAttribute(
     "data-agent-conversation-unavailable-image-source",
     source

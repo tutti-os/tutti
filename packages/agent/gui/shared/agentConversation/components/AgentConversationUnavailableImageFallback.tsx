@@ -1,4 +1,5 @@
 import type { JSX } from "react";
+import { ImageOff } from "lucide-react";
 import { useTranslation } from "../../../i18n/index";
 import type {
   AgentConversationUnavailableImageContext,
@@ -25,13 +26,13 @@ function AgentConversationUnavailableImageFallback({
   return (
     <span
       aria-label={label}
-      className="flex min-h-20 w-full items-center justify-center rounded-[8px] bg-[var(--transparency-block)] px-3 py-2 text-center text-[12px] leading-5 text-[var(--text-tertiary)]"
+      className="flex min-h-20 w-full items-center justify-center rounded-[8px] bg-[var(--transparency-block)] px-3 py-2 text-[var(--text-tertiary)]"
       data-agent-conversation-unavailable-image-reason={context.reason}
       data-agent-conversation-unavailable-image-source={context.source}
       data-testid="agent-conversation-unavailable-image"
       role="img"
     >
-      {label}
+      <ImageOff aria-hidden="true" className="size-5" strokeWidth={1.5} />
     </span>
   );
 }

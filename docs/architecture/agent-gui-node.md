@@ -1498,9 +1498,10 @@ AgentGUI retains loading state and invokes the renderer only after the source is
 known to be unavailable, a host read fails, or the browser image load fails. The
 renderer receives only the image-source category, stable failure reason, and
 alternative text; local paths and raw errors do not cross this presentation
-slot. Omitting the renderer uses AgentGUI's neutral unavailable-image fallback;
-a host renderer replaces that fallback, and a host that intentionally wants no
-failure presentation may return `null` from its renderer.
+slot. Omitting the renderer uses AgentGUI's neutral, icon-only broken-image
+fallback with an accessible label; a host renderer replaces that fallback, and
+a host that intentionally wants no failure presentation may return `null` from
+its renderer.
 
 Standalone hosts may opt a transcript into participant avatars through the
 `agent-conversation` entrypoint's explicit presentation contract. Omitted or
