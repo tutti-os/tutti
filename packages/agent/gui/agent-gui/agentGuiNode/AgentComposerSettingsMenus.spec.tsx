@@ -2,6 +2,7 @@ import "@testing-library/jest-dom/vitest";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { useState } from "react";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { TooltipProvider } from "@tutti-os/ui-system";
 import {
   AgentModelReasoningDropdown,
   AgentPermissionModeDropdown
@@ -99,6 +100,46 @@ describe("AgentModelReasoningDropdown", () => {
       )
     ).toBe('["gpt-5.4"]');
     expect(screen.getByText("Model selection")).toBeInTheDocument();
+  });
+
+  it("shows ACP credits as a model consumption multiplier", async () => {
+    render(
+      <TooltipProvider delayDuration={0}>
+        <AgentModelReasoningDropdown
+          composerSettings={{
+            ...composerModelSettings(),
+            availableModels: [
+              {
+                label: "Hy3",
+                value: "hy3",
+                description: "X0.71 Credits"
+              }
+            ],
+            draftSettings: {
+              ...composerModelSettings().draftSettings,
+              model: "hy3"
+            },
+            selectedModelValue: "hy3"
+          }}
+          labels={modelSettingsLabels}
+          onSettingsChange={vi.fn()}
+        />
+      </TooltipProvider>
+    );
+
+    fireEvent.pointerDown(
+      screen.getByRole("button", { name: "Model / Reasoning" }),
+      { button: 0, ctrlKey: false, pointerType: "mouse" }
+    );
+    fireEvent.pointerMove(await screen.findByTestId("agent-gui-model-option"), {
+      pointerType: "mouse"
+    });
+
+    const tooltip = await screen.findByRole("tooltip");
+    expect(tooltip).toHaveTextContent("Hy3");
+    expect(tooltip).toHaveTextContent("Consumption rate");
+    expect(tooltip).toHaveTextContent("0.71x multiplier");
+    expect(tooltip).not.toHaveTextContent("X0.71 Credits");
   });
 });
 

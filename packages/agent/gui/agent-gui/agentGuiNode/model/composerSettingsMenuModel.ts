@@ -4,6 +4,7 @@ import {
   groupModelOptionsByVendor
 } from "./modelFamilies";
 import { effectiveDefaultModelOption } from "./effectiveDefaultModel";
+import { consumptionMultiplierFromText } from "./composerModelConsumption";
 
 // Labels for the composer settings menus. Lives here (next to the pure menu
 // model) so the model + the presentational component share one source; the
@@ -58,6 +59,7 @@ export interface ComposerMenuOption {
 export interface ComposerModelOptionTooltip {
   title: string;
   description?: string;
+  consumptionMultiplier?: string;
   contextWindow?: string;
   version?: string;
 }
@@ -384,12 +386,18 @@ function modelOptionPresentation(input: {
     parsed.speed === "fast" ? input.labels.speedOptionFast : null
   ]);
   const tooltipDescription =
-    parsed.body || (description && !parsed.title ? description : "");
+    parsed.body ||
+    (description && !parsed.title && !parsed.consumptionMultiplier
+      ? description
+      : "");
   const tooltip =
     description || summary.length > 0
       ? {
           title: parsed.title ?? label,
           ...(tooltipDescription ? { description: tooltipDescription } : {}),
+          ...(parsed.consumptionMultiplier
+            ? { consumptionMultiplier: parsed.consumptionMultiplier }
+            : {}),
           ...(parsed.contextWindow
             ? {
                 contextWindow: `${parsed.contextWindow.summary} ${input.labels.modelContextWindowSuffix}`
@@ -438,6 +446,7 @@ function reasoningSummaryLabel(
 
 function parseModelDescription(description: string): {
   body: string;
+  consumptionMultiplier?: string;
   contextWindow?: { summary: string };
   effort?: { summaryValue: string; version: string };
   speed?: "fast";
@@ -451,12 +460,18 @@ function parseModelDescription(description: string): {
   const contextWindow = contextWindowSummaryFromText(description);
   const effort = effortFromText(description);
   const speed = speedFromText(description);
-  const title = titleFromDescriptionPrefix(firstPart, contextWindow?.raw);
+  const consumptionMultiplier = parts
+    .map((part) => consumptionMultiplierFromText(part))
+    .find((value) => value !== undefined);
+  const title = consumptionMultiplierFromText(firstPart)
+    ? undefined
+    : titleFromDescriptionPrefix(firstPart, contextWindow?.raw);
   const bodyParts = (title ? parts.slice(1) : parts).filter(
-    (part) => !effortFromText(part)
+    (part) => !effortFromText(part) && !consumptionMultiplierFromText(part)
   );
   return {
     body: bodyParts.join(" · "),
+    ...(consumptionMultiplier ? { consumptionMultiplier } : {}),
     ...(contextWindow
       ? { contextWindow: { summary: contextWindow.summary } }
       : {}),

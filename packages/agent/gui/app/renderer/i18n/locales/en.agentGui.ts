@@ -273,6 +273,8 @@ export const enAgentGui = {
   },
   modelContextWindowSuffix: "context window",
   modelTooltipVersionLabel: "Version",
+  modelConsumptionSpeedLabel: "Consumption rate",
+  modelConsumptionMultiplierSuffix: "multiplier",
   modelDescriptions: {
     frontierComplexCoding:
       "Frontier model for complex coding, research, and real-world work",

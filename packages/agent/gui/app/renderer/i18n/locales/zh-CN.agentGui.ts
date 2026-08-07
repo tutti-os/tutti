@@ -253,6 +253,8 @@ export const zhCNAgentGui = {
   },
   modelContextWindowSuffix: "上下文窗口",
   modelTooltipVersionLabel: "版本",
+  modelConsumptionSpeedLabel: "消耗速度",
+  modelConsumptionMultiplierSuffix: "倍率",
   modelDescriptions: {
     frontierComplexCoding: "适合复杂编码、研究和真实工作场景的前沿模型",
     everydayCoding: "适合日常编码的强力模型",
