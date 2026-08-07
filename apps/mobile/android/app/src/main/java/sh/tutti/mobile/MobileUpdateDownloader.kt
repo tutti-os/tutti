@@ -22,7 +22,7 @@ internal class MobileUpdateDownloader(
                 cause,
             )
         }
-        if (url.protocol != "https:") {
+        if (!isHTTPSUpdateURL(url)) {
             throw MobileUpdateDownloadFailure(
                 "UPDATE_URL_INVALID",
                 "Update URL must use HTTPS",
@@ -161,6 +161,8 @@ internal class MobileUpdateDownloader(
             bytes.joinToString("") { byte -> "%02x".format(byte.toInt() and 0xff) }
     }
 }
+
+internal fun isHTTPSUpdateURL(url: URL): Boolean = url.protocol == "https"
 
 internal class MobileUpdateDownloadFailure(
     val code: String,

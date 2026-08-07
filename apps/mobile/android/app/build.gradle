@@ -104,4 +104,5 @@ dependencies {
     implementation("com.facebook.react:hermes-android")
     implementation("com.journeyapps:zxing-android-embedded:4.3.0")
     implementation(files(mobileGoAar))
+    testImplementation("junit:junit:4.13.2")
 }

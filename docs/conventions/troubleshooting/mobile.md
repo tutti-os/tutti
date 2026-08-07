@@ -98,16 +98,20 @@ activity started`: package-installer launch failure.
 - **Root cause:** The manual updater downloads and verifies the APK before
   passing a `content://` URI from the Tutti FileProvider to Android's package
   installer. Failures at any pre-installer stage previously collapsed into the
-  same user-facing error. Unknown-source permission is checked before the
-  download and opens the app-specific Android settings page when required.
-- **Fix:** If the permission settings page opens, enable **Allow from this
-  source** for Tutti, return to the App, and tap **Software update** and
-  **Download and install** again. If permission is already allowed, capture
-  the first failing `TuttiMobileSecurity` log stage and its error code rather
-  than rechecking only the feed URL or APK HTTP status. Compare the logged
-  `expectedSHA256` and `actualSHA256` with the published `latest.json` before
-  investigating PackageInstaller.
-- **Validation:** Run `pnpm --filter @tutti-os/mobile check` and
+  same user-facing error. Java's `URL.protocol` value is `"https"` without a
+  trailing colon; comparing it with `"https:"` rejects every valid HTTPS APK
+  URL before the download starts. Unknown-source permission is checked before
+  the download and opens the app-specific Android settings page when required.
+- **Fix:** Keep the native URL allowlist check against Java's protocol value
+  (`"https"`, without a colon). If the permission settings page opens, enable
+  **Allow from this source** for Tutti, return to the App, and tap **Software
+  update** and **Download and install** again. If permission is already
+  allowed, capture the first failing `TuttiMobileSecurity` log stage and its
+  error code rather than rechecking only the feed URL or APK HTTP status.
+  Compare the logged `expectedSHA256` and `actualSHA256` with the published
+  `latest.json` before investigating PackageInstaller.
+- **Validation:** Run `pnpm --filter @tutti-os/mobile check`,
+  `./gradlew app:testDebugUnitTest`, and
   `./gradlew app:compileDebugKotlin` from `apps/mobile/android`. On a physical
   device, reproduce from Settings, confirm the log reaches APK finalization
   and URI creation, then confirm `Android package installer activity started`
