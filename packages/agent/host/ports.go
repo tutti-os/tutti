@@ -233,8 +233,7 @@ type HistoricalSessionStateStore interface {
 	) (HistoricalSessionGraph, error)
 	RestoreHistoricalSessionGraph(
 		context.Context,
-		string,
-		HistoricalSessionGraph,
+		HistoricalSessionGraphRestoreInput,
 	) error
 }
 

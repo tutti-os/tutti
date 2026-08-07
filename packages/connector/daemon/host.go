@@ -13,16 +13,27 @@ import (
 )
 
 type HostConfig struct {
-	Repository             market.Repository
-	CatalogSource          market.CatalogSource
-	ArtifactPreparer       market.ArtifactPreparer
-	CLIInstallations       market.CLIInstallationManager
-	ImplementationHost     market.ImplementationHost
-	Authorization          market.AuthorizationProvider
-	Compatibility          market.CompatibilityEvaluator
-	ImplementationRegistry market.ImplementationRegistry
-	Outbox                 market.ChangedEventOutbox
-	Publisher              ChangedEventPublisher
+	Repository               market.Repository
+	CatalogSource            market.CatalogSource
+	ArtifactPreparer         market.ArtifactPreparer
+	CLIInstallations         market.CLIInstallationManager
+	ImplementationHost       market.ImplementationHost
+	Authorization            market.AuthorizationProvider
+	AuthorizationProjections market.AuthorizationProjectionStore
+	RuntimeBindings          market.RuntimeBindingResolver
+	Compatibility            market.CompatibilityEvaluator
+	ImplementationRegistry   market.ImplementationRegistry
+	Outbox                   market.ChangedEventOutbox
+	Lifecycle                market.LifecycleCleanupStore
+	LifecyclePolicy          LifecycleCleanupPolicy
+	Publisher                ChangedEventPublisher
+	Publication              CapabilityPublicationController
+}
+
+// CapabilityPublicationController is the daemon-level publication boundary
+// for runtimes owned by another process or machine.
+type CapabilityPublicationController interface {
+	ApplyCapabilityPublication(context.Context, market.OperationScope, bool) error
 }
 
 type Host struct {
@@ -31,22 +42,21 @@ type Host struct {
 	cancel               context.CancelFunc
 	scheduler            *OperationScheduler
 	outboxDone           chan struct{}
+	lifecycleDone        chan struct{}
 	closeOnce            sync.Once
 	bootstrapMu          sync.Mutex
 	bootstrapped         bool
+	bootstrapScope       market.OperationScope
 	refreshWorkerStarted bool
 	repository           market.Repository
 	implementationHost   market.ImplementationHost
 	activationGate       *activationGateHost
 	publicationGate      capabilityPublicationGate
+	publication          CapabilityPublicationController
 }
 
 type capabilityPublicationGate interface {
 	SetCapabilityPublication(bool)
-}
-
-type runtimeProjectionFencer interface {
-	FenceAll(context.Context, time.Time) error
 }
 
 type activationGateHost struct {
@@ -122,22 +132,24 @@ func NewHost(parent context.Context, config HostConfig) (*Host, error) {
 	if parent == nil {
 		parent = context.Background()
 	}
-	if config.Outbox == nil || config.Publisher == nil {
-		return nil, errors.New("connector market outbox and publisher are required")
+	if config.Outbox == nil || config.Lifecycle == nil || config.Publisher == nil {
+		return nil, errors.New("connector market outbox, lifecycle cleanup, and publisher are required")
 	}
 	hostContext, cancel := context.WithCancel(parent)
 	scheduler := NewOperationScheduler(hostContext)
 	activationGate := newActivationGateHost(config.ImplementationHost)
 	application, err := market.NewApplication(market.ApplicationConfig{
-		Repository:             config.Repository,
-		CatalogSource:          config.CatalogSource,
-		ArtifactPreparer:       config.ArtifactPreparer,
-		CLIInstallations:       config.CLIInstallations,
-		Host:                   activationGate,
-		Authorization:          config.Authorization,
-		Compatibility:          config.Compatibility,
-		Scheduler:              scheduler,
-		ImplementationRegistry: config.ImplementationRegistry,
+		Repository:               config.Repository,
+		CatalogSource:            config.CatalogSource,
+		ArtifactPreparer:         config.ArtifactPreparer,
+		CLIInstallations:         config.CLIInstallations,
+		Host:                     activationGate,
+		Authorization:            config.Authorization,
+		AuthorizationProjections: config.AuthorizationProjections,
+		RuntimeBindings:          config.RuntimeBindings,
+		Compatibility:            config.Compatibility,
+		Scheduler:                scheduler,
+		ImplementationRegistry:   config.ImplementationRegistry,
 	})
 	if err != nil {
 		cancel()
@@ -152,18 +164,27 @@ func NewHost(parent context.Context, config HostConfig) (*Host, error) {
 		cancel:             cancel,
 		scheduler:          scheduler,
 		outboxDone:         make(chan struct{}),
+		lifecycleDone:      make(chan struct{}),
 		repository:         config.Repository,
 		implementationHost: config.ImplementationHost,
 		activationGate:     activationGate,
+		publication:        config.Publication,
 	}
 	if publicationGate, ok := config.ImplementationHost.(capabilityPublicationGate); ok {
 		host.publicationGate = publicationGate
-		publicationGate.SetCapabilityPublication(false)
+		if host.publication == nil {
+			publicationGate.SetCapabilityPublication(false)
+		}
 	}
 	dispatcher := OutboxDispatcher{Outbox: config.Outbox, Publisher: config.Publisher}
 	go func() {
 		defer close(host.outboxDone)
 		dispatcher.Run(hostContext)
+	}()
+	cleanupWorker := LifecycleCleanupWorker{Store: config.Lifecycle, Policy: config.LifecyclePolicy}
+	go func() {
+		defer close(host.lifecycleDone)
+		cleanupWorker.Run(hostContext)
 	}()
 	return host, nil
 }
@@ -172,22 +193,31 @@ func NewHost(parent context.Context, config HostConfig) (*Host, error) {
 // remote catalog. Catalog refresh has its own retry loop: a network, auth, or
 // presentation-policy failure must never keep installed MCP/CLI routes fenced.
 func (host *Host) Bootstrap(ctx context.Context) error {
+	return host.BootstrapForScope(ctx, market.OperationScope{})
+}
+
+// BootstrapForScope restores device-installed runtimes for the explicitly
+// active account authority. The scope is retained for retry workers but no
+// short-lived grant is retained by the daemon.
+func (host *Host) BootstrapForScope(ctx context.Context, scope market.OperationScope) error {
 	if host == nil || host.Application == nil {
 		return errors.New("connector market host is unavailable")
 	}
 	host.bootstrapMu.Lock()
 	defer host.bootstrapMu.Unlock()
-	if host.bootstrapped && !host.activationGate.requiresRecovery() {
+	sameScope := host.bootstrapScope == scope
+	if host.bootstrapped && sameScope && !host.activationGate.requiresRecovery() {
 		return nil
 	}
+	host.bootstrapScope = scope
 	host.bootstrapped = false
 	if !host.refreshWorkerStarted {
 		host.refreshWorkerStarted = true
 		go host.runCatalogRefreshWorker()
 	}
 	host.activationGate.setOpen(false)
-	if host.publicationGate != nil {
-		host.publicationGate.SetCapabilityPublication(false)
+	if err := host.applyCapabilityPublication(ctx, scope, false); err != nil {
+		return err
 	}
 	committed := false
 	defer func() {
@@ -195,44 +225,66 @@ func (host *Host) Bootstrap(ctx context.Context) error {
 			return
 		}
 		host.activationGate.setOpen(false)
-		if host.publicationGate != nil {
-			host.publicationGate.SetCapabilityPublication(false)
-		}
+		_ = host.applyCapabilityPublication(context.Background(), scope, false)
 		fenceContext, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
-		if fencer, ok := host.implementationHost.(runtimeProjectionFencer); ok {
-			if err := fencer.FenceAll(fenceContext, time.Now().Add(10*time.Second)); err != nil {
-				slog.Error("connector market bootstrap rollback runtime fence failed", "error", err)
-			}
+		if err := host.implementationHost.FailClosed(fenceContext, time.Now().Add(10*time.Second)); err != nil {
+			slog.Error("connector market bootstrap rollback runtime fence failed", "error", err)
 		}
-		if err := host.Application.FenceInstalledRuntimes(fenceContext); err != nil {
+		if err := host.Application.FenceInstalledRuntimesForScope(fenceContext, scope); err != nil {
 			slog.Error("connector market bootstrap rollback fence failed", "error", err)
 		}
 	}()
 	// Fence any route left by an interrupted previous bootstrap before recovery
 	// can replay host-touching operations. Reconcile calls remain staged behind
 	// activationGate until durable local recovery has completed.
-	if fencer, ok := host.implementationHost.(runtimeProjectionFencer); ok {
-		if err := fencer.FenceAll(ctx, time.Now().Add(10*time.Second)); err != nil {
-			return err
-		}
+	if err := host.implementationHost.FailClosed(ctx, time.Now().Add(10*time.Second)); err != nil {
+		return err
 	}
-	if err := host.Application.FenceInstalledRuntimes(ctx); err != nil {
+	if err := host.Application.FenceInstalledRuntimesForScope(ctx, scope); err != nil {
 		return err
 	}
 	if err := host.recoverAndWait(ctx); err != nil {
 		return err
 	}
 	host.activationGate.setOpen(true)
-	if err := host.Application.ReconcileInstalledRuntimes(ctx); err != nil {
+	if err := host.Application.ReconcileInstalledRuntimesForScope(ctx, scope); err != nil {
 		return err
 	}
-	if host.publicationGate != nil {
-		host.publicationGate.SetCapabilityPublication(true)
+	if err := host.applyCapabilityPublication(ctx, scope, true); err != nil {
+		return err
 	}
 	host.activationGate.markRecovered()
 	host.bootstrapped = true
 	committed = true
+	return nil
+}
+
+// FenceForScope closes publication and runtime authority for an account
+// boundary without deleting device installation truth. A later bootstrap,
+// including one for the same account, must perform full recovery before routes
+// can be published again.
+func (host *Host) FenceForScope(ctx context.Context, scope market.OperationScope) error {
+	if host == nil || host.Application == nil {
+		return errors.New("connector market host is unavailable")
+	}
+	host.bootstrapMu.Lock()
+	defer host.bootstrapMu.Unlock()
+	host.activationGate.setOpen(false)
+	host.bootstrapped = false
+	host.bootstrapScope = scope
+	publicationErr := host.applyCapabilityPublication(ctx, scope, false)
+	fenceErr := host.activationGate.FailClosed(ctx, time.Now().Add(10*time.Second))
+	return errors.Join(publicationErr, fenceErr)
+}
+
+func (host *Host) applyCapabilityPublication(ctx context.Context, scope market.OperationScope, enabled bool) error {
+	if host.publication != nil {
+		return host.publication.ApplyCapabilityPublication(ctx, scope, enabled)
+	}
+	if host.publicationGate != nil {
+		host.publicationGate.SetCapabilityPublication(enabled)
+	}
 	return nil
 }
 
@@ -255,7 +307,8 @@ func (host *Host) recoverAndWait(ctx context.Context) error {
 			// Remote refresh and authorization operations may legitimately wait on
 			// the network. Recover them, but do not make local route restoration
 			// wait for their terminal state.
-			if candidate.Kind != market.OperationKindInstall && candidate.Kind != market.OperationKindUninstall {
+			if candidate.Kind != market.OperationKindInstall && candidate.Kind != market.OperationKindUninstall &&
+				candidate.Kind != market.OperationKindReconcileRuntime {
 				continue
 			}
 			operation, err := host.Application.GetOperation(ctx, candidate.OperationID)
@@ -315,6 +368,7 @@ func (host *Host) runCatalogRefreshWorker() {
 	for {
 		host.bootstrapMu.Lock()
 		bootstrapped := host.bootstrapped
+		scope := host.bootstrapScope
 		host.bootstrapMu.Unlock()
 		if !bootstrapped {
 			timer := time.NewTimer(bootstrapRetry)
@@ -325,7 +379,7 @@ func (host *Host) runCatalogRefreshWorker() {
 			case <-timer.C:
 			}
 			bootstrapContext, cancel := context.WithTimeout(host.scheduler.ctx, 45*time.Second)
-			err := host.Bootstrap(bootstrapContext)
+			err := host.BootstrapForScope(bootstrapContext, scope)
 			cancel()
 			if err != nil && !errors.Is(err, context.Canceled) {
 				slog.Warn("connector market bootstrap retry failed", "error", err)
@@ -370,6 +424,7 @@ func (host *Host) Close() {
 			_ = closer.Close()
 		}
 		<-host.outboxDone
+		<-host.lifecycleDone
 		host.scheduler.Wait()
 	})
 }

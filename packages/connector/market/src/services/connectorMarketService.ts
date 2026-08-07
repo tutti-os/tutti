@@ -33,6 +33,14 @@ export class ConnectorMarketBusyError extends Error {
   }
 }
 
+const authorizationContinuationPollMs = 1_000;
+
+function waitForAuthorizationContinuation(): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, authorizationContinuationPollMs);
+  });
+}
+
 /**
  * Owns connector-market UI state and behavior. HTTP clients and desktop
  * capabilities are host adapters supplied through the constructor.
@@ -172,12 +180,15 @@ export class ConnectorMarketService implements IConnectorMarketService {
   }
 
   install(connectorKey: string): Promise<void> {
-    return this.runConnectorMutation(connectorKey, () =>
-      this.dependencies.backend.installConnector({
-        connectorKey,
-        clientRequestId: this.createRequestId(),
-        expectedRevision: this.dataStore.revision
-      })
+    return this.runConnectorMutation(
+      connectorKey,
+      () =>
+        this.dependencies.backend.installConnector({
+          connectorKey,
+          clientRequestId: this.createRequestId(),
+          expectedRevision: this.dataStore.revision
+        }),
+      true
     );
   }
 
@@ -196,20 +207,42 @@ export class ConnectorMarketService implements IConnectorMarketService {
       return;
     }
     const token = this.acquireConnectorMutation(connectorKey);
+    this.dataStore.authorizingConnectorKeys[connectorKey] = true;
     const generation = this.dataGeneration;
+    const request = {
+      connectorKey,
+      clientRequestId: this.createRequestId(),
+      expectedRevision: this.dataStore.revision
+    };
+    const openedAuthorizationUrls = new Set<string>();
     try {
-      const result = await this.dependencies.backend.beginAuthorization({
-        connectorKey,
-        clientRequestId: this.createRequestId(),
-        expectedRevision: this.dataStore.revision
-      });
-      if (!this.isCurrentMutation(connectorKey, token, generation)) {
-        return;
-      }
-      applyConnectorMutationResult(this.dataStore, result);
-      this.trackOperation(result.operation);
-      if (result.authorizationUrl && this.dependencies.openAuthorizationUrl) {
-        await this.dependencies.openAuthorizationUrl(result.authorizationUrl);
+      while (this.isCurrentMutation(connectorKey, token, generation)) {
+        const result =
+          await this.dependencies.backend.beginAuthorization(request);
+        if (!this.isCurrentMutation(connectorKey, token, generation)) {
+          return;
+        }
+        applyConnectorMutationResult(this.dataStore, result);
+        this.trackOperation(result.operation);
+        const authorizationUrl = result.authorizationUrl;
+        const discoveredNextStep =
+          authorizationUrl !== undefined &&
+          !openedAuthorizationUrls.has(authorizationUrl);
+        if (discoveredNextStep && authorizationUrl) {
+          openedAuthorizationUrls.add(authorizationUrl);
+          if (this.dependencies.openAuthorizationUrl) {
+            await this.dependencies.openAuthorizationUrl(authorizationUrl);
+          }
+        }
+        if (
+          this.dataStore.connectorsByKey[connectorKey]?.authorization.state !==
+          "pending"
+        ) {
+          return;
+        }
+        if (!discoveredNextStep) {
+          await waitForAuthorizationContinuation();
+        }
       }
     } catch (error) {
       if (this.isCurrentMutation(connectorKey, token, generation)) {
@@ -217,6 +250,9 @@ export class ConnectorMarketService implements IConnectorMarketService {
       }
       throw error;
     } finally {
+      if (this.connectorMutations.get(connectorKey) === token) {
+        delete this.dataStore.authorizingConnectorKeys[connectorKey];
+      }
       this.releaseConnectorMutation(connectorKey, token);
     }
   }
@@ -461,15 +497,36 @@ export class ConnectorMarketService implements IConnectorMarketService {
 
   private async runConnectorMutation(
     connectorKey: string,
-    operation: () => Promise<ConnectorMutationResult>
+    operation: () => Promise<ConnectorMutationResult>,
+    projectPendingInstallation = false
   ): Promise<void> {
     if (this.disposed || !this.canRequest()) {
       return;
     }
     const token = this.acquireConnectorMutation(connectorKey);
     const generation = this.dataGeneration;
+    if (projectPendingInstallation) {
+      this.dataStore.pendingInstallationsByConnectorKey[connectorKey] = true;
+    }
     try {
-      const result = await operation();
+      let result: ConnectorMutationResult;
+      try {
+        result = await operation();
+      } catch (error) {
+        if (
+          normalizeConnectorMarketError(error).code !==
+            "connector_market_revision_conflict" ||
+          !this.isCurrentMutation(connectorKey, token, generation)
+        ) {
+          throw error;
+        }
+        const next = await this.dependencies.backend.getSnapshot();
+        if (!this.isCurrentMutation(connectorKey, token, generation)) {
+          return;
+        }
+        applyConnectorMarketSnapshot(this.dataStore, next);
+        result = await operation();
+      }
       if (this.isCurrentMutation(connectorKey, token, generation)) {
         applyConnectorMutationResult(this.dataStore, result);
         this.trackOperation(result.operation);
@@ -480,6 +537,12 @@ export class ConnectorMarketService implements IConnectorMarketService {
       }
       throw error;
     } finally {
+      if (
+        projectPendingInstallation &&
+        this.connectorMutations.get(connectorKey) === token
+      ) {
+        delete this.dataStore.pendingInstallationsByConnectorKey[connectorKey];
+      }
       this.releaseConnectorMutation(connectorKey, token);
     }
   }

@@ -11,6 +11,16 @@ type HistoricalSessionGraph struct {
 	Sessions      []HistoricalSession `json:"sessions"`
 }
 
+// HistoricalSessionGraphRestoreInput binds portable historical state to one
+// runtime-owned Workspace and user. WorkspaceID and UserID are deliberately
+// outside HistoricalSessionGraph so cassette artifacts remain product-neutral
+// and do not persist the identity of the user that recorded them.
+type HistoricalSessionGraphRestoreInput struct {
+	WorkspaceID string
+	UserID      string
+	Graph       HistoricalSessionGraph
+}
+
 type HistoricalSession struct {
 	ID                       string                  `json:"id"`
 	Kind                     string                  `json:"kind,omitempty"`

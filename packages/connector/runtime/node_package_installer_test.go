@@ -83,8 +83,12 @@ func TestNodePackageInstallerUsesOneManagedNodeAndSharedContentStore(t *testing.
 	runtimeResolver := nodePackageRuntimeStub{root: runtimeRoot, node: ConnectorExecutable{Path: nodePath,
 		SHA256: strings.Repeat("a", 64), SizeBytes: 7}}
 	root := t.TempDir()
+	externalBin := t.TempDir()
+	inheritedPath := strings.Join([]string{externalBin, filepath.Join(runtimeRoot, "node", "bin"), ""}, string(os.PathListSeparator))
 	installer, err := NewNodePackageInstaller(NodePackageInstallerConfig{RootDir: root, Runtimes: runtimeResolver,
-		Processes: processes, PnpmVersion: "10.11.0"})
+		Processes: processes, PnpmVersion: "10.11.0", Environ: func() []string {
+			return []string{"PATH=" + inheritedPath, "HTTPS_PROXY=http://127.0.0.1:7890", "SECRET_TOKEN=hidden"}
+		}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -125,13 +129,22 @@ func TestNodePackageInstallerUsesOneManagedNodeAndSharedContentStore(t *testing.
 			}
 		} else {
 			lifecycleRuns++
-			if !strings.HasSuffix(filepath.ToSlash(spec.Command[1]), "/scripts/install.js") ||
-				len(spec.ConnectorSandbox.AllowedExecutables) != 2 {
-				t.Fatalf("lifecycle did not use the typed Node entrypoint and executable allowlist: %#v", spec)
+			if !strings.HasSuffix(filepath.ToSlash(spec.Command[1]), "/scripts/install.js") {
+				t.Fatalf("lifecycle did not use the typed Node entrypoint: %#v", spec)
 			}
 		}
 		if !containsEnvironmentPrefix(spec.Env, "NPM_CONFIG_CACHE="+filepath.Join(root, "shared", "npm-cache")) {
 			t.Fatalf("installer environment does not share npm cache: %#v", spec.Env)
+		}
+		wantPath := strings.Join([]string{filepath.Join(runtimeRoot, "node", "bin"), externalBin}, string(os.PathListSeparator))
+		if !containsEnvironmentPrefix(spec.Env, "PATH="+wantPath) {
+			t.Fatalf("installer PATH does not prefer managed Node and preserve user tools: %#v", spec.Env)
+		}
+		if !containsEnvironmentPrefix(spec.Env, "HTTPS_PROXY=http://127.0.0.1:7890") {
+			t.Fatalf("installer environment does not preserve the user proxy: %#v", spec.Env)
+		}
+		if containsEnvironmentKey(spec.Env, "SECRET_TOKEN") {
+			t.Fatalf("installer environment leaked a non-allowlisted value: %#v", spec.Env)
 		}
 	}
 	if packageInstalls != 2 || lifecycleRuns != 2 {
@@ -159,7 +172,7 @@ func testNodePackageRelease(connectorKey, digest string) market.Release {
 	return market.Release{
 		SchemaVersion: "1", ReleaseID: connectorKey + "@1.0.0", ConnectorKey: connectorKey,
 		Version: "1.0.0", ReleaseDigest: digest, ManifestDigest: strings.Repeat("3", 64),
-		Artifact: market.Artifact{StorageRealm: "tutti.connector.artifacts.v1", Key: connectorKey + ".zip", ObjectVersion: "version-1",
+		Artifact: market.Artifact{Key: connectorKey + ".zip",
 			SHA256: strings.Repeat("4", 64), SizeBytes: 1, MediaType: "application/zip"},
 		PublishedAt: time.Unix(1, 0).UTC(), Status: market.ReleaseStatusAvailable,
 		Manifest: market.Manifest{
@@ -175,8 +188,7 @@ func testNodePackageRelease(connectorKey, digest string) market.Release {
 							Package: "@larksuite/cli", Version: "1.0.83", Integrity: larkTestIntegrity,
 							Launch: market.NodePackageLaunch{Kind: "native", Entrypoint: "bin/lark-cli",
 								SHA256: "c4319606cba410b6e1128bebe27915a7c212a4f8b58faaa38a2f99d31856e046"},
-							Lifecycle: []market.NodeLifecycleCommand{{Event: "postinstall", Entrypoint: "scripts/install.js",
-								AllowedExecutables: []string{"curl", "tar"}}},
+							Lifecycle: []market.NodeLifecycleCommand{{Event: "postinstall", Entrypoint: "scripts/install.js"}},
 						}},
 					},
 				},
@@ -223,6 +235,16 @@ func containsCommandPair(command []string, key, value string) bool {
 func containsEnvironmentPrefix(environment []string, expected string) bool {
 	for _, value := range environment {
 		if value == expected {
+			return true
+		}
+	}
+	return false
+}
+
+func containsEnvironmentKey(environment []string, expected string) bool {
+	for _, value := range environment {
+		key, _, ok := strings.Cut(value, "=")
+		if ok && strings.EqualFold(key, expected) {
 			return true
 		}
 	}

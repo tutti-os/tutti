@@ -151,8 +151,11 @@ func TestCaptureReplayStateExcludesUnrelatedSentinelSession(t *testing.T) {
 	}
 	if err := store.AgentCanonicalStore().RestoreHistoricalSessionGraph(
 		ctx,
-		replayWorkspaceID,
-		state.Agent,
+		agenthost.HistoricalSessionGraphRestoreInput{
+			WorkspaceID: replayWorkspaceID,
+			UserID:      "user-replay",
+			Graph:       state.Agent,
+		},
 	); err != nil {
 		t.Fatal(err)
 	}
@@ -196,7 +199,14 @@ func TestCaptureReplayStateExcludesUnrelatedSentinelSession(t *testing.T) {
 	)) {
 		t.Fatalf("restored provider resume checkpoint = %#v", checkpoint)
 	}
-	if err := store.AgentCanonicalStore().RestoreHistoricalSessionGraph(ctx, replayWorkspaceID, state.Agent); err != nil {
+	if err := store.AgentCanonicalStore().RestoreHistoricalSessionGraph(
+		ctx,
+		agenthost.HistoricalSessionGraphRestoreInput{
+			WorkspaceID: replayWorkspaceID,
+			UserID:      "user-replay",
+			Graph:       state.Agent,
+		},
+	); err != nil {
 		t.Fatalf("idempotent restore error = %v", err)
 	}
 	conflicting := state.Agent
@@ -204,8 +214,11 @@ func TestCaptureReplayStateExcludesUnrelatedSentinelSession(t *testing.T) {
 	conflicting.Sessions[0].Title = "conflicting title"
 	if err := store.AgentCanonicalStore().RestoreHistoricalSessionGraph(
 		ctx,
-		replayWorkspaceID,
-		conflicting,
+		agenthost.HistoricalSessionGraphRestoreInput{
+			WorkspaceID: replayWorkspaceID,
+			UserID:      "user-replay",
+			Graph:       conflicting,
+		},
 	); !errors.Is(err, agenthost.ErrHistoricalStateConflict) {
 		t.Fatalf("conflicting restore error = %v", err)
 	}

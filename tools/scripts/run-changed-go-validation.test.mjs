@@ -18,6 +18,8 @@ describe("parseChangedGoValidationArgs", () => {
       parseChangedGoValidationArgs([
         "--base",
         "base-sha",
+        "--head",
+        "head-sha",
         "--kind",
         "test",
         "--max-parallel",
@@ -27,6 +29,7 @@ describe("parseChangedGoValidationArgs", () => {
       ]),
       {
         baseRef: "base-sha",
+        headRef: "head-sha",
         kind: "test",
         maxParallel: 2,
         tailLines: 400
@@ -81,6 +84,20 @@ describe("buildChangedGoValidationLanes", () => {
     assert.doesNotMatch(lanes[0].command[2], /generate:builtin-apps/);
   });
 
+  it("keeps a changed module-root package scoped to the module root", () => {
+    const lanes = buildChangedGoValidationLanes({
+      changedFiles: ["services/tuttid/wiring.go"],
+      kind: "test",
+      moduleRoots,
+      pathExists: () => true,
+      root: "/repo"
+    });
+
+    assert.equal(lanes.length, 1);
+    assert.match(lanes[0].command[2], /cd services\/tuttid && .*go test \.$/u);
+    assert.doesNotMatch(lanes[0].command[2], /go test \.\/\.\.\./u);
+  });
+
   it("does not expand lint beyond the established lint module set", () => {
     const lanes = buildChangedGoValidationLanes({
       changedFiles: ["packages/agent/session-replay/replay.go"],
@@ -93,7 +110,7 @@ describe("buildChangedGoValidationLanes", () => {
     assert.deepEqual(lanes, []);
   });
 
-  it("falls back to every module when shared selection code changes", () => {
+  it("does not create Go lanes for shared selection code changes", () => {
     const lanes = buildChangedGoValidationLanes({
       changedFiles: ["tools/scripts/run-changed-go-validation.mjs"],
       kind: "test",
@@ -102,13 +119,7 @@ describe("buildChangedGoValidationLanes", () => {
       root: "/repo"
     });
 
-    assert.deepEqual(
-      lanes.map((lane) => lane.label),
-      moduleRoots.map((moduleRoot) => `test:go (${moduleRoot})`)
-    );
-    for (const lane of lanes) {
-      assert.match(lane.command[2], /go test \.\/\.\.\./);
-    }
+    assert.deepEqual(lanes, []);
   });
 
   it("ensures builtin assets only for the selected tuttid lane", () => {

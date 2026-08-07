@@ -66,7 +66,8 @@ export const en = {
     downloadingTitle: "Downloading {{percent}}",
     errorTitle: "Unable to check for updates",
     restartAction: "Restart & install",
-    retryAction: "Retry"
+    retryAction: "Retry",
+    storeManaged: "Updates are managed by Microsoft Store."
   },
   desktop: {
     installGuard: {

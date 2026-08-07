@@ -51,10 +51,31 @@ conditions. Do not use workflow-level `paths-ignore` for this gate because
 missing required checks can leave documentation-only PRs waiting on branch
 protection.
 
+PR workflows execute on a synthetic merge ref so tests cover the result that
+would land on `main`. Their selectors must still calculate the changed set from
+the exact pull-request range, `${base.sha}...${head.sha}`, and read manifest
+comparisons from the pull-request head. Do not diff the merge ref against the
+original base SHA: if `main` advances while a PR is open, unrelated main-branch
+changes would select extra TypeScript, package, or repository checks.
+
 PR CI keeps the existing `Tooling Consistency` required context as the owner of
 repository policy, contract, generated, and boundary checks. This preserves
 branch-protection compatibility while keeping those checks out of language
 jobs.
+
+Windows validation separates adapter coverage from desktop packaging. Changes
+under the Agent daemon or `services/tuttid` run the Windows adapter tests;
+desktop and builtin-app changes run the full unsigned Windows package build.
+Use the desktop workflow's manual dispatch for a full package check when a
+daemon-only change needs release-package confidence. Workflow definition files
+are validated by repository tool contracts and do not trigger either runtime
+workflow themselves; this prevents a selector-only PR from starting a full
+Windows package build.
+
+Changes to shared Go selector scripts are covered by the repository tool
+contract suite and continue to select only the affected Go modules. Go
+workspace, module, or lint configuration changes still select all relevant Go
+modules because they can change the validity of every target.
 
 Agent Session Replay has an additional changed-file lane,
 `run_agent_session_replay`. Changes to its core, provider transport, daemon

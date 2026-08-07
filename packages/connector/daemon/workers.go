@@ -81,6 +81,102 @@ type ChangedEventPublisher interface {
 	PublishConnectorMarketChanged(context.Context, market.ChangedEvent) error
 }
 
+const (
+	DefaultTerminalOperationRetention = 24 * time.Hour
+	DefaultPublishedEventRetention    = time.Hour
+	DefaultLifecycleCleanupInterval   = time.Hour
+	DefaultLifecycleCleanupBatchSize  = 500
+)
+
+type LifecycleCleanupPolicy struct {
+	TerminalOperationRetention time.Duration
+	PublishedEventRetention    time.Duration
+	Interval                   time.Duration
+	BatchSize                  int
+}
+
+type LifecycleCleanupWorker struct {
+	Store  market.LifecycleCleanupStore
+	Now    func() time.Time
+	Policy LifecycleCleanupPolicy
+}
+
+func (worker LifecycleCleanupWorker) Run(ctx context.Context) {
+	policy := normalizedLifecycleCleanupPolicy(worker.Policy)
+	worker.Policy = policy
+	if err := worker.Cleanup(ctx); err != nil && !errors.Is(err, context.Canceled) {
+		slog.Warn("connector market lifecycle cleanup failed", "error", err)
+	}
+	ticker := time.NewTicker(policy.Interval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			if err := worker.Cleanup(ctx); err != nil && !errors.Is(err, context.Canceled) {
+				slog.Warn("connector market lifecycle cleanup failed", "error", err)
+			}
+		}
+	}
+}
+
+func (worker LifecycleCleanupWorker) Cleanup(ctx context.Context) error {
+	if worker.Store == nil {
+		return errors.New("connector market lifecycle cleanup store is required")
+	}
+	policy := normalizedLifecycleCleanupPolicy(worker.Policy)
+	now := time.Now().UTC()
+	if worker.Now != nil {
+		now = worker.Now().UTC()
+	}
+	request := market.LifecycleCleanupRequest{
+		TerminalOperationsUpdatedThrough: now.Add(-policy.TerminalOperationRetention),
+		PublishedEventsPublishedThrough:  now.Add(-policy.PublishedEventRetention),
+		BatchSize:                        policy.BatchSize,
+	}
+	var total market.LifecycleCleanupResult
+	for {
+		result, err := worker.Store.CleanupLifecycle(ctx, request)
+		if err != nil {
+			return err
+		}
+		total.TerminalOperationsDeleted += result.TerminalOperationsDeleted
+		total.PublishedEventsDeleted += result.PublishedEventsDeleted
+		if result.TerminalOperationsDeleted < int64(policy.BatchSize) &&
+			result.PublishedEventsDeleted < int64(policy.BatchSize) {
+			break
+		}
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+	}
+	if total.TerminalOperationsDeleted > 0 || total.PublishedEventsDeleted > 0 {
+		slog.Info("connector market lifecycle cleanup completed",
+			"terminalOperationsDeleted", total.TerminalOperationsDeleted,
+			"publishedEventsDeleted", total.PublishedEventsDeleted,
+			"terminalOperationRetention", policy.TerminalOperationRetention,
+			"publishedEventRetention", policy.PublishedEventRetention)
+	}
+	return nil
+}
+
+func normalizedLifecycleCleanupPolicy(policy LifecycleCleanupPolicy) LifecycleCleanupPolicy {
+	if policy.TerminalOperationRetention <= 0 {
+		policy.TerminalOperationRetention = DefaultTerminalOperationRetention
+	}
+	if policy.PublishedEventRetention <= 0 {
+		policy.PublishedEventRetention = DefaultPublishedEventRetention
+	}
+	if policy.Interval <= 0 {
+		policy.Interval = DefaultLifecycleCleanupInterval
+	}
+	if policy.BatchSize <= 0 || policy.BatchSize > DefaultLifecycleCleanupBatchSize {
+		policy.BatchSize = DefaultLifecycleCleanupBatchSize
+	}
+	return policy
+}
+
 type OutboxDispatcher struct {
 	Outbox    market.ChangedEventOutbox
 	Publisher ChangedEventPublisher

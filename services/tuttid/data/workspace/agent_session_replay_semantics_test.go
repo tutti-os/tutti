@@ -212,7 +212,14 @@ func TestRestoreTuttiReplayProductStateRoundTripsSemanticRelationships(t *testin
 			Priority: "medium", Position: 0,
 		}},
 	}}
-	if err := store.AgentCanonicalStore().RestoreHistoricalSessionGraph(ctx, workspaceID, state.Agent); err != nil {
+	if err := store.AgentCanonicalStore().RestoreHistoricalSessionGraph(
+		ctx,
+		agenthost.HistoricalSessionGraphRestoreInput{
+			WorkspaceID: workspaceID,
+			UserID:      "user-replay",
+			Graph:       state.Agent,
+		},
+	); err != nil {
 		t.Fatal(err)
 	}
 	merged, err := replaybiz.MergeTuttiReplayStates([]TuttiReplayState{state})
@@ -253,8 +260,11 @@ func TestHistoricalSessionGraphRoundTripsCanonicalProjectBinding(t *testing.T) {
 	canonicalStore := store.AgentCanonicalStore()
 	if err := canonicalStore.RestoreHistoricalSessionGraph(
 		ctx,
-		workspaceID,
-		graph,
+		agenthost.HistoricalSessionGraphRestoreInput{
+			WorkspaceID: workspaceID,
+			UserID:      "user-replay",
+			Graph:       graph,
+		},
 	); err != nil {
 		t.Fatal(err)
 	}

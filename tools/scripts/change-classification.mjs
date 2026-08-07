@@ -346,13 +346,17 @@ export function isPackagePackRelevantPath(file) {
 
 export function createPackageManifestPackRelevance({
   baseRef,
+  headRef = "HEAD",
   root = workspaceRoot
 }) {
   const cache = new Map();
 
   return (file) => {
     if (!cache.has(file)) {
-      cache.set(file, isPackageManifestPackRelevant(baseRef, file, root));
+      cache.set(
+        file,
+        isPackageManifestPackRelevant(baseRef, headRef, file, root)
+      );
     }
     return cache.get(file);
   };
@@ -360,6 +364,7 @@ export function createPackageManifestPackRelevance({
 
 export function createRootManifestTestRelevance({
   baseRef,
+  headRef = "HEAD",
   root = workspaceRoot
 }) {
   return () => {
@@ -372,17 +377,21 @@ export function createRootManifestTestRelevance({
       );
       const candidates = [
         normalizedManifestAtRef(
-          "HEAD",
+          headRef,
           "package.json",
           root,
           testRelevantRootManifest
-        ),
-        JSON.stringify(
-          testRelevantRootManifest(
-            JSON.parse(readFileSync(join(root, "package.json"), "utf8"))
-          )
         )
       ];
+      if (headRef === "HEAD") {
+        candidates.push(
+          JSON.stringify(
+            testRelevantRootManifest(
+              JSON.parse(readFileSync(join(root, "package.json"), "utf8"))
+            )
+          )
+        );
+      }
       return candidates.some((candidate) => candidate !== before);
     } catch {
       return true;
@@ -390,15 +399,17 @@ export function createRootManifestTestRelevance({
   };
 }
 
-function isPackageManifestPackRelevant(baseRef, file, root) {
+function isPackageManifestPackRelevant(baseRef, headRef, file, root) {
   try {
     const before = normalizedManifestAtRef(baseRef, file, root);
-    const candidates = [
-      normalizedManifestAtRef("HEAD", file, root),
-      JSON.stringify(
-        withoutTestScripts(JSON.parse(readFileSync(join(root, file), "utf8")))
-      )
-    ];
+    const candidates = [normalizedManifestAtRef(headRef, file, root)];
+    if (headRef === "HEAD") {
+      candidates.push(
+        JSON.stringify(
+          withoutTestScripts(JSON.parse(readFileSync(join(root, file), "utf8")))
+        )
+      );
+    }
     return candidates.some((candidate) => candidate !== before);
   } catch {
     return true;
@@ -505,9 +516,10 @@ if (isMainModule()) {
   if (!base) {
     throw new Error("--base is required");
   }
+  const head = readOption("--head") ?? "HEAD";
   const changedFiles = execFileSync(
     "git",
-    ["diff", "--name-only", `${base}...HEAD`],
+    ["diff", "--name-only", `${base}...${head}`],
     { cwd: workspaceRoot, encoding: "utf8" }
   )
     .split("\n")
@@ -516,10 +528,12 @@ if (isMainModule()) {
   const output = formatClassificationOutputs(
     classifyChangedFiles(changedFiles, {
       isPackageManifestPackRelevant: createPackageManifestPackRelevance({
-        baseRef: base
+        baseRef: base,
+        headRef: head
       }),
       isRootManifestTestRelevant: createRootManifestTestRelevance({
-        baseRef: base
+        baseRef: base,
+        headRef: head
       })
     })
   );

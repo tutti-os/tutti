@@ -2,17 +2,7 @@ import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 
-const GLOBAL_GO_VALIDATION_FILES = new Set([
-  ".github/workflows/pr-checks.yml",
-  "go.work",
-  "go.work.sum",
-  "tools/scripts/change-classification.mjs",
-  "tools/scripts/run-changed-go-validation.mjs",
-  "tools/scripts/run-check-changed-targets.mjs",
-  "tools/scripts/run-golangci-lint.mjs",
-  "tools/scripts/run-go-tests.mjs",
-  "tools/scripts/run-validation-lanes.mjs"
-]);
+const GLOBAL_GO_VALIDATION_FILES = new Set(["go.work", "go.work.sum"]);
 
 const GO_LINT_MODULE_ROOTS = new Set([
   "apps/cli",
@@ -148,7 +138,11 @@ export function resolveGoValidationTargets(
     if (lintModuleRootSet.has(moduleRoot)) {
       addGoTarget(lintByModule, moduleRoot, packagePattern);
     }
-    addGoTarget(testByModule, moduleRoot, `${packagePattern}/...`);
+    addGoTarget(
+      testByModule,
+      moduleRoot,
+      packagePattern === "." ? "." : `${packagePattern}/...`
+    );
   }
 
   if (lintByModule.size === 0 && testByModule.size === 0) {

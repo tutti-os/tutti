@@ -139,7 +139,7 @@ prepare_packaged_daemon() {
 
   local daemon_output_name="tuttid"
   local cli_output_name="tutti"
-  if [[ "${VARIANT}" == "win" ]]; then
+  if [[ "${VARIANT}" == "win" || "${VARIANT}" == "win-store" ]]; then
     daemon_output_name="tuttid.exe"
     cli_output_name="tutti.exe"
   fi
@@ -159,7 +159,7 @@ prepare_packaged_daemon() {
     return
   fi
 
-  if [[ "${VARIANT}" == "win" ]]; then
+  if [[ "${VARIANT}" == "win" || "${VARIANT}" == "win-store" ]]; then
     (
       cd "${ROOT_DIR}/services/tuttid"
       env CGO_ENABLED=0 GOOS=windows GOARCH=amd64 \
@@ -206,7 +206,7 @@ prepare_claude_sdk_sidecar() {
 }
 
 prepare_managed_posix_shell() {
-  if [[ "${VARIANT}" != "win" ]]; then
+  if [[ "${VARIANT}" != "win" && "${VARIANT}" != "win-store" ]]; then
     return
   fi
   node "${ROOT_DIR}/apps/desktop/scripts/vendor-managed-posix-shell.mjs" --platform=windows-amd64
@@ -280,12 +280,59 @@ run_electron_builder_win() {
     pnpm exec electron-builder --win --publish never "-c.extraMetadata.version=${DESKTOP_BUILD_VERSION}"
 }
 
+require_store_value() {
+  local name="$1"
+  if ! has_env "${name}"; then
+    echo "Windows Store packaging requires ${name}." >&2
+    return 1
+  fi
+}
+
+require_windows_store_packaging_config() {
+  require_store_value TUTTI_STORE_IDENTITY_NAME
+  require_store_value TUTTI_STORE_PUBLISHER
+  require_store_value TUTTI_STORE_PUBLISHER_DISPLAY_NAME
+
+  if [[ ! "${DESKTOP_BUILD_VERSION}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    echo "Windows Store packaging accepts only a plain stable version, got ${DESKTOP_BUILD_VERSION}." >&2
+    return 1
+  fi
+
+  local version_part
+  local -a version_parts=()
+  IFS='.' read -r -a version_parts <<<"${DESKTOP_BUILD_VERSION}"
+  for version_part in "${version_parts[@]}"; do
+    if ((version_part > 65535)); then
+      echo "Windows Store version components must not exceed 65535: ${DESKTOP_BUILD_VERSION}." >&2
+      return 1
+    fi
+  done
+}
+
+run_electron_builder_win_store() {
+  require_windows_store_packaging_config
+  local application_id="${TUTTI_STORE_APPLICATION_ID:-Tutti}"
+  local display_name="${TUTTI_STORE_DISPLAY_NAME:-Tutti}"
+
+  env \
+    npm_package_json="${ROOT_DIR}/package.json" \
+    INIT_CWD="${ROOT_DIR}" \
+    CSC_IDENTITY_AUTO_DISCOVERY=false \
+    pnpm exec electron-builder --win appx --x64 --publish never \
+      "-c.extraMetadata.version=${DESKTOP_BUILD_VERSION}" \
+      "-c.appx.applicationId=${application_id}" \
+      "-c.appx.displayName=${display_name}" \
+      "-c.appx.identityName=${TUTTI_STORE_IDENTITY_NAME}" \
+      "-c.appx.publisher=${TUTTI_STORE_PUBLISHER}" \
+      "-c.appx.publisherDisplayName=${TUTTI_STORE_PUBLISHER_DISPLAY_NAME}"
+}
+
 run_electron_builder_linux() {
   pnpm exec electron-builder --linux AppImage --publish never "-c.extraMetadata.version=${DESKTOP_BUILD_VERSION}"
 }
 
 case "${VARIANT}" in
-  unpack|mac|mac-unsigned|mac-signed|win|linux)
+  unpack|mac|mac-unsigned|mac-signed|win|win-store|linux)
     release_timing_log "variant=${VARIANT} status=start"
     run_timed_phase "prepare_builtin_apps" prepare_builtin_apps
     run_timed_phase "prepare_packaged_daemon" prepare_packaged_daemon
@@ -309,6 +356,9 @@ case "${VARIANT}" in
           ;;
         win)
           run_timed_phase "electron_builder_win" run_electron_builder_win
+          ;;
+        win-store)
+          run_timed_phase "electron_builder_win_store" run_electron_builder_win_store
           ;;
         linux)
           run_timed_phase "electron_builder_linux" run_electron_builder_linux

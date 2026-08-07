@@ -65,7 +65,8 @@ export const zhCN = {
     downloadingTitle: "正在下载 {{percent}}",
     errorTitle: "无法检查更新",
     restartAction: "重启安装",
-    retryAction: "重试"
+    retryAction: "重试",
+    storeManaged: "更新由 Microsoft Store 管理"
   },
   desktop: {
     installGuard: {

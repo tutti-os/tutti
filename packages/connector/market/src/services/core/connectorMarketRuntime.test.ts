@@ -153,7 +153,7 @@ test("one dialog host projects authorization and management as mutually exclusiv
               authorization: { state: "connected" },
               installation: {
                 installedReleaseDigest:
-                  "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+                  "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
                 installedReleaseId: "notion@1.0.0",
                 installedVersion: "1.0.0",
                 state: "installed"
@@ -214,9 +214,7 @@ function connector(key: string, overrides: Partial<Connector> = {}): Connector {
     key,
     release: {
       artifact: {
-        storageRealm: "tutti.connector.artifacts.v1",
         key: `connectors/${key}.tgz`,
-        objectVersion: "version-1",
         mediaType: "application/vnd.tutti.connector+tar+gzip",
         sha256:
           "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",

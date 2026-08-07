@@ -7,6 +7,7 @@ import {
   formatPackageGoModuleReleaseTag,
   isPublishedVersionListed,
   normalizePublishedPackageVersions,
+  publishPackageWithRetry,
   resolveReleaseTagNames
 } from "./publish-packages.mjs";
 
@@ -80,4 +81,58 @@ test("normalizePublishedPackageVersions accepts npm string and array outputs", (
 test("isPublishedVersionListed detects already published versions", () => {
   assert.equal(isPublishedVersionListed(["0.0.1", "0.0.2"], "0.0.1"), true);
   assert.equal(isPublishedVersionListed(["0.0.1", "0.0.2"], "0.0.3"), false);
+});
+
+test("publishPackageWithRetry retries a failed unpublished version", async () => {
+  let attempts = 0;
+  const waits = [];
+  await publishPackageWithRetry({
+    packageName: "@tutti-os/example",
+    version: "0.0.1",
+    publish() {
+      attempts += 1;
+      if (attempts === 1) {
+        throw new Error("transparency log conflict");
+      }
+    },
+    isPublished: () => false,
+    wait: async (attempt) => waits.push(attempt)
+  });
+  assert.equal(attempts, 2);
+  assert.deepEqual(waits, [1]);
+});
+
+test("publishPackageWithRetry accepts a version visible after an error", async () => {
+  let attempts = 0;
+  await publishPackageWithRetry({
+    packageName: "@tutti-os/example",
+    version: "0.0.1",
+    publish() {
+      attempts += 1;
+      throw new Error("registry response was lost");
+    },
+    isPublished: () => true,
+    wait: async () => assert.fail("published version must not be retried")
+  });
+  assert.equal(attempts, 1);
+});
+
+test("publishPackageWithRetry preserves the final publish error", async () => {
+  const expected = new Error("permanent publish failure");
+  let attempts = 0;
+  await assert.rejects(
+    publishPackageWithRetry({
+      packageName: "@tutti-os/example",
+      version: "0.0.1",
+      maxAttempts: 2,
+      publish() {
+        attempts += 1;
+        throw expected;
+      },
+      isPublished: () => false,
+      wait: async () => {}
+    }),
+    expected
+  );
+  assert.equal(attempts, 2);
 });

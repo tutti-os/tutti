@@ -153,4 +153,132 @@ describe("useAgentGUIConversationRouting", () => {
       ).toBeNull();
     }
   );
+
+  it("keeps a failed activation open when canonical session state exists", () => {
+    const sessionEngine = createAgentSessionEngine({
+      clock: { nowUnixMs: () => 1 },
+      commandPort: createTestEngineCommandPort({
+        execute: () => new Promise(() => {})
+      }),
+      identity: { origin: "test", workspaceId: "workspace-1" },
+      scheduler: { schedule: () => ({ cancel() {} }) }
+    });
+    sessionEngine.dispatch({
+      agentSessionId: "failed-session",
+      agentTargetId: "target-1",
+      clientSubmitId: "submit-1",
+      content: [{ type: "text", text: "hello" }],
+      cwd: "/workspace",
+      expiresAtUnixMs: 45_001,
+      mode: "new",
+      requestedAtUnixMs: 1,
+      requestId: "activation-1",
+      type: "activation/requested",
+      workspaceId: "workspace-1"
+    });
+    sessionEngine.dispatch({
+      commandId: "activate:activation-1",
+      commandType: "session/activate",
+      correlationId: "activation-1",
+      errorMessage: "Initial goal failed.",
+      outcome: "failed",
+      type: "engine/commandResult"
+    });
+    sessionEngine.dispatch({
+      sessions: [
+        {
+          activeTurnId: null,
+          agentSessionId: "failed-session",
+          createdAtUnixMs: 2,
+          cwd: "/workspace",
+          latestTurnInteractions: [],
+          pendingInteractions: [],
+          provider: "codex",
+          title: "Historical session",
+          workspaceId: "workspace-1"
+        }
+      ],
+      type: "session/snapshotReceived"
+    });
+    const setIntent = vi.fn();
+
+    renderHook(() =>
+      useAgentGUIConversationRouting({
+        activeConversationIdRef: { current: "failed-session" },
+        conversationListQuery: {},
+        conversations: [],
+        conversationsRef: { current: [] },
+        handledOpenSessionSequenceRef: { current: null },
+        hasLoadedConversations: true,
+        intent: { id: "failed-session", source: "activation", tag: "active" },
+        openSessionRequest: null,
+        pendingOpenSessionRequestRef: { current: null },
+        selectConversation: vi.fn(),
+        sessionEngine,
+        setIntent,
+        transientConversation: null,
+        workspaceId: "workspace-1"
+      })
+    );
+
+    expect(setIntent).not.toHaveBeenCalledWith({ tag: "home" });
+  });
+
+  it("does not let a failed activation override an explicit history selection", () => {
+    const sessionEngine = createAgentSessionEngine({
+      clock: { nowUnixMs: () => 1 },
+      commandPort: createTestEngineCommandPort({
+        execute: () => new Promise(() => {})
+      }),
+      identity: { origin: "test", workspaceId: "workspace-1" },
+      scheduler: { schedule: () => ({ cancel() {} }) }
+    });
+    sessionEngine.dispatch({
+      agentSessionId: "historical-session",
+      agentTargetId: "target-1",
+      clientSubmitId: "submit-1",
+      content: [{ type: "text", text: "hello" }],
+      cwd: "/workspace",
+      expiresAtUnixMs: 45_001,
+      mode: "new",
+      requestedAtUnixMs: 1,
+      requestId: "activation-1",
+      type: "activation/requested",
+      workspaceId: "workspace-1"
+    });
+    sessionEngine.dispatch({
+      commandId: "activate:activation-1",
+      commandType: "session/activate",
+      correlationId: "activation-1",
+      errorMessage: "Initial goal failed.",
+      outcome: "failed",
+      type: "engine/commandResult"
+    });
+    const setIntent = vi.fn();
+
+    renderHook(() =>
+      useAgentGUIConversationRouting({
+        activeConversationIdRef: { current: "historical-session" },
+        conversationListQuery: {},
+        conversations: [],
+        conversationsRef: { current: [] },
+        handledOpenSessionSequenceRef: { current: null },
+        hasLoadedConversations: true,
+        intent: {
+          id: "historical-session",
+          source: "user-selection",
+          tag: "active"
+        },
+        openSessionRequest: null,
+        pendingOpenSessionRequestRef: { current: null },
+        selectConversation: vi.fn(),
+        sessionEngine,
+        setIntent,
+        transientConversation: null,
+        workspaceId: "workspace-1"
+      })
+    );
+
+    expect(setIntent).not.toHaveBeenCalledWith({ tag: "home" });
+  });
 });

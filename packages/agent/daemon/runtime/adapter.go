@@ -23,7 +23,7 @@ type ProcessSpec struct {
 	Env                []string
 	DirectStart        bool
 	ExecutableIdentity *ExecutableIdentity
-	ConnectorSandbox   *ConnectorSandboxPolicy
+	ArtifactTrees      []ArtifactTreeIdentity
 	// SensitiveInheritedFiles are opt-in descriptors whose contents must never
 	// be copied into argv or the process environment. Generic process
 	// transports reject this field; the connector transport maps each file to
@@ -31,20 +31,10 @@ type ProcessSpec struct {
 	SensitiveInheritedFiles []SensitiveInheritedFile
 }
 
-// ConnectorSandboxPolicy is host-authored from a signed connector manifest.
-// Untrusted argv/input cannot add paths or enable network access.
-type ConnectorSandboxPolicy struct {
-	ReadOnlyPaths          []string
-	WritablePaths          []string
-	ReadOnlyTreeIdentities []ReadOnlyTreeIdentity
-	AllowedExecutables     []string
-	Network                bool
-}
-
-// ReadOnlyTreeIdentity binds a sandbox path to the inventory digest verified
-// from the signed artifact. The connector transport rechecks it immediately
-// before launch, closing the receipt-to-launch pathname gap.
-type ReadOnlyTreeIdentity struct {
+// ArtifactTreeIdentity binds a connector artifact snapshot to the inventory
+// digest verified from the signed artifact. The connector transport rechecks
+// it immediately before launch, closing the receipt-to-launch pathname gap.
+type ArtifactTreeIdentity struct {
 	Root   string
 	SHA256 string
 }

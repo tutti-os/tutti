@@ -6,7 +6,9 @@ import {
 } from "./rootReducer.ts";
 import {
   selectEngineSessionOperationError,
+  selectEngineSessionCanReload,
   selectEngineSubmitAvailability,
+  selectFailedNewActivationResolution,
   selectEngineSessionDeleted,
   selectRootAgentSessionIdsWithPendingInteractions,
   selectWorkspaceAgentConsumerCounts,
@@ -63,6 +65,68 @@ test("deleted session selector normalizes ids and hides tombstone storage", () =
   assert.equal(selectEngineSessionDeleted(state, " session-1 "), true);
   assert.equal(selectEngineSessionDeleted(state, "missing"), false);
   assert.equal(selectEngineSessionDeleted(state, null), false);
+});
+
+test("failed new activation preserves a canonical session after runtime failure", () => {
+  let state = createInitialAgentSessionEngineState();
+  assert.equal(
+    selectFailedNewActivationResolution(state, "session-1"),
+    "not-applicable"
+  );
+
+  state = rootEngineReducer(state, {
+    agentSessionId: "session-1",
+    agentTargetId: "target-1",
+    clientSubmitId: "submit-1",
+    content: [{ type: "text", text: "hello" }],
+    cwd: "/workspace",
+    expiresAtUnixMs: 45_001,
+    mode: "new",
+    requestedAtUnixMs: 1,
+    requestId: "activation-1",
+    type: "activation/requested",
+    workspaceId: "workspace-1"
+  }).state;
+  state = rootEngineReducer(state, {
+    commandId: "activate:activation-1",
+    commandType: "session/activate",
+    correlationId: "activation-1",
+    errorMessage: "Initial goal failed.",
+    outcome: "failed",
+    type: "engine/commandResult"
+  }).state;
+  assert.equal(
+    selectFailedNewActivationResolution(state, "session-1"),
+    "rollback"
+  );
+
+  state = rootEngineReducer(state, {
+    sessions: [
+      {
+        activeTurnId: null,
+        agentSessionId: "session-1",
+        cwd: "/workspace",
+        latestTurnInteractions: [],
+        pendingInteractions: [],
+        provider: "codex",
+        title: "Persisted session",
+        workspaceId: "workspace-1"
+      }
+    ],
+    type: "session/snapshotReceived"
+  }).state;
+
+  assert.equal(
+    selectFailedNewActivationResolution(state, " session-1 "),
+    "preserve"
+  );
+  assert.equal(
+    selectFailedNewActivationResolution(state, "session-1", {
+      selectionSource: "user-selection"
+    }),
+    "not-applicable"
+  );
+  assert.equal(selectEngineSessionCanReload(state, "session-1"), true);
 });
 
 test("consumer collections hide presentation-invisible sessions without removing exact lookup", () => {

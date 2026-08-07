@@ -12,8 +12,10 @@ export const AgentGUIConversationRailController = memo(
     const [conversationQuery, setConversationQuery] = useState("");
     const railQuery = useAgentGUIConversationRailQuery({
       activeConversationId: props.activeConversationId,
+      activityContextKey: props.activityContextKey,
       conversationFilter: props.conversationFilter,
       conversationQuery,
+      currentUserId: props.currentUserId,
       nodeId: props.nodeId,
       registerInteractionLockProbe: props.registerInteractionLockProbe,
       userProjects: props.userProjects,

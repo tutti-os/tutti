@@ -133,7 +133,11 @@ func TestChildSessionReportReturnsCanonicalRelations(t *testing.T) {
 	if len(graph.Sessions) != 5 {
 		t.Fatalf("captured Sessions=%#v", graph.Sessions)
 	}
-	if err := store.RestoreHistoricalSessionGraph(ctx, "ws-restore", graph); err != nil {
+	if err := store.RestoreHistoricalSessionGraph(ctx, HistoricalSessionGraphRestoreInput{
+		WorkspaceID: "ws-restore",
+		UserID:      "user-restore",
+		Graph:       graph,
+	}); err != nil {
 		t.Fatal(err)
 	}
 	restored, err := store.ListChildSessions(ctx, "ws-restore", "root")

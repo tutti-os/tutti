@@ -100,6 +100,26 @@ describe("ConversationMeta", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("shows a failed conversation instead of a stale user-action indicator", () => {
+    const nowMs = new Date("2026-06-05T12:00:00Z").getTime();
+    const item = conversation("failed-with-stale-action", nowMs, {
+      status: "failed",
+      needsUserAction: true
+    });
+
+    render(
+      createElement(ConversationMeta, {
+        item,
+        nowMs,
+        labels: relativeLabels
+      })
+    );
+
+    expect(
+      screen.getByTestId("agent-gui-conversation-meta-failed-with-stale-action")
+    ).toHaveAttribute("data-kind", "failed");
+  });
+
   it("displays the same sort time used by conversation ordering", () => {
     const nowMs = new Date("2026-06-05T12:00:00Z").getTime();
     const item = conversation("updated-newer-sort-older", nowMs - 60 * 1000, {

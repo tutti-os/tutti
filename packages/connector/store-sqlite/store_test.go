@@ -8,7 +8,6 @@ import (
 	"net/url"
 	"path/filepath"
 	"runtime"
-	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -75,105 +74,6 @@ func TestStoreMigrationDropsLegacyTrustTables(t *testing.T) {
 			t.Fatalf("legacy table %q still exists", table)
 		}
 	}
-	var durableTableCount int
-	if err := store.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'connector_market_catalog_trust_v2'`).Scan(&durableTableCount); err != nil {
-		t.Fatal(err)
-	}
-	if durableTableCount != 1 {
-		t.Fatal("durable connector catalog trust table is missing")
-	}
-}
-
-func TestStorePersistsCatalogTrustStateAcrossReopen(t *testing.T) {
-	ctx := context.Background()
-	databasePath := filepath.Join(t.TempDir(), "tuttid.db")
-	store, err := Open(ctx, databasePath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	now := time.Now().UTC().Truncate(time.Millisecond)
-	want := market.CatalogTrustState{KeyringVersion: 1, Sequence: 42, EnvelopeDigest: strings.Repeat("a", 64), IssuedAt: now.Add(-time.Minute),
-		ExpiresAt: now.Add(time.Minute), NextUpdateAt: now, ObservedAt: now, WallHighWater: now}
-	if err := store.SaveCatalogTrustState(ctx, "overseas", want); err != nil {
-		t.Fatal(err)
-	}
-	if err := store.Close(); err != nil {
-		t.Fatal(err)
-	}
-	reopened, err := Open(ctx, databasePath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = reopened.Close() }()
-	got, exists, err := reopened.LoadCatalogTrustState(ctx, "overseas")
-	if err != nil || !exists || got.Sequence != want.Sequence || got.EnvelopeDigest != want.EnvelopeDigest || !got.WallHighWater.Equal(want.WallHighWater) {
-		t.Fatalf("state=%#v exists=%v error=%v", got, exists, err)
-	}
-}
-
-func TestStoreRollsBackCatalogTrustStateWithCatalogTransaction(t *testing.T) {
-	ctx := context.Background()
-	store, err := Open(ctx, filepath.Join(t.TempDir(), "tuttid.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer store.Close()
-	now := time.Now().UTC().Truncate(time.Millisecond)
-	state := market.CatalogTrustState{KeyringVersion: 1, Sequence: 42, EnvelopeDigest: strings.Repeat("a", 64), IssuedAt: now.Add(-time.Minute),
-		ExpiresAt: now.Add(time.Minute), NextUpdateAt: now, ObservedAt: now, WallHighWater: now}
-	wantErr := errors.New("reject catalog transaction")
-	err = store.Transaction(ctx, func(tx market.Transaction) error {
-		if err := tx.SaveCatalogTrustState("overseas", state); err != nil {
-			return err
-		}
-		if err := tx.SaveCatalogRevision("revision-42"); err != nil {
-			return err
-		}
-		return wantErr
-	})
-	if !errors.Is(err, wantErr) {
-		t.Fatalf("transaction error = %v", err)
-	}
-	if _, exists, err := store.LoadCatalogTrustState(ctx, "overseas"); err != nil || exists {
-		t.Fatalf("trust state exists=%v error=%v", exists, err)
-	}
-	snapshot, err := store.Snapshot(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if snapshot.SourceRevision != "" {
-		t.Fatalf("source revision = %q", snapshot.SourceRevision)
-	}
-}
-
-func TestStoreRejectsOutOfOrderCatalogTrustCommits(t *testing.T) {
-	ctx := context.Background()
-	store, err := Open(ctx, filepath.Join(t.TempDir(), "tuttid.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer store.Close()
-	now := time.Now().UTC().Truncate(time.Millisecond)
-	newer := market.CatalogTrustState{KeyringVersion: 2, Sequence: 43, EnvelopeDigest: strings.Repeat("b", 64), IssuedAt: now.Add(-time.Minute),
-		ExpiresAt: now.Add(time.Minute), NextUpdateAt: now, ObservedAt: now, WallHighWater: now}
-	if err := store.SaveCatalogTrustState(ctx, "overseas", newer); err != nil {
-		t.Fatal(err)
-	}
-	older := newer
-	older.Sequence = 42
-	older.EnvelopeDigest = strings.Repeat("a", 64)
-	if err := store.SaveCatalogTrustState(ctx, "overseas", older); err == nil {
-		t.Fatal("expected sequence rollback to be rejected")
-	}
-	equivocation := newer
-	equivocation.EnvelopeDigest = strings.Repeat("c", 64)
-	if err := store.SaveCatalogTrustState(ctx, "overseas", equivocation); err == nil {
-		t.Fatal("expected same-sequence equivocation to be rejected")
-	}
-	got, exists, err := store.LoadCatalogTrustState(ctx, "overseas")
-	if err != nil || !exists || got.Sequence != newer.Sequence || got.EnvelopeDigest != newer.EnvelopeDigest {
-		t.Fatalf("state=%#v exists=%v error=%v", got, exists, err)
-	}
 }
 
 func TestStorePersistsRevisionOperationBindingAndOutboxAtomically(t *testing.T) {
@@ -218,6 +118,38 @@ func TestStorePersistsRevisionOperationBindingAndOutboxAtomically(t *testing.T) 
 	}
 	if len(entries) != 1 || entries[0].Event.Revision != 1 {
 		t.Fatalf("outbox = %#v", entries)
+	}
+}
+
+func TestStorePersistsAuthorizationProjectionByAccount(t *testing.T) {
+	ctx := context.Background()
+	store, err := Open(ctx, filepath.Join(t.TempDir(), "tuttid.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	first := market.AuthorizationProjection{AccountID: "account-1", ConnectorKey: "github",
+		ConnectionID: "connection-1", State: market.AuthorizationStateConnected, UpdatedAt: time.Unix(1, 0).UTC()}
+	second := market.AuthorizationProjection{AccountID: "account-2", ConnectorKey: "github",
+		ConnectionID: "connection-2", State: market.AuthorizationStateExpired, UpdatedAt: time.Unix(2, 0).UTC()}
+	for _, projection := range []market.AuthorizationProjection{first, second} {
+		if err := store.SaveAuthorizationProjection(ctx, projection); err != nil {
+			t.Fatal(err)
+		}
+	}
+	loaded, err := store.AuthorizationProjection(ctx, first.AccountID, first.ConnectorKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded != first {
+		t.Fatalf("projection = %#v, want %#v", loaded, first)
+	}
+	loaded, err = store.AuthorizationProjection(ctx, second.AccountID, second.ConnectorKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded != second {
+		t.Fatalf("projection = %#v, want %#v", loaded, second)
 	}
 }
 
@@ -359,8 +291,7 @@ func testConnector() market.Connector {
 			AuthorizationKind: "none",
 		},
 		Artifact: market.Artifact{
-			StorageRealm: "tutti.connector.artifacts.v1",
-			Key:          "connectors/github/1.0.0.zip", ObjectVersion: "version-1",
+			Key:       "connectors/github/1.0.0.zip",
 			SHA256:    "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
 			SizeBytes: 123, MediaType: "application/vnd.tutti.connector+zip",
 		},

@@ -542,6 +542,22 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+  submit-store:
+    name: Submit stable package to Microsoft Store
+    needs: [resolve, promote]
+    if: >-
+      ${{ needs.resolve.outputs.release_channel == 'stable' &&
+          needs.resolve.outputs.release_dry_run != 'true' &&
+          needs.resolve.outputs.publication_mode == 'publish' &&
+          vars.TUTTI_WINDOWS_STORE_SUBMISSION_ENABLED == 'true' }}
+    uses: ./.github/workflows/desktop-store-submit.yml
+    with:
+      release_tag: ${{ needs.resolve.outputs.release_tag }}
+      store_environment: microsoft-store-production
+      submit: true
+      target_commit: ${{ needs.resolve.outputs.release_target }}
+    secrets: inherit
+
   stage:
     name: Stage Release Draft
     needs: [resolve, build-macos, build-windows]

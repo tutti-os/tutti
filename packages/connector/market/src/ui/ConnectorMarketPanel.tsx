@@ -11,6 +11,7 @@ import { ConnectorMarketToolbar } from "./toolbar/ConnectorMarketToolbar.tsx";
 export interface ConnectorMarketPanelProps {
   className?: string;
   i18n: ConnectorMarketI18nRuntime;
+  onError?: (message: string) => void;
   onTryConnector?: (connectorKey: string) => void;
   root: IConnectorMarketRoot;
 }
@@ -18,6 +19,7 @@ export interface ConnectorMarketPanelProps {
 export function ConnectorMarketPanel({
   className,
   i18n,
+  onError,
   onTryConnector,
   root
 }: ConnectorMarketPanelProps) {
@@ -25,11 +27,12 @@ export function ConnectorMarketPanel({
     () => ({
       i18n,
       market: root.market,
+      onError,
       onTryConnector,
       uiState: root.uiState,
       view: root.view
     }),
-    [i18n, onTryConnector, root]
+    [i18n, onError, onTryConnector, root]
   );
 
   return (

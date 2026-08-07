@@ -1,92 +1,73 @@
 import { act, renderHook } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import {
-  AgentGUIRuntimeProvider,
-  type AgentGUIRuntime
-} from "../../../agentActivityRuntime";
 import type { AgentGUIConversationSummary } from "../model/agentGuiConversationTypes";
-import type { AgentGUIConversationActivityRootFact } from "./useAgentGUIConversationRailQuery";
+import { createAgentGUIConversationActivityController } from "./agentGUIConversationActivityController";
 import { useAgentGUIConversationActivityView } from "./useAgentGUIConversationActivityView";
 
 describe("useAgentGUIConversationActivityView", () => {
   it("clears an active view when the host capability fails closed", () => {
-    let capability = true;
-    const runtime = {
-      get conversationActivityViewEnabled() {
-        return capability;
-      },
-      origin: "local"
-    } as unknown as AgentGUIRuntime;
-    const wrapper = ({ children }: { children: React.ReactNode }) => (
-      <AgentGUIRuntimeProvider runtime={runtime}>
-        {children}
-      </AgentGUIRuntimeProvider>
-    );
-    const rendered = renderHook(
-      () =>
-        useAgentGUIConversationActivityView({
-          conversations: [CONVERSATION],
-          hasConversationQuery: false,
-          rootFacts: new Map(),
-          scopeKey: "workspace-1"
-        }),
-      { wrapper }
+    const activityController = createAgentGUIConversationActivityController();
+    const rendered = renderHook(() =>
+      useAgentGUIConversationActivityView({
+        activityController,
+        conversations: [CONVERSATION],
+        hasConversationQuery: false
+      })
     );
 
-    act(() => rendered.result.current.toggle());
+    act(() => {
+      configure(activityController, [CONVERSATION]);
+      rendered.result.current.toggle();
+    });
     expect(rendered.result.current.enabled).toBe(true);
 
-    capability = false;
-    rendered.rerender();
+    act(() => configure(activityController, [], { available: false }));
     expect(rendered.result.current.enabled).toBe(false);
     expect(rendered.result.current.projection).toBeNull();
 
-    capability = true;
-    rendered.rerender();
+    act(() => configure(activityController, [CONVERSATION]));
     expect(rendered.result.current.enabled).toBe(false);
   });
 
   it("rebuilds instead of incrementally retaining idle sessions across identity changes", () => {
-    const runtime = {
-      conversationActivityViewEnabled: true,
-      origin: "local"
-    } as unknown as AgentGUIRuntime;
-    const wrapper = ({ children }: { children: React.ReactNode }) => (
-      <AgentGUIRuntimeProvider runtime={runtime}>
-        {children}
-      </AgentGUIRuntimeProvider>
-    );
+    const activityController = createAgentGUIConversationActivityController();
     const rendered = renderHook(
-      ({ conversation, identityKey }) =>
+      ({ conversation }) =>
         useAgentGUIConversationActivityView({
+          activityController,
           conversations: [conversation],
-          hasConversationQuery: false,
-          identityKey,
-          rootFacts: new Map(),
-          scopeKey: "workspace-1"
+          hasConversationQuery: false
         }),
       {
         initialProps: {
-          conversation: CONVERSATION,
-          identityKey: "user-1:codex"
-        },
-        wrapper
+          conversation: CONVERSATION
+        }
       }
     );
 
-    act(() => rendered.result.current.toggle());
+    act(() => {
+      configure(activityController, [CONVERSATION], {
+        identityKey: "user-1:codex"
+      });
+      rendered.result.current.toggle();
+    });
     expect(rendered.result.current.projection?.priorityIds).toEqual([
       "session-1"
     ]);
 
+    const nextConversation = {
+      ...CONVERSATION,
+      id: "session-2",
+      status: "ready" as const,
+      title: "Session 2"
+    };
+    act(() =>
+      configure(activityController, [nextConversation], {
+        identityKey: "user-2:codex"
+      })
+    );
     rendered.rerender({
-      conversation: {
-        ...CONVERSATION,
-        id: "session-2",
-        status: "ready",
-        title: "Session 2"
-      },
-      identityKey: "user-2:codex"
+      conversation: nextConversation
     });
     expect(rendered.result.current.projection?.priorityIds).toEqual([]);
     expect(rendered.result.current.projection?.recentSections[0]?.ids).toEqual([
@@ -94,17 +75,82 @@ describe("useAgentGUIConversationActivityView", () => {
     ]);
   });
 
-  it("preserves unchanged conversation objects when one root activity fact changes", () => {
-    const runtime = {
-      conversationActivityViewEnabled: true,
-      origin: "local"
-    } as unknown as AgentGUIRuntime;
-    const wrapper = ({ children }: { children: React.ReactNode }) => (
-      <AgentGUIRuntimeProvider runtime={runtime}>
-        {children}
-      </AgentGUIRuntimeProvider>
+  it("keeps an existing Priority row while a rail refresh omits its summary", () => {
+    const activityController = createAgentGUIConversationActivityController();
+    const rendered = renderHook(
+      ({ conversations }) =>
+        useAgentGUIConversationActivityView({
+          activityController,
+          conversations,
+          hasConversationQuery: false
+        }),
+      {
+        initialProps: { conversations: [CONVERSATION] }
+      }
     );
-    const conversations = [
+
+    act(() => {
+      configure(activityController, [CONVERSATION]);
+      rendered.result.current.toggle();
+    });
+    expect(activityController.getSnapshot().enabled).toBe(true);
+    expect(
+      activityController.getSnapshot().conversationCache.get("session-1")
+    ).toBe(CONVERSATION);
+    act(() => configure(activityController, []));
+    expect(
+      activityController.getSnapshot().conversationCache.get("session-1")
+    ).toBe(CONVERSATION);
+    rendered.rerender({ conversations: [] });
+
+    expect(rendered.result.current.projection?.priorityIds).toEqual([
+      "session-1"
+    ]);
+    expect(rendered.result.current.conversationsById.get("session-1")).toBe(
+      CONVERSATION
+    );
+  });
+
+  it("does not render a cached Priority row after an Engine tombstone", () => {
+    const activityController = createAgentGUIConversationActivityController();
+    const rendered = renderHook(
+      ({ conversations, deletedSessionIds }) =>
+        useAgentGUIConversationActivityView({
+          activityController,
+          conversations,
+          deletedSessionIds,
+          hasConversationQuery: false
+        }),
+      {
+        initialProps: {
+          conversations: [CONVERSATION],
+          deletedSessionIds: {}
+        }
+      }
+    );
+
+    act(() => {
+      configure(activityController, [CONVERSATION]);
+      rendered.result.current.toggle();
+    });
+    act(() =>
+      configure(activityController, [], {
+        deletedSessionIds: { "session-1": true }
+      })
+    );
+    rendered.rerender({
+      conversations: [],
+      deletedSessionIds: { "session-1": true }
+    });
+
+    expect(rendered.result.current.projection?.priorityIds).toEqual([]);
+    expect(rendered.result.current.conversationsById.has("session-1")).toBe(
+      false
+    );
+  });
+
+  it("preserves unchanged conversation objects when one root activity fact changes", () => {
+    const conversations: AgentGUIConversationSummary[] = [
       {
         ...CONVERSATION,
         id: "changed",
@@ -118,36 +164,37 @@ describe("useAgentGUIConversationActivityView", () => {
         title: "Unchanged"
       }
     ];
-    const initialRootFacts: ReadonlyMap<
-      string,
-      AgentGUIConversationActivityRootFact
-    > = new Map([
-      ["changed", { needsUserAction: false, status: "ready" }],
-      ["unchanged", { needsUserAction: false, status: "ready" }]
-    ]);
+    const activityController = createAgentGUIConversationActivityController();
     const rendered = renderHook(
-      ({ rootFacts }) =>
+      ({ currentConversations }) =>
         useAgentGUIConversationActivityView({
-          conversations,
-          hasConversationQuery: false,
-          rootFacts,
-          scopeKey: "workspace-1"
+          activityController,
+          conversations: currentConversations,
+          hasConversationQuery: false
         }),
       {
-        initialProps: { rootFacts: initialRootFacts },
-        wrapper
+        initialProps: { currentConversations: conversations }
       }
     );
+    act(() => configure(activityController, conversations));
+    rendered.rerender({ currentConversations: conversations });
     const changedBefore =
       rendered.result.current.conversationsById.get("changed");
     const unchangedBefore =
       rendered.result.current.conversationsById.get("unchanged");
+    const changedConversation = conversations[0];
+    const unchangedConversation = conversations[1];
+    if (!changedConversation || !unchangedConversation) {
+      throw new Error("conversation fixture is incomplete");
+    }
 
+    const nextConversations: AgentGUIConversationSummary[] = [
+      { ...changedConversation, status: "working" as const },
+      unchangedConversation
+    ];
+    act(() => configure(activityController, nextConversations));
     rendered.rerender({
-      rootFacts: new Map<string, AgentGUIConversationActivityRootFact>([
-        ["changed", { needsUserAction: false, status: "working" }],
-        ["unchanged", { needsUserAction: false, status: "ready" }]
-      ])
+      currentConversations: nextConversations
     });
 
     expect(rendered.result.current.conversationsById.get("changed")).not.toBe(
@@ -158,6 +205,25 @@ describe("useAgentGUIConversationActivityView", () => {
     );
   });
 });
+
+function configure(
+  controller: ReturnType<typeof createAgentGUIConversationActivityController>,
+  conversations: readonly AgentGUIConversationSummary[],
+  overrides: Partial<{
+    available: boolean;
+    deletedSessionIds: Readonly<Record<string, true>>;
+    identityKey: string;
+    scopeKey: string;
+  }> = {}
+): void {
+  controller.configure({
+    available: overrides.available ?? true,
+    conversations,
+    deletedSessionIds: overrides.deletedSessionIds,
+    identityKey: overrides.identityKey ?? "workspace-1",
+    scopeKey: overrides.scopeKey ?? "workspace-1"
+  });
+}
 
 const CONVERSATION: AgentGUIConversationSummary = {
   cwd: "/workspace",

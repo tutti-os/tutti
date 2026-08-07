@@ -7,7 +7,6 @@ import type { WorkspaceUserProjectI18nRuntime } from "@tutti-os/workspace-user-p
 import { AgentConversationListSkeleton } from "../AgentConversationListSkeleton";
 import type { AgentGUINodeViewModel } from "../model/agentGuiNodeTypes";
 import { matchesAgentGUIConversationSummaryFilter } from "../model/agentGuiConversationFilter";
-import type { AgentGUINodeViewProps } from "../AgentGUINodeView";
 import type { ConversationSection } from "../agentGuiNodeViewConversation";
 import {
   isConversationRailInitialLoadPending,
@@ -45,10 +44,11 @@ import { useAgentGUIConversationRailViewState } from "./useAgentGUIConversationR
 import { useAgentGUIProjectMenuState } from "./useAgentGUIProjectMenuState";
 import { useAgentGUIConversationActivityView } from "../controller/useAgentGUIConversationActivityView";
 import { useDelayedBoolean } from "../controller/useDelayedBoolean";
-
+import type { AgentGUIConversationFilterTargetSelection } from "./agentGUIConversationRailTypes";
 export interface AgentGUIConversationRailControllerProps {
   activityContextKey?: string;
   conversations: AgentGUINodeViewModel["rail"]["conversations"];
+  currentUserId?: string | null;
   nodeId?: string | null;
   footer?: React.ReactNode;
   workspaceId: string;
@@ -77,7 +77,7 @@ export interface AgentGUIConversationRailControllerProps {
   onUpdateConversationFilter: (
     filter: AgentGUINodeViewModel["rail"]["conversationFilter"]
   ) => void;
-  onSelectConversationFilterTarget: AgentGUINodeViewProps["actions"]["selectConversationFilterTarget"];
+  onSelectConversationFilterTarget: AgentGUIConversationFilterTargetSelection;
   onCreateConversation: (options?: {
     projectPath?: string | null;
     source?: string;
@@ -145,7 +145,6 @@ export type AgentGUIConversationRailState = Omit<
 
 export const AgentGUIConversationRailPane = memo(
   function AgentGUIConversationRailPane({
-    activityContextKey = "",
     conversations,
     footer,
     workspaceId,
@@ -197,6 +196,7 @@ export const AgentGUIConversationRailPane = memo(
     const groupedConversationsRef = useRef<ConversationSection[] | null>(null);
     const {
       batchDeletionAvailable,
+      deletedSessionIds,
       loadMoreSectionConversations,
       isInteractionLocked,
       runtimeSectionsEnabled,
@@ -213,7 +213,6 @@ export const AgentGUIConversationRailPane = memo(
         isUserProjectMutationPending
       );
     const projectActionLocked = isProjectActionLocked();
-
     const railConversationEntitiesById = new Map(
       runtimeRailConversations.map((conversation) => [
         conversation.id,
@@ -230,11 +229,10 @@ export const AgentGUIConversationRailPane = memo(
       workspaceId
     });
     const activityView = useAgentGUIConversationActivityView({
-      conversations,
-      hasConversationQuery,
-      identityKey: `${workspaceId}\u0000${activityContextKey}`,
-      rootFacts: railQuery.activityRootFacts,
-      scopeKey: railViewScopeKey
+      activityController: railQuery.activityController,
+      conversations: railQuery.activityConversations,
+      deletedSessionIds,
+      hasConversationQuery
     });
     const backendSearchActive = hasConversationQuery && railSearch.enabled;
     const railInteractionsLocked = isInteractionLocked();

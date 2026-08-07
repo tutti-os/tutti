@@ -530,6 +530,7 @@ export type {
   ConfirmMobileRemotePairingErrors,
   ConfirmMobileRemotePairingResponse,
   ConfirmMobileRemotePairingResponses,
+  ConnectorMarketAgentRouting,
   ConnectorMarketArtifact,
   ConnectorMarketAuthorization,
   ConnectorMarketAuthorizationResponse,

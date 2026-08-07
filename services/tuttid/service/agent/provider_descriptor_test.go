@@ -41,6 +41,17 @@ func TestTuttiAgentComposerProfileUsesSkillsOnlyAppServerCatalog(t *testing.T) {
 	if profile.CapabilityCatalogKind != providerregistry.CapabilityCatalogKindAppServerSkills {
 		t.Fatalf("capability catalog profile = %#v", profile)
 	}
+	if !reflect.DeepEqual(profile.SlashCommandPolicy.FallbackCommands, []string{"plan", "goal", "review"}) {
+		t.Fatalf("fallbackCommands = %#v", profile.SlashCommandPolicy.FallbackCommands)
+	}
+	wantEffects := []providerregistry.SlashCommandEffectDescriptor{
+		{Command: "plan", Effect: providerregistry.SlashCommandEffectTogglePlanMode},
+		{Command: "goal", Effect: providerregistry.SlashCommandEffectActivateGoalMode},
+		{Command: "review", Effect: providerregistry.SlashCommandEffectShowReviewPicker},
+	}
+	if !reflect.DeepEqual(profile.SlashCommandPolicy.CommandEffects, wantEffects) {
+		t.Fatalf("commandEffects = %#v", profile.SlashCommandPolicy.CommandEffects)
+	}
 }
 
 func TestClaudeCodeComposerProfileComesFromProviderDescriptor(t *testing.T) {

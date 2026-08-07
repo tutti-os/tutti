@@ -57,6 +57,107 @@ func TestOutboxDispatcherMarksOnlyPublishedEvents(t *testing.T) {
 	}
 }
 
+func TestLifecycleCleanupWorkerUsesFiniteRetentionCutoffs(t *testing.T) {
+	now := time.Date(2026, 8, 6, 12, 0, 0, 0, time.UTC)
+	store := &memoryLifecycleCleanupStore{}
+	worker := LifecycleCleanupWorker{
+		Store: store,
+		Now:   func() time.Time { return now },
+		Policy: LifecycleCleanupPolicy{
+			TerminalOperationRetention: 24 * time.Hour,
+			PublishedEventRetention:    time.Hour,
+			BatchSize:                  37,
+		},
+	}
+	if err := worker.Cleanup(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	requests := store.snapshot()
+	if len(requests) != 1 || !requests[0].TerminalOperationsUpdatedThrough.Equal(now.Add(-24*time.Hour)) ||
+		!requests[0].PublishedEventsPublishedThrough.Equal(now.Add(-time.Hour)) || requests[0].BatchSize != 37 {
+		t.Fatalf("cleanup requests = %#v", requests)
+	}
+}
+
+func TestLifecycleCleanupWorkerRunsAtStartupAndPeriodically(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	store := &memoryLifecycleCleanupStore{called: make(chan struct{}, 3)}
+	worker := LifecycleCleanupWorker{
+		Store:  store,
+		Policy: LifecycleCleanupPolicy{Interval: 5 * time.Millisecond},
+	}
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		worker.Run(ctx)
+	}()
+	for range 2 {
+		select {
+		case <-store.called:
+		case <-time.After(time.Second):
+			t.Fatal("lifecycle cleanup worker did not run")
+		}
+	}
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("lifecycle cleanup worker did not stop")
+	}
+	if len(store.snapshot()) < 2 {
+		t.Fatalf("cleanup calls = %d, want startup and periodic calls", len(store.snapshot()))
+	}
+}
+
+func TestLifecycleCleanupWorkerDrainsBacklogInBoundedTransactions(t *testing.T) {
+	store := &memoryLifecycleCleanupStore{results: []market.LifecycleCleanupResult{
+		{TerminalOperationsDeleted: 5, PublishedEventsDeleted: 5},
+		{TerminalOperationsDeleted: 5},
+		{TerminalOperationsDeleted: 1},
+	}}
+	worker := LifecycleCleanupWorker{Store: store, Policy: LifecycleCleanupPolicy{BatchSize: 5}}
+	if err := worker.Cleanup(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	requests := store.snapshot()
+	if len(requests) != 3 {
+		t.Fatalf("cleanup calls = %d, want 3 bounded transactions", len(requests))
+	}
+	for _, request := range requests {
+		if request.BatchSize != 5 {
+			t.Fatalf("cleanup batch size = %d, want 5", request.BatchSize)
+		}
+	}
+}
+
+type memoryLifecycleCleanupStore struct {
+	mu       sync.Mutex
+	requests []market.LifecycleCleanupRequest
+	results  []market.LifecycleCleanupResult
+	called   chan struct{}
+}
+
+func (store *memoryLifecycleCleanupStore) CleanupLifecycle(_ context.Context, request market.LifecycleCleanupRequest) (market.LifecycleCleanupResult, error) {
+	store.mu.Lock()
+	store.requests = append(store.requests, request)
+	var result market.LifecycleCleanupResult
+	if len(store.results) > 0 {
+		result = store.results[0]
+		store.results = store.results[1:]
+	}
+	store.mu.Unlock()
+	if store.called != nil {
+		store.called <- struct{}{}
+	}
+	return result, nil
+}
+
+func (store *memoryLifecycleCleanupStore) snapshot() []market.LifecycleCleanupRequest {
+	store.mu.Lock()
+	defer store.mu.Unlock()
+	return append([]market.LifecycleCleanupRequest(nil), store.requests...)
+}
+
 type memoryOutbox struct {
 	entries []market.ChangedEventRecord
 	marked  []int64

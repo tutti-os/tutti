@@ -16,7 +16,7 @@ Status: implemented; pending code review
 该功能不是对当前屏幕中的 DOM 行临时排序，而是对 Agent GUI 当前内存态中的 canonical Session 摘要做稳定投影。它复刻 Codex.app 的实际展示行为：
 
 1. 开启时同步快照当前 Engine 已在内存中的可见**根会话摘要**；
-2. 立即按 `waiting → unread → active → retained idle` 的客户端 presentation policy 投影 Priority；
+2. 立即按 `waiting → unread → active` 的客户端 presentation policy 投影 Priority；
 3. 同一份摘要集合中其余最近 7 个自然日的会话直接放入 Today、Yesterday 或 weekday 日期段；
 4. 开启时快照 Priority 顺序与日期段 recency；开启期间监听 canonical 状态，但保留既有成员顺序，只按 Codex 规则增量合入新候选并更新行状态；
 5. 开启 Activity View 本身不发起历史查询、补页或 transcript hydration；Desktop daemon 新推送或更新的会话先进入 Engine，再按实时规则增量入队。
@@ -102,19 +102,19 @@ Activity View 的核心价值是把 Conversation Rail 从“目录”临时切�
 
 ## 4. 关键产品决策
 
-| 编号 | 决策                                                                    | 理由                                                              |
-| ---- | ----------------------------------------------------------------------- | ----------------------------------------------------------------- |
-| D1   | 功能名称为 Activity View；Priority 是视图顶部的固定标题区段             | 不再把整个能力称为 Priority View                                  |
-| D2   | Desktop 默认关闭，由用户显式开启；Mobile 会话首页固定开启               | Desktop 保留既有项目目录心智；Mobile 直接采用已批准的新首页承载   |
-| D3   | 最近范围固定为最近 7 个自然日                                           | 覆盖一周工作上下文，避免无边界加载历史                            |
-| D4   | Priority 顺序复刻 Codex：`waiting`、`unread`、`active`、retained `idle` | 不按失败/成功再创造一套 Tutti 排序标准                            |
-| D5   | `waiting` 由 Tutti canonical `needsUserAction` 映射                     | UI 语义跟随 Codex，事实来源仍由 Tutti lifecycle 保证              |
-| D6   | 子 Session 不作为左栏独立行                                             | Codex 将子线程作为独立实体管理，但左栏由根线程代表                |
-| D7   | Priority 与近期日期段之间去重                                           | 一个 Session 只在最靠前的可见位置出现一次                         |
-| D8   | 搜索临时接管内容区，清空搜索后恢复 Activity View                        | 搜索是明确查找意图，避免搜索结果与工作队列结构混杂                |
-| D9   | Activity View 不新增或改造通用筛选器                                    | 当前 Engine 是完整输入边界，不增加 host context 契约              |
-| D10  | Activity View 开启本身仅投影当前 Engine 内存态，不因开启视图补页        | Desktop Activity View 聚焦当前工作；Mobile 的显式搜索另走分页查询 |
-| D11  | Activity View 不提供批量归档或批量删除入口                              | Archive chats 映射为 Tutti 删除，但首期不纳入标题菜单             |
+| 编号 | 决策                                                             | 理由                                                              |
+| ---- | ---------------------------------------------------------------- | ----------------------------------------------------------------- |
+| D1   | 功能名称为 Activity View；Priority 是视图顶部的固定标题区段      | 不再把整个能力称为 Priority View                                  |
+| D2   | Desktop 默认关闭，由用户显式开启；Mobile 会话首页固定开启        | Desktop 保留既有项目目录心智；Mobile 直接采用已批准的新首页承载   |
+| D3   | 最近范围固定为最近 7 个自然日                                    | 覆盖一周工作上下文，避免无边界加载历史                            |
+| D4   | Priority 顺序复刻 Codex：`waiting`、`unread`、`active`           | 不按失败/成功再创造一套 Tutti 排序标准                            |
+| D5   | `waiting` 由 Tutti canonical `needsUserAction` 映射              | UI 语义跟随 Codex，事实来源仍由 Tutti lifecycle 保证              |
+| D6   | 子 Session 不作为左栏独立行                                      | Codex 将子线程作为独立实体管理，但左栏由根线程代表                |
+| D7   | Priority 与近期日期段之间去重                                    | 一个 Session 只在最靠前的可见位置出现一次                         |
+| D8   | 搜索临时接管内容区，清空搜索后恢复 Activity View                 | 搜索是明确查找意图，避免搜索结果与工作队列结构混杂                |
+| D9   | Activity View 不新增或改造通用筛选器                             | 当前 Engine 是完整输入边界，不增加 host context 契约              |
+| D10  | Activity View 开启本身仅投影当前 Engine 内存态，不因开启视图补页 | Desktop Activity View 聚焦当前工作；Mobile 的显式搜索另走分页查询 |
+| D11  | Activity View 不提供批量归档或批量删除入口                       | Archive chats 映射为 Tutti 删除，但首期不纳入标题菜单             |
 
 ### 4.1 已识别的体验差异与数据映射
 
@@ -162,7 +162,7 @@ flowchart TD
 
 - **普通视图（Directory mode）**：现有 pinned、项目和 conversations 分区视图。
 - **Activity View（Activity mode）**：本 PRD 新增的跨项目工作队列视图；顶部显示 Priority，其余近期会话直接按日期标题排列。
-- **Priority**：Activity View 顶部的固定标题区段，只承载 waiting、unread、active 和 retained idle 根 Session；不是整个视图的名称。
+- **Priority**：Activity View 顶部的固定标题区段，只承载 waiting、unread 和 active 根 Session；不是整个视图的名称。开启后已经进入 Priority 的成员即使变为已读或 idle，也保留到下一次 toggle；这属于 activation snapshot retention，不是新的 idle admission 类型。
 - **近期日期段**：由 Today、Yesterday 或 weekday 标题及其会话组成；产品模型和界面均不存在名为 Recent 的固定分组。
 - **Desktop daemon**：host 向 Agent Engine 推送 canonical Session 变化的后台通道；Tutti 对应 `tuttid`，其他 Desktop host 可对应 `desktopd`。两者都必须先写入 Engine，再由 Activity View 投影消费。
 - **Engine identity**：现有 `AgentSessionEngine.identity`，由 `(workspaceId, runtime origin)` 定位 Engine；Activity View 不新增或复制该 identity。
@@ -230,14 +230,13 @@ Priority 内部不再增加多层可折叠标题，避免窄 Rail 产生过多 c
 
 每个根 Session 先映射为 Codex 同构的 attention state，再计算纯 presentation rank：
 
-| rank | Codex 同构状态  | Tutti canonical 映射                                       | 行内原因                         |
-| ---- | --------------- | ---------------------------------------------------------- | -------------------------------- |
-| 0    | `waiting`       | `needsUserAction=true`，通常来自 pending Interaction       | 需要处理                         |
-| 1    | `unread`        | 现有 attention/read state 表示存在未读结果                 | 未读；不再细分失败或成功的优先级 |
-| 2    | `active`        | 根 Session 或其子 Session 仍有 active lifecycle projection | 进行中                           |
-| 3    | retained `idle` | `priorityRetentionRecency === currentRecency`              | 已处理但保留                     |
+| rank | Codex 同构状态 | Tutti canonical 映射                                       | 行内原因                         |
+| ---- | -------------- | ---------------------------------------------------------- | -------------------------------- |
+| 0    | `waiting`      | `needsUserAction=true`，通常来自 pending Interaction       | 需要处理                         |
+| 1    | `unread`       | 现有 attention/read state 表示存在未读结果                 | 未读；不再细分失败或成功的优先级 |
+| 2    | `active`       | 根 Session 或其子 Session 仍有 active lifecycle projection | 进行中                           |
 
-普通 idle 不进入 Priority，由近期日期范围决定是否出现在某个日期段。retained idle 是 Codex 本地任务分支中的窄规则：会话被标记已读前，记录当时 recency；只要当前 recency 未变化，该行继续留在 Priority 的最后。Activity View 运行期间新发现的 idle 本地任务也用同一 marker 保留，避免刚创建的会话立即消失。退出 Activity View 时 marker 清空。
+普通 idle 不进入 Priority，由近期日期范围决定是否出现在某个日期段。Activity View 运行期间晚到的 canonical idle summary 也不会被视为 activity，不会改变 Priority；它只可在下一次 toggle 的初始快照中按近期日期进入日期段。仅因用户选择历史会话而临时注入的 idle summary 同样不属于 Activity candidate。已经进入当前 Priority snapshot 的会话即使随后标记已读或变为 idle，也保留原成员和相对顺序，直到下一次 toggle；删除 tombstone 是唯一的即时移除例外。
 
 同 rank 内按现有 canonical recency 倒序。相同 recency 保留输入顺序；去重 identity 使用 exact `agentSessionId`。这与 Codex 的稳定排序策略一致，不额外用 Session ID 改变用户可见顺序。
 
@@ -313,11 +312,12 @@ Priority 区段始终存在。其成员为空时，在该区段内显示与 Code
 
 ### 8.4 实时变化
 
-- 开启时按当时 `waiting → unread → active → retained idle` 生成 Priority 初始顺序；
-- 开启期间，既有 Priority 成员即使 attention state 改变也不做全量移组或重排；行上的 spinner、unread、状态与可执行操作读取 live canonical facts；
-- Desktop daemon 新推送或更新的根 Session 先写入 Engine；满足 waiting/unread/active/retained-idle 的新候选再按当前 selector 顺序增量入队并按 exact ID 去重；
-- activation 打开后由 daemon 新发现的普通 idle 根 Session 按 Codex 本地任务的一次性 retained-idle 规则进入 Priority；打开时已存在的普通 idle Session 仍按时间进入日期段；
-- 会话第一次进入本次 activation 的日期段时记录 recency，之后在本次视图中保持原日期段和相对顺序；
+- 开启时按当时 `waiting → unread → active` 生成 Priority 初始顺序；
+- 开启期间，既有 Priority 成员即使 attention state 改变也不做全量移组或重排；行上的 spinner、unread、状态与可执行操作读取 live canonical facts；普通 Rail refresh 暂时不返回某个已入队 ID 时，也不得把它当成删除，继续使用该行最近一次已知 summary，直到下一次 toggle 重建 activation；
+- Desktop daemon 新推送或更新的根 Session 先写入 Engine；满足 waiting/unread/active 的新候选再按当前 selector 顺序增量入队并按 exact ID 去重；
+- activation 打开后由 daemon 新发现的普通 idle 根 Session 不进入 Priority，也不因为 canonical snapshot 到达而改变现有队列；打开时已存在的普通 idle Session 按时间进入日期段；
+- 用户选择一个尚未出现在 canonical snapshot 中的历史 Session 时，详情层可以临时注入该 Session 的 summary；若它当前 idle，则按普通近期会话处理，不因选择动作进入 Priority，只有真实 waiting/unread/active facts 才可进入 Priority；
+- 会话第一次进入本次 activation 的日期段时记录 recency，之后在本次视图中保持原日期段和相对顺序；已经进入 Priority 的会话不因已读或 idle 状态变化移入日期段；
 - Session 被现有删除能力删除后，Activity View 按 canonical tombstone 立即移除对应行；pin/unpin 不触发 Activity View 专属区段变化；
 - Activity View 本身不提供批量删除或归档入口；现有单行删除行为不在本 PRD 中修改；
 - 关闭再开启、切换 sidebar context 或 activation 重建时，才基于最新 canonical facts 重新生成完整成员与顺序；
@@ -328,13 +328,12 @@ Priority 区段始终存在。其成员为空时，在该区段内显示与 Code
 Codex 使用两层机制避免当前会话突然消失：
 
 1. 已经位于本次 Priority snapshot 的条目在标记已读后仍保留原成员位置；不会在当前 activation 中立即移入日期段；
-2. 本地 Agent 根 Session 被标记已读前，另行记录 `priorityRetentionRecency = currentRecency`；这使一个当前为 idle、但 recency 尚未变化的本地任务在新建 Priority snapshot 时仍可进入 retained idle rank；
-3. recency marker 不是永久 pin；退出 Activity View 会同时清空 snapshot 与 marker；
-4. 下次重新开启时按最新事实重建：仍满足 waiting/unread/active/retained-idle 则进入 Priority，否则进入对应日期段或消失；
-5. 无论左栏是否仍显示，detail 保持当前 Session，不自动选择另一行；
-6. hover 和 keyboard focus 不产生另一套冻结规则；稳定性来自 activation snapshot 和 exact-recency marker。
+2. 新增的普通 idle canonical Session 不因晚到 snapshot 而进入 Priority；它只在下一次 toggle 的初始快照中按日期规则处理；
+3. 关闭再开启时只按当时最新 facts 重建，不继承上一次 activation 的 Priority 成员；
+4. 无论左栏是否仍显示，detail 保持当前 Session，不自动选择另一行；
+5. hover 和 keyboard focus 不产生另一套冻结规则；稳定性来自 activation snapshot 与 controller-owned row cache。
 
-Codex 的 ChatGPT 会话分支没有 local-task retained-idle marker，但已经进入当前 Priority snapshot 的条目同样不会因标记已读而立即重排。本 PRD 面向 Tutti Agent GUI，默认复刻本地 Agent 任务分支。
+该规则同时适用于所有 provider：Activity View 不创建 retained-idle admission 类型，也不把详情选择或已读后的 recency 变化解释为新的 activity。
 
 ## 9. 内存投影与实时入队
 
@@ -357,17 +356,15 @@ Codex 的本地 Activity View 是当前 store 上的客户端 presentation polic
 interface ActivityViewActivation {
   cutoffDayStartUnixMs: number;
   referenceDayStartUnixMs: number;
-  observedIds: readonly string[];
   priority: readonly ActivityMember[];
-  priorityRetentionRecencyById: ReadonlyMap<string, number>;
   recent: readonly ActivityMember[];
 }
 ```
 
 - activation object identity 区分每次开启；关闭后到达的旧渲染结果不能恢复已清理的 snapshot；
 - activation 绑定创建它的 Engine 实例；Engine 被替换、surface 卸载或视图关闭时立即取消订阅并清理；
-- sidebar 的 workspace、用户或 Agent context 变化时重建 activation；这是组件内部的 stale-state fence，不是新增筛选器或 host API；
-- Activity View state 只保存 activation、成员引用、Priority 顺序、日期段 recency snapshot 和 retained-idle marker，不保存 Session 副本或分页 cursor；
+- sidebar 的 workspace、用户、Rail filter 或 AgentGUI context 变化时重建 activation；当前选中会话的 provider/target 变化不重建 activation，因为 Activity 队列跨 provider 展示；这是组件内部的 stale-state fence，不是新增筛选器或 host API；
+- Activity View state 只保存 activation、成员引用、Priority 顺序和日期段 recency snapshot，不把 Session 副本放进 activation 或分页 cursor；controller 可以在当前 activation 内短暂缓存已入队行的最近一次 summary，用于抵抗普通 Rail refresh 的临时缺席；该缓存随 toggle、context/Engine 重建或 canonical tombstone 清理；
 - cutoff 固定取本次 activation 的本地日期；持续打开跨午夜不自行刷新日期标题，关闭再开启时才使用新的 cutoff。
 
 ### 9.3 投影与事件算法
@@ -385,7 +382,7 @@ onEngineSessionUpsert(session)
   4. incrementally enqueue newly eligible root sessions by exact ID
 
 deactivate(activityView)
-  1. clear activation snapshot and retained-idle markers
+  1. clear activation snapshot and retained row cache
   2. keep canonical Engine sessions unchanged
 ```
 
@@ -402,11 +399,7 @@ Desktop daemon push 可能重复、乱序或在 surface 切换后迟到，因此
 建议在 `@tutti-os/agent-gui` 内定义纯投影，而不是在 JSX 中拼装：
 
 ```ts
-type AgentConversationPriorityReason =
-  | "waiting"
-  | "unread"
-  | "active"
-  | "retained_idle";
+type AgentConversationPriorityReason = "waiting" | "unread" | "active";
 
 interface AgentConversationActivityViewModel {
   sections: Array<{
@@ -438,7 +431,7 @@ interface AgentConversationActivityViewModel {
 | Desktop host adapter               | 显式启用 capability，并接入既有 daemon → Engine 事件通道                  | 复制 controller 或业务排序      |
 | 外部 host adapter                  | 传入可选 capability；关闭或缺失时保持普通 Rail                            | 被要求实现 Activity View 能力   |
 
-本功能不新增 OpenAPI endpoint、SQLite 查询或 Activity View 专用 query controller。普通 Rail 已经加载进 Engine 的会话与 Desktop daemon 后续实时推送，是 Activity View 投影的全部数据来源。
+本功能不新增 OpenAPI endpoint、SQLite 查询或独立的 Activity View query controller。Activity activation state 挂在既有 Conversation Rail query controller 的生命周期上；普通 Rail 已经加载进 Engine 的会话与 Desktop daemon 后续实时推送，是 Activity View 投影的全部数据来源。
 
 ## 12. 功能需求清单
 
@@ -447,9 +440,9 @@ interface AgentConversationActivityViewModel {
 | FR-01 | Rail 提供可发现、可访问的 Activity View 切换入口                      | P0     |
 | FR-02 | 首帧基于 Engine 已知会话立即投影                                      | P0     |
 | FR-03 | 只展示根 Session；子 Session activity 投影到根行                      | P0     |
-| FR-04 | waiting/unread/active 事实及 retained-idle marker 可投影              | P0     |
+| FR-04 | waiting/unread/active 事实可投影                                      | P0     |
 | FR-05 | 近期日期段只使用当前 Engine 内存态，不触发补页                        | P0     |
-| FR-06 | Priority 按 waiting/unread/active/retained-idle 和 recency 排序       | P0     |
+| FR-06 | Priority 按 waiting/unread/active 和 recency 排序                     | P0     |
 | FR-07 | Priority 与近期日期段全局去重                                         | P0     |
 | FR-08 | 不新增筛选入口、筛选条件、组合状态或通用 filter API                   | P0     |
 | FR-09 | 搜索接管与恢复行为逐项沿用 Codex                                      | P0     |
@@ -534,8 +527,8 @@ interface AgentConversationActivityViewModel {
 1. Engine 实例替换或 surface 卸载时清理旧 activation；旧 Engine 的后续更新不能污染新列表。
 2. Activity View 不要求 host 提供额外 context/scope identity API；内部仅复用页面已有 workspace、用户和 Agent context 作为 activation stale-state fence。页面不存在本功能新增的 target/workspace/provider 筛选入口或组合状态。
 3. 搜索开始、结果展示和清空恢复均与 Codex 当前行为一致，不增加独立 Priority 搜索状态。
-4. 打开 Priority 中的 Session 沿用现有 selection/detail hydration；其他行不因 Activity View 触发后台 hydration。
-5. 当前本地 Agent Session 被标记已读后在本次 snapshot 中保留原位置；退出并重新开启时才按最新 facts 与 retained-idle marker 重建，detail 始终保持打开且不自动选中其他会话。
+4. 打开 Priority 中的 Session 沿用现有 selection/detail hydration；选择一个历史 Session 只允许产生详情层 transient summary，不得因此改变 Activity View 的 Priority 顺序；其他行不因 Activity View 触发后台 hydration。
+5. 当前 Agent Session 被标记已读后在本次 snapshot 中保留原位置；退出并重新开启时才按最新 facts 重建，detail 始终保持打开且不自动选中其他会话。
 6. 项目折叠和显示条数不被修改；滚动复用现有 Rail mode 状态，不创建 Activity View 专用 scroll key。
 
 ### 15.3 实时与异常
@@ -564,7 +557,7 @@ interface AgentConversationActivityViewModel {
 
 - rank 判定矩阵；
 - Tutti `needsUserAction` 到 waiting、普通运行到 active 的映射；
-- waiting/unread/active/retained-idle 的排序与 marker 失效；
+- waiting/unread/active 的排序，以及已读后既有 Priority 成员的 snapshot retention；
 - child Session 过滤与 child activity 到 root 的投影；
 - Priority 与日期段去重；
 - 7 日 cutoff 和本地午夜边界；
@@ -602,7 +595,7 @@ interface AgentConversationActivityViewModel {
 - 普通视图与 Activity View 复用同一 Rail mode scroll state；
 - 实时 pending → answered → completed → read 全链路；
 - Desktop daemon 推送当前未在 Engine 中的新会话后，符合条件的根 Session 实时入队；
-- 未读本地 Session 标记已读后在当前 snapshot 保持原位置；重建时按 retained-idle marker 判定，recency 改变后 marker 失效；
+- 已读或变为 idle 的既有 Priority Session 在当前 snapshot 保持原位置；重建时不继承旧 Priority，普通 idle 按最新日期规则处理；
 - Priority 空但日期段非空时只在 Priority 区段显示 `Nothing needs attention` 同构空状态；
 - Workbench AgentGUI 与独立 Agent window；
 - 外部 host 在 capability 为 `false` 和缺失两种情况下均保持原普通 Rail，且没有 Activity View 查询副作用；
@@ -676,8 +669,8 @@ interface AgentConversationActivityViewModel {
 - Codex 本地任务模式不会因为开启 Activity View 再调用 `thread/list` 补 Priority；Tutti 只参考该本地模式，不实现 ChatGPT 近期会话补页分支；
 - 普通侧边栏的无限滚动是独立逻辑，约每批 10 条；
 - Activity View 本身不提供“加载更多”；开启时快照 Priority 顺序与日期段 recency，期间保留既有顺序并增量合入新候选；
-- Codex 本地任务在标记已读前保存 exact recency，并允许匹配该 recency 的 idle 行继续留在 Priority 最后；recency 变化或退出模式后该保留失效；
-- ChatGPT 会话分支没有上述 retained-idle marker；当前 snapshot 仍保持，下一次重建时通常进入对应日期段；
+- Codex 某些本地任务分支会保存 exact recency，并允许 idle 行留在 Priority；Tutti 本实现不采用这个独立 admission marker，只保留当前 activation 中已入队成员直到下一次 toggle；
+- 已进入当前 Priority snapshot 的会话在标记已读后仍保持原位置；下一次重建时普通 idle 按最新事实进入对应日期段或被 cutoff 排除；
 - 子线程通过 `parentThreadId`/sub-agent source 建模；左栏过滤子线程，父线程承担导航表示；
 - Priority 区段不会加载完整 transcript；Tutti 进一步约束为不因该视图执行任何 Turn hydration；
 - Activity View 本地任务行使用两层布局：第一行只显示标题和标题行对齐的尾部状态栏，不显示时间戳；第二行只显示项目/source 信息，不展示会话 prompt 或 Agent 回复；

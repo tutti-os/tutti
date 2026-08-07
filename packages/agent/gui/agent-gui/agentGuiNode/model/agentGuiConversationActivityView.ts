@@ -1,13 +1,21 @@
 import { resolveAgentGUIConversationSortTimeUnixMs } from "./agentGuiConversationTypes";
-import type { AgentGUIConversationSummary } from "./agentGuiConversationTypes";
+import type {
+  AgentGUIConversationStatus,
+  AgentGUIConversationSummary
+} from "./agentGuiConversationTypes";
 
 const ACTIVITY_RECENT_DAY_COUNT = 7;
+const EMPTY_DELETED_SESSION_IDS: Readonly<Record<string, true>> = {};
 
 export type AgentGUIConversationActivityPriorityReason =
   | "waiting"
   | "unread"
-  | "active"
-  | "retained-idle";
+  | "active";
+
+export interface AgentGUIConversationActivityRootFact {
+  needsUserAction: boolean;
+  status: AgentGUIConversationStatus;
+}
 
 export type AgentGUIConversationActivityCandidate = Pick<
   AgentGUIConversationSummary,
@@ -30,9 +38,7 @@ export interface AgentGUIConversationActivityMember {
 export interface AgentGUIConversationActivityActivation {
   cutoffDayStartUnixMs: number;
   referenceDayStartUnixMs: number;
-  observedIds: readonly string[];
   priority: readonly AgentGUIConversationActivityMember[];
-  priorityRetentionRecencyById: ReadonlyMap<string, number>;
   recent: readonly AgentGUIConversationActivityMember[];
 }
 
@@ -53,29 +59,22 @@ export interface AgentGUIConversationActivityProjection {
 
 export function createAgentGUIConversationActivityActivation(
   conversations: readonly AgentGUIConversationActivityCandidate[],
-  openedAtUnixMs: number,
-  priorityRetentionRecencyById: ReadonlyMap<string, number> = new Map()
+  openedAtUnixMs: number
 ): AgentGUIConversationActivityActivation {
   const cutoffDate = new Date(localDayStartUnixMs(openedAtUnixMs));
   cutoffDate.setDate(cutoffDate.getDate() - (ACTIVITY_RECENT_DAY_COUNT - 1));
   const cutoffDayStartUnixMs = cutoffDate.getTime();
   const priority: AgentGUIConversationActivityMember[] = [];
   const recent: AgentGUIConversationActivityMember[] = [];
-  const retainedRecency = new Map<string, number>();
-  const observedIds = new Set<string>();
+  const seenIds = new Set<string>();
   let admissionOrder = 0;
 
   for (const conversation of conversations) {
-    if (observedIds.has(conversation.id)) continue;
-    observedIds.add(conversation.id);
+    if (seenIds.has(conversation.id)) continue;
+    seenIds.add(conversation.id);
     const admittedAtUnixMs =
       resolveAgentGUIConversationSortTimeUnixMs(conversation);
-    const retainedIdle =
-      priorityRetentionRecencyById.get(conversation.id) === admittedAtUnixMs;
-    if (retainedIdle) retainedRecency.set(conversation.id, admittedAtUnixMs);
-    const priorityReason =
-      livePriorityReason(conversation) ??
-      (retainedIdle ? "retained-idle" : null);
+    const priorityReason = livePriorityReason(conversation);
     if (priorityReason) {
       priority.push({
         admissionOrder: admissionOrder++,
@@ -101,34 +100,28 @@ export function createAgentGUIConversationActivityActivation(
   return {
     cutoffDayStartUnixMs,
     referenceDayStartUnixMs: localDayStartUnixMs(openedAtUnixMs),
-    observedIds: [...observedIds].sort(),
     priority: priority.sort(compareActivityMembers),
-    priorityRetentionRecencyById: retainedRecency,
     recent: recent.sort(compareActivityMembers)
   };
 }
 
 export function reconcileAgentGUIConversationActivityActivation(
   activation: AgentGUIConversationActivityActivation,
-  conversations: readonly AgentGUIConversationActivityCandidate[]
+  conversations: readonly AgentGUIConversationActivityCandidate[],
+  deletedSessionIds: Readonly<Record<string, true>> = EMPTY_DELETED_SESSION_IDS
 ): AgentGUIConversationActivityActivation {
-  const conversationsById = new Map(
-    conversations.map((conversation) => [conversation.id, conversation])
+  // Activity membership is an activation snapshot. Keep the member refs even
+  // when a rail refresh temporarily omits their canonical summary; the view
+  // layer can render the last known row until the next toggle rebuilds it.
+  const retainedPriority = activation.priority.filter(
+    (member) => !deletedSessionIds[member.id]
   );
-  const retainedPriority = activation.priority.filter((member) =>
-    conversationsById.has(member.id)
-  );
-  const retainedRecent = activation.recent.filter((member) =>
-    conversationsById.has(member.id)
+  const retainedRecent = activation.recent.filter(
+    (member) => !deletedSessionIds[member.id]
   );
   const priorityIds = new Set(retainedPriority.map((member) => member.id));
-  const retainedPriorityById = new Map(
-    retainedPriority.map((member) => [member.id, member])
-  );
   const recentIds = new Set(retainedRecent.map((member) => member.id));
-  const previouslyObservedIds = new Set(activation.observedIds);
-  const observedIds = new Set<string>();
-  const priorityRetentionRecencyById = new Map<string, number>();
+  const currentIds = new Set<string>();
   let admissionOrder = Math.max(
     -1,
     ...activation.priority.map((member) => member.admissionOrder),
@@ -136,26 +129,14 @@ export function reconcileAgentGUIConversationActivityActivation(
   );
 
   for (const conversation of conversations) {
-    if (observedIds.has(conversation.id)) continue;
-    observedIds.add(conversation.id);
+    if (currentIds.has(conversation.id)) continue;
+    if (deletedSessionIds[conversation.id]) continue;
+    currentIds.add(conversation.id);
     const currentRecency =
       resolveAgentGUIConversationSortTimeUnixMs(conversation);
     const liveReason = livePriorityReason(conversation);
-    const retainedPriorityMember = retainedPriorityById.get(conversation.id);
-    const previousRetentionRecency =
-      activation.priorityRetentionRecencyById.get(conversation.id);
-    if (previousRetentionRecency === currentRecency) {
-      priorityRetentionRecencyById.set(conversation.id, currentRecency);
-    } else if (
-      previousRetentionRecency === undefined &&
-      !liveReason &&
-      retainedPriorityMember?.priorityReason === "unread"
-    ) {
-      priorityRetentionRecencyById.set(conversation.id, currentRecency);
-    }
     if (priorityIds.has(conversation.id)) continue;
 
-    const wasObserved = previouslyObservedIds.has(conversation.id);
     if (recentIds.has(conversation.id) && !liveReason) continue;
 
     if (recentIds.has(conversation.id)) {
@@ -166,41 +147,34 @@ export function reconcileAgentGUIConversationActivityActivation(
       recentIds.delete(conversation.id);
     }
 
-    if (liveReason || !wasObserved) {
-      if (!liveReason) {
-        priorityRetentionRecencyById.set(conversation.id, currentRecency);
-      }
+    // A late canonical snapshot is not an activity signal. It can be a
+    // selected historical session or a page that arrived after activation;
+    // only live facts may admit a previously unseen session to Priority.
+    if (liveReason) {
       retainedPriority.push({
         admissionOrder: ++admissionOrder,
         admittedAtUnixMs: currentRecency,
         id: conversation.id,
-        priorityReason: liveReason ?? "retained-idle",
+        priorityReason: liveReason,
         recentDayStartUnixMs: null
       });
       priorityIds.add(conversation.id);
+      continue;
     }
   }
 
-  const nextObservedIds = [...observedIds].sort();
   const nextPriority = retainedPriority.sort(compareActivityMembers);
   const nextRecent = retainedRecent.sort(compareActivityMembers);
   if (
-    stringArraysEqual(activation.observedIds, nextObservedIds) &&
     activityMemberArraysEqual(activation.priority, nextPriority) &&
-    activityMemberArraysEqual(activation.recent, nextRecent) &&
-    numberMapsEqual(
-      activation.priorityRetentionRecencyById,
-      priorityRetentionRecencyById
-    )
+    activityMemberArraysEqual(activation.recent, nextRecent)
   ) {
     return activation;
   }
   return {
     cutoffDayStartUnixMs: activation.cutoffDayStartUnixMs,
     referenceDayStartUnixMs: activation.referenceDayStartUnixMs,
-    observedIds: nextObservedIds,
     priority: nextPriority,
-    priorityRetentionRecencyById,
     recent: nextRecent
   };
 }
@@ -242,7 +216,7 @@ export function localDayStartUnixMs(value: number): number {
 
 function livePriorityReason(
   conversation: AgentGUIConversationActivityCandidate
-): Exclude<AgentGUIConversationActivityPriorityReason, "retained-idle"> | null {
+): AgentGUIConversationActivityPriorityReason | null {
   if (conversation.needsUserAction || conversation.status === "waiting") {
     return "waiting";
   }
@@ -275,10 +249,8 @@ function priorityRank(
       return 1;
     case "active":
       return 2;
-    case "retained-idle":
-      return 3;
     default:
-      return 4;
+      return 3;
   }
 }
 
@@ -289,25 +261,5 @@ function activityMemberArraysEqual(
   return (
     left.length === right.length &&
     left.every((member, index) => member === right[index])
-  );
-}
-
-function stringArraysEqual(
-  left: readonly string[],
-  right: readonly string[]
-): boolean {
-  return (
-    left.length === right.length &&
-    left.every((value, index) => value === right[index])
-  );
-}
-
-function numberMapsEqual(
-  left: ReadonlyMap<string, number>,
-  right: ReadonlyMap<string, number>
-): boolean {
-  return (
-    left.size === right.size &&
-    [...left].every(([key, value]) => right.get(key) === value)
   );
 }

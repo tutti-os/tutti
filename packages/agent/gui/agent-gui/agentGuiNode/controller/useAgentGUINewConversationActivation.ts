@@ -311,7 +311,11 @@ export function useAgentGUINewConversationActivation(
       requestRailReveal(agentSessionId, "created");
       isComposerHomeRef.current = false;
       setIsComposerHome(false);
-      setIntent({ tag: "active", id: agentSessionId });
+      setIntent({
+        id: agentSessionId,
+        source: "activation",
+        tag: "active"
+      });
       setIsLoadingMessages(false);
       return { agentSessionId, requestId };
     },

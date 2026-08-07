@@ -2,7 +2,9 @@ package sh.tutti.mobile
 
 import android.app.Activity
 import android.content.Intent
+import android.net.Uri
 import android.os.Build
+import android.provider.Settings
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.util.Base64
@@ -19,17 +21,11 @@ import com.facebook.react.modules.network.ForwardingCookieHandler
 import com.google.zxing.client.android.Intents
 import com.journeyapps.barcodescanner.ScanContract
 import com.journeyapps.barcodescanner.ScanOptions
-import java.io.BufferedInputStream
-import java.io.File
-import java.io.FileOutputStream
-import java.net.HttpURLConnection
 import java.net.URI
-import java.net.URL
 import java.nio.charset.StandardCharsets
 import java.security.KeyPair
 import java.security.KeyPairGenerator
 import java.security.KeyStore
-import java.security.MessageDigest
 import java.security.PrivateKey
 import java.security.Signature
 import java.security.spec.ECGenParameterSpec
@@ -48,6 +44,7 @@ class MobileSecurityModule(
     private val browserAuthBridge = MobileBrowserAuthBridge(reactContext)
     private val store = SecureStore(reactContext)
     private val updateExecutor = Executors.newSingleThreadExecutor()
+    private val updateDownloader = MobileUpdateDownloader(reactContext.cacheDir)
     private var scanPromise: Promise? = null
     private var scanCancellationPromise: Promise? = null
     private var scanActivity: Activity? = null
@@ -146,41 +143,140 @@ class MobileSecurityModule(
         expectedSHA256: String,
         promise: Promise,
     ) {
-        updateExecutor.execute {
+        UiThreadUtil.runOnUiThread {
+            val activity = reactContext.currentActivity
+            if (activity == null) {
+                val cause = IllegalStateException("No active Android activity")
+                Log.e(LOG_TAG, "Unable to start update: no active activity", cause)
+                promise.reject(
+                    "UPDATE_INSTALL_FAILED",
+                    "No active Android activity",
+                    cause,
+                )
+                return@runOnUiThread
+            }
+            if (
+                Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
+                !reactContext.packageManager.canRequestPackageInstalls()
+            ) {
+                try {
+                    Log.i(LOG_TAG, "Update install permission is missing; opening settings")
+                    activity.startActivity(
+                        Intent(
+                            Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                            Uri.parse("package:${reactContext.packageName}"),
+                        ),
+                    )
+                } catch (cause: Throwable) {
+                    Log.e(LOG_TAG, "Unable to open Android install permission settings", cause)
+                    promise.reject(
+                        "UPDATE_PERMISSION_SETTINGS_FAILED",
+                        "Unable to open Android install permission settings",
+                        cause,
+                    )
+                    return@runOnUiThread
+                }
+                Log.i(LOG_TAG, "Android install permission settings opened")
+                promise.reject(
+                    "UPDATE_INSTALL_PERMISSION_REQUIRED",
+                    "Allow Tutti to install unknown apps, then try again",
+                )
+                return@runOnUiThread
+            }
+            Log.i(LOG_TAG, "Android install permission is available; starting update download")
+
             try {
-                val apkFile = downloadUpdate(apkURL, expectedSHA256)
-                UiThreadUtil.runOnUiThread {
+                updateExecutor.execute {
                     try {
-                        val activity = reactContext.currentActivity
-                        require(activity != null) { "No active Android activity" }
-                        val uri = FileProvider.getUriForFile(
-                            reactContext,
-                            "${BuildConfig.APPLICATION_ID}.fileprovider",
-                            apkFile,
+                        val apkFile = updateDownloader.download(apkURL, expectedSHA256)
+                        Log.i(
+                            LOG_TAG,
+                            "Update APK download completed: path=${apkFile.absolutePath}, " +
+                                "exists=${apkFile.exists()}, canRead=${apkFile.canRead()}, " +
+                                "bytes=${apkFile.length()}",
                         )
-                        activity.startActivity(
-                            Intent(Intent.ACTION_VIEW).apply {
-                                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                                setDataAndType(
-                                    uri,
-                                    "application/vnd.android.package-archive",
+                        UiThreadUtil.runOnUiThread {
+                            val installerActivity = reactContext.currentActivity
+                            if (installerActivity == null) {
+                                val cause =
+                                    IllegalStateException("No active Android activity")
+                                Log.e(
+                                    LOG_TAG,
+                                    "Unable to launch package installer: no active activity",
+                                    cause,
                                 )
-                            },
+                                promise.reject(
+                                    "UPDATE_INSTALL_FAILED",
+                                    "No active Android activity",
+                                    cause,
+                                )
+                                return@runOnUiThread
+                            }
+                            val uri = try {
+                                FileProvider.getUriForFile(
+                                    reactContext,
+                                    "${BuildConfig.APPLICATION_ID}.fileprovider",
+                                    apkFile,
+                                )
+                            } catch (cause: Throwable) {
+                                Log.e(
+                                    LOG_TAG,
+                                    "Unable to create update FileProvider URI for " +
+                                        apkFile.absolutePath,
+                                    cause,
+                                )
+                                promise.reject(
+                                    "UPDATE_URI_FAILED",
+                                    "Unable to prepare the Android update file",
+                                    cause,
+                                )
+                                return@runOnUiThread
+                            }
+                            Log.i(LOG_TAG, "Update FileProvider URI created: $uri")
+                            try {
+                                installerActivity.startActivity(
+                                    Intent(Intent.ACTION_VIEW).apply {
+                                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                        setDataAndType(
+                                            uri,
+                                            "application/vnd.android.package-archive",
+                                        )
+                                    },
+                                )
+                                Log.i(LOG_TAG, "Android package installer activity started")
+                                promise.resolve(null)
+                            } catch (cause: Throwable) {
+                                Log.e(LOG_TAG, "Unable to launch Android package installer", cause)
+                                promise.reject(
+                                    "UPDATE_INSTALLER_LAUNCH_FAILED",
+                                    "Unable to open the Android package installer",
+                                    cause,
+                                )
+                            }
+                        }
+                    } catch (cause: MobileUpdateDownloadFailure) {
+                        Log.e(
+                            LOG_TAG,
+                            "Update download failed: code=${cause.code}, " +
+                                "message=${cause.message}",
+                            cause,
                         )
-                        promise.resolve(null)
+                        promise.reject(cause.code, cause.message, cause)
                     } catch (cause: Throwable) {
+                        Log.e(LOG_TAG, "Unexpected update download failure", cause)
                         promise.reject(
-                            "UPDATE_INSTALL_FAILED",
-                            "Unable to open the Android package installer",
+                            "UPDATE_DOWNLOAD_FAILED",
+                            cause.message ?: "Unable to download the Android update",
                             cause,
                         )
                     }
                 }
             } catch (cause: Throwable) {
+                Log.e(LOG_TAG, "Unable to schedule Android update download", cause)
                 promise.reject(
-                    "UPDATE_DOWNLOAD_FAILED",
-                    cause.message ?: "Unable to download the Android update",
+                    "UPDATE_EXECUTOR_FAILED",
+                    "Unable to start the Android update download",
                     cause,
                 )
             }
@@ -418,67 +514,8 @@ class MobileSecurityModule(
         super.invalidate()
     }
 
-    private fun downloadUpdate(apkURL: String, expectedSHA256: String): File {
-        val url = URL(apkURL.trim())
-        require(url.protocol == "https:") { "Update URL must use HTTPS" }
-        val expected = expectedSHA256.trim().lowercase(Locale.ROOT)
-        require(expected.matches(Regex("[a-f0-9]{64}"))) {
-            "Update SHA-256 is invalid"
-        }
-
-        val connection = url.openConnection() as HttpURLConnection
-        connection.connectTimeout = UPDATE_CONNECT_TIMEOUT_MS
-        connection.readTimeout = UPDATE_READ_TIMEOUT_MS
-        connection.requestMethod = "GET"
-        connection.setRequestProperty(
-            "Accept",
-            "application/vnd.android.package-archive",
-        )
-        try {
-            val responseCode = connection.responseCode
-            require(responseCode in 200..299) {
-                "Update download failed with HTTP $responseCode"
-            }
-
-            val updateDirectory = File(reactContext.cacheDir, "updates")
-            require(updateDirectory.mkdirs() || updateDirectory.isDirectory) {
-                "Unable to create update cache directory"
-            }
-            val temporaryFile = File(updateDirectory, "tutti-update.apk.part")
-            val apkFile = File(updateDirectory, "tutti-update.apk")
-            val digest = MessageDigest.getInstance("SHA-256")
-            BufferedInputStream(connection.inputStream).use { input ->
-                FileOutputStream(temporaryFile).use { output ->
-                    val buffer = ByteArray(UPDATE_BUFFER_SIZE)
-                    while (true) {
-                        val count = input.read(buffer)
-                        if (count < 0) break
-                        digest.update(buffer, 0, count)
-                        output.write(buffer, 0, count)
-                    }
-                }
-            }
-
-            require(toHex(digest.digest()) == expected) {
-                temporaryFile.delete()
-                "Downloaded update checksum does not match"
-            }
-            require(!apkFile.exists() || apkFile.delete()) {
-                "Unable to replace the cached Android update"
-            }
-            require(temporaryFile.renameTo(apkFile)) {
-                "Unable to finalize the downloaded Android update"
-            }
-            return apkFile
-        } finally {
-            connection.disconnect()
-        }
-    }
-
     companion object {
-        private const val UPDATE_BUFFER_SIZE = 32 * 1024
-        private const val UPDATE_CONNECT_TIMEOUT_MS = 15_000
-        private const val UPDATE_READ_TIMEOUT_MS = 60_000
+        private const val LOG_TAG = "TuttiMobileSecurity"
         private const val QR_SCAN_REQUEST_CODE_MIN = 51731
         private const val QR_SCAN_REQUEST_CODE_MAX = 60000
 

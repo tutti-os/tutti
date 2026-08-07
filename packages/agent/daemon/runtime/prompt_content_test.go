@@ -87,8 +87,9 @@ func TestProjectRuntimeConnectorPromptContentUsesTuttiBroker(t *testing.T) {
 		t.Fatalf("projected content = %#v, want instruction and user text", projected)
 	}
 	if projected[0].Type != "text" || !strings.Contains(projected[0].Text, "lark-cli") ||
-		!strings.Contains(projected[0].Text, "Tutti connector broker") ||
-		!strings.Contains(projected[0].Text, "Never substitute a user-global executable") {
+		!strings.Contains(projected[0].Text, "connector skill read") ||
+		!strings.Contains(projected[0].Text, "connector invoke") ||
+		!strings.Contains(projected[0].Text, "Never read or run a similarly named user-global") {
 		t.Fatalf("connector instruction = %#v", projected[0])
 	}
 	if projected[1].Text != "list my calendar events" {

@@ -19,21 +19,34 @@ import (
 // semantic content.
 func (s *Store) RestoreHistoricalSessionGraph(
 	ctx context.Context,
-	workspaceID string,
-	graph HistoricalSessionGraph,
+	input HistoricalSessionGraphRestoreInput,
 ) error {
 	if s == nil || s.db == nil {
 		return errors.New("workspace database is not initialized")
 	}
-	workspaceID = strings.TrimSpace(workspaceID)
-	if workspaceID == "" {
-		return errors.New("workspace and root Agent Session ids are required")
+	workspaceID := strings.TrimSpace(input.WorkspaceID)
+	userID := strings.TrimSpace(input.UserID)
+	graph := input.Graph
+	if workspaceID == "" || userID == "" {
+		return errors.New("workspace, user, and root Agent Session ids are required")
 	}
 	existing, err := s.historicalReplayGraphExists(ctx, workspaceID, graph)
 	if err != nil {
 		return err
 	}
 	if existing {
+		matches, err := s.historicalReplayUserBindingMatches(
+			ctx,
+			workspaceID,
+			graph,
+			userID,
+		)
+		if err != nil {
+			return err
+		}
+		if !matches {
+			return ErrHistoricalStateConflict
+		}
 		captured, err := s.CaptureHistoricalSessionGraph(ctx, workspaceID, graph.RootSessionID)
 		if err != nil {
 			return err
@@ -59,7 +72,7 @@ func (s *Store) RestoreHistoricalSessionGraph(
 		return err
 	}
 	for _, session := range ordered {
-		if err := restoreHistoricalSession(ctx, tx, workspaceID, session, now); err != nil {
+		if err := restoreHistoricalSession(ctx, tx, workspaceID, userID, session, now); err != nil {
 			return err
 		}
 	}
@@ -90,6 +103,30 @@ WHERE workspace_id = ? AND agent_session_id = ?
 		return fmt.Errorf("commit historical Agent state restore: %w", err)
 	}
 	return nil
+}
+
+func (s *Store) historicalReplayUserBindingMatches(
+	ctx context.Context,
+	workspaceID string,
+	graph HistoricalSessionGraph,
+	userID string,
+) (bool, error) {
+	ids := make([]string, 0, len(graph.Sessions))
+	for _, session := range graph.Sessions {
+		ids = append(ids, session.ID)
+	}
+	placeholders, args := historicalIdentityArgs(workspaceID, ids)
+	args = append(args, userID)
+	var mismatches int
+	if err := s.db.QueryRowContext(ctx, `
+SELECT COUNT(*)
+FROM workspace_agent_sessions
+WHERE workspace_id = ? AND agent_session_id IN (`+placeholders+`)
+  AND user_id <> ?
+`, args...).Scan(&mismatches); err != nil {
+		return false, err
+	}
+	return mismatches == 0, nil
 }
 
 func (s *Store) historicalReplayGraphExists(
@@ -179,6 +216,7 @@ func restoreHistoricalSession(
 	ctx context.Context,
 	tx *sql.Tx,
 	workspaceID string,
+	userID string,
 	session HistoricalSession,
 	now int64,
 ) error {
@@ -226,11 +264,11 @@ INSERT INTO workspace_agent_sessions (
   pinned_at_unix_ms, deleted_at_unix_ms, created_at_unix_ms, updated_at_unix_ms,
   active_turn_id
 ) VALUES (?, ?, ?, NULLIF(?, ''), NULLIF(?, ''), NULLIF(?, ''),
-          NULLIF(?, ''), NULLIF(?, ''), ?, '', ?, ?, ?, ?, ?, ?, ?, ?,
+          NULLIF(?, ''), NULLIF(?, ''), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
           ?, ?, ?, ?, 0, ?, 0, 0, ?, 0, ?, ?, NULL)
 `, workspaceID, session.ID, session.Kind, session.RootSessionID,
 		session.RootTurnID, session.ParentSessionID, session.ParentTurnID,
-		session.ParentToolCallID, session.Origin, session.AgentTargetID,
+		session.ParentToolCallID, session.Origin, userID, session.AgentTargetID,
 		session.Provider, session.ProviderSessionID, session.Model, string(settingsJSON),
 		metadataJSON, internalRuntimeContextJSON, session.Cwd,
 		railSectionKind, railProjectPath, railSectionKey,

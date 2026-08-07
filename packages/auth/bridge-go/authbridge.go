@@ -162,7 +162,7 @@ func NewClient(config Config) (*Client, error) {
 	if httpClient == nil {
 		// This package is a standalone module and intentionally preserves the
 		// caller's process-wide default client customizations.
-		httpClient = http.DefaultClient //nolint:forbidigo
+		httpClient = http.DefaultClient //nolint:forbidigo // standalone module preserves caller's process-wide client
 	}
 	return &Client{config: normalized, http: httpClient}, nil
 }

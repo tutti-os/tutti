@@ -64,6 +64,8 @@ func TestDefaultPreparerCodexWritesInstructionsSkillManifestAndEnv(t *testing.T)
 		AgentTargetID:  "local:codex",
 		Provider:       "codex",
 		Cwd:            cwd,
+		ConnectorRoutingHints: []ConnectorRoutingHint{{ConnectorKey: "lark-cli", DisplayName: "Lark CLI",
+			Aliases: []string{"飞书", "Feishu", "Lark", "Lark Suite"}}},
 		ExtraSkills: []ProviderSkillBundle{
 			{
 				Name: "app-factory",
@@ -93,13 +95,18 @@ func TestDefaultPreparerCodexWritesInstructionsSkillManifestAndEnv(t *testing.T)
 	if err != nil {
 		t.Fatalf("codex AGENTS.md missing: %v", err)
 	}
-	const maxCodexAgentsChars = 6500
+	// The active Connector alias index has its own 640-rune cap. Keep the full
+	// provider instructions bounded while reserving room for that routing data.
+	const maxCodexAgentsChars = 7200
 	if count := utf8.RuneCountInString(string(codexAgents)); count > maxCodexAgentsChars {
 		t.Fatalf("codex AGENTS.md chars = %d, want <= %d", count, maxCodexAgentsChars)
 	}
 	if !strings.Contains(string(codexAgents), "`tutti <scope> --help`") ||
 		!strings.Contains(string(codexAgents), "App id mapping") {
 		t.Fatalf("codex AGENTS.md content = %q", string(codexAgents))
+	}
+	if !strings.Contains(string(codexAgents), `lark-cli=Lark CLI|飞书|Feishu|Lark|Lark Suite`) {
+		t.Fatalf("codex AGENTS.md content = %q, want active connector routing aliases", string(codexAgents))
 	}
 	if strings.Contains(string(codexAgents), `Skill(skill="issue-manager", args="<full mention URI>")`) {
 		t.Fatalf("codex AGENTS.md content = %q, want provider-neutral mention routing", string(codexAgents))

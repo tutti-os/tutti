@@ -106,6 +106,14 @@ func (t *SessionReplayProcessTransport) ReplayPlaybackState(
 	return player.ReplayPlaybackState(), nil
 }
 
+func (t *SessionReplayProcessTransport) ReplayFailure(cassetteID string) error {
+	player, err := t.player(cassetteID)
+	if err != nil {
+		return err
+	}
+	return player.ReplayFailure()
+}
+
 func (t *SessionReplayProcessTransport) SetReplayPlaybackSpeed(
 	cassetteID string,
 	speed float64,

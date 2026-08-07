@@ -15,6 +15,7 @@ var (
 )
 
 type HistoricalSessionGraph = storesqlite.HistoricalSessionGraph
+type HistoricalSessionGraphRestoreInput = storesqlite.HistoricalSessionGraphRestoreInput
 type HistoricalSession = storesqlite.HistoricalSession
 type HistoricalTurn = storesqlite.HistoricalTurn
 type HistoricalMessage = storesqlite.HistoricalMessage
@@ -51,20 +52,20 @@ func (h *Host) CaptureHistoricalSessionGraph(
 // Replay Workspace before Host recovery.
 func (h *Host) RestoreHistoricalSessionGraph(
 	ctx context.Context,
-	workspaceID string,
-	graph HistoricalSessionGraph,
+	input HistoricalSessionGraphRestoreInput,
 ) error {
 	if h == nil || h.historicalState == nil {
 		return ErrHistoricalStateUnavailable
 	}
-	workspaceID = strings.TrimSpace(workspaceID)
-	if workspaceID == "" {
+	input.WorkspaceID = strings.TrimSpace(input.WorkspaceID)
+	input.UserID = strings.TrimSpace(input.UserID)
+	if input.WorkspaceID == "" || input.UserID == "" {
 		return ErrInvalidArgument
 	}
-	if err := ValidateHistoricalSessionGraph(graph); err != nil {
+	if err := ValidateHistoricalSessionGraph(input.Graph); err != nil {
 		return err
 	}
-	return h.historicalState.RestoreHistoricalSessionGraph(ctx, workspaceID, graph)
+	return h.historicalState.RestoreHistoricalSessionGraph(ctx, input)
 }
 
 func ValidateHistoricalSessionGraph(graph HistoricalSessionGraph) error {

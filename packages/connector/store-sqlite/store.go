@@ -25,7 +25,8 @@ type Store struct {
 
 var _ market.Repository = (*Store)(nil)
 var _ market.ChangedEventOutbox = (*Store)(nil)
-var _ market.CatalogTrustStateStore = (*Store)(nil)
+var _ market.LifecycleCleanupStore = (*Store)(nil)
+var _ market.AuthorizationProjectionStore = (*Store)(nil)
 
 func Open(ctx context.Context, dbPath string) (*Store, error) {
 	dbPath = strings.TrimSpace(dbPath)
@@ -81,10 +82,6 @@ func (store *Store) migrate(ctx context.Context) error {
 	statements := []string{
 		`DROP TABLE IF EXISTS connector_market_catalog_trust`,
 		`DROP TABLE IF EXISTS connector_market_security_revocations`,
-		`CREATE TABLE IF NOT EXISTS connector_market_catalog_trust_v2 (
-  market_type TEXT PRIMARY KEY,
-  trust_json TEXT NOT NULL
-)`,
 		`CREATE TABLE IF NOT EXISTS connector_market_metadata (
   id INTEGER PRIMARY KEY CHECK (id = 1),
   revision INTEGER NOT NULL,
@@ -97,6 +94,17 @@ VALUES (1, 0, 'stale', '') ON CONFLICT(id) DO NOTHING`,
   connector_key TEXT PRIMARY KEY,
   connector_json TEXT NOT NULL
 )`,
+		`CREATE TABLE IF NOT EXISTS connector_market_installed_releases (
+  connector_key TEXT PRIMARY KEY,
+  release_digest TEXT NOT NULL,
+  release_json TEXT NOT NULL
+)`,
+		`CREATE TABLE IF NOT EXISTS connector_market_authorization_projections (
+  account_id TEXT NOT NULL,
+  connector_key TEXT NOT NULL,
+  projection_json TEXT NOT NULL,
+  PRIMARY KEY (account_id, connector_key)
+)`,
 		`CREATE TABLE IF NOT EXISTS connector_market_operations (
   operation_id TEXT PRIMARY KEY,
   client_request_id TEXT NOT NULL UNIQUE,
@@ -106,6 +114,7 @@ VALUES (1, 0, 'stale', '') ON CONFLICT(id) DO NOTHING`,
   lease_owner TEXT NOT NULL,
 	lease_token INTEGER NOT NULL DEFAULT 0,
   lease_expires_at_unix_ms INTEGER,
+	updated_at_unix_ms INTEGER NOT NULL DEFAULT 0,
   operation_json TEXT NOT NULL
 )`,
 		`CREATE UNIQUE INDEX IF NOT EXISTS connector_market_one_active_operation
@@ -129,7 +138,7 @@ ON connector_market_outbox(published_at_unix_ms, sequence)`,
 		!strings.Contains(strings.ToLower(err.Error()), "duplicate column") {
 		return fmt.Errorf("migrate connector market operation lease token: %w", err)
 	}
-	return nil
+	return store.migrateLifecycle(ctx)
 }
 
 func (store *Store) Snapshot(ctx context.Context) (market.Snapshot, error) {
@@ -183,34 +192,37 @@ SELECT operation_json FROM connector_market_operations WHERE operation_id = ?`, 
 	return decodeOperation(payload)
 }
 
-func (store *Store) LoadCatalogTrustState(ctx context.Context, marketType string) (market.CatalogTrustState, bool, error) {
-	if store == nil || store.db == nil {
-		return market.CatalogTrustState{}, false, errors.New("connector market store is unavailable")
-	}
+func (store *Store) AuthorizationProjection(
+	ctx context.Context,
+	accountID, connectorKey string,
+) (market.AuthorizationProjection, error) {
 	var payload string
-	err := store.db.QueryRowContext(ctx, `SELECT trust_json FROM connector_market_catalog_trust_v2 WHERE market_type = ?`, strings.TrimSpace(marketType)).Scan(&payload)
-	if errors.Is(err, sql.ErrNoRows) {
-		return market.CatalogTrustState{}, false, nil
+	if err := store.db.QueryRowContext(ctx, `
+SELECT projection_json FROM connector_market_authorization_projections
+WHERE account_id = ? AND connector_key = ?`, accountID, connectorKey).Scan(&payload); err != nil {
+		return market.AuthorizationProjection{}, mapNotFound(err)
 	}
-	if err != nil {
-		return market.CatalogTrustState{}, false, fmt.Errorf("load connector catalog trust state: %w", err)
+	var projection market.AuthorizationProjection
+	if err := json.Unmarshal([]byte(payload), &projection); err != nil {
+		return market.AuthorizationProjection{}, fmt.Errorf("decode connector authorization projection: %w", err)
 	}
-	var state market.CatalogTrustState
-	if err := json.Unmarshal([]byte(payload), &state); err != nil || state.KeyringVersion == 0 || state.Sequence == 0 ||
-		len(state.EnvelopeDigest) != 64 || state.IssuedAt.IsZero() || state.ExpiresAt.IsZero() || state.NextUpdateAt.IsZero() ||
-		state.ObservedAt.IsZero() || state.WallHighWater.IsZero() {
-		return market.CatalogTrustState{}, false, errors.New("connector catalog trust state is invalid")
-	}
-	return state, true, nil
+	return projection, nil
 }
 
-func (store *Store) SaveCatalogTrustState(ctx context.Context, marketType string, state market.CatalogTrustState) error {
-	if store == nil || store.db == nil {
-		return errors.New("connector market store is unavailable")
+func (store *Store) SaveAuthorizationProjection(
+	ctx context.Context,
+	projection market.AuthorizationProjection,
+) error {
+	payload, err := json.Marshal(projection)
+	if err != nil {
+		return fmt.Errorf("encode connector authorization projection: %w", err)
 	}
-	return store.Transaction(ctx, func(transaction market.Transaction) error {
-		return transaction.SaveCatalogTrustState(marketType, state)
-	})
+	_, err = store.db.ExecContext(ctx, `
+INSERT INTO connector_market_authorization_projections (account_id, connector_key, projection_json)
+VALUES (?, ?, ?)
+ON CONFLICT(account_id, connector_key) DO UPDATE SET projection_json = excluded.projection_json`,
+		projection.AccountID, projection.ConnectorKey, string(payload))
+	return err
 }
 
 func (store *Store) ClaimOperation(
@@ -334,29 +346,18 @@ WHERE operation_id = ? AND lease_owner = ? AND lease_token = ?`, operationID, ow
 }
 
 func (store *Store) InstalledRelease(ctx context.Context, connectorKey, releaseDigest string) (market.Release, error) {
-	rows, err := store.db.QueryContext(ctx, `SELECT operation_json FROM connector_market_operations WHERE connector_key = ? AND kind = ? AND state = ? ORDER BY operation_id DESC`,
-		connectorKey, market.OperationKindInstall, market.OperationStateCompleted)
+	var payload string
+	err := store.db.QueryRowContext(ctx, `
+SELECT release_json FROM connector_market_installed_releases
+WHERE connector_key = ? AND release_digest = ?`, connectorKey, releaseDigest).Scan(&payload)
 	if err != nil {
-		return market.Release{}, err
+		return market.Release{}, mapNotFound(err)
 	}
-	defer rows.Close()
-	for rows.Next() {
-		var payload string
-		if err := rows.Scan(&payload); err != nil {
-			return market.Release{}, err
-		}
-		operation, err := decodeOperation(payload)
-		if err != nil {
-			return market.Release{}, err
-		}
-		if operation.Target != nil && operation.Target.Release != nil && operation.Target.ReleaseDigest == releaseDigest {
-			return *operation.Target.Release, nil
-		}
+	var release market.Release
+	if err := json.Unmarshal([]byte(payload), &release); err != nil {
+		return market.Release{}, fmt.Errorf("decode installed connector release: %w", err)
 	}
-	if err := rows.Err(); err != nil {
-		return market.Release{}, err
-	}
-	return market.Release{}, market.ErrNotFound
+	return release, nil
 }
 
 func (store *Store) RecoverableOperations(ctx context.Context) ([]market.Operation, error) {
@@ -533,50 +534,6 @@ UPDATE connector_market_metadata SET source_revision = ? WHERE id = ?`, sourceRe
 	return err
 }
 
-func (transaction *transaction) SaveCatalogTrustState(marketType string, state market.CatalogTrustState) error {
-	if strings.TrimSpace(marketType) == "" || state.KeyringVersion == 0 || state.Sequence == 0 ||
-		len(state.EnvelopeDigest) != 64 || state.IssuedAt.IsZero() || state.ExpiresAt.IsZero() || state.NextUpdateAt.IsZero() ||
-		state.ObservedAt.IsZero() || state.WallHighWater.IsZero() {
-		return errors.New("connector catalog trust state is invalid")
-	}
-	marketType = strings.TrimSpace(marketType)
-	var existingPayload string
-	err := transaction.tx.QueryRowContext(transaction.ctx, `
-SELECT trust_json FROM connector_market_catalog_trust_v2 WHERE market_type = ?`, marketType).Scan(&existingPayload)
-	if err != nil && !errors.Is(err, sql.ErrNoRows) {
-		return fmt.Errorf("load connector catalog trust state for update: %w", err)
-	}
-	if err == nil {
-		var existing market.CatalogTrustState
-		if decodeErr := json.Unmarshal([]byte(existingPayload), &existing); decodeErr != nil || existing.KeyringVersion == 0 || existing.Sequence == 0 ||
-			len(existing.EnvelopeDigest) != 64 || existing.IssuedAt.IsZero() || existing.ExpiresAt.IsZero() || existing.NextUpdateAt.IsZero() ||
-			existing.ObservedAt.IsZero() || existing.WallHighWater.IsZero() {
-			return errors.New("stored connector catalog trust state is invalid")
-		}
-		if existing.KeyringVersion > state.KeyringVersion || existing.Sequence > state.Sequence ||
-			(existing.Sequence == state.Sequence && existing.EnvelopeDigest != state.EnvelopeDigest) {
-			return errors.New("connector catalog trust state rollback or equivocation rejected")
-		}
-		if existing.WallHighWater.After(state.WallHighWater) {
-			state.WallHighWater = existing.WallHighWater
-		}
-		if existing.ObservedAt.After(state.ObservedAt) {
-			state.ObservedAt = existing.ObservedAt
-		}
-	}
-	payload, err := json.Marshal(state)
-	if err != nil {
-		return err
-	}
-	_, err = transaction.tx.ExecContext(transaction.ctx, `
-INSERT INTO connector_market_catalog_trust_v2 (market_type, trust_json) VALUES (?, ?)
-ON CONFLICT(market_type) DO UPDATE SET trust_json = excluded.trust_json`, marketType, string(payload))
-	if err != nil {
-		return fmt.Errorf("save connector catalog trust state: %w", err)
-	}
-	return nil
-}
-
 func (transaction *transaction) SetCatalogState(state market.CatalogState) error {
 	_, err := transaction.tx.ExecContext(transaction.ctx, `
 UPDATE connector_market_metadata SET catalog_state = ? WHERE id = ?`, state, metadataID)
@@ -693,20 +650,22 @@ func saveOperationOn(ctx context.Context, tx *sql.Tx, operation market.Operation
 	result, err := tx.ExecContext(ctx, `
 INSERT INTO connector_market_operations (
   operation_id, client_request_id, connector_key, kind, state,
-  lease_owner, lease_token, lease_expires_at_unix_ms, operation_json
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+  lease_owner, lease_token, lease_expires_at_unix_ms, updated_at_unix_ms, operation_json
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(operation_id) DO UPDATE SET
   state = excluded.state,
   lease_owner = excluded.lease_owner,
 	lease_token = excluded.lease_token,
   lease_expires_at_unix_ms = excluded.lease_expires_at_unix_ms,
+	updated_at_unix_ms = excluded.updated_at_unix_ms,
 	operation_json = excluded.operation_json
 WHERE excluded.lease_token = 0 OR (
   connector_market_operations.lease_owner = excluded.lease_owner AND
   connector_market_operations.lease_token = excluded.lease_token
 )`,
 		operation.OperationID, operation.ClientRequestID, operation.ConnectorKey,
-		operation.Kind, operation.State, operation.LeaseOwner, operation.LeaseToken, leaseExpiresAt, string(payload))
+		operation.Kind, operation.State, operation.LeaseOwner, operation.LeaseToken, leaseExpiresAt,
+		operation.UpdatedAt.UTC().UnixMilli(), string(payload))
 	if err != nil {
 		return err
 	}
@@ -717,7 +676,7 @@ WHERE excluded.lease_token = 0 OR (
 	if operation.LeaseToken > 0 && changed != 1 {
 		return market.ErrOperationLeaseLost
 	}
-	return nil
+	return saveInstalledReleaseEvidenceOn(ctx, tx, operation)
 }
 
 func decodeConnector(payload string) (market.Connector, error) {

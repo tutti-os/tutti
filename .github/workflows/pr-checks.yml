@@ -38,9 +38,11 @@ jobs:
         id: changed-files
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: >-
           node ./tools/scripts/change-classification.mjs
           --base "${BASE_SHA}"
+          --head "${HEAD_SHA}"
           --github-output "${GITHUB_OUTPUT}"
 
   tooling-consistency:
@@ -68,7 +70,8 @@ jobs:
       - name: Check changed-file whitespace
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
-        run: git diff --check "${BASE_SHA}...HEAD"
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: git diff --check "${BASE_SHA}...${HEAD_SHA}"
 
       - name: Check repository naming policy
         run: node ./tools/scripts/check-tutti-names.mjs
@@ -104,25 +107,28 @@ jobs:
         if: needs.changes.outputs.run_contracts == 'true'
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: >-
           node ./tools/scripts/run-repository-checks.mjs
-          --group contracts --base "${BASE_SHA}"
+          --group contracts --base "${BASE_SHA}" --head "${HEAD_SHA}"
 
       - name: Run generated contract checks
         if: needs.changes.outputs.run_generated == 'true'
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: >-
           node ./tools/scripts/run-repository-checks.mjs
-          --group generated --base "${BASE_SHA}"
+          --group generated --base "${BASE_SHA}" --head "${HEAD_SHA}"
 
       - name: Run repository boundary checks
         if: needs.changes.outputs.run_boundaries == 'true'
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: >-
           node ./tools/scripts/run-repository-checks.mjs
-          --group boundaries --base "${BASE_SHA}"
+          --group boundaries --base "${BASE_SHA}" --head "${HEAD_SHA}"
 
   ts-lint:
     name: TypeScript Lint
@@ -313,9 +319,11 @@ jobs:
       - name: Run changed Go tests
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: >-
           node ./tools/scripts/run-changed-go-validation.mjs
           --base "${BASE_SHA}"
+          --head "${HEAD_SHA}"
           --kind test
           --tail-lines 400
 
@@ -377,8 +385,10 @@ jobs:
       - name: Run changed Go lint
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: >-
           node ./tools/scripts/run-changed-go-validation.mjs
           --base "${BASE_SHA}"
+          --head "${HEAD_SHA}"
           --kind lint
           --tail-lines 400

@@ -8,8 +8,11 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/tutti-os/tutti/packages/agent/host v0.0.0
 	github.com/tutti-os/tutti/packages/agent/store-sqlite v0.0.0
+	github.com/tutti-os/tutti/packages/agent/store-sqlite/canonical v0.0.0
 )
 
 replace github.com/tutti-os/tutti/packages/agent/host => ../host
 
 replace github.com/tutti-os/tutti/packages/agent/store-sqlite => ../store-sqlite
+
+replace github.com/tutti-os/tutti/packages/agent/store-sqlite/canonical => ../store-sqlite/canonical

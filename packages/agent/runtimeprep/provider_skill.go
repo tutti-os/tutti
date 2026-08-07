@@ -10,6 +10,8 @@ import (
 	"sort"
 	"strings"
 	"text/template"
+	"unicode"
+	"unicode/utf8"
 )
 
 const tuttiSkillName = "tutti-cli"
@@ -22,6 +24,7 @@ const tuttiHandoffSkillName = "tutti-handoff"
 const commandGuideReferencePath = "command-guide.md"
 const tuttiModelAllocationSkillName = "tutti-model-allocation"
 const tuttiModelAllocationReferencePath = "references/model-tiers.md"
+const connectorRoutingIndexMaxRunes = 640
 
 //go:embed skill_templates/*.md policy_templates/*.md
 var providerSkillTemplates embed.FS
@@ -70,11 +73,12 @@ func computerUseSkill(input PrepareInput) (string, error) {
 
 type runtimeTemplateData struct {
 	PrepareInput
-	HostFacts       HostFacts
-	CommandFamilies []string
-	OutputModes     []string
-	ProfileIntro    string
-	ProfileTitle    string
+	HostFacts             HostFacts
+	CommandFamilies       []string
+	OutputModes           []string
+	ProfileIntro          string
+	ProfileTitle          string
+	ConnectorRoutingIndex string
 }
 
 func renderProviderSkillTemplate(path string, input PrepareInput, replacements map[string]string) (string, error) {
@@ -112,10 +116,11 @@ func renderRuntimeTemplate(name string, content string, input PrepareInput, repl
 	}
 	resolver := input.commandCapabilities
 	data := runtimeTemplateData{
-		PrepareInput: input,
-		HostFacts:    resolvedHostFacts(input),
-		ProfileIntro: resolvedProfileIntro(input),
-		ProfileTitle: resolvedProfileTitle(input),
+		PrepareInput:          input,
+		HostFacts:             resolvedHostFacts(input),
+		ProfileIntro:          resolvedProfileIntro(input),
+		ProfileTitle:          resolvedProfileTitle(input),
+		ConnectorRoutingIndex: connectorRoutingIndex(input.ConnectorRoutingHints),
 	}
 	if resolver != nil {
 		data.CommandFamilies = resolver.Families()
@@ -126,6 +131,76 @@ func renderRuntimeTemplate(name string, content string, input PrepareInput, repl
 		return "", fmt.Errorf("render runtime template %s: %w", name, err)
 	}
 	return rendered.String(), nil
+}
+
+func connectorRoutingIndex(hints []ConnectorRoutingHint) string {
+	if len(hints) == 0 {
+		return ""
+	}
+	ordered := append([]ConnectorRoutingHint(nil), hints...)
+	sort.SliceStable(ordered, func(left, right int) bool {
+		return strings.TrimSpace(ordered[left].ConnectorKey) < strings.TrimSpace(ordered[right].ConnectorKey)
+	})
+	segments := make([]string, 0, len(ordered))
+	seenConnectors := make(map[string]struct{}, len(ordered))
+	for _, hint := range ordered {
+		key := strings.TrimSpace(hint.ConnectorKey)
+		if key == "" || !safeConnectorRoutingPromptValue(key) {
+			continue
+		}
+		if _, duplicate := seenConnectors[key]; duplicate {
+			continue
+		}
+		seenConnectors[key] = struct{}{}
+		seen := map[string]struct{}{strings.ToLower(key): {}}
+		values := make([]string, 0, len(hint.Aliases)+1)
+		for _, value := range append([]string{hint.DisplayName}, hint.Aliases...) {
+			value = strings.TrimSpace(value)
+			folded := strings.ToLower(value)
+			if value == "" || !safeConnectorRoutingPromptValue(value) {
+				continue
+			}
+			if _, duplicate := seen[folded]; duplicate {
+				continue
+			}
+			seen[folded] = struct{}{}
+			values = append(values, value)
+		}
+		candidate := strings.Join(append(append([]string(nil), segments...), key), ";")
+		if utf8.RuneCountInString(candidate) > connectorRoutingIndexMaxRunes {
+			break
+		}
+		segments = append(segments, key)
+		accepted := make([]string, 0, len(values))
+		for _, value := range values {
+			candidateValues := append(append([]string(nil), accepted...), value)
+			candidateSegment := key + "=" + strings.Join(candidateValues, "|")
+			candidate = strings.Join(append(append([]string(nil), segments[:len(segments)-1]...), candidateSegment), ";")
+			if utf8.RuneCountInString(candidate) > connectorRoutingIndexMaxRunes {
+				break
+			}
+			accepted = candidateValues
+			segments[len(segments)-1] = candidateSegment
+		}
+	}
+	if len(segments) == 0 {
+		return ""
+	}
+	return strings.Join(segments, ";")
+}
+
+func safeConnectorRoutingPromptValue(value string) bool {
+	if len([]rune(value)) > 128 {
+		return false
+	}
+	for _, character := range value {
+		if unicode.IsLetter(character) || unicode.IsNumber(character) || unicode.IsMark(character) || character == ' ' ||
+			strings.ContainsRune("-_.+&/()", character) {
+			continue
+		}
+		return false
+	}
+	return true
 }
 
 func templateCommand(input PrepareInput) func(string, ...commandArguments) (string, error) {

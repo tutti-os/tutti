@@ -638,16 +638,16 @@ export function AgentGUINodeView({
             inert={conversationRailCollapsed ? true : undefined}
           >
             <AgentConversationClockProvider isVisible={isVisible}>
+              {/* Activity is an all-provider rail snapshot. Selecting a row
+                  changes the active provider/target, but must not rebuild it. */}
               <AgentGUIConversationRailController
                 {...conversationRailStoreState}
                 activityContextKey={[
                   viewModel.shell.currentUserId?.trim() ?? "",
-                  viewModel.shell.data.provider?.trim() ?? "",
-                  viewModel.rail.selectedAgentTarget.agentTargetId?.trim() ??
-                    "",
                   viewModel.shell.nodeId?.trim() ?? ""
                 ].join("\u0000")}
                 conversations={viewModel.rail.conversations}
+                currentUserId={viewModel.shell.currentUserId}
                 nodeId={viewModel.shell.nodeId}
                 registerInteractionLockProbe={registerRailInteractionLockProbe}
                 userProjects={viewModel.rail.userProjects}

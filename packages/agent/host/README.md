@@ -257,8 +257,11 @@ Interaction, Goal, hierarchy, stable settings state, and the narrow portable
 `providerResumeCheckpoint` required to resume an already-initialized protocol
 boundary. The checkpoint is opaque to Host; full provider runtime context is
 not exported. Restore is for a fresh isolated Workspace before normal Host
-recovery. It is idempotent for identical content, rejects conflicts, and never
-starts or resumes a Provider.
+recovery. `HistoricalSessionGraphRestoreInput` carries the target Workspace and
+required current User outside the portable graph; restore binds every imported Session
+to that runtime-owned identity without serializing it into a Cassette. It is
+idempotent only for identical content and the same target User, rejects graph
+or ownership conflicts, and never starts or resumes a Provider.
 
 Runtime adapters preserve explicit downstream failures as `ProviderError` so
 Host consumers can distinguish provider-owned rejection from preparation,

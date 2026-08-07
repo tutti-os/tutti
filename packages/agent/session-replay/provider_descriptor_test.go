@@ -19,6 +19,7 @@ func TestCodexProviderReplayDescriptorDeclaresCompleteAdapter(t *testing.T) {
 		) ||
 		!descriptor.MethodCarriesCredentials("account/login/start") ||
 		!descriptor.IsOptionalProbeMethod("thread/read") ||
+		!descriptor.IsGeneratedIdentityField("clientUserMessageId") ||
 		!descriptor.IsHomeEnvVar("codex_home") ||
 		descriptor.PortableRuntime.SessionHomeDirectory != "codex-home" {
 		t.Fatalf("Codex replay descriptor = %#v", descriptor)

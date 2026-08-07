@@ -2,9 +2,15 @@ import { webUtils } from "electron";
 import { homedir } from "node:os";
 import { statSync } from "node:fs";
 import type { DesktopPlatformApi } from "../types";
+import { resolveDesktopDistribution } from "../../shared/distribution/desktopDistribution.ts";
 
 export function createPlatformDesktopApi(): DesktopPlatformApi {
   return {
+    distribution: resolveDesktopDistribution({
+      platform: process.platform,
+      windowsStore: (process as NodeJS.Process & { windowsStore?: boolean })
+        .windowsStore
+    }),
     // Electron's app name is set in the main process (for example, "Tutti Dev"
     // in the development environment). Keep the renderer bound to that native
     // value instead of duplicating the product name in UI code.

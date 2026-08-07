@@ -160,7 +160,9 @@ export function WorkspaceHelpMenu({
             })
           }
         >
-          {t("workspace.settings.developer.exportRecentTenMinutesLogsWithSessions")}
+          {t(
+            "workspace.settings.developer.exportRecentTenMinutesLogsWithSessions"
+          )}
         </DropdownMenuItem>
         <DropdownMenuItem
           disabled={settingsState.developerLogs.exporting}

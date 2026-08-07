@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 
 	agentruntime "github.com/tutti-os/tutti/packages/agent/daemon/runtime"
-	mcpservice "github.com/tutti-os/tutti/services/tuttid/service/mcp"
+	mcpservice "github.com/tutti-os/tutti/packages/connector/runtime/mcp"
 )
 
 // mcpClient preserves the computer session's private adapter while sharing the

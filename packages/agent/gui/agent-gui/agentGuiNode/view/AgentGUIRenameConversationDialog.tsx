@@ -31,7 +31,6 @@ export const AgentGUIRenameConversationDialog = memo(
       if (!open || !conversation) {
         isSavingRef.current = false;
         armedPointerActionRef.current = null;
-        setTitle("");
         setIsSaving(false);
         return;
       }

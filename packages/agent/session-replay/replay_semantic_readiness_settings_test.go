@@ -12,6 +12,7 @@ func TestComposerSettingsEqualIgnoresLiveOnlyDefaults(t *testing.T) {
 	}
 	actual := map[string]any{
 		"codexSaverMode":   false,
+		"futureDefaultOff": false,
 		"model":            "haiku",
 		"permissionModeId": "default",
 		"planMode":         false,
@@ -19,7 +20,7 @@ func TestComposerSettingsEqualIgnoresLiveOnlyDefaults(t *testing.T) {
 		"speed":            "standard",
 	}
 	if !composerSettingsEqual(actual, expected) {
-		t.Fatal("live-only speed default must not fail settings.equal")
+		t.Fatal("live-only defaults must not fail settings.equal")
 	}
 	actual["reasoningEffort"] = "medium"
 	if composerSettingsEqual(actual, expected) {

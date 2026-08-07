@@ -686,6 +686,45 @@ func TestReplayProcessTransportMatchesJSONRPCRequestSemanticsAndMapsResponseID(t
 	}
 }
 
+func TestReplayProcessTransportIgnoresVolatileInitializeClientInfo(t *testing.T) {
+	expected := []byte(
+		`{"id":1,"method":"initialize","params":{"clientInfo":{"name":"codex-cli","title":"Codex","version":"0.146.0"},"capabilities":{"experimentalApi":true}}}` + "\n",
+	)
+	actual := []byte(
+		`{"id":7,"method":"initialize","params":{"capabilities":{"experimentalApi":true},"clientInfo":{"name":"codex-cli","title":"TSH","version":"0.146.1"}}}` + "\n",
+	)
+
+	descriptor := codexReplayDescriptorForCassetteTest(t)
+	responseIDs, _, matches := processCassetteJSONMatch(
+		descriptor,
+		expected,
+		actual,
+		"",
+		"",
+		"",
+		nil,
+	)
+	if !matches {
+		t.Fatal("initialize clientInfo version/title drift did not match")
+	}
+	if got := responseIDs["1"]; got != json.Number("7") {
+		t.Fatalf("mapped response id = %#v, want 7", got)
+	}
+
+	changedName := bytes.Replace(actual, []byte(`"name":"codex-cli"`), []byte(`"name":"other-cli"`), 1)
+	if _, _, matches := processCassetteJSONMatch(
+		descriptor,
+		expected,
+		changedName,
+		"",
+		"",
+		"",
+		nil,
+	); matches {
+		t.Fatal("initialize clientInfo.name mismatch matched")
+	}
+}
+
 func TestClaudeSidecarRecordingAndReplayProjectsEnvironmentAndGeneratedIdentities(t *testing.T) {
 	directory := t.TempDir()
 	base := &cassetteTestConnection{received: []ProcessFrame{
@@ -903,23 +942,81 @@ func TestRecordingAndReplayProcessTransportProjectsPlanDecisionClientUserMessage
 	}
 }
 
-func TestReplayProcessTransportKeepsOrdinaryClientUserMessageIDStrict(t *testing.T) {
+func TestReplayProcessTransportRemapsOrdinaryClientUserMessageIDConsistently(t *testing.T) {
 	expected := []byte(
 		`{"id":9,"method":"turn/start","params":{"clientUserMessageId":"user-submit-1"}}` + "\n",
 	)
 	actual := []byte(
 		`{"id":10,"method":"turn/start","params":{"clientUserMessageId":"user-submit-2"}}` + "\n",
 	)
-	if _, _, matches := processCassetteJSONMatch(
-		codexReplayDescriptorForCassetteTest(t),
+	descriptor := codexReplayDescriptorForCassetteTest(t)
+	_, learned, matches := processCassetteJSONMatch(
+		descriptor,
 		expected,
 		actual,
 		"",
 		"",
 		"",
 		nil,
+	)
+	if !matches {
+		t.Fatal("ordinary clientUserMessageId runtime identity did not match")
+	}
+	if got := learned["user-submit-1"]; got != "user-submit-2" {
+		t.Fatalf("learned clientUserMessageId = %q, want user-submit-2", got)
+	}
+
+	followupExpected := []byte(
+		`{"id":11,"method":"turn/start","params":{"clientUserMessageId":"user-submit-1"}}` + "\n",
+	)
+	followupActual := []byte(
+		`{"id":12,"method":"turn/start","params":{"clientUserMessageId":"user-submit-2"}}` + "\n",
+	)
+	if _, _, matches := processCassetteJSONMatch(
+		descriptor,
+		followupExpected,
+		followupActual,
+		"",
+		"",
+		"",
+		learned,
+	); !matches {
+		t.Fatal("consistent clientUserMessageId mapping did not match")
+	}
+
+	conflictingActual := bytes.Replace(
+		followupActual,
+		[]byte("user-submit-2"),
+		[]byte("user-submit-3"),
+		1,
+	)
+	if _, _, matches := processCassetteJSONMatch(
+		descriptor,
+		followupExpected,
+		conflictingActual,
+		"",
+		"",
+		"",
+		learned,
 	); matches {
-		t.Fatal("ordinary clientUserMessageId mismatch matched")
+		t.Fatal("conflicting clientUserMessageId mapping matched")
+	}
+
+	mappedInbound := mapProcessCassetteFrameJSON(
+		[]byte(`{"method":"turn/completed","params":{"clientUserMessageId":"user-submit-1"}}`+"\n"),
+		"",
+		"",
+		"",
+		descriptor,
+		learned,
+	)
+	var inboundMessage map[string]any
+	if err := json.Unmarshal(bytes.TrimSpace(mappedInbound), &inboundMessage); err != nil {
+		t.Fatal(err)
+	}
+	inboundParams, _ := inboundMessage["params"].(map[string]any)
+	if got := payloadString(inboundParams, "clientUserMessageId"); got != "user-submit-2" {
+		t.Fatalf("mapped inbound clientUserMessageId = %q, want user-submit-2", got)
 	}
 }
 

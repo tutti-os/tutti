@@ -184,6 +184,10 @@ export function WorkspaceSettingsPanel({
   );
   const { t: translateConnectorMarket } = connectorMarketI18n;
   const notifications = useService(INotificationService);
+  const handleConnectorMarketError = useCallback(
+    (message: string) => notifications.error({ title: message }),
+    [notifications]
+  );
   const { service: desktopPreferencesService, state: desktopPreferencesState } =
     useDesktopPreferencesService();
   const { service: settingsService, state: settingsState } =
@@ -509,6 +513,7 @@ export function WorkspaceSettingsPanel({
                   accountState.user ? (
                   <ConnectorMarketPanel
                     i18n={connectorMarketI18n}
+                    onError={handleConnectorMarketError}
                     onTryConnector={() => settingsService.closePanel()}
                     root={connectorMarketModule.root}
                   />

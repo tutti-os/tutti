@@ -1345,21 +1345,6 @@ func (e CollaborationRunTriggerSource) Valid() bool {
 	}
 }
 
-// Defines values for ConnectorMarketArtifactStorageRealm.
-const (
-	TuttiConnectorArtifactsV1 ConnectorMarketArtifactStorageRealm = "tutti.connector.artifacts.v1"
-)
-
-// Valid indicates whether the value is a known member of the ConnectorMarketArtifactStorageRealm enum.
-func (e ConnectorMarketArtifactStorageRealm) Valid() bool {
-	switch e {
-	case TuttiConnectorArtifactsV1:
-		return true
-	default:
-		return false
-	}
-}
-
 // Defines values for ConnectorMarketAuthorizationState.
 const (
 	ConnectorMarketAuthorizationStateConnected    ConnectorMarketAuthorizationState = "connected"
@@ -5919,18 +5904,18 @@ type CompleteWorkspaceAppUploadResponse struct {
 	File WorkspaceAppUploadedFile `json:"file"`
 }
 
-// ConnectorMarketArtifact defines model for ConnectorMarketArtifact.
-type ConnectorMarketArtifact struct {
-	Key           string                              `json:"key"`
-	MediaType     string                              `json:"mediaType"`
-	ObjectVersion string                              `json:"objectVersion"`
-	Sha256        string                              `json:"sha256"`
-	SizeBytes     int64                               `json:"sizeBytes"`
-	StorageRealm  ConnectorMarketArtifactStorageRealm `json:"storageRealm"`
+// ConnectorMarketAgentRouting defines model for ConnectorMarketAgentRouting.
+type ConnectorMarketAgentRouting struct {
+	Aliases []string `json:"aliases"`
 }
 
-// ConnectorMarketArtifactStorageRealm defines model for ConnectorMarketArtifact.StorageRealm.
-type ConnectorMarketArtifactStorageRealm string
+// ConnectorMarketArtifact defines model for ConnectorMarketArtifact.
+type ConnectorMarketArtifact struct {
+	Key       string `json:"key"`
+	MediaType string `json:"mediaType"`
+	Sha256    string `json:"sha256"`
+	SizeBytes int64  `json:"sizeBytes"`
+}
 
 // ConnectorMarketAuthorization defines model for ConnectorMarketAuthorization.
 type ConnectorMarketAuthorization struct {
@@ -6049,6 +6034,7 @@ type ConnectorMarketInstallationState string
 
 // ConnectorMarketManifest defines model for ConnectorMarketManifest.
 type ConnectorMarketManifest struct {
+	AgentRouting      *ConnectorMarketAgentRouting              `json:"agentRouting,omitempty"`
 	AuthorizationKind string                                    `json:"authorizationKind"`
 	Compatibility     *ConnectorMarketCompatibilityRequirements `json:"compatibility,omitempty"`
 	Description       *string                                   `json:"description,omitempty"`

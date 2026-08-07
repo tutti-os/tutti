@@ -13,6 +13,8 @@ import (
 	replayservice "github.com/tutti-os/tutti/services/tuttid/service/agentsessionreplay"
 )
 
+const agentSessionReplayLocalUserID = "tutti-local-user"
+
 func resolveAgentSessionRecordingEnabled(
 	ctx context.Context,
 	preferences interface {
@@ -93,6 +95,8 @@ func prepareReplaySemanticRuntime(
 				CassetteID:    registration.CassetteID,
 				RootSessionID: registration.RootAgentSessionID,
 				WorkspaceID:   registration.WorkspaceID,
+				UserID:        agentSessionReplayLocalUserID,
+				Profile:       replayservice.TuttiSemanticProfile(),
 			},
 		)
 	}

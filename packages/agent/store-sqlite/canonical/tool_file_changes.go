@@ -8,6 +8,15 @@ import (
 
 var toolUnifiedDiffHunkPattern = regexp.MustCompile(`^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@(?:.*)$`)
 
+// NormalizeToolFileChanges is the shared fileChanges contract used by tool
+// payloads and Agent Session Replay final-state compare. Invalid unified-diff
+// bodies on added files become newString; only real unified diffs keep diff /
+// unifiedDiff. Callers should run both recorded and live graphs through this
+// before equality checks so older cassettes stay portable.
+func NormalizeToolFileChanges(value any) map[string]any {
+	return normalizeToolFileChanges(value)
+}
+
 func normalizeToolFileChanges(value any) map[string]any {
 	body := toolMap(value)
 	if body == nil {

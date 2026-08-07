@@ -16,10 +16,15 @@ func (h *Host) replayInitialGoalCreate(
 ) (CreateSessionResult, bool, error) {
 	replay, found, err := h.existingGoalControlResult(ctx, goalInput)
 	if err != nil || !found {
-		return CreateSessionResult{}, found, err
+		if err != nil {
+			result, resultErr := createSessionFailureResult(input, err)
+			return result, found, resultErr
+		}
+		return CreateSessionResult{}, found, nil
 	}
 	if !railPlacementMatchesSession(input.RailPlacement, replay.Canonical) {
-		return CreateSessionResult{}, true, ErrRailPlacementConflict
+		result, resultErr := createSessionFailureResult(input, ErrRailPlacementConflict)
+		return result, true, resultErr
 	}
 	runtimeSession, live := h.runtime.Session(goalInput.WorkspaceID, input.AgentSessionID)
 	if !live {
@@ -28,6 +33,8 @@ func (h *Host) replayInitialGoalCreate(
 	return CreateSessionResult{
 		Session: runtimeSession, Canonical: replay.Canonical,
 		Kind: "goalControl", GoalControl: &replay,
+		SessionStatus:     CreateSessionStatusCreated,
+		InitialGoalStatus: CreateSessionInitialGoalStatusSucceeded,
 	}, true, nil
 }
 

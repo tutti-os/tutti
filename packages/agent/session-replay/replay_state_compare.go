@@ -5,6 +5,9 @@ import (
 	"fmt"
 	"reflect"
 	"sort"
+	"strings"
+
+	"github.com/tutti-os/tutti/packages/agent/store-sqlite/canonical"
 )
 
 // normalizeReplayStateForComparison preserves relationships while replacing
@@ -20,11 +23,62 @@ func normalizeReplayStateForComparison(state TuttiReplayState) TuttiReplayState 
 	registerReplayIDs(replacements, value)
 	replaceReplayIDs(value, replacements)
 	stripVolatileGoalTimingFields(value)
+	canonicalizeTurnFileChanges(value)
 
 	normalized, _ := json.Marshal(value)
 	var result TuttiReplayState
 	_ = json.Unmarshal(normalized, &result)
 	return result
+}
+
+// canonicalizeTurnFileChanges folds recorded and live turn.fileChanges into the
+// shared tool fileChanges contract so older cassettes that still store raw
+// created-file bodies under diff/unifiedDiff compare equal to live newString.
+// Trailing EOLs on text bodies are stripped: apply_patch rematerialization often
+// adds a final newline that older expected-state tokens omitted.
+func canonicalizeTurnFileChanges(value map[string]any) {
+	agent, _ := value["agent"].(map[string]any)
+	sessions, _ := agent["sessions"].([]any)
+	for _, item := range sessions {
+		session, _ := item.(map[string]any)
+		turns, _ := session["turns"].([]any)
+		for _, turnItem := range turns {
+			turn, _ := turnItem.(map[string]any)
+			if turn == nil {
+				continue
+			}
+			normalized := canonical.NormalizeToolFileChanges(turn["fileChanges"])
+			if normalized == nil {
+				delete(turn, "fileChanges")
+				continue
+			}
+			normalizeFileChangeTextFields(normalized)
+			turn["fileChanges"] = normalized
+		}
+	}
+}
+
+func normalizeFileChangeTextFields(fileChanges map[string]any) {
+	files, _ := fileChanges["files"].([]any)
+	for _, item := range files {
+		file, _ := item.(map[string]any)
+		if file == nil {
+			continue
+		}
+		for _, key := range []string{
+			"content",
+			"diff",
+			"newString",
+			"oldString",
+			"unifiedDiff",
+		} {
+			text, ok := file[key].(string)
+			if !ok {
+				continue
+			}
+			file[key] = strings.TrimRight(text, "\r\n")
+		}
+	}
 }
 
 // stripVolatileGoalTimingFields drops Goal wall-clock / duration fields that
@@ -77,6 +131,9 @@ func registerReplayIDs(replacements map[string]string, value map[string]any) {
 			if payload, ok := message["payload"].(map[string]any); ok {
 				delete(payload, "seq")
 				registerReplayID(replacements, payload["operationId"], fmt.Sprintf("session:%d/message:%d/operation", sessionIndex, messageIndex))
+				// tool_call / approval callId remints across record→replay while
+				// the structural message slot stays the same.
+				registerReplayID(replacements, payload["callId"], fmt.Sprintf("session:%d/message:%d/call", sessionIndex, messageIndex))
 				content, _ := payload["content"].([]any)
 				for contentIndex, contentItem := range content {
 					block, _ := contentItem.(map[string]any)
@@ -145,8 +202,31 @@ func replaceReplayIDs(value any, replacements map[string]string) {
 }
 
 func firstReplayStateMismatch(path string, expected, actual any) string {
-	expectedValue := replayComparableValue(expected)
-	actualValue := replayComparableValue(actual)
+	return firstReplayStateMismatchComparable(
+		path,
+		replayComparableValue(expected),
+		replayComparableValue(actual),
+	)
+}
+
+func firstReplayStateMismatchComparable(
+	path string,
+	expectedValue, actualValue any,
+) string {
+	if isComposerSettingsPath(path) {
+		expectedSettings, expectedOK := expectedValue.(map[string]any)
+		actualSettings, actualOK := actualValue.(map[string]any)
+		if !expectedOK {
+			expectedSettings = nil
+		}
+		if !actualOK {
+			actualSettings = nil
+		}
+		if composerSettingsEqual(actualSettings, expectedSettings) {
+			return ""
+		}
+		return firstComposerSettingsMismatch(path, expectedSettings, actualSettings)
+	}
 	if expectedValue == nil || actualValue == nil {
 		if expectedValue == nil && actualValue == nil {
 			return ""
@@ -177,7 +257,11 @@ func firstReplayStateMismatch(path string, expected, actual any) string {
 			if !expectedOK || !actualOK {
 				return path + "." + key
 			}
-			if mismatch := firstReplayStateMismatch(path+"."+key, expectedChild, actualChild); mismatch != "" {
+			if mismatch := firstReplayStateMismatchComparable(
+				path+"."+key,
+				expectedChild,
+				actualChild,
+			); mismatch != "" {
 				return mismatch
 			}
 		}
@@ -187,7 +271,11 @@ func firstReplayStateMismatch(path string, expected, actual any) string {
 			return path
 		}
 		for index := range expectedValue {
-			if mismatch := firstReplayStateMismatch(fmt.Sprintf("%s[%d]", path, index), expectedValue[index], actualValue[index]); mismatch != "" {
+			if mismatch := firstReplayStateMismatchComparable(
+				fmt.Sprintf("%s[%d]", path, index),
+				expectedValue[index],
+				actualValue[index],
+			); mismatch != "" {
 				return mismatch
 			}
 		}
@@ -197,6 +285,40 @@ func firstReplayStateMismatch(path string, expected, actual any) string {
 		}
 	}
 	return ""
+}
+
+// isComposerSettingsPath detects Session.settings objects so final-state
+// compare can share settings.equal semantics instead of strict key equality.
+func isComposerSettingsPath(path string) bool {
+	return strings.HasSuffix(path, ".settings") &&
+		strings.Contains(path, ".sessions[")
+}
+
+// firstComposerSettingsMismatch reports the first recorded composer setting
+// that fails the shared empty-default / live-extra contract.
+func firstComposerSettingsMismatch(
+	path string,
+	expected, actual map[string]any,
+) string {
+	keys := make([]string, 0, len(expected))
+	for key := range expected {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	for _, key := range keys {
+		expectedValue := expected[key]
+		actualValue, ok := actual[key]
+		if !ok {
+			if composerSettingsValueEmpty(expectedValue) {
+				continue
+			}
+			return path + "." + key
+		}
+		if !composerSettingsValueEqual(actualValue, expectedValue) {
+			return path + "." + key
+		}
+	}
+	return path
 }
 
 func replayComparableValue(value any) any {

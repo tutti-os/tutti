@@ -946,6 +946,13 @@ while canonical Turn state remains authoritative once it exists.
   those projections.
   Canonical monotonicity guards prevent a late activation response from
   regressing newer realtime state.
+  A failed new-Session activation is a rollback signal only when the Engine's
+  canonical Session selector confirms that no Session entity exists. If the
+  Session exists but runtime startup or the initial Goal failed, the Session
+  remains selectable and the failure is rendered as Session detail state.
+  An explicit historical-row selection has higher priority than stale
+  activation failure metadata; it first requests detail reconciliation and
+  only returns home after an authoritative not-found result.
   Surfaces clear a new-Session draft only after activation admission succeeds.
   If an admitted new-Session activation is canceled before canonical Session
   confirmation, the surface restores the submitted draft only while the
@@ -1023,7 +1030,10 @@ turnless controls remain intact.
   the same activity-core Session reconcile executor. The executor owns scope,
   cursor/window, pagination, double-detail race closure, cancellation/deletion
   fences, and atomic application; hosts own transport, DTO mapping, diagnostics,
-  polling, and presentation side effects
+  polling, and presentation side effects. A shared-agent detail open also
+  re-materializes a durable binding into the local Engine when its cached
+  binding exists but the local runtime projection is absent; this repairs local
+  state and does not mutate historical data.
 - every daemon Session response carries the required `messageVersion`
   high-water cursor. Daemon and renderer ship as one protocol unit, so the
   shared adapter rejects a missing or invalid cursor instead of fabricating
@@ -1283,11 +1293,23 @@ the ordinary Rail's transient `runtimeRailConversations` overlay; stale page
 projections therefore cannot leak into Activity View.
 Membership and recency are snapshotted when the view opens; subsequent Engine
 pushes reconcile incrementally, while deletion removes a member immediately.
+The Activity controller owns that activation and its retained row cache;
+React render only consumes the controller snapshot and projects live row facts.
+Existing Priority member IDs and their relative order survive ordinary Rail
+refreshes that temporarily omit a summary; the controller uses the last known
+row summary until the next toggle or an explicit canonical tombstone. Selecting
+a historical Session that is temporarily injected into the visible summary
+list does not make an idle Session a newly discovered Activity task; only its
+live waiting, unread, or active facts can admit it to Priority.
+The activation is scoped by the workspace, authenticated user, rail filter,
+AgentGUI node, and Engine identity, not by the currently selected Session's
+provider or target; selecting a row must not rebuild a cross-provider Activity
+queue.
 Search temporarily takes over the content area and clearing search restores the
-same activation. Closing the view discards the activation and its retained-idle
-markers. A retained-idle marker stores the exact unread recency and expires as
-soon as that recency changes. Existing workspace, authenticated-user, Agent
-target, and Engine identities fence the activation internally; no Activity
+same activation. Closing the view discards the activation and its retained row
+cache. Existing workspace, authenticated-user,
+rail-filter, AgentGUI-node, and Engine identities fence the activation
+internally; the selected Session's provider and target do not. No Activity
 filter or additional host scope contract is introduced. Disabled hosts use an
 empty Activity selector and do not scan root Sessions. Activity rows omit the
 minute-clock subscription together with their hidden timestamp. The full

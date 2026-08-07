@@ -34,7 +34,7 @@ func completeImplementationHostTestRelease(release market.Release) market.Releas
 	if managed := release.Manifest.Implementation.ManagedStdio; managed != nil && managed.CLI != nil {
 		managed.Runtime.VersionRange = ">=20.0.0 <21.0.0"
 	}
-	release.Artifact = market.Artifact{StorageRealm: "tutti.connector.artifacts.v1", Key: "connectors/github/1.0.0.zip", ObjectVersion: "version-1",
+	release.Artifact = market.Artifact{Key: "connectors/github/1.0.0.zip",
 		SHA256: "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", SizeBytes: 1024, MediaType: "application/vnd.tutti.connector+zip"}
 	release.PublishedAt = time.Unix(1, 0).UTC()
 	release.Status = market.ReleaseStatusAvailable
@@ -114,9 +114,17 @@ func (stub *blockingStartProcessStub) Start(ctx context.Context, _ agentruntime.
 	return nil, ctx.Err()
 }
 
-type retryCloseProcessStub struct{ connection *retryCloseConnection }
+type retryCloseProcessStub struct {
+	connection *retryCloseConnection
+	started    chan struct{}
+}
 
 func (stub *retryCloseProcessStub) Start(context.Context, agentruntime.ProcessSpec) (agentruntime.ProcessConnection, error) {
+	select {
+	case <-stub.started:
+	default:
+		close(stub.started)
+	}
 	return stub.connection, nil
 }
 
@@ -162,7 +170,7 @@ func testCLIHost(t *testing.T, processes agentruntime.ProcessTransport) (*Implem
 	host, err := NewImplementationHost(ImplementationHostConfig{Artifacts: preparedResolverStub{receipt: market.PreparedArtifactReceipt{PreparedPath: root, InventoryDigest: inventory}},
 		Runtimes: connectorRuntimeStub{executable: connectorruntime.ConnectorExecutable{Path: runtimePath,
 			SHA256: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", SizeBytes: 7}},
-		Processes: processes, Commands: commands, StateRoot: t.TempDir()})
+		Processes: processes, Commands: commands, StateRoot: t.TempDir(), MCPStartupTimeout: 20 * time.Millisecond})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -341,9 +349,8 @@ func TestImplementationHostExecutesFromVerifiedSnapshotAfterPreparedTreeReplacem
 	if string(contents) != "// connector" {
 		t.Fatalf("executed snapshot contents = %q", contents)
 	}
-	if processes.spec.ConnectorSandbox == nil || len(processes.spec.ConnectorSandbox.ReadOnlyTreeIdentities) != 1 ||
-		processes.spec.ConnectorSandbox.ReadOnlyTreeIdentities[0].Root != processes.spec.CWD {
-		t.Fatalf("snapshot sandbox identity = %#v", processes.spec.ConnectorSandbox)
+	if len(processes.spec.ArtifactTrees) != 1 || processes.spec.ArtifactTrees[0].Root != processes.spec.CWD {
+		t.Fatalf("snapshot artifact identity = %#v", processes.spec.ArtifactTrees)
 	}
 }
 
@@ -407,7 +414,8 @@ func TestImplementationHostDeactivationCancelsBlockingStartWithoutWaitingForCLIC
 
 func TestImplementationHostRetainsFencedRouteUntilCloseCanBeRetried(t *testing.T) {
 	connection := &retryCloseConnection{closed: make(chan struct{})}
-	host, commands, connector, generation := testCLIHost(t, &retryCloseProcessStub{connection: connection})
+	started := make(chan struct{})
+	host, commands, connector, generation := testCLIHost(t, &retryCloseProcessStub{connection: connection, started: started})
 	receipt, err := host.Reconcile(context.Background(), market.RuntimeReconcileRequest{OperationID: "op-1", ConnectionID: "workspace-1",
 		Connector: connector, Enabled: true, Generation: generation})
 	if err != nil {
@@ -419,19 +427,10 @@ func TestImplementationHostRetainsFencedRouteUntilCloseCanBeRetried(t *testing.T
 			Context: cliservice.InvokeContext{WorkspaceID: "workspace-1"}})
 		invokeDone <- invokeErr
 	}()
-	deadline := time.Now().Add(time.Second)
-	for time.Now().Before(deadline) {
-		// Start has committed once the route owns the connection; Close below is
-		// the first observable operation, so a short yield is sufficient here.
-		route, _ := host.routes.Route(connectorRouteKey("workspace-1", "github")).(*connectorRoute)
-		hasProcess := false
-		if route != nil {
-			hasProcess = route.processes.ActiveCount() == 1
-		}
-		if hasProcess {
-			break
-		}
-		time.Sleep(time.Millisecond)
+	select {
+	case <-started:
+	case <-time.After(time.Second):
+		t.Fatal("CLI process did not start")
 	}
 	deactivation := market.RuntimeDeactivationRequest{ConnectionID: "workspace-1", ConnectorKey: "github", ReleaseDigest: implementationHostTestReleaseDigest,
 		Generation: market.HostGeneration{BootEpoch: "boot-1", Generation: 3}, Deadline: time.Now().Add(time.Second)}
@@ -494,7 +493,6 @@ func TestImplementationHostBoundsMCPProcessStart(t *testing.T) {
 	host, _, connector, generation := testCLIHost(t, processes)
 	connector.Release.Manifest.Implementation.ManagedStdio.CLI = nil
 	connector.Release.Manifest.Implementation.ManagedStdio.MCP = &market.ManagedMCPInterface{Entrypoint: "connector.js"}
-	host.mcpStartupTimeout = 20 * time.Millisecond
 	startedAt := time.Now()
 	if _, err := host.Reconcile(context.Background(), market.RuntimeReconcileRequest{OperationID: "op-1", ConnectionID: "workspace-1",
 		Connector: connector, Enabled: true, Generation: generation}); !errors.Is(err, context.DeadlineExceeded) {

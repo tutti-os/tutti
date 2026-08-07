@@ -72,7 +72,65 @@ test("activity reconciliation retains members and frozen recency after live fact
   });
 });
 
-test("activity reconciliation incrementally enqueues pushes, promotes attention, and removes deletes", () => {
+test("activity reconciliation keeps existing Priority members through a list refresh", () => {
+  const initial = createAgentGUIConversationActivityActivation(
+    [
+      conversation("waiting", {
+        needsUserAction: true,
+        time: NOW - HOUR_MS
+      }),
+      conversation("unread", {
+        hasUnreadCompletion: true,
+        time: NOW - 2 * HOUR_MS
+      })
+    ],
+    NOW
+  );
+  const refreshed = reconcileAgentGUIConversationActivityActivation(initial, [
+    conversation("new-active", {
+      status: "working",
+      time: NOW + HOUR_MS
+    })
+  ]);
+
+  expect(projectAgentGUIConversationActivity(refreshed).priorityIds).toEqual([
+    "waiting",
+    "unread",
+    "new-active"
+  ]);
+  expect(refreshed.priority.slice(0, 2)).toEqual(initial.priority);
+});
+
+test("activity reconciliation does not move existing members when they become read", () => {
+  const initial = createAgentGUIConversationActivityActivation(
+    [
+      conversation("waiting", {
+        needsUserAction: true,
+        time: NOW - HOUR_MS
+      }),
+      conversation("unread", {
+        hasUnreadCompletion: true,
+        time: NOW - 2 * HOUR_MS
+      })
+    ],
+    NOW
+  );
+  const read = reconcileAgentGUIConversationActivityActivation(initial, [
+    conversation("unread", { time: NOW + 2 * DAY_MS }),
+    conversation("waiting", { time: NOW + DAY_MS })
+  ]);
+
+  expect(projectAgentGUIConversationActivity(read).priorityIds).toEqual([
+    "waiting",
+    "unread"
+  ]);
+  expect(read.priority.map((member) => member.priorityReason)).toEqual([
+    "waiting",
+    "unread"
+  ]);
+});
+
+test("activity reconciliation admits only live late sessions and retains Priority members", () => {
   const initial = createAgentGUIConversationActivityActivation(
     [
       conversation("keep", { status: "working", time: NOW - HOUR_MS }),
@@ -93,17 +151,33 @@ test("activity reconciliation incrementally enqueues pushes, promotes attention,
   ]);
 
   expect(projectAgentGUIConversationActivity(reconciled)).toEqual({
-    priorityIds: ["promote", "pushed-active", "pushed-idle"],
+    priorityIds: ["promote", "pushed-active", "keep"],
     priorityReasonsById: new Map([
       ["promote", "unread"],
       ["pushed-active", "active"],
-      ["pushed-idle", "retained-idle"]
+      ["keep", "active"]
     ]),
     recentSections: [],
     referenceDayStartUnixMs: localDayStartUnixMs(NOW)
   });
   expect(new Set(reconciled.priority.map((member) => member.id)).size).toBe(
     reconciled.priority.length
+  );
+});
+
+test("activity reconciliation removes a deleted Priority member immediately", () => {
+  const initial = createAgentGUIConversationActivityActivation(
+    [conversation("deleted", { status: "working", time: NOW })],
+    NOW
+  );
+  const reconciled = reconcileAgentGUIConversationActivityActivation(
+    initial,
+    [],
+    { deleted: true }
+  );
+
+  expect(projectAgentGUIConversationActivity(reconciled).priorityIds).toEqual(
+    []
   );
 });
 
@@ -116,43 +190,6 @@ test("activity reconciliation preserves activation identity when nothing changes
   expect(
     reconcileAgentGUIConversationActivityActivation(initial, conversations)
   ).toBe(initial);
-});
-
-test("activity retention records exact unread recency and expires after recency changes", () => {
-  const unread = conversation("unread", {
-    hasUnreadCompletion: true,
-    time: NOW - HOUR_MS
-  });
-  const initial = createAgentGUIConversationActivityActivation([unread], NOW);
-  const read = conversation("unread", { time: NOW - HOUR_MS });
-  const retained = reconcileAgentGUIConversationActivityActivation(initial, [
-    read
-  ]);
-
-  expect(retained.priorityRetentionRecencyById.get("unread")).toBe(
-    NOW - HOUR_MS
-  );
-  expect(
-    projectAgentGUIConversationActivity(
-      createAgentGUIConversationActivityActivation(
-        [read],
-        NOW,
-        retained.priorityRetentionRecencyById
-      )
-    ).priorityReasonsById.get("unread")
-  ).toBe("retained-idle");
-
-  const recencyChanged = conversation("unread", { time: NOW });
-  const expired = reconcileAgentGUIConversationActivityActivation(retained, [
-    recencyChanged
-  ]);
-  expect(expired.priorityRetentionRecencyById.has("unread")).toBe(false);
-  const rebuilt = createAgentGUIConversationActivityActivation(
-    [recencyChanged],
-    NOW,
-    expired.priorityRetentionRecencyById
-  );
-  expect(projectAgentGUIConversationActivity(rebuilt).priorityIds).toEqual([]);
 });
 
 test("activity activation preserves source order for equal rank and recency", () => {

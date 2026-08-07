@@ -17,7 +17,9 @@ export function createConnectorMarketStoreState(): ConnectorMarketStoreState {
     catalogSections: [],
     connectorsByKey: {},
     connectorKeys: [],
+    pendingInstallationsByConnectorKey: {},
     operationsByConnectorKey: {},
+    authorizingConnectorKeys: {},
     lastError: null,
     revision: 0
   };
@@ -33,7 +35,10 @@ export function clearConnectorMarketStoreState(
   state.catalogSections = initial.catalogSections;
   state.connectorsByKey = initial.connectorsByKey;
   state.connectorKeys = initial.connectorKeys;
+  state.pendingInstallationsByConnectorKey =
+    initial.pendingInstallationsByConnectorKey;
   state.operationsByConnectorKey = initial.operationsByConnectorKey;
+  state.authorizingConnectorKeys = initial.authorizingConnectorKeys;
   state.lastError = initial.lastError;
   state.revision = initial.revision;
 }

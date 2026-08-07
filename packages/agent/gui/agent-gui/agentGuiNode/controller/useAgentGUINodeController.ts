@@ -378,11 +378,14 @@ export function useAgentGUINodeController({
       ) {
         return null;
       }
-      return conversationSummaryFromAgentSession(session, {
-        isNoProjectPath,
-        needsUserAction: activeRelatedPendingInteractions.length > 0,
-        userProjects
-      });
+      return {
+        ...conversationSummaryFromAgentSession(session, {
+          isNoProjectPath,
+          needsUserAction: activeRelatedPendingInteractions.length > 0,
+          userProjects
+        }),
+        isTransient: true
+      };
     }, [
       activeEngineSession,
       activeRelatedPendingInteractions.length,

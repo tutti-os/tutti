@@ -31,12 +31,9 @@ type CatalogCategory struct {
 }
 
 type CatalogEntry struct {
-	CategoryID        string `json:"categoryId"`
-	Featured          bool   `json:"featured"`
-	ConnectorKey      string `json:"connectorKey"`
-	Version           string `json:"version"`
-	ArtifactSHA256    string `json:"artifactSha256"`
-	ArtifactSizeBytes int64  `json:"artifactSizeBytes"`
+	CategoryID string  `json:"categoryId"`
+	Featured   bool    `json:"featured"`
+	Release    Release `json:"release"`
 }
 
 type CatalogSourcePage struct {
@@ -61,31 +58,6 @@ type CatalogPage struct {
 type CatalogSnapshot struct {
 	SourceRevision string
 	Releases       []Release
-	MarketType     string
-	TrustState     *CatalogTrustState
-}
-
-// CatalogTrustState is the durable anti-rollback checkpoint accepted from a
-// signed remote catalog. It is persisted independently from presentation data
-// so daemon restarts cannot reopen a replay window.
-type CatalogTrustState struct {
-	KeyringVersion uint64    `json:"keyringVersion"`
-	Sequence       uint64    `json:"sequence"`
-	EnvelopeDigest string    `json:"envelopeDigest"`
-	IssuedAt       time.Time `json:"issuedAt"`
-	ExpiresAt      time.Time `json:"expiresAt"`
-	NextUpdateAt   time.Time `json:"nextUpdateAt"`
-	ObservedAt     time.Time `json:"observedAt"`
-	WallHighWater  time.Time `json:"wallHighWater"`
-}
-
-type CatalogTrustStateReader interface {
-	LoadCatalogTrustState(context.Context, string) (CatalogTrustState, bool, error)
-}
-
-type CatalogTrustStateStore interface {
-	CatalogTrustStateReader
-	SaveCatalogTrustState(context.Context, string, CatalogTrustState) error
 }
 
 type Repository interface {
@@ -109,7 +81,6 @@ type Transaction interface {
 	OperationByClientRequestID(clientRequestID string) (*Operation, error)
 	ActiveOperation(connectorKey string) (*Operation, error)
 	SaveCatalogRevision(sourceRevision string) error
-	SaveCatalogTrustState(marketType string, state CatalogTrustState) error
 	SetCatalogState(state CatalogState) error
 	SaveConnector(Connector) error
 	DeleteConnector(connectorKey string) error
@@ -133,22 +104,30 @@ type CLIInstallationManager interface {
 
 type InstallCLIRequest struct {
 	OperationID string
+	Scope       OperationScope
+	Generation  HostGeneration
 	Release     Release
 }
 
 type RemoveCLIRequest struct {
 	OperationID   string
+	Scope         OperationScope
+	Generation    HostGeneration
 	ConnectorKey  string
 	ReleaseDigest string
 }
 
 type PrepareArtifactRequest struct {
 	OperationID string
+	Scope       OperationScope
+	Generation  HostGeneration
 	Release     Release
 }
 
 type RemoveArtifactRequest struct {
 	OperationID   string
+	Scope         OperationScope
+	Generation    HostGeneration
 	ConnectorKey  string
 	Version       string
 	ReleaseDigest string
@@ -178,18 +157,63 @@ type ImplementationHost interface {
 
 type RuntimeReconcileRequest struct {
 	OperationID  string
+	Scope        OperationScope
 	ConnectionID string
 	Connector    Connector
 	Enabled      bool
 	Generation   HostGeneration
+	// CredentialBrokerGrant is a one-shot authority passed directly to the
+	// runtime adapter. Implementations must not log or persist it.
+	CredentialBrokerGrant []byte
 }
 
 type RuntimeDeactivationRequest struct {
+	Scope         OperationScope
 	ConnectionID  string
 	ConnectorKey  string
 	ReleaseDigest string
 	Generation    HostGeneration
 	Deadline      time.Time
+}
+
+// RuntimeBindingResolver converts device installation plus an explicit
+// operation scope into account-aware runtime intent. It is the only port that
+// may obtain a short-lived credential grant; the Application clears the grant
+// after the ImplementationHost call returns.
+type RuntimeBindingResolver interface {
+	ResolveRuntimeBinding(context.Context, RuntimeBindingRequest) (RuntimeBinding, error)
+}
+
+type RuntimeBindingRequest struct {
+	OperationID string
+	Scope       OperationScope
+	Purpose     RuntimeBindingPurpose
+	Connector   Connector
+	Release     Release
+}
+
+type RuntimeBindingPurpose string
+
+const (
+	RuntimeBindingPurposeReconcile  RuntimeBindingPurpose = "reconcile"
+	RuntimeBindingPurposeDeactivate RuntimeBindingPurpose = "deactivate"
+)
+
+type RuntimeBinding struct {
+	ConnectionID          string
+	Enabled               bool
+	CredentialBrokerGrant []byte
+}
+
+// AuthorizationProjectionStore keeps account authorization separate from the
+// device-scoped Connector installation fact.
+type AuthorizationProjectionStore interface {
+	AuthorizationProjection(ctx context.Context, accountID, connectorKey string) (AuthorizationProjection, error)
+	SaveAuthorizationProjection(ctx context.Context, projection AuthorizationProjection) error
+}
+
+type CredentialBrokerGrantIssuer interface {
+	IssueCredentialBrokerGrant(ctx context.Context, accountID, connectorKey, connectionID string) ([]byte, error)
 }
 
 type AuthorizationProvider interface {
@@ -200,12 +224,14 @@ type AuthorizationProvider interface {
 type AuthorizationStartRequest struct {
 	OperationID     string
 	ClientRequestID string
+	Scope           OperationScope
 	Connector       Connector
 	Release         Release
 }
 
 type AuthorizationDisconnectRequest struct {
 	OperationID string
+	Scope       OperationScope
 	Connector   Connector
 }
 
@@ -233,4 +259,23 @@ type ChangedEventRecord struct {
 type ChangedEventOutbox interface {
 	PendingChangedEvents(ctx context.Context, limit int) ([]ChangedEventRecord, error)
 	MarkChangedEventPublished(ctx context.Context, sequence int64, publishedAt time.Time) error
+}
+
+// LifecycleCleanupStore removes only terminal operation results and events
+// whose publication has already been recorded. Active operations and pending
+// events are deliberately outside this contract so cleanup cannot weaken
+// crash recovery or at-least-once event delivery.
+type LifecycleCleanupStore interface {
+	CleanupLifecycle(ctx context.Context, request LifecycleCleanupRequest) (LifecycleCleanupResult, error)
+}
+
+type LifecycleCleanupRequest struct {
+	TerminalOperationsUpdatedThrough time.Time
+	PublishedEventsPublishedThrough  time.Time
+	BatchSize                        int
+}
+
+type LifecycleCleanupResult struct {
+	TerminalOperationsDeleted int64
+	PublishedEventsDeleted    int64
 }

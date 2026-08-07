@@ -1,5 +1,5 @@
 import "@testing-library/jest-dom/vitest";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { AgentSlashCommandPalette } from "./AgentSlashCommandPalette";
 
@@ -238,9 +238,20 @@ describe("AgentSlashCommandPalette", () => {
     expect(screen.getByText("Connected")).toHaveClass(
       "text-[var(--state-success)]"
     );
-    expect(
-      screen.getByRole("option", { name: /google-drive/i }).querySelector("img")
-    ).toHaveAttribute("src", "data:image/png;base64,ZHJpdmU=");
+    const googleDriveOption = screen.getByRole("option", {
+      name: /google-drive/i
+    });
+    const googleDriveIcon = googleDriveOption.querySelector("img");
+    expect(googleDriveIcon).toHaveAttribute(
+      "src",
+      "data:image/png;base64,ZHJpdmU="
+    );
+    expect(googleDriveOption.querySelector("svg")).toBeNull();
+
+    fireEvent.error(googleDriveIcon!);
+
+    expect(googleDriveOption.querySelector("img")).toBeNull();
+    expect(googleDriveOption.querySelector("svg")).toBeInTheDocument();
     screen.getByRole("button", { name: "Not connected" }).click();
     expect(onSelectSkill).toHaveBeenCalledWith(
       expect.objectContaining({ connectorKey: "notion" })

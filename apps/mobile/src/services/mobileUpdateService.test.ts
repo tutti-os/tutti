@@ -1,4 +1,5 @@
 import {
+  MOBILE_UPDATE_INSTALL_PERMISSION_REQUIRED,
   MOBILE_UPDATE_SCHEMA_VERSION,
   MobileUpdateService,
   parseMobileUpdateRelease
@@ -52,6 +53,20 @@ test("passes the verified release to the native installer", async () => {
 
   expect(install).toHaveBeenCalledWith(releaseFeed.apkUrl, "a".repeat(64));
   expect(snapshot.status).toBe("installing");
+});
+
+test("keeps the release available when Android install permission is required", async () => {
+  const install = jest.fn<Promise<void>, [string, string]>(async () => {
+    throw { code: MOBILE_UPDATE_INSTALL_PERMISSION_REQUIRED };
+  });
+  const service = createService(releaseFeed, install);
+
+  await service.checkForUpdates();
+  await expect(service.installUpdate()).rejects.toMatchObject({
+    code: MOBILE_UPDATE_INSTALL_PERMISSION_REQUIRED
+  });
+
+  expect(service.getSnapshot().status).toBe("available");
 });
 
 test("rejects a feed for a different package or schema", () => {

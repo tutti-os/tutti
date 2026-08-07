@@ -756,12 +756,31 @@ type UpdatePinInput struct {
 }
 
 type CreateSessionResult struct {
-	Session     ProviderRuntimeSession
-	Canonical   storesqlite.Session
-	TurnID      string
-	Kind        string
-	GoalControl *GoalControlResult
+	Session           ProviderRuntimeSession
+	Canonical         storesqlite.Session
+	TurnID            string
+	Kind              string
+	GoalControl       *GoalControlResult
+	SessionStatus     CreateSessionStatus
+	InitialGoalStatus CreateSessionInitialGoalStatus
 }
+
+type CreateSessionStatus string
+
+const (
+	CreateSessionStatusUnknown    CreateSessionStatus = "unknown"
+	CreateSessionStatusCreated    CreateSessionStatus = "created"
+	CreateSessionStatusNotCreated CreateSessionStatus = "not_created"
+)
+
+type CreateSessionInitialGoalStatus string
+
+const (
+	CreateSessionInitialGoalStatusNotRequested CreateSessionInitialGoalStatus = "not_requested"
+	CreateSessionInitialGoalStatusSucceeded    CreateSessionInitialGoalStatus = "succeeded"
+	CreateSessionInitialGoalStatusFailed       CreateSessionInitialGoalStatus = "failed"
+	CreateSessionInitialGoalStatusUnknown      CreateSessionInitialGoalStatus = "unknown"
+)
 
 type SendInputResult struct {
 	Session            ProviderRuntimeSession

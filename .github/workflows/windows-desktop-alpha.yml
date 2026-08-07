@@ -3,10 +3,8 @@ name: Windows Desktop Alpha
 on:
   pull_request:
     paths:
-      - ".github/workflows/windows-desktop-alpha.yml"
       - "apps/desktop/**"
-      - "packages/agent/daemon/**"
-      - "services/tuttid/**"
+      - "services/tuttid/builtin-apps/**"
       - "package.json"
       - "pnpm-lock.yaml"
   workflow_dispatch:

@@ -9,6 +9,7 @@ import {
 import { mobileSecurity } from "../native/mobileNative";
 import type { MobileRootStackParamList } from "../navigation/mobileNavigation";
 import type { MobileApplicationService } from "../services/mobileApplicationService";
+import { isMobileUpdateInstallPermissionRequired } from "../services/mobileUpdateService";
 import { SettingsScreenView } from "./SettingsScreenView";
 
 type Props = NativeStackScreenProps<MobileRootStackParamList, "Settings"> & {
@@ -65,8 +66,10 @@ export function SettingsScreen({ application, navigation }: Props) {
             { style: "cancel", text: t("cancel") },
             {
               onPress: () => {
-                void mobileUpdateService.installUpdate().catch(() => {
-                  Alert.alert(t("updateInstallFailed"));
+                void mobileUpdateService.installUpdate().catch((error) => {
+                  if (!isMobileUpdateInstallPermissionRequired(error)) {
+                    Alert.alert(t("updateInstallFailed"));
+                  }
                 });
               },
               text: t("downloadAndInstall")

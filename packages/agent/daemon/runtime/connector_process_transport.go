@@ -15,48 +15,31 @@ import (
 	"time"
 )
 
-var ErrConnectorProcessSandboxUnsupported = errors.New("connector process sandbox is unsupported on this platform")
-
 const (
 	defaultConnectorStdoutLimit = int64(64 * 1024 * 1024)
 	defaultConnectorStderrLimit = int64(16 * 1024 * 1024)
 	connectorFDEnvPrefix        = "TUTTI_CONNECTOR_FD_"
 )
 
-// connectorProcessSandbox is deliberately package-private. A caller cannot
-// inject a no-op implementation to bypass the production fail-closed check;
-// platform files in this package must provide the real sandbox backend.
-type connectorProcessSandbox interface {
-	Apply(*exec.Cmd, ProcessSpec) error
-}
-
 type connectorProcessTransport struct {
-	sandbox     connectorProcessSandbox
 	stdoutLimit int64
 	stderrLimit int64
 }
 
-// NewConnectorProcessTransport returns the hardened transport used for
-// third-party connector MCP and CLI processes. When the current platform has
-// no sandbox backend, the transport remains available so the daemon can serve
-// non-execution capabilities, but every connector process launch fails closed.
+// NewConnectorProcessTransport returns the bounded, receipt-verifying
+// transport used for connector installation, MCP, CLI, and authorization
+// broker processes. Connector processes intentionally do not use an OS
+// process sandbox; authority is constrained by signed package identity,
+// executable identity, explicit environment, timeouts, and output limits.
 func NewConnectorProcessTransport() (ProcessTransport, error) {
-	sandbox := platformConnectorProcessSandbox()
-	return newConnectorProcessTransport(sandbox, defaultConnectorStdoutLimit, defaultConnectorStderrLimit), nil
+	return newConnectorProcessTransport(defaultConnectorStdoutLimit, defaultConnectorStderrLimit), nil
 }
 
-func newConnectorProcessTransport(sandbox connectorProcessSandbox, stdoutLimit, stderrLimit int64) ProcessTransport {
-	return connectorProcessTransport{
-		sandbox:     sandbox,
-		stdoutLimit: stdoutLimit,
-		stderrLimit: stderrLimit,
-	}
+func newConnectorProcessTransport(stdoutLimit, stderrLimit int64) ProcessTransport {
+	return connectorProcessTransport{stdoutLimit: stdoutLimit, stderrLimit: stderrLimit}
 }
 
 func (transport connectorProcessTransport) Start(ctx context.Context, spec ProcessSpec) (ProcessConnection, error) {
-	if transport.sandbox == nil {
-		return nil, ErrConnectorProcessSandboxUnsupported
-	}
 	if err := validateConnectorProcessSpec(spec); err != nil {
 		return nil, err
 	}
@@ -92,10 +75,6 @@ func (transport connectorProcessTransport) Start(ctx context.Context, spec Proce
 		cancel()
 		return nil, err
 	}
-	if err := transport.sandbox.Apply(cmd, spec); err != nil {
-		cancel()
-		return nil, fmt.Errorf("apply connector process sandbox: %w", err)
-	}
 	prepareConnectorProcessGroup(cmd)
 
 	stdin, err := cmd.StdinPipe()
@@ -117,9 +96,9 @@ func (transport connectorProcessTransport) Start(ctx context.Context, spec Proce
 	cmd.Stdout = connectorFrameWriter{connection: connection, stdout: true}
 	cmd.Stderr = connectorFrameWriter{connection: connection}
 	// Keep this immediately adjacent to Start: the signed receipt is rechecked
-	// after every other launch preparation step and before the sandboxed child
+	// after every other launch preparation step and before the child
 	// can observe its entrypoint or modules.
-	if err := verifyConnectorReadOnlyTrees(spec.ConnectorSandbox.ReadOnlyTreeIdentities); err != nil {
+	if err := verifyConnectorArtifactTrees(spec.ArtifactTrees); err != nil {
 		_ = stdin.Close()
 		cancel()
 		return nil, err
@@ -134,20 +113,20 @@ func (transport connectorProcessTransport) Start(ctx context.Context, spec Proce
 	return connection, nil
 }
 
-func verifyConnectorReadOnlyTrees(identities []ReadOnlyTreeIdentity) error {
+func verifyConnectorArtifactTrees(identities []ArtifactTreeIdentity) error {
 	for _, identity := range identities {
 		if !filepath.IsAbs(identity.Root) || len(identity.SHA256) != sha256.Size*2 || strings.ToLower(identity.SHA256) != identity.SHA256 {
-			return errors.New("connector read-only tree identity is invalid")
+			return errors.New("connector artifact tree identity is invalid")
 		}
 		if _, err := hex.DecodeString(identity.SHA256); err != nil {
-			return errors.New("connector read-only tree identity is invalid")
+			return errors.New("connector artifact tree identity is invalid")
 		}
 		actual, err := connectorTreeInventoryDigest(identity.Root)
 		if err != nil {
-			return fmt.Errorf("verify connector read-only tree: %w", err)
+			return fmt.Errorf("verify connector artifact tree: %w", err)
 		}
 		if actual != identity.SHA256 {
-			return errors.New("connector read-only tree changed before launch")
+			return errors.New("connector artifact tree changed before launch")
 		}
 	}
 	return nil
@@ -171,7 +150,7 @@ func connectorTreeInventoryDigest(root string) (string, error) {
 			return err
 		}
 		if entry.Type()&os.ModeSymlink != 0 || (!entry.IsDir() && !info.Mode().IsRegular()) {
-			return errors.New("connector read-only tree contains an unsupported file type")
+			return errors.New("connector artifact tree contains an unsupported file type")
 		}
 		_, _ = io.WriteString(hash, filepath.ToSlash(relative))
 		_, _ = hash.Write([]byte{0})
@@ -203,14 +182,6 @@ func validateConnectorProcessSpec(spec ProcessSpec) error {
 	}
 	if spec.ExecutableIdentity == nil || strings.TrimSpace(spec.ExecutableIdentity.SHA256) == "" || spec.ExecutableIdentity.SizeBytes <= 0 {
 		return errors.New("connector process executable identity is required")
-	}
-	if spec.ConnectorSandbox == nil {
-		return errors.New("connector process sandbox policy is required")
-	}
-	for _, executable := range spec.ConnectorSandbox.AllowedExecutables {
-		if !filepath.IsAbs(executable) || strings.ContainsRune(executable, '\x00') {
-			return errors.New("connector sandbox allowed executables must be absolute paths")
-		}
 	}
 	environmentKeys := make(map[string]struct{}, len(spec.Env))
 	for _, item := range spec.Env {

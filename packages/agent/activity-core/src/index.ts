@@ -224,6 +224,8 @@ export {
   selectEngineLatestTurn,
   selectEnginePendingInteractions,
   selectEngineSession,
+  selectEngineSessionCanReload,
+  selectFailedNewActivationResolution,
   selectEngineSessionDeleted,
   selectEngineSessionIsRespondingToInteraction,
   selectEngineSessionRuntimeAvailability,
@@ -253,6 +255,7 @@ export {
   canonicalTurnKey
 } from "./engine/sessionEntityKeys.ts";
 export type {
+  FailedNewActivationResolution,
   WorkspaceAgentConsumerCounts,
   WorkspaceAgentConsumerSession
 } from "./engine/sessionLifecycle.selectors.ts";

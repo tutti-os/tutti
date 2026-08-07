@@ -100,6 +100,7 @@ function conversationSummariesRenderEqual(
     left.pinnedAtUnixMs === right.pinnedAtUnixMs &&
     left.sortTimeUnixMs === right.sortTimeUnixMs &&
     left.updatedAtUnixMs === right.updatedAtUnixMs &&
+    left.isTransient === right.isTransient &&
     left.projectionSource === right.projectionSource &&
     left.isImported === right.isImported &&
     left.hasUnreadCompletion === right.hasUnreadCompletion &&

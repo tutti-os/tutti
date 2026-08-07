@@ -41,8 +41,17 @@ type ImportResult = replay.ImportResult
 type ActivityEvent = replay.RecordingActivityEvent
 type Service = replay.Service
 type SemanticRegistration = replay.SemanticRegistration
+type SemanticProfile = replay.SemanticProfile
 type SemanticCassetteReader = replay.SemanticCassetteSource
 type SemanticRuntime = replay.SemanticRuntime
+
+func TuttiSemanticProfile() SemanticProfile {
+	return replay.TuttiSemanticProfile()
+}
+
+func AgentSemanticProfile() SemanticProfile {
+	return replay.AgentSemanticProfile()
+}
 
 // SemanticWorkspaceStore keeps Tutti's product-facing workspace types at the
 // Tutti boundary. The shared replay runtime consumes its neutral equivalents

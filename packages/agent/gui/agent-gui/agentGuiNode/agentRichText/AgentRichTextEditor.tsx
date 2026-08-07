@@ -61,6 +61,7 @@ import {
 import {
   createAgentRichTextControlledValueTracker,
   recordAgentRichTextLocalEdit,
+  resolveAgentRichTextControlledSelection,
   shouldApplyAgentRichTextControlledValue
 } from "./agentRichTextControlledValue";
 import { createAgentRichTextMentionSuggestionSuppression } from "./agentRichTextMentionSuggestionSuppression";
@@ -112,6 +113,7 @@ export const AgentRichTextEditor = forwardRef<
   const controlledValueTrackerRef = useRef(
     createAgentRichTextControlledValueTracker(contentScopeKey)
   );
+  const appliedContentScopeKeyRef = useRef(contentScopeKey);
   const editorRef = useRef<Editor | null>(null);
   const onChangeRef = useRef(onChange);
   const onContentLayoutInvalidatedRef = useRef(onContentLayoutInvalidated);
@@ -145,11 +147,9 @@ export const AgentRichTextEditor = forwardRef<
   const scrollFrameRef = useRef<number | null>(null);
   const [contextMenu, setContextMenu] =
     useState<AgentRichTextContextMenuState | null>(null);
-
   const closeContextMenu = useCallback(() => {
     setContextMenu(null);
   }, []);
-
   const insertPlainText = useCallback((text: string): void => {
     const currentEditor = editorRef.current;
     if (!currentEditor || currentEditor.isDestroyed || !text) {
@@ -253,7 +253,6 @@ export const AgentRichTextEditor = forwardRef<
       scrollEditorSelectionIntoView(currentEditor);
     });
   };
-
   const extensions = useMemo(
     () => [
       ...createAgentRichTextInputExtensions(
@@ -758,14 +757,25 @@ export const AgentRichTextEditor = forwardRef<
       capabilities: availableCapabilities,
       skills: availableSkills
     });
+    const scopeChanged = appliedContentScopeKeyRef.current !== contentScopeKey;
+    const previousSelection = editor.state.selection;
     mentionSuggestionSuppression.setRestoredValue(value);
     if (JSON.stringify(editor.getJSON()) === JSON.stringify(nextDoc)) {
       lastEmittedPromptRef.current = value;
+      appliedContentScopeKeyRef.current = contentScopeKey;
       return;
     }
     editor.commands.setContent(nextDoc, { emitUpdate: false });
-    editor.commands.setTextSelection(editor.state.doc.content.size);
+    const documentEnd = editor.state.doc.content.size;
+    editor.commands.setTextSelection(
+      resolveAgentRichTextControlledSelection(
+        scopeChanged,
+        previousSelection,
+        documentEnd
+      )
+    );
     lastEmittedPromptRef.current = value;
+    appliedContentScopeKeyRef.current = contentScopeKey;
     onContentLayoutInvalidatedRef.current?.();
   }, [availableCapabilities, availableSkills, contentScopeKey, editor, value]);
 

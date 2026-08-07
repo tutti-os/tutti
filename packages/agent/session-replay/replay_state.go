@@ -691,6 +691,17 @@ func validateReplayPortableValue(path, key string, value any) error {
 func MergeTuttiReplayStates(
 	states []TuttiReplayState,
 ) (TuttiReplayMergedState, error) {
+	for _, state := range states {
+		if err := ValidateTuttiReplayState(state); err != nil {
+			return TuttiReplayMergedState{}, err
+		}
+	}
+	return mergeTuttiReplayStatesValidated(states)
+}
+
+func mergeTuttiReplayStatesValidated(
+	states []TuttiReplayState,
+) (TuttiReplayMergedState, error) {
 	merged := TuttiReplayMergedState{
 		Agents: []agenthost.HistoricalSessionGraph{},
 		TuttiMode: TuttiReplayTuttiMode{
@@ -706,9 +717,6 @@ func MergeTuttiReplayStates(
 	workflowObjects := map[string]any{}
 	issueObjects := map[string]any{}
 	for _, state := range states {
-		if err := ValidateTuttiReplayState(state); err != nil {
-			return TuttiReplayMergedState{}, err
-		}
 		for _, session := range state.Agent.Sessions {
 			if err := mergeReplayObject(
 				"$.agent.sessions["+session.ID+"]",
@@ -808,6 +816,12 @@ func CompareTuttiReplayState(expected, actual TuttiReplayState) error {
 	if err := ValidateTuttiReplayState(actual); err != nil {
 		return fmt.Errorf("invalid actual Tutti Replay State: %w", err)
 	}
+	return compareTuttiReplayStateValidated(expected, actual)
+}
+
+func compareTuttiReplayStateValidated(
+	expected, actual TuttiReplayState,
+) error {
 	expected = normalizeReplayStateForComparison(expected)
 	actual = normalizeReplayStateForComparison(actual)
 	if mismatch := firstReplayStateMismatch("$", expected, actual); mismatch != "" {

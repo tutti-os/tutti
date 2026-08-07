@@ -60,12 +60,20 @@ async function main() {
       continue;
     }
 
-    console.log(
-      `Publishing ${packageConfig.name}@${releaseVersion} with latest tag`
-    );
-    execFileSync("pnpm", publishArguments, {
-      cwd: join(workspaceRoot, packageConfig.directory),
-      stdio: "inherit"
+    await publishPackageWithRetry({
+      packageName: packageConfig.name,
+      version: releaseVersion,
+      publish: () => {
+        console.log(
+          `Publishing ${packageConfig.name}@${releaseVersion} with latest tag`
+        );
+        execFileSync("pnpm", publishArguments, {
+          cwd: join(workspaceRoot, packageConfig.directory),
+          stdio: "inherit"
+        });
+      },
+      isPublished: () =>
+        isPackageVersionPublished(packageConfig.name, releaseVersion)
     });
   }
 
@@ -80,6 +88,46 @@ async function main() {
     env: createReleaseGitEnvironment(),
     stdio: "inherit"
   });
+}
+
+// npm provenance can fail after creating a transparency-log entry but before
+// the registry accepts the package. Re-checking the immutable version before
+// a bounded retry makes workflow re-runs and this individual publish step
+// idempotent without disabling provenance.
+export async function publishPackageWithRetry({
+  packageName,
+  version,
+  publish,
+  isPublished,
+  maxAttempts = 3,
+  wait = defaultPublishRetryWait
+}) {
+  let lastError;
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    try {
+      publish();
+      return;
+    } catch (error) {
+      lastError = error;
+      if (isPublished()) {
+        console.log(
+          `${packageName}@${version} became visible after publish returned an error; continuing`
+        );
+        return;
+      }
+      if (attempt < maxAttempts) {
+        console.warn(
+          `Publish attempt ${attempt}/${maxAttempts} failed for ${packageName}@${version}; retrying`
+        );
+        await wait(attempt);
+      }
+    }
+  }
+  throw lastError;
+}
+
+function defaultPublishRetryWait(attempt) {
+  return new Promise((resolve) => setTimeout(resolve, attempt * 2_000));
 }
 
 export function createReleaseCommit(releaseVersion, releasePaths) {

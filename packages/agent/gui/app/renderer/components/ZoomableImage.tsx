@@ -206,7 +206,12 @@ export function ZoomableImage({
       actionSource,
       resolveImageDownloadName(downloadName, actionSource, alt)
     );
-  }, [actionSource, alt, closeContextMenu, downloadName]);
+    setCopyStatus({
+      busy: false,
+      message: t("agentHost.agentGui.imageDownloaded"),
+      variant: "success"
+    });
+  }, [actionSource, alt, closeContextMenu, downloadName, t]);
   const zoomOutPreviewImage = useCallback((): void => {
     setIsWheelZooming(false);
     setImagePreviewZoom((value) =>

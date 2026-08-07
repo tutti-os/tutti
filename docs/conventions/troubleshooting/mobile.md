@@ -57,6 +57,69 @@
   workflow through APK assembly.
 - **References:** `apps/mobile/package.json`, `apps/mobile/babel.config.js`
 
+## Android update stays on MainActivity without opening the installer
+
+- **Symptom:** The Android App reports that it cannot start an update, remains
+  on `sh.tutti.mobile/.MainActivity`, and no `PackageInstaller` or
+  `.InstallStart` activity appears. A successful feed request or an HTTP 200
+  response for the APK does not prove that the APK reached the installer.
+- **Quick checks:** Filter the device logcat by the native update tag:
+
+  ```sh
+  adb -s <serial> logcat -v threadtime TuttiMobileSecurity:I '*:S'
+  ```
+
+  Follow the log sequence from `Starting update download` through `Android
+package installer activity started`. The first missing stage identifies the
+  failing boundary:
+  - no `Update HTTP response`: URL, connection, or HTTP response failure;
+  - `Update HTTP response` but no `Update download bytes received`: response
+    body read or temporary-file write failure;
+  - `Update download bytes received` but no `Update APK finalized`: checksum,
+    cached APK replacement, or temporary-file rename failure;
+  - `Update APK finalized` but no `Update FileProvider URI created`: cached
+    path or FileProvider configuration failure;
+  - `Update FileProvider URI created` but no `Android package installer
+activity started`: package-installer launch failure.
+
+  The log includes the HTTP status, content length, downloaded byte count,
+  expected and actual SHA-256 values, cache path, and the exception stack trace.
+
+- **Relevant error codes:** `UPDATE_URL_INVALID`,
+  `UPDATE_CONNECTION_FAILED`, `UPDATE_HTTP_FAILED`,
+  `UPDATE_DOWNLOAD_FAILED`, `UPDATE_CHECKSUM_INVALID`,
+  `UPDATE_CHECKSUM_FAILED`, `UPDATE_CACHE_FAILED`,
+  `UPDATE_CACHE_REPLACE_FAILED`, `UPDATE_FILE_FINALIZE_FAILED`,
+  `UPDATE_URI_FAILED`, and `UPDATE_INSTALLER_LAUNCH_FAILED`. If Android's
+  per-app unknown-source permission is missing, `UPDATE_INSTALL_PERMISSION_REQUIRED`
+  is an expected recovery signal rather than an APK failure;
+  `UPDATE_PERMISSION_SETTINGS_FAILED` means the system settings page itself
+  could not be opened.
+- **Root cause:** The manual updater downloads and verifies the APK before
+  passing a `content://` URI from the Tutti FileProvider to Android's package
+  installer. Failures at any pre-installer stage previously collapsed into the
+  same user-facing error. Unknown-source permission is checked before the
+  download and opens the app-specific Android settings page when required.
+- **Fix:** If the permission settings page opens, enable **Allow from this
+  source** for Tutti, return to the App, and tap **Software update** and
+  **Download and install** again. If permission is already allowed, capture
+  the first failing `TuttiMobileSecurity` log stage and its error code rather
+  than rechecking only the feed URL or APK HTTP status. Compare the logged
+  `expectedSHA256` and `actualSHA256` with the published `latest.json` before
+  investigating PackageInstaller.
+- **Validation:** Run `pnpm --filter @tutti-os/mobile check` and
+  `./gradlew app:compileDebugKotlin` from `apps/mobile/android`. On a physical
+  device, reproduce from Settings, confirm the log reaches APK finalization
+  and URI creation, then confirm `Android package installer activity started`
+  and an installer session appears. For a permission recovery test, revoke
+  Tutti's unknown-source permission, tap update once, grant the permission in
+  Android settings, return to the App, and retry the update.
+- **References:**
+  `apps/mobile/android/app/src/main/java/sh/tutti/mobile/MobileSecurityModule.kt`,
+  `apps/mobile/android/app/src/main/java/sh/tutti/mobile/MobileUpdateDownloader.kt`,
+  `apps/mobile/src/services/mobileUpdateService.ts`,
+  `tools/scripts/build-mobile-release-latest.mjs`
+
 ## Mobile quick prompts are missing from the plus menu
 
 - **Symptom:** The Desktop quick-prompt library is enabled and contains

@@ -131,6 +131,19 @@ candidates may arrive before or after `Connect` through
 `AddRemoteCandidates`. A `Participant` represents one connection attempt and
 must not be reused after completion or cancellation.
 
+### Network path policy
+
+The default empty `NetworkPolicy` is `system`. It keeps the operating system's
+network view, but applies a shared LAN-first candidate preference: private
+IPv4/ULA host candidates receive the normal host priority, global-unicast host
+candidates receive a lower host priority, and server-reflexive candidates
+remain available as the public-network fallback.
+
+`system` includes active TUN interfaces for fallback, while `direct` additionally
+binds sockets to physical interfaces where the platform supports it. Product
+consumers should use `system` unless they expose an explicit advanced routing
+setting.
+
 `ALPN` remains the canonical protocol name. During a rolling migration, a
 consumer may add a bounded list of `CompatibleProtocols`; the canonical value
 is always offered first. After connection, `Link.NegotiatedProtocol` lets the

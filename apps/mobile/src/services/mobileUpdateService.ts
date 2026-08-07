@@ -2,6 +2,8 @@ import { ObservableService } from "./observableService";
 
 export const MOBILE_UPDATE_SCHEMA_VERSION = "tutti.android.mobile.latest.v1";
 export const MOBILE_PACKAGE_NAME = "sh.tutti.mobile";
+export const MOBILE_UPDATE_INSTALL_PERMISSION_REQUIRED =
+  "UPDATE_INSTALL_PERMISSION_REQUIRED";
 
 export type MobileUpdateStatus =
   | "available"
@@ -100,7 +102,11 @@ export class MobileUpdateService extends ObservableService<MobileUpdateSnapshot>
       await this.installer.install(release.apkURL, release.sha256);
       return this.snapshot;
     } catch (error) {
-      this.setSnapshot({ status: "error" });
+      this.setSnapshot({
+        status: isMobileUpdateInstallPermissionRequired(error)
+          ? "available"
+          : "error"
+      });
       throw error;
     }
   }
@@ -220,4 +226,12 @@ function positiveInteger(value: unknown, key: string): number {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+export function isMobileUpdateInstallPermissionRequired(
+  value: unknown
+): boolean {
+  return (
+    isRecord(value) && value.code === MOBILE_UPDATE_INSTALL_PERMISSION_REQUIRED
+  );
 }

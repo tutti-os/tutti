@@ -1,6 +1,11 @@
 import { act, renderHook } from "@testing-library/react";
+import {
+  createAgentSessionEngine,
+  selectEngineSessionCanReload
+} from "@tutti-os/agent-activity-core";
 import { describe, expect, it, vi } from "vitest";
 import type { AgentGUINodeData } from "../../../types";
+import { createTestEngineCommandPort } from "../../../shared/testing/createTestAgentSessionEngine";
 import { useAgentConversationSelection } from "./useAgentConversationSelection";
 
 describe("useAgentConversationSelection", () => {
@@ -226,7 +231,8 @@ describe("useAgentConversationSelection", () => {
     expect(active.current).toBe("session-a");
     expect(setIntent).toHaveBeenCalledWith({
       tag: "active",
-      id: "session-a"
+      id: "session-a",
+      source: "user-selection"
     });
     expect(setLoading).toHaveBeenCalledWith(false);
     expect(ensureHydrated).not.toHaveBeenCalled();
@@ -279,5 +285,90 @@ describe("useAgentConversationSelection", () => {
 
     expect(hasConversationListQuery).not.toHaveBeenCalled();
     expect(ensureHydrated).not.toHaveBeenCalled();
+  });
+
+  it("hydrates a historical session after its new activation failed", () => {
+    const agentSessionId = "historical-session";
+    const engine = createAgentSessionEngine({
+      clock: { nowUnixMs: () => 1 },
+      commandPort: createTestEngineCommandPort({
+        execute: async () => undefined
+      }),
+      identity: { origin: "test", workspaceId: "workspace-1" },
+      scheduler: { schedule: () => ({ cancel() {} }) }
+    });
+    engine.dispatch({
+      agentSessionId,
+      agentTargetId: "target-1",
+      clientSubmitId: "submit-1",
+      content: [{ type: "text", text: "hello" }],
+      cwd: "/workspace",
+      expiresAtUnixMs: 45_001,
+      mode: "new",
+      requestedAtUnixMs: 1,
+      requestId: "activation-1",
+      type: "activation/requested",
+      workspaceId: "workspace-1"
+    });
+    engine.dispatch({
+      commandId: "activate:activation-1",
+      commandType: "session/activate",
+      correlationId: "activation-1",
+      errorMessage: "Initial goal failed.",
+      outcome: "failed",
+      type: "engine/commandResult"
+    });
+
+    const active = { current: null as string | null };
+    const ensureHydrated = vi.fn();
+    const setIntent = vi.fn();
+    const { result } = renderHook(() =>
+      useAgentConversationSelection({
+        activation: {
+          canReload: (sessionId) =>
+            selectEngineSessionCanReload(engine.getSnapshot(), sessionId),
+          forget: vi.fn(),
+          isPending: () => false
+        },
+        conversations: {
+          agentTargetIdFor: () => "local:codex",
+          contains: () => true
+        },
+        detail: {
+          ensureHydrated,
+          ensureStateHydrated: vi.fn(),
+          isHydrated: () => false,
+          isStateHydrated: () => false,
+          markPending: vi.fn(),
+          setLoading: vi.fn()
+        },
+        hasConversationListQuery: () => true,
+        isMounted: () => true,
+        onMissingConversationListQuery: vi.fn(),
+        persistence: { update: vi.fn() },
+        rail: {
+          clearRevealRequest: vi.fn(),
+          requestReveal: vi.fn()
+        },
+        selection: {
+          clearDetailError: vi.fn(),
+          getActiveSessionId: () => active.current,
+          setActiveSessionId: (sessionId) => {
+            active.current = sessionId;
+          },
+          setComposerHome: vi.fn(),
+          setIntent
+        }
+      })
+    );
+
+    act(() => result.current.selectConversation(agentSessionId));
+
+    expect(setIntent).toHaveBeenCalledWith({
+      id: agentSessionId,
+      source: "user-selection",
+      tag: "active"
+    });
+    expect(ensureHydrated).toHaveBeenCalledWith(agentSessionId);
   });
 });

@@ -60,12 +60,21 @@ export function buildChangedGoValidationLanes({
 
 export function parseChangedGoValidationArgs(inputArgs) {
   const args = inputArgs.filter((arg) => arg !== "--");
-  const options = { baseRef: null, kind: null, maxParallel: 3, tailLines: 80 };
+  const options = {
+    baseRef: null,
+    headRef: "HEAD",
+    kind: null,
+    maxParallel: 3,
+    tailLines: 80
+  };
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index];
     switch (arg) {
       case "--base":
         options.baseRef = readValue(args, ++index, arg);
+        break;
+      case "--head":
+        options.headRef = readValue(args, ++index, arg);
         break;
       case "--kind": {
         const kind = readValue(args, ++index, arg);
@@ -98,7 +107,7 @@ async function main() {
   const options = parseChangedGoValidationArgs(process.argv.slice(2));
   const changedFiles = execFileSync(
     "git",
-    ["diff", "--name-only", `${options.baseRef}...HEAD`],
+    ["diff", "--name-only", `${options.baseRef}...${options.headRef}`],
     {
       cwd: workspaceRoot,
       encoding: "utf8",

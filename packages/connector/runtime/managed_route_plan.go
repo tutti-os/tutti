@@ -17,12 +17,14 @@ var runtimeIdentityPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,19
 
 type ManagedRoutePlannerConfig struct {
 	StateRoot        string
+	UserHome         string
 	Runtimes         ConnectorRuntimeResolver
 	CLIInstallations market.CLIInstallationManager
 }
 
 type ManagedRoutePlanner struct {
 	stateRoot        string
+	userHome         string
 	runtimes         ConnectorRuntimeResolver
 	cliInstallations market.CLIInstallationManager
 }
@@ -34,14 +36,15 @@ type ManagedRoutePlan struct {
 	Executable    ConnectorExecutable
 	InstalledCLI  *market.CLIInstallationReceipt
 	StateDir      string
-	SandboxPolicy *agentruntime.ConnectorSandboxPolicy
+	UserHome      string
+	ArtifactTrees []agentruntime.ArtifactTreeIdentity
 }
 
 func NewManagedRoutePlanner(config ManagedRoutePlannerConfig) (*ManagedRoutePlanner, error) {
-	if !filepath.IsAbs(strings.TrimSpace(config.StateRoot)) || config.Runtimes == nil {
+	if !filepath.IsAbs(strings.TrimSpace(config.StateRoot)) || !filepath.IsAbs(strings.TrimSpace(config.UserHome)) || config.Runtimes == nil {
 		return nil, errors.New("connector managed route planner dependencies are invalid")
 	}
-	return &ManagedRoutePlanner{stateRoot: filepath.Clean(config.StateRoot), runtimes: config.Runtimes,
+	return &ManagedRoutePlanner{stateRoot: filepath.Clean(config.StateRoot), userHome: filepath.Clean(config.UserHome), runtimes: config.Runtimes,
 		cliInstallations: config.CLIInstallations}, nil
 }
 
@@ -68,9 +71,7 @@ func (planner *ManagedRoutePlanner) Build(ctx context.Context, request market.Ru
 	if err != nil {
 		return ManagedRoutePlan{}, err
 	}
-	sandbox := &agentruntime.ConnectorSandboxPolicy{ReadOnlyPaths: []string{prepared.PreparedPath, resolved.Root}, WritablePaths: []string{stateDir},
-		ReadOnlyTreeIdentities: []agentruntime.ReadOnlyTreeIdentity{{Root: prepared.PreparedPath, SHA256: prepared.InventoryDigest}},
-		Network:                ContainsPermissionScope(request.Connector.Release.Manifest.Permissions, "network")}
+	artifactTrees := []agentruntime.ArtifactTreeIdentity{{Root: prepared.PreparedPath, SHA256: prepared.InventoryDigest}}
 	var installed *market.CLIInstallationReceipt
 	if managed.CLI != nil && managed.CLI.Install != nil {
 		if planner.cliInstallations == nil {
@@ -81,10 +82,9 @@ func (planner *ManagedRoutePlanner) Build(ctx context.Context, request market.Ru
 			return ManagedRoutePlan{}, fmt.Errorf("resolve connector CLI installation: %w", resolveErr)
 		}
 		installed = &receipt
-		sandbox.ReadOnlyPaths = append(sandbox.ReadOnlyPaths, receipt.InstallRoot)
 	}
 	return ManagedRoutePlan{Managed: managed, Prepared: prepared, Resolved: resolved, Executable: executable,
-		InstalledCLI: installed, StateDir: stateDir, SandboxPolicy: sandbox}, nil
+		InstalledCLI: installed, StateDir: stateDir, UserHome: planner.userHome, ArtifactTrees: artifactTrees}, nil
 }
 
 func SecureConnectorStateDir(root, connectionID, connectorKey string) (string, error) {
@@ -143,15 +143,12 @@ func PreparedEntrypoint(root, relative string) (string, error) {
 }
 
 func ConnectorProcessSpec(connectionID, connectorKey, language string, executable ConnectorExecutable, cwd string, args []string,
-	sandbox *agentruntime.ConnectorSandboxPolicy) agentruntime.ProcessSpec {
+	stateDir, userHome string, artifactTrees []agentruntime.ArtifactTreeIdentity) agentruntime.ProcessSpec {
 	command := append([]string{executable.Path}, args...)
-	stateDir := ""
-	if sandbox != nil && len(sandbox.WritablePaths) != 0 {
-		stateDir = sandbox.WritablePaths[0]
-	}
 	return agentruntime.ProcessSpec{Provider: "connector:" + connectorKey, RoomID: connectionID, CWD: cwd, Command: command,
 		Env: []string{"TUTTI_CONNECTOR_CONNECTION_ID=" + connectionID, "TUTTI_CONNECTOR_KEY=" + connectorKey,
 			"TUTTI_CONNECTOR_LANGUAGE=" + language, "TUTTI_CONNECTOR_STATE_DIR=" + stateDir,
-			"HOME=" + stateDir, "USERPROFILE=" + stateDir},
-		ExecutableIdentity: &agentruntime.ExecutableIdentity{SHA256: executable.SHA256, SizeBytes: executable.SizeBytes}, ConnectorSandbox: sandbox}
+			"HOME=" + userHome, "USERPROFILE=" + userHome},
+		ExecutableIdentity: &agentruntime.ExecutableIdentity{SHA256: executable.SHA256, SizeBytes: executable.SizeBytes},
+		ArtifactTrees:      append([]agentruntime.ArtifactTreeIdentity(nil), artifactTrees...)}
 }

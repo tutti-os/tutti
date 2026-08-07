@@ -1,4 +1,4 @@
 interface:
   display_name: "Tutti Session Replay"
-  short_description: "Record and verify Tutti Agent Session Replay cassettes"
-  default_prompt: "Use $tutti-record-agent-session-replay to record and replay a deterministic AgentGUI cassette."
+  short_description: "Record and qualify Tutti Session Replay cassettes"
+  default_prompt: "Use $tutti-record-agent-session-replay to record, audit, and freshly replay a Case cassette from this Tutti checkout."

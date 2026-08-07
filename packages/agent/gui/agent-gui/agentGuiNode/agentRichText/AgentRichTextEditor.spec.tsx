@@ -227,6 +227,49 @@ describe("AgentRichTextEditor prompt insertion", () => {
     );
   });
 
+  it("preserves the current selection when the controlled value changes in the same draft scope", async () => {
+    const ref = createRef<AgentRichTextEditorHandle>();
+    const onChange = vi.fn();
+    const props = {
+      contentScopeKey: "session-a",
+      disabled: false,
+      onChange,
+      onSubmit: vi.fn(),
+      placeholder: "Prompt"
+    };
+    const rendered = render(
+      <AgentRichTextEditor ref={ref} value="hello world" {...props} />
+    );
+    await waitFor(() => expect(ref.current).not.toBeNull());
+    const editor = rendered.container.querySelector<HTMLElement>(
+      '[contenteditable="true"]'
+    );
+    const textNode = editor?.querySelector("p")?.firstChild;
+    expect(textNode).not.toBeNull();
+
+    act(() => {
+      editor?.focus();
+      const selection = window.getSelection();
+      if (selection && textNode) {
+        const range = document.createRange();
+        range.setStart(textNode, 6);
+        range.collapse(true);
+        selection.removeAllRanges();
+        selection.addRange(range);
+        editor?.dispatchEvent(new Event("selectionchange", { bubbles: true }));
+      }
+    });
+
+    rendered.rerender(
+      <AgentRichTextEditor ref={ref} value="hello brave world" {...props} />
+    );
+    act(() => {
+      ref.current?.insertPlainTextAtSelection("X");
+    });
+
+    expect(onChange).toHaveBeenLastCalledWith("hello Xbrave world");
+  });
+
   it("invalidates layout after a programmatic document update", async () => {
     const onContentLayoutInvalidated = vi.fn();
     const rendered = render(

@@ -1,21 +1,40 @@
-import { Badge, Button, Card, StatusDot } from "@tutti-os/ui-system/components";
+import {
+  Badge,
+  Button,
+  Card,
+  Spinner,
+  StatusDot
+} from "@tutti-os/ui-system/components";
+import { useState } from "react";
 import { useSnapshot } from "valtio";
 
 import type { ConnectorMarketI18nRuntime } from "../../i18n/connectorMarketI18n.ts";
-import type { ConnectorCardAction } from "../../services/view/connectorMarketViewTypes.ts";
+import type { ConnectorCardView } from "../../services/view/connectorMarketViewTypes.ts";
 import { useConnectorMarketServices } from "../ConnectorMarketServicesContext.tsx";
 import { ConnectorIcon } from "./ConnectorIcon.tsx";
 
 export function ConnectorCard({ connectorKey }: { connectorKey: string }) {
-  const { i18n, uiState, view } = useConnectorMarketServices();
+  const { i18n, market, onError, uiState, view } = useConnectorMarketServices();
+  const [disconnecting, setDisconnecting] = useState(false);
   const card = useSnapshot(view.dataStore).cardsByKey[connectorKey];
   if (!card) {
     return null;
   }
 
-  const actionLabel = resolveActionLabel(card.action, i18n.t);
+  const actionLabel = resolveActionLabel(card, i18n.t);
   const status = resolveStatus(card.status, i18n.t);
   const handleAction = () => {
+    if (card.action === "disconnect") {
+      if (disconnecting) {
+        return;
+      }
+      setDisconnecting(true);
+      void market
+        .disconnectAuthorization(connectorKey)
+        .catch(() => onError?.(i18n.t("connectorDisconnectFailed")))
+        .finally(() => setDisconnecting(false));
+      return;
+    }
     if (card.action === "install") {
       uiState.openConnector(connectorKey);
       return;
@@ -58,19 +77,26 @@ export function ConnectorCard({ connectorKey }: { connectorKey: string }) {
             tone={status.tone}
           />
           <span className="truncate">
-            {card.operationStage
+            {card.operationStage && card.operationStage !== "completed"
               ? operationStageLabel(card.operationStage, i18n.t)
               : status.label}
           </span>
         </div>
         <Button
-          disabled={card.action === "busy"}
+          disabled={card.action === "busy" || disconnecting}
           size="sm"
           type="button"
-          variant={card.action === "install" ? "outline" : "secondary"}
+          variant={
+            card.action === "disconnect"
+              ? "destructive-secondary"
+              : card.action === "install" || card.action === "update"
+                ? "outline"
+                : "secondary"
+          }
           onClick={handleAction}
         >
-          {actionLabel}
+          {disconnecting ? <Spinner size={14} /> : null}
+          {disconnecting ? i18n.t("actionDisconnecting") : actionLabel}
         </Button>
       </div>
     </Card>
@@ -78,18 +104,36 @@ export function ConnectorCard({ connectorKey }: { connectorKey: string }) {
 }
 
 function resolveActionLabel(
-  action: ConnectorCardAction,
+  card: Readonly<
+    Pick<
+      ConnectorCardView,
+      "action" | "authorizationState" | "installationState" | "operationStage"
+    >
+  >,
   t: ConnectorMarketI18nRuntime["t"]
 ): string {
-  switch (action) {
+  switch (card.action) {
     case "install":
       return t("actionInstall");
+    case "update":
+      return t("actionUpdate");
     case "authorize":
       return t("actionAuthorize");
+    case "disconnect":
+      return t("actionDisconnect");
     case "manage":
     case "unavailable":
       return t("actionManage");
     case "busy":
+      if (
+        card.installationState === "installed" &&
+        card.authorizationState === "disconnected" &&
+        ["accepted", "deactivating", "disconnecting"].includes(
+          card.operationStage ?? ""
+        )
+      ) {
+        return t("actionDisconnecting");
+      }
       return t("actionInstalling");
   }
 }
@@ -100,7 +144,8 @@ function resolveStatus(
     | "connected"
     | "installing"
     | "not_installed"
-    | "unavailable",
+    | "unavailable"
+    | "update_available",
   t: ConnectorMarketI18nRuntime["t"]
 ): {
   label: string;
@@ -117,6 +162,8 @@ function resolveStatus(
       return { label: t("statusUnavailable"), tone: "red" };
     case "not_installed":
       return { label: t("statusNotInstalled"), tone: "neutral" };
+    case "update_available":
+      return { label: t("statusUpdateAvailable"), tone: "blue" };
   }
 }
 

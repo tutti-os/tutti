@@ -73,6 +73,14 @@
       "target": [
         "nsis"
       ],
+      "protocols": [
+        {
+          "name": "Tutti login callback",
+          "schemes": [
+            "tutti"
+          ]
+        }
+      ],
       "extraResources": [
         {
           "from": "build/managed-posix-shell",
@@ -81,6 +89,19 @@
             "**/*"
           ]
         }
+      ]
+    },
+    "appx": {
+      "applicationId": "Tutti",
+      "artifactName": "${productName}-${version}-store-${arch}.${ext}",
+      "customManifestPath": "build/appxmanifest.xml",
+      "capabilities": [
+        "runFullTrust"
+      ],
+      "electronUpdaterAware": false,
+      "languages": [
+        "en-US",
+        "zh-CN"
       ]
     },
     "linux": {
@@ -97,6 +118,7 @@
     "build:mac:unsigned": "bash ../../tools/scripts/build-desktop-package.sh mac-unsigned",
     "build:unpack": "bash ../../tools/scripts/build-desktop-package.sh unpack",
     "build:win": "bash ../../tools/scripts/build-desktop-package.sh win",
+    "build:win:store": "bash ../../tools/scripts/build-desktop-package.sh win-store",
     "dev": "electron-vite dev",
     "dev:web": "vite --config vite.web.config.mjs",
     "notify:release:feishu": "node scripts/send-release-feishu-card.mjs",

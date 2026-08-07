@@ -64,11 +64,12 @@ func (snapshotter *ExecutionSnapshotter) Create(prepared market.PreparedArtifact
 	if digest != prepared.InventoryDigest {
 		return "", errors.New("connector execution snapshot does not match verified inventory")
 	}
-	if err := makeExecutionTreeReadOnly(staging); err != nil {
-		return "", err
-	}
 	target := staging + ".ready"
 	if err := os.Rename(staging, target); err != nil {
+		return "", err
+	}
+	staging = target
+	if err := makeExecutionTreeReadOnly(target); err != nil {
 		return "", err
 	}
 	cleanup = false

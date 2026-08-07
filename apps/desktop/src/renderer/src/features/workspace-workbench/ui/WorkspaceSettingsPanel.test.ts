@@ -50,6 +50,14 @@ test("workspace settings places signed-in Connectors between Agent Runtime and C
   );
   assert.match(
     panelSource,
+    /handleConnectorMarketError[\s\S]{0,180}notifications\.error\(\{ title: message \}\)/
+  );
+  assert.match(
+    panelSource,
+    /<ConnectorMarketPanel[\s\S]{0,180}onError=\{handleConnectorMarketError\}/
+  );
+  assert.match(
+    panelSource,
     /accountState\.user[\s\S]{0,220}value: "connectors" as const/
   );
   assert.match(

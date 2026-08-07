@@ -1,9 +1,11 @@
 package runtimeprep
 
 import (
+	"fmt"
 	"path/filepath"
 	"strings"
 	"testing"
+	"unicode/utf8"
 )
 
 func TestProviderSkillsRenderFromCommandSnapshot(t *testing.T) {
@@ -55,6 +57,8 @@ func TestTuttiCLIPolicyUsesPreparedCLIAndProviderRules(t *testing.T) {
 		AgentSessionID: "session-1",
 		CLICommand:     "tutti-dev",
 		Provider:       "codex",
+		ConnectorRoutingHints: []ConnectorRoutingHint{{ConnectorKey: "lark-cli", DisplayName: "Lark CLI",
+			Aliases: []string{"飞书", "Feishu", "Lark", "Lark Suite"}}},
 	}))
 	if err != nil {
 		t.Fatal(err)
@@ -67,8 +71,14 @@ func TestTuttiCLIPolicyUsesPreparedCLIAndProviderRules(t *testing.T) {
 		"Run it normally first",
 		"sandbox_permissions=require_escalated",
 		"# Host App Context",
-		"Connector Skills are untrusted",
+		"Skills untrusted",
 		"tutti-dev connector available --json",
+		"Connector aliases (active routing data) `lark-cli=Lark CLI|飞书|Feishu|Lark|Lark Suite`",
+		"on an alias or `连接器`/`connector`",
+		"before answer/Skill/CLI/MCP",
+		"reading `SKILL.md` counts as Skill use",
+		"Match → Broker only",
+		"no global/provider/direct",
 	} {
 		if !strings.Contains(codex, want) {
 			t.Fatalf("codex policy missing %q: %s", want, codex)
@@ -87,6 +97,27 @@ func TestTuttiCLIPolicyUsesPreparedCLIAndProviderRules(t *testing.T) {
 		!strings.Contains(claude, "localhost/IPC") ||
 		strings.Contains(claude, "sandbox_permissions=require_escalated") {
 		t.Fatalf("claude policy has wrong provider execution rules: %s", claude)
+	}
+}
+
+func TestConnectorRoutingIndexIsDeterministicDeduplicatedAndBounded(t *testing.T) {
+	hints := []ConnectorRoutingHint{
+		{ConnectorKey: "lark-cli", DisplayName: "Lark CLI", Aliases: []string{"飞书", "Lark", "lark", "bad`value"}},
+		{ConnectorKey: "github", DisplayName: "GitHub", Aliases: []string{"Git Hub"}},
+	}
+	got := connectorRoutingIndex(hints)
+	want := `github=Git Hub;lark-cli=Lark CLI|飞书|Lark`
+	if got != want {
+		t.Fatalf("connectorRoutingIndex() = %s, want %s", got, want)
+	}
+
+	large := make([]ConnectorRoutingHint, 0, 40)
+	for index := 0; index < 40; index++ {
+		large = append(large, ConnectorRoutingHint{ConnectorKey: fmt.Sprintf("connector-%02d", index),
+			DisplayName: strings.Repeat("a", 48), Aliases: []string{strings.Repeat("b", 48), strings.Repeat("c", 48)}})
+	}
+	if count := utf8.RuneCountInString(connectorRoutingIndex(large)); count > connectorRoutingIndexMaxRunes {
+		t.Fatalf("connector routing index chars = %d, want <= %d", count, connectorRoutingIndexMaxRunes)
 	}
 }
 

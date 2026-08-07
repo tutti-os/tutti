@@ -56,6 +56,10 @@ type PrepareInput struct {
 	AgentSkills               []string
 	AgentTools                []string
 	ExtraSkills               []ProviderSkillBundle
+	// ConnectorRoutingHints is a non-secret snapshot of Connector routes that
+	// are active when this provider runtime is prepared. Connector keys and
+	// display names are host-owned; aliases are declared by connector releases.
+	ConnectorRoutingHints []ConnectorRoutingHint
 	// ExtensionSkillRoots carries the skill root paths declared by an agent
 	// extension's composer profile (Skills.Roots[].Path). When non-empty,
 	// native tutti skills materialize into these roots instead of the
@@ -94,6 +98,12 @@ type PrepareInput struct {
 	// conversation. Empty for non-imported sessions or when the source path
 	// wasn't captured at import time.
 	ExternalRolloutSourcePath string
+}
+
+type ConnectorRoutingHint struct {
+	ConnectorKey string
+	DisplayName  string
+	Aliases      []string
 }
 
 type PreparedRuntime struct {

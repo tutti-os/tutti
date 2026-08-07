@@ -113,6 +113,14 @@ func tuttiAgentDescriptor() ProviderDescriptor {
 			Capabilities: []string{CapabilityImageInput, CapabilitySkills, CapabilityCompact, CapabilityTokenUsage, CapabilityPlanMode, CapabilityInterrupt, CapabilityActiveTurnGuidance, CapabilityModelSwitch, CapabilityModelPlanBinding}, PermissionConfigurable: true, DefaultPermissionModeID: "auto",
 			PermissionModes: []PermissionModeDescriptor{{ID: "read-only", Semantic: "ask-before-write"}, {ID: "auto", Semantic: "auto"}, {ID: "full-access", Semantic: "full-access"}}, ConfigOptionIDs: ComposerConfigOptionIDs{Model: "model", Permission: "mode"},
 			CapabilityCatalog: CapabilityCatalogDescriptor{Kind: CapabilityCatalogKindAppServerSkills},
+			SlashCommandPolicy: SlashCommandPolicyDescriptor{
+				FallbackCommands: []string{"plan", "goal", "review"},
+				CommandEffects: []SlashCommandEffectDescriptor{
+					{Command: "plan", Effect: SlashCommandEffectTogglePlanMode},
+					{Command: "goal", Effect: SlashCommandEffectActivateGoalMode},
+					{Command: "review", Effect: SlashCommandEffectShowReviewPicker},
+				},
+			},
 		},
 		Target:  TargetDescriptor{ID: TuttiAgentTargetID, LaunchRefType: TargetLaunchRefTypeLocalCLI, Enabled: true, SortOrder: 5},
 		Events:  EventsDescriptor{Enabled: true, Aliases: []string{"tutti_agent"}, TurnLifecycleProjection: TurnLifecycleProjectionExplicit},

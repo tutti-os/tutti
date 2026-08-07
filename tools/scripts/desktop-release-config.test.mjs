@@ -23,6 +23,10 @@ const windowsAlphaWorkflowPath = new URL(
   "../../.github/workflows/windows-desktop-alpha.yml",
   import.meta.url
 );
+const storeWorkflowPath = new URL(
+  "../../.github/workflows/desktop-store-submit.yml",
+  import.meta.url
+);
 const managedPosixShellVendorScriptPath = new URL(
   "../../apps/desktop/scripts/vendor-managed-posix-shell.mjs",
   import.meta.url
@@ -53,6 +57,10 @@ const loopbackPreviewProxyPath = new URL(
 );
 const desktopBuildIconPath = new URL(
   "../../apps/desktop/build/icon.png",
+  import.meta.url
+);
+const desktopStoreManifestPath = new URL(
+  "../../apps/desktop/build/appxmanifest.xml",
   import.meta.url
 );
 
@@ -88,6 +96,99 @@ test("desktop release workflow uses the published desktop package name", async (
       `desktop release workflow filter should stay aligned with ${packageName}`
     );
   }
+});
+
+test("desktop release submits only stable builds to an isolated Store workflow", async () => {
+  const workflow = await readFile(workflowPath, "utf8");
+  const storeWorkflow = await readFile(storeWorkflowPath, "utf8");
+
+  assert.match(workflow, /submit-store:/);
+  assert.match(
+    workflow,
+    /needs\.resolve\.outputs\.release_channel == 'stable'/
+  );
+  assert.match(
+    workflow,
+    /vars\.TUTTI_WINDOWS_STORE_SUBMISSION_ENABLED == 'true'/
+  );
+  assert.match(workflow, /publication_mode == 'publish'/);
+  assert.match(workflow, /needs:\s*\[resolve, promote\]/);
+  assert.match(
+    workflow,
+    /uses:\s+\.\/\.github\/workflows\/desktop-store-submit\.yml/
+  );
+  assert.match(workflow, /store_environment:\s+microsoft-store-production/);
+  assert.doesNotMatch(
+    workflow,
+    /needs:\s*\[resolve, build-macos, build-windows, submit-store\]/
+  );
+
+  assert.match(storeWorkflow, /workflow_call:/);
+  assert.match(storeWorkflow, /workflow_dispatch:/);
+  const stableTagPattern = storeWorkflow.match(/-notmatch '([^']+)'/)?.[1];
+  assert.ok(stableTagPattern, "Store workflow should validate its stable tag");
+  const stableTagRegex = new RegExp(stableTagPattern);
+  assert.equal(stableTagRegex.exec("v1.2.3")?.groups?.version, "1.2.3");
+  assert.equal(stableTagRegex.exec("v0.0.0")?.groups?.version, "0.0.0");
+  assert.equal(stableTagRegex.test("v1.2.3-rc.1"), false);
+  assert.match(
+    storeWorkflow,
+    /uses:\s+microsoft\/microsoft-store-apppublisher@v1\.1/
+  );
+  assert.match(storeWorkflow, /msstore reconfigure/);
+  assert.match(storeWorkflow, /msstore publish/);
+  assert.match(storeWorkflow, /ChangeExtension\(\$appxPath, '\.msix'\)/);
+  assert.doesNotMatch(storeWorkflow, /msstore submission poll/);
+  assert.match(storeWorkflow, /TUTTI_STORE_IDENTITY_NAME/);
+  assert.match(storeWorkflow, /TUTTI_STORE_PUBLISHER/);
+  assert.match(
+    storeWorkflow,
+    /'TUTTI_STORE_APPLICATION_ID',[\s\S]*?'TUTTI_STORE_DISPLAY_NAME'/
+  );
+  assert.match(storeWorkflow, /Store package display name mismatch/);
+  assert.match(storeWorkflow, /Store application id mismatch/);
+  assert.match(storeWorkflow, /Store executable mismatch/);
+  assert.match(storeWorkflow, /Store entry point mismatch/);
+  assert.match(storeWorkflow, /Installed application display name mismatch/);
+  assert.match(storeWorkflow, /@Name='tutti'/);
+  assert.match(storeWorkflow, /@Name='runFullTrust'/);
+  assert.match(storeWorkflow, /Get-FileHash .* -Algorithm SHA256/);
+});
+
+test("desktop Store packaging reuses the Windows payload and emits AppX only", async () => {
+  const packageJson = JSON.parse(await readFile(desktopPackagePath, "utf8"));
+  const buildScript = await readFile(buildScriptPath, "utf8");
+  const storeManifest = await readFile(desktopStoreManifestPath, "utf8");
+
+  assert.equal(
+    packageJson.scripts["build:win:store"],
+    "bash ../../tools/scripts/build-desktop-package.sh win-store"
+  );
+  assert.equal(packageJson.build.appx.electronUpdaterAware, false);
+  assert.equal(
+    packageJson.build.appx.customManifestPath,
+    "build/appxmanifest.xml"
+  );
+  assert.deepEqual(packageJson.build.appx.capabilities, ["runFullTrust"]);
+  assert.match(
+    storeManifest,
+    /<Properties>[\s\S]*?<DisplayName>\$\{displayName\}<\/DisplayName>/
+  );
+  assert.match(storeManifest, /<uap:VisualElements[\s\S]*?DisplayName="Tutti"/);
+  assert.deepEqual(packageJson.build.win.protocols, [
+    {
+      name: "Tutti login callback",
+      schemes: ["tutti"]
+    }
+  ]);
+  assert.match(buildScript, /win\|win-store/);
+  assert.match(buildScript, /electron-builder --win appx --x64/);
+  assert.match(buildScript, /TUTTI_STORE_IDENTITY_NAME/);
+  assert.match(buildScript, /TUTTI_STORE_PUBLISHER/);
+  assert.match(
+    buildScript,
+    /win-store\)\s*\n\s*run_timed_phase "electron_builder_win_store" run_electron_builder_win_store/
+  );
 });
 
 test("desktop release workflow publishes rc tags as prereleases and keeps stable tags as latest", async () => {

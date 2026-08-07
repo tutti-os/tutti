@@ -14,6 +14,12 @@ If you are editing Agent session, Turn, Goal, runtime-operation, or recovery
 lifecycle under `packages/agent/*`, read the root `Agent Host Boundary` and
 [packages/agent/host/README.md](agent/host/README.md) first.
 
+If you are editing Cassette projection, checkpoint readiness, or final-state
+replay compare under `packages/agent/session-replay/*`, read
+[packages/agent/session-replay/AGENTS.md](agent/session-replay/AGENTS.md) and
+[packages/agent/session-replay/README.md](agent/session-replay/README.md)
+first.
+
 If the task mentions AgentGUI, AgentGuiNode, Agent GUI, the agent conversation
 module, agent composer, workspace agent timeline, agent approvals, or
 interactive agent prompts, read

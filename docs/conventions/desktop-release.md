@@ -25,6 +25,7 @@ The current release flow intentionally excludes:
 - nightly releases
 - S3 runtime artifacts
 - Linux artifacts
+- Microsoft Store RC/beta products and package flights
 
 Windows packaging remains available through
 `.github/workflows/windows-desktop-alpha.yml` for smoke validation. The formal
@@ -161,6 +162,40 @@ artifact shape, not a formal-release output. Windows assets are staged on the
 GitHub Release and mirror, but stable/public channel promotion remains
 controlled by the existing release promotion gates.
 
+The Store build is deliberately separate from the Direct artifact set. It uses
+`build:win:store` to produce one x64 AppX whose identity, publisher, and display
+name come from the selected GitHub Environment. It must not add AppX files to
+the Direct GitHub Release, S3 mirror, CloudFront updater metadata, or
+`SHA256SUMS.txt`.
+
+`.github/workflows/desktop-store-submit.yml` supports two modes:
+
+- a manual test run can build and validate the package with `submit=false`;
+- a stable release can submit the package to Partner Center with `submit=true`.
+
+The Microsoft Store Developer CLI cannot complete an application's first
+submission from a loose MSIX file. Complete the first submission once in
+Partner Center by uploading the validated AppX artifact and filling the Store
+listing, properties, age rating, pricing, and availability. After that first
+submission exists, the workflow can publish later package updates
+automatically. The workflow presents electron-builder's AppX payload to the
+CLI with an `.msix` extension because the CLI recognizes loose MSIX inputs but
+does not recognize the equivalent `.appx` extension.
+
+The automatic stable call is enabled only when the repository variable below
+is true:
+
+```text
+TUTTI_WINDOWS_STORE_SUBMISSION_ENABLED=true
+```
+
+It always selects the protected `microsoft-store-production` Environment and
+accepts only plain stable tags. It runs only for `publication_mode=publish` and
+starts after Direct promotion succeeds. RC, beta, and draft-only runs continue
+through the existing Direct NSIS/CDN flow without a production Store
+submission. The Store job is downstream from Direct promotion, so Store
+certification delay or failure cannot block or roll back Direct promotion.
+
 The release workflow builds macOS x64, arm64, and universal packages as a
 three-entry GitHub Actions matrix. Each architecture uploads an isolated
 intermediate artifact. The stage job flattens those artifacts and rebuilds one
@@ -185,6 +220,8 @@ Current updater behavior:
 - default policy is `prompt`
 - scheduled update check interval is three hours
 - macOS update checks are disabled for unsupported unsigned or ad-hoc bundles
+- Windows Store packages disable `electron-updater` and hide the Direct release
+  channel control; Microsoft Store is their only update owner
 - packaged macOS builds launched from `/Volumes` must stop before the main
   desktop services start, prompt the user to move Tutti to `/Applications`, and
   quit if the user declines or the automatic move cannot complete
@@ -312,7 +349,7 @@ External download workers should treat these fields as a fail-closed contract. I
 
 The download worker may expose `channel=preview` and `channel=beta` query parameters for internal links. Missing `channel` must default to `stable`. `channel=preview` must read RC metadata only; it must not fall back to beta.
 
-The `tutti-desktop-download` Worker is currently maintained directly in the Cloudflare Dashboard production editor, not in this repository. Update the production Worker there and keep this document aligned with the public contract.
+The `tutti-desktop-download` Worker is currently maintained directly in the Cloudflare Dashboard production editor, not in this repository. Do not enable the Store website route until its source, staging deployment, and rollback version are under version control.
 
 The Worker supports:
 
@@ -322,6 +359,21 @@ The Worker supports:
 /desktop/download?channel=preview&platform=macos&arch=universal&format=dmg
 /desktop/download?channel=beta&platform=macos&arch=universal&format=dmg
 ```
+
+The Desktop Store runtime reserves these Windows contracts for the Worker
+implementation:
+
+```text
+/desktop/download?channel=stable&platform=windows&arch=x64
+/desktop/download?channel=stable&platform=windows&arch=x64&distribution=direct&format=exe
+/desktop/download?channel=rc&platform=windows&arch=x64&distribution=direct&format=exe
+```
+
+The first route must return a temporary redirect to
+`https://get.microsoft.com/installer/download/{PRODUCT_ID}` only after the
+production product reaches `In Microsoft Store`. The explicit Direct route
+must preserve the existing NSIS fallback. These routes are not implemented in
+this repository because the Worker source is unavailable.
 
 Stable mirrored releases also update the aggregate changelog feed:
 
@@ -401,6 +453,28 @@ Feishu notification requires:
 
 `GITHUB_TOKEN` is provided by GitHub Actions.
 
+Each Microsoft Store GitHub Environment keeps one complete Partner Center
+account and product profile. Store submission requires these secrets:
+
+- `MICROSOFT_STORE_TENANT_ID`
+- `MICROSOFT_STORE_CLIENT_ID`
+- `MICROSOFT_STORE_CLIENT_SECRET`
+- `MICROSOFT_STORE_SELLER_ID`
+
+It also requires these non-secret Environment variables:
+
+- `TUTTI_MICROSOFT_STORE_PRODUCT_ID`
+- `TUTTI_STORE_APPLICATION_ID`
+- `TUTTI_STORE_DISPLAY_NAME`
+- `TUTTI_STORE_IDENTITY_NAME`
+- `TUTTI_STORE_PUBLISHER`
+- `TUTTI_STORE_PUBLISHER_DISPLAY_NAME`
+
+Never mix account credentials from one Environment with a product identity
+from another. Switching from a test account/application to production means
+replacing the complete Environment profile and rebuilding the package; a test
+package cannot be promoted unchanged to a different Store identity.
+
 ## Optional Release Asset Mirror
 
 Desktop release assets can optionally be mirrored to AWS S3 and exposed through CloudFront or another static base URL.
@@ -433,8 +507,14 @@ Useful commands:
 ```bash
 pnpm --filter @tutti-os/desktop build
 pnpm --filter @tutti-os/desktop build:unpack
+pnpm --filter @tutti-os/desktop build:win:store
 pnpm check:full
 ```
+
+The Store command requires Windows packaging identity variables and a plain
+stable `TUTTI_DESKTOP_BUILD_VERSION`. A local package proves only package
+assembly. End-to-end Store evidence additionally requires a Partner Center test
+product and a real Windows install/update cycle.
 
 Use `build:unpack` to verify that the Electron bundle can be assembled locally and that `tuttid` is present under the packaged app resources.
 

@@ -17,6 +17,7 @@ import {
   Switch
 } from "@tutti-os/ui-system";
 import { useAnalyticsDebugPreferenceService } from "@renderer/features/analytics-debug";
+import { useAppUpdateService } from "@renderer/features/app-update";
 import { useDesktopPreferencesService } from "@renderer/features/desktop-preferences/ui/useDesktopPreferencesService";
 import { useTranslation } from "@renderer/i18n";
 import { cn } from "@renderer/lib/format";
@@ -62,6 +63,7 @@ type FileDefaultOpenerDraft = {
 
 export function WorkspaceDeveloperSettingsSection() {
   const { t } = useTranslation();
+  const { state: appUpdateState } = useAppUpdateService();
   const {
     service: analyticsDebugPreferenceService,
     state: analyticsDebugPreferenceState
@@ -447,11 +449,13 @@ export function WorkspaceDeveloperSettingsSection() {
         onAppCatalogChannelChange={onAppCatalogChannelChange}
       />
 
-      <ReleaseChannelControl
-        changingUpdateChannel={changingUpdateChannel}
-        updateChannel={updateChannel}
-        onUpdateChannelChange={onUpdateChannelChange}
-      />
+      {appUpdateState.supportsReleaseChannels ? (
+        <ReleaseChannelControl
+          changingUpdateChannel={changingUpdateChannel}
+          updateChannel={updateChannel}
+          onUpdateChannelChange={onUpdateChannelChange}
+        />
+      ) : null}
 
       <div className="flex w-full items-center justify-between gap-4 max-[560px]:flex-col max-[560px]:items-stretch">
         <div className="flex min-w-0 flex-1 flex-col gap-1 max-[560px]:w-full">

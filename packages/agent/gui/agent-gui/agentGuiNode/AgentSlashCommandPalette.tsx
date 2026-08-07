@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useRef, type ReactNode } from "react";
+import { Fragment, useEffect, useRef, useState, type ReactNode } from "react";
 import { Spinner } from "@tutti-os/ui-system";
 import {
   Globe,
@@ -433,23 +433,7 @@ function slashPaletteEntryIcon(entry: AgentSlashPaletteEntry): ReactNode {
     entry.type === "skill" &&
     (entry.skill.sourceKind === "connector" || entry.skill.kind === "connector")
   ) {
-    const iconUrl = entry.skill.iconUrl?.trim();
-    return (
-      <span className="relative flex size-4 items-center justify-center">
-        <Plug className={SLASH_PALETTE_ICON_CLASS} />
-        {iconUrl ? (
-          <img
-            alt=""
-            aria-hidden="true"
-            className="absolute inset-0 size-4 rounded-[3px] object-contain"
-            src={iconUrl}
-            onError={(event) => {
-              event.currentTarget.style.display = "none";
-            }}
-          />
-        ) : null}
-      </span>
-    );
+    return <ConnectorPaletteIcon iconUrl={entry.skill.iconUrl} />;
   }
   if (entry.type !== "command") {
     return null;
@@ -470,6 +454,33 @@ function slashPaletteEntryIcon(entry: AgentSlashPaletteEntry): ReactNode {
     default:
       return null;
   }
+}
+
+function ConnectorPaletteIcon({
+  iconUrl
+}: {
+  iconUrl?: string;
+}): React.JSX.Element {
+  const normalizedIconUrl = iconUrl?.trim() ?? "";
+  const [failedIconUrl, setFailedIconUrl] = useState<string | null>(null);
+  const showBrandIcon =
+    normalizedIconUrl.length > 0 && failedIconUrl !== normalizedIconUrl;
+
+  return (
+    <span className="flex size-4 items-center justify-center">
+      {showBrandIcon ? (
+        <img
+          alt=""
+          aria-hidden="true"
+          className="size-4 rounded-[3px] object-contain"
+          src={normalizedIconUrl}
+          onError={() => setFailedIconUrl(normalizedIconUrl)}
+        />
+      ) : (
+        <Plug className={SLASH_PALETTE_ICON_CLASS} />
+      )}
+    </span>
+  );
 }
 
 function connectorStatusPresentation(

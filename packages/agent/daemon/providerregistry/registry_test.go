@@ -88,6 +88,22 @@ func TestMigratedTuttiAgentDescriptorRequiresRefreshCapableVersion(t *testing.T)
 	if descriptor.ComposerProfile.CapabilityCatalog.Kind != CapabilityCatalogKindAppServerSkills {
 		t.Fatalf("CapabilityCatalog = %#v, want skills-only app-server catalog", descriptor.ComposerProfile.CapabilityCatalog)
 	}
+	if !slices.Equal(
+		descriptor.ComposerProfile.SlashCommandPolicy.FallbackCommands,
+		[]string{"plan", "goal", "review"},
+	) {
+		t.Fatalf("SlashCommandPolicy.FallbackCommands = %#v", descriptor.ComposerProfile.SlashCommandPolicy.FallbackCommands)
+	}
+	if !slices.Equal(
+		descriptor.ComposerProfile.SlashCommandPolicy.CommandEffects,
+		[]SlashCommandEffectDescriptor{
+			{Command: "plan", Effect: SlashCommandEffectTogglePlanMode},
+			{Command: "goal", Effect: SlashCommandEffectActivateGoalMode},
+			{Command: "review", Effect: SlashCommandEffectShowReviewPicker},
+		},
+	) {
+		t.Fatalf("SlashCommandPolicy.CommandEffects = %#v", descriptor.ComposerProfile.SlashCommandPolicy.CommandEffects)
+	}
 }
 
 func TestValidateRejectsInvalidMinimumVersionFloor(t *testing.T) {

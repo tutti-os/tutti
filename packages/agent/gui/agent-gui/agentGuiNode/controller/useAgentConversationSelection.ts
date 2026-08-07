@@ -7,7 +7,11 @@ import { rememberAgentGUIActiveConversation } from "../model/agentGuiSessionNavi
 export type ConversationIntent =
   | { tag: "home" }
   | { tag: "requested"; id: string }
-  | { tag: "active"; id: string };
+  | {
+      tag: "active";
+      id: string;
+      source?: "activation" | "user-selection";
+    };
 
 export interface AgentGUIConversationSelectionOptions {
   reloadConversations?: boolean;
@@ -132,7 +136,11 @@ export function useAgentConversationSelection(
       const reloadConversations =
         options?.reloadConversations !== false &&
         current.conversations.contains(normalized);
-      current.selection.setIntent({ tag: "active", id: normalized });
+      current.selection.setIntent({
+        id: normalized,
+        source: "user-selection",
+        tag: "active"
+      });
       current.selection.setActiveSessionId(normalized);
       current.selection.clearDetailError();
       if (options?.reveal) {

@@ -627,6 +627,79 @@ func TestCompareTuttiReplayStateTreatsAttachmentIDsAsAlphaEquivalent(
 	}
 }
 
+func TestCompareTuttiReplayStateIgnoresLiveOnlyComposerSettingsDefaults(
+	t *testing.T,
+) {
+	buildState := func(settings map[string]any) TuttiReplayState {
+		return TuttiReplayState{
+			SchemaVersion: SchemaVersion,
+			Agent: TuttiReplayAgent{
+				RootSessionID: "session-1",
+				Sessions: []agenthost.HistoricalSession{{
+					ID:                "session-1",
+					Kind:              "root",
+					AgentTargetID:     "local:codex",
+					Provider:          "codex",
+					ProviderSessionID: "provider-session-1",
+					Settings:          settings,
+				}},
+			},
+			TuttiMode: TuttiReplayTuttiMode{
+				Activations:   []TuttiReplayActivation{},
+				TurnSnapshots: []TuttiReplayTurnSnapshot{},
+			},
+			Workflows: []TuttiReplayWorkflow{},
+			Issues:    []TuttiReplayIssue{},
+		}
+	}
+
+	expected := buildState(map[string]any{
+		"model":            "gpt-5.3-codex-spark",
+		"permissionModeId": "read-only",
+		"planMode":         false,
+		"reasoningEffort":  "medium",
+	})
+	actual := buildState(map[string]any{
+		"codexSaverMode":   false,
+		"futureDefaultOff": false,
+		"model":            "gpt-5.3-codex-spark",
+		"permissionModeId": "read-only",
+		"planMode":         false,
+		"reasoningEffort":  "medium",
+		"speed":            "standard",
+	})
+	if err := CompareTuttiReplayState(expected, actual); err != nil {
+		t.Fatalf(
+			"live-only composer defaults must match recorded settings, got %v",
+			err,
+		)
+	}
+	if !composerSettingsEqual(actual.Agent.Sessions[0].Settings, expected.Agent.Sessions[0].Settings) {
+		t.Fatal("final compare and settings.equal must share composer contract")
+	}
+
+	err := CompareTuttiReplayState(
+		buildState(map[string]any{
+			"codexSaverMode": true,
+			"model":          "gpt-5.3-codex-spark",
+		}),
+		buildState(map[string]any{
+			"codexSaverMode": false,
+			"model":          "gpt-5.3-codex-spark",
+		}),
+	)
+	if err == nil {
+		t.Fatal("explicit non-default composer setting must still fail compare")
+	}
+	var conflict *TuttiReplayStateConflictError
+	if !errors.As(err, &conflict) {
+		t.Fatalf("expected TuttiReplayStateConflictError, got %v", err)
+	}
+	if conflict.Path != "$.agent.sessions[0].settings.codexSaverMode" {
+		t.Fatalf("conflict path = %q", conflict.Path)
+	}
+}
+
 func TestCompareTuttiReplayStateIgnoresVolatileGoalTimingFields(
 	t *testing.T,
 ) {
@@ -701,5 +774,103 @@ func TestCompareTuttiReplayStateIgnoresVolatileGoalTimingFields(
 	}
 	if conflict.Path != "$.agent.sessions[0].goal.observed.status" {
 		t.Fatalf("conflict path = %q", conflict.Path)
+	}
+}
+
+func TestCompareTuttiReplayStateCanonicalizesAddedFileChangeBodies(
+	t *testing.T,
+) {
+	buildState := func(fileChanges map[string]any) TuttiReplayState {
+		return TuttiReplayState{
+			SchemaVersion: SchemaVersion,
+			Agent: TuttiReplayAgent{
+				RootSessionID: "session-1",
+				Sessions: []agenthost.HistoricalSession{{
+					ID:                "session-1",
+					Kind:              "root",
+					AgentTargetID:     "local:codex",
+					Provider:          "codex",
+					ProviderSessionID: "provider-session-1",
+					Turns: []agenthost.HistoricalTurn{{
+						ID:          "turn-1",
+						Phase:       "settled",
+						Outcome:     "completed",
+						Origin:      "user_prompt",
+						FileChanges: fileChanges,
+					}},
+				}},
+			},
+			TuttiMode: TuttiReplayTuttiMode{
+				Activations:   []TuttiReplayActivation{},
+				TurnSnapshots: []TuttiReplayTurnSnapshot{},
+			},
+			Workflows: []TuttiReplayWorkflow{},
+			Issues:    []TuttiReplayIssue{},
+		}
+	}
+	recorded := buildState(map[string]any{
+		"files": []any{map[string]any{
+			"path":        "${REPLAY_CWD}/notes.md",
+			"change":      "added",
+			"diff":        "R36_NOTES_BODY",
+			"unifiedDiff": "R36_NOTES_BODY",
+		}},
+	})
+	live := buildState(map[string]any{
+		"files": []any{map[string]any{
+			"path":      "${REPLAY_CWD}/notes.md",
+			"change":    "added",
+			"newString": "R36_NOTES_BODY\n",
+		}},
+	})
+	if err := CompareTuttiReplayState(recorded, live); err != nil {
+		t.Fatalf(
+			"added-file bodies under obsolete diff must match live newString, got %v",
+			err,
+		)
+	}
+}
+
+func TestCompareTuttiReplayStateTreatsToolCallIDsAsAlphaEquivalent(
+	t *testing.T,
+) {
+	buildState := func(callID string) TuttiReplayState {
+		return TuttiReplayState{
+			SchemaVersion: SchemaVersion,
+			Agent: TuttiReplayAgent{
+				RootSessionID: "session-1",
+				Sessions: []agenthost.HistoricalSession{{
+					ID:                "session-1",
+					Kind:              "root",
+					AgentTargetID:     "local:claude-code",
+					Provider:          "claude-code",
+					ProviderSessionID: "provider-session-1",
+					Messages: []agenthost.HistoricalMessage{{
+						ID:     "toolcall:" + callID,
+						Role:   "assistant",
+						Kind:   "tool_call",
+						Status: "completed",
+						Payload: map[string]any{
+							"callId":   callID,
+							"callType": "function",
+							"name":     "Bash",
+							"provider": "claude-code",
+						},
+					}},
+				}},
+			},
+			TuttiMode: TuttiReplayTuttiMode{
+				Activations:   []TuttiReplayActivation{},
+				TurnSnapshots: []TuttiReplayTurnSnapshot{},
+			},
+			Workflows: []TuttiReplayWorkflow{},
+			Issues:    []TuttiReplayIssue{},
+		}
+	}
+	if err := CompareTuttiReplayState(
+		buildState("approval:recorded-call"),
+		buildState("approval:replayed-call"),
+	); err != nil {
+		t.Fatalf("tool_call callId must be alpha-equivalent, got %v", err)
 	}
 }

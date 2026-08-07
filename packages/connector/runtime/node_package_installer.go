@@ -34,9 +34,10 @@ type NodePackageInstallerConfig struct {
 	Processes   agentruntime.ProcessTransport
 	PnpmVersion string
 	Timeout     time.Duration
+	Environ     func() []string
 }
 
-// NodePackageInstaller compiles signed node_package intents into pnpm
+// NodePackageInstaller compiles validated node_package intents into pnpm
 // invocations. All connectors share one content-addressed store and one
 // Corepack cache while retaining a release-scoped node_modules link tree.
 type NodePackageInstaller struct {
@@ -45,6 +46,7 @@ type NodePackageInstaller struct {
 	processes   agentruntime.ProcessTransport
 	pnpmVersion string
 	timeout     time.Duration
+	environ     func() []string
 	mu          sync.Mutex
 }
 
@@ -69,8 +71,12 @@ func NewNodePackageInstaller(config NodePackageInstallerConfig) (*NodePackageIns
 	if timeout <= 0 {
 		timeout = 5 * time.Minute
 	}
+	environ := config.Environ
+	if environ == nil {
+		environ = os.Environ
+	}
 	return &NodePackageInstaller{rootDir: filepath.Clean(root), runtimes: config.Runtimes,
-		processes: config.Processes, pnpmVersion: pnpmVersion, timeout: timeout}, nil
+		processes: config.Processes, pnpmVersion: pnpmVersion, timeout: timeout, environ: environ}, nil
 }
 
 func (installer *NodePackageInstaller) InstallCLI(ctx context.Context, request market.InstallCLIRequest) (market.CLIInstallationReceipt, error) {
@@ -129,7 +135,7 @@ func (installer *NodePackageInstaller) InstallCLI(ctx context.Context, request m
 	}
 	installArgs := []string{corepackEntrypoint, "pnpm@" + installer.pnpmVersion, "install", "--dir", staging,
 		"--ignore-workspace", "--ignore-scripts", "--store-dir", shared.store, "--package-import-method", "hardlink"}
-	if err := installer.runManagedNode(ctx, resolved, node, staging, privateHome, shared, installArgs, nil); err != nil {
+	if err := installer.runManagedNode(ctx, resolved, node, staging, privateHome, shared, installArgs); err != nil {
 		return market.CLIInstallationReceipt{}, fmt.Errorf("install connector node package: %w", err)
 	}
 	packageRoot, err := installedNodePackageRoot(staging, nodePackage.Package)
@@ -142,11 +148,7 @@ func (installer *NodePackageInstaller) InstallCLI(ctx context.Context, request m
 			return market.CLIInstallationReceipt{}, fmt.Errorf("resolve connector node package lifecycle: %w", err)
 		}
 		args := append([]string{entrypoint}, lifecycle.Arguments...)
-		allowedExecutables, err := lifecycleExecutablePaths(lifecycle.AllowedExecutables)
-		if err != nil {
-			return market.CLIInstallationReceipt{}, err
-		}
-		if err := installer.runManagedNode(ctx, resolved, node, packageRoot, privateHome, shared, args, allowedExecutables); err != nil {
+		if err := installer.runManagedNode(ctx, resolved, node, packageRoot, privateHome, shared, args); err != nil {
 			return market.CLIInstallationReceipt{}, fmt.Errorf("run connector node package %s: %w", lifecycle.Event, err)
 		}
 	}
@@ -233,27 +235,24 @@ func (installer *NodePackageInstaller) resolveNode(ctx context.Context, requirem
 }
 
 func (installer *NodePackageInstaller) runManagedNode(ctx context.Context, resolved ResolvedConnectorRuntime,
-	node ConnectorExecutable, cwd, privateHome string, shared connectorNodeSharedPaths, args, allowedExecutables []string) error {
+	node ConnectorExecutable, cwd, privateHome string, shared connectorNodeSharedPaths, args []string) error {
 	runCtx, cancel := context.WithTimeout(ctx, installer.timeout)
 	defer cancel()
 	temporaryRoot := filepath.Join(privateHome, "tmp")
 	if err := os.MkdirAll(temporaryRoot, 0o700); err != nil {
 		return err
 	}
-	pathEntries := []string{filepath.Join(resolved.Root, "node", "bin")}
-	for _, executable := range allowedExecutables {
-		pathEntries = append(pathEntries, filepath.Dir(executable))
-	}
+	inheritedEnv := installer.environ()
+	pathEntries := append([]string{filepath.Join(resolved.Root, "node", "bin")},
+		filepath.SplitList(environmentValue(inheritedEnv, "PATH"))...)
 	pathValue := strings.Join(uniquePaths(pathEntries), string(os.PathListSeparator))
-	env := []string{"HOME=" + privateHome, "USERPROFILE=" + privateHome, "COREPACK_HOME=" + shared.corepack,
-		"TMPDIR=" + temporaryRoot, "TMP=" + temporaryRoot, "TEMP=" + temporaryRoot,
-		"NPM_CONFIG_CACHE=" + shared.npmCache, "PNPM_HOME=" + shared.pnpmHome, "PATH=" + pathValue}
+	env := allowedNodePackageInstallEnvironment(inheritedEnv)
+	env = append(env, "HOME="+privateHome, "USERPROFILE="+privateHome, "COREPACK_HOME="+shared.corepack,
+		"TMPDIR="+temporaryRoot, "TMP="+temporaryRoot, "TEMP="+temporaryRoot,
+		"NPM_CONFIG_CACHE="+shared.npmCache, "PNPM_HOME="+shared.pnpmHome, "PATH="+pathValue)
 	connection, err := installer.processes.Start(runCtx, agentruntime.ProcessSpec{Provider: "connector-installer", CWD: cwd,
 		Command: append([]string{node.Path}, args...), Env: env,
-		ExecutableIdentity: &agentruntime.ExecutableIdentity{SHA256: node.SHA256, SizeBytes: node.SizeBytes},
-		ConnectorSandbox: &agentruntime.ConnectorSandboxPolicy{ReadOnlyPaths: []string{resolved.Root},
-			WritablePaths:      []string{cwd, privateHome, shared.store, shared.corepack, shared.npmCache, shared.pnpmHome},
-			AllowedExecutables: allowedExecutables, Network: true}})
+		ExecutableIdentity: &agentruntime.ExecutableIdentity{SHA256: node.SHA256, SizeBytes: node.SizeBytes}})
 	if err != nil {
 		return err
 	}
@@ -298,23 +297,13 @@ func waitCLIInstallation(ctx context.Context, connection agentruntime.ProcessCon
 	}
 }
 
-func lifecycleExecutablePaths(names []string) ([]string, error) {
-	known := map[string]string{"curl": "/usr/bin/curl", "tar": "/usr/bin/tar"}
-	paths := make([]string, 0, len(names))
-	for _, name := range names {
-		path := known[name]
-		if path == "" || !ordinaryFile(path) {
-			return nil, fmt.Errorf("connector lifecycle executable %q is unavailable", name)
-		}
-		paths = append(paths, path)
-	}
-	return uniquePaths(paths), nil
-}
-
 func uniquePaths(values []string) []string {
 	result := make([]string, 0, len(values))
 	seen := make(map[string]struct{}, len(values))
 	for _, value := range values {
+		if strings.TrimSpace(value) == "" {
+			continue
+		}
 		value = filepath.Clean(value)
 		if _, exists := seen[value]; exists {
 			continue
@@ -323,6 +312,36 @@ func uniquePaths(values []string) []string {
 		result = append(result, value)
 	}
 	return result
+}
+
+func allowedNodePackageInstallEnvironment(environment []string) []string {
+	allowed := map[string]struct{}{
+		"ALL_PROXY": {}, "COMSPEC": {}, "HTTP_PROXY": {}, "HTTPS_PROXY": {},
+		"LANG": {}, "LC_ALL": {}, "LC_CTYPE": {}, "LC_MESSAGES": {}, "NO_PROXY": {},
+		"NODE_EXTRA_CA_CERTS": {}, "PATHEXT": {}, "SSL_CERT_DIR": {}, "SSL_CERT_FILE": {},
+		"SYSTEMROOT": {},
+	}
+	result := make([]string, 0, len(allowed))
+	for _, item := range environment {
+		key, _, ok := strings.Cut(item, "=")
+		if !ok {
+			continue
+		}
+		if _, ok := allowed[strings.ToUpper(key)]; ok {
+			result = append(result, item)
+		}
+	}
+	return result
+}
+
+func environmentValue(environment []string, key string) string {
+	for index := len(environment) - 1; index >= 0; index-- {
+		candidateKey, value, ok := strings.Cut(environment[index], "=")
+		if ok && strings.EqualFold(candidateKey, key) {
+			return value
+		}
+	}
+	return ""
 }
 
 func nodePackageIntent(release market.Release) (*market.ManagedStdioImplementation, *market.ManagedCLIInterface, *market.NodePackageInstallation, error) {
@@ -563,7 +582,7 @@ func verifyPnpmLock(path, packageName, version, integrity string) (string, error
 		normalized := strings.TrimPrefix(key, "/")
 		if normalized == wanted || strings.HasPrefix(normalized, wanted+"(") {
 			if entry.Resolution.Integrity != integrity {
-				return "", errors.New("connector package integrity does not match signed manifest")
+				return "", errors.New("connector package integrity does not match the published manifest")
 			}
 			found = true
 			break

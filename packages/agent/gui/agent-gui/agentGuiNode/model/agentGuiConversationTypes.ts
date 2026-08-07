@@ -56,6 +56,11 @@ export interface AgentGUIConversationSummary {
   // still exists so an explicitly opened session presents its real identity,
   // but it must never be rendered as a conversation rail row.
   hiddenFromRail?: boolean;
+  // The summary was injected only because its session was explicitly selected
+  // while it was absent from the canonical conversation snapshot. The
+  // presentation layer may use it for the ordinary Rail/detail overlay, but
+  // it is excluded before Activity candidates are built.
+  isTransient?: boolean;
   projectionSource?: "pending_activation";
   isImported?: boolean;
   activeTurn?: AgentActivitySession["activeTurn"];

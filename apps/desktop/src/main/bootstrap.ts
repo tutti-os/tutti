@@ -68,6 +68,10 @@ import { applyDesktopElectronPlatformCompatibility } from "./electronPlatformCom
 import { createAppUpdateService } from "./update/appUpdateService.ts";
 import { createTuttidDesktopUpdateAdmissionBackend } from "./update/desktopUpdateAdmissionBackend.ts";
 import { getWorkspaceWindowKind } from "./windows/workspaceWindow.ts";
+import {
+  resolveDesktopDistribution,
+  resolveDesktopManualDownloadUrl
+} from "../shared/distribution/desktopDistribution.ts";
 
 function envFlagEnabled(value: string | undefined): boolean {
   return /^(1|true|yes|on)$/iu.test(value?.trim() ?? "");
@@ -189,6 +193,12 @@ export async function bootstrapDesktopApp(): Promise<void> {
 
   await app.whenReady();
   const systemLocale = getSystemDesktopLocale();
+  const translator = createTranslator(systemLocale);
+  const desktopDistribution = resolveDesktopDistribution({
+    platform: process.platform,
+    windowsStore: (process as NodeJS.Process & { windowsStore?: boolean })
+      .windowsStore
+  });
   const canContinueStartup = await ensureMacosApplicationInstalled({
     appPath: process.execPath,
     isPackaged: app.isPackaged,
@@ -274,7 +284,12 @@ export async function bootstrapDesktopApp(): Promise<void> {
     : null;
   const updateService = createAppUpdateService(undefined, {
     currentVersion: desktopUpdateAdmission.runtime.currentVersion,
-    developmentScenario: desktopUpdateAdmission.scenario
+    developmentScenario: desktopUpdateAdmission.scenario,
+    supportsUpdates: desktopDistribution === "store" ? false : undefined,
+    unsupportedMessage:
+      desktopDistribution === "store"
+        ? translator.t("updates.storeManaged")
+        : undefined
   });
   let desktopAppServices: Awaited<
     ReturnType<typeof createDesktopAppServices>
@@ -290,8 +305,11 @@ export async function bootstrapDesktopApp(): Promise<void> {
       listBusinessWindows: () => BrowserWindow.getAllWindows(),
       logger,
       manualDownloadUrl: (response) => {
-        const channel = response.channel === "rc" ? "preview" : "stable";
-        return `https://tutti.sh/desktop/download?channel=${channel}&platform=macos&arch=universal&format=dmg`;
+        return resolveDesktopManualDownloadUrl({
+          channel: response.channel === "rc" ? "rc" : "stable",
+          distribution: desktopDistribution,
+          platform: process.platform
+        });
       },
       onPolicyReleased: () => {
         if (releaseStartupGate) {

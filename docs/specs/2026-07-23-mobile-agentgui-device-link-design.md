@@ -706,7 +706,7 @@ P2P 成功率不是单独的发布门槛。发布目标是 direct 优先且 Rela
 | 风险                                                  | 影响                         | 缓解                                                                      |
 | ----------------------------------------------------- | ---------------------------- | ------------------------------------------------------------------------- |
 | gomobile、Pion ICE 与 quic-go 在 Android 真机行为不同 | 核心链路不可用或不稳定       | M0 先做 vertical slice；在 UI 投入前完成跨网络真机测试                    |
-| Android 网络/VPN 路由与 macOS 物理接口策略不同        | candidate 不可达或错误选路   | Android 初期使用系统路由，保留分类诊断；VPN/TUN 单独验收                  |
+| Android 网络/VPN 路由与 macOS 物理接口策略不同        | candidate 不可达或错误选路   | Android 默认使用 `system` 的共享 LAN-first host priority，并保留 server-reflexive 公网 fallback；Android Network 绑定与 VPN/TUN 单独验收                  |
 | 直接导入 AgentGUI 带入 DOM/Monaco                     | Metro 构建失败或 bundle 膨胀 | 平台无关 subpath 建立严格 import boundary 和检查                          |
 | Relay 当前 channel 只覆盖既有 query lane              | 写操作被错误复用或授权过宽   | 增加明确 paired-device Agent channel，复用身份校验但不复用业务含义        |
 | App 与 Desktop 快速迭代产生协议漂移                   | 无法连接                     | 单一 `protocolEpoch` fail-fast，并协调开发期发布，不维护兼容分支          |

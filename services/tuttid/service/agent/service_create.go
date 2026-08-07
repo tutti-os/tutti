@@ -29,29 +29,29 @@ func (s *Service) CreateWithResult(ctx context.Context, workspaceID string, inpu
 	input.AgentTargetID = strings.TrimSpace(input.AgentTargetID)
 	launch, err := s.resolveCreateSessionLaunch(ctx, workspaceID, &input)
 	if err != nil {
-		return CreateSessionResult{}, err
+		return createSessionFailureResult(input, err)
 	}
 	provider := launch.Provider
 	if workspaceID == "" || provider == "" {
-		return CreateSessionResult{}, ErrInvalidArgument
+		return createSessionFailureResult(input, ErrInvalidArgument)
 	}
 	input.Provider = provider
 	input.ProviderTargetRef = launch.ProviderTargetRef
 	if valueBool(input.CodexSaverMode) && (!input.CodexSaverModeAllowed || !composerProviderSupportsSaverSubagentMode(provider)) {
-		return CreateSessionResult{}, fmt.Errorf("%w: Codex saver mode is unavailable", ErrInvalidArgument)
+		return createSessionFailureResult(input, fmt.Errorf("%w: Codex saver mode is unavailable", ErrInvalidArgument))
 	}
 	if !input.CodexSaverModeAllowed || !composerProviderSupportsSaverSubagentMode(provider) {
 		input.CodexSaverMode = nil
 	}
 	permissionModeExplicit := strings.TrimSpace(value(input.PermissionModeID)) != ""
 	if err := s.applyCreateSessionComposerDefaults(ctx, &input); err != nil {
-		return CreateSessionResult{}, err
+		return createSessionFailureResult(input, err)
 	}
 	input.ConversationDetailMode = preferencesbiz.NormalizeDesktopAgentConversationDetailMode(input.ConversationDetailMode)
 	requestedPermissionModeID := strings.TrimSpace(value(input.PermissionModeID))
 	if input.StrictPermissionMode && requestedPermissionModeID != "" &&
 		!permissionModeConfigHasModeID(permissionConfigForProvider(provider), requestedPermissionModeID) {
-		return CreateSessionResult{}, fmt.Errorf("%w: permission mode is unsupported by the workspace agent harness", ErrInvalidArgument)
+		return createSessionFailureResult(input, fmt.Errorf("%w: permission mode is unsupported by the workspace agent harness", ErrInvalidArgument))
 	}
 	normalizedPermissionModeID := normalizePermissionModeIDForLaunch(provider, input.ProviderTargetRef, value(input.PermissionModeID))
 	if normalizedPermissionModeID != "" {
@@ -79,11 +79,11 @@ func (s *Service) CreateWithResult(ctx context.Context, workspaceID string, inpu
 		normalizedContent, _, err = normalizePromptContent(input.InitialContent)
 		if err != nil {
 			s.reportAgentServiceNodeFailure(ctx, input.AgentSessionID, "session_create", "content_normalized", provider, nodeStartedAt, err)
-			return CreateSessionResult{}, err
+			return createSessionFailureResult(input, err)
 		}
 		if err := s.validatePromptConnectors(ctx, normalizedContent); err != nil {
 			s.reportAgentServiceNodeFailure(ctx, input.AgentSessionID, "session_create", "connectors_validated", provider, nodeStartedAt, err)
-			return CreateSessionResult{}, err
+			return createSessionFailureResult(input, err)
 		}
 		s.reportAgentServiceNodeSuccess(ctx, input.AgentSessionID, "session_create", "content_normalized", provider, nodeStartedAt)
 	}
@@ -93,7 +93,7 @@ func (s *Service) CreateWithResult(ctx context.Context, workspaceID string, inpu
 	planResolution, err := s.resolveCreateSessionModelForPlanOrProvider(ctx, workspaceID, provider, requestedModel, &input)
 	if err != nil {
 		s.reportAgentServiceNodeFailure(ctx, input.AgentSessionID, "session_create", "model_validated", provider, nodeStartedAt, err)
-		return CreateSessionResult{}, err
+		return createSessionFailureResult(input, err)
 	}
 	s.reportAgentServiceNodeSuccess(ctx, input.AgentSessionID, "session_create", "model_validated", provider, nodeStartedAt)
 	input.RuntimeContext = runtimeContextWithSessionRuntimeSnapshot(input.RuntimeContext, input, provider, planResolution)
@@ -101,7 +101,7 @@ func (s *Service) CreateWithResult(ctx context.Context, workspaceID string, inpu
 		"model": value(input.Model),
 	})
 	if err := s.applyCreateSessionReasoningIntensity(ctx, provider, value(input.Model), &input); err != nil {
-		return CreateSessionResult{}, err
+		return createSessionFailureResult(input, err)
 	}
 	input.ReasoningEffort = s.clampReasoningEffortPointerForLaunch(
 		ctx,
@@ -112,7 +112,7 @@ func (s *Service) CreateWithResult(ctx context.Context, workspaceID string, inpu
 	)
 	isolationMode := strings.TrimSpace(input.Isolation)
 	if isolationMode != "" && isolationMode != WorktreeIsolationMode {
-		return CreateSessionResult{}, fmt.Errorf("%w: unsupported session isolation mode %q", ErrInvalidArgument, isolationMode)
+		return createSessionFailureResult(input, fmt.Errorf("%w: unsupported session isolation mode %q", ErrInvalidArgument, isolationMode))
 	}
 	worktreeLock := s.worktreeLock()
 	worktreeLock.RLock()
@@ -121,12 +121,12 @@ func (s *Service) CreateWithResult(ctx context.Context, workspaceID string, inpu
 	if isolationMode == WorktreeIsolationMode && strings.TrimSpace(value(input.Cwd)) == "" {
 		err := &WorktreeIsolationError{Kind: ErrNotAGitRepo}
 		s.reportAgentServiceNodeFailure(ctx, input.AgentSessionID, "session_create", "cwd_resolved", provider, nodeStartedAt, err)
-		return CreateSessionResult{}, err
+		return createSessionFailureResult(input, err)
 	}
 	cwd, err := s.resolveCwd(ctx, input.Cwd)
 	if err != nil {
 		s.reportAgentServiceNodeFailure(ctx, input.AgentSessionID, "session_create", "cwd_resolved", provider, nodeStartedAt, err)
-		return CreateSessionResult{}, err
+		return createSessionFailureResult(input, err)
 	}
 	s.reportAgentServiceNodeSuccess(ctx, input.AgentSessionID, "session_create", "cwd_resolved", provider, nodeStartedAt)
 	logAgentSubmitTrace("service.create.cwd_resolved", workspaceID, input.AgentSessionID, input.ClientSubmitID, input.Metadata, map[string]any{
@@ -138,7 +138,7 @@ func (s *Service) CreateWithResult(ctx context.Context, workspaceID string, inpu
 	if isolationMode == WorktreeIsolationMode {
 		created, warnings, createErr := s.createSessionWorktree(ctx, workspaceID, cwd, input.AgentSessionID)
 		if createErr != nil {
-			return CreateSessionResult{}, createErr
+			return createSessionFailureResult(input, createErr)
 		}
 		isolation = &created
 		isolationWarnings = warnings
@@ -161,7 +161,7 @@ func (s *Service) CreateWithResult(ctx context.Context, workspaceID string, inpu
 			permissionModeExplicit,
 		); err != nil {
 			s.reportAgentServiceNodeFailure(ctx, input.AgentSessionID, "session_create", "settings_validated", provider, nodeStartedAt, err)
-			return CreateSessionResult{}, err
+			return createSessionFailureResult(input, err)
 		}
 		s.reportAgentServiceNodeSuccess(ctx, input.AgentSessionID, "session_create", "settings_validated", provider, nodeStartedAt)
 	}
@@ -169,7 +169,7 @@ func (s *Service) CreateWithResult(ctx context.Context, workspaceID string, inpu
 	prepared, err := s.prepareRuntime(ctx, workspaceID, cwd, input, planResolution.Endpoint)
 	if err != nil {
 		s.reportAgentServiceNodeFailure(ctx, input.AgentSessionID, "session_create", "runtime_prepared", provider, nodeStartedAt, err)
-		return CreateSessionResult{}, err
+		return createSessionFailureResult(input, err)
 	}
 	if isolation != nil {
 		prepared.Cwd = isolation.WorktreePath
@@ -204,7 +204,7 @@ func (s *Service) CreateWithResult(ctx context.Context, workspaceID string, inpu
 		RailPlacement: input.RailPlacement,
 	}
 	if err := s.applyInitialTuttiModeActivation(ctx, workspaceID, input.AgentSessionID, input.InitialTuttiModeActivation); err != nil {
-		return CreateSessionResult{}, err
+		return createSessionFailureResult(input, err)
 	}
 	var preparedTuttiModeTurnID string
 	_, textGoal := agenthost.ParseTypedGoalControl(normalizedContent, false)
@@ -212,7 +212,7 @@ func (s *Service) CreateWithResult(ctx context.Context, workspaceID string, inpu
 	if len(normalizedContent) > 0 && !typedGoal {
 		canonicalTurnID, claimErr := s.existingSubmitCanonicalTurnID(ctx, workspaceID, input.AgentSessionID, input.ClientSubmitID, input.Metadata)
 		if claimErr != nil {
-			return CreateSessionResult{}, claimErr
+			return createSessionFailureResult(input, claimErr)
 		}
 		if canonicalTurnID != "" {
 			// A durable claim already owns this submit: reuse its canonical
@@ -227,7 +227,7 @@ func (s *Service) CreateWithResult(ctx context.Context, workspaceID string, inpu
 					activationErr := s.deleteTuttiModeActivationSessionState(context.WithoutCancel(ctx), workspaceID, input.AgentSessionID)
 					snapshotErr = errors.Join(snapshotErr, activationErr)
 				}
-				return CreateSessionResult{}, snapshotErr
+				return createSessionFailureResult(input, snapshotErr)
 			}
 			preparedTuttiModeTurnID = turnID
 			hostInput.TurnID = turnID
@@ -237,13 +237,45 @@ func (s *Service) CreateWithResult(ctx context.Context, workspaceID string, inpu
 	logAgentSubmitTrace("service.create.runtime_start_requested", workspaceID, input.AgentSessionID, input.ClientSubmitID, input.Metadata, nil)
 	hostResult, err := s.ApplicationHost().CreateSession(ctx, workspaceID, hostInput)
 	if err != nil {
+		// Host can durably create the Session before the typed initial Goal
+		// fails. Preserve that result (and its worktree) so callers can render a
+		// selectable historical Session with a failed Goal instead of treating the
+		// whole creation as absent.
+		if hostResult.SessionStatus == agenthost.CreateSessionStatusCreated {
+			keepWorktree = true
+			created, getErr := s.Get(ctx, workspaceID, input.AgentSessionID)
+			if getErr == nil {
+				return CreateSessionResult{
+					Session:           decorateIsolatedSession(created, isolation, isolationWarnings),
+					SessionStatus:     hostResult.SessionStatus,
+					InitialGoalStatus: hostResult.InitialGoalStatus,
+				}, err
+			}
+			// Get may fail after Host has already persisted the Session (for
+			// example while the runtime is being torn down). Return the Host
+			// projection anyway; the original Goal error remains the operation
+			// error, but the Session-created fact must not be lost.
+			fallback := serviceSessionWithPersistedFreshness(
+				hostResult.Session,
+				persistedSessionFromHost(hostResult.Canonical),
+				s.controller().CanResume(runtimeResumeInputFromRuntimeSession(hostResult.Session)),
+			)
+			if projected, projectErr := s.projectSessionForResponse(ctx, workspaceID, fallback); projectErr == nil {
+				fallback = projected
+			}
+			return CreateSessionResult{
+				Session:           decorateIsolatedSession(fallback, isolation, isolationWarnings),
+				SessionStatus:     hostResult.SessionStatus,
+				InitialGoalStatus: hostResult.InitialGoalStatus,
+			}, err
+		}
 		// Delivery-unknown means provider acceptance is already possible:
 		// keep the prepared claim, bound snapshot, and activation so a retry
 		// reconciles instead of double-dispatching.
 		if !errors.Is(err, ErrSubmitDeliveryUnknown) {
 			_ = s.deleteTuttiModeActivationSessionState(context.WithoutCancel(ctx), workspaceID, input.AgentSessionID)
 		}
-		return CreateSessionResult{}, err
+		return createSessionFailureResult(input, err)
 	}
 	keepWorktree = true
 	session := hostResult.Session
@@ -252,19 +284,42 @@ func (s *Service) CreateWithResult(ctx context.Context, workspaceID string, inpu
 	if strings.TrimSpace(session.ID) == "" && strings.TrimSpace(hostResult.TurnID) != "" {
 		result, getErr := s.Get(ctx, workspaceID, input.AgentSessionID)
 		return CreateSessionResult{
-			Session: decorateIsolatedSession(result, isolation, isolationWarnings),
-			TurnID:  strings.TrimSpace(hostResult.TurnID),
+			Session:           decorateIsolatedSession(result, isolation, isolationWarnings),
+			TurnID:            strings.TrimSpace(hostResult.TurnID),
+			SessionStatus:     hostResult.SessionStatus,
+			InitialGoalStatus: hostResult.InitialGoalStatus,
 		}, getErr
 	}
 	if hostResult.Kind == "goalControl" {
 		result, getErr := s.Get(ctx, workspaceID, session.ID)
+		if getErr != nil {
+			// Host has already created and published the Session. A follow-up
+			// projection read may be unavailable while the runtime is settling,
+			// but that read failure must not erase the Session-created result.
+			fallback := serviceSessionWithPersistedFreshness(
+				session,
+				persistedSession,
+				s.controller().CanResume(runtimeResumeInputFromRuntimeSession(session)),
+			)
+			if projected, projectErr := s.projectSessionForResponse(ctx, workspaceID, fallback); projectErr == nil {
+				fallback = projected
+			}
+			return CreateSessionResult{
+				Session:           decorateIsolatedSession(fallback, isolation, isolationWarnings),
+				TurnID:            strings.TrimSpace(hostResult.TurnID),
+				SessionStatus:     hostResult.SessionStatus,
+				InitialGoalStatus: hostResult.InitialGoalStatus,
+			}, getErr
+		}
 		return CreateSessionResult{
-			Session: decorateIsolatedSession(result, isolation, isolationWarnings),
-			TurnID:  strings.TrimSpace(hostResult.TurnID),
+			Session:           decorateIsolatedSession(result, isolation, isolationWarnings),
+			TurnID:            strings.TrimSpace(hostResult.TurnID),
+			SessionStatus:     hostResult.SessionStatus,
+			InitialGoalStatus: hostResult.InitialGoalStatus,
 		}, getErr
 	}
 	if preparedTuttiModeTurnID != "" && strings.TrimSpace(hostResult.TurnID) != preparedTuttiModeTurnID {
-		return CreateSessionResult{}, ErrSubmitDeliveryUnknown
+		return createSessionFailureResult(input, ErrSubmitDeliveryUnknown)
 	}
 	if len(normalizedContent) == 0 {
 		created, err := s.projectSessionForResponse(ctx, workspaceID, serviceSessionWithPersistedFreshness(
@@ -273,8 +328,10 @@ func (s *Service) CreateWithResult(ctx context.Context, workspaceID string, inpu
 			s.controller().CanResume(runtimeResumeInputFromRuntimeSession(session)),
 		))
 		return CreateSessionResult{
-			Session: decorateIsolatedSession(created, isolation, isolationWarnings),
-			TurnID:  strings.TrimSpace(hostResult.TurnID),
+			Session:           decorateIsolatedSession(created, isolation, isolationWarnings),
+			TurnID:            strings.TrimSpace(hostResult.TurnID),
+			SessionStatus:     hostResult.SessionStatus,
+			InitialGoalStatus: hostResult.InitialGoalStatus,
 		}, err
 	}
 	logAgentSubmitTrace("service.create.prompt_validated", workspaceID, session.ID, input.ClientSubmitID, input.Metadata, nil)
@@ -286,8 +343,26 @@ func (s *Service) CreateWithResult(ctx context.Context, workspaceID string, inpu
 		s.controller().CanResume(runtimeResumeInputFromRuntimeSession(session)),
 	))
 	return CreateSessionResult{
-		Session: decorateIsolatedSession(created, isolation, isolationWarnings),
-		TurnID:  strings.TrimSpace(hostResult.TurnID),
+		Session:           decorateIsolatedSession(created, isolation, isolationWarnings),
+		TurnID:            strings.TrimSpace(hostResult.TurnID),
+		SessionStatus:     hostResult.SessionStatus,
+		InitialGoalStatus: hostResult.InitialGoalStatus,
+	}, err
+}
+
+func createSessionFailureResult(input CreateSessionInput, err error) (CreateSessionResult, error) {
+	initialGoalStatus := agenthost.CreateSessionInitialGoalStatusNotRequested
+	_, typedGoal := agenthost.ParseTypedGoalControl(input.InitialContent, false)
+	if input.InitialGoalControl != nil || typedGoal {
+		initialGoalStatus = agenthost.CreateSessionInitialGoalStatusUnknown
+	}
+	sessionStatus := agenthost.CreateSessionStatusNotCreated
+	if errors.Is(err, ErrSubmitDeliveryUnknown) {
+		sessionStatus = agenthost.CreateSessionStatusUnknown
+	}
+	return CreateSessionResult{
+		SessionStatus:     sessionStatus,
+		InitialGoalStatus: initialGoalStatus,
 	}, err
 }
 
@@ -509,6 +584,7 @@ func (s *Service) prepareRuntimeWithModelEndpoint(
 		AgentSkills:               append([]string(nil), input.AgentSkills...),
 		AgentTools:                append([]string(nil), input.AgentTools...),
 		ExtraSkills:               sessionSkillBundlesToProviderSkillBundles(input.ExtraSkills),
+		ConnectorRoutingHints:     s.activeConnectorRoutingHints(),
 		Metadata:                  input.Metadata,
 		CommandCapabilityProjection: cloneCommandCapabilityProjection(
 			input.CommandCapabilityProjection,

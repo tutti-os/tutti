@@ -20,6 +20,7 @@ export interface AppUpdateViewState {
 export interface AppUpdateStoreState {
   error: string | null;
   isActing: boolean;
+  supportsReleaseChannels: boolean;
   updateState: AppUpdateState | null;
   view: AppUpdateViewState;
 }
@@ -27,6 +28,7 @@ export interface AppUpdateStoreState {
 export interface AppUpdateReadableStoreState {
   readonly error: string | null;
   readonly isActing: boolean;
+  readonly supportsReleaseChannels: boolean;
   readonly updateState: AppUpdateState | null;
   readonly view: AppUpdateViewState;
 }

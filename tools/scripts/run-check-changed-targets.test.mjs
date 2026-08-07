@@ -7,8 +7,7 @@ import {
   discoverGoModuleRoots,
   isBuiltinGenerateRequired,
   resolveGoModuleRoot,
-  resolveGoValidationTargets,
-  selectGoLintModuleRoots
+  resolveGoValidationTargets
 } from "./run-check-changed-targets.mjs";
 
 const goModuleRoots = [
@@ -168,27 +167,16 @@ describe("resolveGoValidationTargets", () => {
     ]);
   });
 
-  it("runs every go.work module when shared validation ownership changes", () => {
+  it("does not create Go lanes for shared selector scripts", () => {
     const targets = resolveGoValidationTargets(
       ["tools/scripts/run-changed-go-validation.mjs"],
       {
-        lintModuleRoots: selectGoLintModuleRoots(goModuleRoots),
         moduleRoots: goModuleRoots,
         pathExists: () => true
       }
     );
 
-    assert.deepEqual(
-      Array.from(targets.testByModule),
-      goModuleRoots.map((moduleRoot) => [moduleRoot, new Set(["./..."])])
-    );
-    assert.deepEqual(
-      Array.from(targets.lintByModule),
-      selectGoLintModuleRoots(goModuleRoots).map((moduleRoot) => [
-        moduleRoot,
-        new Set(["./..."])
-      ])
-    );
+    assert.equal(targets, null);
   });
 });
 

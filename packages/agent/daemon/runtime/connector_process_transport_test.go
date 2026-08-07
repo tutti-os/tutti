@@ -2,20 +2,13 @@ package agentruntime
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
 )
-
-type testConnectorSandbox struct{}
-
-func (testConnectorSandbox) Apply(*exec.Cmd, ProcessSpec) error { return nil }
 
 func TestConnectorProcessFixture(_ *testing.T) {
 	if os.Getenv("TUTTI_CONNECTOR_PROCESS_FIXTURE") != "1" {
@@ -34,22 +27,19 @@ func TestConnectorProcessFixture(_ *testing.T) {
 	}
 }
 
-func TestNewConnectorProcessTransportDefersUnsupportedSandboxFailureToLaunch(t *testing.T) {
+func TestNewConnectorProcessTransportUsesConnectorValidation(t *testing.T) {
 	transport, err := NewConnectorProcessTransport()
 	if err != nil || transport == nil {
 		t.Fatalf("NewConnectorProcessTransport() = %#v, %v", transport, err)
 	}
-	if runtime.GOOS == "darwin" {
-		return
-	}
 	connection, err := transport.Start(context.Background(), ProcessSpec{})
-	if connection != nil || !errors.Is(err, ErrConnectorProcessSandboxUnsupported) {
+	if connection != nil || err == nil || !strings.Contains(err.Error(), "command is required") {
 		t.Fatalf("Start() = %#v, %v", connection, err)
 	}
 }
 
 func TestConnectorProcessTransportRequiresAbsoluteVerifiedExecutable(t *testing.T) {
-	transport := newConnectorProcessTransport(testConnectorSandbox{}, 1024, 1024)
+	transport := newConnectorProcessTransport(1024, 1024)
 	if _, err := transport.Start(context.Background(), ProcessSpec{Command: []string{"node"}}); err == nil || !strings.Contains(err.Error(), "absolute") {
 		t.Fatalf("relative command error = %v", err)
 	}
@@ -61,7 +51,7 @@ func TestConnectorProcessTransportRequiresAbsoluteVerifiedExecutable(t *testing.
 
 func TestConnectorProcessTransportRejectsReservedOrMalformedEnvironmentKeys(t *testing.T) {
 	path, identity := copyCurrentExecutableWithIdentity(t)
-	transport := newConnectorProcessTransport(testConnectorSandbox{}, 1024, 1024)
+	transport := newConnectorProcessTransport(1024, 1024)
 	for _, environment := range [][]string{
 		{"TUTTI_CONNECTOR_FD_CREDENTIAL=3"},
 		{" BAD=value"},
@@ -91,11 +81,10 @@ func TestConnectorProcessTransportUsesExplicitEnvironmentAndSensitiveFD(t *testi
 	if _, err := credential.Seek(0, 0); err != nil {
 		t.Fatal(err)
 	}
-	transport := newConnectorProcessTransport(testConnectorSandbox{}, 4096, 4096)
+	transport := newConnectorProcessTransport(4096, 4096)
 	connection, err := transport.Start(context.Background(), ProcessSpec{
 		Command:            []string{path, "-test.run=TestConnectorProcessFixture"},
 		ExecutableIdentity: identity,
-		ConnectorSandbox:   &ConnectorSandboxPolicy{},
 		Env: []string{
 			"TUTTI_CONNECTOR_PROCESS_FIXTURE=1",
 			"ALLOWED_VALUE=visible",
@@ -126,11 +115,10 @@ func TestConnectorProcessTransportUsesExplicitEnvironmentAndSensitiveFD(t *testi
 
 func TestConnectorProcessTransportEnforcesOutputLimit(t *testing.T) {
 	path, identity := copyCurrentExecutableWithIdentity(t)
-	transport := newConnectorProcessTransport(testConnectorSandbox{}, 32, 4096)
+	transport := newConnectorProcessTransport(32, 4096)
 	connection, err := transport.Start(context.Background(), ProcessSpec{
 		Command:            []string{path, "-test.run=TestConnectorProcessFixture"},
 		ExecutableIdentity: identity,
-		ConnectorSandbox:   &ConnectorSandboxPolicy{},
 		Env: []string{
 			"TUTTI_CONNECTOR_PROCESS_FIXTURE=1",
 			"TUTTI_CONNECTOR_OUTPUT_BYTES=1024",
@@ -166,10 +154,9 @@ func TestConnectorProcessTransportRejectsPreparedTreeMutationAtLaunch(t *testing
 	if err := os.WriteFile(entrypoint, []byte("tampered"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	transport := newConnectorProcessTransport(testConnectorSandbox{}, 4096, 4096)
+	transport := newConnectorProcessTransport(4096, 4096)
 	_, err = transport.Start(context.Background(), ProcessSpec{Command: []string{path}, ExecutableIdentity: identity,
-		ConnectorSandbox: &ConnectorSandboxPolicy{ReadOnlyPaths: []string{artifactRoot},
-			ReadOnlyTreeIdentities: []ReadOnlyTreeIdentity{{Root: artifactRoot, SHA256: inventory}}}})
+		ArtifactTrees: []ArtifactTreeIdentity{{Root: artifactRoot, SHA256: inventory}}})
 	if err == nil || !strings.Contains(err.Error(), "changed before launch") {
 		t.Fatalf("Start() error = %v, want prepared-tree identity rejection", err)
 	}

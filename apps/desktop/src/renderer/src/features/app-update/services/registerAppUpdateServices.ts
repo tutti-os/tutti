@@ -27,7 +27,10 @@ export function registerAppUpdateServices(
     createDesktopAppUpdateClient(desktopApi.update),
     input.reporterService ?? null,
     undefined,
-    desktopApi.runtime
+    desktopApi.runtime,
+    {
+      supportsReleaseChannels: desktopApi.platform?.distribution !== "store"
+    }
   );
   registry.registerInstance(IAppUpdateService, service);
   void service.load();

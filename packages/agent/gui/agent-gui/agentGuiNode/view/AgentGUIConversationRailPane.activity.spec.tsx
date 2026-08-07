@@ -11,6 +11,7 @@ import type { AgentGUIConversationSummary } from "../model/agentGuiConversationT
 import type { useAgentGUIConversationRailQuery } from "../controller/useAgentGUIConversationRailQuery";
 import type { AgentGUIConversationRailLabels } from "./agentGUIConversationRailLabels";
 import { AgentGUIConversationRailPane } from "./AgentGUIConversationRailPane";
+import { createAgentGUIConversationActivityController } from "../controller/agentGUIConversationActivityController";
 
 describe("AgentGUIConversationRailPane Activity capability", () => {
   it("fails closed when the host does not opt in", () => {
@@ -94,29 +95,54 @@ describe("AgentGUIConversationRailPane Activity capability", () => {
       screen.getByTestId("agent-gui-conversation-item-session-1")
     ).toBeTruthy();
   });
+
+  it("does not admit a detail-only transient rail overlay", () => {
+    const transient = {
+      ...conversationFixture(),
+      id: "selected-history",
+      isTransient: true,
+      status: "ready" as const,
+      title: "Selected history"
+    };
+    renderPane({
+      capability: true,
+      activityConversations: [conversationFixture()],
+      conversations: [conversationFixture(), transient]
+    });
+
+    fireEvent.click(screen.getByTestId("agent-gui-activity-view-toggle"));
+
+    expect(screen.queryByText("Selected history")).toBeNull();
+  });
 });
 
 function renderPane({
   capability,
   hasUnreadCompletion = false,
   listPage = vi.fn(),
-  runtimeRailConversations = []
+  runtimeRailConversations = [],
+  activityConversations: requestedActivityConversations,
+  conversations: requestedConversations
 }: {
   capability: boolean;
   hasUnreadCompletion?: boolean;
   listPage?: ReturnType<typeof vi.fn>;
   runtimeRailConversations?: AgentGUIConversationSummary[];
+  activityConversations?: AgentGUIConversationSummary[];
+  conversations?: AgentGUIConversationSummary[];
 }) {
-  const conversation: AgentGUIConversationSummary = {
-    cwd: "/workspace",
-    hasUnreadCompletion,
-    id: "session-1",
-    provider: "codex",
-    sortTimeUnixMs: Date.now(),
-    status: "ready",
-    title: "Session 1",
-    updatedAtUnixMs: Date.now()
-  };
+  const conversation = conversationFixture({ hasUnreadCompletion });
+  const activityConversations = requestedActivityConversations ?? [
+    conversation
+  ];
+  const conversations = requestedConversations ?? activityConversations;
+  const activityController = createAgentGUIConversationActivityController();
+  activityController.configure({
+    available: capability,
+    conversations: activityConversations,
+    identityKey: "workspace-1",
+    scopeKey: "workspace-1"
+  });
   const snapshot = {
     sessionMessagesById: {}
   } as unknown as AgentActivitySnapshot;
@@ -136,7 +162,7 @@ function renderPane({
         agentTargetsLoading={false}
         conversationFilter={{ kind: "all" }}
         conversationQuery={conversationQuery}
-        conversations={[conversation]}
+        conversations={conversations}
         createConversationDisabled={false}
         isCollapsed={false}
         isDeletingConversation={false}
@@ -144,7 +170,12 @@ function renderPane({
         isLoadingConversations={false}
         labels={LABELS}
         pendingDeleteConversationId={null}
-        railQuery={{ ...RAIL_QUERY, runtimeRailConversations }}
+        railQuery={{
+          ...RAIL_QUERY,
+          activityController,
+          activityConversations,
+          runtimeRailConversations
+        }}
         revealRequest={null}
         uiLanguage="en"
         userProjects={[]}
@@ -178,7 +209,23 @@ function renderPane({
   );
 }
 
+function conversationFixture(
+  overrides: Pick<AgentGUIConversationSummary, "hasUnreadCompletion"> = {}
+): AgentGUIConversationSummary {
+  return {
+    cwd: "/workspace",
+    hasUnreadCompletion: overrides.hasUnreadCompletion,
+    id: "session-1",
+    provider: "codex",
+    sortTimeUnixMs: Date.now(),
+    status: "ready",
+    title: "Session 1",
+    updatedAtUnixMs: Date.now()
+  };
+}
+
 const RAIL_QUERY = {
+  activityConversations: [conversationFixture()],
   activityRootFacts: new Map(),
   batchDeletionAvailable: false,
   isInteractionLocked: () => false,

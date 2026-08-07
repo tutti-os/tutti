@@ -8,26 +8,29 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"reflect"
 	"strings"
 	"sync"
 	"time"
 )
 
 type ApplicationConfig struct {
-	Repository             Repository
-	CatalogSource          CatalogSource
-	ArtifactPreparer       ArtifactPreparer
-	CLIInstallations       CLIInstallationManager
-	Host                   ImplementationHost
-	Authorization          AuthorizationProvider
-	Compatibility          CompatibilityEvaluator
-	Scheduler              OperationScheduler
-	ImplementationRegistry ImplementationRegistry
-	WorkerID               string
-	BootEpoch              string
-	LeaseDuration          time.Duration
-	Now                    func() time.Time
-	NewID                  func() (string, error)
+	Repository               Repository
+	CatalogSource            CatalogSource
+	ArtifactPreparer         ArtifactPreparer
+	CLIInstallations         CLIInstallationManager
+	Host                     ImplementationHost
+	Authorization            AuthorizationProvider
+	AuthorizationProjections AuthorizationProjectionStore
+	RuntimeBindings          RuntimeBindingResolver
+	Compatibility            CompatibilityEvaluator
+	Scheduler                OperationScheduler
+	ImplementationRegistry   ImplementationRegistry
+	WorkerID                 string
+	BootEpoch                string
+	LeaseDuration            time.Duration
+	Now                      func() time.Time
+	NewID                    func() (string, error)
 }
 
 type Application struct {
@@ -61,6 +64,9 @@ func NewApplication(config ApplicationConfig) (*Application, error) {
 	}
 	if config.Authorization == nil {
 		return nil, errors.New("connector market authorization provider is required")
+	}
+	if config.RuntimeBindings == nil {
+		config.RuntimeBindings = defaultRuntimeBindingResolver{}
 	}
 	if config.Compatibility == nil {
 		return nil, errors.New("connector market compatibility evaluator is required")
@@ -131,32 +137,71 @@ func (application *Application) ListCatalogPage(ctx context.Context, query Catal
 	if page.SectionID != query.SectionID {
 		return CatalogPage{}, invalidManifest("connector catalog page section does not match the request", nil)
 	}
-	snapshot, err := application.config.Repository.Snapshot(ctx)
-	if err != nil {
-		return CatalogPage{}, err
-	}
 	seen := make(map[string]struct{}, len(page.Entries))
-	result := CatalogPage{SectionID: page.SectionID, Items: make([]CatalogListing, 0, len(page.Entries)), NextPageToken: page.NextPageToken, Revision: snapshot.Revision}
+	compatibilityByKey := make(map[string]Compatibility, len(page.Entries))
 	for _, entry := range page.Entries {
-		connectorKey := strings.TrimSpace(entry.ConnectorKey)
-		if strings.TrimSpace(entry.CategoryID) == "" || connectorKey == "" || strings.TrimSpace(entry.Version) == "" ||
-			!artifactSHA256Pattern.MatchString(entry.ArtifactSHA256) || entry.ArtifactSizeBytes <= 0 {
-			return CatalogPage{}, invalidManifest("connector catalog placement identity is incomplete", nil)
+		if strings.TrimSpace(entry.CategoryID) == "" {
+			return CatalogPage{}, invalidManifest("connector catalog item category is required", nil)
 		}
-		if _, exists := seen[connectorKey]; exists {
+		if _, exists := seen[entry.Release.ConnectorKey]; exists {
 			return CatalogPage{}, invalidManifest("connector catalog page contains duplicate connectors", nil)
 		}
-		seen[connectorKey] = struct{}{}
-		connector, err := application.config.Repository.Connector(ctx, connectorKey)
-		if errors.Is(err, ErrNotFound) {
-			return CatalogPage{}, invalidManifest("connector catalog placement is not present in the accepted catalog", nil)
+		seen[entry.Release.ConnectorKey] = struct{}{}
+		if err := ValidateReleaseShape(entry.Release); err != nil {
+			return CatalogPage{}, err
 		}
+		compatibility, err := application.compatibilityFor(entry.Release.Manifest)
 		if err != nil {
 			return CatalogPage{}, err
 		}
-		if connector.Release.Version != entry.Version || connector.Release.Artifact.SHA256 != entry.ArtifactSHA256 ||
-			connector.Release.Artifact.SizeBytes != entry.ArtifactSizeBytes {
-			return CatalogPage{}, invalidManifest("connector catalog placement does not match the accepted release", nil)
+		compatibilityByKey[entry.Release.ConnectorKey] = compatibility
+	}
+
+	// Browsing is a cache-aside catalog sync. Persisting newly observed releases
+	// makes an item immediately installable without waiting for the background
+	// authoritative refresh; unseen items are never removed by a partial page.
+	var revision uint64
+	err = application.config.Repository.Transaction(ctx, func(tx Transaction) error {
+		revision = tx.Revision()
+		changed := make([]Connector, 0, len(page.Entries))
+		for _, entry := range page.Entries {
+			connector, lookupErr := tx.Connector(entry.Release.ConnectorKey)
+			if lookupErr != nil && !errors.Is(lookupErr, ErrNotFound) {
+				return lookupErr
+			}
+			if errors.Is(lookupErr, ErrNotFound) {
+				connector = newCatalogConnector(entry.Release)
+			}
+			compatibility := compatibilityByKey[entry.Release.ConnectorKey]
+			if lookupErr == nil && reflect.DeepEqual(connector.Release, entry.Release) && reflect.DeepEqual(connector.Compatibility, compatibility) {
+				continue
+			}
+			connector.Release = entry.Release
+			connector.Authorization = authorizationForManifest(connector.Authorization, entry.Release.Manifest.AuthorizationKind)
+			connector.Compatibility = compatibility
+			changed = append(changed, connector)
+		}
+		if len(changed) == 0 {
+			return nil
+		}
+		revision = tx.AdvanceRevision()
+		for _, connector := range changed {
+			connector.Revision = revision
+			if err := tx.SaveConnector(connector); err != nil {
+				return err
+			}
+		}
+		return tx.EnqueueConnectorMarketChanged(ChangedEvent{Revision: revision})
+	})
+	if err != nil {
+		return CatalogPage{}, err
+	}
+
+	result := CatalogPage{SectionID: page.SectionID, Items: make([]CatalogListing, 0, len(page.Entries)), NextPageToken: page.NextPageToken, Revision: revision}
+	for _, entry := range page.Entries {
+		connector, err := application.config.Repository.Connector(ctx, entry.Release.ConnectorKey)
+		if err != nil {
+			return CatalogPage{}, err
 		}
 		result.Items = append(result.Items, CatalogListing{CategoryID: entry.CategoryID, Featured: entry.Featured, Connector: connector})
 	}
@@ -413,6 +458,8 @@ func (application *Application) executeOperation(ctx context.Context, operationI
 		executeErr = application.executeInstall(executionContext, operation)
 	case OperationKindUninstall:
 		executeErr = application.executeUninstall(executionContext, operation)
+	case OperationKindReconcileRuntime:
+		executeErr = application.executeRuntimeReconcile(executionContext, operation)
 	case OperationKindDisconnectAuthorization:
 		executeErr = application.executeDisconnectAuthorization(executionContext, operation)
 	case OperationKindStartAuthorization:
@@ -500,7 +547,7 @@ func (application *Application) Recover(ctx context.Context) error {
 
 func operationTouchesImplementationHost(kind OperationKind) bool {
 	switch kind {
-	case OperationKindInstall, OperationKindUninstall:
+	case OperationKindInstall, OperationKindUninstall, OperationKindReconcileRuntime:
 		return true
 	default:
 		return false
@@ -533,79 +580,6 @@ func (application *Application) adoptRuntimeOperation(ctx context.Context, opera
 	return adopted, err
 }
 
-// ReconcileInstalledRuntimes rebuilds one global runtime projection for every
-// installed connector.
-func (application *Application) ReconcileInstalledRuntimes(ctx context.Context) error {
-	if application == nil {
-		return NewDomainError(ErrorCodeUnavailable, "connector application is unavailable", false, nil)
-	}
-	snapshot, err := application.config.Repository.Snapshot(ctx)
-	if err != nil {
-		return err
-	}
-	for _, connector := range snapshot.Connectors {
-		if connector.Installation.State != InstallationStateInstalled {
-			continue
-		}
-		installedRelease, evidenceErr := application.installedReleaseEvidence(ctx, connector)
-		if evidenceErr != nil {
-			return NewDomainError(ErrorCodeUnavailable, "installed connector release evidence is unavailable", false, nil)
-		}
-		if validationErr := ValidateRuntimeReleaseShape(installedRelease); validationErr != nil {
-			return NewDomainError(ErrorCodeUnavailable, "installed connector release evidence is invalid", false, validationErr)
-		}
-		installedConnector := connector
-		installedConnector.Release = installedRelease
-		generation := maxGeneration(connector.Revision)
-		operationID := "reconcile/" + application.config.BootEpoch + "/" + connector.Key
-		receipt, err := application.config.Host.Reconcile(ctx, RuntimeReconcileRequest{
-			OperationID: operationID, ConnectionID: defaultConnectorConnectionID,
-			Connector: installedConnector, Enabled: true,
-			Generation: HostGeneration{BootEpoch: application.config.BootEpoch, Generation: generation},
-		})
-		if err != nil {
-			return NewDomainError(ErrorCodeUnavailable, "connector runtime could not be reconciled", true, err)
-		}
-		if err := validateRuntimeReceipt(receipt, operationID, defaultConnectorConnectionID, connector.Key,
-			installedRelease.ReleaseDigest, HostGeneration{BootEpoch: application.config.BootEpoch, Generation: generation}); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-// FenceInstalledRuntimes removes runtime projections without deleting install
-// facts.
-func (application *Application) FenceInstalledRuntimes(ctx context.Context) error {
-	if application == nil {
-		return NewDomainError(ErrorCodeUnavailable, "connector application is unavailable", false, nil)
-	}
-	snapshot, err := application.config.Repository.Snapshot(ctx)
-	if err != nil {
-		return err
-	}
-	var fenceErrors []error
-	for _, connector := range snapshot.Connectors {
-		if connector.Installation.State != InstallationStateInstalled {
-			continue
-		}
-		fenceErrors = append(fenceErrors, application.config.Host.DeactivateRuntime(ctx, RuntimeDeactivationRequest{
-			ConnectionID: defaultConnectorConnectionID, ConnectorKey: connector.Key,
-			ReleaseDigest: connector.Installation.InstalledReleaseDigest,
-			Generation:    HostGeneration{BootEpoch: application.config.BootEpoch, Generation: maxGeneration(connector.Revision)},
-			Deadline:      application.config.Now().UTC().Add(5 * time.Second),
-		}))
-	}
-	return errors.Join(fenceErrors...)
-}
-
-func maxGeneration(generation uint64) uint64 {
-	if generation == 0 {
-		return 1
-	}
-	return generation
-}
-
 func (application *Application) acceptConnectorOperation(
 	ctx context.Context,
 	mutation ConnectorMutation,
@@ -622,7 +596,7 @@ func (application *Application) acceptConnectorOperation(
 			return err
 		}
 		if existing != nil {
-			if err := verifyIdempotentOperation(*existing, kind, mutation.ConnectorKey); err != nil {
+			if err := verifyIdempotentOperation(*existing, kind, mutation.ConnectorKey, mutation.AccountID); err != nil {
 				return err
 			}
 			connector, err := tx.Connector(mutation.ConnectorKey)
@@ -658,13 +632,14 @@ func (application *Application) acceptConnectorOperation(
 			ClientRequestID: mutation.ClientRequestID,
 			ConnectorKey:    mutation.ConnectorKey,
 			Kind:            kind,
+			Scope:           OperationScope{AccountID: strings.TrimSpace(mutation.AccountID)},
 			State:           OperationStateAccepted,
 			Stage:           OperationStageAccepted,
 			Target:          operationTarget(kind, connector),
 			CreatedAt:       now,
 			UpdatedAt:       now,
 		}
-		if kind == OperationKindInstall || kind == OperationKindUninstall {
+		if kind == OperationKindInstall || kind == OperationKindUninstall || kind == OperationKindReconcileRuntime {
 			operation.HostGeneration = HostGeneration{BootEpoch: application.config.BootEpoch, Generation: revision}
 		}
 		if err := tx.SaveConnector(connector); err != nil {
@@ -711,7 +686,7 @@ func (application *Application) acceptOperation(
 			return err
 		}
 		if existing != nil {
-			if err := verifyIdempotentOperation(*existing, kind, connectorKey); err != nil {
+			if err := verifyIdempotentOperation(*existing, kind, connectorKey, ""); err != nil {
 				return err
 			}
 			result = MutationResult{Operation: *existing, Revision: tx.Revision()}
@@ -797,8 +772,9 @@ func verifyRevision(tx Transaction, expected uint64) error {
 	)
 }
 
-func verifyIdempotentOperation(operation Operation, kind OperationKind, connectorKey string) error {
-	if operation.Kind != kind || operation.ConnectorKey != connectorKey {
+func verifyIdempotentOperation(operation Operation, kind OperationKind, connectorKey, accountID string) error {
+	if operation.Kind != kind || operation.ConnectorKey != connectorKey ||
+		operation.Scope.AccountID != strings.TrimSpace(accountID) {
 		return invalidRequest("clientRequestId was already used for a different connector-market command")
 	}
 	return nil
@@ -854,7 +830,7 @@ func operationTarget(kind OperationKind, connector Connector) *OperationTarget {
 			Release:        &release,
 		}
 	}
-	if kind == OperationKindUninstall {
+	if kind == OperationKindUninstall || kind == OperationKindReconcileRuntime {
 		return &OperationTarget{
 			ConnectorKey:  connector.Key,
 			Version:       connector.Installation.InstalledVersion,

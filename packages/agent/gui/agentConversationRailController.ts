@@ -4,6 +4,7 @@ import type { CachedConversationRailQuery } from "./agent-gui/agentGuiNode/contr
 import type { AgentGUIConversationRailQuerySnapshot } from "./agent-gui/agentGuiNode/controller/agentConversationRailQuerySnapshot.ts";
 import type { ConversationRailQueryScope } from "./agent-gui/agentGuiNode/controller/agentGuiConversationRailQueryTypes.ts";
 import type { AgentConversationRailRuntimePort } from "./agentConversationRailContracts.ts";
+import type { AgentGUIConversationActivityController } from "./agent-gui/agentGuiNode/controller/agentGUIConversationActivityController.ts";
 import {
   createWorkspaceQueryCache,
   type WorkspaceQueryCache
@@ -41,6 +42,7 @@ export interface AgentGUIConversationRailQueryControllerInput {
 }
 
 export interface AgentGUIConversationRailQueryController {
+  activityController: AgentGUIConversationActivityController;
   attach(): () => void;
   configure(scope: ConversationRailQueryScope): void;
   getSnapshot(): AgentGUIConversationRailQuerySnapshot;

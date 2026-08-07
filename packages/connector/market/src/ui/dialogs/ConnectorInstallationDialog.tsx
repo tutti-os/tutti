@@ -17,6 +17,7 @@ export function ConnectorInstallationDialog({
   iconUrl,
   i18n,
   installing,
+  updating,
   onClose,
   onInstall
 }: {
@@ -25,24 +26,34 @@ export function ConnectorInstallationDialog({
   iconUrl: string;
   i18n: ConnectorMarketI18nRuntime;
   installing: boolean;
+  updating: boolean;
   onClose: () => void;
   onInstall: () => void;
 }) {
   return (
-    <DialogContent className="max-h-[min(720px,calc(100vh-32px))] overflow-y-auto sm:max-w-[500px]">
+    <DialogContent
+      aria-busy={installing}
+      className="max-h-[min(720px,calc(100vh-32px))] overflow-y-auto sm:max-w-[500px]"
+      showCloseButton={!installing}
+    >
       <DialogHeader className="items-center gap-3 px-6 pt-4 text-center">
         <ConnectorIcon displayName={displayName} iconUrl={iconUrl} size="lg" />
         <DialogTitle>
-          {i18n.t("dialogInstallationTitle", { name: displayName })}
+          {i18n.t(updating ? "dialogUpdateTitle" : "dialogInstallationTitle", {
+            name: displayName
+          })}
         </DialogTitle>
       </DialogHeader>
 
       <DialogDescription className="px-6 text-center text-[13px] leading-6">
-        {description || i18n.t("dialogInstallationDescription")}
+        {updating
+          ? i18n.t("dialogUpdateDescription")
+          : description || i18n.t("dialogInstallationDescription")}
       </DialogDescription>
 
       <DialogFooter className="gap-2.5 pt-2 sm:justify-center">
         <Button
+          disabled={installing}
           size="dialog"
           type="button"
           variant="secondary"
@@ -57,7 +68,9 @@ export function ConnectorInstallationDialog({
           onClick={onInstall}
         >
           {installing ? <Spinner size={14} /> : null}
-          {installing ? i18n.t("actionInstalling") : i18n.t("actionInstall")}
+          {installing
+            ? i18n.t(updating ? "actionUpdating" : "actionInstalling")
+            : i18n.t(updating ? "actionUpdate" : "actionInstall")}
         </Button>
       </DialogFooter>
     </DialogContent>

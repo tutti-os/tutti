@@ -15,9 +15,11 @@ export interface ConnectorCatalogErrorView {
 export type ConnectorCardAction =
   | "authorize"
   | "busy"
+  | "disconnect"
   | "install"
   | "manage"
-  | "unavailable";
+  | "unavailable"
+  | "update";
 
 export interface ConnectorCardView {
   action: ConnectorCardAction;
@@ -35,7 +37,8 @@ export interface ConnectorCardView {
     | "connected"
     | "installing"
     | "not_installed"
-    | "unavailable";
+    | "unavailable"
+    | "update_available";
 }
 
 export interface ConnectorSectionView {
@@ -72,6 +75,7 @@ interface ConnectorDialogBaseView {
 }
 
 export interface ConnectorAuthorizationDialogView extends ConnectorDialogBaseView {
+  authorizing: boolean;
   kind: "authorization";
   pending: boolean;
 }
@@ -79,6 +83,7 @@ export interface ConnectorAuthorizationDialogView extends ConnectorDialogBaseVie
 export interface ConnectorInstallationDialogView extends ConnectorDialogBaseView {
   installing: boolean;
   kind: "installation";
+  updating: boolean;
 }
 
 export interface ConnectorManagementDialogView extends ConnectorDialogBaseView {

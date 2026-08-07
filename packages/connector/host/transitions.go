@@ -37,6 +37,7 @@ func CanTransitionAuthorization(from, to AuthorizationState) bool {
 			AuthorizationStatePending: true,
 		},
 		AuthorizationStatePending: {
+			AuthorizationStatePending:      true,
 			AuthorizationStateConnected:    true,
 			AuthorizationStateDisconnected: true,
 			AuthorizationStateFailed:       true,

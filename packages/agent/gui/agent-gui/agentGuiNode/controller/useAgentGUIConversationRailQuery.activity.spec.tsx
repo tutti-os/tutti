@@ -75,6 +75,11 @@ describe("useAgentGUIConversationRailQuery Activity facts", () => {
       })
     );
     expect(rendered.result.current.activityRootFacts.has("child")).toBe(false);
+    expect(
+      rendered.result.current.activityConversations.map(
+        (conversation) => conversation.id
+      )
+    ).toEqual(["root"]);
 
     act(() => {
       engine.dispatch({

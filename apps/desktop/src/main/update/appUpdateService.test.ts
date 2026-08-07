@@ -60,6 +60,35 @@ test("createAppUpdateService can simulate a dev prerelease update", async () => 
   }
 });
 
+test("store-managed updates never configure or invoke the direct updater", async () => {
+  const driver = createFakeDriver();
+  const service = createAppUpdateService(driver, {
+    currentVersion: "1.2.3",
+    releaseFeedResolver: async () => {
+      throw new Error("Store builds must not resolve a direct release feed");
+    },
+    supportsUpdates: false,
+    unsupportedMessage: "Updates are managed by Microsoft Store."
+  });
+
+  try {
+    const configured = await service.configure({
+      channel: "rc",
+      policy: "auto"
+    });
+    const checked = await service.checkForUpdates();
+    const downloaded = await service.downloadUpdate();
+    await service.installUpdate();
+
+    assert.equal(configured.status, "unsupported");
+    assert.equal(checked.status, "unsupported");
+    assert.equal(downloaded.status, "unsupported");
+    assert.deepEqual(driver.configureCalls, []);
+  } finally {
+    service.dispose();
+  }
+});
+
 test("mandatory update sessions exclusively own and restore the updater", async () => {
   let checkCalls = 0;
   const driver = createFakeDriver({

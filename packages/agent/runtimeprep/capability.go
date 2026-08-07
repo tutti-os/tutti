@@ -131,7 +131,7 @@ func StandardProfile() DeploymentProfile {
 func ConnectorDiscoveryPack() CapabilityPack {
 	return CapabilityPack{Name: "connector-discovery", Resolve: func(_ context.Context, input PrepareInput) (CapabilityContribution, error) {
 		if input.commandCapabilities == nil || !input.commandCapabilities.HasAll(
-			"connector.available", "connector.skills", "connector.skill.read", "connector.invoke",
+			"connector.available", "connector.capabilities", "connector.skills", "connector.skill.read", "connector.invoke",
 		) {
 			return CapabilityContribution{Enabled: false}, nil
 		}
