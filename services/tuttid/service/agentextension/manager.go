@@ -715,6 +715,15 @@ func activateExtensionPackage(staging, finalDir, expectedDigest string) error {
 	return nil
 }
 
+// runtimeVersionProbeTimeout bounds one `<cli> --version` probe. Matches the
+// ACP-initialize probe budget rather than the previous 5s: version commands of
+// Python-based runtimes are not instant — a cold first run pays interpreter
+// start-up plus bytecode compilation, and some CLIs (observed with hermes)
+// perform a synchronous network update check with its own 5s timeout, so the
+// legitimate worst case lands well above 5s and the SIGKILL surfaced as
+// "installed runtime version is incompatible: signal: killed".
+const runtimeVersionProbeTimeout = 15 * time.Second
+
 func runtimeVersionWithEnv(ctx context.Context, executable string, args []string, constraint string, env []string) (string, error) {
 	if len(args) == 0 {
 		return "", nil
