@@ -51,6 +51,19 @@ func TestComputerPermissionIssuesRequiresBothPermissions(t *testing.T) {
 	}
 }
 
+func TestParseWindowsDriverDoctor(t *testing.T) {
+	doctor, err := parseWindowsDriverDoctor([]byte("driver diagnostic\n{\"ok\":true,\"probes\":[{\"label\":\"UI Automation\",\"status\":\"ok\"}]}"))
+	if err != nil {
+		t.Fatalf("parseWindowsDriverDoctor: %v", err)
+	}
+	if !doctor.OK {
+		t.Fatalf("doctor = %#v, want ok", doctor)
+	}
+	if _, err := parseWindowsDriverDoctor([]byte(`{"ok":false}`)); err != nil {
+		t.Fatalf("parseWindowsDriverDoctor false result: %v", err)
+	}
+}
+
 func boolPtr(value bool) *bool {
 	return &value
 }

@@ -145,6 +145,24 @@ func registerReplayIDs(replacements map[string]string, value map[string]any) {
 		for interactionIndex, interactionItem := range interactions {
 			interaction, _ := interactionItem.(map[string]any)
 			registerReplayID(replacements, interaction["requestId"], fmt.Sprintf("session:%d/interaction:%d", sessionIndex, interactionIndex))
+			// Child-session approval / tool interactions remint toolCallId across
+			// record→replay. Pin the structural slot so final-state compare stays
+			// alpha-equivalent even when the id no longer equals a message callId.
+			if input, ok := interaction["input"].(map[string]any); ok {
+				if toolCall, ok := input["toolCall"].(map[string]any); ok {
+					toolCallReplacement := fmt.Sprintf(
+						"session:%d/interaction:%d/toolCall",
+						sessionIndex,
+						interactionIndex,
+					)
+					if toolCallID, ok := toolCall["toolCallId"].(string); ok {
+						if strings.TrimSpace(toolCallID) != "" {
+							registerReplayID(replacements, toolCallID, toolCallReplacement)
+						}
+						toolCall["toolCallId"] = toolCallReplacement
+					}
+				}
+			}
 		}
 	}
 	tuttiMode, _ := value["tuttiMode"].(map[string]any)

@@ -19,8 +19,11 @@ func newManagedProcessCommand(ctx context.Context, executable string, args ...st
 	extension := strings.ToLower(filepath.Ext(executable))
 	var command *exec.Cmd
 	if extension == ".cmd" || extension == ".bat" {
-		commandLine := windows.ComposeCommandLine(append([]string{executable}, args...))
-		command = exec.CommandContext(ctx, windowsCommandInterpreter(), "/D", "/S", "/C", commandLine)
+		// Batch files need cmd.exe's CALL command. Pass the executable and each
+		// argument as separate exec.Cmd arguments so Go performs the Windows
+		// quoting once; composing the whole command into the /C argument causes
+		// cmd.exe to retain a literal quote around paths containing spaces.
+		command = exec.CommandContext(ctx, windowsCommandInterpreter(), append([]string{"/D", "/C", "call", executable}, args...)...)
 	} else if extension == ".ps1" {
 		command = exec.CommandContext(ctx, "powershell.exe", append([]string{
 			"-NoLogo", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", executable,

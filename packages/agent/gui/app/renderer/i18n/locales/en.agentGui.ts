@@ -1,4 +1,5 @@
 import { enAgentGuiOrchestration } from "./en.agentGuiOrchestration.ts";
+import { enAgentGuiAddContent } from "./en.agentGuiAddContent.ts";
 import { enAgentGuiProviderIdentity } from "./en.agentGuiProviderIdentity.ts";
 import { enAgentGuiQuickPrompts } from "./en.agentGuiQuickPrompts.ts";
 import { enAgentGuiReferencePicker } from "./en.agentGuiReferencePicker.ts";
@@ -716,6 +717,7 @@ export const enAgentGui = {
   mentionPalette: "Reference or Invoke",
   addReference: "Add reference",
   addContent: "Add files and more",
+  ...enAgentGuiAddContent,
   quickPrompts: enAgentGuiQuickPrompts,
   referenceWorkspaceFiles: "Reference workspace files",
   ...enAgentGuiReferencePicker,

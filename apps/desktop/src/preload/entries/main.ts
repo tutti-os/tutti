@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from "electron";
-import { createDesktopFeatureAvailabilityApi } from "@tutti-os/desktop-update-admission/preload";
+import { createDesktopFeatureAvailabilityApi } from "@tutti-os/desktop-update-admission/preload/feature-availability";
 import { createBrowserDesktopApi } from "../api/browser";
 import { createComputerUseDesktopApi } from "../api/computerUse";
 import { createDeveloperDesktopApi } from "../api/developer";

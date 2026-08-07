@@ -291,6 +291,79 @@ describe("useAgentGUIComposerOptionsSync", () => {
     );
   });
 
+  it("force reloads composer options when the connector catalog changes", async () => {
+    const getComposerOptions = vi.fn(async () => ({}));
+    let emitHostEvent: ((event: unknown) => void) | null = null;
+    setAgentHostApiForTests({
+      onHostEvent: (listener: (event: unknown) => void) => {
+        emitHostEvent = listener;
+        return () => {
+          emitHostEvent = null;
+        };
+      }
+    } as unknown as AgentHostRuntimeApi);
+    const data = targetData("codex");
+    const target = composerTarget("codex");
+    const rendered = renderHook(() =>
+      useAgentGUIComposerOptionsSync({
+        activeSessionTarget: {
+          ...target,
+          agentSessionId: "session-1"
+        },
+        activeConversationId: "session-1",
+        activeConversationIdRef: { current: "session-1" },
+        agentActivityRuntime: {
+          getComposerOptions,
+          getSnapshot: () => ({})
+        } as unknown as AgentGUIRuntime,
+        composerTargetData: target,
+        conversationFilter: null,
+        currentUserId: "user-1",
+        data,
+        dataRef: { current: data },
+        defaultReasoningEffort: null,
+        draftSettingsBySessionIdRef: { current: {} },
+        isComposerHome: false,
+        isComposerHomeRef: { current: false },
+        isCreatingConversation: false,
+        loadDraftComposerOptionsRef: { current: () => {} },
+        loadSessionState: vi.fn(),
+        onComposerDefaultsAuthorityReloadedRef:
+          createComposerDefaultsAuthorityReconcilerRef(),
+        providerComposerOptions: null,
+        selectedComposerTargetDataRef: { current: target },
+        selectedProjectPath: "/workspace/project",
+        selectedProjectPathRef: { current: "/workspace/project" },
+        syncConversationListProjection: vi.fn(async () => {}),
+        workspaceId: "workspace-1",
+        workspacePath: "/workspace"
+      })
+    );
+
+    try {
+      await waitFor(() => expect(getComposerOptions).toHaveBeenCalled());
+      getComposerOptions.mockClear();
+      act(() => {
+        emitHostEvent?.({
+          connectorKey: "lark-cli",
+          revision: 7,
+          scope: "global",
+          type: "agent-connector-catalog-invalidated"
+        });
+      });
+      expect(getComposerOptions).toHaveBeenCalledWith(
+        expect.objectContaining({
+          agentTargetId: "local:codex",
+          force: true,
+          provider: "codex"
+        })
+      );
+    } finally {
+      rendered.unmount();
+      setAgentHostApiForTests(null);
+    }
+  });
+
   it("rereads target authority on invalidation without sending local persistent intent", async () => {
     const getComposerOptions = vi.fn(async () => ({}));
     let emitHostEvent: ((event: unknown) => void) | null = null;

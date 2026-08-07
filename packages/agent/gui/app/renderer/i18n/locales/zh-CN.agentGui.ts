@@ -1,4 +1,5 @@
 import { zhCNAgentGuiProviderIdentity } from "./zh-CN.agentGuiProviderIdentity.ts";
+import { zhCNAgentGuiAddContent } from "./zh-CN.agentGuiAddContent.ts";
 import { zhCNAgentGuiQuickPrompts } from "./zh-CN.agentGuiQuickPrompts.ts";
 import { zhCNAgentGuiReferencePicker } from "./zh-CN.agentGuiReferencePicker.ts";
 import { zhCNAgentGuiModelPlans } from "./zh-CN.agentGuiModelPlans.ts";
@@ -726,6 +727,7 @@ export const zhCNAgentGui = {
   mentionPalette: "引用或调用",
   addReference: "添加引用",
   addContent: "添加文件等内容",
+  ...zhCNAgentGuiAddContent,
   quickPrompts: zhCNAgentGuiQuickPrompts,
   referenceWorkspaceFiles: "引用空间文件",
   ...zhCNAgentGuiReferencePicker,

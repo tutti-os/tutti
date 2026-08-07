@@ -46,8 +46,10 @@ type managedCredentialBrokerLaunch struct {
 }
 
 type managedCredentialAuthorizationHost interface {
-	authorizationRoute(market.Connector) (*connectorRoute, error)
+	authorizationRoute(context.Context, market.OperationScope, market.Connector) (*connectorRoute, error)
 	startCredentialBroker(context.Context, *connectorRoute, credentialBrokerRequest) (agentruntime.ProcessConnection, uint64, error)
+	observeAuthorization(*connectorRoute, market.AuthorizationState)
+	releaseAuthorizationRoute(*connectorRoute)
 }
 
 // managedCredentialAuthorizationProvider owns the host-side lifecycle of a
@@ -104,7 +106,9 @@ func (provider *managedCredentialAuthorizationProvider) Begin(
 	ctx context.Context,
 	request market.AuthorizationStartRequest,
 ) (market.AuthorizationSession, error) {
-	route, err := provider.host.authorizationRoute(request.Connector)
+	connector := request.Connector
+	connector.Release = request.Release
+	route, err := provider.host.authorizationRoute(ctx, request.Scope, connector)
 	if err != nil {
 		return market.AuthorizationSession{}, err
 	}
@@ -125,12 +129,14 @@ func (provider *managedCredentialAuthorizationProvider) Begin(
 	result := market.AuthorizationSession{
 		OperationID:      request.OperationID,
 		ConnectorKey:     request.Connector.Key,
+		ConnectionID:     route.connectionID,
 		SessionID:        request.OperationID + "/credential-broker",
 		AuthorizationURL: authorizationURL,
 		State:            state,
 	}
 	if state == market.AuthorizationStateConnected {
 		provider.clearAuthorizationSession(route.id, session)
+		provider.host.releaseAuthorizationRoute(route)
 	}
 	return result, nil
 }
@@ -139,7 +145,7 @@ func (provider *managedCredentialAuthorizationProvider) Disconnect(
 	ctx context.Context,
 	request market.AuthorizationDisconnectRequest,
 ) error {
-	route, err := provider.host.authorizationRoute(request.Connector)
+	route, err := provider.host.authorizationRoute(ctx, request.Scope, request.Connector)
 	if err != nil {
 		return err
 	}
@@ -162,6 +168,8 @@ func (provider *managedCredentialAuthorizationProvider) Disconnect(
 	if event.Type != "disconnected" {
 		return credentialBrokerEventError(event, "disconnect")
 	}
+	provider.host.observeAuthorization(route, market.AuthorizationStateDisconnected)
+	provider.host.releaseAuthorizationRoute(route)
 	return nil
 }
 
@@ -190,11 +198,12 @@ func (provider *managedCredentialAuthorizationProvider) authorizationSessionOrSt
 	session := &credentialBrokerSession{cancel: cancel, changed: make(chan struct{})}
 	provider.sessions[route.id] = session
 	provider.mu.Unlock()
-	go consumeAuthorizationEvents(route, connection, processID, session)
+	go consumeAuthorizationEvents(provider.host, route, connection, processID, session)
 	return session, nil
 }
 
 func consumeAuthorizationEvents(
+	host managedCredentialAuthorizationHost,
 	route *connectorRoute,
 	connection agentruntime.ProcessConnection,
 	processID uint64,
@@ -207,16 +216,16 @@ func consumeAuthorizationEvents(
 		frame, err := receiveCredentialBrokerFrame(connection)
 		if err != nil {
 			if !errors.Is(err, io.EOF) {
-				session.fail(fmt.Errorf("receive connector credential broker event: %w", err))
+				failAuthorizationSession(host, route, session, fmt.Errorf("receive connector credential broker event: %w", err))
 			} else if !session.terminal() {
-				session.fail(errors.New("connector credential broker exited before a terminal event"))
+				failAuthorizationSession(host, route, session, errors.New("connector credential broker exited before a terminal event"))
 			}
 			return
 		}
 		stdout.Write(frame.Stdout)
 		stderr.Write(frame.Stderr)
 		if stdout.Len()+stderr.Len() > 1<<20 {
-			session.fail(errors.New("connector credential broker output exceeded its limit"))
+			failAuthorizationSession(host, route, session, errors.New("connector credential broker output exceeded its limit"))
 			return
 		}
 		for {
@@ -226,29 +235,29 @@ func consumeAuthorizationEvents(
 			}
 			stdout.Reset()
 			stdout.WriteString(remaining)
-			if err := applyCredentialBrokerEvent(route, session, line); err != nil {
-				session.fail(err)
+			if err := applyCredentialBrokerEvent(host, route, session, line); err != nil {
+				failAuthorizationSession(host, route, session, err)
 				return
 			}
 		}
 		if frame.ExitCode != nil {
 			if trailing := strings.TrimSpace(stdout.String()); trailing != "" {
-				if err := applyCredentialBrokerEvent(route, session, trailing); err != nil {
-					session.fail(err)
+				if err := applyCredentialBrokerEvent(host, route, session, trailing); err != nil {
+					failAuthorizationSession(host, route, session, err)
 					return
 				}
 			}
 			if *frame.ExitCode != 0 && !session.terminal() {
-				session.fail(fmt.Errorf("connector credential broker exited with code %d: %s", *frame.ExitCode, boundedBrokerMessage(stderr.String())))
+				failAuthorizationSession(host, route, session, fmt.Errorf("connector credential broker exited with code %d: %s", *frame.ExitCode, boundedBrokerMessage(stderr.String())))
 			} else if !session.terminal() {
-				session.fail(errors.New("connector credential broker exited before a terminal event"))
+				failAuthorizationSession(host, route, session, errors.New("connector credential broker exited before a terminal event"))
 			}
 			return
 		}
 	}
 }
 
-func applyCredentialBrokerEvent(route *connectorRoute, session *credentialBrokerSession, payload string) error {
+func applyCredentialBrokerEvent(host managedCredentialAuthorizationHost, route *connectorRoute, session *credentialBrokerSession, payload string) error {
 	if strings.TrimSpace(payload) == "" {
 		return nil
 	}
@@ -262,8 +271,10 @@ func applyCredentialBrokerEvent(route *connectorRoute, session *credentialBroker
 			return errors.New("connector credential broker returned an unauthorized URL")
 		}
 		session.update(market.AuthorizationStatePending, event.URL, nil)
+		host.observeAuthorization(route, market.AuthorizationStatePending)
 	case "connected":
 		session.update(market.AuthorizationStateConnected, "", nil)
+		host.observeAuthorization(route, market.AuthorizationStateConnected)
 	case "error":
 		return credentialBrokerEventError(event, "authorize")
 	default:
@@ -272,18 +283,144 @@ func applyCredentialBrokerEvent(route *connectorRoute, session *credentialBroker
 	return nil
 }
 
-func (host *Host) authorizationRoute(connector market.Connector) (*connectorRoute, error) {
+func (host *Host) authorizationRoute(ctx context.Context, scope market.OperationScope, connector market.Connector) (*connectorRoute, error) {
 	managed := connector.Release.Manifest.Implementation.ManagedStdio
 	if host == nil || connector.Release.Manifest.Implementation.Kind != market.ImplementationKindManagedStdio ||
 		connector.Release.Manifest.AuthorizationKind == "none" || managed == nil || managed.CredentialBroker == nil ||
 		connector.Installation.State != market.InstallationStateInstalled {
 		return nil, errors.New("managed connector authorization is unavailable")
 	}
-	route, _ := host.routes.Route(connectorRouteKey("default", connector.Key)).(*connectorRoute)
-	if route == nil || !host.routeCurrent(route) || route.credentialBrokerLaunch == nil {
-		return nil, errors.New("managed connector authorization route is unavailable")
+	connectionID := "default"
+	if accountID := strings.TrimSpace(scope.AccountID); accountID != "" {
+		connectionID = market.AccountRuntimeConnectionID(accountID, connector.Key)
+	}
+	key := connectorRouteKey(connectionID, connector.Key)
+	if route, _ := host.routes.Route(key).(*connectorRoute); route != nil && host.routeCurrent(route) && route.credentialBrokerLaunch != nil {
+		return route, nil
+	}
+	host.authorizationMu.Lock()
+	if route := host.authorizationRoutes[key]; route != nil && route.releaseDigest == connector.Release.ReleaseDigest &&
+		route.credentialBrokerLaunch != nil && !route.processes.IsFenced() {
+		host.authorizationMu.Unlock()
+		return route, nil
+	}
+	host.authorizationMu.Unlock()
+	route, err := host.buildAuthorizationRoute(ctx, connectionID, connector)
+	if err != nil {
+		return nil, err
+	}
+	host.authorizationMu.Lock()
+	current := host.authorizationRoutes[key]
+	if current == nil || current.releaseDigest != connector.Release.ReleaseDigest || current.processes.IsFenced() {
+		host.authorizationRoutes[key] = route
+		host.authorizationMu.Unlock()
+		if current != nil {
+			current.Fence()
+			_ = current.Close(time.Now().Add(3 * time.Second))
+		}
+		return route, nil
+	}
+	host.authorizationMu.Unlock()
+	route.Fence()
+	_ = route.Close(time.Now().Add(3 * time.Second))
+	return current, nil
+}
+
+func (host *Host) buildAuthorizationRoute(ctx context.Context, connectionID string, connector market.Connector) (*connectorRoute, error) {
+	if err := market.ValidateRuntimeReleaseShape(connector.Release); err != nil {
+		return nil, err
+	}
+	if connector.Installation.InstalledReleaseDigest != connector.Release.ReleaseDigest {
+		return nil, errors.New("managed connector authorization release is not installed")
+	}
+	prepared, err := host.artifacts.ResolvePrepared(ctx, connector.Release)
+	if err != nil {
+		return nil, fmt.Errorf("resolve prepared connector artifact for authorization: %w", err)
+	}
+	installedRoot := prepared.PreparedPath
+	executionRoot, err := host.snapshots.Create(prepared)
+	if err != nil {
+		return nil, fmt.Errorf("create connector authorization snapshot: %w", err)
+	}
+	prepared.PreparedPath = executionRoot
+	generation := connector.Revision
+	if generation == 0 {
+		generation = 1
+	}
+	runtimeRequest := market.RuntimeReconcileRequest{
+		ConnectionID: connectionID,
+		Connector:    connector,
+		Generation:   market.HostGeneration{BootEpoch: "authorization", Generation: generation},
+	}
+	plan, err := host.planner.Build(ctx, runtimeRequest, prepared)
+	if err != nil {
+		_ = host.snapshots.Remove(executionRoot)
+		return nil, err
+	}
+	route := &connectorRoute{
+		id: connectorRouteKey(connectionID, connector.Key), connectionID: connectionID,
+		connectorKey: connector.Key, releaseDigest: connector.Release.ReleaseDigest,
+		generation: runtimeRequest.Generation, capabilities: make(map[string]connectorCommand),
+		processes: connectorruntime.NewProcessGroup(), userHome: plan.UserHome,
+		executionRoot: executionRoot, installedRoot: installedRoot, snapshots: host.snapshots,
+	}
+	if plan.Managed.CLI == nil || plan.Managed.CredentialBroker == nil {
+		_ = route.Close(time.Now().Add(3 * time.Second))
+		return nil, errors.New("managed connector authorization requires a CLI credential broker")
+	}
+	if err := host.attachCLI(route, plan.Managed, prepared, plan.InstalledCLI, plan.Executable, plan.StateDir, plan.UserHome, plan.ArtifactTrees); err != nil {
+		_ = route.Close(time.Now().Add(3 * time.Second))
+		return nil, err
+	}
+	if err := host.attachCredentialBroker(route, plan.Managed.CredentialBroker, prepared, plan.Executable, plan.StateDir, plan.ArtifactTrees); err != nil {
+		_ = route.Close(time.Now().Add(3 * time.Second))
+		return nil, err
 	}
 	return route, nil
+}
+
+func (host *Host) observeAuthorization(route *connectorRoute, state market.AuthorizationState) {
+	if host == nil || host.authorizationObserver == nil || route == nil {
+		return
+	}
+	host.authorizationObserver.ObserveAuthorization(context.Background(), AuthorizationObservation{
+		ConnectorKey: route.connectorKey, ConnectionID: route.connectionID, State: state, ObservedAt: time.Now().UTC(),
+	})
+}
+
+func (host *Host) releaseAuthorizationRoute(route *connectorRoute) {
+	if host == nil || route == nil {
+		return
+	}
+	host.authorizationMu.Lock()
+	if host.authorizationRoutes[route.id] == route {
+		delete(host.authorizationRoutes, route.id)
+	} else {
+		host.authorizationMu.Unlock()
+		return
+	}
+	host.authorizationMu.Unlock()
+	route.Fence()
+	_ = route.Close(time.Now().Add(3 * time.Second))
+}
+
+func (host *Host) releaseAuthorizationRouteByKey(key string) {
+	if host == nil {
+		return
+	}
+	host.authorizationMu.Lock()
+	route := host.authorizationRoutes[key]
+	delete(host.authorizationRoutes, key)
+	host.authorizationMu.Unlock()
+	if route != nil {
+		route.Fence()
+		_ = route.Close(time.Now().Add(3 * time.Second))
+	}
+}
+
+func failAuthorizationSession(host managedCredentialAuthorizationHost, route *connectorRoute, session *credentialBrokerSession, err error) {
+	session.fail(err)
+	host.observeAuthorization(route, market.AuthorizationStateFailed)
 }
 
 func (host *Host) startCredentialBroker(
@@ -306,7 +443,7 @@ func (host *Host) startCredentialBroker(
 		"TUTTI_CONNECTOR_CREDENTIAL_BROKER_PROTOCOL="+market.CredentialBrokerProtocolV1,
 		"TUTTI_CONNECTOR_CLI_LAUNCH_JSON="+string(cliLaunch),
 	)
-	connection, processID, err := host.startProcess(ctx, route, spec, true)
+	connection, processID, err := host.startProcess(ctx, route, spec, false)
 	if err != nil {
 		return nil, 0, err
 	}

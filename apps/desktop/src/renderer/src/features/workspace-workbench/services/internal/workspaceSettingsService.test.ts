@@ -1342,6 +1342,18 @@ test("WorkspaceSettingsService Agents deep-link works without a provider (blank 
   assert.equal(service.store.agentFocusProvider, null);
 });
 
+test("WorkspaceSettingsService deep-links to the connector market panel", () => {
+  const service = new WorkspaceSettingsService({
+    client: createWorkspaceSettingsClient({})
+  });
+
+  service.openPanel({ id: "workspace-1" }, { pane: "connectors" });
+
+  assert.equal(service.store.open, true);
+  assert.equal(service.store.activeSection, "agent");
+  assert.equal(service.store.agentTab, "connectors");
+});
+
 test("WorkspaceSettingsService deep-links to Custom Agents and Automation", () => {
   const service = new WorkspaceSettingsService({
     client: createWorkspaceSettingsClient({})

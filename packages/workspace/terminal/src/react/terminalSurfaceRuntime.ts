@@ -12,6 +12,10 @@ import type { TerminalNodeFeature } from "../core/feature.ts";
 import { createTerminalScreenStateCache } from "../core/index.ts";
 import type { TerminalSurfaceDiagnostics } from "../core/sessionDiagnostics.ts";
 import { createTerminalFileLinkProvider } from "./terminalFileLinkProvider.ts";
+import {
+  resolveTerminalClipboardPlatform,
+  resolveTerminalClipboardShortcut
+} from "./terminalClipboardShortcuts.ts";
 import { createTerminalImeInputGuard } from "./terminalImeInputGuard.ts";
 import { resolveTerminalSurfaceOutputPlan } from "./terminalSurfaceOutputPlan.ts";
 import { createTerminalPreviewSnapshot } from "./terminalSurfacePreview.ts";
@@ -93,9 +97,44 @@ export function createTerminalSurfaceRuntime(input: {
   const imeInputGuard = createTerminalImeInputGuard({
     textarea: terminal.textarea
   });
-  terminal.attachCustomKeyEventHandler((event) =>
-    imeInputGuard.shouldProcessKeyEvent(event)
-  );
+  const clipboardPlatform = resolveTerminalClipboardPlatform();
+  terminal.attachCustomKeyEventHandler((event) => {
+    const clipboardAction = resolveTerminalClipboardShortcut(event, {
+      hasSelection: terminal.hasSelection(),
+      platform: clipboardPlatform
+    });
+    if (clipboardAction === "copy") {
+      const clipboard = getNavigatorClipboard();
+      const selection = terminal.getSelection();
+      if (!clipboard || !selection) {
+        return imeInputGuard.shouldProcessKeyEvent(event);
+      }
+      event.preventDefault();
+      event.stopPropagation();
+      void clipboard
+        .writeText(selection)
+        .catch(() => copyTerminalTextFallback(selection, terminal));
+      return false;
+    }
+    if (clipboardAction === "paste") {
+      const clipboard = getNavigatorClipboard();
+      if (!clipboard) {
+        return imeInputGuard.shouldProcessKeyEvent(event);
+      }
+      event.preventDefault();
+      event.stopPropagation();
+      void clipboard
+        .readText()
+        .then((text) => {
+          if (text) {
+            terminal.paste(text);
+          }
+        })
+        .catch(() => undefined);
+      return false;
+    }
+    return imeInputGuard.shouldProcessKeyEvent(event);
+  });
 
   const dataSubscription = terminal.onData((data) => {
     input.onUserInput(data);
@@ -550,6 +589,33 @@ export function createTerminalSurfaceRuntime(input: {
       xtermOpacity: xtermStyle?.opacity ?? "",
       xtermVisibility: xtermStyle?.visibility ?? ""
     });
+  }
+}
+
+function getNavigatorClipboard(): Clipboard | null {
+  if (typeof navigator === "undefined") {
+    return null;
+  }
+  return navigator.clipboard ?? null;
+}
+
+function copyTerminalTextFallback(text: string, terminal: Terminal): void {
+  const document = terminal.element?.ownerDocument;
+  if (!document?.body) {
+    return;
+  }
+  const textarea = document.createElement("textarea");
+  textarea.value = text;
+  textarea.setAttribute("readonly", "true");
+  textarea.style.position = "fixed";
+  textarea.style.opacity = "0";
+  document.body.appendChild(textarea);
+  textarea.select();
+  try {
+    document.execCommand("copy");
+  } finally {
+    textarea.remove();
+    terminal.focus();
   }
 }
 

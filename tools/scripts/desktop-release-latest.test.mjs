@@ -70,7 +70,9 @@ test("desktop release latest metadata exposes CloudFront URLs for every asset", 
     );
     assert.deepEqual(latest.preferredDownloads, {
       macosUniversalDmg:
-        "https://d111111abcdef8.cloudfront.net/desktop-release-assets/v1.2.3/Tutti-1.2.3-mac-universal.dmg"
+        "https://d111111abcdef8.cloudfront.net/desktop-release-assets/v1.2.3/Tutti-1.2.3-mac-universal.dmg",
+      windowsX64Exe:
+        "https://d111111abcdef8.cloudfront.net/desktop-release-assets/v1.2.3/Tutti-1.2.3-win-x64.exe"
     });
     assert.ok(latest.assets.every((asset) => !("cdnUrl" in asset)));
     assert.equal(latest.downloads, undefined);
@@ -109,6 +111,7 @@ test("desktop release latest metadata supports rc channel tags", async () => {
       path.join(dir, "Tutti-1.2.3-rc.1-mac-universal.dmg"),
       "uni"
     );
+    await writeFile(path.join(dir, "Tutti-1.2.3-rc.1-win-x64.exe"), "win");
 
     const latest = await buildDesktopReleaseLatest({
       assetDirPath: dir,
@@ -123,6 +126,12 @@ test("desktop release latest metadata supports rc channel tags", async () => {
     assert.equal(latest.version, "1.2.3-rc.1");
     assert.equal(
       latest.preferredDownloads.macosUniversalDmg?.includes("v1.2.3-rc.1"),
+      true
+    );
+    assert.equal(
+      latest.preferredDownloads.windowsX64Exe?.includes(
+        "Tutti-1.2.3-rc.1-win-x64.exe"
+      ),
       true
     );
   } finally {

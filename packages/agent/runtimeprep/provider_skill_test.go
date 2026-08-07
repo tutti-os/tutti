@@ -257,6 +257,26 @@ func TestRenderSkillBundleOmitsUnavailableComputerUse(t *testing.T) {
 	}
 }
 
+func TestRenderSkillBundleOmitsUnavailableBrowserUse(t *testing.T) {
+	t.Setenv(browserUseSwitchEnv, "")
+	preparer := newTestPreparer(t.TempDir())
+	preparer.BrowserUseAvailable = func() bool { return false }
+
+	bundle, err := preparer.RenderSkillBundle(t.Context(), PrepareInput{
+		WorkspaceID:    "workspace-1",
+		AgentSessionID: "session-1",
+		AgentTargetID:  "local:codex",
+		Provider:       "codex",
+		BrowserUse:     true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(strings.Join(skillBundleSlugs(bundle.Skills), ","), "browser-use") {
+		t.Fatalf("browser-use should be unavailable: %#v", bundle.Skills)
+	}
+}
+
 func TestRenderProviderSkillBundleIncludesClaudeRouting(t *testing.T) {
 	input := testInputWithCommands(t, PrepareInput{
 		AgentSessionID: "session-1",

@@ -699,8 +699,7 @@ export const zhCN = {
         deletedConversationPurgeFailed:
           "暂时无法清理，请先结束正在运行的 Agent 任务后重试",
         computerUseLabel: "电脑控制",
-        computerUseDescription:
-          "让 Agent 控制你的 Mac 桌面——截图、点击、键盘输入等",
+        computerUseDescription: "让 Agent 控制你的桌面——截图、点击、键盘输入等",
         computerUseInstallButton: "安装",
         computerUseInstalling: "正在安装…",
         computerUseInstallSuccess: "cua-driver 安装成功",
@@ -755,7 +754,7 @@ export const zhCN = {
           "屏幕录制设置已打开请在那里启用 CuaDriver，Tutti 会自动检查",
         computerUsePrivacySettingsOpenedInstruction:
           "隐私设置已打开请在那里启用 CuaDriver 所需权限，Tutti 会自动检查",
-        computerUseAuthorizedTooltip: "CuaDriver 已具备屏幕录制与辅助使用权限",
+        computerUseAuthorizedTooltip: "CuaDriver 已准备好执行桌面控制",
         computerUsePermissionUnknownTooltip:
           "无法确认授权状态，点击后会由 CuaDriver 检查并引导授权",
         computerUsePermissionMissingTooltip: "需要授权：{{permissions}}",

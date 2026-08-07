@@ -47,13 +47,15 @@ export function ConnectorMarketDialogs() {
         />
       ) : dialog.kind === "authorization" ? (
         <ConnectorAuthorizationDialog
+          authorizationKind={dialog.authorizationKind}
           authorizing={dialog.authorizing}
           displayName={dialog.displayName}
           iconUrl={dialog.iconUrl}
           i18n={i18n}
           pending={dialog.pending}
-          onAuthorize={() =>
-            market.beginAuthorization(dialog.connectorKey).catch(() => {
+          permissions={dialog.permissions}
+          onAuthorize={(secret) =>
+            market.beginAuthorization(dialog.connectorKey, secret).catch(() => {
               onError?.(i18n.t("connectorAuthorizationFailed"));
             })
           }

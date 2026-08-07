@@ -1,6 +1,7 @@
 import type { TuttidEventStreamClient } from "@tutti-os/client-tuttid-ts";
 import type {
   WorkspaceAgentComposerDefaultsInvalidatedEvent,
+  WorkspaceAgentConnectorCatalogInvalidatedEvent,
   WorkspaceAgentModelCatalogInvalidatedEvent
 } from "../workspaceAgentActivityService.interface.ts";
 import type { WorkspaceAgentSessionEngineHost } from "./workspaceAgentSessionEngineHost.ts";
@@ -13,6 +14,10 @@ export class WorkspaceAgentComposerOptionsInvalidationCoordinator {
   private readonly composerDefaultsListeners = new Set<
     (event: WorkspaceAgentComposerDefaultsInvalidatedEvent) => void
   >();
+  private readonly connectorCatalogListeners = new Set<
+    (event: WorkspaceAgentConnectorCatalogInvalidatedEvent) => void
+  >();
+  private connectorCatalogRevision = 0;
   private disposed = false;
 
   constructor(hosts: () => Iterable<WorkspaceAgentSessionEngineHost>) {
@@ -35,6 +40,14 @@ export class WorkspaceAgentComposerOptionsInvalidationCoordinator {
     return () => this.composerDefaultsListeners.delete(listener);
   }
 
+  onConnectorCatalogInvalidated(
+    listener: (event: WorkspaceAgentConnectorCatalogInvalidatedEvent) => void
+  ): () => void {
+    if (this.disposed) return () => {};
+    this.connectorCatalogListeners.add(listener);
+    return () => this.connectorCatalogListeners.delete(listener);
+  }
+
   subscribe(eventStreamClient: TuttidEventStreamClient): Array<() => void> {
     return [
       eventStreamClient.subscribe("agent.model.catalog.invalidated", (event) =>
@@ -47,6 +60,14 @@ export class WorkspaceAgentComposerOptionsInvalidationCoordinator {
         "preferences.agent.composer.defaults.changed",
         (event) =>
           this.handleComposerDefaultsInvalidated(event.payload.agentTargetId)
+      ),
+      eventStreamClient.subscribe("connector.market.changed", (event) =>
+        this.invalidateConnectorCatalog({
+          ...(event.payload.connectorKey
+            ? { connectorKey: event.payload.connectorKey }
+            : {}),
+          revision: event.payload.revision
+        })
       )
     ];
   }
@@ -55,6 +76,7 @@ export class WorkspaceAgentComposerOptionsInvalidationCoordinator {
     this.disposed = true;
     this.modelCatalogListeners.clear();
     this.composerDefaultsListeners.clear();
+    this.connectorCatalogListeners.clear();
   }
 
   private handleModelCatalogInvalidated(
@@ -87,6 +109,28 @@ export class WorkspaceAgentComposerOptionsInvalidationCoordinator {
     }
     for (const listener of this.composerDefaultsListeners) {
       listener({ agentTargetId: normalizedAgentTargetId });
+    }
+  }
+
+  invalidateConnectorCatalog(
+    event: WorkspaceAgentConnectorCatalogInvalidatedEvent
+  ): void {
+    if (
+      this.disposed ||
+      !Number.isSafeInteger(event.revision) ||
+      event.revision <= this.connectorCatalogRevision
+    ) {
+      return;
+    }
+    this.connectorCatalogRevision = event.revision;
+    for (const host of this.hosts()) {
+      host.engine.dispatch({ type: "composerOptions/invalidated" });
+    }
+    for (const listener of this.connectorCatalogListeners) {
+      listener({
+        ...(event.connectorKey ? { connectorKey: event.connectorKey } : {}),
+        revision: event.revision
+      });
     }
   }
 }

@@ -299,7 +299,9 @@ func (application *Application) Uninstall(
 func (application *Application) BeginAuthorization(
 	ctx context.Context,
 	mutation ConnectorMutation,
+	secret []byte,
 ) (AuthorizationResult, error) {
+	defer clear(secret)
 	accepted, err := application.acceptConnectorOperation(
 		ctx,
 		mutation,
@@ -328,7 +330,7 @@ func (application *Application) BeginAuthorization(
 		)
 	}
 
-	session, err := application.beginAuthorizationSession(ctx, accepted.Operation)
+	session, err := application.beginAuthorizationSession(ctx, accepted.Operation, secret)
 	if err != nil {
 		if accepted.Operation.State != OperationStateCompleted {
 			_ = application.failOperation(ctx, accepted.Operation.OperationID, ErrorCodeAuthorizationFailed)
@@ -349,6 +351,62 @@ func (application *Application) BeginAuthorization(
 		AuthorizationURL: session.AuthorizationURL,
 		Revision:         connector.Revision,
 	}, nil
+}
+
+// ReconcileAuthorizations observes durable completed start operations for
+// Connectors that are still pending and projects terminal provider state into
+// the local Connector snapshot. It is safe to call repeatedly and after a
+// daemon restart.
+func (application *Application) ReconcileAuthorizations(ctx context.Context) error {
+	observer, ok := application.config.Authorization.(AuthorizationObserver)
+	if !ok {
+		return nil
+	}
+	snapshot, err := application.Snapshot(ctx)
+	if err != nil {
+		return err
+	}
+	operations, err := application.config.Repository.CompletedAuthorizationOperations(ctx)
+	if err != nil {
+		return err
+	}
+	sessions := make(map[string]AuthorizationSession)
+	updated := make(map[string]time.Time)
+	for _, operation := range operations {
+		if operation.Execution.AuthorizationSession == nil {
+			continue
+		}
+		if previous, exists := updated[operation.ConnectorKey]; !exists || operation.UpdatedAt.After(previous) {
+			sessions[operation.ConnectorKey] = *operation.Execution.AuthorizationSession
+			updated[operation.ConnectorKey] = operation.UpdatedAt
+		}
+	}
+	var reconcileErr error
+	for _, connector := range snapshot.Connectors {
+		if connector.Authorization.State != AuthorizationStatePending {
+			continue
+		}
+		session, exists := sessions[connector.Key]
+		if !exists {
+			continue
+		}
+		observation, observeErr := observer.Observe(ctx, AuthorizationObserveRequest{Connector: connector, Session: session})
+		if observeErr != nil {
+			reconcileErr = errors.Join(reconcileErr, observeErr)
+			continue
+		}
+		if observation.State == AuthorizationObservationPending {
+			continue
+		}
+		if observation.State != AuthorizationObservationConnected && observation.State != AuthorizationObservationFailed {
+			reconcileErr = errors.Join(reconcileErr, errors.New("authorization observer returned an invalid state"))
+			continue
+		}
+		if err := application.completeAuthorizationObservation(ctx, connector.Key, observation); err != nil {
+			reconcileErr = errors.Join(reconcileErr, err)
+		}
+	}
+	return reconcileErr
 }
 
 func (application *Application) DisconnectAuthorization(
@@ -463,7 +521,7 @@ func (application *Application) executeOperation(ctx context.Context, operationI
 	case OperationKindDisconnectAuthorization:
 		executeErr = application.executeDisconnectAuthorization(executionContext, operation)
 	case OperationKindStartAuthorization:
-		_, executeErr = application.beginAuthorizationSession(executionContext, operation)
+		_, executeErr = application.beginAuthorizationSession(executionContext, operation, nil)
 	default:
 		executeErr = invalidRequest(fmt.Sprintf("operation kind %q is not executable", operation.Kind))
 	}

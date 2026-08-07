@@ -3,6 +3,7 @@ import { Button } from "../../../app/renderer/components/ui/button";
 import { translate } from "../../../i18n/index";
 import { workspaceAgentProviderLabel } from "../../workspaceAgentProviderLabel";
 import { useOpenAgentEnvPanel } from "../../agentEnv";
+import { AgentMessageDetailsDisclosure } from "./AgentMessageDetailsDisclosure";
 import {
   classifyRecoverableAgentMessage,
   resolveAgentErrorPresentation
@@ -79,9 +80,11 @@ export function AgentVisibleErrorMessage({
   const actionKey = presentation?.actionKey ?? null;
   const externalAction = presentationOverride?.action ?? null;
   const hint = visibleErrorHint(message);
+  const rawDetail = error?.detail ?? "";
+  const showRawDetail = error?.detailAvailable === true && rawDetail !== "";
   // Account limits are status notices, not process crashes. Provider payloads
-  // stay in the canonical model and diagnostics; the product card never renders
-  // raw upstream text.
+  // stay in the canonical model and diagnostics; raw upstream text is only
+  // rendered through the explicit disclosure below.
   const isPlanOrQuotaLimit =
     error?.code === "quota_or_rate_limit" ||
     error?.code === "insufficient_credits" ||
@@ -101,6 +104,13 @@ export function AgentVisibleErrorMessage({
             <div className="mt-1 text-[11px] text-[var(--text-secondary)]">
               {hint}
             </div>
+          ) : null}
+          {showRawDetail ? (
+            <AgentMessageDetailsDisclosure
+              detail={rawDetail}
+              className="mt-1"
+              label={translate("agentHost.agentGui.visibleErrorRawDetails")}
+            />
           ) : null}
         </div>
         {(externalAction?.url && onExternalLink) ||

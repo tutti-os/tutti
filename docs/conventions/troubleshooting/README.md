@@ -125,6 +125,7 @@ App Center, workspace-app lifecycle, App Factory, file references, and File Mana
 - [Agent GUI app mentions show unavailable workspace apps](./workspace-apps-files.md#agent-gui-app-mentions-show-unavailable-workspace-apps)
 - [Agent generated files under system temp do not open](./workspace-apps-files.md#agent-generated-files-under-system-temp-do-not-open)
 - [FileManager home-relative paths break only the list pane](./workspace-apps-files.md#filemanager-home-relative-paths-break-only-the-list-pane)
+- [Windows FileManager paths exist but fail validation or selection](./workspace-apps-files.md#windows-filemanager-paths-exist-but-fail-validation-or-selection)
 
 ## [Toolchain, Browser, And Terminal](./toolchain-browser-terminal.md)
 

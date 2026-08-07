@@ -635,12 +635,6 @@ export function AgentComposerView(input: Props): React.JSX.Element {
             isHeroLayout={isHeroLayout}
             isGoalModeActive={input.isGoalModeActive}
             isPlanModeActive={input.isPlanModeActive}
-            isTuttiModeActive={input.isTuttiModeActive}
-            isTuttiModeUpdating={input.isTuttiModeUpdating}
-            tuttiModeSupported={
-              input.props.capabilityMenuState?.tuttiMode?.enabled === true
-            }
-            onTuttiModeChange={input.props.onTuttiModeChange}
             onClearPlanMode={input.onClearPlanMode}
             composerActionButton={composerActionButton}
             quickPromptControl={
@@ -667,6 +661,10 @@ export function AgentComposerView(input: Props): React.JSX.Element {
             providerMenuTargets={providerMenuTargets}
             onProviderSelect={onProviderSelect}
             onLinkAction={onLinkAction}
+            availableSkills={availableSkills}
+            onCapabilitySettingsRequest={
+              input.props.onCapabilitySettingsRequest
+            }
             onRequestWorkspaceReferences={onRequestWorkspaceReferences}
             onWorkspaceReferencePicker={handleWorkspaceReferencePicker}
             onMentionPaletteButton={handleMentionPaletteButton}

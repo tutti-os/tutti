@@ -21,22 +21,31 @@ var ErrNotInstalled = errors.New(
 	"cua-driver is not installed; install it from https://github.com/trycua/cua or set TUTTI_COMPUTER_MCP_ENTRY_PATH")
 
 // ErrPermissionsMissing is returned when cua-driver is installed but cannot
-// confirm the macOS permissions needed for desktop control.
+// confirm the platform permissions needed for desktop control.
 var ErrPermissionsMissing = errors.New(
-	"cua-driver needs Accessibility and Screen Recording permissions; grant them in Tutti settings before using computer control")
+	"cua-driver needs Accessibility and Screen Recording permissions on macOS; grant them in Tutti settings before using computer control")
 
 // CheckReady checks that cua-driver is reachable before advertising or starting
-// computer-use. Permission status is checked with cua-driver's read-only status
-// command so starting an agent cannot unexpectedly trigger multiple macOS
-// authorization prompts.
+// computer-use. macOS uses the existing TCC permission status command. Windows
+// uses the platform-aware, read-only doctor probe and keeps native UIA/capture
+// implementation behind cua-driver's MCP boundary.
 func CheckReady() error {
-	if runtime.GOOS != "darwin" {
-		return errors.New("computer use requires macOS")
-	}
 	// The status probe must be bounded: a wedged cua-driver would otherwise
 	// hang every agent-startup and capability-advertising path forever.
 	ctx, cancel := context.WithTimeout(context.Background(), computerPermissionCheckTimeout)
 	defer cancel()
+	return checkReady(ctx)
+}
+
+func checkReady(ctx context.Context) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if _, hasDeadline := ctx.Deadline(); !hasDeadline {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, computerPermissionCheckTimeout)
+		defer cancel()
+	}
 	command := resolveComputerMCPCommand(ctx)
 	if len(command) == 0 {
 		return ErrNotInstalled
@@ -44,11 +53,13 @@ func CheckReady() error {
 	if _, err := exec.LookPath(command[0]); err != nil {
 		return ErrNotInstalled
 	}
+	if runtime.GOOS == "windows" {
+		return checkWindowsDriver(ctx, command[0])
+	}
+	if runtime.GOOS != "darwin" {
+		return errors.New("computer use requires macOS or Windows")
+	}
 	return checkComputerPermissions(ctx, command[0])
-}
-
-func validateComputerReady() error {
-	return CheckReady()
 }
 
 type computerPermissionStatus struct {
@@ -70,6 +81,46 @@ func checkComputerPermissions(ctx context.Context, executable string) error {
 		return fmt.Errorf("%w: %s", ErrPermissionsMissing, strings.Join(issues, ", "))
 	}
 	return nil
+}
+
+type windowsDriverDoctor struct {
+	OK bool `json:"ok"`
+}
+
+func checkWindowsDriver(ctx context.Context, executable string) error {
+	output, err := exec.CommandContext(ctx, executable, "doctor", "--json").CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("cua-driver doctor failed: %w%s", err, stderrSuffix(output))
+	}
+	doctor, err := parseWindowsDriverDoctor(output)
+	if err != nil {
+		return err
+	}
+	if !doctor.OK {
+		return errors.New("cua-driver Windows desktop readiness check failed")
+	}
+	return nil
+}
+
+func parseWindowsDriverDoctor(output []byte) (windowsDriverDoctor, error) {
+	trimmed := bytes.TrimSpace(output)
+	if len(trimmed) == 0 {
+		return windowsDriverDoctor{}, errors.New("decode cua-driver doctor: no output")
+	}
+	payload := trimmed
+	if !bytes.HasPrefix(payload, []byte("{")) {
+		start := bytes.IndexByte(payload, '{')
+		end := bytes.LastIndexByte(payload, '}')
+		if start < 0 || end <= start {
+			return windowsDriverDoctor{}, fmt.Errorf("decode cua-driver doctor: %s", truncatePermissionStatusOutput(trimmed))
+		}
+		payload = payload[start : end+1]
+	}
+	var doctor windowsDriverDoctor
+	if err := json.Unmarshal(payload, &doctor); err != nil {
+		return windowsDriverDoctor{}, fmt.Errorf("decode cua-driver doctor: %w", err)
+	}
+	return doctor, nil
 }
 
 func parseComputerPermissionStatus(output []byte) (computerPermissionStatus, error) {

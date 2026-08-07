@@ -299,13 +299,20 @@ func (w *tuttiWiring) buildWorkspaceModule(ctx context.Context) error {
 	implementationHost, err := connectormarketservice.NewImplementationHost(connectormarketservice.ImplementationHostConfig{
 		Artifacts: artifactPreparer, CLIInstallations: nodePackageInstaller,
 		Runtimes: runtimeResolver, Processes: processTransport, Commands: connectorCommands,
+		RemoteHTTPClient: agenthttpx.NewClient(2 * time.Minute), AuthorizeRemoteRequest: marketAuthorizer.Authorize,
 		StateRoot: filepath.Join(connectorStateRoot, "user-state"),
 		UserHome:  userHome,
 	})
 	if err != nil {
 		return fmt.Errorf("configure connector implementation host: %w", err)
 	}
-	connectorRuntime, connectorAuthorization, compatibility, implementations := connectormarketservice.ProductionPorts(implementationHost)
+	connectorAuthorizationClient, err := connectormarketservice.NewConnectorAuthorizationClient(connectormarketservice.ConnectorAuthorizationClientConfig{
+		BaseURL: connectorMarketBaseURL, HTTPClient: agenthttpx.NewClient(30 * time.Second), AuthorizeRequest: marketAuthorizer.Authorize,
+	})
+	if err != nil {
+		return fmt.Errorf("configure connector authorization: %w", err)
+	}
+	connectorRuntime, connectorAuthorization, compatibility, implementations := connectormarketservice.ProductionPorts(implementationHost, connectorAuthorizationClient)
 	if api.CLIRegistry == nil {
 		return errors.New("connector command registry cannot attach to daemon CLI")
 	}

@@ -142,6 +142,7 @@ function createPerfMonitorPlugin(): PluginOption {
 
 const guestPreloadEntryFileNames = new Set([
   "browser-node-guest.cjs",
+  "minimum-version.cjs",
   "workspace-app.cjs"
 ]);
 

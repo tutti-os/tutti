@@ -1204,10 +1204,18 @@ function ComputerUseSetupRow({
           diagnosticTrigger: "install-completed"
         });
         setMessage(null);
-        // A fresh install has no grants yet — continue straight into the
-        // wizard's first grant step.
+        // macOS installs continue into the TCC wizard; Windows uses doctor
+        // readiness and must not open the macOS permission flow.
         if (nextStatus?.installed === true) {
-          if (isComputerUseFullyAuthorized(nextStatus)) {
+          if (nextStatus.platform === "win32") {
+            // Windows readiness comes from `cua-driver doctor`; it has no
+            // macOS-style TCC grant flow or permission panes to open.
+            if (!isComputerUseFullyAuthorized(nextStatus)) {
+              setMessage(
+                t("workspace.settings.general.computerUseStatusCheckFailed")
+              );
+            }
+          } else if (isComputerUseFullyAuthorized(nextStatus)) {
             setWizardStep("done");
           } else {
             logPermissionDiagnostic(
@@ -1310,6 +1318,15 @@ function ComputerUseSetupRow({
     });
     setPermissionDialogOpen(open);
     if (open) {
+      if (computerUseStatus?.platform === "win32") {
+        void checkStatus({
+          clearMessage: false,
+          diagnosticTrigger: "windows-dialog-open",
+          silent: true
+        });
+        setPermissionDialogOpen(false);
+        return;
+      }
       // Status only assists here: it picks a starting step, and the user can
       // navigate freely regardless of what it says.
       setWizardStep(resolveComputerUseWizardInitialStep(computerUseStatus));
@@ -1453,7 +1470,13 @@ function ComputerUseSetupRow({
                         logPermissionDiagnostic(
                           "computer_use.permission_manage_clicked"
                         );
-                        handlePermissionDialogOpenChange(true);
+                        if (computerUseStatus?.platform === "win32") {
+                          void checkStatus({
+                            diagnosticTrigger: "windows-manage-click"
+                          });
+                        } else {
+                          handlePermissionDialogOpenChange(true);
+                        }
                       }}
                     />
                     {computerUseNeedsAttention && (
@@ -2037,6 +2060,7 @@ function summarizeComputerUseStatusForDiagnostic(
     return null;
   }
   return {
+    platform: status.platform ?? "unknown",
     authorization: status.authorization,
     installed: status.installed,
     permissionAccessibility: status.permissions?.accessibility ?? null,
@@ -2055,6 +2079,9 @@ function delay(ms: number): Promise<void> {
 function isComputerUseFullyAuthorized(
   status: DesktopComputerUseStatus | null
 ): boolean {
+  if (status?.platform === "win32" && status.authorization === "authorized") {
+    return status.installed;
+  }
   const permissions = status?.permissions;
   return (
     status?.installed === true &&

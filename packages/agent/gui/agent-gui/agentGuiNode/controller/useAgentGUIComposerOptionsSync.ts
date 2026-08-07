@@ -178,7 +178,7 @@ export function useAgentGUIComposerOptionsSync(input: {
   input.loadDraftComposerOptionsRef.current = loadDraftComposerOptions;
 
   useEffect(() => {
-    return subscribeCoalesced(
+    const disposeModelCatalog = subscribeCoalesced(
       "agent-model-catalog-invalidated",
       {
         delayMs: 150,
@@ -206,6 +206,14 @@ export function useAgentGUIComposerOptionsSync(input: {
         input.loadSessionState(activeId);
       }
     );
+    const disposeConnectorCatalog = subscribe(
+      "agent-connector-catalog-invalidated",
+      () => loadDraftComposerOptions({ force: true })
+    );
+    return () => {
+      disposeModelCatalog();
+      disposeConnectorCatalog();
+    };
   }, [input.loadSessionState, loadDraftComposerOptions]);
 
   useEffect(() => {

@@ -256,21 +256,8 @@ export interface DesktopUpdateAdmissionRuntime {
   development: boolean;
 }
 
-export const desktopUpdateAdmissionIpcChannels = {
-  exit: "desktop-update-admission:exit",
-  getState: "desktop-update-admission:get-state",
-  later: "desktop-update-admission:later",
-  manualDownload: "desktop-update-admission:manual-download",
-  retry: "desktop-update-admission:retry",
-  start: "desktop-update-admission:start",
-  state: "desktop-update-admission:state"
-} as const;
-
-export const desktopFeatureAvailabilityIpcChannels = {
-  changed: "desktop-feature-availability:changed",
-  getSnapshot: "desktop-feature-availability:get-snapshot",
-  isSupported: "desktop-feature-availability:is-supported"
-} as const;
+export { desktopFeatureAvailabilityIpcChannels } from "./featureAvailabilityIpc.ts";
+export { desktopUpdateAdmissionIpcChannels } from "./updateAdmissionIpc.ts";
 
 export interface DesktopMinimumVersionApi {
   getState(): Promise<MinimumVersionUpgradeState | null>;
@@ -279,5 +266,6 @@ export interface DesktopMinimumVersionApi {
   later(): Promise<void>;
   openManualDownload(): Promise<void>;
   exit(): Promise<void>;
+  restart(): Promise<void>;
   onState(listener: (state: MinimumVersionUpgradeState) => void): () => void;
 }

@@ -219,6 +219,44 @@ test("workspace file manager service treats missing or unreadable entries as abs
   );
 });
 
+test("workspace file manager service compares native Windows paths with daemon logical paths", async () => {
+  const dependencies = createDependenciesStub();
+  let requestedPath: string | undefined;
+  dependencies.tuttidClient.listWorkspaceFileDirectory = async (
+    workspaceId,
+    input
+  ) => {
+    requestedPath = input?.path;
+    return {
+      directoryPath: "/C:/",
+      entries: [
+        {
+          createdTimeMs: null,
+          hasChildren: false,
+          kind: "file",
+          lastOpenedMs: null,
+          mtimeMs: null,
+          name: "README.md",
+          path: "/C:/README.md",
+          sizeBytes: 12
+        }
+      ],
+      root: "/C:/",
+      workspaceId
+    };
+  };
+  const service = new WorkspaceFileManagerService(dependencies);
+
+  assert.equal(
+    await service.entryExists({
+      path: "C:\\README.md",
+      workspaceID: "workspace-1"
+    }),
+    true
+  );
+  assert.equal(requestedPath, "/C:/");
+});
+
 test("workspace file manager service restores snapshot state without localStorage", () => {
   const restoreStorage = installForbiddenLocalStorage();
   try {

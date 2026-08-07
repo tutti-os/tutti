@@ -231,8 +231,19 @@ type CLICommand struct {
 }
 
 type RemoteStreamableHTTPImplementation struct {
-	Endpoint     string   `json:"endpoint"`
-	AllowedHosts []string `json:"allowedHosts"`
+	Endpoint       string                        `json:"endpoint"`
+	AllowedHosts   []string                      `json:"allowedHosts"`
+	Authentication RemoteTransportAuthentication `json:"authentication"`
+	Limits         RemoteTransportLimits         `json:"limits"`
+}
+
+type RemoteTransportAuthentication struct {
+	Type string `json:"type"`
+}
+
+type RemoteTransportLimits struct {
+	TimeoutMS        int `json:"timeoutMs"`
+	MaxResponseBytes int `json:"maxResponseBytes"`
 }
 
 type Installation struct {
@@ -387,9 +398,24 @@ type RuntimeReceipt struct {
 type AuthorizationSession struct {
 	OperationID      string             `json:"operationId"`
 	ConnectorKey     string             `json:"connectorKey"`
+	ConnectionID     string             `json:"-"`
 	SessionID        string             `json:"sessionId"`
+	ActionType       string             `json:"actionType"`
 	AuthorizationURL string             `json:"-"`
 	State            AuthorizationState `json:"-"`
+}
+
+type AuthorizationObservationState string
+
+const (
+	AuthorizationObservationPending   AuthorizationObservationState = "pending"
+	AuthorizationObservationConnected AuthorizationObservationState = "connected"
+	AuthorizationObservationFailed    AuthorizationObservationState = "failed"
+)
+
+type AuthorizationObservation struct {
+	State       AuthorizationObservationState
+	FailureCode string
 }
 
 type Snapshot struct {

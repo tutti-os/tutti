@@ -12,18 +12,23 @@ const workflow = YAML.parse(
 );
 
 const windowsWorkflows = [
-  [
-    ".github/workflows/windows-desktop-alpha.yml",
-    ["apps/desktop/**", "services/tuttid/builtin-apps/**"]
-  ],
-  [
-    ".github/workflows/windows-agent-adapters.yml",
-    ["packages/agent/daemon/**", "services/tuttid/**"]
-  ]
-].map(([path, expectedPaths]) => ({
-  expectedPaths,
-  path,
-  workflow: YAML.parse(readFileSync(join(workspaceRoot, path), "utf8"))
+  {
+    expectedPaths: ["apps/desktop/**", "services/tuttid/builtin-apps/**"],
+    path: ".github/workflows/windows-desktop-alpha.yml"
+  },
+  {
+    expectedPaths: ["packages/agent/daemon/**"],
+    expectedSetupSteps: ["Setup Go"],
+    path: ".github/workflows/windows-agent-adapters.yml"
+  },
+  {
+    expectedPaths: ["packages/agent/daemon/**", "services/tuttid/**"],
+    expectedSetupSteps: ["Setup pnpm", "Setup Node.js", "Setup Go"],
+    path: ".github/workflows/windows-daemon-adapters.yml"
+  }
+].map((config) => ({
+  ...config,
+  workflow: YAML.parse(readFileSync(join(workspaceRoot, config.path), "utf8"))
 }));
 
 test("PR checks route repository groups through shared scripts", () => {
@@ -125,6 +130,34 @@ test("Windows workflows route source changes without self-triggering", () => {
     for (const expectedPath of expectedPaths) {
       assert.ok(paths.includes(expectedPath), `${path}: ${expectedPath}`);
     }
+  }
+});
+
+test("Windows adapter workflows warm default-branch caches", () => {
+  for (const { expectedPaths, path, workflow } of windowsWorkflows.filter(
+    ({ expectedSetupSteps }) => expectedSetupSteps
+  )) {
+    assert.deepEqual(workflow.on?.push?.branches, ["main"], path);
+    assert.deepEqual(workflow.on?.push?.paths, expectedPaths, path);
+  }
+});
+
+test("Windows adapter workflows keep setup and tests scoped", () => {
+  for (const { expectedSetupSteps, path, workflow } of windowsWorkflows.filter(
+    ({ expectedSetupSteps }) => expectedSetupSteps
+  )) {
+    const [job] = Object.values(workflow.jobs);
+    const checkout = job.steps.find((step) => step.name === "Checkout");
+    const setupSteps = job.steps
+      .filter((step) => step.name?.startsWith("Setup "))
+      .map((step) => step.name);
+    const goTestCommands = stepScripts(job)
+      .split("\n")
+      .filter((line) => line.trimStart().startsWith("go test "));
+
+    assert.deepEqual(setupSteps, expectedSetupSteps, path);
+    assert.equal(checkout.with?.["fetch-depth"], undefined, path);
+    assert.equal(goTestCommands.length, 1, path);
   }
 });
 

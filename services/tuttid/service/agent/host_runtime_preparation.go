@@ -37,6 +37,7 @@ type serviceRuntimePreparation struct {
 	agentTargetStore             AgentTargetStore
 	workspaceAgentResolver       WorkspaceAgentResolver
 	extensionComposerProfiles    ExtensionComposerProfileResolver
+	browserUseAvailable          func() bool
 	computerUseAvailable         func() bool
 	modelPlanBinding             modelPlanBindingRuntime
 	agentSessionResourceReleaser AgentSessionResourceReleaser
@@ -51,6 +52,7 @@ func newServiceRuntimePreparation(config ServiceConfig) *serviceRuntimePreparati
 		agentTargetStore:          config.Composer.AgentTargetStore,
 		workspaceAgentResolver:    config.Composer.WorkspaceAgentResolver,
 		extensionComposerProfiles: config.Composer.ExtensionComposerProfiles,
+		browserUseAvailable:       config.Runtime.BrowserUseAvailable,
 		computerUseAvailable:      config.Runtime.ComputerUseAvailable,
 		modelPlanBinding: modelPlanBindingRuntime{
 			Bindings: config.Runtime.ModelBindings,
@@ -72,6 +74,7 @@ func (p *serviceRuntimePreparation) facade() *Service {
 		AgentTargetStore:             p.agentTargetStore,
 		WorkspaceAgentResolver:       p.workspaceAgentResolver,
 		ExtensionComposerProfiles:    p.extensionComposerProfiles,
+		BrowserUseAvailable:          p.browserUseAvailable,
 		ComputerUseAvailable:         p.computerUseAvailable,
 		AgentSessionResourceReleaser: p.agentSessionResourceReleaser,
 		TuttiModeActivations:         p.tuttiModeActivations,

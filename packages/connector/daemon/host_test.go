@@ -245,6 +245,13 @@ func TestBootstrapRestoresInstalledRuntimeWithoutRefreshingCatalog(t *testing.T)
 	if runtime.reconciles != 3 {
 		t.Fatalf("unchanged account scope reconciled %d times", runtime.reconciles)
 	}
+	accountScope := market.OperationScope{AccountID: "account-1"}
+	if err := host.ReconcileRuntimeForScope(ctx, accountScope, connector.Key); err != nil {
+		t.Fatalf("observed runtime repair failed: %v", err)
+	}
+	if runtime.reconciles != 4 {
+		t.Fatalf("observed runtime repair reconciles = %d, want 4", runtime.reconciles)
+	}
 	if len(publication.values) == 0 || !publication.values[len(publication.values)-1] {
 		t.Fatalf("publication transitions = %#v, want final open", publication.values)
 	}
@@ -252,21 +259,26 @@ func TestBootstrapRestoresInstalledRuntimeWithoutRefreshingCatalog(t *testing.T)
 	if err := host.refreshAndWait(ctx); err == nil || !strings.Contains(err.Error(), "refresh failed") {
 		t.Fatalf("refresh error = %v, want catalog failure", err)
 	}
-	if source.refreshes != 1 || runtime.reconciles != 3 {
+	if source.refreshes != 1 || runtime.reconciles != 4 {
 		t.Fatalf("refreshes=%d reconciles=%d, want catalog retry isolated from runtime", source.refreshes, runtime.reconciles)
 	}
 
-	accountScope := market.OperationScope{AccountID: "account-1"}
 	if err := host.FenceForScope(ctx, accountScope); err != nil {
 		t.Fatalf("account fence failed: %v", err)
 	}
 	if len(publication.values) == 0 || publication.values[len(publication.values)-1] || runtime.failClosed == 0 {
 		t.Fatalf("fence publication=%#v failClosed=%d", publication.values, runtime.failClosed)
 	}
+	if err := host.ReconcileRuntimeForScope(ctx, accountScope, connector.Key); err != nil {
+		t.Fatalf("closed-gate runtime repair failed: %v", err)
+	}
+	if runtime.reconciles != 4 {
+		t.Fatalf("closed-gate runtime repair reconciles = %d, want 4", runtime.reconciles)
+	}
 	if err := host.BootstrapForScope(ctx, accountScope); err != nil {
 		t.Fatalf("same-account bootstrap after fence failed: %v", err)
 	}
-	if runtime.reconciles != 4 || !publication.values[len(publication.values)-1] {
+	if runtime.reconciles != 5 || !publication.values[len(publication.values)-1] {
 		t.Fatalf("same-account recovery reconciles=%d publication=%#v", runtime.reconciles, publication.values)
 	}
 	if runtime.installationChecks != 4 {
@@ -285,7 +297,7 @@ func TestBootstrapRestoresInstalledRuntimeWithoutRefreshingCatalog(t *testing.T)
 		t.Fatal(err)
 	}
 	if calibrated.Installation.State != market.InstallationStateFailed ||
-		calibrated.Installation.FailureCode != market.InstallationFailureCodeProbeAbsent || runtime.reconciles != 4 {
+		calibrated.Installation.FailureCode != market.InstallationFailureCodeProbeAbsent || runtime.reconciles != 5 {
 		t.Fatalf("calibrated connector=%#v reconciles=%d", calibrated, runtime.reconciles)
 	}
 }

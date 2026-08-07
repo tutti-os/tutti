@@ -39,6 +39,22 @@ func TestBrowserNodeBackendCallsAuthenticatedDesktopHost(t *testing.T) {
 	}
 }
 
+func TestBrowserNodeBackendCheckReadyRequiresReachableLoopback(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, _ *http.Request) {
+		response.WriteHeader(http.StatusNoContent)
+	}))
+	defer server.Close()
+
+	backend := newBrowserNodeHTTPBackend(writeBrowserNodeListenerInfo(t, strings.TrimPrefix(server.URL, "http://"), "secret"))
+	concrete, ok := backend.(*browserNodeHTTPBackend)
+	if !ok {
+		t.Fatal("expected HTTP BrowserNode backend")
+	}
+	if err := concrete.CheckReady(context.Background()); err != nil {
+		t.Fatalf("CheckReady: %v", err)
+	}
+}
+
 func TestBrowserNodeBackendWritesScreenshotToRequestedPath(t *testing.T) {
 	png := []byte("png-data")
 	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, _ *http.Request) {

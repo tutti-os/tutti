@@ -7094,7 +7094,6 @@ components:
             - unknown
         code:
           type: string
-          minLength: 1
         message:
           type: string
           nullable: true
@@ -12795,6 +12794,9 @@ components:
           minLength: 1
         code:
           type: string
+        detail:
+          type: string
+          maxLength: 240
     WorkspaceAgentCapabilityReference:
       type: object
       description: >-

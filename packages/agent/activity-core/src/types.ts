@@ -568,7 +568,7 @@ export interface AgentActivityTurn {
   /** Audit-only capability provenance for the turn; never current mode state. */
   capabilityRefs?: readonly AgentActivityCapabilityReference[];
   completedCommand?: AgentActivityCompletedCommand | null;
-  error?: { code?: string; message: string } | null;
+  error?: { code?: string; message: string; detail?: string } | null;
   fileChanges?: Record<string, unknown> | null;
   outcome?: AgentActivityTurnOutcome | null;
   origin: AgentActivityTurnOrigin;

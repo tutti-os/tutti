@@ -1,5 +1,5 @@
 // Package computer exposes the daemon-owned computer session to agents as
-// `tutti computer ...` CLI commands. Agents automate the macOS desktop through
+// `tutti computer ...` CLI commands. Agents automate a supported desktop through
 // these pre-approved commands instead of a per-provider MCP server.
 package computer
 

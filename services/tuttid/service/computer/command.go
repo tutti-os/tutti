@@ -6,8 +6,10 @@ import (
 	"strings"
 )
 
-// cua-driver launch resolution. TUTTI_COMPUTER_MCP_ENTRY_PATH points at the
-// vendored binary for packaged installs; dev falls back to cua-driver on PATH.
+// cua-driver launch resolution. TUTTI_COMPUTER_MCP_ENTRY_PATH points at an
+// explicit binary for packaged/operator installs; Windows also discovers the
+// official per-user install locations so an in-process install is visible
+// without restarting tuttid.
 const (
 	computerMCPCommandOverrideEnv = "TUTTI_COMPUTER_MCP_COMMAND"
 	computerMCPEntryPathEnv       = "TUTTI_COMPUTER_MCP_ENTRY_PATH"
@@ -26,6 +28,9 @@ func resolveComputerMCPCommand(_ context.Context) []string {
 		return []string{command, "mcp"}
 	}
 	if entry := strings.TrimSpace(os.Getenv(computerMCPEntryPathEnv)); entry != "" {
+		return []string{entry, "mcp"}
+	}
+	if entry := resolveInstalledComputerDriver(); entry != "" {
 		return []string{entry, "mcp"}
 	}
 	return append([]string{defaultComputerMCPCommand}, defaultComputerMCPArgs...)

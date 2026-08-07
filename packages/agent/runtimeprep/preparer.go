@@ -12,10 +12,13 @@ import (
 var ErrCwdNotDirectory = errors.New("agent runtime cwd is not a directory")
 
 type DefaultPreparer struct {
-	StateDir             string
-	CLICommand           string
-	CommandCatalog       CommandCatalog
-	Store                RuntimeStore
+	StateDir       string
+	CLICommand     string
+	CommandCatalog CommandCatalog
+	Store          RuntimeStore
+	// BrowserUseAvailable is an optional live readiness probe. A nil probe
+	// preserves configuration-only behavior for embedders without a browser service.
+	BrowserUseAvailable  func() bool
 	ComputerUseAvailable func() bool
 	Profile              DeploymentProfile
 	SkillSources         []SkillSource
@@ -246,6 +249,9 @@ func (p *DefaultPreparer) runtimeStore() RuntimeStore {
 }
 
 func (p *DefaultPreparer) normalizeCapabilities(input PrepareInput) PrepareInput {
+	if input.BrowserUse && p != nil && p.BrowserUseAvailable != nil {
+		input.BrowserUse = p.BrowserUseAvailable()
+	}
 	if input.ComputerUse && p != nil && p.ComputerUseAvailable != nil {
 		input.ComputerUse = p.ComputerUseAvailable()
 	}

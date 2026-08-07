@@ -428,6 +428,13 @@ export interface AgentGUIViewLabels extends AgentGUIProviderReadinessLabels {
   removeMention: string;
   addReference: string;
   addContent: string;
+  addContentResourcePanel: string;
+  addContentConnectors: string;
+  addContentConnectorConnected: string;
+  addContentConnectorConnect: string;
+  addContentConnectorAuthorize: string;
+  addContentConnectorEmpty: string;
+  addContentConnectorMore: string;
   referenceWorkspaceFiles: string;
   handoffConversation: string;
   handoffConversationTooltip: string;

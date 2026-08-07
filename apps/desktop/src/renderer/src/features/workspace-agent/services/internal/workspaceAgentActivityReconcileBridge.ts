@@ -187,6 +187,14 @@ export abstract class WorkspaceAgentActivityReconcileBridge {
     this.composerOptionsInvalidation.onComposerDefaultsInvalidated.bind(
       this.composerOptionsInvalidation
     );
+  readonly onConnectorCatalogInvalidated =
+    this.composerOptionsInvalidation.onConnectorCatalogInvalidated.bind(
+      this.composerOptionsInvalidation
+    );
+  readonly invalidateConnectorCatalog =
+    this.composerOptionsInvalidation.invalidateConnectorCatalog.bind(
+      this.composerOptionsInvalidation
+    );
 
   dispose(): void {
     if (this.disposed) {

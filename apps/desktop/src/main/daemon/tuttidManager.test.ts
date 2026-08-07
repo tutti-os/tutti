@@ -21,6 +21,7 @@ import {
   isLikelyTuttidProcess,
   managedTuttidStartupError,
   resolveBrowserMcpDaemonEnv,
+  resolveComputerMcpDaemonEnv,
   resolveClaudeSDKSidecarDaemonEnv,
   resolveLaunchSpec,
   resolveManagedDaemonProcessEnv,
@@ -118,6 +119,20 @@ test("resolveBrowserMcpDaemonEnv is a no-op in development (daemon uses npx)", (
       resourcesPath: join(tmpdir(), "tutti-resources")
     });
     assert.deepEqual(got, {});
+  } finally {
+    restoreEnv(previousEnv);
+  }
+});
+
+test("resolveComputerMcpDaemonEnv is a no-op outside Windows", () => {
+  const previousEnv = { ...process.env };
+  try {
+    delete process.env.TUTTI_COMPUTER_MCP_COMMAND;
+    delete process.env.TUTTI_COMPUTER_MCP_ENTRY_PATH;
+    const got = resolveComputerMcpDaemonEnv();
+    if (process.platform !== "win32") {
+      assert.deepEqual(got, {});
+    }
   } finally {
     restoreEnv(previousEnv);
   }

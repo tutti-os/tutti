@@ -330,6 +330,13 @@ export interface AgentComposerProps {
     removeMention: string;
     addReference: string;
     addContent: string;
+    addContentResourcePanel: string;
+    addContentConnectors: string;
+    addContentConnectorConnected: string;
+    addContentConnectorConnect: string;
+    addContentConnectorAuthorize: string;
+    addContentConnectorEmpty: string;
+    addContentConnectorMore: string;
     referenceWorkspaceFiles: string;
     handoffConversation: string;
     handoffConversationTooltip: string;
@@ -438,6 +445,7 @@ export type AgentComposerCapabilitySettingsTarget =
   | {
       kind: "connector";
       connectorKey: string;
+      action?: "open";
     };
 
 export interface AgentComposerCapabilityMenuState {

@@ -1404,6 +1404,10 @@ export const agentActivityUpdatedPayloadSchema = {
                     },
                     code: {
                       type: "string"
+                    },
+                    detail: {
+                      type: "string",
+                      maxLength: 240
                     }
                   }
                 },

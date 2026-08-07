@@ -205,16 +205,16 @@ test("revealPath loads external absolute parent directories outside the current 
 
 test("revealPath handles Windows drive paths outside the current root", async () => {
   const store = createTestStore();
-  store.root = "C:/Users/demo";
-  store.currentDirectoryPath = "C:/Users/demo";
+  store.root = "/C:/Users/demo";
+  store.currentDirectoryPath = "/C:/Users/demo";
   const controller = new WorkspaceFileManagerNavigationController({
     host: {
       async listDirectory(input) {
-        assert.equal(input.path, "C:/tmp");
+        assert.equal(input.path, "/C:/tmp");
         return {
-          directoryPath: input.path,
-          entries: [createFileEntry("C:/tmp/hello_world.md")],
-          root: "C:/",
+          directoryPath: "/C:/tmp",
+          entries: [createFileEntry("/C:/tmp/hello_world.md")],
+          root: "/C:/",
           workspaceID: input.workspaceID
         };
       }
@@ -225,10 +225,37 @@ test("revealPath handles Windows drive paths outside the current root", async ()
 
   await controller.revealPath("C:\\tmp\\hello_world.md");
 
-  assert.equal(store.root, "C:/");
-  assert.equal(store.currentDirectoryPath, "C:/tmp");
-  assert.equal(store.selectedPath, "C:/tmp/hello_world.md");
+  assert.equal(store.root, "/C:/");
+  assert.equal(store.currentDirectoryPath, "/C:/tmp");
+  assert.equal(store.selectedPath, "/C:/tmp/hello_world.md");
+  assert.equal(store.selectedPath, store.entries[0]?.path);
   assert.equal(store.isLoading, false);
+});
+
+test("loading a native Windows path does not add the daemon path as duplicate history", async () => {
+  const store = createTestStore();
+  store.root = "/C:/Users/demo";
+  store.currentDirectoryPath = "/C:/Users/demo";
+  const controller = new WorkspaceFileManagerNavigationController({
+    host: {
+      async listDirectory(input) {
+        assert.equal(input.path, "/C:/Users/demo");
+        return {
+          directoryPath: "/C:/Users/demo",
+          entries: [],
+          root: "/C:/Users/demo",
+          workspaceID: input.workspaceID
+        };
+      }
+    },
+    resolveErrorMessage: defaultResolveErrorMessage,
+    store
+  });
+
+  await controller.loadDirectory("C:\\Users\\demo");
+
+  assert.deepEqual(store.navigationBackStack, []);
+  assert.equal(store.currentDirectoryPath, "/C:/Users/demo");
 });
 
 test("revealPath includes hidden entries when parent path contains a hidden segment", async () => {

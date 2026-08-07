@@ -4,6 +4,11 @@ import type {
   DesktopComputerUseStatusReason
 } from "../../shared/contracts/ipc.ts";
 
+export interface CuaDriverDoctorStatus {
+  ok: boolean;
+  diagnosticMessage?: string;
+}
+
 export interface CuaDriverPermissionsStatusDetail {
   permissions: DesktopComputerUsePermissionsStatus | null;
   reason?: DesktopComputerUseStatusReason;
@@ -89,6 +94,96 @@ export function parseCuaDriverPermissionsStatusDetail(
     };
   }
   return { permissions };
+}
+
+/**
+ * Parse the platform-neutral `cua-driver doctor --json` result.
+ *
+ * Doctor output has a stable top-level `ok` field in released drivers, but we
+ * also accept probe-only output so a newer driver can add a wrapper without
+ * making the desktop report a false negative.
+ */
+export function parseCuaDriverDoctorStatus(
+  output: string
+): CuaDriverDoctorStatus | null {
+  const payload = parseJsonObject(output);
+  if (!payload) {
+    return {
+      ok: false,
+      diagnosticMessage: output.trim() || "cua-driver doctor returned no output"
+    };
+  }
+
+  if (typeof payload.ok === "boolean") {
+    return {
+      ok: payload.ok,
+      ...(stringOrUndefined(payload.message) ||
+      stringOrUndefined(payload.reason)
+        ? {
+            diagnosticMessage:
+              stringOrUndefined(payload.message) ??
+              stringOrUndefined(payload.reason)
+          }
+        : {})
+    };
+  }
+
+  const probes = Array.isArray(payload.probes) ? payload.probes : [];
+  if (probes.length === 0) {
+    return {
+      ok: false,
+      diagnosticMessage: "cua-driver doctor output did not include probes"
+    };
+  }
+
+  let failed = false;
+  const diagnostics: string[] = [];
+  for (const probe of probes) {
+    if (!isRecord(probe)) {
+      failed = true;
+      continue;
+    }
+    const status = String(probe.status ?? "").toLowerCase();
+    if (["ok", "pass", "passed", "healthy", "ready"].includes(status)) {
+      continue;
+    }
+    failed = true;
+    const label = stringOrUndefined(probe.label);
+    const message =
+      stringOrUndefined(probe.message) ?? stringOrUndefined(probe.detail);
+    if (label || message) {
+      diagnostics.push([label, message].filter(Boolean).join(": "));
+    }
+  }
+  return {
+    ok: !failed,
+    ...(diagnostics.length > 0
+      ? { diagnosticMessage: diagnostics.join("; ") }
+      : {})
+  };
+}
+
+function parseJsonObject(output: string): Record<string, unknown> | null {
+  const trimmed = output.trim();
+  if (!trimmed) {
+    return null;
+  }
+  let value: unknown;
+  try {
+    value = JSON.parse(trimmed);
+  } catch {
+    const startIndex = trimmed.indexOf("{");
+    const endIndex = trimmed.lastIndexOf("}");
+    if (startIndex < 0 || endIndex <= startIndex) {
+      return null;
+    }
+    try {
+      value = JSON.parse(trimmed.slice(startIndex, endIndex + 1));
+    } catch {
+      return null;
+    }
+  }
+  return isRecord(value) ? value : null;
 }
 
 function booleanOrNull(value: unknown): boolean | null {

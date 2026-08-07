@@ -401,6 +401,46 @@ export function resolveClaudeSDKSidecarDaemonEnv(
   };
 }
 
+// resolveComputerMcpDaemonEnv keeps the managed tuttid process independent of
+// the Electron process's stale PATH. Windows Cua Driver installs are user
+// scoped, so resolve the documented installer locations directly. Explicit
+// operator overrides always win. The desktop package does not vendor the
+// native helper; installation remains an explicit prerequisite.
+export function resolveComputerMcpDaemonEnv(): Record<string, string> {
+  if (
+    process.platform !== "win32" ||
+    process.env.TUTTI_COMPUTER_MCP_COMMAND?.trim() ||
+    process.env.TUTTI_COMPUTER_MCP_ENTRY_PATH?.trim()
+  ) {
+    return {};
+  }
+  const candidates: string[] = [];
+  const localAppData = process.env.LOCALAPPDATA?.trim();
+  const userProfile = process.env.USERPROFILE?.trim();
+  if (localAppData) {
+    candidates.push(
+      join(
+        localAppData,
+        "Programs",
+        "Cua",
+        "cua-driver",
+        "bin",
+        "cua-driver.exe"
+      ),
+      join(localAppData, "Programs", "Cua", "cua-driver.exe"),
+      join(localAppData, "cua-driver", "cua-driver.exe")
+    );
+  }
+  if (userProfile) {
+    candidates.push(
+      join(userProfile, ".cua-driver", "packages", "current", "cua-driver.exe"),
+      join(userProfile, ".local", "bin", "cua-driver.exe")
+    );
+  }
+  const entry = candidates.find((candidate) => existsSync(candidate));
+  return entry ? { TUTTI_COMPUTER_MCP_ENTRY_PATH: entry } : {};
+}
+
 export function resolveManagedPosixShellDaemonEnv(
   runtime?: DesktopElectronAppRuntime
 ): Record<string, string> {
@@ -481,6 +521,7 @@ export function resolveManagedDaemonProcessEnv(
     ...resolveEndpointEnv(input.endpoint),
     ...resolveManagedRuntimeDaemonEnv(input.userShellEnv),
     ...resolveBrowserMcpDaemonEnv(),
+    ...resolveComputerMcpDaemonEnv(),
     ...resolveClaudeSDKSidecarDaemonEnv(),
     ...resolveManagedPosixShellDaemonEnv(),
     TUTTI_APP_VERSION: process.env.TUTTI_APP_VERSION?.trim() ?? "",

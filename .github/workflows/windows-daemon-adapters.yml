@@ -1,0 +1,73 @@
+name: Windows Daemon Adapters
+
+on:
+  pull_request:
+    paths:
+      - "packages/agent/daemon/**"
+      - "services/tuttid/**"
+  push:
+    branches:
+      - main
+    paths:
+      - "packages/agent/daemon/**"
+      - "services/tuttid/**"
+  workflow_dispatch:
+
+concurrency:
+  group: windows-daemon-adapters-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  test-adapters:
+    name: Test Windows daemon adapters
+    runs-on: windows-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: "1.24.5"
+          cache-dependency-path: |
+            go.work
+            go.work.sum
+            packages/agent/daemon/go.mod
+            packages/agent/daemon/go.sum
+            services/tuttid/go.mod
+            services/tuttid/go.sum
+
+      - name: Install dependencies
+        shell: pwsh
+        run: pnpm install --frozen-lockfile
+
+      - name: Generate Onboarding fat package
+        shell: pwsh
+        run: pnpm generate:builtin-apps
+
+      - name: Test Windows daemon adapters
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $true
+          Push-Location services/tuttid
+          go test ./data/workspace ./service/managedruntime ./service/agentstatus ./service/browser ./service/workspace ./integration -run 'Test(SQLiteDSNPathUsesFileURLFormOnWindows|SQLiteStoreListEmptyDatabase|NodeReadyAcceptsOfficialWindowsCorepackLayout|NewInstallShellCommandUsesCmdInterpreter|PlatformExecutableFileAcceptsPlainWindowsFile|RunDefaultInstallCommandPreservesStructuredArguments|StableChromeDevToolsActivePortPathUsesLocalAppDataOnWindows|PlatformAppShellAdapter|NormalizeWindowsTerminalInput|TerminalServiceCreatesLocalPTY|TerminalServiceAttachStream|AppCenterServiceInitializesBuiltinCatalogAndInstallState|WorkspaceAppCLI|TuttidBlackBoxWorkspaceTerminalWebSocketStreamsInputAndOutput|TuttidBlackBoxWorkspaceTerminalWebSocketExitFrameCarriesExitCode)$'
+          Pop-Location

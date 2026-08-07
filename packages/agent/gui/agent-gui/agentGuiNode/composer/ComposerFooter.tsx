@@ -12,8 +12,9 @@ import {
   TooltipTrigger
 } from "@tutti-os/ui-system";
 import { cn } from "../../../app/renderer/lib/utils";
-import addLinedIconUrl from "../../../app/renderer/assets/icons/add-lined.svg";
 import atLinedIconUrl from "../../../app/renderer/assets/icons/@-lined.svg";
+import addLinedIconUrl from "../../../app/renderer/assets/icons/add-lined.svg";
+import { openWorkspaceSettingsPanel } from "../../../shared/workspaceSettingsPanel/workspaceSettingsPanelStore";
 import styles from "../AgentGUINode.styles";
 import {
   AgentModelReasoningDropdown,
@@ -29,12 +30,10 @@ import {
   AgentComposerMaskIcon,
   AgentUsageChip,
   composerStyles,
-  resolveComposerProviderTargetIconUrl,
-  workspaceReferenceOptionValue,
-  workspaceReferenceSelectValue
+  resolveComposerProviderTargetIconUrl
 } from "./AgentComposerChrome";
 import { AgentHandoffMenu } from "./AgentHandoffMenu";
-import { ComposerTuttiModeChip } from "./ComposerTuttiModeChip";
+import { ComposerConnectorsMenu } from "./ComposerConnectorsMenu";
 
 interface Props {
   workspaceId: string;
@@ -53,10 +52,6 @@ interface Props {
   isHeroLayout: boolean;
   isGoalModeActive: boolean;
   isPlanModeActive: boolean;
-  isTuttiModeActive: boolean;
-  isTuttiModeUpdating: boolean;
-  tuttiModeSupported: boolean;
-  onTuttiModeChange?: (active: boolean) => void;
   composerActionButton: ReactNode;
   quickPromptControl?: ReactNode;
   footerAccessory?: ReactNode;
@@ -75,6 +70,8 @@ interface Props {
   providerMenuTargets: readonly AgentGUIAgentTarget[];
   onProviderSelect: AgentComposerProps["onProviderSelect"];
   onLinkAction: AgentComposerProps["onLinkAction"];
+  availableSkills: AgentComposerProps["availableSkills"];
+  onCapabilitySettingsRequest: AgentComposerProps["onCapabilitySettingsRequest"];
   onRequestWorkspaceReferences: AgentComposerProps["onRequestWorkspaceReferences"];
   onWorkspaceReferencePicker: () => void;
   onMentionPaletteButton: () => void;
@@ -102,10 +99,6 @@ export function ComposerFooter({
   isHeroLayout,
   isGoalModeActive,
   isPlanModeActive,
-  isTuttiModeActive,
-  isTuttiModeUpdating,
-  tuttiModeSupported,
-  onTuttiModeChange,
   composerActionButton,
   quickPromptControl,
   footerAccessory,
@@ -124,6 +117,8 @@ export function ComposerFooter({
   providerMenuTargets,
   onProviderSelect,
   onLinkAction,
+  availableSkills,
+  onCapabilitySettingsRequest,
   onRequestWorkspaceReferences,
   onWorkspaceReferencePicker: handleWorkspaceReferencePicker,
   onMentionPaletteButton: handleMentionPaletteButton,
@@ -139,51 +134,36 @@ export function ComposerFooter({
       <div className={styles.composerFooter}>
         <div className={composerStyles.footerGroup}>
           <div className="inline-flex shrink-0 items-center gap-1">
-            {
-              <Select
-                open={false}
-                value={workspaceReferenceSelectValue}
-                disabled={
-                  !onRequestWorkspaceReferences || composerControlsHardDisabled
-                }
-                onOpenChange={(isOpen) => {
-                  if (isOpen) {
-                    void handleWorkspaceReferencePicker();
-                  }
-                }}
-                onValueChange={(nextValue) => {
-                  if (nextValue === workspaceReferenceOptionValue) {
-                    void handleWorkspaceReferencePicker();
-                  }
-                }}
-              >
-                <TooltipProvider delayDuration={120}>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <span className="inline-flex">
-                        <SelectTrigger
-                          size="sm"
-                          aria-label={labels.referenceWorkspaceFiles}
-                          className={cn(
-                            styles.composerMenuTrigger,
-                            styles.composerReferenceTrigger,
-                            "group w-auto justify-center text-[var(--agent-gui-text-secondary)] [&>svg:last-child]:hidden"
-                          )}
-                        >
-                          <AgentComposerMaskIcon
-                            iconUrl={addLinedIconUrl}
-                            marker="reference-add"
-                          />
-                        </SelectTrigger>
-                      </span>
-                    </TooltipTrigger>
-                    <TooltipContent side="top">
-                      {labels.addContent}
-                    </TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
-              </Select>
-            }
+            <TooltipProvider delayDuration={120}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    aria-label={labels.addContent}
+                    className={cn(
+                      styles.composerMenuTrigger,
+                      styles.composerReferenceTrigger,
+                      "group inline-flex w-auto items-center justify-center text-[var(--agent-gui-text-secondary)] hover:text-[var(--agent-gui-text-primary)] focus-visible:text-[var(--agent-gui-text-primary)] disabled:pointer-events-none disabled:opacity-50"
+                    )}
+                    data-testid="agent-gui-composer-add-content-trigger"
+                    disabled={
+                      composerControlsHardDisabled ||
+                      !onRequestWorkspaceReferences
+                    }
+                    onMouseDown={(event) => event.preventDefault()}
+                    onClick={() => {
+                      void handleWorkspaceReferencePicker();
+                    }}
+                  >
+                    <AgentComposerMaskIcon
+                      iconUrl={addLinedIconUrl}
+                      marker="reference-add"
+                    />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="top">{labels.addContent}</TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
             <TooltipProvider delayDuration={120}>
               <Tooltip>
                 <TooltipTrigger asChild>
@@ -222,13 +202,32 @@ export function ComposerFooter({
               </Tooltip>
             </TooltipProvider>
           </div>
-          <ComposerTuttiModeChip
-            active={isTuttiModeActive}
-            updating={isTuttiModeUpdating}
-            label={labels.tuttiModeLabel}
-            description={labels.tuttiModeDescription}
-            tuttiModeSupported={tuttiModeSupported}
-            onTuttiModeChange={onTuttiModeChange}
+          <ComposerConnectorsMenu
+            connectors={availableSkills ?? []}
+            disabled={
+              composerControlsHardDisabled || !onCapabilitySettingsRequest
+            }
+            labels={{
+              connectors: labels.addContentConnectors,
+              connectorConnected: labels.addContentConnectorConnected,
+              connectorConnect: labels.addContentConnectorConnect,
+              connectorAuthorize: labels.addContentConnectorAuthorize,
+              connectorEmpty: labels.addContentConnectorEmpty,
+              connectorMore: labels.addContentConnectorMore
+            }}
+            onOpenConnector={(connectorKey) =>
+              onCapabilitySettingsRequest?.({
+                kind: "connector",
+                connectorKey,
+                action: "open"
+              })
+            }
+            onOpenConnectors={() =>
+              openWorkspaceSettingsPanel({
+                section: "agent",
+                pane: "connectors"
+              })
+            }
           />
           {showHandoffSelect ? (
             <AgentHandoffMenu

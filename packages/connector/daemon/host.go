@@ -185,12 +185,33 @@ func NewHost(parent context.Context, config HostConfig) (*Host, error) {
 		defer close(host.outboxDone)
 		dispatcher.Run(hostContext)
 	}()
+	if _, ok := config.Authorization.(market.AuthorizationObserver); ok {
+		go host.runAuthorizationReconcileWorker(hostContext)
+	}
 	cleanupWorker := LifecycleCleanupWorker{Store: config.Lifecycle, Policy: config.LifecyclePolicy}
 	go func() {
 		defer close(host.lifecycleDone)
 		cleanupWorker.Run(hostContext)
 	}()
 	return host, nil
+}
+
+func (host *Host) runAuthorizationReconcileWorker(ctx context.Context) {
+	ticker := time.NewTicker(2 * time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			reconcileContext, cancel := context.WithTimeout(ctx, 15*time.Second)
+			err := host.Application.ReconcileAuthorizations(reconcileContext)
+			cancel()
+			if err != nil && !errors.Is(err, context.Canceled) {
+				slog.Warn("connector authorization reconciliation failed", "error", err)
+			}
+		}
+	}
 }
 
 // Bootstrap restores durable local runtime intent without depending on the
@@ -287,6 +308,66 @@ func (host *Host) FenceForScope(ctx context.Context, scope market.OperationScope
 	return errors.Join(publicationErr, fenceErr)
 }
 
+// ReconcileRuntimeForScope repairs one observed runtime route under the same
+// lifecycle gate as bootstrap and fencing. The operation is awaited while the
+// gate is held so a concurrent runtime replacement cannot fence its generation
+// after acceptance but before the VM receipt is committed.
+func (host *Host) ReconcileRuntimeForScope(ctx context.Context, scope market.OperationScope, connectorKey string) error {
+	if host == nil || host.Application == nil {
+		return errors.New("connector market host is unavailable")
+	}
+	if !host.bootstrapMu.TryLock() {
+		// A bootstrap, fence, or earlier repair already owns convergence. The
+		// observer will verify a fresh VM snapshot after that operation finishes.
+		return nil
+	}
+	defer host.bootstrapMu.Unlock()
+	if !host.bootstrapped || host.bootstrapScope != scope || host.activationGate.requiresRecovery() {
+		// Bootstrap owns convergence while the lifecycle gate is closed. Enqueuing
+		// a second per-Connector operation here would race its generation fence.
+		return nil
+	}
+	snapshot, err := host.Application.Snapshot(ctx)
+	if err != nil {
+		return err
+	}
+	result, err := host.Application.ReconcileRuntime(ctx, market.ConnectorMutation{
+		Mutation:     market.Mutation{ClientRequestID: "daemon-runtime-drift/" + uuid.NewString(), ExpectedRevision: snapshot.Revision},
+		ConnectorKey: connectorKey, AccountID: scope.AccountID,
+	})
+	if err != nil {
+		return err
+	}
+	return host.waitForOperation(ctx, result.Operation.OperationID, "runtime reconcile")
+}
+
+// ObserveAuthorizationForScope commits account authorization and its runtime
+// reconcile under the lifecycle gate. This prevents authorization callbacks
+// from publishing a generation concurrently with bootstrap recovery.
+func (host *Host) ObserveAuthorizationForScope(
+	ctx context.Context,
+	scope market.OperationScope,
+	projection market.AuthorizationProjection,
+) error {
+	if host == nil || host.Application == nil {
+		return errors.New("connector market host is unavailable")
+	}
+	host.bootstrapMu.Lock()
+	defer host.bootstrapMu.Unlock()
+	snapshot, err := host.Application.Snapshot(ctx)
+	if err != nil {
+		return err
+	}
+	result, err := host.Application.ObserveAuthorization(ctx, market.ConnectorMutation{
+		Mutation:     market.Mutation{ClientRequestID: "daemon-authorization-observation/" + uuid.NewString(), ExpectedRevision: snapshot.Revision},
+		ConnectorKey: projection.ConnectorKey, AccountID: scope.AccountID,
+	}, projection)
+	if err != nil {
+		return err
+	}
+	return host.waitForOperation(ctx, result.Operation.OperationID, "authorization reconcile")
+}
+
 func (host *Host) applyCapabilityPublication(ctx context.Context, scope market.OperationScope, enabled bool) error {
 	if host.publication != nil {
 		return host.publication.ApplyCapabilityPublication(ctx, scope, enabled)
@@ -362,6 +443,28 @@ func (host *Host) refreshAndWait(ctx context.Context) error {
 			return nil
 		case market.OperationStateFailed:
 			return fmt.Errorf("connector market refresh failed: %s", operation.FailureCode)
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-ticker.C:
+		}
+	}
+}
+
+func (host *Host) waitForOperation(ctx context.Context, operationID, label string) error {
+	ticker := time.NewTicker(25 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		operation, err := host.Application.GetOperation(ctx, operationID)
+		if err != nil {
+			return err
+		}
+		switch operation.State {
+		case market.OperationStateCompleted:
+			return nil
+		case market.OperationStateFailed:
+			return fmt.Errorf("connector market %s failed: %s", label, operation.FailureCode)
 		}
 		select {
 		case <-ctx.Done():

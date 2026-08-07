@@ -384,6 +384,30 @@ ORDER BY operation_id`)
 	return operations, rows.Err()
 }
 
+func (store *Store) CompletedAuthorizationOperations(ctx context.Context) ([]market.Operation, error) {
+	rows, err := store.db.QueryContext(ctx, `
+SELECT operation_json FROM connector_market_operations
+WHERE kind = 'start_authorization' AND state = 'completed'
+ORDER BY operation_id`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	operations := make([]market.Operation, 0)
+	for rows.Next() {
+		var payload string
+		if err := rows.Scan(&payload); err != nil {
+			return nil, err
+		}
+		operation, err := decodeOperation(payload)
+		if err != nil {
+			return nil, err
+		}
+		operations = append(operations, operation)
+	}
+	return operations, rows.Err()
+}
+
 func (store *Store) Transaction(ctx context.Context, fn func(market.Transaction) error) error {
 	tx, err := store.db.BeginTx(ctx, nil)
 	if err != nil {

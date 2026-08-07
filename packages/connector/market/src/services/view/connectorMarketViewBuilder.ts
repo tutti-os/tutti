@@ -233,6 +233,7 @@ function buildConnectorDialogView(
   if (!["connected", "not_required"].includes(connector.authorization.state)) {
     return {
       ...base,
+      authorizationKind: connector.release.manifest.authorizationKind,
       authorizing,
       kind: "authorization",
       pending: connector.authorization.state === "pending"

@@ -263,6 +263,7 @@ func validateRuntimeReceipt(receipt RuntimeReceipt, operationID, connectionID, c
 func (application *Application) beginAuthorizationSession(
 	ctx context.Context,
 	operation Operation,
+	secret []byte,
 ) (AuthorizationSession, error) {
 	release, err := frozenRelease(operation)
 	if err != nil {
@@ -290,6 +291,7 @@ func (application *Application) beginAuthorizationSession(
 		Scope:           operation.Scope,
 		Connector:       connector,
 		Release:         release,
+		Secret:          secret,
 	})
 	if err != nil {
 		return AuthorizationSession{}, NewDomainError(
@@ -300,15 +302,27 @@ func (application *Application) beginAuthorizationSession(
 		)
 	}
 	if session.OperationID != operation.OperationID || session.ConnectorKey != operation.ConnectorKey ||
-		strings.TrimSpace(session.SessionID) == "" ||
-		(session.State != AuthorizationStatePending && session.State != AuthorizationStateConnected) ||
-		(session.State == AuthorizationStatePending && strings.TrimSpace(session.AuthorizationURL) == "") {
+		strings.TrimSpace(session.SessionID) == "" || !validAuthorizationSessionAction(session) {
 		return AuthorizationSession{}, invalidOperationReceipt("authorization provider returned an invalid session")
 	}
 	if err := application.completeAuthorizationStart(ctx, operation.OperationID, session); err != nil {
 		return AuthorizationSession{}, err
 	}
 	return session, nil
+}
+
+func validAuthorizationSessionAction(session AuthorizationSession) bool {
+	switch strings.TrimSpace(session.ActionType) {
+	case "":
+		return (session.State == AuthorizationStatePending && strings.TrimSpace(session.AuthorizationURL) != "") ||
+			(session.State == AuthorizationStateConnected && strings.TrimSpace(session.AuthorizationURL) == "")
+	case "redirect":
+		return session.State == AuthorizationStatePending && strings.TrimSpace(session.AuthorizationURL) != ""
+	case "submit_secret":
+		return session.State == AuthorizationStateConnected && strings.TrimSpace(session.AuthorizationURL) == ""
+	default:
+		return false
+	}
 }
 
 func (application *Application) executeDisconnectAuthorization(ctx context.Context, operation Operation) error {
@@ -482,6 +496,41 @@ func (application *Application) completeAuthorizationStart(
 			OperationID:  operation.OperationID,
 			Revision:     revision,
 		})
+	})
+}
+
+func (application *Application) completeAuthorizationObservation(
+	ctx context.Context,
+	connectorKey string,
+	observation AuthorizationObservation,
+) error {
+	return application.config.Repository.Transaction(ctx, func(tx Transaction) error {
+		connector, err := tx.Connector(connectorKey)
+		if err != nil {
+			return err
+		}
+		if connector.Authorization.State != AuthorizationStatePending {
+			return nil
+		}
+		target := AuthorizationStateConnected
+		failureCode := ""
+		if observation.State == AuthorizationObservationFailed {
+			target = AuthorizationStateFailed
+			failureCode = strings.TrimSpace(observation.FailureCode)
+			if failureCode == "" {
+				failureCode = string(ErrorCodeAuthorizationFailed)
+			}
+		}
+		if !CanTransitionAuthorization(connector.Authorization.State, target) {
+			return invalidTransition("authorization", string(connector.Authorization.State), string(target))
+		}
+		revision := tx.AdvanceRevision()
+		connector.Authorization = Authorization{State: target, FailureCode: failureCode}
+		connector.Revision = revision
+		if err := tx.SaveConnector(connector); err != nil {
+			return err
+		}
+		return tx.EnqueueConnectorMarketChanged(ChangedEvent{ConnectorKey: connector.Key, Revision: revision})
 	})
 }
 

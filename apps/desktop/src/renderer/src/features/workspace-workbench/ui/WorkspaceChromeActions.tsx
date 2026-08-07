@@ -22,6 +22,7 @@ import { useWorkspaceSettingsPanelRequest } from "@tutti-os/agent-gui/workspace-
 import { useTranslation } from "@renderer/i18n";
 import { cn } from "@renderer/lib/format";
 import { WorkspaceSettingsPanel } from "./WorkspaceSettingsPanel";
+import { WorkspaceConnectorMarketDialogHost } from "./WorkspaceConnectorMarketDialogHost";
 import { useWorkspaceSettingsService } from "./useWorkspaceSettingsService";
 import type { WorkspaceSettingsSectionID } from "../services/workspaceSettingsService.interface";
 import type {
@@ -296,6 +297,7 @@ export function WorkspaceSettingsTrigger({
 
   return (
     <>
+      <WorkspaceConnectorMarketDialogHost />
       <Tooltip>
         <TooltipTrigger asChild>
           <span

@@ -740,6 +740,21 @@ export function useAgentGUIViewLabels(input: {
       removeMention: t("common.remove"),
       addReference: t("agentHost.agentGui.addReference"),
       addContent: t("agentHost.agentGui.addContent"),
+      addContentResourcePanel: t("agentHost.agentGui.addContentResourcePanel"),
+      addContentConnectors: t("agentHost.agentGui.addContentConnectors"),
+      addContentConnectorConnected: t(
+        "agentHost.agentGui.addContentConnectorConnected"
+      ),
+      addContentConnectorConnect: t(
+        "agentHost.agentGui.addContentConnectorConnect"
+      ),
+      addContentConnectorAuthorize: t(
+        "agentHost.agentGui.addContentConnectorAuthorize"
+      ),
+      addContentConnectorEmpty: t(
+        "agentHost.agentGui.addContentConnectorEmpty"
+      ),
+      addContentConnectorMore: t("agentHost.agentGui.addContentConnectorMore"),
       referenceWorkspaceFiles: t("agentHost.issue.referenceWorkspaceFiles"),
       handoffConversation: t("agentHost.agentGui.handoffConversation"),
       handoffConversationTooltip: t(

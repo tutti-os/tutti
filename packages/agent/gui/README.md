@@ -13,7 +13,8 @@ customize structured product errors such as `insufficient_credits`. The
 override contains only localized copy and an optional sanitized external
 action; it does not expose membership state, credentials, or Commerce response
 objects to AgentGUI. Raw provider error details remain available to diagnostics
-but are not rendered in the product error card. Environment, authentication,
+and are rendered only behind an explicit disclosure, never in the product error
+headline. Environment, authentication,
 network, and runtime errors are not overridable and remain AgentGUI policy.
 
 This is an intentional public API break. The former `accountMenuState`,

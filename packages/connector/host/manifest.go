@@ -430,6 +430,15 @@ func validateRemoteStreamableHTTP(remote RemoteStreamableHTTPImplementation) err
 	if !found {
 		return invalidManifest("remote endpoint hostname must appear exactly in allowedHosts", nil)
 	}
+	if remote.Authentication.Type != "none" && remote.Authentication.Type != "host_session" {
+		return invalidManifest("remote authentication type must be none or host_session", nil)
+	}
+	if remote.Limits.TimeoutMS < 100 || remote.Limits.TimeoutMS > 120_000 {
+		return invalidManifest("remote timeoutMs must be between 100 and 120000", nil)
+	}
+	if remote.Limits.MaxResponseBytes < 1 || remote.Limits.MaxResponseBytes > 10*1024*1024 {
+		return invalidManifest("remote maxResponseBytes must be between 1 and 10485760", nil)
+	}
 	return nil
 }
 

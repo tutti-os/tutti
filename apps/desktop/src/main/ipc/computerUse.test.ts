@@ -1,9 +1,36 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  parseCuaDriverDoctorStatus,
   parseCuaDriverPermissionsStatus,
   parseCuaDriverPermissionsStatusDetail
 } from "./computerUsePermissions.ts";
+
+test("parseCuaDriverDoctorStatus maps a healthy Windows driver", () => {
+  assert.deepEqual(
+    parseCuaDriverDoctorStatus(
+      JSON.stringify({
+        ok: true,
+        probes: [{ label: "UI Automation", status: "ok" }]
+      })
+    ),
+    { ok: true }
+  );
+});
+
+test("parseCuaDriverDoctorStatus preserves failed probe diagnostics", () => {
+  assert.deepEqual(
+    parseCuaDriverDoctorStatus(
+      JSON.stringify({
+        probes: [
+          { label: "UI Automation", status: "ok" },
+          { label: "Interactive session", status: "error", message: "denied" }
+        ]
+      })
+    ),
+    { ok: false, diagnosticMessage: "Interactive session: denied" }
+  );
+});
 
 test("parseCuaDriverPermissionsStatus maps driver-daemon permission payload", () => {
   assert.deepEqual(

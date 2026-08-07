@@ -63,14 +63,24 @@ repository policy, contract, generated, and boundary checks. This preserves
 branch-protection compatibility while keeping those checks out of language
 jobs.
 
-Windows validation separates adapter coverage from desktop packaging. Changes
-under the Agent daemon or `services/tuttid` run the Windows adapter tests;
-desktop and builtin-app changes run the full unsigned Windows package build.
+Windows validation separates Agent process adapters, daemon adapters, and
+desktop packaging. Agent daemon changes run the process and downstream daemon
+adapter workflows in parallel; `services/tuttid` changes run only the daemon
+adapter workflow. The Agent process lane needs only Go, while the daemon lane
+prepares the builtin Onboarding package before its Go tests. Each lane invokes
+its selected Go packages together so independent packages can build and test in
+parallel.
+
+Both adapter workflows also run for matching pushes to `main`. Those trusted
+runs maintain default-branch Go and pnpm caches that new pull requests can
+restore; pull-request caches remain isolated to their merge refs. Adapter
+workflows use shallow checkouts because their tests do not inspect Git history.
+Desktop and builtin-app changes run the full unsigned Windows package build.
 Use the desktop workflow's manual dispatch for a full package check when a
 daemon-only change needs release-package confidence. Workflow definition files
-are validated by repository tool contracts and do not trigger either runtime
-workflow themselves; this prevents a selector-only PR from starting a full
-Windows package build.
+are validated by repository tool contracts and do not trigger runtime
+workflows themselves; this prevents a selector-only PR from starting a Windows
+runner.
 
 Changes to shared Go selector scripts are covered by the repository tool
 contract suite and continue to select only the affected Go modules. Go

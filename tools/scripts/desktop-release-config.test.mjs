@@ -768,7 +768,7 @@ test("desktop release workflow refreshes the stable alias without taking Latest"
   assert.ok(releaseDeleteIndex < releaseCreateIndex);
 });
 
-test("desktop release workflow keeps Windows packaging opt-in and stages unsigned assets", async () => {
+test("desktop release workflow always builds Windows and stages unsigned assets", async () => {
   const workflow = await readFile(workflowPath, "utf8");
   const stageJobMatch = workflow.match(
     /stage:[\s\S]*?(?=\n\s{2}[a-z][a-z0-9_-]+:\n|$)/
@@ -779,17 +779,9 @@ test("desktop release workflow keeps Windows packaging opt-in and stages unsigne
 
   assert.ok(stageJobMatch, "stage job should exist");
   assert.ok(notifyJobMatch, "draft notify job should exist");
-  assert.match(
-    workflow,
-    /include_windows:[\s\S]*?type:\s+boolean[\s\S]*?default:\s+false/
-  );
-  assert.match(workflow, /id:\s+windows[\s\S]*?include_windows=false/);
+  assert.doesNotMatch(workflow, /include_windows/);
   assert.match(workflow, /\r?\n\s{2}build-windows:\r?\n/);
   assert.doesNotMatch(workflow, /\r?\n\s{2}build-linux:\r?\n/);
-  assert.match(
-    workflow,
-    /build-windows:[\s\S]*?if:\s+\$\{\{\s*needs\.resolve\.outputs\.include_windows\s*==\s*'true'\s*\}\}/
-  );
   assert.match(
     workflow,
     /build-windows:[\s\S]*?CSC_IDENTITY_AUTO_DISCOVERY:\s+"false"[\s\S]*?build:win/
@@ -800,6 +792,10 @@ test("desktop release workflow keeps Windows packaging opt-in and stages unsigne
   );
   assert.match(stageJobMatch[0], /always\(\)/);
   assert.match(
+    stageJobMatch[0],
+    /needs\.build-windows\.result\s*==\s*'success'/
+  );
+  assert.doesNotMatch(
     stageJobMatch[0],
     /needs\.build-windows\.result\s*==\s*'skipped'/
   );
@@ -814,6 +810,10 @@ test("desktop release workflow keeps Windows packaging opt-in and stages unsigne
   assert.match(stageJobMatch[0], /name:\s+Add Windows release artifacts/);
   assert.match(
     stageJobMatch[0],
+    /validate-windows-release-artifacts\.mjs release-assets/
+  );
+  assert.match(
+    stageJobMatch[0],
     /upsert-release-download-links\.mjs[\s\S]*?release-assets[\s\S]*?updated-release-body\.md/
   );
   assert.match(
@@ -825,6 +825,28 @@ test("desktop release workflow keeps Windows packaging opt-in and stages unsigne
     notifyJobMatch[0],
     /pattern:\s+tutti-desktop-release-assets-macos/
   );
+});
+
+test("desktop promotion verifies Windows artifacts in the release and S3 mirror", async () => {
+  const promoteWorkflow = await readFile(promoteWorkflowPath, "utf8");
+
+  assert.match(
+    promoteWorkflow,
+    /Verify staged release assets[\s\S]*?\*-win-x64\.exe[\s\S]*?\*-win-x64\.exe\.blockmap[\s\S]*?windows_metadata/
+  );
+  assert.match(
+    promoteWorkflow,
+    /name:\s+Validate Windows updater metadata[\s\S]*?validate-windows-release-artifacts\.mjs/
+  );
+  assert.match(
+    promoteWorkflow,
+    /name:\s+Verify mirrored Windows release assets/
+  );
+  assert.match(promoteWorkflow, /aws s3api head-object/);
+  assert.match(promoteWorkflow, /--query ContentLength/);
+  assert.match(promoteWorkflow, /Mirrored asset size mismatch/);
+  assert.match(promoteWorkflow, /curl --fail --silent --show-error --location/);
+  assert.match(promoteWorkflow, /Mirrored asset checksum mismatch/);
 });
 
 test("desktop release workflow materializes macOS signing certificate before packaging", async () => {

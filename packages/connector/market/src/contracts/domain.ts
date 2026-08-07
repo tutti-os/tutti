@@ -231,6 +231,10 @@ export interface ConnectorMutationInput extends ConnectorMarketMutationInput {
   connectorKey: string;
 }
 
+export interface ConnectorAuthorizationInput extends ConnectorMutationInput {
+  secret?: string;
+}
+
 export interface ConnectorMutationResult {
   connector?: Connector;
   operation: ConnectorOperation;

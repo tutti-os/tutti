@@ -1,25 +1,38 @@
 import { existsSync } from "node:fs";
 import { spawn } from "node:child_process";
+import { delimiter, join } from "node:path";
 import {
   desktopIpcChannels,
   type DesktopComputerUseActionResult,
+  type DesktopComputerUseAuthorizationState,
   type DesktopComputerUsePermissionGrantStatus,
   type DesktopComputerUsePermissionPane,
   type DesktopComputerUsePermissionsStatus,
   type DesktopComputerUseRestartDriverInput,
   type DesktopComputerUseRestartDriverResult,
   type DesktopComputerUseStatus,
-  type DesktopComputerUseStatusReason
+  type DesktopComputerUseStatusReason,
+  type DesktopComputerUsePlatform
 } from "../../shared/contracts/ipc.ts";
 import { shell } from "electron";
 import { registerDesktopIpcHandler } from "./handle.ts";
-import { parseCuaDriverPermissionsStatusDetail } from "./computerUsePermissions.ts";
+import {
+  parseCuaDriverDoctorStatus,
+  parseCuaDriverPermissionsStatusDetail
+} from "./computerUsePermissions.ts";
 import { getDesktopLogger } from "../logging.ts";
 
 const CUA_DRIVER_INSTALL_SCRIPT_URL =
   "https://raw.githubusercontent.com/trycua/cua/main/libs/cua-driver/scripts/install.sh";
 const CUA_DRIVER_UNINSTALL_SCRIPT_URL =
   "https://raw.githubusercontent.com/trycua/cua/main/libs/cua-driver/scripts/uninstall.sh";
+const CUA_DRIVER_WINDOWS_INSTALL_SCRIPT_URL =
+  "https://cua.ai/driver/install.ps1";
+const CUA_DRIVER_WINDOWS_UNINSTALL_SCRIPT_URL =
+  "https://cua.ai/driver/uninstall.ps1";
+// Keep the interactive desktop path aligned with the release validated by the
+// daemon contract. Bumping this value is an explicit compatibility decision.
+const CUA_DRIVER_WINDOWS_VERSION = "0.18.0";
 const CUA_DRIVER_APP_BINARY_PATH =
   "/Applications/CuaDriver.app/Contents/MacOS/cua-driver";
 const COMPUTER_USE_GRANT_TIMEOUT_MS = 75_000;
@@ -63,11 +76,46 @@ function cuaDriverExecutableCandidates(): string[] {
     process.env.HOME ? `${process.env.HOME}/.local/bin/cua-driver` : null,
     "/usr/local/bin/cua-driver",
     "/opt/homebrew/bin/cua-driver",
-    CUA_DRIVER_APP_BINARY_PATH
+    CUA_DRIVER_APP_BINARY_PATH,
+    ...windowsCuaDriverExecutableCandidates()
   ];
   return candidates
     .map((candidate) => candidate?.trim() ?? "")
     .filter((candidate) => candidate.length > 0);
+}
+
+function windowsCuaDriverExecutableCandidates(): string[] {
+  if (process.platform !== "win32") {
+    return [];
+  }
+  const localAppData = process.env.LOCALAPPDATA?.trim();
+  const userProfile = process.env.USERPROFILE?.trim();
+  return [
+    localAppData
+      ? join(
+          localAppData,
+          "Programs",
+          "Cua",
+          "cua-driver",
+          "bin",
+          "cua-driver.exe"
+        )
+      : null,
+    localAppData
+      ? join(localAppData, "Programs", "Cua", "cua-driver.exe")
+      : null,
+    localAppData ? join(localAppData, "cua-driver", "cua-driver.exe") : null,
+    userProfile ? join(userProfile, ".local", "bin", "cua-driver.exe") : null,
+    userProfile
+      ? join(
+          userProfile,
+          ".cua-driver",
+          "packages",
+          "current",
+          "cua-driver.exe"
+        )
+      : null
+  ].filter((candidate): candidate is string => candidate !== null);
 }
 
 function resolveCuaDriverExecutable(): string | null {
@@ -80,10 +128,13 @@ function resolveCuaDriverExecutable(): string | null {
 }
 
 function isCuaDriverInstalled(): boolean {
-  if (process.platform !== "darwin") {
+  if (process.platform !== "darwin" && process.platform !== "win32") {
     return false;
   }
-  if (existsSync("/Applications/CuaDriver.app")) {
+  if (
+    process.platform === "darwin" &&
+    existsSync("/Applications/CuaDriver.app")
+  ) {
     return true;
   }
   return resolveCuaDriverExecutable() !== null;
@@ -97,7 +148,7 @@ function runSubprocess(
   return new Promise((resolve) => {
     const chunks: Buffer[] = [];
     const localBinPath = process.env.HOME
-      ? `${process.env.HOME}/.local/bin:`
+      ? `${process.env.HOME}/.local/bin${delimiter}`
       : "";
     let settled = false;
     let timedOut = false;
@@ -226,6 +277,19 @@ async function ensureCuaDriverPermissionGrantActionLaunched(): Promise<ComputerU
 }
 
 async function startCuaDriverPermissionGrant(): Promise<DesktopComputerUsePermissionGrantStatus> {
+  if (process.platform === "win32") {
+    return {
+      id: COMPUTER_USE_GRANT_ACTION_ID,
+      running: false,
+      startedAtUnixMs: Date.now(),
+      elapsedMs: 0,
+      result: {
+        success: false,
+        output:
+          "Windows computer use uses cua-driver doctor readiness; macOS permission grant is not applicable."
+      }
+    };
+  }
   return computerUseGrantActionSnapshot(
     await ensureCuaDriverPermissionGrantActionLaunched()
   );
@@ -253,6 +317,7 @@ function summarizeComputerUseStatusForLog(
   status: DesktopComputerUseStatus
 ): Record<string, unknown> {
   return {
+    platform: status.platform ?? "unknown",
     authorization: status.authorization,
     installed: status.installed,
     permissionAccessibility: status.permissions?.accessibility ?? null,
@@ -278,6 +343,7 @@ function logComputerUseStatusChecked(
 ): void {
   const statusFields = summarizeComputerUseStatusForLog(status);
   const signature = [
+    status.platform ?? "unknown",
     status.installed ? "installed" : "not-installed",
     status.authorization,
     status.reason ?? "",
@@ -308,6 +374,13 @@ function truncateComputerUseDiagnosticMessage(message: string): string {
 }
 
 async function grantCuaDriverPermissions(): Promise<DesktopComputerUseActionResult> {
+  if (process.platform === "win32") {
+    return {
+      success: false,
+      output:
+        "Windows computer use uses cua-driver doctor readiness; macOS permission grant is not applicable."
+    };
+  }
   const action = await ensureCuaDriverPermissionGrantActionLaunched();
   return action.promise;
 }
@@ -315,6 +388,11 @@ async function grantCuaDriverPermissions(): Promise<DesktopComputerUseActionResu
 async function openComputerUsePermissionSettings(
   pane: DesktopComputerUsePermissionPane
 ): Promise<void> {
+  if (process.platform === "win32") {
+    throw new Error(
+      "Windows computer use has no macOS permission settings pane; check cua-driver readiness instead."
+    );
+  }
   const url = COMPUTER_USE_PERMISSION_SETTINGS_URLS[pane];
   getDesktopLogger().info("computer use permission settings opened", {
     pane
@@ -324,15 +402,18 @@ async function openComputerUsePermissionSettings(
 
 function resolveComputerUseStatus(input: {
   installed: boolean;
+  platform?: DesktopComputerUsePlatform;
   permissions: DesktopComputerUsePermissionsStatus | null;
+  authorization?: DesktopComputerUseAuthorizationState;
   reason?: DesktopComputerUseStatusReason;
   diagnosticMessage?: string;
 }): DesktopComputerUseStatus {
   if (!input.installed) {
     return {
       installed: false,
+      platform: input.platform ?? computerUsePlatform(),
       permissions: null,
-      authorization: "unknown",
+      authorization: input.authorization ?? "unknown",
       reason: "not-installed"
     };
   }
@@ -341,8 +422,9 @@ function resolveComputerUseStatus(input: {
   if (!permissions) {
     return {
       installed: true,
+      platform: input.platform ?? computerUsePlatform(),
       permissions: null,
-      authorization: "unknown",
+      authorization: input.authorization ?? "unknown",
       reason: input.reason ?? "status-unparseable",
       ...(input.diagnosticMessage
         ? { diagnosticMessage: input.diagnosticMessage }
@@ -353,6 +435,7 @@ function resolveComputerUseStatus(input: {
   const status = resolveComputerUseAuthorizationStatus(permissions);
   return {
     installed: true,
+    platform: input.platform ?? computerUsePlatform(),
     permissions,
     authorization: status.authorization,
     ...(status.reason ? { reason: status.reason } : {}),
@@ -360,6 +443,13 @@ function resolveComputerUseStatus(input: {
       ? { diagnosticMessage: input.diagnosticMessage }
       : {})
   };
+}
+
+function computerUsePlatform(): DesktopComputerUsePlatform {
+  if (process.platform === "darwin" || process.platform === "win32") {
+    return process.platform;
+  }
+  return "unknown";
 }
 
 function resolveComputerUseAuthorizationStatus(
@@ -396,6 +486,62 @@ function resolveComputerUseAuthorizationStatus(
   return { authorization: "unknown", reason: "status-unparseable" };
 }
 
+async function checkWindowsCuaDriverStatus(
+  executable: string,
+  startedAtUnixMs: number
+): Promise<DesktopComputerUseStatus> {
+  const commandStartedAtUnixMs = Date.now();
+  const doctorResult = await runSubprocess(executable, ["doctor", "--json"]);
+  getDesktopLogger().debug("computer use driver doctor command completed", {
+    elapsedMs: Date.now() - commandStartedAtUnixMs,
+    outputBytes: doctorResult.output.length,
+    success: doctorResult.success
+  });
+
+  if (!doctorResult.success) {
+    const status = resolveComputerUseStatus({
+      installed: true,
+      platform: "win32",
+      permissions: null,
+      reason: "driver-doctor-failed",
+      diagnosticMessage: doctorResult.output
+    });
+    logComputerUseStatusChecked(status, "warn", {
+      elapsedMs: Date.now() - startedAtUnixMs
+    });
+    return status;
+  }
+
+  const doctor = parseCuaDriverDoctorStatus(doctorResult.output);
+  if (!doctor || !doctor.ok) {
+    const status = resolveComputerUseStatus({
+      installed: true,
+      platform: "win32",
+      permissions: null,
+      reason: "driver-doctor-failed",
+      diagnosticMessage: doctor?.diagnosticMessage ?? doctorResult.output
+    });
+    logComputerUseStatusChecked(status, "warn", {
+      elapsedMs: Date.now() - startedAtUnixMs
+    });
+    return status;
+  }
+
+  // Windows exposes UI Automation and native input readiness through doctor,
+  // rather than macOS TCC permission fields. Keep permissions null and use the
+  // authorization state as the cross-platform readiness contract.
+  const status = resolveComputerUseStatus({
+    installed: true,
+    platform: "win32",
+    permissions: null,
+    authorization: "authorized"
+  });
+  logComputerUseStatusChecked(status, "info", {
+    elapsedMs: Date.now() - startedAtUnixMs
+  });
+  return status;
+}
+
 async function checkCuaDriverStatus(): Promise<DesktopComputerUseStatus> {
   const startedAtUnixMs = Date.now();
   const installed = isCuaDriverInstalled();
@@ -423,6 +569,10 @@ async function checkCuaDriverStatus(): Promise<DesktopComputerUseStatus> {
       executablePresent: false
     });
     return status;
+  }
+
+  if (process.platform === "win32") {
+    return checkWindowsCuaDriverStatus(executable, startedAtUnixMs);
   }
 
   getDesktopLogger().debug("computer use permission status command started", {
@@ -489,6 +639,18 @@ function sleep(ms: number): Promise<void> {
 async function performCuaDriverRestart(
   input?: DesktopComputerUseRestartDriverInput
 ): Promise<DesktopComputerUseRestartDriverResult> {
+  if (process.platform === "win32") {
+    const status = await checkCuaDriverStatusCoalesced();
+    const result: DesktopComputerUseActionResult = {
+      success: status.installed && status.authorization === "authorized",
+      output:
+        status.installed && status.authorization === "authorized"
+          ? "Windows cua-driver readiness is managed by doctor; Tutti starts its daemon when an MCP session is opened."
+          : status.diagnosticMessage ||
+            "Windows cua-driver is not ready; install the driver and check again."
+    };
+    return { result, status };
+  }
   const startedAtUnixMs = Date.now();
   const grantAction = computerUseGrantActionState;
   if (grantAction?.result === null && input?.force !== true) {
@@ -594,23 +756,51 @@ function restartCuaDriver(
   return computerUseRestartPromise;
 }
 
+function runWindowsCuaDriverScript(
+  url: string
+): Promise<DesktopComputerUseActionResult> {
+  const script =
+    "$ErrorActionPreference = 'Stop'; " +
+    `$env:CUA_DRIVER_RS_VERSION = '${CUA_DRIVER_WINDOWS_VERSION}'; ` +
+    `Invoke-RestMethod -Uri '${url}' | Invoke-Expression`;
+  return runSubprocess(
+    "powershell.exe",
+    ["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", script],
+    { timeoutMs: 120_000, timeoutOutput: "Windows driver script timed out." }
+  );
+}
+
+function installCuaDriver(): Promise<DesktopComputerUseActionResult> {
+  if (process.platform === "win32") {
+    return runWindowsCuaDriverScript(CUA_DRIVER_WINDOWS_INSTALL_SCRIPT_URL);
+  }
+  return runSubprocess("/bin/bash", [
+    "-c",
+    `curl -fsSL ${CUA_DRIVER_INSTALL_SCRIPT_URL} | bash`
+  ]);
+}
+
+function uninstallCuaDriver(): Promise<DesktopComputerUseActionResult> {
+  if (process.platform === "win32") {
+    return runWindowsCuaDriverScript(CUA_DRIVER_WINDOWS_UNINSTALL_SCRIPT_URL);
+  }
+  return runSubprocess("/bin/bash", [
+    "-c",
+    `curl -fsSL ${CUA_DRIVER_UNINSTALL_SCRIPT_URL} | bash`
+  ]);
+}
+
 export function registerComputerUseIpc(): void {
   registerDesktopIpcHandler(desktopIpcChannels.computerUse.checkStatus, () =>
     checkCuaDriverStatusCoalesced()
   );
 
   registerDesktopIpcHandler(desktopIpcChannels.computerUse.install, () =>
-    runSubprocess("/bin/bash", [
-      "-c",
-      `curl -fsSL ${CUA_DRIVER_INSTALL_SCRIPT_URL} | bash`
-    ])
+    installCuaDriver()
   );
 
   registerDesktopIpcHandler(desktopIpcChannels.computerUse.uninstall, () =>
-    runSubprocess("/bin/bash", [
-      "-c",
-      `curl -fsSL ${CUA_DRIVER_UNINSTALL_SCRIPT_URL} | bash`
-    ])
+    uninstallCuaDriver()
   );
 
   registerDesktopIpcHandler(

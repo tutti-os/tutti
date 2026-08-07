@@ -618,6 +618,42 @@ test("does not let a stale authorization response overwrite a newer daemon snaps
   service.dispose();
 });
 
+test("forwards a user-provided secret only to the authorization mutation", async () => {
+  let receivedSecret: string | undefined;
+  const initial = connector("token-mail", 1);
+  initial.installation = {
+    state: "installed",
+    installedReleaseDigest: initial.release.releaseDigest
+  };
+  initial.authorization = { state: "disconnected" };
+  const service = new ConnectorMarketService({
+    backend: backendWith({
+      getSnapshot: async () => snapshot(1, [initial]),
+      beginAuthorization: async (input) => {
+        receivedSecret = input.secret;
+        const connected = connector("token-mail", 2);
+        connected.authorization = { state: "connected" };
+        return {
+          connector: connected,
+          operation: {
+            ...operation("start_authorization", 2),
+            connectorKey: "token-mail",
+            state: "completed"
+          },
+          revision: 2
+        };
+      }
+    })
+  });
+  await service.ensureLoaded();
+
+  await service.beginAuthorization("token-mail", "secret-value");
+
+  assert.equal(receivedSecret, "secret-value");
+  assert.equal(service.dataStore.revision, 2);
+  service.dispose();
+});
+
 test("continues one authorization session, opens each URL once, and clears loading", async () => {
   const requests: Array<{ clientRequestId: string; expectedRevision: number }> =
     [];

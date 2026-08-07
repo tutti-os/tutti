@@ -64,6 +64,10 @@ type Repository interface {
 	Snapshot(ctx context.Context) (Snapshot, error)
 	Connector(ctx context.Context, connectorKey string) (Connector, error)
 	Operation(ctx context.Context, operationID string) (Operation, error)
+	// CompletedAuthorizationOperations exposes durable authorization session
+	// receipts only to the internal reconciler. Snapshot remains safe for public
+	// presentation and must not contain Operation.Execution.
+	CompletedAuthorizationOperations(ctx context.Context) ([]Operation, error)
 	ClaimOperation(ctx context.Context, operationID, owner string, now, leaseExpiresAt time.Time) (Operation, bool, error)
 	RenewOperationLease(ctx context.Context, operationID, owner string, token uint64, now, leaseExpiresAt time.Time) error
 	ReleaseOperationLease(ctx context.Context, operationID, owner string, token uint64) error
@@ -292,18 +296,30 @@ type AuthorizationProvider interface {
 	Disconnect(ctx context.Context, request AuthorizationDisconnectRequest) error
 }
 
+// AuthorizationObserver is an optional asynchronous extension implemented by
+// providers whose user interaction completes outside the daemon process.
+type AuthorizationObserver interface {
+	Observe(ctx context.Context, request AuthorizationObserveRequest) (AuthorizationObservation, error)
+}
+
 type AuthorizationStartRequest struct {
 	OperationID     string
 	ClientRequestID string
 	Scope           OperationScope
 	Connector       Connector
 	Release         Release
+	Secret          []byte
 }
 
 type AuthorizationDisconnectRequest struct {
 	OperationID string
 	Scope       OperationScope
 	Connector   Connector
+}
+
+type AuthorizationObserveRequest struct {
+	Connector Connector
+	Session   AuthorizationSession
 }
 
 type CompatibilityEvaluator interface {

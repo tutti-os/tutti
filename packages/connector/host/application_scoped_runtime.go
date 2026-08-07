@@ -117,8 +117,46 @@ func (application *Application) ReconcileInstalledRuntimesForScope(ctx context.C
 			installedRelease.ReleaseDigest, HostGeneration{BootEpoch: application.config.BootEpoch, Generation: generation}); err != nil {
 			return err
 		}
+		if err := application.recordDirectRuntimeGeneration(ctx, connector.Key, installedRelease.ReleaseDigest, operationID, generation); err != nil {
+			return err
+		}
 	}
 	return nil
+}
+
+// recordDirectRuntimeGeneration makes startup reconciliation participate in
+// the same durable generation clock as user-initiated operations. Without this
+// commit, the VM can accept generation N+1 while SQLite remains at N; the next
+// same-boot fence is then rejected as stale even though desktopd is the owner.
+func (application *Application) recordDirectRuntimeGeneration(
+	ctx context.Context,
+	connectorKey, releaseDigest, operationID string,
+	generation uint64,
+) error {
+	return application.config.Repository.Transaction(ctx, func(tx Transaction) error {
+		connector, err := tx.Connector(connectorKey)
+		if err != nil {
+			return err
+		}
+		if connector.Installation.State != InstallationStateInstalled ||
+			connector.Installation.InstalledReleaseDigest != releaseDigest {
+			return NewDomainError(ErrorCodeRevisionConflict, "installed connector changed during runtime recovery", true, nil)
+		}
+		if connector.Revision >= generation {
+			return nil
+		}
+		revision := tx.Revision()
+		for revision < generation {
+			revision = tx.AdvanceRevision()
+		}
+		connector.Revision = revision
+		if err := tx.SaveConnector(connector); err != nil {
+			return err
+		}
+		return tx.EnqueueConnectorMarketChanged(ChangedEvent{
+			ConnectorKey: connector.Key, OperationID: operationID, Revision: revision,
+		})
+	})
 }
 
 func (application *Application) FenceInstalledRuntimes(ctx context.Context) error {

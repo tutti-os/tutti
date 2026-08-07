@@ -436,9 +436,9 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
     promptImagesSupported: canUploadAttachment && promptImagesSupported,
     availableSkills,
     composerSettings,
-    // Host-gated product capability: omit or enabled:false must hide Tutti Mode
-    // entries (footer chip, badge activation, /tutti). Fail closed like other
-    // unsupported host capabilities — do not treat a missing flag as enabled.
+    // Host-gated product capability: omit or enabled:false must hide /tutti.
+    // Fail closed like other unsupported host capabilities — do not treat a
+    // missing flag as enabled.
     tuttiModeSupported: capabilityMenuState?.tuttiMode?.enabled === true,
     capabilityControlsReadOnly,
     onDraftContentChange,

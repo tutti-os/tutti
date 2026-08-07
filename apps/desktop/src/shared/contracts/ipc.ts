@@ -949,8 +949,12 @@ export type DesktopComputerUseAuthorizationState =
   | "needs-authorization"
   | "unknown";
 
+/** The native capability used to report computer-use readiness. */
+export type DesktopComputerUsePlatform = "darwin" | "win32" | "unknown";
+
 export type DesktopComputerUseStatusReason =
   | "driver-daemon-not-running"
+  | "driver-doctor-failed"
   | "not-installed"
   | "permission-missing"
   | "screen-recording-not-capturable"
@@ -959,6 +963,8 @@ export type DesktopComputerUseStatusReason =
 
 export interface DesktopComputerUseStatus {
   installed: boolean;
+  /** Optional for compatibility with older preload clients. */
+  platform?: DesktopComputerUsePlatform;
   permissions: DesktopComputerUsePermissionsStatus | null;
   authorization: DesktopComputerUseAuthorizationState;
   reason?: DesktopComputerUseStatusReason;
@@ -974,6 +980,7 @@ export function desktopComputerUseStatusesEqual(
     (left !== null &&
       right !== null &&
       left.installed === right.installed &&
+      left.platform === right.platform &&
       left.authorization === right.authorization &&
       left.reason === right.reason &&
       left.diagnosticMessage === right.diagnosticMessage &&

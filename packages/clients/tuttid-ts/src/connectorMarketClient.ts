@@ -12,6 +12,7 @@ import {
 } from "./generated/index.ts";
 import type {
   ConnectorMarketAuthorizationResponse,
+  ConnectorMarketAuthorizationRequestWritable,
   ConnectorMarketCatalogPage,
   ConnectorMarketCategoriesResponse,
   ConnectorMarketConnector,
@@ -81,7 +82,7 @@ export interface ConnectorMarketClient {
   ): Promise<ConnectorMarketMutationResponse>;
   startConnectorMarketAuthorization(
     connectorKey: string,
-    request: ConnectorMarketMutationRequest
+    request: ConnectorMarketAuthorizationRequestWritable
   ): Promise<ConnectorMarketAuthorizationResponse>;
   disconnectConnectorMarketAuthorization(
     connectorKey: string,

@@ -142,10 +142,40 @@ function MobileMessageRow({
             </Text>
           ) : null}
           {message.visibleError?.detail ? (
-            <Text style={styles.errorText}>{message.visibleError.detail}</Text>
+            message.visibleError.detailAvailable ? (
+              <MobileRawErrorDisclosure detail={message.visibleError.detail} />
+            ) : (
+              <Text style={styles.errorText}>
+                {message.visibleError.detail}
+              </Text>
+            )
           ) : null}
         </View>
       ))}
+    </View>
+  );
+}
+
+function MobileRawErrorDisclosure({ detail }: { detail: string }) {
+  const theme = useNativeTheme();
+  const styles = createStyles(theme);
+  const [expanded, setExpanded] = useState(false);
+  return (
+    <View style={styles.errorDisclosureContainer}>
+      <Pressable
+        accessibilityLabel={expanded ? t("hideRawError") : t("showRawError")}
+        accessibilityRole="button"
+        accessibilityState={{ expanded }}
+        onPress={() => setExpanded((value) => !value)}
+        style={({ pressed }) => [
+          styles.errorDisclosure,
+          pressed && styles.pressed
+        ]}
+      >
+        <Text style={styles.errorDisclosureLabel}>{t("rawError")}</Text>
+        <Text style={styles.disclosure}>{expanded ? "−" : "+"}</Text>
+      </Pressable>
+      {expanded ? <Text style={styles.errorText}>{detail}</Text> : null}
     </View>
   );
 }
@@ -330,6 +360,13 @@ function MobileGoalControlRow({ body }: { body: string }) {
 function createStyles(theme: NativeTheme) {
   return StyleSheet.create({
     disclosure: { color: theme.color.muted, fontSize: 18, lineHeight: 18 },
+    errorDisclosure: {
+      alignItems: "center",
+      flexDirection: "row",
+      gap: theme.space.small
+    },
+    errorDisclosureContainer: { marginTop: theme.space.small },
+    errorDisclosureLabel: { color: theme.color.danger, fontSize: 13 },
     errorText: { color: theme.color.danger, fontSize: 14, lineHeight: 21 },
     fileList: { gap: theme.space.small, paddingTop: theme.space.small },
     fileName: { color: theme.color.textSecondary, fontSize: 13 },

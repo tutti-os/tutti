@@ -329,7 +329,7 @@ func (s *Service) GetComposerOptions(ctx context.Context, input ComposerOptionsI
 	}
 	reasoningOptions := composerReasoningOptionValues(provider, effectiveSettings.ReasoningEffort, locale)
 	speedOptions := composerSpeedOptionValues(provider, locale)
-	capabilities := composerProviderCapabilities(provider, s.computerUseAvailable())
+	capabilities := composerProviderCapabilities(provider, s.computerUseAvailable(), s.browserUseAvailable())
 	if providerTargetRefKind(input.providerTargetRef) == "agent_extension" {
 		capabilities = nil
 	}
@@ -455,7 +455,7 @@ func (s *Service) GetComposerOptions(ctx context.Context, input ComposerOptionsI
 		if err != nil {
 			return ComposerOptions{}, err
 		}
-		options = applyExtensionComposerCapabilities(options, extensionProfile, s.computerUseAvailable())
+		options = applyExtensionComposerCapabilities(options, extensionProfile, s.computerUseAvailable(), s.browserUseAvailable())
 	}
 	options = applyResolvedModelPlanComposerOverlay(options, modelPlanResolution)
 	options.CodexSaverModeSupported = codexSaverModeSupported

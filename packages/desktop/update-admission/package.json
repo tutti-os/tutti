@@ -17,6 +17,8 @@
     "./i18n": "./src/i18n/index.ts",
     "./mandatory-updater": "./src/mandatory-updater/index.ts",
     "./preload": "./src/preload/index.ts",
+    "./preload/feature-availability": "./src/preload/featureAvailability.ts",
+    "./preload/minimum-version": "./src/preload/minimumVersion.ts",
     "./react": "./src/react/index.ts"
   },
   "files": [
@@ -104,6 +106,14 @@
       "./preload": {
         "types": "./dist/preload/index.d.ts",
         "import": "./dist/preload/index.js"
+      },
+      "./preload/feature-availability": {
+        "types": "./dist/preload/feature-availability.d.ts",
+        "import": "./dist/preload/feature-availability.js"
+      },
+      "./preload/minimum-version": {
+        "types": "./dist/preload/minimum-version.d.ts",
+        "import": "./dist/preload/minimum-version.js"
       },
       "./react": {
         "types": "./dist/react/index.d.ts",

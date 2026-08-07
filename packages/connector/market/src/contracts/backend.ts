@@ -1,5 +1,6 @@
 import type {
   Connector,
+  ConnectorAuthorizationInput,
   ConnectorAuthorizationResult,
   ConnectorMarketCatalogPage,
   ConnectorMarketCategory,
@@ -30,7 +31,7 @@ export interface ConnectorMarketBackend {
     input: ConnectorMutationInput
   ): Promise<ConnectorMutationResult>;
   beginAuthorization(
-    input: ConnectorMutationInput
+    input: ConnectorAuthorizationInput
   ): Promise<ConnectorAuthorizationResult>;
   disconnectAuthorization(
     input: ConnectorMutationInput

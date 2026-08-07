@@ -344,8 +344,19 @@ func TestApplicationStartupReconcileAdvancesPastFence(t *testing.T) {
 	if err := application.ReconcileInstalledRuntimes(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	if host.lastDeactivation.Generation.Generation != 7 || host.lastReconcile.Generation.Generation != 8 {
+	if host.lastDeactivation.Generation.Generation != 7 || host.lastReconcile.Generation.Generation != 8 || repository.connectors["github"].Revision < 8 {
 		t.Fatalf("startup generations: fence=%#v reconcile=%#v", host.lastDeactivation.Generation, host.lastReconcile.Generation)
+	}
+	firstReconcileGeneration := host.lastReconcile.Generation.Generation
+	if err := application.FenceInstalledRuntimes(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if err := application.ReconcileInstalledRuntimes(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if host.lastDeactivation.Generation.Generation < firstReconcileGeneration ||
+		host.lastReconcile.Generation.Generation <= host.lastDeactivation.Generation.Generation {
+		t.Fatalf("repeated startup generations: fence=%#v reconcile=%#v", host.lastDeactivation.Generation, host.lastReconcile.Generation)
 	}
 }
 
@@ -788,6 +799,33 @@ func TestApplicationRefreshPreservesManifestFailureCode(t *testing.T) {
 	}
 }
 
+func TestApplicationReconcilesCompletedAuthorizationSession(t *testing.T) {
+	connector := testConnector("gmail")
+	connector.Authorization = Authorization{State: AuthorizationStatePending}
+	repository := newMemoryRepository(connector)
+	repository.operations["authorization-1"] = Operation{
+		OperationID: "authorization-1", ConnectorKey: connector.Key,
+		Kind: OperationKindStartAuthorization, State: OperationStateCompleted,
+		Execution: OperationExecution{AuthorizationSession: &AuthorizationSession{
+			OperationID: "authorization-1", ConnectorKey: connector.Key,
+			SessionID: "session-1", AuthorizationURL: "https://example.test/authorize",
+		}},
+		UpdatedAt: time.Date(2026, 8, 3, 0, 1, 0, 0, time.UTC),
+	}
+	application := newTestApplication(t, repository, &memoryScheduler{}, &memoryInstallRuntime{}, CatalogSnapshot{})
+	application.config.Authorization = observingAuthorizationProvider{observation: AuthorizationObservation{State: AuthorizationObservationConnected}}
+	if err := application.ReconcileAuthorizations(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	updated, err := repository.Connector(context.Background(), connector.Key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if updated.Authorization.State != AuthorizationStateConnected || len(repository.events) != 1 {
+		t.Fatalf("connector=%#v events=%#v", updated, repository.events)
+	}
+}
+
 func newTestApplication(
 	t *testing.T,
 	repository *memoryRepository,
@@ -1157,12 +1195,22 @@ func (authorizationProviderStub) Begin(_ context.Context, request AuthorizationS
 		OperationID:      request.OperationID,
 		ConnectorKey:     request.Connector.Key,
 		SessionID:        "session-1",
+		ActionType:       "redirect",
 		AuthorizationURL: "https://example.test/authorize",
 	}, nil
 }
 
 func (authorizationProviderStub) Disconnect(context.Context, AuthorizationDisconnectRequest) error {
 	return nil
+}
+
+type observingAuthorizationProvider struct {
+	authorizationProviderStub
+	observation AuthorizationObservation
+}
+
+func (provider observingAuthorizationProvider) Observe(context.Context, AuthorizationObserveRequest) (AuthorizationObservation, error) {
+	return provider.observation, nil
 }
 
 type compatibilityEvaluatorStub struct{}
@@ -1204,6 +1252,7 @@ func (repository *memoryRepository) Snapshot(_ context.Context) (Snapshot, error
 	sort.Slice(connectors, func(left, right int) bool { return connectors[left].Key < connectors[right].Key })
 	operations := make([]Operation, 0, len(repository.operations))
 	for _, operation := range repository.operations {
+		operation.Execution = OperationExecution{}
 		operations = append(operations, operation)
 	}
 	return Snapshot{
@@ -1213,6 +1262,16 @@ func (repository *memoryRepository) Snapshot(_ context.Context) (Snapshot, error
 		Revision:       repository.revision,
 		SourceRevision: repository.sourceRevision,
 	}, nil
+}
+
+func (repository *memoryRepository) CompletedAuthorizationOperations(context.Context) ([]Operation, error) {
+	var operations []Operation
+	for _, operation := range repository.operations {
+		if operation.Kind == OperationKindStartAuthorization && operation.State == OperationStateCompleted {
+			operations = append(operations, operation)
+		}
+	}
+	return operations, nil
 }
 
 func (repository *memoryRepository) Connector(_ context.Context, connectorKey string) (Connector, error) {

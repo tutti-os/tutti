@@ -180,7 +180,9 @@ func canonicalToolFileChange(value map[string]any, hint string) map[string]any {
 	if change == "" && hasContent {
 		change = "added"
 	}
-	if change == "added" && !hasNew && hasContent {
+	// Prefer newString over content for non-deleted bodies so obsolete cassette
+	// shapes match live projection and the shared store-sqlite/canonical contract.
+	if change != "deleted" && !hasNew && hasContent {
 		newString, hasNew = content, true
 		hasContent = false
 	}
@@ -191,7 +193,7 @@ func canonicalToolFileChange(value map[string]any, hint string) map[string]any {
 		case change == "deleted" && !hasOld:
 			oldString, hasOld = rawDiff, true
 		case !hasOld && !hasNew && !hasContent:
-			content, hasContent = rawDiff, true
+			newString, hasNew = rawDiff, true
 		}
 	}
 	if change == "" {

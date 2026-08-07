@@ -6,6 +6,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -352,6 +355,110 @@ func TestImplementationHostRegistersWorkspaceFencedCLIAndDeactivatesIt(t *testin
 	}
 	if _, err := commands.Invoke(context.Background(), cliservice.InvokeRequest{CommandID: receipt.RouteIDs[0], Context: cliservice.InvokeContext{WorkspaceID: "workspace-1"}}); err == nil {
 		t.Fatal("deactivated connector CLI command remained routable")
+	}
+}
+
+func TestImplementationHostDiscoversAndInvokesRemoteStreamableHTTPMCP(t *testing.T) {
+	var calls []string
+	server := httptest.NewTLSServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		if request.Header.Get("Cookie") != "session_id=user-session" {
+			t.Errorf("Cookie = %q", request.Header.Get("Cookie"))
+		}
+		if request.Header.Get("Tutti-Connector-Version") != "1.0.0" {
+			t.Errorf("Tutti-Connector-Version = %q", request.Header.Get("Tutti-Connector-Version"))
+		}
+		if request.Method == http.MethodDelete {
+			response.WriteHeader(http.StatusNoContent)
+			return
+		}
+		var message struct {
+			ID     json.RawMessage `json:"id"`
+			Method string          `json:"method"`
+		}
+		if err := json.NewDecoder(request.Body).Decode(&message); err != nil {
+			t.Error(err)
+			return
+		}
+		if len(message.ID) == 0 {
+			response.WriteHeader(http.StatusAccepted)
+			return
+		}
+		calls = append(calls, message.Method)
+		result := map[string]any{}
+		switch message.Method {
+		case "initialize":
+			result = map[string]any{"protocolVersion": "2025-06-18"}
+		case "tools/list":
+			result = map[string]any{"tools": []any{map[string]any{
+				"name": "status", "description": "Read status",
+				"inputSchema": map[string]any{"type": "object"},
+			}}}
+		case "tools/call":
+			result = map[string]any{"content": []any{map[string]any{"type": "text", "text": "ready"}}}
+		}
+		response.Header().Set("Content-Type", "application/json")
+		response.Header().Set("Mcp-Session-Id", "mcp-session")
+		_ = json.NewEncoder(response).Encode(map[string]any{"jsonrpc": "2.0", "id": message.ID, "result": result})
+	}))
+	defer server.Close()
+
+	root := t.TempDir()
+	runtimePath := filepath.Join(root, "node")
+	if err := os.WriteFile(runtimePath, []byte("runtime"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	commands := NewConnectorCommandRegistry()
+	transport := server.Client().Transport.(*http.Transport).Clone()
+	transport.DialContext = func(ctx context.Context, network, _ string) (net.Conn, error) {
+		return (&net.Dialer{}).DialContext(ctx, network, server.Listener.Addr().String())
+	}
+	host, err := NewImplementationHost(ImplementationHostConfig{
+		Artifacts: preparedResolverStub{}, Runtimes: connectorRuntimeStub{executable: connectorruntime.ConnectorExecutable{
+			Path: runtimePath, SHA256: strings.Repeat("a", 64), SizeBytes: 7,
+		}}, Processes: &connectorProcessStub{}, Commands: commands, StateRoot: t.TempDir(),
+		RemoteHTTPClient: &http.Client{Transport: transport}, AuthorizeRemoteRequest: func(request *http.Request) error {
+			request.Header.Set("Cookie", "session_id=user-session")
+			return nil
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = host.Close() })
+	endpoint := strings.Replace(server.URL, "127.0.0.1", "example.com", 1)
+	connector := market.Connector{Key: "github", Installation: market.Installation{
+		State: market.InstallationStateInstalled, InstalledReleaseDigest: implementationHostTestReleaseDigest,
+	}, Authorization: market.Authorization{State: market.AuthorizationStateNotRequired}}
+	connector.Release = completeImplementationHostTestRelease(market.Release{Manifest: market.Manifest{
+		AuthorizationKind: "none", IconURL: "data:image/png;base64,iVBORw0KGgo=",
+		Implementation: market.Implementation{Kind: market.ImplementationKindRemoteStreamableHTTP,
+			RemoteStreamableHTTP: &market.RemoteStreamableHTTPImplementation{
+				Endpoint: endpoint, AllowedHosts: []string{"example.com"},
+				Authentication: market.RemoteTransportAuthentication{Type: "host_session"},
+				Limits:         market.RemoteTransportLimits{TimeoutMS: 10_000, MaxResponseBytes: 4096},
+			}},
+	}})
+	generation := market.HostGeneration{BootEpoch: "boot-1", Generation: 2}
+	receipt, err := host.Reconcile(context.Background(), market.RuntimeReconcileRequest{
+		OperationID: "op-remote", ConnectionID: "default", Connector: connector, Enabled: true, Generation: generation,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(receipt.RouteIDs) != 1 || receipt.RouteIDs[0] != "connector.github.mcp.status" {
+		t.Fatalf("routes = %#v", receipt.RouteIDs)
+	}
+	output, err := commands.Invoke(context.Background(), cliservice.InvokeRequest{
+		CommandID: receipt.RouteIDs[0], Input: map[string]any{}, Context: cliservice.InvokeContext{WorkspaceID: "workspace-1"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if output.Value == nil {
+		t.Fatalf("output = %#v", output)
+	}
+	if len(calls) != 3 || calls[0] != "initialize" || calls[1] != "tools/list" || calls[2] != "tools/call" {
+		t.Fatalf("calls = %#v", calls)
 	}
 }
 

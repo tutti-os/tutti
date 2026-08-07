@@ -38,7 +38,18 @@ export function enrichProjectedTurnsWithCanonicalErrors({
     if (!turn) {
       continue;
     }
-    if (turn.agentMessages.some((message) => message.visibleError)) {
+    const existingErrorMessage = turn.agentMessages.find(
+      (message) => message.visibleError
+    );
+    if (existingErrorMessage) {
+      const explicitDetail = canonicalTurn.error?.detail ?? "";
+      if (explicitDetail.trim() && existingErrorMessage.visibleError) {
+        existingErrorMessage.visibleError = {
+          ...existingErrorMessage.visibleError,
+          detail: explicitDetail,
+          detailAvailable: true
+        };
+      }
       continue;
     }
 
@@ -74,11 +85,13 @@ function visibleErrorFromCanonicalTurn(
   turn: AgentActivityTurn,
   provider: string
 ): NonNullable<WorkspaceAgentSessionDetailMessage["visibleError"]> {
+  const explicitDetail = turn.error?.detail ?? "";
   return {
     code: turn.error?.code?.trim() || null,
     phase: "turn",
     provider: provider.trim() || null,
-    detail: turn.error?.message.trim() || null,
+    detail: explicitDetail || turn.error?.message.trim() || null,
+    ...(explicitDetail.trim() ? { detailAvailable: true } : {}),
     retryable: null
   };
 }
