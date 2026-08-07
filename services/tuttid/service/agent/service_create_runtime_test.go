@@ -612,6 +612,8 @@ func TestServiceCreatePassesInitialDisplayPromptToRuntime(t *testing.T) {
 			"":                        "drop",
 			"clientSubmitId":          "submit-create-1",
 			"clientSubmittedAtUnixMs": int64(12345),
+			"queued":                  false,
+			"sessionState":            "new",
 			" spacedDiagnosticKey ":   "trimmed",
 		},
 	})
@@ -775,6 +777,8 @@ func TestServiceSendInputPassesDisplayPromptToRuntime(t *testing.T) {
 		ClientSubmitID: "submit-1",
 		Metadata: map[string]any{
 			"clientSubmittedAtUnixMs":    int64(1234),
+			"queued":                     true,
+			"sessionState":               "existing",
 			" ignoredBlankKeyIsRemoved ": true,
 			"":                           "drop",
 		},

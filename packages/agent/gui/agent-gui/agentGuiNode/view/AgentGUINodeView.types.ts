@@ -50,6 +50,7 @@ import type {
 } from "../../../workspaceWorkflow";
 import type { TuttiWorkflowDockLabels } from "../TuttiWorkflowDock";
 import type { AgentGUIComposerFooterAccessoryRenderer } from "./AgentGUIComposerFooterAccessory.types";
+import type { AgentProcessingLabels } from "./agentProcessingLabels";
 
 export type AgentMentionReferenceTargetResolver = (
   item: AgentContextMentionItem
@@ -75,7 +76,8 @@ export interface AgentGUIConversationRailLayout {
 // The provider-gate content labels (checking / install / login / coming-soon /
 // unavailable / runtime-selection) live on AgentGUIProviderReadinessLabels;
 // extend it rather than restating every key here.
-export interface AgentGUIViewLabels extends AgentGUIProviderReadinessLabels {
+export interface AgentGUIViewLabels
+  extends AgentGUIProviderReadinessLabels, AgentProcessingLabels {
   initialPlaceholder: string;
   followupPlaceholder: string;
   installRequiredPlaceholder: string;
@@ -284,7 +286,6 @@ export interface AgentGUIViewLabels extends AgentGUIProviderReadinessLabels {
   goalResumeAction: string;
   goalClearAction: string;
   goalRemoved: string;
-  processing: string;
   turnSummary: string;
   userMessageLocator: string;
   planLead: string;

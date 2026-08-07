@@ -93,7 +93,7 @@ func (h *Host) persistSubmitAfterRuntimeOutcome(
 	defer cancel()
 
 	if reporter, ok := h.runtime.(RuntimeSubmitProvenanceReporter); ok {
-		if err := reporter.DurablyReportSubmitProvenance(persistCtx, RuntimeSubmitProvenanceInput{
+		provenance := RuntimeSubmitProvenanceInput{
 			WorkspaceID:                     workspaceID,
 			AgentSessionID:                  agentSessionID,
 			TurnID:                          turnID,
@@ -102,7 +102,8 @@ func (h *Host) persistSubmitAfterRuntimeOutcome(
 			Content:                         hydratedContent,
 			DisplayPrompt:                   displayPrompt,
 			Guidance:                        guidance,
-		}); err != nil {
+		}
+		if err := reporter.DurablyReportSubmitProvenance(persistCtx, provenance); err != nil {
 			return err
 		}
 	}

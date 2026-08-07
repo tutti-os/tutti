@@ -146,6 +146,17 @@ type submitProvenanceAdapterTestReporter struct {
 	provenance agentsessionstore.ReportActivityInput
 }
 
+type turnPerformanceRecorderStub struct {
+	input agentservice.TurnPerformanceProvenanceInput
+}
+
+func (r *turnPerformanceRecorderStub) RecordTurnPerformanceProvenance(
+	input agentservice.TurnPerformanceProvenanceInput,
+) {
+	input.Metadata = cloneRuntimeContext(input.Metadata)
+	r.input = input
+}
+
 func (*submitProvenanceAdapterTestReporter) Report(context.Context, agentsessionstore.ReportActivityInput) error {
 	return nil
 }
@@ -384,6 +395,45 @@ func TestAgentRuntimeAdapterDelegatesTypedDurableSubmitProvenance(t *testing.T) 
 	if message.TurnID != "turn-1" || message.Seq != 1_234 || message.OccurredAtUnixMS != 1_234 ||
 		message.Payload["clientSubmitId"] != "submit-1" || message.Payload["displayPrompt"] != "Visible hello" {
 		t.Fatalf("provenance message = %#v", message)
+	}
+	for _, forbidden := range []string{"clientSubmittedAtUnixMs", "sessionState", "queued"} {
+		if _, ok := message.Payload[forbidden]; ok {
+			t.Fatalf("provenance message contains in-memory performance field %q: %#v", forbidden, message)
+		}
+	}
+}
+
+func TestAgentRuntimeAdapterRecordsTurnPerformanceBeforeExecution(t *testing.T) {
+	controller := agentruntime.NewController(
+		[]agentruntime.Adapter{submitProvenanceAdapterTestProvider{}},
+		nil,
+	)
+	if _, err := controller.Start(t.Context(), agentruntime.StartInput{
+		RoomID: "workspace-1", AgentSessionID: "session-1", Provider: "submit-provenance-test", CWD: t.TempDir(),
+		Settings: &agentruntime.SessionSettings{Model: "test-model"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	recorder := &turnPerformanceRecorderStub{}
+	adapter := newAgentRuntimeAdapter(controller, recorder)
+	if _, err := adapter.Exec(t.Context(), agentservice.RuntimeExecInput{
+		WorkspaceID: "workspace-1", AgentSessionID: "session-1", TurnID: "turn-1",
+		ClientSubmitID: "submit-1", CanonicalSubmitOccurredAtUnixMS: 1_200,
+		Content: agentservice.TextPromptContent("hello"),
+		Metadata: map[string]any{
+			"clientSubmittedAtUnixMs": int64(1_000),
+			"sessionState":            "existing",
+			"queued":                  true,
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if recorder.input.WorkspaceID != "workspace-1" || recorder.input.AgentSessionID != "session-1" ||
+		recorder.input.TurnID != "turn-1" || recorder.input.Provider != "submit-provenance-test" ||
+		recorder.input.Model != "test-model" || !recorder.input.RuntimeIdentityAvailable ||
+		recorder.input.Metadata["clientSubmittedAtUnixMs"] != int64(1_000) ||
+		recorder.input.Metadata["sessionState"] != "existing" || recorder.input.Metadata["queued"] != true {
+		t.Fatalf("recorded performance provenance = %#v", recorder)
 	}
 }
 

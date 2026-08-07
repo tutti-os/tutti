@@ -110,6 +110,59 @@ lifecycle writes. Non-AgentGUI prompt-session integrations keep their explicit
 tracker because they call the activity service without entering the shared
 engine.
 
+### Agent Turn performance ownership
+
+`agent.turn_performance` is a daemon-owned, best-effort terminal summary. The
+`tuttid` `ActivityProjection` observes committed canonical Turn mutations and
+attempts at most one event per terminal Turn within its in-memory deduplication
+window. Renderer snapshots are not an analytics authority, and reporting,
+message reads, parameter normalization, or transport failure must never delay
+or fail the Turn. Terminal reporting never queries the live provider model
+catalog or starts provider discovery processes.
+
+The client-submit timestamp, new/existing Session classification, and queue
+fact, plus the runtime provider and selected model snapshot, are kept only in a
+bounded, six-hour process-memory map keyed by the local Turn identity. Runtime
+execution records the entry before provider dispatch; terminal observation
+consumes and deletes it. These fields must not be copied into canonical message
+payloads or SQLite rows, and the raw client-submit time must not be copied into
+local submit-trace logs. The terminal summary itself continues through the
+existing DataFinder reporter transport. A daemon restart intentionally loses
+the entry: timing then falls back to the canonical Turn start, Session state
+becomes `unknown`, queue state remains null, and provider/model fall back to the
+current canonical Session projection. This is an accepted best-effort analytics
+degradation, not a reason to add a durable telemetry outbox.
+
+Both submit provenance and terminal-attempt deduplication are bounded to 4,096
+entries and expire after six hours through minute-granularity lazy pruning.
+The attempt timestamp means "handed to the best-effort reporting path", not
+"acknowledged by DataFinder": the shared `Reporter.Track` contract exposes no
+delivery acknowledgement. Repository-read failures and reporter panics remain
+deduplicated until expiry or capacity eviction to avoid retry storms from
+repeated dirty notifications. A missing or analytics-disabled `NoopReporter`
+does not claim an attempt or consume submit provenance. Expiry or eviction may
+allow a later dirty notification for an old settled Turn to make another
+best-effort attempt; this bounded behavior is intentional.
+
+The event contains only a strict content-free whitelist: the normalized
+provider and safe model identifier captured at submission (`custom` for local
+`~` model references and `unknown` when unavailable or unsafe),
+new/existing/unknown Session state, client-submit or canonical-Turn timing
+source, first visible progress, assistant-text TTFT, total duration, outcome,
+maximum idle duration, long-idle and tool-call facts, queue state, and nullable
+reconnect/retry facts. Input/output tokens are omitted unless a provider
+supplies reliable Turn-scoped usage; Session cumulative usage is never
+subtracted to manufacture a Turn count.
+
+The event never includes workspace, Session, Turn, or submit identifiers;
+Prompt or response text; reasoning; file contents or paths; commands, tool
+names, or tool arguments; authentication values; or URLs. Local canonical IDs
+are used only for association and same-process deduplication. `ttft_ms` is null
+when no displayable assistant answer text exists. Unsupported reconnect/retry
+facts remain null rather than being reported as zero. DataFinder derives
+version/provider/model P50/P95, failure, long-tail, and reconnect trends from
+these terminal summaries plus daemon-owned common parameters.
+
 ## Event Naming Convention
 
 Event names follow the product analytics spec's dot-separated domain action

@@ -252,11 +252,12 @@ func (h *Host) CreateSession(ctx context.Context, workspaceID string, input Crea
 		return createSessionCreatedErrorResult(input, session, canonicalSession, ErrSubmitDeliveryUnknown)
 	}
 	if reporter, ok := h.runtime.(RuntimeSubmitProvenanceReporter); ok {
-		if err := reporter.DurablyReportSubmitProvenance(ctx, RuntimeSubmitProvenanceInput{
+		provenance := RuntimeSubmitProvenanceInput{
 			WorkspaceID: workspaceID, AgentSessionID: session.ID, TurnID: turnID,
 			ClientSubmitID: claim.ClientSubmitID, CanonicalSubmitOccurredAtUnixMS: claim.CreatedAtUnixMS,
 			Content: preparedContent.Hydrated, DisplayPrompt: displayPrompt,
-		}); err != nil {
+		}
+		if err := reporter.DurablyReportSubmitProvenance(ctx, provenance); err != nil {
 			// Provider acceptance is already possible. Keep the runtime, canonical
 			// session, and prepared claim intact so a retry cannot dispatch twice.
 			claimPending = false
@@ -574,11 +575,12 @@ func (h *Host) sendInputSerialized(
 		return SendInputResult{}, ErrSubmitDeliveryUnknown
 	}
 	if reporter, ok := h.runtime.(RuntimeSubmitProvenanceReporter); ok {
-		if err := reporter.DurablyReportSubmitProvenance(ctx, RuntimeSubmitProvenanceInput{
+		provenance := RuntimeSubmitProvenanceInput{
 			WorkspaceID: ref.WorkspaceID, AgentSessionID: ref.AgentSessionID, TurnID: turnID,
 			ClientSubmitID: claim.ClientSubmitID, CanonicalSubmitOccurredAtUnixMS: claim.CreatedAtUnixMS,
 			Content: preparedContent.Hydrated, DisplayPrompt: displayPrompt, Guidance: input.Guidance,
-		}); err != nil {
+		}
+		if err := reporter.DurablyReportSubmitProvenance(ctx, provenance); err != nil {
 			claimPending = false
 			return SendInputResult{}, errors.Join(ErrSubmitDeliveryUnknown, err)
 		}

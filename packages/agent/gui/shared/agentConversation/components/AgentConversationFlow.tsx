@@ -14,6 +14,7 @@ import {
 import type { AgentTranscriptEditRetryControl } from "./useAgentTranscriptEditRetryProjection";
 import { AgentTurnDisclosureProvider } from "./AgentTurnDisclosureContext";
 import type { AgentGUIProviderSkillOption } from "../../../agent-gui/agentGuiNode/model/agentGuiNodeTypes";
+import type { AgentProcessingLabels } from "./AgentProcessingRow";
 
 export interface AgentConversationFlowProps {
   conversation: AgentConversationVM | null;
@@ -44,6 +45,7 @@ export interface AgentConversationFlowProps {
     toolCallsLabel: (count: number) => string;
     thinkingLabel: string;
     processing: string;
+    processingStatus?: AgentProcessingLabels;
     turnSummary: string;
     rawTimelineJson?: string;
     userMessageLocator?: string;

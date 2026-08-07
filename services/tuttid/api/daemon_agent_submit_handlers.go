@@ -55,6 +55,10 @@ func (api DaemonAPI) CreateWorkspaceAgentSession(ctx context.Context, request tu
 	initialGoalControl := initialGoalControlFromGenerated(request.Body.InitialGoalControl)
 	clientSubmitID := strings.TrimSpace(request.Body.ClientSubmitId)
 	metadata := agentSubmitMetadata(request.Body.SubmitDiagnostics)
+	if metadata == nil {
+		metadata = map[string]any{}
+	}
+	metadata["sessionState"] = "new"
 	var recordingID string
 	if request.Body.RecordingId != nil {
 		if api.AgentSessionRecordingService == nil {
@@ -235,6 +239,10 @@ func (api DaemonAPI) SendWorkspaceAgentSessionInput(ctx context.Context, request
 	}
 	clientSubmitID := strings.TrimSpace(request.Body.ClientSubmitId)
 	metadata := agentSubmitMetadata(request.Body.SubmitDiagnostics)
+	if metadata == nil {
+		metadata = map[string]any{}
+	}
+	metadata["sessionState"] = "existing"
 	guidance := request.Body.Guidance != nil && *request.Body.Guidance
 	targetTurnID := ""
 	if guidance {

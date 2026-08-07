@@ -71,7 +71,7 @@ func (p *ActivityProjection) ObserveCommitted(ctx context.Context, delta agentho
 		}
 	}
 	for _, mutation := range delta.ProjectionDirty {
-		if mutation.EntityKind != agentactivitybiz.MutationEntityTurn || mutation.Operation != "settle" {
+		if mutation.EntityKind != agentactivitybiz.MutationEntityTurn || mutation.Operation == "retract" {
 			continue
 		}
 		if session, found, err := p.repo.GetSession(ctx, mutation.WorkspaceID, mutation.AgentSessionID); err == nil && found && runtimeContextBool(session.InternalRuntimeContext, "provisional") {
@@ -82,6 +82,10 @@ func (p *ActivityProjection) ObserveCommitted(ctx context.Context, delta agentho
 		}
 		turn, found, err := p.repo.GetTurn(ctx, mutation.WorkspaceID, mutation.AgentSessionID, mutation.EntityID)
 		if err != nil || !found {
+			continue
+		}
+		p.scheduleAgentTurnPerformance(ctx, mutation.WorkspaceID, mutation.AgentSessionID, turn)
+		if mutation.Operation != "settle" {
 			continue
 		}
 		p.publishActivityUpdated(ctx, mutation.WorkspaceID, mutation.AgentSessionID, "turn_update",

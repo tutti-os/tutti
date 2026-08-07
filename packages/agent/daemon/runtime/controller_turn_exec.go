@@ -2,7 +2,6 @@ package agentruntime
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -573,12 +572,6 @@ func logAgentSubmitTrace(event string, session Session, turnID string, metadata 
 		"turn_id", strings.TrimSpace(turnID),
 		"client_submit_id", clientSubmitID,
 	}
-	if submittedAt := metadataInt64(metadata, "clientSubmittedAtUnixMs"); submittedAt > 0 {
-		args = append(args,
-			"client_submitted_at_unix_ms", submittedAt,
-			"elapsed_since_client_submit_ms", unixMS(now())-submittedAt,
-		)
-	}
 	for key, value := range fields {
 		if trimmed := strings.TrimSpace(key); trimmed != "" {
 			args = append(args, trimmed, value)
@@ -593,25 +586,6 @@ func metadataString(metadata map[string]any, key string) string {
 	}
 	value, _ := metadata[key].(string)
 	return strings.TrimSpace(value)
-}
-
-func metadataInt64(metadata map[string]any, key string) int64 {
-	if len(metadata) == 0 {
-		return 0
-	}
-	switch value := metadata[key].(type) {
-	case int64:
-		return value
-	case int:
-		return int64(value)
-	case float64:
-		return int64(value)
-	case json.Number:
-		parsed, _ := value.Int64()
-		return parsed
-	default:
-		return 0
-	}
 }
 
 func turnLifecyclePhaseFromEvents(events []activityshared.Event) string {

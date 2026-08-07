@@ -6,6 +6,7 @@ import { zhCNAgentGuiRuntimeNotices } from "./zh-CN.agentGuiRuntimeNotices.ts";
 import { zhCNAgentGuiSlashPalette } from "./zh-CN.agentGuiSlashPalette.ts";
 import { zhCNAgentGuiSessionActions } from "./zh-CN.agentGuiSessionActions.ts";
 import { zhCNAgentGuiCollaboration } from "./zh-CN.agentGuiCollaboration.ts";
+import { zhCNAgentGuiProcessing } from "./zh-CN.agentGuiProcessing.ts";
 import { zhCNTuttiModePlan } from "./zh-CN.tuttiModePlan.ts";
 
 export const zhCNAgentGui = {
@@ -570,7 +571,7 @@ export const zhCNAgentGui = {
   goalResumeAction: "继续目标",
   goalClearAction: "删除目标",
   goalRemoved: "目标已移除",
-  processing: "正在规划下一步",
+  ...zhCNAgentGuiProcessing,
   turnProcessedSeconds: "已处理 {{seconds}} 秒",
   turnProcessedMinutes: "已处理 {{minutes}} 分钟",
   turnProcessedMinutesSeconds: "已处理 {{minutes}} 分 {{seconds}} 秒",

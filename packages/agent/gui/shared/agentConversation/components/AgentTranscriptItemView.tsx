@@ -8,7 +8,10 @@ import type { AgentConversationParticipantPresentation } from "../contracts/agen
 import { AgentGeneratedImageRow } from "./AgentGeneratedImageRow";
 import { AgentGoalControlRow } from "./AgentGoalControlRow";
 import { AgentMessageBlock } from "./AgentMessageBlock";
-import { AgentProcessingRow } from "./AgentProcessingRow";
+import {
+  AgentProcessingRow,
+  type AgentProcessingLabels
+} from "./AgentProcessingRow";
 import { AgentToolGroupRow } from "./AgentToolGroupRow";
 import { AgentTurnSummaryRow } from "./AgentTurnSummaryRow";
 import type { AgentUserMessageEditRetryControl } from "./AgentUserMessageEditRetry";
@@ -22,6 +25,7 @@ interface AgentTranscriptItemViewProps {
     toolCallsLabel: (count: number) => string;
     thinkingLabel: string;
     processing: string;
+    processingStatus?: AgentProcessingLabels;
     turnSummary: string;
     rawTimelineJson?: string;
   };
@@ -140,6 +144,7 @@ export const AgentTranscriptItemView = memo(function AgentTranscriptItemView({
         <AgentProcessingRow
           row={row}
           label={labels.processing}
+          statusLabels={labels.processingStatus}
           paused={processingPaused}
         />
       );

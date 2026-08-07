@@ -103,6 +103,7 @@ func TestCanonicalSubmitSequenceIsStableAcrossRuntimeAndProvenanceOrder(t *testi
 				ClientSubmitID:                  clientSubmitID,
 				CanonicalSubmitOccurredAtUnixMS: occurredAtUnixMS,
 				Content:                         content,
+				Metadata:                        map[string]any{"clientSubmitId": clientSubmitID},
 			})
 			if err != nil {
 				t.Fatal(err)
@@ -138,6 +139,11 @@ func TestCanonicalSubmitSequenceIsStableAcrossRuntimeAndProvenanceOrder(t *testi
 			projected := agentsessionstore.SessionMessageUpdateFromActivityUpdate(updates[0])
 			if projected.Payload["seq"] != uint64(occurredAtUnixMS) {
 				t.Fatalf("canonical payload seq = %#v", projected.Payload["seq"])
+			}
+			for _, forbidden := range []string{"clientSubmittedAtUnixMs", "queued", "sessionState"} {
+				if _, ok := projected.Payload[forbidden]; ok {
+					t.Fatalf("canonical submit payload contains in-memory performance field %q: %#v", forbidden, projected.Payload)
+				}
 			}
 		})
 	}
