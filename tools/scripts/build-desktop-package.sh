@@ -219,6 +219,34 @@ prepare_mutagen() {
   node "${ROOT_DIR}/apps/desktop/scripts/vendor-mutagen.mjs" --platform=windows-amd64
 }
 
+prepare_managed_uv() {
+  local platforms=()
+  case "${VARIANT}" in
+    win|win-store)
+      platforms=(windows-amd64)
+      ;;
+    linux)
+      platforms=(linux-amd64)
+      ;;
+    mac|mac-unsigned|mac-signed)
+      case "${MAC_ARCH}" in
+        x64) platforms=(darwin-amd64) ;;
+        arm64) platforms=(darwin-arm64) ;;
+        all|universal) platforms=(darwin-amd64 darwin-arm64) ;;
+      esac
+      ;;
+    unpack)
+      platforms=("$(node -e 'const os = process.platform === "win32" ? "windows" : process.platform === "darwin" ? "darwin" : "linux"; const arch = process.arch === "arm64" ? "arm64" : "amd64"; process.stdout.write(`${os}-${arch}`)')")
+      ;;
+  esac
+  local args=()
+  local platform
+  for platform in "${platforms[@]}"; do
+    args+=("--platform=${platform}")
+  done
+  node "${ROOT_DIR}/apps/desktop/scripts/vendor-managed-uv.mjs" "${args[@]}"
+}
+
 run_pnpm_build() {
   pnpm build
 }
@@ -347,6 +375,7 @@ case "${VARIANT}" in
     run_timed_phase "prepare_claude_sdk_sidecar" prepare_claude_sdk_sidecar
     run_timed_phase "prepare_managed_posix_shell" prepare_managed_posix_shell
     run_timed_phase "prepare_mutagen" prepare_mutagen
+    run_timed_phase "prepare_managed_uv" prepare_managed_uv
     (
       cd "${APP_DIR}"
       run_timed_phase "resolve_desktop_build_version" resolve_desktop_build_version

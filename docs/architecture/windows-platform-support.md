@@ -146,6 +146,35 @@ command resolution, executable verification, npm launcher layout, and process
 creation stay in the runtime command/process boundary. Do not make provider
 installers assemble shell command strings to handle Windows.
 
+System proxy resolution follows the same shared precedence on macOS and
+Windows: session/process environment, then the operating-system static proxy,
+then direct connection. The common resolver owns merging, `NO_PROXY`, caching,
+diagnostics, and the `TUTTI_DISABLE_PROXY_AUTODETECT` escape hatch. Build-tagged
+adapters only read native state: Darwin uses `scutil --proxy`; Windows reads the
+current-user WinINet `Internet Settings` values. Windows protocol maps and
+bypass entries are normalized to `HTTP_PROXY`, `HTTPS_PROXY`, and `NO_PROXY`.
+PAC execution and SOCKS conversion remain out of scope because the daemon does
+not embed a PAC/SOCKS engine. WinINet bypass entries that cannot be represented
+faithfully by standard `NO_PROXY` syntax (for example `10.*` and `<local>`) are
+not projected; loopback, `.local`, exact hosts, and `*.domain` suffixes remain
+covered.
+
+Agent Target setup uses one Desktop-owned, version-pinned `uv` resource rather
+than downloading `uv` separately for each Python agent. Release staging copies
+the official compressed archive for each packaged architecture under
+`bin/managed-uv/<platform>/<version>/`; both staging and tuttid verify the
+pinned size and SHA-256. Electron injects only the resource root through
+`TUTTI_BUNDLED_UV_ROOT`. The daemon keeps extraction, cache markers, and the
+dynamic official-download fallback. Node, Python, Kimi, Hermes, and other agent
+payloads remain dynamically installed, so this adds roughly one compressed uv
+archive per architecture rather than a complete cross-language toolchain.
+
+For generic ACP providers such as OpenCode, provider resolution rewrites the
+adapter command once and every status, login, model-catalog, and session path
+uses that resolved executable. On Windows a complete isolated npm package is
+preferred over an earlier stale PATH shim; package metadata and containment are
+validated before its declared binary is accepted.
+
 The Windows Desktop package also vendors the pinned Mutagen executable used
 when file-symlink creation is unavailable. Electron resolves the packaged
 resource and injects `TUTTI_MUTAGEN_BIN` into `tuttid`; Workspace Apps inherit

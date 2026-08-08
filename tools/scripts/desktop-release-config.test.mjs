@@ -43,6 +43,10 @@ const mutagenLockPath = new URL(
   "../../config/tutti.mutagen.lock.json",
   import.meta.url
 );
+const managedUVVendorScriptPath = new URL(
+  "../../apps/desktop/scripts/vendor-managed-uv.mjs",
+  import.meta.url
+);
 const tuttidManagerPath = new URL(
   "../../apps/desktop/src/main/daemon/tuttidManager.ts",
   import.meta.url
@@ -1195,4 +1199,26 @@ test("desktop Windows package and daemon agree on the bundled Mutagen resource",
   assert.match(tuttidManager, /tutti\.mutagen\.v1/);
   assert.equal(lock.schemaVersion, "tutti.mutagen-lock.v1");
   assert.equal(lock.platforms["windows-amd64"].executable, "mutagen.exe");
+});
+
+test("desktop packages and daemon agree on the bundled uv archive root", async () => {
+  const packageJson = JSON.parse(await readFile(desktopPackagePath, "utf8"));
+  const defaults = JSON.parse(
+    await readFile(new URL("../../config/tutti.defaults.json", import.meta.url), "utf8")
+  );
+  const buildScript = await readFile(buildScriptPath, "utf8");
+  const tuttidManager = await readFile(tuttidManagerPath, "utf8");
+
+  await access(managedUVVendorScriptPath);
+  assert.deepEqual(packageJson.build.extraResources.at(-1), {
+    from: "build/managed-uv",
+    to: "bin/managed-uv",
+    filter: ["**/*"]
+  });
+  assert.match(buildScript, /vendor-managed-uv\.mjs/);
+  assert.match(buildScript, /windows-amd64/);
+  assert.match(buildScript, /darwin-amd64 darwin-arm64/);
+  assert.match(tuttidManager, /TUTTI_BUNDLED_UV_ROOT/);
+  assert.equal(defaults.agentRuntimeTools.uv.version, "0.11.31");
+  assert.ok(defaults.agentRuntimeTools.uv.artifacts.length >= 5);
 });

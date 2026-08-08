@@ -26,8 +26,55 @@ import {
   resolveLaunchSpec,
   resolveManagedDaemonProcessEnv,
   resolveManagedPosixShellDaemonEnv,
+  resolveManagedUVDaemonEnv,
   resolveMutagenDaemonEnv
 } from "./tuttidManager.ts";
+
+test("resolveManagedUVDaemonEnv points the daemon at packaged archives", async () => {
+  const previousEnv = { ...process.env };
+  const resourcesPath = await mkdtemp(join(tmpdir(), "tutti-managed-uv-"));
+  try {
+    delete process.env.TUTTI_BUNDLED_UV_ROOT;
+    const runtimeRoot = join(resourcesPath, "bin", "managed-uv");
+    await mkdir(runtimeRoot, { recursive: true });
+    assert.deepEqual(
+      resolveManagedUVDaemonEnv({ isPackaged: true, resourcesPath }),
+      { TUTTI_BUNDLED_UV_ROOT: runtimeRoot }
+    );
+  } finally {
+    restoreEnv(previousEnv);
+    await rm(resourcesPath, { recursive: true, force: true });
+  }
+});
+
+test("resolveManagedUVDaemonEnv preserves an explicit override", () => {
+  const previousEnv = { ...process.env };
+  try {
+    process.env.TUTTI_BUNDLED_UV_ROOT = "C:\\custom\\uv";
+    assert.deepEqual(
+      resolveManagedUVDaemonEnv({ isPackaged: true, resourcesPath: "C:\\resources" }),
+      {}
+    );
+  } finally {
+    restoreEnv(previousEnv);
+  }
+});
+
+test("resolveManagedUVDaemonEnv preserves a shell environment override", () => {
+  const previousEnv = { ...process.env };
+  try {
+    delete process.env.TUTTI_BUNDLED_UV_ROOT;
+    assert.deepEqual(
+      resolveManagedUVDaemonEnv(
+        { isPackaged: true, resourcesPath: "C:\\resources" },
+        { inheritedEnv: { TUTTI_BUNDLED_UV_ROOT: "C:\\shell-uv" } }
+      ),
+      {}
+    );
+  } finally {
+    restoreEnv(previousEnv);
+  }
+});
 
 const repoRoot = resolve(
   fileURLToPath(new URL("../../../../..", import.meta.url))
