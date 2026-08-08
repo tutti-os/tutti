@@ -95,6 +95,9 @@ func (s Service) runManagedNPMPackageAction(
 		}
 	}
 	installPrefix := runtimecmd.ResolveNPMGlobalLayout(installBinDir).PrefixDir
+	// Windows npm writes command shims directly under PrefixDir. The platform
+	// layout therefore makes installBinDir the prefix, while Unix keeps the
+	// conventional <prefix>/bin split.
 	step := "install"
 	// Repair-in-place: when an existing @openai/codex launcher is already on
 	// PATH but its platform subpackage is missing (or it is outdated), installing
@@ -103,19 +106,36 @@ func (s Service) runManagedNPMPackageAction(
 	// ~/.local/bin is never selected and the wizard loops on "platform package
 	// incomplete". Derive the npm global prefix that owns the existing package and
 	// reinstall there with --include=optional so the missing platform binary is
-	// restored in place. Falls back to the ~/.local install above when no existing
-	// install can be located.
+	// restored in place. Falls back to the selected Tutti install directory above
+	// when no existing install can be located.
 	if repairPrefix, ok := managedNPMRepairInstallPrefix(existingCLIPath, packageName); ok {
-		installPrefix = repairPrefix
-		step = "repair"
-		slog.Info(
-			"agent provider managed npm install repairing in place",
-			"provider", provider,
-			"package", packageName,
-			"binary", binaryName,
-			"existingCLIPath", existingCLIPath,
-			"prefix", installPrefix,
-		)
+		if !s.isLegacyWindowsManagedNPMPrefix(repairPrefix) {
+			installPrefix = repairPrefix
+			step = "repair"
+			slog.Info(
+				"agent provider managed npm install repairing in place",
+				"provider", provider,
+				"package", packageName,
+				"binary", binaryName,
+				"existingCLIPath", existingCLIPath,
+				"prefix", installPrefix,
+			)
+		} else {
+			// The old Windows default was %USERPROFILE%\.local. It is no longer a
+			// supported managed prefix: keep the final layout deterministic by
+			// installing into the new %USERPROFILE%\.local\bin prefix instead of
+			// repairing the legacy tree in place. Existing legacy files are left
+			// untouched; this is not a migration or cleanup operation.
+			slog.Info(
+				"agent provider managed npm legacy prefix ignored",
+				"provider", provider,
+				"package", packageName,
+				"binary", binaryName,
+				"existingCLIPath", existingCLIPath,
+				"legacyPrefix", repairPrefix,
+				"prefix", installPrefix,
+			)
+		}
 	}
 	commandArgs := []string{npmPath, "install", "-g", "--prefix", installPrefix, managedNPMPackageSpec(spec)}
 	if spec.IncludeOptional {
@@ -438,6 +458,17 @@ func managedNPMRepairInstallPrefix(existingCLIPath, packageName string) (string,
 		return "", false
 	}
 	return prefix, true
+}
+
+func (s Service) isLegacyWindowsManagedNPMPrefix(prefix string) bool {
+	if runtime.GOOS != "windows" {
+		return false
+	}
+	home, err := s.homeDir()
+	if err != nil || strings.TrimSpace(home) == "" {
+		return false
+	}
+	return sameWindowsPath(prefix, filepath.Join(home, ".local"))
 }
 
 func (s Service) resolveCodexManagedNodeRuntime(ctx context.Context) (managedruntime.ResolvedRuntime, error) {

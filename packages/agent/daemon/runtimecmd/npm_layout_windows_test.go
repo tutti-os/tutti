@@ -8,11 +8,11 @@ import (
 	"testing"
 )
 
-func TestResolveNPMGlobalLayoutUsesPrefixRootForWindowsShims(t *testing.T) {
+func TestResolveNPMGlobalLayoutUsesRequestedBinAsWindowsPrefix(t *testing.T) {
 	home := t.TempDir()
 	requestedBin := filepath.Join(home, ".local", "bin")
 	layout := ResolveNPMGlobalLayout(requestedBin)
-	want := filepath.Join(home, ".local")
+	want := requestedBin
 	if layout.PrefixDir != want || layout.BinDir != want {
 		t.Fatalf("ResolveNPMGlobalLayout() = %#v, want prefix and bin %q", layout, want)
 	}
@@ -20,7 +20,7 @@ func TestResolveNPMGlobalLayoutUsesPrefixRootForWindowsShims(t *testing.T) {
 
 func TestResolverFindsWindowsNPMGlobalShim(t *testing.T) {
 	home := t.TempDir()
-	shimDir := filepath.Join(home, ".local")
+	shimDir := filepath.Join(home, ".local", "bin")
 	if err := os.MkdirAll(shimDir, 0o755); err != nil {
 		t.Fatal(err)
 	}

@@ -208,6 +208,7 @@ func buildDaemonAPI(
 		ManagedRuntime:             managedRuntimeResolver,
 		ClaudeCodeRuntimeDir:       filepath.Join(agentRuntimeDir, "claude-code"),
 		CodexRuntimeSelectionStore: agentProviderRuntimeSelectionStore,
+		UserPathAdapter:            agentstatusservice.NewUserPathAdapter(),
 	})
 	// Shared so a runtime auth failure (reporter side) surfaces in the status
 	// probe (List side) — see agentRunOutcomeReporter.

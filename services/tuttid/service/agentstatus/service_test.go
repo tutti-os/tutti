@@ -2982,6 +2982,12 @@ func TestServiceSelectInstallDirFallsBackToPathDirWhenHomeUnavailable(t *testing
 			return "", errors.New("home unavailable")
 		},
 	}
+	if runtime.GOOS == "windows" {
+		if _, err := service.selectInstallDir(); err == nil {
+			t.Fatal("selectInstallDir() error = nil, want Windows canonical home directory error")
+		}
+		return
+	}
 
 	installDir, err := service.selectInstallDir()
 	if err != nil {

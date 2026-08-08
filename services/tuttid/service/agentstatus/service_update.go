@@ -7,8 +7,12 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
+
+	agentproviderbiz "github.com/tutti-os/tutti/services/tuttid/biz/agentprovider"
 )
 
 const providerUpdateCheckTimeout = 5 * time.Second
@@ -317,21 +321,145 @@ func (s Service) runUpdateAction(ctx context.Context, spec ProviderSpec, result 
 		result.Message = firstNonBlank(result.Stderr, result.Stdout, "Update command failed")
 		return result, nil
 	}
+	var codexMigration *codexSelectionMigration
+	if s.codexSelectionNeedsWindowsMigration(spec, runtimeResolution) {
+		migration, err := s.migrateCodexSelectionToManagedBin(updateCtx, spec, update.LatestVersion)
+		if err != nil {
+			result.Status = RunActionFailed
+			result.ReasonCode = "codex_runtime_selection_update_failed"
+			result.Message = err.Error()
+			return result, nil
+		}
+		codexMigration = &migration
+	}
 
 	setActiveAction(updateCtx, spec.Provider, ActiveAction{ID: ActionUpdate, Status: "running", Step: "verify", Stdout: result.Stdout})
 	probe, err := s.Probe(ctx, ProbeInput{Provider: spec.Provider})
 	if err != nil {
+		if rollbackErr := s.rollbackCodexSelection(updateCtx, codexMigration); rollbackErr != nil {
+			return RunActionResult{}, fmt.Errorf("post-update probe failed: %w; restore Codex runtime selection: %v", err, rollbackErr)
+		}
 		return RunActionResult{}, err
 	}
 	result.Probe = &probe
 	if probe.Status != ProbeReady {
+		if rollbackErr := s.rollbackCodexSelection(updateCtx, codexMigration); rollbackErr != nil {
+			result.Message = fmt.Sprintf("%s; restore Codex runtime selection: %v", firstNonBlank(probe.Message, probe.ReasonCode, "Agent provider runtime probe failed after update"), rollbackErr)
+		} else {
+			result.Message = firstNonBlank(probe.Message, probe.ReasonCode, "Agent provider runtime probe failed after update")
+		}
 		result.Status = RunActionFailed
 		result.ReasonCode = "post_update_probe_failed"
-		result.Message = firstNonBlank(probe.Message, probe.ReasonCode, "Agent provider runtime probe failed after update")
+		return result, nil
+	}
+	// Re-resolve after npm has completed. A legacy Windows install may have
+	// started from %USERPROFILE%\.local and been written to the final
+	// %USERPROFILE%\.local\bin prefix, so the pre-update CLI path is stale.
+	postUpdateRuntime := s.resolveProviderRuntime(ctx, spec)
+	postUpdateBinaryPath := postUpdateRuntime.CLIPath
+	if strings.TrimSpace(postUpdateBinaryPath) == "" {
+		postUpdateBinaryPath = probe.BinaryPath
+	}
+	if err := s.publishManagedInstallBinaryDir(updateCtx, postUpdateBinaryPath); err != nil {
+		if rollbackErr := s.rollbackCodexSelection(updateCtx, codexMigration); rollbackErr != nil {
+			result.Message = fmt.Sprintf("%s; restore Codex runtime selection: %v", err, rollbackErr)
+		}
+		result.Status = RunActionFailed
+		result.ReasonCode = "user_path_update_failed"
+		if result.Message == "" {
+			result.Message = err.Error()
+		}
 		return result, nil
 	}
 	result.Status = RunActionCompleted
 	return result, nil
+}
+
+func (s Service) codexSelectionNeedsWindowsMigration(spec ProviderSpec, runtimeResolution providerRuntimeResolution) bool {
+	if runtime.GOOS != "windows" || !isCodexStatusSpec(spec) || !runtimeResolution.CodexSelectionExplicit {
+		return false
+	}
+	packageName := strings.TrimSpace(spec.Update.PackageName)
+	if packageName == "" {
+		return false
+	}
+	prefix, ok := managedNPMRepairInstallPrefix(runtimeResolution.CLIPath, packageName)
+	return ok && s.isLegacyWindowsManagedNPMPrefix(prefix)
+}
+
+type codexSelectionMigration struct {
+	previous    agentproviderbiz.RuntimeSelection
+	newLauncher string
+}
+
+func (s Service) migrateCodexSelectionToManagedBin(ctx context.Context, spec ProviderSpec, expectedVersion string) (codexSelectionMigration, error) {
+	var migration codexSelectionMigration
+	if s.CodexRuntimeSelectionStore == nil {
+		return migration, errors.New("codex runtime selection store is unavailable")
+	}
+	previous, found, err := s.CodexRuntimeSelectionStore.GetAgentProviderRuntimeSelection(ctx, spec.Provider)
+	if err != nil {
+		return migration, fmt.Errorf("read previous Codex runtime selection: %w", err)
+	}
+	if !found || strings.TrimSpace(previous.LauncherPath) == "" {
+		return migration, errors.New("previous Codex runtime selection is unavailable")
+	}
+	home, err := s.homeDir()
+	if err != nil || strings.TrimSpace(home) == "" {
+		if err == nil {
+			err = errors.New("home directory is empty")
+		}
+		return migration, fmt.Errorf("resolve Codex home for runtime selection update: %w", err)
+	}
+	binaryName := strings.TrimSpace(spec.Update.BinaryName)
+	if binaryName == "" {
+		return migration, errors.New("codex update binary name is empty")
+	}
+	managedDir := filepath.Join(home, ".local", "bin")
+	expectedVersion = strings.TrimSpace(expectedVersion)
+	for _, suffix := range []string{".cmd", ".exe", ".bat", ".ps1", ""} {
+		candidate := filepath.Join(managedDir, binaryName+suffix)
+		if !s.executableFile(candidate) {
+			continue
+		}
+		prefix, ok := managedNPMRepairInstallPrefix(candidate, strings.TrimSpace(spec.Update.PackageName))
+		if !ok || !sameWindowsPath(prefix, managedDir) {
+			continue
+		}
+		version := resolveAdapterPackageVersion(candidate, AdapterPackageRequirement{Name: spec.Update.PackageName})
+		if version == "" || (expectedVersion != "" && version != expectedVersion) {
+			continue
+		}
+		selection := agentproviderbiz.RuntimeSelection{
+			Provider:     spec.Provider,
+			LauncherPath: candidate,
+			UpdatedAt:    s.now(),
+		}
+		if _, err := s.CodexRuntimeSelectionStore.PutAgentProviderRuntimeSelection(ctx, selection); err != nil {
+			return migration, fmt.Errorf("persist Codex managed runtime selection: %w", err)
+		}
+		s.invalidateProviderStatus(spec.Provider)
+		return codexSelectionMigration{previous: previous, newLauncher: candidate}, nil
+	}
+	return migration, fmt.Errorf("updated Codex launcher with managed package %s was not found in %s", spec.Update.PackageName, managedDir)
+}
+
+func (s Service) rollbackCodexSelection(ctx context.Context, migration *codexSelectionMigration) error {
+	if migration == nil || s.CodexRuntimeSelectionStore == nil {
+		return nil
+	}
+	current, found, err := s.CodexRuntimeSelectionStore.GetAgentProviderRuntimeSelection(ctx, migration.previous.Provider)
+	if err != nil {
+		return err
+	}
+	if found && !sameWindowsPath(current.LauncherPath, migration.newLauncher) {
+		return nil
+	}
+	if _, err := s.CodexRuntimeSelectionStore.PutAgentProviderRuntimeSelection(ctx, migration.previous); err != nil {
+		return err
+	}
+	s.invalidateProviderStatus(migration.previous.Provider)
+	return nil
 }
 
 func providerUpdateDisplayCommand(spec ManagedNPMPackageInstallerSpec) string {

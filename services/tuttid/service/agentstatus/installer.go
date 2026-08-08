@@ -696,6 +696,20 @@ func purgeNPMInstallTree(prefixDir string) {
 
 func (s Service) selectInstallDir() (string, error) {
 	resolver := s.commandResolver()
+	if runtime.GOOS == "windows" {
+		home, err := s.homeDir()
+		if err != nil || strings.TrimSpace(home) == "" {
+			if err == nil {
+				err = errors.New("home directory is empty")
+			}
+			return "", fmt.Errorf("windows managed agent directory unavailable: %w", err)
+		}
+		dir := filepath.Join(home, ".local", "bin")
+		if err := ensureWritableInstallDir(dir); err != nil {
+			return "", fmt.Errorf("windows managed agent directory unavailable: %w", err)
+		}
+		return dir, nil
+	}
 	// Prefer a stable, user-global location (~/.local/bin, then ~/bin) so
 	// installed binaries survive toolchain/version-manager churn and never
 	// land in a volatile or app-scoped PATH entry (e.g. a node-version

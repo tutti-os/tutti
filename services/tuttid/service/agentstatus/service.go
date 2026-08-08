@@ -302,6 +302,7 @@ type Service struct {
 	// choice. A missing selection permits only one uniquely ready candidate;
 	// multiple ready candidates require the user to choose one.
 	CodexRuntimeSelectionStore CodexRuntimeSelectionStore
+	UserPathAdapter            UserPathAdapter
 }
 
 // ServiceDependencies are the daemon-owned dependencies required to construct
@@ -312,6 +313,7 @@ type ServiceDependencies struct {
 	ManagedRuntime             managedruntime.Resolver
 	ClaudeCodeRuntimeDir       string
 	CodexRuntimeSelectionStore CodexRuntimeSelectionStore
+	UserPathAdapter            UserPathAdapter
 }
 
 // NewService constructs the production provider status service with its shared
@@ -330,6 +332,7 @@ func NewService(dependencies ServiceDependencies) Service {
 		DetectionCommands:          NewDetectionCommandLimiter(4),
 		UpdateCache:                NewProviderUpdateCache(),
 		CodexRuntimeSelectionStore: dependencies.CodexRuntimeSelectionStore,
+		UserPathAdapter:            dependencies.UserPathAdapter,
 	}
 }
 
@@ -631,6 +634,12 @@ func (s Service) runInstallActionOnce(ctx context.Context, spec ProviderSpec, re
 	if isCodexStatusSpec(spec) && strings.TrimSpace(runtimeResolution.CLIPath) != "" {
 		probe := s.probeAdapterRuntimeCommand(installCtx, spec, runtimeResolution, s.now())
 		if probe.Status == ProbeReady && !s.providerCLIRequiresInstall(spec, runtimeResolution) {
+			if err := s.publishManagedInstallBinaryDir(installCtx, runtimeResolution.CLIPath); err != nil {
+				result.Status = RunActionFailed
+				result.ReasonCode = "user_path_update_failed"
+				result.Message = err.Error()
+				return result, nil
+			}
 			result.Probe = &probe
 			result.Status = RunActionCompleted
 			s.reportProviderSetupNodeResult(ctx, providerSetupNodeResultInput{
@@ -708,6 +717,12 @@ func (s Service) runInstallActionOnce(ctx context.Context, spec ProviderSpec, re
 			})
 			return result, nil
 		}
+		if err := s.publishManagedInstallBinaryDir(installCtx, updatedRuntime.CLIPath); err != nil {
+			result.Status = RunActionFailed
+			result.ReasonCode = "user_path_update_failed"
+			result.Message = err.Error()
+			return result, nil
+		}
 		s.reportProviderSetupNodeResult(ctx, providerSetupNodeResultInput{
 			Node:      "install_post_probe",
 			Provider:  spec.Provider,
@@ -748,6 +763,12 @@ postInstallProbe:
 			Result:    result,
 			StartedAt: probeStartedAt,
 		})
+		return result, nil
+	}
+	if err := s.publishManagedInstallBinaryDir(installCtx, updatedRuntime.CLIPath); err != nil {
+		result.Status = RunActionFailed
+		result.ReasonCode = "user_path_update_failed"
+		result.Message = err.Error()
 		return result, nil
 	}
 	s.reportProviderSetupNodeResult(ctx, providerSetupNodeResultInput{

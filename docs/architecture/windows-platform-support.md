@@ -23,7 +23,7 @@ Current implementation and evidence:
 | Desktop daemon lifecycle | Electron main process                                   | packages `tuttid.exe` and injects native resource paths    | Windows Alpha CI packages it                                                                    |
 | Workspace Apps           | daemon app lifecycle, health, state, and events         | `AppShellAdapter` invokes the packaged managed POSIX shell | Onboarding fat package is exercised in Windows Alpha CI                                         |
 | Terminal                 | terminal service and shared terminal contracts          | `TerminalProcessFactory` uses ConPTY                       | focused adapter and daemon WebSocket tests run in Windows daemon-adapter and Alpha CI           |
-| Agent processes          | provider-neutral agent/runtime services                 | build-tagged executable, command, and process handling     | focused Windows tests run in Agent adapter and Alpha CI                                         |
+| Agent processes          | provider-neutral agent/runtime services                 | build-tagged executable, command, process handling, and user PATH publication | focused Windows tests run in Agent adapter and Alpha CI                                         |
 | Browser                  | browser service contract                                | focused Windows executable/profile path behavior           | focused Windows tests exist; full browser E2E remains a promotion gate                          |
 | Computer use             | computer service contract                               | Cua Driver 0.18.0 doctor/MCP boundary and owned daemon     | focused Windows tests and opt-in MCP smoke exist; screenshot/input E2E remains a promotion gate |
 | Files                    | workspace file APIs and portable Go filesystem behavior | add a narrow adapter only where Windows semantics differ   | full Windows Files E2E remains a promotion gate                                                 |
@@ -143,8 +143,17 @@ events remain shared daemon behavior.
 
 Agent installation and launch keep provider/product policy shared. Windows
 command resolution, executable verification, npm launcher layout, and process
-creation stay in the runtime command/process boundary. Do not make provider
-installers assemble shell command strings to handle Windows.
+creation stay in the runtime command/process boundary. Managed npm installs use
+the selected user executable directory (normally `%USERPROFILE%\.local\bin`)
+as npm's Windows prefix, because Windows npm writes `.cmd`/`.ps1` launchers
+directly under the prefix. After a successful managed install/update, the
+daemon's narrow Windows user-path adapter idempotently appends that directory
+to `HKCU\Environment\Path` and broadcasts `WM_SETTINGCHANGE`; it never
+writes the machine-wide path or changes Unix/macOS shell profiles. Do not make
+provider installers assemble shell command strings to handle Windows.
+The final layout does not migrate or delete an older `%USERPROFILE%\.local`
+installation; a subsequent managed install targets the new `.local\bin`
+directory.
 
 The Windows Desktop package also vendors the pinned Mutagen executable used
 when file-symlink creation is unavailable. Electron resolves the packaged

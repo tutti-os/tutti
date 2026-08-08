@@ -12,6 +12,9 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/tutti-os/tutti/packages/agent/daemon/providerregistry"
+	agentproviderbiz "github.com/tutti-os/tutti/services/tuttid/biz/agentprovider"
 )
 
 func TestProviderStatusUpdateDiscoveryIsExplicitAndCached(t *testing.T) {
@@ -479,6 +482,196 @@ func TestRunUpdateActionUsesManagedNPMAndReprobes(t *testing.T) {
 	}
 }
 
+func TestRunUpdateActionPublishesFreshWindowsBinaryPathAfterLegacyInstall(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("Windows legacy managed npm update")
+	}
+	service, binaryPath := updateTestService(t, "1.0.0")
+	home := filepath.Dir(filepath.Dir(filepath.Dir(binaryPath)))
+	newPrefix := filepath.Dir(binaryPath)
+	legacyPrefix := filepath.Join(home, ".local")
+	legacyPackageDir := filepath.Join(legacyPrefix, "node_modules", "@tutti-os", "tutti-agent")
+	if err := os.MkdirAll(legacyPackageDir, 0o755); err != nil {
+		t.Fatalf("mkdir legacy package: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(legacyPackageDir, "package.json"), []byte(`{"name":"@tutti-os/tutti-agent","version":"1.0.0"}`), 0o644); err != nil {
+		t.Fatalf("write legacy package.json: %v", err)
+	}
+	legacyBinary := filepath.Join(legacyPrefix, "tutti-agent.cmd")
+	writeUpdateTestCLI(t, legacyBinary, "1.0.0")
+
+	var updated atomic.Bool
+	service.Environ = func() []string {
+		path := legacyPrefix
+		if updated.Load() {
+			path = newPrefix
+		}
+		return []string{"PATH=" + path, agentNPMRegistryEnv + "=https://registry.example.test"}
+	}
+	service.LookPath = func(name string) (string, error) {
+		switch name {
+		case "tutti-agent", "tutti-agent.cmd", "tutti-agent.exe":
+			if updated.Load() {
+				return binaryPath, nil
+			}
+			return legacyBinary, nil
+		case "npm", "npm.cmd", "node", "node.exe":
+			return "/usr/bin/true", nil
+		default:
+			return "", errors.New("not found")
+		}
+	}
+	service.IsExecutableFile = isTestExecutableUnderHome(home)
+	service.UpdateCache = NewProviderUpdateCache()
+	service.ProbeReadyAfter = 20 * time.Millisecond
+	service.ProbeTimeout = 200 * time.Millisecond
+	service.HTTPClient = &http.Client{Transport: networkRoundTripFunc(func(*http.Request) (*http.Response, error) {
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body:       io.NopCloser(strings.NewReader(`{"version":"1.1.0"}`)),
+		}, nil
+	})}
+	pathAdapter := &recordingUserPathAdapter{}
+	service.UserPathAdapter = pathAdapter
+	service.InstallCommand = func(_ context.Context, input InstallCommandInput) (InstallCommandResult, error) {
+		if !strings.Contains(input.Command, newPrefix) {
+			t.Fatalf("update command = %q, want final Windows prefix %s", input.Command, newPrefix)
+		}
+		updated.Store(true)
+		writeUpdateTestCLI(t, binaryPath, "1.1.0")
+		if err := os.WriteFile(filepath.Join(newPrefix, "node_modules", "@tutti-os", "tutti-agent", "package.json"), []byte(`{"name":"@tutti-os/tutti-agent","version":"1.1.0"}`), 0o644); err != nil {
+			t.Fatalf("write updated package.json: %v", err)
+		}
+		return InstallCommandResult{ExitCode: 0, Stdout: "updated"}, nil
+	}
+
+	result, err := service.RunAction(context.Background(), RunActionInput{Provider: "tutti-agent", ActionID: ActionUpdate})
+	if err != nil {
+		t.Fatalf("RunAction() error = %v", err)
+	}
+	if result.Status != RunActionCompleted || result.Probe == nil || result.Probe.Status != ProbeReady {
+		t.Fatalf("result = %#v, want completed ready update", result)
+	}
+	if pathAdapter.directory != newPrefix {
+		t.Fatalf("published PATH directory = %q, want fresh Windows prefix %q", pathAdapter.directory, newPrefix)
+	}
+}
+
+func TestMigrateCodexSelectionToManagedBinUpdatesLegacyWindowsSelection(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("Windows Codex runtime selection migration")
+	}
+	home := t.TempDir()
+	legacyPrefix := filepath.Join(home, ".local")
+	legacyPackageDir := filepath.Join(legacyPrefix, "node_modules", "@openai", "codex")
+	if err := os.MkdirAll(legacyPackageDir, 0o755); err != nil {
+		t.Fatalf("mkdir legacy package: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(legacyPackageDir, "package.json"), []byte(`{"name":"@openai/codex","version":"1.0.0"}`), 0o644); err != nil {
+		t.Fatalf("write legacy package.json: %v", err)
+	}
+	legacyShim := filepath.Join(legacyPrefix, "codex.cmd")
+	writeExecutable(t, legacyShim, "@echo off\r\n")
+	managedDir := filepath.Join(home, ".local", "bin")
+	managedShim := filepath.Join(managedDir, "codex.cmd")
+	writeExecutable(t, managedShim, "@echo off\r\n")
+	managedPackageDir := filepath.Join(managedDir, "node_modules", "@openai", "codex")
+	if err := os.MkdirAll(managedPackageDir, 0o755); err != nil {
+		t.Fatalf("mkdir managed package: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(managedPackageDir, "package.json"), []byte(`{"name":"@openai/codex","version":"1.1.0"}`), 0o644); err != nil {
+		t.Fatalf("write managed package.json: %v", err)
+	}
+	store := &memoryCodexRuntimeSelectionStore{selection: agentproviderbiz.RuntimeSelection{Provider: "codex", LauncherPath: legacyShim}, found: true}
+	service := Service{
+		HomeDir:                    func() (string, error) { return home, nil },
+		IsExecutableFile:           isTestExecutableUnderHome(home),
+		CodexRuntimeSelectionStore: store,
+		StatusCache:                NewProviderStatusCache(),
+	}
+	spec := ProviderSpec{
+		Kind:     providerregistry.StatusKindCodexCLI,
+		Provider: "codex",
+		Update: ProviderUpdateSpec{
+			PackageName: "@openai/codex",
+			BinaryName:  "codex",
+		},
+	}
+	runtimeResolution := providerRuntimeResolution{
+		CLIPath:                legacyShim,
+		CodexSelectionExplicit: true,
+	}
+	if !service.codexSelectionNeedsWindowsMigration(spec, runtimeResolution) {
+		t.Fatal("codexSelectionNeedsWindowsMigration() = false, want true")
+	}
+	if _, err := service.migrateCodexSelectionToManagedBin(context.Background(), spec, "1.1.0"); err != nil {
+		t.Fatalf("migrateCodexSelectionToManagedBin() error = %v", err)
+	}
+	if store.selection.LauncherPath != managedShim {
+		t.Fatalf("selected launcher = %q, want %q", store.selection.LauncherPath, managedShim)
+	}
+}
+
+func TestMigrateCodexSelectionToManagedBinRejectsWrongManagedPackageVersion(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("Windows Codex runtime selection migration")
+	}
+	home := t.TempDir()
+	legacyShim := filepath.Join(home, ".local", "codex.cmd")
+	writeExecutable(t, legacyShim, "@echo off\r\n")
+	managedDir := filepath.Join(home, ".local", "bin")
+	managedShim := filepath.Join(managedDir, "codex.cmd")
+	writeExecutable(t, managedShim, "@echo off\r\n")
+	managedPackageDir := filepath.Join(managedDir, "node_modules", "@openai", "codex")
+	if err := os.MkdirAll(managedPackageDir, 0o755); err != nil {
+		t.Fatalf("mkdir managed package: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(managedPackageDir, "package.json"), []byte(`{"name":"@openai/codex","version":"1.0.0"}`), 0o644); err != nil {
+		t.Fatalf("write managed package.json: %v", err)
+	}
+	store := &memoryCodexRuntimeSelectionStore{selection: agentproviderbiz.RuntimeSelection{Provider: "codex", LauncherPath: legacyShim}, found: true}
+	service := Service{
+		HomeDir:                    func() (string, error) { return home, nil },
+		IsExecutableFile:           isTestExecutableUnderHome(home),
+		CodexRuntimeSelectionStore: store,
+		StatusCache:                NewProviderStatusCache(),
+	}
+	spec := ProviderSpec{
+		Kind:     providerregistry.StatusKindCodexCLI,
+		Provider: "codex",
+		Update: ProviderUpdateSpec{
+			PackageName: "@openai/codex",
+			BinaryName:  "codex",
+		},
+	}
+	if _, err := service.migrateCodexSelectionToManagedBin(context.Background(), spec, "1.1.0"); err == nil {
+		t.Fatal("migrateCodexSelectionToManagedBin() error = nil, want version validation failure")
+	}
+	if store.selection.LauncherPath != legacyShim {
+		t.Fatalf("selection changed after rejected migration = %q, want %q", store.selection.LauncherPath, legacyShim)
+	}
+}
+
+func TestRollbackCodexSelectionRestoresPreviousSelection(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("Windows Codex runtime selection migration")
+	}
+	oldLauncher := filepath.Join(t.TempDir(), ".local", "codex.cmd")
+	newLauncher := filepath.Join(filepath.Dir(oldLauncher), "bin", "codex.cmd")
+	store := &memoryCodexRuntimeSelectionStore{selection: agentproviderbiz.RuntimeSelection{Provider: "codex", LauncherPath: newLauncher}, found: true}
+	service := Service{CodexRuntimeSelectionStore: store, StatusCache: NewProviderStatusCache()}
+	migration := &codexSelectionMigration{
+		previous:    agentproviderbiz.RuntimeSelection{Provider: "codex", LauncherPath: oldLauncher},
+		newLauncher: newLauncher,
+	}
+	if err := service.rollbackCodexSelection(context.Background(), migration); err != nil {
+		t.Fatalf("rollbackCodexSelection() error = %v", err)
+	}
+	if store.selection.LauncherPath != oldLauncher {
+		t.Fatalf("restored launcher = %q, want %q", store.selection.LauncherPath, oldLauncher)
+	}
+}
+
 func TestRunUpdateActionRejectsOfficialScriptSource(t *testing.T) {
 	service := testService(func(string) (string, error) { return "/usr/bin/true", nil }, map[string]bool{})
 	var commands atomic.Int32
@@ -503,10 +696,17 @@ func updateTestService(t *testing.T, version string) (Service, string) {
 	home := t.TempDir()
 	prefixDir := filepath.Join(home, ".local")
 	binDir := filepath.Join(prefixDir, "bin")
+	if runtime.GOOS == "windows" {
+		prefixDir = binDir
+	}
 	if err := os.MkdirAll(binDir, 0o755); err != nil {
 		t.Fatalf("mkdir bin: %v", err)
 	}
-	packageDir := filepath.Join(prefixDir, "lib", "node_modules", "@tutti-os", "tutti-agent")
+	packageRoot := filepath.Join(prefixDir, "lib")
+	if runtime.GOOS == "windows" {
+		packageRoot = prefixDir
+	}
+	packageDir := filepath.Join(packageRoot, "node_modules", "@tutti-os", "tutti-agent")
 	packageBinDir := filepath.Join(packageDir, "bin")
 	if err := os.MkdirAll(packageBinDir, 0o755); err != nil {
 		t.Fatalf("mkdir package bin: %v", err)
@@ -529,9 +729,9 @@ func updateTestService(t *testing.T, version string) (Service, string) {
 	}
 	service := testService(func(name string) (string, error) {
 		switch name {
-		case "tutti-agent":
+		case "tutti-agent", "tutti-agent.cmd", "tutti-agent.exe":
 			return binaryPath, nil
-		case "npm", "node":
+		case "npm", "npm.cmd", "node", "node.exe":
 			return "/usr/bin/true", nil
 		default:
 			return "", errors.New("not found")
@@ -540,7 +740,7 @@ func updateTestService(t *testing.T, version string) (Service, string) {
 	service.HomeDir = func() (string, error) { return home, nil }
 	service.Environ = func() []string {
 		return []string{
-			"PATH=" + binDir + ":/usr/bin:/bin",
+			"PATH=" + strings.Join([]string{binDir, "/usr/bin", "/bin"}, string(os.PathListSeparator)),
 			agentNPMRegistryEnv + "=https://registry.example.test",
 		}
 	}
