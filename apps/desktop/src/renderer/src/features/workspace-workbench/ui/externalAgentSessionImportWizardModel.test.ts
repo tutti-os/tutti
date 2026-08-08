@@ -378,6 +378,126 @@ test("projects all supported ranges from one catalog with daemon cutoff semantic
   assert.equal(allHistory.errors, catalog.errors);
 });
 
+test("every range preset is served by one scan of the same catalog", () => {
+  // Issue #2060 acceptance criteria 1 and 2: after the initial local-history
+  // scan, switching among 7/30/90/All must not issue another scan request.
+  // There is no React rendering harness here (see the module header), so drive
+  // the same reducer -> usable-catalog -> projection pipeline the wizard runs
+  // on each render and count how often a scan would actually be needed: the
+  // wizard calls the scan endpoint exactly when no usable catalog is available
+  // for the current source.
+  const dayMs = 24 * 60 * 60 * 1000;
+  // Anchor well past the oldest fixture stamp so "all history" stays a
+  // positive Unix time; the all-history cutoff is 0, so a negative stamp
+  // would be filtered out and no real session ever has one.
+  const anchorUnixMs = 400 * dayMs;
+  const source = externalImportScanSource({
+    archiveKind: "claude",
+    archivePath: null,
+    providers: ["codex", "claude-code"]
+  });
+  const catalog: Parameters<typeof projectExternalImportScan>[0] = {
+    errors: [],
+    projects: [],
+    providers: [],
+    scannedMessages: 3,
+    scannedSessions: 3,
+    sessions: [
+      {
+        id: "in-7",
+        projectPath: "/p",
+        provider: "codex",
+        title: "Recent",
+        messageCount: 1,
+        lastUpdatedAtUnixMs: anchorUnixMs - dayMs
+      },
+      {
+        id: "in-30",
+        projectPath: "/p",
+        provider: "codex",
+        title: "Mid",
+        messageCount: 1,
+        lastUpdatedAtUnixMs: anchorUnixMs - 20 * dayMs
+      },
+      {
+        id: "in-all",
+        projectPath: "/p",
+        provider: "codex",
+        title: "Old",
+        messageCount: 1,
+        lastUpdatedAtUnixMs: anchorUnixMs - 200 * dayMs
+      }
+    ],
+    skippedSessions: 0
+  };
+
+  let scanCalls = 0;
+  let state = externalImportScanStateReducer(null, { type: "source-changed" });
+  const renderRange = (days: number) => {
+    let usable = externalImportUsableScanCatalog(state, source);
+    if (!usable) {
+      // This is the only branch that hits the network in the wizard.
+      scanCalls += 1;
+      state = externalImportScanStateReducer(state, {
+        type: "scan-succeeded",
+        anchorUnixMs,
+        response: catalog,
+        source
+      });
+      usable = externalImportUsableScanCatalog(state, source);
+    }
+    return projectExternalImportScan(
+      usable!.response,
+      days,
+      usable!.anchorUnixMs
+    );
+  };
+
+  // Initial scan, then every preset, including revisiting an earlier one.
+  assert.deepEqual(
+    renderRange(30).sessions.map((session) => session.id),
+    ["in-7", "in-30"]
+  );
+  assert.equal(scanCalls, 1, "the initial scan is the only scan request");
+
+  assert.deepEqual(
+    renderRange(7).sessions.map((session) => session.id),
+    ["in-7"]
+  );
+  assert.deepEqual(
+    renderRange(90).sessions.map((session) => session.id),
+    ["in-7", "in-30"]
+  );
+  assert.deepEqual(
+    renderRange(-1).sessions.map((session) => session.id),
+    ["in-7", "in-30", "in-all"]
+  );
+  // Returning to an already-viewed preset must also stay in memory.
+  assert.deepEqual(
+    renderRange(30).sessions.map((session) => session.id),
+    ["in-7", "in-30"]
+  );
+  assert.equal(
+    scanCalls,
+    1,
+    "switching among 7/30/90/All issues no additional scan request"
+  );
+
+  // Changing the provider selection still invalidates the reusable catalog.
+  assert.equal(
+    externalImportUsableScanCatalog(
+      state,
+      externalImportScanSource({
+        archiveKind: "claude",
+        archivePath: null,
+        providers: ["codex"]
+      })
+    ),
+    null,
+    "a narrower provider selection must not reuse the previous catalog"
+  );
+});
+
 test("range projections preserve deselections when sessions leave and re-enter", () => {
   const anchorUnixMs = 100 * 24 * 60 * 60 * 1000;
   const catalog: Parameters<typeof projectExternalImportScan>[0] = {
