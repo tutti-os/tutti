@@ -8,6 +8,7 @@ export interface WorkspaceBrowserOpenRequest {
     | "file_manager"
     | "terminal"
     | "workspace_app";
+  sourceNodeId?: string;
   url: string;
   workspaceId: string;
 }
@@ -17,6 +18,7 @@ interface WorkspaceBrowserOpenLaunchRequest extends WorkspaceBrowserOpenRequest 
 }
 
 interface WorkspaceBrowserFocusRequest {
+  fallbackToCurrent?: boolean;
   kind: "focus";
   preferredNodeId?: string;
   workspaceId: string;
@@ -44,27 +46,36 @@ export function registerWorkspaceBrowserLaunchHandler(
 export async function requestWorkspaceBrowserLaunch(
   request: WorkspaceBrowserOpenRequest
 ): Promise<boolean> {
+  return Boolean(await requestWorkspaceBrowserNodeLaunch(request));
+}
+
+export async function requestWorkspaceBrowserNodeLaunch(
+  request: WorkspaceBrowserOpenRequest
+): Promise<string | null> {
   const normalizedWorkspaceId = request.workspaceId.trim();
   const normalizedUrl = normalizeWorkspaceBrowserLaunchUrl(request.url);
   if (!normalizedWorkspaceId || !normalizedUrl) {
-    return false;
+    return null;
   }
 
-  return Boolean(
-    await dispatchWorkspaceBrowserLaunch({
-      handler: launchHandlers.get(normalizedWorkspaceId),
-      request: {
-        kind: "open",
-        reuseIfOpen: request.reuseIfOpen,
-        ...(request.source ? { source: request.source } : {}),
-        url: normalizedUrl,
-        workspaceId: normalizedWorkspaceId
-      }
-    })
-  );
+  const result = await dispatchWorkspaceBrowserLaunch({
+    handler: launchHandlers.get(normalizedWorkspaceId),
+    request: {
+      kind: "open",
+      reuseIfOpen: request.reuseIfOpen,
+      ...(request.source ? { source: request.source } : {}),
+      ...(request.sourceNodeId?.trim()
+        ? { sourceNodeId: request.sourceNodeId.trim() }
+        : {}),
+      url: normalizedUrl,
+      workspaceId: normalizedWorkspaceId
+    }
+  });
+  return typeof result === "string" && result.trim() ? result.trim() : null;
 }
 
 export async function requestWorkspaceBrowserSurfaceFocus(request: {
+  fallbackToCurrent?: boolean;
   preferredNodeId?: string | null;
   workspaceId: string;
 }): Promise<string | null> {
@@ -77,6 +88,9 @@ export async function requestWorkspaceBrowserSurfaceFocus(request: {
   const result = await dispatchWorkspaceBrowserLaunch({
     handler: launchHandlers.get(normalizedWorkspaceId),
     request: {
+      ...(request.fallbackToCurrent === false
+        ? { fallbackToCurrent: false }
+        : {}),
       kind: "focus",
       ...(preferredNodeId ? { preferredNodeId } : {}),
       workspaceId: normalizedWorkspaceId
@@ -101,6 +115,9 @@ export async function requestWorkspaceBrowserHostFileLaunch(
         kind: "open",
         reuseIfOpen: request.reuseIfOpen,
         source: request.source ?? "file_manager",
+        ...(request.sourceNodeId?.trim()
+          ? { sourceNodeId: request.sourceNodeId.trim() }
+          : {}),
         url: normalizedUrl,
         workspaceId: normalizedWorkspaceId
       }

@@ -19,6 +19,13 @@ async function presentWorkspaceBrowser(
     request.kind === "focus"
       ? resolveWorkspaceBrowserNodeId(host, request.preferredNodeId)
       : null;
+  if (
+    request.kind === "focus" &&
+    request.fallbackToCurrent === false &&
+    !preferredNodeId
+  ) {
+    return null;
+  }
   const existingNodeId =
     request.kind === "open" && request.reuseIfOpen === false
       ? null

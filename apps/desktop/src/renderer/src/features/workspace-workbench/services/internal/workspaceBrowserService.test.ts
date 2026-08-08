@@ -164,10 +164,171 @@ test("workspace browser service opens Browser popups in tabs and launches app UR
       kind: "open",
       reuseIfOpen: false,
       source: "workspace_app",
+      sourceNodeId: "workspace-app:99",
       url: "https://example.com/app-popup",
       workspaceId: "workspace-browser-open-url"
     }
   ]);
+});
+
+test("workspace browser service coalesces concurrent Workspace App popup launches", async () => {
+  const requests: WorkspaceBrowserLaunchRequest[] = [];
+  let emitDesktopBrowserEvent = (_event: BrowserNodeEvent): void => undefined;
+  let resolveLaunch!: (nodeId: string) => void;
+  const launchResult = new Promise<string>((resolve) => {
+    resolveLaunch = resolve;
+  });
+  const service = createWorkspaceBrowserService({
+    browserApi: createBrowserNodeHostApi({
+      onEvent(listener) {
+        emitDesktopBrowserEvent = listener;
+        return () => {
+          emitDesktopBrowserEvent = () => undefined;
+        };
+      }
+    })
+  });
+  const appFeature = createBrowserNodeFeature({
+    hostApi: service.createFeatureHostApi({
+      acceptsEvent: (event) => workspaceAppOwnsEvent(event),
+      source: "workspace_app",
+      workspaceId: "workspace-popup-concurrent"
+    })
+  });
+  const disposeLaunchHandler = registerWorkspaceBrowserLaunchHandler(
+    "workspace-popup-concurrent",
+    (request) => {
+      requests.push(request);
+      return launchResult;
+    }
+  );
+  const event = {
+    reuseIfOpen: false,
+    sourceNodeId: "workspace-app:99",
+    type: "open-url" as const,
+    url: "https://open.feishu.cn/authorization"
+  };
+
+  service.ensureFeatureConnected(appFeature);
+  emitDesktopBrowserEvent(event);
+  emitDesktopBrowserEvent(event);
+  assert.equal(requests.length, 1);
+
+  resolveLaunch("browser:authorization");
+  await settleAsyncLaunch();
+  assert.equal(requests.length, 1);
+  disposeLaunchHandler();
+});
+
+test("workspace browser service reuses only a Browser still showing the requested popup", async () => {
+  const requests: WorkspaceBrowserLaunchRequest[] = [];
+  let emitDesktopBrowserEvent = (_event: BrowserNodeEvent): void => undefined;
+  const launchedNodeIds = [
+    "browser:authorization",
+    "browser:retry",
+    "browser:after-close",
+    "browser:other-url"
+  ];
+  const service = createWorkspaceBrowserService({
+    browserApi: createBrowserNodeHostApi({
+      onEvent(listener) {
+        emitDesktopBrowserEvent = listener;
+        return () => {
+          emitDesktopBrowserEvent = () => undefined;
+        };
+      }
+    })
+  });
+  const workspaceId = "workspace-popup-lifecycle";
+  const browserFeature = createBrowserNodeFeature({
+    hostApi: service.createFeatureHostApi({
+      acceptsEvent: (event) => browserNodeOwnsEvent(event),
+      source: "browser",
+      workspaceId
+    })
+  });
+  const appFeature = createBrowserNodeFeature({
+    hostApi: service.createFeatureHostApi({
+      acceptsEvent: (event) => workspaceAppOwnsEvent(event),
+      source: "workspace_app",
+      workspaceId
+    })
+  });
+  const disposeLaunchHandler = registerWorkspaceBrowserLaunchHandler(
+    workspaceId,
+    (request) => {
+      requests.push(request);
+      return request.kind === "focus"
+        ? (request.preferredNodeId ?? null)
+        : (launchedNodeIds.shift() ?? null);
+    }
+  );
+  const authorizationUrl = "https://open.feishu.cn/authorization";
+  const popupEvent = {
+    reuseIfOpen: false,
+    sourceNodeId: "workspace-app:99",
+    type: "open-url" as const,
+    url: authorizationUrl
+  };
+
+  service.ensureFeatureConnected(browserFeature);
+  service.ensureFeatureConnected(appFeature);
+  emitDesktopBrowserEvent(popupEvent);
+  await settleAsyncLaunch();
+  const authorizationTab = browserFeature.tabsStore.ensureSurface(
+    "browser:authorization",
+    authorizationUrl
+  ).tabs[0]!;
+  emitDesktopBrowserEvent(
+    createBrowserStateEvent(authorizationTab.nodeId, authorizationUrl)
+  );
+
+  emitDesktopBrowserEvent(popupEvent);
+  await settleAsyncLaunch();
+  assert.deepEqual(requests[1], {
+    fallbackToCurrent: false,
+    kind: "focus",
+    preferredNodeId: "browser:authorization",
+    workspaceId
+  });
+
+  emitDesktopBrowserEvent(
+    createBrowserStateEvent(
+      authorizationTab.nodeId,
+      "https://open.feishu.cn/authorization/callback?result=success"
+    )
+  );
+  emitDesktopBrowserEvent(popupEvent);
+  await settleAsyncLaunch();
+  assert.deepEqual(requests[2], {
+    kind: "open",
+    reuseIfOpen: false,
+    source: "workspace_app",
+    sourceNodeId: "workspace-app:99",
+    url: authorizationUrl,
+    workspaceId
+  });
+
+  const retryTab = browserFeature.tabsStore.ensureSurface(
+    "browser:retry",
+    authorizationUrl
+  ).tabs[0]!;
+  emitDesktopBrowserEvent(
+    createBrowserStateEvent(retryTab.nodeId, authorizationUrl)
+  );
+  browserFeature.tabsStore.removeSurface("browser:retry");
+  emitDesktopBrowserEvent(popupEvent);
+  await settleAsyncLaunch();
+  assert.equal(requests[3]?.kind, "open");
+
+  emitDesktopBrowserEvent({
+    ...popupEvent,
+    url: "https://open.feishu.cn/authorization/other"
+  });
+  await settleAsyncLaunch();
+  assert.equal(requests[4]?.kind, "open");
+  assert.equal(requests.length, 5);
+  disposeLaunchHandler();
 });
 
 test("workspace browser service replaces stale feature routes before handling popups", () => {
@@ -505,6 +666,29 @@ function workspaceAppOwnsEvent(event: BrowserNodeEvent): boolean {
     nodeId.startsWith("workspace-app-webview:") ||
     nodeId.startsWith("workspace-app:")
   );
+}
+
+function createBrowserStateEvent(
+  nodeId: string,
+  url: string
+): BrowserNodeEvent {
+  return {
+    canGoBack: false,
+    canGoForward: false,
+    isLoading: false,
+    isOccluded: false,
+    lifecycle: "active",
+    nodeId,
+    title: "Browser",
+    type: "state",
+    url
+  };
+}
+
+async function settleAsyncLaunch(): Promise<void> {
+  await Promise.resolve();
+  await Promise.resolve();
+  await Promise.resolve();
 }
 
 function createBrowserNodeHostApi(

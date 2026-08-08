@@ -62,6 +62,28 @@ test("workbench Browser presenter launches and activates a new page", async () =
   ]);
 });
 
+test("workbench Browser presenter declines an exact focus when the target closed", async () => {
+  const launches: unknown[] = [];
+  const presenter = createWorkbenchWorkspaceBrowserPresenter({
+    host: createHost({
+      launches,
+      nodes: [],
+      nodeStack: []
+    })
+  });
+
+  assert.equal(
+    await presenter({
+      fallbackToCurrent: false,
+      kind: "focus",
+      preferredNodeId: "browser:closed",
+      workspaceId: "workspace-1"
+    }),
+    null
+  );
+  assert.deepEqual(launches, []);
+});
+
 function createHost(input: {
   activations?: unknown[];
   focused?: string[];

@@ -98,6 +98,15 @@ releases every Browser route for that workspace. A weak lookup does not replace
 this lifecycle: a route that still strongly owns its lookup key would also keep
 the obsolete feature and tab store alive.
 
+Workspace App popup events retain their source Workspace App node identity
+while the Desktop launch coordinator normalizes the URL. The workspace Browser
+service uses the source node and normalized URL as the identity of a launched
+popup: concurrent duplicates share one launch, and a later repeat focuses the
+remembered Browser only while its active page still shows that URL. A redirect
+after authorization success or cancellation invalidates the association, as
+does closing the Browser. The Workbench presenter remains the narrow
+launch/focus adapter and does not own authorization-attempt lifecycle.
+
 ## Package Entry Points
 
 The package uses multiple exports from one package rather than several small

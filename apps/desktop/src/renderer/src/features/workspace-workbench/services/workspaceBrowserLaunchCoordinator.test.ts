@@ -4,6 +4,7 @@ import {
   registerWorkspaceBrowserLaunchHandler,
   requestWorkspaceBrowserHostFileLaunch,
   requestWorkspaceBrowserLaunch,
+  requestWorkspaceBrowserNodeLaunch,
   requestWorkspaceBrowserSurfaceFocus,
   type WorkspaceBrowserLaunchRequest
 } from "./workspaceBrowserLaunchCoordinator.ts";
@@ -54,12 +55,14 @@ test("workspace browser launch coordinator preserves reuse preference", async ()
   );
 
   assert.equal(
-    await requestWorkspaceBrowserLaunch({
+    await requestWorkspaceBrowserNodeLaunch({
       reuseIfOpen: false,
+      source: "workspace_app",
+      sourceNodeId: " workspace-app:99 ",
       url: "https://example.com/new-window",
       workspaceId: "workspace-reuse"
     }),
-    true
+    "browser:new"
   );
   dispose();
 
@@ -67,6 +70,8 @@ test("workspace browser launch coordinator preserves reuse preference", async ()
     {
       kind: "open",
       reuseIfOpen: false,
+      source: "workspace_app",
+      sourceNodeId: "workspace-app:99",
       url: "https://example.com/new-window",
       workspaceId: "workspace-reuse"
     }
@@ -85,6 +90,7 @@ test("workspace browser launch coordinator focuses an exact Browser surface", as
 
   assert.equal(
     await requestWorkspaceBrowserSurfaceFocus({
+      fallbackToCurrent: false,
       preferredNodeId: " browser:window-1 ",
       workspaceId: " workspace-focus "
     }),
@@ -93,6 +99,7 @@ test("workspace browser launch coordinator focuses an exact Browser surface", as
   dispose();
   assert.deepEqual(requests, [
     {
+      fallbackToCurrent: false,
       kind: "focus",
       preferredNodeId: "browser:window-1",
       workspaceId: "workspace-focus"
