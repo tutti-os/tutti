@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -33,11 +34,8 @@ func codexThreadTitles(codexHome string) map[string]string {
 	}
 
 	// Open read-only with a short busy timeout so a live Codex process holding
-	// the write lock never blocks the import scan. Build the file: URI via
-	// url.URL so paths containing spaces or other reserved characters are
-	// percent-encoded rather than corrupting the DSN.
-	dsn := (&url.URL{Scheme: "file", Path: dbPath, RawQuery: "mode=ro&_pragma=busy_timeout(2000)"}).String()
-	db, err := sql.Open("sqlite", dsn)
+	// the write lock never blocks the import scan.
+	db, err := sql.Open("sqlite", codexStateDBDSN(dbPath, runtime.GOOS))
 	if err != nil {
 		return titles
 	}
@@ -64,6 +62,42 @@ func codexThreadTitles(codexHome string) map[string]string {
 		}
 	}
 	return titles
+}
+
+// codexStateDBDSN builds the read-only `file:` DSN for the Codex state
+// database. Building the URI via url.URL percent-encodes paths containing
+// spaces or other reserved characters rather than corrupting the DSN.
+//
+// Windows paths need normalizing first. A native path such as
+// `C:\Users\me\.codex\state_5.sqlite` has no leading slash, so url.URL treats
+// `C:` as the authority and percent-encodes every `\` as `%5C`, producing
+// `file://C:%5CUsers%5C...`. SQLite then resolves that to a bogus location and
+// fails to open the database, silently degrading every imported Codex
+// conversation to its message-derived title instead of the generated one. Match
+// the repository's other SQLite DSN builders and convert to forward slashes
+// with a leading slash before a drive letter (see
+// `services/tuttid/data/workspace/sqlite_store.go` and
+// `packages/connector/store-sqlite/store.go`).
+func codexStateDBDSN(dbPath string, goos string) string {
+	databaseURL := &url.URL{
+		Scheme:   "file",
+		Path:     dbPath,
+		RawQuery: "mode=ro&_pragma=busy_timeout(2000)",
+	}
+	if goos == "windows" && filepath.IsAbs(dbPath) {
+		slashPath := filepath.ToSlash(dbPath)
+		if uncPath := strings.TrimPrefix(slashPath, "//"); uncPath != slashPath {
+			// UNC path: `\\host\share\...` -> host becomes the URI authority.
+			host, path, found := strings.Cut(uncPath, "/")
+			if found {
+				databaseURL.Host = host
+				databaseURL.Path = "/" + path
+			}
+		} else {
+			databaseURL.Path = "/" + slashPath
+		}
+	}
+	return databaseURL.String()
 }
 
 // codexStateDBPath returns the highest-versioned state_<n>.sqlite under codexHome.

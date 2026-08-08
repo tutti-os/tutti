@@ -8,6 +8,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -15,6 +16,46 @@ import (
 	agenttargetbiz "github.com/tutti-os/tutti/services/tuttid/biz/agenttarget"
 	workspacebiz "github.com/tutti-os/tutti/services/tuttid/biz/workspace"
 )
+
+func TestScanClaudeExportArchiveSummaryOnlyMatchesRetainedResult(t *testing.T) {
+	archivePath := writeClaudeExportArchive(t, []map[string]any{
+		claudeExportConversationFixture(
+			"summary-only",
+			"Summary only",
+			[]map[string]any{
+				claudeExportMessageFixture(
+					"message-user",
+					"human",
+					"2026-08-01T00:00:01Z",
+					[]map[string]any{{"type": "text", "text": "Hello"}},
+				),
+			},
+		),
+	})
+
+	summaryOnly, err := scanClaudeExportArchiveWithRetention(
+		context.Background(),
+		archivePath,
+		0,
+		externalScanSummaryOnly,
+	)
+	if err != nil {
+		t.Fatalf("summary-only scan error = %v", err)
+	}
+	retained, err := scanClaudeExportArchive(context.Background(), archivePath, 0)
+	if err != nil {
+		t.Fatalf("retained scan error = %v", err)
+	}
+	if !reflect.DeepEqual(summaryOnly.result, retained.result) {
+		t.Fatalf("summary-only result = %#v, want retained result %#v", summaryOnly.result, retained.result)
+	}
+	if len(summaryOnly.sessions) != 0 {
+		t.Fatalf("summary-only sessions = %#v, want no retained transcripts", summaryOnly.sessions)
+	}
+	if len(retained.sessions) != 1 {
+		t.Fatalf("retained sessions = %#v, want one full transcript", retained.sessions)
+	}
+}
 
 func TestScanClaudeExportArchiveUsesVisibleTextBlocksAndPreservesFileReferences(t *testing.T) {
 	archivePath := writeClaudeExportArchive(t, []map[string]any{

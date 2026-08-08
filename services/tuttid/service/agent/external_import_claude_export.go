@@ -72,6 +72,20 @@ type parsedClaudeExportMessage struct {
 }
 
 func scanClaudeExportArchive(ctx context.Context, archivePath string, cutoffUnixMS int64) (externalScanData, error) {
+	return scanClaudeExportArchiveWithRetention(
+		ctx,
+		archivePath,
+		cutoffUnixMS,
+		externalScanRetainTranscripts,
+	)
+}
+
+func scanClaudeExportArchiveWithRetention(
+	ctx context.Context,
+	archivePath string,
+	cutoffUnixMS int64,
+	retention externalScanRetention,
+) (externalScanData, error) {
 	archivePath, entry, closeArchive, err := openClaudeExportConversations(archivePath)
 	if err != nil {
 		return externalScanData{}, err
@@ -94,7 +108,7 @@ func scanClaudeExportArchive(ctx context.Context, archivePath string, cutoffUnix
 		Root:      archivePath,
 		Available: true,
 	}}
-	projects := map[string]*ExternalImportProject{}
+	collector := newExternalScanCollector(&data, retention)
 	conversationIDs := map[string]struct{}{}
 	messageIDs := map[string]struct{}{}
 	conversationStream, err := newClaudeExportConversationStream(ctx, entryReader)
@@ -153,28 +167,10 @@ func scanClaudeExportArchive(ctx context.Context, archivePath string, cutoffUnix
 		if session.UpdatedAtUnixMS < cutoffUnixMS {
 			continue
 		}
-		project, ok := projectFromExternalSession(session)
-		if !ok {
-			data.result.SkippedSessions++
-			continue
-		}
-		data.sessions = append(data.sessions, session)
-		data.result.ScannedSessions++
-		data.result.ScannedMessages += len(session.Messages)
-		data.result.Sessions = append(data.result.Sessions, externalImportSessionSummary(session, project.Path))
-		upsertExternalImportProject(projects, project, session.Provider)
+		collector.add(session)
 	}
 
-	for _, project := range projects {
-		sort.Strings(project.Providers)
-		data.result.Projects = append(data.result.Projects, *project)
-	}
-	sort.SliceStable(data.result.Sessions, func(left, right int) bool {
-		if data.result.Sessions[left].LastUpdatedAtUnixMS == data.result.Sessions[right].LastUpdatedAtUnixMS {
-			return data.result.Sessions[left].ID < data.result.Sessions[right].ID
-		}
-		return data.result.Sessions[left].LastUpdatedAtUnixMS > data.result.Sessions[right].LastUpdatedAtUnixMS
-	})
+	collector.finish()
 	data.result.Providers[0].SessionCount = data.result.ScannedSessions
 	data.result.Providers[0].MessageCount = data.result.ScannedMessages
 	return data, nil

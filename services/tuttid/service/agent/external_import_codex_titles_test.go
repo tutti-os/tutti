@@ -53,6 +53,51 @@ func TestScanExternalImportsAppliesCodexSQLiteTitle(t *testing.T) {
 	}
 }
 
+func TestCodexStateDBDSNNormalizesWindowsPaths(t *testing.T) {
+	// A native Windows path has no leading slash, so an unnormalized url.URL
+	// treats the drive letter as the authority and percent-encodes every
+	// separator, yielding file://C:%5CUsers%5C... which SQLite cannot open.
+	// Assert on the built DSN directly so the regression is caught on every
+	// platform, not only when the suite runs on Windows.
+	for _, testCase := range []struct {
+		name string
+		goos string
+		path string
+		want string
+	}{
+		{
+			name: "windows drive letter",
+			goos: "windows",
+			path: `C:\Users\me\.codex\state_5.sqlite`,
+			want: "file:///C:/Users/me/.codex/state_5.sqlite?mode=ro&_pragma=busy_timeout(2000)",
+		},
+		{
+			name: "windows path with spaces stays percent-encoded",
+			goos: "windows",
+			path: `C:\code x home\state_5.sqlite`,
+			want: "file:///C:/code%20x%20home/state_5.sqlite?mode=ro&_pragma=busy_timeout(2000)",
+		},
+		{
+			name: "windows unc path uses the host as authority",
+			goos: "windows",
+			path: `\\server\share\.codex\state_5.sqlite`,
+			want: "file://server/share/.codex/state_5.sqlite?mode=ro&_pragma=busy_timeout(2000)",
+		},
+		{
+			name: "posix path is unchanged",
+			goos: "darwin",
+			path: "/Users/me/.codex/state_5.sqlite",
+			want: "file:///Users/me/.codex/state_5.sqlite?mode=ro&_pragma=busy_timeout(2000)",
+		},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			if got := codexStateDBDSN(testCase.path, testCase.goos); got != testCase.want {
+				t.Fatalf("codexStateDBDSN(%q, %q) = %q, want %q", testCase.path, testCase.goos, got, testCase.want)
+			}
+		})
+	}
+}
+
 func TestCodexThreadTitlesReadsStateDB(t *testing.T) {
 	codexHome := t.TempDir()
 	writeCodexThreadsDB(t, filepath.Join(codexHome, "state_5.sqlite"), map[string]string{
