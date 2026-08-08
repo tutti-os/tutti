@@ -11,7 +11,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"strings"
 	"sync"
 	"time"
 
@@ -385,43 +384,6 @@ func (t *ReplayProcessTransport) requiredConnectionsConsumed() bool {
 	return true
 }
 
-func processCassetteConnectionKey(agentSessionID, provider string, launchOrdinal uint64) string {
-	return fmt.Sprintf(
-		"%s\x00%s\x00%d",
-		normalizeProcessCassetteIdentity(agentSessionID),
-		normalizeProcessCassetteIdentity(provider),
-		launchOrdinal,
-	)
-}
-
-func isOptionalReplayProbeConnection(
-	descriptor sessionreplay.ProviderReplayDescriptor,
-	record ProcessCassetteConnectionRecord,
-	chunks []processCassetteChunk,
-) bool {
-	if record.LaunchOrdinal <= 1 {
-		return false
-	}
-	hasProbe := false
-	for _, chunk := range chunks {
-		if chunk.Kind != "outbound" {
-			continue
-		}
-		method, _, ok := processCassetteJSONRPCRequest(chunk)
-		if !ok {
-			return false
-		}
-		switch {
-		case method == "initialize", method == "initialized":
-		case descriptor.IsOptionalProbeMethod(method):
-			hasProbe = true
-		default:
-			return false
-		}
-	}
-	return hasProbe
-}
-
 func (t *ReplayProcessTransport) Finalize() error {
 	return t.VerifyComplete()
 }
@@ -456,6 +418,13 @@ func (c *replayProcessConnection) ProcessCassetteCaptureOrigin() ProcessCassette
 		return ""
 	}
 	return c.captureOrigin
+}
+
+func (c *replayProcessConnection) WaitForProviderProgress(
+	ctx context.Context,
+	duration time.Duration,
+) error {
+	return c.inputBarrier.waitForProgressDuration(ctx, c.connectionID, duration, c.closed)
 }
 
 func (c *replayProcessConnection) Send(data []byte) error {
@@ -714,53 +683,6 @@ func (c *replayProcessConnection) isClosed() bool {
 	return c.isClosedLocked()
 }
 
-func mapProcessCassetteFrameJSON(
-	data []byte,
-	recordedCWD string,
-	replayCWD string,
-	replayHome string,
-	descriptor sessionreplay.ProviderReplayDescriptor,
-	identityValues map[string]string,
-) []byte {
-	if len(data) == 0 {
-		return data
-	}
-	values, ok := decodeProcessCassetteJSONValues(data)
-	if !ok {
-		return data
-	}
-	var output bytes.Buffer
-	encoder := json.NewEncoder(&output)
-	for _, value := range values {
-		value = mapProcessCassettePathFields(value, recordedCWD, replayCWD)
-		value = mapProcessCassettePathFields(
-			value,
-			portableProcessCassetteHomeToken,
-			replayHome,
-		)
-		value = mapProcessCassetteGeneratedIdentityValues(
-			value,
-			descriptor,
-			identityValues,
-		)
-		if err := encoder.Encode(value); err != nil {
-			return data
-		}
-	}
-	return output.Bytes()
-}
-
-func processCassetteReplayHome(
-	spec ProcessSpec,
-	descriptor sessionreplay.ProviderReplayDescriptor,
-) string {
-	if roots := processCassettePersonalRoots(spec, descriptor); len(roots) > 0 {
-		return roots[0]
-	}
-	home, _ := os.UserHomeDir()
-	return strings.TrimSpace(home)
-}
-
 func (c *replayProcessConnection) Close() error {
 	c.closeOnce.Do(func() {
 		c.mu.Lock()
@@ -820,27 +742,4 @@ func (c *replayProcessConnection) verifyComplete() error {
 		)
 	}
 	return nil
-}
-
-func processCassetteOutboundMismatch(
-	chunk processCassetteChunk,
-	expected []byte,
-	actual []byte,
-) error {
-	return fmt.Errorf(
-		"process cassette outbound mismatch at connection %s chunk %d: expected %s, actual %s",
-		chunk.ConnectionID,
-		chunk.ChunkSeq,
-		summarizeProcessCassetteBytes(expected),
-		summarizeProcessCassetteBytes(actual),
-	)
-}
-
-func summarizeProcessCassetteBytes(data []byte) string {
-	const limit = 512
-	value := strings.TrimSpace(string(data))
-	if len(value) > limit {
-		value = value[:limit] + "…"
-	}
-	return fmt.Sprintf("%q", value)
 }

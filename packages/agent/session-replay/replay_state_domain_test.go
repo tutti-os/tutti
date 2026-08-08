@@ -2,6 +2,7 @@ package sessionreplay
 
 import (
 	"errors"
+	"fmt"
 	"path/filepath"
 	"reflect"
 	"testing"
@@ -578,6 +579,157 @@ func TestCompareTuttiReplayStateTreatsGoalControlOperationIDsAsAlphaEquivalent(
 			"goal-control operation identities must be alpha-equivalent, got %v",
 			err,
 		)
+	}
+}
+
+func TestCompareTuttiReplayStateTreatsPayloadMessageIDsAsAlphaEquivalent(
+	t *testing.T,
+) {
+	buildState := func(clientSubmitID string) TuttiReplayState {
+		return TuttiReplayState{
+			SchemaVersion: SchemaVersion,
+			Agent: TuttiReplayAgent{
+				RootSessionID: "session-1",
+				Sessions: []agenthost.HistoricalSession{{
+					ID:                "session-1",
+					Kind:              "root",
+					AgentTargetID:     "codex",
+					Provider:          "codex",
+					ProviderSessionID: "provider-session-1",
+					Messages: []agenthost.HistoricalMessage{{
+						ID:     "audit-1",
+						Role:   "user",
+						Kind:   "session_audit",
+						Status: "completed",
+						Payload: map[string]any{
+							"action":         "set",
+							"clientSubmitId": clientSubmitID,
+							"messageId":      "client-submit:user:" + clientSubmitID,
+						},
+					}},
+				}},
+			},
+			TuttiMode: TuttiReplayTuttiMode{
+				Activations:   []TuttiReplayActivation{},
+				TurnSnapshots: []TuttiReplayTurnSnapshot{},
+			},
+			Workflows: []TuttiReplayWorkflow{},
+			Issues:    []TuttiReplayIssue{},
+		}
+	}
+	if err := CompareTuttiReplayState(
+		buildState("recorded-submit"),
+		buildState("replayed-submit"),
+	); err != nil {
+		t.Fatalf(
+			"payload messageId and its clientSubmitId must be alpha-equivalent, got %v",
+			err,
+		)
+	}
+}
+
+func TestCompareTuttiReplayStateTreatsOrdinaryClientSubmitIDsAsAlphaEquivalent(
+	t *testing.T,
+) {
+	if err := CompareTuttiReplayState(
+		replayStateWithOrdinaryClientSubmitIDs("recorded-submit"),
+		replayStateWithOrdinaryClientSubmitIDs("replayed-submit"),
+	); err != nil {
+		t.Fatalf("ordinary clientSubmitId must be alpha-equivalent, got %v", err)
+	}
+}
+
+func TestCompareTuttiReplayStatePreservesClientSubmitIDRelationships(
+	t *testing.T,
+) {
+	err := CompareTuttiReplayState(
+		replayStateWithOrdinaryClientSubmitIDs("recorded-shared", "recorded-shared"),
+		replayStateWithOrdinaryClientSubmitIDs("replayed-first", "replayed-second"),
+	)
+	if !errors.Is(err, ErrTuttiReplayStateConflict) {
+		t.Fatalf("cross-message clientSubmitId relationship must remain semantic, got %v", err)
+	}
+}
+
+func replayStateWithOrdinaryClientSubmitIDs(clientSubmitIDs ...string) TuttiReplayState {
+	messages := make([]agenthost.HistoricalMessage, len(clientSubmitIDs))
+	for index, clientSubmitID := range clientSubmitIDs {
+		messages[index] = agenthost.HistoricalMessage{
+			ID:     fmt.Sprintf("audit-%d", index+1),
+			Role:   "user",
+			Kind:   "session_audit",
+			Status: "completed",
+			Payload: map[string]any{
+				"action":         "set",
+				"clientSubmitId": clientSubmitID,
+			},
+		}
+	}
+	return TuttiReplayState{
+		SchemaVersion: SchemaVersion,
+		Agent: TuttiReplayAgent{
+			RootSessionID: "session-1",
+			Sessions: []agenthost.HistoricalSession{{
+				ID:                "session-1",
+				Kind:              "root",
+				AgentTargetID:     "codex",
+				Provider:          "codex",
+				ProviderSessionID: "provider-session-1",
+				Messages:          messages,
+			}},
+		},
+		TuttiMode: TuttiReplayTuttiMode{
+			Activations:   []TuttiReplayActivation{},
+			TurnSnapshots: []TuttiReplayTurnSnapshot{},
+		},
+		Workflows: []TuttiReplayWorkflow{},
+		Issues:    []TuttiReplayIssue{},
+	}
+}
+
+func TestCompareTuttiReplayStatePreservesCrossMessageIDRelationships(
+	t *testing.T,
+) {
+	buildState := func(firstID, secondID, referencedID string) TuttiReplayState {
+		return TuttiReplayState{
+			SchemaVersion: SchemaVersion,
+			Agent: TuttiReplayAgent{
+				RootSessionID: "session-1",
+				Sessions: []agenthost.HistoricalSession{{
+					ID:                "session-1",
+					Kind:              "root",
+					AgentTargetID:     "codex",
+					Provider:          "codex",
+					ProviderSessionID: "provider-session-1",
+					Messages: []agenthost.HistoricalMessage{{
+						ID:      firstID,
+						Role:    "user",
+						Kind:    "session_audit",
+						Status:  "completed",
+						Payload: map[string]any{"messageId": referencedID},
+					}, {
+						ID:      secondID,
+						Role:    "assistant",
+						Kind:    "text",
+						Status:  "completed",
+						Payload: map[string]any{},
+					}},
+				}},
+			},
+			TuttiMode: TuttiReplayTuttiMode{
+				Activations:   []TuttiReplayActivation{},
+				TurnSnapshots: []TuttiReplayTurnSnapshot{},
+			},
+			Workflows: []TuttiReplayWorkflow{},
+			Issues:    []TuttiReplayIssue{},
+		}
+	}
+	err := CompareTuttiReplayState(
+		buildState("recorded-first", "recorded-second", "recorded-second"),
+		buildState("replayed-first", "replayed-second", "replayed-first"),
+	)
+	if !errors.Is(err, ErrTuttiReplayStateConflict) {
+		t.Fatalf("cross-message messageId relationship must remain semantic, got %v", err)
 	}
 }
 

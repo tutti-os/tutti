@@ -45,13 +45,33 @@ func (t *scriptedAppServerTransport) Start(_ context.Context, spec ProcessSpec) 
 }
 
 type scriptedAppServerConnection struct {
-	mu         sync.Mutex
-	sent       [][]byte
-	recv       chan ProcessFrame
-	closed     chan struct{}
-	closeOnce  sync.Once
-	closeCount int
-	server     *fakeCodexAppServer
+	mu                   sync.Mutex
+	sent                 [][]byte
+	recv                 chan ProcessFrame
+	closed               chan struct{}
+	closeOnce            sync.Once
+	closeCount           int
+	server               *fakeCodexAppServer
+	providerProgressWait func(context.Context, time.Duration) error
+}
+
+func (c *scriptedAppServerConnection) WaitForProviderProgress(
+	ctx context.Context,
+	duration time.Duration,
+) error {
+	if c.providerProgressWait != nil {
+		return c.providerProgressWait(ctx, duration)
+	}
+	timer := time.NewTimer(duration)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-c.closed:
+		return context.Canceled
+	case <-timer.C:
+		return nil
+	}
 }
 
 func (c *scriptedAppServerConnection) Send(data []byte) error {
