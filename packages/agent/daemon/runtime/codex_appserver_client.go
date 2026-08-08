@@ -32,6 +32,10 @@ type codexAppServerCaller struct {
 	rawResult json.RawMessage
 }
 
+type providerProgressWaiter interface {
+	WaitForProviderProgress(context.Context, time.Duration) error
+}
+
 func newCodexAppServerClient(conn ProcessConnection) *codexAppServerClient {
 	return &codexAppServerClient{raw: newAppServerJSONRPCClient(conn)}
 }
@@ -73,6 +77,28 @@ func (c *codexAppServerClient) Done() <-chan struct{} {
 		return done
 	}
 	return c.raw.Done()
+}
+
+func (c *codexAppServerClient) waitForProviderProgress(
+	ctx context.Context,
+	duration time.Duration,
+) error {
+	if c == nil || c.raw == nil || c.raw.conn == nil {
+		return ErrSessionDisconnected
+	}
+	if waiter, ok := c.raw.conn.(providerProgressWaiter); ok {
+		return waiter.WaitForProviderProgress(ctx, duration)
+	}
+	timer := time.NewTimer(duration)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-c.Done():
+		return ErrSessionDisconnected
+	case <-timer.C:
+		return nil
+	}
 }
 
 func (c *codexAppServerClient) Err() error {

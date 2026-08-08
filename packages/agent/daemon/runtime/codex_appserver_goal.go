@@ -688,12 +688,8 @@ func (a *CodexAppServerAdapter) scheduleGoalContinuationNudge(session Session) {
 		grace = defaultCodexAppServerGoalContinuationGraceWindow
 	}
 	go func() {
-		timer := time.NewTimer(grace)
-		defer timer.Stop()
-		select {
-		case <-client.Done():
+		if err := client.waitForProviderProgress(context.Background(), grace); err != nil {
 			return
-		case <-timer.C:
 		}
 		appSession.goalMutationMu.Lock()
 		defer appSession.goalMutationMu.Unlock()
