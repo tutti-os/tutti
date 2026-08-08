@@ -2,6 +2,7 @@ import { useCallback } from "react";
 import type { PointerEvent as ReactPointerEvent } from "react";
 import type { WorkbenchNode } from "../../core/types.ts";
 import { useWorkbenchController } from "../WorkbenchProvider.tsx";
+import { createPointerFrameScheduler } from "./pointerFrameScheduler.ts";
 import { useWorkbenchSnap } from "./useWorkbenchSnap.ts";
 
 export function useWorkbenchDrag<TData>(
@@ -33,7 +34,7 @@ export function useWorkbenchDrag<TData>(
         return lockedLayout !== null && lockedLayout.nodeIDs.includes(node.id);
       };
 
-      const onPointerMove = (moveEvent: PointerEvent) => {
+      const pointerFrames = createPointerFrameScheduler((moveEvent) => {
         const nextFrame = {
           ...initialFrame,
           x: initialFrame.x + moveEvent.clientX - origin.x,
@@ -46,9 +47,14 @@ export function useWorkbenchDrag<TData>(
           );
         }
         controller.commands.dragNode(node.id, nextFrame);
+      });
+
+      const onPointerMove = (moveEvent: PointerEvent) => {
+        pointerFrames.schedule(moveEvent);
       };
 
       const clearListeners = () => {
+        pointerFrames.cancel();
         controller.commands.setActiveDragNode(null);
         controller.commands.setActiveSnapTarget(null);
         window.removeEventListener("pointermove", onPointerMove);
@@ -57,6 +63,7 @@ export function useWorkbenchDrag<TData>(
       };
 
       const finishDrag = (upEvent: PointerEvent) => {
+        pointerFrames.flush();
         if (isLockedLayoutDrag()) {
           controller.commands.settleLockedDrag(node.id);
         } else if (
@@ -71,6 +78,7 @@ export function useWorkbenchDrag<TData>(
       };
 
       const cancelDrag = () => {
+        pointerFrames.flush();
         if (isLockedLayoutDrag()) {
           // Snap the node back into its slot instead of leaving it mid-air.
           controller.commands.settleLockedDrag(node.id);

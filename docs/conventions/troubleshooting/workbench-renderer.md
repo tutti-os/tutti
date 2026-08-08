@@ -954,6 +954,43 @@
   [hostNodeContext.ts](../../../packages/workbench/surface/src/host/hostNodeContext.ts)
   [dockWallpaperSampling.ts](../../../packages/workbench/surface/src/host/dockWallpaperSampling.ts)
 
+### Translated Workbench window still commits on every pointer sample
+
+- Symptom:
+  Dragging or resizing a Workbench window stutters even though the shell uses
+  CSS `translate`, and a trace shows nearly one React commit per raw
+  `pointermove`.
+- Quick checks:
+  Confirm the shell already uses `left: 0`, `top: 0`, and `translate`. Then
+  compare pointer-event, Workbench store notification, `WorkbenchNodeLayerItem`,
+  and React commit counts over the same drag interval. Check whether system
+  traffic-light controls rerender for position-only node changes.
+- Root cause:
+  Compositor-friendly positioning removes `left`/`top` layout work, but it does
+  not reduce JavaScript input frequency. Dispatching every raw pointer sample
+  immediately still creates a new Workbench frame, notifies subscribers, and
+  commits the shell. System window actions can also rebuild Tooltip-backed
+  button trees even when their real inputs did not change.
+- Fix:
+  Keep only the latest pointer sample until the next animation frame and flush
+  any pending sample before `pointerup` or `pointercancel`. Cancel the scheduled
+  callback during cleanup so no frame lands after the interaction ends. Memoize
+  system window actions by their actual command inputs, not the complete node
+  object. Preserve live store updates for snapping, locked layouts, and
+  responsive resize behavior.
+- Validation:
+  Unit-test latest-wins coalescing, final-frame flush, and the absence of a late
+  dispatch. Verify system traffic lights skip position-only renders but update
+  for capability or display-mode changes. Run
+  `pnpm perf:agent-gui -- --scenario workbench-window-drag` and confirm final
+  pointer following, drag cleanup, tile-memory warnings, and renderer-task
+  limits.
+- References:
+  [useWorkbenchDrag.ts](../../../packages/workbench/surface/src/react/hooks/useWorkbenchDrag.ts)
+  [useWorkbenchResize.ts](../../../packages/workbench/surface/src/react/hooks/useWorkbenchResize.ts)
+  [WorkbenchHostWindowActions.tsx](../../../packages/workbench/surface/src/host/WorkbenchHostWindowActions.tsx)
+  [WorkbenchWindowFullscreenToggle.tsx](../../../packages/workbench/surface/src/react/WorkbenchWindowFullscreenToggle.tsx)
+
 ### Adjacent sidebar animation repeatedly reflows its content and message flow
 
 - Symptom:

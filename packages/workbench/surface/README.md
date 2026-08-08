@@ -45,7 +45,12 @@ When a node body or header needs host-owned business state, pass an
 
 Node body and header contexts expose `isDragging` and `isResizing`. The Workbench
 shell continues applying live frame geometry during direct manipulation. Window
-position is shell-owned: changing only `frame.x` or `frame.y` does not render a
+pointer samples are latest-wins coalesced to one frame update per animation
+frame; a pending sample is flushed before the interaction ends. This keeps the
+live store contract while bounding shell and responsive-body updates to the
+display cadence.
+
+Window position is shell-owned: changing only `frame.x` or `frame.y` does not render a
 body during drag or resize. Width and height changes remain live, as do changes
 to node data, external state, focus, visibility, or interaction state. The body
 always renders after the interaction settles so the final committed frame

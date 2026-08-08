@@ -1,3 +1,4 @@
+import { memo } from "react";
 import type { WorkbenchWindowActionContext } from "../react/types.ts";
 import { WorkbenchWindowTrafficLights } from "../react/WorkbenchWindowTrafficLights.tsx";
 import type {
@@ -7,17 +8,19 @@ import type {
 } from "./types.ts";
 import type { WorkbenchHostI18nRuntime } from "./workbenchHostI18n.ts";
 
-export function WorkbenchHostWindowActions({
-  context,
-  host,
-  i18n,
-  nodeDefinitions
-}: {
+interface WorkbenchHostWindowActionsProps {
   context: WorkbenchWindowActionContext<WorkbenchHostNodeData>;
   host: WorkbenchHostHandle;
   i18n: WorkbenchHostI18nRuntime;
   nodeDefinitions: Map<string, WorkbenchHostNodeDefinition>;
-}) {
+}
+
+function WorkbenchHostWindowActionsComponent({
+  context,
+  host,
+  i18n,
+  nodeDefinitions
+}: WorkbenchHostWindowActionsProps) {
   const definition = nodeDefinitions.get(context.node.data.typeId);
   if (!definition) {
     return null;
@@ -53,3 +56,23 @@ export function WorkbenchHostWindowActions({
     />
   );
 }
+
+function areWorkbenchHostWindowActionsPropsEqual(
+  previous: WorkbenchHostWindowActionsProps,
+  next: WorkbenchHostWindowActionsProps
+): boolean {
+  return (
+    previous.host === next.host &&
+    previous.i18n === next.i18n &&
+    previous.nodeDefinitions === next.nodeDefinitions &&
+    previous.context.controller === next.context.controller &&
+    previous.context.genie === next.context.genie &&
+    previous.context.node.id === next.context.node.id &&
+    previous.context.node.data.typeId === next.context.node.data.typeId
+  );
+}
+
+export const WorkbenchHostWindowActions = memo(
+  WorkbenchHostWindowActionsComponent,
+  areWorkbenchHostWindowActionsPropsEqual
+);

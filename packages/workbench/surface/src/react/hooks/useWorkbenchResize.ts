@@ -2,6 +2,7 @@ import { useCallback } from "react";
 import type { PointerEvent as ReactPointerEvent } from "react";
 import type { WorkbenchNode, WorkbenchResizeHandle } from "../../core/types.ts";
 import { useWorkbenchController } from "../WorkbenchProvider.tsx";
+import { createPointerFrameScheduler } from "./pointerFrameScheduler.ts";
 
 export function useWorkbenchResize<TData>(
   node: WorkbenchNode<TData>,
@@ -24,25 +25,35 @@ export function useWorkbenchResize<TData>(
       const origin = { x: event.clientX, y: event.clientY };
       const initialFrame = node.frame;
 
-      const onPointerMove = (moveEvent: PointerEvent) => {
+      const pointerFrames = createPointerFrameScheduler((moveEvent) => {
         const deltaX = moveEvent.clientX - origin.x;
         const deltaY = moveEvent.clientY - origin.y;
         controller.commands.resizeNode(
           node.id,
           resizeFrame(initialFrame, handle, deltaX, deltaY)
         );
+      });
+
+      const onPointerMove = (moveEvent: PointerEvent) => {
+        pointerFrames.schedule(moveEvent);
       };
 
       const cleanup = () => {
+        pointerFrames.cancel();
         controller.commands.setActiveResizeNode(null);
         window.removeEventListener("pointermove", onPointerMove);
-        window.removeEventListener("pointerup", cleanup);
-        window.removeEventListener("pointercancel", cleanup);
+        window.removeEventListener("pointerup", finishResize);
+        window.removeEventListener("pointercancel", finishResize);
+      };
+
+      const finishResize = () => {
+        pointerFrames.flush();
+        cleanup();
       };
 
       window.addEventListener("pointermove", onPointerMove);
-      window.addEventListener("pointerup", cleanup);
-      window.addEventListener("pointercancel", cleanup);
+      window.addEventListener("pointerup", finishResize);
+      window.addEventListener("pointercancel", finishResize);
     },
     [controller, handle, node.frame, node.id]
   );
