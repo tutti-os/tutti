@@ -94,24 +94,24 @@ test("desktop status combines an exact canonical session with one host probe rea
 });
 
 test("desktop status treats an unsupported extension usage probe as unavailable", async () => {
-  const kimiAgent = {
-    agentTargetId: "extension:kimi-code",
-    name: "Kimi Code",
-    iconUrl: "kimi-code.svg",
+  const extensionAgent = {
+    agentTargetId: "extension:example",
+    name: "Example",
+    iconUrl: "example.svg",
     availability: { status: "ready" },
-    provider: "acp:kimi-code"
+    provider: "acp:example"
   } as const;
   const observed = createObserver();
   const source = createDesktopAgentStatusSource({
     agentActivityRuntime: runtimeWithSessions([]),
-    agents: [kimiAgent] as never,
+    agents: [extensionAgent] as never,
     workspaceAgentProbes: {
       list: async () => ({
         workspaceId: "workspace-1",
         capturedAtUnixMs: 500,
         providers: [
           {
-            provider: "acp:kimi-code",
+            provider: "acp:example",
             availability: { status: "unknown", detailsVisible: false },
             lastError: { code: "unsupported" }
           }
@@ -123,7 +123,7 @@ test("desktop status treats an unsupported extension usage probe as unavailable"
 
   source.open(
     {
-      scopeKey: "extension:kimi-code",
+      scopeKey: "extension:example",
       reason: "agent-info"
     },
     observed.observer
@@ -144,6 +144,50 @@ test("desktop status treats an unsupported extension usage probe as unavailable"
       }
     }
   ]);
+  assert.deepEqual(observed.errors, []);
+});
+
+test("desktop status labels Kimi API-key billing without quota rows", async () => {
+  const kimiAgent = {
+    agentTargetId: "extension:kimi-code",
+    name: "Kimi Code",
+    iconUrl: "kimi-code.svg",
+    availability: { status: "ready" },
+    provider: "acp:kimi-code"
+  } as const;
+  const observed = createObserver();
+  const source = createDesktopAgentStatusSource({
+    agentActivityRuntime: runtimeWithSessions([]),
+    agents: [kimiAgent] as never,
+    workspaceAgentProbes: {
+      list: async () => ({
+        workspaceId: "workspace-1",
+        capturedAtUnixMs: 500,
+        providers: [
+          {
+            provider: "acp:kimi-code",
+            availability: { status: "available", detailsVisible: false },
+            usage: {
+              billingMode: "api",
+              capturedAtUnixMs: 450,
+              quotas: []
+            }
+          }
+        ]
+      })
+    } as never,
+    workspaceId: "workspace-1"
+  });
+
+  source.open(
+    { scopeKey: "extension:kimi-code", reason: "agent-info" },
+    observed.observer
+  );
+  await observed.completed;
+
+  assert.equal(observed.frames[0]?.value.accountLabel, "API Usage Billing");
+  assert.equal(observed.frames[0]?.value.limitsState, "available");
+  assert.deepEqual(observed.frames[0]?.value.quotas, []);
   assert.deepEqual(observed.errors, []);
 });
 

@@ -42,6 +42,8 @@ export interface AgentCostUsage {
 export interface AgentUsageSnapshot {
   quotas?: AgentUsageQuota[];
   accountTier?: string;
+  /** Provider-neutral billing mode used when an account has no quota rows. */
+  billingMode?: "subscription" | "api";
   costUsage?: AgentCostUsage;
   capturedAtUnixMs: number;
 }

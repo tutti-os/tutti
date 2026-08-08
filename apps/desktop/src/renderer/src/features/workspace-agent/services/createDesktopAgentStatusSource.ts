@@ -5,6 +5,7 @@ import type {
   AgentStatusSource,
   AgentStatusValue
 } from "@tutti-os/agent-gui";
+import { translate } from "../../../i18n/appRuntime.ts";
 
 interface DesktopAgentStatusSourceInput {
   agentActivityRuntime: AgentGUIProps["agentActivityRuntime"];
@@ -331,7 +332,11 @@ function statusValueFromDesktopProbe(
   snapshotCapturedAtUnixMs: number
 ): AgentStatusValue {
   const usage = probe?.usage;
-  const accountLabel = usage?.accountTier?.trim();
+  const accountLabel =
+    usage?.accountTier?.trim() ||
+    (usage?.billingMode === "api"
+      ? translate("workspace.agentEnv.apiUsageBilling")
+      : "");
   const limitsErrorCode =
     probe?.lastError?.code === "unsupported"
       ? ""
