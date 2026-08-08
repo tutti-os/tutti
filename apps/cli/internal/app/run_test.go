@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -691,6 +692,69 @@ func TestRunDynamicCommandAggregatesRepeatedFlags(t *testing.T) {
 	params, ok := input["param"].([]any)
 	if !ok || len(params) != 2 || params[0] != "path=/tmp/a" || params[1] != "mode=preview" {
 		t.Fatalf("param input = %#v", input["param"])
+	}
+}
+
+func TestRunDynamicCommandSendsSchemaDeclaredScalarTypes(t *testing.T) {
+	const capabilities = `{"commands":[{"id":"agent-context.agent.messages","path":["agent","messages"],"summary":"Read messages","inputSchema":{"type":"object","required":["session-id"],"properties":{"session-id":{"type":"string"},"limit":{"type":"integer"},"waterline-percent":{"type":"number"},"follow":{"type":"boolean"}}},"output":{"defaultMode":"json","json":true}}]}`
+	tests := []struct {
+		name      string
+		args      []string
+		wantInput map[string]any
+	}{
+		{
+			name:      "scalar flags reach the daemon as declared JSON types",
+			args:      []string{"agent", "messages", "--session-id", "S-1", "--limit", "25", "--waterline-percent", "12.5", "--follow", "yes"},
+			wantInput: map[string]any{"session-id": "S-1", "limit": float64(25), "waterline-percent": 12.5, "follow": true},
+		},
+		{
+			name:      "a bare boolean flag stays boolean",
+			args:      []string{"agent", "messages", "--session-id", "S-1", "--follow"},
+			wantInput: map[string]any{"session-id": "S-1", "follow": true},
+		},
+		{
+			// Terminal text the declared type cannot hold is forwarded as-is:
+			// the daemon owns input rejection wording, not the CLI.
+			name:      "unparseable values are forwarded unchanged",
+			args:      []string{"agent", "messages", "--session-id", "S-1", "--limit", "many"},
+			wantInput: map[string]any{"session-id": "S-1", "limit": "many"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var invokedBody map[string]any
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				switch r.URL.Path {
+				case "/v1/cli/capabilities":
+					_, _ = w.Write([]byte(capabilities))
+				case "/v1/cli/commands/agent-context.agent.messages/invoke":
+					if err := json.NewDecoder(r.Body).Decode(&invokedBody); err != nil {
+						t.Fatalf("decode body: %v", err)
+					}
+					_, _ = w.Write([]byte(`{"ok":true,"output":{"kind":"json","value":{"ok":true}}}`))
+				default:
+					http.NotFound(w, r)
+				}
+			}))
+			defer server.Close()
+
+			writeEndpoint(t, server.URL, "token-1")
+
+			var stdout bytes.Buffer
+			var stderr bytes.Buffer
+			if code := runDefaultProgram(t, tt.args, &stdout, &stderr); code != 0 {
+				t.Fatalf("code = %d, stderr = %s", code, stderr.String())
+			}
+			input, ok := invokedBody["input"].(map[string]any)
+			if !ok {
+				t.Fatalf("input = %#v", invokedBody["input"])
+			}
+			if !reflect.DeepEqual(input, tt.wantInput) {
+				t.Fatalf("input = %#v, want %#v", input, tt.wantInput)
+			}
+		})
 	}
 }
 

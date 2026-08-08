@@ -12,7 +12,8 @@ import (
 const tuttiModePlanCapabilitiesFixture = `{"commands":[
   {"id":"tutti-mode-plan.plan.propose","path":["plan","propose"],"summary":"Propose a Tutti Mode plan","inputSchema":{"type":"object","required":["file","request-id"],"properties":{"file":{"type":"string","description":"Markdown proposal file."},"request-id":{"type":"string"}}},"output":{"defaultMode":"json","json":true},"source":{"kind":"builtin"}},
   {"id":"tutti-mode-plan.plan.revise","path":["plan","revise"],"summary":"Revise a Tutti Mode plan","inputSchema":{"type":"object","required":["workflow-id","file","request-id"],"properties":{"workflow-id":{"type":"string"},"file":{"type":"string"},"request-id":{"type":"string"}}},"output":{"defaultMode":"json","json":true},"source":{"kind":"builtin"}},
-  {"id":"tutti-mode-plan.plan.get","path":["plan","get"],"summary":"Get a Tutti Mode plan","inputSchema":{"type":"object","required":["workflow-id"],"properties":{"workflow-id":{"type":"string"}}},"output":{"defaultMode":"json","json":true},"source":{"kind":"builtin"}}
+  {"id":"tutti-mode-plan.plan.get","path":["plan","get"],"summary":"Get a Tutti Mode plan","inputSchema":{"type":"object","required":["workflow-id"],"properties":{"workflow-id":{"type":"string"}}},"output":{"defaultMode":"json","json":true},"source":{"kind":"builtin"}},
+  {"id":"tutti-mode-plan.plan.issue.schedule","path":["plan","issue","schedule"],"summary":"Schedule exact Tutti Mode Issue tasks","inputSchema":{"type":"object","required":["issue-id","checkpoint-id","expected-graph-revision","task-ids-json","request-id"],"properties":{"issue-id":{"type":"string"},"checkpoint-id":{"type":"string"},"expected-graph-revision":{"type":"integer"},"task-ids-json":{"type":"string"},"request-id":{"type":"string"}}},"output":{"defaultMode":"json","json":true},"source":{"kind":"builtin"}}
 ]}`
 
 func TestRunTuttiModePlanCommandsUseDynamicDaemonCapabilityProtocol(t *testing.T) {
@@ -39,6 +40,69 @@ func TestRunTuttiModePlanCommandsUseDynamicDaemonCapabilityProtocol(t *testing.T
 			commandID: "tutti-mode-plan.plan.get",
 			args:      []string{"plan", "get", "--workflow-id", "WF-1"},
 			wantInput: map[string]any{"workflow-id": "WF-1"},
+		},
+		{
+			// The checkpoint-fenced commands carry an integer revision fence.
+			// The daemon validates invocation input against the advertised
+			// schema before binding it, so the fence has to reach the wire as
+			// a JSON number instead of a quoted terminal argument.
+			name:      "issue schedule",
+			commandID: "tutti-mode-plan.plan.issue.schedule",
+			args: []string{
+				"plan", "issue", "schedule",
+				"--issue-id", "ISSUE-1",
+				"--checkpoint-id", "CP-1",
+				"--expected-graph-revision", "1",
+				"--task-ids-json", `["task-1"]`,
+				"--request-id", "schedule-request-1",
+			},
+			wantInput: map[string]any{
+				"issue-id":                "ISSUE-1",
+				"checkpoint-id":           "CP-1",
+				"expected-graph-revision": 1,
+				"task-ids-json":           `["task-1"]`,
+				"request-id":              "schedule-request-1",
+			},
+		},
+		{
+			name:      "issue schedule with inline flag values",
+			commandID: "tutti-mode-plan.plan.issue.schedule",
+			args: []string{
+				"plan", "issue", "schedule",
+				"--issue-id=ISSUE-1",
+				"--checkpoint-id=CP-1",
+				"--expected-graph-revision=12",
+				`--task-ids-json=["task-1"]`,
+				"--request-id=schedule-request-2",
+			},
+			wantInput: map[string]any{
+				"issue-id":                "ISSUE-1",
+				"checkpoint-id":           "CP-1",
+				"expected-graph-revision": 12,
+				"task-ids-json":           `["task-1"]`,
+				"request-id":              "schedule-request-2",
+			},
+		},
+		{
+			// A value the declared type cannot hold stays untouched so the
+			// daemon owns the rejection wording instead of the CLI.
+			name:      "issue schedule with non-integer revision",
+			commandID: "tutti-mode-plan.plan.issue.schedule",
+			args: []string{
+				"plan", "issue", "schedule",
+				"--issue-id", "ISSUE-1",
+				"--checkpoint-id", "CP-1",
+				"--expected-graph-revision", "1.5",
+				"--task-ids-json", `["task-1"]`,
+				"--request-id", "schedule-request-3",
+			},
+			wantInput: map[string]any{
+				"issue-id":                "ISSUE-1",
+				"checkpoint-id":           "CP-1",
+				"expected-graph-revision": "1.5",
+				"task-ids-json":           `["task-1"]`,
+				"request-id":              "schedule-request-3",
+			},
 		},
 	}
 

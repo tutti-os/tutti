@@ -3,17 +3,91 @@ package app
 import (
 	"encoding/json"
 	"fmt"
+	"math"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/tutti-os/tutti/apps/cli/internal/daemon"
 )
 
 func parseCommandInput(command daemon.Capability, args []string) (map[string]any, error) {
+	input, err := parseCommandArguments(command, args)
+	if err != nil {
+		return nil, err
+	}
+	return typedCommandInput(command.InputSchema, input), nil
+}
+
+func parseCommandArguments(command daemon.Capability, args []string) (map[string]any, error) {
 	if input, ok, err := parsePositionalCommandInput(command, args); ok || err != nil {
 		return input, err
 	}
 	return parseFlagCommandInput(command, args)
+}
+
+// typedCommandInput restores the JSON types the advertised input schema
+// declares. Terminal arguments always arrive as text, and the daemon validates
+// invocation input against that schema before a command binds it, so a numeric
+// or boolean flag has to leave the CLI as a JSON number or boolean rather than
+// a quoted string.
+//
+// Values that do not parse are forwarded untouched: rejecting them here would
+// duplicate daemon-owned validation, and the daemon already reports the
+// authoritative error for the declared type.
+func typedCommandInput(schema map[string]any, input map[string]any) map[string]any {
+	if len(input) == 0 {
+		return input
+	}
+	properties, ok := schema["properties"].(map[string]any)
+	if !ok {
+		return input
+	}
+	for name, value := range input {
+		text, isText := value.(string)
+		if !isText {
+			continue
+		}
+		property, declared := properties[name]
+		if !declared {
+			continue
+		}
+		if typed, ok := schemaTypedValue(schemaPropertyType(property), text); ok {
+			input[name] = typed
+		}
+	}
+	return input
+}
+
+func schemaTypedValue(propertyType string, value string) (any, bool) {
+	value = strings.TrimSpace(value)
+	switch propertyType {
+	case "integer":
+		parsed, err := strconv.ParseInt(value, 10, 64)
+		if err != nil {
+			return nil, false
+		}
+		return parsed, true
+	case "number":
+		parsed, err := strconv.ParseFloat(value, 64)
+		if err != nil || math.IsNaN(parsed) || math.IsInf(parsed, 0) {
+			return nil, false
+		}
+		return parsed, true
+	case "boolean":
+		// Mirrors the daemon input binder, which has always accepted these
+		// spellings for boolean flags.
+		switch strings.ToLower(value) {
+		case "1", "true", "yes", "on":
+			return true, true
+		case "0", "false", "no", "off":
+			return false, true
+		default:
+			return nil, false
+		}
+	default:
+		return nil, false
+	}
 }
 
 func parseFlagCommandInput(command daemon.Capability, args []string) (map[string]any, error) {
