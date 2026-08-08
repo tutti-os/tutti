@@ -87,6 +87,7 @@ var workspaceAppInheritedEnvKeys = map[string]struct{}{
 	"TMP":                     {},
 	"TMPDIR":                  {},
 	"TUTTI_AGENT_HOME":        {},
+	"TUTTI_MUTAGEN_BIN":       {},
 	"TZ":                      {},
 	"USER":                    {},
 	"USERNAME":                {},

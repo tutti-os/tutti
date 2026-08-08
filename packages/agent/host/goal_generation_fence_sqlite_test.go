@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"sync"
 	"testing"
+	"time"
 
 	agenthost "github.com/tutti-os/tutti/packages/agent/host"
 	storesqlite "github.com/tutti-os/tutti/packages/agent/store-sqlite"
@@ -21,12 +22,16 @@ type goalFenceRuntime struct {
 	onFence    func()
 }
 
+type goalFenceTestClock struct{ at time.Time }
+
+func (c goalFenceTestClock) Now() time.Time { return c.at }
+
 type offlineGoalFenceSessionRuntime struct {
 	agenthost.RuntimeController
-	mu          sync.Mutex
-	session     agenthost.ProviderRuntimeSession
-	live        bool
-	resumeCalls int
+	mu           sync.Mutex
+	session      agenthost.ProviderRuntimeSession
+	live         bool
+	resumeInputs []agenthost.RuntimeResumeInput
 }
 
 type pendingCancelGoalFenceRuntime struct {
@@ -34,12 +39,15 @@ type pendingCancelGoalFenceRuntime struct {
 	mu          sync.Mutex
 	session     agenthost.ProviderRuntimeSession
 	live        bool
+	missing     bool
 	resumeCalls int
 	cancelCalls int
 }
 
 func (r *pendingCancelGoalFenceRuntime) Session(workspaceID, agentSessionID string) (agenthost.ProviderRuntimeSession, bool) {
-	return r.session, workspaceID == r.session.WorkspaceID && agentSessionID == r.session.ID
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.session, !r.missing && workspaceID == r.session.WorkspaceID && agentSessionID == r.session.ID
 }
 
 func (r *pendingCancelGoalFenceRuntime) RuntimeSessionLive(workspaceID, agentSessionID string) bool {
@@ -72,6 +80,15 @@ func (r *pendingCancelGoalFenceRuntime) setLive(live bool) {
 	r.mu.Unlock()
 }
 
+func (r *pendingCancelGoalFenceRuntime) setMissing(missing bool) {
+	r.mu.Lock()
+	r.missing = missing
+	if missing {
+		r.live = false
+	}
+	r.mu.Unlock()
+}
+
 func (r *pendingCancelGoalFenceRuntime) counts() (int, int) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -92,7 +109,7 @@ func (r *offlineGoalFenceSessionRuntime) RuntimeSessionLive(workspaceID, agentSe
 func (r *offlineGoalFenceSessionRuntime) Resume(_ context.Context, input agenthost.RuntimeResumeInput) (agenthost.ProviderRuntimeSession, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	r.resumeCalls++
+	r.resumeInputs = append(r.resumeInputs, input)
 	r.live = true
 	r.session.ID = input.AgentSessionID
 	r.session.WorkspaceID = input.WorkspaceID
@@ -104,7 +121,16 @@ func (r *offlineGoalFenceSessionRuntime) Resume(_ context.Context, input agentho
 func (r *offlineGoalFenceSessionRuntime) resumeCount() int {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	return r.resumeCalls
+	return len(r.resumeInputs)
+}
+
+func (r *offlineGoalFenceSessionRuntime) lastResumeInput() agenthost.RuntimeResumeInput {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if len(r.resumeInputs) == 0 {
+		return agenthost.RuntimeResumeInput{}
+	}
+	return r.resumeInputs[len(r.resumeInputs)-1]
 }
 
 func (r *goalFenceRuntime) GoalControl(_ context.Context, input agenthost.RuntimeGoalControlInput) (agenthost.RuntimeGoalControlResult, error) {
@@ -383,14 +409,18 @@ func TestGoalFenceRecoveryDoesNotResumeOfflineSession(t *testing.T) {
 	if err != nil || !result.IntentAccepted || result.Settled {
 		t.Fatalf("fence result=%#v error=%v", result, err)
 	}
-	if err := host.RecoverGoalOperations(t.Context()); err != nil {
+	recoveryHost := agenthost.New(agenthost.Config{
+		CanonicalStore: sqliteCanonicalStore{Store: store}, Runtime: sessionRuntime,
+		GoalStore: store, GoalFences: store, GoalRuntime: goalRuntime,
+	})
+	if err := recoveryHost.RecoverGoalOperations(t.Context()); err != nil {
 		t.Fatal(err)
 	}
 	if sessionRuntime.resumeCount() != 0 {
 		t.Fatalf("background fence recovery resumed provider %d times", sessionRuntime.resumeCount())
 	}
 	controls, fences := goalRuntime.snapshot()
-	if len(controls) != 0 || len(fences) == 0 {
+	if len(controls) != 0 || len(fences) != 1 {
 		t.Fatalf("offline recovery controls=%#v fence registry calls=%#v", controls, fences)
 	}
 	for _, fence := range fences {
@@ -399,19 +429,40 @@ func TestGoalFenceRecoveryDoesNotResumeOfflineSession(t *testing.T) {
 		}
 	}
 	state, found, err := store.GetSessionGoalState(t.Context(), "workspace", "session")
-	if err != nil || !found || !state.Tombstoned || state.Revision != 2 {
+	if err != nil || !found || !state.Tombstoned || state.Revision != 2 ||
+		state.PendingOperationID != "" || state.SyncStatus != storesqlite.GoalSyncStatusUnknown {
 		t.Fatalf("local conditional clear state=%#v found=%v error=%v", state, found, err)
 	}
 	persistedTarget, found, err := store.GetGoalControlOperation(t.Context(), "workspace", target.OperationID)
 	if err != nil || !found || persistedTarget.Status != storesqlite.GoalOperationStatusSuperseded {
 		t.Fatalf("target=%#v found=%v error=%v", persistedTarget, found, err)
 	}
+	persistedFence, found, err := store.GetGoalGenerationFence(t.Context(), "workspace", result.Fence.FenceID)
+	if err != nil || !found || persistedFence.Status != storesqlite.GoalGenerationFenceStatusCompleted {
+		t.Fatalf("fence=%#v found=%v error=%v", persistedFence, found, err)
+	}
+	clearOperation, found, err := store.GetGoalControlOperation(t.Context(), "workspace", persistedFence.ClearOperationID)
+	if err != nil || !found || clearOperation.Status != storesqlite.GoalOperationStatusCompleted ||
+		clearOperation.ProviderPhase != storesqlite.GoalProviderPhaseUnknown {
+		t.Fatalf("clear operation=%#v found=%v error=%v", clearOperation, found, err)
+	}
+	secondRestart := agenthost.New(agenthost.Config{
+		CanonicalStore: sqliteCanonicalStore{Store: store}, Runtime: sessionRuntime,
+		GoalStore: store, GoalFences: store, GoalRuntime: goalRuntime,
+	})
+	if err := secondRestart.RecoverGoalOperations(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	_, fencesAfterSecondRecovery := goalRuntime.snapshot()
+	if len(fencesAfterSecondRecovery) != len(fences) || sessionRuntime.resumeCount() != 0 {
+		t.Fatalf("second startup retried offline fence: fences=%#v resumes=%d", fencesAfterSecondRecovery, sessionRuntime.resumeCount())
+	}
 
 	fencesBeforeEnsure := len(fences)
 	goalRuntime.mu.Lock()
 	goalRuntime.fenceError = nil
 	goalRuntime.mu.Unlock()
-	if _, err := host.EnsureRuntimeSession(t.Context(), agenthost.SessionRef{
+	if _, err := secondRestart.EnsureRuntimeSession(t.Context(), agenthost.SessionRef{
 		WorkspaceID: "workspace", AgentSessionID: "session",
 	}); err != nil {
 		t.Fatal(err)
@@ -419,11 +470,27 @@ func TestGoalFenceRecoveryDoesNotResumeOfflineSession(t *testing.T) {
 	if sessionRuntime.resumeCount() != 1 {
 		t.Fatalf("user-triggered Ensure resumed provider %d times", sessionRuntime.resumeCount())
 	}
+	resumeInput := sessionRuntime.lastResumeInput()
+	if len(resumeInput.GoalGenerationFences) != 1 ||
+		resumeInput.GoalGenerationFences[0].TargetOperationID != target.OperationID ||
+		resumeInput.GoalGenerationFences[0].RequireLive {
+		t.Fatalf("user resume did not preload durable fence: %#v", resumeInput.GoalGenerationFences)
+	}
 	_, fences = goalRuntime.snapshot()
 	if len(fences) != fencesBeforeEnsure+1 ||
 		fences[len(fences)-1].TargetOperationID != target.OperationID ||
 		fences[len(fences)-1].RequireLive {
 		t.Fatalf("Ensure returned before restoring exact fence: %#v", fences)
+	}
+	if _, err := secondRestart.GoalControl(t.Context(), agenthost.GoalControlInput{
+		WorkspaceID: "workspace", AgentSessionID: "session", Action: "set",
+		Objective: "new work", ClientSubmitID: "new-goal-after-restart",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	controls, _ = goalRuntime.snapshot()
+	if len(controls) != 1 || controls[0].Objective != "new work" {
+		t.Fatalf("new Goal did not execute after manual resume: %#v", controls)
 	}
 }
 
@@ -465,6 +532,7 @@ func TestGoalFenceWaitsForAuthoritativeTurnTerminalAfterCancelDeliveryFailure(t 
 	host := agenthost.New(agenthost.Config{
 		CanonicalStore: sqliteCanonicalStore{Store: store}, Runtime: sessionRuntime,
 		RuntimeOperations: store, GoalStore: store, GoalFences: store, GoalRuntime: goalRuntime,
+		Clock: goalFenceTestClock{at: time.UnixMilli(1_000)},
 	})
 	result, err := host.FenceGoalGeneration(t.Context(), agenthost.FenceGoalGenerationInput{
 		WorkspaceID: "workspace", AgentSessionID: "session",
@@ -485,6 +553,36 @@ func TestGoalFenceWaitsForAuthoritativeTurnTerminalAfterCancelDeliveryFailure(t 
 	turn, found, err := store.GetTurn(t.Context(), "workspace", "session", "goal-turn")
 	if err != nil || !found || turn.Phase != storesqlite.TurnPhaseRunning {
 		t.Fatalf("turn=%#v found=%v error=%v", turn, found, err)
+	}
+
+	// A crash can leave the fence's durable cancel operation pending. Runtime
+	// recovery must not retry that internal cancel against a provider process
+	// that restart already removed, or the operation would protect this stale
+	// Turn from normal startup settlement forever.
+	sessionRuntime.setMissing(true)
+	recoveryHost := agenthost.New(agenthost.Config{
+		CanonicalStore: sqliteCanonicalStore{Store: store}, Runtime: sessionRuntime,
+		RuntimeOperations: store, GoalStore: store, GoalFences: store, GoalRuntime: goalRuntime,
+		Clock: goalFenceTestClock{at: time.UnixMilli(3_000)},
+	})
+	if err := recoveryHost.RecoverRuntimeOperations(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	turn, found, err = store.GetTurn(t.Context(), "workspace", "session", "goal-turn")
+	if err != nil || !found || turn.Phase != storesqlite.TurnPhaseSettled ||
+		turn.Outcome != storesqlite.TurnOutcomeInterrupted {
+		t.Fatalf("locally settled fence cancel turn=%#v found=%v error=%v", turn, found, err)
+	}
+	if err := recoveryHost.RecoverGoalOperations(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	persistedFence, found, err = store.GetGoalGenerationFence(t.Context(), "workspace", result.Fence.FenceID)
+	if err != nil || !found || persistedFence.Status != storesqlite.GoalGenerationFenceStatusCompleted {
+		t.Fatalf("recovered fence=%#v found=%v error=%v", persistedFence, found, err)
+	}
+	resumeCalls, cancelCalls := sessionRuntime.counts()
+	if resumeCalls != 0 || cancelCalls != 1 {
+		t.Fatalf("startup recovery resumed or retried provider cancel: resume=%d cancel=%d", resumeCalls, cancelCalls)
 	}
 }
 
@@ -547,5 +645,29 @@ func TestGoalFenceDoesNotReconnectWhenConnectionDropsBeforeCancel(t *testing.T) 
 	turn, found, err := store.GetTurn(t.Context(), "workspace", "session", "goal-turn")
 	if err != nil || !found || turn.Phase != storesqlite.TurnPhaseRunning {
 		t.Fatalf("turn=%#v found=%v error=%v", turn, found, err)
+	}
+
+	// If the retained Session disappears after startup recovery's liveness
+	// probe and runtime-fence install, exact-Turn lookup returns not-found. That
+	// race is still an offline local stop and must not fail startup.
+	sessionRuntime.setMissing(false)
+	sessionRuntime.setLive(true)
+	goalRuntime.mu.Lock()
+	goalRuntime.onFence = func() { sessionRuntime.setMissing(true) }
+	goalRuntime.mu.Unlock()
+	recoveryHost := agenthost.New(agenthost.Config{
+		CanonicalStore: sqliteCanonicalStore{Store: store}, Runtime: sessionRuntime,
+		RuntimeOperations: store, GoalStore: store, GoalFences: store, GoalRuntime: goalRuntime,
+	})
+	if err := recoveryHost.RecoverGoalOperations(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	persistedFence, found, err = store.GetGoalGenerationFence(t.Context(), "workspace", result.Fence.FenceID)
+	if err != nil || !found || persistedFence.Status != storesqlite.GoalGenerationFenceStatusCompleted {
+		t.Fatalf("recovered race fence=%#v found=%v error=%v", persistedFence, found, err)
+	}
+	resumeCalls, cancelCalls = sessionRuntime.counts()
+	if resumeCalls != 0 || cancelCalls != 0 {
+		t.Fatalf("startup liveness race resumed or canceled provider: resume=%d cancel=%d", resumeCalls, cancelCalls)
 	}
 }

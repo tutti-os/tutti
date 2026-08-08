@@ -4,9 +4,12 @@ import {
   type WorkspaceUserProjectSelectChangeAction,
   type WorkspaceUserProjectSelectLabelOverrides
 } from "@tutti-os/workspace-user-project/ui";
-import type { WorkspaceUserProject } from "@tutti-os/workspace-user-project/contracts";
+import type {
+  WorkspaceUserProject,
+  WorkspaceUserProjectApi
+} from "@tutti-os/workspace-user-project/contracts";
 import type { WorkspaceUserProjectI18nRuntime } from "@tutti-os/workspace-user-project/i18n";
-import { useAgentHostApi } from "../../agentActivityHost";
+import { useOptionalAgentHostApi } from "../../agentActivityHost";
 import { NewWorkspaceLinedIcon, cn } from "@tutti-os/ui-system";
 import type { AgentGUIComposerSettingsVM } from "./model/agentGuiNodeTypes";
 import styles from "./AgentGUINode.styles";
@@ -29,6 +32,7 @@ export function AgentProjectDropdown({
   labels,
   i18n,
   selectProjectDirectory,
+  userProjectApi,
   onDismissAutoFocus,
   onProjectMissingChange,
   onProjectPathChange
@@ -42,6 +46,7 @@ export function AgentProjectDropdown({
   i18n: WorkspaceUserProjectI18nRuntime;
   labels: AgentProjectDropdownLabels;
   selectProjectDirectory?: () => Promise<{ path: string } | null>;
+  userProjectApi?: WorkspaceUserProjectApi | null;
   onDismissAutoFocus?: (event: Event) => void;
   onProjectMissingChange?: (isMissing: boolean) => void;
   onProjectPathChange: (
@@ -50,19 +55,21 @@ export function AgentProjectDropdown({
   ) => void;
 }): React.JSX.Element {
   "use memo";
-  const agentHostApi = useAgentHostApi();
-  const userProjectApi = useMemo(
+  const agentHostApi = useOptionalAgentHostApi();
+  const projectSource =
+    userProjectApi === undefined ? agentHostApi?.userProjects : userProjectApi;
+  const resolvedUserProjectApi = useMemo(
     () =>
       createAgentGUIUserProjectSelectionApi({
         selectProjectDirectory,
-        userProjects: agentHostApi.userProjects
+        userProjects: projectSource
       }),
-    [agentHostApi.userProjects, selectProjectDirectory]
+    [projectSource, selectProjectDirectory]
   );
 
   return (
     <WorkspaceUserProjectSelect
-      api={userProjectApi}
+      api={resolvedUserProjectApi}
       classNames={{
         content: cn(
           styles.composerMenuContent,
@@ -87,7 +94,11 @@ export function AgentProjectDropdown({
         />
       )}
       selectedProjectPath={composerSettings.selectedProjectPath}
-      service={agentHostApi.userProjects?.service ?? null}
+      service={
+        userProjectApi === undefined
+          ? (agentHostApi?.userProjects?.service ?? null)
+          : null
+      }
       shouldApplyPreparedSelection={
         composerSettings.shouldApplyPreparedProjectSelection === true
       }

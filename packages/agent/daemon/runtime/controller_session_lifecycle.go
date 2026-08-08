@@ -192,6 +192,17 @@ func (c *Controller) Resume(ctx context.Context, input ResumeInput) (Session, er
 	if session.Settings != nil {
 		session.PermissionModeID = session.Settings.PermissionModeID
 	}
+	normalizedFences := make([]GoalGenerationFenceInput, 0, len(input.GoalGenerationFences))
+	for _, inputFence := range input.GoalGenerationFences {
+		fence, fenceErr := normalizeRetainedGoalGenerationFenceInput(inputFence)
+		if fenceErr != nil {
+			return Session{}, fenceErr
+		}
+		normalizedFences = append(normalizedFences, fence)
+	}
+	for _, fence := range normalizedFences {
+		c.retainGoalGenerationFence(session, fence)
+	}
 	c.invalidateAppliedGoalGenerationFences(session)
 	if err := adapter.Resume(ctx, session); err != nil {
 		if !input.RecreateIfMissing || !isResumeRecreatableError(err) {

@@ -385,6 +385,12 @@ export function useAgentGUIDetailModel(input: Input) {
       modelTooltipVersionLabel: labels.modelTooltipVersionLabel,
       defaultModel: labels.defaultModel,
       loadingOptions: labels.loadingOptions,
+      composerOptionsLoadFailed: labels.composerOptionsLoadFailed,
+      retry: labels.composerOptionsRetry ?? labels.retryActivation,
+      retryTooltip:
+        labels.composerOptionsRetryTooltip ??
+        labels.composerOptionsRetry ??
+        labels.retryActivation,
       inheritedUnavailable: labels.inheritedUnavailable,
       loadingConversation: labels.loadingConversation,
       reasoningLabel: labels.reasoningLabel,
@@ -566,6 +572,9 @@ export function useAgentGUIDetailModel(input: Input) {
     }),
     [
       interactivePromptLabels,
+      labels.composerOptionsLoadFailed,
+      labels.composerOptionsRetry,
+      labels.composerOptionsRetryTooltip,
       labels.defaultModel,
       labels.tuttiModePlanSendAccept,
       labels.tuttiModePlanSendRequestChanges,

@@ -459,6 +459,18 @@ type SessionReader interface {
 	SessionDeleted(ctx context.Context, workspaceID string, agentSessionID string) (bool, error)
 }
 
+type RecoverableDeletedSessionResourceReader interface {
+	ListRecoverableDeletedSessionResources(context.Context) ([]agentactivitybiz.DeletedSessionResource, error)
+}
+
+// GlobalAgentSessionIdentityReader checks the physical-resource identity,
+// which is currently agent-session scoped rather than Workspace scoped. It is
+// a tuttid product adapter contract and is intentionally not part of Host.
+type GlobalAgentSessionIdentityReader interface {
+	AgentSessionIDExists(context.Context, string) (bool, error)
+	OtherWorkspaceLiveAgentSessionIDExists(context.Context, string, string) (bool, error)
+}
+
 type PersistedSessionListPage struct {
 	Sessions   []PersistedSession
 	HasMore    bool

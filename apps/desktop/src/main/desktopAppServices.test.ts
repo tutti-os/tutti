@@ -29,6 +29,8 @@ function createLogger(events: string[]): DesktopLogger {
 
 function createOptions(events: string[]): CreateDesktopAppServicesOptions {
   return {
+    capturePreloadPath: "/tmp/capture-preload.mjs",
+    captureRendererFilePath: "/tmp/capture.html",
     fallbackLocale: "en",
     logger: createLogger(events),
     preloadPath: "/tmp/preload.mjs",
@@ -38,6 +40,7 @@ function createOptions(events: string[]): CreateDesktopAppServicesOptions {
 
 function createHostServices(): DesktopHostServices {
   return {
+    capture: { dispose() {} },
     fileDialogs: {
       async selectAppArchive() {
         throw new Error("not used");

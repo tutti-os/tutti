@@ -82,6 +82,7 @@ describe("parseAgentLiveDeliveries", () => {
       {
         kind: "connection",
         reason: "stream_closed",
+        retryable: true,
         status: "disconnected"
       }
     ]);
@@ -96,6 +97,40 @@ describe("parseAgentLiveDeliveries", () => {
         })
       )
     ).toEqual([]);
+  });
+
+  test("preserves a protocol rejection as a terminal connection failure", () => {
+    expect(
+      parseAgentLiveDeliveries(
+        "workspace-1",
+        7,
+        JSON.stringify({
+          result: {
+            accepted: [
+              {
+                kind: "rejected",
+                rejected: {
+                  expectedRevision: "sha256:new",
+                  reason: "protocol_revision_mismatch",
+                  receivedRevision: "sha256:old"
+                }
+              }
+            ]
+          },
+          subscriptionGeneration: 7,
+          workspaceId: "workspace-1"
+        })
+      )
+    ).toEqual([
+      {
+        expectedRevision: "sha256:new",
+        kind: "connection",
+        reason: "protocol_revision_mismatch",
+        receivedRevision: "sha256:old",
+        retryable: false,
+        status: "disconnected"
+      }
+    ]);
   });
 
   test("rejects queued deliveries from an obsolete native subscription", () => {
@@ -150,6 +185,42 @@ describe("parseAgentLiveDeliveries", () => {
       {
         agentSessionId: "session-1",
         kind: "session_deleted"
+      }
+    ]);
+  });
+
+  test("preserves canonical session restore as a typed delivery", () => {
+    expect(
+      parseAgentLiveDeliveries(
+        "workspace-1",
+        7,
+        JSON.stringify({
+          result: {
+            accepted: [
+              {
+                discontinuity: {
+                  reason: "session_restored",
+                  reconcileKeys: [
+                    {
+                      agentSessionId: "session-1",
+                      kind: "session",
+                      workspaceId: "workspace-1"
+                    }
+                  ]
+                },
+                kind: "discontinuity"
+              }
+            ],
+            reconcileRequired: true
+          },
+          subscriptionGeneration: 7,
+          workspaceId: "workspace-1"
+        })
+      )
+    ).toEqual([
+      {
+        agentSessionId: "session-1",
+        kind: "session_restored"
       }
     ]);
   });

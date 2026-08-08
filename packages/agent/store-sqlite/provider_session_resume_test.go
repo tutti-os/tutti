@@ -53,3 +53,43 @@ WHERE workspace_id = 'ws-1' AND agent_session_id = 'session-1' AND turn_id = 'tu
 		t.Fatalf("established evidence = %#v", evidence)
 	}
 }
+
+func TestGetProviderSessionResumeEvidenceRetainsHistoricalAcceptedGoal(t *testing.T) {
+	store := openTestStore(t, testOptions(&staticProjectPaths{}))
+	ctx := context.Background()
+	seedTurnTestSession(t, store, "ws-goal", "session-goal")
+
+	if _, _, _, err := store.PrepareGoalControlOperation(ctx, GoalControlOperationPrepare{
+		OperationID: "goal-set", WorkspaceID: "ws-goal", AgentSessionID: "session-goal",
+		Action: "set", Objective: "ship", OccurredAtUnixMS: 10,
+	}); err != nil {
+		t.Fatalf("prepare Goal: %v", err)
+	}
+	if _, _, _, err := store.CompleteGoalControlOperation(ctx, GoalControlOperationComplete{
+		WorkspaceID: "ws-goal", OperationID: "goal-set", Succeeded: true,
+		Observed: map[string]any{"objective": "ship", "status": "active"},
+		Evidence: map[string]any{"confidence": "authoritative"}, OccurredAtUnixMS: 20,
+	}); err != nil {
+		t.Fatalf("complete Goal: %v", err)
+	}
+	if _, _, _, err := store.PrepareGoalControlOperation(ctx, GoalControlOperationPrepare{
+		OperationID: "goal-local-stop", WorkspaceID: "ws-goal", AgentSessionID: "session-goal",
+		Action: "clear", OccurredAtUnixMS: 30,
+	}); err != nil {
+		t.Fatalf("prepare local stop: %v", err)
+	}
+	if _, _, _, err := store.CompleteGoalControlOperation(ctx, GoalControlOperationComplete{
+		WorkspaceID: "ws-goal", OperationID: "goal-local-stop",
+		Mode: GoalControlCompletionModeLocalStop, Succeeded: true, OccurredAtUnixMS: 40,
+	}); err != nil {
+		t.Fatalf("complete local stop: %v", err)
+	}
+
+	evidence, err := store.GetProviderSessionResumeEvidence(ctx, "ws-goal", "session-goal")
+	if err != nil {
+		t.Fatalf("Goal resume evidence: %v", err)
+	}
+	if evidence.HasTurns || evidence.HasSettledTurn || !evidence.Established {
+		t.Fatalf("historical Goal evidence=%#v", evidence)
+	}
+}

@@ -13,6 +13,7 @@ func GeneratedDesktopPreferencesFromBiz(value preferencesbiz.DesktopPreferences)
 	workbenchShortcuts := tuttigenerated.DesktopWorkbenchShortcuts{
 		NewAgentConversation: optionalStringPointer(value.WorkbenchShortcuts.NewAgentConversation),
 		NewSameTypeWindow:    optionalStringPointer(value.WorkbenchShortcuts.NewSameTypeWindow),
+		CaptureScreenshot:    optionalStringPointer(value.WorkbenchShortcuts.CaptureScreenshot),
 	}
 	return tuttigenerated.DesktopPreferences{
 		AgentCliUpdateCheckEnabled:                  value.AgentCLIUpdateCheckEnabled,

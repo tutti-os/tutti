@@ -323,6 +323,59 @@ test("projects message deltas and clears them on authoritative deletion", () => 
   harness.engine.dispose();
 });
 
+test("an explicit restore event clears only its tombstone and requests authoritative hydration", () => {
+  const harness = createHarness();
+  harness.engine.dispatch({
+    session: session(null, 10),
+    type: "session/upserted"
+  });
+  harness.coordinator.ingestEvent({
+    workspaceId: "workspace-1",
+    agentSessionId: "session-1",
+    eventType: "session_deleted",
+    data: {
+      workspaceId: "workspace-1",
+      agentSessionId: "session-1",
+      eventType: "session_deleted",
+      deletedAtUnixMs: 11
+    }
+  });
+
+  const restored = harness.coordinator.ingestEvent({
+    workspaceId: "workspace-1",
+    agentSessionId: "session-1",
+    eventType: "session_restored",
+    data: {
+      workspaceId: "workspace-1",
+      agentSessionId: "session-1",
+      eventType: "session_restored",
+      restoredAtUnixMs: 12
+    }
+  });
+
+  assert.equal(restored.reason, "restored");
+  assert.equal(harness.coordinator.isSessionDeleted("session-1"), false);
+  assert.ok(
+    harness.commands.some(
+      (command) =>
+        command.type === "session/reconcile" &&
+        command.agentSessionId === "session-1"
+    )
+  );
+  harness.engine.dispatch({
+    session: session(null, 10),
+    type: "session/upserted"
+  });
+  assert.equal(
+    harness
+      .readCanonicalSnapshot()
+      .sessions.some((candidate) => candidate.agentSessionId === "session-1"),
+    true
+  );
+  harness.coordinator.dispose();
+  harness.engine.dispose();
+});
+
 test("applies a settled Turn and its cleared Session reference atomically", () => {
   const harness = createHarness();
   const runningTurn = turn("running", 1);

@@ -20,6 +20,10 @@ type Repository interface {
 	PlanClearSessions(context.Context, string) (DeleteSessionsPlan, error)
 	PlanDeleteSessions(context.Context, DeleteSessionsBatchInput) (DeleteSessionsPlan, error)
 	DeleteSessionsBatch(context.Context, DeleteSessionsBatchInput) (DeleteSessionsBatchResult, error)
+	ListDeletedSessions(context.Context, ListDeletedSessionsInput) (DeletedSessionPage, error)
+	RestoreDeletedSession(context.Context, RestoreDeletedSessionInput) (RestoreDeletedSessionResult, error)
+	PurgeDeletedSessionTrees(context.Context, PurgeDeletedSessionTreesInput) (PurgeDeletedSessionTreesResult, error)
+	ListRecoverableDeletedSessionResources(context.Context) ([]DeletedSessionResource, error)
 	GetSession(context.Context, string, string) (Session, bool, error)
 	ListChildSessions(context.Context, string, string) ([]Session, error)
 	SessionDeleted(context.Context, string, string) (bool, error)
@@ -114,6 +118,85 @@ type DeleteSessionResult struct {
 	RemovedMessages   int
 	RemovedSessions   int
 	RemovedSessionIDs []string
+}
+
+const (
+	DeletedSessionUnavailableLegacyData           = "legacyDataUnavailable"
+	DeletedSessionUnavailableIncompleteTree       = "incompleteSessionTree"
+	recoverableDeleteVersionCurrent         int64 = 1
+)
+
+// ListDeletedSessionsInput selects topmost tombstones in one workspace. A
+// topmost tombstone has no tombstoned parent, so it may anchor either a root
+// tree or a deleted child subtree. A nil ProjectPath means all project scopes,
+// a pointer to an empty string selects unscoped conversations, and a non-empty
+// value selects that exact original project path.
+type ListDeletedSessionsInput struct {
+	WorkspaceID           string
+	SearchQuery           string
+	ProjectPath           *string
+	CursorUpdatedAtUnixMS int64
+	CursorAgentSessionID  string
+	Limit                 int
+}
+
+type DeletedSessionSummary struct {
+	AgentSessionID    string
+	Title             string
+	ProjectPath       string
+	UpdatedAtUnixMS   int64
+	DeletedAtUnixMS   int64
+	Restorable        bool
+	UnavailableReason string
+}
+
+type DeletedSessionPage struct {
+	WorkspaceID         string
+	Sessions            []DeletedSessionSummary
+	ProjectPaths        []string
+	TotalCount          int
+	WorkspaceTotalCount int
+	HasMore             bool
+	NextCursor          string
+}
+
+type RestoreDeletedSessionInput struct {
+	WorkspaceID    string
+	AgentSessionID string
+}
+
+type RestoreDeletedSessionResult struct {
+	TransactionID      string           `json:"-"`
+	CommitDelta        TransactionDelta `json:"-"`
+	Restored           bool
+	RestoredSessionIDs []string
+}
+
+// PurgeDeletedSessionTreesInput permanently removes topmost deleted components
+// whose full reachable tree is tombstoned. RootSessionIDs is retained for
+// compatibility, but each value is a component anchor and may identify a root
+// or child Session. An empty slice selects every topmost tombstone in the
+// workspace. Recoverability metadata is deliberately not required, so legacy
+// or incomplete components remain explicitly purgeable.
+type PurgeDeletedSessionTreesInput struct {
+	WorkspaceID    string
+	RootSessionIDs []string
+}
+
+type PurgeDeletedSessionTreesResult struct {
+	PurgedRootSessionIDs []string
+	PurgedSessionIDs     []string
+	RemovedSessions      int
+	RemovedMessages      int
+	PayloadBytes         int64
+}
+
+// DeletedSessionResource is the minimum canonical identity needed by a host's
+// filesystem policy to protect recoverable state from background GC.
+type DeletedSessionResource struct {
+	WorkspaceID    string
+	AgentSessionID string
+	Cwd            string
 }
 
 // PurgeDeletedSessionsInput bounds one permanent-removal transaction. The
@@ -695,7 +778,7 @@ type Message struct {
 }
 
 type MessageSemantics struct {
-	UserVisibleAssistantResponse bool   `json:"userVisibleAssistantResponse,omitempty"`
+	UserVisibleAssistantResponse bool   `json:"userVisibleAssistantResponse"`
 	TurnSettling                 bool   `json:"turnSettling,omitempty"`
 	NoticeCommand                string `json:"noticeCommand,omitempty"`
 	NoticeCommandStatus          string `json:"noticeCommandStatus,omitempty"`

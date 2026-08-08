@@ -1,8 +1,10 @@
 import type { DesktopApi, DesktopMinimumVersionApi } from "@preload/types";
+import type { DesktopCaptureApi } from "../../shared/contracts/capture.ts";
 
 declare global {
   interface Window {
     tutti?: DesktopApi;
+    tuttiCapture?: DesktopCaptureApi;
     tuttiMinimumVersion?: DesktopMinimumVersionApi;
   }
 

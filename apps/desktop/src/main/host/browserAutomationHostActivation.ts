@@ -5,6 +5,7 @@ import {
   getWorkspaceWindowKind,
   getWorkspaceWindowWorkspaceID
 } from "../windows/workspaceWindow.ts";
+import { activateDesktopWindow } from "./desktopWindowActivation.ts";
 
 export function activateBrowserAutomationHost(
   sender: Electron.WebContents
@@ -24,12 +25,7 @@ export function activateBrowserAutomationHost(
   const logger = getDesktopLogger();
   const windowKind = getWorkspaceWindowKind(ownerWindow);
   try {
-    app.focus();
-    if (ownerWindow.isMinimized()) {
-      ownerWindow.restore();
-    }
-    ownerWindow.show();
-    ownerWindow.focus();
+    activateDesktopWindow(app, ownerWindow);
     logger.info("Browser automation host activated", {
       windowKind,
       workspaceId: getWorkspaceWindowWorkspaceID(ownerWindow)

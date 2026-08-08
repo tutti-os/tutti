@@ -166,6 +166,12 @@ type InteractionTransition struct {
 	Metadata  map[string]any
 }
 
+type MessageSemantics struct {
+	// UserVisibleAssistantResponse is a producer-owned classification. It is
+	// true only when this message may represent a user-facing assistant reply.
+	UserVisibleAssistantResponse bool
+}
+
 type EventPayload struct {
 	PresenceStatus          string
 	LifecycleStatus         string
@@ -179,6 +185,7 @@ type EventPayload struct {
 	CWD                     string
 	Role                    MessageRole
 	Content                 string
+	Semantics               MessageSemantics
 	CallID                  string
 	CallType                string
 	Name                    string
@@ -437,17 +444,19 @@ func cloneMap(value map[string]any) map[string]any {
 	return cloned
 }
 
-func NewMessageAppended(ctx EventContext, role MessageRole, content string) Event {
+func NewMessageAppended(ctx EventContext, role MessageRole, content string, userVisibleAssistantResponse bool) Event {
 	return eventFromContext(ctx, EventMessageAppended, EventPayload{
-		Role:    role,
-		Content: content,
+		Role:      role,
+		Content:   content,
+		Semantics: MessageSemantics{UserVisibleAssistantResponse: userVisibleAssistantResponse},
 	})
 }
 
-func NewContextMessage(ctx EventContext, role MessageRole, content string) Event {
+func NewContextMessage(ctx EventContext, role MessageRole, content string, userVisibleAssistantResponse bool) Event {
 	return eventFromContext(ctx, EventMessageCreated, EventPayload{
-		Role:    role,
-		Content: content,
+		Role:      role,
+		Content:   content,
+		Semantics: MessageSemantics{UserVisibleAssistantResponse: userVisibleAssistantResponse},
 	})
 }
 

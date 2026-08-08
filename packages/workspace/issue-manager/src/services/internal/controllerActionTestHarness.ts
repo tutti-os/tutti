@@ -30,6 +30,9 @@ export function createControllerActionsHarness(input?: {
   agentTargetOptions?: readonly IssueManagerAgentTargetOption[];
   agentRunner?: Partial<IssueManagerFeature["agentRunner"]>;
   backend?: Partial<IssueManagerFeature["backend"]>;
+  contextRefOpener?: Partial<
+    NonNullable<IssueManagerFeature["contextRefOpener"]>
+  >;
   executionDirectoryPicker?: Partial<
     NonNullable<IssueManagerFeature["executionDirectoryPicker"]>
   >;
@@ -211,6 +214,12 @@ export function createControllerActionsHarness(input?: {
       },
       ...input?.backend
     },
+    contextRefOpener: input?.contextRefOpener
+      ? {
+          openContextRef() {},
+          ...input.contextRefOpener
+        }
+      : undefined,
     executionDirectoryPicker: input?.executionDirectoryPicker
       ? {
           ...input.executionDirectoryPicker
@@ -508,6 +517,7 @@ export function createTaskContextRef(input: {
   taskId: string;
 }): IssueManagerContextRef {
   return {
+    accessKind: "workspace_path",
     contextRefId: `${input.taskId}:${input.path}`,
     displayName: input.path.split("/").filter(Boolean).at(-1) ?? input.path,
     issueId: "issue-1",
@@ -523,6 +533,7 @@ export function createIssueContextRef(input: {
   path: string;
 }): IssueManagerContextRef {
   return {
+    accessKind: "workspace_path",
     contextRefId: `issue:${input.path}`,
     displayName: input.path.split("/").filter(Boolean).at(-1) ?? input.path,
     issueId: "issue-1",

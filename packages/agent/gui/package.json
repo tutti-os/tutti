@@ -8,6 +8,8 @@
     ".": "./index.ts",
     "./agent-gui": "./AgentGUI.tsx",
     "./startup-shell": "./AgentGUIStartupShell.tsx",
+    "./quick-composer": "./AgentGUIQuickComposer.tsx",
+    "./composer-settings-core": "./composer-settings-core/index.ts",
     "./agents": "./agents.ts",
     "./custom-mention": "./custom-mention.ts",
     "./dock-icons": "./dockIcons.ts",
@@ -60,7 +62,7 @@
     "directory": "packages/agent/gui"
   },
   "scripts": {
-    "build": "tsup --config tsup.config.ts && tsup --config tsup.dts.config.ts && node ../../../tools/scripts/copy-package-assets.mjs app/renderer/agentactivity.css dist/app/renderer/agentactivity.css app/renderer/assets/icons dist/app/renderer/assets/icons",
+    "build": "tsup --config tsup.config.ts && node ../../../node_modules/@typescript/native-preview/bin/tsgo.js -p tsconfig.dts.json && tsup --config tsup.dts.config.ts && node build/cleanupAgentGUIDtsIntermediates.mjs && node ../../../tools/scripts/copy-package-assets.mjs app/renderer/agentactivity.css dist/app/renderer/agentactivity.css app/renderer/assets/icons dist/app/renderer/assets/icons",
     "test": "vitest run",
     "typecheck": "node ../../../tools/scripts/run-tsgo-typecheck.mjs"
   },
@@ -145,6 +147,14 @@
       "./startup-shell": {
         "types": "./dist/startup-shell.d.ts",
         "import": "./dist/startup-shell.js"
+      },
+      "./quick-composer": {
+        "types": "./dist/quick-composer.d.ts",
+        "import": "./dist/quick-composer.js"
+      },
+      "./composer-settings-core": {
+        "types": "./dist/composer-settings-core/index.d.ts",
+        "import": "./dist/composer-settings-core/index.js"
       },
       "./agents": {
         "types": "./dist/agents.d.ts",
@@ -304,6 +314,9 @@
         ],
         "startup-shell": [
           "./dist/startup-shell.d.ts"
+        ],
+        "quick-composer": [
+          "./dist/quick-composer.d.ts"
         ],
         "agents": [
           "./dist/agents.d.ts"

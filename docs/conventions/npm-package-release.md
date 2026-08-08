@@ -29,6 +29,7 @@ The current fixed release group is:
 @tutti-os/workspace-terminal
 @tutti-os/agent-activity-core
 @tutti-os/agent-gui
+@tutti-os/agent-session-replay
 @tutti-os/commerce
 @tutti-os/claude-sdk-sidecar
 @tutti-os/browser-node
@@ -87,6 +88,15 @@ packages with the `latest` dist-tag, then points the matching npm release tag
 and every `packages/**/go.mod` module tag at that release commit. The commit is
 reachable through those tags only and is not pushed to `main`. Stable releases
 do not open version PRs and do not require Changeset files.
+
+Package publication uses bounded concurrency so registry and provenance
+round-trips do not serialize the full fixed release group. The workflow pins
+`TUTTI_NPM_PUBLISH_CONCURRENCY=4`; release tooling accepts an integer from `1`
+through `8` for controlled CI tuning and rejects unbounded or invalid values.
+Each worker checks only the exact immutable package version before publishing,
+preserves the bounded provenance retry, and stops admitting new packages after
+the first terminal failure. Release and Go module tags are created and pushed
+only after every package publish has completed successfully.
 
 Because the stable release version is applied only in CI, repository manifests
 on `main` may lag behind the latest published `0.0.x` version. The durable
@@ -295,6 +305,7 @@ The stable package entrypoints are:
 @tutti-os/agent-gui/agent-message-center
 @tutti-os/agent-gui/context-mention-palette
 @tutti-os/agent-gui/i18n
+@tutti-os/agent-gui/quick-composer
 @tutti-os/agent-gui/styles.css
 @tutti-os/agent-gui/workbench
 @tutti-os/agent-gui/workbench/browser-element-context

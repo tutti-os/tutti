@@ -415,6 +415,7 @@ func decodeWorkbenchShortcuts(raw string) preferencesbiz.DesktopWorkbenchShortcu
 	var decoded struct {
 		NewAgentConversation *string `json:"newAgentConversation"`
 		NewSameTypeWindow    *string `json:"newSameTypeWindow"`
+		CaptureScreenshot    *string `json:"captureScreenshot"`
 	}
 	if err := json.Unmarshal([]byte(raw), &decoded); err != nil {
 		return preferencesbiz.DesktopWorkbenchShortcuts{}
@@ -428,6 +429,7 @@ func decodeWorkbenchShortcuts(raw string) preferencesbiz.DesktopWorkbenchShortcu
 	return preferencesbiz.NormalizeDesktopWorkbenchShortcuts(preferencesbiz.DesktopWorkbenchShortcuts{
 		NewAgentConversation: deref(decoded.NewAgentConversation),
 		NewSameTypeWindow:    deref(decoded.NewSameTypeWindow),
+		CaptureScreenshot:    deref(decoded.CaptureScreenshot),
 	})
 }
 
@@ -442,7 +444,8 @@ func encodeWorkbenchShortcuts(value preferencesbiz.DesktopWorkbenchShortcuts) (s
 	data, err := json.Marshal(struct {
 		NewAgentConversation *string `json:"newAgentConversation"`
 		NewSameTypeWindow    *string `json:"newSameTypeWindow"`
-	}{ptr(n.NewAgentConversation), ptr(n.NewSameTypeWindow)})
+		CaptureScreenshot    *string `json:"captureScreenshot,omitempty"`
+	}{ptr(n.NewAgentConversation), ptr(n.NewSameTypeWindow), ptr(n.CaptureScreenshot)})
 	if err != nil {
 		return "", err
 	}

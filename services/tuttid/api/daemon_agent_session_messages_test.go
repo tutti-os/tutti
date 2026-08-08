@@ -53,7 +53,7 @@ func TestDaemonAPIGeneratedRoutesReadAgentSessionAttachment(t *testing.T) {
 	if response.AttachmentId != "attachment-1" {
 		t.Fatalf("attachmentId = %q, want attachment-1", response.AttachmentId)
 	}
-	if response.MimeType != tuttigenerated.WorkspaceAgentSessionAttachmentResponseMimeTypeImagepng {
+	if response.MimeType != tuttigenerated.Imagepng {
 		t.Fatalf("mimeType = %q, want image/png", response.MimeType)
 	}
 	if response.Data != "aW1hZ2U=" {

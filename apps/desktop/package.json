@@ -88,6 +88,13 @@
           "filter": [
             "**/*"
           ]
+        },
+        {
+          "from": "build/mutagen",
+          "to": "bin/mutagen",
+          "filter": [
+            "**/*"
+          ]
         }
       ]
     },
@@ -165,6 +172,7 @@
     "@tutti-os/workspace-user-project": "workspace:*",
     "@tutti-os/workspace-terminal": "workspace:*",
     "@tailwindcss/vite": "^4.1.8",
+    "@tanstack/react-virtual": "^3.14.8",
     "@types/node": "^24.0.1",
     "@types/react": "^19.1.6",
     "@types/react-dom": "^19.1.5",

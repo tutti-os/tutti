@@ -57,6 +57,7 @@ import {
   type DesktopUpdateChannel,
   type DesktopUpdatePolicy,
   type DesktopWorkbenchShortcuts,
+  type DesktopWorkbenchShortcutsInput,
   type DesktopWorkbenchWindowSnapping
 } from "../../../../../../shared/preferences/index.ts";
 
@@ -816,7 +817,7 @@ export class DesktopPreferencesService implements IDesktopPreferencesService {
     themeSource: DesktopThemeSource;
     updateChannel: DesktopUpdateChannel;
     updatePolicy: DesktopUpdatePolicy;
-    workbenchShortcuts?: DesktopWorkbenchShortcuts;
+    workbenchShortcuts?: DesktopWorkbenchShortcutsInput;
     workbenchWindowSnapping?: DesktopWorkbenchWindowSnapping;
   }): void {
     this.store.agentCliUpdateCheckEnabled =

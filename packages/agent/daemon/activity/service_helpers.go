@@ -233,6 +233,7 @@ func cloneSessionMessages(items []WorkspaceAgentSessionMessage) []WorkspaceAgent
 }
 
 func cloneSessionMessage(item WorkspaceAgentSessionMessage) WorkspaceAgentSessionMessage {
+	item.Semantics = cloneMessageSemantics(item.Semantics)
 	item.Payload = clonePayloadMap(item.Payload)
 	return item
 }
@@ -253,6 +254,7 @@ func sessionMessageFromLegacyUpdate(
 		Role:              strings.TrimSpace(update.Role),
 		Kind:              strings.TrimSpace(update.Kind),
 		Status:            strings.TrimSpace(update.Status),
+		Semantics:         cloneMessageSemantics(update.Semantics),
 		Payload:           payload,
 		OccurredAtUnixMS:  firstNonZeroInt64(update.OccurredAtUnixMS, update.StartedAtUnixMS, update.CompletedAtUnixMS),
 		StartedAtUnixMS:   update.StartedAtUnixMS,
@@ -286,6 +288,7 @@ func messageUpdateFromSessionMessage(
 		Role:              strings.TrimSpace(message.Role),
 		Kind:              strings.TrimSpace(message.Kind),
 		Status:            strings.TrimSpace(message.Status),
+		Semantics:         cloneMessageSemantics(message.Semantics),
 		CallID:            payloadFirstStringValue(payload, "callId", "call_id"),
 		ParentCallID:      payloadFirstStringValue(payload, "parentCallId", "parent_call_id"),
 		RootCallID:        payloadFirstStringValue(payload, "rootCallId", "root_call_id"),
@@ -322,6 +325,9 @@ func mergeSessionMessage(
 	}
 	if merged.Status == "" {
 		merged.Status = existing.Status
+	}
+	if merged.Semantics == nil {
+		merged.Semantics = cloneMessageSemantics(existing.Semantics)
 	}
 	if merged.Payload == nil {
 		merged.Payload = clonePayloadMap(existing.Payload)

@@ -4,11 +4,13 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync"
 
 	agentproviderbiz "github.com/tutti-os/tutti/services/tuttid/biz/agentprovider"
 	agenttargetbiz "github.com/tutti-os/tutti/services/tuttid/biz/agenttarget"
 	preferencesbiz "github.com/tutti-os/tutti/services/tuttid/biz/preferences"
 	agentservice "github.com/tutti-os/tutti/services/tuttid/service/agent"
+	agentextensionservice "github.com/tutti-os/tutti/services/tuttid/service/agentextension"
 	cliservice "github.com/tutti-os/tutti/services/tuttid/service/cli"
 	"github.com/tutti-os/tutti/services/tuttid/service/cli/framework"
 )
@@ -25,6 +27,7 @@ var agentColumns = []cliservice.TableColumn{
 
 type agentsInput struct {
 	AgentID string `cli:"agent-id"`
+	Refresh bool   `cli:"refresh"`
 }
 
 type agentCatalogItem struct {
@@ -72,7 +75,7 @@ func (p Provider) newAgentsCommand() cliservice.Command {
 	})
 }
 
-func (p Provider) runAgents(ctx context.Context, _ framework.InvokeContext, input agentsInput) (any, error) {
+func (p Provider) runAgents(ctx context.Context, invoke framework.InvokeContext, input agentsInput) (any, error) {
 	if err := p.requireSessions(); err != nil {
 		return nil, err
 	}
@@ -100,12 +103,12 @@ func (p Provider) runAgents(ctx context.Context, _ framework.InvokeContext, inpu
 	availability := []agentservice.ProviderAvailability{}
 	builtinTargets := builtinAgentTargets(targets)
 	needsAvailability := len(builtinTargets) > 0
-	if requestedTarget != nil && defaultAgentTargetID != "" && isExtensionAgentTarget(*requestedTarget) {
-		needsAvailability = false
+	if requestedTarget != nil {
+		needsAvailability = !isExtensionAgentTarget(*requestedTarget)
 	}
 	if needsAvailability {
 		availabilityInput := agentservice.ProviderAvailabilityInput{}
-		if requestedTarget != nil && defaultAgentTargetID != "" && !isExtensionAgentTarget(*requestedTarget) {
+		if requestedTarget != nil && !isExtensionAgentTarget(*requestedTarget) {
 			availabilityInput.Provider = requestedTarget.Provider
 		}
 		availability, err = p.sessions.ListProviderAvailability(ctx, availabilityInput)
@@ -127,7 +130,98 @@ func (p Provider) runAgents(ctx context.Context, _ framework.InvokeContext, inpu
 		}
 		items = filtered
 	}
+	p.applyExtensionSetupAvailability(ctx, invoke.WorkspaceID, items, input.Refresh)
 	return agentsResult{DefaultAgentTargetID: defaultAgentTargetID, Items: items}, nil
+}
+
+func (p Provider) applyExtensionSetupAvailability(
+	ctx context.Context,
+	requestedWorkspaceID string,
+	items []agentCatalogItem,
+	refresh bool,
+) {
+	if p.extensionAvailabilityCache == nil {
+		return
+	}
+	workspaceID, err := cliservice.ResolveWorkspaceID(ctx, p.workspaces, requestedWorkspaceID)
+	if err != nil {
+		for index := range items {
+			if isExtensionAgentTarget(items[index].Target) {
+				items[index].Availability = unknownExtensionSetupAvailability(items[index].Target.Provider, err)
+			}
+		}
+		return
+	}
+
+	var probes sync.WaitGroup
+	for index := range items {
+		if !isExtensionAgentTarget(items[index].Target) || items[index].Availability.Status != agentservice.ProviderAvailabilityAvailable {
+			continue
+		}
+		probes.Add(1)
+		go func(index int) {
+			defer probes.Done()
+			target := items[index].Target
+			snapshot, setupErr := p.extensionAvailabilityCache.load(ctx, agentextensionservice.InstallPlanInput{
+				WorkspaceID: workspaceID, AgentTargetID: target.ID,
+			}, refresh)
+			if setupErr != nil {
+				items[index].Availability = unknownExtensionSetupAvailability(target.Provider, setupErr)
+				return
+			}
+			items[index].Availability = extensionSetupAvailability(target.Provider, snapshot)
+		}(index)
+	}
+	probes.Wait()
+}
+
+func extensionSetupAvailability(provider string, snapshot agentextensionservice.SetupSnapshot) agentservice.ProviderAvailability {
+	status := agentservice.ProviderAvailabilityUnknown
+	reasonCode := strings.TrimSpace(snapshot.Reason)
+	detail := reasonCode
+	switch snapshot.Status {
+	case agentextensionservice.SetupReady:
+		status = agentservice.ProviderAvailabilityAvailable
+		reasonCode = ""
+		detail = ""
+	case agentextensionservice.SetupAuthRequired:
+		status = agentservice.ProviderAvailabilityUnavailable
+		reasonCode = string(agentextensionservice.SetupAuthRequired)
+		if detail == "" {
+			detail = "authentication required"
+		}
+	case agentextensionservice.SetupNotInstalled, agentextensionservice.SetupFailed:
+		status = agentservice.ProviderAvailabilityUnavailable
+		if reasonCode == "" {
+			reasonCode = string(snapshot.Status)
+			detail = reasonCode
+		}
+	case agentextensionservice.SetupInstalling, agentextensionservice.SetupAuthenticating:
+		if reasonCode == "" {
+			reasonCode = string(snapshot.Status)
+			detail = reasonCode
+		}
+	default:
+		if reasonCode == "" {
+			reasonCode = "agent_target_setup_status_unknown"
+			detail = reasonCode
+		}
+	}
+	result := agentservice.ProviderAvailability{Provider: provider, Status: status}
+	if reasonCode != "" {
+		result.LastError = &agentservice.ProviderAvailabilityError{Code: reasonCode, Message: detail}
+	}
+	return result
+}
+
+func unknownExtensionSetupAvailability(provider string, _ error) agentservice.ProviderAvailability {
+	return agentservice.ProviderAvailability{
+		Provider: provider,
+		Status:   agentservice.ProviderAvailabilityUnknown,
+		LastError: &agentservice.ProviderAvailabilityError{
+			Code: "agent_target_setup_status_unknown", Message: "agent target setup status is unavailable",
+		},
+	}
 }
 
 func (p Provider) preferredAgentProvider(ctx context.Context) string {

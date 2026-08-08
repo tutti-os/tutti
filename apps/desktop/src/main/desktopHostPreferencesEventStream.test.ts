@@ -4,7 +4,11 @@ import type {
   DesktopPreferencesStateResponse,
   TuttidEventStreamClient
 } from "@tutti-os/client-tuttid-ts";
-import { defaultDesktopWorkbenchShortcuts } from "../shared/preferences/index.ts";
+import {
+  defaultDesktopWorkbenchShortcuts,
+  normalizeDesktopWorkbenchShortcuts,
+  type DesktopWorkbenchShortcuts
+} from "../shared/preferences/index.ts";
 import type { DesktopThemeSource } from "../shared/theme";
 import type { DesktopHostPreferencesState } from "./desktopHostPreferences";
 import type { DesktopLogger } from "./logging";
@@ -213,9 +217,8 @@ function createHostPreferencesState(): DesktopHostPreferencesState {
     "stable";
   let updatePolicy: DesktopPreferencesStateResponse["preferences"]["updatePolicy"] =
     "prompt";
-  let workbenchShortcuts: NonNullable<
-    DesktopPreferencesStateResponse["preferences"]["workbenchShortcuts"]
-  > = defaultDesktopWorkbenchShortcuts;
+  let workbenchShortcuts: DesktopWorkbenchShortcuts =
+    defaultDesktopWorkbenchShortcuts;
   let workbenchWindowSnapping: NonNullable<
     DesktopPreferencesStateResponse["preferences"]["workbenchWindowSnapping"]
   > = {
@@ -332,7 +335,9 @@ function createHostPreferencesState(): DesktopHostPreferencesState {
         updatePolicy = input.updatePolicy;
       }
       if (input.workbenchShortcuts) {
-        workbenchShortcuts = input.workbenchShortcuts;
+        workbenchShortcuts = normalizeDesktopWorkbenchShortcuts(
+          input.workbenchShortcuts
+        );
       }
       if (input.workbenchWindowSnapping) {
         workbenchWindowSnapping = input.workbenchWindowSnapping;

@@ -9,6 +9,7 @@ import { resolveAgentComposerDraftScopeKey } from "../model/agentComposerDraftSc
 import {
   buildAgentConversationHandoffPrompt,
   handoffProjectPathForConversation,
+  resolveAgentGUIInteractionDisabledReason,
   resolveAgentGUITuttiStopTargets
 } from "./agentGUIDetailModelHelpers";
 import { AgentGUIBottomDockPane } from "./AgentGUIBottomDockPane";
@@ -71,6 +72,7 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
   onRequestWorkspaceReferences,
   resolveExternalPromptEntries = null,
   prepareExternalPromptFiles = null,
+  resolvePastedPath = null,
   promptAssetLimit = null,
   selectProjectDirectory,
   onRequestGitBranches,
@@ -309,6 +311,13 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
     [submitInteractivePrompt]
   );
   const isInteractionPending = activePromptResponsePending;
+  const composerActivePromptDisabledReason =
+    resolveAgentGUIInteractionDisabledReason({
+      promptKind: composerActivePrompt?.kind,
+      approvalReason: viewModel.interaction.approvalDisabledReason,
+      interactivePromptReason:
+        viewModel.interaction.interactivePromptDisabledReason
+    });
   const homeComposerProviderTargets = homeTargetProjection.agentTargets;
   const selectedHomeComposerTarget = homeTargetProjection.selectedAgentTarget;
   const composerProviderTargets =
@@ -424,6 +433,7 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       workspaceReferencePickerOpen,
       referenceProvenanceFilters,
       activePrompt: composerActivePrompt,
+      activePromptDisabledReason: composerActivePromptDisabledReason,
       activePromptKeyboardShortcutsEnabled: isActive,
       promptTips: labels.promptTips,
       composerFocusRequestSequence,
@@ -489,6 +499,7 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       onRequestWorkspaceReferences: stableRequestWorkspaceReferences,
       resolveExternalPromptEntries,
       prepareExternalPromptFiles,
+      resolvePastedPath,
       promptAssetLimit,
       selectProjectDirectory: stableSelectProjectDirectory,
       onRequestGitBranches: stableRequestGitBranches
@@ -524,11 +535,13 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       onSlashStatusRefresh,
       workspaceReferencePickerOpen,
       composerActivePrompt,
+      composerActivePromptDisabledReason,
       editQueuedPrompt,
       onCapabilitySettingsRequest,
       removeQueuedPrompt,
       resolveExternalPromptEntries,
       prepareExternalPromptFiles,
+      resolvePastedPath,
       promptAssetLimit,
       sendQueuedPromptNext,
       showPromptImagesUnsupported,
@@ -733,6 +746,10 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
           bottomDockLiftedPrompt={bottomDockLiftedPrompt}
           bottomDockReplacementPrompt={bottomDockReplacementPrompt}
           composerProps={bottomDockComposerProps}
+          approvalDisabledReason={viewModel.interaction.approvalDisabledReason}
+          interactivePromptDisabledReason={
+            viewModel.interaction.interactivePromptDisabledReason
+          }
           inlineNoticeChrome={inlineNoticeChrome}
           isRespondingApproval={isInteractionPending}
           sessionChrome={sessionChrome}

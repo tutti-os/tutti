@@ -2,14 +2,11 @@ package sh.tutti.mobile
 
 import android.app.Activity
 import android.content.Intent
-import android.net.Uri
 import android.os.Build
-import android.provider.Settings
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.util.Base64
 import android.util.Log
-import androidx.core.content.FileProvider
 import com.facebook.react.bridge.Arguments
 import com.facebook.react.bridge.BaseActivityEventListener
 import com.facebook.react.bridge.Promise
@@ -17,6 +14,7 @@ import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.bridge.ReactContextBaseJavaModule
 import com.facebook.react.bridge.ReactMethod
 import com.facebook.react.bridge.UiThreadUtil
+import com.facebook.react.modules.core.DeviceEventManagerModule
 import com.facebook.react.modules.network.ForwardingCookieHandler
 import com.google.zxing.client.android.Intents
 import com.journeyapps.barcodescanner.ScanContract
@@ -31,7 +29,7 @@ import java.security.Signature
 import java.security.spec.ECGenParameterSpec
 import java.util.Locale
 import java.util.UUID
-import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicInteger
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
@@ -43,8 +41,9 @@ class MobileSecurityModule(
 ) : ReactContextBaseJavaModule(reactContext) {
     private val browserAuthBridge = MobileBrowserAuthBridge(reactContext)
     private val store = SecureStore(reactContext)
-    private val updateExecutor = Executors.newSingleThreadExecutor()
-    private val updateDownloader = MobileUpdateDownloader(reactContext.cacheDir)
+    private val updateListenerCount = AtomicInteger()
+    private val updateCoordinator =
+        MobileUpdateCoordinator(reactContext, ::publishMobileUpdateProgress)
     private var scanPromise: Promise? = null
     private var scanCancellationPromise: Promise? = null
     private var scanActivity: Activity? = null
@@ -59,6 +58,9 @@ class MobileSecurityModule(
                 resultCode: Int,
                 intent: Intent?,
             ) {
+                if (updateCoordinator.onActivityResult(requestCode, resultCode, intent)) {
+                    return
+                }
                 if (requestCode != scanRequestCode) {
                     return
                 }
@@ -141,146 +143,34 @@ class MobileSecurityModule(
     fun installUpdate(
         apkURL: String,
         expectedSHA256: String,
+        expectedSizeBytes: Double,
+        targetVersionCode: Double,
         promise: Promise,
     ) {
-        UiThreadUtil.runOnUiThread {
-            val activity = reactContext.currentActivity
-            if (activity == null) {
-                val cause = IllegalStateException("No active Android activity")
-                Log.e(LOG_TAG, "Unable to start update: no active activity", cause)
-                promise.reject(
-                    "UPDATE_INSTALL_FAILED",
-                    "No active Android activity",
-                    cause,
-                )
-                return@runOnUiThread
-            }
-            if (
-                Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
-                !reactContext.packageManager.canRequestPackageInstalls()
-            ) {
-                try {
-                    Log.i(LOG_TAG, "Update install permission is missing; opening settings")
-                    activity.startActivity(
-                        Intent(
-                            Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
-                            Uri.parse("package:${reactContext.packageName}"),
-                        ),
-                    )
-                } catch (cause: Throwable) {
-                    Log.e(LOG_TAG, "Unable to open Android install permission settings", cause)
-                    promise.reject(
-                        "UPDATE_PERMISSION_SETTINGS_FAILED",
-                        "Unable to open Android install permission settings",
-                        cause,
-                    )
-                    return@runOnUiThread
-                }
-                Log.i(LOG_TAG, "Android install permission settings opened")
-                promise.reject(
-                    "UPDATE_INSTALL_PERMISSION_REQUIRED",
-                    "Allow Tutti to install unknown apps, then try again",
-                )
-                return@runOnUiThread
-            }
-            Log.i(LOG_TAG, "Android install permission is available; starting update download")
+        updateCoordinator.install(
+            apkURL,
+            expectedSHA256,
+            expectedSizeBytes,
+            targetVersionCode,
+            promise,
+        )
+    }
 
-            try {
-                updateExecutor.execute {
-                    try {
-                        val apkFile = updateDownloader.download(apkURL, expectedSHA256)
-                        Log.i(
-                            LOG_TAG,
-                            "Update APK download completed: path=${apkFile.absolutePath}, " +
-                                "exists=${apkFile.exists()}, canRead=${apkFile.canRead()}, " +
-                                "bytes=${apkFile.length()}",
-                        )
-                        UiThreadUtil.runOnUiThread {
-                            val installerActivity = reactContext.currentActivity
-                            if (installerActivity == null) {
-                                val cause =
-                                    IllegalStateException("No active Android activity")
-                                Log.e(
-                                    LOG_TAG,
-                                    "Unable to launch package installer: no active activity",
-                                    cause,
-                                )
-                                promise.reject(
-                                    "UPDATE_INSTALL_FAILED",
-                                    "No active Android activity",
-                                    cause,
-                                )
-                                return@runOnUiThread
-                            }
-                            val uri = try {
-                                FileProvider.getUriForFile(
-                                    reactContext,
-                                    "${BuildConfig.APPLICATION_ID}.fileprovider",
-                                    apkFile,
-                                )
-                            } catch (cause: Throwable) {
-                                Log.e(
-                                    LOG_TAG,
-                                    "Unable to create update FileProvider URI for " +
-                                        apkFile.absolutePath,
-                                    cause,
-                                )
-                                promise.reject(
-                                    "UPDATE_URI_FAILED",
-                                    "Unable to prepare the Android update file",
-                                    cause,
-                                )
-                                return@runOnUiThread
-                            }
-                            Log.i(LOG_TAG, "Update FileProvider URI created: $uri")
-                            try {
-                                installerActivity.startActivity(
-                                    Intent(Intent.ACTION_VIEW).apply {
-                                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                                        setDataAndType(
-                                            uri,
-                                            "application/vnd.android.package-archive",
-                                        )
-                                    },
-                                )
-                                Log.i(LOG_TAG, "Android package installer activity started")
-                                promise.resolve(null)
-                            } catch (cause: Throwable) {
-                                Log.e(LOG_TAG, "Unable to launch Android package installer", cause)
-                                promise.reject(
-                                    "UPDATE_INSTALLER_LAUNCH_FAILED",
-                                    "Unable to open the Android package installer",
-                                    cause,
-                                )
-                            }
-                        }
-                    } catch (cause: MobileUpdateDownloadFailure) {
-                        Log.e(
-                            LOG_TAG,
-                            "Update download failed: code=${cause.code}, " +
-                                "message=${cause.message}",
-                            cause,
-                        )
-                        promise.reject(cause.code, cause.message, cause)
-                    } catch (cause: Throwable) {
-                        Log.e(LOG_TAG, "Unexpected update download failure", cause)
-                        promise.reject(
-                            "UPDATE_DOWNLOAD_FAILED",
-                            cause.message ?: "Unable to download the Android update",
-                            cause,
-                        )
-                    }
-                }
-            } catch (cause: Throwable) {
-                Log.e(LOG_TAG, "Unable to schedule Android update download", cause)
-                promise.reject(
-                    "UPDATE_EXECUTOR_FAILED",
-                    "Unable to start the Android update download",
-                    cause,
-                )
-            }
+    @ReactMethod
+    fun cancelUpdate(promise: Promise) {
+        updateCoordinator.cancel(promise)
+    }
+
+    @ReactMethod
+    fun addListener(eventName: String) {
+        if (eventName == MobileUpdateCoordinator.EVENT_NAME) {
+            updateListenerCount.incrementAndGet()
         }
+    }
+
+    @ReactMethod
+    fun removeListeners(count: Int) {
+        updateListenerCount.updateAndGet { current -> (current - count).coerceAtLeast(0) }
     }
 
     @ReactMethod
@@ -492,7 +382,8 @@ class MobileSecurityModule(
     }
 
     override fun invalidate() {
-        updateExecutor.shutdownNow()
+        updateListenerCount.set(0)
+        updateCoordinator.invalidate()
         reactContext.removeActivityEventListener(activityEventListener)
         browserAuthBridge.close()
         UiThreadUtil.runOnUiThread {
@@ -512,6 +403,31 @@ class MobileSecurityModule(
             scanCancellationPromise = null
         }
         super.invalidate()
+    }
+
+    private fun publishMobileUpdateProgress(event: MobileUpdateProgressEvent) {
+        if (updateListenerCount.get() <= 0 || !reactContext.hasActiveReactInstance()) {
+            return
+        }
+        val payload =
+            Arguments.createMap().apply {
+                putDouble("downloadedBytes", event.downloadedBytes.toDouble())
+                if (event.errorCode == null) {
+                    putNull("errorCode")
+                } else {
+                    putString("errorCode", event.errorCode)
+                }
+                putBoolean("indeterminate", event.indeterminate)
+                putString("phase", event.phase)
+                if (event.totalBytes == null) {
+                    putNull("totalBytes")
+                } else {
+                    putDouble("totalBytes", event.totalBytes.toDouble())
+                }
+            }
+        reactContext
+            .getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
+            .emit(MobileUpdateCoordinator.EVENT_NAME, payload)
     }
 
     companion object {

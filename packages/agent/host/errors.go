@@ -3,6 +3,8 @@ package agenthost
 import (
 	"context"
 	"errors"
+
+	storesqlite "github.com/tutti-os/tutti/packages/agent/store-sqlite"
 )
 
 var (
@@ -33,6 +35,8 @@ var (
 	ErrEditRetryInProgress               = errors.New("agent history edit is still being confirmed")
 	ErrEditRetryResendPending            = errors.New("agent history was rolled back but the edited turn still needs to be resent")
 	ErrEditRetryRecoveryRequired         = errors.New("agent provider history diverged and requires explicit recovery")
+	ErrDeletedSessionNotFound            = storesqlite.ErrDeletedSessionNotFound
+	ErrDeletedSessionNotRestorable       = storesqlite.ErrDeletedSessionNotRestorable
 )
 
 // ProviderError preserves a provider-owned failure across the runtime adapter

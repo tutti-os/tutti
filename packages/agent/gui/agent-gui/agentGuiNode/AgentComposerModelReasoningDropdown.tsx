@@ -18,9 +18,11 @@ import {
   DropdownMenuSubContent,
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
+  RefreshIcon,
   RoomsHintIcon,
   Tooltip,
   TooltipContent,
+  TooltipProvider,
   TooltipTrigger,
   cn
 } from "@tutti-os/ui-system";
@@ -83,6 +85,7 @@ export function AgentModelReasoningDropdown({
   disabled = false,
   labels,
   modelHistoryTargetId = null,
+  onRetryComposerOptions,
   onSettingsChange
 }: {
   composerSettings: AgentGUIComposerSettingsVM;
@@ -93,6 +96,7 @@ export function AgentModelReasoningDropdown({
    * state; omit to fall back to one shared "default" bucket.
    */
   modelHistoryTargetId?: string | null;
+  onRetryComposerOptions?: () => void;
   onSettingsChange: (patch: {
     model?: string;
     reasoningEffort?: string;
@@ -153,6 +157,15 @@ export function AgentModelReasoningDropdown({
   const isModelLoading =
     composerSettings.isModelOptionsLoading ||
     composerSettings.isSettingsLoading;
+  const composerOptionsError = composerSettings.composerOptionsError === true;
+  const retryLabel = labels.retry ?? labels.loadingOptions;
+  const optionsLoadFailed = labels.optionsLoadFailed ?? retryLabel;
+  const retryTooltip = labels.retryTooltip ?? retryLabel;
+  const retryDisabled =
+    disabled ||
+    composerSettings.composerOptionsLoadStatus === "loading" ||
+    !onRetryComposerOptions;
+  const triggerDisabled = composerOptionsError ? retryDisabled : menuDisabled;
   const applySettingsChange = (patch: {
     model?: string;
     reasoningEffort?: string;
@@ -195,36 +208,102 @@ export function AgentModelReasoningDropdown({
       className={cn(
         "w-auto",
         styles.composerMenuTrigger,
-        menuDisabled &&
+        triggerDisabled &&
           "cursor-not-allowed text-[var(--agent-gui-text-tertiary)] opacity-60 hover:text-[var(--agent-gui-text-tertiary)]",
-        (composerSettings.isSettingsLoading ||
-          composerSettings.isModelOptionsLoading) &&
+        composerOptionsError &&
+          !retryDisabled &&
+          "!text-[var(--state-warning)] hover:!text-[var(--state-warning)]",
+        !composerOptionsError &&
+          (composerSettings.isSettingsLoading ||
+            composerSettings.isModelOptionsLoading) &&
           "animate-pulse"
       )}
-      aria-label={`${labels.modelLabel} / ${labels.reasoningLabel}`}
+      aria-label={
+        composerOptionsError
+          ? retryLabel
+          : `${labels.modelLabel} / ${labels.reasoningLabel}`
+      }
+      disabled={triggerDisabled}
+      onClick={
+        composerOptionsError && !retryDisabled
+          ? onRetryComposerOptions
+          : undefined
+      }
       data-agent-model-reasoning-trigger="true"
+      data-agent-composer-options-state={
+        composerOptionsError ? "error" : undefined
+      }
     >
-      <span className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden">
-        {menu.speed.show && menu.trigger.isFast ? (
-          <ZapIcon
-            aria-hidden
-            className="size-3.5 shrink-0"
-            data-agent-speed-indicator="fast"
-            strokeWidth={2.5}
-          />
-        ) : null}
-        {menu.trigger.showCombined ? (
-          <span className="min-w-0 truncate">{menu.trigger.combinedLabel}</span>
+      <span
+        className={cn(
+          "flex min-w-0 items-center gap-2 overflow-hidden",
+          composerOptionsError ? "flex-none" : "flex-1"
+        )}
+      >
+        {composerOptionsError ? (
+          <>
+            <RefreshIcon
+              aria-hidden
+              className={cn(
+                "size-3.5 shrink-0",
+                retryDisabled
+                  ? "text-[var(--agent-gui-text-tertiary)]"
+                  : "text-[var(--state-warning)]"
+              )}
+              data-agent-composer-options-retry-icon="true"
+            />
+            <span className="shrink-0 whitespace-nowrap">
+              {optionsLoadFailed}
+            </span>
+          </>
         ) : (
           <>
-            <span className="min-w-0 truncate">{menu.trigger.modelLabel}</span>
-            <span className="shrink-0">{menu.trigger.reasoningLabel}</span>
+            {menu.speed.show && menu.trigger.isFast ? (
+              <ZapIcon
+                aria-hidden
+                className="size-3.5 shrink-0"
+                data-agent-speed-indicator="fast"
+                strokeWidth={2.5}
+              />
+            ) : null}
+            {menu.trigger.showCombined ? (
+              <span className="min-w-0 truncate">
+                {menu.trigger.combinedLabel}
+              </span>
+            ) : (
+              <>
+                <span className="min-w-0 truncate">
+                  {menu.trigger.modelLabel}
+                </span>
+                <span className="shrink-0">{menu.trigger.reasoningLabel}</span>
+              </>
+            )}
           </>
         )}
       </span>
-      <ChevronDown aria-hidden="true" className="shrink-0" size={16} />
+      {!composerOptionsError ? (
+        <ChevronDown aria-hidden="true" className="shrink-0" size={16} />
+      ) : null}
     </button>
   );
+
+  if (composerOptionsError) {
+    return (
+      <TooltipProvider delayDuration={120}>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span
+              className="inline-flex"
+              tabIndex={retryDisabled ? 0 : undefined}
+            >
+              {trigger}
+            </span>
+          </TooltipTrigger>
+          <TooltipContent side="top">{retryTooltip}</TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+    );
+  }
 
   return (
     <DropdownMenu open={menuOpen} onOpenChange={handleMenuOpenChange}>

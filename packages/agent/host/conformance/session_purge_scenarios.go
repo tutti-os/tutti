@@ -100,19 +100,20 @@ func runPurgeDeletedSessions(ctx context.Context, driver Driver) error {
 	}); err != nil {
 		return err
 	}
-	leaf, err := driver.PurgeDeletedSessions(ctx, agenthost.PurgeDeletedSessionsInput{CutoffUnixMS: 100})
+	tree, err := driver.PurgeDeletedSessions(ctx, agenthost.PurgeDeletedSessionsInput{CutoffUnixMS: 100, MaxSessions: 1})
 	if err != nil {
-		return fmt.Errorf("purge tombstoned tree leaf: %w", err)
+		return fmt.Errorf("purge complete tombstoned tree: %w", err)
 	}
-	if len(leaf.Sessions) != 1 || leaf.Sessions[0].AgentSessionID != "tree-child" || !leaf.HasMore {
-		return fmt.Errorf("purge tombstoned tree leaf result=%#v", leaf)
+	if len(tree.Sessions) != 2 || tree.HasMore ||
+		tree.Sessions[0].AgentSessionID != "tree-child" || tree.Sessions[1].AgentSessionID != "tree-root" {
+		return fmt.Errorf("purge complete tombstoned tree result=%#v", tree)
 	}
-	root, err := driver.PurgeDeletedSessions(ctx, agenthost.PurgeDeletedSessionsInput{CutoffUnixMS: 100})
+	repeatTree, err := driver.PurgeDeletedSessions(ctx, agenthost.PurgeDeletedSessionsInput{CutoffUnixMS: 100})
 	if err != nil {
-		return fmt.Errorf("purge tombstoned tree root: %w", err)
+		return fmt.Errorf("repeat purge complete tombstoned tree: %w", err)
 	}
-	if len(root.Sessions) != 1 || root.Sessions[0].AgentSessionID != "tree-root" || root.HasMore {
-		return fmt.Errorf("purge tombstoned tree root result=%#v", root)
+	if len(repeatTree.Sessions) != 0 || repeatTree.HasMore {
+		return fmt.Errorf("repeat purge complete tombstoned tree result=%#v", repeatTree)
 	}
 	return nil
 }

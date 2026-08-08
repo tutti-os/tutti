@@ -50,7 +50,6 @@ import type {
 } from "../../../workspaceWorkflow";
 import type { TuttiWorkflowDockLabels } from "../TuttiWorkflowDock";
 import type { AgentGUIComposerFooterAccessoryRenderer } from "./AgentGUIComposerFooterAccessory.types";
-
 export type AgentMentionReferenceTargetResolver = (
   item: AgentContextMentionItem
 ) => ReferenceLocateTarget | null;
@@ -60,21 +59,17 @@ export interface AgentWorkspaceReferenceInitialTargetInput {
   composerSelectedProjectPath: string | null;
   userProjects: AgentGUINodeViewModel["rail"]["userProjects"];
 }
-
 export type AgentWorkspaceReferenceInitialTargetResolver = (
   input: AgentWorkspaceReferenceInitialTargetInput
 ) => ReferenceLocateTarget | null;
-
 export interface AgentGUIConversationRailLayout {
   providerRailWidthPx: number;
   conversationRailWidthPx: number;
   leftPanelWidthPx: number;
   resizing: boolean;
 }
-
-// The provider-gate content labels (checking / install / login / coming-soon /
-// unavailable / runtime-selection) live on AgentGUIProviderReadinessLabels;
-// extend it rather than restating every key here.
+// Provider-gate labels live on AgentGUIProviderReadinessLabels; extend it
+// rather than restating every key here.
 export interface AgentGUIViewLabels extends AgentGUIProviderReadinessLabels {
   initialPlaceholder: string;
   followupPlaceholder: string;
@@ -91,6 +86,9 @@ export interface AgentGUIViewLabels extends AgentGUIProviderReadinessLabels {
   modelTooltipVersionLabel: string;
   defaultModel: string;
   loadingOptions: string;
+  composerOptionsLoadFailed?: string;
+  composerOptionsRetry?: string;
+  composerOptionsRetryTooltip?: string;
   inheritedUnavailable: string;
   reasoningLabel: string;
   reasoningDegreeLabel: string;
@@ -213,11 +211,13 @@ export interface AgentGUIViewLabels extends AgentGUIProviderReadinessLabels {
   startConversation: string;
   selectConversation: string;
   loadingConversations: string;
+  conversationsLoadFailed: string;
   loadingConversation: string;
   continuedFromTask: string;
   scrollToBottom: string;
   searchNoConversations: string;
   searchFailed: string;
+  retryConversations: string;
   retrySearch: string;
   activityPriority: string;
   activityNothingNeedsAttention: string;
@@ -460,7 +460,6 @@ export type ChromeLabels = {
   retryActivation: string;
   continueInNewConversation: string;
 };
-
 export type InteractivePromptLabels = {
   approvalLead: string;
   fileChangeApprovalLead: string;
@@ -514,6 +513,7 @@ export type AgentGUIConversationRailLabels = Pick<
   | "conversationCopyPreviousMessages"
   | "copiedToClipboard"
   | "copyFailed"
+  | "conversationsLoadFailed"
   | "moreSessionActions"
   | "deleteSession"
   | "deleteSessionConfirm"
@@ -541,6 +541,7 @@ export type AgentGUIConversationRailLabels = Pick<
   | "removeProjectConfirmDescription"
   | "removeProjectConfirmTitle"
   | "renameSession"
+  | "retryConversations"
   | "retrySearch"
   | "searchFailed"
   | "searchNoConversations"
@@ -558,7 +559,14 @@ export type AgentGUIConversationRailLabels = Pick<
   | "viewActivity"
   | "viewActivityNeedsAttention"
 >;
-export interface AgentGUINodeViewProps {
+type AgentGUIComposerExternalPromptProps = Pick<
+  AgentComposerProps,
+  | "resolveExternalPromptEntries"
+  | "prepareExternalPromptFiles"
+  | "resolvePastedPath"
+  | "promptAssetLimit"
+>;
+export interface AgentGUINodeViewProps extends AgentGUIComposerExternalPromptProps {
   viewModel: AgentGUINodeViewModel;
   referenceProvenanceFilters?: AgentComposerReferenceProvenanceFilters | null;
   sessionInputHistoryEnabled?: boolean;
@@ -710,9 +718,6 @@ export interface AgentGUINodeViewProps {
   onWorkspaceFileReferencesAdded?: (
     references: readonly WorkspaceFileReference[]
   ) => void | Promise<void>;
-  resolveExternalPromptEntries?: AgentComposerProps["resolveExternalPromptEntries"];
-  prepareExternalPromptFiles?: AgentComposerProps["prepareExternalPromptFiles"];
-  promptAssetLimit?: number | null;
   onConversationRailWidthChanged: (widthPx: number) => void;
   onConversationRailLayoutChange?: (
     layout: AgentGUIConversationRailLayout
@@ -737,7 +742,7 @@ export interface AgentGUINodeViewProps {
   workspaceAppIcons?: readonly AgentMessageMarkdownWorkspaceAppIcon[];
   renderComposerFooterAccessory?: AgentGUIComposerFooterAccessoryRenderer;
 }
-export interface AgentGUIDetailPaneProps {
+export interface AgentGUIDetailPaneProps extends AgentGUIComposerExternalPromptProps {
   shell: AgentGUINodeViewModel["shell"];
   rail: AgentGUINodeViewModel["rail"];
   detail: AgentGUINodeViewModel["detail"];
@@ -777,9 +782,6 @@ export interface AgentGUIDetailPaneProps {
         entity?: AgentContextMentionItem | null
       ) => Promise<WorkspaceReferencePickResult>)
     | null;
-  resolveExternalPromptEntries?: AgentComposerProps["resolveExternalPromptEntries"];
-  prepareExternalPromptFiles?: AgentComposerProps["prepareExternalPromptFiles"];
-  promptAssetLimit?: number | null;
   selectProjectDirectory?: () => Promise<{ path: string } | null>;
   onRequestGitBranches?: AgentComposerGitBranchLoader | null;
   onRequestComposerFocus: () => void;
@@ -791,10 +793,8 @@ export interface AgentGUISidebarFooterContext {
   currentUserId?: string | null;
   activeConversation: AgentGUINodeViewModel["rail"]["activeConversation"];
 }
-
 export type AgentGUISidebarFooterRenderer = (
   ctx: AgentGUISidebarFooterContext
 ) => ReactNode;
-
 /** Renders the host-owned empty state for an exact provider rail. */
 export type AgentGUIAgentsEmptyRenderer = () => ReactNode;

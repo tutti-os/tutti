@@ -1,4 +1,4 @@
-import electron, { type IpcMainEvent } from "electron";
+import electron, { type BrowserWindow, type IpcMainEvent } from "electron";
 import {
   desktopIpcChannels,
   type DesktopIpcResult,
@@ -16,7 +16,21 @@ export function requestWorkspaceAppExternalRenderer<
   context: WorkspaceAppGuestContext,
   request: DesktopWorkspaceAppExternalRendererRequest
 ): Promise<TResult> {
-  const ownerWebContents = context.ownerWindow.webContents;
+  return requestWorkspaceOwnerRenderer(context.ownerWindow, request);
+}
+
+/**
+ * Routes a typed Host request to the renderer that owns the workspace Engine.
+ * First-party desktop launchers use this narrower entry without pretending to
+ * be a workspace-app guest; lifecycle execution still stays in that Engine.
+ */
+export function requestWorkspaceOwnerRenderer<
+  TResult extends DesktopWorkspaceAppExternalRendererResult
+>(
+  ownerWindow: BrowserWindow,
+  request: DesktopWorkspaceAppExternalRendererRequest
+): Promise<TResult> {
+  const ownerWebContents = ownerWindow.webContents;
   if (ownerWebContents.isDestroyed()) {
     throw new Error("Workspace owner renderer is unavailable.");
   }

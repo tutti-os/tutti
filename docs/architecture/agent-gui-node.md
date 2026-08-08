@@ -258,6 +258,22 @@ and early write admission for the pending card. An observation gap may still
 govern the active Turn before or after that Interaction, but it cannot override
 the exact ready or blocked readiness result while the card is presented.
 
+When an exact Interaction is blocked, AgentGUI keeps the pending action visible
+but disables its controls. The disabled action group remains focusable and
+hoverable so the same readiness reason is discoverable in the conversation
+chrome and Message Center; this is presentation only and does not change the
+Host-owned admission decision.
+
+Message Center and attention-card consumers preserve this separation in their
+presentation contract: `isSubmitting` describes an in-flight response, while
+an independently supplied interaction-disabled state blocks the nested prompt
+controls without hiding the pending card or its conversation navigation. A
+host-provided blocked reason is exposed through a focusable, hoverable
+description so a blocked card remains understandable without making Tooltip
+the command authority. If the Host omits the reason, the disabled wrapper stays
+out of the tab order and does not create an empty Tooltip. The final semantic
+command admission check remains in the consumer/controller path.
+
 ### 2.6 On-demand status
 
 AgentGUI owns one provider-neutral `AgentStatusController` for `/status`, Agent
@@ -886,6 +902,14 @@ while canonical Turn state remains authoritative once it exists.
   Mobile retain transport execution in their `EngineExtensionCommand`
   adapters and delegate pure generated-DTO projection to
   `@tutti-os/agent-activity-tuttid-adapter`
+- A composer-option failure with no signature-matching cached value remains an
+  explicit Engine `error` state. AgentGUI renders a compact failure and retry
+  action in the existing options slot instead of presenting an empty list or a
+  stale/default selection; a last valid cached value remains renderable while
+  its load status is reconciled. The retry is the same semantic
+  `engine.loadComposerOptions` operation with `force` left false, so request
+  identity, cache reuse, and identical in-flight joining remain Engine-owned;
+  a view must not call the transport adapter directly.
 - an acknowledged home Composer default remains an optimistic draft until a
   later authoritative Composer-options response reports the same effective
   field value. A successful read alone must not retire the draft because a
@@ -1329,6 +1353,14 @@ update only an already-resolved matching scope. A subordinate result must not
 cancel the full query, publish partial membership for an unresolved scope, or
 unlock Rail interactions.
 
+When Activity View has a non-null in-memory projection, that projection remains
+visible while the unrelated initial Rail membership query is pending; Rail
+loading, empty, or failure placeholders must not replace it. A refresh or page
+failure after Rail rows already exist preserves those rows and reports a
+non-blocking error through the host toast capability, falling back to the UI
+System toast when that optional capability is absent. An unresolved empty Rail
+scope retains the centered error state and its retry action.
+
 Presentation-invisible Sessions remain canonical engine entities and stay
 available through exact Session selectors for trusted open, reconcile, and
 command flows. Plural consumer selectors exclude them before Rail and Message
@@ -1708,6 +1740,103 @@ A controller may compose flows but cannot become a second lifecycle state machin
 
 Activation and existing-Session submit share a canonical prompt envelope. Submit eligibility includes text and renderable structured content; an individual composer does not redefine it.
 
+`@tutti-os/agent-gui/quick-composer` is the draft-only public entry for
+launch surfaces that need the canonical DOM Composer without a Rail or
+timeline. It may present rich text, image draft blocks, and an exact Agent
+Target selector, but it owns no Session, Turn, option-loading, or recovery
+state. The host receives its typed prompt envelope and must route new Session
+creation through the workspace's existing `AgentSessionEngine`; the entry must
+never construct a second Engine or call a lifecycle transport.
+
+The embedding host owns target readiness and capability loading. It passes the
+canonical `agentTargetId` plus a capability snapshot for each selectable
+target. Quick Composer resolves only the exact identifier and fails closed for
+unknown, disabled, or capability-less targets; it never falls back to array
+position, legacy `targetId`, or an inferred provider. Structured image content
+is accepted only when the selected target declares image support. Submit emits
+the resolved target identity with the prompt envelope, preserving the target
+the user actually selected across the host activation boundary.
+The Quick Composer public target omits legacy `targetId` and AgentGUI-internal
+`ref`; the adapter derives both from canonical `agentTargetId` for the shared
+Composer VM. Provider-menu selection therefore cannot cross or collide with a
+second identifier namespace.
+
+When an embedding host supports pre-session settings, it passes one explicit
+settings capability containing authoritative `AgentActivityComposerOptions`,
+a controlled sparse settings draft, its change callback, and option-loading
+state for the exact target and project. Omitting any persistence path means
+omitting the whole capability, so Quick Composer fails closed instead of
+rendering interactive no-op controls. It projects supported values into the
+same model, reasoning, speed, permission, plan, and browser controls rendered
+by the full Composer; it does not maintain a second menu implementation or
+fetch options itself. `computerUse` and gated `codexSaverMode` remain hidden
+until an embedding activation seam preserves and authorizes them end to end. A
+settings change returns a typed patch to the host, which refreshes authority
+and forwards the settled draft through its existing activation command. Only
+the very first options load for a target locks settings controls and submit;
+once a good options snapshot exists, background refreshes keep every control
+interactive and a failed refresh keeps the last good snapshot instead of
+blanking the menus.
+
+`@tutti-os/agent-gui/composer-settings-core` is the host-agnostic policy for
+that settings capability. `ComposerSettingsCore` is a headless controller
+(`subscribe`/`getSnapshot`, no React, no Engine dependency) that owns the
+sparse settings draft, a revision-fenced options lifecycle with last-good
+retention, defaults seeding via the daemon's defaults-merged
+`effectiveSettings`, and trailing-edge write-back of explicit picks into the
+canonical per-target composer-defaults ledger through injected ports
+(`fetchOptions`, `rememberDefaults`). `resolveSubmitSettings()` returns the
+exact values the composer displays; hosts must submit them verbatim so the
+daemon never re-interprets empty fields against another surface's memory. A
+Quick Composer host embeds this core instead of hand-rolling fencing,
+failure semantics, or a parallel settings store; the desktop capture window
+is the first adopter.
+
+The Quick Composer uses the Composer's `embedded` layout contract. Unlike
+`dock`, which intentionally grows attachments and long drafts upward over a
+conversation timeline, `embedded` keeps the entire draft in normal document
+flow. Compact host surfaces must select that layout instead of compensating for
+dock overhang with consumer-specific offsets or clipping.
+
+Embedding hosts may inject the same `RichTextMentionService` and workspace
+reference-picker callback used by a full AgentGUI surface. Quick Composer wraps
+those inputs in the canonical mention-service boundary and delegates reference
+insertion to `AgentComposer`; it does not own a parallel mention catalog or
+picker. A constrained host may also declare a top viewport inset for portaled
+menus. Provider Select collision padding and mention-palette geometry must
+honor that inset so host chrome is never treated as usable menu space.
+An embedding host may also opt into the canonical project selector with a
+controlled selected path and an explicit `WorkspaceUserProjectApi`. That
+capability supplies the real registered-project catalog, selection preparation,
+native directory choice, and project registration. A native directory callback
+alone is insufficient: Quick Composer does not invent a project registry or
+Session state, so it hides the project selector when no real project capability
+is available. The host carries the resulting path through its existing
+activation command as `cwd`.
+AgentGUI's standalone locale runtime includes the scoped defaults of package
+surfaces it mounts, including workspace-user-project. A host-supplied app
+runtime may override those keys, but a standalone Quick Composer must never
+render an unresolved scoped key as user-visible copy.
+Quick Composer also establishes the canonical AgentGUI semantic-token scope,
+so embedded placeholder, foreground, border, and menu colors never fall back
+to inherited host text styles. Hosts may provide a compact action accessory;
+`AgentComposer` renders it immediately before the primary send/stop action in
+non-hero layouts instead of requiring consumer CSS to position controls over
+the Composer DOM. An embedding host with a definite block size may opt into
+`fillAvailableHeight`; the embedded Composer then gives its input group and
+each rich-text editor wrapper the remaining height while keeping attachment and
+footer rows intrinsic. The entire assigned editor block remains a native
+contenteditable hit target instead of relying on a host-level click-to-focus
+proxy. This remains explicit so ordinary launch surfaces keep the default
+content-sized behavior.
+
+An embedded host may also choose `composerActionPlacement="footer"`. In that
+mode the same primary action cluster (including an optional host accessory)
+joins the canonical Composer footer instead of the prompt row. This keeps the
+reference controls, Agent selector, host modifier, and send button on one
+alignment baseline without host positioning CSS; the default remains `input`
+for existing consumers.
+
 The canonical Composer gate belongs to the Session-presentation projection and
 travels through the Composer view-model slice as one object. View-local
 transition or workflow locks may layer on top as explicit presentation locks;
@@ -1907,6 +2036,14 @@ currently registered custom mentions retain their canonical href and chip
 identity without a host DOM event interceptor.
 
 External OS file paste and drop enter one host-injected classification boundary before draft attachment creation. The synchronous `resolveExternalPromptEntries` port classifies each source index as a live `WorkspaceFileReference` or a snapshot requiring preparation. AgentGUI owns ordered mention insertion and draft reconciliation: references become ordinary file/folder mentions and never consume prompt-asset slots, while only `prepare` entries create pending attachment state and enter `prepareExternalPromptFiles`. A host without the resolver prepares every external entry. The preparer owns native-path or byte lookup, size enforcement, persistence, and remote transport; each prepared input has one `sourceIndex` result, one failure must not fail siblings, successful results include a provider-readable `path` or `url`, and failures carry typed error codes. Hosts that classify path-backed entries as references must reject any such entry that unexpectedly reaches preparation, so classification failure cannot silently create a duplicate snapshot.
+
+Plain-text absolute path paste may enter an optional host-owned
+`workspace.resolvePastedPath` boundary. AgentGUI applies only a strict sync
+candidate gate (one trimmed absolute path with no whitespace or quotes). The
+host returns a `WorkspaceFileReference` to insert as a file/folder mention, or
+`null`/rejection to fall back to plain text. Hosts that omit the callback keep
+the previous plain-text paste path; existence checks, host-namespace
+projection, and Shared-Agent policy remain host-owned.
 
 Workspace picker results and internal workspace-reference drags remain live references. They enter the rich-text document as mentions and never pass through external-file preparation. A picker source whose selected locator is not yet consumer-readable may perform source-owned confirmation preparation before the mention is inserted; the picker waits in a loading state, publishes no partial result on failure, and remains open for retry. This confirmation transaction belongs to the reference source contract and is distinct from the external OS file preparation pipeline. Removing an inline external-file mention removes its draft intent; a later async result must not revive it or lose its error reason when the draft is in another scope.
 
@@ -2536,6 +2673,35 @@ Runtime destination also bumps `agentFocus` to scroll and briefly highlight the 
 a link to a hidden preview agent surfaces an "enable Preview Agents" hint rather
 than failing silently. This is a settings surface, not a second Agent Target
 state store.
+
+### 8.2 Deleted-conversation settings surface
+
+Deleted conversations are maintained by a top-level desktop Settings section
+immediately before About; they do not belong to the Agent subsection. The page
+is scoped to the current Workspace, while its 15/30-day automatic-cleanup
+preference is device-global. Its fixed header owns the title-only search,
+project filter, retention selector, and destructive “delete all” action so the
+controls remain discoverable while the list scrolls.
+
+Each row represents one topmost deleted Session component—a canonical root or
+a child whose parent is not deleted—and reuses the two-line Activity View
+summary convention: title first, then original project identity and the
+pre-delete `updated_at`. The row body is not navigation. Restore and
+permanent delete are the only row actions; restore has no confirmation and does
+not navigate, while permanent delete uses the ordinary destructive
+confirmation. Legacy lossy tombstones explain why restore is unavailable.
+“Delete all” ignores search/project filters, confirms against the Workspace
+component count with a typed phrase, and remains subject to the daemon idle gate.
+
+The list uses stable cursor paging plus virtual scrolling and automatically
+loads near its end. Project options include the unscoped case and original
+paths whose project registration has since disappeared. Renderer state may
+optimistically remove a row only after a successful restore/purge response; it
+does not copy lifecycle semantics out of Host or trigger provider resume. The
+canonical restore commit emits `session_restored`; the workspace engine clears
+only that Session's deletion tombstone and performs an authoritative detail
+reconcile before AgentGUI renders it again. Generic activity events remain
+unable to resurrect a deleted Session.
 
 ## 9. Folder guide
 

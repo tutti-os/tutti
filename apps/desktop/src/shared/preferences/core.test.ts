@@ -81,7 +81,11 @@ test("normalizeDesktopWorkbenchShortcuts clamps + nulls empty", () => {
       newAgentConversation: "  Meta+K ",
       newSameTypeWindow: ""
     }),
-    { newAgentConversation: "Meta+K", newSameTypeWindow: null }
+    {
+      newAgentConversation: "Meta+K",
+      newSameTypeWindow: null,
+      captureScreenshot: null
+    }
   );
 });
 

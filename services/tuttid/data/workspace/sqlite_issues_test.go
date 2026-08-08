@@ -917,6 +917,211 @@ func TestSQLiteIssueStoreRollsBackIssueWhenBatchTaskInsertFails(t *testing.T) {
 	}
 }
 
+func TestSQLiteIssueStoreRollsBackIssueWhenContextRefInsertFails(t *testing.T) {
+	t.Parallel()
+
+	store := openTestSQLiteStore(t)
+	ctx := context.Background()
+	const workspaceID = "ws-issue-attachment-rollback"
+	if err := store.Create(ctx, workspacebiz.Summary{ID: workspaceID, Name: "Attachment rollback"}); err != nil {
+		t.Fatalf("Create() workspace error = %v", err)
+	}
+	service := testIssueService(store)
+	_, _, err := service.CreateIssueWithContextRefs(ctx, workspaceissues.CreateIssueWithContextRefsInput{
+		Issue: workspaceissues.CreateIssueInput{
+			WorkspaceID: workspaceID,
+			TopicID:     workspaceissues.DefaultTopicID,
+			ActorUserID: "user-1",
+			IssueID:     "issue-attachment-rollback",
+			Title:       "Atomic attachment issue",
+		},
+		Refs: []workspaceissues.AddContextRefInput{
+			{ContextRefID: "duplicate-ref", RefType: "image/png", Path: "/managed/first.png"},
+			{ContextRefID: "duplicate-ref", RefType: "image/png", Path: "/managed/second.png"},
+		},
+	})
+	if !errors.Is(err, workspaceissues.ErrContextRefAlreadyExists) {
+		t.Fatalf("CreateIssueWithContextRefs() error = %v, want ErrContextRefAlreadyExists", err)
+	}
+	if _, err := store.GetIssue(ctx, workspaceID, "issue-attachment-rollback"); !errors.Is(err, workspaceissues.ErrIssueNotFound) {
+		t.Fatalf("GetIssue() after rollback error = %v, want ErrIssueNotFound", err)
+	}
+}
+
+func TestSQLiteIssueStoreRollsBackImplicitTaskWhenLaunchIntentAdmissionFails(t *testing.T) {
+	t.Parallel()
+
+	store := openTestSQLiteStore(t)
+	ctx := context.Background()
+	const workspaceID = "ws-explicit-launch-admission-rollback"
+	if err := store.Create(ctx, workspacebiz.Summary{ID: workspaceID, Name: "Launch admission rollback"}); err != nil {
+		t.Fatal(err)
+	}
+	service := testIssueService(store)
+	issue, err := service.CreateIssue(ctx, workspaceissues.CreateIssueInput{
+		WorkspaceID: workspaceID,
+		TopicID:     workspaceissues.DefaultTopicID,
+		ActorUserID: "user-1",
+		Title:       "Atomic implicit task",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	prepared, err := service.PrepareRun(ctx, workspaceissues.CreateRunInput{
+		WorkspaceID:   workspaceID,
+		IssueID:       issue.IssueID,
+		ActorUserID:   "user-1",
+		RunID:         "run-admission-rollback",
+		AgentTargetID: "local:codex",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !prepared.TaskIsNew {
+		t.Fatal("PrepareRun() TaskIsNew = false, want true")
+	}
+	if _, err := store.writeDB.ExecContext(ctx, `
+CREATE TRIGGER reject_explicit_launch_intent_admission
+BEFORE INSERT ON workspace_issue_run_launch_intents
+BEGIN
+  SELECT RAISE(ABORT, 'injected launch intent admission failure');
+END;
+`); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := store.CreateIssueRunWithLaunchIntent(
+		ctx,
+		prepared,
+		workspaceissues.IssueRunClientSubmitID(prepared.Run.RunID),
+		`{}`,
+	); err == nil {
+		t.Fatal("CreateIssueRunWithLaunchIntent() error = nil, want injected rollback")
+	}
+	tasks, err := store.ListTasks(ctx, workspaceissues.TaskListFilter{
+		WorkspaceID: workspaceID,
+		IssueID:     issue.IssueID,
+		ReturnAll:   true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tasks.Items) != 0 {
+		t.Fatalf("tasks after rollback = %+v, want none", tasks.Items)
+	}
+	if _, err := store.GetRun(
+		ctx,
+		workspaceID,
+		issue.IssueID,
+		prepared.Task.TaskID,
+		prepared.Run.RunID,
+	); !errors.Is(err, workspaceissues.ErrRunNotFound) {
+		t.Fatalf("GetRun() after rollback error = %v, want ErrRunNotFound", err)
+	}
+	detail, err := service.GetIssueDetail(ctx, workspaceID, issue.IssueID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if detail.Issue.TaskCount != 0 || detail.Issue.RunningCount != 0 {
+		t.Fatalf("Issue projection after rollback = %+v", detail.Issue)
+	}
+}
+
+func TestSQLiteIssueStoreSettlesExplicitLaunchAtomically(t *testing.T) {
+	t.Parallel()
+
+	store := openTestSQLiteStore(t)
+	ctx := context.Background()
+	const workspaceID = "ws-explicit-launch-settlement"
+	if err := store.Create(ctx, workspacebiz.Summary{ID: workspaceID, Name: "Launch settlement"}); err != nil {
+		t.Fatal(err)
+	}
+	service := testIssueService(store)
+	issue, err := service.CreateIssue(ctx, workspaceissues.CreateIssueInput{
+		WorkspaceID: workspaceID, TopicID: workspaceissues.DefaultTopicID,
+		ActorUserID: "user-1", Title: "Atomic launch settlement",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	task, err := service.CreateTask(ctx, workspaceissues.CreateTaskInput{
+		WorkspaceID: workspaceID, IssueID: issue.IssueID,
+		ActorUserID: "user-1", Title: "Launch", AgentTargetID: "local:codex",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	prepared, err := service.PrepareRun(ctx, workspaceissues.CreateRunInput{
+		WorkspaceID: workspaceID, IssueID: issue.IssueID, TaskID: task.TaskID,
+		ActorUserID: "user-1", RunID: "run-atomic-settlement",
+		AgentTargetID: "local:codex", AgentSessionID: "session-atomic-settlement",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.CreateIssueRunWithLaunchIntent(
+		ctx, prepared, "issue-run:run-atomic-settlement",
+		`{"title":"Atomic launch settlement","prompt":"Original prompt"}`,
+	); err != nil {
+		t.Fatal(err)
+	}
+	now := time.UnixMilli(1_700_000_200_000).UTC()
+	claimed, err := store.ClaimIssueRunLaunchIntent(
+		ctx, workspaceID, issue.IssueID, prepared.Run.RunID, "owner-1", now, now.Add(time.Minute),
+	)
+	if err != nil || !claimed {
+		t.Fatalf("ClaimIssueRunLaunchIntent() claimed=%v error=%v", claimed, err)
+	}
+	if _, err := store.writeDB.ExecContext(ctx, `
+CREATE TRIGGER reject_explicit_launch_task_settlement
+BEFORE UPDATE ON workspace_issue_tasks
+WHEN NEW.status = 'failed'
+BEGIN
+  SELECT RAISE(ABORT, 'injected explicit settlement failure');
+END;
+`); err != nil {
+		t.Fatal(err)
+	}
+	settlement := workspaceissues.RunLaunchSettlement{
+		WorkspaceID: workspaceID, IssueID: issue.IssueID, RunID: prepared.Run.RunID,
+		LeaseOwner: "owner-1", Status: workspaceissues.StatusFailed,
+		ErrorMessage: "definite pre-delivery failure", NowUnixMS: now.Add(time.Second).UnixMilli(),
+	}
+	if _, err := store.SettleIssueRunLaunch(ctx, settlement); err == nil {
+		t.Fatal("SettleIssueRunLaunch() error = nil, want injected rollback")
+	}
+	run, err := store.GetRun(ctx, workspaceID, issue.IssueID, task.TaskID, prepared.Run.RunID)
+	if err != nil || run.Status != workspaceissues.StatusRunning {
+		t.Fatalf("Run after rollback = %#v, error = %v", run, err)
+	}
+	if err := store.RequeueLeasedIssueRunLaunchIntents(ctx, workspaceID, now.Add(2*time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	launches, err := store.ListPreparedIssueRunLaunches(ctx, workspaceID)
+	if err != nil || len(launches) != 1 {
+		t.Fatalf("prepared launches after rollback = %#v, error = %v", launches, err)
+	}
+	if _, err := store.writeDB.ExecContext(ctx, `DROP TRIGGER reject_explicit_launch_task_settlement`); err != nil {
+		t.Fatal(err)
+	}
+	claimed, err = store.ClaimIssueRunLaunchIntent(
+		ctx, workspaceID, issue.IssueID, prepared.Run.RunID, "owner-2",
+		now.Add(2*time.Minute), now.Add(3*time.Minute),
+	)
+	if err != nil || !claimed {
+		t.Fatalf("ClaimIssueRunLaunchIntent(retry) claimed=%v error=%v", claimed, err)
+	}
+	settlement.LeaseOwner = "owner-2"
+	settled, err := store.SettleIssueRunLaunch(ctx, settlement)
+	if err != nil || settled.Status != workspaceissues.StatusFailed {
+		t.Fatalf("SettleIssueRunLaunch(retry) Run=%#v error=%v", settled, err)
+	}
+	task, err = store.GetTask(ctx, workspaceID, issue.IssueID, task.TaskID)
+	if err != nil || task.Status != workspaceissues.StatusFailed {
+		t.Fatalf("Task after settlement = %#v, error = %v", task, err)
+	}
+}
+
 func testIssueService(store workspaceissues.Store) workspaceissues.Service {
 	counters := map[workspaceissues.IDKind]int{}
 	return workspaceissues.Service{

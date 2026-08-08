@@ -77,6 +77,7 @@ import {
 import { WorkspaceModelPlansController } from "./workspaceModelPlansController.ts";
 import { WorkspaceAgentsController } from "./workspaceAgentsController.ts";
 import { WorkspaceAutomationRulesController } from "./workspaceAutomationRulesController.ts";
+import { WorkspaceDeletedConversationsController } from "./workspaceDeletedConversationsController.ts";
 
 export interface WorkspaceUiModeChangeErrorInput {
   error: unknown;
@@ -104,6 +105,7 @@ export class WorkspaceSettingsService implements IWorkspaceSettingsService {
   readonly store = createWorkspaceSettingsStore();
   readonly agents: WorkspaceAgentsController;
   readonly automationRules: WorkspaceAutomationRulesController;
+  readonly deletedConversations: WorkspaceDeletedConversationsController;
   readonly modelPlans: WorkspaceModelPlansController;
 
   private readonly dependencies: WorkspaceSettingsServiceDependencies;
@@ -152,6 +154,11 @@ export class WorkspaceSettingsService implements IWorkspaceSettingsService {
     });
     this.automationRules = new WorkspaceAutomationRulesController({
       client: dependencies.client,
+      store: this.store
+    });
+    this.deletedConversations = new WorkspaceDeletedConversationsController({
+      client: dependencies.client,
+      notifications,
       store: this.store
     });
   }
@@ -280,6 +287,7 @@ export class WorkspaceSettingsService implements IWorkspaceSettingsService {
       this.modelPlans.reset();
       this.agents.reset();
       this.automationRules.reset();
+      this.deletedConversations.reset();
     }
   }
 
@@ -295,6 +303,9 @@ export class WorkspaceSettingsService implements IWorkspaceSettingsService {
     }
     if (sectionID === "agent") {
       this.refreshActiveAgentTab();
+    }
+    if (sectionID === "deletedConversations") {
+      void this.deletedConversations.refresh();
     }
   }
 
@@ -801,31 +812,6 @@ export class WorkspaceSettingsService implements IWorkspaceSettingsService {
     }
   }
 
-  async purgeDeletedConversations(): Promise<void> {
-    if (this.store.purgingDeletedConversations) {
-      return;
-    }
-    this.store.purgingDeletedConversations = true;
-    try {
-      const result =
-        await this.dependencies.client.purgeDeletedAgentConversations();
-      this.notifications.success({
-        title: createActiveTranslator().t(
-          "workspace.settings.general.deletedConversationPurgeCompleted",
-          { count: String(result.removedSessions) }
-        )
-      });
-    } catch {
-      this.notifications.error({
-        title: createActiveTranslator().t(
-          "workspace.settings.general.deletedConversationPurgeFailed"
-        )
-      });
-    } finally {
-      this.store.purgingDeletedConversations = false;
-    }
-  }
-
   async exportDeveloperLogs(input: ExportDeveloperLogsInput): Promise<void> {
     if (this.store.developerLogs.exporting) {
       return;
@@ -911,6 +897,10 @@ export class WorkspaceSettingsService implements IWorkspaceSettingsService {
     }
     if (this.store.activeSection === "agent") {
       this.refreshActiveAgentTab();
+      return;
+    }
+    if (this.store.activeSection === "deletedConversations") {
+      void this.deletedConversations.refresh();
     }
   }
 

@@ -342,6 +342,7 @@ const vendoredClaudeSDKSidecarRelPath = join(
   "main.ts"
 );
 const vendoredManagedPosixShellRootRelPath = join("bin", "managed-posix-shell");
+const vendoredMutagenRootRelPath = join("bin", "mutagen");
 
 // resolveBrowserMcpDaemonEnv points the daemon at a vendored chrome-devtools-mcp
 // in packaged builds so browser use never has to fetch it over the network at
@@ -491,6 +492,59 @@ export function resolveManagedPosixShellDaemonEnv(
   };
 }
 
+export function resolveMutagenDaemonEnv(
+  runtime?: DesktopElectronAppRuntime,
+  options: ResolveLaunchSpecOptions & {
+    inheritedEnv?: Record<string, string>;
+  } = {}
+): Record<string, string> {
+  if (
+    process.env.TUTTI_MUTAGEN_BIN?.trim() ||
+    options.inheritedEnv?.TUTTI_MUTAGEN_BIN?.trim()
+  ) {
+    return {};
+  }
+  let appRuntime: DesktopElectronAppRuntime;
+  try {
+    appRuntime = runtime ?? resolveElectronAppRuntime();
+  } catch {
+    return {};
+  }
+  const runtimeRoot = appRuntime.isPackaged
+    ? resolve(appRuntime.resourcesPath, vendoredMutagenRootRelPath)
+    : resolve(
+        options.repoRoot ?? resolveRepoRoot(),
+        "apps/desktop/build/mutagen"
+      );
+  let executable: unknown;
+  try {
+    const metadata = JSON.parse(
+      readFileSync(join(runtimeRoot, "runtime.json"), "utf8")
+    ) as { schemaVersion?: unknown; executable?: unknown };
+    if (metadata.schemaVersion !== "tutti.mutagen.v1") {
+      return {};
+    }
+    executable = metadata.executable;
+  } catch {
+    return {};
+  }
+  if (typeof executable !== "string" || executable.trim() !== executable) {
+    return {};
+  }
+  const entry = resolve(runtimeRoot, executable);
+  const relativeEntry = relative(runtimeRoot, entry);
+  if (
+    executable === "" ||
+    relativeEntry === ".." ||
+    relativeEntry.startsWith(`..${sep}`) ||
+    isAbsolute(relativeEntry) ||
+    !existsSync(entry)
+  ) {
+    return {};
+  }
+  return { TUTTI_MUTAGEN_BIN: entry };
+}
+
 function resolveManagedRuntimeDaemonEnv(
   userShellEnv?: Record<string, string>
 ): Record<string, string> {
@@ -524,6 +578,7 @@ export function resolveManagedDaemonProcessEnv(
     ...resolveComputerMcpDaemonEnv(),
     ...resolveClaudeSDKSidecarDaemonEnv(),
     ...resolveManagedPosixShellDaemonEnv(),
+    ...resolveMutagenDaemonEnv(undefined, { inheritedEnv: input.userShellEnv }),
     TUTTI_APP_VERSION: process.env.TUTTI_APP_VERSION?.trim() ?? "",
     TUTTI_DESKTOP_UPDATE_ADMISSION_ARCHITECTURE:
       desktopUpdateAdmission?.architecture ?? "",

@@ -1,4 +1,5 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { useState } from "react";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import { createDefaultWorkspaceUserProjectI18nRuntime } from "@tutti-os/workspace-user-project/i18n";
 import { WorkspaceUserProjectSelect } from "@tutti-os/workspace-user-project/ui";
@@ -106,6 +107,63 @@ describe("WorkspaceUserProjectSelect render budget", () => {
     await waitFor(() =>
       expect(screen.queryByRole("option", { name: "Beta" })).toBeNull()
     );
+  });
+
+  it("prepares once for the controlled path after an external project is linked", async () => {
+    const project = {
+      id: "project-alpha",
+      label: "Alpha",
+      path: "/workspace/alpha",
+      pinnedAtUnixMs: 0
+    };
+    const linkedProject = {
+      id: "project-beta",
+      label: "Beta",
+      path: "/workspace/beta",
+      pinnedAtUnixMs: 0
+    };
+    const prepareSelection = vi.fn(async () => ({
+      isSelectedPathMissing: false,
+      projects: [project],
+      selection: { kind: "none" as const }
+    }));
+    const useProject = vi.fn(async () => linkedProject);
+    const api = {
+      list: async () => ({ projects: [project] }),
+      prepareSelection,
+      selectDirectory: vi.fn(async () => ({ path: linkedProject.path })),
+      use: useProject
+    };
+
+    function ControlledSelect() {
+      const [path, setPath] = useState<string | null>(null);
+      return (
+        <WorkspaceUserProjectSelect
+          api={api}
+          selectedProjectPath={path}
+          shouldApplyPreparedSelection={false}
+          onProjectPathChange={setPath}
+        />
+      );
+    }
+
+    render(<ControlledSelect />);
+    const trigger = await screen.findByRole("combobox", { name: "Project" });
+    await waitFor(() => expect(prepareSelection).toHaveBeenCalledTimes(1));
+
+    fireEvent.pointerDown(trigger, {
+      button: 0,
+      ctrlKey: false,
+      pointerType: "mouse"
+    });
+    const option = await screen.findByRole("option", {
+      name: "Use existing project"
+    });
+    fireEvent.pointerDown(option, { button: 0, ctrlKey: false });
+    fireEvent.click(option);
+
+    await waitFor(() => expect(useProject).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(prepareSelection).toHaveBeenCalledTimes(2));
   });
 });
 

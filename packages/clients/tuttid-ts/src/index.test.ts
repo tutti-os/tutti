@@ -100,6 +100,109 @@ test("shared tuttid client purges deleted Agent conversations", async () => {
   });
 });
 
+test("shared tuttid client manages workspace deleted Agent sessions", async () => {
+  const listResponse = {
+    workspaceId: "workspace-1",
+    sessions: [
+      {
+        agentSessionId: "session-1",
+        title: "Deleted session",
+        projectPath: "/projects/tutti",
+        updatedAtUnixMs: 20,
+        deletedAtUnixMs: 30,
+        restorable: true,
+        unavailableReason: null
+      }
+    ],
+    projectOptions: [
+      {
+        projectPath: "/projects/tutti",
+        projectLabel: "tutti",
+        projectAvailable: true
+      }
+    ],
+    hasMore: false,
+    totalCount: 1,
+    workspaceTotalCount: 2
+  };
+  const purgeResponse = {
+    removedSessions: 2,
+    removedMessages: 5,
+    payloadBytes: 128
+  };
+  const { client, requests } = captureClient((request) => {
+    if (request.method === "GET") return jsonResponse(listResponse);
+    if (request.path.endsWith("/restore")) {
+      return jsonResponse({ agentSessionId: "session-1", restored: true });
+    }
+    return jsonResponse(purgeResponse);
+  });
+  const controller = new AbortController();
+
+  assert.deepEqual(
+    await client.listWorkspaceDeletedAgentSessions(
+      "workspace-1",
+      {
+        cursor: "opaque-cursor",
+        limit: 25,
+        projectPath: "/projects/tutti",
+        searchQuery: "deleted"
+      },
+      { signal: controller.signal }
+    ),
+    listResponse
+  );
+  assert.deepEqual(
+    await client.restoreWorkspaceDeletedAgentSession(
+      "workspace-1",
+      "session-1"
+    ),
+    { agentSessionId: "session-1", restored: true }
+  );
+  assert.deepEqual(
+    await client.purgeWorkspaceDeletedAgentSession("workspace-1", "session-1"),
+    purgeResponse
+  );
+  assert.deepEqual(
+    await client.purgeWorkspaceDeletedAgentSessions("workspace-1"),
+    purgeResponse
+  );
+
+  assertRequest(requests[0]!, {
+    authorization: null,
+    body: null,
+    method: "GET",
+    path: "/v1/workspaces/workspace-1/deleted-agent-sessions",
+    query: {
+      cursor: "opaque-cursor",
+      limit: "25",
+      projectPath: "/projects/tutti",
+      searchQuery: "deleted"
+    }
+  });
+  assertRequest(requests[1]!, {
+    authorization: null,
+    body: null,
+    method: "POST",
+    path: "/v1/workspaces/workspace-1/deleted-agent-sessions/session-1/restore",
+    query: {}
+  });
+  assertRequest(requests[2]!, {
+    authorization: null,
+    body: null,
+    method: "DELETE",
+    path: "/v1/workspaces/workspace-1/deleted-agent-sessions/session-1",
+    query: {}
+  });
+  assertRequest(requests[3]!, {
+    authorization: null,
+    body: null,
+    method: "DELETE",
+    path: "/v1/workspaces/workspace-1/deleted-agent-sessions",
+    query: {}
+  });
+});
+
 test("shared tuttid client reads and refreshes daemon-owned desktop admission", async () => {
   const snapshot = {
     featureAvailability: {

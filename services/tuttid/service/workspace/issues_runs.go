@@ -2,9 +2,13 @@ package workspace
 
 import (
 	"context"
+	"fmt"
+	"strings"
 
+	"github.com/google/uuid"
 	workspaceissues "github.com/tutti-os/tutti/packages/workspace/issues"
 	executionbiz "github.com/tutti-os/tutti/services/tuttid/biz/tuttimodeexecution"
+	workspacebiz "github.com/tutti-os/tutti/services/tuttid/biz/workspace"
 	eventstreamservice "github.com/tutti-os/tutti/services/tuttid/service/eventstream"
 	tuttimodeexecutionservice "github.com/tutti-os/tutti/services/tuttid/service/tuttimodeexecution"
 )
@@ -26,6 +30,81 @@ func (s IssueManagerService) CreateRun(ctx context.Context, workspaceID string, 
 	}
 	s.publishRunCreated(ctx, run)
 	return run, nil
+}
+
+// StartIssueRun is the explicit create-and-launch use case for a top-level
+// Qute task. It resolves every managed image before the durable Run claim, then
+// delivers the resulting prompt through the same Agent Host adapter used by
+// planned task dispatch.
+func (s IssueManagerService) StartIssueRun(
+	ctx context.Context,
+	workspaceID string,
+	issueID string,
+	input StartIssueManagerRunInput,
+) (workspaceissues.Run, error) {
+	if s.RunLauncher == nil {
+		return workspaceissues.Run{}, workspaceissues.ErrStoreNotConfigured
+	}
+	agentTargetID := strings.TrimSpace(input.AgentTargetID)
+	if agentTargetID == "" {
+		return workspaceissues.Run{}, workspaceissues.ErrInvalidArgument
+	}
+
+	unlock := s.MutationLocks.Lock(workspaceID, issueID)
+	detail, err := s.domainService().GetIssueDetail(ctx, workspaceID, issueID)
+	if err != nil {
+		unlock()
+		return workspaceissues.Run{}, err
+	}
+	attachments, err := s.issueRunImageAttachments(ctx, detail.Issue, workspaceissues.Task{})
+	if err != nil {
+		unlock()
+		return workspaceissues.Run{}, err
+	}
+	agentSessionID := uuid.NewString()
+	prompt := issueRunPrompt(detail.Issue)
+	run, err := s.createRunWithLaunchIntentLocked(ctx, workspaceID, issueID, CreateIssueManagerRunInput{
+		RunID:              uuid.NewString(),
+		AgentTargetID:      agentTargetID,
+		AgentSessionID:     agentSessionID,
+		ExecutionDirectory: strings.TrimSpace(input.ExecutionDirectory),
+	}, workspacebiz.IssueRunLaunchPayload{
+		Title:       detail.Issue.Title,
+		Prompt:      prompt,
+		Attachments: issueRunAttachmentsToPayload(attachments),
+	})
+	unlock()
+	if err != nil {
+		return workspaceissues.Run{}, err
+	}
+	s.publishRunCreated(ctx, run)
+
+	launch := IssueRunLaunch{
+		WorkspaceID:        workspaceID,
+		ClientSubmitID:     workspaceissues.IssueRunClientSubmitID(run.RunID),
+		AgentSessionID:     agentSessionID,
+		AgentTargetID:      agentTargetID,
+		RunID:              run.RunID,
+		TaskID:             run.TaskID,
+		IssueID:            issueID,
+		Title:              detail.Issue.Title,
+		Prompt:             prompt,
+		Attachments:        attachments,
+		ExecutionDirectory: strings.TrimSpace(input.ExecutionDirectory),
+		ReasoningIntensity: run.ReasoningIntensity,
+	}
+	if err := s.deliverExplicitIssueRun(ctx, launch); err != nil {
+		return workspaceissues.Run{}, err
+	}
+	return run, nil
+}
+
+func issueRunPrompt(issue workspaceissues.Issue) string {
+	prompt := fmt.Sprintf("Work on this Qute task and report a concise result with validation evidence.\n\nTask: %s", strings.TrimSpace(issue.Title))
+	if content := strings.TrimSpace(issue.Content); content != "" {
+		prompt += "\n\nDetails:\n" + content
+	}
+	return prompt
 }
 
 func (s IssueManagerService) createRunLocked(ctx context.Context, workspaceID string, issueID string, taskID string, input CreateIssueManagerRunInput) (workspaceissues.Run, error) {
@@ -180,12 +259,12 @@ func (s IssueManagerService) applyRunCompletionEffects(ctx context.Context, run 
 				TaskID:      run.TaskID,
 				ChangeKind:  eventstreamservice.WorkspaceIssueChangeTaskUpdated,
 			})
-			s.dispatchEligibleIssueTasks(ctx, run.WorkspaceID, run.IssueID)
+			_ = s.dispatchEligibleIssueTasks(ctx, run.WorkspaceID, run.IssueID)
 		}
 	}
 	// Parallel Issues keep their bounded workspace slots full as independent
 	// runs settle. Sequential successors still remain gated on user acceptance.
 	if !effects.autoAccepted {
-		s.dispatchEligibleIssueTasks(ctx, run.WorkspaceID, run.IssueID)
+		_ = s.dispatchEligibleIssueTasks(ctx, run.WorkspaceID, run.IssueID)
 	}
 }

@@ -143,6 +143,7 @@ test("desktop issue-manager agent breakdown launcher opens breakdown prompt as a
     issueDetail: {
       contextRefs: [
         {
+          accessKind: "workspace_path",
           contextRefId: "ctx-1",
           displayName: "spec.md",
           issueId: "issue-1",

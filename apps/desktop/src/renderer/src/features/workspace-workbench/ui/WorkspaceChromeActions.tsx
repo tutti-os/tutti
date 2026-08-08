@@ -24,6 +24,7 @@ import {
 import { useWorkspaceSettingsPanelRequest } from "@tutti-os/agent-gui/workspace-settings-panel";
 import { useTranslation } from "@renderer/i18n";
 import { cn } from "@renderer/lib/format";
+import { useAppUpdateService } from "@renderer/features/app-update";
 import { WorkspaceSettingsPanel } from "./WorkspaceSettingsPanel";
 import { WorkspaceConnectorMarketDialogHost } from "./WorkspaceConnectorMarketDialogHost";
 import { useWorkspaceSettingsService } from "./useWorkspaceSettingsService";
@@ -110,6 +111,8 @@ export function WorkspaceHelpMenu({
   workspace: WorkspaceSummary;
 }) {
   const { t } = useTranslation();
+  const { service: appUpdateService, state: appUpdateState } =
+    useAppUpdateService();
   const { service: settingsService, state: settingsState } =
     useWorkspaceSettingsService();
 
@@ -153,6 +156,16 @@ export function WorkspaceHelpMenu({
           }
         >
           {t("workspace.settings.nav.about")}
+        </DropdownMenuItem>
+        <DropdownMenuItem
+          disabled={appUpdateState.isActing}
+          onSelect={() => {
+            void appUpdateService.checkForUpdates();
+          }}
+        >
+          {appUpdateState.isActing
+            ? t("updates.checkingTitle")
+            : t("desktop.menu.checkForUpdates")}
         </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuSub>

@@ -25,7 +25,8 @@ import {
   resolveClaudeSDKSidecarDaemonEnv,
   resolveLaunchSpec,
   resolveManagedDaemonProcessEnv,
-  resolveManagedPosixShellDaemonEnv
+  resolveManagedPosixShellDaemonEnv,
+  resolveMutagenDaemonEnv
 } from "./tuttidManager.ts";
 
 const repoRoot = resolve(
@@ -312,6 +313,64 @@ test("resolveManagedPosixShellDaemonEnv points the daemon at the packaged shell"
     assert.deepEqual(got, {
       TUTTI_MANAGED_POSIX_SHELL: shell
     });
+  } finally {
+    restoreEnv(previousEnv);
+  }
+});
+
+test("resolveMutagenDaemonEnv respects an explicit operator override", () => {
+  const previousEnv = { ...process.env };
+  try {
+    process.env.TUTTI_MUTAGEN_BIN = "C:\\custom\\mutagen.exe";
+    const got = resolveMutagenDaemonEnv({
+      isPackaged: true,
+      resourcesPath: join(tmpdir(), "tutti-resources")
+    });
+    assert.deepEqual(got, {});
+  } finally {
+    restoreEnv(previousEnv);
+  }
+});
+
+test("resolveMutagenDaemonEnv respects a shell environment override", () => {
+  const previousEnv = { ...process.env };
+  try {
+    delete process.env.TUTTI_MUTAGEN_BIN;
+    const got = resolveMutagenDaemonEnv(
+      {
+        isPackaged: true,
+        resourcesPath: join(tmpdir(), "tutti-resources")
+      },
+      { inheritedEnv: { TUTTI_MUTAGEN_BIN: "C:\\custom\\mutagen.exe" } }
+    );
+    assert.deepEqual(got, {});
+  } finally {
+    restoreEnv(previousEnv);
+  }
+});
+
+test("resolveMutagenDaemonEnv points the daemon at packaged Mutagen", async () => {
+  const previousEnv = { ...process.env };
+  try {
+    delete process.env.TUTTI_MUTAGEN_BIN;
+    const resourcesPath = await mkdtemp(join(tmpdir(), "tutti-resources-"));
+    const runtimeRoot = join(resourcesPath, "bin", "mutagen");
+    const executable = join(runtimeRoot, "mutagen.exe");
+    await mkdir(runtimeRoot, { recursive: true });
+    await writeFile(executable, "stub\n");
+    await writeFile(
+      join(runtimeRoot, "runtime.json"),
+      JSON.stringify({
+        schemaVersion: "tutti.mutagen.v1",
+        executable: "mutagen.exe"
+      })
+    );
+
+    const got = resolveMutagenDaemonEnv({
+      isPackaged: true,
+      resourcesPath
+    });
+    assert.deepEqual(got, { TUTTI_MUTAGEN_BIN: executable });
   } finally {
     restoreEnv(previousEnv);
   }

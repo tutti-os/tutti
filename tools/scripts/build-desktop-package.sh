@@ -212,6 +212,13 @@ prepare_managed_posix_shell() {
   node "${ROOT_DIR}/apps/desktop/scripts/vendor-managed-posix-shell.mjs" --platform=windows-amd64
 }
 
+prepare_mutagen() {
+  if [[ "${VARIANT}" != "win" && "${VARIANT}" != "win-store" ]]; then
+    return
+  fi
+  node "${ROOT_DIR}/apps/desktop/scripts/vendor-mutagen.mjs" --platform=windows-amd64
+}
+
 run_pnpm_build() {
   pnpm build
 }
@@ -339,6 +346,7 @@ case "${VARIANT}" in
     run_timed_phase "prepare_browser_mcp" prepare_browser_mcp
     run_timed_phase "prepare_claude_sdk_sidecar" prepare_claude_sdk_sidecar
     run_timed_phase "prepare_managed_posix_shell" prepare_managed_posix_shell
+    run_timed_phase "prepare_mutagen" prepare_mutagen
     (
       cd "${APP_DIR}"
       run_timed_phase "resolve_desktop_build_version" resolve_desktop_build_version

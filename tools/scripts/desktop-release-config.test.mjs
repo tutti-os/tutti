@@ -35,6 +35,14 @@ const managedPosixShellLockPath = new URL(
   "../../config/tutti.managed-posix-shell.lock.json",
   import.meta.url
 );
+const mutagenVendorScriptPath = new URL(
+  "../../apps/desktop/scripts/vendor-mutagen.mjs",
+  import.meta.url
+);
+const mutagenLockPath = new URL(
+  "../../config/tutti.mutagen.lock.json",
+  import.meta.url
+);
 const tuttidManagerPath = new URL(
   "../../apps/desktop/src/main/daemon/tuttidManager.ts",
   import.meta.url
@@ -63,6 +71,18 @@ const desktopStoreManifestPath = new URL(
   "../../apps/desktop/build/appxmanifest.xml",
   import.meta.url
 );
+const desktopStoreAssetDimensions = new Map([
+  ["StoreLogo.png", [50, 50]],
+  ["Square44x44Logo.png", [44, 44]],
+  ["Square150x150Logo.png", [150, 150]],
+  ["Wide310x150Logo.png", [310, 150]]
+]);
+
+function readPngDimensions(buffer) {
+  assert.equal(buffer.subarray(1, 4).toString("ascii"), "PNG");
+  assert.equal(buffer.subarray(12, 16).toString("ascii"), "IHDR");
+  return [buffer.readUInt32BE(16), buffer.readUInt32BE(20)];
+}
 
 test("desktop package includes runtime outputs without repository source", async () => {
   const packageJson = JSON.parse(await readFile(desktopPackagePath, "utf8"));
@@ -150,6 +170,10 @@ test("desktop release submits only stable builds to an isolated Store workflow",
   assert.match(storeWorkflow, /Store executable mismatch/);
   assert.match(storeWorkflow, /Store entry point mismatch/);
   assert.match(storeWorkflow, /Installed application display name mismatch/);
+  assert.match(storeWorkflow, /Store package did not use branded asset/);
+  for (const assetName of desktopStoreAssetDimensions.keys()) {
+    assert.match(storeWorkflow, new RegExp(assetName.replaceAll(".", "\\.")));
+  }
   assert.match(storeWorkflow, /@Name='tutti'/);
   assert.match(storeWorkflow, /@Name='runFullTrust'/);
   assert.match(storeWorkflow, /Get-FileHash .* -Algorithm SHA256/);
@@ -189,6 +213,22 @@ test("desktop Store packaging reuses the Windows payload and emits AppX only", a
     buildScript,
     /win-store\)\s*\n\s*run_timed_phase "electron_builder_win_store" run_electron_builder_win_store/
   );
+});
+
+test("desktop Store packaging provides branded assets for every manifest tile", async () => {
+  for (const [fileName, expectedDimensions] of desktopStoreAssetDimensions) {
+    const assetPath = new URL(
+      `../../apps/desktop/build/appx/${fileName}`,
+      import.meta.url
+    );
+    const asset = await readFile(assetPath);
+
+    assert.deepEqual(
+      readPngDimensions(asset),
+      expectedDimensions,
+      `${fileName} should use the dimensions expected by electron-builder`
+    );
+  }
 });
 
 test("desktop release workflow publishes rc tags as prereleases and keeps stable tags as latest", async () => {
@@ -1114,6 +1154,11 @@ test("desktop Windows package and daemon agree on the managed POSIX shell resour
       from: "build/managed-posix-shell",
       to: "bin/managed-posix-shell",
       filter: ["**/*"]
+    },
+    {
+      from: "build/mutagen",
+      to: "bin/mutagen",
+      filter: ["**/*"]
     }
   ]);
   assert.match(buildScript, /vendor-managed-posix-shell\.mjs/);
@@ -1127,4 +1172,27 @@ test("desktop Windows package and daemon agree on the managed POSIX shell resour
   assert.equal(lock.schemaVersion, "tutti.managed-posix-shell-lock.v1");
   assert.equal(lock.platforms["windows-amd64"].executable, "usr/bin/bash.exe");
   assert.doesNotMatch(alphaWorkflow, /\n\s+push:/);
+});
+
+test("desktop Windows package and daemon agree on the bundled Mutagen resource", async () => {
+  const packageJson = JSON.parse(await readFile(desktopPackagePath, "utf8"));
+  const buildScript = await readFile(buildScriptPath, "utf8");
+  const alphaWorkflow = await readFile(windowsAlphaWorkflowPath, "utf8");
+  const tuttidManager = await readFile(tuttidManagerPath, "utf8");
+  const lock = JSON.parse(await readFile(mutagenLockPath, "utf8"));
+
+  await access(mutagenVendorScriptPath);
+  assert.deepEqual(packageJson.build.win.extraResources[1], {
+    from: "build/mutagen",
+    to: "bin/mutagen",
+    filter: ["**/*"]
+  });
+  assert.match(buildScript, /vendor-mutagen\.mjs/);
+  assert.match(alphaWorkflow, /bin\/mutagen/);
+  assert.match(alphaWorkflow, /mutagenMetadata\.executable/);
+  assert.match(tuttidManager, /"mutagen"/);
+  assert.match(tuttidManager, /TUTTI_MUTAGEN_BIN/);
+  assert.match(tuttidManager, /tutti\.mutagen\.v1/);
+  assert.equal(lock.schemaVersion, "tutti.mutagen-lock.v1");
+  assert.equal(lock.platforms["windows-amd64"].executable, "mutagen.exe");
 });

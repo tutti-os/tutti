@@ -140,6 +140,66 @@ describe("AgentModelReasoningDropdown", () => {
     expect(tooltip).toHaveTextContent("Consumption rate");
     expect(tooltip).toHaveTextContent("0.71x multiplier");
   });
+
+  it("retries composer options from the compact error state", async () => {
+    const onRetryComposerOptions = vi.fn();
+    render(
+      <AgentModelReasoningDropdown
+        composerSettings={{
+          ...composerSettings(),
+          composerOptionsError: true
+        }}
+        labels={{ ...modelSettingsLabels, retry: "Try again" }}
+        onRetryComposerOptions={onRetryComposerOptions}
+        onSettingsChange={vi.fn()}
+      />
+    );
+
+    const retryButton = screen.getByRole("button", { name: "Try again" });
+    expect(retryButton).toHaveAttribute(
+      "data-agent-composer-options-state",
+      "error"
+    );
+    expect(
+      retryButton.querySelector(
+        '[data-agent-composer-options-retry-icon="true"]'
+      )
+    ).not.toBeNull();
+    expect(
+      screen.getByText("Configuration failed to load")
+    ).toBeInTheDocument();
+    expect(screen.queryByText("Default model")).not.toBeInTheDocument();
+    fireEvent.focus(retryButton);
+    expect(await screen.findByRole("tooltip")).toHaveTextContent(
+      "Shared Agent information failed to load. Click to retry"
+    );
+    fireEvent.click(retryButton);
+
+    expect(onRetryComposerOptions).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText("Model selection")).not.toBeInTheDocument();
+  });
+
+  it("disables the compact retry while composer options are loading", () => {
+    const onRetryComposerOptions = vi.fn();
+    render(
+      <AgentModelReasoningDropdown
+        composerSettings={{
+          ...composerSettings(),
+          composerOptionsError: true,
+          composerOptionsLoadStatus: "loading"
+        }}
+        labels={{ ...modelSettingsLabels, retry: "Try again" }}
+        onRetryComposerOptions={onRetryComposerOptions}
+        onSettingsChange={vi.fn()}
+      />
+    );
+
+    const retryButton = screen.getByRole("button", { name: "Try again" });
+    expect(retryButton).toBeDisabled();
+    fireEvent.click(retryButton);
+
+    expect(onRetryComposerOptions).not.toHaveBeenCalled();
+  });
 });
 
 describe("AgentPermissionModeDropdown", () => {
@@ -413,6 +473,9 @@ const modelSettingsLabels: AgentComposerSettingsMenuLabels = {
   modelTooltipVersionLabel: "Version",
   defaultModel: "Default model",
   loadingOptions: "Loading…",
+  optionsLoadFailed: "Configuration failed to load",
+  retry: "Try again",
+  retryTooltip: "Shared Agent information failed to load. Click to retry",
   inheritedUnavailable: "Unavailable",
   reasoningLabel: "Reasoning",
   reasoningDegreeLabel: "Reasoning degree",

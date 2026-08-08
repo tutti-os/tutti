@@ -876,7 +876,7 @@ test("WorkspaceSettingsService clears workspace conversation history", async () 
 });
 
 test("WorkspaceSettingsService purges deleted conversations once and reports the result", async () => {
-  let calls = 0;
+  const calls: string[] = [];
   const notifications = createNotificationRecorder();
   notifications.service.success = (input) => {
     notifications.items.push(input.title);
@@ -884,13 +884,9 @@ test("WorkspaceSettingsService purges deleted conversations once and reports the
   const service = new WorkspaceSettingsService(
     {
       client: createWorkspaceSettingsClient({
-        purgeDeletedAgentConversations: async () => {
-          calls += 1;
-          return {
-            removedSessions: 2,
-            removedMessages: 5,
-            payloadBytes: 128
-          };
+        purgeWorkspaceDeletedAgentSessions: async (workspaceID) => {
+          calls.push(workspaceID);
+          return { removedSessions: 2 };
         }
       })
     },
@@ -898,12 +894,14 @@ test("WorkspaceSettingsService purges deleted conversations once and reports the
     notifications.service
   );
 
-  await service.purgeDeletedConversations();
+  service.openPanel({ id: "workspace-1" });
+  service.store.deletedConversations.workspaceTotalCount = 2;
+  await service.deletedConversations.purgeAll();
 
-  assert.equal(calls, 1);
-  assert.equal(service.store.purgingDeletedConversations, false);
+  assert.deepEqual(calls, ["workspace-1"]);
+  assert.equal(service.store.deletedConversations.purgingAll, false);
   assert.deepEqual(notifications.items, [
-    "Cleaned up 2 deleted conversations."
+    "Permanently deleted 2 conversations."
   ]);
 });
 
@@ -1076,11 +1074,16 @@ function createWorkspaceSettingsClient(
       removedMessages: 0,
       removedSessions: 0
     }),
-    purgeDeletedAgentConversations: async () => ({
-      removedSessions: 0,
-      removedMessages: 0,
-      payloadBytes: 0
+    listWorkspaceDeletedAgentSessions: async () => ({
+      hasMore: false,
+      projectOptions: [],
+      sessions: [],
+      totalCount: 0,
+      workspaceTotalCount: 0
     }),
+    purgeWorkspaceDeletedAgentSession: async () => {},
+    purgeWorkspaceDeletedAgentSessions: async () => ({ removedSessions: 0 }),
+    restoreWorkspaceDeletedAgentSession: async () => {},
     exportLogs: async () => ({
       canceled: true,
       fileCount: 0,
@@ -1242,7 +1245,8 @@ function createPreferencesState(
     updatePolicy: "prompt",
     workbenchShortcuts: {
       newAgentConversation: null,
-      newSameTypeWindow: null
+      newSameTypeWindow: null,
+      captureScreenshot: null
     },
     workbenchWindowSnapping: {
       enabled: false,

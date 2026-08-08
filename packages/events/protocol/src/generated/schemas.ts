@@ -271,6 +271,10 @@ export const preferencesDesktopPreferencesSchema = {
         newSameTypeWindow: {
           type: ["string", "null"],
           maxLength: 80
+        },
+        captureScreenshot: {
+          type: ["string", "null"],
+          maxLength: 80
         }
       }
     },
@@ -778,6 +782,50 @@ export const agentActivityUpdatedPayloadSchema = {
             occurredAtUnixMs: {
               type: "integer",
               minimum: 1
+            }
+          }
+        }
+      }
+    },
+    {
+      type: "object",
+      additionalProperties: false,
+      required: ["workspaceId", "agentSessionId", "eventType", "data"],
+      properties: {
+        workspaceId: {
+          type: "string",
+          minLength: 1
+        },
+        agentSessionId: {
+          type: "string",
+          minLength: 1
+        },
+        eventType: {
+          const: "session_restored"
+        },
+        data: {
+          type: "object",
+          required: [
+            "workspaceId",
+            "agentSessionId",
+            "eventType",
+            "restoredAtUnixMs"
+          ],
+          properties: {
+            workspaceId: {
+              type: "string",
+              minLength: 1
+            },
+            agentSessionId: {
+              type: "string",
+              minLength: 1
+            },
+            eventType: {
+              const: "session_restored"
+            },
+            restoredAtUnixMs: {
+              type: "integer",
+              minimum: 0
             }
           }
         }
@@ -1565,6 +1613,7 @@ export const agentActivityUpdatedPayloadSchema = {
       enum: [
         "session_reconcile_required",
         "session_deleted",
+        "session_restored",
         "session_audit",
         "message_delta",
         "message_update",
@@ -2115,6 +2164,10 @@ export const preferencesDesktopUpdateRequestedPayloadSchema = {
             newSameTypeWindow: {
               type: ["string", "null"],
               maxLength: 80
+            },
+            captureScreenshot: {
+              type: ["string", "null"],
+              maxLength: 80
             }
           }
         },
@@ -2461,6 +2514,10 @@ export const preferencesDesktopUpdatedPayloadSchema = {
               maxLength: 80
             },
             newSameTypeWindow: {
+              type: ["string", "null"],
+              maxLength: 80
+            },
+            captureScreenshot: {
               type: ["string", "null"],
               maxLength: 80
             }

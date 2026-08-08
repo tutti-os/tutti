@@ -166,6 +166,11 @@ type CleanupInput struct {
 	WorkspaceID    string
 	AgentSessionID string
 	Provider       string
+	// PreserveRuntimeRoot releases live provider preparation resources while
+	// keeping the session-scoped sidecar directory available for a later
+	// restore. In particular, Codex keeps its resumable rollout below this
+	// directory. Permanent cleanup leaves this false.
+	PreserveRuntimeRoot bool
 }
 
 type RuntimeStore interface {
@@ -189,6 +194,7 @@ type ProviderPrepareInput struct {
 }
 
 type ProviderPrepareResult struct {
-	Cwd string
-	Env []string
+	Cwd     string
+	Env     []string
+	Cleanup func(context.Context) error
 }

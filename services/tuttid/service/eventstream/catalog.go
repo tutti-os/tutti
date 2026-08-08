@@ -545,28 +545,6 @@ func validateDesktopPreferencesUpdatedPayload(payload []byte) error {
 	return nil
 }
 
-func validateAgentActivityUpdatedPayload(payload []byte) error {
-	var decoded agentActivityUpdatedPayload
-	if err := decodeJSONStrict(payload, &decoded); err != nil {
-		return fmt.Errorf("decode payload: %w", err)
-	}
-	if strings.TrimSpace(decoded.WorkspaceID) == "" {
-		return fmt.Errorf("workspaceId is required")
-	}
-	if strings.TrimSpace(decoded.AgentSessionID) == "" {
-		return fmt.Errorf("agentSessionId is required")
-	}
-	switch strings.TrimSpace(decoded.EventType) {
-	case "runtime_activity_update", "session_reconcile_required", "session_deleted", "session_audit", "message_delta", "message_update", "turn_update", "interaction_update":
-	default:
-		return fmt.Errorf("eventType is unsupported")
-	}
-	if len(decoded.Data) == 0 || string(decoded.Data) == "null" {
-		return fmt.Errorf("data is required")
-	}
-	return validateAgentActivityUpdatedData(decoded)
-}
-
 func validateAgentModelCatalogInvalidatedPayload(payload []byte) error {
 	var decoded agentModelCatalogInvalidatedPayload
 	if err := decodeJSONStrict(payload, &decoded); err != nil {
@@ -642,6 +620,14 @@ func validateAgentActivityUpdatedData(decoded agentActivityUpdatedPayload) error
 		}
 		if data.DeletedAtUnixMS == nil {
 			return fmt.Errorf("data.deletedAtUnixMs is required")
+		}
+	case "session_restored":
+		var data agentActivitySessionRestoredData
+		if err := decodeJSONStrict(decoded.Data, &data); err != nil {
+			return fmt.Errorf("decode session_restored data: %w", err)
+		}
+		if data.RestoredAtUnixMS == nil {
+			return fmt.Errorf("data.restoredAtUnixMs is required")
 		}
 	case "message_update":
 		if err := requireJSONArrayItemFields(decoded.Data, "messages", "turnId"); err != nil {

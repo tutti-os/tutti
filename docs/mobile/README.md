@@ -366,8 +366,11 @@ https://<mobile-release-base-url>/latest.json
 ```
 
 `latest.json` 使用 `tutti.android.mobile.latest.v1`，包含 `versionName`、
-`versionCode`、APK URL、APK 大小和 SHA-256。版本目录使用长期 immutable 缓存，
-根目录指针使用短缓存，遵循 Desktop release 的发布模式。当前 App 内置的检查地址是
+`versionCode`、APK URL、APK 大小和 SHA-256。APK 和校验和写入
+`<tag>/<sha256>/` 内容寻址目录并使用长期 immutable 缓存；同一版本的失败发布即使因
+新的 Actions run number 生成了不同 APK，也会落到新的摘要目录。工作流会先预检 APK
+和校验和是否缺失或内容一致，再补传缺失对象，最后更新使用短缓存的根目录指针，避免
+部分发布把后续重试卡在不可覆盖的旧对象上。当前 App 内置的检查地址是
 `https://d1x7gb6wqsqmnm.cloudfront.net/tutti-mobile-release-assets/latest.json`，
 所以 `TUTTI_MOBILE_RELEASE_ASSETS_BASE_URL` 必须指向同一个
 `tutti-mobile-release-assets` 前缀。发布需要以下仓库变量：
@@ -394,7 +397,9 @@ release keystore 必须在 GitHub 之外另做加密备份。GitHub Secret 的�
 Android 更新要求安装包保持相同的 application ID 和 release 签名，并且新包的
 `versionCode` 高于已安装版本。已经安装 debug 签名包的设备不能直接覆盖安装
 release 包，需要先卸载 debug 包。普通 Android 设备会在下载完成后显示系统安装
-确认，不支持静默安装。
+确认，不支持静默安装。通过校验的 APK 会保留给权限恢复、安装取消或安装失败后的重试；
+安装成功回调会立即删除它，如果升级时旧进程被系统替换，则新版本首次启动会根据记录的
+目标 `versionCode` 完成清理。
 
 在 iOS 真机上测试时，运行同一工作流并选择 `ios`。它使用仓库已有的 App Store
 Connect API Key 和 `IOS_DEVELOPMENT_TEAM` 仓库变量，让 Xcode 自动管理云签名并

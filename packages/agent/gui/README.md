@@ -189,6 +189,55 @@ The daemon DTO mapper belongs to
 `@tutti-os/agent-activity-tuttid-adapter`, so Desktop and Mobile do not keep
 separate parser implementations for Composer capabilities or option catalogs.
 
+## Quick Composer
+
+`@tutti-os/agent-gui/quick-composer` renders the canonical DOM Composer for a
+launcher that needs text, image drafts, and exact Agent Target selection without
+the Rail or timeline. It is controlled by typed prompt content and returns the
+same prompt envelope on submit. It intentionally owns no Session lifecycle or
+Composer-options loading; the host must route submit through its existing
+workspace `AgentSessionEngine`. Its embedded layout keeps attachments and long
+drafts in normal flow; hosts must not wrap the timeline-oriented dock layout in
+fixed-height launch surfaces.
+
+Agent selection is fail-closed. The host passes the canonical `agentTargetId`
+and a capability snapshot for every selectable target. Quick Composer resolves
+only that exact identifier: an unknown, disabled, or capability-less target
+keeps submit unavailable instead of falling back to the first target or
+guessing a provider. Image drafts are accepted only when the selected target's
+declared content types include images. The submit envelope returns the resolved
+`agentTargetId`, content, and display prompt so the host cannot activate a
+different target from the one the user saw.
+The public target contract does not accept AgentGUI's legacy `targetId` or
+internal `ref`; Quick Composer derives both internal fields from the canonical
+`agentTargetId` before rendering the shared selector.
+
+Hosts that need canonical `@` results pass a `RichTextMentionService`; hosts
+that enable the `+` control pass `onRequestWorkspaceReferences`. Quick Composer
+installs both through the same AgentGUI Composer boundaries used by the full
+surface and never owns a second reference source. Fixed or frameless launchers
+should pass `menuViewportTopInset` for title-bar chrome that portaled provider
+and mention menus must avoid. A host with a definite height may set
+`fillAvailableHeight`; a host that needs every bottom control on one baseline
+may set `composerActionPlacement="footer"`. Both are optional presentation
+contracts and do not change prompt or Session ownership. A host whose own
+window chrome already defines the visual perimeter may set
+`inputSurfaceVariant="borderless"` to suppress the redundant inner outline
+without overriding AgentGUI implementation selectors.
+
+Standalone hosts may inject an AgentGUI i18n runtime. Otherwise Quick Composer
+uses the package defaults; hosts must not render translation keys or hardcode a
+second copy of Composer-visible text.
+
+A launcher that owns project selection passes a real `WorkspaceUserProjectApi`
+as `userProjectApi`, together with `selectedProjectPath` and
+`onProjectPathChange`. Quick Composer then renders the canonical project
+selector in its footer and delegates catalog reads, selection preparation, and
+project registration to that API. A directory picker alone does not enable the
+selector and never becomes a synthetic registered-project catalog. The host
+remains responsible for carrying the selected path through its normal
+new-Session activation input.
+
 ## Standalone Conversation Participant Presentation
 
 The `@tutti-os/agent-gui/agent-conversation` entrypoint exposes one optional,

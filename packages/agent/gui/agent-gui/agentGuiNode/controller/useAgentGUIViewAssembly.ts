@@ -264,6 +264,8 @@ export function useAgentGUIViewAssembly(input: UseAgentGUIViewAssemblyInput) {
       drainingQueuedPromptId: detail.drainingQueuedPromptId
     },
     interaction: {
+      approvalDisabledReason: session.approvalDisabledReason,
+      interactivePromptDisabledReason: session.interactivePromptDisabledReason,
       isRespondingApproval: session.isRespondingApproval,
       isRespondingInteractivePrompt: session.isRespondingInteractivePrompt,
       pendingApproval: session.pendingApproval,

@@ -1237,6 +1237,45 @@ describe("WorkspaceActivityService", () => {
     service.dispose();
   });
 
+  test("rehydrates a remotely restored session after clearing its live tombstone", async () => {
+    let liveListener: ((delivery: AgentLiveDelivery) => void) | null = null;
+    let session: WorkspaceAgentSession | null = createSession();
+    const client = createClient({
+      listMessages: emptyMessagePage,
+      session: () => session
+    });
+    const service = createService(client, {
+      deviceLink: createLiveDeviceLink((listener) => {
+        liveListener = listener;
+      })
+    });
+
+    await service.start();
+    await flushAsyncWork();
+    session = null;
+    liveListener!({
+      agentSessionId: "session-1",
+      kind: "session_deleted"
+    });
+    expect(service.getSnapshot().activity.sessions).toEqual([]);
+
+    session = createSession();
+    liveListener!({
+      agentSessionId: "session-1",
+      kind: "session_restored"
+    });
+    await flushAsyncWork();
+    await flushAsyncWork();
+
+    expect(
+      service
+        .getSnapshot()
+        .activity.sessions.map((candidate) => candidate.agentSessionId)
+    ).toEqual(["session-1"]);
+
+    service.dispose();
+  });
+
   test("ignores an obsolete live subscription after background resume", async () => {
     const liveListeners: Array<(delivery: AgentLiveDelivery) => void> = [];
     const service = createService(

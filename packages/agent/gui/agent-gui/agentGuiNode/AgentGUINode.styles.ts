@@ -159,6 +159,9 @@ const styles = {
     "agent-gui-node__empty-provider-gate-description",
   emptyProviderGateStatus: "agent-gui-node__empty-provider-gate-status",
   emptyState: "agent-gui-node__empty-state",
+  conversationRailLoadError: "agent-gui-node__conversation-rail-load-error",
+  conversationRailLoadErrorIcon:
+    "agent-gui-node__conversation-rail-load-error-icon",
   unavailableChatEmpty: "agent-gui-node__unavailable-chat-empty",
   unavailableChatEmptyIcon: "agent-gui-node__unavailable-chat-empty-icon",
   unavailableChatEmptyText: "agent-gui-node__unavailable-chat-empty-text",

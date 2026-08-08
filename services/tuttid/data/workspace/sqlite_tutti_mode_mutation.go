@@ -68,7 +68,7 @@ func (s *SQLiteStore) AdmitTuttiModeMutation(
 	result.AddedTaskIDs = graph.AddedTaskIDs
 	result.UpdatedTaskIDs = graph.UpdatedTaskIDs
 	result.SupersededTaskIDs = graph.SupersededTaskIDs
-	if err := projectScheduledTuttiModeIssue(
+	if err := projectWorkspaceIssueTasks(
 		ctx, tx, admission.WorkspaceID, admission.IssueID, admission.Now,
 	); err != nil {
 		return executionbiz.MutationResult{}, err

@@ -242,6 +242,10 @@ export interface IssueManagerAgentSessionOpener {
   openSession(input: IssueManagerAgentSessionOpenInput): Promise<void> | void;
 }
 
+export interface IssueManagerContextRefOpener {
+  openContextRef(reference: IssueManagerContextRef): Promise<void> | void;
+}
+
 export type IssueManagerExecutionDirectoryProject = WorkspaceUserProject;
 
 export type IssueManagerExecutionDirectoryPicker = Pick<

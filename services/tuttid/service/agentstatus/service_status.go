@@ -209,11 +209,11 @@ func (s Service) statusForSpec(
 			actions = append(actions, terminalAction(ActionLogin, loginCommandForRuntime(spec, runtimeResolution)))
 		}
 
-		// Codex and Claude Code can run in API Usage Billing mode. Their auth
+		// Codex, Claude Code, and OpenCode can run in API Usage Billing mode. Their auth
 		// status commands report stored login sessions and may not reflect an API
-		// key, auth token, or apiKeyHelper, so explicit API billing credentials
+		// key, auth token, apiKeyHelper, or OpenCode provider apiKey, so explicit API billing credentials
 		// override the command result. A bare custom endpoint is not a credential.
-		if (isCodexStatusSpec(spec) || isClaudeStatusSpec(spec)) &&
+		if (isCodexStatusSpec(spec) || isClaudeStatusSpec(spec) || isOpenCodeStatusSpec(spec)) &&
 			s.providerHasAPICredential(spec.Provider) {
 			auth.Status = AuthAuthenticated
 			auth.AccountLabel = "API Usage Billing"

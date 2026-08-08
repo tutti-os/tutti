@@ -3,7 +3,7 @@ import type { UiLanguage } from "../../../contexts/settings/domain/agentSettings
 import type { WorkspaceLinkAction } from "../../../actions/workspaceLinkActions";
 import type { ConversationSection } from "../agentGuiNodeViewConversation";
 import type { AgentGUIConversationRailLabels } from "./agentGUIConversationRailLabels";
-import type { AgentGUIProjectActionDialog } from "./AgentGUIConversationRailPane";
+import type { AgentGUIProjectActionDialog } from "./agentGUIConversationRailTypes";
 import { AgentGUIConversationRailItem } from "./AgentGUIConversationRailItem";
 import { AgentGUIConversationRailSectionHeader } from "./AgentGUIConversationRailSectionHeader";
 import { insertConversationRailSectionOverlay } from "../model/agentGuiConversationRail";

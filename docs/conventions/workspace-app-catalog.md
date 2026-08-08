@@ -254,6 +254,14 @@ existing catalog apps and updates only selected app ids. Replace mode publishes
 only the selected app ids and should be used only for deliberate full catalog
 replacement.
 
+For a controlled withdrawal, dispatch the production workflow in `merge` mode
+with `withdraw_app_versions` set to comma- or newline-separated
+`appId@version` entries. The workflow marks those records `withdrawn` in their
+mutable `versions.json` indexes and then rebuilds the catalog. It never deletes
+the immutable release directory or `latest.json`, so restoring a withdrawn
+release remains a metadata-only operation. Withdrawal is intentionally rejected
+in `replace` mode to prevent an accidental partial catalog publication.
+
 There are three normal publishing modes:
 
 1. Release only: `publish_catalog: false` and `catalog_only: false`. This

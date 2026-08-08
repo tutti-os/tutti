@@ -1,5 +1,6 @@
 import type {
   IssueManagerIssueDetailResponse,
+  IssueManagerContextRef as ClientIssueManagerContextRef,
   IssueManagerTask,
   IssueManagerTaskDetailResponse,
   IssueManagerTaskListResponse,
@@ -8,6 +9,7 @@ import type {
 } from "@tutti-os/client-tuttid-ts";
 import type {
   IssueManagerBackend,
+  IssueManagerContextRef,
   IssueManagerIssueDetail,
   IssueManagerListTasksResult,
   IssueManagerTaskDetail,
@@ -29,7 +31,7 @@ export function createDesktopIssueManagerBackend(
             refs: input.refs
           }
         );
-        return response.contextRefs;
+        return response.contextRefs.map(normalizeContextRef);
       }
 
       const response = await tuttidClient.addWorkspaceIssueContextRefs(
@@ -39,7 +41,7 @@ export function createDesktopIssueManagerBackend(
           refs: input.refs
         }
       );
-      return response.contextRefs;
+      return response.contextRefs.map(normalizeContextRef);
     },
     async completeRun(input) {
       const taskId = input.taskId?.trim();
@@ -331,7 +333,7 @@ function normalizeIssueDetail(
 ): IssueManagerIssueDetail {
   return {
     ...response,
-    contextRefs: response.contextRefs,
+    contextRefs: response.contextRefs.map(normalizeContextRef),
     issue: response.issue,
     tasks: response.tasks.map(normalizeTask)
   };
@@ -342,8 +344,49 @@ function normalizeTaskDetail(
 ): IssueManagerTaskDetail {
   return {
     ...response,
+    contextRefs: response.contextRefs.map(normalizeContextRef),
     task: normalizeTask(response.task)
   };
+}
+
+function normalizeContextRef(
+  reference: ClientIssueManagerContextRef
+): IssueManagerContextRef {
+  const access = normalizeContextRefAccess(reference);
+  const base = {
+    contextRefId: reference.contextRefId,
+    createdAtUnix: reference.createdAtUnix,
+    displayName: reference.displayName,
+    issueId: reference.issueId,
+    refType: reference.refType,
+    workspaceId: reference.workspaceId
+  };
+  return reference.parentKind === "task"
+    ? {
+        ...base,
+        ...access,
+        parentKind: "task",
+        taskId: reference.taskId
+      }
+    : {
+        ...base,
+        ...access,
+        parentKind: "issue"
+      };
+}
+
+function normalizeContextRefAccess(
+  reference: ClientIssueManagerContextRef
+):
+  | { accessKind: "managed_attachment" }
+  | { accessKind: "workspace_path"; path: string } {
+  if (reference.accessKind === "managed_attachment") {
+    return { accessKind: "managed_attachment" };
+  }
+  if (!reference.path?.trim()) {
+    throw new Error("Workspace ContextRef is missing its path");
+  }
+  return { accessKind: "workspace_path", path: reference.path };
 }
 
 function normalizeTaskList(

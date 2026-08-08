@@ -63,8 +63,12 @@ type Fixture struct {
 	AcceptGoalControlsOnly bool
 	CompleteGoalOnSet      bool
 	EmptyPauseResumeGoal   bool
-	FailCommitObserver     bool
-	RejectInitialExec      bool
+	// DisconnectGoalFenceDelivery drops the live Runtime Session during the
+	// first fence delivery, modeling a Host restart with accepted durable intent
+	// but no in-memory provider Session.
+	DisconnectGoalFenceDelivery bool
+	FailCommitObserver          bool
+	RejectInitialExec           bool
 	// GuidanceTargetMismatch makes the test runtime reject guidance whose
 	// explicit TurnID is not the Session.ActiveTurnID. It models the runtime
 	// target race without exposing a runtime/provider API to scenarios.
@@ -96,6 +100,7 @@ type SendObservation struct {
 
 type GoalObservation struct {
 	Goal               map[string]any
+	IntentAccepted     bool
 	OperationID        string
 	Revision           int64
 	PendingOperationID string
@@ -146,6 +151,7 @@ type Metrics struct {
 	LastExecRequiresProviderAcceptance bool
 	LastClosePreservedCanonicalState   bool
 	LastResumeRecreate                 bool
+	LastResumeGoalGenerationFences     []agenthost.RuntimeGoalGenerationFenceInput
 	RecoverySteps                      []string
 	DeleteAdmissionPlans               []agenthost.DeleteSessionsPlan
 	DeleteReports                      []agenthost.DeleteSessionsReport
@@ -158,6 +164,7 @@ type Metrics struct {
 // provider-neutral Host application surface rather than any transport API.
 type Driver interface {
 	Reset(context.Context, Fixture) error
+	DisconnectRuntimeSession(context.Context, agenthost.SessionRef) error
 	Create(context.Context, string, agenthost.CreateSessionInput) (SessionObservation, string, error)
 	EnsureSession(context.Context, agenthost.SessionRef) (SessionObservation, error)
 	SendInput(context.Context, agenthost.SessionRef, agenthost.SendInput) (SendObservation, error)
@@ -187,6 +194,23 @@ type Driver interface {
 type Scenario struct {
 	Name string
 	run  func(context.Context, Driver) error
+}
+
+// DeletedSessionLifecycleDriver is separate from Driver so adapters adopt the
+// lossless tombstone contract explicitly while rolling out its new canonical
+// storage capability.
+type DeletedSessionLifecycleDriver interface {
+	Reset(context.Context, Fixture) error
+	DeleteSession(context.Context, agenthost.SessionRef) (agenthost.DeleteSessionResult, error)
+	ListDeletedSessions(context.Context, agenthost.ListDeletedSessionsInput) (agenthost.DeletedSessionPage, error)
+	RestoreDeletedSession(context.Context, agenthost.RestoreDeletedSessionInput) (agenthost.RestoreDeletedSessionResult, error)
+	GetCanonicalSession(context.Context, agenthost.SessionRef) (SessionObservation, error)
+	Metrics() Metrics
+}
+
+type DeletedSessionLifecycleScenario struct {
+	Name string
+	run  func(context.Context, DeletedSessionLifecycleDriver) error
 }
 
 // SessionForkFixture describes fault and recovery states at the public Host
@@ -250,6 +274,20 @@ func RunSessionFork(
 	}
 	if scenario.run == nil {
 		return fmt.Errorf("agent host session fork conformance scenario %q has no runner", scenario.Name)
+	}
+	return scenario.run(ctx, driver)
+}
+
+func RunDeletedSessionLifecycle(
+	ctx context.Context,
+	driver DeletedSessionLifecycleDriver,
+	scenario DeletedSessionLifecycleScenario,
+) error {
+	if driver == nil {
+		return fmt.Errorf("agent host deleted session lifecycle conformance driver is required")
+	}
+	if scenario.run == nil {
+		return fmt.Errorf("agent host deleted session lifecycle conformance scenario %q has no runner", scenario.Name)
 	}
 	return scenario.run(ctx, driver)
 }

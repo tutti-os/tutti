@@ -952,6 +952,7 @@ function createDependenciesStub(): {
       createWorkspaceIssueTasks: fail,
       createWorkspaceIssueTaskRun: fail,
       createWorkspaceIssueRun: fail,
+      startWorkspaceIssueRun: fail,
       createWorkspace: fail,
       createWorkspaceAgentSession: fail,
       forkWorkspaceAgentSession: fail,
@@ -969,6 +970,10 @@ function createDependenciesStub(): {
       deleteWorkspaceAgentSessionsBatch: fail,
       updateWorkspaceAgentSessionTitle: fail,
       clearWorkspaceAgentSessions: fail,
+      listWorkspaceDeletedAgentSessions: fail,
+      restoreWorkspaceDeletedAgentSession: fail,
+      purgeWorkspaceDeletedAgentSession: fail,
+      purgeWorkspaceDeletedAgentSessions: fail,
       deleteWorkspaceApp: fail,
       deleteWorkspaceAppFactoryJob: fail,
       deleteWorkspaceIssue: fail,
@@ -1082,7 +1087,8 @@ function createDependenciesStub(): {
       decideWorkspaceWorkflowCheckpoint: fail,
       cancelWorkspaceIssueExecution: fail,
       setCollaborationRunAdoption: fail,
-      cancelTuttiModeExecution: fail
+      cancelTuttiModeExecution: fail,
+      readWorkspaceIssueAttachment: fail
     },
     platformApi: {
       homeDirectory: "/Users/local",

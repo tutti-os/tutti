@@ -11,6 +11,7 @@ export {
 } from "./button";
 export { NativeIconButton, type NativeIconButtonProps } from "./icon-button";
 export { NativeListRow, type NativeListRowProps } from "./list-row";
+export { NativeProgressBar, type NativeProgressBarProps } from "./progress-bar";
 export { NativeSheet, type NativeSheetProps } from "./sheet";
 export {
   NativeThemeProvider,

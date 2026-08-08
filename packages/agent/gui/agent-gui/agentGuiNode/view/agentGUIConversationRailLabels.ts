@@ -115,7 +115,9 @@ export function agentGUIConversationRailLabels(
       "agentHost.agentGui.removeProjectConfirmTitle"
     ),
     renameSession: t("agentHost.agentGui.renameSession"),
+    retryConversations: t("agentHost.agentGui.retryConversations"),
     retrySearch: t("agentHost.agentGui.retrySearch"),
+    conversationsLoadFailed: t("agentHost.agentGui.conversationsLoadFailed"),
     searchFailed: t("agentHost.agentGui.searchFailed"),
     searchNoConversations: t("agentHost.agentGui.searchNoConversations"),
     searchPlaceholder: t("agentHost.agentGui.searchPlaceholder"),

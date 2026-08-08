@@ -49,6 +49,8 @@ export interface WorkspaceAgentMessageCenterCardProps {
   highlighted?: boolean;
   interactive?: boolean;
   isSubmitting: boolean;
+  isInteractionDisabled?: boolean;
+  interactionDisabledReason?: string | null;
   lazySummary?: boolean;
   promptVariant?: "compact" | "full";
   showSummaryWithPrompt?: boolean;
@@ -93,6 +95,8 @@ export const WorkspaceAgentMessageCenterCard = memo(
     interactive = true,
     item,
     isSubmitting,
+    isInteractionDisabled = false,
+    interactionDisabledReason = null,
     lazySummary = false,
     promptVariant = "compact",
     showSummaryWithPrompt = true,
@@ -109,6 +113,34 @@ export const WorkspaceAgentMessageCenterCard = memo(
     const displayStatus = statusClass(item);
     const statusTone = messageCenterStatusTone(item);
     const statusLabel = workspaceAgentActivityStatusLabel(displayStatus, t);
+    const promptInteractionDisabled =
+      interactive && prompt !== null && isInteractionDisabled;
+    const promptDisabledReason = interactionDisabledReason?.trim() ?? "";
+
+    const promptSurface = prompt ? (
+      <AgentInteractivePromptSurface
+        embedded
+        variant={promptVariant}
+        keyboardShortcuts={false}
+        prompt={prompt}
+        isSubmitting={isSubmitting}
+        isInteractionDisabled={promptInteractionDisabled}
+        onSubmit={onSubmitPrompt}
+        labels={buildWorkspaceAgentInteractivePromptLabels(t, item.provider)}
+      />
+    ) : null;
+    const disabledPromptSurface = (
+      <div
+        aria-disabled="true"
+        aria-label={promptDisabledReason || undefined}
+        className="cursor-not-allowed rounded-md opacity-70 outline-none focus-visible:ring-2 focus-visible:ring-[var(--border-focus)]"
+        data-agent-interaction-disabled="true"
+        role="group"
+        tabIndex={promptDisabledReason ? 0 : undefined}
+      >
+        {promptSurface}
+      </div>
+    );
 
     return (
       <article
@@ -180,18 +212,20 @@ export const WorkspaceAgentMessageCenterCard = memo(
 
         {prompt && interactive ? (
           <div className="min-w-0">
-            <AgentInteractivePromptSurface
-              embedded
-              variant={promptVariant}
-              keyboardShortcuts={false}
-              prompt={prompt}
-              isSubmitting={isSubmitting}
-              onSubmit={onSubmitPrompt}
-              labels={buildWorkspaceAgentInteractivePromptLabels(
-                t,
-                item.provider
-              )}
-            />
+            {promptInteractionDisabled && promptDisabledReason ? (
+              <LazyMessageCenterTooltip
+                content={promptDisabledReason}
+                side="top"
+                align="start"
+                className="max-w-[min(360px,calc(100vw-32px))] whitespace-normal text-left [overflow-wrap:anywhere]"
+              >
+                {disabledPromptSurface}
+              </LazyMessageCenterTooltip>
+            ) : promptInteractionDisabled ? (
+              disabledPromptSurface
+            ) : (
+              promptSurface
+            )}
           </div>
         ) : null}
 

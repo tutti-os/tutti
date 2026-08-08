@@ -63,6 +63,7 @@ export const AgentGUINode = memo(function AgentGUINode({
     selectProjectDirectory,
     resolveExternalPromptEntries = null,
     prepareExternalPromptFiles = null,
+    resolvePastedPath = null,
     promptAssetLimit = null,
     projectDirectorySourceAggregator = null,
     referenceSourceAggregator = null,
@@ -541,6 +542,7 @@ export const AgentGUINode = memo(function AgentGUINode({
               }
               resolveExternalPromptEntries={resolveExternalPromptEntries}
               prepareExternalPromptFiles={prepareExternalPromptFiles}
+              resolvePastedPath={resolvePastedPath}
               promptAssetLimit={promptAssetLimit}
               onConversationRailWidthChanged={
                 handleConversationRailWidthChanged

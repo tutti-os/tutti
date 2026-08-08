@@ -143,7 +143,7 @@ func TestMessageEventRequiresStableEventIDAndRole(t *testing.T) {
 		Provider:          ProviderClaudeCode,
 		ProviderSessionID: "claude-session",
 		OccurredAtUnixMS:  1710000000456,
-	}, MessageRoleAssistant, "done")
+	}, MessageRoleAssistant, "done", true)
 
 	if event.EventID != "event-1" {
 		t.Fatalf("event id = %q", event.EventID)
@@ -156,6 +156,9 @@ func TestMessageEventRequiresStableEventIDAndRole(t *testing.T) {
 	}
 	if event.Payload.Content != "done" {
 		t.Fatalf("content = %q", event.Payload.Content)
+	}
+	if !event.Payload.Semantics.UserVisibleAssistantResponse {
+		t.Fatal("user-visible assistant response classification was not preserved")
 	}
 }
 
@@ -172,11 +175,11 @@ func TestContextEventBuildersCreateMessagesAndCompactCalls(t *testing.T) {
 		OccurredAtUnixMS:  1710000000123,
 	}
 
-	message := NewContextMessage(ctx, MessageRoleAssistant, "done")
+	message := NewContextMessage(ctx, MessageRoleAssistant, "done", true)
 	if message.Type != EventMessageCreated || message.EventID != "event-1" {
 		t.Fatalf("message event = %#v", message)
 	}
-	if message.Payload.Role != MessageRoleAssistant || message.Payload.Content != "done" || message.Payload.TurnID != "turn-1" {
+	if message.Payload.Role != MessageRoleAssistant || message.Payload.Content != "done" || message.Payload.TurnID != "turn-1" || !message.Payload.Semantics.UserVisibleAssistantResponse {
 		t.Fatalf("message payload = %#v", message.Payload)
 	}
 

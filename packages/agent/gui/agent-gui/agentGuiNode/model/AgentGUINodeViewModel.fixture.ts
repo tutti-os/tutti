@@ -81,6 +81,9 @@ export function groupAgentGUINodeViewModelFixture(
       drainingQueuedPromptId: flat.drainingQueuedPromptId
     },
     interaction: {
+      approvalDisabledReason: flat.approvalDisabledReason ?? null,
+      interactivePromptDisabledReason:
+        flat.interactivePromptDisabledReason ?? null,
       isRespondingApproval: flat.isRespondingApproval,
       isRespondingInteractivePrompt:
         flat.isRespondingInteractivePrompt ?? flat.isRespondingApproval,

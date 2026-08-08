@@ -41,6 +41,7 @@ import type {
   CheckUserProjectPathRequest,
   CreateIssueManagerIssueRequest,
   CreateIssueManagerRunRequest,
+  StartIssueManagerRunRequest,
   CreateIssueManagerTaskRequest,
   CreateIssueManagerTasksRequest,
   CancelIssueManagerExecutionResponse,
@@ -81,6 +82,7 @@ import type {
   ImportExternalAgentSessionsRequest,
   LoadLocalWorkspaceAppRequest,
   IssueManagerContextRefsResponse,
+  IssueManagerAttachmentContentResponse,
   IssueManagerIssue,
   IssueManagerIssueDetailResponse,
   IssueManagerIssueListResponse,
@@ -161,6 +163,8 @@ import type {
   WorkspaceAgentSessionSectionsResponse,
   WorkspaceAgentSessionMessagesResponse,
   WorkspaceAgentSessionListResponse,
+  WorkspaceDeletedAgentSessionListResponse,
+  RestoreWorkspaceDeletedAgentSessionResponse,
   WorkspaceFileDirectoryResponse,
   WorkspaceFileEntryResponse,
   WorkspaceFileFilterKind,
@@ -325,6 +329,11 @@ export interface TuttidClient
     issueID: string,
     request: CreateIssueManagerRunRequest
   ): Promise<IssueManagerRun>;
+  startWorkspaceIssueRun(
+    workspaceID: string,
+    issueID: string,
+    request: StartIssueManagerRunRequest
+  ): Promise<IssueManagerRun>;
   createWorkspaceFile(
     workspaceID: string,
     path: string
@@ -445,6 +454,31 @@ export interface TuttidClient
   clearWorkspaceAgentSessions(
     workspaceID: string
   ): Promise<ClearWorkspaceAgentSessionsResponse>;
+  listWorkspaceDeletedAgentSessions(
+    workspaceID: string,
+    request?: {
+      cursor?: string;
+      limit?: number;
+      projectPath?: string;
+      projectScope?: "unscoped";
+      searchQuery?: string;
+    },
+    requestOptions?: TuttidRequestOptions
+  ): Promise<WorkspaceDeletedAgentSessionListResponse>;
+  restoreWorkspaceDeletedAgentSession(
+    workspaceID: string,
+    agentSessionID: string,
+    requestOptions?: TuttidRequestOptions
+  ): Promise<RestoreWorkspaceDeletedAgentSessionResponse>;
+  purgeWorkspaceDeletedAgentSession(
+    workspaceID: string,
+    agentSessionID: string,
+    requestOptions?: TuttidRequestOptions
+  ): Promise<DeletedAgentConversationPurgeResult>;
+  purgeWorkspaceDeletedAgentSessions(
+    workspaceID: string,
+    requestOptions?: TuttidRequestOptions
+  ): Promise<DeletedAgentConversationPurgeResult>;
   moveWorkspaceFileEntry(
     workspaceID: string,
     request: MoveWorkspaceFileEntryRequest
@@ -846,6 +880,11 @@ export interface TuttidClient
     issueID: string,
     contextRefID: string
   ): Promise<DeleteIssueManagerContextRefResponse>;
+  readWorkspaceIssueAttachment(
+    workspaceID: string,
+    issueID: string,
+    contextRefID: string
+  ): Promise<IssueManagerAttachmentContentResponse>;
   removeWorkspaceIssueTaskContextRef(
     workspaceID: string,
     issueID: string,

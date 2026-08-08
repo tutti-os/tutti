@@ -212,6 +212,11 @@ export interface SessionRemovedIntent {
   agentSessionId: string;
 }
 
+export interface SessionRestoredIntent {
+  type: "session/restored";
+  agentSessionId: string;
+}
+
 export interface SessionErrorRecordedIntent {
   type: "session/errorRecorded";
   agentSessionId: string;
@@ -306,6 +311,7 @@ export type SessionLifecycleIntent =
   | SessionHistoryAuthoritativeSnapshotReceivedIntent
   | SessionMetadataPatchedIntent
   | SessionRemovedIntent
+  | SessionRestoredIntent
   | SessionRuntimeActivityChangedIntent
   | SessionRuntimeAvailabilityChangedIntent
   | SessionSettingsActivationRequestedIntent

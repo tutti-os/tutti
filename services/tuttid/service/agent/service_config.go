@@ -55,6 +55,7 @@ type ServiceRuntimeConfig struct {
 type ServiceSessionConfig struct {
 	Initializer       SessionInitializer
 	Reader            SessionReader
+	DeletedSessions   agenthost.DeletedSessionStore
 	PurgeStore        agenthost.SessionPurgeStore
 	DeletionGuard     agenthost.SessionDeletionGuard
 	UserProjectReader UserProjectReader

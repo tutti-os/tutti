@@ -24,6 +24,7 @@ import type { AgentSessionState } from "../../../shared/agentSessionTypes";
 import type { AppErrorCode } from "../../../shared/contracts/dto";
 import type {
   AgentGUIObservationGapSource,
+  AgentGUIInteractionReadinessReason,
   AgentGUIInteractionReadinessSource,
   AgentGUITargetConnectionSource
 } from "../../../types";
@@ -687,13 +688,33 @@ export function useAgentGUISessionPresentation(
     pendingInteractivePrompt
   ]);
   return {
+    approvalDisabledReason: approvalReadiness.block
+      ? interactionReadinessReasonMessage(approvalReadiness.block.reason)
+      : null,
     activeConversationBusy,
     composerGate,
     hasSentUserMessage,
+    interactivePromptDisabledReason: interactiveReadiness.block
+      ? interactionReadinessReasonMessage(interactiveReadiness.block.reason)
+      : null,
     isRespondingApproval,
     isRespondingInteractivePrompt,
     pendingApproval,
     pendingInteractivePrompt,
     sessionChrome
   };
+}
+
+function interactionReadinessReasonMessage(
+  reason: AgentGUIInteractionReadinessReason
+): string {
+  switch (reason) {
+    case "owner_offline":
+      return translate("agentHost.agentGui.interactionOwnerOffline");
+    case "binding_revoked":
+      return translate("agentHost.agentGui.interactionBindingRevoked");
+    case "synchronizing":
+    default:
+      return translate("agentHost.agentGui.interactionSynchronizing");
+  }
 }

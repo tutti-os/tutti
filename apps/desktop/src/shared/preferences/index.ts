@@ -94,6 +94,7 @@ export {
   type DesktopUpdateChannel,
   type DesktopUpdatePolicy,
   type DesktopWorkbenchShortcuts,
+  type DesktopWorkbenchShortcutsInput,
   type DesktopWorkbenchWindowSnapping,
   type DesktopWorkbenchWindowSnappingShortcutPreset
 } from "./core.ts";

@@ -14,6 +14,28 @@ type agentActivityUpdatedDataHeader struct {
 	EventType      string `json:"eventType"`
 }
 
+func validateAgentActivityUpdatedPayload(payload []byte) error {
+	var decoded agentActivityUpdatedPayload
+	if err := decodeJSONStrict(payload, &decoded); err != nil {
+		return fmt.Errorf("decode payload: %w", err)
+	}
+	if strings.TrimSpace(decoded.WorkspaceID) == "" {
+		return fmt.Errorf("workspaceId is required")
+	}
+	if strings.TrimSpace(decoded.AgentSessionID) == "" {
+		return fmt.Errorf("agentSessionId is required")
+	}
+	switch strings.TrimSpace(decoded.EventType) {
+	case "runtime_activity_update", "session_reconcile_required", "session_deleted", "session_restored", "session_audit", "message_delta", "message_update", "turn_update", "interaction_update":
+	default:
+		return fmt.Errorf("eventType is unsupported")
+	}
+	if len(decoded.Data) == 0 || string(decoded.Data) == "null" {
+		return fmt.Errorf("data is required")
+	}
+	return validateAgentActivityUpdatedData(decoded)
+}
+
 type agentActivitySessionUpdateData struct {
 	agentActivityUpdatedDataHeader
 	AgentTargetID   string `json:"agentTargetId,omitempty"`
@@ -43,6 +65,11 @@ func validateAgentActivityRuntimeActivityUpdateData(raw json.RawMessage) error {
 type agentActivitySessionDeletedData struct {
 	agentActivityUpdatedDataHeader
 	DeletedAtUnixMS *int64 `json:"deletedAtUnixMs"`
+}
+
+type agentActivitySessionRestoredData struct {
+	agentActivityUpdatedDataHeader
+	RestoredAtUnixMS *int64 `json:"restoredAtUnixMs"`
 }
 
 type agentActivityMessageUpdateData struct {

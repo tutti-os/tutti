@@ -10,13 +10,38 @@ test("desktop issue-manager backend routes issue and task context refs", async (
       async addWorkspaceIssueContextRefs(...args) {
         calls.push({ args, method: "addIssueRefs" });
         return {
-          contextRefs: [{ contextRefId: "issue-ref-1", parentKind: "issue" }]
+          contextRefs: [
+            {
+              accessKind: "workspace_path",
+              contextRefId: "issue-ref-1",
+              createdAtUnix: 1,
+              displayName: "Spec",
+              issueId: "issue-1",
+              parentKind: "issue",
+              path: "/workspace/docs/spec.md",
+              refType: "file",
+              workspaceId: "workspace-1"
+            }
+          ]
         } as never;
       },
       async addWorkspaceIssueTaskContextRefs(...args) {
         calls.push({ args, method: "addTaskRefs" });
         return {
-          contextRefs: [{ contextRefId: "task-ref-1", parentKind: "task" }]
+          contextRefs: [
+            {
+              accessKind: "workspace_path",
+              contextRefId: "task-ref-1",
+              createdAtUnix: 1,
+              displayName: "Draft",
+              issueId: "issue-1",
+              parentKind: "task",
+              path: "/workspace/docs/draft.md",
+              refType: "file",
+              taskId: "task-1",
+              workspaceId: "workspace-1"
+            }
+          ]
         } as never;
       },
       async removeWorkspaceIssueContextRef(...args) {

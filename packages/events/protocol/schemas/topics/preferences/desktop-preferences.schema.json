@@ -117,6 +117,10 @@
         "newSameTypeWindow": {
           "type": ["string", "null"],
           "maxLength": 80
+        },
+        "captureScreenshot": {
+          "type": ["string", "null"],
+          "maxLength": 80
         }
       }
     },

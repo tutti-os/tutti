@@ -117,6 +117,9 @@ func LocalAgentTargetIDForProvider(provider string) string {
 type DesktopWorkbenchShortcuts struct {
 	NewAgentConversation string
 	NewSameTypeWindow    string
+	// CaptureScreenshot empty means the built-in default accelerator applies,
+	// not "unbound" like the other bindings.
+	CaptureScreenshot string
 }
 
 func DefaultDesktopPreferences() DesktopPreferences {
@@ -354,5 +357,6 @@ func NormalizeDesktopWorkbenchShortcuts(value DesktopWorkbenchShortcuts) Desktop
 	return DesktopWorkbenchShortcuts{
 		NewAgentConversation: NormalizeDesktopShortcutBinding(value.NewAgentConversation),
 		NewSameTypeWindow:    NormalizeDesktopShortcutBinding(value.NewSameTypeWindow),
+		CaptureScreenshot:    NormalizeDesktopShortcutBinding(value.CaptureScreenshot),
 	}
 }

@@ -365,6 +365,9 @@ func TestReportActivityInputProjectsRuntimeMessagesToMessageUpdates(t *testing.T
 		user.Payload["clientSubmitId"] != "submit-1" {
 		t.Fatalf("user message update = %#v", user)
 	}
+	if user.Semantics == nil || user.Semantics.UserVisibleAssistantResponse {
+		t.Fatalf("user message semantics = %#v, want explicit userVisibleAssistantResponse=false", user.Semantics)
+	}
 	assistant := report.MessageUpdates[1]
 	if assistant.MessageID != "assistant-event-1" ||
 		assistant.Seq != uint64(assistantEvent.OccurredAtUnixMS) ||
@@ -373,6 +376,9 @@ func TestReportActivityInputProjectsRuntimeMessagesToMessageUpdates(t *testing.T
 		assistant.Payload["content"] != "found README" ||
 		assistant.Payload["source"] != "runtime" {
 		t.Fatalf("assistant message update = %#v", assistant)
+	}
+	if assistant.Semantics == nil || !assistant.Semantics.UserVisibleAssistantResponse {
+		t.Fatalf("assistant message semantics = %#v, want userVisibleAssistantResponse=true", assistant.Semantics)
 	}
 	if _, ok := assistant.Payload["adapterExtra"]; ok {
 		t.Fatalf("assistant message update payload = %#v, want compact UI payload", assistant.Payload)
@@ -385,6 +391,9 @@ func TestReportActivityInputProjectsRuntimeMessagesToMessageUpdates(t *testing.T
 		thinking.Payload["content"] != "checking files" ||
 		thinking.Payload["source"] != "runtime" {
 		t.Fatalf("thinking message update = %#v", thinking)
+	}
+	if thinking.Semantics == nil || thinking.Semantics.UserVisibleAssistantResponse {
+		t.Fatalf("thinking message semantics = %#v, want explicit userVisibleAssistantResponse=false", thinking.Semantics)
 	}
 }
 
@@ -466,6 +475,9 @@ func TestReportActivityInputForwardsMessageKindToPayload(t *testing.T) {
 	if plan.Payload["messageKind"] != "plan" {
 		t.Fatalf("plan message payload = %#v, want messageKind=plan forwarded to the GUI", plan.Payload)
 	}
+	if plan.Semantics == nil || !plan.Semantics.UserVisibleAssistantResponse {
+		t.Fatalf("plan message semantics = %#v, want userVisibleAssistantResponse=true", plan.Semantics)
+	}
 }
 
 func TestReportActivityInputDoesNotProjectLegacySubAgentMarkers(t *testing.T) {
@@ -526,6 +538,9 @@ func TestReportActivityInputForwardsSystemNoticeMetadataToPayload(t *testing.T) 
 		notice.Payload["code"] != "CODEX_VERSION_TOO_OLD" ||
 		notice.Payload["retryable"] != false {
 		t.Fatalf("notice message payload = %#v, want system notice metadata forwarded to the GUI", notice.Payload)
+	}
+	if notice.Semantics == nil || notice.Semantics.UserVisibleAssistantResponse {
+		t.Fatalf("notice message semantics = %#v, want explicit userVisibleAssistantResponse=false", notice.Semantics)
 	}
 }
 
@@ -702,6 +717,9 @@ func TestReportActivityInputPreservesToolInputFromTerminalMetadata(t *testing.T)
 
 	if len(report.MessageUpdates) != 1 {
 		t.Fatalf("message updates = %#v, want one", report.MessageUpdates)
+	}
+	if semantics := report.MessageUpdates[0].Semantics; semantics == nil || semantics.UserVisibleAssistantResponse {
+		t.Fatalf("tool message semantics = %#v, want explicit userVisibleAssistantResponse=false", semantics)
 	}
 	update := report.MessageUpdates[0]
 	input, _ := update.Payload["input"].(map[string]any)
@@ -1432,6 +1450,9 @@ func TestReporterProjectsTurnFailureErrorToStatePatch(t *testing.T) {
 	}
 	if item.Payload["detail"] != "API Error: 403 Key limit exceeded (total limit)" {
 		t.Fatalf("visible failure detail = %#v", item.Payload["detail"])
+	}
+	if item.Semantics == nil || !item.Semantics.UserVisibleAssistantResponse {
+		t.Fatalf("visible failure semantics = %#v, want explicit user-visible assistant response", item.Semantics)
 	}
 }
 

@@ -151,6 +151,8 @@ export function sessionLifecycleReducer(
       return requestInteractionResponse(state, intent);
     case "session/removed":
       return removeSession(state, intent.agentSessionId);
+    case "session/restored":
+      return restoreSession(state, intent.agentSessionId);
     case "session/errorRecorded":
       return updateOperation(state, intent.agentSessionId, (operation) => ({
         ...operation,
@@ -687,6 +689,17 @@ function removeSession(
       interactionResponsesById
     }
   };
+}
+
+function restoreSession(
+  state: SessionLifecycleState,
+  rawId: string
+): EngineReducerResult<SessionLifecycleState> {
+  const id = rawId.trim();
+  if (!id || !state.deletedSessionIds[id]) return unchanged(state);
+  const deletedSessionIds = { ...state.deletedSessionIds };
+  delete deletedSessionIds[id];
+  return result({ ...state, deletedSessionIds });
 }
 
 function expireCancel(

@@ -473,3 +473,37 @@ target app`. Compare `/Applications/Tutti.app/Contents/Info.plist` with the
   Restart the desktop app, confirm the remote debugging endpoint responds, record
   a short trace, and verify the trace JSON is written without opening the
   Performance export path.
+
+### macOS screenshot selector leaves the menu bar and Dock uncovered
+
+- Symptom:
+  The screenshot selector darkens only the macOS work area. The real menu bar
+  and Dock remain visible while a second captured copy of each appears inside
+  the selector preview.
+- Quick checks:
+  Find `screenshot selector presented` in the Desktop log. Compare
+  `windowBounds` with `displayBounds` and `displayWorkArea`, then inspect
+  `simpleFullScreen`. A work-area-sized window with
+  `simpleFullScreen: false` confirms that the native selector never entered
+  simple full-screen; renderer `fixed inset-0` styles cannot draw outside that
+  native window.
+- Root cause:
+  Electron's macOS `simpleFullscreen` constructor option chooses the pre-Lion
+  implementation for a later full-screen request. It does not enter
+  full-screen by itself. Combining `simpleFullscreen: true` with
+  `fullscreen: false` therefore leaves a normal frameless window that macOS can
+  present within the work area.
+- Fix:
+  Request `fullscreen: true` together with macOS `simpleFullscreen: true`, then
+  explicitly call or verify `setSimpleFullScreen(true)` before showing the
+  selector. Keep the renderer preview sized to the native viewport and exit
+  full-screen before resizing the same window into the floating Composer.
+- Validation:
+  On macOS, invoke capture from an external application and confirm the selector
+  covers the physical display, including the menu bar and Dock. The Desktop log
+  should report `simpleFullScreen: true` and `windowBounds` equal to
+  `displayBounds`. Complete a crop and verify the floating Composer still uses
+  its remembered work-area-clamped position.
+- References:
+  [desktopCaptureService.ts](../../../apps/desktop/src/main/capture/desktopCaptureService.ts)
+  [captureSelectionFullscreen.ts](../../../apps/desktop/src/main/capture/captureSelectionFullscreen.ts)

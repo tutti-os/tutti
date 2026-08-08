@@ -3757,6 +3757,91 @@ test("WorkspaceAgentActivityService tombstones an explicit session deletion even
   );
 });
 
+test("WorkspaceAgentActivityService rehydrates a restored session after clearing its deletion tombstone", async (t) => {
+  const restoredSession = workspaceAgentSession({ status: "ready" });
+  let detailCalls = 0;
+  const service = new WorkspaceAgentActivityService({
+    tuttidClient: {
+      getWorkspaceAgentSession: async (
+        ...args: Parameters<TuttidClient["getWorkspaceAgentSession"]>
+      ) => {
+        detailCalls += 1;
+        return {
+          ...sessionDetailProjection(args[2]),
+          childSessions: [],
+          editRetry: workspaceAgentEditRetryAvailability(),
+          session: restoredSession,
+          turns: []
+        };
+      },
+      listWorkspaceAgentSessionMessages: async () => ({
+        hasMore: false,
+        latestVersion: 0,
+        messages: []
+      }),
+      listWorkspaceAgentSessions: async () => ({
+        hasMore: false,
+        sessions: [restoredSession],
+        workspaceId: "ws-1"
+      })
+    } as unknown as TuttidClient,
+    runtimeApi: { logTerminalDiagnostic: async () => {} }
+  });
+  t.after(() => service.dispose());
+  const engine = service.getSessionEngine("ws-1");
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.ok(selectEngineSession(engine.getSnapshot(), "session-1"));
+
+  const reconcile = (
+    service as unknown as {
+      reconcileAgentActivityUpdate(input: {
+        agentSessionId: string;
+        data: unknown;
+        eventType: string;
+        workspaceId: string;
+      }): Promise<void>;
+    }
+  ).reconcileAgentActivityUpdate.bind(service);
+  await reconcile({
+    agentSessionId: "session-1",
+    data: {
+      agentSessionId: "session-1",
+      deletedAtUnixMs: 1,
+      eventType: "session_deleted",
+      workspaceId: "ws-1"
+    },
+    eventType: "session_deleted",
+    workspaceId: "ws-1"
+  });
+  assert.equal(selectEngineSession(engine.getSnapshot(), "session-1"), null);
+
+  await reconcile({
+    agentSessionId: "session-1",
+    data: {
+      agentSessionId: "session-1",
+      eventType: "session_restored",
+      restoredAtUnixMs: 2,
+      workspaceId: "ws-1"
+    },
+    eventType: "session_restored",
+    workspaceId: "ws-1"
+  });
+  for (
+    let attempt = 0;
+    attempt < 10 && !selectEngineSession(engine.getSnapshot(), "session-1");
+    attempt += 1
+  ) {
+    await new Promise((resolve) => setImmediate(resolve));
+  }
+
+  assert.equal(
+    engine.getSnapshot().sessionLifecycle.deletedSessionIds["session-1"],
+    undefined
+  );
+  assert.ok(selectEngineSession(engine.getSnapshot(), "session-1"));
+  assert.equal(detailCalls, 2);
+});
+
 test("WorkspaceAgentActivityService.submitPlanDecision uses one semantic daemon transport", async () => {
   const calls: unknown[] = [];
   const service = new WorkspaceAgentActivityService({

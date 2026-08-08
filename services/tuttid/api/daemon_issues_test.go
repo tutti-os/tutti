@@ -2,9 +2,11 @@ package api
 
 import (
 	"context"
+	"encoding/base64"
 	"errors"
 	"net/http"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	workspaceissues "github.com/tutti-os/tutti/packages/workspace/issues"
@@ -14,6 +16,15 @@ import (
 	workspacedata "github.com/tutti-os/tutti/services/tuttid/data/workspace"
 	workspaceservice "github.com/tutti-os/tutti/services/tuttid/service/workspace"
 )
+
+type recordingIssueRunLauncher struct {
+	launches []workspaceservice.IssueRunLaunch
+}
+
+func (launcher *recordingIssueRunLauncher) Launch(_ context.Context, launch workspaceservice.IssueRunLaunch) error {
+	launcher.launches = append(launcher.launches, launch)
+	return nil
+}
 
 func TestDaemonAPIGeneratedRoutesCreateWorkspaceIssueMapsDuplicateIDTo409(t *testing.T) {
 	store := openIssueRouteSQLiteStore(t)
@@ -55,6 +66,124 @@ func TestDaemonAPIGeneratedRoutesCreateWorkspaceIssueMapsDuplicateIDTo409(t *tes
 		apierrors.ReasonWorkspaceIssueExists,
 		workspaceissues.ErrIssueAlreadyExists.Error(),
 	)
+}
+
+func TestDaemonAPIGeneratedRoutesRejectInvalidIssueAttachments(t *testing.T) {
+	store := openIssueRouteSQLiteStore(t)
+	ctx := context.Background()
+	const workspaceID = "ws-issue-attachment-contract"
+	if err := store.Create(ctx, workspacebiz.Summary{ID: workspaceID, Name: "Attachment contract"}); err != nil {
+		t.Fatal(err)
+	}
+	mux := http.NewServeMux()
+	RegisterRoutes(mux, NewRoutes(DaemonAPI{
+		IssueService: workspaceservice.IssueManagerService{
+			AttachmentFiles: workspacedata.IssueAttachmentFiles{StateDir: t.TempDir()},
+			Store:           store,
+		},
+	}))
+	tooMany := make([]map[string]any, 9)
+	for index := range tooMany {
+		tooMany[index] = map[string]any{"dataBase64": "iVBORw0KGgo=", "mimeType": "image/png"}
+	}
+	testCases := []struct {
+		name        string
+		attachments any
+	}{
+		{name: "invalid UUID", attachments: []map[string]any{{"attachmentId": "not-a-uuid", "dataBase64": "iVBORw0KGgo=", "mimeType": "image/png"}}},
+		{name: "invalid MIME", attachments: []map[string]any{{"dataBase64": "iVBORw0KGgo=", "mimeType": "image/gif"}}},
+		{name: "invalid base64", attachments: []map[string]any{{"dataBase64": "not base64!", "mimeType": "image/png"}}},
+		{name: "too many", attachments: tooMany},
+	}
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			recorder := performGeneratedRouteRequest(t, mux, http.MethodPost, "/v1/workspaces/"+workspaceID+"/issues", map[string]any{
+				"attachments": testCase.attachments,
+				"topicId":     workspaceissues.DefaultTopicID,
+				"title":       "Invalid attachment",
+			})
+			if recorder.Code != http.StatusBadRequest {
+				t.Fatalf("status = %d, want %d; body: %s", recorder.Code, http.StatusBadRequest, recorder.Body.String())
+			}
+		})
+	}
+}
+
+func TestDaemonAPIStartsIssueRunWithTextAndImageAttachment(t *testing.T) {
+	store := openIssueRouteSQLiteStore(t)
+	ctx := context.Background()
+	const workspaceID = "ws-issue-attachment-launch"
+	if err := store.Create(ctx, workspacebiz.Summary{ID: workspaceID, Name: "Attachment launch"}); err != nil {
+		t.Fatal(err)
+	}
+	launcher := &recordingIssueRunLauncher{}
+	issueService := &workspaceservice.IssueManagerService{
+		AttachmentFiles: workspacedata.IssueAttachmentFiles{StateDir: t.TempDir()},
+		MutationLocks:   workspaceservice.NewIssueMutationLocks(),
+		RunLauncher:     launcher,
+		Store:           store,
+	}
+	mux := http.NewServeMux()
+	RegisterRoutes(mux, NewRoutes(DaemonAPI{IssueService: issueService}))
+
+	create := performGeneratedRouteRequest(t, mux, http.MethodPost, "/v1/workspaces/"+workspaceID+"/issues", map[string]any{
+		"attachments": []map[string]any{{
+			"dataBase64":  base64.StdEncoding.EncodeToString([]byte("\x89PNG\r\n\x1a\ncontent")),
+			"displayName": "capture.png",
+			"mimeType":    "image/png",
+		}},
+		"content": "Check the broken layout",
+		"topicId": workspaceissues.DefaultTopicID,
+		"title":   "Inspect screenshot",
+	})
+	if create.Code != http.StatusCreated {
+		t.Fatalf("create status = %d, want %d; body: %s", create.Code, http.StatusCreated, create.Body.String())
+	}
+	var created tuttigenerated.IssueManagerIssueResponse
+	decodeGeneratedRouteResponse(t, create, &created)
+
+	start := performGeneratedRouteRequest(t, mux, http.MethodPost, "/v1/workspaces/"+workspaceID+"/issues/"+created.Issue.IssueId+"/run-launches", map[string]any{
+		"agentTargetId": "local:codex",
+	})
+	if start.Code != http.StatusCreated {
+		t.Fatalf("start status = %d, want %d; body: %s", start.Code, http.StatusCreated, start.Body.String())
+	}
+	if len(launcher.launches) != 1 {
+		t.Fatalf("launches = %#v, want one", launcher.launches)
+	}
+	launch := launcher.launches[0]
+	if !strings.Contains(launch.Prompt, "Inspect screenshot") || !strings.Contains(launch.Prompt, "Check the broken layout") {
+		t.Fatalf("prompt = %q, want title and note", launch.Prompt)
+	}
+	if len(launch.Attachments) != 1 || launch.Attachments[0].MimeType != "image/png" || launch.Attachments[0].Name != "capture.png" {
+		t.Fatalf("attachments = %#v, want one PNG", launch.Attachments)
+	}
+	if !issueService.AttachmentFiles.IsManagedPath(launch.Attachments[0].Path) {
+		t.Fatalf("attachment path = %q, want managed path", launch.Attachments[0].Path)
+	}
+}
+
+func TestDaemonAPIPlanIssueSchemaRejectsAttachments(t *testing.T) {
+	store := openIssueRouteSQLiteStore(t)
+	ctx := context.Background()
+	const workspaceID = "ws-plan-attachment-contract"
+	if err := store.Create(ctx, workspacebiz.Summary{ID: workspaceID, Name: "Plan attachment contract"}); err != nil {
+		t.Fatal(err)
+	}
+	mux := http.NewServeMux()
+	RegisterRoutes(mux, NewRoutes(DaemonAPI{IssueService: &workspaceservice.IssueManagerService{Store: store}}))
+	recorder := performGeneratedRouteRequest(t, mux, http.MethodPost, "/v1/workspaces/"+workspaceID+"/issues/from-plan", map[string]any{
+		"issue": map[string]any{
+			"attachments":    []map[string]any{{"dataBase64": "iVBORw0KGgo=", "mimeType": "image/png"}},
+			"planningSource": "traditional_plan",
+			"topicId":        workspaceissues.DefaultTopicID,
+			"title":          "Plan",
+		},
+		"tasks": []map[string]any{{"title": "Implement"}},
+	})
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d; body: %s", recorder.Code, http.StatusBadRequest, recorder.Body.String())
+	}
 }
 
 func TestDaemonAPIGeneratedRoutesRejectForgedTuttiModeIssueProvenance(t *testing.T) {

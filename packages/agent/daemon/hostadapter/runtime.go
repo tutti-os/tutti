@@ -589,6 +589,9 @@ func mapRuntimeError(err error) error {
 	if errors.Is(err, agentruntime.ErrSessionDisconnected) {
 		return errors.Join(host.ErrRuntimeSessionDisconnected, err)
 	}
+	if errors.Is(err, agentruntime.ErrSessionNotFound) {
+		return errors.Join(host.ErrSessionNotFound, err)
+	}
 	if errors.Is(err, agentruntime.ErrEffectiveHistoryUnsupported) {
 		return host.ErrRuntimeHistoryUnsupported
 	}
@@ -695,7 +698,8 @@ func runtimeResumeInput(input host.RuntimeResumeInput) agentruntime.ResumeInput 
 		RuntimeContext: cloneMap(input.RuntimeContext), ProviderTargetRef: cloneMap(input.ProviderTargetRef),
 		PermissionModeID: input.Settings.PermissionModeID, Settings: runtimeSettings(input.Settings),
 		CreatedAtUnixMS: input.CreatedAtUnixMS, UpdatedAtUnixMS: input.UpdatedAtUnixMS,
-		RecreateIfMissing: input.RecreateIfMissing,
+		GoalGenerationFences: runtimeGoalGenerationFences(input.GoalGenerationFences),
+		RecreateIfMissing:    input.RecreateIfMissing,
 	}
 }
 

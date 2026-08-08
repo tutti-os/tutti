@@ -69,6 +69,7 @@ export interface AgentGUINodeWorkspace {
   selectProjectDirectory?: () => Promise<{ path: string } | null>;
   resolveExternalPromptEntries?: AgentComposerProps["resolveExternalPromptEntries"];
   prepareExternalPromptFiles?: AgentComposerProps["prepareExternalPromptFiles"];
+  resolvePastedPath?: AgentComposerProps["resolvePastedPath"];
   promptAssetLimit?: number | null;
   projectDirectorySourceAggregator?: ReferenceSourceAggregator | null;
   referenceSourceAggregator?: ReferenceSourceAggregator | null;
@@ -388,6 +389,7 @@ export function areAgentGUINodePropsEqual(
     pw.selectProjectDirectory === nw.selectProjectDirectory &&
     pw.resolveExternalPromptEntries === nw.resolveExternalPromptEntries &&
     pw.prepareExternalPromptFiles === nw.prepareExternalPromptFiles &&
+    pw.resolvePastedPath === nw.resolvePastedPath &&
     pw.promptAssetLimit === nw.promptAssetLimit &&
     pw.projectDirectorySourceAggregator ===
       nw.projectDirectorySourceAggregator &&

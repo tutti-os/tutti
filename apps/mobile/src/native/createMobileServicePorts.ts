@@ -66,6 +66,7 @@ export function createMobileServicePorts(): MobileServicePorts {
               listener({
                 kind: "connection",
                 reason: "subscribe_failed",
+                retryable: true,
                 status: "disconnected"
               });
             }

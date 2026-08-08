@@ -433,6 +433,7 @@ func (api DaemonAPI) PutDesktopPreferences(ctx context.Context, request tuttigen
 		WorkbenchShortcuts: preferencesbiz.DesktopWorkbenchShortcuts{
 			NewAgentConversation: optionalStringValue(request.Body.Preferences.WorkbenchShortcuts.NewAgentConversation),
 			NewSameTypeWindow:    optionalStringValue(request.Body.Preferences.WorkbenchShortcuts.NewSameTypeWindow),
+			CaptureScreenshot:    optionalStringValue(request.Body.Preferences.WorkbenchShortcuts.CaptureScreenshot),
 		},
 		Locale:                  locale,
 		MinimizeAnimation:       minimizeAnimation,

@@ -1,6 +1,6 @@
 import { ConfirmationDialog } from "@tutti-os/ui-system";
 import type { AgentGUIConversationRailLabels } from "./agentGUIConversationRailLabels";
-import type { AgentGUIProjectActionDialog } from "./AgentGUIConversationRailPane";
+import type { AgentGUIProjectActionDialog } from "./agentGUIConversationRailTypes";
 
 const DIALOG_CLASS_NAME =
   "nodrag tsh-desktop-no-drag [-webkit-app-region:no-drag]";

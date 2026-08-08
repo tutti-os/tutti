@@ -3534,6 +3534,23 @@
       "nativePreview": true
     },
     {
+      "id": "native-progress-bar",
+      "layer": "base",
+      "name": "NativeProgressBar",
+      "export": "NativeProgressBar",
+      "from": "@tutti-os/ui-system/native",
+      "category": "primitive",
+      "status": "experimental",
+      "source": "src/native/progress-bar.tsx",
+      "propsType": "NativeProgressBarProps",
+      "description": "Token-backed determinate or indeterminate progress indicator for React Native renderers.",
+      "useCases": ["Downloads and transfers", "Long-running Native tasks"],
+      "migrationHints": [
+        "Provide a localized accessibility label and pass null when total progress is unknown."
+      ],
+      "nativePreview": true
+    },
+    {
       "id": "native-list-row",
       "layer": "base",
       "name": "NativeListRow",

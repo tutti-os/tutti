@@ -192,6 +192,90 @@ describe("WorkspaceAgentMessageCenterCard prompt presentation", () => {
     expect(container.textContent).not.toContain("Allow the complete command?");
   });
 
+  it("disables prompt controls separately from submitting and exposes the reason", () => {
+    const pendingItem = item({ summary: "Allow the complete command?" });
+    pendingItem.status = "waiting";
+    pendingItem.pendingInteractionTarget = {
+      agentSessionId: "codex-1",
+      turnId: "turn-1",
+      requestId: "request-1"
+    };
+    pendingItem.pendingPrompt = {
+      kind: "approval",
+      id: "approval:request-1",
+      turnId: "turn-1",
+      requestId: "request-1",
+      callId: "call-1",
+      title: "Run command",
+      toolName: "Bash",
+      status: "pending",
+      input: { command: "printf a" },
+      options: [{ id: "allow", label: "Allow", kind: "allow" }],
+      output: null,
+      occurredAtUnixMs: 1
+    };
+
+    render(
+      <WorkspaceAgentMessageCenterCard
+        item={pendingItem}
+        isSubmitting={false}
+        isInteractionDisabled
+        interactionDisabledReason="The shared Agent owner is offline"
+        onOpenChat={() => undefined}
+        onSubmitPrompt={() => undefined}
+      />
+    );
+
+    expect(screen.getByRole("button", { name: "Allow" })).toBeDisabled();
+    expect(
+      screen.getByRole("group", {
+        name: "The shared Agent owner is offline"
+      })
+    ).toHaveAttribute("aria-disabled", "true");
+  });
+
+  it("does not focus or render an empty description when the disabled reason is absent", () => {
+    const pendingItem = item({ summary: "Allow the complete command?" });
+    pendingItem.status = "waiting";
+    pendingItem.pendingInteractionTarget = {
+      agentSessionId: "codex-1",
+      turnId: "turn-1",
+      requestId: "request-1"
+    };
+    pendingItem.pendingPrompt = {
+      kind: "approval",
+      id: "approval:request-1",
+      turnId: "turn-1",
+      requestId: "request-1",
+      callId: "call-1",
+      title: "Run command",
+      toolName: "Bash",
+      status: "pending",
+      input: { command: "printf a" },
+      options: [{ id: "allow", label: "Allow", kind: "allow" }],
+      output: null,
+      occurredAtUnixMs: 1
+    };
+
+    const { container } = render(
+      <WorkspaceAgentMessageCenterCard
+        item={pendingItem}
+        isSubmitting={false}
+        isInteractionDisabled
+        onOpenChat={() => undefined}
+        onSubmitPrompt={() => undefined}
+      />
+    );
+
+    expect(screen.getByRole("button", { name: "Allow" })).toBeDisabled();
+    const disabledGroup = container.querySelector<HTMLElement>(
+      '[data-agent-interaction-disabled="true"]'
+    );
+    expect(disabledGroup).not.toBeNull();
+    expect(disabledGroup).not.toHaveAttribute("aria-label");
+    expect(disabledGroup).not.toHaveAttribute("tabindex");
+  });
+
   it("keeps the summary when a leaving or read-only card cannot render its prompt", () => {
     const pendingItem = item({ summary: "Allow the complete command?" });
     pendingItem.status = "waiting";

@@ -132,6 +132,37 @@ func TestPromptAttachmentStoreUsesSessionScopedPath(t *testing.T) {
 	}
 }
 
+func TestPromptAttachmentStoreDeletesOnlyOneSessionAttachmentDirectory(t *testing.T) {
+	root := t.TempDir()
+	store := PromptAttachmentStore{RootDir: root}
+	first, err := store.attachmentPath("workspace-1", "session-1", "attachment-1", "image/png")
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := store.attachmentPath("workspace-1", "session-2", "attachment-2", "image/png")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{first, second} {
+		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte("attachment"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	if err := store.DeleteSessionAttachments("workspace-1", "session-1"); err != nil {
+		t.Fatalf("DeleteSessionAttachments() error = %v", err)
+	}
+	if _, err := os.Stat(first); !os.IsNotExist(err) {
+		t.Fatalf("deleted attachment still exists, err = %v", err)
+	}
+	if _, err := os.Stat(second); err != nil {
+		t.Fatalf("other session attachment was removed: %v", err)
+	}
+}
+
 func TestPromptAttachmentStoreStagesForkAttachmentsIdempotently(t *testing.T) {
 	root := t.TempDir()
 	store := PromptAttachmentStore{RootDir: root}

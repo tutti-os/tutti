@@ -24,6 +24,7 @@ type serviceHostRuntimePreparationSupport interface {
 	prepareRuntimeForResume(context.Context, PersistedSession) (preparedRuntime, error)
 	resolveProviderTargetRefForResume(context.Context, PersistedSession) (map[string]any, error)
 	cleanupSessionResources(context.Context, string, string) error
+	releaseSessionResourcesForRecoverableDeletion(context.Context, string, string) error
 	deleteTuttiModeActivationSessionState(context.Context, string, string) error
 }
 
@@ -41,6 +42,7 @@ type serviceRuntimePreparation struct {
 	computerUseAvailable         func() bool
 	modelPlanBinding             modelPlanBindingRuntime
 	agentSessionResourceReleaser AgentSessionResourceReleaser
+	sessionReader                SessionReader
 	tuttiModeActivations         TuttiModeActivationPort
 }
 
@@ -59,6 +61,7 @@ func newServiceRuntimePreparation(config ServiceConfig) *serviceRuntimePreparati
 			Plans:    config.Runtime.ModelPlans,
 		},
 		agentSessionResourceReleaser: config.Resources.AgentSessionResourceReleaser,
+		sessionReader:                config.Sessions.Reader,
 		tuttiModeActivations:         config.Observers.TuttiModeActivations,
 	}
 }
@@ -77,6 +80,7 @@ func (p *serviceRuntimePreparation) facade() *Service {
 		BrowserUseAvailable:          p.browserUseAvailable,
 		ComputerUseAvailable:         p.computerUseAvailable,
 		AgentSessionResourceReleaser: p.agentSessionResourceReleaser,
+		SessionReader:                p.sessionReader,
 		TuttiModeActivations:         p.tuttiModeActivations,
 		modelPlanBinding:             p.modelPlanBinding,
 	}
@@ -109,6 +113,14 @@ func (p *serviceRuntimePreparation) cleanupSessionResources(
 	agentSessionID string,
 ) error {
 	return p.facade().cleanupSessionResources(ctx, workspaceID, agentSessionID)
+}
+
+func (p *serviceRuntimePreparation) releaseSessionResourcesForRecoverableDeletion(
+	ctx context.Context,
+	workspaceID string,
+	agentSessionID string,
+) error {
+	return p.facade().releaseSessionResourcesForRecoverableDeletion(ctx, workspaceID, agentSessionID)
 }
 
 func (p *serviceRuntimePreparation) deleteTuttiModeActivationSessionState(
@@ -227,5 +239,15 @@ func (a serviceHostPreparation) Cleanup(ctx context.Context, input agenthost.Run
 	if input.OrphanActivationCleanup {
 		activationErr = a.support.deleteTuttiModeActivationSessionState(ctx, input.WorkspaceID, input.AgentSessionID)
 	}
-	return errors.Join(a.support.cleanupSessionResources(ctx, input.WorkspaceID, input.AgentSessionID), activationErr)
+	var resourceErr error
+	if input.PreserveRecoverableState {
+		resourceErr = a.support.releaseSessionResourcesForRecoverableDeletion(
+			ctx,
+			input.WorkspaceID,
+			input.AgentSessionID,
+		)
+	} else {
+		resourceErr = a.support.cleanupSessionResources(ctx, input.WorkspaceID, input.AgentSessionID)
+	}
+	return errors.Join(resourceErr, activationErr)
 }

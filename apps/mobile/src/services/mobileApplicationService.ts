@@ -30,7 +30,11 @@ import {
 import { ObservableService } from "./observableService";
 import { MobileQuickPromptLibraryService } from "./mobileQuickPromptLibraryService";
 import { MobileUserProjectDirectoryService } from "./mobileUserProjectDirectoryService";
-import type { AppLifecycleState, MobileServicePorts } from "./servicePorts";
+import type {
+  AgentLiveDelivery,
+  AppLifecycleState,
+  MobileServicePorts
+} from "./servicePorts";
 import { WorkspaceActivityService } from "./workspaceActivityService";
 import { WorkspaceCatalogService } from "./workspaceCatalogService";
 import type { WorkspaceConversationRailService } from "./workspaceConversationRailService";
@@ -51,9 +55,25 @@ export type MobileConnectionSnapshot =
   | { phase: "idle" }
   | { phase: "connected" }
   | {
-      phase: "failed" | "reconnecting" | "synchronizing";
+      phase: "reconnecting" | "synchronizing";
+      trigger: MobileConnectionRecoveryTrigger;
+    }
+  | {
+      expectedRevision?: string;
+      phase: "failed";
+      reasonCode: MobileConnectionFailureReason;
+      receivedRevision?: string;
       trigger: MobileConnectionRecoveryTrigger;
     };
+
+export type MobileConnectionFailureReason =
+  | "connection_unavailable"
+  | "protocol_revision_mismatch";
+
+type AgentLiveConnectionFailure = Extract<
+  AgentLiveDelivery,
+  { kind: "connection"; status: "disconnected" }
+>;
 
 export type MobileApplicationSnapshot =
   | { status: "bootstrapping" }
@@ -85,6 +105,7 @@ interface WorkspaceScope {
   generation: number;
   navigation: WorkspaceNavigationService;
   rail: WorkspaceConversationRailService;
+  terminalConnectionFailure: AgentLiveConnectionFailure | null;
   workspace: WorkspaceSummary;
 }
 
@@ -252,8 +273,12 @@ export class MobileApplicationService extends ObservableService<MobileApplicatio
       this.ports.clock,
       authenticated.session.userId,
       this.ports.deviceLink,
-      (connected) =>
-        this.handleWorkspaceTransportConnectionChanged(generation, connected)
+      (connected, failure) =>
+        this.handleWorkspaceTransportConnectionChanged(
+          generation,
+          connected,
+          failure
+        )
     );
     const rail = activity.rail;
     const services = new ServiceCollection();
@@ -270,6 +295,7 @@ export class MobileApplicationService extends ObservableService<MobileApplicatio
       generation,
       navigation,
       rail,
+      terminalConnectionFailure: null,
       workspace
     };
     this.workspaceCandidate = candidate;
@@ -291,10 +317,19 @@ export class MobileApplicationService extends ObservableService<MobileApplicatio
       const previousScope = this.workspaceScope;
       this.workspaceScope = candidate;
       previousScope?.container.dispose();
-      const connection: MobileConnectionSnapshot =
-        candidate.activity.isTransportConnected()
+      const terminalFailure = candidate.terminalConnectionFailure;
+      const connection: MobileConnectionSnapshot = terminalFailure
+        ? this.createConnectionFailureSnapshot(
+            trigger,
+            connectionFailureReason(terminalFailure),
+            terminalFailure
+          )
+        : candidate.activity.isTransportConnected()
           ? { phase: "connected" }
           : { phase: "synchronizing", trigger };
+      if (terminalFailure) {
+        candidate.activity.pause();
+      }
       this.publishAuthenticated(authenticated, connection, workspace);
       if (connection.phase === "synchronizing") {
         this.scheduleConnectionReadyDeadline(candidate, trigger);
@@ -456,6 +491,12 @@ export class MobileApplicationService extends ObservableService<MobileApplicatio
         this.snapshot.workspace
       ) {
         if (
+          this.snapshot.connection.phase === "failed" &&
+          this.snapshot.connection.reasonCode === "protocol_revision_mismatch"
+        ) {
+          return;
+        }
+        if (
           backgroundElapsedMs >= BACKGROUND_GRACE_MS ||
           this.snapshot.connection.phase === "reconnecting" ||
           this.snapshot.connection.phase === "failed"
@@ -539,7 +580,8 @@ export class MobileApplicationService extends ObservableService<MobileApplicatio
 
   private handleWorkspaceTransportConnectionChanged(
     generation: number,
-    connected: boolean
+    connected: boolean,
+    failure?: AgentLiveConnectionFailure
   ): void {
     if (
       this.disposed ||
@@ -549,7 +591,17 @@ export class MobileApplicationService extends ObservableService<MobileApplicatio
       return;
     }
     const workspace = this.workspaceScope;
-    if (!workspace || workspace.generation !== generation) return;
+    if (!workspace || workspace.generation !== generation) {
+      const candidate = this.workspaceCandidate;
+      if (
+        failure &&
+        !failure.retryable &&
+        candidate?.generation === generation
+      ) {
+        candidate.terminalConnectionFailure = failure;
+      }
+      return;
+    }
     const authenticated = this.authenticatedScope;
     if (!authenticated?.device) return;
     if (connected) {
@@ -561,9 +613,20 @@ export class MobileApplicationService extends ObservableService<MobileApplicatio
       this.snapshot.status === "authenticated"
         ? this.snapshot.connection
         : null;
+    if (failure && !failure.retryable) {
+      const trigger =
+        current && "trigger" in current ? current.trigger : "transport_lost";
+      this.markConnectionFailed(
+        trigger,
+        connectionFailureReason(failure),
+        failure
+      );
+      return;
+    }
     if (current?.phase === "reconnecting" || current?.phase === "failed") {
       return;
     }
+    if (current?.phase === "synchronizing") return;
     this.cancelConnectionTimers();
     this.publishAuthenticated(authenticated, {
       phase: "synchronizing",
@@ -605,12 +668,43 @@ export class MobileApplicationService extends ObservableService<MobileApplicatio
     );
   }
 
-  private markConnectionFailed(trigger: MobileConnectionRecoveryTrigger): void {
+  private markConnectionFailed(
+    trigger: MobileConnectionRecoveryTrigger,
+    reasonCode: MobileConnectionFailureReason = "connection_unavailable",
+    protocol?: Pick<
+      AgentLiveConnectionFailure,
+      "expectedRevision" | "receivedRevision"
+    >
+  ): void {
     const authenticated = this.authenticatedScope;
     if (!authenticated?.device || !this.appForeground) return;
     this.cancelConnectionTimers();
     this.workspaceScope?.activity.pause();
-    this.publishAuthenticated(authenticated, { phase: "failed", trigger });
+    this.publishAuthenticated(
+      authenticated,
+      this.createConnectionFailureSnapshot(trigger, reasonCode, protocol)
+    );
+  }
+
+  private createConnectionFailureSnapshot(
+    trigger: MobileConnectionRecoveryTrigger,
+    reasonCode: MobileConnectionFailureReason,
+    protocol?: Pick<
+      AgentLiveConnectionFailure,
+      "expectedRevision" | "receivedRevision"
+    >
+  ): Extract<MobileConnectionSnapshot, { phase: "failed" }> {
+    return {
+      ...(protocol?.expectedRevision
+        ? { expectedRevision: protocol.expectedRevision }
+        : {}),
+      phase: "failed",
+      reasonCode,
+      ...(protocol?.receivedRevision
+        ? { receivedRevision: protocol.receivedRevision }
+        : {}),
+      trigger
+    };
   }
 
   private isConnectionRecoveryCurrent(
@@ -692,8 +786,17 @@ export class MobileApplicationService extends ObservableService<MobileApplicatio
       previousTrigger !== nextTrigger
     ) {
       this.ports.diagnostics.record({
+        ...(connection.phase === "failed" && connection.expectedRevision
+          ? { expectedRevision: connection.expectedRevision }
+          : {}),
         name: "device_connection.phase_changed",
         phase: connection.phase,
+        ...(connection.phase === "failed"
+          ? { reasonCode: connection.reasonCode }
+          : {}),
+        ...(connection.phase === "failed" && connection.receivedRevision
+          ? { receivedRevision: connection.receivedRevision }
+          : {}),
         ...(nextTrigger ? { trigger: nextTrigger } : {})
       });
     }
@@ -729,4 +832,12 @@ export class MobileApplicationService extends ObservableService<MobileApplicatio
     this.deviceLinkCloseTask = task;
     return task;
   }
+}
+
+function connectionFailureReason(
+  failure: AgentLiveConnectionFailure
+): MobileConnectionFailureReason {
+  return failure.reason === "protocol_revision_mismatch"
+    ? "protocol_revision_mismatch"
+    : "connection_unavailable";
 }

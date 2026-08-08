@@ -3,6 +3,7 @@ import {
   NativeButton,
   NativeIconButton,
   NativeListRow,
+  NativeProgressBar,
   NativeSheet,
   type NativeTheme,
   useNativeTheme
@@ -133,6 +134,18 @@ export function NativeComponentGallery({ onClose }: { onClose(): void }) {
           />
         </GallerySection>
 
+        <GallerySection title="native-progress-bar">
+          <GalleryState label="determinate">
+            <NativeProgressBar accessibilityLabel="64 percent" value={0.64} />
+          </GalleryState>
+          <GalleryState label="indeterminate">
+            <NativeProgressBar
+              accessibilityLabel="Indeterminate progress"
+              value={null}
+            />
+          </GalleryState>
+        </GallerySection>
+
         <GallerySection title="native-sheet">
           <NativeButton
             label={t("nativeGallerySheet")}
@@ -215,7 +228,11 @@ function createStyles(theme: NativeTheme) {
     },
     header: { alignItems: "flex-start", flexDirection: "row" },
     headerCopy: { flex: 1 },
-    galleryState: { alignItems: "center", gap: theme.space.small / 2 },
+    galleryState: {
+      alignItems: "center",
+      gap: theme.space.small / 2,
+      width: "100%"
+    },
     galleryStateLabel: {
       color: theme.color.muted,
       fontSize: theme.space.small

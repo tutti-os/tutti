@@ -396,6 +396,90 @@ func runGoalGenerationFencePreservesNewerGoal(ctx context.Context, driver Driver
 	return nil
 }
 
+func runRestartCompletesOfflineGoalFenceWithoutReplay(ctx context.Context, driver Driver) error {
+	const sessionID = "session-goal-fence-restart-stop"
+	fixture := liveSessionFixture(sessionID, "")
+	fixture.DisconnectGoalFenceDelivery = true
+	if err := driver.Reset(ctx, fixture); err != nil {
+		return err
+	}
+	target, err := driver.GoalControl(ctx, agenthost.GoalControlInput{
+		WorkspaceID: "workspace-1", AgentSessionID: sessionID,
+		Action: "set", Objective: "must not replay", ClientSubmitID: "old-goal",
+	})
+	if err != nil || target.OperationID == "" {
+		return fmt.Errorf("prepare old Goal: result=%#v error=%w", target, err)
+	}
+	fenceInput := agenthost.FenceGoalGenerationInput{
+		WorkspaceID: "workspace-1", AgentSessionID: sessionID,
+		TargetOperationID: target.OperationID, ClientSubmitID: "restart-stop-fence",
+		Reason: "binding_revoked",
+	}
+	fenced, err := driver.FenceGoalGeneration(ctx, fenceInput)
+	if err == nil || !fenced.IntentAccepted || fenced.Settled {
+		return fmt.Errorf("disconnected fence result=%#v error=%v", fenced, err)
+	}
+	beforeRecovery := driver.Metrics()
+	if beforeRecovery.ResumeCalls != 0 || beforeRecovery.GoalControlCalls != 1 {
+		return fmt.Errorf("fence failure resumed or replayed provider work: %#v", beforeRecovery)
+	}
+	if err := driver.Recover(ctx); err != nil {
+		return fmt.Errorf("recover offline Goal fence: %w", err)
+	}
+	state, err := driver.GetGoalState(ctx, agenthost.SessionRef{WorkspaceID: "workspace-1", AgentSessionID: sessionID})
+	if err != nil {
+		return err
+	}
+	if state.Revision != 2 || state.Goal != nil || state.PendingOperationID != "" ||
+		state.SyncStatus != storesqlite.GoalSyncStatusUnknown {
+		return fmt.Errorf("offline recovery state=%#v", state)
+	}
+	afterRecovery := driver.Metrics()
+	if afterRecovery.ResumeCalls != 0 || afterRecovery.GoalControlCalls != 1 || afterRecovery.CancelCalls != 0 {
+		return fmt.Errorf("offline recovery reached provider: %#v", afterRecovery)
+	}
+	replayedFence, err := driver.FenceGoalGeneration(ctx, fenceInput)
+	if err != nil || !replayedFence.IntentAccepted || !replayedFence.Settled {
+		return fmt.Errorf("completed fence replay result=%#v error=%w", replayedFence, err)
+	}
+	if err := driver.Recover(ctx); err != nil {
+		return fmt.Errorf("second restart recovery: %w", err)
+	}
+	afterSecondRecovery := driver.Metrics()
+	if afterSecondRecovery.ResumeCalls != 0 || afterSecondRecovery.GoalControlCalls != 1 ||
+		afterSecondRecovery.CancelCalls != 0 {
+		return fmt.Errorf("second recovery retried stopped Goal: %#v", afterSecondRecovery)
+	}
+	if _, err := driver.EnsureSession(ctx, agenthost.SessionRef{
+		WorkspaceID: "workspace-1", AgentSessionID: sessionID,
+	}); err != nil {
+		return fmt.Errorf("manual Session resume: %w", err)
+	}
+	resumed := driver.Metrics()
+	if resumed.ResumeCalls != 1 || len(resumed.LastResumeGoalGenerationFences) != 1 {
+		return fmt.Errorf("manual resume did not preload durable fence: %#v", resumed)
+	}
+	preloaded := resumed.LastResumeGoalGenerationFences[0]
+	if preloaded.TargetOperationID != target.OperationID || preloaded.TargetRevision != 1 || preloaded.RequireLive {
+		return fmt.Errorf("preloaded fence=%#v", preloaded)
+	}
+	if _, err := driver.GoalControl(ctx, agenthost.GoalControlInput{
+		WorkspaceID: "workspace-1", AgentSessionID: sessionID,
+		Action: "set", Objective: "new generation", ClientSubmitID: "new-goal",
+	}); err != nil {
+		return fmt.Errorf("submit new Goal generation: %w", err)
+	}
+	finalState, err := driver.GetGoalState(ctx, agenthost.SessionRef{WorkspaceID: "workspace-1", AgentSessionID: sessionID})
+	if err != nil {
+		return err
+	}
+	if finalState.Revision != 3 || metadataString(finalState.Goal, "objective") != "new generation" ||
+		driver.Metrics().GoalControlCalls != 2 {
+		return fmt.Errorf("new Goal state=%#v metrics=%#v", finalState, driver.Metrics())
+	}
+	return nil
+}
+
 func runAcceptedGoalControlWaitsWithoutReplay(ctx context.Context, driver Driver) error {
 	fixture := liveSessionFixture("session-goal-accepted", "")
 	fixture.AcceptGoalControlsOnly = true
@@ -427,6 +511,73 @@ func runAcceptedGoalControlWaitsWithoutReplay(ctx context.Context, driver Driver
 	}
 	if state.PendingOperationID != result.PendingOperationID || state.SyncStatus != storesqlite.GoalSyncStatusApplying {
 		return fmt.Errorf("accepted goal state after worker=%#v", state)
+	}
+	return nil
+}
+
+func runTurnlessGoalSessionResumesAfterDisconnect(ctx context.Context, driver Driver) error {
+	if err := driver.Reset(ctx, Fixture{}); err != nil {
+		return err
+	}
+	ref := agenthost.SessionRef{WorkspaceID: "workspace-1", AgentSessionID: "session-turnless-goal-resume"}
+	_, turnID, err := driver.Create(ctx, ref.WorkspaceID, agenthost.CreateSessionInput{
+		AgentSessionID: ref.AgentSessionID, AgentTargetID: "target-1", Provider: "codex",
+		ClientSubmitID: "turnless-goal-create-1",
+		InitialGoalControl: &agenthost.TypedGoalControl{
+			Action: "set", Objective: "survive provider reconnect",
+		},
+	})
+	if err != nil {
+		return fmt.Errorf("create turnless Goal session: %w", err)
+	}
+	if turnID != "" {
+		return fmt.Errorf("turnless Goal session opened turn %q", turnID)
+	}
+	if err := driver.DisconnectRuntimeSession(ctx, ref); err != nil {
+		return fmt.Errorf("disconnect turnless Goal session: %w", err)
+	}
+	resumed, err := driver.EnsureSession(ctx, ref)
+	if err != nil {
+		return fmt.Errorf("resume turnless Goal session: %w", err)
+	}
+	if resumed.SessionID != ref.AgentSessionID || !resumed.Resumable {
+		return fmt.Errorf("resumed turnless Goal session=%#v", resumed)
+	}
+	metrics := driver.Metrics()
+	if metrics.StartCalls != 1 || metrics.ResumeCalls != 1 || metrics.GoalControlCalls != 1 {
+		return fmt.Errorf("turnless Goal resume metrics=%#v", metrics)
+	}
+	return nil
+}
+
+func runGoalIntentAcceptedBeforeRuntimeReadinessFailure(ctx context.Context, driver Driver) error {
+	fixture := Fixture{
+		Session: &SessionSeed{
+			WorkspaceID: "workspace-1", AgentSessionID: "session-goal-readiness-failure", Provider: "codex",
+			ProviderSessionID: "provider-session-goal-readiness-failure", Cwd: "/workspace",
+		},
+		Turn: &TurnSeed{
+			TurnID: "turn-canceled-before-provider-start", Phase: storesqlite.TurnPhaseSettled,
+			Outcome: storesqlite.TurnOutcomeCanceled,
+		},
+	}
+	if err := driver.Reset(ctx, fixture); err != nil {
+		return err
+	}
+	result, err := driver.GoalControl(ctx, agenthost.GoalControlInput{
+		WorkspaceID: "workspace-1", AgentSessionID: "session-goal-readiness-failure",
+		Action: "set", Objective: "persist before delivery", ClientSubmitID: "goal-readiness-failure-1",
+	})
+	if !errors.Is(err, agenthost.ErrProviderSessionNotEstablished) {
+		return fmt.Errorf("goal readiness error=%v", err)
+	}
+	if !result.IntentAccepted || result.OperationID == "" ||
+		result.PendingOperationID != result.OperationID || result.SyncStatus != storesqlite.GoalSyncStatusPending ||
+		metadataString(result.Goal, "objective") != "persist before delivery" {
+		return fmt.Errorf("accepted Goal readiness result=%#v", result)
+	}
+	if metrics := driver.Metrics(); metrics.ResumeCalls != 0 || metrics.GoalControlCalls != 0 {
+		return fmt.Errorf("failed readiness reached runtime: metrics=%#v", metrics)
 	}
 	return nil
 }

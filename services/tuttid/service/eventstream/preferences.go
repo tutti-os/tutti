@@ -99,6 +99,7 @@ func (p DesktopPreferencesPublisher) PublishDesktopPreferencesUpdated(ctx contex
 			WorkbenchShortcuts: desktopWorkbenchShortcutsPayload{
 				NewAgentConversation: shortcutPointerFromBiz(preferences.WorkbenchShortcuts.NewAgentConversation),
 				NewSameTypeWindow:    shortcutPointerFromBiz(preferences.WorkbenchShortcuts.NewSameTypeWindow),
+				CaptureScreenshot:    shortcutPointerFromBiz(preferences.WorkbenchShortcuts.CaptureScreenshot),
 			},
 			Locale:                  preferences.Locale,
 			MinimizeAnimation:       preferences.MinimizeAnimation,
@@ -265,6 +266,7 @@ func decodeDesktopPreferencesMutationPayload(payload []byte) (decodedDesktopPref
 		WorkbenchShortcuts: preferencesbiz.DesktopWorkbenchShortcuts{
 			NewAgentConversation: shortcutStringFromPayload(decoded.Preferences.WorkbenchShortcuts.NewAgentConversation),
 			NewSameTypeWindow:    shortcutStringFromPayload(decoded.Preferences.WorkbenchShortcuts.NewSameTypeWindow),
+			CaptureScreenshot:    shortcutStringFromPayload(decoded.Preferences.WorkbenchShortcuts.CaptureScreenshot),
 		},
 		Locale:                  decoded.Preferences.Locale,
 		MinimizeAnimation:       decoded.Preferences.MinimizeAnimation,

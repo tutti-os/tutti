@@ -98,6 +98,7 @@ export interface IssueManagerController {
   nodeState: IssueManagerNodeState;
   notification: IssueManagerNotificationState | null;
   openAgentSession: (run: IssueManagerRun) => Promise<void>;
+  openContextRef: (reference: IssueManagerContextRef) => Promise<void>;
   openMention: (mention: RichTextMentionAttrs) => Promise<void>;
   openReference: (reference: IssueManagerFileReference) => Promise<void>;
   moveTask: (input: {

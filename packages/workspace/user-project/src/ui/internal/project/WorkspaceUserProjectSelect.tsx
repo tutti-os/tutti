@@ -170,8 +170,6 @@ const workspaceUserProjectOverflowLabelStyle = `
   width: max-content;
 }
 
-.workspace-user-project-overflow-label[data-overflow="true"]:hover
-  .workspace-user-project-overflow-label__content,
 [data-slot="select-item"]:hover
   .workspace-user-project-overflow-label[data-overflow="true"]
   .workspace-user-project-overflow-label__content {
@@ -182,8 +180,6 @@ const workspaceUserProjectOverflowLabelStyle = `
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .workspace-user-project-overflow-label[data-overflow="true"]:hover
-    .workspace-user-project-overflow-label__content,
   [data-slot="select-item"]:hover
     .workspace-user-project-overflow-label[data-overflow="true"]
     .workspace-user-project-overflow-label__content {
@@ -412,28 +408,6 @@ export function WorkspaceUserProjectSelect({
     service
   ]);
 
-  const refreshPreparedSelection = useCallback((): void => {
-    if (!effectiveApi) {
-      return;
-    }
-    const input = {
-      projectLocked,
-      selectedPath
-    } satisfies WorkspaceUserProjectSelectionPreparationInput;
-    void prepareWorkspaceUserProjectSelection(effectiveApi, input).then(
-      applyPreparedSelection,
-      () => {
-        setApiUnavailableUnlessService(setIsApiUnavailable, service);
-      }
-    );
-  }, [
-    effectiveApi,
-    projectLocked,
-    selectedPath,
-    service,
-    shouldApplyPreparedSelection
-  ]);
-
   const useProjectPath = useCallback(
     async (
       path: string,
@@ -457,12 +431,11 @@ export function WorkspaceUserProjectSelect({
         );
         setHasPinnedNoProjectSelection(false);
         onProjectPathChange(project.path, { action, project });
-        refreshPreparedSelection();
       } catch {
         setApiUnavailableUnlessService(setIsApiUnavailable, service);
       }
     },
-    [effectiveApi, onProjectPathChange, refreshPreparedSelection, service]
+    [effectiveApi, onProjectPathChange, service]
   );
 
   const createProject = useCallback(async (): Promise<void> => {
@@ -486,7 +459,6 @@ export function WorkspaceUserProjectSelect({
       onProjectPathChange(project.path, { action: "create_new", project });
       setDraftProjectName("");
       setIsProjectDialogOpen(false);
-      refreshPreparedSelection();
     } catch (error) {
       setProjectCreationError(
         resolveProjectCreationErrorLabel(error, resolvedLabels)
@@ -499,7 +471,6 @@ export function WorkspaceUserProjectSelect({
     effectiveApi,
     draftProjectName,
     onProjectPathChange,
-    refreshPreparedSelection,
     resolvedLabels,
     service
   ]);

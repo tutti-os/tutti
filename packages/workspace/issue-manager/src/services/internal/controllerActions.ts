@@ -44,10 +44,12 @@ import {
   createIssueManagerInsertReferencesPlan
 } from "./reference/controllerReferencePlans.ts";
 import {
+  canIssueManagerOpenContextRefs,
   canIssueManagerOpenReferences,
   canIssueManagerRequestReferencesDirectly,
   canIssueManagerUploadReferences,
   executeIssueManagerAttachReferences,
+  executeIssueManagerOpenContextRef,
   executeIssueManagerOpenReference,
   executeIssueManagerRequestReferences,
   executeIssueManagerRemoveContextRef,
@@ -618,6 +620,31 @@ export function createIssueManagerControllerActions(
       });
     },
 
+    async openContextRef(reference: IssueManagerContextRef) {
+      const contextRefOpener = feature.contextRefOpener;
+      if (canIssueManagerOpenContextRefs(contextRefOpener)) {
+        await executeIssueManagerOpenContextRef({
+          contextRefOpener,
+          reference
+        });
+        return;
+      }
+      if (
+        reference.accessKind === "managed_attachment" ||
+        !canIssueManagerOpenReferences(feature.fileAdapter)
+      ) {
+        return;
+      }
+      await executeIssueManagerOpenReference({
+        fileAdapter: feature.fileAdapter,
+        reference: {
+          displayName: reference.displayName,
+          kind: "file",
+          path: reference.path
+        }
+      });
+    },
+
     async openAgentSession(run: IssueManagerRun) {
       const agentSessionId = run.agentSessionId?.trim() ?? "";
       if (!agentSessionId || !feature.agentSessionOpener?.openSession) {
@@ -1007,10 +1034,13 @@ function hasIssueManagerDescription(content: string): boolean {
 
 function countIssueManagerContextRefs(input: {
   content: string;
-  refs?: readonly { path: string }[];
+  refs?: readonly IssueManagerContextRef[];
 }): number {
   const paths = new Set<string>();
   for (const ref of input.refs ?? []) {
+    if (ref.accessKind === "managed_attachment") {
+      continue;
+    }
     const path = ref.path.trim();
     if (path) {
       paths.add(path);

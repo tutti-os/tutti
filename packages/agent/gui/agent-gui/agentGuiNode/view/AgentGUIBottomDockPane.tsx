@@ -15,6 +15,7 @@ import {
   TuttiWorkflowDock,
   type TuttiWorkflowDockLabels
 } from "../TuttiWorkflowDock";
+import { resolveAgentGUIInteractionDisabledReason } from "./agentGUIDetailModelHelpers";
 import type {
   TuttiModePlanPanelLabels,
   TuttiPlanIssuePanelLabels
@@ -47,6 +48,8 @@ interface AgentGUIBottomDockPaneProps {
     | AgentGUINodeViewModel["interaction"]["pendingApproval"]
     | AgentGUINodeViewModel["interaction"]["pendingInteractivePrompt"];
   composerProps: AgentComposerProps;
+  approvalDisabledReason: string | null;
+  interactivePromptDisabledReason: string | null;
   inlineNoticeChrome: AgentGUISessionChrome | null;
   isRespondingApproval: boolean;
   sessionChrome: AgentGUISessionChrome;
@@ -76,6 +79,8 @@ export const AgentGUIBottomDockPane = memo(function AgentGUIBottomDockPane({
   bottomDockLiftedPrompt,
   bottomDockReplacementPrompt,
   composerProps,
+  approvalDisabledReason,
+  interactivePromptDisabledReason,
   inlineNoticeChrome,
   isRespondingApproval,
   sessionChrome,
@@ -97,6 +102,18 @@ export const AgentGUIBottomDockPane = memo(function AgentGUIBottomDockPane({
   tuttiPlanIssuePanelLabels
 }: AgentGUIBottomDockPaneProps): React.JSX.Element {
   "use memo";
+
+  const liftedPromptDisabledReason = resolveAgentGUIInteractionDisabledReason({
+    promptKind: bottomDockLiftedPrompt?.kind,
+    approvalReason: approvalDisabledReason,
+    interactivePromptReason: interactivePromptDisabledReason
+  });
+  const replacementPromptDisabledReason =
+    resolveAgentGUIInteractionDisabledReason({
+      promptKind: bottomDockReplacementPrompt?.kind,
+      approvalReason: approvalDisabledReason,
+      interactivePromptReason: interactivePromptDisabledReason
+    });
 
   // Active thread goal rides the same runtimeContext channel as account /
   // rateLimits, so we read it straight off the session chrome's raw state.
@@ -148,6 +165,8 @@ export const AgentGUIBottomDockPane = memo(function AgentGUIBottomDockPane({
               edgeGlow={true}
               keyboardShortcuts={keyboardShortcutsEnabled}
               isSubmitting={isRespondingApproval}
+              isInteractionDisabled={Boolean(liftedPromptDisabledReason)}
+              interactionDisabledReason={liftedPromptDisabledReason}
               onSubmit={onSubmitBottomDockInteractivePrompt}
               labels={promptLabels}
             />
@@ -159,6 +178,7 @@ export const AgentGUIBottomDockPane = memo(function AgentGUIBottomDockPane({
           {inlineNoticeChrome ? (
             <AgentSessionChrome
               chrome={inlineNoticeChrome}
+              approvalDisabledReason={approvalDisabledReason}
               isRespondingApproval={isRespondingApproval}
               onSubmitApprovalOption={onSubmitApprovalOption}
               onAuthLogin={onAuthLogin}
@@ -169,6 +189,7 @@ export const AgentGUIBottomDockPane = memo(function AgentGUIBottomDockPane({
           ) : null}
           <AgentSessionChrome
             chrome={sessionChrome}
+            approvalDisabledReason={approvalDisabledReason}
             isRespondingApproval={isRespondingApproval}
             onSubmitApprovalOption={onSubmitApprovalOption}
             onAuthLogin={onAuthLogin}
@@ -255,6 +276,8 @@ export const AgentGUIBottomDockPane = memo(function AgentGUIBottomDockPane({
               edgeGlow={true}
               keyboardShortcuts={keyboardShortcutsEnabled}
               isSubmitting={isRespondingApproval}
+              isInteractionDisabled={Boolean(replacementPromptDisabledReason)}
+              interactionDisabledReason={replacementPromptDisabledReason}
               onSubmit={onSubmitBottomDockInteractivePrompt}
               labels={promptLabels}
             />

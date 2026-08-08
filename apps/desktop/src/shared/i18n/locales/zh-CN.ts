@@ -16,11 +16,23 @@ export const zhCN = {
     loading: "加载中",
     neverOpened: "从未打开",
     ok: "好",
+    retry: "重试",
     selectFolder: "选择文件夹",
     unknownError: "未知错误",
     unreachable: "不可达",
     workspace: "工作区",
     zipArchive: "ZIP 压缩包"
+  },
+  capture: {
+    error: "Agent 启动失败，请重试",
+    loading: "正在准备截图…",
+    screenPreviewAlt: "等待选择区域的屏幕",
+    selectHint: "拖动选择区域 · Esc 取消",
+    taskPrompt:
+      "开始处理前，请创建一个 Qute Task 来记录这项请求；随后立即执行请求，把 Task 作为持续跟进的工作记录，并及时更新状态和备注，不要在创建 Task 后停止",
+    taskPromptAction: "创建 Task 并跟进",
+    taskPromptHint: "Agent 会立即处理，并持续更新 Task",
+    title: "Tutti"
   },
   dashboard: {
     chooseWorkspaceTitle: "选择一个工作区",
@@ -834,6 +846,10 @@ export const zhCN = {
           zhCN: "简体中文"
         },
         localeSaveFailed: "暂时无法切换应用语言",
+        captureShortcutDefaultPlaceholder: "默认：Cmd/Ctrl+Shift+S",
+        captureShortcutDescription:
+          "全局截图快捷键，需包含 Cmd、Ctrl 或 Alt 修饰键；清除后恢复默认",
+        captureShortcutLabel: "截图快捷键",
         preventSleepDescription: "可控制系统是否进入休眠",
         preventSleepLabel: "防止休眠",
         preventSleepOptions: {
@@ -846,6 +862,52 @@ export const zhCN = {
         updatePolicySaveFailed: "暂时无法更新更新方式",
         versionLabel: "桌面版本"
       },
+      deletedConversations: {
+        allProjects: "所有项目",
+        clearFilters: "清除筛选",
+        deleteAll: "全部删除",
+        deleteAllCompleted: "已永久删除 {{count}} 个会话",
+        deleteAllConfirm: "永久删除全部会话",
+        deleteAllConfirmationLabel: "确认文字",
+        deleteAllConfirmationPhrase: "永久清理",
+        deleteAllDescription:
+          "这会永久删除当前工作区的全部 {{count}} 个已删除会话，不受当前搜索和项目筛选影响且无法撤销，请输入「{{phrase}}」继续",
+        deleteAllTitle: "永久删除全部会话？",
+        deleteAction: "删除",
+        deleteCompleted: "会话已永久删除",
+        deleteDescription: "「{{title}}」将被永久删除且无法恢复",
+        deleteTitle: "永久删除这个会话？",
+        deleting: "删除中…",
+        deletingAll: "全部删除中…",
+        emptyDescription: "删除后的会话会在这里保留到自动清理期限结束",
+        emptyTitle: "暂无已删除会话",
+        legacyRestoreUnavailable: "旧版记录缺少完整会话数据，无法恢复",
+        incompleteRestoreUnavailable: "会话数据不完整，无法恢复",
+        listLabel: "已删除会话列表",
+        loadFailedDescription: "暂时无法加载已删除会话，请重试",
+        loadFailedTitle: "无法加载已删除会话",
+        loadingMore: "正在加载更多…",
+        noResultsDescription: "请尝试其他标题或清除当前项目筛选",
+        noResultsTitle: "没有符合条件的会话",
+        permanentDelete: "永久删除",
+        permanentDeleteFailed:
+          "暂时无法永久删除，请结束正在运行的 Agent 任务后重试",
+        projectFilterLabel: "按项目筛选",
+        removedProject: "{{project}}（已移除）",
+        restore: "恢复会话",
+        restoreCompleted: "会话已恢复",
+        restoreFailed: "暂时无法恢复会话，请重试",
+        restoring: "恢复中…",
+        retentionDays: "{{count}} 天",
+        retentionDescription:
+          "已删除会话会在期限后永久清理，此设置适用于本设备上的所有工作区",
+        retentionLabel: "自动清理",
+        searchLabel: "按标题搜索已删除会话",
+        searchPlaceholder: "搜索已删除会话",
+        title: "已删除会话",
+        unscoped: "聊天（无项目）",
+        untitled: "未命名会话"
+      },
       nav: {
         about: "关于",
         apps: "应用",
@@ -853,6 +915,7 @@ export const zhCN = {
         appearance: "外观",
         agent: "Agent",
         connection: "连接",
+        deletedConversations: "回收站",
         developer: "开发者",
         general: "通用",
         lab: "实验室",

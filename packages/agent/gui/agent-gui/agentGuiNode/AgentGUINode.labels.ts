@@ -217,6 +217,13 @@ export function useAgentGUIViewLabels(input: {
       ),
       defaultModel: t("agentHost.agentGui.defaultModel"),
       loadingOptions: t("agentHost.agentGui.loadingOptions"),
+      composerOptionsLoadFailed: t(
+        "agentHost.agentGui.composerOptionsLoadFailed"
+      ),
+      composerOptionsRetry: t("agentHost.agentGui.composerOptionsRetry"),
+      composerOptionsRetryTooltip: t(
+        "agentHost.agentGui.composerOptionsRetryTooltip"
+      ),
       inheritedUnavailable: t("agentHost.agentGui.inheritedUnavailable"),
       reasoningLabel: t("agentHost.agentGui.reasoningLabel"),
       reasoningDegreeLabel: t("agentHost.agentGui.reasoningDegreeLabel"),
@@ -778,7 +785,6 @@ export function useAgentGUIViewLabels(input: {
     ]
   );
 }
-
 export function useAgentGUIWorkspaceFileReferenceCopy(
   t: TranslateFn
 ): WorkspaceFileReferenceCopy {

@@ -201,6 +201,7 @@ func (launcher *scheduledLaunchRecorder) Launch(context.Context, IssueRunLaunch)
 
 func TestTuttiModeLaunchPreservesSourceRailPlacement(t *testing.T) {
 	t.Parallel()
+	store := openIssueServiceStore(t)
 
 	placement := &IssueRunRailPlacement{
 		Kind:        "project",
@@ -228,7 +229,7 @@ func TestTuttiModeLaunchPreservesSourceRailPlacement(t *testing.T) {
 		AgentTargetID:      task.AgentTargetID,
 		ExecutionDirectory: "/repo",
 	}
-	launches := (IssueManagerService{}).tuttiModeLaunchesForRuns(
+	launches, err := (IssueManagerService{Store: store}).tuttiModeLaunchesForRuns(
 		context.Background(),
 		issue,
 		[]workspaceissues.Task{task},
@@ -241,6 +242,9 @@ func TestTuttiModeLaunchPreservesSourceRailPlacement(t *testing.T) {
 			RailPlacement:    placement,
 		},
 	)
+	if err != nil {
+		t.Fatalf("tuttiModeLaunchesForRuns() error = %v", err)
+	}
 	if len(launches) != 1 {
 		t.Fatalf("launches = %d, want one", len(launches))
 	}

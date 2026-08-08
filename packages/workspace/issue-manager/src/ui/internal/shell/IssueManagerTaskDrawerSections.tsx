@@ -17,6 +17,7 @@ import {
 import { IssueManagerDescriptionSection } from "../content/IssueManagerDescriptionSection.tsx";
 import { IssueManagerTitleTooltip } from "../content/IssueManagerTitleTooltip.tsx";
 import {
+  IssueManagerAttachmentSection,
   IssueManagerLatestRunStatusSection,
   IssueManagerOutputSection
 } from "../issue/IssueManagerIssueSections.tsx";
@@ -306,6 +307,11 @@ export function IssueManagerTaskDrawerReadBody({
         onMentionAction={controller.openMention}
         onOpen={controller.openReference}
         variant="plain"
+      />
+      <IssueManagerAttachmentSection
+        copy={copy}
+        onOpen={controller.openContextRef}
+        refs={controller.taskDetail.value?.contextRefs ?? []}
       />
       <IssueManagerLatestRunStatusSection
         copy={copy}

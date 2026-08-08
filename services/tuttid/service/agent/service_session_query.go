@@ -156,11 +156,21 @@ func (s *Service) UpdatePin(ctx context.Context, workspaceID string, agentSessio
 }
 
 func (s *Service) cleanupRuntime(ctx context.Context, workspaceID string, agentSessionID string) error {
+	return s.cleanupRuntimeWithOptions(ctx, workspaceID, agentSessionID, false)
+}
+
+func (s *Service) cleanupRuntimeWithOptions(
+	ctx context.Context,
+	workspaceID string,
+	agentSessionID string,
+	preserveRuntimeRoot bool,
+) error {
 	var runtimeErr error
 	if s.RuntimePreparer != nil {
 		runtimeErr = s.RuntimePreparer.Cleanup(ctx, runtimeprep.CleanupInput{
-			WorkspaceID:    workspaceID,
-			AgentSessionID: agentSessionID,
+			WorkspaceID:         workspaceID,
+			AgentSessionID:      agentSessionID,
+			PreserveRuntimeRoot: preserveRuntimeRoot,
 		})
 	}
 	if s.ModelGateway != nil {
@@ -170,13 +180,52 @@ func (s *Service) cleanupRuntime(ctx context.Context, workspaceID string, agentS
 }
 
 func (s *Service) cleanupSessionResources(ctx context.Context, workspaceID string, agentSessionID string) error {
+	return s.cleanupSessionResourcesWithOptions(ctx, workspaceID, agentSessionID, false)
+}
+
+func (s *Service) releaseSessionResourcesForRecoverableDeletion(
+	ctx context.Context,
+	workspaceID string,
+	agentSessionID string,
+) error {
+	return s.cleanupSessionResourcesWithOptions(ctx, workspaceID, agentSessionID, true)
+}
+
+func (s *Service) cleanupSessionResourcesWithOptions(
+	ctx context.Context,
+	workspaceID string,
+	agentSessionID string,
+	preserveRuntimeRoot bool,
+) error {
 	var runtimeErr error
 	if s.RuntimePreparer != nil {
-		runtimeErr = s.cleanupRuntime(ctx, workspaceID, agentSessionID)
+		runtimeErr = s.cleanupRuntimeWithOptions(ctx, workspaceID, agentSessionID, preserveRuntimeRoot)
 	}
 	var agentResourceErr error
 	if s.AgentSessionResourceReleaser != nil {
-		agentResourceErr = s.AgentSessionResourceReleaser.ReleaseAgent(ctx, strings.TrimSpace(agentSessionID))
+		releaseGlobalResources := true
+		if preserveRuntimeRoot {
+			identityReader, ok := s.SessionReader.(GlobalAgentSessionIdentityReader)
+			if !ok {
+				agentResourceErr = errors.New("global agent session identity reader is unavailable")
+				releaseGlobalResources = false
+			} else {
+				otherLive, err := identityReader.OtherWorkspaceLiveAgentSessionIDExists(
+					ctx,
+					strings.TrimSpace(workspaceID),
+					strings.TrimSpace(agentSessionID),
+				)
+				if err != nil {
+					agentResourceErr = err
+					releaseGlobalResources = false
+				} else if otherLive {
+					releaseGlobalResources = false
+				}
+			}
+		}
+		if releaseGlobalResources {
+			agentResourceErr = s.AgentSessionResourceReleaser.ReleaseAgent(ctx, strings.TrimSpace(agentSessionID))
+		}
 	}
 	return errors.Join(runtimeErr, agentResourceErr)
 }

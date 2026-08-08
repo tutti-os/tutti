@@ -7,6 +7,7 @@ import {
   normalizeTuttiExternalAtInvalidation,
   normalizeTuttiExternalAgentActivityActivateSessionInput,
   normalizeTuttiExternalAgentActivityCancelTurnInput,
+  normalizeTuttiExternalAgentActivityRememberComposerDefaultsInput,
   normalizeTuttiExternalAgentActivityComposerOptionsInput,
   normalizeTuttiExternalAgentActivitySendInput,
   normalizeTuttiExternalBrowserOpenUrlInput,
@@ -153,6 +154,7 @@ test("normalizes agent activity session inputs without dropping prompt assets", 
         }
       ],
       initialDisplayPrompt: " provider smoke test ",
+      reveal: true,
       settings: {
         browserUse: false,
         model: " test-model ",
@@ -176,6 +178,7 @@ test("normalizes agent activity session inputs without dropping prompt assets", 
         }
       ],
       initialDisplayPrompt: "provider smoke test",
+      reveal: true,
       settings: {
         browserUse: false,
         model: "test-model",
@@ -184,6 +187,16 @@ test("normalizes agent activity session inputs without dropping prompt assets", 
       title: "Provider Core Lab",
       visible: true
     }
+  );
+  assert.equal(
+    "reveal" in
+      normalizeTuttiExternalAgentActivityActivateSessionInput({
+        agentSessionId: "session-1",
+        agentTargetId: "codex",
+        clientSubmitId: "batch-1",
+        initialContent: [{ type: "text", text: "test" }]
+      }),
+    false
   );
   assert.deepEqual(
     normalizeTuttiExternalAgentActivitySendInput({
@@ -200,6 +213,45 @@ test("normalizes agent activity session inputs without dropping prompt assets", 
       displayPrompt: "image assertion",
       guidance: false
     }
+  );
+});
+
+test("normalizes remember-composer-defaults input", () => {
+  assert.deepEqual(
+    normalizeTuttiExternalAgentActivityRememberComposerDefaultsInput({
+      agentTargetId: " local:codex ",
+      defaults: {
+        codexSaverMode: false,
+        model: " gpt-5.6-sol ",
+        permissionModeId: null,
+        reasoningEffort: "  ",
+        speed: undefined
+      }
+    }),
+    {
+      agentTargetId: "local:codex",
+      defaults: {
+        codexSaverMode: false,
+        model: "gpt-5.6-sol",
+        permissionModeId: null,
+        reasoningEffort: null
+      }
+    }
+  );
+  assert.throws(
+    () =>
+      normalizeTuttiExternalAgentActivityRememberComposerDefaultsInput({
+        agentTargetId: "local:codex",
+        defaults: { model: 5 }
+      }),
+    /model must be a string or null/
+  );
+  assert.throws(
+    () =>
+      normalizeTuttiExternalAgentActivityRememberComposerDefaultsInput({
+        agentTargetId: "local:codex"
+      }),
+    /defaults must be an object/
   );
 });
 
@@ -257,6 +309,17 @@ test("rejects malformed agent activity inputs", () => {
         visible: "yes"
       }),
     /visible must be a boolean/
+  );
+  assert.throws(
+    () =>
+      normalizeTuttiExternalAgentActivityActivateSessionInput({
+        agentSessionId: "session-1",
+        agentTargetId: "codex",
+        clientSubmitId: "batch-1",
+        initialContent: [{ type: "text", text: "test" }],
+        reveal: "yes"
+      }),
+    /reveal must be a boolean/
   );
 });
 

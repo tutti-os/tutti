@@ -49,6 +49,7 @@ func NewPreparer(stateDir string) runtimeprep.TuttiAgentPreparer {
 	)
 	return runtimeprep.TuttiAgentPreparer{
 		BeforePrepare: bootstrapTuttiAgentUserAuthForPrepare,
+		AuthProjector: runtimeprep.MutagenAuthFileProjector{StateDir: stateDir},
 		StableSkillBundleRoot: filepath.Join(
 			stableRoot,
 			"skill-bundles",

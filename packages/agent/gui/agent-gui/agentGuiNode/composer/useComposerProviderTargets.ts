@@ -4,7 +4,7 @@ import styles from "../AgentGUINode.styles";
 import type { AgentGUIAgentTarget } from "../../../types";
 
 interface Input {
-  layoutMode: "dock" | "hero";
+  layoutMode: "dock" | "embedded" | "hero";
   provider: string;
   agentTargets: readonly AgentGUIAgentTarget[];
   handoffAgentTargets?: readonly AgentGUIAgentTarget[];

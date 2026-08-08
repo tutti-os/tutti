@@ -135,6 +135,7 @@ export interface PreferencesDesktopPreferencesV1 {
   workbenchShortcuts: {
     newAgentConversation: string | null;
     newSameTypeWindow: string | null;
+    captureScreenshot?: string | null;
   };
   locale: "en" | "zh-CN";
   minimizeAnimation: "scale" | "genie" | "off";
@@ -248,6 +249,17 @@ export type AgentActivityUpdatedPayloadV1 =
         eventType: "runtime_activity_update";
         state: "idle" | "running";
         occurredAtUnixMs: number;
+      };
+    }
+  | {
+      workspaceId: string;
+      agentSessionId: string;
+      eventType: "session_restored";
+      data: {
+        workspaceId: string;
+        agentSessionId: string;
+        eventType: "session_restored";
+        restoredAtUnixMs: number;
       };
     }
   | {

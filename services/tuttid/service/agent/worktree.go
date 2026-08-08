@@ -378,6 +378,19 @@ func sweepConfiguredWorktreeIsolation(
 			sessions = append(sessions, children...)
 		}
 	}
+	if deletedReader, ok := sessionReader.(RecoverableDeletedSessionResourceReader); ok {
+		deleted, err := deletedReader.ListRecoverableDeletedSessionResources(ctx)
+		if err != nil {
+			return err
+		}
+		for _, resource := range deleted {
+			sessions = append(sessions, PersistedSession{
+				ID:          resource.AgentSessionID,
+				WorkspaceID: resource.WorkspaceID,
+				Cwd:         resource.Cwd,
+			})
+		}
+	}
 	if strings.TrimSpace(stateDir) == "" {
 		stateDir = tuttitypes.DefaultStateDir()
 	}

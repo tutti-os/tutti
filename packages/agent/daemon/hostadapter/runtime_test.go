@@ -56,6 +56,25 @@ func TestRuntimeControllerPreservesCanonicalStateWhenClosingRuntime(t *testing.T
 	}
 }
 
+func TestRuntimeResumeInputMapsDurableGoalGenerationFences(t *testing.T) {
+	t.Parallel()
+	mapped := runtimeResumeInput(host.RuntimeResumeInput{
+		WorkspaceID: "workspace-1", AgentSessionID: "session-1", Provider: "codex",
+		GoalGenerationFences: []host.RuntimeGoalGenerationFenceInput{{
+			TargetOperationID: "old-goal", TargetRevision: 3, TargetRepairEpoch: 2,
+			Reason: "binding_revoked", RequireLive: false,
+		}},
+	})
+	if len(mapped.GoalGenerationFences) != 1 {
+		t.Fatalf("mapped fences=%#v", mapped.GoalGenerationFences)
+	}
+	fence := mapped.GoalGenerationFences[0]
+	if fence.OperationID != "old-goal" || fence.Revision != 3 || fence.RepairEpoch != 2 ||
+		fence.Reason != "binding_revoked" {
+		t.Fatalf("mapped fence=%#v", fence)
+	}
+}
+
 func (b *goalLifecycleRuntimeBackend) SetGoalControlLifecycleObserver(observer agentruntime.GoalControlLifecycleObserver) {
 	b.observer = observer
 }
@@ -149,6 +168,17 @@ func TestMapRuntimeErrorMapsDisconnectedSessionAcrossHostBoundary(t *testing.T) 
 		t.Fatalf("mapped error = %v, want Host disconnected sentinel", mapped)
 	}
 	if !errors.Is(mapped, agentruntime.ErrSessionDisconnected) {
+		t.Fatalf("mapped error = %v, want source runtime sentinel preserved", mapped)
+	}
+}
+
+func TestMapRuntimeErrorMapsMissingSessionAcrossHostBoundary(t *testing.T) {
+	runtimeErr := fmt.Errorf("fence session disappeared: %w", agentruntime.ErrSessionNotFound)
+	mapped := mapRuntimeError(runtimeErr)
+	if !errors.Is(mapped, host.ErrSessionNotFound) {
+		t.Fatalf("mapped error = %v, want Host missing-session sentinel", mapped)
+	}
+	if !errors.Is(mapped, agentruntime.ErrSessionNotFound) {
 		t.Fatalf("mapped error = %v, want source runtime sentinel preserved", mapped)
 	}
 }

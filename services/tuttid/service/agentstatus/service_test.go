@@ -25,6 +25,7 @@ import (
 	"github.com/tutti-os/tutti/packages/agent/daemon/providerregistry"
 	"github.com/tutti-os/tutti/packages/agent/daemon/providerstatus"
 	agentruntime "github.com/tutti-os/tutti/packages/agent/daemon/runtime"
+	"github.com/tutti-os/tutti/services/tuttid/biz/agentprovider"
 	externalagentregistry "github.com/tutti-os/tutti/services/tuttid/service/externalagentregistry"
 	managedruntime "github.com/tutti-os/tutti/services/tuttid/service/managedruntime"
 )
@@ -496,6 +497,40 @@ func TestServiceListReportsCodexAPIKeyAsAuthenticatedWithoutLogin(t *testing.T) 
 		t.Fatalf("List() error = %v", err)
 	}
 	status := onlyStatus(t, snapshot)
+	if status.Availability.Status != AvailabilityReady {
+		t.Fatalf("availability = %q, want %q", status.Availability.Status, AvailabilityReady)
+	}
+	if status.Auth.Status != AuthAuthenticated ||
+		status.Auth.AuthMethod != "apiKey" ||
+		status.Auth.AccountLabel != "API Usage Billing" {
+		t.Fatalf("auth = %#v, want API billing authentication", status.Auth)
+	}
+}
+
+func TestServiceStatusReportsOpenCodeConfigAPIKeyAsAuthenticatedWithoutLogin(t *testing.T) {
+	home := t.TempDir()
+	writeFile(t, filepath.Join(home, ".config", "opencode", "opencode.json"), `{
+		"provider": {
+			"newapi": {"options": {"apiKey": "sk-test"}}
+		}
+	}`)
+
+	service := customConfigService(home)
+	service.LookPath = func(string) (string, error) {
+		return filepath.Join(home, "opencode"), nil
+	}
+	service.IsExecutableFile = func(string) bool { return true }
+	service.RunOutcomes = NewRunOutcomeStore()
+	specs, err := DefaultRegistry().Select([]string{agentprovider.OpenCode})
+	if err != nil {
+		t.Fatalf("Select(opencode) error = %v", err)
+	}
+	status := service.statusForSpec(
+		context.Background(),
+		specs[0],
+		time.Now(),
+		statusDetectionOptions{skipAdapterProbe: true},
+	)
 	if status.Availability.Status != AvailabilityReady {
 		t.Fatalf("availability = %q, want %q", status.Availability.Status, AvailabilityReady)
 	}

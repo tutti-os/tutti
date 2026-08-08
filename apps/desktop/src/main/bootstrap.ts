@@ -175,6 +175,7 @@ export async function bootstrapDesktopApp(): Promise<void> {
 
   const currentDir = dirname(fileURLToPath(import.meta.url));
   const preloadPath = join(currentDir, "../preload/index.cjs");
+  const capturePreloadPath = join(currentDir, "../preload/capture.cjs");
   const minimumVersionPreloadPath = join(
     currentDir,
     "../preload/minimum-version.cjs"
@@ -350,6 +351,8 @@ export async function bootstrapDesktopApp(): Promise<void> {
     enableDevelopmentReloadShortcut: Boolean(rendererUrl) && !app.isPackaged,
     fallbackLocale: systemLocale,
     browserNodeGuestPreloadPath,
+    capturePreloadPath,
+    captureRendererFilePath: join(currentDir, "../renderer/capture.html"),
     startedDaemonRuntime: daemonRuntime,
     isPackaged: app.isPackaged,
     logger,
@@ -475,6 +478,7 @@ export async function bootstrapDesktopApp(): Promise<void> {
     tuttid: desktopAppServices.tuttid,
     disposables: [
       ...ipcDisposables,
+      desktopAppServices.capture,
       ...(featureAvailabilityIpc ? [featureAvailabilityIpc] : []),
       hostPreferencesEventStream,
       agentPowerSaveBlocker,

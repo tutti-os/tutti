@@ -20,7 +20,7 @@ type AskUserPrompt = Extract<AgentConversationPromptVM, { kind: "ask-user" }>;
 
 type SharedAskUserSurfaceProps = Pick<
   AgentInteractivePromptSurfaceProps,
-  "edgeGlow" | "isSubmitting" | "labels" | "onSubmit"
+  "edgeGlow" | "isInteractionDisabled" | "isSubmitting" | "labels" | "onSubmit"
 > & {
   embedded?: boolean;
   prompt: AskUserPrompt;
@@ -67,6 +67,7 @@ function CompactQuickAnswerSurface({
   embedded = false,
   edgeGlow = false,
   isSubmitting,
+  isInteractionDisabled = false,
   onSubmit
 }: Omit<SharedAskUserSurfaceProps, "labels"> & {
   question: AskUserPrompt["questions"][number];
@@ -104,7 +105,7 @@ function CompactQuickAnswerSurface({
                   ? `agent-question-${prompt.requestId}-${question.id}-option-${option.id}`
                   : undefined
               }
-              disabled={isSubmitting}
+              disabled={isSubmitting || isInteractionDisabled}
               onClick={() =>
                 onSubmit({
                   requestId: prompt.requestId,
@@ -140,12 +141,13 @@ function AskUserAnswerFlowSurface({
   embedded = false,
   edgeGlow = false,
   isSubmitting,
+  isInteractionDisabled = false,
   onSubmit,
   labels
 }: SharedAskUserSurfaceProps): JSX.Element {
   "use memo";
   const flow = useAskUserAnswerFlow({
-    isSubmitting,
+    isSubmitting: isSubmitting || isInteractionDisabled,
     questions: prompt.questions
   });
   const question = flow.currentQuestion;
@@ -211,7 +213,7 @@ function AskUserAnswerFlowSurface({
                       ? `agent-question-${prompt.requestId}-${question.id}-option-${option.id}`
                       : undefined
                   }
-                  disabled={isSubmitting}
+                  disabled={isSubmitting || isInteractionDisabled}
                   onClick={() => flow.toggleOption(option.label)}
                 >
                   <span className={styles.interactiveOptionContent}>
@@ -233,7 +235,7 @@ function AskUserAnswerFlowSurface({
           <textarea
             value={flow.freeText}
             placeholder={labels.answerPlaceholder}
-            disabled={isSubmitting}
+            disabled={isSubmitting || isInteractionDisabled}
             className={styles.interactivePromptTextarea}
             data-testid={`agent-question-${prompt.requestId}-${question.id}-custom-answer`}
             onChange={(event) => flow.setFreeText(event.currentTarget.value)}
@@ -245,7 +247,9 @@ function AskUserAnswerFlowSurface({
               type="button"
               variant="secondary"
               size="sm"
-              disabled={isSubmitting || flow.currentIndex === 0}
+              disabled={
+                isSubmitting || isInteractionDisabled || flow.currentIndex === 0
+              }
               onClick={flow.goToPreviousQuestion}
             >
               {labels.previousQuestion}
@@ -256,7 +260,11 @@ function AskUserAnswerFlowSurface({
               type="button"
               variant="default"
               size="sm"
-              disabled={isSubmitting || !flow.allQuestionsAnswered}
+              disabled={
+                isSubmitting ||
+                isInteractionDisabled ||
+                !flow.allQuestionsAnswered
+              }
               data-testid={`agent-question-${prompt.requestId}-${question.id}-submit`}
               onClick={() =>
                 onSubmit({
@@ -273,7 +281,11 @@ function AskUserAnswerFlowSurface({
               type="button"
               variant="default"
               size="sm"
-              disabled={isSubmitting || !flow.currentQuestionAnswered}
+              disabled={
+                isSubmitting ||
+                isInteractionDisabled ||
+                !flow.currentQuestionAnswered
+              }
               onClick={flow.goToNextQuestion}
             >
               {labels.nextQuestion}

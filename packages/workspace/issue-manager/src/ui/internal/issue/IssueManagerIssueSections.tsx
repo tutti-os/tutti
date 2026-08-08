@@ -5,6 +5,7 @@ import {
   Button,
   FileCreateIcon,
   FileIcon,
+  ImageFileIcon,
   SegmentBar,
   ScrollArea,
   cn
@@ -12,6 +13,7 @@ import {
 import type {
   IssueManagerFileReference,
   IssueManagerIssueSummary,
+  IssueManagerContextRef,
   IssueManagerRun,
   IssueManagerRunOutput,
   IssueManagerTaskSummary
@@ -291,6 +293,56 @@ export function IssueManagerOutputSection({
           ))}
         </div>
       )}
+    </section>
+  );
+}
+
+export function IssueManagerAttachmentSection({
+  copy,
+  onOpen,
+  refs
+}: {
+  copy: IssueManagerI18nRuntime;
+  onOpen: (reference: IssueManagerContextRef) => Promise<void>;
+  refs: readonly IssueManagerContextRef[];
+}): JSX.Element | null {
+  const attachments = refs.filter((ref) => ref.refType.startsWith("image/"));
+  if (attachments.length === 0) {
+    return null;
+  }
+  return (
+    <section className="grid gap-2.5">
+      <h3 className="text-[13px] font-semibold text-[var(--text-primary)]">
+        {copy.t("labels.attachments")}
+      </h3>
+      <div className="overflow-hidden rounded-[12px] border border-[var(--line-2)] bg-transparent">
+        {attachments.map((ref) => {
+          return (
+            <button
+              aria-label={copy.t("actions.openReference")}
+              className="flex w-full items-center gap-3 border-b border-[var(--line-2)] px-4 py-3 text-left transition-colors last:border-b-0 hover:bg-transparency-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25 focus-visible:ring-inset"
+              key={ref.contextRefId}
+              type="button"
+              onClick={() => void onOpen(ref)}
+            >
+              <span
+                aria-hidden="true"
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-[color-mix(in_srgb,var(--folder)_12%,transparent)] text-[var(--folder)]"
+              >
+                <ImageFileIcon size={16} />
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-[13px] font-semibold text-[var(--text-primary)]">
+                  {ref.displayName}
+                </span>
+                <span className="mt-1 block truncate text-[11px] font-normal text-[var(--text-secondary)]">
+                  {ref.refType}
+                </span>
+              </span>
+            </button>
+          );
+        })}
+      </div>
     </section>
   );
 }

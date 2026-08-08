@@ -78,30 +78,21 @@ func textMessageUpdateFromSessionEvent(
 	if messageKind := stringFromPayload(event.Payload.Metadata, "messageKind"); messageKind != "" {
 		update.Payload["messageKind"] = messageKind
 	}
-	update.Semantics = messageSemanticsFromMetadata(event.Payload.Metadata)
+	update.Semantics = messageSemanticsFromEventPayload(event.Payload)
 	forwardSystemNoticeMessageMetadata(update.Payload, event.Payload.Metadata)
 	return update, true
 }
 
-func messageSemanticsFromMetadata(metadata map[string]any) *canonical.WorkspaceAgentMessageSemantics {
-	if len(metadata) == 0 {
-		return nil
-	}
-	semantics := canonical.WorkspaceAgentMessageSemantics{}
-	if value, ok := metadata["userVisibleAssistantResponse"].(bool); ok {
-		semantics.UserVisibleAssistantResponse = value
+func messageSemanticsFromEventPayload(payload activityshared.EventPayload) *canonical.WorkspaceAgentMessageSemantics {
+	metadata := payload.Metadata
+	semantics := canonical.WorkspaceAgentMessageSemantics{
+		UserVisibleAssistantResponse: payload.Semantics.UserVisibleAssistantResponse,
 	}
 	if value, ok := metadata["turnSettling"].(bool); ok {
 		semantics.TurnSettling = value
 	}
 	semantics.NoticeCommand = stringFromPayload(metadata, "noticeCommand")
 	semantics.NoticeCommandStatus = stringFromPayload(metadata, "noticeCommandStatus")
-	if !semantics.UserVisibleAssistantResponse &&
-		!semantics.TurnSettling &&
-		semantics.NoticeCommand == "" &&
-		semantics.NoticeCommandStatus == "" {
-		return nil
-	}
 	return &semantics
 }
 
@@ -236,6 +227,7 @@ func callMessageUpdateFromSessionEvent(
 		Role:             string(activityshared.MessageRoleAssistant),
 		Kind:             "tool_call",
 		Status:           status,
+		Semantics:        &canonical.WorkspaceAgentMessageSemantics{UserVisibleAssistantResponse: false},
 		CallID:           callID,
 		Title:            name,
 		Payload:          payload,

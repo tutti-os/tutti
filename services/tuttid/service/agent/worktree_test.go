@@ -7,10 +7,12 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	agenthost "github.com/tutti-os/tutti/packages/agent/host"
+	agentactivitybiz "github.com/tutti-os/tutti/packages/agent/store-sqlite"
 	agenttargetbiz "github.com/tutti-os/tutti/services/tuttid/biz/agenttarget"
 )
 
@@ -405,6 +407,29 @@ func TestSweepSessionWorktreesKeepsDirtyWorktree(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := sweepSessionWorktrees(context.Background(), stateDir, nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	assertWorktreeExists(t, isolation.WorktreePath)
+}
+
+func TestSweepConfiguredWorktreeIsolationProtectsRecoverableDeletedSession(t *testing.T) {
+	stateDir, _, isolation := createWorktreeFixture(t, "session-gc-deleted-recoverable")
+	reader := &fakeSessionReader{
+		sessions: map[string]PersistedSession{},
+		recoverableDeleted: []agentactivitybiz.DeletedSessionResource{{
+			WorkspaceID:    "workspace-1",
+			AgentSessionID: "session-gc-deleted-recoverable",
+			Cwd:            isolation.WorktreePath,
+		}},
+	}
+	if err := sweepConfiguredWorktreeIsolation(
+		context.Background(),
+		&sync.RWMutex{},
+		stateDir,
+		func(context.Context) ([]string, error) { return []string{"workspace-1"}, nil },
+		reader,
+		func(PersistedSession) bool { return false },
+	); err != nil {
 		t.Fatal(err)
 	}
 	assertWorktreeExists(t, isolation.WorktreePath)

@@ -81,11 +81,25 @@ export const defaultDesktopWorkspaceUiMode: DesktopWorkspaceUiMode = "os";
 export interface DesktopWorkbenchShortcuts {
   newAgentConversation: string | null;
   newSameTypeWindow: string | null;
+  /**
+   * Global screenshot capture binding. Unlike the other bindings, null means
+   * the built-in default accelerator applies, not "unbound".
+   */
+  captureScreenshot: string | null;
 }
+
+/**
+ * Wire-compatible shortcuts shape: generated client payloads may omit newer
+ * bindings, so boundaries that normalize accept this partial form.
+ */
+export type DesktopWorkbenchShortcutsInput = {
+  [Key in keyof DesktopWorkbenchShortcuts]?: string | null;
+};
 
 export const defaultDesktopWorkbenchShortcuts: DesktopWorkbenchShortcuts = {
   newAgentConversation: null,
-  newSameTypeWindow: null
+  newSameTypeWindow: null,
+  captureScreenshot: null
 };
 
 export const desktopAgentConversationDetailModes = [
@@ -448,20 +462,22 @@ export function normalizeDesktopWorkbenchShortcuts(
     newAgentConversation: normalizeDesktopShortcutBinding(
       value.newAgentConversation
     ),
-    newSameTypeWindow: normalizeDesktopShortcutBinding(value.newSameTypeWindow)
+    newSameTypeWindow: normalizeDesktopShortcutBinding(value.newSameTypeWindow),
+    captureScreenshot: normalizeDesktopShortcutBinding(value.captureScreenshot)
   };
 }
 
 export function desktopWorkbenchShortcutsEqual(
-  left: DesktopWorkbenchShortcuts | null | undefined,
-  right: DesktopWorkbenchShortcuts | null | undefined
+  left: DesktopWorkbenchShortcutsInput | null | undefined,
+  right: DesktopWorkbenchShortcutsInput | null | undefined
 ): boolean {
   const normalizedLeft = normalizeDesktopWorkbenchShortcuts(left);
   const normalizedRight = normalizeDesktopWorkbenchShortcuts(right);
   return (
     normalizedLeft.newAgentConversation ===
       normalizedRight.newAgentConversation &&
-    normalizedLeft.newSameTypeWindow === normalizedRight.newSameTypeWindow
+    normalizedLeft.newSameTypeWindow === normalizedRight.newSameTypeWindow &&
+    normalizedLeft.captureScreenshot === normalizedRight.captureScreenshot
   );
 }
 

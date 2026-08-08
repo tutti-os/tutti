@@ -308,6 +308,9 @@ type RuntimeResumeInput struct {
 	ProviderTargetRef      map[string]any
 	Metadata               storesqlite.SessionMetadata
 	InternalRuntimeContext map[string]any
+	// GoalGenerationFences are loaded from durable Host state and retained by
+	// the Runtime before the resumed Session is exposed for Goal/Turn work.
+	GoalGenerationFences []RuntimeGoalGenerationFenceInput
 	// RecreateIfMissing lets the runtime start a fresh provider session in place
 	// when the existing one can't be restored locally (imported conversations),
 	// instead of surfacing a non-recoverable restore error.
@@ -858,19 +861,6 @@ type DeleteSessionsReport struct {
 
 type ClearSessionsResult = DeleteSessionsResult
 
-type PurgeDeletedSessionsInput struct {
-	CutoffUnixMS    int64
-	MaxSessions     int
-	MaxPayloadBytes int64
-}
-
-type PurgeDeletedSessionsResult struct {
-	Sessions        []storesqlite.PurgedSession
-	RemovedMessages int
-	PayloadBytes    int64
-	HasMore         bool
-}
-
 type RuntimeGoalControlInput struct {
 	WorkspaceID        string
 	AgentSessionID     string
@@ -944,10 +934,14 @@ type GoalControlInput struct {
 }
 
 type GoalControlResult struct {
-	Canonical   storesqlite.Session
-	Goal        map[string]any
-	OperationID string
-	GoalState   *storesqlite.SessionGoalState
+	Canonical storesqlite.Session
+	Goal      map[string]any
+	// IntentAccepted means the durable Goal operation exists and Host owns
+	// recovery. It does not claim immediate provider delivery or convergence;
+	// callers must inspect GoalState for pending, applying, or terminal state.
+	IntentAccepted bool
+	OperationID    string
+	GoalState      *storesqlite.SessionGoalState
 }
 
 // ProviderGoalAdoptionInput identifies one Goal generation that the provider

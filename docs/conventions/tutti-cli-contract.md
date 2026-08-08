@@ -590,6 +590,14 @@ the desktop default. Preference-read failures use the built-in default instead
 of failing discovery. The default identifies preference, not readiness: it may
 be unavailable. An `--agent-id` filter narrows only `agents`; it does not rewrite
 the global default, so the default id may be absent from a filtered response.
+An unfiltered catalog read refines installed Agent Extensions with their runtime
+setup/authentication result so released apps that predate exact-target probing
+do not mistake installation readiness for a logged-in runtime. Extension probes
+run concurrently, so the broad catalog waits at most for the slowest bounded
+probe rather than their sum. Tutti coalesces broad and exact-target probes
+across app callers and keeps a short-lived daemon result; `--refresh` bypasses
+that result. New callers may still use `agent list --agent-id <agent-id>` when
+they only need one target.
 The command must not collapse several agents that share one provider or make
 callers guess a default from list order. Callers select an exact id and start it with
 `agent start --agent-id <agent-id> ...`; provider-specific command

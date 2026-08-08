@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import {
   selectAttentionReadState,
   selectWorkspaceAgentConsumerSessions,
@@ -223,6 +223,10 @@ export function useAgentGUIConversationRailQuery({
       }).scopeKey,
     [conversationFilter, userProjects, workspaceId]
   );
+  const retryRuntimeRail = useCallback(
+    () => controller.refresh(),
+    [controller]
+  );
   return useMemo(
     () => ({
       ...querySnapshot,
@@ -241,7 +245,8 @@ export function useAgentGUIConversationRailQuery({
       runtimeRailScopeResolved:
         !querySnapshot.runtimeSectionsEnabled ||
         querySnapshot.runtimeRailResolvedScopeKey === requestedRailScopeKey,
-      runtimeRailConversations
+      runtimeRailConversations,
+      retryRuntimeRail
     }),
     [
       batchDeletionCapability.available,
@@ -251,7 +256,8 @@ export function useAgentGUIConversationRailQuery({
       deletedSessionIds,
       querySnapshot,
       requestedRailScopeKey,
-      runtimeRailConversations
+      runtimeRailConversations,
+      retryRuntimeRail
     ]
   );
 }

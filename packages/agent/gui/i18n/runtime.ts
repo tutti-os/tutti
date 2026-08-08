@@ -4,6 +4,7 @@ import {
   type I18nParams,
   type I18nRuntime
 } from "@tutti-os/ui-i18n-runtime";
+import { workspaceUserProjectI18nResources } from "@tutti-os/workspace-user-project/i18n";
 import { en } from "../app/renderer/i18n/locales/en.ts";
 import { zhCN } from "../app/renderer/i18n/locales/zh-CN.ts";
 
@@ -16,9 +17,7 @@ export const agentGuiI18nResources = {
   "zh-CN": zhCN
 } as const satisfies Record<AgentGuiI18nLocale, I18nDictionary>;
 
-const defaultAgentGuiI18nRuntime = createI18nRuntime({
-  dictionaries: [agentGuiI18nResources.en]
-});
+const defaultAgentGuiI18nRuntime = createBundledAgentGuiI18nRuntime("en");
 
 const runtimeByLocale = new Map<AgentGuiI18nLocale, I18nRuntime<string>>();
 
@@ -27,11 +26,20 @@ function runtimeForLocale(locale: AgentGuiI18nLocale): I18nRuntime<string> {
   if (existing) {
     return existing;
   }
-  const runtime = createI18nRuntime({
-    dictionaries: [agentGuiI18nResources[locale]]
-  });
+  const runtime = createBundledAgentGuiI18nRuntime(locale);
   runtimeByLocale.set(locale, runtime);
   return runtime;
+}
+
+function createBundledAgentGuiI18nRuntime(
+  locale: AgentGuiI18nLocale
+): I18nRuntime<string> {
+  return createI18nRuntime({
+    dictionaries: [
+      agentGuiI18nResources[locale],
+      workspaceUserProjectI18nResources[locale]
+    ]
+  });
 }
 
 // Bridge existing non-React translation helpers until their call sites receive an explicit t.

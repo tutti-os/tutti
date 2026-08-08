@@ -505,7 +505,10 @@ func TestDesktopPreferencesFeatureFlagsRoundtrip(t *testing.T) {
 	ctx := context.Background()
 	in := preferencesbiz.DefaultDesktopPreferences()
 	in.FeatureFlags = map[string]bool{"lab.enabled": true, "lab.workbenchShortcuts": true}
-	in.WorkbenchShortcuts = preferencesbiz.DesktopWorkbenchShortcuts{NewAgentConversation: "Meta+K"}
+	in.WorkbenchShortcuts = preferencesbiz.DesktopWorkbenchShortcuts{
+		NewAgentConversation: "Meta+K",
+		CaptureScreenshot:    "Meta+Shift+P",
+	}
 	if _, err := store.PutDesktopPreferences(ctx, in); err != nil {
 		t.Fatal(err)
 	}
@@ -516,7 +519,9 @@ func TestDesktopPreferencesFeatureFlagsRoundtrip(t *testing.T) {
 	if !got.FeatureFlags["lab.enabled"] || !got.FeatureFlags["lab.workbenchShortcuts"] {
 		t.Fatalf("flags not persisted: %v", got.FeatureFlags)
 	}
-	if got.WorkbenchShortcuts.NewAgentConversation != "Meta+K" || got.WorkbenchShortcuts.NewSameTypeWindow != "" {
+	if got.WorkbenchShortcuts.NewAgentConversation != "Meta+K" ||
+		got.WorkbenchShortcuts.NewSameTypeWindow != "" ||
+		got.WorkbenchShortcuts.CaptureScreenshot != "Meta+Shift+P" {
 		t.Fatalf("shortcuts wrong: %+v", got.WorkbenchShortcuts)
 	}
 }

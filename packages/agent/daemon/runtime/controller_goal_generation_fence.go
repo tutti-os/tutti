@@ -61,6 +61,15 @@ func (c *Controller) FenceGoalGeneration(ctx context.Context, input GoalGenerati
 }
 
 func normalizeGoalGenerationFenceInput(input GoalGenerationFenceRequest) (GoalGenerationFenceInput, error) {
+	return normalizeRetainedGoalGenerationFenceInput(GoalGenerationFenceInput{
+		OperationID: strings.TrimSpace(input.OperationID),
+		Revision:    input.Revision,
+		RepairEpoch: input.RepairEpoch,
+		Reason:      strings.TrimSpace(input.Reason),
+	})
+}
+
+func normalizeRetainedGoalGenerationFenceInput(input GoalGenerationFenceInput) (GoalGenerationFenceInput, error) {
 	fence := GoalGenerationFenceInput{
 		OperationID: strings.TrimSpace(input.OperationID),
 		Revision:    input.Revision,

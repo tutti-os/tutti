@@ -67,6 +67,7 @@ type desktopWorkbenchWindowSnappingPayload struct {
 type desktopWorkbenchShortcutsPayload struct {
 	NewAgentConversation *string `json:"newAgentConversation"`
 	NewSameTypeWindow    *string `json:"newSameTypeWindow"`
+	CaptureScreenshot    *string `json:"captureScreenshot,omitempty"`
 }
 
 type desktopAgentComposerDefaultsByProviderPayload map[string]desktopAgentComposerDefaultsPayload

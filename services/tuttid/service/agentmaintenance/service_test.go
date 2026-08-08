@@ -14,18 +14,57 @@ import (
 )
 
 type maintenanceHostStub struct {
-	inputs  []agenthost.PurgeDeletedSessionsInput
-	results []agenthost.PurgeDeletedSessionsResult
+	inputs                    []agenthost.PurgeDeletedSessionsInput
+	results                   []agenthost.PurgeDeletedSessionsResult
+	treeInputs                []agenthost.PurgeDeletedSessionTreesInput
+	treeResults               []agenthost.PurgeDeletedSessionTreesResult
+	afterPurgeDeletedSessions func()
+	afterPurgeDeletedTrees    func()
 }
 
 func (s *maintenanceHostStub) PurgeDeletedSessions(_ context.Context, input agenthost.PurgeDeletedSessionsInput) (agenthost.PurgeDeletedSessionsResult, error) {
 	s.inputs = append(s.inputs, input)
+	if s.afterPurgeDeletedSessions != nil {
+		s.afterPurgeDeletedSessions()
+	}
 	if len(s.results) == 0 {
 		return agenthost.PurgeDeletedSessionsResult{}, nil
 	}
 	result := s.results[0]
 	s.results = s.results[1:]
 	return result, nil
+}
+
+func (s *maintenanceHostStub) PurgeDeletedSessionTrees(
+	_ context.Context,
+	input agenthost.PurgeDeletedSessionTreesInput,
+) (agenthost.PurgeDeletedSessionTreesResult, error) {
+	s.treeInputs = append(s.treeInputs, input)
+	if s.afterPurgeDeletedTrees != nil {
+		s.afterPurgeDeletedTrees()
+	}
+	if len(s.treeResults) == 0 {
+		return agenthost.PurgeDeletedSessionTreesResult{}, nil
+	}
+	result := s.treeResults[0]
+	s.treeResults = s.treeResults[1:]
+	return result, nil
+}
+
+type maintenanceResourceCleanerStub struct {
+	calls []workspacedata.AgentSessionResourceCleanup
+	err   error
+}
+
+func (s *maintenanceResourceCleanerStub) CleanupPurgedSessionResources(
+	_ context.Context,
+	workspaceID string,
+	agentSessionID string,
+) error {
+	s.calls = append(s.calls, workspacedata.AgentSessionResourceCleanup{
+		WorkspaceID: workspaceID, AgentSessionID: agentSessionID,
+	})
+	return s.err
 }
 
 type maintenancePreferencesStub struct{ days int }
@@ -37,6 +76,47 @@ func (s maintenancePreferencesStub) Get(context.Context) (preferencesbiz.Desktop
 type maintenanceStateStub struct {
 	state workspacedata.AgentDataMaintenanceState
 	marks []int64
+}
+
+type maintenanceCleanupQueueStateStub struct {
+	maintenanceStateStub
+	items      []workspacedata.AgentSessionResourceCleanup
+	listCalls  int
+	completed  []workspacedata.AgentSessionResourceCleanup
+	failed     []workspacedata.AgentSessionResourceCleanup
+	failErrors []string
+}
+
+func (s *maintenanceCleanupQueueStateStub) ListAgentSessionResourceCleanup(
+	context.Context,
+	int,
+) ([]workspacedata.AgentSessionResourceCleanup, error) {
+	s.listCalls++
+	return append([]workspacedata.AgentSessionResourceCleanup(nil), s.items...), nil
+}
+
+func (s *maintenanceCleanupQueueStateStub) CompleteAgentSessionResourceCleanup(
+	_ context.Context,
+	workspaceID string,
+	agentSessionID string,
+) error {
+	s.completed = append(s.completed, workspacedata.AgentSessionResourceCleanup{
+		WorkspaceID: workspaceID, AgentSessionID: agentSessionID,
+	})
+	return nil
+}
+
+func (s *maintenanceCleanupQueueStateStub) FailAgentSessionResourceCleanup(
+	_ context.Context,
+	workspaceID string,
+	agentSessionID string,
+	cleanupErr string,
+) error {
+	s.failed = append(s.failed, workspacedata.AgentSessionResourceCleanup{
+		WorkspaceID: workspaceID, AgentSessionID: agentSessionID,
+	})
+	s.failErrors = append(s.failErrors, cleanupErr)
+	return nil
 }
 
 type maintenanceCompactorStub struct {
@@ -80,6 +160,35 @@ func TestAutomaticPurgeUsesPreferenceCutoffAndPersistentDailyLimit(t *testing.T)
 	}
 	if _, ran, err := service.RunAutomaticOnce(context.Background()); err != nil || ran {
 		t.Fatalf("second RunAutomaticOnce() ran=%v error=%v", ran, err)
+	}
+}
+
+func TestAutomaticPurgeOnlyDrainsCleanupQueueCommittedByPurgeTransaction(t *testing.T) {
+	now := time.Date(2026, 7, 18, 12, 0, 0, 0, time.UTC)
+	queue := &maintenanceCleanupQueueStateStub{}
+	host := &maintenanceHostStub{results: []agenthost.PurgeDeletedSessionsResult{{
+		Sessions: []storesqlite.PurgedSession{{WorkspaceID: "workspace-1", AgentSessionID: "deleted-1"}},
+	}}}
+	host.afterPurgeDeletedSessions = func() {
+		queue.items = []workspacedata.AgentSessionResourceCleanup{{
+			WorkspaceID: "workspace-1", AgentSessionID: "deleted-1",
+		}}
+	}
+	cleaner := &maintenanceResourceCleanerStub{}
+	service := &Service{
+		Host: host, Preferences: maintenancePreferencesStub{days: 30}, State: queue, Resources: cleaner,
+		IsIdle: func(context.Context) bool { return true }, Now: func() time.Time { return now },
+	}
+
+	result, ran, err := service.RunAutomaticOnce(context.Background())
+	if err != nil || !ran || result.RemovedSessions != 1 {
+		t.Fatalf("RunAutomaticOnce() result=%#v ran=%v error=%v", result, ran, err)
+	}
+	if queue.listCalls != 2 || len(queue.completed) != 1 || len(queue.failed) != 0 {
+		t.Fatalf("cleanup queue list calls=%d completed=%#v failed=%#v", queue.listCalls, queue.completed, queue.failed)
+	}
+	if len(cleaner.calls) != 1 || cleaner.calls[0].AgentSessionID != "deleted-1" {
+		t.Fatalf("resource cleanup calls=%#v", cleaner.calls)
 	}
 }
 
@@ -161,6 +270,63 @@ func TestManualPurgeRequiresIdleAndUsesAllTombstonesCutoff(t *testing.T) {
 	}
 	if len(host.inputs) != 1 || host.inputs[0].CutoffUnixMS != math.MaxInt64 {
 		t.Fatalf("inputs=%#v", host.inputs)
+	}
+}
+
+func TestWorkspaceAndSessionPurgeRequireIdleAndUseQueueLessBestEffortCleanup(t *testing.T) {
+	host := &maintenanceHostStub{treeResults: []agenthost.PurgeDeletedSessionTreesResult{{
+		PurgedRootSessionIDs: []string{"root-1"},
+		PurgedSessionIDs:     []string{"child-1", "root-1"},
+		RemovedSessions:      2,
+		RemovedMessages:      3,
+	}}}
+	cleaner := &maintenanceResourceCleanerStub{}
+	idle := false
+	service := &Service{Host: host, Resources: cleaner, IsIdle: func(context.Context) bool { return idle }}
+	if _, err := service.PurgeSession(context.Background(), "workspace-1", "root-1"); !errors.Is(err, ErrBusy) {
+		t.Fatalf("PurgeSession() error=%v, want busy", err)
+	}
+	idle = true
+	result, err := service.PurgeSession(context.Background(), "workspace-1", "root-1")
+	if err != nil || result.RemovedSessions != 2 || result.RemovedMessages != 3 {
+		t.Fatalf("PurgeSession() result=%#v error=%v", result, err)
+	}
+	if len(host.treeInputs) != 1 || len(host.treeInputs[0].RootSessionIDs) != 1 || host.treeInputs[0].RootSessionIDs[0] != "root-1" {
+		t.Fatalf("tree inputs=%#v", host.treeInputs)
+	}
+	if len(cleaner.calls) != 2 || cleaner.calls[0].AgentSessionID != "child-1" || cleaner.calls[1].AgentSessionID != "root-1" {
+		t.Fatalf("resource cleanup calls=%#v", cleaner.calls)
+	}
+}
+
+func TestWorkspacePurgeOnlyDrainsCleanupQueueCommittedByPurgeTransaction(t *testing.T) {
+	queue := &maintenanceCleanupQueueStateStub{}
+	host := &maintenanceHostStub{treeResults: []agenthost.PurgeDeletedSessionTreesResult{{
+		PurgedRootSessionIDs: []string{"root-1"},
+		PurgedSessionIDs:     []string{"child-1", "root-1"},
+		RemovedSessions:      2,
+	}}}
+	host.afterPurgeDeletedTrees = func() {
+		queue.items = []workspacedata.AgentSessionResourceCleanup{
+			{WorkspaceID: "workspace-1", AgentSessionID: "child-1"},
+			{WorkspaceID: "workspace-1", AgentSessionID: "root-1"},
+		}
+	}
+	cleaner := &maintenanceResourceCleanerStub{}
+	service := &Service{
+		Host: host, State: queue, Resources: cleaner,
+		IsIdle: func(context.Context) bool { return true },
+	}
+
+	result, err := service.PurgeSession(context.Background(), "workspace-1", "root-1")
+	if err != nil || result.RemovedSessions != 2 {
+		t.Fatalf("PurgeSession() result=%#v error=%v", result, err)
+	}
+	if queue.listCalls != 1 || len(queue.completed) != 2 || len(queue.failed) != 0 {
+		t.Fatalf("cleanup queue list calls=%d completed=%#v failed=%#v", queue.listCalls, queue.completed, queue.failed)
+	}
+	if len(cleaner.calls) != 2 || cleaner.calls[0].AgentSessionID != "child-1" || cleaner.calls[1].AgentSessionID != "root-1" {
+		t.Fatalf("resource cleanup calls=%#v", cleaner.calls)
 	}
 }
 

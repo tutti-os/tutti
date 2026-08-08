@@ -8,9 +8,11 @@ import { zhCNAgentGuiSlashPalette } from "./zh-CN.agentGuiSlashPalette.ts";
 import { zhCNAgentGuiSessionActions } from "./zh-CN.agentGuiSessionActions.ts";
 import { zhCNAgentGuiCollaboration } from "./zh-CN.agentGuiCollaboration.ts";
 import { zhCNTuttiModePlan } from "./zh-CN.tuttiModePlan.ts";
-
+import { zhCNAgentGuiComposer } from "./zh-CN.agentGuiComposer.ts";
 export const zhCNAgentGui = {
   imageDownloaded: "图片已下载",
+  imageLoadFailed: "图片加载失败",
+  retryImage: "重试",
   codexSaverModeLabel: "Codex 省额度模式",
   codexSaverModeDescription:
     "主模型保持不变；合适的独立子任务改用 Luna Max，按当前额度口径约为 Sol High 的 1/10。实际效果与速度因任务而异。",
@@ -96,8 +98,7 @@ export const zhCNAgentGui = {
   modelLabel: "模型",
   modelSelectionLabel: "模型选择",
   defaultModel: "默认模型",
-  loadingOptions: "正在加载",
-  inheritedUnavailable: "继承 / 不可用",
+  ...zhCNAgentGuiComposer,
   reasoningLabel: "推理强度",
   reasoningDegreeLabel: "推理程度",
   reasoningOptionDefault: "默认",
@@ -253,8 +254,6 @@ export const zhCNAgentGui = {
   },
   modelContextWindowSuffix: "上下文窗口",
   modelTooltipVersionLabel: "版本",
-  modelConsumptionSpeedLabel: "消耗速度",
-  modelConsumptionMultiplierSuffix: "倍率",
   modelDescriptions: {
     frontierComplexCoding: "适合复杂编码、研究和真实工作场景的前沿模型",
     everydayCoding: "适合日常编码的强力模型",
@@ -469,6 +468,7 @@ export const zhCNAgentGui = {
   startConversation: "开始会话",
   selectConversation: "选择一个会话",
   loadingConversations: "正在加载会话...",
+  conversationsLoadFailed: "无法加载会话",
   loadingConversation: "正在加载会话...",
   scrollToBottom: "滚动至底部",
   searchNoConversations: "暂无相关会话",

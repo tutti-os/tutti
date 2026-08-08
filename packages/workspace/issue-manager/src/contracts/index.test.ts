@@ -5,6 +5,7 @@ import type {
 } from "./index.ts";
 
 const issueContextRef: IssueManagerContextRef = {
+  accessKind: "workspace_path",
   contextRefId: "context-ref-1",
   workspaceId: "workspace-1",
   issueId: "issue-1",
@@ -15,6 +16,7 @@ const issueContextRef: IssueManagerContextRef = {
 };
 
 const taskContextRef: IssueManagerContextRef = {
+  accessKind: "workspace_path",
   contextRefId: "context-ref-2",
   workspaceId: "workspace-1",
   issueId: "issue-1",
@@ -23,6 +25,26 @@ const taskContextRef: IssueManagerContextRef = {
   refType: "file",
   path: "/workspace/task.md",
   displayName: "task.md"
+};
+
+const legacyWorkspacePathContextRef: IssueManagerContextRef = {
+  contextRefId: "context-ref-legacy",
+  workspaceId: "workspace-1",
+  issueId: "issue-1",
+  parentKind: "issue",
+  refType: "file",
+  path: "/workspace/legacy.md",
+  displayName: "legacy.md"
+};
+
+const managedAttachmentContextRef: IssueManagerContextRef = {
+  accessKind: "managed_attachment",
+  contextRefId: "attachment-1",
+  workspaceId: "workspace-1",
+  issueId: "issue-1",
+  parentKind: "issue",
+  refType: "image/png",
+  displayName: "capture.png"
 };
 
 const issueRemoveInput: IssueManagerRemoveContextRefInput = {
@@ -56,6 +78,7 @@ const taskAddInput: IssueManagerAddContextRefsInput = {
 };
 
 const invalidIssueContextRef: IssueManagerContextRef = {
+  accessKind: "workspace_path",
   contextRefId: "context-ref-3",
   workspaceId: "workspace-1",
   issueId: "issue-1",
@@ -65,6 +88,18 @@ const invalidIssueContextRef: IssueManagerContextRef = {
   displayName: "issue.md",
   // @ts-expect-error issue-scoped refs do not carry a task id.
   taskId: "task-1"
+};
+
+// @ts-expect-error managed attachments never expose a daemon path.
+const invalidManagedAttachmentContextRef: IssueManagerContextRef = {
+  accessKind: "managed_attachment",
+  contextRefId: "attachment-2",
+  workspaceId: "workspace-1",
+  issueId: "issue-1",
+  parentKind: "issue",
+  refType: "image/png",
+  displayName: "capture.png",
+  path: "/daemon/private/capture.png"
 };
 
 const invalidTaskRemoveInput: IssueManagerRemoveContextRefInput = {
@@ -88,11 +123,14 @@ const invalidTaskAddInput: IssueManagerAddContextRefsInput = {
 void [
   issueContextRef,
   taskContextRef,
+  managedAttachmentContextRef,
+  legacyWorkspacePathContextRef,
   issueRemoveInput,
   taskRemoveInput,
   issueAddInput,
   taskAddInput,
   invalidIssueContextRef,
+  invalidManagedAttachmentContextRef,
   invalidTaskRemoveInput,
   invalidTaskAddInput
 ];

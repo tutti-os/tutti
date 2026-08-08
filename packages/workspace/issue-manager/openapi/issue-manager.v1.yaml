@@ -451,6 +451,35 @@ paths:
           $ref: "#/components/responses/WorkspaceOperationError"
         "503":
           $ref: "#/components/responses/ServiceUnavailableError"
+  /v1/workspaces/{workspaceID}/issues/{issueID}/context-refs/{contextRefID}/attachment:
+    parameters:
+      - $ref: "#/components/parameters/WorkspaceID"
+      - $ref: "#/components/parameters/IssueManagerIssueID"
+      - $ref: "#/components/parameters/IssueManagerContextRefID"
+    get:
+      operationId: readWorkspaceIssueAttachment
+      tags:
+        - issue
+      summary: Read one managed issue attachment by opaque ContextRef identity
+      responses:
+        "200":
+          description: Managed issue attachment content
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IssueManagerAttachmentContentResponse"
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "404":
+          $ref: "#/components/responses/WorkspaceIssueResourceNotFoundError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "502":
+          $ref: "#/components/responses/WorkspaceOperationError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
   /v1/workspaces/{workspaceID}/issues/{issueID}/cancel-execution:
     parameters:
       - $ref: "#/components/parameters/WorkspaceID"
@@ -524,6 +553,43 @@ paths:
       responses:
         "201":
           description: Workspace issue run created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IssueManagerRunResponse"
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "404":
+          $ref: "#/components/responses/WorkspaceIssueResourceNotFoundError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "409":
+          $ref: "#/components/responses/WorkspaceIssueResourceExistsError"
+        "502":
+          $ref: "#/components/responses/WorkspaceOperationError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
+  /v1/workspaces/{workspaceID}/issues/{issueID}/run-launches:
+    parameters:
+      - $ref: "#/components/parameters/WorkspaceID"
+      - $ref: "#/components/parameters/IssueManagerIssueID"
+    post:
+      operationId: startWorkspaceIssueRun
+      tags:
+        - issue
+      summary: Create and launch one Agent-backed run for an issue-manager issue
+      description: Resolves the issue's managed image attachments before durably creating and delivering the run to Agent Host.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StartIssueManagerRunRequest"
+      responses:
+        "201":
+          description: Workspace issue run created and accepted for Agent delivery
           content:
             application/json:
               schema:
@@ -1701,6 +1767,28 @@ components:
         mapping:
           issue: "#/components/schemas/IssueManagerIssueContextRef"
           task: "#/components/schemas/IssueManagerTaskContextRef"
+    IssueManagerAttachmentContentResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - contextRefId
+        - mimeType
+        - displayName
+        - data
+      properties:
+        contextRefId:
+          type: string
+        mimeType:
+          type: string
+          enum:
+            - image/png
+            - image/jpeg
+            - image/webp
+        displayName:
+          type: string
+        data:
+          type: string
+          format: byte
     IssueManagerIssueContextRef:
       type: object
       additionalProperties: false
@@ -1710,7 +1798,7 @@ components:
         - issueId
         - parentKind
         - refType
-        - path
+        - accessKind
         - displayName
         - createdAtUnix
       properties:
@@ -1728,6 +1816,11 @@ components:
             - IssueManagerIssueContextRefParentKindIssue
         refType:
           type: string
+        accessKind:
+          type: string
+          enum:
+            - workspace_path
+            - managed_attachment
         path:
           type: string
         displayName:
@@ -1746,7 +1839,7 @@ components:
         - taskId
         - parentKind
         - refType
-        - path
+        - accessKind
         - displayName
         - createdAtUnix
       properties:
@@ -1766,6 +1859,11 @@ components:
             - IssueManagerTaskContextRefParentKindTask
         refType:
           type: string
+        accessKind:
+          type: string
+          enum:
+            - workspace_path
+            - managed_attachment
         path:
           type: string
         displayName:
@@ -1827,7 +1925,7 @@ components:
         - tasks
       properties:
         issue:
-          $ref: "#/components/schemas/CreateIssueManagerIssueRequest"
+          $ref: "#/components/schemas/CreateIssueManagerPlannedIssueRequest"
         tasks:
           type: array
           minItems: 1
@@ -2054,6 +2152,69 @@ components:
           $ref: "#/components/schemas/IssueManagerExecutionProfile"
         budget:
           $ref: "#/components/schemas/IssueManagerBudget"
+        attachments:
+          type: array
+          maxItems: 8
+          description: Inline image attachments persisted as managed issue context references.
+          items:
+            $ref: "#/components/schemas/CreateIssueManagerImageAttachmentRequest"
+    CreateIssueManagerPlannedIssueRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - topicId
+        - title
+      properties:
+        issueId:
+          type: string
+        topicId:
+          type: string
+          minLength: 1
+        title:
+          type: string
+          minLength: 1
+        content:
+          type: string
+        planningSource:
+          $ref: "#/components/schemas/IssueManagerPlanningSource"
+        sourceSessionId:
+          type: string
+        sequentialExecution:
+          type: boolean
+          description: Persist the user's Create-and-Start choice so successor dispatch survives desktop restarts.
+        parallelExecution:
+          type: boolean
+          description: Persist the user's parallel Create-and-Start choice. Mutually exclusive with sequentialExecution.
+        executionProfile:
+          $ref: "#/components/schemas/IssueManagerExecutionProfile"
+        budget:
+          $ref: "#/components/schemas/IssueManagerBudget"
+    CreateIssueManagerImageAttachmentRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - mimeType
+        - dataBase64
+      properties:
+        mimeType:
+          type: string
+          enum:
+            - image/png
+            - image/jpeg
+            - image/webp
+          x-enum-varnames:
+            - IssueAttachmentMimeTypePNG
+            - IssueAttachmentMimeTypeJPEG
+            - IssueAttachmentMimeTypeWebP
+        dataBase64:
+          type: string
+          minLength: 1
+          description: Base64-encoded image bytes. Decoded content is limited to 20 MiB.
+        displayName:
+          type: string
+        attachmentId:
+          type: string
+          format: uuid
     CreateIssueManagerTopicRequest:
       type: object
       additionalProperties: false
@@ -2205,6 +2366,17 @@ components:
           type: string
         agentSessionId:
           type: string
+        executionDirectory:
+          type: string
+    StartIssueManagerRunRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - agentTargetId
+      properties:
+        agentTargetId:
+          type: string
+          minLength: 1
         executionDirectory:
           type: string
     CompleteIssueManagerRunOutputItem:

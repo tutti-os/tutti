@@ -134,11 +134,11 @@ func TestGoalProvenanceLedgerExplicitSessionCleanupWithForeignKeysOff(t *testing
 	if removed, err := store.DeleteSession(ctx, "ws-cleanup", "session-delete"); err != nil || !removed {
 		t.Fatalf("DeleteSession removed=%v err=%v", removed, err)
 	}
-	assertGoalProvenanceRowCount(t, store, "ws-cleanup", "session-delete", 0)
+	assertGoalProvenanceRowCount(t, store, "ws-cleanup", "session-delete", 1)
 	assertGoalProvenanceRowCount(t, store, "ws-cleanup", "session-clear", 1)
 	// A provider ACK after the soft-delete fails closed rather than creating
 	// an orphan. Also inject a legacy/orphan row to prove repeated Delete is a
-	// repair boundary even when removed=false.
+	// durable historical binding even when removed=false.
 	if _, err := store.BindGoalProvenance(ctx, BindGoalProvenanceInput{
 		WorkspaceID: "ws-cleanup", AgentSessionID: "session-delete", ProviderSessionID: "late-provider",
 		SessionCreatedAtUnixMS: incarnations["session-delete"],
@@ -157,7 +157,7 @@ INSERT INTO workspace_agent_goal_provenance_ledger (
 	if removed, err := store.DeleteSession(ctx, "ws-cleanup", "session-delete"); err != nil || removed {
 		t.Fatalf("idempotent DeleteSession removed=%v err=%v", removed, err)
 	}
-	assertGoalProvenanceRowCount(t, store, "ws-cleanup", "session-delete", 0)
+	assertGoalProvenanceRowCount(t, store, "ws-cleanup", "session-delete", 2)
 	if _, err := store.ClearSessions(ctx, "ws-cleanup"); err != nil {
 		t.Fatal(err)
 	}

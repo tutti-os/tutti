@@ -276,17 +276,21 @@ accepts:
 - `interaction_update`: updates the canonical durable interaction projection
 - `session_reconcile_required`: asks the engine transport to reload the session
 - `session_deleted`: removes the session through the engine tombstone flow
+- `session_restored`: clears only that explicit deletion tombstone, then asks
+  the engine transport to hydrate authoritative Session detail
 
 Events with a different `workspaceId` are ignored. Unknown event types are
 ignored.
 
 The coordinator owns inline-message continuity, Engine observation intents,
-Session tombstones, discontinuity reconciliation, and reconnect hydration.
+Session tombstones, explicit restore admission, discontinuity reconciliation,
+and reconnect hydration.
 Desktop receives the full canonical event union. The paired-device live
 protocol carries only delta, Turn, Interaction, and audit variants; tuttid
 converts canonical message and reconcile-required events into scoped
-discontinuities. It preserves `session_deleted` as a typed deletion delivery so
-Mobile enters the same Engine tombstone flow as Desktop. Platform adapters
+discontinuities. It preserves `session_deleted` and `session_restored` as typed
+lifecycle deliveries so Mobile enters the same Engine tombstone/restore flow
+as Desktop. Platform adapters
 retain socket/DeviceLink lifecycle, diagnostics, Rail invalidation, and
 navigation.
 

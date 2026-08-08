@@ -2000,6 +2000,71 @@ describe("projectAgentConversationVM", () => {
     });
   });
 
+  it("keeps a signed image URL when its MIME type is absent", () => {
+    const conversation = projectAgentConversationVM(
+      detailViewModel({
+        session: {
+          ...detailViewModel().session,
+          workspaceId: "room-1"
+        },
+        turns: [
+          {
+            id: "turn-1",
+            userMessage: null,
+            userMessages: [
+              {
+                id: "user-1",
+                body: "",
+                sourceTimelineItems: [
+                  {
+                    id: 1,
+                    agentSessionId: "session-1",
+                    eventId: "event-1",
+                    actorType: "user",
+                    actorId: "user",
+                    itemType: "message",
+                    role: "user",
+                    payload: {
+                      content: [
+                        {
+                          type: "image",
+                          url: "https://objects.example.test/signed/screen.png"
+                        }
+                      ]
+                    }
+                  }
+                ]
+              }
+            ],
+            agentMessages: [],
+            toolCalls: [],
+            toolCallCount: 0,
+            hasFailedToolCall: false,
+            agentItems: []
+          }
+        ],
+        showProcessingIndicator: false
+      })
+    );
+
+    const userRow = conversation.rows.find(
+      (
+        row
+      ): row is Extract<
+        (typeof conversation.rows)[number],
+        { kind: "message" }
+      > => row.kind === "message" && row.speaker === "user"
+    );
+
+    expect(userRow?.messages.map((message) => message.contentKind)).toEqual([
+      "image-grid"
+    ]);
+    expect(userRow?.messages[0]?.images?.[0]).toMatchObject({
+      url: "https://objects.example.test/signed/screen.png",
+      mimeType: ""
+    });
+  });
+
   it("replaces rich user prompt text blocks with displayPrompt while preserving images", () => {
     const conversation = projectAgentConversationVM(
       detailViewModel({

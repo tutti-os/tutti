@@ -206,6 +206,7 @@ export type AgentActivityUpdatedEvent =
   | AgentActivityRuntimeActivityUpdatedEvent
   | AgentActivitySessionReconcileRequiredEvent
   | AgentActivitySessionDeletedEvent
+  | AgentActivitySessionRestoredEvent
   | AgentActivitySessionAuditEvent
   | AgentActivityMessageDeltaEvent
   | AgentActivityMessageUpdatedEvent
@@ -247,6 +248,18 @@ export interface AgentActivitySessionDeletedEvent {
     agentSessionId: string;
     eventType: "session_deleted";
     deletedAtUnixMs: number;
+  };
+}
+
+export interface AgentActivitySessionRestoredEvent {
+  workspaceId: string;
+  agentSessionId: string;
+  eventType: "session_restored";
+  data: {
+    workspaceId: string;
+    agentSessionId: string;
+    eventType: "session_restored";
+    restoredAtUnixMs: number;
   };
 }
 
