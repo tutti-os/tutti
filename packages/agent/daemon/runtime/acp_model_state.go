@@ -2,7 +2,12 @@ package agentruntime
 
 import (
 	"encoding/json"
+	"regexp"
 	"strings"
+)
+
+var acpModelConsumptionDescriptionPattern = regexp.MustCompile(
+	`(?i)^\s*(?:x\s*([0-9]+(?:\.[0-9]+)?)|([0-9]+(?:\.[0-9]+)?)\s*x)\s*credits?\s*$`,
 )
 
 type acpModelInfo struct {
@@ -41,8 +46,12 @@ func applyACPModelsResult(state *acpLiveState, raw json.RawMessage) {
 			label = modelID
 		}
 		option := map[string]any{"value": modelID, "label": label}
-		if description := strings.TrimSpace(model.Description); description != "" {
+		description, consumptionMultiplier := normalizeACPModelDescription(model.Description)
+		if description != "" {
 			option["description"] = description
+		}
+		if consumptionMultiplier != "" {
+			option["consumptionMultiplier"] = consumptionMultiplier
 		}
 		applyACPModelMetadata(option, model)
 		options = append(options, option)
@@ -69,6 +78,38 @@ func applyACPModelsResult(state *acpLiveState, raw json.RawMessage) {
 		descriptors = append(descriptors, descriptor)
 	}
 	applyACPConfigOptionDescriptors(state, descriptors)
+}
+
+// normalizeACPModelDescription converts the standalone credit multiplier used
+// by some ACP runtimes into typed model metadata at the protocol-adapter
+// boundary. Shared catalog and GUI layers must not infer this semantic from
+// provider-owned presentation text.
+func normalizeACPModelDescription(description string) (string, string) {
+	original := strings.TrimSpace(description)
+	parts := strings.FieldsFunc(description, func(value rune) bool {
+		return value == '·' || value == '•' || value == '\n' || value == '\r'
+	})
+	kept := make([]string, 0, len(parts))
+	consumptionMultiplier := ""
+	foundConsumption := false
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		if matches := acpModelConsumptionDescriptionPattern.FindStringSubmatch(part); len(matches) > 0 {
+			foundConsumption = true
+			if consumptionMultiplier == "" {
+				consumptionMultiplier = firstNonEmptyString(matches[1], matches[2])
+			}
+			continue
+		}
+		kept = append(kept, part)
+	}
+	if !foundConsumption {
+		return original, ""
+	}
+	return strings.Join(kept, " · "), consumptionMultiplier
 }
 
 func applyACPModelMetadata(option map[string]any, model acpModelInfo) {

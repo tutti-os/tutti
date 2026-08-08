@@ -80,6 +80,7 @@ func NormalizeRuntimeConfigOptionModel(raw json.RawMessage) (ModelOption, bool) 
 		ID:                         id,
 		DisplayName:                displayName,
 		Description:                stringMapValue(object, "description"),
+		ConsumptionMultiplier:      stringMapValue(object, "consumptionMultiplier"),
 		DefaultReasoningEffort:     validReasoningDefault(reasoningOptions, defaultReasoning),
 		DefaultSpeed:               validSpeedDefault(speeds, canonicalCodexSpeed(defaultSpeed)),
 		IsDefault:                  id == "default" || boolMapValue(object, "default") || boolMapValue(object, "isDefault") || boolMapValue(object, "is_default"),
@@ -99,6 +100,9 @@ func ProjectRuntimeConfigOptionModel(model ModelOption) map[string]any {
 		"name":        firstNonBlank(model.DisplayName, model.ID),
 		"description": strings.TrimSpace(model.Description),
 		"default":     model.IsDefault,
+	}
+	if consumptionMultiplier := strings.TrimSpace(model.ConsumptionMultiplier); consumptionMultiplier != "" {
+		option["consumptionMultiplier"] = consumptionMultiplier
 	}
 	if model.SupportsImageInput != nil {
 		option["supportsImageInput"] = *model.SupportsImageInput

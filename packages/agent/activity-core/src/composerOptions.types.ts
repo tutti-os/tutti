@@ -5,6 +5,7 @@ export interface AgentActivityComposerSettingOption {
   value: string;
   label: string;
   description?: string;
+  consumptionMultiplier?: string;
   supportsImageInput?: boolean;
   /** True when the entry mirrors the requested/current selection, not the provider catalog. */
   requested?: boolean;

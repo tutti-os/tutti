@@ -292,6 +292,7 @@ function settingOptionsFromRawOptions(
     seen.add(optionValue);
     const label = firstTextValue(record, keys.labelKeys) ?? optionValue;
     const description = normalizeText(record.description);
+    const consumptionMultiplier = normalizeText(record.consumptionMultiplier);
     const supportsImageInput =
       typeof record.supportsImageInput === "boolean"
         ? record.supportsImageInput
@@ -300,6 +301,7 @@ function settingOptionsFromRawOptions(
       value: optionValue,
       label,
       ...(description ? { description } : {}),
+      ...(consumptionMultiplier ? { consumptionMultiplier } : {}),
       ...(supportsImageInput !== undefined ? { supportsImageInput } : {}),
       // Daemon provenance: the entry mirrors the requested selection (warm
       // catalog append / bootstrap echo) and is not catalog testimony.

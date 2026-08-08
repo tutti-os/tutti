@@ -206,6 +206,13 @@ retaining the original runtime id for ACP writes. Unknown provider-native
 options remain intact in the opaque runtime context; this does not imply a
 generic AgentGUI control for every unknown option.
 
+Model consumption metadata follows the same adapter-first rule. When an ACP
+runtime appends a standalone `xN credits` segment to a model description, the
+standard ACP adapter removes that provider-owned segment and projects its
+numeric token as the typed `consumptionMultiplier` model field. The daemon API
+and activity adapter preserve the field; AgentGUI renders it without parsing
+provider prose. Ordinary model descriptions remain presentation-only text.
+
 Signed composer profiles may narrow the provider-advertised slash-command
 catalog and attach shared command effects such as submit-immediate, show-status,
 activate-goal-mode, and toggle-plan-mode. `tuttid` applies that declarative

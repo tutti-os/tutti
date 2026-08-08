@@ -4,5 +4,7 @@ export const enAgentGuiComposer = {
   composerOptionsRetry: "Retry",
   composerOptionsRetryTooltip:
     "Unable to load shared Agent information. Click to retry",
-  inheritedUnavailable: "Inherited / unavailable"
+  inheritedUnavailable: "Inherited / unavailable",
+  modelConsumptionSpeedLabel: "Consumption rate",
+  modelConsumptionMultiplierSuffix: "multiplier"
 };
