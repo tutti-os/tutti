@@ -15,6 +15,7 @@ import {
 import { getDesktopLogger } from "./logging.ts";
 import { outboundFetch } from "./net/outboundFetch.ts";
 import { probeClaudeCodeProvider } from "./claudeProviderUsageProbe.ts";
+import { probeCodeBuddyProvider } from "./codeBuddyProviderUsageProbe.ts";
 export { setClaudeOAuthKeychainReaderForTesting } from "./claudeProviderUsageProbe.ts";
 
 const CODEX_DEFAULT_CHATGPT_BASE_URL = "https://chatgpt.com/backend-api/";
@@ -169,6 +170,9 @@ async function resolveDesktopAgentProbe(
   input: AgentProviderProbeListInput,
   capturedAtUnixMs: number
 ): Promise<AgentProbeProvider> {
+  if (provider === "acp:codebuddy" || provider === "codebuddy") {
+    return probeCodeBuddyProvider(input, capturedAtUnixMs, provider);
+  }
   const probeKind =
     resolveAgentGUIProviderCatalogIdentity(provider)?.desktop.usageProbeKind ??
     "";

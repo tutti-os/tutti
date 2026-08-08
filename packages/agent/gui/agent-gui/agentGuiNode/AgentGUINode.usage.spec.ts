@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
+
+import type { TranslateFn } from "../../i18n/index";
 import {
   resolveAgentGUIRailConfigProvider,
+  slashStatusLimitsFromQuotas,
   slashStatusUsageErrorMessage
 } from "./AgentGUINode.usage";
 
@@ -20,5 +23,41 @@ describe("resolveAgentGUIRailConfigProvider", () => {
     expect(slashStatusUsageErrorMessage("parse_failed", (key) => key)).toBe(
       "agentHost.agentGui.slashStatusUsageParseFailed"
     );
+  });
+});
+
+describe("slashStatusLimitsFromQuotas", () => {
+  it("keeps an exact credits balance while retaining progress percentage", () => {
+    const translate = ((key: string, options?: Record<string, unknown>) => {
+      if (key === "agentHost.workspaceAgentProbeQuotaCredits") return "Credits";
+      if (key === "agentHost.workspaceAgentProbeQuotaCreditsRemaining") {
+        return `${String(options?.amount)} Credits remaining`;
+      }
+      return key;
+    }) as TranslateFn;
+
+    expect(
+      slashStatusLimitsFromQuotas(
+        [
+          {
+            amountLimit: 2_100,
+            amountRemaining: 2_100,
+            amountUnit: "credits",
+            percentRemaining: 100,
+            quotaType: "credits"
+          }
+        ],
+        null,
+        translate
+      )
+    ).toEqual([
+      {
+        id: "credits::0",
+        label: "Credits",
+        percentRemaining: 100,
+        reset: null,
+        value: "2,100 Credits remaining"
+      }
+    ]);
   });
 });

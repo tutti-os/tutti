@@ -1475,6 +1475,49 @@ invalid_grant`. Search `tuttid.log` for
   [Agent Extensions](../../architecture/agent-extensions.md)
   [Kimi Code Agent Extension](https://github.com/tutti-os/agent-extension-kimi-code)
 
+### CodeBuddy account panel does not distinguish API billing from Coding Plan
+
+- Symptom:
+  CodeBuddy `/status` opens the native account panel, but its limits row says
+  the current Agent does not provide quota limits. Ordinary API keys and Coding
+  Plan credentials also have the same presentation.
+- Quick checks:
+  Confirm the provider is `acp:codebuddy`. Inspect CodeBuddy's effective
+  `CODEBUDDY_API_KEY`, `CODEBUDDY_BASE_URL`, `CODEBUDDY_AUTH_TOKEN`, and native
+  login source without copying credential values into logs. Coding Plan keys
+  use the `sk-sp-` prefix or a Tencent endpoint whose path contains `coding`.
+- Root cause:
+  CodeBuddy's ACP `usage_update` reports context usage and per-request cost, but
+  the pinned runtime does not expose the account-level credit balance. The
+  signed-in CodeBuddy product uses its separate account resource API for that
+  balance. Tutti previously had no CodeBuddy account probe, so the native panel
+  treated the provider as unsupported and could not identify the billing mode
+  or aggregate the active credit packages.
+- Fix:
+  The Desktop CodeBuddy account probe resolves the active credential source in
+  Electron main and projects provider-neutral `api`, `subscription`, or
+  `provider_account` billing. The renderer labels ordinary API keys as
+  `API Usage Billing`, explicit `sk-sp-` or `/coding/` credentials as
+  `Coding Plan`, and native OAuth or helper-based login as `CodeBuddy Account`
+  without claiming a plan that CodeBuddy did not report. For a native OAuth
+  account, Electron main calls CodeBuddy's official account resource endpoint,
+  sums the remaining and total amounts across active credit packages, and
+  projects only the exact Credits balance plus its normalized percentage. Keys,
+  tokens, account identifiers, raw package records, and endpoints never cross
+  renderer IPC or enter logs. API Key and Coding Plan modes do not call the
+  account endpoint and keep their quota rows empty.
+- Validation:
+  Cover ordinary API keys, Coding Plan keys, platform login credentials,
+  multi-package credit aggregation, account API failures, secret
+  non-projection, provider dispatch, both renderer labels, and the exact Credits
+  row. Run the Desktop tests, typecheck, i18n check, and changed-aware
+  push-ready gate.
+- References:
+  [codeBuddyProviderAccount.ts](../../../apps/desktop/src/main/codeBuddyProviderAccount.ts)
+  [codeBuddyProviderUsageProbe.ts](../../../apps/desktop/src/main/codeBuddyProviderUsageProbe.ts)
+  [agentProviderUsageProbe.ts](../../../apps/desktop/src/main/agentProviderUsageProbe.ts)
+  [createDesktopAgentStatusSource.ts](../../../apps/desktop/src/renderer/src/features/workspace-agent/services/createDesktopAgentStatusSource.ts)
+
 ### Claude Code sessions fail with `effectiveSource: "none"` when CC-Switch or similar proxy tools are used
 
 - Symptom:

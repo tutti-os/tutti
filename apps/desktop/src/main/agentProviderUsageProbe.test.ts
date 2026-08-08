@@ -53,6 +53,43 @@ test("listDesktopWorkspaceAgentProbes keeps extension usage provider-neutral", a
   assert.equal(result.providers[0]?.lastError?.code, "unsupported");
 });
 
+test("listDesktopWorkspaceAgentProbes dispatches CodeBuddy billing probes", async () => {
+  const previousApiKey = process.env.CODEBUDDY_API_KEY;
+  const previousAuthToken = process.env.CODEBUDDY_AUTH_TOKEN;
+  const previousBaseUrl = process.env.CODEBUDDY_BASE_URL;
+  const previousConfigDir = process.env.CODEBUDDY_CONFIG_DIR;
+  const directory = await mkdtemp(join(tmpdir(), "tutti-codebuddy-usage-"));
+  try {
+    process.env.CODEBUDDY_CONFIG_DIR = directory;
+    delete process.env.CODEBUDDY_AUTH_TOKEN;
+    process.env.CODEBUDDY_API_KEY = "sk-sp-must-not-be-projected";
+    process.env.CODEBUDDY_BASE_URL =
+      "https://api.lkeap.cloud.tencent.com/coding/v3";
+
+    const result = await listDesktopWorkspaceAgentProbes({
+      includeUsage: true,
+      providers: ["acp:codebuddy"],
+      refresh: true,
+      workspaceId: "workspace-1"
+    });
+
+    assert.equal(result.providers.length, 1);
+    assert.equal(result.providers[0]?.provider, "acp:codebuddy");
+    assert.equal(result.providers[0]?.availability.status, "available");
+    assert.equal(result.providers[0]?.usage?.billingMode, "subscription");
+    assert.equal(
+      JSON.stringify(result).includes("sk-sp-must-not-be-projected"),
+      false
+    );
+  } finally {
+    restoreOptionalEnv("CODEBUDDY_API_KEY", previousApiKey);
+    restoreOptionalEnv("CODEBUDDY_AUTH_TOKEN", previousAuthToken);
+    restoreOptionalEnv("CODEBUDDY_BASE_URL", previousBaseUrl);
+    restoreOptionalEnv("CODEBUDDY_CONFIG_DIR", previousConfigDir);
+    await rm(directory, { force: true, recursive: true });
+  }
+});
+
 test("listDesktopWorkspaceAgentProbes maps Codex OAuth usage windows", async () => {
   const previousCodexHome = process.env.CODEX_HOME;
   const directory = await mkdtemp(join(tmpdir(), "tutti-codex-usage-"));

@@ -21,6 +21,8 @@ function slashStatusQuotaLabel(quota: AgentUsageQuota, t: TranslateFn): string {
       return t("agentHost.workspaceAgentProbeQuotaMonthly");
     case "cost":
       return t("agentHost.workspaceAgentProbeQuotaCost");
+    case "credits":
+      return t("agentHost.workspaceAgentProbeQuotaCredits");
     case "model":
       return t("agentHost.workspaceAgentProbeAgentUsage");
     default:
@@ -29,6 +31,17 @@ function slashStatusQuotaLabel(quota: AgentUsageQuota, t: TranslateFn): string {
 }
 
 function slashStatusQuotaValue(quota: AgentUsageQuota, t: TranslateFn): string {
+  if (
+    quota.amountUnit === "credits" &&
+    typeof quota.amountRemaining === "number" &&
+    Number.isFinite(quota.amountRemaining)
+  ) {
+    return t("agentHost.workspaceAgentProbeQuotaCreditsRemaining", {
+      amount: Math.max(0, quota.amountRemaining).toLocaleString("en-US", {
+        maximumFractionDigits: 2
+      })
+    });
+  }
   if (
     typeof quota.percentRemaining === "number" &&
     Number.isFinite(quota.percentRemaining)

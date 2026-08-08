@@ -315,6 +315,13 @@ or transport diagnostics. The limits projection preserves stable codes such as
 `AgentStatusValue.limitsErrorCode`; AgentGUI owns their localized presentation
 and maps unknown codes to one generic failure label.
 
+A provider quota may carry an optional exact provider-neutral amount and unit
+when a percentage alone would hide useful account information. The host owns
+the provider request, credential handling, package aggregation, and percentage
+normalization; AgentGUI only renders the projected amount and uses the optional
+percentage for progress presentation. Raw account and package records never
+cross this boundary.
+
 An explicit unsupported usage probe is a successful bounded read with no
 quotas and `limitsState: unavailable`; it must not become a refresh failure.
 Only real authentication, transport, parsing, timeout, or execution failures

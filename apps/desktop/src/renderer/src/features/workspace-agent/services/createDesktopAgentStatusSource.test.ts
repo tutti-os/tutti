@@ -147,6 +147,94 @@ test("desktop status treats an unsupported extension usage probe as unavailable"
   assert.deepEqual(observed.errors, []);
 });
 
+test("desktop status labels CodeBuddy Coding Plan billing without quota rows", async () => {
+  const codeBuddyAgent = {
+    agentTargetId: "extension:codebuddy",
+    name: "CodeBuddy",
+    iconUrl: "codebuddy.svg",
+    availability: { status: "ready" },
+    provider: "acp:codebuddy"
+  } as const;
+  const observed = createObserver();
+  const source = createDesktopAgentStatusSource({
+    agentActivityRuntime: runtimeWithSessions([]),
+    agents: [codeBuddyAgent] as never,
+    workspaceAgentProbes: {
+      list: async () => ({
+        workspaceId: "workspace-1",
+        capturedAtUnixMs: 500,
+        providers: [
+          {
+            provider: "acp:codebuddy",
+            availability: { status: "available", detailsVisible: false },
+            usage: {
+              billingMode: "subscription",
+              capturedAtUnixMs: 450,
+              quotas: []
+            }
+          }
+        ]
+      })
+    } as never,
+    workspaceId: "workspace-1"
+  });
+
+  source.open(
+    { scopeKey: "extension:codebuddy", reason: "agent-info" },
+    observed.observer
+  );
+  await observed.completed;
+
+  assert.equal(observed.frames[0]?.value.accountLabel, "Coding Plan");
+  assert.equal(observed.frames[0]?.value.limitsState, "available");
+  assert.deepEqual(observed.frames[0]?.value.quotas, []);
+  assert.deepEqual(observed.errors, []);
+});
+
+test("desktop status labels CodeBuddy native account billing without claiming a plan", async () => {
+  const codeBuddyAgent = {
+    agentTargetId: "extension:codebuddy",
+    name: "CodeBuddy",
+    iconUrl: "codebuddy.svg",
+    availability: { status: "ready" },
+    provider: "acp:codebuddy"
+  } as const;
+  const observed = createObserver();
+  const source = createDesktopAgentStatusSource({
+    agentActivityRuntime: runtimeWithSessions([]),
+    agents: [codeBuddyAgent] as never,
+    workspaceAgentProbes: {
+      list: async () => ({
+        workspaceId: "workspace-1",
+        capturedAtUnixMs: 500,
+        providers: [
+          {
+            provider: "acp:codebuddy",
+            availability: { status: "available", detailsVisible: false },
+            usage: {
+              billingMode: "provider_account",
+              capturedAtUnixMs: 450,
+              quotas: []
+            }
+          }
+        ]
+      })
+    } as never,
+    workspaceId: "workspace-1"
+  });
+
+  source.open(
+    { scopeKey: "extension:codebuddy", reason: "agent-info" },
+    observed.observer
+  );
+  await observed.completed;
+
+  assert.equal(observed.frames[0]?.value.accountLabel, "CodeBuddy Account");
+  assert.equal(observed.frames[0]?.value.limitsState, "available");
+  assert.deepEqual(observed.frames[0]?.value.quotas, []);
+  assert.deepEqual(observed.errors, []);
+});
+
 test("desktop status preserves structured usage probe failures", async () => {
   const observed = createObserver();
   const source = createDesktopAgentStatusSource({
