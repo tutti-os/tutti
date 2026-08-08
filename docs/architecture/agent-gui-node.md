@@ -514,6 +514,15 @@ closed and treats a persisted title as user-established.
 
 A Session does not copy Turn phase/outcome, own pending Interactions, or persist lifecycle inferred from transcript.
 
+If provider-native compaction fails because the current context is already over
+its hard limit, the provider adapter projects one typed
+`context-handoff-required` system notice with error severity. AgentGUI localizes
+the failure and tells the user to start a new conversation and mention the
+exhausted Session there. Tutti does not replace the provider session or
+automatically redispatch the user's next message: the fresh root Session and
+its canonical `agent-session` mention make the handoff explicit and preserve
+the user's control over what continues.
+
 Provider-native subagents use child Sessions:
 
 - `rootAgentSessionId` / `rootTurnId`: root execution

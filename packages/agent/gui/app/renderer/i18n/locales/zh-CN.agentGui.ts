@@ -593,6 +593,9 @@ export const zhCNAgentGui = {
   contextCompactionInProgress: "正在压缩上下文",
   contextCompactionCompleted: "已压缩上下文",
   contextCompactionInterrupted: "上下文压缩已中断",
+  contextHandoffRequired: "当前对话已达到上下文上限",
+  contextHandoffRequiredDetail:
+    "当前对话无法继续，请新建对话，并在新对话中 @当前对话 以交接上下文",
   tuttiModeCheckpointWakeTaskSettled: "某任务已完成，待审查",
   tuttiModeCheckpointWakeTaskFailed: "某任务失败，待审查",
   tuttiModeCheckpointWakeTaskCanceled: "某任务已取消，待审查",

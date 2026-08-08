@@ -176,8 +176,16 @@ export function systemNoticeFromPayload(
     return null;
   }
   const source = stringRecordValue(payload, "source");
+  const noticeKind = stringRecordValue(payload, "noticeKind");
+  const semanticKind =
+    noticeKind === "context_handoff_required" &&
+    commandSemantics?.command === "compact" &&
+    commandSemantics.commandStatus === "failed"
+      ? "context-handoff-required"
+      : null;
   return {
-    noticeKind: stringRecordValue(payload, "noticeKind"),
+    noticeKind,
+    ...(semanticKind ? { semanticKind } : {}),
     severity: stringRecordValue(payload, "severity"),
     ...(source ? { source } : {}),
     ...(commandSemantics

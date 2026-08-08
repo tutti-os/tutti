@@ -14,6 +14,12 @@ const LOCAL_COMMAND_STDOUT_PATTERN =
   /<local-command-stdout>([\s\S]*?)<\/local-command-stdout>/iu;
 const COMPACT_FAILURE_PATTERN = /not enough|fail|error/iu;
 const COMPACT_SUCCESS_PATTERN = /^compacted\b/iu;
+const CONTEXT_OVERFLOW_FAILURE_PATTERNS = [
+  /maximum context length/iu,
+  /context (?:length|window).*(?:exceed|overflow|too (?:large|long))/iu,
+  /prompt is too long/iu,
+  /too many tokens/iu
+] as const;
 
 export class CompactionTracker {
   private inProgress = false;
@@ -117,9 +123,14 @@ export class CompactionTracker {
         return "unavailable";
       }
       const usedTokens = numberValue(contextUsage.totalTokens);
+      const sdkMaxTokens = numberValue(contextUsage.maxTokens);
+      const rawMaxTokens = numberValue(contextUsage.rawMaxTokens);
+      const autoCompactThresholdTokens = numberValue(
+        contextUsage.autoCompactThreshold
+      );
       const contextWindowTokens = options.modelUsage
         ? contextWindowTokensFromModelUsage(options.modelUsage, this.getModel())
-        : numberValue(contextUsage.maxTokens);
+        : rawMaxTokens || sdkMaxTokens;
       if (options.modelUsage && contextWindowTokens <= 0) {
         return "stale";
       }
@@ -131,6 +142,15 @@ export class CompactionTracker {
           usedTokens,
           ...(contextWindowTokens > 0
             ? { totalTokens: contextWindowTokens }
+            : {}),
+          ...(rawMaxTokens > 0
+            ? {
+                rawMaxTokens,
+                ...(sdkMaxTokens > 0 ? { sdkMaxTokens } : {})
+              }
+            : {}),
+          ...(autoCompactThresholdTokens > 0
+            ? { autoCompactThresholdTokens }
             : {}),
           compactsAutomatically: contextUsage.isAutoCompactEnabled === true
         }
@@ -270,6 +290,9 @@ export class CompactionTracker {
       payload: {
         turnId: normalized,
         reason,
+        ...(isContextOverflowCompactionFailure(reason)
+          ? { contextHandoffRequired: true }
+          : {}),
         content: reason ? `Compacting failed: ${reason}` : "Compacting failed."
       }
     });
@@ -285,6 +308,16 @@ export class CompactionTracker {
   private eventTurnId(): string {
     return this.activeTurnId() || this.commandTurnId;
   }
+}
+
+export function isContextOverflowCompactionFailure(reason: string): boolean {
+  const normalized = reason.trim();
+  return (
+    normalized !== "" &&
+    CONTEXT_OVERFLOW_FAILURE_PATTERNS.some((pattern) =>
+      pattern.test(normalized)
+    )
+  );
 }
 
 function compactBoundaryMetadata(

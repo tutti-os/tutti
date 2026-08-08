@@ -273,6 +273,7 @@ func (a *ClaudeCodeSDKAdapter) sidecarTurnEvents(adapterSession *claudeSDKAdapte
 		if !ok {
 			return nil, false, nil
 		}
+		markClaudeSDKContextHandoffRequired(&compact, event.Payload)
 		return []activityshared.Event{compact}, false, nil
 	case "assistant_delta":
 		messageID := firstNonEmptyString(payloadString(event.Payload, "messageId"), adapterSession.assistantMessageID(providerTurnID))

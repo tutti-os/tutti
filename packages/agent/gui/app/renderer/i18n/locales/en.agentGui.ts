@@ -573,6 +573,9 @@ export const enAgentGui = {
   contextCompactionInProgress: "Compacting context",
   contextCompactionCompleted: "Context compacted.",
   contextCompactionInterrupted: "Context compaction interrupted.",
+  contextHandoffRequired: "This conversation has reached its context limit",
+  contextHandoffRequiredDetail:
+    "This conversation can't continue. Start a new conversation and @mention this conversation to hand off its context.",
   tuttiModeCheckpointWakeTaskSettled: "A task finished — review needed",
   tuttiModeCheckpointWakeTaskFailed: "A task failed — review needed",
   tuttiModeCheckpointWakeTaskCanceled: "A task was canceled — review needed",
