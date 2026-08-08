@@ -3,12 +3,46 @@ package managedruntime
 import (
 	"archive/zip"
 	"context"
+	"errors"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
+	"sync/atomic"
+	"syscall"
 	"testing"
+	"time"
 )
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (fn roundTripFunc) RoundTrip(request *http.Request) (*http.Response, error) {
+	return fn(request)
+}
+
+type temporaryNetworkError struct{}
+
+func (temporaryNetworkError) Error() string   { return "temporary network error" }
+func (temporaryNetworkError) Timeout() bool   { return false }
+func (temporaryNetworkError) Temporary() bool { return true }
+
+type observedResponseBody struct {
+	reader *strings.Reader
+	closed bool
+}
+
+func (body *observedResponseBody) Read(buffer []byte) (int, error) {
+	return body.reader.Read(buffer)
+}
+
+func (body *observedResponseBody) Close() error {
+	body.closed = true
+	return nil
+}
 
 func TestDefaultResolverInjectsBaselineRuntime(t *testing.T) {
 	root := t.TempDir()
@@ -126,6 +160,280 @@ func TestDefaultResolverAllowsEmptyCatalogOverride(t *testing.T) {
 
 	if source != "" {
 		t.Fatalf("runtimeCatalogSource() = %q, want empty override", source)
+	}
+}
+
+func TestDefaultResolverRetriesTransientCatalogHTTPStatuses(t *testing.T) {
+	for _, statusCode := range []int{http.StatusRequestTimeout, http.StatusTooManyRequests, http.StatusInternalServerError} {
+		t.Run(http.StatusText(statusCode), func(t *testing.T) {
+			var requests atomic.Int32
+			server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+				if requests.Add(1) == 1 {
+					writer.WriteHeader(statusCode)
+					return
+				}
+				_, _ = writer.Write([]byte("catalog"))
+			}))
+			defer server.Close()
+
+			data, err := (DefaultResolver{HTTPClient: server.Client()}).readCatalog(context.Background(), server.URL)
+			if err != nil {
+				t.Fatalf("readCatalog() error = %v", err)
+			}
+			if string(data) != "catalog" {
+				t.Fatalf("readCatalog() = %q, want catalog", data)
+			}
+			if got := requests.Load(); got != 2 {
+				t.Fatalf("catalog requests = %d, want 2", got)
+			}
+		})
+	}
+}
+
+func TestDefaultResolverRetriesOnlyTransientCatalogRequestErrors(t *testing.T) {
+	transientErrors := []error{io.ErrUnexpectedEOF, syscall.ECONNRESET, syscall.ECONNREFUSED, temporaryNetworkError{}}
+	for _, transientErr := range transientErrors {
+		var requests atomic.Int32
+		client := &http.Client{Transport: roundTripFunc(func(_ *http.Request) (*http.Response, error) {
+			if requests.Add(1) == 1 {
+				return nil, transientErr
+			}
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Body:       io.NopCloser(strings.NewReader("catalog")),
+				Header:     make(http.Header),
+			}, nil
+		})}
+		data, err := (DefaultResolver{HTTPClient: client}).readCatalog(context.Background(), "https://catalog.test")
+		if err != nil || string(data) != "catalog" || requests.Load() != 2 {
+			t.Fatalf("transient error %T: data=%q requests=%d error=%v", transientErr, data, requests.Load(), err)
+		}
+	}
+
+	for _, permanentErr := range []error{
+		errors.New("x509: certificate signed by unknown authority"),
+		errors.New("redirect policy rejected"),
+		errors.New("invalid proxy configuration"),
+	} {
+		var requests atomic.Int32
+		client := &http.Client{Transport: roundTripFunc(func(_ *http.Request) (*http.Response, error) {
+			requests.Add(1)
+			return nil, permanentErr
+		})}
+		_, err := (DefaultResolver{HTTPClient: client}).readCatalog(context.Background(), "https://catalog.test")
+		if err == nil || requests.Load() != 1 {
+			t.Fatalf("permanent error %q: requests=%d error=%v", permanentErr, requests.Load(), err)
+		}
+	}
+}
+
+func TestDefaultResolverBoundsCatalogRetries(t *testing.T) {
+	var requests atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		requests.Add(1)
+		writer.WriteHeader(http.StatusServiceUnavailable)
+	}))
+	defer server.Close()
+
+	_, err := (DefaultResolver{HTTPClient: server.Client()}).readCatalog(context.Background(), server.URL)
+	if err == nil || !strings.Contains(err.Error(), "unexpected status 503") {
+		t.Fatalf("readCatalog() error = %v, want 503", err)
+	}
+	if got := requests.Load(); got != managedAppRuntimeCatalogRequestAttempts {
+		t.Fatalf("catalog requests = %d, want bounded attempts %d", got, managedAppRuntimeCatalogRequestAttempts)
+	}
+}
+
+func TestDefaultResolverDrainsCatalogErrorResponseBeforeRetry(t *testing.T) {
+	body := &observedResponseBody{reader: strings.NewReader(strings.Repeat("x", 1024))}
+	var requests atomic.Int32
+	client := &http.Client{Transport: roundTripFunc(func(_ *http.Request) (*http.Response, error) {
+		if requests.Add(1) == 1 {
+			return &http.Response{StatusCode: http.StatusServiceUnavailable, Body: body, Header: make(http.Header)}, nil
+		}
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body:       io.NopCloser(strings.NewReader("catalog")),
+			Header:     make(http.Header),
+		}, nil
+	})}
+
+	_, err := (DefaultResolver{HTTPClient: client}).readCatalog(context.Background(), "https://catalog.test")
+	if err != nil {
+		t.Fatalf("readCatalog() error = %v", err)
+	}
+	if !body.closed || body.reader.Len() != 0 {
+		t.Fatalf("error response body closed=%v remaining=%d, want drained and closed", body.closed, body.reader.Len())
+	}
+}
+
+func TestDefaultResolverDoesNotRetryPermanentCatalogFailures(t *testing.T) {
+	t.Run("http 4xx", func(t *testing.T) {
+		var requests atomic.Int32
+		server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+			requests.Add(1)
+			writer.WriteHeader(http.StatusNotFound)
+		}))
+		defer server.Close()
+
+		_, err := (DefaultResolver{HTTPClient: server.Client()}).readCatalog(context.Background(), server.URL)
+		if err == nil || !strings.Contains(err.Error(), "unexpected status 404") {
+			t.Fatalf("readCatalog() error = %v, want 404", err)
+		}
+		if got := requests.Load(); got != 1 {
+			t.Fatalf("catalog requests = %d, want 1", got)
+		}
+	})
+
+	t.Run("schema", func(t *testing.T) {
+		var requests atomic.Int32
+		server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+			requests.Add(1)
+			_, _ = writer.Write([]byte(`{"schemaVersion":"unsupported","runtimes":{}}`))
+		}))
+		defer server.Close()
+
+		_, err := (DefaultResolver{HTTPClient: server.Client()}).loadCatalog(context.Background(), server.URL)
+		if err == nil || !strings.Contains(err.Error(), "unsupported managed app runtime catalog schema") {
+			t.Fatalf("loadCatalog() error = %v, want schema error", err)
+		}
+		if got := requests.Load(); got != 1 {
+			t.Fatalf("catalog requests = %d, want 1", got)
+		}
+	})
+}
+
+func TestDefaultResolverRetriesTruncatedCatalogResponse(t *testing.T) {
+	var requests atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		if requests.Add(1) == 1 {
+			writer.Header().Set("Content-Length", "100")
+			_, _ = writer.Write([]byte("{"))
+			return
+		}
+		_, _ = writer.Write([]byte("catalog"))
+	}))
+	defer server.Close()
+
+	data, err := (DefaultResolver{HTTPClient: server.Client()}).readCatalog(context.Background(), server.URL)
+	if err != nil {
+		t.Fatalf("readCatalog() error = %v", err)
+	}
+	if string(data) != "catalog" || requests.Load() != 2 {
+		t.Fatalf("readCatalog() = %q after %d requests, want catalog after 2", data, requests.Load())
+	}
+}
+
+func TestDefaultResolverCatalogRetryRespectsContextCancellation(t *testing.T) {
+	var requests atomic.Int32
+	ctx, cancel := context.WithCancel(context.Background())
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		requests.Add(1)
+		cancel()
+		writer.WriteHeader(http.StatusServiceUnavailable)
+	}))
+	defer server.Close()
+	defer cancel()
+
+	_, err := (DefaultResolver{HTTPClient: server.Client()}).readCatalog(ctx, server.URL)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("readCatalog() error = %v, want context.Canceled", err)
+	}
+	if got := requests.Load(); got != 1 {
+		t.Fatalf("catalog requests = %d, want 1", got)
+	}
+}
+
+func TestManagedAppRuntimeDownloadLockWaitRespectsContextCancellation(t *testing.T) {
+	root := t.TempDir()
+	release, err := acquireManagedAppRuntimeDownloadLock(context.Background(), root)
+	if err != nil {
+		t.Fatalf("acquire first lock: %v", err)
+	}
+	defer release()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	result := make(chan error, 1)
+	go func() {
+		_, err := acquireManagedAppRuntimeDownloadLock(ctx, root)
+		result <- err
+	}()
+	select {
+	case err := <-result:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("waiting lock error = %v, want context.Canceled", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("waiting lock did not return after context cancellation")
+	}
+}
+
+func TestDefaultResolverConcurrentProfilePreloadsRecoverFromTransientCatalogEOF(t *testing.T) {
+	cacheRoot := t.TempDir()
+	nodeArtifactPath := createManagedRuntimeComponentArchiveForTest(t, "node")
+	nodeSHA256, _, err := fileSHA256AndSize(nodeArtifactPath)
+	if err != nil {
+		t.Fatalf("fileSHA256AndSize() error = %v", err)
+	}
+	catalogJSON := `{
+  "schemaVersion": "tutti.app.runtimes.v2",
+  "runtimes": {
+    "` + appRuntimePlatformArch(runtime.GOOS, runtime.GOARCH) + `": {
+      "version": "test",
+      "components": {
+        "node": {
+          "version": "test-node",
+          "artifactUrl": "` + filepath.ToSlash(nodeArtifactPath) + `",
+          "artifactSha256": "` + nodeSHA256 + `"
+        }
+      },
+      "profiles": {
+        "baseline": ["node"],
+        "connector-node-static": ["node"]
+      }
+    }
+  }
+}`
+	var requests atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		if requests.Add(1) == 1 {
+			writer.Header().Set("Content-Length", "100")
+			_, _ = writer.Write([]byte("{"))
+			return
+		}
+		_, _ = writer.Write([]byte(catalogJSON))
+	}))
+	defer server.Close()
+
+	resolver := DefaultResolver{
+		RuntimeRoot: filepath.Join(cacheRoot, "shared-runtime"),
+		Environ: func() []string {
+			return []string{tuttiAppRuntimeCatalogEnv + "=" + server.URL}
+		},
+		HTTPClient: server.Client(),
+	}
+	var waitGroup sync.WaitGroup
+	errorsByCaller := make(chan error, 2)
+	for range 2 {
+		waitGroup.Add(1)
+		go func() {
+			defer waitGroup.Done()
+			errorsByCaller <- resolver.PreloadProfile(context.Background(), appRuntimeNodeStaticProfile)
+		}()
+	}
+	waitGroup.Wait()
+	close(errorsByCaller)
+	for err := range errorsByCaller {
+		if err != nil {
+			t.Fatalf("PreloadProfile() error = %v", err)
+		}
+	}
+	if got := requests.Load(); got != 2 {
+		t.Fatalf("catalog requests = %d, want one failed and one successful request", got)
+	}
+	if !NodeReady(resolver.RuntimeRoot) {
+		t.Fatal("shared managed runtime is not ready after concurrent preloads")
 	}
 }
 
