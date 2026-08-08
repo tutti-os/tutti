@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 	"time"
 
@@ -12,6 +13,60 @@ import (
 	userprojectbiz "github.com/tutti-os/tutti/services/tuttid/biz/userproject"
 	workspacebiz "github.com/tutti-os/tutti/services/tuttid/biz/workspace"
 )
+
+func TestScanExternalAgentSessionsSummaryOnlyMatchesRetainedResult(t *testing.T) {
+	root := t.TempDir()
+	project := filepath.Join(root, "project")
+	if err := os.MkdirAll(project, 0o755); err != nil {
+		t.Fatalf("create project error = %v", err)
+	}
+	codexHome := filepath.Join(root, "codex-home")
+	t.Setenv("CODEX_HOME", codexHome)
+	t.Setenv("CLAUDE_CONFIG_DIR", filepath.Join(root, "claude-home"))
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	writeAgentServiceJSONL(t, filepath.Join(codexHome, "sessions", "summary-only.jsonl"),
+		map[string]any{
+			"timestamp": now,
+			"type":      "session_meta",
+			"payload":   map[string]any{"id": "summary-only", "cwd": project},
+		},
+		map[string]any{"timestamp": now, "type": "response_item", "payload": map[string]any{
+			"type": "message", "id": "summary-only-1", "role": "user",
+			"content": []any{map[string]any{"type": "input_text", "text": "Retain only the summary"}},
+		}},
+	)
+
+	summaryOnly, err := scanExternalAgentSessionsWithRetention(
+		context.Background(),
+		[]string{"codex"},
+		-1,
+		"",
+		"",
+		externalScanSummaryOnly,
+	)
+	if err != nil {
+		t.Fatalf("summary-only scan error = %v", err)
+	}
+	retained, err := scanExternalAgentSessions(
+		context.Background(),
+		[]string{"codex"},
+		-1,
+		"",
+		"",
+	)
+	if err != nil {
+		t.Fatalf("retained scan error = %v", err)
+	}
+	if !reflect.DeepEqual(summaryOnly.result, retained.result) {
+		t.Fatalf("summary-only result = %#v, want retained result %#v", summaryOnly.result, retained.result)
+	}
+	if len(summaryOnly.sessions) != 0 {
+		t.Fatalf("summary-only sessions = %#v, want no retained transcripts", summaryOnly.sessions)
+	}
+	if len(retained.sessions) != 1 || len(retained.sessions[0].Messages) != 1 {
+		t.Fatalf("retained sessions = %#v, want one full transcript", retained.sessions)
+	}
+}
 
 func TestServiceImportExternalSessionsOmitsProjectsWithoutValidSessions(t *testing.T) {
 	ctx := context.Background()

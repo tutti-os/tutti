@@ -33,10 +33,11 @@ import {
   externalImportScanSource,
   externalImportScanStateReducer,
   externalImportSelectionProjects,
-  externalImportUsableScan,
+  externalImportUsableScanCatalog,
   filterExternalImportGroups,
   isExternalImportArchiveMode,
   isExternalImportWizardBusy,
+  projectExternalImportScan,
   shouldAllowExternalImportDialogOpenChange,
   type ExternalImportProjectGroup
 } from "./externalAgentSessionImportWizardModel";
@@ -153,10 +154,23 @@ export function ExternalAgentSessionImportWizard({
   const currentScanSource = externalImportScanSource({
     archiveKind,
     archivePath,
-    days,
     providers: selectedProviderList
   });
-  const scan = externalImportUsableScan(scanState, currentScanSource);
+  const scanCatalog = externalImportUsableScanCatalog(
+    scanState,
+    currentScanSource
+  );
+  const scan = useMemo(
+    () =>
+      scanCatalog
+        ? projectExternalImportScan(
+            scanCatalog.response,
+            days,
+            scanCatalog.anchorUnixMs
+          )
+        : null,
+    [days, scanCatalog]
+  );
   const archiveMode = isExternalImportArchiveMode(archivePath);
   const groups = useMemo(
     () =>
@@ -218,7 +232,6 @@ export function ExternalAgentSessionImportWizard({
   };
 
   const runScan = async (
-    nextDays: number,
     nextArchivePath: string | null,
     nextArchiveKind: ExternalAgentImportArchiveKind = archiveKind
   ) => {
@@ -226,13 +239,13 @@ export function ExternalAgentSessionImportWizard({
     const source = externalImportScanSource({
       archiveKind: nextArchiveKind,
       archivePath: nextArchivePath,
-      days: nextDays,
       providers: selectedProviderList
     });
     dispatchScanState({ type: "scan-started" });
     setLoading(true);
     setError(null);
     try {
+      const anchorUnixMs = Date.now();
       const nextScan =
         await workspaceAgentActivityService.scanExternalSessionImports(
           workspace.id,
@@ -243,6 +256,7 @@ export function ExternalAgentSessionImportWizard({
       }
       dispatchScanState({
         type: "scan-succeeded",
+        anchorUnixMs,
         response: nextScan,
         source
       });
@@ -287,7 +301,7 @@ export function ExternalAgentSessionImportWizard({
       return;
     }
     setArchivePath(null);
-    await runScan(days, null);
+    await runScan(null);
   };
 
   const handleSelectArchive = async (
@@ -310,7 +324,7 @@ export function ExternalAgentSessionImportWizard({
       setArchivePath(nextArchivePath);
       setArchiveKind(nextArchiveKind);
       setDays(-1);
-      await runScan(-1, nextArchivePath, nextArchiveKind);
+      await runScan(nextArchivePath, nextArchiveKind);
     } catch {
       if (generation !== scanGeneration.current) {
         return;
@@ -330,16 +344,15 @@ export function ExternalAgentSessionImportWizard({
     }
   };
 
-  const handleSelectRange = async (nextDays: number) => {
+  const handleSelectRange = (nextDays: number) => {
     if (nextDays === days || loading || importing) {
       return;
     }
     setDays(nextDays);
-    await runScan(nextDays, archivePath);
   };
 
   const handleImport = async () => {
-    if (!canImport || !scan || !scanState) {
+    if (!canImport || !scan || !scanCatalog) {
       return;
     }
     setImporting(true);
@@ -354,11 +367,11 @@ export function ExternalAgentSessionImportWizard({
           workspace.id,
           {
             ...externalImportRequestSource(
-              scanState.source.kind === "archive"
-                ? scanState.source.archivePath
+              scanCatalog.source.kind === "archive"
+                ? scanCatalog.source.archivePath
                 : null,
-              scanState.source.kind === "archive"
-                ? scanState.source.archiveKind
+              scanCatalog.source.kind === "archive"
+                ? scanCatalog.source.archiveKind
                 : null,
               registerProjects
             ),

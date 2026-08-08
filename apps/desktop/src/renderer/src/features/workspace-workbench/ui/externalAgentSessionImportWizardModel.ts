@@ -22,18 +22,19 @@ export type ExternalImportScanSource =
       kind: "archive";
       archivePath: string;
       archiveKind: ExternalAgentImportArchiveKind;
-      days: number;
     }
   | {
       kind: "local";
-      days: number;
       providers: WorkspaceAgentProvider[];
     };
 
-export type ExternalImportScanState = {
+export type ExternalImportScanCatalog = {
+  anchorUnixMs: number;
   response: ExternalAgentImportScanResponse;
   source: ExternalImportScanSource;
-} | null;
+};
+
+export type ExternalImportScanState = ExternalImportScanCatalog | null;
 
 export type ExternalImportScanStateAction =
   | { type: "scan-started" }
@@ -41,6 +42,7 @@ export type ExternalImportScanStateAction =
   | { type: "source-changed" }
   | {
       type: "scan-succeeded";
+      anchorUnixMs: number;
       response: ExternalAgentImportScanResponse;
       source: ExternalImportScanSource;
     };
@@ -54,12 +56,10 @@ export function isExternalImportArchiveMode(
 export function externalImportScanSource({
   archiveKind,
   archivePath,
-  days,
   providers
 }: {
   archiveKind: ExternalAgentImportArchiveKind;
   archivePath: string | null;
-  days: number;
   providers: WorkspaceAgentProvider[];
 }): ExternalImportScanSource {
   const normalizedArchivePath = archivePath?.trim();
@@ -67,14 +67,12 @@ export function externalImportScanSource({
     return {
       kind: "archive",
       archivePath: normalizedArchivePath,
-      archiveKind,
-      days
+      archiveKind
     };
   }
   return {
     kind: "local",
-    days,
-    providers: [...new Set(providers)]
+    providers: [...new Set(providers)].sort(compareExternalImportStrings)
   };
 }
 
@@ -85,9 +83,9 @@ export function externalImportScanRequest(
     ? {
         archivePath: source.archivePath,
         archiveKind: source.archiveKind,
-        days: source.days
+        days: -1
       }
-    : { days: source.days, providers: source.providers };
+    : { days: -1, providers: source.providers };
 }
 
 export function externalImportScanStateReducer(
@@ -95,17 +93,21 @@ export function externalImportScanStateReducer(
   action: ExternalImportScanStateAction
 ): ExternalImportScanState {
   if (action.type === "scan-succeeded") {
-    return { response: action.response, source: action.source };
+    return {
+      anchorUnixMs: action.anchorUnixMs,
+      response: action.response,
+      source: action.source
+    };
   }
   return null;
 }
 
-export function externalImportUsableScan(
+export function externalImportUsableScanCatalog(
   state: ExternalImportScanState,
   source: ExternalImportScanSource
-): ExternalAgentImportScanResponse | null {
+): ExternalImportScanCatalog | null {
   return state && externalImportScanSourcesEqual(state.source, source)
-    ? state.response
+    ? state
     : null;
 }
 
@@ -113,7 +115,7 @@ function externalImportScanSourcesEqual(
   left: ExternalImportScanSource,
   right: ExternalImportScanSource
 ): boolean {
-  if (left.kind !== right.kind || left.days !== right.days) {
+  if (left.kind !== right.kind) {
     return false;
   }
   if (left.kind === "archive" && right.kind === "archive") {
@@ -125,10 +127,114 @@ function externalImportScanSourcesEqual(
   if (left.kind === "local" && right.kind === "local") {
     return (
       left.providers.length === right.providers.length &&
-      left.providers.every((provider) => right.providers.includes(provider))
+      left.providers.every(
+        (provider, index) => provider === right.providers[index]
+      )
     );
   }
   return false;
+}
+
+const externalImportDayMs = 24 * 60 * 60 * 1000;
+
+export function projectExternalImportScan(
+  catalog: ExternalAgentImportScanResponse,
+  days: number,
+  anchorUnixMs: number
+): ExternalAgentImportScanResponse {
+  const effectiveDays = days === 0 ? 30 : days;
+  const cutoffUnixMs =
+    effectiveDays < 0 ? 0 : anchorUnixMs - effectiveDays * externalImportDayMs;
+  const sessions = catalog.sessions.filter(
+    (session) => (session.lastUpdatedAtUnixMs ?? 0) >= cutoffUnixMs
+  );
+  const catalogProjects = new Map(
+    catalog.projects.map((project) => [project.path, project])
+  );
+  const projectCounts = new Map<
+    string,
+    {
+      label: string;
+      lastUpdatedAtUnixMs: number;
+      messageCount: number;
+      providers: Set<WorkspaceAgentProvider>;
+      sessionCount: number;
+    }
+  >();
+  const providerCounts = new Map<
+    WorkspaceAgentProvider,
+    { messageCount: number; sessionCount: number }
+  >();
+  let scannedMessages = 0;
+
+  for (const session of sessions) {
+    const updatedAtUnixMs = session.lastUpdatedAtUnixMs ?? 0;
+    scannedMessages += session.messageCount;
+
+    const provider = providerCounts.get(session.provider) ?? {
+      messageCount: 0,
+      sessionCount: 0
+    };
+    provider.messageCount += session.messageCount;
+    provider.sessionCount += 1;
+    providerCounts.set(session.provider, provider);
+
+    const project = projectCounts.get(session.projectPath) ?? {
+      label:
+        catalogProjects.get(session.projectPath)?.label ?? session.projectPath,
+      lastUpdatedAtUnixMs: 0,
+      messageCount: 0,
+      providers: new Set<WorkspaceAgentProvider>(),
+      sessionCount: 0
+    };
+    project.lastUpdatedAtUnixMs = Math.max(
+      project.lastUpdatedAtUnixMs,
+      updatedAtUnixMs
+    );
+    project.messageCount += session.messageCount;
+    project.providers.add(session.provider);
+    project.sessionCount += 1;
+    projectCounts.set(session.projectPath, project);
+  }
+
+  const projects = [...projectCounts.entries()]
+    .map(([path, project]) => ({
+      path,
+      label: project.label,
+      providers: [...project.providers].sort(compareExternalImportStrings),
+      sessionCount: project.sessionCount,
+      messageCount: project.messageCount,
+      lastUpdatedAtUnixMs: project.lastUpdatedAtUnixMs
+    }))
+    .sort((left, right) => {
+      if (left.lastUpdatedAtUnixMs === right.lastUpdatedAtUnixMs) {
+        return compareExternalImportStrings(left.path, right.path);
+      }
+      return right.lastUpdatedAtUnixMs - left.lastUpdatedAtUnixMs;
+    });
+
+  return {
+    ...catalog,
+    providers: catalog.providers.map((provider) => {
+      const counts = providerCounts.get(provider.provider);
+      return {
+        ...provider,
+        sessionCount: counts?.sessionCount ?? 0,
+        messageCount: counts?.messageCount ?? 0
+      };
+    }),
+    projects,
+    sessions,
+    scannedSessions: sessions.length,
+    scannedMessages
+  };
+}
+
+function compareExternalImportStrings(left: string, right: string): number {
+  if (left === right) {
+    return 0;
+  }
+  return left < right ? -1 : 1;
 }
 
 export function externalImportRequestSource(

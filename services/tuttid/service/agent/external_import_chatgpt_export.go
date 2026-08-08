@@ -95,6 +95,20 @@ type chatgptExportArchiveHandle struct {
 }
 
 func scanChatGPTExportArchive(ctx context.Context, archivePath string, cutoffUnixMS int64) (externalScanData, error) {
+	return scanChatGPTExportArchiveWithRetention(
+		ctx,
+		archivePath,
+		cutoffUnixMS,
+		externalScanRetainTranscripts,
+	)
+}
+
+func scanChatGPTExportArchiveWithRetention(
+	ctx context.Context,
+	archivePath string,
+	cutoffUnixMS int64,
+	retention externalScanRetention,
+) (externalScanData, error) {
 	handle, err := openChatGPTExportConversationEntries(archivePath)
 	if err != nil {
 		return externalScanData{}, err
@@ -114,7 +128,7 @@ func scanChatGPTExportArchive(ctx context.Context, archivePath string, cutoffUni
 		Provider:  chatgptExportProvider,
 		Available: true,
 	}}
-	projects := map[string]*ExternalImportProject{}
+	collector := newExternalScanCollector(&data, retention)
 	conversationIDs := map[string]struct{}{}
 	totalMessages := 0
 	conversationIndex := 0
@@ -182,17 +196,7 @@ func scanChatGPTExportArchive(ctx context.Context, archivePath string, cutoffUni
 				conversationIndex++
 				continue
 			}
-			project, ok := projectFromExternalSession(session)
-			if !ok {
-				data.result.SkippedSessions++
-				conversationIndex++
-				continue
-			}
-			data.sessions = append(data.sessions, session)
-			data.result.ScannedSessions++
-			data.result.ScannedMessages += len(session.Messages)
-			data.result.Sessions = append(data.result.Sessions, externalImportSessionSummary(session, project.Path))
-			upsertExternalImportProject(projects, project, session.Provider)
+			collector.add(session)
 			conversationIndex++
 		}
 		if err := entryReader.Close(); err != nil {
@@ -200,16 +204,7 @@ func scanChatGPTExportArchive(ctx context.Context, archivePath string, cutoffUni
 		}
 	}
 
-	for _, project := range projects {
-		sort.Strings(project.Providers)
-		data.result.Projects = append(data.result.Projects, *project)
-	}
-	sort.SliceStable(data.result.Sessions, func(left, right int) bool {
-		if data.result.Sessions[left].LastUpdatedAtUnixMS == data.result.Sessions[right].LastUpdatedAtUnixMS {
-			return data.result.Sessions[left].ID < data.result.Sessions[right].ID
-		}
-		return data.result.Sessions[left].LastUpdatedAtUnixMS > data.result.Sessions[right].LastUpdatedAtUnixMS
-	})
+	collector.finish()
 	data.result.Providers[0].SessionCount = data.result.ScannedSessions
 	data.result.Providers[0].MessageCount = data.result.ScannedMessages
 	return data, nil
