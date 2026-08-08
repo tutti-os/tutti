@@ -170,6 +170,14 @@ record. Idle live-session release must not emit completion activity, clear the
 provider session id, remove runtime directories, or interrupt active turns and
 pending interactive requests.
 
+Standard ACP Agent Extensions participate in the default idle reaper only when
+their live `initialize` handshake advertises `session/load` or
+`session/resume`. After 30 minutes of inactivity, release closes only the ACP
+transport and its CLI process; it does not send `session/close`. The next
+`Exec` launches a replacement CLI process and restores the preserved provider
+session. Extensions that do not advertise a restore method remain live, and a
+pending interactive request makes the session busy rather than releasable.
+
 Claude Code SDK sessions keep the SDK `session_id` in `ProviderSessionID` and
 mirror the opaque SDK resume cursor in `runtimeContext.resumeCursor`. The sidecar
 owns SDK stream ordering, turn cancellation, orphan result draining, and cursor

@@ -312,6 +312,13 @@ type LiveSessionReleaseAdapter interface {
 	ReleaseLiveSession(context.Context, Session) error
 }
 
+// LiveSessionReleaseCapabilityAdapter narrows live-session release for
+// adapters whose ability to resume is learned from the current provider
+// handshake rather than known statically by adapter type.
+type LiveSessionReleaseCapabilityAdapter interface {
+	CanReleaseLiveSession(Session) bool
+}
+
 type StateAdapter interface {
 	SessionState(Session) SessionStateSnapshot
 }

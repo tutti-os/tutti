@@ -149,6 +149,114 @@ func TestControllerExecResumesAfterIdleLiveSessionRelease(t *testing.T) {
 	}
 }
 
+func TestControllerRecyclesIdleKimiCodeProcessAndResumesOnNextExec(t *testing.T) {
+	t.Parallel()
+
+	transport := &multiProcStandardACPTransport{
+		agentTitle:               "Kimi Code",
+		sessionID:                "kimi-session-idle-recycle",
+		supportsAgentLoadSession: true,
+	}
+	adapter := newKimiCodeExtensionTestAdapter(t, transport)
+	controller := NewController([]Adapter{adapter}, nil)
+	started, err := controller.Start(context.Background(), StartInput{
+		RoomID:         "room-kimi-idle-recycle",
+		AgentSessionID: "kimi-agent-session-idle-recycle",
+		Provider:       "acp:kimi-code",
+		CWD:            "/workspace/kimi-idle-recycle",
+	})
+	if err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	defer func() {
+		_, _ = controller.Close(context.Background(), CloseInput{
+			RoomID:         started.Session.RoomID,
+			AgentSessionID: started.Session.AgentSessionID,
+		})
+	}()
+
+	nowTime := time.Now()
+	setSessionUpdatedAt(t, controller, started.Session, nowTime.Add(-30*time.Minute))
+	result := controller.ReleaseIdleLiveSessions(context.Background(), ReleaseIdleLiveSessionsInput{
+		IdleAfter: 30 * time.Minute,
+		Now:       nowTime,
+	})
+	if result.Released != 1 || result.Scanned != 1 {
+		t.Fatalf("release result = %#v, want one released Kimi Code process", result)
+	}
+	if spawned, live := transport.snapshot(); spawned != 1 || len(live) != 0 {
+		t.Fatalf("processes after release = spawned %d live %d, want 1 spawned and 0 live", spawned, len(live))
+	}
+	stored, ok := controller.Session(started.Session.RoomID, started.Session.AgentSessionID)
+	if !ok || stored.ProviderSessionID != "kimi-session-idle-recycle" {
+		t.Fatalf("stored session = %#v ok=%v, want preserved provider session id", stored, ok)
+	}
+
+	execResult, err := controller.Exec(context.Background(), ExecInput{
+		RoomID:         started.Session.RoomID,
+		AgentSessionID: started.Session.AgentSessionID,
+		Content:        textPrompt("resume after idle release"),
+	})
+	if err != nil {
+		t.Fatalf("Exec: %v", err)
+	}
+	if !execResult.Accepted {
+		t.Fatalf("Exec result = %#v, want accepted", execResult)
+	}
+	spawned, live := transport.snapshot()
+	if spawned != 2 || len(live) != 1 {
+		t.Fatalf("processes after Exec = spawned %d live %d, want replacement process", spawned, len(live))
+	}
+	transport.mu.Lock()
+	resumedConnection := transport.conns[1]
+	transport.mu.Unlock()
+	resumedConnection.mu.Lock()
+	providerSessionID := asString(resumedConnection.lastLoadSessionParams["sessionId"])
+	resumedConnection.mu.Unlock()
+	if providerSessionID != "kimi-session-idle-recycle" {
+		t.Fatalf("resumed provider session id = %q, want preserved Kimi Code session", providerSessionID)
+	}
+}
+
+func TestControllerKeepsIdleStandardACPProcessWithoutResumeCapability(t *testing.T) {
+	t.Parallel()
+
+	transport := &multiProcStandardACPTransport{
+		agentTitle: "Non-resumable ACP Agent",
+		sessionID:  "non-resumable-session",
+	}
+	adapter := newKimiCodeExtensionTestAdapter(t, transport)
+	controller := NewController([]Adapter{adapter}, nil)
+	started, err := controller.Start(context.Background(), StartInput{
+		RoomID:         "room-non-resumable",
+		AgentSessionID: "agent-session-non-resumable",
+		Provider:       "acp:kimi-code",
+		CWD:            "/workspace/non-resumable",
+	})
+	if err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	defer func() {
+		_, _ = controller.Close(context.Background(), CloseInput{
+			RoomID:         started.Session.RoomID,
+			AgentSessionID: started.Session.AgentSessionID,
+		})
+	}()
+
+	nowTime := time.Now()
+	setSessionUpdatedAt(t, controller, started.Session, nowTime.Add(-31*time.Minute))
+	result := controller.ReleaseIdleLiveSessions(context.Background(), ReleaseIdleLiveSessionsInput{
+		IdleAfter: 30 * time.Minute,
+		Now:       nowTime,
+	})
+	if result.SkippedUnsupported != 1 || result.Released != 0 {
+		t.Fatalf("release result = %#v, want non-resumable handshake skipped", result)
+	}
+	if spawned, live := transport.snapshot(); spawned != 1 || len(live) != 1 {
+		t.Fatalf("processes after release = spawned %d live %d, want original process retained", spawned, len(live))
+	}
+}
+
 func TestControllerReleaseIdleLiveSessionsWaitsForExecLifecycle(t *testing.T) {
 	t.Parallel()
 
@@ -484,6 +592,20 @@ func setSessionUpdatedAt(t *testing.T, controller *Controller, session Session, 
 	stored.UpdatedAtUnixMS = unixMS(updatedAt)
 	controller.sessions[key] = stored
 	controller.mu.Unlock()
+}
+
+func newKimiCodeExtensionTestAdapter(t *testing.T, transport ProcessTransport) *standardACPAdapter {
+	t.Helper()
+	adapter, err := NewStandardACPAdapter(StandardACPAdapterConfig{
+		Provider:    "acp:kimi-code",
+		Name:        "kimi-code-acp",
+		DisplayName: "Kimi Code",
+		Command:     []string{"kimi", "acp"},
+	}, transport, LegacyHostMetadata())
+	if err != nil {
+		t.Fatalf("NewStandardACPAdapter: %v", err)
+	}
+	return adapter.(*standardACPAdapter)
 }
 
 func TestControllerCloseReportsSessionCompleted(t *testing.T) {

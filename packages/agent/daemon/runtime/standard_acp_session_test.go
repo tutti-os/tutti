@@ -2,6 +2,7 @@ package agentruntime
 
 import (
 	"context"
+	"errors"
 	"reflect"
 	"strings"
 	"sync"
@@ -270,6 +271,65 @@ func TestStandardACPAdapterCloseSendsProtocolSessionCloseBeforeTransportClose(t 
 	}
 	if !transport.conn.closed() {
 		t.Fatal("transport was not closed after protocol session close")
+	}
+}
+
+func TestStandardACPAdapterReleaseLiveSessionClosesOnlyTransport(t *testing.T) {
+	t.Parallel()
+
+	transport := newStandardACPTransport("Kimi Code", "kimi-session-idle-release")
+	transport.conn.supportsAgentLoadSession = true
+	transport.conn.supportsCloseSession = true
+	adapter := newKimiCodeExtensionTestAdapter(t, transport)
+	session := standardTestSession("acp:kimi-code")
+
+	if _, err := adapter.Start(context.Background(), session); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	if !adapter.CanReleaseLiveSession(session) {
+		t.Fatal("CanReleaseLiveSession = false, want load-capable Kimi Code session releasable")
+	}
+	if err := adapter.ReleaseLiveSession(context.Background(), session); err != nil {
+		t.Fatalf("ReleaseLiveSession: %v", err)
+	}
+	if !transport.conn.closed() {
+		t.Fatal("transport was not closed by live-session release")
+	}
+	if params := transport.conn.closeSessionParams(); params != nil {
+		t.Fatalf("session/close params = %#v, want no destructive protocol close", params)
+	}
+	if adapter.HasLiveSession(session) {
+		t.Fatal("adapter still reports a live session after release")
+	}
+}
+
+func TestStandardACPAdapterReleaseLiveSessionRejectsPendingApproval(t *testing.T) {
+	t.Parallel()
+
+	transport := newStandardACPTransport("Kimi Code", "kimi-session-pending-approval")
+	transport.conn.supportsAgentLoadSession = true
+	adapter := newKimiCodeExtensionTestAdapter(t, transport)
+	session := standardTestSession("acp:kimi-code")
+
+	if _, err := adapter.Start(context.Background(), session); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	adapter.storePendingApproval(&pendingACPApproval{
+		agentSessionID: session.AgentSessionID,
+		requestID:      "approval-1",
+		response:       make(chan pendingInteractiveResponse, 1),
+	})
+	if err := adapter.ReleaseLiveSession(context.Background(), session); !errors.Is(err, ErrLiveSessionBusy) {
+		t.Fatalf("ReleaseLiveSession error = %v, want ErrLiveSessionBusy", err)
+	}
+	if transport.conn.closed() {
+		t.Fatal("transport closed while an approval was pending")
+	}
+	if !adapter.HasLiveSession(session) {
+		t.Fatal("adapter lost live session while an approval was pending")
+	}
+	if err := adapter.Close(context.Background(), session); err != nil {
+		t.Fatalf("Close: %v", err)
 	}
 }
 
