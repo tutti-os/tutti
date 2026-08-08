@@ -458,6 +458,13 @@ func (c *replayProcessConnection) ProcessCassetteCaptureOrigin() ProcessCassette
 	return c.captureOrigin
 }
 
+func (c *replayProcessConnection) WaitForProviderProgress(
+	ctx context.Context,
+	duration time.Duration,
+) error {
+	return c.inputBarrier.waitForProgressDuration(ctx, c.connectionID, duration, c.closed)
+}
+
 func (c *replayProcessConnection) Send(data []byte) error {
 	for {
 		c.mu.Lock()

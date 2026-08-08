@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"time"
 
 	sessionreplay "github.com/tutti-os/tutti/packages/agent/session-replay"
 )
@@ -84,7 +85,10 @@ func (b *replayProviderInputBarrier) complete(
 				unit.Position.ConnectionID,
 			)
 		}
-		b.handled[unit.Position.ConnectionID] = unit.Position
+		if compareReplayProviderPosition(unit.Position, previous) > 0 {
+			b.handled[unit.Position.ConnectionID] = unit.Position
+			b.signalChangedLocked()
+		}
 		if !b.active {
 			b.mu.Unlock()
 			return nil
@@ -114,6 +118,50 @@ func (b *replayProviderInputBarrier) complete(
 		case <-changed:
 		}
 	}
+}
+
+// waitForProgressDuration measures only time in which this connection can
+// consume provider input. Checkpoint barriers deliberately stop that progress;
+// wall-clock recovery timers must not expire while replay is parked there.
+func (b *replayProviderInputBarrier) waitForProgressDuration(
+	ctx context.Context,
+	connectionID string,
+	duration time.Duration,
+	closed <-chan struct{},
+) error {
+	remaining := duration
+	for remaining > 0 {
+		b.mu.Lock()
+		handled := b.handled[connectionID]
+		target, targeted := b.targets[connectionID]
+		blocked := b.active && targeted && compareReplayProviderPosition(handled, target) >= 0
+		changed := b.changed
+		b.mu.Unlock()
+
+		if blocked {
+			if err := waitForReplayPlaybackChange(ctx, closed, changed); err != nil {
+				return err
+			}
+			continue
+		}
+
+		started := time.Now()
+		timer := time.NewTimer(remaining)
+		select {
+		case <-ctx.Done():
+			stopReplayPlaybackTimer(timer)
+			return ctx.Err()
+		case <-closed:
+			stopReplayPlaybackTimer(timer)
+			return context.Canceled
+		case <-changed:
+			stopReplayPlaybackTimer(timer)
+			remaining -= time.Since(started)
+		case <-timer.C:
+			return nil
+		}
+	}
+	return nil
 }
 
 func (b *replayProviderInputBarrier) state() map[string]sessionreplay.ProviderUnitPosition {

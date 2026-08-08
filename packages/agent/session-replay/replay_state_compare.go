@@ -128,8 +128,13 @@ func registerReplayIDs(replacements map[string]string, value map[string]any) {
 		for messageIndex, messageItem := range messages {
 			message, _ := messageItem.(map[string]any)
 			registerReplayID(replacements, message["id"], fmt.Sprintf("session:%d/message:%d", sessionIndex, messageIndex))
+		}
+		for messageIndex, messageItem := range messages {
+			message, _ := messageItem.(map[string]any)
 			if payload, ok := message["payload"].(map[string]any); ok {
 				delete(payload, "seq")
+				registerReplayID(replacements, payload["messageId"], fmt.Sprintf("session:%d/message:%d/payloadMessage", sessionIndex, messageIndex))
+				registerReplayID(replacements, payload["clientSubmitId"], fmt.Sprintf("session:%d/message:%d/clientSubmit", sessionIndex, messageIndex))
 				registerReplayID(replacements, payload["operationId"], fmt.Sprintf("session:%d/message:%d/operation", sessionIndex, messageIndex))
 				// tool_call / approval callId remints across record→replay while
 				// the structural message slot stays the same.
