@@ -9,14 +9,10 @@ import (
 	"strings"
 )
 
-// OpenCodePreparer materializes a bound model access plan for OpenCode
-// sessions. OpenCode natively speaks the OpenAI-compatible wire protocol via
-// @ai-sdk/openai-compatible, so an "openai" plan needs no protocol conversion:
-// the preparer writes a session-scoped opencode.json provider block and points
-// OPENCODE_CONFIG at it. The API key stays out of the file — the config
-// references it with an {env:...} token, which OpenCode substitutes for
-// file-based config sources (inline OPENCODE_CONFIG_CONTENT does not
-// substitute tokens, which is why the provider block must travel as a file).
+// OpenCodePreparer creates a session-scoped native config directory containing
+// Tutti runtime instructions and Skills. A bound OpenAI-compatible model plan
+// also gains an opencode.json provider block in that directory; its API key
+// stays out of the file because the config references an {env:...} token.
 type OpenCodePreparer struct{}
 
 func (OpenCodePreparer) Provider() string {
@@ -24,12 +20,29 @@ func (OpenCodePreparer) Provider() string {
 }
 
 func (OpenCodePreparer) Prepare(_ context.Context, input ProviderPrepareInput) (ProviderPrepareResult, error) {
-	if !input.ModelEndpoint.supportsOpenCode() {
-		return ProviderPrepareResult{Cwd: input.Cwd}, nil
-	}
 	configDir := filepath.Join(input.RuntimeRoot, "opencode")
 	if err := os.MkdirAll(configDir, 0o700); err != nil {
 		return ProviderPrepareResult{}, fmt.Errorf("create opencode config directory: %w", err)
+	}
+	policy, err := tuttiCLIPolicy(input.PrepareInput)
+	if err != nil {
+		return ProviderPrepareResult{}, err
+	}
+	instructionsPath := filepath.Join(configDir, "AGENTS.md")
+	writeResult, err := input.Store.WriteManagedBlock(instructionsPath, policy)
+	if err != nil {
+		return ProviderPrepareResult{}, err
+	}
+	if _, err := installProviderNativeSkillsSessionScoped(filepath.Join(configDir, "skills"), input.PrepareInput); err != nil {
+		return ProviderPrepareResult{}, fmt.Errorf("install opencode tutti skills: %w", err)
+	}
+	if input.Manifest != nil {
+		input.Manifest.RecordManagedFile(instructionsPath, "provider-instructions", writeResult.Created)
+		input.Manifest.RecordManagedFile(configDir, "opencode-home", true)
+	}
+	env := []string{"OPENCODE_CONFIG_DIR=" + configDir}
+	if !input.ModelEndpoint.supportsOpenCode() {
+		return ProviderPrepareResult{Cwd: input.Cwd, Env: env}, nil
 	}
 	content, err := openCodeModelPlanConfig(input.ModelEndpoint)
 	if err != nil {
@@ -44,13 +57,13 @@ func (OpenCodePreparer) Prepare(_ context.Context, input ProviderPrepareInput) (
 	}
 	return ProviderPrepareResult{
 		Cwd: input.Cwd,
-		Env: []string{
+		Env: append(env,
 			// The session-scoped config merges as OpenCode's environment
 			// config layer; the adapter's OPENCODE_CONFIG_CONTENT (session
 			// settings) still overrides scalar keys such as `model`.
-			"OPENCODE_CONFIG=" + configPath,
-			ModelPlanAPIKeyEnv + "=" + input.ModelEndpoint.APIKey,
-		},
+			"OPENCODE_CONFIG="+configPath,
+			ModelPlanAPIKeyEnv+"="+input.ModelEndpoint.APIKey,
+		),
 	}, nil
 }
 
