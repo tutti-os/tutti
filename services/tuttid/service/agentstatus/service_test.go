@@ -1496,7 +1496,7 @@ func TestServiceRunActionInstallsThenProbesProvider(t *testing.T) {
 	if err := os.MkdirAll(binDir, 0o755); err != nil {
 		t.Fatalf("mkdir bin dir: %v", err)
 	}
-	adapterArchive, adapterSHA256 := releaseBinaryArchive(t, "codex-acp", "#!/bin/sh\nsleep 5\n")
+	adapterArchive, adapterSHA256 := releaseBinaryArchive(t, "codex-acp", "#!/bin/sh\nread -r line\nid=$(printf '%s' \"$line\" | sed -n 's/.*\"id\":\\([0-9]*\\).*/\\1/p')\nprintf '{\"jsonrpc\":\"2.0\",\"id\":%s,\"result\":{}}\\n' \"$id\"\n")
 	installerServer := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		switch request.URL.Path {
 		case "/install.sh":

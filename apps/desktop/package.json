@@ -42,6 +42,13 @@
         "filter": [
           "**/*"
         ]
+      },
+      {
+        "from": "build/managed-uv",
+        "to": "bin/managed-uv",
+        "filter": [
+          "**/*"
+        ]
       }
     ],
     "publish": [

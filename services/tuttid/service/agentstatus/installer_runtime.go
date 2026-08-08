@@ -58,6 +58,10 @@ func (s Service) resolveProviderRuntime(ctx context.Context, spec ProviderSpec) 
 		cliPath = s.managedClaudeCodeExecutable()
 	}
 	adapterPath := resolveBinaryWithResolver(resolver, adapterBinaryNames(spec), spec.AdapterEnv)
+	if isStandardACPStatusSpec(spec) && len(spec.AdapterCommand) > 0 && s.executableFile(spec.AdapterCommand[0]) {
+		cliPath = spec.AdapterCommand[0]
+		adapterPath = spec.AdapterCommand[0]
+	}
 	if isCodexStatusSpec(spec) && len(spec.AdapterCommand) > 0 && s.executableFile(spec.AdapterCommand[0]) {
 		if cliPath == "" {
 			cliPath = spec.AdapterCommand[0]

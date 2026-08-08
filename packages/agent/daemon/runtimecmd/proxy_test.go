@@ -89,6 +89,29 @@ func TestParseScutilProxySOCKSOnlyIgnored(t *testing.T) {
 	}
 }
 
+func TestParseWindowsProxyServerSingleProxy(t *testing.T) {
+	got := parseWindowsProxyServer("127.0.0.1:7890", "<local>;*.corp.example;localhost")
+	if got["HTTPS_PROXY"] != "http://127.0.0.1:7890" || got["HTTP_PROXY"] != "http://127.0.0.1:7890" {
+		t.Fatalf("parseWindowsProxyServer() proxy = %v", got)
+	}
+	if got["NO_PROXY"] != "localhost,127.0.0.1,::1,.local,.corp.example" {
+		t.Fatalf("parseWindowsProxyServer() NO_PROXY = %q", got["NO_PROXY"])
+	}
+}
+
+func TestParseWindowsProxyServerProtocolMap(t *testing.T) {
+	got := parseWindowsProxyServer("http=proxy.internal:8080;https=secure.internal:8443;socks=127.0.0.1:1080", "")
+	if got["HTTP_PROXY"] != "http://proxy.internal:8080" || got["HTTPS_PROXY"] != "http://secure.internal:8443" {
+		t.Fatalf("parseWindowsProxyServer() = %v", got)
+	}
+}
+
+func TestParseWindowsProxyServerIgnoresSocksOnly(t *testing.T) {
+	if got := parseWindowsProxyServer("socks=127.0.0.1:1080", ""); got != nil {
+		t.Fatalf("parseWindowsProxyServer() = %v, want nil", got)
+	}
+}
+
 func TestEnvInjectsSystemProxy(t *testing.T) {
 	resolver := Resolver{
 		Environ:     func() []string { return []string{"PATH=/usr/bin:/bin"} },

@@ -18,6 +18,7 @@ import (
 )
 
 func TestResolveManagedUVToolchainDownloadsVerifiesAndCaches(t *testing.T) {
+	t.Setenv(bundledUVRootEnvKey, "")
 	uvBytes := []byte("#!/bin/sh\necho fake-uv\n")
 	archive := buildUVToolchainTarGz(t, "uv-bundle/uv", uvBytes)
 	var hits atomic.Int32
@@ -62,6 +63,71 @@ func TestResolveManagedUVToolchainDownloadsVerifiesAndCaches(t *testing.T) {
 	}
 	if got := hits.Load(); got != 1 {
 		t.Fatalf("server hits = %d, want 1 (cache hit on second resolve)", got)
+	}
+}
+
+func TestResolveManagedUVToolchainUsesVerifiedBundledArchiveWithoutNetwork(t *testing.T) {
+	uvBytes := []byte("#!/bin/sh\necho bundled-uv\n")
+	archive := buildUVToolchainTarGz(t, "uv-bundle/uv", uvBytes)
+	var hits atomic.Int32
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		hits.Add(1)
+		http.Error(w, "network must not be used", http.StatusBadGateway)
+	}))
+	defer server.Close()
+	artifact := testUVToolArtifact(server.URL+"/uv.tar.gz", archive, "tar.gz", "uv-bundle/uv")
+	bundleRoot := testResolvedTempDir(t)
+	bundleDir := filepath.Join(bundleRoot, artifact.Platform, artifact.Version)
+	if err := os.MkdirAll(bundleDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(bundleDir, "uv.tar.gz"), archive, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv(bundledUVRootEnvKey, bundleRoot)
+
+	toolDir, err := ensureManagedUVToolchain(context.Background(), server.Client(), testResolvedTempDir(t), artifact)
+	if err != nil {
+		t.Fatal(err)
+	}
+	contents, err := os.ReadFile(filepath.Join(toolDir, uvExecutableName()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(contents, uvBytes) {
+		t.Fatalf("uv bytes = %q, want %q", contents, uvBytes)
+	}
+	if got := hits.Load(); got != 0 {
+		t.Fatalf("server hits = %d, want 0", got)
+	}
+}
+
+func TestResolveManagedUVToolchainFallsBackWhenBundledArchiveIsCorrupt(t *testing.T) {
+	archive := buildUVToolchainTarGz(t, "uv-bundle/uv", []byte("valid"))
+	var hits atomic.Int32
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		hits.Add(1)
+		_, _ = w.Write(archive)
+	}))
+	defer server.Close()
+	artifact := testUVToolArtifact(server.URL+"/uv.tar.gz", archive, "tar.gz", "uv-bundle/uv")
+	bundleRoot := testResolvedTempDir(t)
+	bundleDir := filepath.Join(bundleRoot, artifact.Platform, artifact.Version)
+	if err := os.MkdirAll(bundleDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	corrupt := append([]byte(nil), archive...)
+	corrupt[len(corrupt)-1] ^= 0xff
+	if err := os.WriteFile(filepath.Join(bundleDir, "uv.tar.gz"), corrupt, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv(bundledUVRootEnvKey, bundleRoot)
+
+	if _, err := ensureManagedUVToolchain(context.Background(), server.Client(), testResolvedTempDir(t), artifact); err != nil {
+		t.Fatal(err)
+	}
+	if got := hits.Load(); got != 1 {
+		t.Fatalf("server hits = %d, want 1 fallback download", got)
 	}
 }
 

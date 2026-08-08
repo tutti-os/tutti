@@ -343,6 +343,7 @@ const vendoredClaudeSDKSidecarRelPath = join(
 );
 const vendoredManagedPosixShellRootRelPath = join("bin", "managed-posix-shell");
 const vendoredMutagenRootRelPath = join("bin", "mutagen");
+const vendoredManagedUVRootRelPath = join("bin", "managed-uv");
 
 // resolveBrowserMcpDaemonEnv points the daemon at a vendored chrome-devtools-mcp
 // in packaged builds so browser use never has to fetch it over the network at
@@ -545,6 +546,30 @@ export function resolveMutagenDaemonEnv(
   return { TUTTI_MUTAGEN_BIN: entry };
 }
 
+export function resolveManagedUVDaemonEnv(
+  runtime?: DesktopElectronAppRuntime,
+  options: ResolveLaunchSpecOptions & {
+    inheritedEnv?: Record<string, string>;
+  } = {}
+): Record<string, string> {
+  if (
+    process.env.TUTTI_BUNDLED_UV_ROOT?.trim() ||
+    options.inheritedEnv?.TUTTI_BUNDLED_UV_ROOT?.trim()
+  ) {
+    return {};
+  }
+  let appRuntime: DesktopElectronAppRuntime;
+  try {
+    appRuntime = runtime ?? resolveElectronAppRuntime();
+  } catch {
+    return {};
+  }
+  const runtimeRoot = appRuntime.isPackaged
+    ? resolve(appRuntime.resourcesPath, vendoredManagedUVRootRelPath)
+    : resolve(options.repoRoot ?? resolveRepoRoot(), "apps/desktop/build/managed-uv");
+  return existsSync(runtimeRoot) ? { TUTTI_BUNDLED_UV_ROOT: runtimeRoot } : {};
+}
+
 function resolveManagedRuntimeDaemonEnv(
   userShellEnv?: Record<string, string>
 ): Record<string, string> {
@@ -579,6 +604,7 @@ export function resolveManagedDaemonProcessEnv(
     ...resolveClaudeSDKSidecarDaemonEnv(),
     ...resolveManagedPosixShellDaemonEnv(),
     ...resolveMutagenDaemonEnv(undefined, { inheritedEnv: input.userShellEnv }),
+    ...resolveManagedUVDaemonEnv(undefined, { inheritedEnv: input.userShellEnv }),
     TUTTI_APP_VERSION: process.env.TUTTI_APP_VERSION?.trim() ?? "",
     TUTTI_DESKTOP_UPDATE_ADMISSION_ARCHITECTURE:
       desktopUpdateAdmission?.architecture ?? "",
