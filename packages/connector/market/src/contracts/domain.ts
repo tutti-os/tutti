@@ -90,8 +90,10 @@ export interface ConnectorManagedStdioImplementation {
 }
 
 export interface ConnectorRemoteStreamableHttpImplementation {
-  endpoint: string;
-  allowedHosts: string[];
+  protocolVersion: "2026-07-28";
+  bindingRef: string;
+  contractVersion: number;
+  bindingContractHash: string;
 }
 
 export interface ConnectorManifestImplementation {
@@ -125,6 +127,7 @@ export interface ConnectorManifest {
   description?: string;
   agentRouting?: ConnectorAgentRouting;
   permissions: string[];
+  requiredCapabilities?: string[];
   implementation: ConnectorManifestImplementation;
   authorizationKind: string;
   compatibility?: ConnectorCompatibilityRequirements;

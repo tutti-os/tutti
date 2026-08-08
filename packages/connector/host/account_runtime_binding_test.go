@@ -20,6 +20,20 @@ func TestAccountRuntimeBindingResolverKeepsAuthorizedConnectorInactiveWithoutPro
 	}
 }
 
+func TestAccountRuntimeBindingResolverKeepsAuthorizedConnectorInactiveWhileSignedOut(t *testing.T) {
+	release := testReleaseWithImplementation("github", "1.0.0", ImplementationKindManagedStdio)
+	release.Manifest.AuthorizationKind = "oauth2"
+	binding, err := (AccountRuntimeBindingResolver{}).ResolveRuntimeBinding(context.Background(), RuntimeBindingRequest{
+		Connector: Connector{Key: "github"}, Release: release,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if binding.Enabled || binding.ConnectionID != AccountRuntimeConnectionID("signed-out", "github") {
+		t.Fatalf("binding = %#v", binding)
+	}
+}
+
 func TestAccountRuntimeBindingResolverIssuesGrantOnlyForConnectedProjection(t *testing.T) {
 	release := testReleaseWithImplementation("github", "1.0.0", ImplementationKindManagedStdio)
 	release.Manifest.AuthorizationKind = "oauth2"
@@ -87,6 +101,32 @@ func TestAccountRuntimeBindingResolverUsesConnectorOwnedCredentialBrokerWithoutS
 		t.Fatal(err)
 	}
 	if !binding.Enabled || binding.ConnectionID != AccountRuntimeConnectionID("account-1", "lark-cli") || len(binding.CredentialBrokerGrant) != 0 {
+		t.Fatalf("binding = %#v", binding)
+	}
+}
+
+func TestAccountRuntimeBindingResolverUsesServerConnectionForRemoteMCPWithoutGrant(t *testing.T) {
+	release := testReleaseWithImplementation("tencent-docs", "1.0.0", ImplementationKindRemoteStreamableHTTP)
+	release.Manifest.Implementation = Implementation{
+		Kind: ImplementationKindRemoteStreamableHTTP,
+		RemoteStreamableHTTP: &RemoteStreamableHTTPImplementation{
+			ProtocolVersion:     "2026-07-28",
+			BindingRef:          "tencent-docs.primary",
+			ContractVersion:     1,
+			BindingContractHash: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+		},
+	}
+	release.Manifest.AuthorizationKind = "api_key"
+	projections := &authorizationProjectionStoreStub{projection: AuthorizationProjection{
+		AccountID: "account-1", ConnectorKey: "tencent-docs", ConnectionID: "server-connection", State: AuthorizationStateConnected,
+	}}
+	binding, err := (AccountRuntimeBindingResolver{Projections: projections}).ResolveRuntimeBinding(context.Background(), RuntimeBindingRequest{
+		Scope: OperationScope{AccountID: "account-1"}, Connector: Connector{Key: "tencent-docs"}, Release: release,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !binding.Enabled || binding.ConnectionID != "server-connection" || len(binding.CredentialBrokerGrant) != 0 {
 		t.Fatalf("binding = %#v", binding)
 	}
 }

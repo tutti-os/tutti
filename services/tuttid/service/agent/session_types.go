@@ -68,6 +68,8 @@ type Service struct {
 	PromptAttachmentStore          PromptAttachmentStore
 	RuntimePreparer                runtimeprep.Preparer
 	ConnectorRoutingHints          func() []runtimeprep.ConnectorRoutingHint
+	ConnectorMCPBinding            func(string, string, []string) (runtimeprep.MCPServerBinding, error)
+	ConnectorMCPRevoke             func(string, string)
 	ModelGateway                   ModelGatewayRegistry
 	BrowserUseAvailable            func() bool
 	ComputerUseAvailable           func() bool

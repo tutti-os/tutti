@@ -35,7 +35,7 @@ func (resolver AccountRuntimeBindingResolver) ResolveRuntimeBinding(
 	}
 	accountID := strings.TrimSpace(request.Scope.AccountID)
 	if accountID == "" {
-		return RuntimeBinding{}, invalidRequest("accountId is required for an authorized connector runtime")
+		return RuntimeBinding{ConnectionID: AccountRuntimeConnectionID("signed-out", connectorKey), Enabled: false}, nil
 	}
 	connectionID := AccountRuntimeConnectionID(accountID, connectorKey)
 	if resolver.Projections == nil {
@@ -64,6 +64,11 @@ func (resolver AccountRuntimeBindingResolver) ResolveRuntimeBinding(
 		return RuntimeBinding{ConnectionID: connectionID, Enabled: true}, nil
 	}
 	managed := request.Release.Manifest.Implementation.ManagedStdio
+	if request.Release.Manifest.Implementation.RemoteStreamableHTTP != nil {
+		// Remote MCP routes authenticate to tsh-server with the Tutti account
+		// session. Provider credentials never cross the daemon boundary.
+		return RuntimeBinding{ConnectionID: connectionID, Enabled: true}, nil
+	}
 	if managed != nil && managed.CredentialBroker != nil {
 		// Connector-owned credential brokers persist their own account binding
 		// inside the managed VM user home. They do not consume a Server-issued

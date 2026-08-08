@@ -1,22 +1,18 @@
 package implementationhost
 
 import (
-	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
-	"sync"
 
 	"github.com/tutti-os/tutti/packages/connector/runtime/command"
 	"gopkg.in/yaml.v3"
 )
 
 const (
-	invocationQueueLimit       = 16
 	connectorSkillEntryName    = "SKILL.md"
 	connectorSkillMaxDepth     = 8
 	connectorSkillMaxEntries   = 128
@@ -24,10 +20,25 @@ const (
 )
 
 type ConnectorSummary struct {
-	Key         string         `json:"key"`
-	Name        string         `json:"name"`
-	Description string         `json:"description"`
-	Skills      []SkillSummary `json:"skills"`
+	Key         string                      `json:"key"`
+	Name        string                      `json:"name"`
+	Description string                      `json:"description"`
+	Skills      []DiscoverableSkillSummary  `json:"skills"`
+	Interfaces  []ConnectorInterfaceSummary `json:"interfaces"`
+}
+
+type DiscoverableSkillSummary struct {
+	Name        string `json:"name"`
+	Title       string `json:"title"`
+	Description string `json:"description"`
+}
+
+type ConnectorInterfaceSummary struct {
+	Kind       string `json:"kind"`
+	ServerName string `json:"serverName,omitempty"`
+	ToolPrefix string `json:"toolPrefix,omitempty"`
+	Command    string `json:"command,omitempty"`
+	Status     string `json:"status"`
 }
 
 // ConnectorRoutingHint is a bounded, non-secret projection of one active
@@ -38,14 +49,6 @@ type ConnectorRoutingHint struct {
 	DisplayName string
 	Aliases     []string
 	SkillRoot   string
-}
-
-type CapabilitySummary struct {
-	ID          string         `json:"id"`
-	Kind        string         `json:"kind"`
-	Name        string         `json:"name"`
-	Description string         `json:"description"`
-	InputSchema map[string]any `json:"inputSchema"`
 }
 
 type SkillSummary struct {
@@ -62,48 +65,48 @@ type Skill struct {
 }
 
 type ConnectorBroker struct {
-	commands *CommandRegistry
-	gatesMu  sync.Mutex
-	gates    map[string]*invocationGate
+	routes *RouteRegistry
 }
 
-type invocationGate struct {
-	mu      sync.Mutex
-	waiters int
-	slot    chan struct{}
-}
-
-func NewConnectorBroker(commands *CommandRegistry) (*ConnectorBroker, error) {
-	if commands == nil {
-		return nil, errors.New("connector command registry is required")
+func NewConnectorBroker(routes *RouteRegistry) (*ConnectorBroker, error) {
+	if routes == nil {
+		return nil, errors.New("connector route registry is required")
 	}
-	return &ConnectorBroker{commands: commands, gates: make(map[string]*invocationGate)}, nil
+	return &ConnectorBroker{routes: routes}, nil
 }
 
 func (broker *ConnectorBroker) Available() ([]ConnectorSummary, error) {
-	routes := broker.commands.Routes()
+	routes := broker.routes.Routes()
 	connectors := make([]ConnectorSummary, 0, len(routes))
 	for _, route := range routes {
-		descriptor, err := loadConnectorDescriptor(route.InstalledRoot)
-		if err != nil {
-			return nil, command.ServiceUnavailable("load Connector description", err)
+		var skills []connectorSkill
+		var err error
+		if strings.TrimSpace(route.InstalledRoot) != "" {
+			skills, err = loadConnectorSkills(route.InstalledRoot)
+			if err != nil {
+				return nil, command.ServiceUnavailable("load Connector Skills", err)
+			}
 		}
-		skills, err := loadConnectorSkills(route.InstalledRoot)
-		if err != nil {
-			return nil, command.ServiceUnavailable("load Connector Skills", err)
-		}
-		summaries := make([]SkillSummary, 0, len(skills))
+		summaries := make([]DiscoverableSkillSummary, 0, len(skills))
 		for _, skill := range skills {
-			summaries = append(summaries, skill.SkillSummary)
+			summaries = append(summaries, DiscoverableSkillSummary{Name: skill.Name, Title: skill.Title, Description: skill.Description})
 		}
-		connectors = append(connectors, ConnectorSummary{Key: route.ConnectorKey, Name: descriptor.Name,
-			Description: descriptor.Description, Skills: summaries})
+		interfaces := make([]ConnectorInterfaceSummary, 0, 2)
+		if route.HasMCP {
+			interfaces = append(interfaces, ConnectorInterfaceSummary{Kind: "mcp", ServerName: "connector",
+				ToolPrefix: route.ConnectorKey + "_", Status: "ready"})
+		}
+		if route.CLICommand != "" {
+			interfaces = append(interfaces, ConnectorInterfaceSummary{Kind: "cli", Command: route.CLICommand, Status: "ready"})
+		}
+		connectors = append(connectors, ConnectorSummary{Key: route.ConnectorKey, Name: route.DisplayName,
+			Description: route.Description, Skills: summaries, Interfaces: interfaces})
 	}
 	return connectors, nil
 }
 
 func (broker *ConnectorBroker) RoutingHints() []ConnectorRoutingHint {
-	routes := broker.commands.Routes()
+	routes := broker.routes.Routes()
 	hints := make([]ConnectorRoutingHint, 0, len(routes))
 	for _, route := range routes {
 		skillRoot := activeConnectorSkillRoot(route.InstalledRoot)
@@ -113,180 +116,9 @@ func (broker *ConnectorBroker) RoutingHints() []ConnectorRoutingHint {
 	return hints
 }
 
-func (broker *ConnectorBroker) Skills(connectorKey string) ([]SkillSummary, error) {
-	route, err := broker.activeRoute(connectorKey)
-	if err != nil {
-		return nil, err
-	}
-	skills, err := loadConnectorSkills(route.InstalledRoot)
-	if err != nil {
-		return nil, command.ServiceUnavailable("load Connector Skills", err)
-	}
-	result := make([]SkillSummary, 0, len(skills))
-	for _, skill := range skills {
-		result = append(result, skill.SkillSummary)
-	}
-	return result, nil
-}
-
-func (broker *ConnectorBroker) Capabilities(connectorKey string) ([]CapabilitySummary, error) {
-	connectorKey = strings.TrimSpace(connectorKey)
-	if _, err := broker.activeRoute(connectorKey); err != nil {
-		return nil, err
-	}
-	return broker.commands.CapabilitiesForConnector(connectorKey), nil
-}
-
-func (broker *ConnectorBroker) ReadSkill(connectorKey, skillName string) (Skill, error) {
-	route, err := broker.activeRoute(connectorKey)
-	if err != nil {
-		return Skill{}, err
-	}
-	skills, err := loadConnectorSkills(route.InstalledRoot)
-	if err != nil {
-		return Skill{}, command.ServiceUnavailable("load Connector Skills", err)
-	}
-	for _, skill := range skills {
-		if skill.Name != strings.TrimSpace(skillName) {
-			continue
-		}
-		content, err := os.ReadFile(skill.path)
-		if err != nil {
-			return Skill{}, command.ServiceUnavailable("read Connector Skill", err)
-		}
-		skill.Content = string(content)
-		return skill.Skill, nil
-	}
-	return Skill{}, command.InvalidInput("connector_skill_not_found", "Connector Skill was not found", nil)
-}
-
-func (broker *ConnectorBroker) Invoke(ctx context.Context, connectorKey, capabilityID string,
-	input map[string]any, invokeContext command.InvokeContext) (command.Output, error) {
-	connectorKey = strings.TrimSpace(connectorKey)
-	if _, err := broker.activeRoute(connectorKey); err != nil {
-		return command.Output{}, err
-	}
-	release, err := broker.acquireInvocation(ctx, connectorKey)
-	if err != nil {
-		return command.Output{}, err
-	}
-	defer release()
-	return broker.commands.InvokeConnector(ctx, connectorKey, strings.TrimSpace(capabilityID), command.InvokeRequest{
-		Input: input, Context: invokeContext,
-	})
-}
-
-func (broker *ConnectorBroker) acquireInvocation(ctx context.Context, connectorKey string) (func(), error) {
-	broker.gatesMu.Lock()
-	gate := broker.gates[connectorKey]
-	if gate == nil {
-		gate = &invocationGate{slot: make(chan struct{}, 1)}
-		gate.slot <- struct{}{}
-		broker.gates[connectorKey] = gate
-	}
-	broker.gatesMu.Unlock()
-	gate.mu.Lock()
-	if gate.waiters >= invocationQueueLimit {
-		gate.mu.Unlock()
-		return nil, command.ServiceUnavailable("Connector invocation queue is full", nil)
-	}
-	gate.waiters++
-	gate.mu.Unlock()
-	select {
-	case <-ctx.Done():
-		gate.mu.Lock()
-		gate.waiters--
-		gate.mu.Unlock()
-		return nil, ctx.Err()
-	case <-gate.slot:
-		gate.mu.Lock()
-		gate.waiters--
-		gate.mu.Unlock()
-		return func() { gate.slot <- struct{}{} }, nil
-	}
-}
-
-func (broker *ConnectorBroker) activeRoute(connectorKey string) (RouteDescriptor, error) {
-	connectorKey = strings.TrimSpace(connectorKey)
-	if connectorKey == "" {
-		return RouteDescriptor{}, command.InvalidInput("connector_key_required", "connector is required", nil)
-	}
-	for _, route := range broker.commands.Routes() {
-		if route.ConnectorKey == connectorKey {
-			return route, nil
-		}
-	}
-	return RouteDescriptor{}, command.ServiceUnavailable("Connector runtime is not active", nil)
-}
-
-type installedConnectorManifest struct {
-	Name        json.RawMessage `json:"name"`
-	Description json.RawMessage `json:"description"`
-}
-
-type connectorDescriptor struct {
-	Name        string
-	Description string
-}
-
 type connectorSkill struct {
 	Skill
 	path string
-}
-
-func loadConnectorDescriptor(root string) (connectorDescriptor, error) {
-	manifest, err := loadInstalledConnectorManifest(root)
-	if err != nil {
-		return connectorDescriptor{}, err
-	}
-	name, err := connectorLocalizedText(manifest.Name)
-	if err != nil {
-		return connectorDescriptor{}, fmt.Errorf("connector name: %w", err)
-	}
-	description, err := connectorLocalizedText(manifest.Description)
-	if err != nil {
-		return connectorDescriptor{}, fmt.Errorf("connector description: %w", err)
-	}
-	return connectorDescriptor{Name: name, Description: description}, nil
-}
-
-func loadInstalledConnectorManifest(root string) (installedConnectorManifest, error) {
-	manifestBytes, err := os.ReadFile(filepath.Join(root, "tutti.connector.json"))
-	if err != nil {
-		return installedConnectorManifest{}, err
-	}
-	var manifest installedConnectorManifest
-	if err := json.Unmarshal(manifestBytes, &manifest); err != nil {
-		return installedConnectorManifest{}, err
-	}
-	return manifest, nil
-}
-
-func connectorLocalizedText(raw json.RawMessage) (string, error) {
-	var text string
-	if err := json.Unmarshal(raw, &text); err == nil && strings.TrimSpace(text) != "" {
-		return strings.TrimSpace(text), nil
-	}
-	var localized map[string]string
-	if err := json.Unmarshal(raw, &localized); err != nil {
-		return "", err
-	}
-	for _, locale := range []string{"en-US", "en", "zh-CN"} {
-		if value := strings.TrimSpace(localized[locale]); value != "" {
-			return value, nil
-		}
-	}
-	locales := make([]string, 0, len(localized))
-	for locale := range localized {
-		locales = append(locales, locale)
-	}
-	sort.Strings(locales)
-	for _, locale := range locales {
-		if value := strings.TrimSpace(localized[locale]); value != "" {
-			return value, nil
-		}
-	}
-	return "", errors.New("localized text is empty")
 }
 
 func loadConnectorSkills(root string) ([]connectorSkill, error) {

@@ -176,6 +176,9 @@ func (s *Service) cleanupRuntimeWithOptions(
 	if s.ModelGateway != nil {
 		s.ModelGateway.Unregister(ctx, workspaceID, agentSessionID)
 	}
+	if s.ConnectorMCPRevoke != nil {
+		s.ConnectorMCPRevoke(workspaceID, agentSessionID)
+	}
 	return runtimeErr
 }
 

@@ -424,9 +424,33 @@ type RuntimePreparationInput struct {
 type PreparedRuntime struct {
 	Cwd               string
 	Env               []string
+	MCPServers        []MCPServerBinding
 	ProviderTargetRef map[string]any
 	Settings          *ComposerSettings
 	RuntimeContext    map[string]any
+}
+
+type MCPServerBinding struct {
+	Name    string
+	Type    string
+	URL     string
+	Headers map[string]string
+}
+
+func cloneHostMCPServerBindings(input []MCPServerBinding) []MCPServerBinding {
+	if len(input) == 0 {
+		return nil
+	}
+	result := make([]MCPServerBinding, 0, len(input))
+	for _, binding := range input {
+		headers := make(map[string]string, len(binding.Headers))
+		for key, value := range binding.Headers {
+			headers[key] = value
+		}
+		binding.Headers = headers
+		result = append(result, binding)
+	}
+	return result
 }
 
 type RuntimeCleanupInput struct {

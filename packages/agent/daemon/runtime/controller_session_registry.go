@@ -95,6 +95,7 @@ func (c *Controller) CanResume(input ResumeInput) bool {
 		ProviderSessionID: strings.TrimSpace(input.ProviderSessionID),
 		CWD:               strings.TrimSpace(input.CWD),
 		Env:               append([]string(nil), input.Env...),
+		MCPServers:        cloneMCPServerBindings(input.MCPServers),
 		Status:            normalizeSessionStatus(input.Status),
 		Title:             strings.TrimSpace(input.Title),
 		Visible:           sessionVisible(input.Visible),

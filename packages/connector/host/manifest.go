@@ -23,6 +23,8 @@ const (
 
 var connectorKeyPattern = regexp.MustCompile(`^[a-z0-9](?:[a-z0-9._-]{0,126}[a-z0-9])?$`)
 var artifactSHA256Pattern = regexp.MustCompile(`^[a-f0-9]{64}$`)
+var remoteBindingRefPattern = regexp.MustCompile(`^[a-z0-9]+(?:[.-][a-z0-9]+)*$`)
+var remoteBindingContractHashPattern = regexp.MustCompile(`^sha256:[a-f0-9]{64}$`)
 var manifestIdentifierPattern = regexp.MustCompile(`^[a-z][a-z0-9._-]{0,127}$`)
 var permissionScopePattern = regexp.MustCompile(`^[a-z0-9](?:[a-z0-9._-]{0,126}[a-z0-9])?$`)
 var nodePackageNamePattern = regexp.MustCompile(`^(?:@[a-z0-9][a-z0-9._-]{0,126}/)?[a-z0-9][a-z0-9._-]{0,126}$`)
@@ -180,6 +182,9 @@ func validateManifestShape(manifest Manifest, validateIcon bool) error {
 		}
 		if err := validateRemoteStreamableHTTP(*remote); err != nil {
 			return err
+		}
+		if len(manifest.RequiredCapabilities) != 1 || manifest.RequiredCapabilities[0] != "tools" {
+			return invalidManifest("remote_streamable_http requiredCapabilities must be exactly [tools]", nil)
 		}
 	default:
 		return invalidManifest("implementation.kind is unsupported", nil)
@@ -410,34 +415,17 @@ func validateCLIInstallation(install CLIInstallation, runtime RuntimeRequirement
 }
 
 func validateRemoteStreamableHTTP(remote RemoteStreamableHTTPImplementation) error {
-	endpoint, err := url.Parse(strings.TrimSpace(remote.Endpoint))
-	if err != nil || endpoint.Scheme != "https" || endpoint.Host == "" || endpoint.User != nil || endpoint.Fragment != "" {
-		return invalidManifest("remote endpoint must be an absolute https URL without userinfo or fragment", nil)
+	if remote.ProtocolVersion != "2026-07-28" {
+		return invalidManifest("remote protocolVersion must be 2026-07-28", nil)
 	}
-	host := strings.ToLower(endpoint.Hostname())
-	if net.ParseIP(host) != nil || len(remote.AllowedHosts) == 0 {
-		return invalidManifest("remote endpoint must use an allowlisted DNS hostname", nil)
+	if !remoteBindingRefPattern.MatchString(remote.BindingRef) {
+		return invalidManifest("remote bindingRef must be a stable lowercase identifier", nil)
 	}
-	found := false
-	for _, allowed := range remote.AllowedHosts {
-		if strings.ToLower(strings.TrimSpace(allowed)) == host {
-			found = true
-		}
-		if net.ParseIP(strings.TrimSpace(allowed)) != nil {
-			return invalidManifest("remote allowedHosts must not contain IP literals", nil)
-		}
+	if remote.ContractVersion != 1 {
+		return invalidManifest("remote contractVersion must be 1", nil)
 	}
-	if !found {
-		return invalidManifest("remote endpoint hostname must appear exactly in allowedHosts", nil)
-	}
-	if remote.Authentication.Type != "none" && remote.Authentication.Type != "host_session" {
-		return invalidManifest("remote authentication type must be none or host_session", nil)
-	}
-	if remote.Limits.TimeoutMS < 100 || remote.Limits.TimeoutMS > 120_000 {
-		return invalidManifest("remote timeoutMs must be between 100 and 120000", nil)
-	}
-	if remote.Limits.MaxResponseBytes < 1 || remote.Limits.MaxResponseBytes > 10*1024*1024 {
-		return invalidManifest("remote maxResponseBytes must be between 1 and 10485760", nil)
+	if !remoteBindingContractHashPattern.MatchString(remote.BindingContractHash) {
+		return invalidManifest("remote bindingContractHash must be a prefixed lowercase SHA-256", nil)
 	}
 	return nil
 }

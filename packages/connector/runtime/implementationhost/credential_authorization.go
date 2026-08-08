@@ -360,7 +360,7 @@ func (host *Host) buildAuthorizationRoute(ctx context.Context, connectionID stri
 	route := &connectorRoute{
 		id: connectorRouteKey(connectionID, connector.Key), connectionID: connectionID,
 		connectorKey: connector.Key, releaseDigest: connector.Release.ReleaseDigest,
-		generation: runtimeRequest.Generation, capabilities: make(map[string]connectorCommand),
+		generation: runtimeRequest.Generation, mcpTools: make(map[string]registeredMCPTool),
 		processes: connectorruntime.NewProcessGroup(), userHome: plan.UserHome,
 		executionRoot: executionRoot, installedRoot: installedRoot, snapshots: host.snapshots,
 	}
@@ -368,7 +368,7 @@ func (host *Host) buildAuthorizationRoute(ctx context.Context, connectionID stri
 		_ = route.Close(time.Now().Add(3 * time.Second))
 		return nil, errors.New("managed connector authorization requires a CLI credential broker")
 	}
-	if err := host.attachCLI(route, plan.Managed, prepared, plan.InstalledCLI, plan.Executable, plan.StateDir, plan.UserHome, plan.ArtifactTrees); err != nil {
+	if err := host.attachCLI(route, plan.Managed, prepared, plan.InstalledCLI, plan.Executable, plan.StateDir, plan.ArtifactTrees); err != nil {
 		_ = route.Close(time.Now().Add(3 * time.Second))
 		return nil, err
 	}

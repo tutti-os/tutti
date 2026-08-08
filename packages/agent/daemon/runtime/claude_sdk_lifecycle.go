@@ -85,6 +85,7 @@ func (a *ClaudeCodeSDKAdapter) Start(ctx context.Context, session Session) ([]ac
 		"permissionModeId":  session.PermissionModeID,
 		"settings":          claudeSDKSessionSettingsPayload(session),
 		"resumeCursor":      claudeSDKResumeCursorFromSession(session),
+		"mcpServers":        claudeSDKMCPServers(session.MCPServers),
 	}
 	for key, value := range claudeCodeSDKStartOptions(session) {
 		startPayload[key] = value
@@ -151,6 +152,22 @@ func (a *ClaudeCodeSDKAdapter) Start(ctx context.Context, session Session) ([]ac
 			return nil, errors.New(payloadString(event.Payload, "error"))
 		}
 	}
+}
+
+func claudeSDKMCPServers(bindings []MCPServerBinding) map[string]any {
+	result := make(map[string]any)
+	for _, binding := range bindings {
+		name := strings.TrimSpace(binding.Name)
+		if name == "" || strings.TrimSpace(binding.Type) != "http" || strings.TrimSpace(binding.URL) == "" {
+			continue
+		}
+		headers := make(map[string]string, len(binding.Headers))
+		for key, value := range binding.Headers {
+			headers[key] = value
+		}
+		result[name] = map[string]any{"type": "http", "url": binding.URL, "headers": headers}
+	}
+	return result
 }
 
 func (a *ClaudeCodeSDKAdapter) Resume(ctx context.Context, session Session) error {

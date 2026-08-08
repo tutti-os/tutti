@@ -68,6 +68,46 @@ func (application *Application) ObserveAuthorization(
 	return application.ReconcileRuntime(ctx, mutation)
 }
 
+func (application *Application) projectAuthorizationAndScheduleRuntime(
+	ctx context.Context,
+	scope OperationScope,
+	connectorKey, connectionID string,
+	state AuthorizationState,
+	failureCode string,
+) error {
+	if application.config.AuthorizationProjections == nil || strings.TrimSpace(scope.AccountID) == "" {
+		return nil
+	}
+	connectionID = strings.TrimSpace(connectionID)
+	if state == AuthorizationStateConnected && connectionID == "" {
+		return invalidOperationReceipt("connected authorization did not provide a connection id")
+	}
+	snapshot, err := application.Snapshot(ctx)
+	if err != nil {
+		return err
+	}
+	requestID, err := application.config.NewID()
+	if err != nil {
+		return err
+	}
+	_, err = application.ObserveAuthorization(ctx, ConnectorMutation{
+		Mutation: Mutation{
+			ClientRequestID:  "authorization-projection/" + requestID,
+			ExpectedRevision: snapshot.Revision,
+		},
+		ConnectorKey: strings.TrimSpace(connectorKey),
+		AccountID:    strings.TrimSpace(scope.AccountID),
+	}, AuthorizationProjection{
+		AccountID:    strings.TrimSpace(scope.AccountID),
+		ConnectorKey: strings.TrimSpace(connectorKey),
+		ConnectionID: connectionID,
+		State:        state,
+		FailureCode:  strings.TrimSpace(failureCode),
+		UpdatedAt:    application.config.Now().UTC(),
+	})
+	return err
+}
+
 func (application *Application) ReconcileInstalledRuntimes(ctx context.Context) error {
 	return application.ReconcileInstalledRuntimesForScope(ctx, OperationScope{})
 }

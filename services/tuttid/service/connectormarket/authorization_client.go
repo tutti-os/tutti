@@ -81,6 +81,10 @@ func (client *ConnectorAuthorizationClient) Begin(ctx context.Context, request m
 		session.AuthorizationURL = response.Session.NextAction.URL
 	case "submit_secret":
 		if authorizationSessionSucceeded(response.Session.Status) {
+			session.ConnectionID = strings.TrimSpace(response.Session.ResultConnectionID)
+			if session.ConnectionID == "" {
+				return market.AuthorizationSession{}, errors.New("connector secret authorization completed without a connection id")
+			}
 			session.State = market.AuthorizationStateConnected
 			return session, nil
 		}
@@ -94,6 +98,10 @@ func (client *ConnectorAuthorizationClient) Begin(ctx context.Context, request m
 		}
 		if completed.Session.SessionID != response.Session.SessionID || strings.TrimSpace(completed.Session.ConnectorRevision) != connectorVersion || !authorizationSessionSucceeded(completed.Session.Status) {
 			return market.AuthorizationSession{}, errors.New("connector secret authorization did not complete")
+		}
+		session.ConnectionID = strings.TrimSpace(completed.Session.ResultConnectionID)
+		if session.ConnectionID == "" {
+			return market.AuthorizationSession{}, errors.New("connector secret authorization completed without a connection id")
 		}
 		session.State = market.AuthorizationStateConnected
 	default:
@@ -129,8 +137,9 @@ func (client *ConnectorAuthorizationClient) Disconnect(ctx context.Context, requ
 func (client *ConnectorAuthorizationClient) Observe(ctx context.Context, request market.AuthorizationObserveRequest) (market.AuthorizationObservation, error) {
 	var response struct {
 		Session struct {
-			Status    string `json:"status"`
-			ErrorCode string `json:"errorCode"`
+			Status             string `json:"status"`
+			ErrorCode          string `json:"errorCode"`
+			ResultConnectionID string `json:"resultConnectionId"`
 		} `json:"session"`
 	}
 	path := "/v1/connector-authorization-sessions/" + url.PathEscape(strings.TrimSpace(request.Session.SessionID))
@@ -140,7 +149,11 @@ func (client *ConnectorAuthorizationClient) Observe(ctx context.Context, request
 	status := strings.ToUpper(strings.TrimSpace(response.Session.Status))
 	switch {
 	case strings.HasSuffix(status, "_SUCCEEDED") || status == "SUCCEEDED":
-		return market.AuthorizationObservation{State: market.AuthorizationObservationConnected}, nil
+		connectionID := strings.TrimSpace(response.Session.ResultConnectionID)
+		if connectionID == "" {
+			return market.AuthorizationObservation{}, errors.New("connector authorization observation completed without a connection id")
+		}
+		return market.AuthorizationObservation{State: market.AuthorizationObservationConnected, ConnectionID: connectionID}, nil
 	case strings.HasSuffix(status, "_FAILED") || status == "FAILED":
 		return market.AuthorizationObservation{State: market.AuthorizationObservationFailed, FailureCode: strings.TrimSpace(response.Session.ErrorCode)}, nil
 	case strings.HasSuffix(status, "_CREATED"), strings.HasSuffix(status, "_AWAITING_USER"), strings.HasSuffix(status, "_PROCESSING"),
@@ -233,10 +246,11 @@ func (client *ConnectorAuthorizationClient) doJSON(ctx context.Context, method, 
 
 type connectorAuthorizationSessionReply struct {
 	Session struct {
-		SessionID         string `json:"sessionId"`
-		ConnectorRevision string `json:"connectorRevision"`
-		Status            string `json:"status"`
-		NextAction        struct {
+		SessionID          string `json:"sessionId"`
+		ConnectorRevision  string `json:"connectorRevision"`
+		Status             string `json:"status"`
+		ResultConnectionID string `json:"resultConnectionId"`
+		NextAction         struct {
 			Type string `json:"type"`
 			URL  string `json:"url"`
 		} `json:"nextAction"`

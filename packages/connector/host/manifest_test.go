@@ -67,6 +67,27 @@ func TestValidateManifestShapeValidatesAgentRoutingAliases(t *testing.T) {
 	}
 }
 
+func TestValidateManifestShapeAcceptsBindingOnlyRemoteMCPContract(t *testing.T) {
+	manifest := Manifest{
+		SchemaVersion: "1", DisplayName: "Tencent Docs", IconURL: testConnectorIconURL,
+		AuthorizationKind: "api_key", RequiredCapabilities: []string{"tools"},
+		Implementation: Implementation{
+			Kind: ImplementationKindRemoteStreamableHTTP,
+			RemoteStreamableHTTP: &RemoteStreamableHTTPImplementation{
+				ProtocolVersion: "2026-07-28", BindingRef: "tencent-docs.primary", ContractVersion: 1,
+				BindingContractHash: "sha256:" + strings.Repeat("a", 64),
+			},
+		},
+	}
+	if err := ValidateManifestShape(manifest); err != nil {
+		t.Fatal(err)
+	}
+	manifest.Implementation.RemoteStreamableHTTP.BindingRef = "https://docs.qq.com/openapi/mcp"
+	if err := ValidateManifestShape(manifest); err == nil || !strings.Contains(err.Error(), "bindingRef") {
+		t.Fatalf("endpoint-shaped bindingRef error = %v", err)
+	}
+}
+
 func TestManagedCredentialBrokerRequiresConnectorOwnedEntrypointAndAllowedHosts(t *testing.T) {
 	manifest := Manifest{SchemaVersion: "1", DisplayName: "Example", IconURL: testConnectorIconURL, AuthorizationKind: "oauth2",
 		Implementation: Implementation{Kind: ImplementationKindManagedStdio, ManagedStdio: &ManagedStdioImplementation{

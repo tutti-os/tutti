@@ -726,7 +726,7 @@ func (h *Host) sessionForkRuntimeSource(
 		ID: session.ID, WorkspaceID: session.WorkspaceID, UserID: session.UserID,
 		AgentTargetID: session.AgentTargetID, Provider: session.Provider,
 		ProviderSessionID: session.ProviderSessionID, Resumable: true,
-		Cwd: prepared.Cwd, Env: append([]string(nil), prepared.Env...),
+		Cwd: prepared.Cwd, Env: append([]string(nil), prepared.Env...), MCPServers: cloneHostMCPServerBindings(prepared.MCPServers),
 		ProviderTargetRef: cloneMap(prepared.ProviderTargetRef), Settings: &settings,
 		RuntimeContext: cloneMap(firstMap(
 			prepared.RuntimeContext,
@@ -740,6 +740,7 @@ func (h *Host) sessionForkRuntimeSource(
 
 func cloneSessionForkRuntimeSource(source ProviderRuntimeSession) ProviderRuntimeSession {
 	source.Env = append([]string(nil), source.Env...)
+	source.MCPServers = cloneHostMCPServerBindings(source.MCPServers)
 	source.ProviderTargetRef = cloneMap(source.ProviderTargetRef)
 	source.RuntimeContext = cloneMap(source.RuntimeContext)
 	if source.Settings != nil {

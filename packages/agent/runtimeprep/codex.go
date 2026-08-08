@@ -368,6 +368,10 @@ func ensureCodexSessionConfig(configPath string, input PrepareInput) error {
 		next = planNext
 		changed = true
 	}
+	if mcpNext, mcpChanged := codexConfigWithConnectorMCP(next, input.MCPServers); mcpChanged {
+		next = mcpNext
+		changed = true
+	}
 	// Tutti launches the Codex app-server from the non-elevated desktop daemon.
 	// On Windows, the elevated sandbox implementation invokes a separate setup
 	// helper through ShellExecuteExW, which requires an interactive UAC consent

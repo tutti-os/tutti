@@ -370,14 +370,21 @@ func (application *Application) ReconcileAuthorizations(ctx context.Context) err
 	if err != nil {
 		return err
 	}
-	sessions := make(map[string]AuthorizationSession)
+	type authorizationReconcileCandidate struct {
+		session AuthorizationSession
+		scope   OperationScope
+	}
+	sessions := make(map[string]authorizationReconcileCandidate)
 	updated := make(map[string]time.Time)
 	for _, operation := range operations {
 		if operation.Execution.AuthorizationSession == nil {
 			continue
 		}
 		if previous, exists := updated[operation.ConnectorKey]; !exists || operation.UpdatedAt.After(previous) {
-			sessions[operation.ConnectorKey] = *operation.Execution.AuthorizationSession
+			sessions[operation.ConnectorKey] = authorizationReconcileCandidate{
+				session: *operation.Execution.AuthorizationSession,
+				scope:   operation.Scope,
+			}
 			updated[operation.ConnectorKey] = operation.UpdatedAt
 		}
 	}
@@ -386,11 +393,11 @@ func (application *Application) ReconcileAuthorizations(ctx context.Context) err
 		if connector.Authorization.State != AuthorizationStatePending {
 			continue
 		}
-		session, exists := sessions[connector.Key]
+		candidate, exists := sessions[connector.Key]
 		if !exists {
 			continue
 		}
-		observation, observeErr := observer.Observe(ctx, AuthorizationObserveRequest{Connector: connector, Session: session})
+		observation, observeErr := observer.Observe(ctx, AuthorizationObserveRequest{Connector: connector, Session: candidate.session})
 		if observeErr != nil {
 			reconcileErr = errors.Join(reconcileErr, observeErr)
 			continue
@@ -403,6 +410,15 @@ func (application *Application) ReconcileAuthorizations(ctx context.Context) err
 			continue
 		}
 		if err := application.completeAuthorizationObservation(ctx, connector.Key, observation); err != nil {
+			reconcileErr = errors.Join(reconcileErr, err)
+			continue
+		}
+		projectionState := AuthorizationStateConnected
+		if observation.State == AuthorizationObservationFailed {
+			projectionState = AuthorizationStateFailed
+		}
+		if err := application.projectAuthorizationAndScheduleRuntime(ctx, candidate.scope, connector.Key,
+			observation.ConnectionID, projectionState, observation.FailureCode); err != nil {
 			reconcileErr = errors.Join(reconcileErr, err)
 		}
 	}

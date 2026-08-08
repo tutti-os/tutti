@@ -31,7 +31,7 @@ func TestConnectorAuthorizationClientStartsAccountScopedSession(t *testing.T) {
 			}
 			_, _ = response.Write([]byte(`{"session":{"sessionId":"auth-1","connectorRevision":"1.0.0","nextAction":{"type":"redirect","url":"https://auth.example/connect"}}}`))
 		case "/api/desktop/v1/connector-authorization-sessions/auth-1":
-			_, _ = response.Write([]byte(`{"session":{"status":"CONNECTOR_AUTHORIZATION_SESSION_STATUS_SUCCEEDED"}}`))
+			_, _ = response.Write([]byte(`{"session":{"status":"CONNECTOR_AUTHORIZATION_SESSION_STATUS_SUCCEEDED","resultConnectionId":"connection-oauth-1"}}`))
 		default:
 			http.NotFound(response, request)
 		}
@@ -59,7 +59,7 @@ func TestConnectorAuthorizationClientStartsAccountScopedSession(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if observation.State != market.AuthorizationObservationConnected {
+	if observation.State != market.AuthorizationObservationConnected || observation.ConnectionID != "connection-oauth-1" {
 		t.Fatalf("observation = %#v", observation)
 	}
 }
@@ -81,7 +81,7 @@ func TestConnectorAuthorizationClientSubmitsNativeSecretWithoutPersistingItInSes
 			if err := json.NewDecoder(request.Body).Decode(&body); err != nil || body.Secret.Secret != token {
 				t.Fatalf("complete body = %#v, %v", body, err)
 			}
-			_, _ = response.Write([]byte(`{"session":{"sessionId":"auth-secret-1","connectorRevision":"2.0.0","status":"CONNECTOR_AUTHORIZATION_SESSION_STATUS_SUCCEEDED"}}`))
+			_, _ = response.Write([]byte(`{"session":{"sessionId":"auth-secret-1","connectorRevision":"2.0.0","status":"CONNECTOR_AUTHORIZATION_SESSION_STATUS_SUCCEEDED","resultConnectionId":"connection-secret-1"}}`))
 		default:
 			http.NotFound(response, request)
 		}
@@ -102,7 +102,7 @@ func TestConnectorAuthorizationClientSubmitsNativeSecretWithoutPersistingItInSes
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.SessionID != "auth-secret-1" || result.ActionType != "submit_secret" || result.AuthorizationURL != "" {
+	if result.SessionID != "auth-secret-1" || result.ActionType != "submit_secret" || result.AuthorizationURL != "" || result.ConnectionID != "connection-secret-1" {
 		t.Fatalf("result = %#v", result)
 	}
 	for i, value := range secret {

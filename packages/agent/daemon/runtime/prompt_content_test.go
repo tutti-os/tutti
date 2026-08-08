@@ -77,7 +77,7 @@ func TestNormalizeRuntimePromptContentPreservesURLOnlyImage(t *testing.T) {
 	}
 }
 
-func TestProjectRuntimeConnectorPromptContentUsesTuttiBroker(t *testing.T) {
+func TestProjectRuntimeConnectorPromptContentUsesNativeInterfaces(t *testing.T) {
 	content := normalizeRuntimePromptContent([]PromptContentBlock{
 		{Type: "text", Text: "list my calendar events"},
 		{Type: "connector", ConnectorKey: " lark-cli "},
@@ -87,13 +87,11 @@ func TestProjectRuntimeConnectorPromptContentUsesTuttiBroker(t *testing.T) {
 		t.Fatalf("projected content = %#v, want instruction and user text", projected)
 	}
 	if projected[0].Type != "text" || !strings.Contains(projected[0].Text, "lark-cli") ||
-		!strings.Contains(projected[0].Text, "connector-owned native Skill") ||
-		!strings.Contains(projected[0].Text, "entryPath") ||
-		!strings.Contains(projected[0].Text, "connector skill read") ||
-		!strings.Contains(projected[0].Text, "compatibility fallback") ||
-		!strings.Contains(projected[0].Text, "connector invoke") ||
-		!strings.Contains(projected[0].Text, "Never read or run a similarly named user-global") ||
-		!strings.Contains(projected[0].Text, "CLI `skills read`") {
+		!strings.Contains(projected[0].Text, "connector-owned Skills") ||
+		!strings.Contains(projected[0].Text, "provider's native Skill system") ||
+		!strings.Contains(projected[0].Text, "injected `connector` MCP server") ||
+		!strings.Contains(projected[0].Text, "normal shell") ||
+		!strings.Contains(projected[0].Text, "Never use a similarly named user-global") {
 		t.Fatalf("connector instruction = %#v", projected[0])
 	}
 	if projected[1].Text != "list my calendar events" {

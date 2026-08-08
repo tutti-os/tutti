@@ -146,6 +146,7 @@ func (api DaemonAPI) InstallConnectorMarketConnector(
 	if err != nil {
 		return tuttigenerated.InstallConnectorMarketConnector400JSONResponse{ConnectorMarketInvalidRequestErrorJSONResponse: invalidConnectorMarketResponse(connectorMarketErrorPayload(err))}, nil
 	}
+	mutation.AccountID = api.connectorMarketAccountID()
 	result, err := api.ConnectorMarketService.Install(ctx, mutation)
 	if err != nil {
 		payload, status := connectorMarketError(err)
@@ -180,6 +181,7 @@ func (api DaemonAPI) UninstallConnectorMarketConnector(
 	if err != nil {
 		return tuttigenerated.UninstallConnectorMarketConnector400JSONResponse{ConnectorMarketInvalidRequestErrorJSONResponse: invalidConnectorMarketResponse(connectorMarketErrorPayload(err))}, nil
 	}
+	mutation.AccountID = api.connectorMarketAccountID()
 	result, err := api.ConnectorMarketService.Uninstall(ctx, mutation)
 	if err != nil {
 		payload, status := connectorMarketError(err)
@@ -212,6 +214,7 @@ func (api DaemonAPI) StartConnectorMarketAuthorization(
 	if err != nil {
 		return tuttigenerated.StartConnectorMarketAuthorization400JSONResponse{ConnectorMarketInvalidRequestErrorJSONResponse: invalidConnectorMarketResponse(connectorMarketErrorPayload(err))}, nil
 	}
+	mutation.AccountID = api.connectorMarketAccountID()
 	defer clear(secret)
 	result, err := api.ConnectorMarketService.BeginAuthorization(ctx, mutation, secret)
 	if err != nil {
@@ -245,6 +248,7 @@ func (api DaemonAPI) DisconnectConnectorMarketAuthorization(
 	if err != nil {
 		return tuttigenerated.DisconnectConnectorMarketAuthorization400JSONResponse{ConnectorMarketInvalidRequestErrorJSONResponse: invalidConnectorMarketResponse(connectorMarketErrorPayload(err))}, nil
 	}
+	mutation.AccountID = api.connectorMarketAccountID()
 	result, err := api.ConnectorMarketService.DisconnectAuthorization(ctx, mutation)
 	if err != nil {
 		payload, status := connectorMarketError(err)
@@ -333,6 +337,13 @@ func connectorMarketAuthorizationMutation(
 
 func invalidConnectorMarketRequest() error {
 	return market.NewDomainError(market.ErrorCodeInvalidRequest, "connector market request is invalid", false, nil)
+}
+
+func (api DaemonAPI) connectorMarketAccountID() string {
+	if api.ConnectorMarketScope == nil {
+		return ""
+	}
+	return api.ConnectorMarketScope().AccountID
 }
 
 func projectConnectorMarket[T any](value any) (T, error) {

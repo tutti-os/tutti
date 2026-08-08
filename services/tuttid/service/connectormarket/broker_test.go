@@ -2,9 +2,9 @@ package connectormarket
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 
 	market "github.com/tutti-os/tutti/packages/connector/host"
@@ -12,7 +12,7 @@ import (
 	cliservice "github.com/tutti-os/tutti/services/tuttid/service/cli"
 )
 
-func TestConnectorBrokerAdaptsPublicDiscoverySkillsAndInvocation(t *testing.T) {
+func TestConnectorBrokerExposesOnlyNativeConnectorDiscovery(t *testing.T) {
 	host, commands, connector, generation := testCLIHost(t, &connectorProcessStub{})
 	connector.Release.Manifest.AgentRouting = &market.AgentRouting{Aliases: []string{"飞书", "Feishu"}}
 	root := host.artifacts.(preparedResolverStub).receipt.PreparedPath
@@ -34,7 +34,7 @@ func TestConnectorBrokerAdaptsPublicDiscoverySkillsAndInvocation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if capabilities := broker.Capabilities(context.Background(), cliservice.InvokeContext{}); len(capabilities) != 5 {
+	if capabilities := broker.Capabilities(context.Background(), cliservice.InvokeContext{}); len(capabilities) != 1 || capabilities[0].ID != connectorAvailableCommandID {
 		t.Fatalf("broker capabilities = %#v", capabilities)
 	}
 	available, err := broker.Invoke(context.Background(), cliservice.InvokeRequest{CommandID: connectorAvailableCommandID})
@@ -42,9 +42,10 @@ func TestConnectorBrokerAdaptsPublicDiscoverySkillsAndInvocation(t *testing.T) {
 		t.Fatal(err)
 	}
 	connectors, ok := available.Value["connectors"].([]implementationhost.ConnectorSummary)
-	if !ok || len(connectors) != 1 || connectors[0].Name != "Demo Package" || len(connectors[0].Skills) != 1 ||
+	if !ok || len(connectors) != 1 || connectors[0].Name != connector.Release.Manifest.DisplayName || len(connectors[0].Skills) != 1 ||
 		connectors[0].Skills[0].Name != "run-diagnostic" || connectors[0].Skills[0].Description != "Run one diagnostic." ||
-		connectors[0].Skills[0].EntryPath != filepath.Join(skillDir, "SKILL.md") || connectors[0].Skills[0].BasePath != skillDir {
+		len(connectors[0].Interfaces) != 1 || connectors[0].Interfaces[0].Kind != "cli" ||
+		connectors[0].Interfaces[0].Command != "tutti-connector-github" {
 		t.Fatalf("available = %#v", available.Value)
 	}
 	hints := broker.RoutingHints()
@@ -56,47 +57,21 @@ func TestConnectorBrokerAdaptsPublicDiscoverySkillsAndInvocation(t *testing.T) {
 	if got := broker.RoutingHints()[0].Aliases[0]; got != "飞书" {
 		t.Fatalf("routing aliases leaked mutable route state: %q", got)
 	}
-	discovered, err := broker.Invoke(context.Background(), cliservice.InvokeRequest{CommandID: connectorCapabilitiesCommandID,
-		Input: map[string]any{"connector": "github"}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	capabilities, ok := discovered.Value["capabilities"].([]implementationhost.CapabilitySummary)
-	if !ok || len(capabilities) != 1 || capabilities[0].ID != "connector.github.cli.status" ||
-		capabilities[0].Kind != "cli" || capabilities[0].Name != "status" || capabilities[0].InputSchema["type"] != "object" {
-		t.Fatalf("capabilities = %#v", discovered.Value)
-	}
-	skills, err := broker.Invoke(context.Background(), cliservice.InvokeRequest{CommandID: connectorSkillsCommandID,
-		Input: map[string]any{"connector": "github"}})
-	if err != nil || len(skills.Value["skills"].([]implementationhost.SkillSummary)) != 1 {
-		t.Fatalf("skills = %#v err = %v", skills.Value, err)
-	}
-	read, err := broker.Invoke(context.Background(), cliservice.InvokeRequest{CommandID: connectorSkillReadCommandID,
-		Input: map[string]any{"connector": "github", "skill": "run-diagnostic"}})
-	if err != nil || !strings.Contains(read.Value["content"].(string), "Use the broker") {
-		t.Fatalf("read = %#v err = %v", read.Value, err)
-	}
-	invoked, err := broker.Invoke(context.Background(), cliservice.InvokeRequest{CommandID: connectorInvokeCommandID,
-		Input: map[string]any{"connector": "github", "capability": "connector.github.cli.status", "input-json": `{}`}})
-	if err != nil || invoked.Value["ok"] != true {
-		t.Fatalf("invoke = %#v err = %v", invoked.Value, err)
-	}
-	_, err = broker.Invoke(context.Background(), cliservice.InvokeRequest{CommandID: connectorInvokeCommandID,
-		Input: map[string]any{"connector": "github", "capability": "status", "input-json": `{}`}})
-	if got := cliservice.InvokeErrorReason(err); got != "connector_capability_not_found" {
-		t.Fatalf("short capability id error = %q, want connector_capability_not_found: %v", got, err)
+	for _, removed := range []string{"connector.capabilities", "connector.skills", "connector.skill.read", "connector.invoke"} {
+		if _, invokeErr := broker.Invoke(context.Background(), cliservice.InvokeRequest{CommandID: removed}); !errors.Is(invokeErr, cliservice.ErrCommandNotFound) {
+			t.Fatalf("removed command %q error = %v", removed, invokeErr)
+		}
 	}
 }
 
 func TestConnectorBrokerRejectsInactiveConnector(t *testing.T) {
-	broker, err := NewConnectorBroker(NewConnectorCommandRegistry())
+	broker, err := NewConnectorBroker(NewConnectorRuntimeRegistry())
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = broker.Invoke(context.Background(), cliservice.InvokeRequest{CommandID: connectorSkillsCommandID,
-		Input: map[string]any{"connector": "demo"}})
-	if err == nil || !strings.Contains(err.Error(), "runtime is not active") {
-		t.Fatalf("inactive connector error = %v", err)
+	available, err := broker.Invoke(context.Background(), cliservice.InvokeRequest{CommandID: connectorAvailableCommandID})
+	if err != nil || len(available.Value["connectors"].([]implementationhost.ConnectorSummary)) != 0 {
+		t.Fatalf("inactive connector available = %#v, error = %v", available.Value, err)
 	}
 	if hints := broker.RoutingHints(); len(hints) != 0 {
 		t.Fatalf("inactive routing hints = %#v", hints)

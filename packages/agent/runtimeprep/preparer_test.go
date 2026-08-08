@@ -1279,6 +1279,18 @@ func TestCodexConfigWithProjectRootMarkersDisabledKeepsExistingEmptyMarkers(t *t
 	}
 }
 
+func TestCodexConfigWithConnectorMCPReplacesReservedServerAndPreservesCustomServers(t *testing.T) {
+	input := "[mcp_servers.connector]\nurl = \"http://old\"\n\n[mcp_servers.custom]\nurl = \"http://custom\"\n"
+	next, changed := codexConfigWithConnectorMCP(input, []MCPServerBinding{{Name: "connector", Type: "http",
+		URL: "http://127.0.0.1:1234/mcp/connector", Headers: map[string]string{"Authorization": "Bearer session-token"}}})
+	if !changed || strings.Count(next, "[mcp_servers.connector]") != 1 ||
+		!strings.Contains(next, `url = "http://127.0.0.1:1234/mcp/connector"`) ||
+		!strings.Contains(next, `"Authorization" = "Bearer session-token"`) ||
+		!strings.Contains(next, "[mcp_servers.custom]") || strings.Contains(next, "http://old") {
+		t.Fatalf("connector MCP config = %q", next)
+	}
+}
+
 func TestCodexConfigWithSupportedServiceTierSanitizesLegacyValues(t *testing.T) {
 	tests := []struct {
 		name string

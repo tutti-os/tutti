@@ -11,17 +11,16 @@ import (
 	agentruntime "github.com/tutti-os/tutti/packages/agent/daemon/runtime"
 	market "github.com/tutti-os/tutti/packages/connector/host"
 	connectorruntime "github.com/tutti-os/tutti/packages/connector/runtime"
-	"github.com/tutti-os/tutti/packages/connector/runtime/command"
 	implementationhost "github.com/tutti-os/tutti/packages/connector/runtime/implementationhost"
 	runtimemcp "github.com/tutti-os/tutti/packages/connector/runtime/mcp"
-	cliservice "github.com/tutti-os/tutti/services/tuttid/service/cli"
 )
 
 type PreparedArtifactResolver = implementationhost.PreparedArtifactResolver
 type ConnectorRuntimeResolver = connectorruntime.ConnectorRuntimeResolver
 
-type ConnectorCommandRegistry struct {
-	runtime *implementationhost.CommandRegistry
+type ConnectorRuntimeRegistry struct {
+	runtime *implementationhost.RouteRegistry
+	mcp     *implementationhost.MCPRegistry
 }
 
 type ImplementationHostConfig struct {
@@ -29,11 +28,15 @@ type ImplementationHostConfig struct {
 	CLIInstallations       market.CLIInstallationManager
 	Runtimes               ConnectorRuntimeResolver
 	Processes              agentruntime.ProcessTransport
-	Commands               *ConnectorCommandRegistry
+	Registry               *ConnectorRuntimeRegistry
 	StateRoot              string
+	BinDir                 string
 	UserHome               string
 	MCPStartupTimeout      time.Duration
 	RemoteHTTPClient       *http.Client
+	RemoteMCPBaseURL       string
+	RemoteMCPTimeout       time.Duration
+	RemoteMCPMaxResponse   int
 	AuthorizeRemoteRequest runtimemcp.RequestAuthorizer
 }
 
@@ -43,17 +46,20 @@ type ImplementationHost struct {
 	artifacts PreparedArtifactResolver
 }
 
-func NewConnectorCommandRegistry() *ConnectorCommandRegistry {
-	return &ConnectorCommandRegistry{runtime: implementationhost.NewCommandRegistry()}
+func NewConnectorRuntimeRegistry() *ConnectorRuntimeRegistry {
+	return &ConnectorRuntimeRegistry{runtime: implementationhost.NewRouteRegistry(), mcp: implementationhost.NewMCPRegistry()}
 }
 
-func genericCLIArguments(raw any) ([]string, error) {
-	return implementationhost.GenericCLIArguments(raw)
+func (registry *ConnectorRuntimeRegistry) MCPRegistry() *implementationhost.MCPRegistry {
+	if registry == nil {
+		return nil
+	}
+	return registry.mcp
 }
 
 func NewImplementationHost(config ImplementationHostConfig) (*ImplementationHost, error) {
-	if config.Commands == nil {
-		return nil, errors.New("connector command registry is required")
+	if config.Registry == nil {
+		return nil, errors.New("connector runtime registry is required")
 	}
 	if config.UserHome == "" {
 		userHome, err := os.UserHomeDir()
@@ -64,43 +70,16 @@ func NewImplementationHost(config ImplementationHostConfig) (*ImplementationHost
 	}
 	host, err := implementationhost.New(implementationhost.Config{
 		Artifacts: config.Artifacts, CLIInstallations: config.CLIInstallations, Runtimes: config.Runtimes,
-		Processes: config.Processes, Commands: config.Commands.runtime, StateRoot: config.StateRoot,
+		Processes: config.Processes, Registry: config.Registry.runtime, MCP: config.Registry.mcp, StateRoot: config.StateRoot, BinDir: config.BinDir,
 		UserHome: config.UserHome, MCPStartupTimeout: config.MCPStartupTimeout,
-		RemoteHTTPClient: config.RemoteHTTPClient, AuthorizeRemoteRequest: config.AuthorizeRemoteRequest,
+		RemoteHTTPClient: config.RemoteHTTPClient, RemoteMCPBaseURL: config.RemoteMCPBaseURL,
+		RemoteMCPTimeout: config.RemoteMCPTimeout, RemoteMCPMaxResponse: config.RemoteMCPMaxResponse,
+		AuthorizeRemoteRequest: config.AuthorizeRemoteRequest,
 	})
 	if err != nil {
 		return nil, err
 	}
 	return &ImplementationHost{runtime: host, artifacts: config.Artifacts}, nil
-}
-
-func (registry *ConnectorCommandRegistry) Capabilities(context.Context, cliservice.InvokeContext) []cliservice.Capability {
-	if registry == nil || registry.runtime == nil {
-		return nil
-	}
-	capabilities := registry.runtime.Capabilities()
-	result := make([]cliservice.Capability, 0, len(capabilities))
-	for _, capability := range capabilities {
-		result = append(result, cliservice.Capability{ID: capability.ID, Path: append([]string(nil), capability.Path...),
-			Summary: capability.Summary, Description: capability.Description, Visibility: cliservice.CapabilityVisibilityPublic,
-			InputSchema: capability.InputSchema, Output: cliservice.CapabilityOutput{DefaultMode: cliservice.OutputModeJSON, JSON: true},
-			Source: cliservice.CapabilitySource{Kind: cliservice.CapabilitySourceApp, AppID: capability.Source.AppID,
-				AppName: capability.Source.AppName}})
-	}
-	return result
-}
-
-func (registry *ConnectorCommandRegistry) Invoke(ctx context.Context, request cliservice.InvokeRequest) (cliservice.CommandOutput, error) {
-	if registry == nil || registry.runtime == nil {
-		return cliservice.CommandOutput{}, cliservice.ErrServiceUnavailable
-	}
-	output, err := registry.runtime.Invoke(ctx, command.InvokeRequest{CommandID: request.CommandID, Input: request.Input,
-		Context: command.InvokeContext{Source: request.Context.Source, WorkspaceID: request.Context.WorkspaceID,
-			AgentSessionID: request.Context.AgentSessionID, ParentCommandID: request.Context.ParentCommandID}})
-	if err != nil {
-		return cliservice.CommandOutput{}, serviceError(err)
-	}
-	return jsonValue(output.Value), nil
 }
 
 func (host *ImplementationHost) Reconcile(ctx context.Context, request market.RuntimeReconcileRequest) (market.RuntimeReceipt, error) {

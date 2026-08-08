@@ -22,6 +22,8 @@ func TestServiceCreateUsesRuntimePreparerResult(t *testing.T) {
 		result: runtimeprep.PreparedRuntime{
 			Cwd: "/prepared/workdir",
 			Env: []string{"CODEX_HOME=/prepared/codex-home"},
+			MCPServers: []runtimeprep.MCPServerBinding{{Name: "connector", Type: "http", URL: "http://127.0.0.1:1234/mcp/connector",
+				Headers: map[string]string{"Authorization": "Bearer session-token"}}},
 		},
 		input: &prepareInput,
 	}
@@ -30,6 +32,13 @@ func TestServiceCreateUsesRuntimePreparerResult(t *testing.T) {
 	service.ConnectorRoutingHints = func() []runtimeprep.ConnectorRoutingHint {
 		return []runtimeprep.ConnectorRoutingHint{{ConnectorKey: "lark-cli", DisplayName: "Lark CLI", Aliases: routingAliases,
 			SkillRoot: skillRoot}}
+	}
+	service.ConnectorMCPBinding = func(workspaceID, sessionID string, connectorKeys []string) (runtimeprep.MCPServerBinding, error) {
+		if workspaceID != "ws-1" || sessionID != "11111111-1111-4111-8111-111111111111" || connectorKeys != nil {
+			t.Fatalf("connector MCP binding scope = %q %q %#v", workspaceID, sessionID, connectorKeys)
+		}
+		return runtimeprep.MCPServerBinding{Name: "connector", Type: "http", URL: "http://127.0.0.1:1234/mcp/connector",
+			Headers: map[string]string{"Authorization": "Bearer session-token"}}, nil
 	}
 	cwd := "/user/workdir"
 
@@ -57,6 +66,12 @@ func TestServiceCreateUsesRuntimePreparerResult(t *testing.T) {
 	if len(start.Env) != 1 || start.Env[0] != "CODEX_HOME=/prepared/codex-home" {
 		t.Fatalf("runtime env = %#v, want prepared env", start.Env)
 	}
+	if len(start.MCPServers) != 1 || start.MCPServers[0].Name != "connector" || start.MCPServers[0].Headers["Authorization"] != "Bearer session-token" {
+		t.Fatalf("runtime MCP servers = %#v", start.MCPServers)
+	}
+	if len(prepareInput.MCPServers) != 1 || prepareInput.MCPServers[0].Name != "connector" {
+		t.Fatalf("prepare MCP servers = %#v", prepareInput.MCPServers)
+	}
 	if prepareInput.ConversationDetailMode != "general" {
 		t.Fatalf("prepare conversationDetailMode = %q, want general", prepareInput.ConversationDetailMode)
 	}
@@ -68,6 +83,18 @@ func TestServiceCreateUsesRuntimePreparerResult(t *testing.T) {
 	prepareInput.ConnectorRoutingHints[0].Aliases[0] = "mutated"
 	if got := service.activeConnectorRoutingHints()[0].Aliases[0]; got != "飞书" {
 		t.Fatalf("runtime preparation leaked mutable routing aliases: %q", got)
+	}
+}
+
+func TestSelectedConnectorKeysPreservesExplicitEmptyAllowlist(t *testing.T) {
+	if keys := selectedConnectorKeys(nil, false); keys != nil {
+		t.Fatalf("implicit connector keys = %#v, want unrestricted nil", keys)
+	}
+	if keys := selectedConnectorKeys([]string{"browser-use"}, true); keys == nil || len(keys) != 0 {
+		t.Fatalf("explicit connector keys = %#v, want non-nil empty allowlist", keys)
+	}
+	if keys := selectedConnectorKeys([]string{"connector:slack", "connector:github", "connector:slack"}, true); !slices.Equal(keys, []string{"github", "slack"}) {
+		t.Fatalf("selected connector keys = %#v", keys)
 	}
 }
 

@@ -152,6 +152,7 @@ func (p *DefaultPreparer) Prepare(ctx context.Context, input PrepareInput) (Prep
 	if result.Cwd == "" {
 		result.Cwd = cwd
 	}
+	result.MCPServers = cloneMCPServerBindings(input.MCPServers)
 	result.Env = append(defaultRuntimeEnv(input, p.StateDir), result.Env...)
 	logRuntimePrepareTrace("runtime_prepare.env_prepared", input, map[string]any{
 		"env_count": len(result.Env),
@@ -167,6 +168,22 @@ func (p *DefaultPreparer) Prepare(ctx context.Context, input PrepareInput) (Prep
 	}
 	logRuntimePrepareTrace("runtime_prepare.manifest_saved", input, nil)
 	return PreparedRuntime{Cwd: result.Cwd, Env: result.Env}, nil
+}
+
+func cloneMCPServerBindings(input []MCPServerBinding) []MCPServerBinding {
+	if len(input) == 0 {
+		return nil
+	}
+	result := make([]MCPServerBinding, 0, len(input))
+	for _, binding := range input {
+		headers := make(map[string]string, len(binding.Headers))
+		for key, value := range binding.Headers {
+			headers[key] = value
+		}
+		binding.Headers = headers
+		result = append(result, binding)
+	}
+	return result
 }
 
 func (p *DefaultPreparer) RenderSkillBundle(ctx context.Context, input PrepareInput) (SkillBundle, error) {

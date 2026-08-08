@@ -100,15 +100,16 @@ type Release struct {
 }
 
 type Manifest struct {
-	SchemaVersion     string                    `json:"schemaVersion"`
-	DisplayName       string                    `json:"displayName"`
-	IconURL           string                    `json:"iconUrl"`
-	Description       string                    `json:"description,omitempty"`
-	AgentRouting      *AgentRouting             `json:"agentRouting,omitempty"`
-	Permissions       []string                  `json:"permissions"`
-	Implementation    Implementation            `json:"implementation"`
-	AuthorizationKind string                    `json:"authorizationKind"`
-	Compatibility     CompatibilityRequirements `json:"compatibility,omitempty"`
+	SchemaVersion        string                    `json:"schemaVersion"`
+	DisplayName          string                    `json:"displayName"`
+	IconURL              string                    `json:"iconUrl"`
+	Description          string                    `json:"description,omitempty"`
+	AgentRouting         *AgentRouting             `json:"agentRouting,omitempty"`
+	Permissions          []string                  `json:"permissions"`
+	RequiredCapabilities []string                  `json:"requiredCapabilities,omitempty"`
+	Implementation       Implementation            `json:"implementation"`
+	AuthorizationKind    string                    `json:"authorizationKind"`
+	Compatibility        CompatibilityRequirements `json:"compatibility,omitempty"`
 }
 
 // AgentRouting carries connector-owned brand and product aliases used only to
@@ -231,19 +232,10 @@ type CLICommand struct {
 }
 
 type RemoteStreamableHTTPImplementation struct {
-	Endpoint       string                        `json:"endpoint"`
-	AllowedHosts   []string                      `json:"allowedHosts"`
-	Authentication RemoteTransportAuthentication `json:"authentication"`
-	Limits         RemoteTransportLimits         `json:"limits"`
-}
-
-type RemoteTransportAuthentication struct {
-	Type string `json:"type"`
-}
-
-type RemoteTransportLimits struct {
-	TimeoutMS        int `json:"timeoutMs"`
-	MaxResponseBytes int `json:"maxResponseBytes"`
+	ProtocolVersion     string `json:"protocolVersion"`
+	BindingRef          string `json:"bindingRef"`
+	ContractVersion     int    `json:"contractVersion"`
+	BindingContractHash string `json:"bindingContractHash"`
 }
 
 type Installation struct {
@@ -414,8 +406,9 @@ const (
 )
 
 type AuthorizationObservation struct {
-	State       AuthorizationObservationState
-	FailureCode string
+	State        AuthorizationObservationState
+	ConnectionID string
+	FailureCode  string
 }
 
 type Snapshot struct {

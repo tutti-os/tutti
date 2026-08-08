@@ -116,6 +116,7 @@ type ProviderRuntimeSession struct {
 	Resumable               bool
 	Cwd                     string
 	Env                     []string
+	MCPServers              []MCPServerBinding
 	ProviderTargetRef       map[string]any
 	Settings                *ComposerSettings
 	Capabilities            *canonical.CapabilitySnapshot
@@ -272,6 +273,7 @@ type RuntimeStartInput struct {
 	Provider                string
 	Cwd                     string
 	Env                     []string
+	MCPServers              []MCPServerBinding
 	Title                   string
 	InitialTitleEstablished bool
 	PermissionModeID        string
@@ -298,6 +300,7 @@ type RuntimeResumeInput struct {
 	Resumable              bool
 	Cwd                    string
 	Env                    []string
+	MCPServers             []MCPServerBinding
 	Title                  string
 	Status                 string
 	Settings               ComposerSettings

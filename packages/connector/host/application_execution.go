@@ -308,6 +308,11 @@ func (application *Application) beginAuthorizationSession(
 	if err := application.completeAuthorizationStart(ctx, operation.OperationID, session); err != nil {
 		return AuthorizationSession{}, err
 	}
+	if session.State == AuthorizationStateConnected {
+		if err := application.projectAuthorizationAndScheduleRuntime(ctx, operation.Scope, operation.ConnectorKey, session.ConnectionID, AuthorizationStateConnected, ""); err != nil {
+			return AuthorizationSession{}, err
+		}
+	}
 	return session, nil
 }
 
@@ -315,11 +320,11 @@ func validAuthorizationSessionAction(session AuthorizationSession) bool {
 	switch strings.TrimSpace(session.ActionType) {
 	case "":
 		return (session.State == AuthorizationStatePending && strings.TrimSpace(session.AuthorizationURL) != "") ||
-			(session.State == AuthorizationStateConnected && strings.TrimSpace(session.AuthorizationURL) == "")
+			(session.State == AuthorizationStateConnected && strings.TrimSpace(session.AuthorizationURL) == "" && strings.TrimSpace(session.ConnectionID) != "")
 	case "redirect":
 		return session.State == AuthorizationStatePending && strings.TrimSpace(session.AuthorizationURL) != ""
 	case "submit_secret":
-		return session.State == AuthorizationStateConnected && strings.TrimSpace(session.AuthorizationURL) == ""
+		return session.State == AuthorizationStateConnected && strings.TrimSpace(session.AuthorizationURL) == "" && strings.TrimSpace(session.ConnectionID) != ""
 	default:
 		return false
 	}
@@ -341,10 +346,13 @@ func (application *Application) executeDisconnectAuthorization(ctx context.Conte
 	}); err != nil {
 		return NewDomainError(ErrorCodeAuthorizationFailed, "connector authorization disconnect failed", true, err)
 	}
-	return application.completeConnectorOperation(ctx, operation.OperationID, func(connector Connector) Connector {
+	if err := application.completeConnectorOperation(ctx, operation.OperationID, func(connector Connector) Connector {
 		connector.Authorization = Authorization{State: AuthorizationStateDisconnected}
 		return connector
-	})
+	}); err != nil {
+		return err
+	}
+	return application.projectAuthorizationAndScheduleRuntime(ctx, operation.Scope, operation.ConnectorKey, "", AuthorizationStateDisconnected, "")
 }
 
 func (application *Application) markOperationRunning(ctx context.Context, operationID string) (Operation, error) {

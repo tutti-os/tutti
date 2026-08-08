@@ -27,8 +27,9 @@ type connectorProcessTransport struct {
 }
 
 // NewConnectorProcessTransport returns the bounded, receipt-verifying
-// transport used for connector installation, MCP, CLI, and authorization
-// broker processes. Connector processes intentionally do not use an OS
+// transport used for connector installation probes, MCP, and authorization
+// broker processes. Agent-invoked Connector CLIs use their stable PATH shim
+// instead. Connector processes intentionally do not use an OS
 // process sandbox; authority is constrained by signed package identity,
 // executable identity, explicit environment, timeouts, and output limits.
 func NewConnectorProcessTransport() (ProcessTransport, error) {

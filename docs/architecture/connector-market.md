@@ -180,14 +180,13 @@ identifier. The host may currently collapse a scoped permission to a broader
 runtime capability, so accepting the syntax does not imply scope-level runtime
 enforcement.
 
-CLI manifests do not require action mappings. When `commands` is absent, the
-host publishes one generic, verified `connector.<key>.cli.run` capability and
-the installed Skill supplies the CLI arguments and workflow. The host rejects
-NUL-bearing arguments and non-interactive `--yes`/`--force` overrides.
-Capability IDs are opaque canonical identifiers: invocation matches the full ID
-exactly and never derives a short name by splitting the ID. The selected
-connector remains a separate routing and policy boundary, and invocation fails
-when the canonical ID belongs to a different connector.
+CLI manifests do not require action mappings. The host publishes one stable
+`tutti-connector-<key>` executable per active CLI connector into the daemon
+state `bin/` directory. The executable launches only the verified installed
+entrypoint and forwards argv without invoking a shell. Installed Skills supply
+the connector-specific arguments and workflow, while the Agent uses the normal
+shell execution path. The selected connector remains a separate routing and
+policy boundary.
 
 Managed MCP and CLI interfaces may declare an `installationProbe` containing
 only bounded argv and `timeoutMs`. The host reuses the interface's verified
@@ -208,14 +207,14 @@ the host automatically; authors use aliases for additional language and legacy
 brand forms, not generic capability words. After activation, the implementation
 host projects this bounded, validated routing data into new Agent runtimes. An
 alias match makes `connector available` the first discovery step. Its connector
-summaries include recursively discovered Skill names, titles, descriptions,
-entry paths, and base paths. Skills are discovered from every `SKILL.md` below
+summaries include recursively discovered Skill names, titles and descriptions,
+plus the active native interfaces. Skills are discovered from every `SKILL.md` below
 the verified release's `skills/` directory; manifests do not duplicate a
 central Skill list. Tutti Agent receives that content-addressed directory as a
 native extra Skill root before thread start/resume, so relative references,
 scripts, and assets resolve from the connector package and the Skill survives
-connector process restarts. `connector skill read` remains a compatibility
-fallback for providers that cannot consume native roots. Market
+connector process restarts. There is no command-layer Skill read fallback;
+providers consume Skills through their normal native Skill mechanism. Market
 listings that are not installed and routes that are not active are never added
 to Agent instructions.
 
@@ -253,11 +252,15 @@ semantics; `connector/runtime` owns portable artifact and managed-runtime
 installation primitives, while each daemon supplies the concrete
 implementation host, process, and product-command adapters. In Tutti, `managed_stdio`
 connectors resolve an exact Node/Python runtime profile. MCP servers are
-long-lived daemon children, while CLI commands are one-shot children. Both use
-the same generation fence, process registry, artifact snapshot, executable identity, and
-connection-scoped state path. An installed runtime is daemon-global and is
-available to every Agent and the local Tutti CLI. TSH runs the same runtime
-module inside its managed VM and supplies a guest process adapter.
+long-lived daemon children governed by the route generation fence and process
+registry. CLI routes instead atomically publish stable shims that directly exec
+the verified release entrypoint through the Agent's normal shell; the daemon
+process adapter remains responsible for installation probes and credential
+broker operations. Both interfaces use the same verified artifact snapshot,
+executable identity, generation lifecycle, and connection-scoped state path.
+An installed runtime is daemon-global and is available to every Agent and the
+local Tutti CLI. TSH runs the same runtime module inside its managed VM and
+supplies a guest process adapter.
 
 ## Durable Operations And Recovery
 
@@ -465,18 +468,25 @@ authorization state and bootstrap drive separate generation-fenced reconcile.
 Crash recovery adopts every host-touching operation into the current boot
 epoch. Catalog refresh failure does not invalidate installed release evidence.
 
-The public `connector available`, `connector capabilities`, `connector skills`,
-`connector skill read`, and `connector invoke` commands expose installed
-connectors through the local daemon CLI channel to every Agent and the local
-Tutti CLI. Discovery returns connector summaries with Skill frontmatter
-metadata and stable package paths first; `connector skills` remains the
-connector-scoped compatibility and refresh endpoint. Native-capable providers
-read `SKILL.md` and sibling resources directly from the injected connector root;
-full `SKILL.md` content can still be returned by explicit compatibility read,
-while canonical capability metadata remains on demand.
-`connector invoke --capability` accepts only the
-canonical ID returned by capability discovery. Connector invocations use a
-bounded, serialized admission gate by default.
+The only public connector discovery command is `connector available`. It
+returns active connector metadata, discoverable Skill summaries, and the
+native interface needed to use each connector; it does not expose package
+paths, ports, bearer tokens, or upstream credentials.
+
+All active connector-owned MCP implementations are registered into the local
+loopback Streamable HTTP MCP server named `connector`. Tool names are
+namespaced as `<connector-key>_<upstream-tool-name>`. Each Agent session receives
+a short-lived bearer binding through its provider-native MCP configuration;
+custom user MCP servers remain in their existing configuration and are not
+merged into this registry. Install, reconnect, disconnect, upgrade, and
+uninstall reconcile the registry dynamically and emit MCP
+`notifications/tools/list_changed` to subscribed clients.
+
+CLI connectors are used through their stable `tutti-connector-<key>` executable
+and the Agent's normal shell execution path. Connector Skills are injected as
+native Skill roots. The command broker does not expose `connector capabilities`,
+`connector skills`, `connector skill read`, or `connector invoke`, and the first
+phase intentionally does not expose connector enable/disable commands.
 
 The first production compatibility boundary is deliberately narrow:
 `managed_stdio` connectors are installable when their runtime contract is

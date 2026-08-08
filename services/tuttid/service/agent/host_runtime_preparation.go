@@ -154,7 +154,8 @@ func withServicePreparedRuntime(ctx context.Context, service *Service, prepared 
 
 func (a serviceHostPreparation) Prepare(ctx context.Context, input agenthost.RuntimePreparationInput) (agenthost.PreparedRuntime, error) {
 	if override, ok := ctx.Value(servicePreparedRuntimeContextKey{}).(servicePreparedRuntimeContext); ok && override.support == a.support {
-		return agenthost.PreparedRuntime{Cwd: override.prepared.Cwd, Env: append([]string(nil), override.prepared.Env...)}, nil
+		return agenthost.PreparedRuntime{Cwd: override.prepared.Cwd, Env: append([]string(nil), override.prepared.Env...),
+			MCPServers: hostMCPServerBindings(override.prepared.MCPServers)}, nil
 	}
 	settings := input.Settings
 	persisted := PersistedSession{
@@ -182,10 +183,25 @@ func (a serviceHostPreparation) Prepare(ctx context.Context, input agenthost.Run
 	}
 	settings = persisted.Settings
 	return agenthost.PreparedRuntime{
-		Cwd: prepared.Cwd, Env: append([]string(nil), prepared.Env...),
+		Cwd: prepared.Cwd, Env: append([]string(nil), prepared.Env...), MCPServers: hostMCPServerBindings(prepared.MCPServers),
 		ProviderTargetRef: clonePayload(targetRef), Settings: &settings,
 		RuntimeContext: persistedSessionRuntimeContext(persisted),
 	}, nil
+}
+
+func hostMCPServerBindings(input []runtimeprep.MCPServerBinding) []agenthost.MCPServerBinding {
+	if len(input) == 0 {
+		return nil
+	}
+	result := make([]agenthost.MCPServerBinding, 0, len(input))
+	for _, binding := range input {
+		headers := make(map[string]string, len(binding.Headers))
+		for key, value := range binding.Headers {
+			headers[key] = value
+		}
+		result = append(result, agenthost.MCPServerBinding{Name: binding.Name, Type: binding.Type, URL: binding.URL, Headers: headers})
+	}
+	return result
 }
 
 func (a serviceHostPreparation) bindCommittedSessionForkProviderState(
