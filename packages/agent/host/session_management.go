@@ -254,9 +254,10 @@ func (h *Host) DeleteSessions(ctx context.Context, input DeleteSessionsInput) (D
 		}
 		_, canonicalRemoved := removedSessionIDSet[sessionID]
 		if err := h.preparation.Cleanup(ctx, RuntimeCleanupInput{
-			WorkspaceID:             workspaceID,
-			AgentSessionID:          sessionID,
-			OrphanActivationCleanup: !canonicalRemoved,
+			WorkspaceID:              workspaceID,
+			AgentSessionID:           sessionID,
+			OrphanActivationCleanup:  !canonicalRemoved,
+			PreserveRecoverableState: canonicalRemoved,
 		}); err != nil {
 			cleanupFailedIDs = append(cleanupFailedIDs, sessionID)
 		}

@@ -12,12 +12,19 @@ export interface BrowserLoginCompletion {
 }
 
 interface MobileSecurityNative {
+  addListener(eventName: string): void;
   readonly clientVersion: string;
   readonly clientVersionCode?: number;
+  cancelUpdate?(): Promise<void>;
   cancelQRCodeScan(): Promise<void>;
   clearLegacySessionCookie(accountBaseURL: string): Promise<void>;
   clearSession(): Promise<void>;
-  installUpdate?(apkURL: string, sha256: string): Promise<void>;
+  installUpdate?(
+    apkURL: string,
+    sha256: string,
+    sizeBytes: number,
+    targetVersionCode: number
+  ): Promise<void>;
   getOrCreateIdentity(): Promise<DeviceIdentity>;
   loadSession(): Promise<AccountSession | null>;
   saveSession(
@@ -28,6 +35,7 @@ interface MobileSecurityNative {
     avatarURL: string
   ): Promise<void>;
   scanQRCode(): Promise<QRCodeScanResult>;
+  removeListeners(count: number): void;
   sign(message: string): Promise<string>;
   startBrowserLogin(
     appId: string,

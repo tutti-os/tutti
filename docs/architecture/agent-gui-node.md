@@ -205,6 +205,14 @@ entry capability may additionally hide or disable an experimental control; the
 activation boundary must fail closed as well, so a remembered `true` value
 cannot outlive a disabled host entry. Provider support comes from the resolved
 composer descriptor rather than provider-name checks in shared UI code.
+Extension-owned model catalogs can change independently of target-scoped
+remembered defaults. On Create, the daemon treats such a default as a fallback
+preference and resolves an obsolete value to the extension runtime's current
+model. Non-explicit model-dependent settings, such as reasoning effort, resolve
+against that effective model rather than remaining bound to the obsolete
+preference. A model or dependent setting explicitly supplied by the caller
+remains strict. If the runtime rejects an explicit model selection, startup
+fails rather than continuing with an undisclosed provider default.
 
 Settings that affect provider preparation are immutable after launch. The
 daemon validates them against current product policy and resolved provider
@@ -249,6 +257,22 @@ supplies interaction readiness, that exact result owns transport presentation
 and early write admission for the pending card. An observation gap may still
 govern the active Turn before or after that Interaction, but it cannot override
 the exact ready or blocked readiness result while the card is presented.
+
+When an exact Interaction is blocked, AgentGUI keeps the pending action visible
+but disables its controls. The disabled action group remains focusable and
+hoverable so the same readiness reason is discoverable in the conversation
+chrome and Message Center; this is presentation only and does not change the
+Host-owned admission decision.
+
+Message Center and attention-card consumers preserve this separation in their
+presentation contract: `isSubmitting` describes an in-flight response, while
+an independently supplied interaction-disabled state blocks the nested prompt
+controls without hiding the pending card or its conversation navigation. A
+host-provided blocked reason is exposed through a focusable, hoverable
+description so a blocked card remains understandable without making Tooltip
+the command authority. If the Host omits the reason, the disabled wrapper stays
+out of the tab order and does not create an empty Tooltip. The final semantic
+command admission check remains in the consumer/controller path.
 
 ### 2.6 On-demand status
 
@@ -887,6 +911,14 @@ while canonical Turn state remains authoritative once it exists.
   Mobile retain transport execution in their `EngineExtensionCommand`
   adapters and delegate pure generated-DTO projection to
   `@tutti-os/agent-activity-tuttid-adapter`
+- A composer-option failure with no signature-matching cached value remains an
+  explicit Engine `error` state. AgentGUI renders a compact failure and retry
+  action in the existing options slot instead of presenting an empty list or a
+  stale/default selection; a last valid cached value remains renderable while
+  its load status is reconciled. The retry is the same semantic
+  `engine.loadComposerOptions` operation with `force` left false, so request
+  identity, cache reuse, and identical in-flight joining remain Engine-owned;
+  a view must not call the transport adapter directly.
 - an acknowledged home Composer default remains an optimistic draft until a
   later authoritative Composer-options response reports the same effective
   field value. A successful read alone must not retire the draft because a
@@ -1301,6 +1333,14 @@ row summary until the next toggle or an explicit canonical tombstone. Selecting
 a historical Session that is temporarily injected into the visible summary
 list does not make an idle Session a newly discovered Activity task; only its
 live waiting, unread, or active facts can admit it to Priority.
+The Engine preserves this distinction at the Turn boundary: `turn/upserted`
+uses `live` provenance. Historical detail hydration writes canonical Turns with
+`live: false` and cannot create new unread attention; realtime projections and
+live reconcile writes use `live: true`. Omitted `live` remains compatible with
+older hosts and is treated as live, while historical producers must pass
+`false`. Existing durable read and unread markers remain authoritative during
+hydration; only a read marker synthesized by the current historical observation
+may be upgraded by a later live observation for the same completion.
 The activation is scoped by the workspace, authenticated user, rail filter,
 AgentGUI node, and Engine identity, not by the currently selected Session's
 provider or target; selecting a row must not rebuild a cross-provider Activity
@@ -1321,6 +1361,14 @@ scope and clears its pending state. Targeted section refresh and pagination may
 update only an already-resolved matching scope. A subordinate result must not
 cancel the full query, publish partial membership for an unresolved scope, or
 unlock Rail interactions.
+
+When Activity View has a non-null in-memory projection, that projection remains
+visible while the unrelated initial Rail membership query is pending; Rail
+loading, empty, or failure placeholders must not replace it. A refresh or page
+failure after Rail rows already exist preserves those rows and reports a
+non-blocking error through the host toast capability, falling back to the UI
+System toast when that optional capability is absent. An unresolved empty Rail
+scope retains the centered error state and its retry action.
 
 Presentation-invisible Sessions remain canonical engine entities and stay
 available through exact Session selectors for trusted open, reconcile, and
@@ -1576,6 +1624,23 @@ ensuring that only installed and authorized connectors can be invoked. AgentGUI
 does not scan external MCP, plugin, or package-manager configuration and does not
 infer installation from a remote market response.
 
+The device-global `lab.connectors` UI-preference flag controls whether that
+projection is returned. The daemon fails closed when the preference is absent
+or unreadable and removes Provider-reported connector entries as well as local
+ones. Desktop invalidates cached Composer Options when the preference changes,
+publishes the same invalidation through the AgentGUI host event bus, and
+projects the host capability into the palette so stale cached connector rows
+are hidden immediately. Workspace and standalone AgentGUI surfaces therefore
+converge on the next canonical read without exposing stale entries. The flag
+does not uninstall connectors, stop their runtimes, or reject an already
+structured connector prompt.
+
+Desktop also projects the flag through AgentGUI's existing host-owned
+capability-menu state. The primary footer capability slot is mutually
+exclusive: when `lab.connectors` is off it renders Tutti Mode, and when the
+flag is on it renders only the Connectors menu. The same footer serves both the
+home hero and existing-session dock, so the two AgentGUI contexts cannot drift.
+
 ### 5.3 Agent Directory and setup
 
 The host provides a complete, ordered Agent Directory with this load lifecycle:
@@ -1683,6 +1748,103 @@ Code uses stable horizontal layers and behavior-oriented vertical modules:
 A controller may compose flows but cannot become a second lifecycle state machine. Extract complete behavior first; do not scatter it into a pile of domainless helpers.
 
 Activation and existing-Session submit share a canonical prompt envelope. Submit eligibility includes text and renderable structured content; an individual composer does not redefine it.
+
+`@tutti-os/agent-gui/quick-composer` is the draft-only public entry for
+launch surfaces that need the canonical DOM Composer without a Rail or
+timeline. It may present rich text, image draft blocks, and an exact Agent
+Target selector, but it owns no Session, Turn, option-loading, or recovery
+state. The host receives its typed prompt envelope and must route new Session
+creation through the workspace's existing `AgentSessionEngine`; the entry must
+never construct a second Engine or call a lifecycle transport.
+
+The embedding host owns target readiness and capability loading. It passes the
+canonical `agentTargetId` plus a capability snapshot for each selectable
+target. Quick Composer resolves only the exact identifier and fails closed for
+unknown, disabled, or capability-less targets; it never falls back to array
+position, legacy `targetId`, or an inferred provider. Structured image content
+is accepted only when the selected target declares image support. Submit emits
+the resolved target identity with the prompt envelope, preserving the target
+the user actually selected across the host activation boundary.
+The Quick Composer public target omits legacy `targetId` and AgentGUI-internal
+`ref`; the adapter derives both from canonical `agentTargetId` for the shared
+Composer VM. Provider-menu selection therefore cannot cross or collide with a
+second identifier namespace.
+
+When an embedding host supports pre-session settings, it passes one explicit
+settings capability containing authoritative `AgentActivityComposerOptions`,
+a controlled sparse settings draft, its change callback, and option-loading
+state for the exact target and project. Omitting any persistence path means
+omitting the whole capability, so Quick Composer fails closed instead of
+rendering interactive no-op controls. It projects supported values into the
+same model, reasoning, speed, permission, plan, and browser controls rendered
+by the full Composer; it does not maintain a second menu implementation or
+fetch options itself. `computerUse` and gated `codexSaverMode` remain hidden
+until an embedding activation seam preserves and authorizes them end to end. A
+settings change returns a typed patch to the host, which refreshes authority
+and forwards the settled draft through its existing activation command. Only
+the very first options load for a target locks settings controls and submit;
+once a good options snapshot exists, background refreshes keep every control
+interactive and a failed refresh keeps the last good snapshot instead of
+blanking the menus.
+
+`@tutti-os/agent-gui/composer-settings-core` is the host-agnostic policy for
+that settings capability. `ComposerSettingsCore` is a headless controller
+(`subscribe`/`getSnapshot`, no React, no Engine dependency) that owns the
+sparse settings draft, a revision-fenced options lifecycle with last-good
+retention, defaults seeding via the daemon's defaults-merged
+`effectiveSettings`, and trailing-edge write-back of explicit picks into the
+canonical per-target composer-defaults ledger through injected ports
+(`fetchOptions`, `rememberDefaults`). `resolveSubmitSettings()` returns the
+exact values the composer displays; hosts must submit them verbatim so the
+daemon never re-interprets empty fields against another surface's memory. A
+Quick Composer host embeds this core instead of hand-rolling fencing,
+failure semantics, or a parallel settings store; the desktop capture window
+is the first adopter.
+
+The Quick Composer uses the Composer's `embedded` layout contract. Unlike
+`dock`, which intentionally grows attachments and long drafts upward over a
+conversation timeline, `embedded` keeps the entire draft in normal document
+flow. Compact host surfaces must select that layout instead of compensating for
+dock overhang with consumer-specific offsets or clipping.
+
+Embedding hosts may inject the same `RichTextMentionService` and workspace
+reference-picker callback used by a full AgentGUI surface. Quick Composer wraps
+those inputs in the canonical mention-service boundary and delegates reference
+insertion to `AgentComposer`; it does not own a parallel mention catalog or
+picker. A constrained host may also declare a top viewport inset for portaled
+menus. Provider Select collision padding and mention-palette geometry must
+honor that inset so host chrome is never treated as usable menu space.
+An embedding host may also opt into the canonical project selector with a
+controlled selected path and an explicit `WorkspaceUserProjectApi`. That
+capability supplies the real registered-project catalog, selection preparation,
+native directory choice, and project registration. A native directory callback
+alone is insufficient: Quick Composer does not invent a project registry or
+Session state, so it hides the project selector when no real project capability
+is available. The host carries the resulting path through its existing
+activation command as `cwd`.
+AgentGUI's standalone locale runtime includes the scoped defaults of package
+surfaces it mounts, including workspace-user-project. A host-supplied app
+runtime may override those keys, but a standalone Quick Composer must never
+render an unresolved scoped key as user-visible copy.
+Quick Composer also establishes the canonical AgentGUI semantic-token scope,
+so embedded placeholder, foreground, border, and menu colors never fall back
+to inherited host text styles. Hosts may provide a compact action accessory;
+`AgentComposer` renders it immediately before the primary send/stop action in
+non-hero layouts instead of requiring consumer CSS to position controls over
+the Composer DOM. An embedding host with a definite block size may opt into
+`fillAvailableHeight`; the embedded Composer then gives its input group and
+each rich-text editor wrapper the remaining height while keeping attachment and
+footer rows intrinsic. The entire assigned editor block remains a native
+contenteditable hit target instead of relying on a host-level click-to-focus
+proxy. This remains explicit so ordinary launch surfaces keep the default
+content-sized behavior.
+
+An embedded host may also choose `composerActionPlacement="footer"`. In that
+mode the same primary action cluster (including an optional host accessory)
+joins the canonical Composer footer instead of the prompt row. This keeps the
+reference controls, Agent selector, host modifier, and send button on one
+alignment baseline without host positioning CSS; the default remains `input`
+for existing consumers.
 
 The canonical Composer gate belongs to the Session-presentation projection and
 travels through the Composer view-model slice as one object. View-local
@@ -1800,6 +1962,51 @@ durable default only while that intent is unresolved. Entering the unscoped
 conversation section resolves the intent to no project, so remounting the hero
 composer or refreshing the project list cannot restore a previous project.
 
+New-Session worktree launch is a fail-closed Host capability, not Session
+lifecycle state in React. The host opts in with
+`sessionWorktreeEnabled`, projects a launch preference map for the current
+workspace keyed by the canonical project `sectionKey`, persists explicit
+changes through `onSessionLaunchModePreferenceChange`, and supplies the exact
+project-path probe through
+`AgentHostApi.workspace.resolveSessionWorktreeSupport`. AgentGUI renders the
+selector only when all four pieces exist, the selected target is explicitly
+self-owned, a real project path and section key are selected, and the probe
+succeeds. Existing Sessions and shared/remote targets never expose it.
+Tutti Desktop carries the exact `agentTargetId` and project path through the
+generated daemon support contract. Tuttid resolves that target through its
+local launch authority and fails closed for shared-Agent identities. The
+Session create boundary repeats the same target admission before allocating a
+worktree and also requires a project `railPlacement` with a non-empty logical
+project path. An unscoped `conversations` Session therefore cannot acquire
+worktree isolation even through a direct API request, so React visibility is
+presentation defense rather than the business authorization boundary.
+The adapter records the selected repository-relative cwd and remaps it under
+the isolated checkout, so a registered project below the repository root keeps
+the same working-directory scope. A retry with the same Workspace, Session,
+repository, and relative cwd reuses its exact metadata-backed checkout before
+entering Host idempotency; a mismatched identity fails closed.
+
+The stored `local | worktree` value records future launch intent; canonical
+Session `isolation` records what actually launched. Probe failure, temporary
+repository incompatibility, or a missing host capability makes the effective
+mode `local` without overwriting a saved `worktree` intent. Visiting an old
+Session also cannot write that preference. Tutti Desktop persists the nested
+`workspaceId -> project.sectionKey -> mode` map in daemon-backed desktop
+preferences and enables the capability. Each change uses the daemon-owned
+`preferences.agent.session.launch.mode.patch.requested` workspace/project patch;
+its SQLite transaction merges against the latest map, and full
+desktop-preference updates preserve that field, so concurrent windows cannot
+replace one another's choices. Renderer write failures roll back only
+the still-current optimistic value and are consumed through the Workbench
+diagnostic path. Published AgentGUI defaults the capability off so other hosts
+may opt in independently. The composer only adds `isolation: "worktree"` to the
+admitted activation input. Tutti's daemon adapter owns the filesystem checkout
+and provider-preparation cwd, while Host continues to own the idempotent Session
+create. The canonical Session projection later carries the created worktree
+path, branch, and base commit. Rail rows render the worktree glyph from that
+canonical isolation projection next to relative time in the unhovered row and
+never infer it from `cwd`.
+
 A locked Session cwd existence check is UI-local observation, not Session
 truth. AgentGUI starts it only after pending creation has resolved, scopes its
 result to the normalized selected path, and discards callbacks from a previous
@@ -1883,6 +2090,14 @@ currently registered custom mentions retain their canonical href and chip
 identity without a host DOM event interceptor.
 
 External OS file paste and drop enter one host-injected classification boundary before draft attachment creation. The synchronous `resolveExternalPromptEntries` port classifies each source index as a live `WorkspaceFileReference` or a snapshot requiring preparation. AgentGUI owns ordered mention insertion and draft reconciliation: references become ordinary file/folder mentions and never consume prompt-asset slots, while only `prepare` entries create pending attachment state and enter `prepareExternalPromptFiles`. A host without the resolver prepares every external entry. The preparer owns native-path or byte lookup, size enforcement, persistence, and remote transport; each prepared input has one `sourceIndex` result, one failure must not fail siblings, successful results include a provider-readable `path` or `url`, and failures carry typed error codes. Hosts that classify path-backed entries as references must reject any such entry that unexpectedly reaches preparation, so classification failure cannot silently create a duplicate snapshot.
+
+Plain-text absolute path paste may enter an optional host-owned
+`workspace.resolvePastedPath` boundary. AgentGUI applies only a strict sync
+candidate gate (one trimmed absolute path with no whitespace or quotes). The
+host returns a `WorkspaceFileReference` to insert as a file/folder mention, or
+`null`/rejection to fall back to plain text. Hosts that omit the callback keep
+the previous plain-text paste path; existence checks, host-namespace
+projection, and Shared-Agent policy remain host-owned.
 
 Workspace picker results and internal workspace-reference drags remain live references. They enter the rich-text document as mentions and never pass through external-file preparation. A picker source whose selected locator is not yet consumer-readable may perform source-owned confirmation preparation before the mention is inserted; the picker waits in a loading state, publishes no partial result on failure, and remains open for retry. This confirmation transaction belongs to the reference source contract and is distinct from the external OS file preparation pipeline. Removing an inline external-file mention removes its draft intent; a later async result must not revive it or lose its error reason when the draft is in another scope.
 
@@ -2512,6 +2727,35 @@ Runtime destination also bumps `agentFocus` to scroll and briefly highlight the 
 a link to a hidden preview agent surfaces an "enable Preview Agents" hint rather
 than failing silently. This is a settings surface, not a second Agent Target
 state store.
+
+### 8.2 Deleted-conversation settings surface
+
+Deleted conversations are maintained by a top-level desktop Settings section
+immediately before About; they do not belong to the Agent subsection. The page
+is scoped to the current Workspace, while its 15/30-day automatic-cleanup
+preference is device-global. Its fixed header owns the title-only search,
+project filter, retention selector, and destructive “delete all” action so the
+controls remain discoverable while the list scrolls.
+
+Each row represents one topmost deleted Session component—a canonical root or
+a child whose parent is not deleted—and reuses the two-line Activity View
+summary convention: title first, then original project identity and the
+pre-delete `updated_at`. The row body is not navigation. Restore and
+permanent delete are the only row actions; restore has no confirmation and does
+not navigate, while permanent delete uses the ordinary destructive
+confirmation. Legacy lossy tombstones explain why restore is unavailable.
+“Delete all” ignores search/project filters, confirms against the Workspace
+component count with a typed phrase, and remains subject to the daemon idle gate.
+
+The list uses stable cursor paging plus virtual scrolling and automatically
+loads near its end. Project options include the unscoped case and original
+paths whose project registration has since disappeared. Renderer state may
+optimistically remove a row only after a successful restore/purge response; it
+does not copy lifecycle semantics out of Host or trigger provider resume. The
+canonical restore commit emits `session_restored`; the workspace engine clears
+only that Session's deletion tombstone and performs an authoritative detail
+reconcile before AgentGUI renders it again. Generic activity events remain
+unable to resurrect a deleted Session.
 
 ## 9. Folder guide
 

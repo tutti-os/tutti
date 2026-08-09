@@ -75,9 +75,8 @@ type OperationStage string
 const (
 	OperationStageAccepted      OperationStage = "accepted"
 	OperationStageRefreshing    OperationStage = "refreshing"
-	OperationStageDownloading   OperationStage = "downloading"
-	OperationStagePrepared      OperationStage = "prepared"
-	OperationStageActivating    OperationStage = "activating"
+	OperationStageInstalling    OperationStage = "installing"
+	OperationStageInstalled     OperationStage = "installed"
 	OperationStageDeactivating  OperationStage = "deactivating"
 	OperationStageAuthorizing   OperationStage = "authorizing"
 	OperationStageDisconnecting OperationStage = "disconnecting"
@@ -171,16 +170,26 @@ type ManagedCredentialBroker struct {
 }
 
 type ManagedMCPInterface struct {
-	Entrypoint string   `json:"entrypoint"`
-	Arguments  []string `json:"arguments,omitempty"`
+	Entrypoint        string             `json:"entrypoint"`
+	Arguments         []string           `json:"arguments,omitempty"`
+	InstallationProbe *InstallationProbe `json:"installationProbe,omitempty"`
 }
 
 type ManagedCLIInterface struct {
-	Entrypoint string           `json:"entrypoint"`
-	Arguments  []string         `json:"arguments,omitempty"`
-	TimeoutMS  int              `json:"timeoutMs,omitempty"`
-	Install    *CLIInstallation `json:"install,omitempty"`
-	Commands   []CLICommand     `json:"commands,omitempty"`
+	Entrypoint        string             `json:"entrypoint"`
+	Arguments         []string           `json:"arguments,omitempty"`
+	TimeoutMS         int                `json:"timeoutMs,omitempty"`
+	InstallationProbe *InstallationProbe `json:"installationProbe,omitempty"`
+	Install           *CLIInstallation   `json:"install,omitempty"`
+	Commands          []CLICommand       `json:"commands,omitempty"`
+}
+
+// InstallationProbe is a bounded, direct-argv check executed through the
+// interface's already verified entrypoint. Exit code 0 reports present and
+// exit code 1 reports absent; every other outcome is indeterminate.
+type InstallationProbe struct {
+	Arguments []string `json:"arguments"`
+	TimeoutMS int      `json:"timeoutMs"`
 }
 
 // CLIInstallation is a typed installation command. The daemon compiles this
@@ -222,8 +231,19 @@ type CLICommand struct {
 }
 
 type RemoteStreamableHTTPImplementation struct {
-	Endpoint     string   `json:"endpoint"`
-	AllowedHosts []string `json:"allowedHosts"`
+	Endpoint       string                        `json:"endpoint"`
+	AllowedHosts   []string                      `json:"allowedHosts"`
+	Authentication RemoteTransportAuthentication `json:"authentication"`
+	Limits         RemoteTransportLimits         `json:"limits"`
+}
+
+type RemoteTransportAuthentication struct {
+	Type string `json:"type"`
+}
+
+type RemoteTransportLimits struct {
+	TimeoutMS        int `json:"timeoutMs"`
+	MaxResponseBytes int `json:"maxResponseBytes"`
 }
 
 type Installation struct {
@@ -293,10 +313,24 @@ type OperationTarget struct {
 }
 
 type OperationExecution struct {
-	PreparedArtifact     *PreparedArtifactReceipt  `json:"preparedArtifact,omitempty"`
-	CLIInstallation      *CLIInstallationReceipt   `json:"cliInstallation,omitempty"`
-	RuntimeActivation    *RuntimeActivationReceipt `json:"runtimeActivation,omitempty"`
-	AuthorizationSession *AuthorizationSession     `json:"authorizationSession,omitempty"`
+	ReleaseInstallation  *ReleaseInstallationReceipt `json:"releaseInstallation,omitempty"`
+	RuntimeActivation    *RuntimeActivationReceipt   `json:"runtimeActivation,omitempty"`
+	AuthorizationSession *AuthorizationSession       `json:"authorizationSession,omitempty"`
+}
+
+// ReleaseInstallationReceipt is the control-plane evidence that the exact
+// accepted release was installed by its physical runtime owner. Local paths
+// are optional because remote installations expose only opaque references.
+type ReleaseInstallationReceipt struct {
+	OperationID      string                  `json:"operationId"`
+	ConnectorKey     string                  `json:"connectorKey"`
+	Version          string                  `json:"version"`
+	ReleaseID        string                  `json:"releaseId"`
+	ReleaseDigest    string                  `json:"releaseDigest"`
+	ArtifactSHA256   string                  `json:"artifactSha256"`
+	Artifact         PreparedArtifactReceipt `json:"artifact"`
+	CLIInstallation  *CLIInstallationReceipt `json:"cliInstallation,omitempty"`
+	OpaqueRuntimeRef string                  `json:"opaqueRuntimeRef,omitempty"`
 }
 
 type CLIInstallationReceipt struct {
@@ -364,9 +398,24 @@ type RuntimeReceipt struct {
 type AuthorizationSession struct {
 	OperationID      string             `json:"operationId"`
 	ConnectorKey     string             `json:"connectorKey"`
+	ConnectionID     string             `json:"-"`
 	SessionID        string             `json:"sessionId"`
+	ActionType       string             `json:"actionType"`
 	AuthorizationURL string             `json:"-"`
 	State            AuthorizationState `json:"-"`
+}
+
+type AuthorizationObservationState string
+
+const (
+	AuthorizationObservationPending   AuthorizationObservationState = "pending"
+	AuthorizationObservationConnected AuthorizationObservationState = "connected"
+	AuthorizationObservationFailed    AuthorizationObservationState = "failed"
+)
+
+type AuthorizationObservation struct {
+	State       AuthorizationObservationState
+	FailureCode string
 }
 
 type Snapshot struct {

@@ -29,6 +29,10 @@ type ApplicationHostCanonicalPorts interface {
 // It is complete before Host construction and intentionally has no Service
 // field, so Host cannot become a reverse container for the tuttid facade.
 type HostSupportPorts struct {
+	// DeletedSessions wraps the canonical lifecycle store so tuttid-owned
+	// sidecars survive restore, participate in the same purge transaction, and
+	// publish restored canonical commits through the product projection.
+	DeletedSessions        agenthost.DeletedSessionStore
 	SessionPurge           agenthost.SessionPurgeStore
 	SessionDeletionGuard   agenthost.SessionDeletionGuard
 	SessionForkContext     agenthost.SessionForkContextPolicy
@@ -80,6 +84,7 @@ func NewServiceComponents(
 	sessionSettings := &serviceSessionSettingsState{}
 	worktreeIsolationLock := &sync.RWMutex{}
 	support := HostSupportPorts{
+		DeletedSessions:      config.Sessions.DeletedSessions,
 		SessionPurge:         config.Sessions.PurgeStore,
 		SessionDeletionGuard: config.Sessions.DeletionGuard,
 		SessionForkContext: serviceHostSessionForkContextPolicy{
@@ -153,6 +158,11 @@ func NewApplicationHostWithPorts(
 	if canonical == nil || runtime == nil || support.RuntimePreparation == nil {
 		return nil
 	}
+	if support.DeletedSessions == nil {
+		if _, ok := any(canonical).(agenthost.DeletedSessionStore); !ok {
+			return nil
+		}
+	}
 	return composeApplicationHost(
 		support,
 		canonical,
@@ -182,11 +192,16 @@ func composeApplicationHost(
 	sessionForkRuntime, _ := runtime.(agenthost.SessionForkRuntime)
 	turnSubmissions, _ := canonical.(agenthost.TurnSubmissionStore)
 	effectiveHistory, _ := canonical.(agenthost.EffectiveHistoryStore)
+	deletedSessions := support.DeletedSessions
+	if deletedSessions == nil {
+		deletedSessions, _ = canonical.(agenthost.DeletedSessionStore)
+	}
 	historyRuntime, _ := runtime.(agenthost.RuntimeHistoryController)
 	return agenthost.New(agenthost.Config{
 		CanonicalStore: canonical, SessionManagement: sessionManagement,
 		SessionBatchManagement: sessionBatchManagement, SessionPurge: support.SessionPurge,
-		SessionForks: sessionForks, SessionForkRecovery: sessionForkRecovery,
+		DeletedSessions: deletedSessions,
+		SessionForks:    sessionForks, SessionForkRecovery: sessionForkRecovery,
 		HistoricalState:        historicalState,
 		SessionForkRuntime:     sessionForkRuntime,
 		SessionForkContext:     support.SessionForkContext,

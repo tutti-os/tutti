@@ -1603,6 +1603,10 @@ function createWorkspaceAgentActivityService(
     onComposerDefaultsInvalidated() {
       return () => {};
     },
+    onConnectorCatalogInvalidated() {
+      return () => {};
+    },
+    invalidateConnectorCatalog() {},
     ensureSessionSynchronized() {
       return () => {};
     },

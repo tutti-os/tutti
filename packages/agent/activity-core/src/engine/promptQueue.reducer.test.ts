@@ -1125,7 +1125,7 @@ function settledTurn(
 }
 
 function turnUpserted(turn: AgentActivityTurn) {
-  return { type: "turn/upserted" as const, turn };
+  return { live: true, type: "turn/upserted" as const, turn };
 }
 
 function messagesReceived(clientSubmitId: string, turnId: string | null) {

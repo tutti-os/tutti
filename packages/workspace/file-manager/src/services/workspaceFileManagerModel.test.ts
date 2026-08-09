@@ -27,14 +27,18 @@ test("normalizes paths under the logical workspace root", () => {
 test("normalizes Windows drive paths without treating them as relative", () => {
   assert.equal(
     normalizeWorkspaceFilePath("src\\main.ts", "C:\\Users\\demo\\project"),
-    "C:/Users/demo/project/src/main.ts"
+    "/C:/Users/demo/project/src/main.ts"
   );
   assert.equal(
     normalizeWorkspaceFilePath(
       "C:\\tmp\\report.txt",
       "C:\\Users\\demo\\project"
     ),
-    "C:/tmp/report.txt"
+    "/C:/tmp/report.txt"
+  );
+  assert.equal(
+    normalizeWorkspaceFilePath("/C:/tmp/report.txt"),
+    "/C:/tmp/report.txt"
   );
 });
 
@@ -92,11 +96,11 @@ test("derives external absolute parent directories outside the current root", ()
 test("derives Windows drive parent directories outside the current root", () => {
   assert.equal(
     workspaceFileDirectory("C:\\tmp\\hello_world.md", "C:\\Users\\demo"),
-    "C:/tmp"
+    "/C:/tmp"
   );
   assert.equal(
     workspaceFileDirectory("C:\\hello_world.md", "C:\\Users\\demo"),
-    "C:/"
+    "/C:/"
   );
 });
 

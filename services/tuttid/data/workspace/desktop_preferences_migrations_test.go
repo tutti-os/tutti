@@ -20,6 +20,16 @@ func TestFeatureFlagsMigrationAddsColumns(t *testing.T) {
 	}
 }
 
+func TestAgentSessionLaunchModesMigrationAddsColumn(t *testing.T) {
+	t.Parallel()
+
+	store := openTestSQLiteStore(t)
+	ok, err := store.hasColumn(context.Background(), "desktop_preferences", "agent_session_launch_modes_by_workspace_json")
+	if err != nil || !ok {
+		t.Fatalf("agent_session_launch_modes_by_workspace_json column missing (err=%v)", err)
+	}
+}
+
 func TestAgentCLIUpdateCheckMigrationAddsEnabledByDefaultColumn(t *testing.T) {
 	t.Parallel()
 

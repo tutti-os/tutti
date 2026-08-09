@@ -15,12 +15,23 @@ func (h *Host) replayInitialGoalCreate(
 	goalInput GoalControlInput,
 ) (CreateSessionResult, bool, error) {
 	replay, found, err := h.existingGoalControlResult(ctx, goalInput)
-	if err != nil || !found {
-		if err != nil {
-			result, resultErr := createSessionFailureResult(input, err)
-			return result, found, resultErr
-		}
+	if !found {
 		return CreateSessionResult{}, found, nil
+	}
+	if err != nil && !goalControlResultPending(replay) {
+		result, resultErr := createSessionFailureResult(input, err)
+		return result, true, resultErr
+	}
+	if strings.TrimSpace(replay.Canonical.ID) == "" {
+		canonical, sessionFound, readErr := h.store.GetSession(ctx, goalInput.WorkspaceID, goalInput.AgentSessionID)
+		if readErr != nil || !sessionFound {
+			if readErr == nil {
+				readErr = ErrSessionNotFound
+			}
+			result, resultErr := createSessionFailureResult(input, readErr)
+			return result, true, resultErr
+		}
+		replay.Canonical = canonical
 	}
 	if !railPlacementMatchesSession(input.RailPlacement, replay.Canonical) {
 		result, resultErr := createSessionFailureResult(input, ErrRailPlacementConflict)
@@ -30,12 +41,16 @@ func (h *Host) replayInitialGoalCreate(
 	if !live {
 		runtimeSession = providerRuntimeSessionIdentity(replay.Canonical)
 	}
+	initialGoalStatus := CreateSessionInitialGoalStatusSucceeded
+	if err != nil {
+		initialGoalStatus = CreateSessionInitialGoalStatusUnknown
+	}
 	return CreateSessionResult{
 		Session: runtimeSession, Canonical: replay.Canonical,
 		Kind: "goalControl", GoalControl: &replay,
 		SessionStatus:     CreateSessionStatusCreated,
-		InitialGoalStatus: CreateSessionInitialGoalStatusSucceeded,
-	}, true, nil
+		InitialGoalStatus: initialGoalStatus,
+	}, true, err
 }
 
 func providerRuntimeSessionIdentity(session storesqlite.Session) ProviderRuntimeSession {

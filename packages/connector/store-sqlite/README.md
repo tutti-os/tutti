@@ -14,4 +14,6 @@ Active operations and pending outbox events are durable and never age-pruned.
 The lifecycle cleanup contract removes bounded batches of expired terminal
 operations and already-published events. Installed release evidence is stored
 separately from operation history so runtime recovery does not depend on an
-expired operation row.
+expired operation row. A probe-detected missing implementation retains that
+evidence while installation is failed, allowing repair or uninstall to keep
+targeting the accepted release.

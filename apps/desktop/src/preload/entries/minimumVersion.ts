@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from "electron";
-import { createDesktopMinimumVersionApi } from "@tutti-os/desktop-update-admission/preload";
+import { createDesktopMinimumVersionApi } from "@tutti-os/desktop-update-admission/preload/minimum-version";
 
 const minimumVersion = createDesktopMinimumVersionApi({
   invoke: (channel) => ipcRenderer.invoke(channel),

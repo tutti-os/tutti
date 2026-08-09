@@ -3,7 +3,9 @@
 `packages/connector/daemon` composes the Connector Host application inside a
 long-running desktop daemon. It owns bootstrap fencing, recovery ordering,
 operation scheduling, catalog refresh/reconcile scheduling, and durable outbox
-delivery.
+delivery. Bootstrap also calibrates releases with explicit MCP/CLI installation
+probes before opening capability publication; catalog-only connectors are not
+probed.
 
 The host also starts lifecycle maintenance immediately and repeats it hourly.
 Defaults retain terminal operation lookup/idempotency results for 24 hours and

@@ -45,10 +45,14 @@ func TestApplyEffectiveCreateSessionLaunchPinsReplayInputs(t *testing.T) {
 		"model":            (*string)(nil),
 		"reasoningEffort":  (*string)(nil),
 		"permissionModeId": (*string)(nil),
+		"isolation":        (*string)(nil),
 	}
 
 	applyEffectiveCreateSessionLaunch(payload, agentservice.Session{
 		Cwd: "/workspace/recorded",
+		Isolation: &agentservice.SessionIsolation{
+			Mode: agentservice.WorktreeIsolationMode,
+		},
 		Settings: &agenthost.ComposerSettings{
 			BrowserUse:       &browserUse,
 			Model:            "gpt-5.6-terra",
@@ -62,6 +66,7 @@ func TestApplyEffectiveCreateSessionLaunchPinsReplayInputs(t *testing.T) {
 	assertions := map[string]any{
 		"browserUse":       &browserUse,
 		"cwd":              "/workspace/recorded",
+		"isolation":        agentservice.WorktreeIsolationMode,
 		"model":            "gpt-5.6-terra",
 		"permissionModeId": "auto",
 		"planMode":         false,

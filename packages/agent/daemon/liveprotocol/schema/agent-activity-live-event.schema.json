@@ -226,10 +226,10 @@
       ]
     },
     "turnUpdate": {
-      "$ref": "../../../../events/protocol/definitions/agent/activity.updated.event.json#/payloadSchema/oneOf/6"
+      "$ref": "../../../../events/protocol/definitions/agent/activity.updated.event.json#/payloadSchema/oneOf/7"
     },
     "interactionUpdate": {
-      "$ref": "../../../../events/protocol/definitions/agent/activity.updated.event.json#/payloadSchema/oneOf/7"
+      "$ref": "../../../../events/protocol/definitions/agent/activity.updated.event.json#/payloadSchema/oneOf/8"
     },
     "interactionSnapshot": {
       "type": "object",
@@ -257,7 +257,7 @@
             "interactions": {
               "type": "array",
               "items": {
-                "$ref": "../../../../events/protocol/definitions/agent/activity.updated.event.json#/payloadSchema/oneOf/7/properties/data/properties/interaction"
+                "$ref": "../../../../events/protocol/definitions/agent/activity.updated.event.json#/payloadSchema/oneOf/8/properties/data/properties/interaction"
               }
             }
           }
@@ -265,7 +265,7 @@
       }
     },
     "sessionAudit": {
-      "$ref": "../../../../events/protocol/definitions/agent/activity.updated.event.json#/payloadSchema/oneOf/5"
+      "$ref": "../../../../events/protocol/definitions/agent/activity.updated.event.json#/payloadSchema/oneOf/6"
     }
   }
 }

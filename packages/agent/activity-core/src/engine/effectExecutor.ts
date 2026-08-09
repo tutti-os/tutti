@@ -336,6 +336,7 @@ function activationInput(
     ...(command.initialDisplayPrompt !== undefined
       ? { initialDisplayPrompt: command.initialDisplayPrompt }
       : {}),
+    ...(command.isolation ? { isolation: command.isolation } : {}),
     ...(command.railPlacement
       ? { railPlacement: { ...command.railPlacement } }
       : {}),

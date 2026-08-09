@@ -42,6 +42,7 @@ interface PendingActivationIntentRecordBase {
   initialPromptRetracted: boolean;
   initialTurnExpected: boolean;
   initialGoalControl?: Readonly<AgentActivityInitialGoalControl>;
+  isolation?: "worktree";
   railSectionKey?: string;
   railPlacement?: AgentActivityRailPlacement;
   submitDiagnostics?: Readonly<AgentActivitySubmitDiagnostics>;
@@ -119,6 +120,7 @@ interface SessionActivationRequestedIntentBase {
   expiresAtUnixMs: number;
   initialTurnExpected?: boolean;
   initialGoalControl?: Readonly<AgentActivityInitialGoalControl>;
+  isolation?: "worktree";
   railSectionKey?: string;
   railPlacement?: AgentActivityRailPlacement;
   initialDisplayPrompt?: string;
@@ -191,6 +193,7 @@ interface SessionActivateCommandBase {
   initialContent?: readonly AgentPromptContentBlock[];
   initialDisplayPrompt?: string;
   initialGoalControl?: Readonly<AgentActivityInitialGoalControl>;
+  isolation?: "worktree";
   initialTuttiModeActivation?: AgentActivityInitialTuttiModeActivation;
   railPlacement?: AgentActivityRailPlacement;
   submitDiagnostics?: Readonly<AgentActivitySubmitDiagnostics>;

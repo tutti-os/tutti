@@ -7,6 +7,7 @@ func TestLabFlagRegistryKeysAndDefaults(t *testing.T) {
 		LabFlagAutomationRules,
 		LabFlagAgentSessionFork,
 		LabFlagCodexSaverMode,
+		LabFlagConnectors,
 		LabFlagPreviewAgents,
 	}
 	if len(labFlagDefaults) != len(keys) {
@@ -39,6 +40,7 @@ func TestIsLabFlagEnabledFailsClosed(t *testing.T) {
 		LabFlagAutomationRules,
 		LabFlagAgentSessionFork,
 		LabFlagCodexSaverMode,
+		LabFlagConnectors,
 		LabFlagPreviewAgents,
 	} {
 		if IsLabFlagEnabled(nil, key) {

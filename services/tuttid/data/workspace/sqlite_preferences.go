@@ -20,7 +20,7 @@ func (s *SQLiteStore) GetDesktopPreferences(ctx context.Context) (preferencesbiz
 	}
 
 	row := s.readDB.QueryRowContext(ctx, `
-SELECT agent_cli_update_check_enabled, default_agent_provider, agent_conversation_detail_mode, agent_dock_layout, dock_icon_style, dock_placement, deleted_agent_conversation_retention_days, locale, theme_source, sleep_prevention_mode, update_channel, update_policy, agent_composer_defaults_by_provider_json, agent_composer_defaults_by_agent_target_json, agent_gui_conversation_rail_collapsed_by_provider_json, browser_use_connection_mode, file_default_openers_by_extension_json, app_catalog_channel, minimize_animation, show_app_developer_sources, workbench_window_snapping_enabled, workbench_window_snapping_shortcut_preset, feature_flags_json, workbench_shortcuts_json
+SELECT agent_cli_update_check_enabled, default_agent_provider, agent_conversation_detail_mode, agent_dock_layout, dock_icon_style, dock_placement, deleted_agent_conversation_retention_days, locale, theme_source, sleep_prevention_mode, update_channel, update_policy, agent_composer_defaults_by_provider_json, agent_composer_defaults_by_agent_target_json, agent_gui_conversation_rail_collapsed_by_provider_json, agent_session_launch_modes_by_workspace_json, browser_use_connection_mode, file_default_openers_by_extension_json, app_catalog_channel, minimize_animation, show_app_developer_sources, workbench_window_snapping_enabled, workbench_window_snapping_shortcut_preset, feature_flags_json, workbench_shortcuts_json
 FROM desktop_preferences
 WHERE id = ?
 `, desktopPreferencesRowID)
@@ -48,8 +48,9 @@ WHERE id = ?
 	var agentComposerDefaultsJSON string
 	var agentComposerDefaultsByAgentTargetJSON string
 	var agentGUIConversationRailCollapsedJSON string
+	var agentSessionLaunchModesJSON string
 	var fileDefaultOpenersJSON string
-	if err := row.Scan(&agentCLIUpdateCheckEnabled, &defaultAgentProvider, &agentConversationDetailMode, &agentDockLayout, &dockIconStyle, &dockPlacement, &deletedAgentConversationRetentionDays, &locale, &themeSource, &sleepPreventionMode, &updateChannel, &updatePolicy, &agentComposerDefaultsJSON, &agentComposerDefaultsByAgentTargetJSON, &agentGUIConversationRailCollapsedJSON, &browserUseConnectionMode, &fileDefaultOpenersJSON, &appCatalogChannel, &minimizeAnimation, &showAppDeveloperSources, &windowSnappingEnabled, &windowSnappingShortcutPreset, &featureFlagsJSON, &workbenchShortcutsJSON); err != nil {
+	if err := row.Scan(&agentCLIUpdateCheckEnabled, &defaultAgentProvider, &agentConversationDetailMode, &agentDockLayout, &dockIconStyle, &dockPlacement, &deletedAgentConversationRetentionDays, &locale, &themeSource, &sleepPreventionMode, &updateChannel, &updatePolicy, &agentComposerDefaultsJSON, &agentComposerDefaultsByAgentTargetJSON, &agentGUIConversationRailCollapsedJSON, &agentSessionLaunchModesJSON, &browserUseConnectionMode, &fileDefaultOpenersJSON, &appCatalogChannel, &minimizeAnimation, &showAppDeveloperSources, &windowSnappingEnabled, &windowSnappingShortcutPreset, &featureFlagsJSON, &workbenchShortcutsJSON); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return preferencesbiz.DefaultDesktopPreferences(), nil
 		}
@@ -67,6 +68,10 @@ WHERE id = ?
 	if err != nil {
 		return preferencesbiz.DesktopPreferences{}, fmt.Errorf("decode desktop preferences agent gui conversation rail: %w", err)
 	}
+	agentSessionLaunchModes, err := decodeAgentSessionLaunchModesByWorkspace(agentSessionLaunchModesJSON)
+	if err != nil {
+		return preferencesbiz.DesktopPreferences{}, fmt.Errorf("decode desktop preferences Agent Session launch modes: %w", err)
+	}
 	fileDefaultOpeners, err := decodeFileDefaultOpenersByExtension(fileDefaultOpenersJSON)
 	if err != nil {
 		return preferencesbiz.DesktopPreferences{}, fmt.Errorf("decode desktop preferences file default openers: %w", err)
@@ -82,6 +87,7 @@ WHERE id = ?
 		AgentComposerDefaultsByProvider:             agentComposerDefaults,
 		AgentComposerDefaultsByAgentTarget:          agentComposerDefaultsByAgentTarget,
 		AgentGUIConversationRailCollapsedByProvider: agentGUIConversationRailCollapsed,
+		AgentSessionLaunchModesByWorkspace:          agentSessionLaunchModes,
 		AgentConversationDetailMode:                 preferencesbiz.NormalizeDesktopAgentConversationDetailMode(agentConversationDetailMode),
 		AgentDockLayout:                             preferencesbiz.NormalizeDesktopAgentDockLayout(agentDockLayout),
 		AppCatalogChannel:                           appCatalogChannel,
@@ -124,6 +130,10 @@ func (s *SQLiteStore) PutDesktopPreferences(ctx context.Context, preferences pre
 	if err != nil {
 		return preferencesbiz.DesktopPreferences{}, fmt.Errorf("encode desktop preferences agent gui conversation rail: %w", err)
 	}
+	agentSessionLaunchModesJSON, err := encodeAgentSessionLaunchModesByWorkspace(preferences.AgentSessionLaunchModesByWorkspace)
+	if err != nil {
+		return preferencesbiz.DesktopPreferences{}, fmt.Errorf("encode desktop preferences Agent Session launch modes: %w", err)
+	}
 	fileDefaultOpenersJSON, err := encodeFileDefaultOpenersByExtension(preferences.FileDefaultOpenersByExtension)
 	if err != nil {
 		return preferencesbiz.DesktopPreferences{}, fmt.Errorf("encode desktop preferences file default openers: %w", err)
@@ -154,6 +164,7 @@ INSERT INTO desktop_preferences (
   agent_composer_defaults_by_provider_json,
   agent_composer_defaults_by_agent_target_json,
   agent_gui_conversation_rail_collapsed_by_provider_json,
+  agent_session_launch_modes_by_workspace_json,
   file_default_openers_by_extension_json,
   app_catalog_channel,
   browser_use_connection_mode,
@@ -165,7 +176,7 @@ INSERT INTO desktop_preferences (
   workbench_shortcuts_json,
   updated_at_unix_ms
 )
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(id) DO UPDATE SET
   agent_cli_update_check_enabled = excluded.agent_cli_update_check_enabled,
   default_agent_provider = excluded.default_agent_provider,
@@ -191,15 +202,15 @@ ON CONFLICT(id) DO UPDATE SET
   feature_flags_json = excluded.feature_flags_json,
   workbench_shortcuts_json = excluded.workbench_shortcuts_json,
   updated_at_unix_ms = excluded.updated_at_unix_ms
-`, desktopPreferencesRowID, preferences.AgentCLIUpdateCheckEnabled, preferences.DefaultAgentProvider, preferencesbiz.NormalizeDesktopAgentConversationDetailMode(preferences.AgentConversationDetailMode), preferencesbiz.NormalizeDesktopAgentDockLayout(preferences.AgentDockLayout), preferences.DockIconStyle, preferences.DockPlacement, preferencesbiz.NormalizeDeletedAgentConversationRetentionDays(preferences.DeletedAgentConversationRetentionDays), preferences.Locale, preferences.ThemeSource, preferences.SleepPreventionMode, preferences.UpdateChannel, preferences.UpdatePolicy, agentComposerDefaultsJSON, agentComposerDefaultsByAgentTargetJSON, agentGUIConversationRailCollapsedJSON, fileDefaultOpenersJSON, preferences.AppCatalogChannel, preferences.BrowserUseConnectionMode, preferences.MinimizeAnimation, preferences.ShowAppDeveloperSources, preferences.WindowSnappingEnabled, preferences.WindowSnappingShortcutPreset, featureFlagsJSON, workbenchShortcutsJSON, now)
+`, desktopPreferencesRowID, preferences.AgentCLIUpdateCheckEnabled, preferences.DefaultAgentProvider, preferencesbiz.NormalizeDesktopAgentConversationDetailMode(preferences.AgentConversationDetailMode), preferencesbiz.NormalizeDesktopAgentDockLayout(preferences.AgentDockLayout), preferences.DockIconStyle, preferences.DockPlacement, preferencesbiz.NormalizeDeletedAgentConversationRetentionDays(preferences.DeletedAgentConversationRetentionDays), preferences.Locale, preferences.ThemeSource, preferences.SleepPreventionMode, preferences.UpdateChannel, preferences.UpdatePolicy, agentComposerDefaultsJSON, agentComposerDefaultsByAgentTargetJSON, agentGUIConversationRailCollapsedJSON, agentSessionLaunchModesJSON, fileDefaultOpenersJSON, preferences.AppCatalogChannel, preferences.BrowserUseConnectionMode, preferences.MinimizeAnimation, preferences.ShowAppDeveloperSources, preferences.WindowSnappingEnabled, preferences.WindowSnappingShortcutPreset, featureFlagsJSON, workbenchShortcutsJSON, now)
 	if err != nil {
 		return preferencesbiz.DesktopPreferences{}, fmt.Errorf("put desktop preferences: %w", err)
 	}
 
-	// Re-read after the write because the dedicated target-defaults patch may
-	// have committed between a full preferences caller's read and this update.
-	// The conflict clause deliberately preserves that column, so returning the
-	// input object here would publish a stale defaults snapshot.
+	// Re-read after the write because the dedicated target-defaults or launch-mode
+	// patch may have committed between a full preferences caller's read and this
+	// update. The conflict clause deliberately preserves those columns, so
+	// returning the input object here would publish a stale snapshot.
 	return s.GetDesktopPreferences(ctx)
 }
 
@@ -298,6 +309,84 @@ WHERE id = ?
 	return defaults, nil
 }
 
+func (s *SQLiteStore) PatchAgentSessionLaunchMode(
+	ctx context.Context,
+	workspaceID string,
+	projectSectionKey string,
+	mode string,
+) (preferencesbiz.DesktopPreferences, error) {
+	if s == nil || s.writeDB == nil {
+		return preferencesbiz.DesktopPreferences{}, errors.New("workspace database is not initialized")
+	}
+	workspaceID = strings.TrimSpace(workspaceID)
+	projectSectionKey = strings.TrimSpace(projectSectionKey)
+	mode = strings.TrimSpace(mode)
+	if workspaceID == "" || projectSectionKey == "" || (mode != "local" && mode != "worktree") {
+		return preferencesbiz.DesktopPreferences{}, errors.New("agent session launch mode patch is invalid")
+	}
+
+	tx, err := s.writeDB.BeginTx(ctx, nil)
+	if err != nil {
+		return preferencesbiz.DesktopPreferences{}, fmt.Errorf("begin agent session launch mode patch: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	defaultPreferences := preferencesbiz.DefaultDesktopPreferences()
+	if _, err := tx.ExecContext(ctx, `
+INSERT INTO desktop_preferences (
+  id, locale, theme_source, dock_icon_style, updated_at_unix_ms
+)
+VALUES (?, ?, ?, ?, ?)
+ON CONFLICT(id) DO NOTHING
+`, desktopPreferencesRowID, defaultPreferences.Locale, defaultPreferences.ThemeSource, defaultPreferences.DockIconStyle, unixMs(time.Now().UTC())); err != nil {
+		return preferencesbiz.DesktopPreferences{}, fmt.Errorf("initialize desktop preferences for agent session launch mode patch: %w", err)
+	}
+
+	var raw string
+	if err := tx.QueryRowContext(ctx, `
+SELECT agent_session_launch_modes_by_workspace_json
+FROM desktop_preferences
+WHERE id = ?
+`, desktopPreferencesRowID).Scan(&raw); err != nil {
+		return preferencesbiz.DesktopPreferences{}, fmt.Errorf("read agent session launch modes for patch: %w", err)
+	}
+	modesByWorkspace, err := decodeAgentSessionLaunchModesByWorkspace(raw)
+	if err != nil {
+		return preferencesbiz.DesktopPreferences{}, fmt.Errorf("decode agent session launch modes for patch: %w", err)
+	}
+	if modesByWorkspace == nil {
+		modesByWorkspace = map[string]map[string]string{}
+	}
+	modesByProject := modesByWorkspace[workspaceID]
+	if modesByProject == nil {
+		modesByProject = map[string]string{}
+	}
+	modesByProject[projectSectionKey] = mode
+	modesByWorkspace[workspaceID] = modesByProject
+	encoded, err := encodeAgentSessionLaunchModesByWorkspace(modesByWorkspace)
+	if err != nil {
+		return preferencesbiz.DesktopPreferences{}, fmt.Errorf("encode agent session launch modes patch: %w", err)
+	}
+	result, err := tx.ExecContext(ctx, `
+UPDATE desktop_preferences
+SET agent_session_launch_modes_by_workspace_json = ?, updated_at_unix_ms = ?
+WHERE id = ?
+`, encoded, unixMs(time.Now().UTC()), desktopPreferencesRowID)
+	if err != nil {
+		return preferencesbiz.DesktopPreferences{}, fmt.Errorf("write agent session launch mode patch: %w", err)
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return preferencesbiz.DesktopPreferences{}, fmt.Errorf("count agent session launch mode patch rows: %w", err)
+	}
+	if rows != 1 {
+		return preferencesbiz.DesktopPreferences{}, errors.New("desktop preferences row is not initialized")
+	}
+	if err := tx.Commit(); err != nil {
+		return preferencesbiz.DesktopPreferences{}, fmt.Errorf("commit agent session launch mode patch: %w", err)
+	}
+	return s.GetDesktopPreferences(ctx)
+}
+
 func agentComposerDefaultsTextPatchValue(value any) (string, error) {
 	if value == nil {
 		return "", nil
@@ -364,6 +453,31 @@ func encodeAgentGUIConversationRailCollapsedByProvider(value map[string]bool) (s
 	return string(data), nil
 }
 
+func decodeAgentSessionLaunchModesByWorkspace(raw string) (map[string]map[string]string, error) {
+	if raw == "" {
+		return map[string]map[string]string{}, nil
+	}
+	var decoded map[string]map[string]string
+	if err := json.Unmarshal([]byte(raw), &decoded); err != nil {
+		return nil, err
+	}
+	if decoded == nil {
+		return map[string]map[string]string{}, nil
+	}
+	return decoded, nil
+}
+
+func encodeAgentSessionLaunchModesByWorkspace(value map[string]map[string]string) (string, error) {
+	if value == nil {
+		value = map[string]map[string]string{}
+	}
+	data, err := json.Marshal(value)
+	if err != nil {
+		return "", err
+	}
+	return string(data), nil
+}
+
 func decodeAgentComposerDefaultsByProvider(raw string) (map[string]preferencesbiz.AgentComposerDefaults, error) {
 	if raw == "" {
 		return map[string]preferencesbiz.AgentComposerDefaults{}, nil
@@ -415,6 +529,7 @@ func decodeWorkbenchShortcuts(raw string) preferencesbiz.DesktopWorkbenchShortcu
 	var decoded struct {
 		NewAgentConversation *string `json:"newAgentConversation"`
 		NewSameTypeWindow    *string `json:"newSameTypeWindow"`
+		CaptureScreenshot    *string `json:"captureScreenshot"`
 	}
 	if err := json.Unmarshal([]byte(raw), &decoded); err != nil {
 		return preferencesbiz.DesktopWorkbenchShortcuts{}
@@ -428,6 +543,7 @@ func decodeWorkbenchShortcuts(raw string) preferencesbiz.DesktopWorkbenchShortcu
 	return preferencesbiz.NormalizeDesktopWorkbenchShortcuts(preferencesbiz.DesktopWorkbenchShortcuts{
 		NewAgentConversation: deref(decoded.NewAgentConversation),
 		NewSameTypeWindow:    deref(decoded.NewSameTypeWindow),
+		CaptureScreenshot:    deref(decoded.CaptureScreenshot),
 	})
 }
 
@@ -442,7 +558,8 @@ func encodeWorkbenchShortcuts(value preferencesbiz.DesktopWorkbenchShortcuts) (s
 	data, err := json.Marshal(struct {
 		NewAgentConversation *string `json:"newAgentConversation"`
 		NewSameTypeWindow    *string `json:"newSameTypeWindow"`
-	}{ptr(n.NewAgentConversation), ptr(n.NewSameTypeWindow)})
+		CaptureScreenshot    *string `json:"captureScreenshot,omitempty"`
+	}{ptr(n.NewAgentConversation), ptr(n.NewSameTypeWindow), ptr(n.CaptureScreenshot)})
 	if err != nil {
 		return "", err
 	}

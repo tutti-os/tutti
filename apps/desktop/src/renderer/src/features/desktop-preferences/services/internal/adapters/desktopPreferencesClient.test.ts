@@ -58,6 +58,32 @@ test("desktop preferences client patches target defaults through the dedicated a
   client.dispose();
 });
 
+test("desktop preferences client patches one session launch mode through the dedicated intent", async () => {
+  const eventStreamClient = createFakeEventStreamClient();
+  const client = createDesktopPreferencesClient(
+    createFakeTuttidClient(),
+    eventStreamClient
+  );
+
+  await client.patchAgentSessionLaunchMode({
+    workspaceId: "workspace-1",
+    projectSectionKey: "project:/alpha",
+    mode: "worktree"
+  });
+
+  assert.deepEqual(eventStreamClient.publishedIntents, [
+    {
+      payload: {
+        workspaceId: "workspace-1",
+        projectSectionKey: "project:/alpha",
+        mode: "worktree"
+      },
+      topic: "preferences.agent.session.launch.mode.patch.requested"
+    }
+  ]);
+  client.dispose();
+});
+
 test("desktop preferences client accepts legacy dock layout responses for unified writes", async () => {
   const eventStreamClient = createFakeEventStreamClient();
   const client = createDesktopPreferencesClient(

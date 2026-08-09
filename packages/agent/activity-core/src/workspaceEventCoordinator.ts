@@ -36,6 +36,7 @@ export interface AgentActivityWorkspaceEventResult {
   reason:
     | "applied"
     | "deleted"
+    | "restored"
     | "identity_mismatch"
     | "invalid_delta"
     | "invalid_turn"
@@ -336,6 +337,24 @@ export function createAgentActivityWorkspaceEventCoordinator({
       if (event.eventType === "session_deleted") {
         removeSession(agentSessionId);
         return eventResult(eventType, true, "deleted");
+      }
+      if (event.eventType === "session_restored") {
+        engine.dispatch({
+          agentSessionId,
+          type: "session/restored"
+        });
+        overlay.reset({
+          agentSessionId,
+          workspaceId: normalizedWorkspaceId
+        });
+        overlaySessionIds.delete(agentSessionId);
+        requestSessionReconcile({
+          agentSessionId,
+          needsMessages: true,
+          needsState: true
+        });
+        markChanged();
+        return eventResult(eventType, true, "restored");
       }
       if (
         engine.getSnapshot().sessionLifecycle.deletedSessionIds[agentSessionId]

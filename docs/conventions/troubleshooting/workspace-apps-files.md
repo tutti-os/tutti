@@ -343,3 +343,26 @@
   Run the workspace files launch coordinator test and the AgentGUI workspace
   link action test, then `pnpm check:changed` for mixed desktop and AgentGUI
   changes.
+
+### Windows FileManager paths exist but fail validation or selection
+
+- Symptom:
+  A Windows path opens through direct preview, but FileManager reports it as
+  missing, fails to select the revealed entry, loses the matching sidebar
+  location, or adds a duplicate back-navigation entry.
+- Quick checks:
+  Compare the desktop launch path with `tuttid`'s directory response. Native
+  input commonly arrives as `C:\\Users\\...` or `C:/Users/...`, while the
+  workspace API intentionally transports the same path as `/C:/Users/...`.
+- Root cause:
+  Workspace file paths are logical API paths. Normalizing separators without
+  also adding the logical leading slash leaves native Windows input unequal to
+  daemon roots, directory paths, and entry paths.
+- Fix:
+  Canonicalize drive-qualified paths to `/C:/...` at the shared FileManager
+  path-model boundary. Strip that transport slash only at a native Electron or
+  operating-system file API boundary.
+- Validation:
+  Cover native Windows inputs against daemon-shaped `/C:/...` responses in
+  existence, directory navigation, and reveal-selection tests. Then run
+  `pnpm check:changed`.

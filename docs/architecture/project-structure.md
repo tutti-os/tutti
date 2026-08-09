@@ -199,8 +199,8 @@ Current packages:
   compatibility, operation, and recovery application core
 - `packages/connector/daemon`: reusable daemon lifecycle and workers
 - `packages/connector/store-sqlite`: canonical local persistence and outbox
-- `packages/connector/runtime`: same-machine artifact and managed-runtime
-  installation primitives
+- `packages/connector/runtime`: latest-only artifact caching, no-network archive
+  import, same-machine composition, and managed-runtime installation primitives
 
 Remote endpoint authentication, credentials, state-root selection, generated
 daemon clients, product command publication, and OS process integration remain

@@ -106,32 +106,18 @@ func (s *Store) DeleteSessionWithCommit(
 	}()
 
 	now := unixMs(time.Now().UTC())
-	removedSessionIDs, err := expandSessionTreeIDsTx(ctx, tx, workspaceID, []string{agentSessionID})
+	sessionClosureIDs, err := expandSessionTreeIDsTx(ctx, tx, workspaceID, []string{agentSessionID})
 	if err != nil {
 		return DeleteSessionResult{}, err
 	}
-	if err := requireSessionForkDeleteAllowedTx(ctx, tx, workspaceID, append([]string{agentSessionID}, removedSessionIDs...)); err != nil {
+	if err := requireSessionForkDeleteAllowedTx(ctx, tx, workspaceID, append([]string{agentSessionID}, sessionClosureIDs...)); err != nil {
 		return DeleteSessionResult{}, err
 	}
-	// Always clear exact provenance, including on an idempotent repeat. A
-	// delayed provider ACK may have raced the first soft-delete, and a reused
-	// session id must not inherit that orphan binding.
-	if err := deleteGoalProvenanceForSessionTx(ctx, tx, workspaceID, agentSessionID); err != nil {
-		return DeleteSessionResult{}, err
-	}
-	for _, removedSessionID := range removedSessionIDs {
-		if err := deleteRuntimeOperationRecordsForSessionTx(ctx, tx, workspaceID, removedSessionID); err != nil {
-			return DeleteSessionResult{}, err
-		}
-		if err := deleteGoalRecordsForSessionTx(ctx, tx, workspaceID, removedSessionID); err != nil {
-			return DeleteSessionResult{}, err
-		}
-	}
-	mutations, err := sessionDeleteMutationsTx(ctx, tx, workspaceID, removedSessionIDs, now)
+	mutations, err := sessionDeleteMutationsTx(ctx, tx, workspaceID, sessionClosureIDs, now)
 	if err != nil {
 		return DeleteSessionResult{}, err
 	}
-	removedMessages, removedSessions, err := deleteSessionTreeRowsTx(ctx, tx, workspaceID, removedSessionIDs, now)
+	removedMessages, removedSessions, removedSessionIDs, err := deleteSessionTreeRowsTx(ctx, tx, workspaceID, sessionClosureIDs, now)
 	if err != nil {
 		return DeleteSessionResult{}, err
 	}
@@ -188,35 +174,22 @@ func (s *Store) DeleteSessionsBatchTx(ctx context.Context, tx *sql.Tx, input Del
 	if workspaceID == "" || len(sessionIDs) == 0 {
 		return DeleteSessionsBatchResult{}, nil
 	}
-	removedSessionIDs, err := expandSessionTreeIDsTx(ctx, tx, workspaceID, sessionIDs)
+	sessionClosureIDs, err := expandSessionTreeIDsTx(ctx, tx, workspaceID, sessionIDs)
 	if err != nil {
 		return DeleteSessionsBatchResult{}, err
 	}
-	if err := requireSessionForkDeleteAllowedTx(ctx, tx, workspaceID, append(sessionIDs, removedSessionIDs...)); err != nil {
+	if err := requireSessionForkDeleteAllowedTx(ctx, tx, workspaceID, append(sessionIDs, sessionClosureIDs...)); err != nil {
 		return DeleteSessionsBatchResult{}, err
 	}
-	if expected := normalizedSessionIDs(input.ExpectedSessionIDs); len(expected) > 0 && !equalStrings(expected, normalizedSessionIDs(removedSessionIDs)) {
+	if expected := normalizedSessionIDs(input.ExpectedSessionIDs); len(expected) > 0 && !equalStrings(expected, normalizedSessionIDs(sessionClosureIDs)) {
 		return DeleteSessionsBatchResult{}, ErrDeleteSessionsPlanChanged
 	}
 	now := unixMs(time.Now().UTC())
-	for _, agentSessionID := range sessionIDs {
-		if err := deleteGoalProvenanceForSessionTx(ctx, tx, workspaceID, agentSessionID); err != nil {
-			return DeleteSessionsBatchResult{}, err
-		}
-	}
-	for _, agentSessionID := range removedSessionIDs {
-		if err := deleteRuntimeOperationRecordsForSessionTx(ctx, tx, workspaceID, agentSessionID); err != nil {
-			return DeleteSessionsBatchResult{}, err
-		}
-		if err := deleteGoalRecordsForSessionTx(ctx, tx, workspaceID, agentSessionID); err != nil {
-			return DeleteSessionsBatchResult{}, err
-		}
-	}
-	mutations, err := sessionDeleteMutationsTx(ctx, tx, workspaceID, removedSessionIDs, now)
+	mutations, err := sessionDeleteMutationsTx(ctx, tx, workspaceID, sessionClosureIDs, now)
 	if err != nil {
 		return DeleteSessionsBatchResult{}, err
 	}
-	removedMessages, removedSessions, err := deleteSessionTreeRowsTx(ctx, tx, workspaceID, removedSessionIDs, now)
+	removedMessages, removedSessions, removedSessionIDs, err := deleteSessionTreeRowsTx(ctx, tx, workspaceID, sessionClosureIDs, now)
 	if err != nil {
 		return DeleteSessionsBatchResult{}, err
 	}
@@ -261,45 +234,6 @@ func equalStrings(left, right []string) bool {
 		}
 	}
 	return true
-}
-
-func deleteGoalRecordsForSessionTx(ctx context.Context, tx *sql.Tx, workspaceID string, agentSessionID string) error {
-	if err := deleteGoalProvenanceForSessionTx(ctx, tx, workspaceID, agentSessionID); err != nil {
-		return err
-	}
-	if _, err := tx.ExecContext(ctx, `DELETE FROM workspace_agent_goal_reconcile_inbox WHERE workspace_id = ? AND agent_session_id = ?`, workspaceID, agentSessionID); err != nil {
-		return fmt.Errorf("delete workspace agent goal reconcile inbox: %w", err)
-	}
-	if _, err := tx.ExecContext(ctx, `DELETE FROM workspace_agent_goal_repair_incidents WHERE workspace_id = ? AND agent_session_id = ?`, workspaceID, agentSessionID); err != nil {
-		return fmt.Errorf("delete workspace agent goal repair incidents: %w", err)
-	}
-	if _, err := tx.ExecContext(ctx, `DELETE FROM workspace_agent_goal_generation_fences WHERE workspace_id = ? AND agent_session_id = ?`, workspaceID, agentSessionID); err != nil {
-		return fmt.Errorf("delete workspace agent goal generation fences: %w", err)
-	}
-	if _, err := tx.ExecContext(ctx, `DELETE FROM workspace_agent_goal_control_operations WHERE workspace_id = ? AND agent_session_id = ?`, workspaceID, agentSessionID); err != nil {
-		return fmt.Errorf("delete workspace agent session goal operations: %w", err)
-	}
-	if _, err := tx.ExecContext(ctx, `DELETE FROM workspace_agent_session_goals WHERE workspace_id = ? AND agent_session_id = ?`, workspaceID, agentSessionID); err != nil {
-		return fmt.Errorf("delete workspace agent session goal state: %w", err)
-	}
-	return nil
-}
-
-func deleteGoalProvenanceForSessionTx(ctx context.Context, tx *sql.Tx, workspaceID string, agentSessionID string) error {
-	if _, err := tx.ExecContext(ctx, `DELETE FROM workspace_agent_goal_provenance_ledger WHERE workspace_id = ? AND agent_session_id = ?`, workspaceID, agentSessionID); err != nil {
-		return fmt.Errorf("delete workspace agent goal provenance ledger: %w", err)
-	}
-	return nil
-}
-
-func deleteRuntimeOperationRecordsForSessionTx(ctx context.Context, tx *sql.Tx, workspaceID string, agentSessionID string) error {
-	if _, err := tx.ExecContext(ctx, `DELETE FROM workspace_agent_runtime_operation_events WHERE workspace_id = ? AND agent_session_id = ?`, workspaceID, agentSessionID); err != nil {
-		return fmt.Errorf("delete workspace agent session runtime operation events: %w", err)
-	}
-	if _, err := tx.ExecContext(ctx, `DELETE FROM workspace_agent_runtime_operations WHERE workspace_id = ? AND agent_session_id = ?`, workspaceID, agentSessionID); err != nil {
-		return fmt.Errorf("delete workspace agent session runtime operations: %w", err)
-	}
-	return nil
 }
 
 func (s *Store) ClearSessions(

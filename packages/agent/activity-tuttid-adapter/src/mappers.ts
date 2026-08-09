@@ -41,6 +41,14 @@ export function agentActivitySessionFromTuttidSession(
     providerSessionId: session.providerSessionId ?? session.id,
     userId: options.currentUserId,
     cwd: session.cwd ?? "/",
+    isolation: session.isolation
+      ? {
+          mode: session.isolation.mode,
+          worktreePath: session.isolation.worktreePath,
+          branch: session.isolation.branch,
+          baseCommit: session.isolation.baseCommit
+        }
+      : null,
     railSectionKey: session.railSectionKey,
     title: session.title ?? "",
     activeTurnId: session.activeTurnId,

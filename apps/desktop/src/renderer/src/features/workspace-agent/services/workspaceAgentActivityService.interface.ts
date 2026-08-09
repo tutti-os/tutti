@@ -143,6 +143,11 @@ export interface WorkspaceAgentComposerDefaultsInvalidatedEvent {
   agentTargetId: string;
 }
 
+export interface WorkspaceAgentConnectorCatalogInvalidatedEvent {
+  connectorKey?: string;
+  revision: number;
+}
+
 export interface IWorkspaceAgentActivityService {
   readonly _serviceBrand: undefined;
 
@@ -235,6 +240,12 @@ export interface IWorkspaceAgentActivityService {
   onComposerDefaultsInvalidated(
     listener: (event: WorkspaceAgentComposerDefaultsInvalidatedEvent) => void
   ): () => void;
+  onConnectorCatalogInvalidated(
+    listener: (event: WorkspaceAgentConnectorCatalogInvalidatedEvent) => void
+  ): () => void;
+  invalidateConnectorCatalog(
+    event: WorkspaceAgentConnectorCatalogInvalidatedEvent
+  ): void;
   submitInteractive(
     input: AgentActivitySubmitInteractiveInput
   ): Promise<AgentActivitySubmitInteractiveResult>;

@@ -79,6 +79,29 @@ provider-status-focus-refresh --all-process-time-profile` on macOS when a
   [manager.go](../../../services/tuttid/service/agentextension/manager.go)
   [runtime_version_cache.go](../../../services/tuttid/service/agentextension/runtime_version_cache.go)
 
+### Workspace Apps repeatedly probe extension authentication
+
+- Symptom:
+  Several Workspace Apps opening together repeatedly start the same Extension
+  ACP process. A logged-in target can intermittently become unavailable when
+  duplicate setup probes exhaust the caller timeout.
+- Root cause:
+  Older Apps consume only the broad Agent catalog, while newer Apps refine an
+  exact target. If the broad catalog exposes installation readiness without
+  authentication, old Apps can also show an unconfigured extension as usable.
+- Fix:
+  Resolve installed extension authentication for broad and exact
+  `agent list` requests, run broad probes concurrently, coalesce them by
+  workspace and target in the daemon, and retain the result for a short bounded
+  interval. Preserve `auth_required` as the canonical reason code even when the
+  runtime supplies a more specific diagnostic reason. Explicit refresh bypasses
+  the short cache.
+- Validation:
+  Broad and exact-target requests within the cache window should share one setup
+  probe per target. A ready Kimi target reports `available`; an unconfigured
+  Hermes target reports `unavailable` with `auth_required` in both response
+  shapes. A refreshed broad request probes each installed extension once.
+
 ### An extension Agent is installed in the terminal but Tutti cannot detect it
 
 - Symptom:
@@ -1589,7 +1612,9 @@ invalid_grant`. Search `tuttid.log` for
 - Symptom:
   `opencode models --verbose` lists more models in a local terminal than the
   OpenCode model picker in Agent GUI. Custom provider ids or recently published
-  model variants are commonly absent.
+  model variants are commonly absent. A related presentation symptom shows a
+  provider-qualified recent item such as `newapi/deepseek-v4-pro`, while the
+  searchable catalog shows only the ambiguous model name `DeepSeek V4 Pro`.
 - Quick checks:
   Run `opencode models --verbose` from the same workspace cwd passed to the
   composer. Count exact `provider/model` lines and compare them with the
@@ -1601,18 +1626,25 @@ invalid_grant`. Search `tuttid.log` for
   daemon previously ran model discovery in its own inherited cwd and stored the
   resulting provider-wide list for six hours. A smaller result from the wrong
   project context therefore remained visible even after the terminal catalog
-  changed.
+  changed. Separately, verbose catalog normalization previously used only the
+  model metadata `name` as the display label even though the exact launch
+  identity remained the provider-qualified `provider/model` id.
 - Fix:
   Pass the composer workspace cwd through the daemon model-catalog request and
   set it as the `opencode models --verbose` process directory. Do not cache
   OpenCode model-list successes or failures. Keep one request-scoped catalog
   projection so a composer-options request starts the CLI only once. Preserve
   the auth/config invalidation event so an already-open composer refreshes when
-  global OpenCode credentials or config files change.
+  global OpenCode credentials or config files change. Append a non-built-in
+  provider id to verbose model labels while preserving the exact
+  provider-qualified id as the selection value. Keep the built-in `opencode`
+  provider suffix hidden so ordinary catalog entries stay concise, and avoid
+  renderer-side provider branches.
 - Validation:
   Cover cwd propagation, repeated uncached OpenCode lookups, all provider/model
   prefixes from verbose output, one catalog lookup per composer-options request,
-  and unchanged cache policies for Codex and Tutti Agent. Run
+  duplicate model names under different provider ids, and unchanged cache
+  policies for Codex and Tutti Agent. Run
   `cd services/tuttid && go test ./service/agent` and `pnpm check:changed`.
 - References:
   [opencode_model_catalog.go](../../../services/tuttid/service/agent/opencode_model_catalog.go)

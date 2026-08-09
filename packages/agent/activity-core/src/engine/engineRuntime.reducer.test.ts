@@ -952,6 +952,7 @@ test("root drains once from post-lifecycle canonical turn state", () => {
     updatedAtUnixMs: 3
   };
   const settled = rootEngineReducer(queued.state, {
+    live: true,
     type: "turn/upserted",
     turn
   });
@@ -961,6 +962,7 @@ test("root drains once from post-lifecycle canonical turn state", () => {
     1
   );
   const duplicate = rootEngineReducer(settled.state, {
+    live: true,
     type: "turn/upserted",
     turn
   });
@@ -1174,6 +1176,7 @@ test("successful queued send waits for its exact canonical turn before FIFO drai
     "turn-1"
   );
   const settled = rootEngineReducer(accepted.state, {
+    live: true,
     type: "turn/upserted",
     turn: {
       ...runningTurn,
@@ -1252,6 +1255,7 @@ test("timeout message confirmation waits for exact-turn lifecycle reconcile", ()
     "turn-1"
   );
   const reconciled = rootEngineReducer(confirmed.state, {
+    live: true,
     type: "turn/upserted",
     turn: {
       agentSessionId: "session-1",

@@ -10,9 +10,9 @@ var toolUnifiedDiffHunkPattern = regexp.MustCompile(`^@@ -(\d+)(?:,(\d+))? \+(\d
 
 // NormalizeToolFileChanges is the shared fileChanges contract used by tool
 // payloads and Agent Session Replay final-state compare. Invalid unified-diff
-// bodies on added files become newString; only real unified diffs keep diff /
-// unifiedDiff. Callers should run both recorded and live graphs through this
-// before equality checks so older cassettes stay portable.
+// bodies on added or modified files become newString; only real unified diffs
+// keep diff / unifiedDiff. Callers should run both recorded and live graphs
+// through this before equality checks so older cassettes stay portable.
 func NormalizeToolFileChanges(value any) map[string]any {
 	return normalizeToolFileChanges(value)
 }
@@ -90,7 +90,9 @@ func normalizeToolFileChange(value map[string]any) map[string]any {
 	if change == "" && hasContent {
 		change = "added"
 	}
-	if change == "added" && !hasNew && hasContent {
+	// Prefer newString over content for non-deleted bodies so obsolete cassette
+	// shapes (bare content, or invalid diff folded below) match live projection.
+	if change != "deleted" && !hasNew && hasContent {
 		newString, hasNew = content, true
 		hasContent = false
 	}
@@ -101,7 +103,9 @@ func normalizeToolFileChange(value map[string]any) map[string]any {
 		case change == "deleted" && !hasOld:
 			oldString, hasOld = rawDiff, true
 		case !hasOld && !hasNew && !hasContent:
-			content, hasContent = rawDiff, true
+			// modified / unspecified: fold invalid diff bodies into newString,
+			// not content — live rematerialization already uses newString.
+			newString, hasNew = rawDiff, true
 		}
 	}
 	if change == "" {

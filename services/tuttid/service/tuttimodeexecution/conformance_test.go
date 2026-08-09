@@ -1371,7 +1371,7 @@ func (driver *sqliteConformanceDriver) EnableAutomaticRecovery(ctx context.Conte
 			Reconcile: func(
 				ctx context.Context, workspaceID string,
 			) (workspaceservice.WorkspaceExecutionRecoveryResult, error) {
-				runResult, err := coordinator.ReconcileTuttiModeRunLaunchesAndRunningRuns(ctx, workspaceID)
+				runResult, err := coordinator.ReconcileIssueExecutions(ctx, workspaceID)
 				if err != nil {
 					return workspaceservice.WorkspaceExecutionRecoveryResult{}, err
 				}
@@ -1431,7 +1431,7 @@ func (driver *sqliteConformanceDriver) StartupReconcileReplica(ctx context.Conte
 		RunSessionCanceller: driver.canceller,
 		Clock:               driver.clock.Now,
 	}
-	_, err := coordinator.ReconcileTuttiModeRunLaunchesAndRunningRuns(
+	_, err := coordinator.ReconcileIssueExecutions(
 		ctx, workspaceID,
 	)
 	return err
@@ -1442,7 +1442,7 @@ func (driver *sqliteConformanceDriver) PeriodicRecoverReplica(ctx context.Contex
 	replica.MutationLocks = workspaceservice.NewIssueMutationLocks()
 	replica.RunLaunchGate = workspaceservice.NewIssueRunLaunchGate()
 	coordinator := workspaceservice.IssueExecutionCoordinator{Issues: &replica}
-	_, err := coordinator.ReconcileTuttiModeRunLaunchesAndRunningRuns(ctx, workspaceID)
+	_, err := coordinator.ReconcileIssueExecutions(ctx, workspaceID)
 	return err
 }
 

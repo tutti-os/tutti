@@ -54,6 +54,7 @@ jobs:
       - name: Publish packages
         env:
           TUTTI_PACKAGE_RELEASE_VERSION: ${{ steps.version.outputs.version }}
+          TUTTI_NPM_PUBLISH_CONCURRENCY: "4"
           TUTTI_NPM_PROVENANCE: ${{ github.event.repository.private != true }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

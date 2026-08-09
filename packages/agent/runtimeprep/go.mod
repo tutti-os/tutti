@@ -6,6 +6,8 @@ toolchain go1.24.5
 
 require gopkg.in/yaml.v3 v3.0.1
 
+require golang.org/x/sys v0.41.0
+
 require (
 	github.com/kr/pretty v0.3.1 // indirect
 	github.com/rogpeppe/go-internal v1.14.1 // indirect

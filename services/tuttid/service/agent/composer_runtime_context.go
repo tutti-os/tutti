@@ -243,7 +243,7 @@ func runtimeConfigOptionMatchesID(option map[string]any, id string) bool {
 		strings.TrimSpace(stringFromAny(option["runtimeId"])) == id
 }
 
-func applyExtensionComposerCapabilities(options ComposerOptions, profile ExtensionComposerProfile, computerUseAvailable bool) ComposerOptions {
+func applyExtensionComposerCapabilities(options ComposerOptions, profile ExtensionComposerProfile, computerUseAvailable, browserUseAvailable bool) ComposerOptions {
 	runtimeCapabilities := stringSliceFromAny(options.RuntimeContext["capabilities"])
 	allowed := make(map[string]struct{}, len(profile.Capabilities))
 	for _, capability := range profile.Capabilities {
@@ -258,7 +258,7 @@ func applyExtensionComposerCapabilities(options ComposerOptions, profile Extensi
 		if _, ok := allowed[capability]; !ok {
 			continue
 		}
-		if capability == providerregistry.CapabilityBrowserUse && !runtimeprep.BrowserUseDefaultEnabled() {
+		if capability == providerregistry.CapabilityBrowserUse && (!browserUseAvailable || !runtimeprep.BrowserUseDefaultEnabled()) {
 			continue
 		}
 		if capability == providerregistry.CapabilityComputerUse && (!computerUseAvailable || !runtimeprep.ComputerUseDefaultEnabled()) {
@@ -275,7 +275,7 @@ func applyExtensionComposerCapabilities(options ComposerOptions, profile Extensi
 			effective = append(effective, providerregistry.CapabilitySkills)
 		}
 	}
-	if _, declared := allowed[providerregistry.CapabilityBrowserUse]; declared && runtimeprep.BrowserUseDefaultEnabled() {
+	if _, declared := allowed[providerregistry.CapabilityBrowserUse]; declared && browserUseAvailable && runtimeprep.BrowserUseDefaultEnabled() {
 		if _, exists := seen[providerregistry.CapabilityBrowserUse]; !exists {
 			effective = append(effective, providerregistry.CapabilityBrowserUse)
 		}

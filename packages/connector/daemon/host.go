@@ -15,8 +15,8 @@ import (
 type HostConfig struct {
 	Repository               market.Repository
 	CatalogSource            market.CatalogSource
-	ArtifactPreparer         market.ArtifactPreparer
-	CLIInstallations         market.CLIInstallationManager
+	ReleaseInstallations     market.ReleaseInstallationManager
+	InstallationChecker      market.InstallationChecker
 	ImplementationHost       market.ImplementationHost
 	Authorization            market.AuthorizationProvider
 	AuthorizationProjections market.AuthorizationProjectionStore
@@ -138,11 +138,15 @@ func NewHost(parent context.Context, config HostConfig) (*Host, error) {
 	hostContext, cancel := context.WithCancel(parent)
 	scheduler := NewOperationScheduler(hostContext)
 	activationGate := newActivationGateHost(config.ImplementationHost)
+	installationChecker := config.InstallationChecker
+	if installationChecker == nil {
+		installationChecker, _ = config.ImplementationHost.(market.InstallationChecker)
+	}
 	application, err := market.NewApplication(market.ApplicationConfig{
 		Repository:               config.Repository,
 		CatalogSource:            config.CatalogSource,
-		ArtifactPreparer:         config.ArtifactPreparer,
-		CLIInstallations:         config.CLIInstallations,
+		ReleaseInstallations:     config.ReleaseInstallations,
+		InstallationChecker:      installationChecker,
 		Host:                     activationGate,
 		Authorization:            config.Authorization,
 		AuthorizationProjections: config.AuthorizationProjections,
@@ -181,12 +185,33 @@ func NewHost(parent context.Context, config HostConfig) (*Host, error) {
 		defer close(host.outboxDone)
 		dispatcher.Run(hostContext)
 	}()
+	if _, ok := config.Authorization.(market.AuthorizationObserver); ok {
+		go host.runAuthorizationReconcileWorker(hostContext)
+	}
 	cleanupWorker := LifecycleCleanupWorker{Store: config.Lifecycle, Policy: config.LifecyclePolicy}
 	go func() {
 		defer close(host.lifecycleDone)
 		cleanupWorker.Run(hostContext)
 	}()
 	return host, nil
+}
+
+func (host *Host) runAuthorizationReconcileWorker(ctx context.Context) {
+	ticker := time.NewTicker(2 * time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			reconcileContext, cancel := context.WithTimeout(ctx, 15*time.Second)
+			err := host.Application.ReconcileAuthorizations(reconcileContext)
+			cancel()
+			if err != nil && !errors.Is(err, context.Canceled) {
+				slog.Warn("connector authorization reconciliation failed", "error", err)
+			}
+		}
+	}
 }
 
 // Bootstrap restores durable local runtime intent without depending on the
@@ -247,6 +272,11 @@ func (host *Host) BootstrapForScope(ctx context.Context, scope market.OperationS
 	if err := host.recoverAndWait(ctx); err != nil {
 		return err
 	}
+	if err := host.Application.CalibrateInstalledConnectorsForScope(ctx, scope); err != nil {
+		// A timeout or other indeterminate probe must preserve durable truth. The
+		// following runtime reconcile remains authoritative and may still recover.
+		slog.Warn("connector installation calibration was indeterminate", "error", err)
+	}
 	host.activationGate.setOpen(true)
 	if err := host.Application.ReconcileInstalledRuntimesForScope(ctx, scope); err != nil {
 		return err
@@ -276,6 +306,66 @@ func (host *Host) FenceForScope(ctx context.Context, scope market.OperationScope
 	publicationErr := host.applyCapabilityPublication(ctx, scope, false)
 	fenceErr := host.activationGate.FailClosed(ctx, time.Now().Add(10*time.Second))
 	return errors.Join(publicationErr, fenceErr)
+}
+
+// ReconcileRuntimeForScope repairs one observed runtime route under the same
+// lifecycle gate as bootstrap and fencing. The operation is awaited while the
+// gate is held so a concurrent runtime replacement cannot fence its generation
+// after acceptance but before the VM receipt is committed.
+func (host *Host) ReconcileRuntimeForScope(ctx context.Context, scope market.OperationScope, connectorKey string) error {
+	if host == nil || host.Application == nil {
+		return errors.New("connector market host is unavailable")
+	}
+	if !host.bootstrapMu.TryLock() {
+		// A bootstrap, fence, or earlier repair already owns convergence. The
+		// observer will verify a fresh VM snapshot after that operation finishes.
+		return nil
+	}
+	defer host.bootstrapMu.Unlock()
+	if !host.bootstrapped || host.bootstrapScope != scope || host.activationGate.requiresRecovery() {
+		// Bootstrap owns convergence while the lifecycle gate is closed. Enqueuing
+		// a second per-Connector operation here would race its generation fence.
+		return nil
+	}
+	snapshot, err := host.Application.Snapshot(ctx)
+	if err != nil {
+		return err
+	}
+	result, err := host.Application.ReconcileRuntime(ctx, market.ConnectorMutation{
+		Mutation:     market.Mutation{ClientRequestID: "daemon-runtime-drift/" + uuid.NewString(), ExpectedRevision: snapshot.Revision},
+		ConnectorKey: connectorKey, AccountID: scope.AccountID,
+	})
+	if err != nil {
+		return err
+	}
+	return host.waitForOperation(ctx, result.Operation.OperationID, "runtime reconcile")
+}
+
+// ObserveAuthorizationForScope commits account authorization and its runtime
+// reconcile under the lifecycle gate. This prevents authorization callbacks
+// from publishing a generation concurrently with bootstrap recovery.
+func (host *Host) ObserveAuthorizationForScope(
+	ctx context.Context,
+	scope market.OperationScope,
+	projection market.AuthorizationProjection,
+) error {
+	if host == nil || host.Application == nil {
+		return errors.New("connector market host is unavailable")
+	}
+	host.bootstrapMu.Lock()
+	defer host.bootstrapMu.Unlock()
+	snapshot, err := host.Application.Snapshot(ctx)
+	if err != nil {
+		return err
+	}
+	result, err := host.Application.ObserveAuthorization(ctx, market.ConnectorMutation{
+		Mutation:     market.Mutation{ClientRequestID: "daemon-authorization-observation/" + uuid.NewString(), ExpectedRevision: snapshot.Revision},
+		ConnectorKey: projection.ConnectorKey, AccountID: scope.AccountID,
+	}, projection)
+	if err != nil {
+		return err
+	}
+	return host.waitForOperation(ctx, result.Operation.OperationID, "authorization reconcile")
 }
 
 func (host *Host) applyCapabilityPublication(ctx context.Context, scope market.OperationScope, enabled bool) error {
@@ -362,6 +452,28 @@ func (host *Host) refreshAndWait(ctx context.Context) error {
 	}
 }
 
+func (host *Host) waitForOperation(ctx context.Context, operationID, label string) error {
+	ticker := time.NewTicker(25 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		operation, err := host.Application.GetOperation(ctx, operationID)
+		if err != nil {
+			return err
+		}
+		switch operation.State {
+		case market.OperationStateCompleted:
+			return nil
+		case market.OperationStateFailed:
+			return fmt.Errorf("connector market %s failed: %s", label, operation.FailureCode)
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-ticker.C:
+		}
+	}
+}
+
 func (host *Host) runCatalogRefreshWorker() {
 	bootstrapRetry := time.Second
 	catalogRetry := time.Duration(0)
@@ -433,24 +545,28 @@ func (host *Host) Close() {
 // host can safely expose remote browsing before a concrete runtime activator,
 // artifact resolver, and authorization provider are registered.
 func CatalogOnlyPorts() (
-	market.ArtifactPreparer,
+	market.ReleaseInstallationManager,
 	market.ImplementationHost,
 	market.AuthorizationProvider,
 	market.CompatibilityEvaluator,
 	market.ImplementationRegistry,
 ) {
-	return unavailableArtifactPreparer{}, unavailableRuntime{}, unavailableAuthorization{},
+	return unavailableReleaseInstaller{}, unavailableRuntime{}, unavailableAuthorization{},
 		rejectingCompatibility{}, market.NewImplementationRegistry(nil)
 }
 
-type unavailableArtifactPreparer struct{}
+type unavailableReleaseInstaller struct{}
 
-func (unavailableArtifactPreparer) Prepare(context.Context, market.PrepareArtifactRequest) (market.PreparedArtifactReceipt, error) {
-	return market.PreparedArtifactReceipt{}, errors.New("connector artifact preparation is not registered")
+func (unavailableReleaseInstaller) InstallRelease(context.Context, market.InstallReleaseRequest) (market.ReleaseInstallationReceipt, error) {
+	return market.ReleaseInstallationReceipt{}, errors.New("connector release installation is not registered")
 }
 
-func (unavailableArtifactPreparer) Remove(context.Context, market.RemoveArtifactRequest) error {
-	return errors.New("connector artifact preparation is not registered")
+func (unavailableReleaseInstaller) CommitReleaseInstallation(context.Context, market.CommitReleaseInstallationRequest) error {
+	return errors.New("connector release installation is not registered")
+}
+
+func (unavailableReleaseInstaller) UninstallRelease(context.Context, market.UninstallReleaseRequest) error {
+	return errors.New("connector release installation is not registered")
 }
 
 type unavailableRuntime struct{}

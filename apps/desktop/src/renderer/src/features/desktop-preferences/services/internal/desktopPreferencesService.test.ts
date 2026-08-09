@@ -695,6 +695,51 @@ test("DesktopPreferencesService merges conversation rail collapsed state per pro
   cleanup();
 });
 
+test("DesktopPreferencesService remembers launch mode by workspace and project section", async () => {
+  const patches: Array<{
+    workspaceId: string;
+    projectSectionKey: string;
+    mode: "local" | "worktree";
+  }> = [];
+  const client = createDesktopPreferencesClient({
+    patchAgentSessionLaunchMode: async (input) => {
+      patches.push(input);
+    }
+  });
+  const { service, cleanup } = await createServiceHarness({ client });
+
+  await service.rememberAgentSessionLaunchMode(
+    "workspace-a",
+    "project:/alpha",
+    "worktree"
+  );
+  await service.rememberAgentSessionLaunchMode(
+    "workspace-a",
+    "project:/beta",
+    "local"
+  );
+
+  assert.deepEqual(patches, [
+    {
+      workspaceId: "workspace-a",
+      projectSectionKey: "project:/alpha",
+      mode: "worktree"
+    },
+    {
+      workspaceId: "workspace-a",
+      projectSectionKey: "project:/beta",
+      mode: "local"
+    }
+  ]);
+  assert.deepEqual(service.store.agentSessionLaunchModesByWorkspace, {
+    "workspace-a": {
+      "project:/alpha": "worktree",
+      "project:/beta": "local"
+    }
+  });
+  cleanup();
+});
+
 interface FakeDesktopPreferencesClient extends DesktopPreferencesClient {
   emitDesktopPreferencesUpdated(preferences: Preferences): void;
   updatedRequests: Preferences[];
@@ -840,7 +885,9 @@ function createDesktopPreferencesClient(
     },
     ...overrides,
     patchAgentComposerDefaultsForTarget:
-      overrides.patchAgentComposerDefaultsForTarget ?? (async () => {})
+      overrides.patchAgentComposerDefaultsForTarget ?? (async () => {}),
+    patchAgentSessionLaunchMode:
+      overrides.patchAgentSessionLaunchMode ?? (async () => {})
   };
 }
 

@@ -13,11 +13,26 @@ import (
 )
 
 type activationGateDelegate struct {
-	reconciles        int
-	reconcileFailures int
-	deactivations     int
-	failClosed        int
-	lastReconcile     market.RuntimeReconcileRequest
+	reconciles         int
+	reconcileFailures  int
+	installationChecks int
+	installationState  market.InstallationObservationState
+	deactivations      int
+	failClosed         int
+	lastReconcile      market.RuntimeReconcileRequest
+}
+
+func (delegate *activationGateDelegate) CheckInstallation(
+	_ context.Context,
+	request market.InstallationCheckRequest,
+) (market.InstallationObservation, error) {
+	delegate.installationChecks++
+	state := delegate.installationState
+	if state == "" {
+		state = market.InstallationObservationPresent
+	}
+	return market.InstallationObservation{State: state, ConnectorKey: request.Connector.Key,
+		ReleaseDigest: request.Connector.Release.ReleaseDigest}, nil
 }
 
 func (delegate *activationGateDelegate) Reconcile(_ context.Context, request market.RuntimeReconcileRequest) (market.RuntimeReceipt, error) {
@@ -192,7 +207,7 @@ func TestBootstrapRestoresInstalledRuntimeWithoutRefreshingCatalog(t *testing.T)
 	host, err := NewHost(ctx, HostConfig{
 		Repository:             store,
 		CatalogSource:          source,
-		ArtifactPreparer:       unavailableArtifactPreparer{},
+		ReleaseInstallations:   unavailableReleaseInstaller{},
 		ImplementationHost:     runtime,
 		RuntimeBindings:        bindings,
 		Authorization:          unavailableAuthorization{},
@@ -230,6 +245,13 @@ func TestBootstrapRestoresInstalledRuntimeWithoutRefreshingCatalog(t *testing.T)
 	if runtime.reconciles != 3 {
 		t.Fatalf("unchanged account scope reconciled %d times", runtime.reconciles)
 	}
+	accountScope := market.OperationScope{AccountID: "account-1"}
+	if err := host.ReconcileRuntimeForScope(ctx, accountScope, connector.Key); err != nil {
+		t.Fatalf("observed runtime repair failed: %v", err)
+	}
+	if runtime.reconciles != 4 {
+		t.Fatalf("observed runtime repair reconciles = %d, want 4", runtime.reconciles)
+	}
 	if len(publication.values) == 0 || !publication.values[len(publication.values)-1] {
 		t.Fatalf("publication transitions = %#v, want final open", publication.values)
 	}
@@ -237,22 +259,46 @@ func TestBootstrapRestoresInstalledRuntimeWithoutRefreshingCatalog(t *testing.T)
 	if err := host.refreshAndWait(ctx); err == nil || !strings.Contains(err.Error(), "refresh failed") {
 		t.Fatalf("refresh error = %v, want catalog failure", err)
 	}
-	if source.refreshes != 1 || runtime.reconciles != 3 {
+	if source.refreshes != 1 || runtime.reconciles != 4 {
 		t.Fatalf("refreshes=%d reconciles=%d, want catalog retry isolated from runtime", source.refreshes, runtime.reconciles)
 	}
 
-	accountScope := market.OperationScope{AccountID: "account-1"}
 	if err := host.FenceForScope(ctx, accountScope); err != nil {
 		t.Fatalf("account fence failed: %v", err)
 	}
 	if len(publication.values) == 0 || publication.values[len(publication.values)-1] || runtime.failClosed == 0 {
 		t.Fatalf("fence publication=%#v failClosed=%d", publication.values, runtime.failClosed)
 	}
+	if err := host.ReconcileRuntimeForScope(ctx, accountScope, connector.Key); err != nil {
+		t.Fatalf("closed-gate runtime repair failed: %v", err)
+	}
+	if runtime.reconciles != 4 {
+		t.Fatalf("closed-gate runtime repair reconciles = %d, want 4", runtime.reconciles)
+	}
 	if err := host.BootstrapForScope(ctx, accountScope); err != nil {
 		t.Fatalf("same-account bootstrap after fence failed: %v", err)
 	}
-	if runtime.reconciles != 4 || !publication.values[len(publication.values)-1] {
+	if runtime.reconciles != 5 || !publication.values[len(publication.values)-1] {
 		t.Fatalf("same-account recovery reconciles=%d publication=%#v", runtime.reconciles, publication.values)
+	}
+	if runtime.installationChecks != 4 {
+		t.Fatalf("installation checks = %d, want one per non-idempotent bootstrap", runtime.installationChecks)
+	}
+
+	if err := host.FenceForScope(ctx, accountScope); err != nil {
+		t.Fatal(err)
+	}
+	runtime.installationState = market.InstallationObservationAbsent
+	if err := host.BootstrapForScope(ctx, accountScope); err != nil {
+		t.Fatalf("bootstrap with explicitly absent installation failed: %v", err)
+	}
+	calibrated, err := store.Connector(ctx, connector.Key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if calibrated.Installation.State != market.InstallationStateFailed ||
+		calibrated.Installation.FailureCode != market.InstallationFailureCodeProbeAbsent || runtime.reconciles != 5 {
+		t.Fatalf("calibrated connector=%#v reconciles=%d", calibrated, runtime.reconciles)
 	}
 }
 
@@ -269,10 +315,12 @@ func hostTestRelease() market.Release {
 			DisplayName:       "GitHub",
 			IconURL:           "data:image/png;base64,iVBORw0KGgo=",
 			AuthorizationKind: "none",
-			Implementation: market.Implementation{
-				Kind:    market.ImplementationKindBuiltin,
-				Builtin: &market.BuiltinImplementation{ProviderID: "github", MCP: true},
-			},
+			Implementation: market.Implementation{Kind: market.ImplementationKindManagedStdio,
+				ManagedStdio: &market.ManagedStdioImplementation{
+					Runtime: market.RuntimeRequirement{Language: "node", Profile: "connector-node-static", ABI: "node22-darwin-arm64"},
+					MCP: &market.ManagedMCPInterface{Entrypoint: "bin/github.mjs",
+						InstallationProbe: &market.InstallationProbe{Arguments: []string{"--version"}, TimeoutMS: 1_000}},
+				}},
 		},
 		Artifact: market.Artifact{
 			Key:       "connectors/github/1.0.0.tgz",

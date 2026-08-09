@@ -71,7 +71,7 @@ func appServerNotificationUsesNormalizer(method string) bool {
 	switch method {
 	case appServerNotifyAgentMessageDelta, appServerNotifyReasoningDelta, appServerNotifyReasoningSummary,
 		appServerNotifyItemStarted, appServerNotifyItemCompleted, appServerNotifyCommandOutputDelta,
-		appServerNotifyPlanUpdated:
+		appServerNotifyPlanUpdated, appServerNotifyWarning:
 		return true
 	default:
 		return false
@@ -107,6 +107,7 @@ const (
 	appServerCompactingContextTitle     = "Compacting context."
 	appServerContextCompactedTitle      = "Context compacted."
 	appServerCompactionInterruptedTitle = "Context compaction interrupted."
+	appServerCompactionAdvisoryMessage  = "Heads up: Long threads and multiple compactions can cause the model to be less accurate. Start a new thread when possible to keep threads small and targeted."
 )
 
 // appServerCompactionNoticeEvent emits the compaction banner for both item

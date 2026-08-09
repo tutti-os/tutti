@@ -420,6 +420,7 @@ export function mapWorkspaceAgentsToAgents(
             provider
           }) ?? "",
         name: agent.name,
+        ownership: "self" as const,
         provider: provider as AgentGUIProvider
       }
     ];

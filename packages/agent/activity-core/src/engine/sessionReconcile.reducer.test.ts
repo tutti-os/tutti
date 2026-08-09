@@ -55,6 +55,83 @@ test("cached messages without an applied revision require authoritative history"
   assert.equal(requirement.needsAuthoritativeMessages, true);
 });
 
+test("historical detail turns preserve history provenance", () => {
+  const turn = {
+    agentSessionId: "session-1",
+    origin: "user_prompt" as const,
+    phase: "settled" as const,
+    outcome: "completed" as const,
+    settledAtUnixMs: 2,
+    startedAtUnixMs: 1,
+    turnId: "turn-1",
+    updatedAtUnixMs: 2
+  };
+  const result = sessionReconcileReducer(createInitialSessionReconcileState(), {
+    childSessions: [],
+    session: {
+      activeTurnId: null,
+      agentSessionId: "session-1",
+      cwd: "/workspace",
+      latestTurnInteractions: [],
+      pendingInteractions: [],
+      provider: "codex",
+      title: "Session",
+      workspaceId: "workspace-1"
+    },
+    turns: [turn],
+    type: "session/detailSnapshotReceived",
+    workspaceId: "workspace-1"
+  });
+
+  assert.deepEqual(
+    result.followUpIntents?.find((intent) => intent.type === "turn/upserted"),
+    { live: false, turn, type: "turn/upserted" }
+  );
+});
+
+test("live detail marks only the latest live turn as attention-capable", () => {
+  const latestTurn = {
+    agentSessionId: "session-1",
+    origin: "user_prompt" as const,
+    phase: "settled" as const,
+    outcome: "completed" as const,
+    settledAtUnixMs: 2,
+    startedAtUnixMs: 1,
+    turnId: "turn-2",
+    updatedAtUnixMs: 2
+  };
+  const historicalTurn = { ...latestTurn, turnId: "turn-1" };
+  const result = sessionReconcileReducer(createInitialSessionReconcileState(), {
+    childSessions: [],
+    live: true,
+    session: {
+      activeTurnId: null,
+      agentSessionId: "session-1",
+      cwd: "/workspace",
+      latestTurn: latestTurn,
+      latestTurnInteractions: [],
+      pendingInteractions: [],
+      provider: "codex",
+      title: "Session",
+      workspaceId: "workspace-1"
+    },
+    turns: [historicalTurn, latestTurn],
+    type: "session/detailSnapshotReceived",
+    workspaceId: "workspace-1"
+  });
+
+  assert.deepEqual(
+    result.followUpIntents
+      ?.filter((intent) => intent.type === "turn/upserted")
+      .map((intent) => ({ live: intent.live, turnId: intent.turn.turnId })),
+    [
+      { live: true, turnId: "turn-2" },
+      { live: false, turnId: "turn-1" },
+      { live: false, turnId: "turn-2" }
+    ]
+  );
+});
+
 test("activity observation derives reconcile scope inside the engine", () => {
   const result = reduce(createInitialSessionReconcileState(), {
     type: "session/activityObserved",

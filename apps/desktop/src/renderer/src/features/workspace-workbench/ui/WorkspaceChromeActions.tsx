@@ -9,6 +9,9 @@ import {
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
   AskLinedIcon,
   LockLayoutLinedIcon,
@@ -21,7 +24,9 @@ import {
 import { useWorkspaceSettingsPanelRequest } from "@tutti-os/agent-gui/workspace-settings-panel";
 import { useTranslation } from "@renderer/i18n";
 import { cn } from "@renderer/lib/format";
+import { useAppUpdateService } from "@renderer/features/app-update";
 import { WorkspaceSettingsPanel } from "./WorkspaceSettingsPanel";
+import { WorkspaceConnectorMarketDialogHost } from "./WorkspaceConnectorMarketDialogHost";
 import { useWorkspaceSettingsService } from "./useWorkspaceSettingsService";
 import type { WorkspaceSettingsSectionID } from "../services/workspaceSettingsService.interface";
 import type {
@@ -106,6 +111,8 @@ export function WorkspaceHelpMenu({
   workspace: WorkspaceSummary;
 }) {
   const { t } = useTranslation();
+  const { service: appUpdateService, state: appUpdateState } =
+    useAppUpdateService();
   const { service: settingsService, state: settingsState } =
     useWorkspaceSettingsService();
 
@@ -150,31 +157,75 @@ export function WorkspaceHelpMenu({
         >
           {t("workspace.settings.nav.about")}
         </DropdownMenuItem>
+        <DropdownMenuItem
+          disabled={appUpdateState.isActing}
+          onSelect={() => {
+            void appUpdateService.checkForUpdates();
+          }}
+        >
+          {appUpdateState.isActing
+            ? t("updates.checkingTitle")
+            : t("desktop.menu.checkForUpdates")}
+        </DropdownMenuItem>
         <DropdownMenuSeparator />
-        <DropdownMenuItem
-          disabled={settingsState.developerLogs.exporting}
-          onSelect={() =>
-            exportLogs({
-              includeAgentSessions: true,
-              scope: "recent-10-minutes"
-            })
-          }
-        >
-          {t(
-            "workspace.settings.developer.exportRecentTenMinutesLogsWithSessions"
-          )}
-        </DropdownMenuItem>
-        <DropdownMenuItem
-          disabled={settingsState.developerLogs.exporting}
-          onSelect={() =>
-            exportLogs({
-              includeAgentSessions: false,
-              scope: "recent-10-minutes"
-            })
-          }
-        >
-          {t("workspace.settings.developer.exportRecentTenMinutesLogsOnly")}
-        </DropdownMenuItem>
+        <DropdownMenuSub>
+          <DropdownMenuSubTrigger>
+            {t("desktop.menu.exportRecentTenMinutesLogs")}
+          </DropdownMenuSubTrigger>
+          <DropdownMenuSubContent className="w-52">
+            <DropdownMenuItem
+              disabled={settingsState.developerLogs.exporting}
+              onSelect={() =>
+                exportLogs({
+                  includeAgentSessions: false,
+                  scope: "recent-10-minutes"
+                })
+              }
+            >
+              {t("desktop.menu.logsOnly")}
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              disabled={settingsState.developerLogs.exporting}
+              onSelect={() =>
+                exportLogs({
+                  includeAgentSessions: true,
+                  scope: "recent-10-minutes"
+                })
+              }
+            >
+              {t("desktop.menu.logsWithAgentSessions")}
+            </DropdownMenuItem>
+          </DropdownMenuSubContent>
+        </DropdownMenuSub>
+        <DropdownMenuSub>
+          <DropdownMenuSubTrigger>
+            {t("desktop.menu.exportRecentThreeDaysLogs")}
+          </DropdownMenuSubTrigger>
+          <DropdownMenuSubContent className="w-52">
+            <DropdownMenuItem
+              disabled={settingsState.developerLogs.exporting}
+              onSelect={() =>
+                exportLogs({
+                  includeAgentSessions: false,
+                  scope: "recent-3-days"
+                })
+              }
+            >
+              {t("desktop.menu.logsOnly")}
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              disabled={settingsState.developerLogs.exporting}
+              onSelect={() =>
+                exportLogs({
+                  includeAgentSessions: true,
+                  scope: "recent-3-days"
+                })
+              }
+            >
+              {t("desktop.menu.logsWithAgentSessions")}
+            </DropdownMenuItem>
+          </DropdownMenuSubContent>
+        </DropdownMenuSub>
       </DropdownMenuContent>
     </DropdownMenu>
   );
@@ -296,6 +347,7 @@ export function WorkspaceSettingsTrigger({
 
   return (
     <>
+      <WorkspaceConnectorMarketDialogHost />
       <Tooltip>
         <TooltipTrigger asChild>
           <span

@@ -69,11 +69,13 @@ type Service struct {
 	RuntimePreparer                runtimeprep.Preparer
 	ConnectorRoutingHints          func() []runtimeprep.ConnectorRoutingHint
 	ModelGateway                   ModelGatewayRegistry
+	BrowserUseAvailable            func() bool
 	ComputerUseAvailable           func() bool
 	CapabilityLister               ComposerCapabilityLister
 	ConnectorMarketSnapshots       market.SnapshotReader
 	ExtensionComposerProfiles      ExtensionComposerProfileResolver
 	AgentComposerDefaultsReader    AgentComposerDefaultsReader
+	DesktopPreferencesReader       DesktopPreferencesReader
 	ProviderAvailabilityCacheTTL   time.Duration
 	CapabilityCatalogCacheTTL      time.Duration
 	LiveModelCacheTTL              time.Duration
@@ -178,6 +180,10 @@ type AgentTargetStore interface {
 
 type AgentComposerDefaultsReader interface {
 	GetAgentComposerDefaultsForTarget(context.Context, string) (preferencesbiz.AgentComposerDefaults, error)
+}
+
+type DesktopPreferencesReader interface {
+	Get(context.Context) (preferencesbiz.DesktopPreferences, error)
 }
 
 type WorkspaceAgentResolver interface {
@@ -451,6 +457,18 @@ type SessionReader interface {
 	GetSession(workspaceID string, agentSessionID string) (PersistedSession, bool)
 	ListSessions(workspaceID string) ([]PersistedSession, bool)
 	SessionDeleted(ctx context.Context, workspaceID string, agentSessionID string) (bool, error)
+}
+
+type RecoverableDeletedSessionResourceReader interface {
+	ListRecoverableDeletedSessionResources(context.Context) ([]agentactivitybiz.DeletedSessionResource, error)
+}
+
+// GlobalAgentSessionIdentityReader checks the physical-resource identity,
+// which is currently agent-session scoped rather than Workspace scoped. It is
+// a tuttid product adapter contract and is intentionally not part of Host.
+type GlobalAgentSessionIdentityReader interface {
+	AgentSessionIDExists(context.Context, string) (bool, error)
+	OtherWorkspaceLiveAgentSessionIDExists(context.Context, string, string) (bool, error)
 }
 
 type PersistedSessionListPage struct {

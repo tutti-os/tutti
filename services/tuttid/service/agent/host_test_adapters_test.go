@@ -382,7 +382,9 @@ func hostSupportPortsForService(
 	if len(worktreeGC) > 0 {
 		gc = worktreeGC[0]
 	}
+	deletedSessions, _ := any(s.SessionReader).(agenthost.DeletedSessionStore)
 	return HostSupportPorts{
+		DeletedSessions:      deletedSessions,
 		SessionPurge:         s.SessionPurgeStore,
 		SessionDeletionGuard: s.SessionDeletionGuard,
 		SessionForkContext: serviceHostSessionForkContextPolicy{

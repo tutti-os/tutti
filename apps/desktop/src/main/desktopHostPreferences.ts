@@ -52,6 +52,7 @@ import {
   type DesktopUpdateChannel,
   type DesktopUpdatePolicy,
   type DesktopWorkbenchShortcuts,
+  type DesktopWorkbenchShortcutsInput,
   type DesktopWorkbenchWindowSnapping
 } from "../shared/preferences/index.ts";
 import {
@@ -106,7 +107,7 @@ export interface DesktopHostPreferencesState {
     themeSource?: DesktopThemeSource;
     updateChannel?: DesktopUpdateChannel;
     updatePolicy?: DesktopUpdatePolicy;
-    workbenchShortcuts?: DesktopWorkbenchShortcuts;
+    workbenchShortcuts?: DesktopWorkbenchShortcutsInput;
     workbenchWindowSnapping?: DesktopWorkbenchWindowSnapping;
   }): void;
 }

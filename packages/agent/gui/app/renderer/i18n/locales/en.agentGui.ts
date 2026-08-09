@@ -1,4 +1,5 @@
 import { enAgentGuiOrchestration } from "./en.agentGuiOrchestration.ts";
+import { enAgentGuiAddContent } from "./en.agentGuiAddContent.ts";
 import { enAgentGuiProviderIdentity } from "./en.agentGuiProviderIdentity.ts";
 import { enAgentGuiQuickPrompts } from "./en.agentGuiQuickPrompts.ts";
 import { enAgentGuiReferencePicker } from "./en.agentGuiReferencePicker.ts";
@@ -8,9 +9,13 @@ import { enAgentGuiSlashPalette } from "./en.agentGuiSlashPalette.ts";
 import { enAgentGuiSessionActions } from "./en.agentGuiSessionActions.ts";
 import { enAgentGuiCollaboration } from "./en.agentGuiCollaboration.ts";
 import { enAgentGuiUsageStatus } from "./en.agentGuiUsageStatus.ts";
+import { enAgentGuiComposer } from "./en.agentGuiComposer.ts";
+import { enAgentGuiProjectLaunch } from "./en.agentGuiProjectLaunch.ts";
 
 export const enAgentGui = {
   imageDownloaded: "Image downloaded",
+  imageLoadFailed: "Image failed to load",
+  retryImage: "Retry",
   initialPlaceholder: "Type @ to reference sessions, files, tasks, and apps",
   followupPlaceholder: "Request follow-up changes from {{provider}}",
   installRequiredPlaceholder: "Connect {{provider}} to send messages",
@@ -99,8 +104,7 @@ export const enAgentGui = {
   modelLabel: "Model",
   modelSelectionLabel: "Model selection",
   defaultModel: "Default model",
-  loadingOptions: "Loading…",
-  inheritedUnavailable: "Inherited / unavailable",
+  ...enAgentGuiComposer,
   reasoningLabel: "Reasoning",
   reasoningDegreeLabel: "Reasoning level",
   reasoningOptionDefault: "Default",
@@ -436,6 +440,7 @@ export const enAgentGui = {
   startConversation: "Start session",
   selectConversation: "Select a session",
   loadingConversations: "Loading sessions...",
+  conversationsLoadFailed: "Could not load sessions",
   loadingConversation: "Loading session...",
   scrollToBottom: "Scroll to bottom",
   searchNoConversations: "No related sessions",
@@ -719,12 +724,11 @@ export const enAgentGui = {
   mentionPalette: "Reference or Invoke",
   addReference: "Add reference",
   addContent: "Add files and more",
+  ...enAgentGuiAddContent,
   quickPrompts: enAgentGuiQuickPrompts,
   referenceWorkspaceFiles: "Reference workspace files",
   ...enAgentGuiReferencePicker,
-  projectLocked: "Project cannot be changed after the session starts",
-  projectMissingDescription:
-    "This conversation's working directory no longer exists",
+  ...enAgentGuiProjectLaunch,
   fileMentionEnterFolder: "Enter folder",
   fileMentionSwitchCategory: "Switch category",
   fileMentionNavigateHierarchy: "Enter/leave folder",

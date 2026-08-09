@@ -60,7 +60,14 @@ func (resolver AccountRuntimeBindingResolver) ResolveRuntimeBinding(
 	if projection.State != AuthorizationStateConnected {
 		return RuntimeBinding{ConnectionID: connectionID, Enabled: false}, nil
 	}
-	if request.Purpose == RuntimeBindingPurposeDeactivate {
+	if request.Purpose == RuntimeBindingPurposeDeactivate || request.Purpose == RuntimeBindingPurposeInstallationProbe {
+		return RuntimeBinding{ConnectionID: connectionID, Enabled: true}, nil
+	}
+	managed := request.Release.Manifest.Implementation.ManagedStdio
+	if managed != nil && managed.CredentialBroker != nil {
+		// Connector-owned credential brokers persist their own account binding
+		// inside the managed VM user home. They do not consume a Server-issued
+		// credential grant when the active CLI/MCP route is reconciled.
 		return RuntimeBinding{ConnectionID: connectionID, Enabled: true}, nil
 	}
 	if resolver.Credentials == nil {

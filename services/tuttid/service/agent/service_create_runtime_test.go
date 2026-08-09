@@ -26,8 +26,10 @@ func TestServiceCreateUsesRuntimePreparerResult(t *testing.T) {
 		input: &prepareInput,
 	}
 	routingAliases := []string{"飞书", "Feishu"}
+	skillRoot := t.TempDir()
 	service.ConnectorRoutingHints = func() []runtimeprep.ConnectorRoutingHint {
-		return []runtimeprep.ConnectorRoutingHint{{ConnectorKey: "lark-cli", DisplayName: "Lark CLI", Aliases: routingAliases}}
+		return []runtimeprep.ConnectorRoutingHint{{ConnectorKey: "lark-cli", DisplayName: "Lark CLI", Aliases: routingAliases,
+			SkillRoot: skillRoot}}
 	}
 	cwd := "/user/workdir"
 
@@ -59,7 +61,8 @@ func TestServiceCreateUsesRuntimePreparerResult(t *testing.T) {
 		t.Fatalf("prepare conversationDetailMode = %q, want general", prepareInput.ConversationDetailMode)
 	}
 	if len(prepareInput.ConnectorRoutingHints) != 1 || prepareInput.ConnectorRoutingHints[0].ConnectorKey != "lark-cli" ||
-		!slices.Equal(prepareInput.ConnectorRoutingHints[0].Aliases, routingAliases) {
+		!slices.Equal(prepareInput.ConnectorRoutingHints[0].Aliases, routingAliases) ||
+		prepareInput.ConnectorRoutingHints[0].SkillRoot != skillRoot {
 		t.Fatalf("prepare connector routing hints = %#v", prepareInput.ConnectorRoutingHints)
 	}
 	prepareInput.ConnectorRoutingHints[0].Aliases[0] = "mutated"

@@ -8,6 +8,7 @@ import { pathToFileURL } from "node:url";
 export const mobileReleaseLatestSchemaVersion =
   "tutti.android.mobile.latest.v1";
 export const mobilePackageName = "sh.tutti.mobile";
+export const maxMobileUpdateBytes = 512 * 1024 * 1024;
 
 export async function buildMobileReleaseLatest(options) {
   const apkPath = path.resolve(requireNonEmpty(options.apkPath, "apkPath"));
@@ -21,13 +22,20 @@ export async function buildMobileReleaseLatest(options) {
   }
 
   const apkStat = await stat(apkPath);
+  if (apkStat.size <= 0 || apkStat.size > maxMobileUpdateBytes) {
+    throw new Error(
+      "APK size is empty or exceeds the supported mobile update limit"
+    );
+  }
   const sha256 = createHash("sha256")
     .update(await readFile(apkPath))
     .digest("hex");
   const apkName = path.basename(apkPath);
 
   return {
-    apkUrl: `${baseUrl}/${encodeURLPathSegment(tag)}/${encodeURLPathSegment(apkName)}`,
+    apkUrl:
+      `${baseUrl}/${encodeURLPathSegment(tag)}/${sha256}/` +
+      encodeURLPathSegment(apkName),
     baseUrl,
     mandatory: false,
     packageName: mobilePackageName,

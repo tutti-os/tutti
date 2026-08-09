@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"encoding/base64"
 	"strings"
 
 	workspaceissues "github.com/tutti-os/tutti/packages/workspace/issues"
@@ -104,7 +105,11 @@ func (api DaemonAPI) CreateWorkspaceIssue(ctx context.Context, request tuttigene
 		return tuttigenerated.CreateWorkspaceIssue400JSONResponse{InvalidRequestErrorJSONResponse: issueManagerEmptyBodyError()}, nil
 	}
 
-	issue, err := api.IssueService.CreateIssue(ctx, string(request.WorkspaceID), issueManagerCreateIssueInputFromGenerated(*request.Body))
+	input, err := issueManagerCreateIssueInputFromGenerated(*request.Body)
+	if err != nil {
+		return writeCreateWorkspaceIssueError(err), nil
+	}
+	issue, err := api.IssueService.CreateIssue(ctx, string(request.WorkspaceID), input)
 	if err != nil {
 		return writeCreateWorkspaceIssueError(err), nil
 	}
@@ -125,14 +130,17 @@ func (api DaemonAPI) CreateWorkspaceIssueFromPlan(ctx context.Context, request t
 		tasks = append(tasks, issueManagerCreateTaskInputFromGenerated(task))
 	}
 	detail, err := api.IssueService.CreateIssueFromPlan(ctx, string(request.WorkspaceID), workspaceservice.CreateIssueManagerIssueFromPlanInput{
-		Issue: issueManagerCreateIssueInputFromGenerated(request.Body.Issue),
+		Issue: issueManagerCreatePlannedIssueInputFromGenerated(request.Body.Issue),
 		Tasks: tasks,
 	})
 	if err != nil {
 		return writeCreateWorkspaceIssueFromPlanError(err), nil
 	}
 	return tuttigenerated.CreateWorkspaceIssueFromPlan201JSONResponse(
-		workspaceapi.GeneratedIssueManagerIssueDetailResponseFromDomain(detail),
+		workspaceapi.GeneratedIssueManagerIssueDetailResponseFromDomain(
+			detail,
+			api.IssueService.ProjectIssueManagerContextRefs(detail.ContextRefs),
+		),
 	), nil
 }
 
@@ -164,18 +172,6 @@ func (api DaemonAPI) EstimateWorkspaceIssueAutoTokenBudget(ctx context.Context, 
 		HistoricalTokenEstimate: estimate.HistoricalTokenEstimate,
 		MatchedTaskCount:        estimate.MatchedHistoricalTaskCount,
 	}, nil
-}
-
-func (api DaemonAPI) RemoveWorkspaceIssueContextRef(ctx context.Context, request tuttigenerated.RemoveWorkspaceIssueContextRefRequestObject) (tuttigenerated.RemoveWorkspaceIssueContextRefResponseObject, error) {
-	if api.IssueService == nil {
-		return tuttigenerated.RemoveWorkspaceIssueContextRef503JSONResponse{ServiceUnavailableErrorJSONResponse: issueManagerServiceUnavailableError()}, nil
-	}
-
-	removed, err := api.IssueService.RemoveIssueContextRef(ctx, string(request.WorkspaceID), string(request.IssueID), string(request.ContextRefID))
-	if err != nil {
-		return writeRemoveWorkspaceIssueContextRefError(err), nil
-	}
-	return tuttigenerated.RemoveWorkspaceIssueContextRef200JSONResponse{Removed: removed}, nil
 }
 
 func (api DaemonAPI) RemoveWorkspaceIssueTaskContextRef(ctx context.Context, request tuttigenerated.RemoveWorkspaceIssueTaskContextRefRequestObject) (tuttigenerated.RemoveWorkspaceIssueTaskContextRefResponseObject, error) {
@@ -223,7 +219,10 @@ func (api DaemonAPI) GetWorkspaceIssueDetail(ctx context.Context, request tuttig
 		return writeGetWorkspaceIssueDetailError(err), nil
 	}
 	return tuttigenerated.GetWorkspaceIssueDetail200JSONResponse(
-		workspaceapi.GeneratedIssueManagerIssueDetailResponseFromDomain(detail),
+		workspaceapi.GeneratedIssueManagerIssueDetailResponseFromDomain(
+			detail,
+			api.IssueService.ProjectIssueManagerContextRefs(detail.ContextRefs),
+		),
 	), nil
 }
 
@@ -294,7 +293,9 @@ func (api DaemonAPI) AddWorkspaceIssueContextRefs(ctx context.Context, request t
 		return writeAddWorkspaceIssueContextRefsError(err), nil
 	}
 	return tuttigenerated.AddWorkspaceIssueContextRefs200JSONResponse(
-		workspaceapi.GeneratedIssueManagerContextRefsResponseFromDomain(refs),
+		workspaceapi.GeneratedIssueManagerContextRefsResponseFromService(
+			api.IssueService.ProjectIssueManagerContextRefs(refs),
+		),
 	), nil
 }
 
@@ -386,7 +387,10 @@ func (api DaemonAPI) GetWorkspaceIssueTaskDetail(ctx context.Context, request tu
 		return writeGetWorkspaceIssueTaskDetailError(err), nil
 	}
 	return tuttigenerated.GetWorkspaceIssueTaskDetail200JSONResponse(
-		workspaceapi.GeneratedIssueManagerTaskDetailResponseFromDomain(detail),
+		workspaceapi.GeneratedIssueManagerTaskDetailResponseFromDomain(
+			detail,
+			api.IssueService.ProjectIssueManagerContextRefs(detail.ContextRefs),
+		),
 	), nil
 }
 
@@ -443,7 +447,9 @@ func (api DaemonAPI) AddWorkspaceIssueTaskContextRefs(ctx context.Context, reque
 		return writeAddWorkspaceIssueTaskContextRefsError(err), nil
 	}
 	return tuttigenerated.AddWorkspaceIssueTaskContextRefs200JSONResponse(
-		workspaceapi.GeneratedIssueManagerContextRefsResponseFromDomain(refs),
+		workspaceapi.GeneratedIssueManagerContextRefsResponseFromService(
+			api.IssueService.ProjectIssueManagerContextRefs(refs),
+		),
 	), nil
 }
 
@@ -481,6 +487,26 @@ func (api DaemonAPI) CreateWorkspaceIssueRun(ctx context.Context, request tuttig
 		return writeCreateWorkspaceIssueRunError(err), nil
 	}
 	return tuttigenerated.CreateWorkspaceIssueRun201JSONResponse(
+		workspaceapi.GeneratedIssueManagerRunResponseFromDomain(run),
+	), nil
+}
+
+func (api DaemonAPI) StartWorkspaceIssueRun(ctx context.Context, request tuttigenerated.StartWorkspaceIssueRunRequestObject) (tuttigenerated.StartWorkspaceIssueRunResponseObject, error) {
+	if api.IssueService == nil {
+		return tuttigenerated.StartWorkspaceIssueRun503JSONResponse{ServiceUnavailableErrorJSONResponse: issueManagerServiceUnavailableError()}, nil
+	}
+	if request.Body == nil {
+		return tuttigenerated.StartWorkspaceIssueRun400JSONResponse{InvalidRequestErrorJSONResponse: issueManagerEmptyBodyError()}, nil
+	}
+
+	run, err := api.IssueService.StartIssueRun(ctx, string(request.WorkspaceID), string(request.IssueID), workspaceservice.StartIssueManagerRunInput{
+		AgentTargetID:      request.Body.AgentTargetId,
+		ExecutionDirectory: optionalString(request.Body.ExecutionDirectory),
+	})
+	if err != nil {
+		return writeStartWorkspaceIssueRunError(err), nil
+	}
+	return tuttigenerated.StartWorkspaceIssueRun201JSONResponse(
 		workspaceapi.GeneratedIssueManagerRunResponseFromDomain(run),
 	), nil
 }
@@ -637,7 +663,29 @@ func issueManagerTaskListInputFromGenerated(params tuttigenerated.ListWorkspaceI
 	return input
 }
 
-func issueManagerCreateIssueInputFromGenerated(item tuttigenerated.CreateIssueManagerIssueRequest) workspaceservice.CreateIssueManagerIssueInput {
+func issueManagerCreateIssueInputFromGenerated(item tuttigenerated.CreateIssueManagerIssueRequest) (workspaceservice.CreateIssueManagerIssueInput, error) {
+	attachments, err := issueManagerImageAttachmentsInputFromGenerated(item.Attachments)
+	if err != nil {
+		return workspaceservice.CreateIssueManagerIssueInput{}, err
+	}
+	return workspaceservice.CreateIssueManagerIssueInput{
+		IssueID:             optionalString(item.IssueId),
+		TopicID:             item.TopicId,
+		Title:               item.Title,
+		Content:             optionalString(item.Content),
+		PlanningSource:      optionalPlanningSource(item.PlanningSource),
+		SourceSessionID:     optionalString(item.SourceSessionId),
+		SequentialExecution: optionalBool(item.SequentialExecution),
+		ParallelExecution:   optionalBool(item.ParallelExecution),
+		ExecutionProfile:    issueManagerExecutionProfileFromGenerated(item.ExecutionProfile),
+		HasExecutionProfile: item.ExecutionProfile != nil,
+		Budget:              issueManagerBudgetFromGenerated(item.Budget),
+		HasBudget:           item.Budget != nil,
+		Attachments:         attachments,
+	}, nil
+}
+
+func issueManagerCreatePlannedIssueInputFromGenerated(item tuttigenerated.CreateIssueManagerPlannedIssueRequest) workspaceservice.CreateIssueManagerIssueInput {
 	return workspaceservice.CreateIssueManagerIssueInput{
 		IssueID:             optionalString(item.IssueId),
 		TopicID:             item.TopicId,
@@ -652,6 +700,37 @@ func issueManagerCreateIssueInputFromGenerated(item tuttigenerated.CreateIssueMa
 		Budget:              issueManagerBudgetFromGenerated(item.Budget),
 		HasBudget:           item.Budget != nil,
 	}
+}
+
+func issueManagerImageAttachmentsInputFromGenerated(items *[]tuttigenerated.CreateIssueManagerImageAttachmentRequest) ([]workspaceservice.CreateIssueManagerImageAttachmentInput, error) {
+	if items == nil {
+		return nil, nil
+	}
+	if len(*items) > 8 {
+		return nil, workspaceissues.ErrInvalidArgument
+	}
+	attachments := make([]workspaceservice.CreateIssueManagerImageAttachmentInput, 0, len(*items))
+	for _, item := range *items {
+		encoded := strings.TrimSpace(item.DataBase64)
+		if !item.MimeType.Valid() || encoded == "" {
+			return nil, workspaceissues.ErrInvalidArgument
+		}
+		data, err := base64.StdEncoding.DecodeString(encoded)
+		if err != nil {
+			return nil, workspaceissues.ErrInvalidArgument
+		}
+		attachmentID := ""
+		if item.AttachmentId != nil {
+			attachmentID = item.AttachmentId.String()
+		}
+		attachments = append(attachments, workspaceservice.CreateIssueManagerImageAttachmentInput{
+			AttachmentID: attachmentID,
+			DisplayName:  optionalString(item.DisplayName),
+			MimeType:     string(item.MimeType),
+			Data:         data,
+		})
+	}
+	return attachments, nil
 }
 
 func issueManagerCreateTaskInputFromGenerated(item tuttigenerated.CreateIssueManagerTaskRequest) workspaceservice.CreateIssueManagerTaskItemInput {

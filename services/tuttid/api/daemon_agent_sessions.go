@@ -42,6 +42,7 @@ type AgentSessionService interface {
 	ListGitBranches(context.Context, string, string) (agentservice.GitBranches, error)
 	ListGitBranchesForPath(context.Context, string, string) (agentservice.GitBranches, error)
 	ResolveGitPatchSupportForPath(context.Context, string, string) (agentservice.GitPatchSupport, error)
+	ResolveSessionWorktreeSupport(context.Context, string, string, string) (agentservice.SessionWorktreeSupport, error)
 	ApplyGitPatchForPath(context.Context, string, agentservice.ApplyGitPatchInput) (agentservice.ApplyGitPatchResult, error)
 	Clear(context.Context, string) (agentservice.ClearSessionsResult, error)
 	Delete(context.Context, string, string) (agentservice.DeleteSessionResult, error)
@@ -796,6 +797,7 @@ func generatedAgentSession(session agentservice.Session) (tuttigenerated.Workspa
 		Goal:                   generatedAgentSessionGoal(session.Metadata.Goal),
 		Id:                     session.ID,
 		Imported:               session.Metadata.Imported,
+		Isolation:              generatedAgentSessionIsolation(session.Isolation),
 		Kind:                   tuttigenerated.WorkspaceAgentSessionKind(session.Kind),
 		LatestTurn:             latestTurn,
 		LatestTurnInteractions: latestTurnInteractions,

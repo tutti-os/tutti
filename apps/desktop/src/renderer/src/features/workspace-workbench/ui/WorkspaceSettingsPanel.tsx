@@ -69,7 +69,6 @@ import {
 import {
   type DesktopDefaultAgentProvider,
   desktopAgentConversationDetailModes,
-  deletedAgentConversationRetentionDaysOptions,
   desktopBrowserUseConnectionModes,
   desktopDockPlacements,
   desktopMinimizeAnimations,
@@ -80,7 +79,6 @@ import {
   type DesktopAgentConversationDetailMode,
   type DesktopBrowserUseConnectionMode,
   type DesktopDockPlacement,
-  type DeletedAgentConversationRetentionDays,
   type DesktopFeatureFlags,
   type DesktopWorkspaceUiMode,
   type DesktopMinimizeAnimation,
@@ -93,6 +91,7 @@ import {
   EARLY_ACCESS_AGENT_INTEGRATIONS_FLAG,
   isFeatureEnabled,
   LAB_ENABLED_FLAG,
+  LAB_CONNECTORS_FLAG,
   LAB_WORKBENCH_SHORTCUTS_FLAG,
   LAB_AUTOMATION_RULES_FLAG,
   MOBILE_REMOTE_ACCESS_SETTINGS_FLAG,
@@ -135,6 +134,7 @@ import {
 } from "../services/workspaceWallpaper";
 import { WorkspaceModelPlansSection } from "./WorkspaceModelPlansSection";
 import { WorkspaceConnectionSettingsSection } from "./WorkspaceConnectionSettingsSection";
+import { WorkspaceDeletedConversationsSection } from "./WorkspaceDeletedConversationsSection.tsx";
 import { useAccountService } from "./useAccountService";
 import {
   workspaceSettingsInputClass,
@@ -208,6 +208,9 @@ export function WorkspaceSettingsPanel({
   const agentProviderStatusService = useService(IAgentProviderStatusService);
   const agentEnvService = useService(IAgentEnvService);
   const connectorMarketModule = useService(IConnectorMarketModule);
+  const connectorsVisible =
+    accountState.user !== null &&
+    isFeatureEnabled(pendingFeatureFlags, LAB_CONNECTORS_FLAG);
   const automationRulesEnabled = isFeatureEnabled(
     pendingFeatureFlags,
     LAB_AUTOMATION_RULES_FLAG
@@ -249,10 +252,10 @@ export function WorkspaceSettingsPanel({
   }, [automationRulesEnabled, settingsService, settingsState.agentTab]);
 
   useEffect(() => {
-    if (!accountState.user && settingsState.agentTab === "connectors") {
+    if (!connectorsVisible && settingsState.agentTab === "connectors") {
       settingsService.selectAgentTab("general");
     }
-  }, [accountState.user, settingsService, settingsState.agentTab]);
+  }, [connectorsVisible, settingsService, settingsState.agentTab]);
 
   const handleVersionTap = () => {
     if (settingsState.developerPanelVisible) {
@@ -339,6 +342,10 @@ export function WorkspaceSettingsPanel({
                 ]
               : []),
             {
+              id: "deletedConversations" as const,
+              label: t("workspace.settings.nav.deletedConversations")
+            },
+            {
               id: "about" as const,
               label: t("workspace.settings.nav.about")
             },
@@ -380,7 +387,14 @@ export function WorkspaceSettingsPanel({
         </aside>
 
         <div className="col-start-2 row-start-2 flex min-h-0 flex-col">
-          <div className="flex min-h-0 flex-1 flex-col gap-0 overflow-y-auto px-[22px] pb-[22px] pt-0">
+          <div
+            className={cn(
+              "flex min-h-0 flex-1 flex-col gap-0",
+              settingsState.activeSection === "deletedConversations"
+                ? "overflow-hidden"
+                : "overflow-y-auto px-[22px] pb-[22px] pt-0"
+            )}
+          >
             {settingsState.activeSection === "general" ? (
               <WorkspaceGeneralSettingsSection
                 changingFeatureFlags={
@@ -390,12 +404,6 @@ export function WorkspaceSettingsPanel({
                 changingSleepPreventionMode={
                   desktopPreferencesState.changingSleepPreventionMode
                 }
-                changingDeletedAgentConversationRetentionDays={
-                  desktopPreferencesState.changingDeletedAgentConversationRetentionDays
-                }
-                deletedAgentConversationRetentionDays={
-                  desktopPreferencesState.deletedAgentConversationRetentionDays
-                }
                 featureFlags={desktopPreferencesState.featureFlags}
                 locale={desktopPreferencesState.locale}
                 onLocaleChange={(nextLocale) => {
@@ -404,23 +412,16 @@ export function WorkspaceSettingsPanel({
                 onSleepPreventionModeChange={(mode) => {
                   void settingsService.changeSleepPreventionMode(mode);
                 }}
-                onDeletedAgentConversationRetentionDaysChange={(days) => {
-                  void settingsService.changeDeletedAgentConversationRetentionDays(
-                    days
-                  );
+                onWorkbenchShortcutsChange={(shortcuts) => {
+                  void settingsService.changeWorkbenchShortcuts(shortcuts);
                 }}
-                onPurgeDeletedConversations={() =>
-                  settingsService.purgeDeletedConversations()
-                }
-                purgingDeletedConversations={
-                  settingsState.purgingDeletedConversations
-                }
                 onWorkspaceUiModeChange={(mode) => {
                   void settingsService.changeWorkspaceUiMode(mode);
                 }}
                 sleepPreventionMode={
                   desktopPreferencesState.sleepPreventionMode
                 }
+                workbenchShortcuts={desktopPreferencesState.workbenchShortcuts}
               />
             ) : settingsState.activeSection === "agent" ? (
               <div className="flex min-h-0 flex-col gap-5 pt-5">
@@ -436,7 +437,7 @@ export function WorkspaceSettingsPanel({
                       value: "agents" as const,
                       label: t("workspace.settings.agent.tabs.agents")
                     },
-                    ...(accountState.user
+                    ...(connectorsVisible
                       ? [
                           {
                             value: "connectors" as const,
@@ -510,7 +511,7 @@ export function WorkspaceSettingsPanel({
                     }
                   />
                 ) : settingsState.agentTab === "connectors" &&
-                  accountState.user ? (
+                  connectorsVisible ? (
                   <ConnectorMarketPanel
                     i18n={connectorMarketI18n}
                     onError={handleConnectorMarketError}
@@ -623,6 +624,22 @@ export function WorkspaceSettingsPanel({
                   desktopPreferencesState.changingFeatureFlags ??
                   desktopPreferencesState.featureFlags
                 }
+              />
+            ) : settingsState.activeSection === "deletedConversations" ? (
+              <WorkspaceDeletedConversationsSection
+                changingRetentionDays={
+                  desktopPreferencesState.changingDeletedAgentConversationRetentionDays
+                }
+                controller={settingsService.deletedConversations}
+                retentionDays={
+                  desktopPreferencesState.deletedAgentConversationRetentionDays
+                }
+                state={settingsState.deletedConversations}
+                onRetentionDaysChange={(days) => {
+                  void settingsService.changeDeletedAgentConversationRetentionDays(
+                    days
+                  );
+                }}
               />
             ) : settingsState.activeSection === "about" ? (
               <WorkspaceAboutSettingsSection
@@ -757,24 +774,46 @@ function WorkspaceLabSettingsSection({
 }
 
 function WorkspaceLabShortcutRow({
+  className,
+  description,
   disabled,
   label,
+  placeholder,
+  requireNonShiftModifier = false,
   value,
   onChange
 }: {
+  className?: string;
+  description?: string;
   disabled: boolean;
   label: string;
+  placeholder?: string;
+  /**
+   * Reject bindings without Meta/Ctrl/Alt. Global accelerators must not
+   * shadow plain or shift-only typing in other applications.
+   */
+  requireNonShiftModifier?: boolean;
   value: string | null;
   onChange: (binding: string | null) => void;
 }) {
   const { t } = useTranslation();
   const clearLabel = t("workspace.settings.lab.clearShortcutLabel", { label });
   return (
-    <div className="flex w-full items-center justify-between gap-4 max-[560px]:flex-col max-[560px]:items-stretch">
+    <div
+      className={cn(
+        "flex w-full items-center justify-between gap-4 max-[560px]:flex-col max-[560px]:items-stretch",
+        className
+      )}
+    >
       <div className="flex min-w-0 flex-1 flex-col gap-1 max-[560px]:w-full">
         <strong className="text-[13px] font-semibold text-[var(--text-primary)]">
           {label}
         </strong>
+        {description ? (
+          <p className="m-0 text-[13px] leading-[1.3] text-[var(--text-secondary)]">
+            {description}
+          </p>
+        ) : null}
       </div>
       <div className="flex w-[220px] min-w-[220px] items-center gap-2 max-[560px]:w-full max-[560px]:min-w-0">
         <Input
@@ -785,7 +824,9 @@ function WorkspaceLabShortcutRow({
             disabled && "opacity-70"
           )}
           disabled={disabled}
-          placeholder={t("workspace.settings.lab.shortcutUnbound")}
+          placeholder={
+            placeholder ?? t("workspace.settings.lab.shortcutUnbound")
+          }
           readOnly
           value={value ?? ""}
           onKeyDown={(event) => {
@@ -800,6 +841,14 @@ function WorkspaceLabShortcutRow({
               event.key === "Escape"
             ) {
               onChange(null);
+              return;
+            }
+            if (
+              requireNonShiftModifier &&
+              !event.metaKey &&
+              !event.ctrlKey &&
+              !event.altKey
+            ) {
               return;
             }
             const binding = formatDesktopShortcutBinding({
@@ -1204,10 +1253,18 @@ function ComputerUseSetupRow({
           diagnosticTrigger: "install-completed"
         });
         setMessage(null);
-        // A fresh install has no grants yet — continue straight into the
-        // wizard's first grant step.
+        // macOS installs continue into the TCC wizard; Windows uses doctor
+        // readiness and must not open the macOS permission flow.
         if (nextStatus?.installed === true) {
-          if (isComputerUseFullyAuthorized(nextStatus)) {
+          if (nextStatus.platform === "win32") {
+            // Windows readiness comes from `cua-driver doctor`; it has no
+            // macOS-style TCC grant flow or permission panes to open.
+            if (!isComputerUseFullyAuthorized(nextStatus)) {
+              setMessage(
+                t("workspace.settings.general.computerUseStatusCheckFailed")
+              );
+            }
+          } else if (isComputerUseFullyAuthorized(nextStatus)) {
             setWizardStep("done");
           } else {
             logPermissionDiagnostic(
@@ -1310,6 +1367,15 @@ function ComputerUseSetupRow({
     });
     setPermissionDialogOpen(open);
     if (open) {
+      if (computerUseStatus?.platform === "win32") {
+        void checkStatus({
+          clearMessage: false,
+          diagnosticTrigger: "windows-dialog-open",
+          silent: true
+        });
+        setPermissionDialogOpen(false);
+        return;
+      }
       // Status only assists here: it picks a starting step, and the user can
       // navigate freely regardless of what it says.
       setWizardStep(resolveComputerUseWizardInitialStep(computerUseStatus));
@@ -1453,7 +1519,13 @@ function ComputerUseSetupRow({
                         logPermissionDiagnostic(
                           "computer_use.permission_manage_clicked"
                         );
-                        handlePermissionDialogOpenChange(true);
+                        if (computerUseStatus?.platform === "win32") {
+                          void checkStatus({
+                            diagnosticTrigger: "windows-manage-click"
+                          });
+                        } else {
+                          handlePermissionDialogOpenChange(true);
+                        }
                       }}
                     />
                     {computerUseNeedsAttention && (
@@ -2037,6 +2109,7 @@ function summarizeComputerUseStatusForDiagnostic(
     return null;
   }
   return {
+    platform: status.platform ?? "unknown",
     authorization: status.authorization,
     installed: status.installed,
     permissionAccessibility: status.permissions?.accessibility ?? null,
@@ -2055,6 +2128,9 @@ function delay(ms: number): Promise<void> {
 function isComputerUseFullyAuthorized(
   status: DesktopComputerUseStatus | null
 ): boolean {
+  if (status?.platform === "win32" && status.authorization === "authorized") {
+    return status.installed;
+  }
   const permissions = status?.permissions;
   return (
     status?.installed === true &&
@@ -2442,37 +2518,29 @@ function WorkspaceAgentSettingsSection({
 }
 
 function WorkspaceGeneralSettingsSection({
-  changingDeletedAgentConversationRetentionDays,
   changingFeatureFlags,
   changingLocale,
   changingSleepPreventionMode,
-  deletedAgentConversationRetentionDays,
   featureFlags,
   locale,
-  onDeletedAgentConversationRetentionDaysChange,
   onLocaleChange,
-  onPurgeDeletedConversations,
   onSleepPreventionModeChange,
+  onWorkbenchShortcutsChange,
   onWorkspaceUiModeChange,
-  purgingDeletedConversations,
-  sleepPreventionMode
+  sleepPreventionMode,
+  workbenchShortcuts
 }: {
-  changingDeletedAgentConversationRetentionDays: DeletedAgentConversationRetentionDays | null;
   changingFeatureFlags: DesktopFeatureFlags | null;
   changingLocale: DesktopLocale | null;
   changingSleepPreventionMode: DesktopSleepPreventionMode | null;
-  deletedAgentConversationRetentionDays: DeletedAgentConversationRetentionDays;
   featureFlags: DesktopFeatureFlags;
   locale: DesktopLocale;
-  onDeletedAgentConversationRetentionDaysChange: (
-    days: DeletedAgentConversationRetentionDays
-  ) => void;
   onLocaleChange: (locale: DesktopLocale) => void;
-  onPurgeDeletedConversations: () => Promise<void>;
   onSleepPreventionModeChange: (mode: DesktopSleepPreventionMode) => void;
+  onWorkbenchShortcutsChange: (shortcuts: DesktopWorkbenchShortcuts) => void;
   onWorkspaceUiModeChange: (mode: DesktopWorkspaceUiMode) => void;
-  purgingDeletedConversations: boolean;
   sleepPreventionMode: DesktopSleepPreventionMode;
+  workbenchShortcuts: DesktopWorkbenchShortcuts;
 }) {
   const { t } = useTranslation();
   const agentDiagnosticsReporting = useAgentDiagnosticsConsent();
@@ -2481,14 +2549,6 @@ function WorkspaceGeneralSettingsSection({
   const isUpdatingSleepPrevention = changingSleepPreventionMode !== null;
   const pendingSleepPreventionMode =
     changingSleepPreventionMode ?? sleepPreventionMode;
-  const pendingRetentionDays =
-    changingDeletedAgentConversationRetentionDays ??
-    deletedAgentConversationRetentionDays;
-  const [purgeDialogOpen, setPurgeDialogOpen] = useState(false);
-  const [purgeConfirmation, setPurgeConfirmation] = useState("");
-  const purgeConfirmationPhrase = t(
-    "workspace.settings.general.deletedConversationPurgeConfirmationPhrase"
-  );
   const isUpdatingWorkspaceUiMode = changingFeatureFlags !== null;
   const pendingWorkspaceUiMode = resolveDesktopWorkspaceUiMode(
     changingFeatureFlags ?? featureFlags
@@ -2663,133 +2723,23 @@ function WorkspaceGeneralSettingsSection({
           onCheckedChange={setAgentDiagnosticsConsent}
         />
       </div>
-
-      <div className="order-5 flex w-full items-center justify-between gap-4 max-[560px]:flex-col max-[560px]:items-stretch">
-        <div className="flex min-w-0 flex-1 flex-col gap-1 max-[560px]:w-full">
-          <strong className="text-[13px] font-semibold text-[var(--text-primary)]">
-            {t("workspace.settings.general.deletedConversationRetentionLabel")}
-          </strong>
-          <p className="m-0 text-[13px] leading-[1.3] text-[var(--text-secondary)]">
-            {t(
-              "workspace.settings.general.deletedConversationRetentionDescription"
-            )}
-          </p>
-        </div>
-        <div className="flex w-[220px] min-w-[220px] items-center gap-2 max-[560px]:w-full max-[560px]:min-w-0">
-          <div className="min-w-0 flex-1">
-            <Select
-              disabled={
-                changingDeletedAgentConversationRetentionDays !== null ||
-                purgingDeletedConversations
-              }
-              value={String(pendingRetentionDays)}
-              onValueChange={(value) =>
-                onDeletedAgentConversationRetentionDaysChange(
-                  Number(value) as DeletedAgentConversationRetentionDays
-                )
-              }
-            >
-              <SelectTrigger
-                aria-label={t(
-                  "workspace.settings.general.deletedConversationRetentionLabel"
-                )}
-                className={workspaceSettingsSelectTriggerClass}
-              >
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent
-                className={workspaceSettingsSelectContentClass}
-                style={{ zIndex: "var(--z-panel-popover)" }}
-              >
-                {deletedAgentConversationRetentionDaysOptions.map((days) => (
-                  <SelectItem key={days} value={String(days)}>
-                    {t(
-                      "workspace.settings.general.deletedConversationRetentionDays",
-                      { count: String(days) }
-                    )}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                aria-label={t(
-                  purgingDeletedConversations
-                    ? "workspace.settings.general.deletedConversationPurging"
-                    : "workspace.settings.general.deletedConversationPurgeAction"
-                )}
-                className="size-8 rounded-[6px]"
-                disabled={purgingDeletedConversations}
-                size="icon"
-                variant="destructive-secondary"
-                onClick={() => {
-                  setPurgeConfirmation("");
-                  setPurgeDialogOpen(true);
-                }}
-              >
-                {purgingDeletedConversations ? (
-                  <LoadingIcon className="size-3.5" />
-                ) : (
-                  <DeleteIcon className="size-3.5" />
-                )}
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="top">
-              {t(
-                purgingDeletedConversations
-                  ? "workspace.settings.general.deletedConversationPurging"
-                  : "workspace.settings.general.deletedConversationPurgeAction"
-              )}
-            </TooltipContent>
-          </Tooltip>
-        </div>
-      </div>
-
-      <Dialog open={purgeDialogOpen} onOpenChange={setPurgeDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>
-              {t("workspace.settings.general.deletedConversationPurgeTitle")}
-            </DialogTitle>
-            <DialogDescription>
-              {t(
-                "workspace.settings.general.deletedConversationPurgeDescription",
-                { phrase: purgeConfirmationPhrase }
-              )}
-            </DialogDescription>
-          </DialogHeader>
-          <Input
-            aria-label={t(
-              "workspace.settings.general.deletedConversationPurgeConfirmationLabel"
-            )}
-            autoComplete="off"
-            value={purgeConfirmation}
-            onChange={(event) => setPurgeConfirmation(event.target.value)}
-          />
-          <DialogFooter>
-            <Button variant="ghost" onClick={() => setPurgeDialogOpen(false)}>
-              {t("common.cancel")}
-            </Button>
-            <Button
-              disabled={
-                purgeConfirmation !== purgeConfirmationPhrase ||
-                purgingDeletedConversations
-              }
-              variant="destructive"
-              onClick={() => {
-                void onPurgeDeletedConversations().finally(() => {
-                  setPurgeDialogOpen(false);
-                  setPurgeConfirmation("");
-                });
-              }}
-            >
-              {t("workspace.settings.general.deletedConversationPurgeConfirm")}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <WorkspaceLabShortcutRow
+        className="order-5"
+        description={t("workspace.settings.general.captureShortcutDescription")}
+        disabled={false}
+        label={t("workspace.settings.general.captureShortcutLabel")}
+        placeholder={t(
+          "workspace.settings.general.captureShortcutDefaultPlaceholder"
+        )}
+        requireNonShiftModifier
+        value={workbenchShortcuts.captureScreenshot}
+        onChange={(binding) => {
+          onWorkbenchShortcutsChange({
+            ...workbenchShortcuts,
+            captureScreenshot: binding
+          });
+        }}
+      />
     </div>
   );
 }

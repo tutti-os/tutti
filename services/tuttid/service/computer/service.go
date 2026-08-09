@@ -13,12 +13,13 @@ import (
 // after a period with no tool calls.
 const defaultIdleTTL = 5 * time.Minute
 
-// Service drives the macOS desktop for agents via the `tutti computer` CLI.
+// Service drives a supported desktop for agents via the `tutti computer` CLI.
 // It owns one cua-driver subprocess per workspace, reused across CLI calls and
 // torn down on idle or daemon shutdown.
 type Service struct {
 	transport agentruntime.ProcessTransport
 	idleTTL   time.Duration
+	daemon    computerDaemon
 
 	mu       sync.Mutex
 	sessions map[string]*computerSession
@@ -29,8 +30,34 @@ func NewService() *Service {
 	return &Service{
 		transport: agentruntime.NewLocalProcessTransport(),
 		idleTTL:   defaultIdleTTL,
+		daemon:    newComputerDaemon(),
 		sessions:  make(map[string]*computerSession),
 	}
+}
+
+// CheckReady performs a bounded, side-effect-free cua-driver readiness probe.
+// On Windows it does not start the driver daemon; callers that are about to
+// open an MCP session use ensureReady instead.
+func (*Service) CheckReady(ctx context.Context) error {
+	return checkReady(ctx)
+}
+
+func (s *Service) ensureReady(ctx context.Context) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if _, hasDeadline := ctx.Deadline(); !hasDeadline {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, computerPermissionCheckTimeout)
+		defer cancel()
+	}
+	if err := checkReady(ctx); err != nil {
+		return err
+	}
+	if s == nil || s.daemon == nil {
+		return nil
+	}
+	return s.daemon.Ensure(ctx, resolveComputerMCPCommand(ctx))
 }
 
 // CallTool invokes a cua-driver MCP tool against the workspace's computer
@@ -72,7 +99,7 @@ func (s *Service) ListTools(ctx context.Context, workspaceID, cwd string) (ToolC
 func withComputerSession[T any](s *Service, ctx context.Context, workspaceID, cwd string, call func(*computerSession) (T, error)) (T, error) {
 	var zero T
 	workspaceID = strings.TrimSpace(workspaceID)
-	if err := validateComputerReady(); err != nil {
+	if err := s.ensureReady(ctx); err != nil {
 		return zero, err
 	}
 
@@ -152,5 +179,8 @@ func (s *Service) Close() {
 		}
 		session.idleMu.Unlock()
 		session.close()
+	}
+	if s.daemon != nil {
+		_ = s.daemon.Close()
 	}
 }

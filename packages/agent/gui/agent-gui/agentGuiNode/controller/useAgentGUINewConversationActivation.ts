@@ -281,6 +281,9 @@ export function useAgentGUINewConversationActivation(
         mode: "new",
         agentSessionId,
         agentTargetId,
+        ...(submitOptions?.isolation
+          ? { isolation: submitOptions.isolation }
+          : {}),
         ...(submitOptions?.capabilityRefs?.length
           ? { capabilityRefs: submitOptions.capabilityRefs }
           : {}),

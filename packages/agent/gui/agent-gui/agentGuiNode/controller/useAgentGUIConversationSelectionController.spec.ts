@@ -478,7 +478,8 @@ describe("shouldMarkActiveConversationRead", () => {
     completionKey: "turn:session-1:turn-1:completed",
     isUnread: true,
     kind: "completed" as const,
-    markedUnreadByUser: false
+    markedUnreadByUser: false,
+    observationProvenance: "live" as const
   };
 
   it("keeps a manually marked unread completion unread in the current selection", () => {

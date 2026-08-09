@@ -77,6 +77,7 @@ export type {
   AgentComposerTuttiModeSubmitSnapshot,
   AgentComposerUsage
 } from "./composer/AgentComposer.types";
+import { useSessionWorktreeLaunch } from "./composer/useSessionWorktreeLaunch";
 
 export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
   "use memo";
@@ -131,6 +132,7 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
     canUploadAttachment = true,
     composerFocusRequestSequence = null,
     layoutMode = "dock",
+    menuViewportTopInset = 8,
     handoffLabel,
     handoffMenuLabel,
     labels,
@@ -197,22 +199,6 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
   };
   const [isPaletteOpen, setIsPaletteOpen] = useState(true);
   const [isReviewPickerOpen, setIsReviewPickerOpen] = useState(false);
-  const submitWithComposerModifiers: AgentComposerProps["onSubmit"] = (
-    content,
-    displayPrompt,
-    options
-  ) => {
-    onSubmit(
-      content,
-      displayPrompt,
-      withAgentComposerTuttiModeSnapshot({
-        options,
-        active: tuttiModeActive,
-        effect: tuttiModeEffect,
-        speed: tuttiModeSpeed
-      })
-    );
-  };
   const submitGuidanceWithComposerModifiers: NonNullable<
     AgentComposerProps["onSubmitGuidance"]
   > = (content, displayPrompt) => {
@@ -246,12 +232,46 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
   const [isSelectedProjectMissing, setIsSelectedProjectMissing] =
     useScopedProjectMissingState(selectedProjectPath);
   const [isSlashStatusPanelOpen, setIsSlashStatusPanelOpen] = useState(false);
+  const selectedProjectSectionKey =
+    composerSettings.selectedProjectSectionKey?.trim() ?? "";
+  const sessionWorktreeLaunch = useSessionWorktreeLaunch({
+    agentSessionId: props.agentSessionId,
+    enabled:
+      props.sessionWorktreeEnabled &&
+      Boolean(
+        props.labels.sessionLaunchModeLabel &&
+        props.labels.sessionLaunchModeLocal &&
+        props.labels.sessionLaunchModeWorktree
+      ),
+    mode: props.sessionLaunchMode,
+    onModeChange: props.onSessionLaunchModeChange,
+    projectSectionKey: selectedProjectSectionKey,
+    selectedAgentTarget: props.selectedAgentTarget,
+    selectedProjectPath
+  });
+  const submitWithComposerModifiers: AgentComposerProps["onSubmit"] = (
+    content,
+    displayPrompt,
+    options
+  ) => {
+    onSubmit(
+      content,
+      displayPrompt,
+      withAgentComposerTuttiModeSnapshot({
+        options:
+          sessionWorktreeLaunch.mode === "worktree"
+            ? { ...options, isolation: "worktree" }
+            : options,
+        active: tuttiModeActive,
+        effect: tuttiModeEffect,
+        speed: tuttiModeSpeed
+      })
+    );
+  };
   const slashStatusAgentSessionId = slashStatus?.agentSessionId ?? null;
   const previousSlashStatusAgentSessionIdRef = useRef<string | null>(
     slashStatusAgentSessionId
   );
-  const selectedProjectSectionKey =
-    composerSettings.selectedProjectSectionKey?.trim() ?? "";
   const previousSelectedProjectPathRef = useRef(selectedProjectPath);
   const composerRef = useRef<HTMLFormElement | null>(null);
   const inputShellRef = useRef<HTMLDivElement | null>(null);
@@ -340,7 +360,8 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
   );
   const mentionFrame = useMentionPaletteFrame(
     inputShellRef,
-    showFileMentionPalette
+    showFileMentionPalette,
+    menuViewportTopInset
   );
 
   useEffect(() => {
@@ -436,9 +457,9 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
     promptImagesSupported: canUploadAttachment && promptImagesSupported,
     availableSkills,
     composerSettings,
-    // Host-gated product capability: omit or enabled:false must hide Tutti Mode
-    // entries (footer chip, badge activation, /tutti). Fail closed like other
-    // unsupported host capabilities — do not treat a missing flag as enabled.
+    // Host-gated product capability: omit or enabled:false must hide /tutti.
+    // Fail closed like other unsupported host capabilities — do not treat a
+    // missing flag as enabled.
     tuttiModeSupported: capabilityMenuState?.tuttiMode?.enabled === true,
     capabilityControlsReadOnly,
     onDraftContentChange,
@@ -620,6 +641,7 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
   const { fileDropOverlayActive, fileDropOverlayHost } = focusAndDrop;
   const layout = useComposerLayout({
     isActive,
+    isDockLayout: layoutMode === "dock",
     isHeroLayout,
     inputDisabled,
     projectMissingProbeEnabled,
@@ -723,6 +745,7 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
       onTuttiModeSpeedChange={onTuttiModeSpeedChange}
       isPromptTipOverflowing={isPromptTipOverflowing}
       onHistoryNavigation={onHistoryNavigation}
+      sessionWorktreeLaunch={sessionWorktreeLaunch}
     />
   );
 }

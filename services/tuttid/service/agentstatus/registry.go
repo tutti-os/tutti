@@ -197,6 +197,16 @@ func isClaudeStatusSpec(spec ProviderSpec) bool {
 	return kind == providerregistry.StatusKindClaudeCLI
 }
 
+func isOpenCodeStatusSpec(spec ProviderSpec) bool {
+	kind := spec.Kind
+	if kind == "" {
+		if status, ok := migratedProviderStatus(spec.Provider); ok {
+			kind = status.Kind
+		}
+	}
+	return kind == providerregistry.StatusKindOpenCodeCLI
+}
+
 // isStandardACPStatusSpec reports whether spec's runtime is a "standard ACP"
 // provider (e.g. cursor-agent, opencode): the CLI binary itself, invoked with
 // an `acp` subcommand, IS the ACP adapter. This is the same architecture

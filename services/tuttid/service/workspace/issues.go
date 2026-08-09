@@ -2,9 +2,11 @@ package workspace
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	workspaceissues "github.com/tutti-os/tutti/packages/workspace/issues"
 	executionbiz "github.com/tutti-os/tutti/services/tuttid/biz/tuttimodeexecution"
 	workflowbiz "github.com/tutti-os/tutti/services/tuttid/biz/workspaceworkflow"
@@ -21,6 +23,8 @@ type IssueManagerService struct {
 	Publisher                    IssueManagerEventPublisher
 	ExecutionRecoveryQueue       *WorkspaceExecutionRecoveryQueue
 	Store                        workspaceissues.Store
+	AttachmentFiles              IssueAttachmentFiles
+	AttachmentLaunchPins         *IssueAttachmentLaunchPins
 	AgentTargetReader            IssueAssignmentAgentTargetReader
 	PlanningTimeline             IssuePlanningTimelineReporter
 	// TuttiModeExecutions owns the product transaction that atomically adds
@@ -127,7 +131,14 @@ func (s IssueManagerService) CreateIssue(ctx context.Context, workspaceID string
 		input.PlanningSource == string(workspaceissues.PlanningSourceTuttiModePlan) {
 		return workspaceissues.Issue{}, workspaceissues.ErrInvalidArgument
 	}
-	issue, err := s.domainService().CreateIssue(ctx, workspaceissues.CreateIssueInput{
+	if len(input.Attachments) > 0 && strings.TrimSpace(input.IssueID) == "" {
+		input.IssueID = "issue-" + uuid.NewString()
+	}
+	attachmentRefs, err := s.persistIssueAttachments(input.Attachments)
+	if err != nil {
+		return workspaceissues.Issue{}, err
+	}
+	createInput := workspaceissues.CreateIssueInput{
 		IssueID:             input.IssueID,
 		TopicID:             input.TopicID,
 		WorkspaceID:         workspaceID,
@@ -142,9 +153,18 @@ func (s IssueManagerService) CreateIssue(ctx context.Context, workspaceID string
 		HasExecutionProfile: input.HasExecutionProfile,
 		Budget:              input.Budget,
 		HasBudget:           input.HasBudget,
-	})
+	}
+	var issue workspaceissues.Issue
+	if len(attachmentRefs) == 0 {
+		issue, err = s.domainService().CreateIssue(ctx, createInput)
+	} else {
+		issue, _, err = s.domainService().CreateIssueWithContextRefs(ctx, workspaceissues.CreateIssueWithContextRefsInput{
+			Issue: createInput,
+			Refs:  attachmentRefs,
+		})
+	}
 	if err != nil {
-		return workspaceissues.Issue{}, err
+		return workspaceissues.Issue{}, errors.Join(err, s.removePendingIssueAttachments(attachmentRefs))
 	}
 	s.publishWorkspaceIssueUpdated(ctx, eventstreamservice.WorkspaceIssueUpdate{
 		WorkspaceID: issue.WorkspaceID,
@@ -267,7 +287,7 @@ func (s IssueManagerService) CreateIssueFromPlan(ctx context.Context, workspaceI
 		)
 	}
 	if !tuttiPlanningSource && (input.Issue.SequentialExecution || input.Issue.ParallelExecution) {
-		s.dispatchEligibleIssueTasks(ctx, workspaceID, issue.IssueID)
+		_ = s.dispatchEligibleIssueTasks(ctx, workspaceID, issue.IssueID)
 	}
 	if tuttiPlanningSource {
 		// Materialization atomically prepares the initial durable main wake.
@@ -349,16 +369,16 @@ func (s IssueManagerService) UpdateIssue(ctx context.Context, workspaceID string
 	})
 	if !issue.DispatchPaused && issue.Budget.Status == workspaceissues.BudgetStatusActive &&
 		(issue.SequentialExecution || issue.ParallelExecution) {
-		s.dispatchEligibleIssueTasks(ctx, workspaceID, issueID)
+		_ = s.dispatchEligibleIssueTasks(ctx, workspaceID, issueID)
 	}
 	return issue, nil
 }
 
 // dispatchEligibleIssueTasks is the lock-acquiring entry for callers that do
 // not already hold the Issue mutation lock.
-func (s IssueManagerService) dispatchEligibleIssueTasks(ctx context.Context, workspaceID, issueID string) {
+func (s IssueManagerService) dispatchEligibleIssueTasks(ctx context.Context, workspaceID, issueID string) error {
 	unlock := s.MutationLocks.Lock(workspaceID, issueID)
-	launches := s.claimEligibleIssueRunsLocked(ctx, workspaceID, issueID)
+	launches, err := s.claimEligibleIssueRunsLocked(ctx, workspaceID, issueID)
 	unlock()
 	for _, launch := range launches {
 		s.publishRunCreated(ctx, workspaceissues.Run{
@@ -370,19 +390,35 @@ func (s IssueManagerService) dispatchEligibleIssueTasks(ctx context.Context, wor
 		})
 	}
 	s.launchClaimedIssueRuns(ctx, launches)
+	if err != nil {
+		s.enqueueWorkspaceRunReconcile(workspaceID)
+		return err
+	}
+	return nil
 }
 
 func (s IssueManagerService) DeleteIssue(ctx context.Context, workspaceID string, issueID string) (bool, error) {
+	unlock := s.MutationLocks.Lock(workspaceID, issueID)
+	detail, _ := s.domainService().GetIssueDetail(ctx, workspaceID, issueID)
+	if err := s.ensureIssueRunLaunchDeletionAllowed(ctx, workspaceID, issueID, ""); err != nil {
+		unlock()
+		return false, err
+	}
 	removed, err := s.domainService().DeleteIssue(ctx, workspaceID, issueID, issueManagerLocalActorUserID)
+	unlock()
 	if err != nil {
 		return false, err
 	}
 	if removed {
+		cleanupErr := s.removeIssueAttachmentRefs(ctx, detail.ContextRefs)
 		s.publishWorkspaceIssueUpdated(ctx, eventstreamservice.WorkspaceIssueUpdate{
 			WorkspaceID: workspaceID,
 			IssueID:     issueID,
 			ChangeKind:  eventstreamservice.WorkspaceIssueChangeIssueDeleted,
 		})
+		if cleanupErr != nil {
+			return true, cleanupErr
+		}
 	}
 	return removed, nil
 }
@@ -513,12 +549,12 @@ func (s IssueManagerService) UpdateTask(ctx context.Context, workspaceID string,
 		ChangeKind:  eventstreamservice.WorkspaceIssueChangeTaskUpdated,
 	})
 	if task.Status == workspaceissues.StatusCompleted && task.AcceptanceState == workspaceissues.AcceptanceUserAccepted {
-		s.dispatchEligibleIssueTasks(ctx, workspaceID, issueID)
+		_ = s.dispatchEligibleIssueTasks(ctx, workspaceID, issueID)
 	}
 	// A rework (back to not_started) re-opens the execution frontier; without
 	// this the rejected head of a sequential Issue waits for an unrelated event.
 	if input.HasStatus && task.Status == workspaceissues.StatusNotStarted {
-		s.dispatchEligibleIssueTasks(ctx, workspaceID, issueID)
+		_ = s.dispatchEligibleIssueTasks(ctx, workspaceID, issueID)
 	}
 	return task, nil
 }
@@ -596,17 +632,28 @@ func normalizeParallelizableAgainstDependencies(items []workspaceissues.CreateTa
 }
 
 func (s IssueManagerService) DeleteTask(ctx context.Context, workspaceID string, issueID string, taskID string) (bool, error) {
+	unlock := s.MutationLocks.Lock(workspaceID, issueID)
+	detail, _ := s.domainService().GetTaskDetail(ctx, workspaceID, issueID, taskID)
+	if err := s.ensureIssueRunLaunchDeletionAllowed(ctx, workspaceID, issueID, taskID); err != nil {
+		unlock()
+		return false, err
+	}
 	removed, err := s.domainService().DeleteTask(ctx, workspaceID, issueID, taskID, issueManagerLocalActorUserID)
+	unlock()
 	if err != nil {
 		return false, err
 	}
 	if removed {
+		cleanupErr := s.removeIssueAttachmentRefs(ctx, detail.ContextRefs)
 		s.publishWorkspaceIssueUpdated(ctx, eventstreamservice.WorkspaceIssueUpdate{
 			WorkspaceID: workspaceID,
 			IssueID:     issueID,
 			TaskID:      taskID,
 			ChangeKind:  eventstreamservice.WorkspaceIssueChangeTaskDeleted,
 		})
+		if cleanupErr != nil {
+			return true, cleanupErr
+		}
 	}
 	return removed, nil
 }
@@ -634,26 +681,35 @@ func (s IssueManagerService) AddTaskContextRefs(ctx context.Context, workspaceID
 }
 
 func (s IssueManagerService) RemoveIssueContextRef(ctx context.Context, workspaceID string, issueID string, contextRefID string) (bool, error) {
+	unlock := s.MutationLocks.Lock(workspaceID, issueID)
+	detail, _ := s.domainService().GetIssueDetail(ctx, workspaceID, issueID)
 	removed, err := s.domainService().RemoveContextRef(ctx, workspaceissues.RemoveContextRefInput{
 		WorkspaceID:  workspaceID,
 		IssueID:      issueID,
 		ParentKind:   string(workspaceissues.ContextRefParentIssue),
 		ContextRefID: contextRefID,
 	})
+	unlock()
 	if err != nil {
 		return false, err
 	}
 	if removed {
+		cleanupErr := s.removeIssueAttachmentRefs(ctx, matchingContextRefs(detail.ContextRefs, contextRefID))
 		s.publishWorkspaceIssueUpdated(ctx, eventstreamservice.WorkspaceIssueUpdate{
 			WorkspaceID: workspaceID,
 			IssueID:     issueID,
 			ChangeKind:  eventstreamservice.WorkspaceIssueChangeIssueContextRefsUpdated,
 		})
+		if cleanupErr != nil {
+			return true, cleanupErr
+		}
 	}
 	return removed, nil
 }
 
 func (s IssueManagerService) RemoveTaskContextRef(ctx context.Context, workspaceID string, issueID string, taskID string, contextRefID string) (bool, error) {
+	unlock := s.MutationLocks.Lock(workspaceID, issueID)
+	detail, _ := s.domainService().GetTaskDetail(ctx, workspaceID, issueID, taskID)
 	removed, err := s.domainService().RemoveContextRef(ctx, workspaceissues.RemoveContextRefInput{
 		WorkspaceID:  workspaceID,
 		IssueID:      issueID,
@@ -661,18 +717,32 @@ func (s IssueManagerService) RemoveTaskContextRef(ctx context.Context, workspace
 		ParentKind:   string(workspaceissues.ContextRefParentTask),
 		ContextRefID: contextRefID,
 	})
+	unlock()
 	if err != nil {
 		return false, err
 	}
 	if removed {
+		cleanupErr := s.removeIssueAttachmentRefs(ctx, matchingContextRefs(detail.ContextRefs, contextRefID))
 		s.publishWorkspaceIssueUpdated(ctx, eventstreamservice.WorkspaceIssueUpdate{
 			WorkspaceID: workspaceID,
 			IssueID:     issueID,
 			TaskID:      taskID,
 			ChangeKind:  eventstreamservice.WorkspaceIssueChangeTaskContextRefsUpdated,
 		})
+		if cleanupErr != nil {
+			return true, cleanupErr
+		}
 	}
 	return removed, nil
+}
+
+func matchingContextRefs(refs []workspaceissues.ContextRef, contextRefID string) []workspaceissues.ContextRef {
+	for _, ref := range refs {
+		if ref.ContextRefID == contextRefID {
+			return []workspaceissues.ContextRef{ref}
+		}
+	}
+	return nil
 }
 
 func (s IssueManagerService) domainService() workspaceissues.Service {

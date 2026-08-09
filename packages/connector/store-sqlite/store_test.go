@@ -121,6 +121,59 @@ func TestStorePersistsRevisionOperationBindingAndOutboxAtomically(t *testing.T) 
 	}
 }
 
+func TestStoreKeepsAuthorizationSessionPrivateAndAvailableAfterReopen(t *testing.T) {
+	ctx := context.Background()
+	databasePath := filepath.Join(t.TempDir(), "tuttid.db")
+	store, err := Open(ctx, databasePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	connector := testConnector()
+	connector.Authorization = market.Authorization{State: market.AuthorizationStatePending}
+	operation := market.Operation{
+		OperationID: "authorization-1", ClientRequestID: "request-1", ConnectorKey: connector.Key,
+		Kind: market.OperationKindStartAuthorization, State: market.OperationStateCompleted,
+		Stage: market.OperationStageCompleted, CreatedAt: time.Unix(1, 0).UTC(), UpdatedAt: time.Unix(2, 0).UTC(),
+		Execution: market.OperationExecution{AuthorizationSession: &market.AuthorizationSession{
+			OperationID: "authorization-1", ConnectorKey: connector.Key,
+			SessionID: "session-1", ActionType: "redirect", AuthorizationURL: "https://example.test/authorize",
+			State: market.AuthorizationStatePending,
+		}},
+	}
+	if err := store.Transaction(ctx, func(tx market.Transaction) error {
+		if err := tx.SaveConnector(connector); err != nil {
+			return err
+		}
+		return tx.SaveOperation(operation)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	reopened, err := Open(ctx, databasePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reopened.Close()
+	snapshot, err := reopened.Snapshot(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(snapshot.Operations) != 1 || snapshot.Operations[0].Execution.AuthorizationSession != nil {
+		t.Fatalf("public snapshot exposed authorization session: %#v", snapshot.Operations)
+	}
+	operations, err := reopened.CompletedAuthorizationOperations(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(operations) != 1 || operations[0].Execution.AuthorizationSession == nil ||
+		operations[0].Execution.AuthorizationSession.SessionID != "session-1" {
+		t.Fatalf("authorization operations = %#v", operations)
+	}
+}
+
 func TestStorePersistsAuthorizationProjectionByAccount(t *testing.T) {
 	ctx := context.Background()
 	store, err := Open(ctx, filepath.Join(t.TempDir(), "tuttid.db"))

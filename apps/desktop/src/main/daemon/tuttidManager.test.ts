@@ -21,11 +21,60 @@ import {
   isLikelyTuttidProcess,
   managedTuttidStartupError,
   resolveBrowserMcpDaemonEnv,
+  resolveComputerMcpDaemonEnv,
   resolveClaudeSDKSidecarDaemonEnv,
   resolveLaunchSpec,
   resolveManagedDaemonProcessEnv,
-  resolveManagedPosixShellDaemonEnv
+  resolveManagedPosixShellDaemonEnv,
+  resolveManagedUVDaemonEnv,
+  resolveMutagenDaemonEnv
 } from "./tuttidManager.ts";
+
+test("resolveManagedUVDaemonEnv points the daemon at packaged archives", async () => {
+  const previousEnv = { ...process.env };
+  const resourcesPath = await mkdtemp(join(tmpdir(), "tutti-managed-uv-"));
+  try {
+    delete process.env.TUTTI_BUNDLED_UV_ROOT;
+    const runtimeRoot = join(resourcesPath, "bin", "managed-uv");
+    await mkdir(runtimeRoot, { recursive: true });
+    assert.deepEqual(
+      resolveManagedUVDaemonEnv({ isPackaged: true, resourcesPath }),
+      { TUTTI_BUNDLED_UV_ROOT: runtimeRoot }
+    );
+  } finally {
+    restoreEnv(previousEnv);
+    await rm(resourcesPath, { recursive: true, force: true });
+  }
+});
+
+test("resolveManagedUVDaemonEnv preserves an explicit override", () => {
+  const previousEnv = { ...process.env };
+  try {
+    process.env.TUTTI_BUNDLED_UV_ROOT = "C:\\custom\\uv";
+    assert.deepEqual(
+      resolveManagedUVDaemonEnv({ isPackaged: true, resourcesPath: "C:\\resources" }),
+      {}
+    );
+  } finally {
+    restoreEnv(previousEnv);
+  }
+});
+
+test("resolveManagedUVDaemonEnv preserves a shell environment override", () => {
+  const previousEnv = { ...process.env };
+  try {
+    delete process.env.TUTTI_BUNDLED_UV_ROOT;
+    assert.deepEqual(
+      resolveManagedUVDaemonEnv(
+        { isPackaged: true, resourcesPath: "C:\\resources" },
+        { inheritedEnv: { TUTTI_BUNDLED_UV_ROOT: "C:\\shell-uv" } }
+      ),
+      {}
+    );
+  } finally {
+    restoreEnv(previousEnv);
+  }
+});
 
 const repoRoot = resolve(
   fileURLToPath(new URL("../../../../..", import.meta.url))
@@ -118,6 +167,20 @@ test("resolveBrowserMcpDaemonEnv is a no-op in development (daemon uses npx)", (
       resourcesPath: join(tmpdir(), "tutti-resources")
     });
     assert.deepEqual(got, {});
+  } finally {
+    restoreEnv(previousEnv);
+  }
+});
+
+test("resolveComputerMcpDaemonEnv is a no-op outside Windows", () => {
+  const previousEnv = { ...process.env };
+  try {
+    delete process.env.TUTTI_COMPUTER_MCP_COMMAND;
+    delete process.env.TUTTI_COMPUTER_MCP_ENTRY_PATH;
+    const got = resolveComputerMcpDaemonEnv();
+    if (process.platform !== "win32") {
+      assert.deepEqual(got, {});
+    }
   } finally {
     restoreEnv(previousEnv);
   }
@@ -294,6 +357,102 @@ test("resolveManagedPosixShellDaemonEnv points the daemon at the packaged shell"
       isPackaged: true,
       resourcesPath
     });
+    assert.deepEqual(got, {
+      TUTTI_MANAGED_POSIX_SHELL: shell
+    });
+  } finally {
+    restoreEnv(previousEnv);
+  }
+});
+
+test("resolveMutagenDaemonEnv respects an explicit operator override", () => {
+  const previousEnv = { ...process.env };
+  try {
+    process.env.TUTTI_MUTAGEN_BIN = "C:\\custom\\mutagen.exe";
+    const got = resolveMutagenDaemonEnv({
+      isPackaged: true,
+      resourcesPath: join(tmpdir(), "tutti-resources")
+    });
+    assert.deepEqual(got, {});
+  } finally {
+    restoreEnv(previousEnv);
+  }
+});
+
+test("resolveMutagenDaemonEnv respects a shell environment override", () => {
+  const previousEnv = { ...process.env };
+  try {
+    delete process.env.TUTTI_MUTAGEN_BIN;
+    const got = resolveMutagenDaemonEnv(
+      {
+        isPackaged: true,
+        resourcesPath: join(tmpdir(), "tutti-resources")
+      },
+      { inheritedEnv: { TUTTI_MUTAGEN_BIN: "C:\\custom\\mutagen.exe" } }
+    );
+    assert.deepEqual(got, {});
+  } finally {
+    restoreEnv(previousEnv);
+  }
+});
+
+test("resolveMutagenDaemonEnv points the daemon at packaged Mutagen", async () => {
+  const previousEnv = { ...process.env };
+  try {
+    delete process.env.TUTTI_MUTAGEN_BIN;
+    const resourcesPath = await mkdtemp(join(tmpdir(), "tutti-resources-"));
+    const runtimeRoot = join(resourcesPath, "bin", "mutagen");
+    const executable = join(runtimeRoot, "mutagen.exe");
+    await mkdir(runtimeRoot, { recursive: true });
+    await writeFile(executable, "stub\n");
+    await writeFile(
+      join(runtimeRoot, "runtime.json"),
+      JSON.stringify({
+        schemaVersion: "tutti.mutagen.v1",
+        executable: "mutagen.exe"
+      })
+    );
+
+    const got = resolveMutagenDaemonEnv({
+      isPackaged: true,
+      resourcesPath
+    });
+    assert.deepEqual(got, { TUTTI_MUTAGEN_BIN: executable });
+  } finally {
+    restoreEnv(previousEnv);
+  }
+});
+
+test("resolveManagedPosixShellDaemonEnv points direct dev at the prepared shell", async () => {
+  const previousEnv = { ...process.env };
+  try {
+    delete process.env.TUTTI_MANAGED_POSIX_SHELL;
+    const repoRoot = await mkdtemp(join(tmpdir(), "tutti-repo-"));
+    const runtimeRoot = join(
+      repoRoot,
+      "apps",
+      "desktop",
+      "build",
+      "managed-posix-shell"
+    );
+    const shell = join(runtimeRoot, "usr", "bin", "bash.exe");
+    await mkdir(dirname(shell), { recursive: true });
+    await writeFile(shell, "stub\n");
+    await writeFile(
+      join(runtimeRoot, "runtime.json"),
+      JSON.stringify({
+        schemaVersion: "tutti.managed-posix-shell.v1",
+        executable: "usr/bin/bash.exe"
+      })
+    );
+
+    const got = resolveManagedPosixShellDaemonEnv(
+      {
+        isPackaged: false,
+        resourcesPath: join(tmpdir(), "electron-resources")
+      },
+      { repoRoot }
+    );
     assert.deepEqual(got, {
       TUTTI_MANAGED_POSIX_SHELL: shell
     });

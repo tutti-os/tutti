@@ -208,6 +208,27 @@ type Run struct {
 	UpdatedAtUnixMS    int64
 }
 
+// PreparedRunLaunch is the transport-neutral durable identity needed to
+// recover an external Run delivery without creating a second Agent turn.
+type PreparedRunLaunch struct {
+	Run            Run
+	ClientSubmitID string
+	// OpaquePayload is owned and decoded by the host adapter that admitted the
+	// external delivery. The reusable Issue core never interprets host paths or
+	// provider-preparation details stored in it.
+	OpaquePayload string
+}
+
+type RunLaunchSettlement struct {
+	WorkspaceID  string
+	IssueID      string
+	RunID        string
+	LeaseOwner   string
+	Status       Status
+	ErrorMessage string
+	NowUnixMS    int64
+}
+
 type RunOutput struct {
 	ID              uint64
 	OutputID        string

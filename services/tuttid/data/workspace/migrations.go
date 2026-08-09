@@ -37,6 +37,7 @@ const schemaMigrationDesktopPreferencesDefaultAgentProviderV1 = "desktop_prefere
 const schemaMigrationDesktopPreferencesAgentComposerDefaultsV1 = "desktop_preferences_agent_composer_defaults_v1"
 const schemaMigrationDesktopPreferencesAgentComposerDefaultsByAgentTargetV1 = "desktop_preferences_agent_composer_defaults_by_agent_target_v1"
 const schemaMigrationDesktopPreferencesAgentGUIConversationRailV1 = "desktop_preferences_agent_gui_conversation_rail_v1"
+const schemaMigrationDesktopPreferencesAgentSessionLaunchModesV1 = "desktop_preferences_agent_session_launch_modes_v1"
 const schemaMigrationDesktopPreferencesBrowserUseConnectionModeV1 = "desktop_preferences_browser_use_connection_mode_v1"
 const schemaMigrationDesktopPreferencesUpdateSettingsV1 = "desktop_preferences_update_settings_v1"
 const schemaMigrationDesktopPreferencesFileDefaultOpenersV1 = "desktop_preferences_file_default_openers_v1"
@@ -49,6 +50,9 @@ const schemaMigrationDesktopPreferencesFeatureFlagsV1 = "desktop_preferences_fea
 const schemaMigrationDesktopPreferencesDeletedAgentRetentionV1 = "desktop_preferences_deleted_agent_retention_v1"
 const schemaMigrationDesktopPreferencesAgentCLIUpdateCheckV1 = "desktop_preferences_agent_cli_update_check_v1"
 const schemaMigrationAgentDataMaintenanceV1 = "agent_data_maintenance_v1"
+const schemaMigrationAgentDataMaintenanceV2 = "agent_session_resource_cleanup_queue_v1"
+const schemaMigrationAgentDataMaintenanceV3 = "agent_session_resource_cleanup_reuse_fence_v1"
+const schemaMigrationAgentDataMaintenanceV4 = "agent_session_resource_cleanup_global_reuse_fence_v1"
 const schemaMigrationAgentTargetsEnableTuttiAgentV1 = "agent_targets_enable_tutti_agent_v1"
 const schemaMigrationUserProjectsV1 = "user_projects_v1"
 const schemaMigrationUserProjectsV2 = "user_projects_v2"
@@ -86,6 +90,7 @@ const schemaMigrationWorkspaceTuttiModeSourceActivityInboxV3 = "workspace_tutti_
 const schemaMigrationWorkspaceTuttiModeGoalReviewV4 = "workspace_tutti_mode_goal_review_v4"
 const schemaMigrationWorkspaceTuttiModeLegacyRepairV5 = "workspace_tutti_mode_legacy_repair_v5"
 const schemaMigrationWorkspaceTuttiModeLegacyRecoveryCleanupV6 = "workspace_tutti_mode_legacy_recovery_cleanup_v6"
+const schemaMigrationWorkspaceIssueRunLaunchPayloadV1 = "workspace_issue_run_launch_payload_v1"
 const schemaMigrationAgentSessionReplayV1 = "agent_session_replay_v1"
 const schemaMigrationAgentSessionReplayV2 = "agent_session_replay_v2"
 const schemaMigrationAgentProviderRuntimeSelectionsV1 = "agent_provider_runtime_selections_v1"
@@ -175,67 +180,13 @@ INSERT OR IGNORE INTO tuttid_schema_migrations (id, applied_at_unix_ms)
 		return err
 	}
 
-	if err := s.applyDesktopPreferencesV1(ctx); err != nil {
-		return err
-	}
-	if err := s.applyDesktopPreferencesAgentDockLayoutV1(ctx); err != nil {
-		return err
-	}
-	if err := s.applyDesktopPreferencesSleepPreventionModeV1(ctx); err != nil {
-		return err
-	}
-	if err := s.applyDesktopPreferencesDockPlacementV1(ctx); err != nil {
-		return err
-	}
-	if err := s.applyDesktopPreferencesDockIconStyleV1(ctx); err != nil {
-		return err
-	}
-	if err := s.applyDesktopPreferencesDefaultAgentProviderV1(ctx); err != nil {
-		return err
-	}
-	if err := s.applyDesktopPreferencesAgentComposerDefaultsV1(ctx); err != nil {
-		return err
-	}
-	if err := s.applyDesktopPreferencesAgentComposerDefaultsByAgentTargetV1(ctx); err != nil {
-		return err
-	}
-	if err := s.applyDesktopPreferencesAgentGUIConversationRailV1(ctx); err != nil {
-		return err
-	}
-	if err := s.applyDesktopPreferencesBrowserUseConnectionModeV1(ctx); err != nil {
-		return err
-	}
-	if err := s.applyDesktopPreferencesUpdateSettingsV1(ctx); err != nil {
-		return err
-	}
-	if err := s.applyDesktopPreferencesFileDefaultOpenersV1(ctx); err != nil {
-		return err
-	}
-	if err := s.applyDesktopPreferencesAppCatalogChannelV1(ctx); err != nil {
-		return err
-	}
-	if err := s.applyDesktopPreferencesMinimizeAnimationV1(ctx); err != nil {
-		return err
-	}
-	if err := s.applyDesktopPreferencesWindowSnappingV1(ctx); err != nil {
-		return err
-	}
-	if err := s.applyDesktopPreferencesShowAppDeveloperSourcesV1(ctx); err != nil {
-		return err
-	}
-	if err := s.applyDesktopPreferencesAgentConversationDetailModeV1(ctx); err != nil {
-		return err
-	}
-	if err := s.applyDesktopPreferencesFeatureFlagsV1(ctx); err != nil {
-		return err
-	}
-	if err := s.applyDesktopPreferencesDeletedAgentRetentionV1(ctx); err != nil {
-		return err
-	}
-	if err := s.applyDesktopPreferencesAgentCLIUpdateCheckV1(ctx); err != nil {
+	if err := s.applyDesktopPreferencesMigrations(ctx); err != nil {
 		return err
 	}
 	if err := s.applyAgentDataMaintenanceV1(ctx); err != nil {
+		return err
+	}
+	if err := s.applyAgentDataMaintenanceV2(ctx); err != nil {
 		return err
 	}
 
@@ -259,6 +210,12 @@ INSERT OR IGNORE INTO tuttid_schema_migrations (id, applied_at_unix_ms)
 	// store. They must run after user_projects_v1: the rail section backfill
 	// reads project paths through userProjectPathsQuerier.
 	if err := s.agentStore().Migrate(ctx); err != nil {
+		return err
+	}
+	if err := s.applyAgentDataMaintenanceV3(ctx); err != nil {
+		return err
+	}
+	if err := s.applyAgentDataMaintenanceV4(ctx); err != nil {
 		return err
 	}
 	if err := s.applyAgentTargetsEnableTuttiAgentV1(ctx); err != nil {
@@ -383,6 +340,9 @@ INSERT OR IGNORE INTO tuttid_schema_migrations (id, applied_at_unix_ms)
 		return err
 	}
 	if err := s.applyWorkspaceTuttiModeLegacyRecoveryCleanupV6(ctx); err != nil {
+		return err
+	}
+	if err := s.applyWorkspaceIssueRunLaunchPayloadV1(ctx); err != nil {
 		return err
 	}
 	if err := s.applyAgentSessionReplayV1(ctx); err != nil {

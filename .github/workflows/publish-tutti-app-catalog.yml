@@ -15,6 +15,10 @@ on:
         description: Optional comma or newline separated remote app ids. In merge mode, leave empty to refresh the existing catalog.
         required: false
         type: string
+      withdraw_app_versions:
+        description: Optional comma or newline separated appId@version entries to withdraw before publishing. Requires merge mode; immutable release files are retained.
+        required: false
+        type: string
       aws_region:
         description: AWS region. Defaults to vars.TUTTI_APP_RELEASES_AWS_REGION.
         required: false
@@ -49,6 +53,7 @@ jobs:
     env:
       CATALOG_MODE: ${{ inputs.catalog_mode }}
       APP_IDS_INPUT: ${{ inputs.app_ids }}
+      WITHDRAW_APP_VERSIONS_INPUT: ${{ inputs.withdraw_app_versions }}
       AWS_REGION_VALUE: ${{ inputs.aws_region || vars.TUTTI_APP_RELEASES_AWS_REGION }}
       AWS_ROLE_ARN_VALUE: ${{ inputs.aws_role_arn || vars.TUTTI_APP_RELEASES_AWS_ROLE_ARN }}
       S3_BUCKET_VALUE: ${{ inputs.s3_bucket || vars.TUTTI_APP_RELEASES_S3_BUCKET }}
@@ -86,6 +91,154 @@ jobs:
         with:
           aws-region: ${{ env.AWS_REGION_VALUE }}
           role-to-assume: ${{ env.AWS_ROLE_ARN_VALUE }}
+
+      - name: Withdraw app versions
+        if: env.WITHDRAW_APP_VERSIONS_INPUT != ''
+        shell: bash
+        run: |
+          if [ "${CATALOG_MODE}" != "merge" ]; then
+            echo "withdraw_app_versions requires catalog_mode=merge" >&2
+            exit 1
+          fi
+
+          mkdir -p tutti-app-releases/withdrawals
+          prefix="${S3_PREFIX_VALUE%/}"
+          : > tutti-app-releases/withdrawn-app-ids.txt
+          : > tutti-app-releases/withdrawn-versions.txt
+
+          catalog_key="catalog.json"
+          if [ -n "${prefix}" ]; then
+            catalog_key="${prefix}/${catalog_key}"
+          fi
+          if ! aws s3api get-object \
+            --bucket "${S3_BUCKET_VALUE}" \
+            --key "${catalog_key}" \
+            tutti-app-releases/withdrawal-baseline-catalog.json \
+            >/dev/null 2>tutti-app-releases/withdrawal-catalog-error.txt; then
+            if ! grep -Eq "(404|Not Found|NoSuchKey)" \
+              tutti-app-releases/withdrawal-catalog-error.txt; then
+              cat tutti-app-releases/withdrawal-catalog-error.txt >&2
+              exit 1
+            fi
+          fi
+
+          while IFS= read -r raw_entry; do
+            entry="$(echo "${raw_entry}" | xargs)"
+            if [ -z "${entry}" ]; then
+              continue
+            fi
+            if [[ "${entry}" != *@* ]]; then
+              echo "Withdrawal entry must be appId@version: ${entry}" >&2
+              exit 1
+            fi
+
+            app_id="${entry%@*}"
+            version="${entry##*@}"
+            if [[ ! "${app_id}" =~ ^[A-Za-z0-9._-]+$ ]]; then
+              echo "Invalid app id in withdrawal entry: ${entry}" >&2
+              exit 1
+            fi
+            if [[ ! "${version}" =~ ^[0-9]+\.[0-9]+\.[0-9]+([+-][0-9A-Za-z.-]+)?$ ]]; then
+              echo "Invalid semver in withdrawal entry: ${entry}" >&2
+              exit 1
+            fi
+
+            marker="${app_id}@${version}"
+            if grep -Fqx "${marker}" tutti-app-releases/withdrawn-versions.txt; then
+              echo "Duplicate withdrawal entry: ${marker}" >&2
+              exit 1
+            fi
+
+            versions_key="apps/${app_id}/versions.json"
+            versions_path="tutti-app-releases/withdrawals/${app_id}.json"
+            updated_path="tutti-app-releases/withdrawals/${app_id}.updated.json"
+            if [ -n "${prefix}" ]; then
+              versions_key="${prefix}/${versions_key}"
+            fi
+
+            if etag="$(aws s3api head-object \
+              --bucket "${S3_BUCKET_VALUE}" \
+              --key "${versions_key}" \
+              --query ETag \
+              --output text 2>tutti-app-releases/withdrawal-head-error.txt)"; then
+              aws s3api get-object \
+                --bucket "${S3_BUCKET_VALUE}" \
+                --key "${versions_key}" \
+                "${versions_path}" \
+                >/dev/null
+              pnpm --package @tutti-os/app-release-tools@latest dlx build-tutti-app-versions \
+                --existing-versions "${versions_path}" \
+                --set-status-version "${version}" \
+                --status withdrawn \
+                --output "${updated_path}"
+              put_condition=(--if-match "${etag}")
+            elif grep -Eq "(404|Not Found|NoSuchKey)" \
+              tutti-app-releases/withdrawal-head-error.txt; then
+              if [ ! -f tutti-app-releases/withdrawal-baseline-catalog.json ]; then
+                echo "Cannot bootstrap missing versions index for ${app_id}: catalog baseline is unavailable" >&2
+                exit 1
+              fi
+              min_tutti_version="$(node -e '
+                const fs = require("fs");
+                const catalog = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+                const appId = process.argv[2];
+                const version = process.argv[3];
+                const compatibility = catalog.compatibility?.apps?.[appId] ?? [];
+                const compatible = compatibility.find(
+                  (entry) => entry?.app?.manifest?.version === version
+                );
+                if (compatible?.minTuttiVersion) {
+                  console.log(compatible.minTuttiVersion);
+                  process.exit(0);
+                }
+                const legacy = (catalog.apps ?? []).find(
+                  (app) =>
+                    app?.manifest?.appId === appId &&
+                    app?.manifest?.version === version
+                );
+                if (legacy) console.log("0.0.0");
+              ' tutti-app-releases/withdrawal-baseline-catalog.json "${app_id}" "${version}")"
+              if [ -z "${min_tutti_version}" ]; then
+                echo "Cannot infer compatibility baseline for ${app_id}@${version}" >&2
+                exit 1
+              fi
+              release_key="apps/${app_id}/${version}/release.json"
+              release_path="tutti-app-releases/withdrawals/${app_id}.${version}.release.json"
+              if [ -n "${prefix}" ]; then
+                release_key="${prefix}/${release_key}"
+              fi
+              aws s3api get-object \
+                --bucket "${S3_BUCKET_VALUE}" \
+                --key "${release_key}" \
+                "${release_path}" \
+                >/dev/null
+              pnpm --package @tutti-os/app-release-tools@latest dlx build-tutti-app-versions \
+                --release-file "${release_path}" \
+                --min-tutti-version "${min_tutti_version}" \
+                --status withdrawn \
+                --output "${updated_path}"
+              put_condition=(--if-none-match '*')
+            else
+              cat tutti-app-releases/withdrawal-head-error.txt >&2
+              exit 1
+            fi
+            aws s3api put-object \
+              --bucket "${S3_BUCKET_VALUE}" \
+              --key "${versions_key}" \
+              --body "${updated_path}" \
+              --content-type application/json \
+              --cache-control "public, max-age=60" \
+              "${put_condition[@]}" \
+              >/dev/null
+
+            printf '%s\n' "${app_id}" >> tutti-app-releases/withdrawn-app-ids.txt
+            printf '%s\n' "${marker}" >> tutti-app-releases/withdrawn-versions.txt
+          done < <(printf '%s\n' "${WITHDRAW_APP_VERSIONS_INPUT}" | tr ',' '\n')
+
+          sort -u -o tutti-app-releases/withdrawn-app-ids.txt \
+            tutti-app-releases/withdrawn-app-ids.txt
+          echo "Withdrawn versions:"
+          cat tutti-app-releases/withdrawn-versions.txt
 
       - name: Resolve catalog app ids
         shell: bash
@@ -137,6 +290,10 @@ jobs:
               }
             ' tutti-app-releases/existing-catalog.json)"
             app_ids_value="${existing_app_ids}"
+          fi
+
+          if [ -s tutti-app-releases/withdrawn-app-ids.txt ]; then
+            app_ids_value="${app_ids_value},$(paste -sd, tutti-app-releases/withdrawn-app-ids.txt)"
           fi
 
           : > tutti-app-releases/app-ids.txt

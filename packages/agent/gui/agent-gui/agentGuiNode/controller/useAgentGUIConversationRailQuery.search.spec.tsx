@@ -563,7 +563,11 @@ describe("useAgentGUIConversationRailQuery search", () => {
         workspaceId: "workspace-1"
       })
     });
-    engine.dispatch({ type: "turn/upserted", turn: runningTurn(1) });
+    engine.dispatch({
+      live: true,
+      type: "turn/upserted",
+      turn: runningTurn(1)
+    });
     const runtime = {
       getSessionEngine: () => engine
     } as unknown as AgentGUIRuntime;
@@ -594,7 +598,11 @@ describe("useAgentGUIConversationRailQuery search", () => {
     const previousRenderCount = renderCount;
 
     act(() => {
-      engine.dispatch({ type: "turn/upserted", turn: runningTurn(2) });
+      engine.dispatch({
+        live: true,
+        type: "turn/upserted",
+        turn: runningTurn(2)
+      });
     });
 
     expect(renderCount).toBe(previousRenderCount);
@@ -619,7 +627,11 @@ describe("useAgentGUIConversationRailQuery search", () => {
         workspaceId: "workspace-1"
       })
     });
-    engine.dispatch({ type: "turn/upserted", turn: runningTurn(1) });
+    engine.dispatch({
+      live: true,
+      type: "turn/upserted",
+      turn: runningTurn(1)
+    });
     const runtime = {
       getSessionEngine: () => engine
     } as unknown as AgentGUIRuntime;
@@ -694,7 +706,11 @@ describe("useAgentGUIConversationRailQuery search", () => {
     const previousRailCommitCount = railCommitCount;
 
     act(() => {
-      engine.dispatch({ type: "turn/upserted", turn: runningTurn(2) });
+      engine.dispatch({
+        live: true,
+        type: "turn/upserted",
+        turn: runningTurn(2)
+      });
     });
 
     expect(railCommitCount).toBe(previousRailCommitCount);

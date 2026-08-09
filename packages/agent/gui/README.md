@@ -13,7 +13,8 @@ customize structured product errors such as `insufficient_credits`. The
 override contains only localized copy and an optional sanitized external
 action; it does not expose membership state, credentials, or Commerce response
 objects to AgentGUI. Raw provider error details remain available to diagnostics
-but are not rendered in the product error card. Environment, authentication,
+and are rendered only behind an explicit disclosure, never in the product error
+headline. Environment, authentication,
 network, and runtime errors are not overridable and remain AgentGUI policy.
 
 This is an intentional public API break. The former `accountMenuState`,
@@ -112,6 +113,32 @@ accepted for host capabilities that are not agent activity data:
 - user-project selection
 - local file picking/reading and batch export helpers
 
+## Worktree Session Launch
+
+New-Session worktree launch is an opt-in host contract. A host enables it with
+`hostCapabilities.sessionWorktreeEnabled`, supplies the current workspace's
+durable `sessionLaunchModesByProjectSectionKey` projection, handles
+`hostActions.onSessionLaunchModePreferenceChange`, and implements
+`AgentHostApi.workspace.resolveSessionWorktreeSupport`. Omitting any part fails
+closed and preserves the existing local-checkout launch behavior, so published
+AgentGUI consumers do not acquire the feature until they opt in.
+
+AgentGUI exposes the selector only for a new Session whose exact selected Agent
+Target is self-owned and whose selected registered project passes the host
+probe. Shared or remote targets, existing Sessions, missing projects, and
+unsupported repositories show no selector. The stored preference is not
+rewritten when current support disappears: the effective launch falls back to
+`local`, and the saved `worktree` choice becomes effective again if the same
+workspace and project section later regain support. Opening an existing
+Session never changes the launch preference.
+
+The preference is launch intent, keyed by workspace id and canonical project
+`sectionKey`; it is separate from a Session's durable `isolation` fact. A
+worktree launch sends `isolation: "worktree"` through the semantic activation
+path. Rail summaries may render the package worktree glyph from the resulting
+canonical Session isolation metadata, next to relative time in the unhovered
+row; they must not infer isolation from `cwd`.
+
 AgentGUI has no host-API activity fallback. A host must inject the runtime and
 the grouped `AgentGUINodeProps` responsibility objects.
 
@@ -187,6 +214,55 @@ session settings, then retain only their menu, sheet, and disclosure UI.
 The daemon DTO mapper belongs to
 `@tutti-os/agent-activity-tuttid-adapter`, so Desktop and Mobile do not keep
 separate parser implementations for Composer capabilities or option catalogs.
+
+## Quick Composer
+
+`@tutti-os/agent-gui/quick-composer` renders the canonical DOM Composer for a
+launcher that needs text, image drafts, and exact Agent Target selection without
+the Rail or timeline. It is controlled by typed prompt content and returns the
+same prompt envelope on submit. It intentionally owns no Session lifecycle or
+Composer-options loading; the host must route submit through its existing
+workspace `AgentSessionEngine`. Its embedded layout keeps attachments and long
+drafts in normal flow; hosts must not wrap the timeline-oriented dock layout in
+fixed-height launch surfaces.
+
+Agent selection is fail-closed. The host passes the canonical `agentTargetId`
+and a capability snapshot for every selectable target. Quick Composer resolves
+only that exact identifier: an unknown, disabled, or capability-less target
+keeps submit unavailable instead of falling back to the first target or
+guessing a provider. Image drafts are accepted only when the selected target's
+declared content types include images. The submit envelope returns the resolved
+`agentTargetId`, content, and display prompt so the host cannot activate a
+different target from the one the user saw.
+The public target contract does not accept AgentGUI's legacy `targetId` or
+internal `ref`; Quick Composer derives both internal fields from the canonical
+`agentTargetId` before rendering the shared selector.
+
+Hosts that need canonical `@` results pass a `RichTextMentionService`; hosts
+that enable the `+` control pass `onRequestWorkspaceReferences`. Quick Composer
+installs both through the same AgentGUI Composer boundaries used by the full
+surface and never owns a second reference source. Fixed or frameless launchers
+should pass `menuViewportTopInset` for title-bar chrome that portaled provider
+and mention menus must avoid. A host with a definite height may set
+`fillAvailableHeight`; a host that needs every bottom control on one baseline
+may set `composerActionPlacement="footer"`. Both are optional presentation
+contracts and do not change prompt or Session ownership. A host whose own
+window chrome already defines the visual perimeter may set
+`inputSurfaceVariant="borderless"` to suppress the redundant inner outline
+without overriding AgentGUI implementation selectors.
+
+Standalone hosts may inject an AgentGUI i18n runtime. Otherwise Quick Composer
+uses the package defaults; hosts must not render translation keys or hardcode a
+second copy of Composer-visible text.
+
+A launcher that owns project selection passes a real `WorkspaceUserProjectApi`
+as `userProjectApi`, together with `selectedProjectPath` and
+`onProjectPathChange`. Quick Composer then renders the canonical project
+selector in its footer and delegates catalog reads, selection preparation, and
+project registration to that API. A directory picker alone does not enable the
+selector and never becomes a synthetic registered-project catalog. The host
+remains responsible for carrying the selected path through its normal
+new-Session activation input.
 
 ## Standalone Conversation Participant Presentation
 

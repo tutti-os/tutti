@@ -42,6 +42,13 @@
         "filter": [
           "**/*"
         ]
+      },
+      {
+        "from": "build/managed-uv",
+        "to": "bin/managed-uv",
+        "filter": [
+          "**/*"
+        ]
       }
     ],
     "publish": [
@@ -88,6 +95,13 @@
           "filter": [
             "**/*"
           ]
+        },
+        {
+          "from": "build/mutagen",
+          "to": "bin/mutagen",
+          "filter": [
+            "**/*"
+          ]
         }
       ]
     },
@@ -118,6 +132,7 @@
     "build:mac:unsigned": "bash ../../tools/scripts/build-desktop-package.sh mac-unsigned",
     "build:unpack": "bash ../../tools/scripts/build-desktop-package.sh unpack",
     "build:win": "bash ../../tools/scripts/build-desktop-package.sh win",
+    "predev": "node scripts/prepare-managed-posix-shell-dev.mjs",
     "build:win:store": "bash ../../tools/scripts/build-desktop-package.sh win-store",
     "dev": "electron-vite dev",
     "dev:web": "vite --config vite.web.config.mjs",
@@ -164,6 +179,7 @@
     "@tutti-os/workspace-user-project": "workspace:*",
     "@tutti-os/workspace-terminal": "workspace:*",
     "@tailwindcss/vite": "^4.1.8",
+    "@tanstack/react-virtual": "^3.14.8",
     "@types/node": "^24.0.1",
     "@types/react": "^19.1.6",
     "@types/react-dom": "^19.1.5",

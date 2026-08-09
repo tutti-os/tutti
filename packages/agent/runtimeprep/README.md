@@ -64,6 +64,21 @@ runtimeprep leaves auth unprojected and does not fall back to the VM user's
 `~/.tutti-agent`. Tutti Agent preparation also materializes the same resolved
 native Skills used by the other supported providers.
 
+The desktop injects `MutagenAuthFileProjector` for this credential projection.
+It first attempts a file symlink. When Windows denies that operation, it copies
+the current stable auth into each run. If Mutagen is already available, the
+projector starts an official `two-way-safe` session with the default real-time
+watcher. Cleanup flushes the session and refuses to delete the run home if
+Mutagen reports a conflict; otherwise it terminates the session before runtime
+deletion. If Mutagen is unavailable, cleanup copies a valid changed run auth
+back atomically only when the stable auth still matches the original baseline;
+concurrent changes preserve both files for recovery. `.refresh.lock` is always
+a symlink or hard link to the stable lock so both homes coordinate through one
+OS file object. Mutagen resolution prefers `TUTTI_MUTAGEN_BIN`, then `PATH`.
+Packaged Windows amd64 Desktop builds inject the verified v0.18.1 executable
+bundled at build time, while unpackaged hosts use the guarded copy fallback
+without a runtime download. Other bundled platforms remain to be confirmed.
+
 When `TuttiAgentPreparer.StableSkillBundleRoot` is configured, Tutti-managed
 Skills are content-addressed under
 `<root>/v1/<sha256>/skills` instead of the run-scoped home. Preparation emits
@@ -72,6 +87,12 @@ the validated roots through the internal
 removes that handoff from the child environment and calls
 `skills/extraRoots/set` after `initialized` and before `thread/start` or
 `thread/resume`. A zero-value root preserves the legacy run-scoped layout.
+Active Connector routes may contribute their verified, content-addressed
+`skills/` directories to the same handoff. Runtime preparation validates that
+each contributed path is absolute, exists as a directory, and is not a symlink;
+duplicate roots are removed. Connector processes use separate disposable
+execution snapshots, so restarting a process does not invalidate the Skill
+paths held by an Agent session.
 Stable bundles are immutable rebuildable cache entries and are not removed by
 single-session cleanup. When `StableSystemSkillBundleRoot` is also configured,
 runtimeprep passes that store as internal launch metadata. After the provider

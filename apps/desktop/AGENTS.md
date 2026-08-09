@@ -16,7 +16,13 @@ This file applies to `apps/desktop/*`.
 
 ## Setup commands
 
-- Start desktop development: `pnpm --filter @tutti-os/desktop dev`
+- Start desktop development: `pnpm --filter @tutti-os/desktop dev`. On Windows,
+  its `predev` hook prepares the pinned managed POSIX shell and the Electron
+  main process injects it into the tuttid child environment.
+- Windows staging/E2E acceptance: `corepack pnpm@10.11.0 dev:windows:e2e:clean`
+  (or `dev:windows:e2e` when reusing the isolated state). Do not use the
+  low-level dev loop as an acceptance substitute because it does not provide
+  E2E cleanup, state isolation, or readiness checks.
 - Build desktop: `pnpm --filter @tutti-os/desktop build`
 - Typecheck desktop: `pnpm --filter @tutti-os/desktop typecheck`
 

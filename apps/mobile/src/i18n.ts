@@ -15,7 +15,11 @@ const messages = {
     app: "App",
     appName: "Tutti",
     agent: "Agent",
+    acknowledge: "OK",
     allow: "Allow",
+    allowUpdateInstallation: "Allow update installation",
+    allowUpdateInstallationDescription:
+      "Enable Allow from this source in Android settings. Tutti will continue automatically when you return.",
     answerHint: "Type your answer…",
     approval: "Approval",
     back: "Back",
@@ -30,6 +34,7 @@ const messages = {
     copyAsMarkdown: "Copy as Markdown",
     copyImageUrl: "Copy image URL",
     changedFiles: "{count} changed files",
+    checkForUpdates: "Check for updates",
     closeSheet: "Close sheet",
     collapseSection: "Collapse section",
     connecting: "Connecting securely…",
@@ -52,6 +57,10 @@ const messages = {
       "Make sure Tutti is running on your computer, then try again or return to your computers.",
     connectionRecoveryFailedTitle: "Could not reconnect",
     connectionSynchronizingTitle: "Syncing the latest data",
+    connectionVersionIncompatibleDescription:
+      "Update Tutti on your phone or computer, then connect again.",
+    connectionVersionIncompatibleTitle:
+      "Computer and phone versions are incompatible",
     connectionStatus: "Status",
     connectionTransport: "Channel",
     contextHandoffRequired: "This conversation has reached its context limit",
@@ -150,6 +159,9 @@ const messages = {
     scrollToBottom: "Scroll to bottom",
     sessions: "Sessions",
     sendPlanFeedback: "Send feedback and keep planning",
+    rawError: "Raw error",
+    showRawError: "Show raw error",
+    hideRawError: "Hide raw error",
     showDetails: "Show details",
     stop: "Stop",
     speed: "Speed",
@@ -188,12 +200,57 @@ const messages = {
     softwareUpdate: "Software update",
     checkingForUpdates: "Checking for updates…",
     downloadAndInstall: "Download and install",
+    cancelUpdate: "Cancel update",
+    confirmUpdateInstallation: "Install the downloaded update",
+    confirmUpdateInstallationDescription:
+      "Confirm the installation in the Android system window.",
+    downloadingUpdate: "Downloading update…",
+    preparingUpdateDownload: "Preparing download…",
+    preparingUpdateDownloadDescription:
+      "Android is preparing the update download.",
+    preparingUpdateInstaller: "Opening installer…",
+    preparingUpdateInstallerDescription:
+      "The update is ready. Android is opening the system installer.",
     installingUpdate: "Installing update…",
+    updateDownloadInProgress: "The update is downloading in the background.",
+    updateDownloadFailed:
+      "Android could not finish the download. Check the network and try again.",
+    updateDownloadFileFailed:
+      "Android could not save the update package. Check device storage and try again.",
+    updateDownloadPaused: "Download paused",
+    updateDownloadPausedDescription:
+      "Android will continue when the network is available.",
+    updateDownloadProgress: "{downloaded} of {total}",
+    updateDownloadStatusFailed:
+      "Android could not read or continue the update task. Try the update again.",
+    updateProgressAccessibility: "Update download progress",
+    verifyingUpdate: "Verifying update…",
+    verifyingUpdateDescription:
+      "Checking the package size and published checksum.",
     updateAvailable: "Update available",
     updateAvailableDescription: "Version {version} is ready to download.",
     updateAvailableVersion: "Version {version} available",
     updateCheckFailed: "Could not check for updates",
+    updateCancelFailed: "Could not cancel the update",
     updateInstallFailed: "Could not start the update installation",
+    updateInstallBlocked:
+      "Android or a device administrator blocked this installation.",
+    updateInstallConflict:
+      "The installed app conflicts with this update. Use an update signed by the same Tutti release key.",
+    updateInstallDeferred:
+      "Return to Tutti and choose Download and install again. The verified package will be reused.",
+    updateInstallFailedDescription:
+      "Try again. If the issue continues, check Android's installation settings.",
+    updateInstallIncompatible:
+      "This update is not compatible with the current device or installed version.",
+    updateInstallPackageInvalid:
+      "Android rejected the update package as invalid. Download it again or publish a corrected package.",
+    updateInstallPermissionRequired:
+      "Allow Tutti to install apps from this source, then choose Download and install again.",
+    updateIntegrityFailed:
+      "The downloaded package did not match the published release and was discarded.",
+    updateStorageInsufficient:
+      "Free up storage on this device, then try the update again.",
     updatesUnavailable: "Updates are unavailable on this platform.",
     upToDate: "You are using the latest version.",
     chat: "Chat",
@@ -216,7 +273,11 @@ const messages = {
     app: "应用",
     appName: "Tutti",
     agent: "Agent",
+    acknowledge: "知道了",
     allow: "允许",
+    allowUpdateInstallation: "允许安装更新",
+    allowUpdateInstallationDescription:
+      "请在 Android 设置中开启允许此来源，返回后 Tutti 会自动继续安装",
     answerHint: "输入你的回答…",
     approval: "授权确认",
     back: "返回",
@@ -233,6 +294,7 @@ const messages = {
     copyAsMarkdown: "复制为 Markdown",
     copyImageUrl: "复制图片链接",
     changedFiles: "已变更 {count} 个文件",
+    checkForUpdates: "检查手机更新",
     closeSheet: "关闭面板",
     collapseSection: "收起分组",
     connecting: "正在建立安全连接…",
@@ -254,6 +316,9 @@ const messages = {
       "请确认电脑端 Tutti 正在运行，然后重试或返回电脑列表",
     connectionRecoveryFailedTitle: "无法重新连接",
     connectionSynchronizingTitle: "正在同步最新数据",
+    connectionVersionIncompatibleDescription:
+      "请更新手机或电脑上的 Tutti，然后重新连接",
+    connectionVersionIncompatibleTitle: "电脑版本与手机不兼容",
     connectionStatus: "状态",
     connectionTransport: "传输通道",
     connectionTransportP2p: "端到端加密 P2P",
@@ -343,6 +408,9 @@ const messages = {
     scrollToBottom: "回到底部",
     sessions: "会话",
     sendPlanFeedback: "发送反馈并继续规划",
+    rawError: "原始错误",
+    showRawError: "展开原始错误",
+    hideRawError: "收起原始错误",
     showDetails: "显示详情",
     stop: "停止",
     speed: "速度",
@@ -379,12 +447,46 @@ const messages = {
     softwareUpdate: "软件更新",
     checkingForUpdates: "正在检查更新…",
     downloadAndInstall: "下载并安装",
+    cancelUpdate: "取消更新",
+    confirmUpdateInstallation: "安装已下载的更新",
+    confirmUpdateInstallationDescription: "请在 Android 系统窗口中确认安装",
+    downloadingUpdate: "正在下载更新…",
+    preparingUpdateDownload: "正在准备下载…",
+    preparingUpdateDownloadDescription: "Android 正在准备更新包下载",
+    preparingUpdateInstaller: "正在打开安装器…",
+    preparingUpdateInstallerDescription:
+      "更新包已就绪，Android 正在打开系统安装器",
     installingUpdate: "正在安装更新…",
+    updateDownloadInProgress: "更新包正在后台下载",
+    updateDownloadFailed: "Android 无法完成下载，请检查网络后重试",
+    updateDownloadFileFailed: "Android 无法保存更新包，请检查设备存储后重试",
+    updateDownloadPaused: "下载已暂停",
+    updateDownloadPausedDescription: "网络恢复后 Android 将继续下载",
+    updateDownloadProgress: "已下载 {downloaded}，共 {total}",
+    updateDownloadStatusFailed:
+      "Android 无法读取或继续更新任务，请重新尝试更新",
+    updateProgressAccessibility: "更新下载进度",
+    verifyingUpdate: "正在校验更新…",
+    verifyingUpdateDescription: "正在校验更新包大小和发布校验和",
     updateAvailable: "发现新版本",
     updateAvailableDescription: "版本 {version} 已准备好下载",
     updateAvailableVersion: "有新版本 {version}",
     updateCheckFailed: "暂时无法检查更新",
+    updateCancelFailed: "无法取消更新",
     updateInstallFailed: "无法开始安装更新",
+    updateInstallBlocked: "Android 或设备管理员阻止了此次安装",
+    updateInstallConflict:
+      "已安装的应用与更新冲突，请使用相同 Tutti 发布密钥签名的更新",
+    updateInstallDeferred:
+      "请返回 Tutti 后再次选择下载并安装，已校验的更新包会被复用",
+    updateInstallFailedDescription: "请重试，如问题持续请检查 Android 安装设置",
+    updateInstallIncompatible: "此更新与当前设备或已安装版本不兼容",
+    updateInstallPackageInvalid:
+      "Android 判定更新包无效，请重新下载或发布修正后的更新包",
+    updateInstallPermissionRequired:
+      "请允许 Tutti 从此来源安装应用，然后再次选择下载并安装",
+    updateIntegrityFailed: "下载的更新包与发布信息不一致，已安全丢弃",
+    updateStorageInsufficient: "请释放设备存储空间后重试更新",
     updatesUnavailable: "当前平台暂不支持更新",
     upToDate: "当前已经是最新版本",
     chat: "聊天",

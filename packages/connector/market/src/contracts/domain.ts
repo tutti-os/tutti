@@ -39,9 +39,8 @@ export type ConnectorOperationState =
 export type ConnectorOperationStage =
   | "accepted"
   | "refreshing"
-  | "downloading"
-  | "prepared"
-  | "activating"
+  | "installing"
+  | "installed"
   | "deactivating"
   | "authorizing"
   | "disconnecting"
@@ -230,6 +229,10 @@ export interface ConnectorMarketMutationInput {
 
 export interface ConnectorMutationInput extends ConnectorMarketMutationInput {
   connectorKey: string;
+}
+
+export interface ConnectorAuthorizationInput extends ConnectorMutationInput {
+  secret?: string;
 }
 
 export interface ConnectorMutationResult {

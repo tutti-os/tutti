@@ -87,6 +87,8 @@ type TuttiAgentReadiness interface {
 
 type AgentMaintenanceService interface {
 	PurgeNow(context.Context) (agentmaintenanceservice.PurgeResult, error)
+	PurgeWorkspace(context.Context, string) (agentmaintenanceservice.PurgeResult, error)
+	PurgeSession(context.Context, string, string) (agentmaintenanceservice.PurgeResult, error)
 }
 
 type AgentProviderStatusService interface {

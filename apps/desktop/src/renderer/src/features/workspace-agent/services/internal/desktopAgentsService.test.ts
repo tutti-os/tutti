@@ -259,6 +259,7 @@ test("desktop agents service lists a custom Agent with its Harness target catalo
     description: "Reviews workspace changes",
     iconUrl: "catalog://codex-target",
     label: "Reviewer",
+    ownership: "self",
     provider: "codex",
     ref: {
       agentTargetId: "workspace-agent:reviewer",

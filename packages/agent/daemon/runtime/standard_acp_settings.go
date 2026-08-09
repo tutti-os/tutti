@@ -125,26 +125,28 @@ func (a *standardACPAdapter) applySessionConfigOptions(
 		"model_requested":      strings.TrimSpace(settings.Model) != "",
 		"effort_requested":     strings.TrimSpace(settings.ReasoningEffort) != "",
 	})
-	// Startup config options are applied best-effort: a value the agent
-	// rejects (e.g. a model alias the signed-in account cannot access) must
-	// not abort the whole session. The session stays usable on the agent's
-	// default, and the user can pick a supported value from the live list.
+	// A requested model is identity-bearing launch intent. If the agent rejects
+	// it, continuing on its default would make the visible selection disagree
+	// with the provider request. Other non-identity settings remain best-effort.
 	modelConfigID := a.effectiveModelConfigOptionID()
 	modelSet := false
 	if model := strings.TrimSpace(settings.Model); model != "" && modelConfigID != "" &&
 		(supported[modelConfigID] || (modelConfigID == "model" && modelsAPI)) {
-		var err error
-		if modelsAPI && modelConfigID == "model" {
-			err = a.setSessionModel(ctx, client, session, model)
-		} else {
-			err = a.setSessionConfigOption(ctx, client, session, modelConfigID, model)
-		}
-		if err != nil {
-			a.logStartupConfigOptionRejected(session, modelConfigID, model, err)
-		} else {
+		modelAlreadySelected := modelsAPI && modelConfigID == "model" &&
+			strings.TrimSpace(a.sessionCurrentModelID(session.AgentSessionID)) == model
+		if !modelAlreadySelected {
+			var err error
+			if modelsAPI && modelConfigID == "model" {
+				err = a.setSessionModel(ctx, client, session, model)
+			} else {
+				err = a.setSessionConfigOption(ctx, client, session, modelConfigID, model)
+			}
+			if err != nil {
+				return fmt.Errorf("agent session ACP model configuration failed: %w", err)
+			}
 			modelSet = modelsAPI && modelConfigID == "model"
-			a.updateSessionConfigOption(session.AgentSessionID, modelConfigID, model)
 		}
+		a.updateSessionConfigOption(session.AgentSessionID, modelConfigID, model)
 	}
 	if reasoning := strings.TrimSpace(settings.ReasoningEffort); reasoning != "" {
 		if a.config.setModelReasoningEffortMeta {

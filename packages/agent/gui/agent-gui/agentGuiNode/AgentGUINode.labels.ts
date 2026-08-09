@@ -18,6 +18,7 @@ import { agentGUIProviderManagerLabels } from "./view/agentGUIProviderManagerLab
 import { agentGUIUsageStatusLabels } from "./view/agentGUIUsageStatusLabels";
 import { agentQuickPromptLabels } from "./composer/quickPrompts/agentQuickPromptLabels";
 import { agentSlashPaletteLabels } from "./composer/agentSlashPaletteLabels";
+import { agentGUIProjectLaunchLabels } from "./composer/agentGUIProjectLaunchLabels";
 import { agentGUITuttiModeLabels } from "./view/agentGUITuttiModeLabels";
 
 export { buildAgentHomeSuggestions };
@@ -217,6 +218,13 @@ export function useAgentGUIViewLabels(input: {
       ),
       defaultModel: t("agentHost.agentGui.defaultModel"),
       loadingOptions: t("agentHost.agentGui.loadingOptions"),
+      composerOptionsLoadFailed: t(
+        "agentHost.agentGui.composerOptionsLoadFailed"
+      ),
+      composerOptionsRetry: t("agentHost.agentGui.composerOptionsRetry"),
+      composerOptionsRetryTooltip: t(
+        "agentHost.agentGui.composerOptionsRetryTooltip"
+      ),
       inheritedUnavailable: t("agentHost.agentGui.inheritedUnavailable"),
       reasoningLabel: t("agentHost.agentGui.reasoningLabel"),
       reasoningDegreeLabel: t("agentHost.agentGui.reasoningDegreeLabel"),
@@ -580,10 +588,7 @@ export function useAgentGUIViewLabels(input: {
       syncPending: t("agentHost.agentGui.syncPending"),
       syncSynced: t("agentHost.agentGui.syncSynced"),
       syncFailed: t("agentHost.agentGui.syncFailed"),
-      projectLocked: t("agentHost.agentGui.projectLocked"),
-      projectMissingDescription: t(
-        "agentHost.agentGui.projectMissingDescription"
-      ),
+      ...agentGUIProjectLaunchLabels(t),
       promptTipsPrefix: t("agentHost.agentGui.promptTipsPrefix"),
       reviewPicker: {
         title: t("agentHost.agentGui.reviewPicker.title"),
@@ -740,6 +745,21 @@ export function useAgentGUIViewLabels(input: {
       removeMention: t("common.remove"),
       addReference: t("agentHost.agentGui.addReference"),
       addContent: t("agentHost.agentGui.addContent"),
+      addContentResourcePanel: t("agentHost.agentGui.addContentResourcePanel"),
+      addContentConnectors: t("agentHost.agentGui.addContentConnectors"),
+      addContentConnectorConnected: t(
+        "agentHost.agentGui.addContentConnectorConnected"
+      ),
+      addContentConnectorConnect: t(
+        "agentHost.agentGui.addContentConnectorConnect"
+      ),
+      addContentConnectorAuthorize: t(
+        "agentHost.agentGui.addContentConnectorAuthorize"
+      ),
+      addContentConnectorEmpty: t(
+        "agentHost.agentGui.addContentConnectorEmpty"
+      ),
+      addContentConnectorMore: t("agentHost.agentGui.addContentConnectorMore"),
       referenceWorkspaceFiles: t("agentHost.issue.referenceWorkspaceFiles"),
       handoffConversation: t("agentHost.agentGui.handoffConversation"),
       handoffConversationTooltip: t(
@@ -763,7 +783,6 @@ export function useAgentGUIViewLabels(input: {
     ]
   );
 }
-
 export function useAgentGUIWorkspaceFileReferenceCopy(
   t: TranslateFn
 ): WorkspaceFileReferenceCopy {

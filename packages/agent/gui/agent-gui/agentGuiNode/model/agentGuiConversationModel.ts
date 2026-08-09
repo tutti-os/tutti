@@ -346,6 +346,7 @@ export function conversationSummaryFromAgentSession(
       session.activeTurnId ? "working" : "idle"
     ),
     cwd: session.cwd?.trim() ?? "",
+    isolation: session.isolation,
     railSectionKey: session.railSectionKey,
     project: resolveConversationProject(session, projectResolver),
     ...(isExternalImportNoProjectSession(session)
@@ -478,6 +479,7 @@ function conversationSummaryFromActivity(
     titleFallback,
     status,
     cwd: session?.cwd.trim() ?? "",
+    isolation: session?.isolation ?? null,
     ...(session ? { railSectionKey: session.railSectionKey } : {}),
     project: resolveConversationProject(session, options.projectResolver),
     ...(isExternalImportNoProjectSession(session)

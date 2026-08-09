@@ -399,6 +399,74 @@ export type DeletedAgentConversationPurgeResult = {
   payloadBytes: number;
 };
 
+export type WorkspaceDeletedAgentSessionUnavailableReason =
+  | "legacyDataUnavailable"
+  | "incompleteSessionTree";
+
+export type WorkspaceDeletedAgentSession = {
+  /**
+   * Identity of the topmost Session in this deleted component. It may be a canonical root or a child whose parent is not deleted.
+   */
+  agentSessionId: string;
+  /**
+   * Original canonical title. Empty titles remain empty.
+   */
+  title: string;
+  /**
+   * Persisted original project path; null means the conversations section.
+   */
+  projectPath: string | null;
+  /**
+   * Last session update before deletion. This value is not the deletion time.
+   */
+  updatedAtUnixMs: number;
+  /**
+   * Tombstone time used by the retention policy.
+   */
+  deletedAtUnixMs: number;
+  restorable: boolean;
+  /**
+   * Null when the complete deleted Session component can be restored.
+   */
+  unavailableReason: WorkspaceDeletedAgentSessionUnavailableReason | null;
+};
+
+export type WorkspaceDeletedAgentSessionProjectOption = {
+  projectPath: string;
+  projectLabel: string;
+  /**
+   * Whether the original project is still registered in the current project catalog.
+   */
+  projectAvailable: boolean;
+};
+
+export type WorkspaceDeletedAgentSessionListResponse = {
+  workspaceId: string;
+  sessions: Array<WorkspaceDeletedAgentSession>;
+  /**
+   * Distinct original tombstone projects for the workspace, independent of search, project filter, cursor, and limit.
+   */
+  projectOptions: Array<WorkspaceDeletedAgentSessionProjectOption>;
+  hasMore: boolean;
+  /**
+   * Opaque cursor for the next older matching page.
+   */
+  nextCursor?: string;
+  /**
+   * Total matching topmost soft-deleted Session components before cursor pagination.
+   */
+  totalCount: number;
+  /**
+   * Total topmost soft-deleted Session components in this workspace before search, project filtering, and cursor pagination.
+   */
+  workspaceTotalCount: number;
+};
+
+export type RestoreWorkspaceDeletedAgentSessionResponse = {
+  agentSessionId: string;
+  restored: boolean;
+};
+
 export type DesktopPreferences = {
   /**
    * Whether tuttid may periodically discover newer managed agent CLI releases on this device. This never authorizes automatic installation.
@@ -407,6 +475,7 @@ export type DesktopPreferences = {
   agentComposerDefaultsByProvider: DesktopAgentComposerDefaultsByProvider;
   agentComposerDefaultsByAgentTarget?: DesktopAgentComposerDefaultsByAgentTarget;
   agentGuiConversationRailCollapsedByProvider: DesktopAgentGuiConversationRailCollapsedByProvider;
+  agentSessionLaunchModesByWorkspace?: DesktopAgentSessionLaunchModesByWorkspace;
   agentConversationDetailMode: DesktopAgentConversationDetailMode;
   agentDockLayout: DesktopAgentDockLayout;
   appCatalogChannel: DesktopAppCatalogChannel;
@@ -441,6 +510,10 @@ export type DesktopWorkbenchShortcuts = {
    * Keyboard shortcut binding for opening a new window of the active workbench node type, or null when unbound.
    */
   newSameTypeWindow: string | null;
+  /**
+   * Keyboard shortcut binding for the global screenshot capture, or null/absent when the built-in CommandOrControl+Shift+S default applies. Unlike the other bindings, null does not mean unbound.
+   */
+  captureScreenshot?: string | null;
 };
 
 export type DesktopWorkbenchWindowSnapping = {
@@ -493,6 +566,16 @@ export type DesktopAgentGuiConversationRailCollapsedByProvider = {
   nexight?: boolean;
   openclaw?: boolean;
   opencode?: boolean;
+};
+
+export type DesktopAgentSessionLaunchMode = "local" | "worktree";
+
+export type DesktopAgentSessionLaunchModesByProject = {
+  [key: string]: DesktopAgentSessionLaunchMode;
+};
+
+export type DesktopAgentSessionLaunchModesByWorkspace = {
+  [key: string]: DesktopAgentSessionLaunchModesByProject;
 };
 
 export type DesktopFileDefaultOpener =
@@ -2428,6 +2511,10 @@ export type WorkspaceAgentSession = {
   messageVersion: WorkspaceAgentMessageCursor;
   cwd: string | null;
   /**
+   * Durable launch isolation metadata. Null for sessions launched in the selected checkout.
+   */
+  isolation?: WorkspaceAgentSessionIsolation | null;
+  /**
    * Persisted conversation-rail membership key. Clients must use this exact key for section placement and must not infer membership from cwd or project paths.
    */
   railSectionKey: string;
@@ -2624,6 +2711,7 @@ export type WorkspaceAgentTurnOutcome =
 export type WorkspaceAgentTurnError = {
   message: string;
   code?: string;
+  detail?: string;
 };
 
 /**
@@ -3132,6 +3220,10 @@ export type CreateWorkspaceAgentSessionRequest = {
   initialDisplayPrompt?: string | null;
   title?: string | null;
   cwd?: string | null;
+  /**
+   * Optional create-only isolation mode. Omit or set null to launch in the selected checkout.
+   */
+  isolation?: WorkspaceAgentSessionIsolationMode | null;
   permissionModeId?: string | null;
   model?: string | null;
   reasoningEffort?: string | null;
@@ -3411,6 +3503,27 @@ export type WorkspaceGitPatchSupportResponse = {
   supported: boolean;
   root?: string;
   errorCode?: WorkspaceGitPatchErrorCode;
+};
+
+export type WorkspaceAgentSessionIsolationMode = "worktree";
+
+export type WorkspaceAgentSessionIsolation = {
+  mode: WorkspaceAgentSessionIsolationMode;
+  worktreePath: string;
+  branch: string;
+  baseCommit: string;
+};
+
+export type WorkspaceAgentSessionWorktreeSupportErrorCode =
+  | "agent-target-unsupported"
+  | "git-unavailable"
+  | "not-git-repo"
+  | "unsupported-repo-layout";
+
+export type WorkspaceAgentSessionWorktreeSupportResponse = {
+  supported: boolean;
+  root?: string;
+  errorCode?: WorkspaceAgentSessionWorktreeSupportErrorCode;
 };
 
 export type WorkspaceGitPatchExecOutput = {
@@ -4302,13 +4415,21 @@ export type IssueManagerContextRef =
       parentKind: "task";
     } & IssueManagerTaskContextRef);
 
+export type IssueManagerAttachmentContentResponse = {
+  contextRefId: string;
+  mimeType: "image/png" | "image/jpeg" | "image/webp";
+  displayName: string;
+  data: string;
+};
+
 export type IssueManagerIssueContextRef = {
   contextRefId: string;
   workspaceId: string;
   issueId: string;
   parentKind: "issue";
   refType: string;
-  path: string;
+  accessKind: "workspace_path" | "managed_attachment";
+  path?: string;
   displayName: string;
   createdAtUnix: number;
 };
@@ -4320,7 +4441,8 @@ export type IssueManagerTaskContextRef = {
   taskId: string;
   parentKind: "task";
   refType: string;
-  path: string;
+  accessKind: "workspace_path" | "managed_attachment";
+  path?: string;
   displayName: string;
   createdAtUnix: number;
 };
@@ -4345,7 +4467,7 @@ export type IssueManagerIssueListResponse = {
 };
 
 export type CreateIssueManagerIssueFromPlanRequest = {
-  issue: CreateIssueManagerIssueRequest;
+  issue: CreateIssueManagerPlannedIssueRequest;
   tasks: Array<CreateIssueManagerTaskRequest>;
 };
 
@@ -4442,6 +4564,39 @@ export type CreateIssueManagerIssueRequest = {
   parallelExecution?: boolean;
   executionProfile?: IssueManagerExecutionProfile;
   budget?: IssueManagerBudget;
+  /**
+   * Inline image attachments persisted as managed issue context references.
+   */
+  attachments?: Array<CreateIssueManagerImageAttachmentRequest>;
+};
+
+export type CreateIssueManagerPlannedIssueRequest = {
+  issueId?: string;
+  topicId: string;
+  title: string;
+  content?: string;
+  planningSource?: IssueManagerPlanningSource;
+  sourceSessionId?: string;
+  /**
+   * Persist the user's Create-and-Start choice so successor dispatch survives desktop restarts.
+   */
+  sequentialExecution?: boolean;
+  /**
+   * Persist the user's parallel Create-and-Start choice. Mutually exclusive with sequentialExecution.
+   */
+  parallelExecution?: boolean;
+  executionProfile?: IssueManagerExecutionProfile;
+  budget?: IssueManagerBudget;
+};
+
+export type CreateIssueManagerImageAttachmentRequest = {
+  mimeType: "image/png" | "image/jpeg" | "image/webp";
+  /**
+   * Base64-encoded image bytes. Decoded content is limited to 20 MiB.
+   */
+  dataBase64: string;
+  displayName?: string;
+  attachmentId?: string;
 };
 
 export type CreateIssueManagerTopicRequest = {
@@ -4514,6 +4669,11 @@ export type CreateIssueManagerRunRequest = {
   agentProvider?: string;
   agentUserId?: string;
   agentSessionId?: string;
+  executionDirectory?: string;
+};
+
+export type StartIssueManagerRunRequest = {
+  agentTargetId: string;
   executionDirectory?: string;
 };
 
@@ -4692,6 +4852,11 @@ export type ConnectorMarketMutationRequest = {
   expectedRevision: number;
 };
 
+export type ConnectorMarketAuthorizationRequest = {
+  clientRequestId: string;
+  expectedRevision: number;
+};
+
 export type ConnectorMarketMutationResponse = {
   connector?: ConnectorMarketConnector;
   operation: ConnectorMarketOperation;
@@ -4763,9 +4928,8 @@ export type ConnectorMarketOperationState =
 export type ConnectorMarketOperationStage =
   | "accepted"
   | "refreshing"
-  | "downloading"
-  | "prepared"
-  | "activating"
+  | "installing"
+  | "installed"
   | "deactivating"
   | "authorizing"
   | "disconnecting"
@@ -4825,6 +4989,24 @@ export type MobileRemotePairingConfirmResponse = {
 
 export type MobileRemotePairingListResponse = {
   pairings: Array<MobileRemoteDevicePairing>;
+};
+
+export type DesktopAgentSessionLaunchModesByProjectWritable = {
+  [key: string]: DesktopAgentSessionLaunchMode;
+};
+
+export type DesktopAgentSessionLaunchModesByWorkspaceWritable = {
+  [key: string]: DesktopAgentSessionLaunchModesByProjectWritable;
+};
+
+export type DesktopFileDefaultOpenersByExtensionWritable = {
+  [key: string]: DesktopFileDefaultOpener;
+};
+
+export type ConnectorMarketAuthorizationRequestWritable = {
+  clientRequestId: string;
+  expectedRevision: number;
+  secret?: string;
 };
 
 /**
@@ -10495,6 +10677,226 @@ export type DeleteWorkspaceAgentSessionsBatchResponses = {
 export type DeleteWorkspaceAgentSessionsBatchResponse2 =
   DeleteWorkspaceAgentSessionsBatchResponses[keyof DeleteWorkspaceAgentSessionsBatchResponses];
 
+export type PurgeWorkspaceDeletedAgentSessionsData = {
+  body?: never;
+  path: {
+    workspaceID: string;
+  };
+  query?: never;
+  url: "/v1/workspaces/{workspaceID}/deleted-agent-sessions";
+};
+
+export type PurgeWorkspaceDeletedAgentSessionsErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * Workspace id was not found
+   */
+  404: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Workspace operation failed in an upstream adapter or command
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type PurgeWorkspaceDeletedAgentSessionsError =
+  PurgeWorkspaceDeletedAgentSessionsErrors[keyof PurgeWorkspaceDeletedAgentSessionsErrors];
+
+export type PurgeWorkspaceDeletedAgentSessionsResponses = {
+  /**
+   * Workspace soft-deleted agent sessions permanently purged
+   */
+  200: DeletedAgentConversationPurgeResult;
+};
+
+export type PurgeWorkspaceDeletedAgentSessionsResponse =
+  PurgeWorkspaceDeletedAgentSessionsResponses[keyof PurgeWorkspaceDeletedAgentSessionsResponses];
+
+export type ListWorkspaceDeletedAgentSessionsData = {
+  body?: never;
+  path: {
+    workspaceID: string;
+  };
+  query?: {
+    /**
+     * Case-insensitive search over the original session title only.
+     */
+    searchQuery?: string;
+    /**
+     * Select sessions without an original project. Mutually exclusive with projectPath; omit both project filters to list every location.
+     */
+    projectScope?: "unscoped";
+    /**
+     * Select sessions by their persisted original project path. Mutually exclusive with projectScope.
+     */
+    projectPath?: string;
+    /**
+     * Opaque cursor returned by the previous page.
+     */
+    cursor?: string;
+    limit?: number;
+  };
+  url: "/v1/workspaces/{workspaceID}/deleted-agent-sessions";
+};
+
+export type ListWorkspaceDeletedAgentSessionsErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * Workspace id was not found
+   */
+  404: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Workspace operation failed in an upstream adapter or command
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type ListWorkspaceDeletedAgentSessionsError =
+  ListWorkspaceDeletedAgentSessionsErrors[keyof ListWorkspaceDeletedAgentSessionsErrors];
+
+export type ListWorkspaceDeletedAgentSessionsResponses = {
+  /**
+   * Topmost soft-deleted agent session components in the workspace
+   */
+  200: WorkspaceDeletedAgentSessionListResponse;
+};
+
+export type ListWorkspaceDeletedAgentSessionsResponse =
+  ListWorkspaceDeletedAgentSessionsResponses[keyof ListWorkspaceDeletedAgentSessionsResponses];
+
+export type PurgeWorkspaceDeletedAgentSessionData = {
+  body?: never;
+  path: {
+    workspaceID: string;
+    agentSessionID: string;
+  };
+  query?: never;
+  url: "/v1/workspaces/{workspaceID}/deleted-agent-sessions/{agentSessionID}";
+};
+
+export type PurgeWorkspaceDeletedAgentSessionErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * Workspace id was not found
+   */
+  404: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Workspace operation failed in an upstream adapter or command
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type PurgeWorkspaceDeletedAgentSessionError =
+  PurgeWorkspaceDeletedAgentSessionErrors[keyof PurgeWorkspaceDeletedAgentSessionErrors];
+
+export type PurgeWorkspaceDeletedAgentSessionResponses = {
+  /**
+   * Soft-deleted agent session tree permanently purged
+   */
+  200: DeletedAgentConversationPurgeResult;
+};
+
+export type PurgeWorkspaceDeletedAgentSessionResponse =
+  PurgeWorkspaceDeletedAgentSessionResponses[keyof PurgeWorkspaceDeletedAgentSessionResponses];
+
+export type RestoreWorkspaceDeletedAgentSessionData = {
+  body?: never;
+  path: {
+    workspaceID: string;
+    agentSessionID: string;
+  };
+  query?: never;
+  url: "/v1/workspaces/{workspaceID}/deleted-agent-sessions/{agentSessionID}/restore";
+};
+
+export type RestoreWorkspaceDeletedAgentSessionErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * Workspace id was not found
+   */
+  404: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * The deleted session is unavailable for restoration
+   */
+  409: ApiErrorResponse;
+  /**
+   * Workspace operation failed in an upstream adapter or command
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type RestoreWorkspaceDeletedAgentSessionError =
+  RestoreWorkspaceDeletedAgentSessionErrors[keyof RestoreWorkspaceDeletedAgentSessionErrors];
+
+export type RestoreWorkspaceDeletedAgentSessionResponses = {
+  /**
+   * Soft-deleted agent session tree restored
+   */
+  200: RestoreWorkspaceDeletedAgentSessionResponse;
+};
+
+export type RestoreWorkspaceDeletedAgentSessionResponse2 =
+  RestoreWorkspaceDeletedAgentSessionResponses[keyof RestoreWorkspaceDeletedAgentSessionResponses];
+
 export type ListWorkspaceAgentSessionSectionsData = {
   body?: never;
   path: {
@@ -11907,6 +12309,58 @@ export type ResolveWorkspaceGitPatchSupportResponses = {
 
 export type ResolveWorkspaceGitPatchSupportResponse =
   ResolveWorkspaceGitPatchSupportResponses[keyof ResolveWorkspaceGitPatchSupportResponses];
+
+export type ResolveWorkspaceAgentSessionWorktreeSupportData = {
+  body?: never;
+  path: {
+    workspaceID: string;
+  };
+  query: {
+    agentTargetId: string;
+    cwd: string;
+  };
+  url: "/v1/workspaces/{workspaceID}/agent-session-worktree-support";
+};
+
+export type ResolveWorkspaceAgentSessionWorktreeSupportErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * Workspace id was not found
+   */
+  404: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Workspace operation failed in an upstream adapter or command
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type ResolveWorkspaceAgentSessionWorktreeSupportError =
+  ResolveWorkspaceAgentSessionWorktreeSupportErrors[keyof ResolveWorkspaceAgentSessionWorktreeSupportErrors];
+
+export type ResolveWorkspaceAgentSessionWorktreeSupportResponses = {
+  /**
+   * Worktree launch support status for the working directory
+   */
+  200: WorkspaceAgentSessionWorktreeSupportResponse;
+};
+
+export type ResolveWorkspaceAgentSessionWorktreeSupportResponse =
+  ResolveWorkspaceAgentSessionWorktreeSupportResponses[keyof ResolveWorkspaceAgentSessionWorktreeSupportResponses];
 
 export type ApplyWorkspaceGitPatchData = {
   body: WorkspaceGitPatchRequest;
@@ -15196,6 +15650,57 @@ export type RemoveWorkspaceIssueContextRefResponses = {
 export type RemoveWorkspaceIssueContextRefResponse =
   RemoveWorkspaceIssueContextRefResponses[keyof RemoveWorkspaceIssueContextRefResponses];
 
+export type ReadWorkspaceIssueAttachmentData = {
+  body?: never;
+  path: {
+    workspaceID: string;
+    issueID: string;
+    contextRefID: string;
+  };
+  query?: never;
+  url: "/v1/workspaces/{workspaceID}/issues/{issueID}/context-refs/{contextRefID}/attachment";
+};
+
+export type ReadWorkspaceIssueAttachmentErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * Workspace issue-manager resource was not found
+   */
+  404: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Workspace operation failed in an upstream adapter or command
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type ReadWorkspaceIssueAttachmentError =
+  ReadWorkspaceIssueAttachmentErrors[keyof ReadWorkspaceIssueAttachmentErrors];
+
+export type ReadWorkspaceIssueAttachmentResponses = {
+  /**
+   * Managed issue attachment content
+   */
+  200: IssueManagerAttachmentContentResponse;
+};
+
+export type ReadWorkspaceIssueAttachmentResponse =
+  ReadWorkspaceIssueAttachmentResponses[keyof ReadWorkspaceIssueAttachmentResponses];
+
 export type CancelWorkspaceIssueExecutionData = {
   body?: never;
   path: {
@@ -15353,6 +15858,60 @@ export type CreateWorkspaceIssueRunResponses = {
 
 export type CreateWorkspaceIssueRunResponse =
   CreateWorkspaceIssueRunResponses[keyof CreateWorkspaceIssueRunResponses];
+
+export type StartWorkspaceIssueRunData = {
+  body: StartIssueManagerRunRequest;
+  path: {
+    workspaceID: string;
+    issueID: string;
+  };
+  query?: never;
+  url: "/v1/workspaces/{workspaceID}/issues/{issueID}/run-launches";
+};
+
+export type StartWorkspaceIssueRunErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * Workspace issue-manager resource was not found
+   */
+  404: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Workspace issue-manager resource conflicts with durable state
+   */
+  409: ApiErrorResponse;
+  /**
+   * Workspace operation failed in an upstream adapter or command
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type StartWorkspaceIssueRunError =
+  StartWorkspaceIssueRunErrors[keyof StartWorkspaceIssueRunErrors];
+
+export type StartWorkspaceIssueRunResponses = {
+  /**
+   * Workspace issue run created and accepted for Agent delivery
+   */
+  201: IssueManagerRunResponse;
+};
+
+export type StartWorkspaceIssueRunResponse =
+  StartWorkspaceIssueRunResponses[keyof StartWorkspaceIssueRunResponses];
 
 export type GetWorkspaceIssueRunData = {
   body?: never;
@@ -16384,7 +16943,7 @@ export type UninstallConnectorMarketConnectorResponse =
   UninstallConnectorMarketConnectorResponses[keyof UninstallConnectorMarketConnectorResponses];
 
 export type StartConnectorMarketAuthorizationData = {
-  body: ConnectorMarketMutationRequest;
+  body: ConnectorMarketAuthorizationRequestWritable;
   path: {
     connectorKey: string;
   };

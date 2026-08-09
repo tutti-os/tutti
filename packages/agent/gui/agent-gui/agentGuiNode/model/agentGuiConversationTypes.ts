@@ -43,6 +43,7 @@ export interface AgentGUIConversationSummary {
   titleFallback?: AgentGUIConversationTitleFallback;
   status: AgentGUIConversationStatus;
   cwd: string;
+  isolation?: AgentActivitySession["isolation"];
   railSectionKey?: string;
   project?: AgentGUIConversationProjectSummary | null;
   projectMode?: "none";
@@ -77,6 +78,7 @@ export type AgentGUIConversationProjectionSource = Pick<
   | "titleFallback"
   | "status"
   | "cwd"
+  | "isolation"
   | "railSectionKey"
   | "project"
   | "projectMode"

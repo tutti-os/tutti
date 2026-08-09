@@ -126,6 +126,10 @@ type AgentComposerDefaultsPatchStore interface {
 	PatchAgentComposerDefaultsForTarget(context.Context, string, preferencesbiz.AgentComposerDefaultsPatch) (preferencesbiz.AgentComposerDefaults, error)
 }
 
+type AgentSessionLaunchModePatchStore interface {
+	PatchAgentSessionLaunchMode(context.Context, string, string, string) (preferencesbiz.DesktopPreferences, error)
+}
+
 type ModelPlansStore interface {
 	DeleteModelPlan(context.Context, string, string) error
 	GetModelPlan(context.Context, string, string) (modelplanbiz.Plan, error)

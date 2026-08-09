@@ -86,13 +86,13 @@ func TestValidateAgentComposerDefaultsPatchRejectsUnknownTargetAndValue(t *testi
 
 func TestComposerProviderCapabilitiesDefaults(t *testing.T) {
 	t.Parallel()
-	claude := composerProviderCapabilities("claude-code", true)
+	claude := composerProviderCapabilities("claude-code", true, true)
 	for _, want := range []string{"imageInput", "skills", "compact", "tokenUsage", "rateLimits", "planMode", "interrupt", "activeTurnGuidance"} {
 		if !slices.Contains(claude, want) {
 			t.Fatalf("claude defaults = %v, missing %q", claude, want)
 		}
 	}
-	codex := composerProviderCapabilities("codex", true)
+	codex := composerProviderCapabilities("codex", true, true)
 	if !slices.Contains(codex, "planMode") {
 		t.Fatalf("codex defaults must include planMode (re-negotiated at session start): %v", codex)
 	}
@@ -102,41 +102,49 @@ func TestComposerProviderCapabilitiesDefaults(t *testing.T) {
 	if !slices.Contains(codex, "activeTurnGuidance") {
 		t.Fatalf("codex defaults = %v, missing native active-turn guidance", codex)
 	}
-	tuttiAgent := composerProviderCapabilities("tutti-agent", true)
+	tuttiAgent := composerProviderCapabilities("tutti-agent", true, true)
 	if !slices.Contains(tuttiAgent, "planMode") || !slices.Contains(tuttiAgent, "compact") || !slices.Contains(tuttiAgent, "skills") {
 		t.Fatalf("tutti-agent defaults = %v", tuttiAgent)
 	}
 	// Browser use is delivered as a default MCP server to every provider, so it
 	// is advertised by default alongside the per-provider capabilities.
 	for _, provider := range []string{"claude-code", "codex", "cursor", "opencode", "tutti-agent", "openclaw"} {
-		if got := composerProviderCapabilities(provider, true); !slices.Contains(got, "browserUse") {
+		if got := composerProviderCapabilities(provider, true, true); !slices.Contains(got, "browserUse") {
 			t.Fatalf("%s defaults = %v, missing browserUse", provider, got)
 		}
 	}
-	if got := composerProviderCapabilities("openclaw", true); !slices.Contains(got, "interrupt") {
+	if got := composerProviderCapabilities("openclaw", true, true); !slices.Contains(got, "interrupt") {
 		t.Fatalf("openclaw defaults = %v, missing interrupt", got)
 	}
-	if got := composerProviderCapabilities("opencode", true); !slices.Contains(got, "imageInput") || !slices.Contains(got, "interrupt") {
+	if got := composerProviderCapabilities("opencode", true, true); !slices.Contains(got, "imageInput") || !slices.Contains(got, "interrupt") {
 		t.Fatalf("opencode defaults = %v, missing imageInput or interrupt", got)
 	}
-	if got := composerProviderCapabilities("opencode", true); !slices.Contains(got, "planMode") {
+	if got := composerProviderCapabilities("opencode", true, true); !slices.Contains(got, "planMode") {
 		t.Fatalf("opencode defaults = %v, missing planMode", got)
 	}
-	if got := composerProviderCapabilities("opencode", true); slices.Contains(got, "activeTurnGuidance") {
+	if got := composerProviderCapabilities("opencode", true, true); slices.Contains(got, "activeTurnGuidance") {
 		t.Fatalf("opencode defaults = %v, must use cancel-then-send", got)
 	}
-	if got := composerProviderCapabilities("cursor", true); !slices.Contains(got, "imageInput") || !slices.Contains(got, "interrupt") || !slices.Contains(got, "planMode") {
+	if got := composerProviderCapabilities("cursor", true, true); !slices.Contains(got, "imageInput") || !slices.Contains(got, "interrupt") || !slices.Contains(got, "planMode") {
 		t.Fatalf("cursor defaults = %v, missing imageInput, interrupt, or planMode", got)
 	}
-	if got := composerProviderCapabilities("unknown", true); got != nil {
+	if got := composerProviderCapabilities("unknown", true, true); got != nil {
 		t.Fatalf("unknown provider defaults = %v, want nil", got)
 	}
 }
 
 func TestComposerProviderCapabilitiesOmitUnavailableComputerUse(t *testing.T) {
 	for _, provider := range []string{"claude-code", "codex", "tutti-agent", "openclaw"} {
-		if got := composerProviderCapabilities(provider, false); slices.Contains(got, "computerUse") {
+		if got := composerProviderCapabilities(provider, false, true); slices.Contains(got, "computerUse") {
 			t.Fatalf("%s defaults = %v, want no computerUse when cua-driver is unavailable", provider, got)
+		}
+	}
+}
+
+func TestComposerProviderCapabilitiesOmitUnavailableBrowserUse(t *testing.T) {
+	for _, provider := range []string{"claude-code", "codex", "tutti-agent", "openclaw"} {
+		if got := composerProviderCapabilities(provider, true, false); slices.Contains(got, "browserUse") {
+			t.Fatalf("%s defaults = %v, want no browserUse when browser backend is unavailable", provider, got)
 		}
 	}
 }

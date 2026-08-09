@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"io"
 	"reflect"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -68,6 +69,92 @@ func mustJSONRawMessage(t *testing.T, value any) json.RawMessage {
 		t.Fatalf("json.Marshal: %v", err)
 	}
 	return raw
+}
+
+func TestCodexAppServerCompactionAdvisoryWarningIsScopedToCompaction(t *testing.T) {
+	t.Parallel()
+
+	session := reportTestSession()
+	session.ProviderSessionID = "thread-1"
+	reducer := newCodexAppServerReducer(&CodexAppServerAdapter{})
+	warning := acpMessage{
+		Method: appServerNotifyWarning,
+		Params: mustJSONRawMessage(t, map[string]any{
+			"threadId": "thread-1",
+			"turnId":   "provider-turn-1",
+			"message":  appServerCompactionAdvisoryMessage,
+		}),
+	}
+
+	withoutCompaction := reducer.ReduceNotification(
+		nil,
+		session,
+		"turn-1",
+		warning,
+		newACPTurnNormalizer(),
+		nil,
+	)
+	if len(withoutCompaction.Events) != 1 {
+		t.Fatalf("unscoped advisory events = %#v, want one warning notice", withoutCompaction.Events)
+	}
+
+	compaction := newACPTurnNormalizer()
+	compaction.StartCompactionNotice("compaction:turn-1")
+	duringCompaction := reducer.ReduceNotification(
+		nil,
+		session,
+		"turn-1",
+		warning,
+		compaction,
+		nil,
+	)
+	if len(duringCompaction.Events) != 0 {
+		t.Fatalf("compaction advisory events = %#v, want no duplicate transcript warning", duringCompaction.Events)
+	}
+	warning.Params = mustJSONRawMessage(t, map[string]any{
+		"threadId": "thread-1",
+		"turnId":   "provider-turn-1",
+		"message":  appServerCompactionAdvisoryMessage + "\n",
+	})
+	nearMatch := reducer.ReduceNotification(nil, session, "turn-1", warning, compaction, nil)
+	if len(nearMatch.Events) != 1 {
+		t.Fatalf("near-match advisory events = %#v, want warning preserved", nearMatch.Events)
+	}
+}
+
+func TestCodexAppServerCompactionKeepsUnrelatedWarnings(t *testing.T) {
+	t.Parallel()
+
+	session := reportTestSession()
+	session.ProviderSessionID = "thread-1"
+	normalizer := newACPTurnNormalizer()
+	normalizer.StartCompactionNotice("compaction:turn-1")
+
+	warning := "  Model fell back to a smaller context window.\n"
+	reduction := newCodexAppServerReducer(&CodexAppServerAdapter{}).ReduceNotification(
+		nil,
+		session,
+		"turn-1",
+		acpMessage{
+			Method: appServerNotifyWarning,
+			Params: mustJSONRawMessage(t, map[string]any{
+				"threadId": "thread-1",
+				"turnId":   "provider-turn-1",
+				"message":  warning,
+			}),
+		},
+		normalizer,
+		nil,
+	)
+	if len(reduction.Events) != 1 {
+		t.Fatalf("unrelated warning events = %#v, want one warning notice", reduction.Events)
+	}
+	if detail := asString(reduction.Events[0].Payload.Metadata["detail"]); detail != strings.TrimSpace(warning) {
+		t.Fatalf("unrelated warning detail = %q, want normalized event detail %q", detail, strings.TrimSpace(warning))
+	}
+	if !appServerNotificationUsesNormalizer(appServerNotifyWarning) {
+		t.Fatal("warning notifications must serialize with compaction lifecycle updates")
+	}
 }
 
 func TestCodexAppServerCommandOutputDeltaUsesToolOutputFastLane(t *testing.T) {

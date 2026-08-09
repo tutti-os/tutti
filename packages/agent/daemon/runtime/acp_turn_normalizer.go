@@ -55,6 +55,15 @@ func (n *acpTurnNormalizer) StartCompactionNotice(messageID string) (string, boo
 	return messageID, true
 }
 
+func (n *acpTurnNormalizer) HasCompactionNotice() bool {
+	if n == nil {
+		return false
+	}
+	n.compactionMu.Lock()
+	defer n.compactionMu.Unlock()
+	return n.compactionMessageID != ""
+}
+
 // CompleteCompactionNotice selects the provider-reported completed terminal.
 // Terminal selection is first-write-wins: a late completion after a locally
 // synthesized failed/canceled terminal is ignored.

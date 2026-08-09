@@ -2,6 +2,7 @@ package main
 
 import (
 	agentservice "github.com/tutti-os/tutti/services/tuttid/service/agent"
+	agentextensionservice "github.com/tutti-os/tutti/services/tuttid/service/agentextension"
 	agenttargetservice "github.com/tutti-os/tutti/services/tuttid/service/agenttarget"
 	browsersvc "github.com/tutti-os/tutti/services/tuttid/service/browser"
 	cliservice "github.com/tutti-os/tutti/services/tuttid/service/cli"
@@ -35,6 +36,7 @@ type daemonCLIRegistryInput struct {
 	ManagedCredentials   *managedcredentialsservice.Service
 	AgentSessions        *agentservice.Service
 	AgentTargets         agenttargetservice.Service
+	AgentTargetSetup     *agentextensionservice.SetupService
 	Preferences          *preferencesservice.Service
 	TuttiModePlans       *tuttimodeplanservice.Service
 	TuttiModeExecutions  *tuttimodeexecutionservice.Service
@@ -67,7 +69,7 @@ func buildDaemonCLIRegistry(
 			},
 			input.AgentTargets,
 			input.Preferences,
-		),
+		).WithAgentTargetSetup(input.AgentTargetSetup),
 		tuttimodeplancli.NewProviderWithExecutionSnapshot(
 			input.Workspaces,
 			input.TuttiModePlans,

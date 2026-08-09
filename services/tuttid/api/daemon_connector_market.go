@@ -208,11 +208,12 @@ func (api DaemonAPI) StartConnectorMarketAuthorization(
 	if api.ConnectorMarketService == nil {
 		return tuttigenerated.StartConnectorMarketAuthorization503JSONResponse{ConnectorMarketUnavailableErrorJSONResponse: connectorMarketUnavailableError()}, nil
 	}
-	mutation, err := connectorMarketConnectorMutation(request.ConnectorKey, request.Body)
+	mutation, secret, err := connectorMarketAuthorizationMutation(request.ConnectorKey, request.Body)
 	if err != nil {
 		return tuttigenerated.StartConnectorMarketAuthorization400JSONResponse{ConnectorMarketInvalidRequestErrorJSONResponse: invalidConnectorMarketResponse(connectorMarketErrorPayload(err))}, nil
 	}
-	result, err := api.ConnectorMarketService.BeginAuthorization(ctx, mutation)
+	defer clear(secret)
+	result, err := api.ConnectorMarketService.BeginAuthorization(ctx, mutation, secret)
 	if err != nil {
 		payload, status := connectorMarketError(err)
 		switch status {
@@ -307,6 +308,27 @@ func connectorMarketConnectorMutation(
 		return market.ConnectorMutation{}, err
 	}
 	return market.ConnectorMutation{Mutation: mutation, ConnectorKey: connectorKey}, nil
+}
+
+func connectorMarketAuthorizationMutation(
+	connectorKey string,
+	body *tuttigenerated.ConnectorMarketAuthorizationRequest,
+) (market.ConnectorMutation, []byte, error) {
+	if body == nil || body.ExpectedRevision < 0 {
+		return market.ConnectorMutation{}, nil, invalidConnectorMarketRequest()
+	}
+	var secret []byte
+	if body.Secret != nil {
+		secret = []byte(*body.Secret)
+		if len(secret) == 0 || len(secret) > 16384 {
+			clear(secret)
+			return market.ConnectorMutation{}, nil, invalidConnectorMarketRequest()
+		}
+	}
+	return market.ConnectorMutation{
+		Mutation:     market.Mutation{ClientRequestID: body.ClientRequestId, ExpectedRevision: uint64(body.ExpectedRevision)},
+		ConnectorKey: connectorKey,
+	}, secret, nil
 }
 
 func invalidConnectorMarketRequest() error {

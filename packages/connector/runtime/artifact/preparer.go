@@ -28,7 +28,10 @@ type Fetcher interface {
 }
 
 type FetchRequest struct {
-	Release market.Release
+	OperationID string
+	Scope       market.OperationScope
+	Generation  market.HostGeneration
+	Release     market.Release
 }
 
 type FetchResponse struct {
@@ -61,15 +64,85 @@ type Config struct {
 	Limits  Limits
 }
 
+type ImporterConfig struct {
+	RootDir string
+	Limits  Limits
+}
+
+type ImportArchiveRequest struct {
+	OperationID string
+	Scope       market.OperationScope
+	Generation  market.HostGeneration
+	Release     market.Release
+	ArchivePath string
+}
+
+// Importer installs an already-synchronized archive. It has no Fetcher and
+// therefore cannot perform network I/O; remote runtime owners use it after
+// their host data plane has transferred the verified candidate.
+type Importer struct {
+	mechanics *Preparer
+}
+
 type Preparer struct {
 	rootDir string
-	fetcher Fetcher
+	cache   *DownloadCache
 	limits  Limits
 }
 
 var _ market.ArtifactPreparer = (*Preparer)(nil)
 
-// ResolvePrepared revalidates the content-addressed receipt, packaged
+func NewImporter(config ImporterConfig) (*Importer, error) {
+	root, limits, err := validateArtifactRoot(config.RootDir, config.Limits)
+	if err != nil {
+		return nil, err
+	}
+	return &Importer{mechanics: &Preparer{rootDir: root, limits: limits}}, nil
+}
+
+func (importer *Importer) Import(
+	ctx context.Context,
+	request ImportArchiveRequest,
+) (market.PreparedArtifactReceipt, error) {
+	prepareRequest := market.PrepareArtifactRequest{OperationID: request.OperationID, Scope: request.Scope,
+		Generation: request.Generation, Release: request.Release}
+	if err := validatePrepareRequest(prepareRequest); err != nil {
+		return market.PreparedArtifactReceipt{}, err
+	}
+	if !filepath.IsAbs(request.ArchivePath) {
+		return market.PreparedArtifactReceipt{}, errors.New("connector synchronized archive path must be absolute")
+	}
+	if err := verifyArtifactFile(request.ArchivePath, request.Release.Artifact); err != nil {
+		return market.PreparedArtifactReceipt{}, fmt.Errorf("verify synchronized connector artifact: %w", err)
+	}
+	return importer.mechanics.importArchive(ctx, prepareRequest, request.ArchivePath)
+}
+
+func (importer *Importer) ResolvePrepared(
+	ctx context.Context,
+	release market.Release,
+) (market.PreparedArtifactReceipt, error) {
+	if err := ctx.Err(); err != nil {
+		return market.PreparedArtifactReceipt{}, err
+	}
+	if err := market.ValidateRuntimeReleaseShape(release); err != nil {
+		return market.PreparedArtifactReceipt{}, err
+	}
+	target, err := importer.mechanics.preparedPath(release)
+	if err != nil {
+		return market.PreparedArtifactReceipt{}, err
+	}
+	if receipt, ok := readExistingReceipt(target, market.PrepareArtifactRequest{Release: release}); ok {
+		return receipt, nil
+	}
+	return market.PreparedArtifactReceipt{}, errors.New("prepared connector artifact is unavailable or invalid")
+}
+
+func (importer *Importer) Remove(ctx context.Context, request market.RemoveArtifactRequest) error {
+	return importer.mechanics.removePrepared(ctx, request)
+}
+
+// ResolvePrepared revalidates the installed receipt, packaged
 // manifest, and full inventory before a durable connector runtime is restored.
 // An invalid prepared tree is rebuilt from the verified artifact blob; a
 // receipt is never treated as an authenticity root by itself.
@@ -90,48 +163,73 @@ func (preparer *Preparer) ResolvePrepared(ctx context.Context, release market.Re
 	}
 	// Prepared trees are verified on every restore and remain fail-closed while
 	// in use. If the durable tree was changed between runs, rebuild it from the
-	// content-addressed artifact blob instead of permanently fencing an otherwise
-	// installed connector. Prepare still verifies the blob, packaged manifest,
+	// latest verified cached artifact instead of permanently fencing an otherwise
+	// installed connector. Prepare still verifies the archive, packaged manifest,
 	// and complete extracted inventory before atomically replacing the tree.
 	return preparer.prepare(ctx, market.PrepareArtifactRequest{
 		OperationID: fmt.Sprintf("restore-%d-%d", os.Getpid(), time.Now().UnixNano()),
 		Release:     release,
-	}, validateRuntimePrepareRequest)
+	}, validateRuntimePrepareRequest, true)
 }
 
 func NewPreparer(config Config) (*Preparer, error) {
-	if strings.TrimSpace(config.RootDir) == "" {
-		return nil, errors.New("connector artifact root directory is required")
-	}
-	if !filepath.IsAbs(config.RootDir) {
-		return nil, errors.New("connector artifact root directory must be absolute")
-	}
 	if config.Fetcher == nil {
 		return nil, errors.New("connector artifact fetcher is required")
 	}
-	limits := config.Limits
-	if limits == (Limits{}) {
-		limits = DefaultLimits()
-	}
-	if err := validateLimits(limits); err != nil {
+	root, limits, err := validateArtifactRoot(config.RootDir, config.Limits)
+	if err != nil {
 		return nil, err
 	}
-	return &Preparer{rootDir: filepath.Clean(config.RootDir), fetcher: config.Fetcher, limits: limits}, nil
+	cache, err := NewDownloadCache(DownloadCacheConfig{RootDir: filepath.Join(root, "cache"),
+		Fetcher: config.Fetcher, MaxDownloadBytes: limits.MaxDownloadBytes})
+	if err != nil {
+		return nil, err
+	}
+	return &Preparer{rootDir: root, cache: cache, limits: limits}, nil
 }
 
 func (preparer *Preparer) Prepare(
 	ctx context.Context,
 	request market.PrepareArtifactRequest,
 ) (market.PreparedArtifactReceipt, error) {
-	return preparer.prepare(ctx, request, validatePrepareRequest)
+	return preparer.prepare(ctx, request, validatePrepareRequest, false)
 }
 
 func (preparer *Preparer) prepare(
 	ctx context.Context,
 	request market.PrepareArtifactRequest,
 	validate func(market.PrepareArtifactRequest) error,
+	runtimeValidation bool,
 ) (market.PreparedArtifactReceipt, error) {
 	if err := validate(request); err != nil {
+		return market.PreparedArtifactReceipt{}, err
+	}
+	var cached CachedArtifact
+	var err error
+	if runtimeValidation {
+		cached, err = preparer.cache.prepareRuntimeCandidate(ctx, request)
+	} else {
+		cached, err = preparer.cache.PrepareCandidate(ctx, request)
+	}
+	if err != nil {
+		return market.PreparedArtifactReceipt{}, err
+	}
+	receipt, err := preparer.importArchive(ctx, request, cached.Path)
+	if err != nil {
+		return market.PreparedArtifactReceipt{}, err
+	}
+	if _, err := preparer.cache.PromoteCandidate(ctx, cached, request.Release); err != nil {
+		return market.PreparedArtifactReceipt{}, err
+	}
+	return receipt, nil
+}
+
+func (preparer *Preparer) importArchive(
+	ctx context.Context,
+	request market.PrepareArtifactRequest,
+	archivePath string,
+) (market.PreparedArtifactReceipt, error) {
+	if err := ctx.Err(); err != nil {
 		return market.PreparedArtifactReceipt{}, err
 	}
 	target, err := preparer.preparedPath(request.Release)
@@ -149,16 +247,11 @@ func (preparer *Preparer) prepare(
 		return market.PreparedArtifactReceipt{}, fmt.Errorf("create connector artifact staging directory: %w", err)
 	}
 	defer func() { _ = os.RemoveAll(staging) }()
-
-	blobPath, err := preparer.acquireBlob(ctx, staging, request)
-	if err != nil {
-		return market.PreparedArtifactReceipt{}, err
-	}
 	extracted := filepath.Join(staging, "extracted")
 	if err := os.MkdirAll(extracted, 0o700); err != nil {
 		return market.PreparedArtifactReceipt{}, fmt.Errorf("create connector artifact extraction directory: %w", err)
 	}
-	if err := preparer.extract(blobPath, request.Release.Artifact.MediaType, extracted); err != nil {
+	if err := preparer.extract(archivePath, request.Release.Artifact.MediaType, extracted); err != nil {
 		return market.PreparedArtifactReceipt{}, err
 	}
 	if err := verifyPackagedManifest(extracted, request.Release.ManifestDigest); err != nil {
@@ -207,35 +300,14 @@ func (preparer *Preparer) prepare(
 	return receipt, nil
 }
 
-func (preparer *Preparer) acquireBlob(
-	ctx context.Context,
-	staging string,
-	request market.PrepareArtifactRequest,
-) (string, error) {
-	blobPath := filepath.Join(preparer.rootDir, "blobs", "sha256", request.Release.Artifact.SHA256)
-	if err := ensureWithin(preparer.rootDir, blobPath); err != nil {
-		return "", err
+func (preparer *Preparer) Remove(ctx context.Context, request market.RemoveArtifactRequest) error {
+	if err := preparer.removePrepared(ctx, request); err != nil {
+		return err
 	}
-	if err := verifyArtifactFile(blobPath, request.Release.Artifact); err == nil {
-		return blobPath, nil
-	}
-	downloadPath, err := preparer.fetchAndVerify(ctx, staging, request)
-	if err != nil {
-		return "", err
-	}
-	if err := os.MkdirAll(filepath.Dir(blobPath), 0o700); err != nil {
-		return "", fmt.Errorf("create connector blob directory: %w", err)
-	}
-	if err := os.Rename(downloadPath, blobPath); err != nil {
-		if existingErr := verifyArtifactFile(blobPath, request.Release.Artifact); existingErr == nil {
-			return blobPath, nil
-		}
-		return "", fmt.Errorf("promote connector artifact blob: %w", err)
-	}
-	return blobPath, nil
+	return preparer.cache.RemoveConnector(ctx, request.ConnectorKey)
 }
 
-func (preparer *Preparer) Remove(ctx context.Context, request market.RemoveArtifactRequest) error {
+func (preparer *Preparer) removePrepared(ctx context.Context, request market.RemoveArtifactRequest) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -250,56 +322,6 @@ func (preparer *Preparer) Remove(ctx context.Context, request market.RemoveArtif
 		return fmt.Errorf("remove connector prepared artifact: %w", err)
 	}
 	return nil
-}
-
-func (preparer *Preparer) fetchAndVerify(
-	ctx context.Context,
-	staging string,
-	request market.PrepareArtifactRequest,
-) (string, error) {
-	response, err := preparer.fetcher.Fetch(ctx, FetchRequest{Release: request.Release})
-	if err != nil {
-		return "", fmt.Errorf("fetch connector artifact: %w", err)
-	}
-	if response.Body == nil {
-		return "", errors.New("fetch connector artifact: response body is nil")
-	}
-	defer response.Body.Close()
-	if response.ContentLength > 0 && response.ContentLength != request.Release.Artifact.SizeBytes {
-		return "", fmt.Errorf("connector artifact content length %d does not match declared size %d", response.ContentLength, request.Release.Artifact.SizeBytes)
-	}
-	if !sameMediaType(response.MediaType, request.Release.Artifact.MediaType) {
-		return "", fmt.Errorf("connector artifact media type %q does not match declared media type %q", response.MediaType, request.Release.Artifact.MediaType)
-	}
-	maxBytes := minPositive(preparer.limits.MaxDownloadBytes, request.Release.Artifact.SizeBytes)
-	path := filepath.Join(staging, "artifact.download")
-	file, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
-	if err != nil {
-		return "", fmt.Errorf("create connector artifact download: %w", err)
-	}
-	hash := sha256.New()
-	written, copyErr := io.Copy(io.MultiWriter(file, hash), io.LimitReader(response.Body, maxBytes+1))
-	syncErr := file.Sync()
-	closeErr := file.Close()
-	if copyErr != nil {
-		return "", fmt.Errorf("download connector artifact: %w", copyErr)
-	}
-	if closeErr != nil {
-		return "", fmt.Errorf("close connector artifact download: %w", closeErr)
-	}
-	if syncErr != nil {
-		return "", fmt.Errorf("sync connector artifact download: %w", syncErr)
-	}
-	if written > maxBytes {
-		return "", fmt.Errorf("connector artifact exceeds download limit of %d bytes", maxBytes)
-	}
-	if written != request.Release.Artifact.SizeBytes {
-		return "", fmt.Errorf("connector artifact size %d does not match declared size %d", written, request.Release.Artifact.SizeBytes)
-	}
-	if actual := hex.EncodeToString(hash.Sum(nil)); actual != request.Release.Artifact.SHA256 {
-		return "", errors.New("connector artifact SHA-256 does not match release")
-	}
-	return path, nil
 }
 
 func (preparer *Preparer) extract(archivePath, mediaType, destination string) error {
@@ -458,6 +480,22 @@ func validateLimits(limits Limits) error {
 		return errors.New("connector artifact limits must all be positive")
 	}
 	return nil
+}
+
+func validateArtifactRoot(rootDir string, limits Limits) (string, Limits, error) {
+	if strings.TrimSpace(rootDir) == "" {
+		return "", Limits{}, errors.New("connector artifact root directory is required")
+	}
+	if !filepath.IsAbs(rootDir) {
+		return "", Limits{}, errors.New("connector artifact root directory must be absolute")
+	}
+	if limits == (Limits{}) {
+		limits = DefaultLimits()
+	}
+	if err := validateLimits(limits); err != nil {
+		return "", Limits{}, err
+	}
+	return filepath.Clean(rootDir), limits, nil
 }
 
 func safeArchiveTarget(root, name string) (string, error) {

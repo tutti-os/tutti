@@ -91,6 +91,7 @@ type standardACPConnection struct {
 	lastSetModeParamsSnapshot     map[string]any
 	lastAuthenticatedMethodID     string
 	setModeError                  *acpError
+	setModelError                 *acpError
 	loadSessionError              *acpError
 	closeSessionError             *acpError
 	rejectModelValue              string

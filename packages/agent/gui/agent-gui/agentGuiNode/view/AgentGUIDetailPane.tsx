@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useMemo, useRef, useState } from "react";
 import type { AgentMessageMarkdownWorkspaceAppIcon } from "../../../shared/AgentMessageMarkdown";
 import { latestAssistantMessageText } from "../../../shared/agentConversation/projection/agentConversationProjection";
 import { AGENT_GUI_WORKBENCH_OPEN_EXTERNAL_IMPORT_EVENT } from "../../../workbench/contribution";
@@ -9,6 +9,7 @@ import { resolveAgentComposerDraftScopeKey } from "../model/agentComposerDraftSc
 import {
   buildAgentConversationHandoffPrompt,
   handoffProjectPathForConversation,
+  resolveAgentGUIInteractionDisabledReason,
   resolveAgentGUITuttiStopTargets
 } from "./agentGUIDetailModelHelpers";
 import { AgentGUIBottomDockPane } from "./AgentGUIBottomDockPane";
@@ -28,7 +29,7 @@ import { useAgentGUIDetailModel } from "./useAgentGUIDetailModel";
 import { useAgentGUIComposerInputHistoryProps } from "./useAgentGUIComposerInputHistoryProps";
 import { useAgentGUITuttiWorkflow } from "./useAgentGUITuttiWorkflow";
 import type { AgentTranscriptVirtualScrollController } from "../../../shared/agentConversation/components/AgentTranscriptView";
-import type { AgentGUIDetailPaneProps } from "./AgentGUINodeView.types";
+import type { AgentGUIDetailPaneProps } from "./AgentGUIDetailPane.types";
 import { useAgentGUIDetailEditRetry } from "./useAgentGUIDetailEditRetry";
 import { submitAgentInteractionResponseAndDismiss } from "../../../shared/agentConversation/interactionResponseAdmission";
 export const EMPTY_WORKSPACE_APP_ICONS: readonly AgentMessageMarkdownWorkspaceAppIcon[] =
@@ -45,6 +46,9 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
   referenceProvenanceFilters = null,
   sessionInputHistoryEnabled = false,
   sessionForkEnabled = false,
+  sessionWorktreeEnabled = false,
+  sessionLaunchModesByProjectSectionKey,
+  onSessionLaunchModePreferenceChange,
   composerEngagement,
   actions,
   labels,
@@ -71,6 +75,7 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
   onRequestWorkspaceReferences,
   resolveExternalPromptEntries = null,
   prepareExternalPromptFiles = null,
+  resolvePastedPath = null,
   promptAssetLimit = null,
   selectProjectDirectory,
   onRequestGitBranches,
@@ -110,7 +115,6 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
     setBottomDockDismissedPromptRequestId
   ] = useState<string | null>(null);
   const {
-    activePromptRequestId,
     activePromptResponsePending,
     bottomDockLiftedPrompt,
     bottomDockReplacementPrompt,
@@ -309,6 +313,13 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
     [submitInteractivePrompt]
   );
   const isInteractionPending = activePromptResponsePending;
+  const composerActivePromptDisabledReason =
+    resolveAgentGUIInteractionDisabledReason({
+      promptKind: composerActivePrompt?.kind,
+      approvalReason: viewModel.interaction.approvalDisabledReason,
+      interactivePromptReason:
+        viewModel.interaction.interactivePromptDisabledReason
+    });
   const homeComposerProviderTargets = homeTargetProjection.agentTargets;
   const selectedHomeComposerTarget = homeTargetProjection.selectedAgentTarget;
   const composerProviderTargets =
@@ -387,6 +398,24 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       compactSupported: viewModel.composer.compactSupported,
       availableSkills: viewModel.composer.availableSkills,
       selectedAgentTarget: composerSelectedProviderTarget,
+      sessionWorktreeEnabled:
+        sessionWorktreeEnabled &&
+        sessionLaunchModesByProjectSectionKey !== undefined,
+      sessionLaunchMode:
+        sessionLaunchModesByProjectSectionKey?.[
+          viewModel.composer.composerSettings.selectedProjectSectionKey?.trim() ??
+            ""
+        ] ?? "local",
+      onSessionLaunchModeChange:
+        onSessionLaunchModePreferenceChange &&
+        viewModel.composer.composerSettings.selectedProjectSectionKey?.trim()
+          ? (mode) =>
+              onSessionLaunchModePreferenceChange({
+                mode,
+                projectSectionKey:
+                  viewModel.composer.composerSettings.selectedProjectSectionKey!.trim()
+              })
+          : undefined,
       agentTargets: composerProviderTargets,
       handoffAgentTargets: composerHandoffProviderTargets,
       showHandoffTargetOwnershipLabels,
@@ -424,6 +453,7 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       workspaceReferencePickerOpen,
       referenceProvenanceFilters,
       activePrompt: composerActivePrompt,
+      activePromptDisabledReason: composerActivePromptDisabledReason,
       activePromptKeyboardShortcutsEnabled: isActive,
       promptTips: labels.promptTips,
       composerFocusRequestSequence,
@@ -489,6 +519,7 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       onRequestWorkspaceReferences: stableRequestWorkspaceReferences,
       resolveExternalPromptEntries,
       prepareExternalPromptFiles,
+      resolvePastedPath,
       promptAssetLimit,
       selectProjectDirectory: stableSelectProjectDirectory,
       onRequestGitBranches: stableRequestGitBranches
@@ -524,17 +555,22 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       onSlashStatusRefresh,
       workspaceReferencePickerOpen,
       composerActivePrompt,
+      composerActivePromptDisabledReason,
       editQueuedPrompt,
       onCapabilitySettingsRequest,
       removeQueuedPrompt,
       resolveExternalPromptEntries,
       prepareExternalPromptFiles,
+      resolvePastedPath,
       promptAssetLimit,
       sendQueuedPromptNext,
       showPromptImagesUnsupported,
       showStopButton,
       sourceActiveTurn?.turnId,
       showHandoffTargetOwnershipLabels,
+      sessionWorktreeEnabled,
+      sessionLaunchModesByProjectSectionKey,
+      onSessionLaunchModePreferenceChange,
       stopDisabled,
       slashStatus,
       setTuttiModeEffect,
@@ -626,9 +662,6 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
     viewModel.composer.drainingQueuedPromptId ?? "",
     isInteractionPending ? "1" : "0"
   ].join("|");
-  useEffect(() => {
-    setBottomDockDismissedPromptRequestId(null);
-  }, [activePromptRequestId]);
   const {
     followEndMode,
     isTimelineScrolledToBottom,
@@ -733,6 +766,10 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
           bottomDockLiftedPrompt={bottomDockLiftedPrompt}
           bottomDockReplacementPrompt={bottomDockReplacementPrompt}
           composerProps={bottomDockComposerProps}
+          approvalDisabledReason={viewModel.interaction.approvalDisabledReason}
+          interactivePromptDisabledReason={
+            viewModel.interaction.interactivePromptDisabledReason
+          }
           inlineNoticeChrome={inlineNoticeChrome}
           isRespondingApproval={isInteractionPending}
           sessionChrome={sessionChrome}

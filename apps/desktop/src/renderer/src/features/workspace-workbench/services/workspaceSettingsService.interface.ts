@@ -36,7 +36,8 @@ import type {
   WorkspaceAgentDraft,
   WorkspaceAutomationRuleDraft,
   WorkspaceModelPlanDraft,
-  WorkspaceModelPlanDraftSeed
+  WorkspaceModelPlanDraftSeed,
+  WorkspaceDeletedConversationProjectFilter
 } from "./workspaceSettingsTypes";
 
 export type { WorkspaceSettingsSectionID } from "./workspaceSettingsTypes";
@@ -100,6 +101,17 @@ export interface IWorkspaceModelPlansController {
   updateDraft(patch: Partial<WorkspaceModelPlanDraft>): void;
 }
 
+export interface IWorkspaceDeletedConversationsController {
+  clearFilters(): void;
+  loadMore(): Promise<void>;
+  purgeAll(): Promise<boolean>;
+  purgeOne(agentSessionID: string): Promise<boolean>;
+  refresh(): Promise<void>;
+  restore(agentSessionID: string): Promise<boolean>;
+  selectProject(filter: WorkspaceDeletedConversationProjectFilter): void;
+  setSearch(search: string): void;
+}
+
 export interface WorkspaceSettingsOpenOptions {
   anchor?: WorkspaceSettingsGeneralFocusAnchor;
   pane?: string;
@@ -111,6 +123,7 @@ export interface IWorkspaceSettingsService {
   readonly _serviceBrand: undefined;
   readonly agents: IWorkspaceAgentsController;
   readonly automationRules: IWorkspaceAutomationRulesController;
+  readonly deletedConversations: IWorkspaceDeletedConversationsController;
   readonly modelPlans: IWorkspaceModelPlansController;
   readonly store: WorkspaceSettingsReadableStoreState;
 
@@ -175,7 +188,6 @@ export interface IWorkspaceSettingsService {
   changeUpdateChannel(channel: DesktopUpdateChannel): Promise<void>;
   changeUpdatePolicy(policy: DesktopUpdatePolicy): Promise<void>;
   clearConversationHistory(): Promise<void>;
-  purgeDeletedConversations(): Promise<void>;
   clearDeveloperLogs(): Promise<void>;
   exportDeveloperLogs(input: ExportDeveloperLogsInput): Promise<void>;
   openLogDirectory(): Promise<void>;

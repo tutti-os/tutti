@@ -1,6 +1,9 @@
 import {
   MOBILE_UPDATE_INSTALL_PERMISSION_REQUIRED,
+  MAX_MOBILE_UPDATE_BYTES,
   MOBILE_UPDATE_SCHEMA_VERSION,
+  type MobileUpdateInstaller,
+  type MobileUpdateProgress,
   MobileUpdateService,
   parseMobileUpdateRelease
 } from "./mobileUpdateService";
@@ -43,7 +46,7 @@ test("does not offer an older or equal release", async () => {
 });
 
 test("passes the verified release to the native installer", async () => {
-  const install = jest.fn<Promise<void>, [string, string]>(
+  const install = jest.fn<Promise<void>, [string, string, number, number]>(
     async () => undefined
   );
   const service = createService(releaseFeed, install);
@@ -51,14 +54,23 @@ test("passes the verified release to the native installer", async () => {
   await service.checkForUpdates();
   const snapshot = await service.installUpdate();
 
-  expect(install).toHaveBeenCalledWith(releaseFeed.apkUrl, "a".repeat(64));
+  expect(install).toHaveBeenCalledWith(
+    releaseFeed.apkUrl,
+    "a".repeat(64),
+    releaseFeed.sizeBytes,
+    releaseFeed.versionCode
+  );
   expect(snapshot.status).toBe("installing");
+  await service.installUpdate();
+  expect(install).toHaveBeenCalledTimes(1);
 });
 
 test("keeps the release available when Android install permission is required", async () => {
-  const install = jest.fn<Promise<void>, [string, string]>(async () => {
-    throw { code: MOBILE_UPDATE_INSTALL_PERMISSION_REQUIRED };
-  });
+  const install = jest.fn<Promise<void>, [string, string, number, number]>(
+    async () => {
+      throw { code: MOBILE_UPDATE_INSTALL_PERMISSION_REQUIRED };
+    }
+  );
   const service = createService(releaseFeed, install);
 
   await service.checkForUpdates();
@@ -67,6 +79,122 @@ test("keeps the release available when Android install permission is required", 
   });
 
   expect(service.getSnapshot().status).toBe("available");
+});
+
+test("publishes native download progress and cancels the active update", async () => {
+  let publish: ((progress: MobileUpdateProgress) => void) | undefined;
+  const installer: MobileUpdateInstaller = {
+    cancel: jest.fn(async () => undefined),
+    install: jest.fn(() => new Promise(() => undefined)),
+    subscribe: (listener) => {
+      publish = listener;
+      return () => undefined;
+    }
+  };
+  const service = createService(releaseFeed, installer);
+
+  await service.checkForUpdates();
+  void service.installUpdate();
+  publish?.({
+    downloadedBytes: 512,
+    errorCode: null,
+    indeterminate: false,
+    phase: "downloading",
+    totalBytes: 1024
+  });
+
+  expect(service.getSnapshot()).toMatchObject({
+    progress: { downloadedBytes: 512, phase: "downloading" },
+    status: "installing"
+  });
+  await service.cancelUpdate();
+  expect(installer.cancel).toHaveBeenCalledTimes(1);
+  expect(service.getSnapshot()).toMatchObject({
+    progress: null,
+    status: "available"
+  });
+});
+
+test("ignores late download progress after cancellation", async () => {
+  let publish: ((progress: MobileUpdateProgress) => void) | undefined;
+  const installer: MobileUpdateInstaller = {
+    cancel: jest.fn(async () => undefined),
+    install: jest.fn(() => new Promise(() => undefined)),
+    subscribe: (listener) => {
+      publish = listener;
+      return () => undefined;
+    }
+  };
+  const service = createService(releaseFeed, installer);
+
+  await service.checkForUpdates();
+  void service.installUpdate();
+  await service.cancelUpdate();
+  publish?.({
+    downloadedBytes: 768,
+    errorCode: null,
+    indeterminate: false,
+    phase: "downloading",
+    totalBytes: 1024
+  });
+
+  expect(service.getSnapshot()).toMatchObject({
+    progress: null,
+    status: "available"
+  });
+});
+
+test("surfaces a package installer failure after handoff", async () => {
+  let publish: ((progress: MobileUpdateProgress) => void) | undefined;
+  const service = createService(releaseFeed, {
+    cancel: async () => undefined,
+    install: async () => undefined,
+    subscribe: (listener) => {
+      publish = listener;
+      return () => undefined;
+    }
+  });
+
+  await service.checkForUpdates();
+  await service.installUpdate();
+  publish?.({
+    downloadedBytes: 0,
+    errorCode: "UPDATE_INSTALL_CONFLICT",
+    indeterminate: true,
+    phase: "failed",
+    totalBytes: null
+  });
+
+  expect(service.getSnapshot()).toMatchObject({
+    installationFailureCode: "UPDATE_INSTALL_CONFLICT",
+    progress: null,
+    status: "error"
+  });
+  service.acknowledgeInstallationFailure();
+  expect(service.getSnapshot()).toMatchObject({
+    installationFailureCode: null,
+    status: "available"
+  });
+});
+
+test("deduplicates concurrent installation requests", async () => {
+  let complete: (() => void) | undefined;
+  const install = jest.fn(
+    () =>
+      new Promise<void>((resolve) => {
+        complete = resolve;
+      })
+  );
+  const service = createService(releaseFeed, install);
+
+  await service.checkForUpdates();
+  const first = service.installUpdate();
+  const second = service.installUpdate();
+  complete?.();
+
+  await expect(first).resolves.toMatchObject({ status: "installing" });
+  await expect(second).resolves.toMatchObject({ status: "installing" });
+  expect(install).toHaveBeenCalledTimes(1);
 });
 
 test("rejects a feed for a different package or schema", () => {
@@ -79,6 +207,21 @@ test("rejects a feed for a different package or schema", () => {
   expect(() =>
     parseMobileUpdateRelease({ ...releaseFeed, tag: "tutti-mobile-v0.1.0" })
   ).toThrow("tag");
+  expect(() =>
+    parseMobileUpdateRelease({ ...releaseFeed, sizeBytes: null })
+  ).toThrow("sizeBytes");
+  expect(() =>
+    parseMobileUpdateRelease({
+      ...releaseFeed,
+      sizeBytes: MAX_MOBILE_UPDATE_BYTES + 1
+    })
+  ).toThrow("supported limit");
+  expect(() =>
+    parseMobileUpdateRelease({
+      ...releaseFeed,
+      apkUrl: "https://user:secret@downloads.example.test/mobile.apk"
+    })
+  ).toThrow("credential-free HTTPS");
 });
 
 test("reports unsupported when no native installer is available", async () => {
@@ -93,9 +236,23 @@ test("reports unsupported when no native installer is available", async () => {
 
 function createService(
   payload: unknown,
-  install: (apkURL: string, sha256: string) => Promise<void> = async () =>
-    undefined
+  installerOrInstall:
+    | MobileUpdateInstaller
+    | ((
+        apkURL: string,
+        sha256: string,
+        sizeBytes: number,
+        targetVersionCode: number
+      ) => Promise<void>) = async () => undefined
 ): MobileUpdateService {
+  const installer: MobileUpdateInstaller =
+    typeof installerOrInstall === "function"
+      ? {
+          cancel: async () => undefined,
+          install: installerOrInstall,
+          subscribe: () => () => undefined
+        }
+      : installerOrInstall;
   return new MobileUpdateService({
     currentVersionCode: 1,
     currentVersionName: "0.1.0",
@@ -106,7 +263,7 @@ function createService(
         ok: true,
         status: 200
       }) as Response,
-    installer: { install },
+    installer,
     now: () => new Date("2026-08-06T01:00:00.000Z")
   });
 }

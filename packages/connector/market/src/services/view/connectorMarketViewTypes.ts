@@ -75,6 +75,7 @@ interface ConnectorDialogBaseView {
 }
 
 export interface ConnectorAuthorizationDialogView extends ConnectorDialogBaseView {
+  authorizationKind: string;
   authorizing: boolean;
   kind: "authorization";
   pending: boolean;

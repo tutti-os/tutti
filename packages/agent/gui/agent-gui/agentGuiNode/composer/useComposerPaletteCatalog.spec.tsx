@@ -55,4 +55,55 @@ describe("useComposerPaletteCatalog", () => {
         .map((entry) => entry.label)
     ).toEqual(["github", "review"]);
   });
+
+  it("removes connector entries immediately when the host disables them", () => {
+    const { result } = renderHook(() =>
+      useComposerPaletteCatalog({
+        provider: "codex",
+        isGoalModeActive: false,
+        goalSupported: false,
+        paletteDraftPrompt: "/",
+        availableCommands: [],
+        availableSkills: [
+          {
+            name: "review",
+            trigger: "$review",
+            sourceKind: "project",
+            kind: "skill"
+          },
+          {
+            name: "GitHub",
+            connectorKey: "github",
+            trigger: "/github",
+            sourceKind: "connector",
+            kind: "connector",
+            status: "available"
+          }
+        ],
+        hasCompactableContext: false,
+        compactSupported: false,
+        composerSettings: {
+          supportsPlanMode: false,
+          supportsBrowser: false,
+          supportsComputerUse: false,
+          slashCommandPolicy: {
+            fallbackCommands: [],
+            commandEffects: [],
+            commandCatalogAuthoritative: true
+          }
+        } as unknown as AgentGUIComposerSettingsVM,
+        capabilityMenuState: { connectors: { enabled: false } },
+        capabilityControlsReadOnly: false,
+        labels: {} as AgentComposerProps["labels"],
+        uiLanguage: "en",
+        editorHandleRef: { current: null }
+      })
+    );
+
+    expect(
+      result.current.slashPaletteEntries
+        .filter((entry) => entry.type === "skill")
+        .map((entry) => entry.label)
+    ).toEqual(["review"]);
+  });
 });

@@ -212,7 +212,6 @@ function userPromptContentBlocks(
     if (block.type !== "image") return [];
     const mimeType =
       typeof block.mimeType === "string" ? block.mimeType.trim() : "";
-    if (!mimeType) return [];
     return [
       {
         type: "image",

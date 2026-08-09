@@ -60,6 +60,10 @@ opencode/deepseek-v4-flash-free
 	if models[0].SupportsImageInput == nil || *models[0].SupportsImageInput {
 		t.Fatalf("Big Pickle image support = %#v", models[0].SupportsImageInput)
 	}
+	if models[0].DisplayName != "Big Pickle" ||
+		models[1].DisplayName != "DeepSeek V4 Flash Free" {
+		t.Fatalf("model display names = %#v, want built-in provider omitted", models)
+	}
 	wantEfforts := []string{"low", "medium", "high", "max"}
 	for index, want := range wantEfforts {
 		if models[1].SupportedReasoningEfforts[index].Value != want {
@@ -97,6 +101,24 @@ tutti/glm-5
 		if models[index].ID != modelID {
 			t.Fatalf("models[%d].ID = %q, want %q", index, models[index].ID, modelID)
 		}
+	}
+}
+
+func TestParseVerboseOpenCodeModelsOutputDistinguishesSameModelAcrossProviders(t *testing.T) {
+	t.Parallel()
+
+	models := parseOpenCodeModelsOutput([]byte(`newapi/deepseek-v4-pro
+{"name":"DeepSeek V4 Pro","providerID":"newapi","variants":{}}
+opencode/deepseek-v4-pro
+{"name":"DeepSeek V4 Pro","providerID":"opencode","variants":{}}
+`))
+
+	if len(models) != 2 {
+		t.Fatalf("len(models) = %d, want 2: %#v", len(models), models)
+	}
+	if models[0].DisplayName != "DeepSeek V4 Pro / newapi" ||
+		models[1].DisplayName != "DeepSeek V4 Pro" {
+		t.Fatalf("model display names = %#v, want custom provider suffix only", models)
 	}
 }
 

@@ -8,6 +8,7 @@ import (
 	workspaceissues "github.com/tutti-os/tutti/packages/workspace/issues"
 	tuttigenerated "github.com/tutti-os/tutti/services/tuttid/api/generated"
 	agentservice "github.com/tutti-os/tutti/services/tuttid/service/agent"
+	workspaceservice "github.com/tutti-os/tutti/services/tuttid/service/workspace"
 )
 
 func TestClassifyConfigDependencyUnavailable(t *testing.T) {
@@ -102,6 +103,15 @@ func TestClassifyManagedIssueMutationCarriesRecoveryTarget(t *testing.T) {
 		classified.Params["sourceSessionId"] != "source-session" ||
 		classified.Params["recommendedAction"] != "open_source_session" {
 		t.Fatalf("params = %#v, want exact source-conversation recovery target", classified.Params)
+	}
+}
+
+func TestClassifyPendingIssueRunLaunchAsConflict(t *testing.T) {
+	classified := Classify(workspaceservice.ErrIssueRunLaunchPending)
+	if classified.StatusCode != StatusWorkspaceIssueExists ||
+		classified.Code != tuttigenerated.WorkspaceIssueResourceExists ||
+		classified.Reason != ReasonWorkspaceIssueRunLaunchPending {
+		t.Fatalf("classified = %#v, want pending Issue Run launch conflict", classified)
 	}
 }
 

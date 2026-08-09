@@ -4,7 +4,11 @@ on:
   pull_request:
     paths:
       - "packages/agent/daemon/**"
-      - "services/tuttid/**"
+  push:
+    branches:
+      - main
+    paths:
+      - "packages/agent/daemon/**"
   workflow_dispatch:
 
 concurrency:
@@ -26,18 +30,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v6
-        with:
-          fetch-depth: 0
-
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v6
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version-file: .node-version
-          cache: pnpm
-          cache-dependency-path: pnpm-lock.yaml
 
       - name: Setup Go
         uses: actions/setup-go@v6
@@ -48,16 +40,6 @@ jobs:
             go.work.sum
             packages/agent/daemon/go.mod
             packages/agent/daemon/go.sum
-            services/tuttid/go.mod
-            services/tuttid/go.sum
-
-      - name: Install dependencies
-        shell: pwsh
-        run: pnpm install --frozen-lockfile
-
-      - name: Generate Onboarding fat package
-        shell: pwsh
-        run: pnpm generate:builtin-apps
 
       - name: Test Windows agent process adapters
         shell: pwsh
@@ -65,21 +47,5 @@ jobs:
           $ErrorActionPreference = 'Stop'
           $PSNativeCommandUseErrorActionPreference = $true
           Push-Location packages/agent/daemon
-          go test ./runtime -run 'Test(RunVerifiedExecutableUsesVerifiedIdentity|PrepareProcessExecutableExecutesVerifiedDescriptorAfterPathReplacement)$'
-          go test ./runtimecmd -run 'Test(ResolverResolveAllReturnsEveryExecutableMatchInPathOrder|ResolverResolveAllNamesKeepsDirectoryOrderBeforeLauncherVariant|ResolveNPMGlobalLayoutUsesPrefixRootForWindowsShims|ResolverFindsWindowsNPMGlobalShim)$'
-          Pop-Location
-
-      - name: Test Windows daemon adapters
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = 'Stop'
-          $PSNativeCommandUseErrorActionPreference = $true
-          Push-Location services/tuttid
-          go test ./data/workspace -run 'Test(SQLiteDSNPathUsesFileURLFormOnWindows|SQLiteStoreListEmptyDatabase)$'
-          go test ./service/managedruntime -run 'TestNodeReadyAcceptsOfficialWindowsCorepackLayout$'
-          go test ./service/agentstatus -run 'Test(NewInstallShellCommandUsesCmdInterpreter|PlatformExecutableFileAcceptsPlainWindowsFile|RunDefaultInstallCommandPreservesStructuredArguments)$'
-          go test ./service/browser -run 'TestStableChromeDevToolsActivePortPathUsesLocalAppDataOnWindows$'
-          go test ./service/workspace -run 'Test(PlatformAppShellAdapter|NormalizeWindowsTerminalInput|TerminalServiceCreatesLocalPTY|TerminalServiceAttachStream|AppCenterServiceInitializesBuiltinCatalogAndInstallState|WorkspaceAppCLI)'
-          go test ./integration -run 'TestTuttidBlackBoxWorkspaceTerminalWebSocketStreamsInputAndOutput$'
-          go test ./integration -run 'TestTuttidBlackBoxWorkspaceTerminalWebSocketExitFrameCarriesExitCode$'
+          go test ./runtime ./runtimecmd -run 'Test(RunVerifiedExecutableUsesVerifiedIdentity|PrepareProcessExecutableExecutesVerifiedDescriptorAfterPathReplacement|ResolverResolveAllReturnsEveryExecutableMatchInPathOrder|ResolverResolveAllNamesKeepsDirectoryOrderBeforeLauncherVariant|ResolveNPMGlobalLayoutUsesPrefixRootForWindowsShims|ResolverFindsWindowsNPMGlobalShim)$'
           Pop-Location

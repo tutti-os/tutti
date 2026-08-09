@@ -204,6 +204,7 @@ export function conversationDetailSessionsEqual(
     left.createdAtUnixMs === right.createdAtUnixMs &&
     left.updatedAtUnixMs === right.updatedAtUnixMs &&
     left.cwd === right.cwd &&
+    left.isolation?.mode === right.isolation?.mode &&
     left.activeTurnId === right.activeTurnId &&
     left.activeTurn?.updatedAtUnixMs === right.activeTurn?.updatedAtUnixMs &&
     left.latestTurn?.updatedAtUnixMs === right.latestTurn?.updatedAtUnixMs &&
@@ -466,6 +467,10 @@ export function areComposerSettingsVMsEqual(
       (right.permissionModeChangeDuringTurn ?? false) &&
     sameSlashPolicy(left.slashCommandPolicy, right.slashCommandPolicy) &&
     left.isSettingsLoading === right.isSettingsLoading &&
+    Boolean(left.composerOptionsError) ===
+      Boolean(right.composerOptionsError) &&
+    (left.composerOptionsLoadStatus ?? null) ===
+      (right.composerOptionsLoadStatus ?? null) &&
     !!left.isCapabilityOptionsLoading === !!right.isCapabilityOptionsLoading &&
     !!left.isModelOptionsLoading === !!right.isModelOptionsLoading &&
     left.modelUnavailable === right.modelUnavailable &&

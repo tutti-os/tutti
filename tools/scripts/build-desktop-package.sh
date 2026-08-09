@@ -212,6 +212,45 @@ prepare_managed_posix_shell() {
   node "${ROOT_DIR}/apps/desktop/scripts/vendor-managed-posix-shell.mjs" --platform=windows-amd64
 }
 
+prepare_mutagen() {
+  if [[ "${VARIANT}" != "win" && "${VARIANT}" != "win-store" ]]; then
+    return
+  fi
+  node "${ROOT_DIR}/apps/desktop/scripts/vendor-mutagen.mjs" --platform=windows-amd64
+}
+
+prepare_managed_uv() {
+  local platforms=()
+  case "${VARIANT}" in
+    win|win-store)
+      platforms=(windows-amd64)
+      ;;
+    linux)
+      platforms=(linux-amd64)
+      ;;
+    mac|mac-unsigned|mac-signed)
+      # The upstream macOS uv archives contain the uv and uvx executables.
+      # They are intentionally left out of the signed app: Apple notarization
+      # recursively validates executable members in nested tar.gz files and
+      # rejects these upstream binaries because they are not signed with the
+      # app's Developer ID identity. macOS keeps the daemon's verified dynamic
+      # download fallback; Windows and Linux still receive the bundled archive.
+      rm -rf "${APP_DIR}/build/managed-uv"
+      mkdir -p "${APP_DIR}/build/managed-uv"
+      return
+      ;;
+    unpack)
+      platforms=("$(node -e 'const os = process.platform === "win32" ? "windows" : process.platform === "darwin" ? "darwin" : "linux"; const arch = process.arch === "arm64" ? "arm64" : "amd64"; process.stdout.write(`${os}-${arch}`)')")
+      ;;
+  esac
+  local args=()
+  local platform
+  for platform in "${platforms[@]}"; do
+    args+=("--platform=${platform}")
+  done
+  node "${ROOT_DIR}/apps/desktop/scripts/vendor-managed-uv.mjs" "${args[@]}"
+}
+
 run_pnpm_build() {
   pnpm build
 }
@@ -339,6 +378,8 @@ case "${VARIANT}" in
     run_timed_phase "prepare_browser_mcp" prepare_browser_mcp
     run_timed_phase "prepare_claude_sdk_sidecar" prepare_claude_sdk_sidecar
     run_timed_phase "prepare_managed_posix_shell" prepare_managed_posix_shell
+    run_timed_phase "prepare_mutagen" prepare_mutagen
+    run_timed_phase "prepare_managed_uv" prepare_managed_uv
     (
       cd "${APP_DIR}"
       run_timed_phase "resolve_desktop_build_version" resolve_desktop_build_version

@@ -610,7 +610,12 @@ func newTurnActivityEventWithIDAt(
 		if status == "" && messageRole == activityshared.MessageRoleUser {
 			status = messageStreamStateCompleted
 		}
-		event := activityshared.NewMessageAppended(ctx, messageRole, content)
+		event := activityshared.NewMessageAppended(
+			ctx,
+			messageRole,
+			content,
+			messageRole == activityshared.MessageRoleAssistant && payloadString(payload, "kind") != "agent_system_notice",
+		)
 		event.Payload.Metadata = clonePayload(payload)
 		if event.Payload.Metadata == nil {
 			event.Payload.Metadata = map[string]any{}

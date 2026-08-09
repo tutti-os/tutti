@@ -48,6 +48,7 @@ apps/desktop/build/browser-mcp/
 apps/desktop/build/claude-sdk-sidecar/
 apps/desktop/build/workspace-app-shell/
 apps/desktop/build/managed-posix-shell/
+apps/desktop/build/managed-uv/
 apps/cli/build/
 services/tuttid/builtin-apps/tutti-onboarding/build/
 

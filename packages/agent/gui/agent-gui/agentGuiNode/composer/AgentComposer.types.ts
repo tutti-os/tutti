@@ -8,8 +8,10 @@ import type {
 import type { AgentMessageMarkdownWorkspaceAppIcon } from "../../../shared/AgentMessageMarkdown";
 import type { AgentPromptContentBlock } from "../../../shared/contracts/dto/agentSession";
 import type { WorkspaceUserProjectI18nRuntime } from "@tutti-os/workspace-user-project/i18n";
+import type { WorkspaceUserProjectApi } from "@tutti-os/workspace-user-project/contracts";
 import type { WorkspaceLinkAction } from "../../../actions/workspaceLinkActions";
 import type { AgentContextMentionItem } from "../agentRichText/agentFileMentionExtension";
+import type { AgentRichTextEditorProps } from "../agentRichText/AgentRichTextEditor.types";
 import type { AgentExternalPromptEntryResolver } from "../model/agentExternalPromptEntries";
 import type { AgentExternalPromptFilePreparer } from "../model/agentExternalPromptFiles";
 import type { AgentProjectPathChangeMetadata } from "../AgentComposerSettingsMenus";
@@ -33,6 +35,7 @@ import type {
 import type { AgentQuickPromptLabels } from "./quickPrompts/agentQuickPromptLabels";
 import type { AgentMentionFilterId } from "../AgentMentionSearchContracts";
 import type { AgentComposerInputHistoryEntry } from "../model/agentComposerInputHistory";
+import type { AgentGUISessionLaunchMode } from "../model/agentSessionLaunchMode";
 
 export interface AgentComposerReferenceProvenanceFilter {
   snapshot: ReferenceProvenanceFilterSnapshot;
@@ -50,6 +53,7 @@ export interface AgentComposerReferenceProvenanceFilters {
 }
 
 export interface AgentComposerSubmitOptions {
+  isolation?: "worktree";
   requiredSettingsPatch?: AgentActivitySubmitSettingsPatch;
   capabilityRefs?: readonly AgentComposerCapabilityReference[];
   /** Exact canonical active Turn captured for native guidance. */
@@ -113,6 +117,17 @@ export interface AgentComposerProps {
   drainingQueuedPromptId: string | null;
   workspaceAppIcons?: readonly AgentMessageMarkdownWorkspaceAppIcon[];
   selectedAgentTarget?: AgentGUIAgentTarget | null;
+  sessionWorktreeEnabled?: boolean;
+  sessionLaunchMode?: AgentGUISessionLaunchMode;
+  onSessionLaunchModeChange?: (
+    mode: AgentGUISessionLaunchMode
+  ) => void | Promise<void>;
+  /** Content rendered immediately before the primary non-hero action. */
+  composerActionAccessory?: ReactNode;
+  /** Places the primary action cluster in the prompt row or Composer footer. */
+  composerActionPlacement?: "input" | "footer";
+  /** Shows the canonical new-Session project selector in a non-hero footer. */
+  showProjectSelectorInFooter?: boolean;
   footerAccessory?: ReactNode;
   agentTargets?: readonly AgentGUIAgentTarget[];
   handoffAgentTargets?: readonly AgentGUIAgentTarget[];
@@ -130,6 +145,8 @@ export interface AgentComposerProps {
   draftOverridesStopButton?: boolean;
   stopDisabled: boolean;
   activePrompt: AgentConversationPromptVM | null;
+  /** Host readiness reason for the active prompt's disabled controls. */
+  activePromptDisabledReason?: string | null;
   activePromptKeyboardShortcutsEnabled?: boolean;
   promptTips?: readonly AgentComposerPromptTip[];
   isInterrupting: boolean;
@@ -144,7 +161,16 @@ export interface AgentComposerProps {
   canGoalControl?: boolean;
   canUploadAttachment?: boolean;
   composerFocusRequestSequence?: number | null;
-  layoutMode?: "dock" | "hero";
+  /**
+   * `dock` overhangs growing drafts above a conversation timeline, `hero`
+   * presents the home composer, and `embedded` keeps all draft content in
+   * normal flow for compact host surfaces.
+   */
+  layoutMode?: "dock" | "embedded" | "hero";
+  /** Lets an embedded composer consume a height explicitly owned by its host. */
+  fillAvailableHeight?: boolean;
+  /** Host chrome inset that portaled menus must not overlap. */
+  menuViewportTopInset?: number;
   providerSelectLabel?: string;
   handoffLabel?: string;
   handoffMenuLabel?: string;
@@ -163,6 +189,9 @@ export interface AgentComposerProps {
     modelTooltipVersionLabel: string;
     defaultModel: string;
     loadingOptions: string;
+    composerOptionsLoadFailed?: string;
+    retry?: string;
+    composerOptionsRetryTooltip?: string;
     inheritedUnavailable: string;
     loadingConversation: string;
     reasoningLabel: string;
@@ -330,6 +359,13 @@ export interface AgentComposerProps {
     removeMention: string;
     addReference: string;
     addContent: string;
+    addContentResourcePanel: string;
+    addContentConnectors: string;
+    addContentConnectorConnected: string;
+    addContentConnectorConnect: string;
+    addContentConnectorAuthorize: string;
+    addContentConnectorEmpty: string;
+    addContentConnectorMore: string;
     referenceWorkspaceFiles: string;
     handoffConversation: string;
     handoffConversationTooltip: string;
@@ -339,6 +375,9 @@ export interface AgentComposerProps {
     handoffTargetShared: string;
     providerSwitchLabel: string;
     projectLocked: string;
+    sessionLaunchModeLabel?: string;
+    sessionLaunchModeLocal?: string;
+    sessionLaunchModeWorktree?: string;
     projectMissingDescription: string;
     promptTipsPrefix: string;
     reviewPicker: {
@@ -380,6 +419,8 @@ export interface AgentComposerProps {
     computerUse?: boolean;
     permissionModeId?: string | null;
   }) => void;
+  /** Retries the target-scoped composer options request after a terminal failure. */
+  onRetryComposerOptions?: () => void;
   onTuttiModeChange?: (active: boolean) => void;
   onTuttiModeEffectChange?: (value: number) => void;
   onTuttiModeSpeedChange?: (value: number) => void;
@@ -427,8 +468,11 @@ export interface AgentComposerProps {
     | null;
   resolveExternalPromptEntries?: AgentExternalPromptEntryResolver | null;
   prepareExternalPromptFiles?: AgentExternalPromptFilePreparer | null;
+  resolvePastedPath?: AgentRichTextEditorProps["onResolvePastedPath"] | null;
   promptAssetLimit?: number | null;
   selectProjectDirectory?: () => Promise<{ path: string } | null>;
+  /** Explicit project capability for lifecycle-free Composer embeddings. */
+  userProjectApi?: WorkspaceUserProjectApi | null;
   onRequestGitBranches?: AgentComposerGitBranchLoader | null;
   referenceProvenanceFilters?: AgentComposerReferenceProvenanceFilters | null;
 }
@@ -438,6 +482,7 @@ export type AgentComposerCapabilitySettingsTarget =
   | {
       kind: "connector";
       connectorKey: string;
+      action?: "open";
     };
 
 export interface AgentComposerCapabilityMenuState {
@@ -447,6 +492,13 @@ export interface AgentComposerCapabilityMenuState {
   computerUse?: {
     authorization?: AgentComposerComputerUseAuthorizationState | null;
     installed?: boolean | null;
+  };
+  /**
+   * Host-owned connector visibility override. Missing preserves the existing
+   * catalog behavior for hosts that have not adopted this optional field.
+   */
+  connectors?: {
+    enabled?: boolean | null;
   };
   tuttiMode?: {
     enabled?: boolean | null;

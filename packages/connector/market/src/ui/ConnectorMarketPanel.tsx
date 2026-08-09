@@ -1,11 +1,9 @@
-import { useMemo } from "react";
 import { cn } from "@tutti-os/ui-system/utils";
 
 import type { ConnectorMarketI18nRuntime } from "../i18n/connectorMarketI18n.ts";
 import type { IConnectorMarketRoot } from "../services/core/connectorMarketRoot.interface.ts";
-import { ConnectorMarketServicesProvider } from "./ConnectorMarketServicesContext.tsx";
+import { ConnectorMarketRootProvider } from "./ConnectorMarketServicesContext.tsx";
 import { ConnectorCatalog } from "./catalog/ConnectorCatalog.tsx";
-import { ConnectorMarketDialogs } from "./dialogs/ConnectorMarketDialogs.tsx";
 import { ConnectorMarketToolbar } from "./toolbar/ConnectorMarketToolbar.tsx";
 
 export interface ConnectorMarketPanelProps {
@@ -23,20 +21,13 @@ export function ConnectorMarketPanel({
   onTryConnector,
   root
 }: ConnectorMarketPanelProps) {
-  const services = useMemo(
-    () => ({
-      i18n,
-      market: root.market,
-      onError,
-      onTryConnector,
-      uiState: root.uiState,
-      view: root.view
-    }),
-    [i18n, onError, onTryConnector, root]
-  );
-
   return (
-    <ConnectorMarketServicesProvider services={services}>
+    <ConnectorMarketRootProvider
+      i18n={i18n}
+      onError={onError}
+      onTryConnector={onTryConnector}
+      root={root}
+    >
       <section
         className={cn(
           "flex min-h-0 flex-1 flex-col gap-5 pb-[22px]",
@@ -54,8 +45,7 @@ export function ConnectorMarketPanel({
         </header>
         <ConnectorMarketToolbar />
         <ConnectorCatalog />
-        <ConnectorMarketDialogs />
       </section>
-    </ConnectorMarketServicesProvider>
+    </ConnectorMarketRootProvider>
   );
 }

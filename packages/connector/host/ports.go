@@ -64,6 +64,10 @@ type Repository interface {
 	Snapshot(ctx context.Context) (Snapshot, error)
 	Connector(ctx context.Context, connectorKey string) (Connector, error)
 	Operation(ctx context.Context, operationID string) (Operation, error)
+	// CompletedAuthorizationOperations exposes durable authorization session
+	// receipts only to the internal reconciler. Snapshot remains safe for public
+	// presentation and must not contain Operation.Execution.
+	CompletedAuthorizationOperations(ctx context.Context) ([]Operation, error)
 	ClaimOperation(ctx context.Context, operationID, owner string, now, leaseExpiresAt time.Time) (Operation, bool, error)
 	RenewOperationLease(ctx context.Context, operationID, owner string, token uint64, now, leaseExpiresAt time.Time) error
 	ReleaseOperationLease(ctx context.Context, operationID, owner string, token uint64) error
@@ -88,6 +92,48 @@ type Transaction interface {
 	EnqueueConnectorMarketChanged(ChangedEvent) error
 }
 
+// ReleaseInstallationManager owns the complete physical release installation
+// boundary. A same-machine host may compose artifact import and CLI package
+// installation locally, while a remote host may download on the control-plane
+// machine, transfer verified bytes, and ask the runtime machine to install them
+// in one idempotent operation.
+//
+// Installation never implies capability publication. Runtime activation is a
+// separate ImplementationHost reconcile driven by authorization state.
+type ReleaseInstallationManager interface {
+	InstallRelease(ctx context.Context, request InstallReleaseRequest) (ReleaseInstallationReceipt, error)
+	CommitReleaseInstallation(ctx context.Context, request CommitReleaseInstallationRequest) error
+	UninstallRelease(ctx context.Context, request UninstallReleaseRequest) error
+}
+
+type InstallReleaseRequest struct {
+	OperationID string
+	Scope       OperationScope
+	Generation  HostGeneration
+	Release     Release
+}
+
+type UninstallReleaseRequest struct {
+	OperationID string
+	Scope       OperationScope
+	Generation  HostGeneration
+	Release     Release
+}
+
+// CommitReleaseInstallation is invoked only after installed truth is durable
+// in the business repository. Cross-machine hosts use it to promote a cached
+// candidate to current; same-machine installers may implement it as a no-op.
+type CommitReleaseInstallationRequest struct {
+	OperationID string
+	Scope       OperationScope
+	Generation  HostGeneration
+	Release     Release
+	Receipt     ReleaseInstallationReceipt
+}
+
+// ArtifactPreparer is the same-machine artifact import boundary used by the
+// runtime package's ReleaseInstaller composition. Application hosts depend on
+// ReleaseInstallationManager instead of orchestrating this lower-level port.
 type ArtifactPreparer interface {
 	Prepare(ctx context.Context, request PrepareArtifactRequest) (PreparedArtifactReceipt, error)
 	Remove(ctx context.Context, request RemoveArtifactRequest) error
@@ -146,6 +192,34 @@ type RuntimeObservation struct {
 	ReleaseDigest string
 }
 
+type InstallationObservationState string
+
+const (
+	InstallationObservationPresent InstallationObservationState = "present"
+	InstallationObservationAbsent  InstallationObservationState = "absent"
+)
+
+type InstallationObservation struct {
+	State         InstallationObservationState
+	ConnectorKey  string
+	ReleaseDigest string
+}
+
+// InstallationChecker executes only signed, bounded probes declared by a
+// release that was previously installed. It must not probe unaccepted catalog
+// entries or turn transient execution errors into an absent observation.
+type InstallationChecker interface {
+	CheckInstallation(context.Context, InstallationCheckRequest) (InstallationObservation, error)
+}
+
+type InstallationCheckRequest struct {
+	OperationID  string
+	Scope        OperationScope
+	ConnectionID string
+	Connector    Connector
+	Generation   HostGeneration
+}
+
 // ImplementationHost reconciles installed connector releases into global MCP
 // routes and CLI registrations.
 type ImplementationHost interface {
@@ -195,8 +269,9 @@ type RuntimeBindingRequest struct {
 type RuntimeBindingPurpose string
 
 const (
-	RuntimeBindingPurposeReconcile  RuntimeBindingPurpose = "reconcile"
-	RuntimeBindingPurposeDeactivate RuntimeBindingPurpose = "deactivate"
+	RuntimeBindingPurposeReconcile         RuntimeBindingPurpose = "reconcile"
+	RuntimeBindingPurposeDeactivate        RuntimeBindingPurpose = "deactivate"
+	RuntimeBindingPurposeInstallationProbe RuntimeBindingPurpose = "installation_probe"
 )
 
 type RuntimeBinding struct {
@@ -221,18 +296,30 @@ type AuthorizationProvider interface {
 	Disconnect(ctx context.Context, request AuthorizationDisconnectRequest) error
 }
 
+// AuthorizationObserver is an optional asynchronous extension implemented by
+// providers whose user interaction completes outside the daemon process.
+type AuthorizationObserver interface {
+	Observe(ctx context.Context, request AuthorizationObserveRequest) (AuthorizationObservation, error)
+}
+
 type AuthorizationStartRequest struct {
 	OperationID     string
 	ClientRequestID string
 	Scope           OperationScope
 	Connector       Connector
 	Release         Release
+	Secret          []byte
 }
 
 type AuthorizationDisconnectRequest struct {
 	OperationID string
 	Scope       OperationScope
 	Connector   Connector
+}
+
+type AuthorizationObserveRequest struct {
+	Connector Connector
+	Session   AuthorizationSession
 }
 
 type CompatibilityEvaluator interface {

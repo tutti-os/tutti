@@ -1,5 +1,9 @@
 import type { AgentConversationVM } from "@tutti-os/agent-gui/conversation-projection";
-import { type NativeTheme, useNativeTheme } from "@tutti-os/ui-system/native";
+import {
+  NativeControlGlyph,
+  type NativeTheme,
+  useNativeTheme
+} from "@tutti-os/ui-system/native";
 import { useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { t } from "../i18n";
@@ -12,6 +16,7 @@ import { MobileMarkdownText } from "./MobileMarkdownText";
 
 type TranscriptRow = AgentConversationVM["rows"][number];
 type MessageRow = Extract<TranscriptRow, { kind: "message" }>;
+type ThinkingContent = MessageRow["thinking"][number];
 type ToolGroupRow = Extract<TranscriptRow, { kind: "tool-group" }>;
 type ToolCall = ToolGroupRow["calls"][number];
 
@@ -31,15 +36,18 @@ export function MobileConversationTimeline({
   media: WorkspaceMediaSnapshot;
   onLinkPress(href: string): boolean;
 }) {
+  const theme = useNativeTheme();
+  const styles = createStyles(theme);
   return (
     <>
       {conversation.rows.map((row) => (
-        <MobileTranscriptRow
-          key={row.id}
-          media={media}
-          onLinkPress={onLinkPress}
-          row={row}
-        />
+        <View key={row.id} style={styles.rowFrame}>
+          <MobileTranscriptRow
+            media={media}
+            onLinkPress={onLinkPress}
+            row={row}
+          />
+        </View>
       ))}
     </>
   );
@@ -106,17 +114,11 @@ function MobileMessageRow({
         style={styles.speakerAccessibilityLabel}
       />
       {row.thinking.map((thinking) => (
-        <View key={thinking.id} style={styles.thinkingBlock}>
-          <Text style={styles.thinkingLabel}>{t("reasoning")}</Text>
-          {thinking.body.trim() ? (
-            <MobileMarkdownText
-              content={thinking.body}
-              onLinkPress={onLinkPress}
-              streaming={thinking.statusKind === "working"}
-              textColor={theme.color.textSecondary}
-            />
-          ) : null}
-        </View>
+        <MobileThinkingBlock
+          key={thinking.id}
+          onLinkPress={onLinkPress}
+          thinking={thinking}
+        />
       ))}
       {messageBodies.map((message) => (
         <View key={message.id} style={styles.messageContent}>
@@ -158,10 +160,118 @@ function MobileMessageRow({
             </Text>
           ) : null}
           {message.visibleError?.detail ? (
-            <Text style={styles.errorText}>{message.visibleError.detail}</Text>
+            message.visibleError.detailAvailable ? (
+              <MobileRawErrorDisclosure detail={message.visibleError.detail} />
+            ) : (
+              <Text style={styles.errorText}>
+                {message.visibleError.detail}
+              </Text>
+            )
           ) : null}
         </View>
       ))}
+    </View>
+  );
+}
+
+function MobileThinkingBlock({
+  onLinkPress,
+  thinking
+}: {
+  onLinkPress(href: string): boolean;
+  thinking: ThinkingContent;
+}) {
+  const theme = useNativeTheme();
+  const styles = createStyles(theme);
+  const hasBody = thinking.body.trim().length > 0;
+  const statusKind = thinking.statusKind ?? null;
+  const statusLabel = toolStatusLabel(statusKind, null);
+  const [expanded, setExpanded] = useState(
+    hasBody &&
+      (statusKind === "working" ||
+        statusKind === "failed" ||
+        statusKind === "waiting")
+  );
+  const accessibilityLabel = [
+    t("reasoning"),
+    statusLabel,
+    hasBody ? (expanded ? t("hideDetails") : t("showDetails")) : null
+  ]
+    .filter(Boolean)
+    .join(". ");
+
+  return (
+    <View style={styles.thinkingBlock}>
+      <Pressable
+        accessibilityLabel={accessibilityLabel}
+        accessibilityRole="button"
+        accessibilityState={{ disabled: !hasBody, expanded }}
+        disabled={!hasBody}
+        onPress={() => setExpanded((value) => !value)}
+        style={({ pressed }) => [
+          styles.thinkingHeader,
+          pressed && styles.pressed
+        ]}
+      >
+        <View style={styles.disclosureHeaderLine}>
+          <NativeControlGlyph
+            color={toolStatusColor(theme, statusKind)}
+            size={8}
+            variant="status"
+          />
+          <Text style={styles.thinkingLabel}>{t("reasoning")}</Text>
+          {statusLabel ? (
+            <Text style={styles.thinkingStatus}>{statusLabel}</Text>
+          ) : null}
+          {hasBody ? (
+            <NativeControlGlyph
+              color={theme.color.muted}
+              direction={expanded ? "up" : "down"}
+              size={16}
+              variant="chevron"
+            />
+          ) : null}
+        </View>
+      </Pressable>
+      {expanded && hasBody ? (
+        <View style={styles.thinkingBody}>
+          <MobileMarkdownText
+            content={thinking.body}
+            onLinkPress={onLinkPress}
+            streaming={statusKind === "working"}
+            textColor={theme.color.textSecondary}
+          />
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
+function MobileRawErrorDisclosure({ detail }: { detail: string }) {
+  const theme = useNativeTheme();
+  const styles = createStyles(theme);
+  const [expanded, setExpanded] = useState(false);
+  return (
+    <View style={styles.errorDisclosureContainer}>
+      <Pressable
+        accessibilityLabel={expanded ? t("hideRawError") : t("showRawError")}
+        accessibilityRole="button"
+        accessibilityState={{ expanded }}
+        onPress={() => setExpanded((value) => !value)}
+        style={({ pressed }) => [
+          styles.errorDisclosure,
+          pressed && styles.pressed
+        ]}
+      >
+        <Text style={styles.errorDisclosureLabel}>{t("rawError")}</Text>
+        <NativeControlGlyph
+          color={theme.color.danger}
+          direction={expanded ? "up" : "down"}
+          size={16}
+          variant="chevron"
+        />
+      </Pressable>
+      {expanded ? <Text style={styles.errorText}>{detail}</Text> : null}
     </View>
   );
 }
@@ -175,54 +285,80 @@ function MobileToolGroupRow({
 }) {
   const theme = useNativeTheme();
   const styles = createStyles(theme);
-  const [expanded, setExpanded] = useState(false);
   const label =
     row.summary?.trim() || t("toolCalls", { count: row.calls.length });
   const singleCall = row.calls[0];
-  if (!row.grouped && singleCall) {
-    return <MobileToolCallRow call={singleCall} />;
-  }
   const hasDetails = row.entries.length > 0;
+  const statusKind = toolGroupStatusKind(row.calls);
+  const statusLabel = toolStatusLabel(statusKind, null);
+  const countLabel =
+    row.calls.length === 1
+      ? t("tool")
+      : t("toolCalls", { count: row.calls.length });
+  const [expanded, setExpanded] = useState(
+    hasDetails &&
+      (statusKind === "working" ||
+        statusKind === "failed" ||
+        statusKind === "waiting")
+  );
+  if (!row.grouped && singleCall) {
+    return (
+      <View style={styles.toolGroup}>
+        <MobileToolCallRow call={singleCall} />
+      </View>
+    );
+  }
+  const accessibilityLabel = [
+    label,
+    statusLabel,
+    hasDetails ? (expanded ? t("hideDetails") : t("showDetails")) : null
+  ]
+    .filter(Boolean)
+    .join(". ");
 
   return (
     <View style={styles.toolGroup}>
       <Pressable
-        accessibilityLabel={expanded ? t("hideDetails") : t("showDetails")}
+        accessibilityLabel={accessibilityLabel}
         accessibilityRole="button"
         accessibilityState={{ disabled: !hasDetails, expanded }}
         disabled={!hasDetails}
         onPress={() => setExpanded((value) => !value)}
         style={({ pressed }) => [styles.toolHeader, pressed && styles.pressed]}
       >
-        <View style={styles.toolHeaderText}>
-          <Text numberOfLines={1} style={styles.toolTitle}>
-            {label}
-          </Text>
-          <Text style={styles.toolMeta}>
-            {row.calls.length === 1
-              ? t("tool")
-              : t("toolCalls", { count: row.calls.length })}
-          </Text>
+        <View style={styles.disclosureHeaderLine}>
+          <NativeControlGlyph
+            color={toolStatusColor(theme, statusKind)}
+            size={8}
+            variant="status"
+          />
+          <View style={styles.toolHeaderText}>
+            <Text numberOfLines={1} style={styles.toolTitle}>
+              {label}
+            </Text>
+            <Text style={styles.toolMeta}>
+              {[countLabel, statusLabel].filter(Boolean).join(" · ")}
+            </Text>
+          </View>
+          {hasDetails ? (
+            <NativeControlGlyph
+              color={theme.color.muted}
+              direction={expanded ? "up" : "down"}
+              size={16}
+              variant="chevron"
+            />
+          ) : null}
         </View>
-        {hasDetails ? (
-          <Text style={styles.disclosure}>{expanded ? "−" : "+"}</Text>
-        ) : null}
       </Pressable>
       {expanded && hasDetails ? (
         <View style={styles.toolList}>
           {row.entries.map((entry) =>
             entry.kind === "thinking" ? (
-              <View key={entry.thinking.id} style={styles.toolThinking}>
-                <Text style={styles.thinkingLabel}>{t("reasoning")}</Text>
-                {entry.thinking.body.trim() ? (
-                  <MobileMarkdownText
-                    content={entry.thinking.body}
-                    onLinkPress={onLinkPress}
-                    streaming={entry.thinking.statusKind === "working"}
-                    textColor={theme.color.textSecondary}
-                  />
-                ) : null}
-              </View>
+              <MobileThinkingBlock
+                key={entry.thinking.id}
+                onLinkPress={onLinkPress}
+                thinking={entry.thinking}
+              />
             ) : (
               <MobileToolCallRow call={entry.call} key={entry.call.id} />
             )
@@ -240,26 +376,70 @@ function MobileToolCallRow({ call }: { call: ToolCall }) {
   const status = toolStatusLabel(call.statusKind, call.status);
   return (
     <View style={styles.toolCall}>
-      <View style={styles.toolCallHeader}>
-        <Text style={styles.toolCallName}>{call.name}</Text>
-        {status ? (
-          <Text
-            style={[
-              styles.toolCallStatus,
-              call.statusKind === "failed" && styles.toolCallStatusFailed
-            ]}
-          >
-            {status}
+      <View style={styles.toolCallStatusDot}>
+        <NativeControlGlyph
+          color={toolStatusColor(theme, call.statusKind)}
+          size={8}
+          variant="status"
+        />
+      </View>
+      <View style={styles.toolCallContent}>
+        <View style={styles.toolCallHeader}>
+          <Text numberOfLines={1} style={styles.toolCallName}>
+            {call.name}
+          </Text>
+          {status ? (
+            <Text
+              style={[
+                styles.toolCallStatus,
+                call.statusKind === "failed" && styles.toolCallStatusFailed
+              ]}
+            >
+              {status}
+            </Text>
+          ) : null}
+        </View>
+        {summary ? (
+          <Text numberOfLines={2} style={styles.toolCallSummary}>
+            {summary}
           </Text>
         ) : null}
       </View>
-      {summary ? (
-        <Text numberOfLines={3} style={styles.toolCallSummary}>
-          {summary}
-        </Text>
-      ) : null}
     </View>
   );
+}
+
+function toolGroupStatusKind(
+  calls: readonly ToolCall[]
+): ToolCall["statusKind"] {
+  for (const statusKind of [
+    "failed",
+    "working",
+    "waiting",
+    "canceled",
+    "completed"
+  ] as const) {
+    if (calls.some((call) => call.statusKind === statusKind)) return statusKind;
+  }
+  return null;
+}
+
+function toolStatusColor(
+  theme: NativeTheme,
+  statusKind: ToolCall["statusKind"]
+): string {
+  switch (statusKind) {
+    case "working":
+      return theme.color.accent;
+    case "completed":
+      return theme.color.success;
+    case "failed":
+      return theme.color.danger;
+    case "canceled":
+    case "waiting":
+    default:
+      return theme.color.muted;
+  }
 }
 
 function toolStatusLabel(
@@ -287,7 +467,11 @@ function MobileProcessingRow({ label }: { label: string | null | undefined }) {
   const styles = createStyles(theme);
   return (
     <View accessibilityLiveRegion="polite" style={styles.processing}>
-      <View style={styles.processingDot} />
+      <NativeControlGlyph
+        color={theme.color.accent}
+        size={8}
+        variant="status"
+      />
       <Text style={styles.processingText}>
         {label?.trim() || t("processing")}
       </Text>
@@ -313,19 +497,29 @@ function MobileTurnSummaryRow({
         onPress={() => setExpanded((value) => !value)}
         style={({ pressed }) => [styles.toolHeader, pressed && styles.pressed]}
       >
-        <Text style={styles.summaryTitle}>{label}</Text>
-        <Text style={styles.disclosure}>{expanded ? "−" : "+"}</Text>
+        <View style={styles.disclosureHeaderLine}>
+          <Text style={styles.summaryTitle}>{label}</Text>
+          <NativeControlGlyph
+            color={theme.color.muted}
+            direction={expanded ? "up" : "down"}
+            size={16}
+            variant="chevron"
+          />
+        </View>
       </Pressable>
       {expanded ? (
         <View style={styles.fileList}>
           {row.files.map((file) => (
-            <Text
-              key={file.messageId}
-              numberOfLines={1}
-              style={styles.fileName}
-            >
-              {file.label}
-            </Text>
+            <View key={file.messageId} style={styles.fileRow}>
+              <NativeControlGlyph
+                color={theme.color.muted}
+                size={6}
+                variant="status"
+              />
+              <Text numberOfLines={1} style={styles.fileName}>
+                {file.label}
+              </Text>
+            </View>
           ))}
         </View>
       ) : null}
@@ -345,10 +539,41 @@ function MobileGoalControlRow({ body }: { body: string }) {
 
 function createStyles(theme: NativeTheme) {
   return StyleSheet.create({
-    disclosure: { color: theme.color.muted, fontSize: 18, lineHeight: 18 },
+    errorDisclosure: {
+      alignItems: "center",
+      flexDirection: "row",
+      gap: theme.space.small,
+      justifyContent: "space-between",
+      minHeight: theme.control.regular
+    },
+    errorDisclosureContainer: { marginTop: theme.space.small },
+    errorDisclosureLabel: { color: theme.color.danger, fontSize: 13 },
     errorText: { color: theme.color.danger, fontSize: 14, lineHeight: 21 },
-    fileList: { gap: theme.space.small, paddingTop: theme.space.small },
-    fileName: { color: theme.color.textSecondary, fontSize: 13 },
+    disclosureHeaderLine: {
+      alignItems: "center",
+      alignSelf: "stretch",
+      flexDirection: "row",
+      gap: theme.space.small,
+      paddingHorizontal: theme.space.medium
+    },
+    fileList: {
+      borderTopColor: theme.color.border,
+      borderTopWidth: StyleSheet.hairlineWidth,
+      gap: theme.space.small,
+      paddingHorizontal: theme.space.medium,
+      paddingVertical: theme.space.small
+    },
+    fileName: {
+      color: theme.color.textSecondary,
+      flex: 1,
+      fontSize: 13
+    },
+    fileRow: {
+      alignItems: "center",
+      flexDirection: "row",
+      gap: theme.space.small,
+      minHeight: theme.control.compact
+    },
     goalControl: {
       borderLeftColor: theme.color.accent,
       borderLeftWidth: 2,
@@ -364,11 +589,13 @@ function createStyles(theme: NativeTheme) {
       alignSelf: "flex-start",
       borderRadius: theme.radius.large,
       gap: theme.space.small,
-      maxWidth: "88%"
+      maxWidth: "86%"
     },
     assistantMessage: {
       alignSelf: "stretch",
-      maxWidth: "100%"
+      marginBottom: theme.space.small,
+      maxWidth: "100%",
+      paddingVertical: theme.space.small
     },
     messageContent: { gap: theme.space.small },
     noticeDetail: {
@@ -383,16 +610,15 @@ function createStyles(theme: NativeTheme) {
       alignItems: "center",
       flexDirection: "row",
       gap: theme.space.small,
-      paddingHorizontal: theme.space.small,
-      paddingVertical: theme.space.small
-    },
-    processingDot: {
-      backgroundColor: theme.color.accent,
-      borderRadius: 4,
-      height: 8,
-      width: 8
+      minHeight: theme.control.compact,
+      paddingHorizontal: theme.space.medium
     },
     processingText: { color: theme.color.muted, fontSize: 13 },
+    rowFrame: {
+      alignSelf: "center",
+      maxWidth: 760,
+      width: "100%"
+    },
     speakerAccessibilityLabel: {
       height: 1,
       position: "absolute",
@@ -405,29 +631,46 @@ function createStyles(theme: NativeTheme) {
       fontWeight: "700"
     },
     thinkingBlock: {
-      backgroundColor: theme.color.background,
-      borderRadius: theme.radius.medium,
-      gap: 4,
-      padding: theme.space.small
+      borderLeftColor: theme.color.border,
+      borderLeftWidth: 2,
+      marginVertical: 2
+    },
+    thinkingBody: {
+      paddingBottom: theme.space.small,
+      paddingHorizontal: theme.space.medium
+    },
+    thinkingHeader: {
+      justifyContent: "center",
+      minHeight: theme.control.regular
     },
     thinkingLabel: {
       color: theme.color.muted,
-      fontSize: 11,
+      flex: 1,
+      fontSize: 13,
       fontWeight: "700"
     },
+    thinkingStatus: { color: theme.color.muted, fontSize: 11 },
     toolCall: {
-      borderTopColor: theme.color.border,
-      borderTopWidth: StyleSheet.hairlineWidth,
-      gap: 3,
-      paddingTop: theme.space.small
+      alignItems: "flex-start",
+      flexDirection: "row",
+      gap: theme.space.small,
+      minHeight: theme.control.regular,
+      paddingHorizontal: theme.space.medium,
+      paddingVertical: theme.space.small
     },
+    toolCallContent: { flex: 1, gap: 3, minWidth: 0 },
     toolCallHeader: {
       alignItems: "center",
       flexDirection: "row",
       gap: theme.space.small,
       justifyContent: "space-between"
     },
-    toolCallName: { color: theme.color.text, fontSize: 13, fontWeight: "700" },
+    toolCallName: {
+      color: theme.color.text,
+      flex: 1,
+      fontSize: 13,
+      fontWeight: "700"
+    },
     toolCallStatus: { color: theme.color.muted, fontSize: 11 },
     toolCallStatusFailed: { color: theme.color.danger },
     toolCallSummary: {
@@ -435,38 +678,41 @@ function createStyles(theme: NativeTheme) {
       fontSize: 13,
       lineHeight: 18
     },
+    toolCallStatusDot: { paddingTop: 5 },
     toolGroup: {
-      backgroundColor: theme.color.panelRaised,
+      backgroundColor: theme.color.panel,
       borderColor: theme.color.border,
-      borderRadius: theme.radius.medium,
+      borderRadius: theme.radius.large,
       borderWidth: StyleSheet.hairlineWidth,
-      padding: theme.space.medium
+      overflow: "hidden"
     },
     toolHeader: {
-      alignItems: "center",
-      flexDirection: "row",
-      gap: theme.space.small
+      justifyContent: "center",
+      minHeight: theme.control.regular,
+      paddingVertical: theme.space.small
     },
-    toolHeaderText: { flex: 1, gap: 2 },
-    toolList: { gap: theme.space.small, paddingTop: theme.space.small },
-    toolMeta: { color: theme.color.muted, fontSize: 12 },
-    toolThinking: {
+    toolHeaderText: { flex: 1, gap: 2, minWidth: 0 },
+    toolList: {
       borderTopColor: theme.color.border,
-      borderTopWidth: StyleSheet.hairlineWidth,
-      gap: 4,
-      paddingTop: theme.space.small
+      borderTopWidth: StyleSheet.hairlineWidth
     },
+    toolMeta: { color: theme.color.muted, fontSize: 12 },
     toolTitle: { color: theme.color.text, fontSize: 14, fontWeight: "700" },
     turnSummary: {
+      backgroundColor: theme.color.panel,
       borderColor: theme.color.border,
-      borderRadius: theme.radius.medium,
+      borderRadius: theme.radius.large,
       borderWidth: StyleSheet.hairlineWidth,
-      padding: theme.space.medium
+      overflow: "hidden"
     },
     userMessage: {
       alignSelf: "flex-end",
-      backgroundColor: theme.color.panel,
-      padding: theme.space.medium
+      backgroundColor: theme.color.panelRaised,
+      borderColor: theme.color.border,
+      borderWidth: StyleSheet.hairlineWidth,
+      marginTop: theme.space.medium,
+      paddingHorizontal: theme.space.medium,
+      paddingVertical: theme.space.small
     }
   });
 }

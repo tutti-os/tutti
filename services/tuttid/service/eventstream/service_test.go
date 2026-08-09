@@ -20,9 +20,18 @@ type agentComposerDefaultsPatcherStub struct {
 	inputs []preferencesservice.PatchAgentComposerDefaultsForTargetInput
 }
 
+type agentSessionLaunchModePatcherStub struct {
+	inputs []preferencesservice.PatchAgentSessionLaunchModeInput
+}
+
 func (s *agentComposerDefaultsPatcherStub) PatchAgentComposerDefaultsForTarget(_ context.Context, input preferencesservice.PatchAgentComposerDefaultsForTargetInput) (preferencesbiz.AgentComposerDefaults, error) {
 	s.inputs = append(s.inputs, input)
 	return preferencesbiz.AgentComposerDefaults{}, nil
+}
+
+func (s *agentSessionLaunchModePatcherStub) PatchAgentSessionLaunchMode(_ context.Context, input preferencesservice.PatchAgentSessionLaunchModeInput) (preferencesbiz.DesktopPreferences, error) {
+	s.inputs = append(s.inputs, input)
+	return preferencesbiz.DesktopPreferences{}, nil
 }
 
 func (s *preferencesMutatorStub) Put(_ context.Context, input preferencesservice.PutInput) (preferencesbiz.DesktopPreferences, error) {
@@ -562,6 +571,29 @@ func TestAgentComposerDefaultsPatchIntentUsesDedicatedMutationAndTargetInvalidat
 	}
 	if len(payload) != 1 || payload["agentTargetId"] != "local:opencode" {
 		t.Fatalf("invalidation payload = %#v", payload)
+	}
+}
+
+func TestAgentSessionLaunchModePatchIntentUsesDedicatedMutation(t *testing.T) {
+	t.Parallel()
+
+	service := NewService(DefaultCatalog(), nil)
+	patcher := &agentSessionLaunchModePatcherStub{}
+	service.RegisterIntentHandler(
+		TopicPreferencesAgentSessionLaunchModePatchRequested,
+		NewPreferencesAgentSessionLaunchModePatchRequestedHandler(patcher),
+	)
+	if err := service.PublishFromClient(context.Background(), ClientEvent{
+		Topic:   TopicPreferencesAgentSessionLaunchModePatchRequested,
+		Payload: []byte(`{"workspaceId":"workspace-1","projectSectionKey":"project:/alpha","mode":"worktree"}`),
+	}); err != nil {
+		t.Fatalf("PublishFromClient() error = %v", err)
+	}
+	if len(patcher.inputs) != 1 ||
+		patcher.inputs[0].WorkspaceID != "workspace-1" ||
+		patcher.inputs[0].ProjectSectionKey != "project:/alpha" ||
+		patcher.inputs[0].Mode != "worktree" {
+		t.Fatalf("patch inputs = %#v", patcher.inputs)
 	}
 }
 

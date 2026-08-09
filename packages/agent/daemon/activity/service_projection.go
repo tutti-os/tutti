@@ -139,12 +139,15 @@ func sessionMessageUpdateFromActivityEvent(
 			payload["text"] = event.Payload.Content
 		}
 		return WorkspaceAgentMessageUpdate{
-			AgentSessionID:   sessionID,
-			MessageID:        messageID,
-			TurnID:           strings.TrimSpace(event.Payload.TurnID),
-			Role:             role,
-			Kind:             kind,
-			Status:           firstNonEmptyString(payloadFirstStringValue(event.Payload.Metadata, "streamState"), event.Payload.Status),
+			AgentSessionID: sessionID,
+			MessageID:      messageID,
+			TurnID:         strings.TrimSpace(event.Payload.TurnID),
+			Role:           role,
+			Kind:           kind,
+			Status:         firstNonEmptyString(payloadFirstStringValue(event.Payload.Metadata, "streamState"), event.Payload.Status),
+			Semantics: &WorkspaceAgentMessageSemantics{
+				UserVisibleAssistantResponse: event.Payload.Semantics.UserVisibleAssistantResponse,
+			},
 			Payload:          payload,
 			OccurredAtUnixMS: timestamp,
 		}, true
@@ -183,6 +186,7 @@ func sessionMessageUpdateFromActivityEvent(
 			Role:             string(activityshared.MessageRoleAssistant),
 			Kind:             "tool_call",
 			Status:           status,
+			Semantics:        &WorkspaceAgentMessageSemantics{UserVisibleAssistantResponse: false},
 			CallID:           callID,
 			Title:            strings.TrimSpace(event.Payload.Name),
 			Payload:          payload,

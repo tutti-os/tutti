@@ -54,6 +54,7 @@ import type { RichTextMentionService } from "@tutti-os/ui-rich-text/service";
 import type { AgentGUIEngagementEventSink } from "./engagement/agentGUIEngagement.types";
 import type { AgentGUIComposerAppendRequest } from "./controller/useAgentGUIComposerAppendRequest";
 import type { OpenAgentEnvPanelInput } from "../../shared/agentEnv";
+import type { AgentGUISessionLaunchMode } from "./model/agentSessionLaunchMode";
 
 export interface AgentGUINodeIdentity {
   nodeId: string;
@@ -69,6 +70,7 @@ export interface AgentGUINodeWorkspace {
   selectProjectDirectory?: () => Promise<{ path: string } | null>;
   resolveExternalPromptEntries?: AgentComposerProps["resolveExternalPromptEntries"];
   prepareExternalPromptFiles?: AgentComposerProps["prepareExternalPromptFiles"];
+  resolvePastedPath?: AgentComposerProps["resolvePastedPath"];
   promptAssetLimit?: number | null;
   projectDirectorySourceAggregator?: ReferenceSourceAggregator | null;
   referenceSourceAggregator?: ReferenceSourceAggregator | null;
@@ -127,6 +129,12 @@ export interface AgentGUINodeHostCapabilities {
   sessionInputHistoryEnabled?: boolean;
   /** Host-owned experimental opt-in for creating Session forks. */
   sessionForkEnabled?: boolean;
+  /** Host-owned opt-in for launching self-owned local Sessions in git worktrees. */
+  sessionWorktreeEnabled?: boolean;
+  /** Host-owned durable launch preference projection for this workspace. */
+  sessionLaunchModesByProjectSectionKey?: Readonly<
+    Record<string, AgentGUISessionLaunchMode>
+  >;
   /** Host-owned experimental opt-in for the Codex saver-mode composer entry. */
   codexSaverModeEntryEnabled?: boolean;
   capabilityMenuState?: AgentComposerCapabilityMenuState;
@@ -200,6 +208,10 @@ export interface AgentGUINodeHostActions {
   onRememberComposerDefaults?: (
     input: AgentGUIRememberComposerDefaultsInput
   ) => void | Promise<AgentGUIRememberComposerDefaultsResult>;
+  onSessionLaunchModePreferenceChange?: (input: {
+    mode: AgentGUISessionLaunchMode;
+    projectSectionKey: string;
+  }) => void | Promise<void>;
   isMuted?: boolean;
   onMinimize?: () => void;
   onToggleMaximize?: () => void;
@@ -388,6 +400,7 @@ export function areAgentGUINodePropsEqual(
     pw.selectProjectDirectory === nw.selectProjectDirectory &&
     pw.resolveExternalPromptEntries === nw.resolveExternalPromptEntries &&
     pw.prepareExternalPromptFiles === nw.prepareExternalPromptFiles &&
+    pw.resolvePastedPath === nw.resolvePastedPath &&
     pw.promptAssetLimit === nw.promptAssetLimit &&
     pw.projectDirectorySourceAggregator ===
       nw.projectDirectorySourceAggregator &&
@@ -406,6 +419,9 @@ export function areAgentGUINodePropsEqual(
       nc.referenceProvenanceFilterEnabled &&
     pc.sessionInputHistoryEnabled === nc.sessionInputHistoryEnabled &&
     pc.sessionForkEnabled === nc.sessionForkEnabled &&
+    pc.sessionWorktreeEnabled === nc.sessionWorktreeEnabled &&
+    pc.sessionLaunchModesByProjectSectionKey ===
+      nc.sessionLaunchModesByProjectSectionKey &&
     pc.codexSaverModeEntryEnabled === nc.codexSaverModeEntryEnabled &&
     agentGuiStateEquals(previous.state, next.state) &&
     pf.position.x === nf.position.x &&
@@ -461,6 +477,8 @@ export function areAgentGUINodePropsEqual(
     pa.onResize === na.onResize &&
     pa.onUpdateNode === na.onUpdateNode &&
     pa.onRememberComposerDefaults === na.onRememberComposerDefaults &&
+    pa.onSessionLaunchModePreferenceChange ===
+      na.onSessionLaunchModePreferenceChange &&
     pa.isMuted === na.isMuted &&
     pa.onMinimize === na.onMinimize &&
     pa.onToggleMaximize === na.onToggleMaximize &&

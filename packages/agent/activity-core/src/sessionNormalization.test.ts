@@ -30,6 +30,7 @@ test("normalizes a transport session into the complete canonical contract", () =
     forkedFrom: null,
     goal: null,
     imported: false,
+    isolation: null,
     kind: "root",
     lastEventUnixMs: 42,
     latestTurn: null,

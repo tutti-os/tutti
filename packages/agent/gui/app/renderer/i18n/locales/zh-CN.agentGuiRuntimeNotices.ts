@@ -48,5 +48,8 @@ export const zhCNAgentGuiRuntimeNotices = {
   runtimeUnavailable: "与 {{device}} 的连接已断开，系统将自动重试",
   runtimeUnavailableActive:
     "与 {{device}} 的连接已断开，暂时无法发送或停止；任务可能仍在设备上运行",
-  runtimeSynchronizingProgress: "正在同步最新任务进度…"
+  runtimeSynchronizingProgress: "正在同步最新任务进度…",
+  interactionSynchronizing: "正在同步共享 Agent 状态，请稍后重试",
+  interactionOwnerOffline: "共享 Agent 的 Owner 当前离线",
+  interactionBindingRevoked: "共享 Agent 已失效，暂不可操作"
 } as const;

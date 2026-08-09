@@ -37,15 +37,34 @@ func (s *Service) CreateWithResult(ctx context.Context, workspaceID string, inpu
 	}
 	input.Provider = provider
 	input.ProviderTargetRef = launch.ProviderTargetRef
+	isolationMode := strings.TrimSpace(input.Isolation)
+	if isolationMode != "" && isolationMode != WorktreeIsolationMode {
+		return createSessionFailureResult(input, fmt.Errorf("%w: unsupported session isolation mode %q", ErrInvalidArgument, isolationMode))
+	}
+	if isolationMode == WorktreeIsolationMode && !sessionWorktreeTargetSupported(input.AgentTargetID, launch.ProviderTargetRef) {
+		return createSessionFailureResult(input, fmt.Errorf("%w: worktree isolation is unavailable for agent target", ErrInvalidArgument))
+	}
+	if isolationMode == WorktreeIsolationMode && !worktreeProjectRailPlacement(input.RailPlacement) {
+		return createSessionFailureResult(input, fmt.Errorf("%w: worktree isolation requires project rail placement", ErrInvalidArgument))
+	}
 	if valueBool(input.CodexSaverMode) && (!input.CodexSaverModeAllowed || !composerProviderSupportsSaverSubagentMode(provider)) {
 		return createSessionFailureResult(input, fmt.Errorf("%w: Codex saver mode is unavailable", ErrInvalidArgument))
 	}
 	if !input.CodexSaverModeAllowed || !composerProviderSupportsSaverSubagentMode(provider) {
 		input.CodexSaverMode = nil
 	}
+	modelExplicit := strings.TrimSpace(value(input.Model)) != ""
 	permissionModeExplicit := strings.TrimSpace(value(input.PermissionModeID)) != ""
+	reasoningEffortExplicit := strings.TrimSpace(value(input.ReasoningEffort)) != ""
 	if err := s.applyCreateSessionComposerDefaults(ctx, &input); err != nil {
 		return createSessionFailureResult(input, err)
+	}
+	if providerTargetRefKind(input.ProviderTargetRef) == "agent_extension" && !modelExplicit {
+		// Extension defaults are fallback preferences, not caller selections.
+		// Their model catalog is runtime-owned and can change independently of
+		// persisted preferences, so defer the effective model to the live
+		// extension validation below.
+		input.Model = nil
 	}
 	input.ConversationDetailMode = preferencesbiz.NormalizeDesktopAgentConversationDetailMode(input.ConversationDetailMode)
 	requestedPermissionModeID := strings.TrimSpace(value(input.PermissionModeID))
@@ -110,10 +129,6 @@ func (s *Service) CreateWithResult(ctx context.Context, workspaceID string, inpu
 		value(input.Model),
 		input.ReasoningEffort,
 	)
-	isolationMode := strings.TrimSpace(input.Isolation)
-	if isolationMode != "" && isolationMode != WorktreeIsolationMode {
-		return createSessionFailureResult(input, fmt.Errorf("%w: unsupported session isolation mode %q", ErrInvalidArgument, isolationMode))
-	}
 	worktreeLock := s.worktreeLock()
 	worktreeLock.RLock()
 	defer worktreeLock.RUnlock()
@@ -136,20 +151,22 @@ func (s *Service) CreateWithResult(ctx context.Context, workspaceID string, inpu
 	var isolationWarnings []SessionWarning
 	keepWorktree := false
 	if isolationMode == WorktreeIsolationMode {
-		created, warnings, createErr := s.createSessionWorktree(ctx, workspaceID, cwd, input.AgentSessionID)
+		launch, createErr := s.createSessionWorktree(ctx, workspaceID, cwd, input.AgentSessionID)
 		if createErr != nil {
 			return createSessionFailureResult(input, createErr)
 		}
-		isolation = &created
-		isolationWarnings = warnings
-		cwd = created.WorktreePath
+		isolation = &launch.Isolation
+		isolationWarnings = launch.Warnings
+		cwd = launch.Cwd
 		input.Cwd = stringPointer(cwd)
-		input.RuntimeContext = sessionIsolationRuntimeContext(input.RuntimeContext, created)
-		defer func() {
-			if !keepWorktree {
-				s.rollbackSessionWorktree(context.Background(), created)
-			}
-		}()
+		input.RuntimeContext = sessionIsolationRuntimeContext(input.RuntimeContext, launch.Isolation)
+		if launch.Created {
+			defer func() {
+				if !keepWorktree {
+					s.rollbackSessionWorktree(context.Background(), launch.Isolation)
+				}
+			}()
+		}
 	}
 	if providerTargetRefKind(input.ProviderTargetRef) == "agent_extension" {
 		nodeStartedAt = time.Now()
@@ -158,11 +175,14 @@ func (s *Service) CreateWithResult(ctx context.Context, workspaceID string, inpu
 			workspaceID,
 			cwd,
 			&input,
+			modelExplicit,
 			permissionModeExplicit,
+			reasoningEffortExplicit,
 		); err != nil {
 			s.reportAgentServiceNodeFailure(ctx, input.AgentSessionID, "session_create", "settings_validated", provider, nodeStartedAt, err)
 			return createSessionFailureResult(input, err)
 		}
+		input.RuntimeContext = runtimeContextWithSessionRuntimeSnapshot(input.RuntimeContext, input, provider, planResolution)
 		s.reportAgentServiceNodeSuccess(ctx, input.AgentSessionID, "session_create", "settings_validated", provider, nodeStartedAt)
 	}
 	nodeStartedAt = time.Now()
@@ -172,7 +192,17 @@ func (s *Service) CreateWithResult(ctx context.Context, workspaceID string, inpu
 		return createSessionFailureResult(input, err)
 	}
 	if isolation != nil {
-		prepared.Cwd = isolation.WorktreePath
+		prepared.Cwd = cwd
+	}
+	// Keep the durable launch snapshot aligned with the same capability clamp
+	// used by runtime preparation. Otherwise a missing browser/computer backend
+	// could be omitted from skills/env while the persisted session still claims
+	// that it is enabled.
+	if prepared.BrowserUse != nil || input.BrowserUse != nil {
+		input.BrowserUse = prepared.BrowserUse
+	}
+	if prepared.ComputerUse != nil || input.ComputerUse != nil {
+		input.ComputerUse = prepared.ComputerUse
 	}
 	s.reportAgentServiceNodeSuccess(ctx, input.AgentSessionID, "session_create", "runtime_prepared", provider, nodeStartedAt)
 	logAgentSubmitTrace("service.create.runtime_prepared", workspaceID, input.AgentSessionID, input.ClientSubmitID, input.Metadata, map[string]any{"cwd": prepared.Cwd, "env_count": len(prepared.Env)})
@@ -350,6 +380,12 @@ func (s *Service) CreateWithResult(ctx context.Context, workspaceID string, inpu
 	}, err
 }
 
+func worktreeProjectRailPlacement(placement *agenthost.RailPlacement) bool {
+	return placement != nil &&
+		agenthost.RailPlacementKind(strings.TrimSpace(string(placement.Kind))) == agenthost.RailPlacementKindProject &&
+		strings.TrimSpace(placement.ProjectPath) != ""
+}
+
 func createSessionFailureResult(input CreateSessionInput, err error) (CreateSessionResult, error) {
 	initialGoalStatus := agenthost.CreateSessionInitialGoalStatusNotRequested
 	_, typedGoal := agenthost.ParseTypedGoalControl(input.InitialContent, false)
@@ -494,8 +530,10 @@ func agentSessionIDOrNew(agentSessionID string) string {
 }
 
 type preparedRuntime struct {
-	Cwd string
-	Env []string
+	Cwd         string
+	Env         []string
+	BrowserUse  *bool
+	ComputerUse *bool
 }
 
 func (s *Service) prepareRuntime(ctx context.Context, workspaceID string, cwd string, input CreateSessionInput, endpoints ...*runtimeprep.ModelEndpointConfig) (preparedRuntime, error) {
@@ -558,6 +596,8 @@ func (s *Service) prepareRuntimeWithModelEndpoint(
 		effectiveEndpoint = &endpointCopy
 		gatewayRegistered = true
 	}
+	effectiveBrowserUse := s.clampComposerBrowserUseForLaunch(ctx, provider, input.ProviderTargetRef, input.BrowserUse)
+	effectiveComputerUse := s.clampComposerComputerUseForLaunch(ctx, provider, input.ProviderTargetRef, input.ComputerUse)
 	prepared, err := s.RuntimePreparer.Prepare(ctx, runtimeprep.PrepareInput{
 		WorkspaceID:               workspaceID,
 		AgentSessionID:            strings.TrimSpace(input.AgentSessionID),
@@ -568,8 +608,8 @@ func (s *Service) prepareRuntimeWithModelEndpoint(
 		Title:                     value(input.Title),
 		PermissionModeID:          value(input.PermissionModeID),
 		PlanMode:                  clampComposerPlanModeForLaunch(provider, input.ProviderTargetRef, valueBool(input.PlanMode)),
-		BrowserUse:                s.clampComposerBrowserUseForLaunch(ctx, provider, input.ProviderTargetRef, input.BrowserUse),
-		ComputerUse:               s.clampComposerComputerUseForLaunch(ctx, provider, input.ProviderTargetRef, input.ComputerUse),
+		BrowserUse:                effectiveBrowserUse,
+		ComputerUse:               effectiveComputerUse,
 		CodexSaverMode:            valueBool(input.CodexSaverMode),
 		ProviderTargetRef:         clonePayload(input.ProviderTargetRef),
 		ExtensionSkillRoots:       s.resolveExtensionSkillRoots(ctx, input.ProviderTargetRef),
@@ -601,8 +641,10 @@ func (s *Service) prepareRuntimeWithModelEndpoint(
 		prepared.Cwd = cwd
 	}
 	return preparedRuntime{
-		Cwd: prepared.Cwd,
-		Env: append([]string(nil), prepared.Env...),
+		Cwd:         prepared.Cwd,
+		Env:         append([]string(nil), prepared.Env...),
+		BrowserUse:  effectiveCapabilitySetting(input.BrowserUse, effectiveBrowserUse),
+		ComputerUse: effectiveCapabilitySetting(input.ComputerUse, effectiveComputerUse),
 	}, nil
 }
 

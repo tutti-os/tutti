@@ -21,7 +21,15 @@ const (
 	GoalProviderPhaseAccepted   = "accepted"
 	GoalProviderPhaseApplied    = "applied"
 	GoalProviderPhaseUnknown    = "unknown"
+
+	GoalControlCompletionModeProvider  GoalControlCompletionMode = "provider"
+	GoalControlCompletionModeLocalStop GoalControlCompletionMode = "local_stop"
 )
+
+// GoalControlCompletionMode distinguishes provider-confirmed completion from
+// restart recovery that only finalizes the durable local stop. The zero value
+// preserves the provider-confirmed behavior for existing callers.
+type GoalControlCompletionMode string
 
 var (
 	ErrGoalOperationConflict       = errors.New("goal control operation identity conflicts with existing state")
@@ -113,6 +121,7 @@ type ProviderGoalAdoption struct {
 type GoalControlOperationComplete struct {
 	OperationID      string
 	WorkspaceID      string
+	Mode             GoalControlCompletionMode
 	Observed         map[string]any
 	Evidence         map[string]any
 	LastError        string

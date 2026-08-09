@@ -146,6 +146,7 @@ export function useAgentGUIComposerCapabilities(
         sessionCapabilities
       }),
     composerSupport,
+    composerOptionsLoadStatus,
     composerOptionsLoading,
     composerTargetData,
     defaultReasoningEffort,

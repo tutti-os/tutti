@@ -16,7 +16,7 @@ import (
 	market "github.com/tutti-os/tutti/packages/connector/host"
 )
 
-func TestPreparerVerifiesPromotesAndReusesContentAddressedArtifact(t *testing.T) {
+func TestPreparerVerifiesPromotesAndReusesLatestArtifact(t *testing.T) {
 	manifest := []byte(`{"schemaVersion":"1","connectorKey":"github"}`)
 	archive := testZIP(t, map[string][]byte{
 		packagedManifestPath: manifest,
@@ -57,9 +57,9 @@ func TestPreparerVerifiesPromotesAndReusesContentAddressedArtifact(t *testing.T)
 	if string(content) != "executable" {
 		t.Fatalf("prepared content = %q", content)
 	}
-	blob := filepath.Join(root, "blobs", "sha256", release.Artifact.SHA256)
-	if _, err := os.Stat(blob); err != nil {
-		t.Fatalf("content-addressed blob: %v", err)
+	cached := filepath.Join(root, "cache", release.ConnectorKey, "current", downloadCacheArtifactFile)
+	if _, err := os.Stat(cached); err != nil {
+		t.Fatalf("current cached artifact: %v", err)
 	}
 }
 
@@ -105,7 +105,7 @@ func TestResolvePreparedAllowsLegacyReleaseWithoutIcon(t *testing.T) {
 	}
 }
 
-func TestResolvePreparedRepairsInvalidInventoryFromVerifiedBlob(t *testing.T) {
+func TestResolvePreparedRepairsInvalidInventoryFromLatestVerifiedArtifact(t *testing.T) {
 	manifest := []byte(`{"schemaVersion":"1","connectorKey":"github"}`)
 	archive := testZIP(t, map[string][]byte{
 		packagedManifestPath: manifest,
@@ -133,7 +133,7 @@ func TestResolvePreparedRepairsInvalidInventoryFromVerifiedBlob(t *testing.T) {
 		t.Fatalf("ResolvePrepared() failed to repair invalid inventory: %v", err)
 	}
 	if fetcher.calls != 1 {
-		t.Fatalf("fetch calls = %d, want 1 verified blob download", fetcher.calls)
+		t.Fatalf("fetch calls = %d, want 1 verified artifact download", fetcher.calls)
 	}
 	if resolved.PreparedPath != prepared.PreparedPath || resolved.InventoryDigest != prepared.InventoryDigest {
 		t.Fatalf("resolved receipt = %#v, want repaired %#v", resolved, prepared)
@@ -150,7 +150,7 @@ func TestResolvePreparedRepairsInvalidInventoryFromVerifiedBlob(t *testing.T) {
 	}
 }
 
-func TestResolvePreparedRepairsModifiedContentFromVerifiedBlob(t *testing.T) {
+func TestResolvePreparedRepairsModifiedContentFromLatestVerifiedArtifact(t *testing.T) {
 	manifest := []byte(`{"schemaVersion":"1","connectorKey":"github"}`)
 	archive := testZIP(t, map[string][]byte{
 		packagedManifestPath: manifest,
@@ -185,7 +185,7 @@ func TestResolvePreparedRepairsModifiedContentFromVerifiedBlob(t *testing.T) {
 		t.Fatalf("repaired content = %q", content)
 	}
 	if fetcher.calls != 1 {
-		t.Fatalf("fetch calls = %d, want 1 verified blob download", fetcher.calls)
+		t.Fatalf("fetch calls = %d, want 1 verified artifact download", fetcher.calls)
 	}
 }
 

@@ -1,25 +1,68 @@
 ---
 name: tutti-record-agent-session-replay
-description: Record, audit, replay, publish, or diagnose deterministic Tutti AgentGUI Session Replay cassettes from a Tutti checkout while keeping the external case repository as the Case and artifact source of truth. Use for Tutti Session Replay Case scenarios, real Provider recordings, cassette transport or semantic-state mismatches, fresh replay qualification, and AgentGUI replay evidence. Do not use for cases whose case.json declares executionKind "ui".
+description: >-
+  From a Tutti checkout, run, audit, freshly replay, publish, or diagnose
+  Session Replay cassettes that are driven by case-repository scenario scripts
+  (CDP), not by interactive UI recording. Use for real-Provider capture while a
+  scenario.mjs executes, cassette transport or semantic-state mismatches, fresh
+  replay qualification, AgentGUI replay evidence, and product-side support for a
+  new Agent Target beyond local:codex / local:claude-code. Do not use to author
+  Case metadata or scenario scripts (case repository write-replay-case), or for
+  executionKind "ui" Cases.
 ---
 
-# Record Tutti Agent Session Replay
+# Qualify Tutti Agent Session Replay Cassettes
 
 Work from the Tutti checkout. Keep product implementation and the generic
-runner in Tutti; keep Case metadata, scenarios, fixtures, qualified Cassettes,
-and evidence in the external case repository.
+runner in Tutti; keep Case metadata, **scenario scripts**, fixtures, qualified
+Cassettes, and evidence in the external case repository (`tutti-os/tutti-replay`).
 
-Prove work in this order:
+Mental model (script-first, not UI recording):
 
-`Case -> scenario -> real Record -> structural audit -> fresh Replay -> optional publication`
+1. Humans/agents **write** a deterministic `scenarios/*.mjs` (prepare / drive /
+   assert) in the case repository — that script is the recording plan.
+2. **Record** means: Tutti runner launches Desktop, CDP-executes that script
+   against a **live** Provider, and captures the Cassette. There is no separate
+   click-to-record UI workflow for Session Replay.
+3. Day-to-day Record/Replay is usually triggered from the case repository QA
+   console; this skill is for Tutti-side CLI qualification, diagnosis, runner
+   or Replay product defects, and new Provider capture support.
+
+Prove qualification in this order:
+
+`existing scenario script -> live Record (script + Provider) -> structural audit -> fresh Replay -> optional publication`
 
 Never call a Cassette qualified until Record, audit, and a fresh isolated
-Replay have all passed.
+Replay have all passed. If the scenario script itself is missing or wrong,
+stop and use the case repository `write-replay-case` skill — do not invent
+Cases inside Tutti.
+
+## Start the QA console (case repository)
+
+Browsing Cases, Test Plans, and one-click Record/Replay (which run the same
+scenario scripts) live in the **case repository** (sibling checkout, commonly
+`../tutti-replay`; GitHub: `tutti-os/tutti-replay`).
+
+From the case repository root:
+
+```bash
+pnpm install
+pnpm dev
+```
+
+Open only `http://127.0.0.1:3333` (never the API port `:3334`). In the UI,
+set the Tutti checkout absolute path, create a Test Plan, then Record or
+Replay. First-time machine setup: that repository's `SETUP.md`. Authoring or
+mirroring scenario scripts: `.agents/skills/write-replay-case/`.
+
+For a long-lived LAN service on macOS use `pnpm replay:service install`
+(port `2333`); do not run `pnpm dev` and the stable service at the same time.
 
 ## Establish scope
 
 1. Read the Tutti root and closest `AGENTS.md` files.
-2. Read `docs/architecture/agent-session-replay.md`.
+2. Read `docs/architecture/agent-session-replay.md` (Provider support: developer
+   recording currently accepts `local:codex` and `local:claude-code` only).
 3. For AgentGUI behavior, also read `docs/architecture/agent-gui-node.md` and
    `packages/agent/gui/AGENTS.md`.
 4. For Session, Turn, Goal, or runtime-operation lifecycle behavior, read
@@ -27,8 +70,8 @@ Replay have all passed.
 5. Inspect `git status --short` in both repositories and preserve pre-existing
    work.
 6. Resolve the case repository from the user-provided path, the configured
-   cases path, or the sibling `../tutti-agent-session-replay-cases` checkout.
-   Do not guess another location if none exists.
+   cases path, or the sibling `../tutti-replay` checkout. Do not guess another
+   location if none exists.
 
 Read the selected Case before planning:
 
@@ -39,8 +82,12 @@ Read the selected Case before planning:
 - the case repository's `README.md` and `CONTEXT.md` when publication or Case
   lifecycle is involved
 
-If `case.json` declares `executionKind: "ui"`, stop this workflow. It is a
-UI-drive Case, not a Session Replay recording Case.
+If `case.json` declares `executionKind: "ui"`, stop this Session Replay
+workflow. Pure UI Cases are still script-driven (`defineUiScenario` + CDP),
+but they use **ui-drive** and publish `ui/` screenshots — they do not Record
+Provider Cassettes. Author and run them via the case repository
+`write-replay-case` skill and the QA console; do not use this skill's
+`--record` / Cassette audit path for them.
 
 Use CDP through Tutti's repository runner. Do not use Computer Use unless the
 user explicitly requests it.
@@ -56,35 +103,77 @@ user explicitly requests it.
 - Fix root causes. Do not relax transport matching, semantic verification,
   terminal assertions, or checkpoint requirements to accept a broken Case.
 
-## Design a deterministic scenario
+## Add a new Provider (product vs case repository)
 
-Use the case repository's existing scenario factory and provider profile
-patterns. A scenario must export `prepare`, `drive`, and `assert`, set its
-Provider explicitly or through the repository helper, and set every
-behavior-affecting composer default explicitly.
+Today Replay recording targets are `local:codex` and `local:claude-code`. The
+shared Session Replay core is provider-neutral, but each new Agent Target still
+needs Tutti capture + fail-closed playback before any Case work is useful.
 
-Require all of the following:
+Split work explicitly:
 
-- one stable prompt per intended Turn, with exact markers;
-- an exact final token when an assistant reply is expected;
-- harmless and reversible commands for approval Cases;
-- accessible labels, test IDs, or semantic DOM state instead of coordinates;
-- waits for each interaction before acting;
-- exactly one response to each approval, question, or plan decision;
-- an asserted terminal state and no enabled stale controls;
-- a declared expected recording mode when continuing an existing Session;
-- provider-derived scenario and Cassette identity rather than a hard-coded
-  Codex target.
+| Layer   | Where           | Who                                   | Scope                                                                                                                                                                                       |
+| ------- | --------------- | ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Product | Tutti           | experienced / mentored                | Adapter capture, projected tape, portability, structural audit, outbound verification, input-unit barriers, isolated Provider home, deterministic fail-closed Replay for `local:<provider>` |
+| Cases   | case repository | can hand to intern after product gate | `providerProfiles`, `KNOWN_PROVIDERS`, `defineMirroredRecordScenario` mirrors, Record via console, publish cassettes                                                                        |
 
-For question cards, trigger the Provider's real user-input request. For plan
-Cases, wait for the completed plan and implementation decision before driving
-the real action.
+Do **not** start by writing Cases for an unsupported Provider. Product must
+accept `--agent-target-id local:<provider>` for Record and Replay first.
 
-## Record with the Tutti runner
+### Tutti checklist (this repository)
 
-Run one real Provider recording per scenario from the Tutti root. Derive the
-scenario ID, Cassette name, and Agent Target from the loaded scenario. For
-example:
+Copy and tick:
+
+```
+- [ ] 1. Provider adapter can Record real traffic into a Cassette
+- [ ] 2. Projected tape + portability (paths/homes) match session-replay contract
+- [ ] 3. Structural audit passes (manifest, frames, activity causality)
+- [ ] 4. Fresh isolated Replay is fail-closed (no live Provider fallback)
+- [ ] 5. Runner accepts --agent-target-id local:<provider>
+- [ ] 6. docs/architecture/agent-session-replay.md Provider support updated
+- [ ] 7. Hand off to case repository write-replay-case for mirrors + console Record
+```
+
+Prove with one smoke scenario from the case repository (or a temporary
+scenario file) using the Tutti runner Record → audit → fresh Replay loop below.
+Keep account secrets out of logs and reports.
+
+### Case repository handoff
+
+After the product gate is green, follow that repository's
+`write-replay-case` skill section on multi-provider mirrors. Typical touch
+points there (not in Tutti): `scenario-runtime/shared.mjs` `providerProfiles`,
+`src/shared/agent-target.ts` `KNOWN_PROVIDERS`, mirrored `*.impl.mjs` + variant
+Case dirs, then console Record/Replay publication.
+
+## Scenario scripts (owned by the case repository)
+
+Session Replay drive logic is **authored as scripts**, not captured from
+manual UI interaction. Prefer the case repository's `write-replay-case` skill
+and `defineMirroredRecordScenario` / `defineRecordScenario` helpers.
+
+When diagnosing or qualifying from Tutti, still require that the loaded
+scenario:
+
+- exports `prepare`, `drive`, and `assert`;
+- sets Provider via profile/helper (not a hard-coded Codex-only identity);
+- sets every behavior-affecting composer default explicitly;
+- uses one stable prompt per intended Turn, with exact markers / final tokens;
+- uses accessible labels, test IDs, or semantic DOM state instead of coordinates;
+- waits before each interaction; answers each approval/question/plan once;
+- asserts a terminal state with no enabled stale controls;
+- declares `expectedRecordingMode` when continuing an existing Session.
+
+For question cards, the script must trigger the Provider's real user-input
+request. For plan Cases, wait for the completed plan and implementation
+decision before driving the real action.
+
+If the script needs to change, edit it in the case repository — then re-Record.
+
+## Record = execute the scenario script with a live Provider
+
+From the Tutti root, run the repository runner so it CDP-drives the scenario
+file and captures a Cassette. Derive scenario ID, Cassette name, and Agent
+Target from the loaded scenario:
 
 ```bash
 pnpm e2e:agent-gui -- \
@@ -96,6 +185,9 @@ pnpm e2e:agent-gui -- \
   --timeout-ms 300000 \
   --stall-timeout-ms 60000
 ```
+
+Prefer the case console Test Plan「录制」for routine work; use this CLI when
+debugging runner/Replay behavior or when the console is unavailable.
 
 Omit `--headless` while debugging; add it for unattended execution. Keep the
 runtime only long enough to inspect or collect its artifacts.

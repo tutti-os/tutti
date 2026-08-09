@@ -58,17 +58,7 @@ export type {
   AgentGUIComposerFooterAccessoryContext,
   AgentGUIComposerFooterAccessoryRenderer
 } from "./view/AgentGUIComposerFooterAccessory.types";
-export type {
-  AgentGUINodeViewProps,
-  AgentGUIAgentsEmptyRenderer,
-  AgentGUIConversationRailLayout,
-  AgentGUISidebarFooterContext,
-  AgentGUISidebarFooterRenderer,
-  AgentGUIViewLabels,
-  AgentMentionReferenceTargetResolver,
-  AgentWorkspaceReferenceInitialTargetInput,
-  AgentWorkspaceReferenceInitialTargetResolver
-} from "./view/AgentGUINodeView.types";
+export * from "./AgentGUINodeView.publicTypes";
 export {
   buildAgentConversationHandoffPrompt,
   handoffProjectPathForConversation,
@@ -89,6 +79,9 @@ export function AgentGUINodeView({
   referenceProvenanceFilters = null,
   sessionInputHistoryEnabled = false,
   sessionForkEnabled = false,
+  sessionWorktreeEnabled = false,
+  sessionLaunchModesByProjectSectionKey,
+  onSessionLaunchModePreferenceChange,
   renderAgentTargetInfo,
   renderProjectDirectoryPickerHeaderActions,
   renderSidebarFooter,
@@ -136,6 +129,7 @@ export function AgentGUINodeView({
   onWorkspaceFileReferencesAdded,
   resolveExternalPromptEntries = null,
   prepareExternalPromptFiles = null,
+  resolvePastedPath = null,
   promptAssetLimit = null,
   onConversationRailWidthChanged,
   onConversationRailLayoutChange,
@@ -698,6 +692,13 @@ export function AgentGUINodeView({
                 referenceProvenanceFilters={referenceProvenanceFilters}
                 sessionInputHistoryEnabled={sessionInputHistoryEnabled}
                 sessionForkEnabled={sessionForkEnabled}
+                sessionWorktreeEnabled={sessionWorktreeEnabled}
+                sessionLaunchModesByProjectSectionKey={
+                  sessionLaunchModesByProjectSectionKey
+                }
+                onSessionLaunchModePreferenceChange={
+                  onSessionLaunchModePreferenceChange
+                }
                 composerEngagement={composerEngagement}
                 actions={actions}
                 labels={labels}
@@ -727,6 +728,7 @@ export function AgentGUINodeView({
                 onRequestWorkspaceReferences={requestWorkspaceReferences}
                 resolveExternalPromptEntries={resolveExternalPromptEntries}
                 prepareExternalPromptFiles={prepareExternalPromptFiles}
+                resolvePastedPath={resolvePastedPath}
                 promptAssetLimit={promptAssetLimit}
                 selectProjectDirectory={effectiveSelectProjectDirectory}
                 onRequestGitBranches={onRequestGitBranches}

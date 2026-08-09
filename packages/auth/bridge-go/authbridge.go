@@ -648,7 +648,6 @@ func (c *Client) fetchUserInfo(ctx context.Context, cookie string) (*UserInfo, e
 	}
 	return &user, nil
 }
-
 func (c *Client) logoutSession(ctx context.Context, cookie string) error {
 	return c.postAccount(ctx, "/auth/v1/logout-web-session", cookie, map[string]string{"app_id": c.config.AppID}, nil)
 }

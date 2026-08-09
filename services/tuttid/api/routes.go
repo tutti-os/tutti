@@ -554,6 +554,14 @@ func RegisterRoutes(mux *http.ServeMux, routes Routes) {
 		wrapper.ResolveWorkspaceGitPatchSupport(w, r)
 	})
 
+	mux.HandleFunc("/v1/workspaces/{workspaceID}/agent-session-worktree-support", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			tuttitypes.WriteMethodNotAllowed(w)
+			return
+		}
+		wrapper.ResolveWorkspaceAgentSessionWorktreeSupport(w, r)
+	})
+
 	mux.HandleFunc("/v1/workspaces/{workspaceID}/git-patch", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			tuttitypes.WriteMethodNotAllowed(w)

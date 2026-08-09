@@ -831,6 +831,60 @@ func TestCompareTuttiReplayStateCanonicalizesAddedFileChangeBodies(
 	}
 }
 
+func TestCompareTuttiReplayStateCanonicalizesModifiedFileChangeBodies(
+	t *testing.T,
+) {
+	buildState := func(fileChanges map[string]any) TuttiReplayState {
+		return TuttiReplayState{
+			SchemaVersion: SchemaVersion,
+			Agent: TuttiReplayAgent{
+				RootSessionID: "session-1",
+				Sessions: []agenthost.HistoricalSession{{
+					ID:                "session-1",
+					Kind:              "root",
+					AgentTargetID:     "local:codex",
+					Provider:          "codex",
+					ProviderSessionID: "provider-session-1",
+					Turns: []agenthost.HistoricalTurn{{
+						ID:          "turn-1",
+						Phase:       "settled",
+						Outcome:     "completed",
+						Origin:      "user_prompt",
+						FileChanges: fileChanges,
+					}},
+				}},
+			},
+			TuttiMode: TuttiReplayTuttiMode{
+				Activations:   []TuttiReplayActivation{},
+				TurnSnapshots: []TuttiReplayTurnSnapshot{},
+			},
+			Workflows: []TuttiReplayWorkflow{},
+			Issues:    []TuttiReplayIssue{},
+		}
+	}
+	recorded := buildState(map[string]any{
+		"files": []any{map[string]any{
+			"path":        "${REPLAY_CWD}/one.txt",
+			"change":      "modified",
+			"diff":        "R14_ONE_UPDATED",
+			"unifiedDiff": "R14_ONE_UPDATED",
+		}},
+	})
+	live := buildState(map[string]any{
+		"files": []any{map[string]any{
+			"path":      "${REPLAY_CWD}/one.txt",
+			"change":    "modified",
+			"newString": "R14_ONE_UPDATED\n",
+		}},
+	})
+	if err := CompareTuttiReplayState(recorded, live); err != nil {
+		t.Fatalf(
+			"modified-file bodies under obsolete diff must match live newString, got %v",
+			err,
+		)
+	}
+}
+
 func TestCompareTuttiReplayStateTreatsToolCallIDsAsAlphaEquivalent(
 	t *testing.T,
 ) {
@@ -872,5 +926,65 @@ func TestCompareTuttiReplayStateTreatsToolCallIDsAsAlphaEquivalent(
 		buildState("approval:replayed-call"),
 	); err != nil {
 		t.Fatalf("tool_call callId must be alpha-equivalent, got %v", err)
+	}
+}
+
+func TestCompareTuttiReplayStateTreatsInteractionToolCallIDsAsAlphaEquivalent(
+	t *testing.T,
+) {
+	buildState := func(requestID, toolCallID string) TuttiReplayState {
+		return TuttiReplayState{
+			SchemaVersion: SchemaVersion,
+			Agent: TuttiReplayAgent{
+				RootSessionID: "session-0",
+				Sessions: []agenthost.HistoricalSession{{
+					ID:                "session-0",
+					Kind:              "root",
+					AgentTargetID:     "local:claude-code",
+					Provider:          "claude-code",
+					ProviderSessionID: "provider-session-0",
+				}, {
+					ID:                "session-1",
+					Kind:              "child",
+					RootSessionID:     "session-0",
+					ParentSessionID:   "session-0",
+					AgentTargetID:     "local:claude-code",
+					Provider:          "claude-code",
+					ProviderSessionID: "provider-session-1",
+					Interactions: []agenthost.HistoricalInteraction{{
+						RequestID: requestID,
+						TurnID:    "turn-1",
+						Kind:      "approval",
+						Status:    "answered",
+						ToolName:  "Bash",
+						Input: map[string]any{
+							"toolCall": map[string]any{
+								"name":       "Bash",
+								"toolName":   "Bash",
+								"toolCallId": toolCallID,
+								"title":      "echo hi",
+							},
+						},
+						Output:   map[string]any{},
+						Metadata: map[string]any{},
+					}},
+				}},
+			},
+			TuttiMode: TuttiReplayTuttiMode{
+				Activations:   []TuttiReplayActivation{},
+				TurnSnapshots: []TuttiReplayTurnSnapshot{},
+			},
+			Workflows: []TuttiReplayWorkflow{},
+			Issues:    []TuttiReplayIssue{},
+		}
+	}
+	if err := CompareTuttiReplayState(
+		buildState("req-recorded", "call_recorded"),
+		buildState("req-replayed", "call_replayed"),
+	); err != nil {
+		t.Fatalf(
+			"interaction toolCallId must be alpha-equivalent, got %v",
+			err,
+		)
 	}
 }

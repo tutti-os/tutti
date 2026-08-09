@@ -23,7 +23,7 @@ type Service interface {
 	ReconcileRuntime(ctx context.Context, mutation ConnectorMutation) (MutationResult, error)
 	GetAuthorizationProjection(ctx context.Context, accountID, connectorKey string) (AuthorizationProjection, error)
 	ObserveAuthorization(ctx context.Context, mutation ConnectorMutation, projection AuthorizationProjection) (MutationResult, error)
-	BeginAuthorization(ctx context.Context, mutation ConnectorMutation) (AuthorizationResult, error)
+	BeginAuthorization(ctx context.Context, mutation ConnectorMutation, secret []byte) (AuthorizationResult, error)
 	DisconnectAuthorization(ctx context.Context, mutation ConnectorMutation) (MutationResult, error)
 	ExecuteOperation(ctx context.Context, operationID string) error
 	Recover(ctx context.Context) error

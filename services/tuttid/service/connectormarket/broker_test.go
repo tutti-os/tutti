@@ -24,7 +24,7 @@ func TestConnectorBrokerAdaptsPublicDiscoverySkillsAndInvocation(t *testing.T) {
 	if err := os.MkdirAll(skillDir, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(root, "tutti.connector.json"), []byte(`{"name":{"en-US":"Demo Package"},"description":{"en-US":"Package description"},"skills":["./skills/diagnostic/SKILL.md"]}`), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(root, "tutti.connector.json"), []byte(`{"name":{"en-US":"Demo Package"},"description":{"en-US":"Package description"}}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte("---\nname: run-diagnostic\ndescription: Run one diagnostic.\n---\n\n# Run Diagnostic\n\nUse the broker.\n"), 0o600); err != nil {
@@ -42,12 +42,14 @@ func TestConnectorBrokerAdaptsPublicDiscoverySkillsAndInvocation(t *testing.T) {
 		t.Fatal(err)
 	}
 	connectors, ok := available.Value["connectors"].([]implementationhost.ConnectorSummary)
-	if !ok || len(connectors) != 1 || connectors[0].Name != "Demo Package" {
+	if !ok || len(connectors) != 1 || connectors[0].Name != "Demo Package" || len(connectors[0].Skills) != 1 ||
+		connectors[0].Skills[0].Name != "run-diagnostic" || connectors[0].Skills[0].Description != "Run one diagnostic." ||
+		connectors[0].Skills[0].EntryPath != filepath.Join(skillDir, "SKILL.md") || connectors[0].Skills[0].BasePath != skillDir {
 		t.Fatalf("available = %#v", available.Value)
 	}
 	hints := broker.RoutingHints()
 	if len(hints) != 1 || hints[0].Key != "github" || hints[0].DisplayName != connector.Release.Manifest.DisplayName ||
-		len(hints[0].Aliases) != 2 || hints[0].Aliases[0] != "飞书" {
+		len(hints[0].Aliases) != 2 || hints[0].Aliases[0] != "飞书" || hints[0].SkillRoot != filepath.Join(root, "skills") {
 		t.Fatalf("routing hints = %#v", hints)
 	}
 	hints[0].Aliases[0] = "mutated"

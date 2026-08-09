@@ -32,6 +32,7 @@ import {
   type DesktopIssueManagerAgentSessionCreator
 } from "./internal/adapters/desktopIssueManagerAgentRunner.ts";
 import { createDesktopIssueManagerBackend } from "./internal/adapters/desktopIssueManagerBackend.ts";
+import { createDesktopIssueManagerContextRefOpener } from "./internal/adapters/desktopIssueManagerContextRefOpener.ts";
 import { createDesktopIssueManagerEventSource } from "./internal/adapters/desktopIssueManagerEventSource.ts";
 import { createDesktopIssueManagerFileAdapter } from "./internal/adapters/desktopIssueManagerFileAdapter.ts";
 import { createDesktopIssueManagerIdentityAdapter } from "./internal/adapters/desktopIssueManagerIdentityAdapter.ts";
@@ -127,6 +128,12 @@ export function createDesktopIssueManagerFeature(input: {
         }
       : undefined,
     backend: createDesktopIssueManagerBackend(input.tuttidClient),
+    contextRefOpener: createDesktopIssueManagerContextRefOpener({
+      fileAdapter,
+      hostFilesApi: input.hostFilesApi,
+      tuttidClient: input.tuttidClient,
+      workspaceId: input.workspaceId
+    }),
     eventSource: input.eventStreamClient
       ? createDesktopIssueManagerEventSource(input.eventStreamClient)
       : undefined,

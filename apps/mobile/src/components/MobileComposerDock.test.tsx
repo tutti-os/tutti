@@ -136,6 +136,49 @@ test("selects the new-session Agent and working directory above the composer", (
   expect(selectedProjects).toEqual(["/workspace/tutti"]);
 });
 
+test("shows platform-neutral overflow hints for the horizontal settings rail", () => {
+  let renderer: ReactTestRenderer;
+  act(() => {
+    renderer = create(composerDock(createModel()));
+  });
+  const rail = renderer!.root.find(
+    (node) => node.props.testID === "mobile-composer-settings-rail"
+  );
+
+  act(() => {
+    rail.props.onLayout({ nativeEvent: { layout: { width: 180 } } });
+    rail.props.onContentSizeChange(400, 40);
+  });
+  expect(
+    renderer!.root.findAll(
+      (node) => node.props.testID === "mobile-composer-settings-trailing-hint"
+    ).length
+  ).toBeGreaterThan(0);
+
+  act(() => {
+    rail.props.onScroll({ nativeEvent: { contentOffset: { x: 100 } } });
+  });
+  expect(
+    renderer!.root.findAll(
+      (node) => node.props.testID === "mobile-composer-settings-leading-hint"
+    ).length
+  ).toBeGreaterThan(0);
+  expect(
+    renderer!.root.findAll(
+      (node) => node.props.testID === "mobile-composer-settings-trailing-hint"
+    ).length
+  ).toBeGreaterThan(0);
+
+  act(() => {
+    rail.props.onScroll({ nativeEvent: { contentOffset: { x: 220 } } });
+  });
+  expect(
+    renderer!.root.findAll(
+      (node) => node.props.testID === "mobile-composer-settings-trailing-hint"
+    )
+  ).toHaveLength(0);
+});
+
 function press(renderer: ReactTestRenderer, testID: string): void {
   const target = renderer.root.find(
     (node) =>

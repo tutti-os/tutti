@@ -184,7 +184,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/ConnectorMarketMutationRequest"
+              $ref: "#/components/schemas/ConnectorMarketAuthorizationRequest"
       responses:
         "200":
           description: Authorization attempt started
@@ -665,6 +665,23 @@ components:
           type: integer
           format: int64
           minimum: 0
+    ConnectorMarketAuthorizationRequest:
+      type: object
+      additionalProperties: false
+      required: [clientRequestId, expectedRevision]
+      properties:
+        clientRequestId:
+          type: string
+          minLength: 1
+        expectedRevision:
+          type: integer
+          format: int64
+          minimum: 0
+        secret:
+          type: string
+          minLength: 1
+          maxLength: 16384
+          writeOnly: true
     ConnectorMarketMutationResponse:
       type: object
       additionalProperties: false
@@ -758,9 +775,8 @@ components:
       enum:
         - accepted
         - refreshing
-        - downloading
-        - prepared
-        - activating
+        - installing
+        - installed
         - deactivating
         - authorizing
         - disconnecting

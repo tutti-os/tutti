@@ -1,4 +1,5 @@
 import type {
+  AgentActivityComposerOptionsLoadStatus,
   AgentActivityComposerOptions,
   AgentActivitySession
 } from "@tutti-os/agent-activity-core";
@@ -47,6 +48,7 @@ interface UseAgentGUIComposerPresentationInput {
   activeSessionState: AgentSessionState | null;
   agentActivityRuntime: AgentGUIRuntime;
   composerSupport: ReturnType<typeof composerSettingsSupportFromOptions>;
+  composerOptionsLoadStatus?: AgentActivityComposerOptionsLoadStatus;
   composerOptionsLoading: boolean;
   composerTargetProvider: AgentGUIProvider;
   codexSaverModeEntryEnabled?: boolean;
@@ -181,6 +183,8 @@ export function useAgentGUIComposerPresentation(
       (!input.composerSupport.model || activeSessionModelSelection !== null) &&
       (!input.composerSupport.reasoning ||
         activeSessionReasoningSelection !== null);
+    const composerOptionsError =
+      input.composerOptionsLoadStatus === "error" && !hasOptionsSource;
     const selectedPermissionModeValue =
       normalizePermissionModeId(draftSettings.permissionModeId) ??
       normalizePermissionModeId(permissionConfig?.defaultValue);
@@ -243,7 +247,9 @@ export function useAgentGUIComposerPresentation(
       planExclusiveWithPermissionMode:
         input.providerComposerOptions?.behavior
           ?.planModeExclusiveWithPermissionMode === true,
-      isSettingsLoading: !hasACPSettings,
+      composerOptionsError,
+      composerOptionsLoadStatus: input.composerOptionsLoadStatus,
+      isSettingsLoading: !hasACPSettings && !composerOptionsError,
       isCapabilityOptionsLoading: input.composerOptionsLoading,
       isModelOptionsLoading: isForegroundModelOptionsLoading({
         modelOptionsLoading: input.providerComposerOptions?.modelOptionsLoading,
@@ -335,6 +341,7 @@ export function useAgentGUIComposerPresentation(
     input.activeConversationId,
     input.agentActivityRuntime.projectPathIsRemote,
     input.composerSupport,
+    input.composerOptionsLoadStatus,
     input.composerOptionsLoading,
     input.composerTargetProvider,
     input.providerComposerOptions,

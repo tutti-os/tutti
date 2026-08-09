@@ -434,10 +434,7 @@ type LaunchIntent struct {
 	CanonicalTurnID    string
 }
 
-type PreparedRunLaunch struct {
-	Run            workspaceissues.Run
-	ClientSubmitID string
-}
+type PreparedRunLaunch = workspaceissues.PreparedRunLaunch
 
 type RunCancelCompensation struct {
 	WorkspaceID    string

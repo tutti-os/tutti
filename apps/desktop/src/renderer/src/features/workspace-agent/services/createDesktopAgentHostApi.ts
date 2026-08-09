@@ -334,8 +334,7 @@ export function createDesktopAgentHostApi({
         )
     },
     // The desktop host forwards daemon business events the Agent GUI event bus
-    // understands. Today that is the model-catalog invalidation broadcast; the
-    // GUI reacts by force-reloading composer options and session state.
+    // understands. The GUI reacts by force-reloading the affected authority.
     onHostEvent: (listener: (event: unknown) => void) => {
       const disposeModelCatalog =
         agentActivityService.onModelCatalogInvalidated((event) => {
@@ -354,9 +353,19 @@ export function createDesktopAgentHostApi({
             type: "agent-composer-defaults-invalidated"
           });
         });
+      const disposeConnectorCatalog =
+        agentActivityService.onConnectorCatalogInvalidated((event) => {
+          listener({
+            ...(event.connectorKey ? { connectorKey: event.connectorKey } : {}),
+            revision: event.revision,
+            scope: "global",
+            type: "agent-connector-catalog-invalidated"
+          });
+        });
       return () => {
         disposeModelCatalog();
         disposeComposerDefaults();
+        disposeConnectorCatalog();
       };
     },
     persistence: {
@@ -403,6 +412,15 @@ export function createDesktopAgentHostApi({
       },
       resolveGitPatchSupport: async (payload: { cwd: string }) =>
         tuttidClient.resolveWorkspaceGitPatchSupport(workspaceId, payload.cwd),
+      resolveSessionWorktreeSupport: async (payload: {
+        agentTargetId: string;
+        cwd: string;
+      }) =>
+        tuttidClient.resolveWorkspaceAgentSessionWorktreeSupport(
+          workspaceId,
+          payload.agentTargetId,
+          payload.cwd
+        ),
       copyPath: async (payload: { path: string }) => {
         await navigator.clipboard.writeText(payload.path);
       },

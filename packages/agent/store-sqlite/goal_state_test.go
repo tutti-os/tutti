@@ -293,6 +293,130 @@ func TestGoalControlOperationPersistsWithoutTurn(t *testing.T) {
 	}
 }
 
+func TestGoalControlLocalStopCompletesClearWithoutClaimingProviderApplication(t *testing.T) {
+	t.Parallel()
+	store := openTestStore(t, testOptions(&staticProjectPaths{}))
+	ctx := context.Background()
+	if _, err := store.ReportSessionState(ctx, SessionStateReport{
+		WorkspaceID: "ws-local-stop", AgentSessionID: "session-local-stop", Provider: "codex",
+		OccurredAtUnixMS: 10,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, _, err := store.PrepareGoalControlOperation(ctx, GoalControlOperationPrepare{
+		OperationID: "goal-set", WorkspaceID: "ws-local-stop", AgentSessionID: "session-local-stop",
+		Action: "set", Objective: "must remain stopped", OccurredAtUnixMS: 20,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, _, err := store.CompleteGoalControlOperation(ctx, GoalControlOperationComplete{
+		WorkspaceID: "ws-local-stop", OperationID: "goal-set", Succeeded: true,
+		Observed: map[string]any{"objective": "must remain stopped", "status": "active"}, OccurredAtUnixMS: 30,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, _, err := store.PrepareGoalControlOperation(ctx, GoalControlOperationPrepare{
+		OperationID: "goal-clear", WorkspaceID: "ws-local-stop", AgentSessionID: "session-local-stop",
+		Action: "clear", ExpectedRevision: 1, OccurredAtUnixMS: 40,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	op, state, changed, err := store.CompleteGoalControlOperation(ctx, GoalControlOperationComplete{
+		WorkspaceID: "ws-local-stop", OperationID: "goal-clear", Succeeded: true,
+		Mode:     GoalControlCompletionModeLocalStop,
+		Evidence: map[string]any{"source": "goal_generation_fence_recovery"}, OccurredAtUnixMS: 50,
+	})
+	if err != nil || !changed {
+		t.Fatalf("local stop operation=%#v state=%#v changed=%v error=%v", op, state, changed, err)
+	}
+	if op.Status != GoalOperationStatusCompleted || op.ProviderPhase != GoalProviderPhaseUnknown ||
+		state.Revision != 2 || !state.Tombstoned || state.Desired != nil ||
+		state.PendingOperationID != "" || state.SyncStatus != GoalSyncStatusUnknown {
+		t.Fatalf("local stop operation=%#v state=%#v", op, state)
+	}
+	if state.Observed["objective"] != "must remain stopped" || state.ObservedAtUnixMS != 30 {
+		t.Fatalf("local stop overwrote provider observation: %#v", state)
+	}
+}
+
+func TestGoalControlLocalStopConvergesPreviouslyFailedClear(t *testing.T) {
+	t.Parallel()
+	store := openTestStore(t, testOptions(&staticProjectPaths{}))
+	ctx := context.Background()
+	if _, err := store.ReportSessionState(ctx, SessionStateReport{
+		WorkspaceID: "ws-local-stop-failed", AgentSessionID: "session-local-stop-failed", Provider: "codex",
+		OccurredAtUnixMS: 10,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, _, err := store.PrepareGoalControlOperation(ctx, GoalControlOperationPrepare{
+		OperationID: "goal-clear-failed", WorkspaceID: "ws-local-stop-failed",
+		AgentSessionID: "session-local-stop-failed", Action: "clear", OccurredAtUnixMS: 20,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, failed, changed, err := store.CompleteGoalControlOperation(ctx, GoalControlOperationComplete{
+		WorkspaceID: "ws-local-stop-failed", OperationID: "goal-clear-failed",
+		LastError: "provider unavailable", OccurredAtUnixMS: 30,
+	}); err != nil || !changed || failed.SyncStatus != GoalSyncStatusFailed {
+		t.Fatalf("failed clear state=%#v changed=%v error=%v", failed, changed, err)
+	}
+	op, state, changed, err := store.CompleteGoalControlOperation(ctx, GoalControlOperationComplete{
+		WorkspaceID: "ws-local-stop-failed", OperationID: "goal-clear-failed", Succeeded: true,
+		Mode: GoalControlCompletionModeLocalStop, OccurredAtUnixMS: 40,
+	})
+	if err != nil || !changed || op.Status != GoalOperationStatusCompleted ||
+		op.ProviderPhase != GoalProviderPhaseUnknown || state.SyncStatus != GoalSyncStatusUnknown ||
+		state.PendingOperationID != "" || !state.Tombstoned {
+		t.Fatalf("local stop operation=%#v state=%#v changed=%v error=%v", op, state, changed, err)
+	}
+}
+
+func TestGoalControlLocalStopSupersedesFailedClearAfterNewerGoal(t *testing.T) {
+	t.Parallel()
+	store := openTestStore(t, testOptions(&staticProjectPaths{}))
+	ctx := context.Background()
+	if _, err := store.ReportSessionState(ctx, SessionStateReport{
+		WorkspaceID: "ws-local-stop-newer", AgentSessionID: "session-local-stop-newer", Provider: "codex",
+		OccurredAtUnixMS: 10,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, _, err := store.PrepareGoalControlOperation(ctx, GoalControlOperationPrepare{
+		OperationID: "old-clear", WorkspaceID: "ws-local-stop-newer",
+		AgentSessionID: "session-local-stop-newer", Action: "clear", OccurredAtUnixMS: 20,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, _, err := store.CompleteGoalControlOperation(ctx, GoalControlOperationComplete{
+		WorkspaceID: "ws-local-stop-newer", OperationID: "old-clear",
+		LastError: "provider unavailable", OccurredAtUnixMS: 30,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	newGoal, expectedState, _, err := store.PrepareGoalControlOperation(ctx, GoalControlOperationPrepare{
+		OperationID: "new-goal", WorkspaceID: "ws-local-stop-newer",
+		AgentSessionID: "session-local-stop-newer", Action: "set", Objective: "new generation",
+		OccurredAtUnixMS: 40,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	op, state, changed, err := store.CompleteGoalControlOperation(ctx, GoalControlOperationComplete{
+		WorkspaceID: "ws-local-stop-newer", OperationID: "old-clear", Succeeded: true,
+		Mode: GoalControlCompletionModeLocalStop, OccurredAtUnixMS: 50,
+	})
+	if err != nil || !changed || op.Status != GoalOperationStatusSuperseded ||
+		op.ProviderPhase != GoalProviderPhaseUnknown {
+		t.Fatalf("superseded local stop operation=%#v changed=%v error=%v", op, changed, err)
+	}
+	if state.Revision != expectedState.Revision || state.PendingOperationID != newGoal.OperationID ||
+		state.Tombstoned || state.SyncStatus != GoalSyncStatusPending ||
+		state.Desired["objective"] != "new generation" {
+		t.Fatalf("newer Goal was changed by old local stop: %#v", state)
+	}
+}
+
 func TestGoalAcceptedIgnoresSessionMetadataUntilHostCompletesOperation(t *testing.T) {
 	t.Parallel()
 	store := openTestStore(t, testOptions(&staticProjectPaths{}))

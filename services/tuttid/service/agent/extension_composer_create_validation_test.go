@@ -234,8 +234,10 @@ func TestServiceCreateRejectsExtensionSettingsOutsideDescriptor(t *testing.T) {
 		input    CreateSessionInput
 	}{
 		{
-			name:     "default model",
-			defaults: preferencesbiz.AgentComposerDefaults{Model: "unknown-model"},
+			name: "model override",
+			input: CreateSessionInput{
+				Model: stringPointer("unknown-model"),
+			},
 		},
 		{
 			name: "permission override",
@@ -276,6 +278,95 @@ func TestServiceCreateRejectsExtensionSettingsOutsideDescriptor(t *testing.T) {
 				t.Fatalf("visible starts = %#v, want none", starts)
 			}
 		})
+	}
+}
+
+func TestServiceCreateIgnoresRetiredExtensionModelDefault(t *testing.T) {
+	runtime, service := newExtensionComposerValidationService(t)
+	runtime.startHook = func(input RuntimeStartInput, session ProviderRuntimeSession) ProviderRuntimeSession {
+		if input.Visible != nil && !*input.Visible {
+			session.RuntimeContext = map[string]any{
+				"configOptions": []any{map[string]any{
+					"id":           "model",
+					"currentValue": "gemini-fast",
+					"options": []any{
+						map[string]any{"value": "gemini-pro", "name": "Gemini Pro"},
+						map[string]any{"value": "gemini-fast", "name": "Gemini Fast"},
+					},
+				}},
+			}
+		}
+		return session
+	}
+	service.AgentComposerDefaultsReader = fakeAgentComposerDefaultsReader{
+		extensionComposerValidationTargetID: {Model: "retired-model"},
+	}
+
+	created, err := service.Create(context.Background(), "workspace-extension", CreateSessionInput{
+		AgentTargetID: extensionComposerValidationTargetID,
+		Cwd:           stringPointer(t.TempDir()),
+	})
+	if err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+	if created.Settings == nil || created.Settings.Model != "gemini-fast" {
+		t.Fatalf("created settings = %#v, want runtime current model", created.Settings)
+	}
+	visibleStarts := visibleRuntimeStarts(runtime.startCalls)
+	if len(visibleStarts) != 1 || visibleStarts[0].Model != "gemini-fast" {
+		t.Fatalf("visible starts = %#v, want runtime current model", visibleStarts)
+	}
+}
+
+func TestServiceCreateResolvesReasoningDefaultAfterRetiredExtensionModel(t *testing.T) {
+	runtime, service := newExtensionComposerValidationService(t)
+	runtime.startHook = func(input RuntimeStartInput, session ProviderRuntimeSession) ProviderRuntimeSession {
+		if input.Visible != nil && !*input.Visible {
+			session.RuntimeContext = map[string]any{
+				"configOptions": []any{map[string]any{
+					"id":           "model",
+					"currentValue": "gemini-fast",
+					"options": []any{
+						map[string]any{"value": "gemini-pro", "name": "Gemini Pro"},
+						map[string]any{
+							"value":                   "gemini-fast",
+							"name":                    "Gemini Fast",
+							"reasoningEffort":         "low",
+							"supportsReasoningEffort": true,
+							"reasoningEfforts": []any{
+								map[string]any{"value": "low", "name": "Low", "default": true},
+							},
+						},
+					},
+				}},
+			}
+		}
+		return session
+	}
+	service.AgentComposerDefaultsReader = fakeAgentComposerDefaultsReader{
+		extensionComposerValidationTargetID: {
+			Model:           "retired-model",
+			ReasoningEffort: "high",
+		},
+	}
+
+	created, err := service.Create(context.Background(), "workspace-extension", CreateSessionInput{
+		AgentTargetID: extensionComposerValidationTargetID,
+		Cwd:           stringPointer(t.TempDir()),
+	})
+	if err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+	if created.Settings == nil ||
+		created.Settings.Model != "gemini-fast" ||
+		created.Settings.ReasoningEffort != "low" {
+		t.Fatalf("created settings = %#v, want runtime model reasoning default", created.Settings)
+	}
+	visibleStarts := visibleRuntimeStarts(runtime.startCalls)
+	if len(visibleStarts) != 1 ||
+		visibleStarts[0].Model != "gemini-fast" ||
+		visibleStarts[0].ReasoningEffort != "low" {
+		t.Fatalf("visible starts = %#v, want resolved runtime model settings", visibleStarts)
 	}
 }
 

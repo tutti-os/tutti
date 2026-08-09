@@ -17,6 +17,10 @@ const connectionSectionSource = readFileSync(
   resolve(directory, "WorkspaceConnectionSettingsSection.tsx"),
   "utf8"
 );
+const deletedConversationsSource = readFileSync(
+  resolve(directory, "WorkspaceDeletedConversationsSection.tsx"),
+  "utf8"
+);
 
 test("workspace settings gives Model an independent Plan-only section", () => {
   assert.match(panelSource, /id: "model" as const/);
@@ -28,7 +32,7 @@ test("workspace settings gives Model an independent Plan-only section", () => {
   assert.doesNotMatch(panelSource, /WorkspaceAgentModelBindingSection/);
 });
 
-test("workspace settings places signed-in Connectors between Agent Runtime and Custom Agents", () => {
+test("workspace settings places enabled signed-in Connectors between Agent Runtime and Custom Agents", () => {
   const general = panelSource.indexOf('value: "general" as const');
   const runtimes = panelSource.indexOf('value: "agents" as const');
   const connectors = panelSource.indexOf('value: "connectors" as const');
@@ -58,11 +62,15 @@ test("workspace settings places signed-in Connectors between Agent Runtime and C
   );
   assert.match(
     panelSource,
-    /accountState\.user[\s\S]{0,220}value: "connectors" as const/
+    /connectorsVisible[\s\S]{0,220}value: "connectors" as const/
   );
   assert.match(
     panelSource,
-    /!accountState\.user[\s\S]{0,120}agentTab === "connectors"[\s\S]{0,120}selectAgentTab\("general"\)/
+    /!connectorsVisible[\s\S]{0,120}agentTab === "connectors"[\s\S]{0,120}selectAgentTab\("general"\)/
+  );
+  assert.match(
+    panelSource,
+    /accountState\.user !== null[\s\S]{0,120}LAB_CONNECTORS_FLAG/
   );
   assert.doesNotMatch(runtimeTabSource, /WorkspaceAgentsSection/);
 });
@@ -84,5 +92,41 @@ test("workspace settings shows Connection with mobile remote access settings", (
   assert.match(
     connectionSectionSource,
     /user && mobileRemoteAccessSettingsEnabled[\s\S]{0,120}<WorkspaceMobileRemoteSettingsSection/
+  );
+});
+
+test("workspace settings gives deleted conversations a low-prominence top-level section", () => {
+  const deletedConversations = panelSource.indexOf(
+    'id: "deletedConversations" as const'
+  );
+  const about = panelSource.indexOf('id: "about" as const');
+
+  assert.ok(deletedConversations >= 0);
+  assert.ok(about > deletedConversations);
+  assert.match(
+    panelSource,
+    /activeSection === "deletedConversations"[\s\S]{0,240}<WorkspaceDeletedConversationsSection/
+  );
+  assert.doesNotMatch(
+    panelSource,
+    /general\.deletedConversationRetentionLabel/
+  );
+});
+
+test("deleted conversations uses one project filter and a virtualized scrolling list", () => {
+  assert.match(deletedConversationsSource, /useVirtualizer\(/);
+  assert.match(deletedConversationsSource, /controller\.loadMore\(\)/);
+  assert.match(
+    deletedConversationsSource,
+    /workspace\.settings\.deletedConversations\.projectFilterLabel/
+  );
+  assert.doesNotMatch(deletedConversationsSource, /all conversations/i);
+  assert.match(
+    deletedConversationsSource,
+    /operation === "deleting"[\s\S]{0,180}deletedConversations\.deleteAction/
+  );
+  assert.match(
+    deletedConversationsSource,
+    /function PermanentDeleteDialog[\s\S]{0,1600}deletedConversations\.permanentDelete/
   );
 });

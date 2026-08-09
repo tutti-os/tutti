@@ -15,6 +15,7 @@ type Config struct {
 	SessionBatchManagement SessionBatchManagementStore
 	SessionDeletionGuard   SessionDeletionGuard
 	SessionPurge           SessionPurgeStore
+	DeletedSessions        DeletedSessionStore
 	HistoricalState        HistoricalSessionStateStore
 	SessionForks           SessionForkStore
 	SessionForkRecovery    SessionForkRecoveryStore
@@ -69,6 +70,7 @@ type Host struct {
 	sessionBatchManagement SessionBatchManagementStore
 	sessionDeletionGuard   SessionDeletionGuard
 	sessionPurge           SessionPurgeStore
+	deletedSessions        DeletedSessionStore
 	historicalState        HistoricalSessionStateStore
 	sessionForks           SessionForkStore
 	sessionForkRecovery    SessionForkRecoveryStore
@@ -121,7 +123,8 @@ func New(config Config) *Host {
 		store: config.CanonicalStore, interactionTrees: config.InteractionTrees,
 		turnSubmissions: config.TurnSubmissions, effectiveHistory: config.EffectiveHistory,
 		sessionManagement: config.SessionManagement, sessionBatchManagement: config.SessionBatchManagement, sessionDeletionGuard: config.SessionDeletionGuard, sessionPurge: config.SessionPurge,
-		sessionForks: config.SessionForks, sessionForkRuntime: config.SessionForkRuntime,
+		deletedSessions: config.DeletedSessions,
+		sessionForks:    config.SessionForks, sessionForkRuntime: config.SessionForkRuntime,
 		historicalState:    config.HistoricalState,
 		sessionForkContext: config.SessionForkContext, sessionForkState: config.SessionForkState,
 		sessionForkAttachments: config.SessionForkAttachments,
@@ -143,6 +146,9 @@ func New(config Config) *Host {
 	}
 	if host.interactionTrees == nil {
 		host.interactionTrees, _ = host.store.(CanonicalInteractionTreeStore)
+	}
+	if host.deletedSessions == nil {
+		host.deletedSessions, _ = config.SessionBatchManagement.(DeletedSessionStore)
 	}
 	if host.sessionForkRecovery == nil {
 		host.sessionForkRecovery, _ = host.sessionForks.(SessionForkRecoveryStore)

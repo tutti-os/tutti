@@ -3,6 +3,7 @@ package connectormarket
 import (
 	"context"
 	"errors"
+	"net/http"
 	"os"
 	"runtime"
 	"time"
@@ -12,6 +13,7 @@ import (
 	connectorruntime "github.com/tutti-os/tutti/packages/connector/runtime"
 	"github.com/tutti-os/tutti/packages/connector/runtime/command"
 	implementationhost "github.com/tutti-os/tutti/packages/connector/runtime/implementationhost"
+	runtimemcp "github.com/tutti-os/tutti/packages/connector/runtime/mcp"
 	cliservice "github.com/tutti-os/tutti/services/tuttid/service/cli"
 )
 
@@ -23,19 +25,19 @@ type ConnectorCommandRegistry struct {
 }
 
 type ImplementationHostConfig struct {
-	Artifacts         PreparedArtifactResolver
-	CLIInstallations  market.CLIInstallationManager
-	Runtimes          ConnectorRuntimeResolver
-	Processes         agentruntime.ProcessTransport
-	Commands          *ConnectorCommandRegistry
-	StateRoot         string
-	UserHome          string
-	MCPStartupTimeout time.Duration
+	Artifacts              PreparedArtifactResolver
+	CLIInstallations       market.CLIInstallationManager
+	Runtimes               ConnectorRuntimeResolver
+	Processes              agentruntime.ProcessTransport
+	Commands               *ConnectorCommandRegistry
+	StateRoot              string
+	UserHome               string
+	MCPStartupTimeout      time.Duration
+	RemoteHTTPClient       *http.Client
+	AuthorizeRemoteRequest runtimemcp.RequestAuthorizer
 }
 
-// ImplementationHost is the tutt id product adapter around the public,
-// host-neutral runtime. The current desktop product has no credential broker,
-// so this adapter intentionally invokes only authorization-free Connectors.
+// ImplementationHost adapts the host-neutral Connector runtime to tuttId.
 type ImplementationHost struct {
 	runtime   *implementationhost.Host
 	artifacts PreparedArtifactResolver
@@ -63,8 +65,8 @@ func NewImplementationHost(config ImplementationHostConfig) (*ImplementationHost
 	host, err := implementationhost.New(implementationhost.Config{
 		Artifacts: config.Artifacts, CLIInstallations: config.CLIInstallations, Runtimes: config.Runtimes,
 		Processes: config.Processes, Commands: config.Commands.runtime, StateRoot: config.StateRoot,
-		UserHome:          config.UserHome,
-		MCPStartupTimeout: config.MCPStartupTimeout,
+		UserHome: config.UserHome, MCPStartupTimeout: config.MCPStartupTimeout,
+		RemoteHTTPClient: config.RemoteHTTPClient, AuthorizeRemoteRequest: config.AuthorizeRemoteRequest,
 	})
 	if err != nil {
 		return nil, err
@@ -106,6 +108,13 @@ func (host *ImplementationHost) Reconcile(ctx context.Context, request market.Ru
 		return market.RuntimeReceipt{}, errors.New("connector implementation host is unavailable")
 	}
 	return host.runtime.Reconcile(ctx, implementationhost.ReconcileRequest{Runtime: request})
+}
+
+func (host *ImplementationHost) CheckInstallation(ctx context.Context, request market.InstallationCheckRequest) (market.InstallationObservation, error) {
+	if host == nil || host.runtime == nil {
+		return market.InstallationObservation{}, errors.New("connector implementation host is unavailable")
+	}
+	return host.runtime.CheckInstallation(ctx, request)
 }
 
 func (host *ImplementationHost) Begin(ctx context.Context, request market.AuthorizationStartRequest) (market.AuthorizationSession, error) {
@@ -156,17 +165,61 @@ func (host *ImplementationHost) Close() error {
 	return host.runtime.Close()
 }
 
-func ProductionPorts(host *ImplementationHost) (market.ImplementationHost, market.AuthorizationProvider, market.CompatibilityEvaluator, market.ImplementationRegistry) {
-	return host, host, productionCompatibility{}, market.NewImplementationRegistry(map[string]market.ImplementationValidator{
-		market.ImplementationKindManagedStdio: nil,
+type authorizationRouter struct {
+	managed  market.AuthorizationProvider
+	external market.AuthorizationProvider
+}
+
+func (router authorizationRouter) provider(connector market.Connector) market.AuthorizationProvider {
+	if connector.Release.Manifest.Implementation.Kind == market.ImplementationKindRemoteStreamableHTTP {
+		return router.external
+	}
+	return router.managed
+}
+
+func (router authorizationRouter) Begin(ctx context.Context, request market.AuthorizationStartRequest) (market.AuthorizationSession, error) {
+	provider := router.provider(request.Connector)
+	if provider == nil {
+		return market.AuthorizationSession{}, errors.New("connector authorization provider is unavailable")
+	}
+	return provider.Begin(ctx, request)
+}
+
+func (router authorizationRouter) Disconnect(ctx context.Context, request market.AuthorizationDisconnectRequest) error {
+	provider := router.provider(request.Connector)
+	if provider == nil {
+		return errors.New("connector authorization provider is unavailable")
+	}
+	return provider.Disconnect(ctx, request)
+}
+
+func (router authorizationRouter) Observe(ctx context.Context, request market.AuthorizationObserveRequest) (market.AuthorizationObservation, error) {
+	if request.Connector.Release.Manifest.Implementation.Kind != market.ImplementationKindRemoteStreamableHTTP {
+		return market.AuthorizationObservation{State: market.AuthorizationObservationPending}, nil
+	}
+	observer, ok := router.external.(market.AuthorizationObserver)
+	if !ok {
+		return market.AuthorizationObservation{}, errors.New("connector authorization observer is unavailable")
+	}
+	return observer.Observe(ctx, request)
+}
+
+func ProductionPorts(host *ImplementationHost, external market.AuthorizationProvider) (market.ImplementationHost, market.AuthorizationProvider, market.CompatibilityEvaluator, market.ImplementationRegistry) {
+	return host, authorizationRouter{managed: host, external: external}, productionCompatibility{}, market.NewImplementationRegistry(map[string]market.ImplementationValidator{
+		market.ImplementationKindManagedStdio:         nil,
+		market.ImplementationKindRemoteStreamableHTTP: nil,
 	})
 }
 
 type productionCompatibility struct{}
 
 func (productionCompatibility) Evaluate(manifest market.Manifest) market.Compatibility {
-	if manifest.Implementation.Kind != market.ImplementationKindManagedStdio {
-		return market.Compatibility{State: market.CompatibilityStateUnsupportedImplementation, Reason: "implementation or authorization broker is unavailable"}
+	switch manifest.Implementation.Kind {
+	case market.ImplementationKindRemoteStreamableHTTP:
+		return market.Compatibility{State: market.CompatibilityStateSupported}
+	case market.ImplementationKindManagedStdio:
+	default:
+		return market.Compatibility{State: market.CompatibilityStateUnsupportedImplementation, Reason: "implementation is unavailable"}
 	}
 	if manifest.AuthorizationKind != "none" && (manifest.Implementation.ManagedStdio == nil || manifest.Implementation.ManagedStdio.CredentialBroker == nil) {
 		return market.Compatibility{State: market.CompatibilityStateUnsupportedImplementation, Reason: "authorization broker is unavailable"}

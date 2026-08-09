@@ -93,6 +93,8 @@ type IssueManagerService interface {
 	CreateIssueFromPlan(context.Context, string, workspaceservice.CreateIssueManagerIssueFromPlanInput) (workspaceissues.IssueDetail, error)
 	EstimateAutoTokenBudget(context.Context, string, workspaceservice.EstimateIssueManagerAutoTokenBudgetInput) (workspaceservice.IssueManagerAutoTokenBudgetEstimate, error)
 	GetIssueDetail(context.Context, string, string) (workspaceissues.IssueDetail, error)
+	ProjectIssueManagerContextRefs([]workspaceissues.ContextRef) []workspaceservice.IssueManagerContextRefView
+	ReadIssueAttachment(context.Context, string, string, string) (workspaceservice.IssueManagerAttachmentContent, error)
 	SearchIssueOutputs(context.Context, workspaceissues.RunOutputSearchParams) ([]workspaceissues.RunOutputSearchHit, error)
 	UpdateIssue(context.Context, string, string, workspaceservice.UpdateIssueManagerIssueInput) (workspaceissues.Issue, error)
 	DeleteIssue(context.Context, string, string) (bool, error)
@@ -106,6 +108,7 @@ type IssueManagerService interface {
 	AddTaskContextRefs(context.Context, string, string, string, workspaceservice.AddIssueManagerContextRefsInput) ([]workspaceissues.ContextRef, error)
 	ListRuns(context.Context, string, string, string) ([]workspaceissues.Run, error)
 	CreateRun(context.Context, string, string, string, workspaceservice.CreateIssueManagerRunInput) (workspaceissues.Run, error)
+	StartIssueRun(context.Context, string, string, workspaceservice.StartIssueManagerRunInput) (workspaceissues.Run, error)
 	GetRunDetail(context.Context, string, string, string, string) (workspaceissues.RunDetail, error)
 	CompleteRun(context.Context, string, string, string, string, workspaceservice.CompleteIssueManagerRunInput) (workspaceissues.RunDetail, error)
 	RemoveIssueContextRef(context.Context, string, string, string) (bool, error)

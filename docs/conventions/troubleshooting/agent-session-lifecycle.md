@@ -4694,3 +4694,33 @@ permanently ambiguous`. Provider status may already be `active` while the
 - References:
   [checkpoint_provider_candidates.go](../../../services/tuttid/service/agentsessionreplay/checkpoint_provider_candidates.go)
   [checkpoint_activity_boundaries.go](../../../services/tuttid/service/agentsessionreplay/checkpoint_activity_boundaries.go)
+
+### New Agent conversation rejects a model that is no longer offered
+
+- Symptom:
+  A newly submitted conversation fails with `model value is not supported by
+agent target`, although the current model picker does not offer that model.
+  Alternatively, the selected model appears to start but the provider actually
+  continues on its own default.
+- Root cause:
+  A target-scoped remembered composer default outlived a changed model catalog,
+  or a dependent reasoning default remained bound to the retired model after
+  model fallback,
+  or the ACP runtime treated a rejected startup model selection as a
+  best-effort setting and silently retained the provider default. Reapplying a
+  model that `session/new` already selected can also trigger an unnecessary
+  provider-side reconfiguration failure.
+- Fix:
+  At Create, distinguish a target-scoped persisted default from a model
+  explicitly supplied by the caller. For an Agent Extension, resolve an
+  obsolete persisted default to the current model reported by that same
+  extension; never use a different provider. Resolve non-explicit per-model
+  reasoning against that effective model while keeping explicit caller values
+  strict. Treat an explicit ACP model selection as identity-bearing: leave an
+  already-selected model unchanged, and if a real model change is rejected,
+  abort startup rather than falling back.
+- Validation:
+  Cover an obsolete persisted default with a multi-model catalog whose reported
+  current model is not first, a stale dependent reasoning default, and an
+  unsupported explicit selection separately with generic extension fixtures.
+  Inject a `session/set_model` rejection into the standard ACP transport test.

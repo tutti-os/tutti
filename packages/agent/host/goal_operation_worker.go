@@ -319,7 +319,7 @@ func (h *Host) RecoverGoalOperations(ctx context.Context) error {
 			}
 			return nil
 		}
-		if err := h.StepGoalGenerationFenceWorker(recoveryCtx); err != nil {
+		if err := h.stepGoalGenerationFenceWorker(recoveryCtx, true); err != nil {
 			if recoveryCtx.Err() != nil && ctx.Err() == nil {
 				return nil
 			}

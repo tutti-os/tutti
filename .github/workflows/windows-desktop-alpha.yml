@@ -113,6 +113,13 @@ jobs:
           $shellMetadata = Get-Content (Join-Path $shellRuntimeRoot 'runtime.json') -Raw | ConvertFrom-Json
           $shell = Resolve-Path (Join-Path $shellRuntimeRoot $shellMetadata.executable)
           $shellBin = Split-Path -Parent $shell
+          $mutagenRuntimeRoot = Resolve-Path 'apps/desktop/dist/win-unpacked/resources/bin/mutagen'
+          $mutagenMetadata = Get-Content (Join-Path $mutagenRuntimeRoot 'runtime.json') -Raw | ConvertFrom-Json
+          $mutagen = Resolve-Path (Join-Path $mutagenRuntimeRoot $mutagenMetadata.executable)
+          if (-not (Test-Path (Join-Path $mutagenRuntimeRoot 'LICENSE') -PathType Leaf)) { throw 'packaged Mutagen license is missing' }
+          if (-not (Test-Path (Join-Path $mutagenRuntimeRoot 'SSPL-LICENSE') -PathType Leaf)) { throw 'packaged Mutagen SSPL license is missing' }
+          & $mutagen version
+          if ($LASTEXITCODE -ne 0) { throw 'packaged Mutagen validation failed' }
           $package = Resolve-Path 'services/tuttid/builtin-apps/tutti-onboarding/build/package'
           $runtime = Join-Path $env:RUNNER_TEMP 'tutti-onboarding-runtime'
           $data = Join-Path $env:RUNNER_TEMP 'tutti-onboarding-data'

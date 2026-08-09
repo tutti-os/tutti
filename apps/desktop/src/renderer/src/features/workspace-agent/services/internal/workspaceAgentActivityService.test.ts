@@ -553,6 +553,7 @@ test("WorkspaceAgentActivityService confirms engine activation from the realtime
     clientSubmitId: "submit-1",
     expiresAtUnixMs: requestedAtUnixMs + 45_000,
     initialGoalControl: { action: "set", objective: "ship it" },
+    isolation: "worktree",
     mode: "new",
     initialTuttiModeActivation: {
       effect: 73,
@@ -572,6 +573,7 @@ test("WorkspaceAgentActivityService confirms engine activation from the realtime
     capabilityRefs: [{ capability: "tutti", source: "slash_command" }],
     clientSubmitId: "submit-1",
     cwd: null,
+    isolation: "worktree",
     initialContent: [],
     initialDisplayPrompt: null,
     initialGoalControl: { action: "set", objective: "ship it" },
@@ -1446,6 +1448,14 @@ test("WorkspaceAgentActivityService starts session-event streams and forwards ca
     {
       scope: null,
       topic: "preferences.agent.composer.defaults.changed"
+    },
+    {
+      scope: null,
+      topic: "connector.market.changed"
+    },
+    {
+      scope: null,
+      topic: "preferences.desktop.updated"
     }
   ]);
   assert.equal(connectCalls, 1);
@@ -1935,7 +1945,7 @@ test("WorkspaceAgentActivityService dispose releases every event stream subscrip
   });
 
   service.onSessionEvent("ws-1", () => {});
-  assert.equal(activeSubscriptions.size, 5);
+  assert.equal(activeSubscriptions.size, 7);
 
   service.dispose();
   service.dispose();
@@ -1947,10 +1957,12 @@ test("WorkspaceAgentActivityService preserves realtime turn provenance for atten
   let messageReconcileCalls = 0;
   const running = workspaceAgentSession({
     status: "working",
+    userId: "local",
     updatedAt: "2026-07-14T00:00:01.000Z"
   });
   const settled = workspaceAgentSession({
     status: "completed",
+    userId: "local",
     updatedAt: "2026-07-14T00:00:02.000Z"
   });
   const service = new WorkspaceAgentActivityService({
@@ -2049,10 +2061,12 @@ test("WorkspaceAgentActivityService preserves live provenance across a transient
   let getCalls = 0;
   const running = workspaceAgentSession({
     status: "working",
+    userId: "local",
     updatedAt: "2026-07-14T00:00:01.000Z"
   });
   const settled = workspaceAgentSession({
     status: "completed",
+    userId: "local",
     updatedAt: "2026-07-14T00:00:02.000Z"
   });
   const service = new WorkspaceAgentActivityService({
@@ -3745,6 +3759,91 @@ test("WorkspaceAgentActivityService tombstones an explicit session deletion even
   );
 });
 
+test("WorkspaceAgentActivityService rehydrates a restored session after clearing its deletion tombstone", async (t) => {
+  const restoredSession = workspaceAgentSession({ status: "ready" });
+  let detailCalls = 0;
+  const service = new WorkspaceAgentActivityService({
+    tuttidClient: {
+      getWorkspaceAgentSession: async (
+        ...args: Parameters<TuttidClient["getWorkspaceAgentSession"]>
+      ) => {
+        detailCalls += 1;
+        return {
+          ...sessionDetailProjection(args[2]),
+          childSessions: [],
+          editRetry: workspaceAgentEditRetryAvailability(),
+          session: restoredSession,
+          turns: []
+        };
+      },
+      listWorkspaceAgentSessionMessages: async () => ({
+        hasMore: false,
+        latestVersion: 0,
+        messages: []
+      }),
+      listWorkspaceAgentSessions: async () => ({
+        hasMore: false,
+        sessions: [restoredSession],
+        workspaceId: "ws-1"
+      })
+    } as unknown as TuttidClient,
+    runtimeApi: { logTerminalDiagnostic: async () => {} }
+  });
+  t.after(() => service.dispose());
+  const engine = service.getSessionEngine("ws-1");
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.ok(selectEngineSession(engine.getSnapshot(), "session-1"));
+
+  const reconcile = (
+    service as unknown as {
+      reconcileAgentActivityUpdate(input: {
+        agentSessionId: string;
+        data: unknown;
+        eventType: string;
+        workspaceId: string;
+      }): Promise<void>;
+    }
+  ).reconcileAgentActivityUpdate.bind(service);
+  await reconcile({
+    agentSessionId: "session-1",
+    data: {
+      agentSessionId: "session-1",
+      deletedAtUnixMs: 1,
+      eventType: "session_deleted",
+      workspaceId: "ws-1"
+    },
+    eventType: "session_deleted",
+    workspaceId: "ws-1"
+  });
+  assert.equal(selectEngineSession(engine.getSnapshot(), "session-1"), null);
+
+  await reconcile({
+    agentSessionId: "session-1",
+    data: {
+      agentSessionId: "session-1",
+      eventType: "session_restored",
+      restoredAtUnixMs: 2,
+      workspaceId: "ws-1"
+    },
+    eventType: "session_restored",
+    workspaceId: "ws-1"
+  });
+  for (
+    let attempt = 0;
+    attempt < 10 && !selectEngineSession(engine.getSnapshot(), "session-1");
+    attempt += 1
+  ) {
+    await new Promise((resolve) => setImmediate(resolve));
+  }
+
+  assert.equal(
+    engine.getSnapshot().sessionLifecycle.deletedSessionIds["session-1"],
+    undefined
+  );
+  assert.ok(selectEngineSession(engine.getSnapshot(), "session-1"));
+  assert.equal(detailCalls, 2);
+});
+
 test("WorkspaceAgentActivityService.submitPlanDecision uses one semantic daemon transport", async () => {
   const calls: unknown[] = [];
   const service = new WorkspaceAgentActivityService({
@@ -3796,6 +3895,7 @@ function workspaceAgentSession(overrides: {
   submitAvailability?: Record<string, unknown>;
   turnLifecycle?: Record<string, unknown>;
   updatedAt?: string;
+  userId?: string;
 }): Record<string, unknown> {
   const updatedAtUnixMs = overrides.updatedAt
     ? Date.parse(overrides.updatedAt)
@@ -3857,6 +3957,7 @@ function workspaceAgentSession(overrides: {
     title: "Session 1",
     tuttiModeActivation: null,
     updatedAtUnixMs,
+    ...(overrides.userId ? { userId: overrides.userId } : {}),
     visible: true
   };
 }

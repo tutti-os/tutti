@@ -139,9 +139,13 @@ function buildConnectorCardView(
     ["installing", "updating", "uninstalling"].includes(
       connector.installation.state
     ) ||
-    ["accepted", "activating", "deactivating", "disconnecting"].includes(
-      operationStage ?? ""
-    );
+    [
+      "accepted",
+      "installing",
+      "installed",
+      "deactivating",
+      "disconnecting"
+    ].includes(operationStage ?? "");
   const installed = connectorHasInstalledArtifact(connector);
   const currentReleaseInstalled =
     connectorHasCurrentReleaseInstalled(connector);
@@ -229,6 +233,7 @@ function buildConnectorDialogView(
   if (!["connected", "not_required"].includes(connector.authorization.state)) {
     return {
       ...base,
+      authorizationKind: connector.release.manifest.authorizationKind,
       authorizing,
       kind: "authorization",
       pending: connector.authorization.state === "pending"
@@ -243,6 +248,12 @@ function buildConnectorDialogView(
 }
 
 function connectorHasInstalledArtifact(connector: Connector): boolean {
+  if (
+    connector.installation.state === "failed" &&
+    connector.installation.failureCode === "connector_installation_probe_absent"
+  ) {
+    return false;
+  }
   if (
     connector.installation.installedReleaseDigest ||
     connector.installation.installedReleaseId ||

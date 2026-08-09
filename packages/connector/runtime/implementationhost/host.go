@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -32,26 +33,34 @@ type ReconcileRequest struct {
 }
 
 type Config struct {
-	Artifacts         PreparedArtifactResolver
-	CLIInstallations  market.CLIInstallationManager
-	Runtimes          connectorruntime.ConnectorRuntimeResolver
-	Processes         agentruntime.ProcessTransport
-	Routes            RouteObserver
-	Commands          *CommandRegistry
-	StateRoot         string
-	UserHome          string
-	MCPStartupTimeout time.Duration
+	Artifacts              PreparedArtifactResolver
+	CLIInstallations       market.CLIInstallationManager
+	Runtimes               connectorruntime.ConnectorRuntimeResolver
+	Processes              agentruntime.ProcessTransport
+	Routes                 RouteObserver
+	Authorization          AuthorizationObserver
+	Commands               *CommandRegistry
+	StateRoot              string
+	UserHome               string
+	MCPStartupTimeout      time.Duration
+	RemoteHTTPClient       *http.Client
+	AuthorizeRemoteRequest mcp.RequestAuthorizer
 }
 
 type Host struct {
-	artifacts             PreparedArtifactResolver
-	planner               *connectorruntime.ManagedRoutePlanner
-	processes             agentruntime.ProcessTransport
-	routeObserver         RouteObserver
-	mcpStartupTimeout     time.Duration
-	routes                *connectorruntime.RouteTable
-	snapshots             *connectorruntime.ExecutionSnapshotter
-	authorizationProvider *managedCredentialAuthorizationProvider
+	artifacts              PreparedArtifactResolver
+	planner                *connectorruntime.ManagedRoutePlanner
+	processes              agentruntime.ProcessTransport
+	routeObserver          RouteObserver
+	authorizationObserver  AuthorizationObserver
+	mcpStartupTimeout      time.Duration
+	routes                 *connectorruntime.RouteTable
+	snapshots              *connectorruntime.ExecutionSnapshotter
+	authorizationProvider  *managedCredentialAuthorizationProvider
+	authorizationMu        sync.Mutex
+	authorizationRoutes    map[string]*connectorRoute
+	remoteHTTPClient       *http.Client
+	authorizeRemoteRequest mcp.RequestAuthorizer
 }
 
 type connectorCommand struct {
@@ -70,6 +79,7 @@ type connectorRoute struct {
 	capabilities           map[string]connectorCommand
 	closeMu                sync.Mutex
 	mcpClient              *mcp.StdioClient
+	remoteMCP              *mcp.StreamableHTTPClient
 	executionRoot          string
 	installedRoot          string
 	displayName            string
@@ -108,7 +118,10 @@ func New(config Config) (*Host, error) {
 	}
 	config.Commands.attach(routes)
 	host := &Host{artifacts: config.Artifacts, planner: planner, processes: config.Processes,
-		routeObserver: config.Routes, mcpStartupTimeout: config.MCPStartupTimeout, routes: routes, snapshots: snapshots}
+		routeObserver: config.Routes, authorizationObserver: config.Authorization,
+		mcpStartupTimeout: config.MCPStartupTimeout, routes: routes, snapshots: snapshots,
+		authorizationRoutes: make(map[string]*connectorRoute),
+		remoteHTTPClient:    config.RemoteHTTPClient, authorizeRemoteRequest: config.AuthorizeRemoteRequest}
 	host.authorizationProvider = newManagedCredentialAuthorizationProvider(host)
 	return host, nil
 }
@@ -138,22 +151,31 @@ func (host *Host) Reconcile(ctx context.Context, request ReconcileRequest) (mark
 	if err := host.validateAuthorization(runtimeRequest); err != nil {
 		return market.RuntimeReceipt{}, err
 	}
-	prepared, err := host.artifacts.ResolvePrepared(ctx, runtimeRequest.Connector.Release)
-	if err != nil {
-		return market.RuntimeReceipt{}, fmt.Errorf("resolve prepared connector artifact: %w", err)
+	var route *connectorRoute
+	var err error
+	if runtimeRequest.Connector.Release.Manifest.Implementation.Kind == market.ImplementationKindRemoteStreamableHTTP {
+		route, err = host.buildRemoteRoute(ctx, runtimeRequest)
+	} else {
+		prepared, resolveErr := host.artifacts.ResolvePrepared(ctx, runtimeRequest.Connector.Release)
+		if resolveErr != nil {
+			return market.RuntimeReceipt{}, fmt.Errorf("resolve prepared connector artifact: %w", resolveErr)
+		}
+		installedRoot := prepared.PreparedPath
+		executionRoot, snapshotErr := host.snapshots.Create(prepared)
+		if snapshotErr != nil {
+			return market.RuntimeReceipt{}, fmt.Errorf("create connector execution snapshot: %w", snapshotErr)
+		}
+		prepared.PreparedPath = executionRoot
+		route, err = host.buildManagedRoute(ctx, runtimeRequest, prepared)
+		if err != nil {
+			_ = host.snapshots.Remove(executionRoot)
+			return market.RuntimeReceipt{}, err
+		}
+		route.executionRoot, route.installedRoot = executionRoot, installedRoot
 	}
-	installedRoot := prepared.PreparedPath
-	executionRoot, err := host.snapshots.Create(prepared)
 	if err != nil {
-		return market.RuntimeReceipt{}, fmt.Errorf("create connector execution snapshot: %w", err)
-	}
-	prepared.PreparedPath = executionRoot
-	route, err := host.buildManagedRoute(ctx, runtimeRequest, prepared)
-	if err != nil {
-		_ = host.snapshots.Remove(executionRoot)
 		return market.RuntimeReceipt{}, err
 	}
-	route.executionRoot, route.installedRoot = executionRoot, installedRoot
 	route.displayName = runtimeRequest.Connector.Release.Manifest.DisplayName
 	route.description = runtimeRequest.Connector.Release.Manifest.Description
 	if routing := runtimeRequest.Connector.Release.Manifest.AgentRouting; routing != nil {
@@ -164,6 +186,7 @@ func (host *Host) Reconcile(ctx context.Context, request ReconcileRequest) (mark
 		_ = route.Close(time.Now().Add(3 * time.Second))
 		return market.RuntimeReceipt{}, err
 	}
+	host.releaseAuthorizationRouteByKey(key)
 	if route.mcpClient != nil {
 		go host.monitorMCPRoute(route, route.mcpClient)
 	}
@@ -179,6 +202,18 @@ func (host *Host) Reconcile(ctx context.Context, request ReconcileRequest) (mark
 
 func (*Host) validateAuthorization(request market.RuntimeReconcileRequest) error {
 	authKind := request.Connector.Release.Manifest.AuthorizationKind
+	if request.Connector.Release.Manifest.Implementation.Kind == market.ImplementationKindRemoteStreamableHTTP {
+		if authKind == "none" {
+			if request.Connector.Authorization.State != market.AuthorizationStateNotRequired {
+				return errors.New("authorization-free connector has an invalid credential binding")
+			}
+			return nil
+		}
+		if request.Connector.Authorization.State != market.AuthorizationStateConnected {
+			return errors.New("authorized remote connector is not connected")
+		}
+		return nil
+	}
 	managed := request.Connector.Release.Manifest.Implementation.ManagedStdio
 	if authKind == "none" {
 		if request.Connector.Authorization.State != market.AuthorizationStateNotRequired {
@@ -198,11 +233,30 @@ func (*Host) validateAuthorization(request market.RuntimeReconcileRequest) error
 	return nil
 }
 
+func newConnectorRoute(request market.RuntimeReconcileRequest) *connectorRoute {
+	return &connectorRoute{id: connectorRouteKey(request.ConnectionID, request.Connector.Key), connectionID: request.ConnectionID,
+		connectorKey: request.Connector.Key, releaseDigest: request.Connector.Release.ReleaseDigest,
+		generation: request.Generation, capabilities: make(map[string]connectorCommand), processes: connectorruntime.NewProcessGroup()}
+}
+
 func (host *Host) Close() error {
 	if host == nil {
 		return nil
 	}
-	return host.routes.Close(time.Now().Add(3 * time.Second))
+	deadline := time.Now().Add(3 * time.Second)
+	host.authorizationMu.Lock()
+	authorizationRoutes := make([]*connectorRoute, 0, len(host.authorizationRoutes))
+	for key, route := range host.authorizationRoutes {
+		delete(host.authorizationRoutes, key)
+		authorizationRoutes = append(authorizationRoutes, route)
+	}
+	host.authorizationMu.Unlock()
+	errs := []error{host.routes.Close(deadline)}
+	for _, route := range authorizationRoutes {
+		route.Fence()
+		errs = append(errs, route.Close(deadline))
+	}
+	return errors.Join(errs...)
 }
 
 func (host *Host) SetCapabilityPublication(enabled bool) {
@@ -245,10 +299,8 @@ func (host *Host) buildManagedRoute(ctx context.Context, request market.RuntimeR
 	if err != nil {
 		return nil, err
 	}
-	route := &connectorRoute{id: connectorRouteKey(request.ConnectionID, request.Connector.Key), connectionID: request.ConnectionID,
-		connectorKey: request.Connector.Key, releaseDigest: request.Connector.Release.ReleaseDigest,
-		generation: request.Generation, capabilities: make(map[string]connectorCommand), processes: connectorruntime.NewProcessGroup(),
-		userHome: plan.UserHome}
+	route := newConnectorRoute(request)
+	route.userHome = plan.UserHome
 	if plan.Managed.MCP != nil {
 		if err := host.attachMCP(ctx, route, plan.Managed, prepared, plan.Executable, plan.StateDir, plan.UserHome, plan.ArtifactTrees); err != nil {
 			_ = route.close(time.Now().Add(3 * time.Second))
@@ -341,77 +393,12 @@ func (host *Host) attachMCP(ctx context.Context, route *connectorRoute, managed 
 		release()
 		return errors.New("connector MCP tools/list response is invalid")
 	}
-	for _, tool := range tools {
-		tool := tool
-		commandID, err := capabilityID(route.connectorKey, "mcp", tool.Name)
-		if err != nil || tool.InputSchema == nil || tool.InputSchema["type"] != "object" || command.ValidateInputSchema(tool.InputSchema) != nil {
-			release()
-			return errors.New("connector MCP tool contract is invalid")
-		}
-		if _, duplicate := route.capabilities[commandID]; duplicate {
-			release()
-			return errors.New("connector MCP tool capability id is duplicated")
-		}
-		route.capabilities[commandID] = connectorCommand{capability: connectorCapability(commandID, route.connectorKey, "mcp", tool.Name, tool.Description, tool.InputSchema),
-			kind: "mcp", name: tool.Name,
-			invoke: func(callCtx context.Context, request command.InvokeRequest) (command.Output, error) {
-				if !host.routeCurrent(route) {
-					return command.Output{}, command.ErrServiceUnavailable
-				}
-				result, err := client.Call(callCtx, "tools/call", map[string]any{"name": tool.Name, "arguments": request.Input})
-				if err != nil {
-					return command.Output{}, command.ServiceUnavailable("connector MCP tool failed", err)
-				}
-				return jsonOutput(result)
-			}}
+	if err := host.registerMCPTools(route, client, tools); err != nil {
+		release()
+		return err
 	}
 	route.mcpClient = client
 	return nil
-}
-
-type mcpTool struct {
-	Name        string         `json:"name"`
-	Description string         `json:"description"`
-	InputSchema map[string]any `json:"inputSchema"`
-}
-
-func listMCPTools(ctx context.Context, client *mcp.StdioClient) ([]mcpTool, error) {
-	const maxPages = 64
-	const maxTools = 512
-	result := make([]mcpTool, 0)
-	cursor := ""
-	seen := map[string]struct{}{}
-	for page := 0; page < maxPages; page++ {
-		params := map[string]any{}
-		if cursor != "" {
-			params["cursor"] = cursor
-		}
-		raw, err := client.Call(ctx, "tools/list", params)
-		if err != nil {
-			return nil, fmt.Errorf("list connector MCP tools: %w", err)
-		}
-		var listing struct {
-			Tools      []mcpTool `json:"tools"`
-			NextCursor string    `json:"nextCursor"`
-		}
-		if err := json.Unmarshal(raw, &listing); err != nil {
-			return nil, errors.New("connector MCP tools/list response is invalid")
-		}
-		result = append(result, listing.Tools...)
-		if len(result) > maxTools {
-			return nil, errors.New("connector MCP tools/list exceeds tool limit")
-		}
-		next := strings.TrimSpace(listing.NextCursor)
-		if next == "" {
-			return result, nil
-		}
-		if _, duplicate := seen[next]; duplicate {
-			return nil, errors.New("connector MCP tools/list cursor repeated")
-		}
-		seen[next] = struct{}{}
-		cursor = next
-	}
-	return nil, errors.New("connector MCP tools/list exceeds page limit")
 }
 
 func (host *Host) monitorMCPRoute(route *connectorRoute, client *mcp.StdioClient) {
@@ -691,7 +678,17 @@ func (route *connectorRoute) Close(deadline time.Time) error {
 	}
 	route.closeMu.Lock()
 	defer route.closeMu.Unlock()
+	var remoteErr error
+	if route.remoteMCP != nil {
+		closeCtx, cancel := context.WithDeadline(context.Background(), deadline)
+		remoteErr = route.remoteMCP.Close(closeCtx)
+		cancel()
+		route.remoteMCP = nil
+	}
 	closeErr := route.processes.Close(deadline)
+	if closeErr == nil {
+		closeErr = remoteErr
+	}
 	if closeErr == nil && route.executionRoot != "" {
 		if err := route.snapshots.Remove(route.executionRoot); err != nil {
 			closeErr = err

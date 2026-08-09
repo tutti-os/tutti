@@ -190,8 +190,11 @@ async function syncIssueManagerContentReferences(input: {
   taskId?: string;
   workspaceId: string;
 }): Promise<IssueManagerContentReferenceSyncResult> {
+  const workspacePathRefs = input.existingRefs.filter(
+    (ref) => ref.accessKind !== "managed_attachment"
+  );
   const existingPaths = new Set(
-    input.existingRefs
+    workspacePathRefs
       .map((ref) => ref.path.trim())
       .filter((path) => path.length > 0)
   );
@@ -210,7 +213,7 @@ async function syncIssueManagerContentReferences(input: {
     const path = ref.path.trim();
     return path.length > 0 && !existingPaths.has(path);
   });
-  const removedContextRefs = input.existingRefs.filter((ref) => {
+  const removedContextRefs = workspacePathRefs.filter((ref) => {
     const path = ref.path.trim();
     return previousContentPaths.has(path) && !contentPaths.has(path);
   });

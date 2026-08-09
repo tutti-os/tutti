@@ -1,13 +1,13 @@
 ---
 name: computer-use
-description: Use to operate the macOS desktop — take screenshots, click, type, press keys, scroll — through the Tutti CLI.
+description: Use to operate the supported desktop — take screenshots, click, type, press keys, scroll — through the Tutti CLI.
 ---
 
 # Computer Use
 
-Use this skill for macOS desktop automation: screenshot, click, type, press keys, scroll, or move the cursor.
+Use this skill for supported desktop automation (macOS or Windows): screenshot, click, type, press keys, scroll, or move the cursor.
 
-Drive the desktop only through `{{.CLICommand}} computer`. The Tutti daemon owns the cua-driver session. Do not use AppleScript, `osascript`, `xdotool`, direct accessibility APIs, or the standalone cua-driver CLI; those are outside the managed session.
+Drive the desktop only through `{{.CLICommand}} computer`. The Tutti daemon owns the cua-driver session. Do not use platform-native scripts, direct accessibility APIs, or the standalone cua-driver CLI; those are outside the managed session.
 
 ## Stable Window Workflow
 

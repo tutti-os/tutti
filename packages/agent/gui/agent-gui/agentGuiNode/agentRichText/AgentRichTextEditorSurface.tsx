@@ -53,12 +53,15 @@ export function AgentRichTextEditorSurface({
 
   return (
     <div
-      className="relative min-w-0"
+      className="agent-gui-node__rich-text-editor-surface relative min-w-0"
       onKeyDownCapture={handleKeyDownCapture}
       onPointerDownCapture={handlePointerDownCapture}
     >
       {editor ? (
-        <EditorContent editor={editor} />
+        <EditorContent
+          className="agent-gui-node__rich-text-editor-content"
+          editor={editor}
+        />
       ) : (
         <div
           role="textbox"

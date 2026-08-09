@@ -38,6 +38,7 @@ export function tuttiCreateWorkspaceAgentSessionRequestFromActivity(
     ...(capabilityRefs.length > 0 ? { capabilityRefs } : {}),
     clientSubmitId: input.clientSubmitId,
     cwd: input.cwd ?? null,
+    ...(input.isolation ? { isolation: input.isolation } : {}),
     initialContent: input.initialGoalControl
       ? []
       : tuttiPromptContentBlocksFromActivity(input.initialContent ?? []),
@@ -93,6 +94,7 @@ export function tuttiCreateWorkspaceAgentSessionRequestFromActivation(
       : undefined,
     clientSubmitId: input.clientSubmitId,
     cwd: input.cwd,
+    isolation: input.isolation,
     initialContent: input.initialContent
       ? input.initialContent.map((block) => ({ ...block }))
       : undefined,

@@ -16,6 +16,7 @@ import type {
   IssueManagerAnalyticsAdapter,
   IssueManagerExecutionDirectoryPicker,
   IssueManagerAgentSessionOpener,
+  IssueManagerContextRefOpener,
   IssueManagerAgentRunner,
   IssueManagerBackend,
   IssueManagerEventSource,
@@ -49,6 +50,7 @@ export interface IssueManagerFeature {
   agentTargetOptions?: IssueManagerAgentTargetOptionsAdapter;
   modelPlanOptions?: IssueManagerModelPlanOptionsAdapter;
   agentSessionOpener?: IssueManagerAgentSessionOpener;
+  contextRefOpener?: IssueManagerContextRefOpener;
   agentRunner: IssueManagerAgentRunner;
   backend: IssueManagerBackend;
   eventSource?: IssueManagerEventSource;
@@ -72,6 +74,7 @@ export interface CreateIssueManagerFeatureInput {
   agentTargetOptions?: IssueManagerAgentTargetOptionsAdapter;
   modelPlanOptions?: IssueManagerModelPlanOptionsAdapter;
   agentSessionOpener?: IssueManagerAgentSessionOpener;
+  contextRefOpener?: IssueManagerContextRefOpener;
   agentRunner: IssueManagerAgentRunner;
   backend: IssueManagerBackend;
   eventSource?: IssueManagerEventSource;
@@ -108,6 +111,7 @@ export function createIssueManagerFeature(
     agentTargetOptions: input.agentTargetOptions,
     modelPlanOptions: input.modelPlanOptions,
     agentSessionOpener: input.agentSessionOpener,
+    contextRefOpener: input.contextRefOpener,
     agentRunner: input.agentRunner,
     backend: input.backend,
     eventSource: input.eventSource,

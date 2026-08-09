@@ -166,6 +166,15 @@ func (h *Host) CreateSession(ctx context.Context, workspaceID string, input Crea
 		goalInput.AgentSessionID = session.ID
 		goalResult, goalErr := h.goalControl(ctx, goalInput)
 		if goalErr != nil {
+			if goalControlResultPending(goalResult) {
+				if refreshed, ok := h.runtime.Session(workspaceID, session.ID); ok {
+					session = refreshed
+				}
+				return CreateSessionResult{
+					Session: session, Canonical: canonicalSession, Kind: "goalControl", GoalControl: &goalResult,
+					SessionStatus: CreateSessionStatusCreated, InitialGoalStatus: CreateSessionInitialGoalStatusUnknown,
+				}, goalErr
+			}
 			// A typed goal starts from a non-provisional, already published
 			// session. Preserve that canonical session on command failure just as
 			// the legacy Service did; rolling it back would leave subscribers with
@@ -321,6 +330,12 @@ func (h *Host) ensureRuntimeSessionLocked(ctx context.Context, ref SessionRef) (
 		if err != nil {
 			return ProviderRuntimeSession{}, err
 		}
+		if !evidence.Established {
+			evidence.Established, err = h.goalStateProvesProviderSessionEstablished(ctx, ref)
+			if err != nil {
+				return ProviderRuntimeSession{}, err
+			}
+		}
 	}
 	if live, ok := h.runtime.Session(ref.WorkspaceID, ref.AgentSessionID); ok {
 		if !ExternalImportResumeSupported(live.RuntimeContext) {
@@ -369,6 +384,10 @@ func (h *Host) ensureRuntimeSessionLocked(ctx context.Context, ref SessionRef) (
 		return ProviderRuntimeSession{}, err
 	}
 	defer release()
+	goalGenerationFences, err := h.listRuntimeGoalGenerationFences(ctx, ref)
+	if err != nil {
+		return ProviderRuntimeSession{}, err
+	}
 	result, err := h.runtime.Resume(ctx, RuntimeResumeInput{
 		WorkspaceID: ref.WorkspaceID, AgentSessionID: ref.AgentSessionID,
 		AgentTargetID: strings.TrimSpace(canonicalSession.AgentTargetID), Provider: strings.TrimSpace(canonicalSession.Provider),
@@ -378,7 +397,9 @@ func (h *Host) ensureRuntimeSessionLocked(ctx context.Context, ref SessionRef) (
 		CreatedAtUnixMS: canonicalSession.CreatedAtUnixMS, UpdatedAtUnixMS: canonicalSession.UpdatedAtUnixMS,
 		Visible: boolPointer(canonicalSession.Metadata.Visible), RuntimeContext: cloneMap(firstMap(prepared.RuntimeContext, canonicalSession.InternalRuntimeContext)),
 		ProviderTargetRef: cloneMap(prepared.ProviderTargetRef), Metadata: canonicalSession.Metadata,
-		InternalRuntimeContext: cloneMap(canonicalSession.InternalRuntimeContext), RecreateIfMissing: policy.Mode == ResumeModeRecreate,
+		InternalRuntimeContext: cloneMap(canonicalSession.InternalRuntimeContext),
+		GoalGenerationFences:   append([]RuntimeGoalGenerationFenceInput(nil), goalGenerationFences...),
+		RecreateIfMissing:      policy.Mode == ResumeModeRecreate,
 	})
 	if err != nil {
 		return ProviderRuntimeSession{}, err
@@ -388,12 +409,6 @@ func (h *Host) ensureRuntimeSessionLocked(ctx context.Context, ref SessionRef) (
 	}
 	h.goalFencesRestored.Store(ref.WorkspaceID+"\x00"+ref.AgentSessionID, struct{}{})
 	return result, nil
-}
-
-func runtimeSessionHasActiveTurn(session ProviderRuntimeSession) bool {
-	return session.TurnLifecycle != nil &&
-		session.TurnLifecycle.ActiveTurnID != nil &&
-		strings.TrimSpace(*session.TurnLifecycle.ActiveTurnID) != ""
 }
 
 func (h *Host) SendInput(ctx context.Context, ref SessionRef, input SendInput) (SendInputResult, error) {
@@ -813,12 +828,6 @@ func imageOnlyDisplayText(content []PromptContentBlock) string {
 	return ""
 }
 
-func persistedRuntimeStatus(activeTurnID string) string {
-	if strings.TrimSpace(activeTurnID) != "" {
-		return "working"
-	}
-	return "ready"
-}
 func value(input *string) string {
 	if input == nil {
 		return ""

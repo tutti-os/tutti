@@ -199,6 +199,34 @@ test("keeps authorization-free connectors on the management action", () => {
   assert.equal(view.cardsByKey[connector.key]?.action, "manage");
 });
 
+test("offers repair when calibration finds the installed implementation absent", () => {
+  const market = createConnectorMarketStoreState();
+  const connector = connectorFixture();
+  connector.installation = {
+    failureCode: "connector_installation_probe_absent",
+    installedReleaseDigest: connector.release.releaseDigest,
+    installedReleaseId: connector.release.releaseId,
+    installedVersion: connector.release.version,
+    state: "failed"
+  };
+  market.connectorKeys = [connector.key];
+  market.connectorsByKey[connector.key] = connector;
+
+  const view = buildConnectorMarketView(market, {
+    ...uiState,
+    dialog: { connectorKey: connector.key },
+    segment: "installed"
+  });
+
+  assert.equal(view.cardsByKey[connector.key]?.action, "install");
+  assert.equal(view.cardsByKey[connector.key]?.status, "not_installed");
+  assert.equal(view.dialog?.kind, "installation");
+  assert.equal(
+    view.dialog?.kind === "installation" && view.dialog.updating,
+    false
+  );
+});
+
 function connectorFixture(): Connector {
   return {
     authorization: { state: "disconnected" },

@@ -70,6 +70,23 @@ type browserNodeHTTPBackend struct {
 	client           *http.Client
 }
 
+// CheckReady performs a bounded, side-effect-free probe of the BrowserNode
+// listener. It intentionally only verifies the authenticated loopback host is
+// reachable; page leases and CDP targets remain per-agent call concerns.
+func (b *browserNodeHTTPBackend) CheckReady(ctx context.Context) error {
+	info, err := b.readListenerInfo()
+	if err != nil {
+		return err
+	}
+	dialer := net.Dialer{}
+	connection, err := dialer.DialContext(ctx, "tcp", info.Address)
+	if err != nil {
+		return fmt.Errorf("BrowserNode desktop host is unavailable: %w", err)
+	}
+	_ = connection.Close()
+	return nil
+}
+
 type browserNodeListenerInfo struct {
 	Address string `json:"address"`
 	Token   string `json:"token"`

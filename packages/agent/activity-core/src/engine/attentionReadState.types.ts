@@ -1,10 +1,20 @@
 export type AttentionCompletionKind = "completed" | "failed";
+export type AttentionObservationProvenance = "historical" | "live";
+export type AttentionReadStateProvenance = "durable" | "historical" | "live";
 
 export interface AttentionReadRecord {
   completionKey: string;
   isUnread: boolean;
   kind: AttentionCompletionKind;
   markedUnreadByUser: boolean;
+  /** Whether this completion has been observed from a live event in this run. */
+  observationProvenance: AttentionObservationProvenance;
+  /**
+   * Whether the current read state came from durable state or this observation.
+   * Older host-created snapshots may omit this field and are treated as
+   * having no historical-only marker.
+   */
+  readStateProvenance?: AttentionReadStateProvenance;
 }
 
 export interface AttentionReadPartition {

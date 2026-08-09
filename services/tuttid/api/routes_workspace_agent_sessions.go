@@ -32,6 +32,33 @@ func registerWorkspaceAgentSessionRoutes(
 		wrapper.DeleteWorkspaceAgentSessionsBatch(w, r)
 	})
 
+	mux.HandleFunc("/v1/workspaces/{workspaceID}/deleted-agent-sessions", func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet:
+			wrapper.ListWorkspaceDeletedAgentSessions(w, r)
+		case http.MethodDelete:
+			wrapper.PurgeWorkspaceDeletedAgentSessions(w, r)
+		default:
+			tuttitypes.WriteMethodNotAllowed(w)
+		}
+	})
+
+	mux.HandleFunc("/v1/workspaces/{workspaceID}/deleted-agent-sessions/{agentSessionID}", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodDelete {
+			tuttitypes.WriteMethodNotAllowed(w)
+			return
+		}
+		wrapper.PurgeWorkspaceDeletedAgentSession(w, r)
+	})
+
+	mux.HandleFunc("/v1/workspaces/{workspaceID}/deleted-agent-sessions/{agentSessionID}/restore", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			tuttitypes.WriteMethodNotAllowed(w)
+			return
+		}
+		wrapper.RestoreWorkspaceDeletedAgentSession(w, r)
+	})
+
 	mux.HandleFunc("/v1/workspaces/{workspaceID}/agent-session-sections", func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodGet:

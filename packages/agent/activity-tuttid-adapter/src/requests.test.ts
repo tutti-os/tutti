@@ -25,6 +25,7 @@ test("create and send projections share one prompt allowlist", () => {
       agentTargetId: "target-1",
       clientSubmitId: "submit-1",
       initialContent: content,
+      isolation: "worktree",
       mode: "new",
       settings: {
         browserUse: true,
@@ -50,6 +51,7 @@ test("create and send projections share one prompt allowlist", () => {
   }
   assert.equal(activationCreate.browserUse, true);
   assert.equal(activationCreate.codexSaverMode, true);
+  assert.equal(activationCreate.isolation, "worktree");
   assert.equal("computerUse" in activationCreate, false);
   assert.deepEqual(send.capabilityRefs, [
     { capability: "tutti", source: "slash_command" }

@@ -113,3 +113,37 @@ func TestDaemonAPIGeneratedRoutesResolveWorkspaceGitPatchSupport(t *testing.T) {
 		t.Fatalf("root = %#v, want /workspace/project", response.Root)
 	}
 }
+
+func TestDaemonAPIGeneratedRoutesResolveWorkspaceAgentSessionWorktreeSupport(t *testing.T) {
+	mux := http.NewServeMux()
+	RegisterRoutes(mux, NewRoutes(DaemonAPI{
+		AgentSessionService: stubAgentSessionService{
+			resolveWorktreeSupportFn: func(_ context.Context, workspaceID string, agentTargetID string, cwd string) (agentservice.SessionWorktreeSupport, error) {
+				if workspaceID != "ws-1" || agentTargetID != "local:codex" || cwd != "/workspace/project" {
+					t.Fatalf("workspace/target/cwd = %q/%q/%q", workspaceID, agentTargetID, cwd)
+				}
+				return agentservice.SessionWorktreeSupport{
+					Supported: true,
+					Root:      "/workspace/project",
+				}, nil
+			},
+		},
+	}))
+
+	recorder := performGeneratedRouteRequest(
+		t,
+		mux,
+		http.MethodGet,
+		"/v1/workspaces/ws-1/agent-session-worktree-support?agentTargetId=local%3Acodex&cwd=%2Fworkspace%2Fproject",
+		nil,
+	)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body: %s", recorder.Code, http.StatusOK, recorder.Body.String())
+	}
+
+	var response tuttigenerated.WorkspaceAgentSessionWorktreeSupportResponse
+	decodeGeneratedRouteResponse(t, recorder, &response)
+	if !response.Supported || response.Root == nil || *response.Root != "/workspace/project" {
+		t.Fatalf("response = %#v", response)
+	}
+}

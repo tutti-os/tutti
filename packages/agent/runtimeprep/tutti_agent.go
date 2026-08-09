@@ -3,6 +3,7 @@ package runtimeprep
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -17,13 +18,14 @@ type TuttiAgentPreparer struct {
 	ResolveAuthSource           func(context.Context, PrepareInput) (string, error)
 	StableSkillBundleRoot       string
 	StableSystemSkillBundleRoot string
+	AuthProjector               AuthFileProjector
 }
 
 func (TuttiAgentPreparer) Provider() string {
 	return "tutti-agent"
 }
 
-func (p TuttiAgentPreparer) Prepare(ctx context.Context, input ProviderPrepareInput) (ProviderPrepareResult, error) {
+func (p TuttiAgentPreparer) Prepare(ctx context.Context, input ProviderPrepareInput) (result ProviderPrepareResult, err error) {
 	home := filepath.Join(input.RuntimeRoot, "tutti-agent-home")
 	logRuntimePrepareTrace("runtime_prepare.tutti_agent.entered", input.PrepareInput, nil)
 	if p.BeforePrepare != nil {
@@ -38,10 +40,19 @@ func (p TuttiAgentPreparer) Prepare(ctx context.Context, input ProviderPrepareIn
 		}
 		authSource = strings.TrimSpace(resolved)
 	}
-	if err := prepareTuttiAgentHome(home, input.PrepareInput, authSource, authSourceConfigured); err != nil {
+	cleanup, err := prepareTuttiAgentHomeWithProjector(ctx, home, input.PrepareInput, authSource, authSourceConfigured, p.AuthProjector)
+	if err != nil {
 		return ProviderPrepareResult{}, err
 	}
-	extraSkillRoots := []string(nil)
+	defer func() {
+		if err != nil && cleanup != nil {
+			err = errors.Join(err, cleanup(ctx))
+		}
+	}()
+	extraSkillRoots, err := connectorSkillRoots(input.ConnectorRoutingHints)
+	if err != nil {
+		return ProviderPrepareResult{}, err
+	}
 	if strings.TrimSpace(p.StableSkillBundleRoot) == "" {
 		if _, err := installProviderNativeSkills(filepath.Join(home, "skills"), input.PrepareInput); err != nil {
 			return ProviderPrepareResult{}, fmt.Errorf("install tutti-agent native skills: %w", err)
@@ -51,7 +62,7 @@ func (p TuttiAgentPreparer) Prepare(ctx context.Context, input ProviderPrepareIn
 		if err != nil {
 			return ProviderPrepareResult{}, fmt.Errorf("materialize tutti-agent stable skills: %w", err)
 		}
-		extraSkillRoots = []string{root}
+		extraSkillRoots = append([]string{root}, extraSkillRoots...)
 	}
 	logRuntimePrepareTrace("runtime_prepare.tutti_agent.home_prepared", input.PrepareInput, nil)
 	instructionsPath := filepath.Join(home, "AGENTS.md")
@@ -87,9 +98,38 @@ func (p TuttiAgentPreparer) Prepare(ctx context.Context, input ProviderPrepareIn
 		env = append(env, codexModelPlanAPIKeyEnv+"="+input.ModelEndpoint.APIKey)
 	}
 	return ProviderPrepareResult{
-		Cwd: input.Cwd,
-		Env: env,
+		Cwd:     input.Cwd,
+		Env:     env,
+		Cleanup: cleanup,
 	}, nil
+}
+
+func connectorSkillRoots(hints []ConnectorRoutingHint) ([]string, error) {
+	roots := make([]string, 0, len(hints))
+	seen := make(map[string]struct{}, len(hints))
+	for _, hint := range hints {
+		root := strings.TrimSpace(hint.SkillRoot)
+		if root == "" {
+			continue
+		}
+		root = filepath.Clean(root)
+		if !filepath.IsAbs(root) {
+			return nil, fmt.Errorf("connector %q Skill root must be absolute", hint.ConnectorKey)
+		}
+		info, err := os.Lstat(root)
+		if err != nil {
+			return nil, fmt.Errorf("inspect connector %q Skill root: %w", hint.ConnectorKey, err)
+		}
+		if info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
+			return nil, fmt.Errorf("connector %q Skill root must be a directory, not a symlink", hint.ConnectorKey)
+		}
+		if _, exists := seen[root]; exists {
+			continue
+		}
+		seen[root] = struct{}{}
+		roots = append(roots, root)
+	}
+	return roots, nil
 }
 
 // PrepareTuttiAgentHome materializes a TUTTI_AGENT_HOME with the user's auth
@@ -101,53 +141,63 @@ func PrepareTuttiAgentHome(home string, input PrepareInput) error {
 }
 
 func prepareTuttiAgentHome(home string, input PrepareInput, authSource string, authSourceConfigured bool) error {
-	if err := os.MkdirAll(home, 0o700); err != nil {
-		return fmt.Errorf("create tutti-agent home: %w", err)
-	}
-	if err := exposeUserTuttiAgentFiles(home, authSource, authSourceConfigured); err != nil {
-		return err
-	}
-	return ensureTuttiAgentSessionConfig(filepath.Join(home, "config.toml"), input)
+	_, err := prepareTuttiAgentHomeWithProjector(context.Background(), home, input, authSource, authSourceConfigured, nil)
+	return err
 }
 
-func exposeUserTuttiAgentFiles(home string, explicitAuthSource string, explicitAuthSourceConfigured bool) error {
+func prepareTuttiAgentHomeWithProjector(ctx context.Context, home string, input PrepareInput, authSource string, authSourceConfigured bool, projector AuthFileProjector) (func(context.Context) error, error) {
+	if err := os.MkdirAll(home, 0o700); err != nil {
+		return nil, fmt.Errorf("create tutti-agent home: %w", err)
+	}
+	cleanup, err := exposeUserTuttiAgentFilesWithProjector(ctx, home, authSource, authSourceConfigured, projector)
+	if err != nil {
+		return nil, err
+	}
+	if err := ensureTuttiAgentSessionConfig(filepath.Join(home, "config.toml"), input); err != nil {
+		return nil, err
+	}
+	return cleanup, nil
+}
+
+func exposeUserTuttiAgentFilesWithProjector(ctx context.Context, home string, explicitAuthSource string, explicitAuthSourceConfigured bool, projector AuthFileProjector) (func(context.Context) error, error) {
 	if explicitAuthSourceConfigured {
 		if explicitAuthSource == "" {
-			return nil
+			return nil, nil
 		}
 		if !filepath.IsAbs(explicitAuthSource) {
-			return fmt.Errorf("tutti-agent auth source must be absolute")
+			return nil, fmt.Errorf("tutti-agent auth source must be absolute")
 		}
-		return exposeTuttiAgentAuth(home, filepath.Clean(explicitAuthSource), true)
+		return exposeTuttiAgentAuthWithProjector(ctx, home, filepath.Clean(explicitAuthSource), true, projector)
 	}
 	userHome, err := os.UserHomeDir()
 	if err != nil || strings.TrimSpace(userHome) == "" {
-		return nil
+		return nil, nil
 	}
 	userAgentHome := filepath.Join(userHome, ".tutti-agent")
 	source := filepath.Join(userAgentHome, "auth.json")
-	if err := exposeTuttiAgentAuth(home, source, false); err != nil {
-		return err
+	cleanup, err := exposeTuttiAgentAuthWithProjector(ctx, home, source, false, projector)
+	if err != nil {
+		return nil, err
 	}
 	target := filepath.Join(home, "config.toml")
 	if _, err := os.Lstat(target); os.IsNotExist(err) {
 		userConfig := filepath.Join(userAgentHome, "config.toml")
 		if _, err := os.Stat(userConfig); err == nil {
 			if err := copyFile(userConfig, target, 0o600); err != nil {
-				return fmt.Errorf("copy tutti-agent config: %w", err)
+				return nil, fmt.Errorf("copy tutti-agent config: %w", err)
 			}
 		}
 	}
-	return nil
+	return cleanup, nil
 }
 
-func exposeTuttiAgentAuth(home string, source string, allowMissingSource bool) error {
+func exposeTuttiAgentAuthWithProjector(ctx context.Context, home string, source string, allowMissingSource bool, projector AuthFileProjector) (func(context.Context) error, error) {
 	if !allowMissingSource {
 		if _, err := os.Stat(source); err != nil {
 			if os.IsNotExist(err) {
-				return nil
+				return nil, nil
 			}
-			return fmt.Errorf("stat tutti-agent auth source: %w", err)
+			return nil, fmt.Errorf("stat tutti-agent auth source: %w", err)
 		}
 	}
 	target := filepath.Join(home, "auth.json")
@@ -155,24 +205,37 @@ func exposeTuttiAgentAuth(home string, source string, allowMissingSource bool) e
 		if info.Mode()&os.ModeSymlink != 0 {
 			current, readErr := os.Readlink(target)
 			if readErr != nil {
-				return fmt.Errorf("read tutti-agent auth target: %w", readErr)
+				return nil, fmt.Errorf("read tutti-agent auth target: %w", readErr)
 			}
 			if current == source {
-				return nil
+				return nil, nil
 			}
-			return fmt.Errorf("tutti-agent auth target already links to a different source")
+			return nil, fmt.Errorf("tutti-agent auth target already links to a different source")
 		}
-		// Windows uses a hard link when the process lacks symlink privilege.
-		// The target is run-scoped, so an existing regular file is already a
-		// materialized auth view and does not need to be replaced.
-		return nil
+		if projector != nil {
+			cleanup, projectErr := projector.Project(ctx, AuthFileProjection{SourcePath: source, TargetPath: target, LockSourcePath: filepath.Join(filepath.Dir(source), ".refresh.lock"), LockTargetPath: filepath.Join(home, ".refresh.lock")})
+			if projectErr != nil {
+				return nil, fmt.Errorf("recover tutti-agent auth projection: %w", projectErr)
+			}
+			return cleanup, nil
+		}
+		// Legacy embedders without a projector retain their existing regular
+		// run-scoped view.
+		return nil, nil
 	} else if !os.IsNotExist(err) {
-		return fmt.Errorf("inspect tutti-agent auth target: %w", err)
+		return nil, fmt.Errorf("inspect tutti-agent auth target: %w", err)
+	}
+	if projector != nil {
+		cleanup, err := projector.Project(ctx, AuthFileProjection{SourcePath: source, TargetPath: target, LockSourcePath: filepath.Join(filepath.Dir(source), ".refresh.lock"), LockTargetPath: filepath.Join(home, ".refresh.lock")})
+		if err != nil {
+			return nil, fmt.Errorf("expose tutti-agent auth.json: %w", err)
+		}
+		return cleanup, nil
 	}
 	if err := exposeCodexFile(source, target, 0o600); err != nil {
-		return fmt.Errorf("expose tutti-agent auth.json: %w", err)
+		return nil, fmt.Errorf("expose tutti-agent auth.json: %w", err)
 	}
-	return nil
+	return nil, nil
 }
 
 func ensureTuttiAgentSessionConfig(configPath string, input PrepareInput) error {

@@ -63,13 +63,14 @@ The shared Connector modules own:
   delivery
 - `connector/store-sqlite`: the canonical repository, transactions, leases,
   migrations, and durable outbox implementation
-- `connector/runtime`: secure artifact preparation, managed runtime identity,
-  ABI verification, and typed Node package installation
+- `connector/runtime`: latest-only artifact download caching, no-network archive
+  import, secure artifact preparation, managed runtime identity, ABI
+  verification, and typed Node package installation
 - a default remote-catalog domain adapter built over the authoritative market
   client
-- reusable artifact preparation: bounded download, size and
-  digest verification, safe extraction, release-to-package verification,
-  staging layout, atomic promotion mechanics, cleanup, and reconcile rules
+- reusable artifact mechanics: bounded download, `current + candidate` cache
+  replacement, size and digest verification, no-network import, safe
+  extraction, release-to-package verification, atomic promotion, and cleanup
 - `connector/market`: the reusable local daemon OpenAPI fragment under
   `openapi/connector-market.v1.yaml`
 - the renderer `ConnectorMarketBackend` contract, module Root/Runtime,
@@ -99,22 +100,26 @@ Artifact preparation and runtime activation are different responsibilities.
 They may also live on different machines:
 
 ```text
-durable operation
-    -> host artifact port (direct download or account grant issuance)
-    -> connector/runtime artifact resolver/downloader, local or VM-owned
-    -> bounded staging download
-    -> size and digest verification
-    -> safe extraction and packaged-manifest verification
-    -> prepared artifact receipt (local path or opaque runtime reference)
+durable install operation
+    -> ReleaseInstallationManager
+    -> control-plane DownloadCache prepares one verified candidate
+    -> same-machine import, or host data-plane sync to the runtime machine
+    -> runtime Importer revalidates size/SHA and safely extracts
+    -> optional typed CLI package installation
+    -> release installation receipt (local paths or opaque runtime reference)
+    -> repository commits device-installed truth
+    -> cache candidate becomes current
+
+authorization observation / runtime reconcile
+    -> RuntimeBindingResolver derives active or inactive account intent
     -> connector/runtime implementation adapter
     -> generation-fenced MCP/CLI routes and observed process state
-    -> repository result commit
 ```
 
 For a CLI declared with a typed `node_package` installation, the prepared
-artifact contains connector metadata and skills, not the CLI npm package. The
-daemon inserts one additional, replay-safe stage between artifact preparation
-and route reconciliation:
+artifact contains connector metadata and skills, not the CLI npm package. CLI
+installation remains part of the physical release install receipt, while route
+reconciliation is a separate operation:
 
 The local daemon connector-manifest v1 contract includes required icons, typed
 package installation, explicit Node ranges, and mapping-free generic CLI. It is
@@ -184,13 +189,33 @@ exactly and never derives a short name by splitting the ID. The selected
 connector remains a separate routing and policy boundary, and invocation fails
 when the canonical ID belongs to a different connector.
 
+Managed MCP and CLI interfaces may declare an `installationProbe` containing
+only bounded argv and `timeoutMs`. The host reuses the interface's verified
+entrypoint and managed runtime; manifests cannot select another executable or
+provide shell text. Exit code `0` means the release-scoped implementation is
+present, exit code `1` means it is absent, and timeout, transport failure, or
+any other exit code is indeterminate. Probe output is ignored and bounded.
+
+Installation probes run only for a release with durable prior-installation
+evidence. Catalog-only entries are never executed before the user accepts an
+installation. The daemon therefore does not silently adopt an arbitrary
+user-global CLI as a signed Connector release: artifact, runtime, and release
+identity must already have crossed the normal install boundary.
+
 Connector releases may declare optional `agentRouting.aliases` containing only
 stable product or brand names. Connector id and display name are included by
 the host automatically; authors use aliases for additional language and legacy
 brand forms, not generic capability words. After activation, the implementation
 host projects this bounded, validated routing data into new Agent runtimes. An
-alias match makes `connector available` the first discovery step; capability
-and Skill discovery still happens lazily through the Connector Broker. Market
+alias match makes `connector available` the first discovery step. Its connector
+summaries include recursively discovered Skill names, titles, descriptions,
+entry paths, and base paths. Skills are discovered from every `SKILL.md` below
+the verified release's `skills/` directory; manifests do not duplicate a
+central Skill list. Tutti Agent receives that content-addressed directory as a
+native extra Skill root before thread start/resume, so relative references,
+scripts, and assets resolve from the connector package and the Skill survives
+connector process restarts. `connector skill read` remains a compatibility
+fallback for providers that cannot consume native roots. Market
 listings that are not installed and routes that are not active are never added
 to Agent instructions.
 
@@ -247,12 +272,14 @@ identity plus an explicit account execution scope. Each stage is idempotent for 
 operationId + connectorKey + version + releaseDigest
 ```
 
-The durable flow is:
+The durable install flow is intentionally coarse-grained. A failed attempt is
+restarted from the idempotent release installer; the business repository does
+not persist internal download/sync/import sub-stages:
 
 ```text
-accepted -> downloading -> prepared -> activating -> completed
-     |            |            |             |
-     +------------+------------+-------------+-> failed
+accepted -> installing -> installed -> completed
+     |            |            |
+     +------------+------------+-> failed
 ```
 
 The repository owns operation leases and attempt metadata. Recovery observes
@@ -276,13 +303,25 @@ permanent missing result, or a reconnect after the result window, converges
 from the authoritative connector/snapshot projection instead of relying on
 operation history.
 
-Installed release evidence is a current business fact, not operation history.
-The SQLite store records one complete release record per currently installed
-connector in `connector_market_installed_releases`; install completion updates
-it and uninstall completion removes it in the same transaction as the business
-transition. Runtime recovery therefore remains valid after the corresponding
-completed install operation has expired, including when the accepted catalog
-has advanced to a newer release.
+Installed release evidence is durable recovery input, not operation history.
+The SQLite store records one complete release record per installed connector in
+`connector_market_installed_releases`; install completion updates it and
+uninstall completion removes it in the same transaction as the business
+transition. Probe-detected drift retains that evidence while the installation
+projection is failed so repair and uninstall still target the accepted release.
+Runtime recovery therefore remains valid after the corresponding completed
+install operation has expired, including when the accepted catalog has advanced
+to a newer release.
+
+Before bootstrap republishes installed routes, it compares each previously
+installed release that declares a probe with the actual MCP/CLI implementation.
+An explicit absent result changes the installation projection to `failed` with
+`connector_installation_probe_absent`, retains the installed release evidence
+needed for safe repair or uninstall, advances the revision, and publishes the
+normal changed event. A later present result for that same release clears the
+failure and restores `installed`. Indeterminate probes preserve SQLite truth;
+the ordinary fail-closed runtime reconcile still decides whether bootstrap can
+publish the route.
 
 Authorization operations must follow the same recovery rule or remain fully
 synchronous without leaving a recoverable `running` operation. A provider uses
@@ -401,8 +440,8 @@ but cannot be installed.
 ## Current Checkpoint
 
 The shared package now contains immutable operation targets and execution
-receipts, recoverable install/uninstall/authorization flows, secure
-content-addressed artifact preparation, host ports, the local daemon OpenAPI
+receipts, recoverable install/uninstall/authorization flows, latest-only
+artifact download caching, a no-network archive importer, host ports, the local daemon OpenAPI
 fragment, and the complete reusable renderer module: Root, Runtime, lifecycle,
 per-service StartupJobs, UiState, render-ready View, i18n, catalog, and modal
 state branches.
@@ -417,20 +456,25 @@ authoritative snapshot reload.
 
 The registered Tutti Host reads the ordinary TSH market item API, downloads an
 artifact directly from the configured artifact base URL, verifies its declared
-SHA-256 and size, prepares a content-addressed snapshot, selects the local
+SHA-256 and size, retains only the current archive plus one replaceable
+candidate, prepares an installed snapshot, selects the local
 Node/Python runtime, installs typed Node CLI packages into a private shared-store
 layout when requested, and exposes one daemon-owned MCP/CLI runtime per installed
-connector connection. Crash recovery adopts every host-touching operation into the current
-boot epoch. Startup requires one successful catalog refresh before restoring
-routes; later refresh failures preserve installed last-known-good capabilities
-while the daemon retries.
+connector connection. Installation commits before runtime publication;
+authorization state and bootstrap drive separate generation-fenced reconcile.
+Crash recovery adopts every host-touching operation into the current boot
+epoch. Catalog refresh failure does not invalidate installed release evidence.
 
 The public `connector available`, `connector capabilities`, `connector skills`,
 `connector skill read`, and `connector invoke` commands expose installed
 connectors through the local daemon CLI channel to every Agent and the local
-Tutti CLI. Discovery returns connector summary first, canonical capability
-metadata on request, Skill frontmatter metadata next, and full `SKILL.md`
-content only on explicit read. `connector invoke --capability` accepts only the
+Tutti CLI. Discovery returns connector summaries with Skill frontmatter
+metadata and stable package paths first; `connector skills` remains the
+connector-scoped compatibility and refresh endpoint. Native-capable providers
+read `SKILL.md` and sibling resources directly from the injected connector root;
+full `SKILL.md` content can still be returned by explicit compatibility read,
+while canonical capability metadata remains on demand.
+`connector invoke --capability` accepts only the
 canonical ID returned by capability discovery. Connector invocations use a
 bounded, serialized admission gate by default.
 

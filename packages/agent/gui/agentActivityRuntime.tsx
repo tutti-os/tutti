@@ -163,6 +163,7 @@ interface AgentActivityRuntimeActivateSessionInputBase {
   initialContent?: AgentActivitySendInput["content"];
   /** 仅展示用首轮文本(bundle 折叠成一个 chip);initialContent 仍带展开后的文件。 */
   initialDisplayPrompt?: string | null;
+  isolation?: AgentActivityCreateSessionInput["isolation"];
   railPlacement?: AgentActivityRailPlacement;
   submitDiagnostics?: AgentActivitySendInput["submitDiagnostics"];
   settings?: AgentActivitySessionSettings;

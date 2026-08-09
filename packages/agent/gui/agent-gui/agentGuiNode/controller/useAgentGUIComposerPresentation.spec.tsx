@@ -9,6 +9,50 @@ import type { AgentGUIComposerTargetData } from "./agentGuiController.composerPr
 import { useAgentGUIComposerPresentation } from "./useAgentGUIComposerPresentation";
 
 describe("useAgentGUIComposerPresentation", () => {
+  it("exposes a terminal options error without leaving the composer in loading state", () => {
+    const data: AgentGUINodeData = {
+      provider: "opencode",
+      agentTargetId: "local:opencode",
+      lastActiveAgentSessionId: null
+    };
+    const target: AgentGUIComposerTargetData = {
+      agentTargetId: "local:opencode",
+      data,
+      provider: "opencode",
+      targetId: "local:opencode"
+    };
+
+    const { result } = renderHook(() =>
+      useAgentGUIComposerPresentation({
+        activeConversation: null,
+        activeConversationId: null,
+        activeEngineSession: null,
+        activeSessionState: null,
+        agentActivityRuntime: {
+          projectPathIsRemote: false
+        } as AgentGUIRuntime,
+        composerOptionsLoadStatus: "error",
+        composerOptionsLoading: false,
+        composerSupport: composerSettingsSupportFromOptions(null, null),
+        composerTargetProvider: "opencode",
+        data,
+        defaultReasoningEffort: null,
+        draftSettingsBySessionId: {},
+        providerComposerOptions: null,
+        selectedComposerTargetData: target,
+        selectedProjectPath: null,
+        shouldApplyPreparedProjectSelection: false,
+        userProjects: []
+      })
+    );
+
+    expect(result.current.stableComposerSettings).toMatchObject({
+      composerOptionsError: true,
+      composerOptionsLoadStatus: "error",
+      isSettingsLoading: false
+    });
+  });
+
   it("keeps all explicit home defaults above stale options, then yields to authority after retirement", () => {
     const data: AgentGUINodeData = {
       provider: "opencode",

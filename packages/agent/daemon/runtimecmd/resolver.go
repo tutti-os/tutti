@@ -16,8 +16,8 @@ type Resolver struct {
 	IsExecutableFile func(string) bool
 	LookPath         func(string) (string, error)
 	// ScutilProxy returns the raw output of `scutil --proxy` (and whether it is
-	// available). It is injectable for tests; the default reads the macOS system
-	// proxy and is a no-op on other platforms. See proxy.go.
+	// available). It is injectable for legacy macOS parser tests; production
+	// reads the platform system proxy through the build-tagged adapter.
 	ScutilProxy func() (string, bool)
 }
 

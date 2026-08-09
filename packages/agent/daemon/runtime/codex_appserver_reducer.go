@@ -263,7 +263,14 @@ func (r codexAppServerReducer) reduceNotification(
 		a.failActiveTurnFromAppServerError(session.AgentSessionID, params)
 		return codexAppServerReduction{}
 	case appServerNotifyWarning:
-		return emit([]activityshared.Event{appServerSystemNoticeEvent(session, turnID, "warning", "", asString(params["message"]))})
+		message := asStringRaw(params["message"])
+		// The app-server currently sends this untyped advisory after a successful
+		// compaction. Suppress only the exact duplicate while this turn owns a
+		// compaction notice; keep every other warning visible.
+		if normalizer.HasCompactionNotice() && message == appServerCompactionAdvisoryMessage {
+			return emit(nil)
+		}
+		return emit([]activityshared.Event{appServerSystemNoticeEvent(session, turnID, "warning", "", message)})
 	case appServerNotifyDeprecation:
 		return emit([]activityshared.Event{appServerSystemNoticeEvent(session, turnID, "warning",
 			asString(params["summary"]), asString(params["details"]))})

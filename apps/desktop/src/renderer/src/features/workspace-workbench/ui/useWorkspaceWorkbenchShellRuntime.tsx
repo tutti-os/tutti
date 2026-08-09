@@ -8,6 +8,7 @@ import {
 } from "react";
 import { useService } from "@tutti-os/infra/di";
 import { IConnectorMarketModule } from "@tutti-os/connector-market/services";
+import { openConnectorDialogFromComposer } from "../services/openConnectorDialogFromComposer.ts";
 import type {
   WorkspaceAgentProvider,
   WorkspaceSummary
@@ -36,6 +37,10 @@ import { useWorkspaceFileManagerService } from "@renderer/features/workspace-fil
 import { IWorkspaceFilePreviewSurfaceHost } from "@renderer/features/workspace-file-preview";
 import { useTranslation } from "@renderer/i18n";
 import { createWorkspaceWorkbenchDesktopI18nRuntime } from "@shared/i18n";
+import {
+  isFeatureEnabled,
+  LAB_CONNECTORS_FLAG
+} from "../../../../../shared/featureFlags/catalog.ts";
 import type {
   DesktopDockIconStyle,
   DesktopFeatureFlags,
@@ -179,6 +184,19 @@ export function useWorkspaceWorkbenchShellRuntime({
   const handleCapabilitySettingsRequest = useCallback(
     (target: WorkspaceWorkbenchCapabilitySettingsTarget) => {
       if (typeof target !== "string") {
+        const featureFlags =
+          desktopPreferencesState.changingFeatureFlags ??
+          desktopPreferencesState.featureFlags;
+        if (!isFeatureEnabled(featureFlags, LAB_CONNECTORS_FLAG)) {
+          return;
+        }
+        if (target.action === "open") {
+          void openConnectorDialogFromComposer(
+            connectorMarketModule.root,
+            target.connectorKey
+          ).catch(() => undefined);
+          return;
+        }
         workspaceSettingsService.openPanel(
           { id: state.workspace.id },
           { pane: "connectors" }
@@ -194,7 +212,13 @@ export function useWorkspaceWorkbenchShellRuntime({
         }
       );
     },
-    [connectorMarketModule, state.workspace.id, workspaceSettingsService]
+    [
+      connectorMarketModule,
+      desktopPreferencesState.changingFeatureFlags,
+      desktopPreferencesState.featureFlags,
+      state.workspace.id,
+      workspaceSettingsService
+    ]
   );
   const shellRuntimeControllerRef =
     useRef<WorkspaceWorkbenchShellRuntimeController | null>(null);

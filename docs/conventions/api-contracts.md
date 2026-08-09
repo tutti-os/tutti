@@ -203,17 +203,43 @@ values. The renderer must publish the complete preference object through the
 existing authoritative preference event flow rather than storing this setting
 locally.
 
-`POST /v1/agent-maintenance/deleted-conversations/purge` is the explicit manual
-command. It accepts no path or workspace input and returns only aggregate row,
-message, and payload-byte counts. The command performs no filesystem deletion.
-The API reports an idle conflict as service unavailable and a maintenance
-failure as a workspace operation failure. The high-risk typed confirmation is
-a desktop interaction, not an HTTP request field; unattended automatic
-maintenance is daemon-owned and is not exposed as a second client scheduler.
-After a successful manual sweep, the daemon may make a strictly bounded
-best-effort compaction attempt for a small database with substantial free
-pages; this optional post-step is not run by automatic maintenance and is not
-part of the aggregate response contract.
+The Workspace deleted-conversation collection is
+`/v1/workspaces/{workspaceID}/deleted-agent-sessions`:
+
+- `GET` lists topmost deleted Session components: either a canonical root or a
+  child whose parent is not deleted. `searchQuery` searches titles only;
+  `projectPath` selects one exact original project, while
+  `projectScope=unscoped` selects Sessions without a project. Omitting both is
+  the all-project default. `cursor` and `limit` provide stable
+  `updatedAtUnixMs DESC, agentSessionId ASC` paging.
+- The list response includes filtered `totalCount`, unfiltered
+  `workspaceTotalCount`, and all original non-empty project paths as
+  `projectOptions`, including paths whose project registration is unavailable.
+  A row explicitly reports whether it is restorable and why a legacy tombstone
+  is unavailable.
+- `POST .../{agentSessionID}/restore` restores the exact complete component without
+  starting provider work. `DELETE .../{agentSessionID}` permanently removes one
+  topmost deleted component, and collection `DELETE` permanently removes every
+  topmost deleted component in that Workspace regardless of visible filters.
+
+Permanent-delete endpoints return only aggregate Session, Message, and payload
+byte counts. They use the daemon idle gate; restore does not. The API reports an
+idle conflict as service unavailable and a maintenance failure as a Workspace
+operation failure. Ordinary and typed high-risk confirmations are desktop
+interactions, not HTTP request fields. Canonical deletion, Tutti Mode cleanup,
+and the durable Session-scoped runtime/copied-attachment cleanup item commit
+together. Because the current runtime and copied-attachment roots are keyed
+only by Session ID, a pending item fences reuse of that ID across all
+Workspaces; filesystem cleanup failure does not change the successful HTTP
+result and is retried in a later idle window.
+
+`POST /v1/agent-maintenance/deleted-conversations/purge` remains the
+daemon-wide maintenance sweep without a Workspace path. Automatic retention is
+daemon-owned and is not exposed as a second client scheduler. After an explicit
+daemon-wide sweep, the daemon may make a strictly bounded best-effort
+compaction attempt for a small database with substantial free pages; this
+optional post-step is not run by automatic maintenance and is not part of the
+aggregate response contract.
 
 ## Desktop Lab Preferences
 

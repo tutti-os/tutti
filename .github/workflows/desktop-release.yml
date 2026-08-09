@@ -42,11 +42,6 @@ on:
         options:
           - publish
           - draft_only
-      include_windows:
-        description: Include an unsigned Windows NSIS package in the release assets
-        required: false
-        type: boolean
-        default: false
       notify_feishu:
         description: Send a Feishu card after publishing
         required: false
@@ -73,7 +68,6 @@ jobs:
       release_version: ${{ steps.release.outputs.release_version }}
       release_channel: ${{ steps.release.outputs.release_channel }}
       publication_mode: ${{ steps.publication.outputs.publication_mode }}
-      include_windows: ${{ steps.windows.outputs.include_windows }}
       notify_feishu: ${{ steps.notify.outputs.notify_feishu }}
 
     steps:
@@ -286,19 +280,6 @@ jobs:
           esac
           echo "publication_mode=${publication_mode}" >> "$GITHUB_OUTPUT"
 
-      - name: Resolve Windows packaging opt-in
-        id: windows
-        shell: bash
-        env:
-          RELEASE_EVENT_NAME: ${{ github.event_name }}
-          INPUT_INCLUDE_WINDOWS: ${{ inputs.include_windows }}
-        run: |
-          include_windows=false
-          if [[ "${RELEASE_EVENT_NAME}" == "workflow_dispatch" && "${INPUT_INCLUDE_WINDOWS}" == "true" ]]; then
-            include_windows=true
-          fi
-          echo "include_windows=${include_windows}" >> "$GITHUB_OUTPUT"
-
   build-macos:
     name: Build macOS (${{ matrix.arch }})
     needs: resolve
@@ -460,7 +441,6 @@ jobs:
   build-windows:
     name: Build Windows (unsigned)
     needs: resolve
-    if: ${{ needs.resolve.outputs.include_windows == 'true' }}
     runs-on: windows-latest
     timeout-minutes: 60
     env:
@@ -520,15 +500,7 @@ jobs:
 
       - name: Verify Windows release metadata
         shell: pwsh
-        run: |
-          $metadataName = if ($env:TUTTI_DESKTOP_RELEASE_CHANNEL -eq 'stable') { 'latest.yml' } else { "$env:TUTTI_DESKTOP_RELEASE_CHANNEL.yml" }
-          $metadataPath = Join-Path 'apps/desktop/dist' $metadataName
-          if (-not (Test-Path $metadataPath)) {
-            throw "Expected Windows updater metadata at $metadataPath"
-          }
-          if (-not (Get-ChildItem 'apps/desktop/dist' -Filter '*.exe' -File)) {
-            throw 'Windows build did not produce an NSIS installer'
-          }
+        run: node apps/desktop/scripts/validate-windows-release-artifacts.mjs apps/desktop/dist "$env:TUTTI_DESKTOP_RELEASE_CHANNEL" "$env:TUTTI_DESKTOP_RELEASE_TAG"
 
       - name: Upload Windows release artifacts
         uses: actions/upload-artifact@v7
@@ -565,7 +537,7 @@ jobs:
       ${{ always() && needs.resolve.result == 'success' &&
           (github.event_name == 'push' || needs.resolve.outputs.release_dry_run != 'true') &&
           needs.build-macos.result == 'success' &&
-          (needs.build-windows.result == 'success' || needs.build-windows.result == 'skipped') }}
+          needs.build-windows.result == 'success' }}
     runs-on: ubuntu-latest
     outputs:
       release_url: ${{ github.server_url }}/${{ github.repository }}/releases/tag/${{ needs.resolve.outputs.release_tag }}
@@ -600,7 +572,6 @@ jobs:
           path: release-assets-input/macos
 
       - name: Download Windows built artifacts
-        if: ${{ needs.resolve.outputs.include_windows == 'true' }}
         uses: actions/download-artifact@v4
         with:
           name: tutti-desktop-release-assets-windows
@@ -616,7 +587,6 @@ jobs:
             release-assets
 
       - name: Add Windows release artifacts
-        if: ${{ needs.resolve.outputs.include_windows == 'true' }}
         shell: bash
         run: |
           shopt -s nullglob globstar
@@ -636,6 +606,9 @@ jobs:
             echo "No Windows release artifacts were downloaded" >&2
             exit 1
           fi
+
+      - name: Validate Windows release artifacts
+        run: node apps/desktop/scripts/validate-windows-release-artifacts.mjs release-assets "${TUTTI_DESKTOP_RELEASE_CHANNEL}" "${TUTTI_DESKTOP_RELEASE_TAG}"
 
       - name: Generate desktop release summary
         env:

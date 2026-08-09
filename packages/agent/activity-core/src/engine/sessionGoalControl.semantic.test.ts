@@ -261,6 +261,7 @@ test("a Session without Goal state does not rebuild another Session Goal project
       turnId: "turn-1",
       updatedAtUnixMs: 2
     },
+    live: true,
     type: "turn/upserted"
   });
 

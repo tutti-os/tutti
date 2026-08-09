@@ -46,7 +46,11 @@ describe("useAgentGUIConversationRailQuery Activity facts", () => {
         workspaceId: "workspace-1"
       })
     });
-    engine.dispatch({ type: "turn/upserted", turn: runningChildTurn() });
+    engine.dispatch({
+      live: true,
+      type: "turn/upserted",
+      turn: runningChildTurn()
+    });
     const runtime = {
       conversationActivityViewEnabled: true,
       getSessionEngine: () => engine

@@ -138,6 +138,38 @@ describe("ConversationMeta", () => {
       screen.getByTestId("agent-gui-conversation-meta-updated-newer-sort-older")
     ).toHaveTextContent("5 minutes");
   });
+
+  it("shows the worktree mark alongside relative time outside hover state", () => {
+    const nowMs = new Date("2026-06-05T12:00:00Z").getTime();
+    const item = conversation("worktree", nowMs - 5 * 60 * 1000, {
+      isolation: {
+        mode: "worktree",
+        worktreePath: "/state/worktrees/session",
+        branch: "tutti/session",
+        baseCommit: "abc123"
+      }
+    });
+
+    const { container } = render(
+      createElement(ConversationMeta, {
+        item,
+        nowMs,
+        labels: relativeLabels
+      })
+    );
+
+    expect(screen.getByText("5 minutes")).toBeVisible();
+    expect(
+      container.querySelector(".agent-gui-node__conversation-worktree-glyph")
+    ).toBeInTheDocument();
+    const meta = screen.getByTestId("agent-gui-conversation-meta-worktree");
+    expect(meta.firstElementChild).toHaveClass(
+      "agent-gui-node__conversation-worktree-glyph"
+    );
+    expect(meta.lastElementChild).toHaveClass(
+      "agent-gui-node__conversation-time"
+    );
+  });
 });
 
 const relativeLabels = {

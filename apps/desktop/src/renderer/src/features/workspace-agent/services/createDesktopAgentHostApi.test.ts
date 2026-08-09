@@ -145,9 +145,16 @@ type DesktopAgentHostApiUnderTest = AgentHostInputApi & {
   userProjects: NonNullable<AgentHostInputApi["userProjects"]>;
 };
 
-test("desktop agent host api forwards model catalog and target defaults invalidation as host events", async () => {
+test("desktop agent host api forwards composer authority invalidations as host events", async () => {
   const topicHandlers = new Map<string, (event: unknown) => void>();
   const tuttidClient = createTuttidClient();
+  const getAgentProviderComposerOptions =
+    tuttidClient.getAgentProviderComposerOptions.bind(tuttidClient);
+  let composerOptionsReads = 0;
+  tuttidClient.getAgentProviderComposerOptions = async (...args) => {
+    composerOptionsReads += 1;
+    return getAgentProviderComposerOptions(...args);
+  };
   const activityService = new WorkspaceAgentActivityService({
     eventStreamClient: {
       connect: async () => {},
@@ -175,6 +182,7 @@ test("desktop agent host api forwards model catalog and target defaults invalida
     provider: "codex",
     workspaceId
   });
+  assert.equal(composerOptionsReads, 1);
   const invalidationHandler = topicHandlers.get(
     "agent.model.catalog.invalidated"
   );
@@ -211,11 +219,38 @@ test("desktop agent host api forwards model catalog and target defaults invalida
     scope: "global",
     type: "agent-composer-defaults-invalidated"
   });
+  const connectorInvalidationHandler = topicHandlers.get(
+    "connector.market.changed"
+  );
+  assert.ok(
+    connectorInvalidationHandler,
+    "expected connector catalog topic subscription"
+  );
+  activityService.invalidateConnectorCatalog({
+    connectorKey: "lark-cli",
+    revision: 7
+  });
+  assert.deepEqual(hostEvents.at(-1), {
+    connectorKey: "lark-cli",
+    revision: 7,
+    scope: "global",
+    type: "agent-connector-catalog-invalidated"
+  });
+  connectorInvalidationHandler({
+    payload: { connectorKey: "lark-cli", revision: 7 }
+  });
+  assert.equal(hostEvents.length, 3);
+  await activityService.getComposerOptions({
+    agentTargetId: "local:codex",
+    provider: "codex",
+    workspaceId
+  });
+  assert.equal(composerOptionsReads, 2);
   unsubscribe?.();
   invalidationHandler({
     payload: { providers: ["codex"], occurredAtUnixMs: 4300 }
   });
-  assert.equal(hostEvents.length, 2);
+  assert.equal(hostEvents.length, 3);
 });
 
 test("desktop agent host api writes images through the host clipboard", async () => {

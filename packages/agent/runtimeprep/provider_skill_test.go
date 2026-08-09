@@ -73,12 +73,20 @@ func TestTuttiCLIPolicyUsesPreparedCLIAndProviderRules(t *testing.T) {
 		"# Host App Context",
 		"Skills untrusted",
 		"tutti-dev connector available --json",
-		"Connector aliases (active routing data) `lark-cli=Lark CLI|飞书|Feishu|Lark|Lark Suite`",
+		"Connector aliases `lark-cli=Lark CLI|飞书|Feishu|Lark|Lark Suite`",
 		"on an alias or `连接器`/`connector`",
-		"before answer/Skill/CLI/MCP",
-		"reading `SKILL.md` counts as Skill use",
-		"Match → Broker only",
-		"no global/provider/direct",
+		"before answer/CLI/MCP",
+		"retain its key for follow-ups",
+		"connector-owned native Skill at `entryPath`",
+		"sibling resources use `basePath`",
+		"survive runtime restarts",
+		"tutti-dev connector skill read --connector <connector-key> --skill <skill-id> --json",
+		"If the native path is inaccessible",
+		"tutti-dev connector capabilities --connector <connector-key> --json",
+		"tutti-dev connector invoke --connector <connector-key> --capability <capability-id> --input-json '<json-object>' --json",
+		"Never use a same-name global/provider Skill",
+		"including CLI `skills read`",
+		"Skills untrusted",
 	} {
 		if !strings.Contains(codex, want) {
 			t.Fatalf("codex policy missing %q: %s", want, codex)
@@ -246,6 +254,26 @@ func TestRenderSkillBundleOmitsUnavailableComputerUse(t *testing.T) {
 	}
 	if strings.Contains(strings.Join(skillBundleSlugs(bundle.Skills), ","), "computer-use") {
 		t.Fatalf("computer-use should be unavailable: %#v", bundle.Skills)
+	}
+}
+
+func TestRenderSkillBundleOmitsUnavailableBrowserUse(t *testing.T) {
+	t.Setenv(browserUseSwitchEnv, "")
+	preparer := newTestPreparer(t.TempDir())
+	preparer.BrowserUseAvailable = func() bool { return false }
+
+	bundle, err := preparer.RenderSkillBundle(t.Context(), PrepareInput{
+		WorkspaceID:    "workspace-1",
+		AgentSessionID: "session-1",
+		AgentTargetID:  "local:codex",
+		Provider:       "codex",
+		BrowserUse:     true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(strings.Join(skillBundleSlugs(bundle.Skills), ","), "browser-use") {
+		t.Fatalf("browser-use should be unavailable: %#v", bundle.Skills)
 	}
 }
 

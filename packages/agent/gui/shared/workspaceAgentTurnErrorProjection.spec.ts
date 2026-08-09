@@ -172,6 +172,44 @@ describe("canonical Turn error projection", () => {
     );
   });
 
+  it("adds canonical raw detail to an existing structured failure row", () => {
+    const failed = failedTurn({
+      error: {
+        code: "provider_error",
+        message: "Canonical provider failure",
+        detail: "provider response\nwith diagnostic context"
+      }
+    });
+    const detail = buildCanonicalWorkspaceAgentDetailView({
+      activity: activity(),
+      session: session({ latestTurn: failed }),
+      sessionTurns: [failed],
+      workspaceRoot: "/workspace/demo",
+      timelineItems: [
+        userMessage("turn-1", 1, "Ship the patch"),
+        {
+          ...assistantMessage("turn-1", 2, "Provider request failed", "failed"),
+          payload: {
+            kind: "agent_visible_error",
+            code: "provider_error",
+            phase: "run",
+            provider: "codex",
+            detail: "Provider request failed",
+            retryable: true
+          }
+        }
+      ]
+    });
+
+    expect(detail.turns[0]?.agentMessages).toHaveLength(1);
+    expect(detail.turns[0]?.agentMessages[0]?.visibleError).toEqual(
+      expect.objectContaining({
+        detail: "provider response\nwith diagnostic context",
+        detailAvailable: true
+      })
+    );
+  });
+
   it("attaches a historical error to its owning Turn after that Turn is hydrated", () => {
     const failed = failedTurn();
     const completed = completedTurn({

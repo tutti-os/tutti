@@ -94,7 +94,11 @@ export interface WorkspaceWorkbenchBodyRendererContext {
 export type WorkspaceWorkbenchCapabilitySettingsTarget =
   | "browserUse"
   | "computerUse"
-  | { kind: "connector"; connectorKey: string };
+  | {
+      kind: "connector";
+      connectorKey: string;
+      action?: "open";
+    };
 
 export interface WorkspaceWorkbenchHostInput {
   readonly captureNodePreviewImages?: WorkbenchHostProps["captureNodePreviewImages"];

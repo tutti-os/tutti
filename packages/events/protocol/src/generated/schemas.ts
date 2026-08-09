@@ -213,6 +213,22 @@ export const preferencesDesktopPreferencesSchema = {
         }
       }
     },
+    agentSessionLaunchModesByWorkspace: {
+      type: "object",
+      propertyNames: {
+        minLength: 1
+      },
+      additionalProperties: {
+        type: "object",
+        propertyNames: {
+          minLength: 1
+        },
+        additionalProperties: {
+          type: "string",
+          enum: ["local", "worktree"]
+        }
+      }
+    },
     agentConversationDetailMode: {
       type: "string",
       enum: ["coding", "general"]
@@ -269,6 +285,10 @@ export const preferencesDesktopPreferencesSchema = {
           maxLength: 80
         },
         newSameTypeWindow: {
+          type: ["string", "null"],
+          maxLength: 80
+        },
+        captureScreenshot: {
           type: ["string", "null"],
           maxLength: 80
         }
@@ -778,6 +798,50 @@ export const agentActivityUpdatedPayloadSchema = {
             occurredAtUnixMs: {
               type: "integer",
               minimum: 1
+            }
+          }
+        }
+      }
+    },
+    {
+      type: "object",
+      additionalProperties: false,
+      required: ["workspaceId", "agentSessionId", "eventType", "data"],
+      properties: {
+        workspaceId: {
+          type: "string",
+          minLength: 1
+        },
+        agentSessionId: {
+          type: "string",
+          minLength: 1
+        },
+        eventType: {
+          const: "session_restored"
+        },
+        data: {
+          type: "object",
+          required: [
+            "workspaceId",
+            "agentSessionId",
+            "eventType",
+            "restoredAtUnixMs"
+          ],
+          properties: {
+            workspaceId: {
+              type: "string",
+              minLength: 1
+            },
+            agentSessionId: {
+              type: "string",
+              minLength: 1
+            },
+            eventType: {
+              const: "session_restored"
+            },
+            restoredAtUnixMs: {
+              type: "integer",
+              minimum: 0
             }
           }
         }
@@ -1404,6 +1468,10 @@ export const agentActivityUpdatedPayloadSchema = {
                     },
                     code: {
                       type: "string"
+                    },
+                    detail: {
+                      type: "string",
+                      maxLength: 240
                     }
                   }
                 },
@@ -1561,6 +1629,7 @@ export const agentActivityUpdatedPayloadSchema = {
       enum: [
         "session_reconcile_required",
         "session_deleted",
+        "session_restored",
         "session_audit",
         "message_delta",
         "message_update",
@@ -1835,6 +1904,28 @@ export const preferencesAgentComposerDefaultsPatchRequestedPayloadSchema = {
   }
 } as const;
 
+export const preferencesAgentSessionLaunchModePatchRequestedPayloadSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["workspaceId", "projectSectionKey", "mode"],
+  properties: {
+    workspaceId: {
+      type: "string",
+      minLength: 1,
+      maxLength: 128
+    },
+    projectSectionKey: {
+      type: "string",
+      minLength: 1,
+      maxLength: 4096
+    },
+    mode: {
+      type: "string",
+      enum: ["local", "worktree"]
+    }
+  }
+} as const;
+
 export const preferencesDesktopUpdateRequestedPayloadSchema = {
   type: "object",
   additionalProperties: false,
@@ -2053,6 +2144,22 @@ export const preferencesDesktopUpdateRequestedPayloadSchema = {
             }
           }
         },
+        agentSessionLaunchModesByWorkspace: {
+          type: "object",
+          propertyNames: {
+            minLength: 1
+          },
+          additionalProperties: {
+            type: "object",
+            propertyNames: {
+              minLength: 1
+            },
+            additionalProperties: {
+              type: "string",
+              enum: ["local", "worktree"]
+            }
+          }
+        },
         agentConversationDetailMode: {
           type: "string",
           enum: ["coding", "general"]
@@ -2109,6 +2216,10 @@ export const preferencesDesktopUpdateRequestedPayloadSchema = {
               maxLength: 80
             },
             newSameTypeWindow: {
+              type: ["string", "null"],
+              maxLength: 80
+            },
+            captureScreenshot: {
               type: ["string", "null"],
               maxLength: 80
             }
@@ -2401,6 +2512,22 @@ export const preferencesDesktopUpdatedPayloadSchema = {
             }
           }
         },
+        agentSessionLaunchModesByWorkspace: {
+          type: "object",
+          propertyNames: {
+            minLength: 1
+          },
+          additionalProperties: {
+            type: "object",
+            propertyNames: {
+              minLength: 1
+            },
+            additionalProperties: {
+              type: "string",
+              enum: ["local", "worktree"]
+            }
+          }
+        },
         agentConversationDetailMode: {
           type: "string",
           enum: ["coding", "general"]
@@ -2457,6 +2584,10 @@ export const preferencesDesktopUpdatedPayloadSchema = {
               maxLength: 80
             },
             newSameTypeWindow: {
+              type: ["string", "null"],
+              maxLength: 80
+            },
+            captureScreenshot: {
               type: ["string", "null"],
               maxLength: 80
             }
@@ -3415,6 +3546,8 @@ export const businessEventPayloadSchemas = {
     preferencesAgentComposerDefaultsChangedPayloadSchema,
   "preferences.agent.composer.defaults.patch.requested":
     preferencesAgentComposerDefaultsPatchRequestedPayloadSchema,
+  "preferences.agent.session.launch.mode.patch.requested":
+    preferencesAgentSessionLaunchModePatchRequestedPayloadSchema,
   "preferences.desktop.update.requested":
     preferencesDesktopUpdateRequestedPayloadSchema,
   "preferences.desktop.updated": preferencesDesktopUpdatedPayloadSchema,

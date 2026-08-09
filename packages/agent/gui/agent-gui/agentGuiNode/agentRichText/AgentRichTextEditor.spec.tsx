@@ -7,6 +7,35 @@ import {
 } from "../../../shared/agentCustomMentionKinds";
 import { AgentRichTextEditor } from "./AgentRichTextEditor";
 import type { AgentRichTextEditorHandle } from "./AgentRichTextEditor.types";
+import { isAgentRichTextAbsolutePathPasteCandidate } from "./agentRichTextEditorSupport";
+
+describe("isAgentRichTextAbsolutePathPasteCandidate", () => {
+  it("accepts a single absolute path", () => {
+    expect(isAgentRichTextAbsolutePathPasteCandidate("/workspace/a.txt")).toBe(
+      true
+    );
+    expect(
+      isAgentRichTextAbsolutePathPasteCandidate(" /Users/me/a.txt\n")
+    ).toBe(true);
+  });
+
+  it("rejects quoted, spaced, relative, and multi-path pastes", () => {
+    expect(
+      isAgentRichTextAbsolutePathPasteCandidate('" /workspace/a.txt"')
+    ).toBe(false);
+    expect(
+      isAgentRichTextAbsolutePathPasteCandidate("/workspace/my file.txt")
+    ).toBe(false);
+    expect(isAgentRichTextAbsolutePathPasteCandidate("workspace/a.txt")).toBe(
+      false
+    );
+    expect(
+      isAgentRichTextAbsolutePathPasteCandidate(
+        "/workspace/a.txt\n/workspace/b.txt"
+      )
+    ).toBe(false);
+  });
+});
 
 describe("AgentRichTextEditor file paste", () => {
   it("dispatches images and regular files from one paste", async () => {
@@ -47,6 +76,125 @@ describe("AgentRichTextEditor file paste", () => {
       expect(onPasteImages).toHaveBeenCalledWith([
         expect.objectContaining({ name: "screen.png", mimeType: "image/png" })
       ])
+    );
+  });
+
+  it("inserts a resolved absolute path as a file mention", async () => {
+    const onResolvePastedPath = vi.fn().mockResolvedValue({
+      kind: "file",
+      path: "/host/Users/me/demo.txt",
+      displayName: "demo.txt"
+    });
+    const onChange = vi.fn();
+    const rendered = render(
+      <AgentRichTextEditor
+        value=""
+        disabled={false}
+        placeholder="Prompt"
+        onChange={onChange}
+        onSubmit={vi.fn()}
+        onResolvePastedPath={onResolvePastedPath}
+      />
+    );
+
+    const editor = await waitFor(() => {
+      const element = rendered.container.querySelector<HTMLElement>(
+        '[contenteditable="true"]'
+      );
+      expect(element).not.toBeNull();
+      return element!;
+    });
+    fireEvent.paste(editor, {
+      clipboardData: {
+        files: [],
+        getData: (type: string) =>
+          type === "text/plain" ? "/Users/me/demo.txt" : ""
+      }
+    });
+
+    await waitFor(() =>
+      expect(onResolvePastedPath).toHaveBeenCalledWith("/Users/me/demo.txt")
+    );
+    await waitFor(() =>
+      expect(onChange.mock.calls.at(-1)?.[0]).toContain(
+        "[@demo.txt](/host/Users/me/demo.txt)"
+      )
+    );
+  });
+
+  it("falls back to plain text when absolute path resolution returns null", async () => {
+    const onResolvePastedPath = vi.fn().mockResolvedValue(null);
+    const onChange = vi.fn();
+    const rendered = render(
+      <AgentRichTextEditor
+        value=""
+        disabled={false}
+        placeholder="Prompt"
+        onChange={onChange}
+        onSubmit={vi.fn()}
+        onResolvePastedPath={onResolvePastedPath}
+      />
+    );
+
+    const editor = await waitFor(() => {
+      const element = rendered.container.querySelector<HTMLElement>(
+        '[contenteditable="true"]'
+      );
+      expect(element).not.toBeNull();
+      return element!;
+    });
+    fireEvent.paste(editor, {
+      clipboardData: {
+        files: [],
+        getData: (type: string) =>
+          type === "text/plain" ? "/missing/path.txt" : ""
+      }
+    });
+
+    await waitFor(() =>
+      expect(onResolvePastedPath).toHaveBeenCalledWith("/missing/path.txt")
+    );
+    await waitFor(() =>
+      expect(onChange.mock.calls.at(-1)?.[0]).toBe("/missing/path.txt")
+    );
+  });
+
+  it("falls back to plain text when absolute path resolution rejects", async () => {
+    const onResolvePastedPath = vi
+      .fn()
+      .mockRejectedValue(new Error("host unavailable"));
+    const onChange = vi.fn();
+    const rendered = render(
+      <AgentRichTextEditor
+        value=""
+        disabled={false}
+        placeholder="Prompt"
+        onChange={onChange}
+        onSubmit={vi.fn()}
+        onResolvePastedPath={onResolvePastedPath}
+      />
+    );
+
+    const editor = await waitFor(() => {
+      const element = rendered.container.querySelector<HTMLElement>(
+        '[contenteditable="true"]'
+      );
+      expect(element).not.toBeNull();
+      return element!;
+    });
+    fireEvent.paste(editor, {
+      clipboardData: {
+        files: [],
+        getData: (type: string) =>
+          type === "text/plain" ? "/Users/me/demo.txt" : ""
+      }
+    });
+
+    await waitFor(() =>
+      expect(onResolvePastedPath).toHaveBeenCalledWith("/Users/me/demo.txt")
+    );
+    await waitFor(() =>
+      expect(onChange.mock.calls.at(-1)?.[0]).toBe("/Users/me/demo.txt")
     );
   });
 

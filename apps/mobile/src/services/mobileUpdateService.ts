@@ -4,6 +4,9 @@ export const MOBILE_UPDATE_SCHEMA_VERSION = "tutti.android.mobile.latest.v1";
 export const MOBILE_PACKAGE_NAME = "sh.tutti.mobile";
 export const MOBILE_UPDATE_INSTALL_PERMISSION_REQUIRED =
   "UPDATE_INSTALL_PERMISSION_REQUIRED";
+export const MOBILE_UPDATE_CANCELLED = "UPDATE_CANCELLED";
+export const MOBILE_UPDATE_INSTALL_DEFERRED = "UPDATE_INSTALL_DEFERRED";
+export const MAX_MOBILE_UPDATE_BYTES = 512 * 1024 * 1024;
 
 export type MobileUpdateStatus =
   | "available"
@@ -19,7 +22,7 @@ export interface MobileUpdateRelease {
   mandatory: boolean;
   releasedAt: string;
   sha256: string;
-  sizeBytes: number | null;
+  sizeBytes: number;
   tag: string;
   versionCode: number;
   versionName: string;
@@ -29,12 +32,42 @@ export interface MobileUpdateSnapshot {
   checkedAt: string | null;
   currentVersionCode: number;
   currentVersionName: string;
+  installationFailureCode: string | null;
+  progress: MobileUpdateProgress | null;
   release: MobileUpdateRelease | null;
   status: MobileUpdateStatus;
 }
 
+export type MobileUpdateProgressPhase =
+  | "awaiting_install_confirmation"
+  | "awaiting_install_permission"
+  | "cancelled"
+  | "completed"
+  | "downloading"
+  | "failed"
+  | "opening_installer"
+  | "paused"
+  | "preparing"
+  | "queued"
+  | "verifying";
+
+export interface MobileUpdateProgress {
+  downloadedBytes: number;
+  errorCode: string | null;
+  indeterminate: boolean;
+  phase: MobileUpdateProgressPhase;
+  totalBytes: number | null;
+}
+
 export interface MobileUpdateInstaller {
-  install(apkURL: string, sha256: string): Promise<void>;
+  cancel(): Promise<void>;
+  install(
+    apkURL: string,
+    sha256: string,
+    sizeBytes: number,
+    targetVersionCode: number
+  ): Promise<void>;
+  subscribe(listener: (progress: MobileUpdateProgress) => void): () => void;
 }
 
 export interface MobileUpdateServiceOptions {
@@ -56,6 +89,7 @@ export class MobileUpdateService extends ObservableService<MobileUpdateSnapshot>
   private readonly now: () => Date;
   private snapshot: MobileUpdateSnapshot;
   private checkPromise: Promise<MobileUpdateSnapshot> | null = null;
+  private installPromise: Promise<MobileUpdateSnapshot> | null = null;
 
   constructor(options: MobileUpdateServiceOptions) {
     super();
@@ -69,9 +103,12 @@ export class MobileUpdateService extends ObservableService<MobileUpdateSnapshot>
       checkedAt: null,
       currentVersionCode: this.currentVersionCode,
       currentVersionName: this.currentVersionName,
+      installationFailureCode: null,
+      progress: null,
       release: null,
       status: this.installer ? "idle" : "unsupported"
     };
+    this.installer?.subscribe(this.handleProgress);
   }
 
   getSnapshot = (): MobileUpdateSnapshot => this.snapshot;
@@ -80,36 +117,126 @@ export class MobileUpdateService extends ObservableService<MobileUpdateSnapshot>
     if (!this.installer) {
       return this.snapshot;
     }
+    if (this.snapshot.status === "installing") {
+      return this.snapshot;
+    }
     if (this.checkPromise) {
       return this.checkPromise;
     }
 
-    this.setSnapshot({ status: "checking", release: null });
+    this.setSnapshot({
+      installationFailureCode: null,
+      progress: null,
+      status: "checking",
+      release: null
+    });
     this.checkPromise = this.checkFeed().finally(() => {
       this.checkPromise = null;
     });
     return this.checkPromise;
   }
 
-  async installUpdate(): Promise<MobileUpdateSnapshot> {
+  installUpdate(): Promise<MobileUpdateSnapshot> {
+    if (this.installPromise) {
+      return this.installPromise;
+    }
+    if (this.snapshot.status === "installing") {
+      return Promise.resolve(this.snapshot);
+    }
     const release = this.snapshot.release;
     if (!this.installer || !release) {
-      throw new Error("No mobile update is ready to install");
+      return Promise.reject(new Error("No mobile update is ready to install"));
     }
 
-    this.setSnapshot({ status: "installing" });
+    this.setSnapshot({
+      installationFailureCode: null,
+      progress: {
+        downloadedBytes: 0,
+        errorCode: null,
+        indeterminate: true,
+        phase: "preparing",
+        totalBytes: release.sizeBytes
+      },
+      status: "installing"
+    });
+    this.installPromise = this.performInstall(release).finally(() => {
+      this.installPromise = null;
+    });
+    return this.installPromise;
+  }
+
+  async cancelUpdate(): Promise<MobileUpdateSnapshot> {
+    if (!this.installer || this.snapshot.status !== "installing") {
+      return this.snapshot;
+    }
+    await this.installer.cancel();
+    this.setSnapshot({
+      installationFailureCode: null,
+      progress: null,
+      status: "available"
+    });
+    return this.snapshot;
+  }
+
+  acknowledgeInstallationFailure(): MobileUpdateSnapshot {
+    if (!this.snapshot.installationFailureCode) return this.snapshot;
+    return this.setSnapshot({
+      installationFailureCode: null,
+      status: this.snapshot.release ? "available" : "idle"
+    });
+  }
+
+  private async performInstall(
+    release: MobileUpdateRelease
+  ): Promise<MobileUpdateSnapshot> {
     try {
-      await this.installer.install(release.apkURL, release.sha256);
+      await this.installer!.install(
+        release.apkURL,
+        release.sha256,
+        release.sizeBytes,
+        release.versionCode
+      );
       return this.snapshot;
     } catch (error) {
       this.setSnapshot({
-        status: isMobileUpdateInstallPermissionRequired(error)
+        installationFailureCode: null,
+        progress: null,
+        status: isRecoverableMobileUpdateInstallError(error)
           ? "available"
           : "error"
       });
       throw error;
     }
   }
+
+  private readonly handleProgress = (progress: MobileUpdateProgress): void => {
+    if (this.snapshot.status !== "installing") return;
+    if (progress.phase === "cancelled") {
+      this.setSnapshot({
+        installationFailureCode: null,
+        progress: null,
+        status: "available"
+      });
+      return;
+    }
+    if (progress.phase === "completed") {
+      this.setSnapshot({
+        installationFailureCode: null,
+        progress: null,
+        status: "upToDate"
+      });
+      return;
+    }
+    if (progress.phase === "failed") {
+      this.setSnapshot({
+        installationFailureCode: progress.errorCode ?? "UPDATE_INSTALL_FAILED",
+        progress: null,
+        status: "error"
+      });
+      return;
+    }
+    this.setSnapshot({ progress, status: "installing" });
+  };
 
   private async checkFeed(): Promise<MobileUpdateSnapshot> {
     try {
@@ -133,12 +260,18 @@ export class MobileUpdateService extends ObservableService<MobileUpdateSnapshot>
           : "upToDate";
       this.setSnapshot({
         checkedAt: this.now().toISOString(),
+        installationFailureCode: null,
+        progress: null,
         release: status === "available" ? release : null,
         status
       });
       return this.snapshot;
     } catch (error) {
-      this.setSnapshot({ status: "error" });
+      this.setSnapshot({
+        installationFailureCode: null,
+        progress: null,
+        status: "error"
+      });
       throw error;
     }
   }
@@ -180,10 +313,10 @@ export function parseMobileUpdateRelease(value: unknown): MobileUpdateRelease {
     throw new Error("Mobile update sha256 must be a 64-character hex digest");
   }
 
-  const sizeBytes =
-    value.sizeBytes === undefined || value.sizeBytes === null
-      ? null
-      : positiveInteger(value.sizeBytes, "sizeBytes");
+  const sizeBytes = positiveInteger(value.sizeBytes, "sizeBytes");
+  if (sizeBytes > MAX_MOBILE_UPDATE_BYTES) {
+    throw new Error("Mobile update sizeBytes exceeds the supported limit");
+  }
   const mandatory = value.mandatory === undefined ? false : value.mandatory;
   if (typeof mandatory !== "boolean") {
     throw new Error("Mobile update mandatory must be a boolean");
@@ -204,8 +337,8 @@ export function parseMobileUpdateRelease(value: unknown): MobileUpdateRelease {
 function requiredHTTPSURL(value: unknown, key: string): string {
   const candidate = requiredString(value, key);
   const parsed = new URL(candidate);
-  if (parsed.protocol !== "https:") {
-    throw new Error(`Mobile update ${key} must use HTTPS`);
+  if (parsed.protocol !== "https:" || parsed.username || parsed.password) {
+    throw new Error(`Mobile update ${key} must use credential-free HTTPS`);
   }
   return parsed.href;
 }
@@ -232,6 +365,19 @@ export function isMobileUpdateInstallPermissionRequired(
   value: unknown
 ): boolean {
   return (
-    isRecord(value) && value.code === MOBILE_UPDATE_INSTALL_PERMISSION_REQUIRED
+    mobileUpdateErrorCode(value) === MOBILE_UPDATE_INSTALL_PERMISSION_REQUIRED
   );
+}
+
+export function isRecoverableMobileUpdateInstallError(value: unknown): boolean {
+  const code = mobileUpdateErrorCode(value);
+  return (
+    code === MOBILE_UPDATE_INSTALL_PERMISSION_REQUIRED ||
+    code === MOBILE_UPDATE_CANCELLED ||
+    code === MOBILE_UPDATE_INSTALL_DEFERRED
+  );
+}
+
+export function mobileUpdateErrorCode(value: unknown): string | null {
+  return isRecord(value) && typeof value.code === "string" ? value.code : null;
 }

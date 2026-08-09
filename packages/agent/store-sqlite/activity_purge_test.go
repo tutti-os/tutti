@@ -35,6 +35,82 @@ func TestPurgeDeletedSessionsHonorsCutoffAndLeavesActiveRows(t *testing.T) {
 	}
 }
 
+func TestHardPurgeRemovesTurnSequenceBeforeSessionIDReuseWithForeignKeysDisabled(t *testing.T) {
+	t.Parallel()
+	store := openTestStore(t, testOptions(&staticProjectPaths{}))
+	ctx := context.Background()
+	reportSessionWithTurn(t, store, SessionStateReport{
+		WorkspaceID: "ws-sequence-reuse", AgentSessionID: "session-reused",
+		Kind: SessionKindRoot, Provider: "codex", OccurredAtUnixMS: 10,
+	}, "old-turn", 10)
+	if removed, err := store.DeleteSession(ctx, "ws-sequence-reuse", "session-reused"); err != nil || !removed {
+		t.Fatalf("DeleteSession() removed=%v error=%v", removed, err)
+	}
+	if _, err := store.db.ExecContext(ctx, `PRAGMA foreign_keys = OFF`); err != nil {
+		t.Fatal(err)
+	}
+	result, err := store.PurgeDeletedSessionTrees(ctx, PurgeDeletedSessionTreesInput{
+		WorkspaceID: "ws-sequence-reuse", RootSessionIDs: []string{"session-reused"},
+	})
+	if err != nil || result.RemovedSessions != 1 {
+		t.Fatalf("PurgeDeletedSessionTrees()=%#v error=%v", result, err)
+	}
+	var staleSequenceCount int
+	if err := store.db.QueryRowContext(ctx, `
+SELECT COUNT(*) FROM workspace_agent_turn_sequences
+WHERE workspace_id='ws-sequence-reuse' AND agent_session_id='session-reused'
+`).Scan(&staleSequenceCount); err != nil || staleSequenceCount != 0 {
+		t.Fatalf("stale turn sequence count=%d error=%v", staleSequenceCount, err)
+	}
+
+	reportSessionWithTurn(t, store, SessionStateReport{
+		WorkspaceID: "ws-sequence-reuse", AgentSessionID: "session-reused",
+		Kind: SessionKindRoot, Provider: "codex", OccurredAtUnixMS: 20,
+	}, "new-turn", 20)
+	var sequence int64
+	if err := store.db.QueryRowContext(ctx, `
+SELECT turn_sequence FROM workspace_agent_turn_sequences
+WHERE workspace_id='ws-sequence-reuse' AND agent_session_id='session-reused' AND turn_id='new-turn'
+`).Scan(&sequence); err != nil || sequence != 1 {
+		t.Fatalf("recreated turn sequence=%d error=%v, want 1", sequence, err)
+	}
+}
+
+func TestPurgeDeletedSessionsTxLeavesCommitAndRollbackToCaller(t *testing.T) {
+	t.Parallel()
+	store := openTestStore(t, testOptions(&staticProjectPaths{}))
+	ctx := context.Background()
+	seedPurgeSession(t, store, "ws", "retention", "/managed/retention", "payload", 100)
+
+	tx, err := store.db.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := store.PurgeDeletedSessionsTx(ctx, tx, PurgeDeletedSessionsInput{CutoffUnixMS: 200})
+	if err != nil || len(result.Sessions) != 1 || result.Sessions[0].AgentSessionID != "retention" {
+		_ = tx.Rollback()
+		t.Fatalf("PurgeDeletedSessionsTx()=%#v error=%v", result, err)
+	}
+	if err := tx.Rollback(); err != nil {
+		t.Fatal(err)
+	}
+	assertPurgeRowCount(t, store.db, "workspace_agent_sessions", "retention", 1)
+
+	tx, err = store.db.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err = store.PurgeDeletedSessionsTx(ctx, tx, PurgeDeletedSessionsInput{CutoffUnixMS: 200})
+	if err != nil || len(result.Sessions) != 1 {
+		_ = tx.Rollback()
+		t.Fatalf("PurgeDeletedSessionsTx(commit)=%#v error=%v", result, err)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatal(err)
+	}
+	assertPurgeRowCount(t, store.db, "workspace_agent_sessions", "retention", 0)
+}
+
 func TestDeletedSessionPurgeIndexIsInstalled(t *testing.T) {
 	t.Parallel()
 	store := openTestStore(t, testOptions(&staticProjectPaths{}))
@@ -162,7 +238,7 @@ func TestPurgeDeletedSessionsPreservesAncestorsOfRestoredDescendants(t *testing.
 	assertPurgeRowCount(t, store.db, "workspace_agent_sessions", "child-2", 1)
 }
 
-func TestPurgeDeletedSessionsRemovesTombstonedTreesFromLeavesToRoot(t *testing.T) {
+func TestPurgeDeletedSessionsRemovesCompleteTombstonedTreeAtomically(t *testing.T) {
 	t.Parallel()
 	store := openTestStore(t, testOptions(&staticProjectPaths{}))
 	seedChildSessionTree(t, store)
@@ -174,19 +250,12 @@ func TestPurgeDeletedSessionsRemovesTombstonedTreesFromLeavesToRoot(t *testing.T
 		t.Fatal(err)
 	}
 
-	removed := 0
-	for batch := 0; batch < 4; batch++ {
-		result, err := store.PurgeDeletedSessions(ctx, PurgeDeletedSessionsInput{CutoffUnixMS: 200})
-		if err != nil {
-			t.Fatalf("PurgeDeletedSessions(batch %d) error = %v", batch, err)
-		}
-		removed += len(result.Sessions)
-		if !result.HasMore {
-			break
-		}
+	result, err := store.PurgeDeletedSessions(ctx, PurgeDeletedSessionsInput{CutoffUnixMS: 200, MaxSessions: 1})
+	if err != nil {
+		t.Fatalf("PurgeDeletedSessions() error = %v", err)
 	}
-	if removed != 3 {
-		t.Fatalf("removed sessions = %d, want 3", removed)
+	if len(result.Sessions) != 3 || result.HasMore {
+		t.Fatalf("PurgeDeletedSessions() = %#v, want one complete oversized tree", result)
 	}
 	assertPurgeRowCount(t, store.db, "workspace_agent_sessions", "root", 0)
 	assertPurgeRowCount(t, store.db, "workspace_agent_sessions", "child-1", 0)

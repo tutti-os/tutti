@@ -151,6 +151,13 @@ export interface SessionMetadataPatchedIntent {
 
 export interface TurnUpsertedIntent {
   type: "turn/upserted";
+  /**
+   * Whether this upsert is a live observation capable of creating attention.
+   * Historical detail hydration uses false while preserving the same
+   * canonical lifecycle write. Omission remains compatible with older hosts
+   * and is treated as a live observation.
+   */
+  live?: boolean;
   turn: AgentActivityTurn;
 }
 
@@ -202,6 +209,11 @@ export interface InteractionResponseRequestedIntent {
 
 export interface SessionRemovedIntent {
   type: "session/removed";
+  agentSessionId: string;
+}
+
+export interface SessionRestoredIntent {
+  type: "session/restored";
   agentSessionId: string;
 }
 
@@ -299,6 +311,7 @@ export type SessionLifecycleIntent =
   | SessionHistoryAuthoritativeSnapshotReceivedIntent
   | SessionMetadataPatchedIntent
   | SessionRemovedIntent
+  | SessionRestoredIntent
   | SessionRuntimeActivityChangedIntent
   | SessionRuntimeAvailabilityChangedIntent
   | SessionSettingsActivationRequestedIntent

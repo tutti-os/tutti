@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -42,17 +43,33 @@ func TestAttachCredentialBrokerPreservesEmptyNativeCLIArguments(t *testing.T) {
 }
 
 type credentialAuthorizationHostStub struct {
+	mu          sync.Mutex
 	route       *connectorRoute
 	connections []agentruntime.ProcessConnection
 	requests    []credentialBrokerRequest
+	observed    []market.AuthorizationState
 }
 
-func (stub *credentialAuthorizationHostStub) authorizationRoute(market.Connector) (*connectorRoute, error) {
+func (stub *credentialAuthorizationHostStub) authorizationRoute(context.Context, market.OperationScope, market.Connector) (*connectorRoute, error) {
 	if stub.route == nil {
 		return nil, errors.New("route unavailable")
 	}
 	return stub.route, nil
 }
+
+func (stub *credentialAuthorizationHostStub) observeAuthorization(_ *connectorRoute, state market.AuthorizationState) {
+	stub.mu.Lock()
+	defer stub.mu.Unlock()
+	stub.observed = append(stub.observed, state)
+}
+
+func (stub *credentialAuthorizationHostStub) authorizationObservations() []market.AuthorizationState {
+	stub.mu.Lock()
+	defer stub.mu.Unlock()
+	return append([]market.AuthorizationState(nil), stub.observed...)
+}
+
+func (*credentialAuthorizationHostStub) releaseAuthorizationRoute(*connectorRoute) {}
 
 func (stub *credentialAuthorizationHostStub) startCredentialBroker(
 	_ context.Context,
@@ -136,6 +153,10 @@ func TestManagedCredentialAuthorizationContinuesConnectorOwnedBroker(t *testing.
 	if !reflect.DeepEqual(host.requests, []credentialBrokerRequest{{Protocol: market.CredentialBrokerProtocolV1, Operation: "begin"}}) {
 		t.Fatalf("broker requests = %#v", host.requests)
 	}
+	observed := awaitAuthorizationObservations(t, host, 3)
+	if !reflect.DeepEqual(observed, []market.AuthorizationState{market.AuthorizationStatePending, market.AuthorizationStatePending, market.AuthorizationStateConnected}) {
+		t.Fatalf("authorization observations = %#v", observed)
+	}
 }
 
 func TestManagedCredentialAuthorizationDisconnectUsesBrokerProtocol(t *testing.T) {
@@ -153,6 +174,25 @@ func TestManagedCredentialAuthorizationDisconnectUsesBrokerProtocol(t *testing.T
 	}
 	if !reflect.DeepEqual(host.requests, []credentialBrokerRequest{{Protocol: market.CredentialBrokerProtocolV1, Operation: "disconnect"}}) {
 		t.Fatalf("broker requests = %#v", host.requests)
+	}
+	observed := awaitAuthorizationObservations(t, host, 1)
+	if !reflect.DeepEqual(observed, []market.AuthorizationState{market.AuthorizationStateDisconnected}) {
+		t.Fatalf("authorization observations = %#v", observed)
+	}
+}
+
+func awaitAuthorizationObservations(t *testing.T, host *credentialAuthorizationHostStub, count int) []market.AuthorizationState {
+	t.Helper()
+	deadline := time.Now().Add(time.Second)
+	for {
+		observed := host.authorizationObservations()
+		if len(observed) >= count {
+			return observed
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("authorization observations = %#v, want at least %d", observed, count)
+		}
+		time.Sleep(time.Millisecond)
 	}
 }
 

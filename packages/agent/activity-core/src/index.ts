@@ -209,6 +209,8 @@ export type {
   AttentionReadCommand,
   AttentionReadIntent,
   AttentionReadRecord,
+  AttentionObservationProvenance,
+  AttentionReadStateProvenance,
   AttentionReadState
 } from "./engine/attentionReadState.types.ts";
 export {
@@ -385,6 +387,7 @@ export type {
   AgentActivityCollaborationTriggerSource,
   AgentActivityCollaborationUsage,
   AgentActivityCreateSessionInput,
+  AgentActivitySessionIsolation,
   AgentActivityDeleteSessionInput,
   AgentActivityDeleteSessionResult,
   AgentActivityDeleteSessionsInput,

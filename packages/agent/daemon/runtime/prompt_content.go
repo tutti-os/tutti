@@ -193,7 +193,7 @@ func projectRuntimeConnectorPromptContent(content []PromptContentBlock) []Prompt
 		return providerContent
 	}
 	instruction := fmt.Sprintf(
-		"Selected local connector(s): %s. For this request, use only these installed Tutti connectors for their corresponding external services. Follow the injected Connectors policy and its exact rendered commands: query `connector available`, list and read the relevant connector Skill through `connector skills` and `connector skill read`, resolve the canonical capability with `connector capabilities`, then invoke only through `connector invoke`. Never read or run a similarly named user-global or provider-native Skill, executable, MCP server, connector, or direct service CLI.",
+		"Selected local connector(s): %s. For this request, use only these installed Tutti connectors for their corresponding external services. Follow the injected Connectors policy and its exact rendered commands: query `connector available`, select the connector-owned native Skill from its returned summary and `entryPath`, resolve the canonical capability with `connector capabilities`, then execute only through `connector invoke`. Use `connector skill read` only as a compatibility fallback when the provider cannot access the native Skill path. Never read or run a similarly named user-global or provider-native Skill, executable, MCP server, connector, or direct service CLI (including CLI `skills read`).",
 		strings.Join(connectorKeys, ", "),
 	)
 	return append([]PromptContentBlock{{Type: "text", Text: instruction}}, providerContent...)
