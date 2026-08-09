@@ -56,6 +56,7 @@ type DesktopPreferences struct {
 	AgentComposerDefaultsByProvider             map[string]AgentComposerDefaults
 	AgentComposerDefaultsByAgentTarget          map[string]AgentComposerDefaults
 	AgentGUIConversationRailCollapsedByProvider map[string]bool
+	AgentSessionLaunchModesByWorkspace          map[string]map[string]string
 	AgentConversationDetailMode                 string
 	AgentDockLayout                             string
 	AppCatalogChannel                           string
@@ -117,6 +118,9 @@ func LocalAgentTargetIDForProvider(provider string) string {
 type DesktopWorkbenchShortcuts struct {
 	NewAgentConversation string
 	NewSameTypeWindow    string
+	// CaptureScreenshot empty means the built-in default accelerator applies,
+	// not "unbound" like the other bindings.
+	CaptureScreenshot string
 }
 
 func DefaultDesktopPreferences() DesktopPreferences {
@@ -125,6 +129,7 @@ func DefaultDesktopPreferences() DesktopPreferences {
 		AgentComposerDefaultsByProvider:             map[string]AgentComposerDefaults{},
 		AgentComposerDefaultsByAgentTarget:          map[string]AgentComposerDefaults{},
 		AgentGUIConversationRailCollapsedByProvider: map[string]bool{},
+		AgentSessionLaunchModesByWorkspace:          map[string]map[string]string{},
 		AgentConversationDetailMode:                 DefaultDesktopAgentConversationDetailMode,
 		AgentDockLayout:                             DefaultDesktopAgentDockLayout,
 		AppCatalogChannel:                           DefaultDesktopAppCatalogChannel,
@@ -354,5 +359,6 @@ func NormalizeDesktopWorkbenchShortcuts(value DesktopWorkbenchShortcuts) Desktop
 	return DesktopWorkbenchShortcuts{
 		NewAgentConversation: NormalizeDesktopShortcutBinding(value.NewAgentConversation),
 		NewSameTypeWindow:    NormalizeDesktopShortcutBinding(value.NewSameTypeWindow),
+		CaptureScreenshot:    NormalizeDesktopShortcutBinding(value.CaptureScreenshot),
 	}
 }

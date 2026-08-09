@@ -5,6 +5,8 @@ import (
 	"archive/zip"
 	"compress/gzip"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -29,6 +31,7 @@ const (
 	uvToolchainKindName     = "uv"
 	uvToolchainCacheName    = "cache"
 	uvToolchainVerifiedName = ".verified"
+	bundledUVRootEnvKey     = "TUTTI_BUNDLED_UV_ROOT"
 )
 
 // uvToolchainProvenanceURL documents where the managed uv archives come from;
@@ -79,7 +82,7 @@ func ensureManagedUVToolchain(ctx context.Context, client *http.Client, runtimeI
 	if err := os.MkdirAll(toolDir, 0o700); err != nil {
 		return "", err
 	}
-	archivePath, err := downloadUVToolchainArchive(ctx, client, artifact, toolDir)
+	archivePath, err := stageUVToolchainArchive(ctx, client, artifact, toolDir)
 	if err != nil {
 		return "", err
 	}
@@ -97,12 +100,87 @@ func ensureManagedUVToolchain(ctx context.Context, client *http.Client, runtimeI
 	return toolDir, nil
 }
 
+func stageUVToolchainArchive(ctx context.Context, client *http.Client, artifact tuttitypes.UVToolArtifact, toolDir string) (string, error) {
+	var bundledErr error
+	if root := strings.TrimSpace(os.Getenv(bundledUVRootEnvKey)); root != "" {
+		archivePath, err := copyBundledUVToolchainArchive(root, artifact, toolDir)
+		if err == nil {
+			return archivePath, nil
+		}
+		bundledErr = fmt.Errorf("use bundled managed uv toolchain: %w", err)
+	}
+	archivePath, err := downloadUVToolchainArchive(ctx, client, artifact, toolDir)
+	if err != nil && bundledErr != nil {
+		return "", errors.Join(bundledErr, err)
+	}
+	return archivePath, err
+}
+
+func copyBundledUVToolchainArchive(root string, artifact tuttitypes.UVToolArtifact, toolDir string) (string, error) {
+	if !filepath.IsAbs(root) {
+		return "", errors.New("bundled uv root is not absolute")
+	}
+	if err := rejectManagedRuntimeSymlinkAncestors(root); err != nil {
+		return "", fmt.Errorf("bundled uv root is unsafe: %w", err)
+	}
+	archiveName := filepath.Base(artifact.URL)
+	if archiveName == "." || archiveName == string(filepath.Separator) || archiveName == "" {
+		return "", errors.New("bundled uv archive name is invalid")
+	}
+	sourcePath := filepath.Join(root, artifact.Platform, artifact.Version, archiveName)
+	info, err := os.Lstat(sourcePath)
+	if err != nil {
+		return "", err
+	}
+	if !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 {
+		return "", errors.New("bundled uv archive is not a regular file")
+	}
+	if info.Size() != artifact.SizeBytes {
+		return "", fmt.Errorf("bundled uv archive size is %d, want %d", info.Size(), artifact.SizeBytes)
+	}
+	source, err := os.Open(sourcePath)
+	if err != nil {
+		return "", err
+	}
+	defer source.Close()
+	destination, err := os.CreateTemp(toolDir, ".uv-bundled-*")
+	if err != nil {
+		return "", err
+	}
+	keep := false
+	defer func() {
+		_ = destination.Close()
+		if !keep {
+			_ = os.Remove(destination.Name())
+		}
+	}()
+	hash := sha256.New()
+	written, err := io.Copy(io.MultiWriter(destination, hash), io.LimitReader(source, artifact.SizeBytes+1))
+	if err != nil {
+		return "", err
+	}
+	if written != artifact.SizeBytes {
+		return "", fmt.Errorf("bundled uv archive copied %d bytes, want %d", written, artifact.SizeBytes)
+	}
+	if actual := hex.EncodeToString(hash.Sum(nil)); !strings.EqualFold(actual, artifact.SHA256) {
+		return "", fmt.Errorf("bundled uv archive sha256 is %s, want %s", actual, artifact.SHA256)
+	}
+	if err := destination.Sync(); err != nil {
+		return "", err
+	}
+	if err := destination.Close(); err != nil {
+		return "", err
+	}
+	keep = true
+	return destination.Name(), nil
+}
+
 // verifiedManagedUV reports whether a previously extracted uv executable is
 // usable. The archive checksum authenticated the bytes at extraction time;
 // the marker ties the on-disk executable to that verified extraction.
 func verifiedManagedUV(uvPath, toolDir string, artifact tuttitypes.UVToolArtifact) bool {
 	info, err := os.Lstat(uvPath)
-	if err != nil || !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 || info.Mode()&0o111 == 0 {
+	if err != nil || !isExecutableFileInfo(info) || info.Mode()&os.ModeSymlink != 0 {
 		return false
 	}
 	markerBytes, err := os.ReadFile(filepath.Join(toolDir, uvToolchainVerifiedName))

@@ -22,7 +22,7 @@ static const NSUInteger TUTMaxResponseFrameBytes =
     ((TUTMaxResponseBodyBytes + 2) / 3 * 4) + TUTFrameEnvelopeBytes;
 
 static NSError *TUTDeviceLinkError(NSString *code, NSString *message) {
-  return [NSError errorWithDomain:@"dev.tutti.mobile.device-link"
+  return [NSError errorWithDomain:@"sh.tutti.mobile.device-link"
                              code:1
                          userInfo:@{
                            NSLocalizedDescriptionKey : message,
@@ -74,11 +74,11 @@ RCT_EXPORT_MODULE(TuttiDeviceLink)
   self = [super init];
   if (self != nil) {
     _operationQueue = dispatch_queue_create(
-        "dev.tutti.mobile.device-link.operations", DISPATCH_QUEUE_CONCURRENT);
-    _closeQueue = dispatch_queue_create("dev.tutti.mobile.device-link.close",
+        "sh.tutti.mobile.device-link.operations", DISPATCH_QUEUE_CONCURRENT);
+    _closeQueue = dispatch_queue_create("sh.tutti.mobile.device-link.close",
                                         DISPATCH_QUEUE_SERIAL);
     _agentLiveQueue = dispatch_queue_create(
-        "dev.tutti.mobile.device-link.agent-live", DISPATCH_QUEUE_SERIAL);
+        "sh.tutti.mobile.device-link.agent-live", DISPATCH_QUEUE_SERIAL);
     [[NSNotificationCenter defaultCenter]
         addObserver:self
            selector:@selector(applicationDidEnterBackground)

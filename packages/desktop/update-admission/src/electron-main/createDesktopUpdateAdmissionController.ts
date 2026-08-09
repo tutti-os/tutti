@@ -93,12 +93,6 @@ export function createDesktopUpdateAdmissionController<
   let activeForcedFlow: Promise<void> | null = null;
   let appQuitStarted = false;
   let mandatoryUpdateSession: MandatoryDesktopUpdateSession | null = null;
-  let isolatedBusinessWindows: Array<{
-    window: ElectronBrowserWindow;
-    wasFocused: boolean;
-    wasMinimized: boolean;
-    wasVisible: boolean;
-  }> | null = null;
   const lifecycleAbort = new AbortController();
 
   const handleBeforeQuit = (): void => {
@@ -135,56 +129,6 @@ export function createDesktopUpdateAdmissionController<
     }
   };
 
-  const isolateBusinessWindows = (): void => {
-    if (isolatedBusinessWindows) {
-      return;
-    }
-    isolatedBusinessWindows = options
-      .listBusinessWindows()
-      .filter(
-        (candidate) => candidate !== upgradeWindow && !candidate.isDestroyed()
-      )
-      .map((candidate) => ({
-        wasFocused: candidate.isFocused(),
-        wasMinimized: candidate.isMinimized(),
-        wasVisible: candidate.isVisible(),
-        window: candidate
-      }));
-    for (const snapshot of isolatedBusinessWindows) {
-      snapshot.window.hide();
-    }
-  };
-
-  const restoreBusinessWindows = (): void => {
-    const snapshots = isolatedBusinessWindows;
-    isolatedBusinessWindows = null;
-    if (!snapshots) {
-      return;
-    }
-    let focusedWindow: ElectronBrowserWindow | null = null;
-    for (const snapshot of snapshots) {
-      if (snapshot.window.isDestroyed()) {
-        continue;
-      }
-      if (snapshot.wasMinimized) {
-        snapshot.window.show();
-        snapshot.window.minimize();
-      } else if (snapshot.wasVisible) {
-        snapshot.window.show();
-      }
-      if (snapshot.wasFocused) {
-        focusedWindow = snapshot.window;
-      }
-    }
-    if (
-      focusedWindow &&
-      !focusedWindow.isDestroyed() &&
-      !focusedWindow.isMinimized()
-    ) {
-      focusedWindow.focus();
-    }
-  };
-
   const openUpgradeWindow = (nextMode: "startup" | "foreground"): void => {
     if (upgradeWindow && !upgradeWindow.isDestroyed()) {
       upgradeWindow.show();
@@ -192,6 +136,15 @@ export function createDesktopUpdateAdmissionController<
       return;
     }
     mode = nextMode;
+    const businessWindows = options
+      .listBusinessWindows()
+      .filter(
+        (candidate) => candidate !== upgradeWindow && !candidate.isDestroyed()
+      );
+    const parent =
+      businessWindows.find((candidate) => candidate.isFocused()) ??
+      businessWindows.find((candidate) => candidate.isVisible()) ??
+      businessWindows[0];
     const window = new BrowserWindow({
       autoHideMenuBar: true,
       fullscreenable: false,
@@ -200,6 +153,8 @@ export function createDesktopUpdateAdmissionController<
       maximizable: false,
       minHeight: 380,
       minWidth: 480,
+      modal: parent !== undefined,
+      parent,
       resizable: false,
       show: false,
       webPreferences: {
@@ -383,7 +338,6 @@ export function createDesktopUpdateAdmissionController<
     installRequested = false;
     await releaseMandatoryUpdater();
     closeUpgradeWindow();
-    restoreBusinessWindows();
     await options.onPolicyReleased();
   };
 
@@ -524,9 +478,6 @@ export function createDesktopUpdateAdmissionController<
   });
   ipcMain.handle(desktopUpdateAdmissionIpcChannels.start, async (event) => {
     assertUpgradeWindowSender(event.sender.id);
-    if (mode === "foreground") {
-      isolateBusinessWindows();
-    }
     await runForcedUpdateFlow();
     return state;
   });
@@ -566,6 +517,16 @@ export function createDesktopUpdateAdmissionController<
   );
   ipcMain.handle(desktopUpdateAdmissionIpcChannels.exit, (event) => {
     assertUpgradeWindowSender(event.sender.id);
+    app.quit();
+  });
+  ipcMain.handle(desktopUpdateAdmissionIpcChannels.restart, (event) => {
+    assertUpgradeWindowSender(event.sender.id);
+    if (state?.phase !== "simulationComplete") {
+      throw new Error(
+        "desktop update admission restart requires a completed update"
+      );
+    }
+    app.relaunch();
     app.quit();
   });
 

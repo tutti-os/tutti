@@ -214,6 +214,9 @@ WHERE workspace_id = 'ws-1' AND agent_session_id = 'source'
 	); err != nil || !changed {
 		t.Fatalf("cleanup post-ack fork changed=%v error=%v", changed, err)
 	}
+	if _, err := store.db.ExecContext(ctx, `PRAGMA foreign_keys = OFF`); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := store.db.ExecContext(ctx, `
 UPDATE workspace_agent_sessions
 SET deleted_at_unix_ms = 200
@@ -235,20 +238,100 @@ WHERE workspace_id = 'ws-1' AND agent_session_id = 'target'
 	); err != nil || found {
 		t.Fatalf("lineage after hard purge found=%v error=%v", found, err)
 	}
-	afterDelete, err := store.CommitSessionFork(ctx, "ws-1", "fork-op", 201)
-	if err != nil ||
-		afterDelete.Session.ID != "target" ||
-		afterDelete.Session.Title != "123 (2)" ||
-		afterDelete.Session.RailSectionKey == "" ||
-		afterDelete.Lineage.SourceAgentSessionID != "source" ||
-		afterDelete.Operation.TargetTurnID != expectedTurnID ||
-		afterDelete.Lineage.TargetTurnID != expectedTurnID ||
-		afterDelete.Lineage.ForkedAtUnixMS != 103 {
-		t.Fatalf(
-			"CommitSessionFork(after child delete) result=%#v error=%v",
-			afterDelete,
-			err,
-		)
+	for _, table := range []string{
+		"workspace_agent_session_fork_operations",
+		"workspace_agent_session_fork_target_reservations",
+		"workspace_agent_session_fork_boundary_barriers",
+	} {
+		var count int
+		if err := store.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM `+table+` WHERE operation_id='fork-op'`).Scan(&count); err != nil || count != 0 {
+			t.Fatalf("%s count after target purge=%d error=%v", table, count, err)
+		}
+	}
+	if _, err := store.ReportSessionState(ctx, SessionStateReport{
+		WorkspaceID: "ws-1", AgentSessionID: "target", Kind: SessionKindRoot,
+		Provider: "codex", ProviderSessionID: "provider-target-reused",
+		OccurredAtUnixMS: 201,
+	}); err != nil {
+		t.Fatalf("reuse hard-purged fork target id: %v", err)
+	}
+	reused, found, err := store.GetSession(ctx, "ws-1", "target")
+	if err != nil || !found || reused.ProviderSessionID != "provider-target-reused" {
+		t.Fatalf("reused target=%#v found=%v error=%v", reused, found, err)
+	}
+}
+
+func TestHardPurgeForkSourceRemovesSnapshotAndKeepsTargetRestorable(t *testing.T) {
+	t.Parallel()
+	store := openTestStore(t, testOptions(&staticProjectPaths{}))
+	ctx := context.Background()
+	seedForkSession(t, store)
+	if _, _, err := prepareSessionForkForTest(t, store, ctx, SessionForkPrepare{
+		OperationID: "fork-source-purge", WorkspaceID: "ws-1",
+		RequestID: "request-source-purge", RequestHash: "hash-source-purge",
+		SourceAgentSessionID: "source", TargetAgentSessionID: "surviving-target",
+		SourceTurnID: "turn-1", DriverKind: "codex-app-server",
+		DriverVersion: "1", OccurredAtUnixMS: 100,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := store.MarkSessionForkDispatching(ctx, "ws-1", "fork-source-purge", 101); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := store.RecordSessionForkProviderResult(ctx, SessionForkProviderResult{
+		WorkspaceID: "ws-1", OperationID: "fork-source-purge",
+		Status: SessionForkStatusProviderAccepted, TargetProviderSessionID: "provider-surviving-target",
+		OccurredAtUnixMS: 102,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.CommitSessionFork(ctx, "ws-1", "fork-source-purge", 103); err != nil {
+		t.Fatal(err)
+	}
+	if removed, err := store.DeleteSession(ctx, "ws-1", "source"); err != nil || !removed {
+		t.Fatalf("DeleteSession(source) removed=%v error=%v", removed, err)
+	}
+	purged, err := store.PurgeDeletedSessionTrees(ctx, PurgeDeletedSessionTreesInput{
+		WorkspaceID: "ws-1", RootSessionIDs: []string{"source"},
+	})
+	if err != nil || purged.RemovedSessions != 1 {
+		t.Fatalf("PurgeDeletedSessionTrees(source)=%#v error=%v", purged, err)
+	}
+	for _, table := range []string{
+		"workspace_agent_session_fork_operations",
+		"workspace_agent_session_fork_target_reservations",
+		"workspace_agent_session_fork_boundary_barriers",
+	} {
+		var count int
+		if err := store.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM `+table+` WHERE operation_id='fork-source-purge'`).Scan(&count); err != nil || count != 0 {
+			t.Fatalf("%s count after source purge=%d error=%v", table, count, err)
+		}
+	}
+	if _, found, err := store.GetSessionForkLineage(ctx, "ws-1", "surviving-target"); err != nil || found {
+		t.Fatalf("surviving target lineage found=%v error=%v", found, err)
+	}
+	target, found, err := store.GetSession(ctx, "ws-1", "surviving-target")
+	if err != nil || !found || target.ProviderSessionID != "provider-surviving-target" {
+		t.Fatalf("surviving target=%#v found=%v error=%v", target, found, err)
+	}
+	page, found, err := store.ListSessionMessages(ctx, ListSessionMessagesInput{
+		WorkspaceID: "ws-1", AgentSessionID: "surviving-target", Limit: 10,
+	})
+	if err != nil || !found || len(page.Messages) != 1 {
+		t.Fatalf("surviving target messages=%#v found=%v error=%v", page.Messages, found, err)
+	}
+	if removed, err := store.DeleteSession(ctx, "ws-1", "surviving-target"); err != nil || !removed {
+		t.Fatalf("DeleteSession(surviving target) removed=%v error=%v", removed, err)
+	}
+	restored, err := store.RestoreDeletedSession(ctx, RestoreDeletedSessionInput{
+		WorkspaceID: "ws-1", AgentSessionID: "surviving-target",
+	})
+	if err != nil || !restored.Restored {
+		t.Fatalf("RestoreDeletedSession(surviving target)=%#v error=%v", restored, err)
+	}
+	target, found, err = store.GetSession(ctx, "ws-1", "surviving-target")
+	if err != nil || !found || target.ProviderSessionID != "provider-surviving-target" {
+		t.Fatalf("restored surviving target=%#v found=%v error=%v", target, found, err)
 	}
 }
 

@@ -139,11 +139,14 @@ func TestCanonicalFileChangesPreservesInvalidModifiedBodyWithoutDiff(t *testing.
 		},
 	})
 	file := payloadArray(got["files"])[0]
-	if file["content"] != body || file["change"] != "modified" {
-		t.Fatalf("canonical file = %#v, want modified body preserved as content", file)
+	if file["newString"] != body || file["change"] != "modified" {
+		t.Fatalf("canonical file = %#v, want modified body preserved as newString", file)
 	}
 	if _, exists := file["diff"]; exists {
 		t.Fatalf("canonical file retained invalid diff: %#v", file)
+	}
+	if _, exists := file["content"]; exists {
+		t.Fatalf("canonical file retained obsolete content field: %#v", file)
 	}
 }
 

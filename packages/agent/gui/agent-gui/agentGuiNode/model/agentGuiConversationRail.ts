@@ -651,10 +651,12 @@ export function conversationSummariesRenderEqual(
     left.titleFallback === right.titleFallback &&
     left.status === right.status &&
     left.cwd === right.cwd &&
+    left.isolation?.mode === right.isolation?.mode &&
     left.railSectionKey === right.railSectionKey &&
     left.pinnedAtUnixMs === right.pinnedAtUnixMs &&
     left.sortTimeUnixMs === right.sortTimeUnixMs &&
     left.updatedAtUnixMs === right.updatedAtUnixMs &&
+    left.isTransient === right.isTransient &&
     left.projectionSource === right.projectionSource &&
     left.isImported === right.isImported &&
     left.hasUnreadCompletion === right.hasUnreadCompletion &&

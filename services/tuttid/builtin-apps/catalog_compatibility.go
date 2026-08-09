@@ -246,6 +246,7 @@ func isCanonicalCatalogCapability(value string) bool {
 }
 
 func parseRemoteCatalogApp(entry remoteCatalogApp) (App, error) {
+	entry.Manifest = workspacebiz.NormalizeAppManifestRuntimeProfile(entry.Manifest)
 	if err := workspacebiz.ValidateAppManifest(entry.Manifest); err != nil {
 		return App{}, fmt.Errorf("validate app catalog manifest: %w", err)
 	}

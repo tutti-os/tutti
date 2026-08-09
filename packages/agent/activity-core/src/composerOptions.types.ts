@@ -47,6 +47,7 @@ export interface AgentActivityComposerCapabilityOption {
     | "unsupported";
   invocation: "promptItem" | "textTrigger" | "none";
   description?: string;
+  iconUrl?: string;
   source?: string;
   pluginName?: string;
   serverName?: string;

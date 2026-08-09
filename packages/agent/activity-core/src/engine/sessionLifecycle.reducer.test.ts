@@ -587,6 +587,7 @@ test("Turn provenance survives lifecycle upserts, reconcile snapshots, and selec
       sourceGoalRevision: 99,
       updatedAtUnixMs: 3
     },
+    live: true,
     type: "turn/upserted"
   }).state;
 
@@ -636,6 +637,7 @@ test("legacy_unknown Turn provenance is never inferred during reconcile", () => 
       sourceGoalRevision: 1,
       updatedAtUnixMs: 3
     },
+    live: true,
     type: "turn/upserted"
   }).state;
 
@@ -733,6 +735,7 @@ test("turn and interaction events update independent canonical collections", () 
     sessions: [session(null, 1)]
   }).state;
   state = reduce(state, {
+    live: true,
     type: "turn/upserted",
     turn: activeTurn(2)
   }).state;
@@ -980,7 +983,11 @@ test("identical request ids remain isolated across turns in one session", () => 
     type: "session/snapshotReceived",
     sessions: [session(turn1, 1)]
   }).state;
-  state = reduce(state, { type: "turn/upserted", turn: turn2 }).state;
+  state = reduce(state, {
+    live: true,
+    type: "turn/upserted",
+    turn: turn2
+  }).state;
   state = reduce(state, {
     type: "interaction/upserted",
     interaction: interaction("pending", 2)
@@ -1261,6 +1268,7 @@ test("stop for a submit still resolves after send admission times out", () => {
 
   const turn = { ...activeTurn(4), turnId: "turn-2" };
   const matched = reduce(message.state, {
+    live: true,
     type: "turn/upserted",
     turn
   });
@@ -1549,6 +1557,7 @@ test("durably accepted cancel stays pending until the canonical turn settles", (
   );
 
   const settled = reduce(accepted.state, {
+    live: true,
     type: "turn/upserted",
     turn: {
       ...settlingTurn,
@@ -1780,7 +1789,11 @@ test("interaction then turn then session converges without exposing orphans", ()
     selectEngineInteraction(engine, "session-1", "turn-1", "request-1"),
     null
   );
-  state = reduce(state, { type: "turn/upserted", turn: activeTurn(2) }).state;
+  state = reduce(state, {
+    live: true,
+    type: "turn/upserted",
+    turn: activeTurn(2)
+  }).state;
   engine = { ...engine, sessionLifecycle: state };
   assert.equal(selectEngineTurn(engine, "session-1", "turn-1"), null);
   const parentSession = session(null, 3);
@@ -1809,7 +1822,11 @@ test("delete tombstone rejects late orphan turn and interaction upserts", () => 
     type: "session/removed",
     agentSessionId: "session-1"
   }).state;
-  state = reduce(state, { type: "turn/upserted", turn: activeTurn(2) }).state;
+  state = reduce(state, {
+    live: true,
+    type: "turn/upserted",
+    turn: activeTurn(2)
+  }).state;
   state = reduce(state, {
     type: "interaction/upserted",
     interaction: interaction("pending", 2)
@@ -1982,6 +1999,7 @@ test("same-Turn terminal evidence repairs an inconsistent active pointer", () =>
       settledAtUnixMs: 2,
       updatedAtUnixMs: 2
     },
+    live: true,
     type: "turn/upserted"
   }).state;
 
@@ -2022,6 +2040,7 @@ test("late Turn projection cannot clear or replace a newer active Turn", () => {
   }).state;
   state = reduce(state, {
     turn: activeTurn(1),
+    live: true,
     type: "turn/upserted"
   }).state;
 
@@ -2057,14 +2076,17 @@ test("late Turn projection cannot clear or replace a newer active Turn", () => {
 
 test("settled turn is terminal against newer live phases and outcome changes", () => {
   let state = reduce(createInitialSessionLifecycleState(), {
+    live: true,
     type: "turn/upserted",
     turn: { ...activeTurn(2), phase: "settled", outcome: "completed" }
   }).state;
   state = reduce(state, {
+    live: true,
     type: "turn/upserted",
     turn: { ...activeTurn(3), phase: "running" }
   }).state;
   state = reduce(state, {
+    live: true,
     type: "turn/upserted",
     turn: { ...activeTurn(4), phase: "settled", outcome: "failed" }
   }).state;
@@ -2075,10 +2097,12 @@ test("settled turn is terminal against newer live phases and outcome changes", (
 
 test("running and waiting transitions remain bidirectional before settle", () => {
   let state = reduce(createInitialSessionLifecycleState(), {
+    live: true,
     type: "turn/upserted",
     turn: activeTurn(1)
   }).state;
   state = reduce(state, {
+    live: true,
     type: "turn/upserted",
     turn: { ...activeTurn(2), phase: "waiting" }
   }).state;
@@ -2087,6 +2111,7 @@ test("running and waiting transitions remain bidirectional before settle", () =>
     "waiting"
   );
   state = reduce(state, {
+    live: true,
     type: "turn/upserted",
     turn: activeTurn(3)
   }).state;
@@ -2098,10 +2123,12 @@ test("running and waiting transitions remain bidirectional before settle", () =>
 
 test("equal timestamp terminal turn wins and invalid settling regression is rejected", () => {
   let state = reduce(createInitialSessionLifecycleState(), {
+    live: true,
     type: "turn/upserted",
     turn: { ...activeTurn(2), phase: "settling" }
   }).state;
   state = reduce(state, {
+    live: true,
     type: "turn/upserted",
     turn: { ...activeTurn(2), phase: "running" }
   }).state;
@@ -2110,6 +2137,7 @@ test("equal timestamp terminal turn wins and invalid settling regression is reje
     "settling"
   );
   state = reduce(state, {
+    live: true,
     type: "turn/upserted",
     turn: { ...activeTurn(2), phase: "settled", outcome: "completed" }
   }).state;

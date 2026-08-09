@@ -79,9 +79,10 @@ type Manifest struct {
 			Artifacts []RuntimeBinaryArtifact `json:"artifacts,omitempty"`
 		} `json:"install"`
 		Launch struct {
-			Executable         string   `json:"executable"`
-			Args               []string `json:"args"`
-			PublishUserCommand *bool    `json:"publishUserCommand,omitempty"`
+			Executable         string            `json:"executable"`
+			Args               []string          `json:"args"`
+			Env                map[string]string `json:"env,omitempty"`
+			PublishUserCommand *bool             `json:"publishUserCommand,omitempty"`
 		} `json:"launch"`
 	} `json:"runtime"`
 	Profiles struct {

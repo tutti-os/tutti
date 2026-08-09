@@ -35,6 +35,7 @@ export function createLocalAgentGUIAgentTarget(
     targetId,
     ...(agentTargetId ? { agentTargetId } : {}),
     provider,
+    ownership: "self",
     ref: {
       kind: "local",
       provider

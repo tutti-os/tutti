@@ -2,8 +2,10 @@ package agentruntime
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -541,5 +543,66 @@ func TestStandardACPSetModelCarriesAdvertisedPerModelReasoningMetadata(t *testin
 	}
 	if calls := transport.conn.setConfigOptionCalls(); len(calls) != 0 {
 		t.Fatalf("config option calls = %#v, want standard session/set_model only", calls)
+	}
+}
+
+func TestStandardACPStartupFailsWhenRequestedModelIsRejected(t *testing.T) {
+	t.Parallel()
+
+	transport := newStandardACPTransport("Model ACP", "model-rejected-session")
+	transport.conn.models = map[string]any{
+		"currentModelId": "provider-default",
+		"availableModels": []any{
+			map[string]any{"modelId": "requested-model", "name": "Requested Model"},
+		},
+	}
+	transport.conn.setModelError = &acpError{
+		Code:    -32603,
+		Message: "Internal error",
+		Data:    json.RawMessage(`{"details":"requested model is unavailable"}`),
+	}
+	adapterRaw, err := NewStandardACPAdapter(StandardACPAdapterConfig{
+		Provider: "acp:model-rejected", Name: "model-rejected-acp", DisplayName: "Model ACP", Command: []string{"model-acp", "stdio"},
+	}, transport, LegacyHostMetadata())
+	if err != nil {
+		t.Fatalf("NewStandardACPAdapter: %v", err)
+	}
+	session := standardTestSession("acp:model-rejected")
+	session.Settings = &SessionSettings{Model: "requested-model"}
+
+	if _, err := adapterRaw.Start(context.Background(), session); err == nil {
+		t.Fatal("Start error = nil, want rejected requested model to abort startup")
+	} else if !strings.Contains(err.Error(), "model configuration failed") {
+		t.Fatalf("Start error = %v, want model configuration failure", err)
+	}
+}
+
+func TestStandardACPStartupDoesNotReapplyCurrentRequestedModel(t *testing.T) {
+	t.Parallel()
+
+	transport := newStandardACPTransport("Model ACP", "model-current-session")
+	transport.conn.models = map[string]any{
+		"currentModelId": "requested-model",
+		"availableModels": []any{
+			map[string]any{"modelId": "requested-model", "name": "Requested Model"},
+		},
+	}
+	transport.conn.setModelError = &acpError{
+		Code: -32603, Message: "duplicate model application rejected",
+	}
+	adapterRaw, err := NewStandardACPAdapter(StandardACPAdapterConfig{
+		Provider: "acp:model-current", Name: "model-current-acp", DisplayName: "Model ACP", Command: []string{"model-acp", "stdio"},
+	}, transport, LegacyHostMetadata())
+	if err != nil {
+		t.Fatalf("NewStandardACPAdapter: %v", err)
+	}
+	session := standardTestSession("acp:model-current")
+	session.Settings = &SessionSettings{Model: "requested-model"}
+
+	if _, err := adapterRaw.Start(context.Background(), session); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	if calls := transport.conn.setModelCalls(); len(calls) != 0 {
+		t.Fatalf("set_model calls = %#v, want current model left unchanged", calls)
 	}
 }

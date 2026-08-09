@@ -20,9 +20,18 @@ type agentComposerDefaultsPatcherStub struct {
 	inputs []preferencesservice.PatchAgentComposerDefaultsForTargetInput
 }
 
+type agentSessionLaunchModePatcherStub struct {
+	inputs []preferencesservice.PatchAgentSessionLaunchModeInput
+}
+
 func (s *agentComposerDefaultsPatcherStub) PatchAgentComposerDefaultsForTarget(_ context.Context, input preferencesservice.PatchAgentComposerDefaultsForTargetInput) (preferencesbiz.AgentComposerDefaults, error) {
 	s.inputs = append(s.inputs, input)
 	return preferencesbiz.AgentComposerDefaults{}, nil
+}
+
+func (s *agentSessionLaunchModePatcherStub) PatchAgentSessionLaunchMode(_ context.Context, input preferencesservice.PatchAgentSessionLaunchModeInput) (preferencesbiz.DesktopPreferences, error) {
+	s.inputs = append(s.inputs, input)
+	return preferencesbiz.DesktopPreferences{}, nil
 }
 
 func (s *preferencesMutatorStub) Put(_ context.Context, input preferencesservice.PutInput) (preferencesbiz.DesktopPreferences, error) {
@@ -565,6 +574,29 @@ func TestAgentComposerDefaultsPatchIntentUsesDedicatedMutationAndTargetInvalidat
 	}
 }
 
+func TestAgentSessionLaunchModePatchIntentUsesDedicatedMutation(t *testing.T) {
+	t.Parallel()
+
+	service := NewService(DefaultCatalog(), nil)
+	patcher := &agentSessionLaunchModePatcherStub{}
+	service.RegisterIntentHandler(
+		TopicPreferencesAgentSessionLaunchModePatchRequested,
+		NewPreferencesAgentSessionLaunchModePatchRequestedHandler(patcher),
+	)
+	if err := service.PublishFromClient(context.Background(), ClientEvent{
+		Topic:   TopicPreferencesAgentSessionLaunchModePatchRequested,
+		Payload: []byte(`{"workspaceId":"workspace-1","projectSectionKey":"project:/alpha","mode":"worktree"}`),
+	}); err != nil {
+		t.Fatalf("PublishFromClient() error = %v", err)
+	}
+	if len(patcher.inputs) != 1 ||
+		patcher.inputs[0].WorkspaceID != "workspace-1" ||
+		patcher.inputs[0].ProjectSectionKey != "project:/alpha" ||
+		patcher.inputs[0].Mode != "worktree" {
+		t.Fatalf("patch inputs = %#v", patcher.inputs)
+	}
+}
+
 func TestPreferencesIntentHandlerPassesWindowSnappingWhenProvided(t *testing.T) {
 	t.Parallel()
 
@@ -805,6 +837,7 @@ func TestWorkspaceAppPublisherIncludesReferencesState(t *testing.T) {
 	}
 
 	publisher := WorkspaceAppPublisher{Service: service}
+	failurePhase := workspacebiz.AppFailurePhaseRuntime
 	if err := publisher.PublishWorkspaceAppUpdated(context.Background(), "workspace-1", workspacebiz.WorkspaceApp{
 		Package: workspacebiz.AppPackage{
 			AppID:   "docs",
@@ -818,7 +851,8 @@ func TestWorkspaceAppPublisherIncludesReferencesState(t *testing.T) {
 			},
 		},
 		Runtime: workspacebiz.AppRuntimeState{
-			Status: workspacebiz.AppRuntimeStatusIdle,
+			Status:       workspacebiz.AppRuntimeStatusFailed,
+			FailurePhase: &failurePhase,
 		},
 	}); err != nil {
 		t.Fatalf("PublishWorkspaceAppUpdated() error = %v", err)
@@ -827,7 +861,8 @@ func TestWorkspaceAppPublisherIncludesReferencesState(t *testing.T) {
 	event := receiveEvent(t, session)
 	var payload struct {
 		App struct {
-			References struct {
+			FailurePhase *string `json:"failurePhase"`
+			References   struct {
 				ListSupported bool `json:"listSupported"`
 			} `json:"references"`
 		} `json:"app"`
@@ -837,6 +872,9 @@ func TestWorkspaceAppPublisherIncludesReferencesState(t *testing.T) {
 	}
 	if !payload.App.References.ListSupported {
 		t.Fatal("published references.listSupported = false, want true")
+	}
+	if payload.App.FailurePhase == nil || *payload.App.FailurePhase != "runtime" {
+		t.Fatalf("published failurePhase = %v, want runtime", payload.App.FailurePhase)
 	}
 }
 

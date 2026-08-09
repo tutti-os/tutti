@@ -71,3 +71,40 @@ test("keeps fallback slash commands when effects are absent", () => {
     commandEffects: []
   });
 });
+
+test("projects connector presentation icons from the daemon catalog", () => {
+  const response = {
+    behavior: {},
+    capabilityCatalog: [
+      {
+        id: "connector:github",
+        kind: "connector",
+        name: "github",
+        label: "GitHub",
+        status: "available",
+        invocation: "textTrigger",
+        iconUrl: "data:image/png;base64,Z2l0aHVi",
+        trigger: "/github"
+      }
+    ],
+    commands: [],
+    effectiveSettings: {},
+    modelConfig: { configurable: false, options: [] },
+    permissionConfig: { configurable: false, modes: [] },
+    provider: "codex",
+    reasoningConfig: { configurable: false, options: [] },
+    reasoningOptionsByModel: {},
+    runtimeContext: {},
+    skills: []
+  } as unknown as AgentProviderComposerOptionsResponse;
+
+  const options = agentActivityComposerOptionsFromTuttidResult(
+    "codex",
+    response
+  );
+
+  assert.equal(
+    options.capabilityCatalog?.[0]?.iconUrl,
+    "data:image/png;base64,Z2l0aHVi"
+  );
+});

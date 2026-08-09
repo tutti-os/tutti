@@ -61,10 +61,6 @@ function guardedContents(events: string[]): BrowserGuestWebContents {
       },
       on() {
         return this;
-      },
-      async resolveHost() {
-        events.push("session.resolveHost");
-        return { endpoints: [{ address: "93.184.216.34" }] };
       }
     },
     async loadURL(url) {
@@ -226,13 +222,7 @@ test("new page creates about:blank and enables the request guard before navigati
   let registry: ReturnType<typeof createBrowserNodeAutomationRegistry>;
   registry = createBrowserNodeAutomationRegistry({
     authorize: async () => ({ allowed: true }),
-    authorizeRequest: async (input) => {
-      assert.ok(input.resolveHost);
-      assert.deepEqual(await input.resolveHost("public.example"), [
-        "93.184.216.34"
-      ]);
-      return { allowed: true };
-    },
+    authorizeRequest: async () => ({ allowed: true }),
     closeTarget: async () => undefined,
     requestTarget: async (input) => {
       assert.equal(input.url, "about:blank");

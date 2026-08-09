@@ -90,6 +90,25 @@ func extractEffectiveModelFromRuntimeContext(
 	return ""
 }
 
+func extractCurrentModelFromRuntimeContext(
+	runtimeContext map[string]any,
+	optionIDs ...string,
+) string {
+	if len(runtimeContext) == 0 {
+		return ""
+	}
+	modelOptionID := "model"
+	if len(optionIDs) > 0 && strings.TrimSpace(optionIDs[0]) != "" {
+		modelOptionID = strings.TrimSpace(optionIDs[0])
+	}
+	for _, option := range runtimeConfigOptionsAsMapSlice(runtimeContext["configOptions"]) {
+		if strings.TrimSpace(stringFromAny(option["id"])) == modelOptionID {
+			return strings.TrimSpace(stringFromAny(option["currentValue"]))
+		}
+	}
+	return ""
+}
+
 func composerModelOptionsFromCanonicalCatalog(models []modelcatalog.ModelOption) []ComposerConfigOptionValue {
 	options := make([]ComposerConfigOptionValue, 0, len(models))
 	for _, model := range models {

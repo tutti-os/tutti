@@ -86,6 +86,7 @@ function optionalGoal(value: unknown): boolean {
         "complete"
       ].includes(String(value.status)) &&
       (value.reason === undefined || typeof value.reason === "string") &&
+      optionalFiniteNumber(value.startedAtUnixMs) &&
       optionalFiniteNumber(value.iterations) &&
       optionalFiniteNumber(value.durationMs) &&
       optionalFiniteNumber(value.tokens))

@@ -211,6 +211,7 @@ const FAILED_MESSAGE_CODE_MARKERS: ReadonlyArray<
     ]
   ],
   ["model_not_allowed", ["model_not_allowed"]],
+  ["request_timed_out", ["api error: 522", "error 522: connection timed out"]],
   [
     "auth_required",
     [

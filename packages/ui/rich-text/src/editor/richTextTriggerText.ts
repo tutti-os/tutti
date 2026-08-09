@@ -4,12 +4,14 @@ import {
 } from "../i18n/richTextI18n.ts";
 
 export interface RichTextTriggerTextOverrides {
+  loadFailedLabel?: string;
   loadingLabel?: string;
   noMatchesLabel?: string;
   removeReferenceActionLabel?: string;
 }
 
 export interface ResolvedRichTextTriggerText {
+  loadFailedLabel: string;
   loadingLabel: string;
   noMatchesLabel: string;
   removeReferenceActionLabel: string;
@@ -23,6 +25,8 @@ export function resolveRichTextTriggerText(
   i18n: RichTextI18nRuntime = defaultRichTextI18n
 ): ResolvedRichTextTriggerText {
   return {
+    loadFailedLabel:
+      overrides?.loadFailedLabel?.trim() || i18n.t("richTextAt.loadFailed"),
     loadingLabel:
       overrides?.loadingLabel?.trim() || i18n.t("richTextAt.loading"),
     noMatchesLabel:

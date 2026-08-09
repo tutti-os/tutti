@@ -44,7 +44,19 @@ import type {
   BrowserNodeUnregisterGuestInput,
   BrowserNodeUpdateAutomationTargetInput
 } from "@tutti-os/browser-node";
+import type { WorkspaceFileReference } from "@tutti-os/workspace-file-reference/contracts";
 import type {
+  DesktopCaptureComposerOptions,
+  DesktopCaptureComposerOptionsInput,
+  DesktopCaptureRememberComposerDefaultsInput,
+  DesktopCaptureSelectionInput,
+  DesktopCaptureSelectionResult,
+  DesktopCaptureState,
+  DesktopCaptureSubmitInput,
+  DesktopCaptureSubmitResult
+} from "./capture.ts";
+import type {
+  TuttiExternalAtQueryDirectoryInput,
   TuttiExternalAtQueryInput,
   TuttiExternalAtQueryResult,
   TuttiExternalFileOpenInput,
@@ -57,6 +69,7 @@ import type {
   TuttiExternalPdfPrintHtmlInput,
   TuttiExternalPdfPrintHtmlResult,
   TuttiExternalReferenceOpenInput,
+  TuttiExternalReferenceSelectResult,
   TuttiExternalRendererRequest,
   TuttiExternalAtResolveResult,
   TuttiExternalAtResolveInput,
@@ -67,6 +80,7 @@ import type {
   TuttiExternalAgentActivityCancelTurnInput,
   TuttiExternalAgentActivityComposerOptions,
   TuttiExternalAgentActivityComposerOptionsInput,
+  TuttiExternalAgentActivityRememberComposerDefaultsInput,
   TuttiExternalAgentActivitySendInput,
   TuttiExternalAgentActivitySendResult,
   TuttiExternalAgentActivitySnapshot,
@@ -89,6 +103,22 @@ import type {
 } from "@tutti-os/workspace-user-project/contracts";
 
 export const desktopIpcChannels = {
+  capture: {
+    cancel: "capture:cancel",
+    getComposerOptions: "capture:get-composer-options",
+    getState: "capture:get-state",
+    queryMentionDirectory: "capture:query-mention-directory",
+    queryMentions: "capture:query-mentions",
+    rememberComposerDefaults: "capture:remember-composer-defaults",
+    resolveMention: "capture:resolve-mention",
+    select: "capture:select",
+    selectFiles: "capture:select-files",
+    selectProjectDirectory: "capture:select-project-directory",
+    userProjectsList: "capture:user-projects:list",
+    userProjectsPrepareSelection: "capture:user-projects:prepare-selection",
+    userProjectsUse: "capture:user-projects:use",
+    submit: "capture:submit"
+  },
   computerUse: {
     checkStatus: "computerUse:checkStatus",
     install: "computerUse:install",
@@ -117,8 +147,11 @@ export const desktopIpcChannels = {
       "workspace-app-agent-activity:get-composer-options",
     agentActivityGetSnapshot: "workspace-app-agent-activity:get-snapshot",
     agentActivityListTargets: "workspace-app-agent-activity:list-targets",
+    agentActivityRememberComposerDefaults:
+      "workspace-app-agent-activity:remember-composer-defaults",
     agentActivitySendInput: "workspace-app-agent-activity:send-input",
     atQuery: "workspace-app-at:query",
+    atQueryDirectory: "workspace-app-at:query-directory",
     atResolve: "workspace-app-at:resolve",
     filesOpen: "workspace-app-files:open",
     filesSelect: "workspace-app-files:select",
@@ -129,8 +162,10 @@ export const desktopIpcChannels = {
     permissionsRequest: "workspace-app-permissions:request",
     pdfPrintHtml: "workspace-app-pdf:print-html",
     referencesOpen: "workspace-app-references:open",
+    referencesSelect: "workspace-app-references:select",
     guestEvent: "workspace-app-external:guest-event",
     rendererEvent: "workspace-app-external:renderer-event",
+    rendererReady: "workspace-app-external:renderer-ready",
     rendererRequest: "workspace-app-external:renderer-request",
     rendererResponse: "workspace-app-external:renderer-response",
     settingsOpen: "workspace-app-settings:open",
@@ -797,6 +832,7 @@ export type DesktopWorkspaceAppExternalRendererResult =
   | TuttiExternalAtQueryResult[]
   | TuttiExternalAtResolveResult
   | TuttiExternalFileSelectResult
+  | TuttiExternalReferenceSelectResult
   | WorkspaceUserProject
   | WorkspaceUserProjectDefaultSelection
   | WorkspaceUserProjectPathCheck
@@ -810,6 +846,10 @@ export type DesktopWorkspaceAppExternalRendererResult =
 export interface DesktopWorkspaceAppExternalRendererResponse {
   requestId: string;
   result: DesktopIpcResult<DesktopWorkspaceAppExternalRendererResult>;
+}
+
+export interface DesktopWorkspaceAppExternalRendererReadiness {
+  ready: boolean;
 }
 
 export type DesktopWorkspaceAppExternalRendererEvent =
@@ -944,8 +984,12 @@ export type DesktopComputerUseAuthorizationState =
   | "needs-authorization"
   | "unknown";
 
+/** The native capability used to report computer-use readiness. */
+export type DesktopComputerUsePlatform = "darwin" | "win32" | "unknown";
+
 export type DesktopComputerUseStatusReason =
   | "driver-daemon-not-running"
+  | "driver-doctor-failed"
   | "not-installed"
   | "permission-missing"
   | "screen-recording-not-capturable"
@@ -954,6 +998,8 @@ export type DesktopComputerUseStatusReason =
 
 export interface DesktopComputerUseStatus {
   installed: boolean;
+  /** Optional for compatibility with older preload clients. */
+  platform?: DesktopComputerUsePlatform;
   permissions: DesktopComputerUsePermissionsStatus | null;
   authorization: DesktopComputerUseAuthorizationState;
   reason?: DesktopComputerUseStatusReason;
@@ -969,6 +1015,7 @@ export function desktopComputerUseStatusesEqual(
     (left !== null &&
       right !== null &&
       left.installed === right.installed &&
+      left.platform === right.platform &&
       left.authorization === right.authorization &&
       left.reason === right.reason &&
       left.diagnosticMessage === right.diagnosticMessage &&
@@ -1041,6 +1088,25 @@ export type DesktopBrowserAutomationResponse =
     };
 
 export interface DesktopInvokePayloadByChannel {
+  [desktopIpcChannels.capture.cancel]: undefined;
+  [desktopIpcChannels.capture
+    .getComposerOptions]: DesktopCaptureComposerOptionsInput;
+  [desktopIpcChannels.capture.getState]: undefined;
+  [desktopIpcChannels.capture
+    .queryMentionDirectory]: TuttiExternalAtQueryDirectoryInput;
+  [desktopIpcChannels.capture.queryMentions]: TuttiExternalAtQueryInput;
+  [desktopIpcChannels.capture
+    .rememberComposerDefaults]: DesktopCaptureRememberComposerDefaultsInput;
+  [desktopIpcChannels.capture.resolveMention]: TuttiExternalAtResolveInput;
+  [desktopIpcChannels.capture.select]: DesktopCaptureSelectionInput;
+  [desktopIpcChannels.capture.selectFiles]: undefined;
+  [desktopIpcChannels.capture.selectProjectDirectory]: undefined;
+  [desktopIpcChannels.capture.userProjectsList]: undefined;
+  [desktopIpcChannels.capture
+    .userProjectsPrepareSelection]: WorkspaceUserProjectSelectionPreparationInput;
+  [desktopIpcChannels.capture
+    .userProjectsUse]: TuttiExternalUserProjectPathInput;
+  [desktopIpcChannels.capture.submit]: DesktopCaptureSubmitInput;
   [desktopIpcChannels.computerUse.checkStatus]: undefined;
   [desktopIpcChannels.computerUse.install]: undefined;
   [desktopIpcChannels.computerUse.uninstall]: undefined;
@@ -1063,8 +1129,12 @@ export interface DesktopInvokePayloadByChannel {
   [desktopIpcChannels.appExternal.agentActivityGetSnapshot]: undefined;
   [desktopIpcChannels.appExternal.agentActivityListTargets]: undefined;
   [desktopIpcChannels.appExternal
+    .agentActivityRememberComposerDefaults]: TuttiExternalAgentActivityRememberComposerDefaultsInput;
+  [desktopIpcChannels.appExternal
     .agentActivitySendInput]: TuttiExternalAgentActivitySendInput;
   [desktopIpcChannels.appExternal.atQuery]: TuttiExternalAtQueryInput;
+  [desktopIpcChannels.appExternal
+    .atQueryDirectory]: TuttiExternalAtQueryDirectoryInput;
   [desktopIpcChannels.appExternal.atResolve]: TuttiExternalAtResolveInput;
   [desktopIpcChannels.appExternal.filesOpen]: TuttiExternalFileOpenInput;
   [desktopIpcChannels.appExternal.filesSelect]: TuttiExternalFileSelectInput;
@@ -1079,6 +1149,7 @@ export interface DesktopInvokePayloadByChannel {
   [desktopIpcChannels.appExternal.pdfPrintHtml]: TuttiExternalPdfPrintHtmlInput;
   [desktopIpcChannels.appExternal
     .referencesOpen]: TuttiExternalReferenceOpenInput;
+  [desktopIpcChannels.appExternal.referencesSelect]: undefined;
   [desktopIpcChannels.appExternal.settingsOpen]: TuttiExternalSettingsOpenInput;
   [desktopIpcChannels.appExternal
     .userProjectsCheckPath]: TuttiExternalUserProjectPathInput;
@@ -1233,6 +1304,26 @@ export interface DesktopInvokePayloadByChannel {
 }
 
 export interface DesktopInvokeResultByChannel {
+  [desktopIpcChannels.capture.cancel]: void;
+  [desktopIpcChannels.capture
+    .getComposerOptions]: DesktopCaptureComposerOptions;
+  [desktopIpcChannels.capture.getState]: DesktopCaptureState;
+  [desktopIpcChannels.capture
+    .queryMentionDirectory]: TuttiExternalAtQueryResult[];
+  [desktopIpcChannels.capture.queryMentions]: TuttiExternalAtQueryResult[];
+  [desktopIpcChannels.capture.rememberComposerDefaults]: void;
+  [desktopIpcChannels.capture
+    .resolveMention]: TuttiExternalAtResolveResult | null;
+  [desktopIpcChannels.capture.select]: DesktopCaptureSelectionResult;
+  [desktopIpcChannels.capture.selectFiles]: WorkspaceFileReference[];
+  [desktopIpcChannels.capture.selectProjectDirectory]: { path: string } | null;
+  [desktopIpcChannels.capture.userProjectsList]: {
+    projects: WorkspaceUserProject[];
+  };
+  [desktopIpcChannels.capture
+    .userProjectsPrepareSelection]: WorkspaceUserProjectSelectionPreparation;
+  [desktopIpcChannels.capture.userProjectsUse]: WorkspaceUserProject;
+  [desktopIpcChannels.capture.submit]: DesktopCaptureSubmitResult;
   [desktopIpcChannels.computerUse.checkStatus]: DesktopComputerUseStatus;
   [desktopIpcChannels.computerUse.install]: DesktopComputerUseActionResult;
   [desktopIpcChannels.computerUse.uninstall]: DesktopComputerUseActionResult;
@@ -1257,9 +1348,12 @@ export interface DesktopInvokeResultByChannel {
     .agentActivityGetSnapshot]: TuttiExternalAgentActivitySnapshot;
   [desktopIpcChannels.appExternal
     .agentActivityListTargets]: TuttiExternalAgentTargetCatalog;
+  [desktopIpcChannels.appExternal.agentActivityRememberComposerDefaults]: void;
   [desktopIpcChannels.appExternal
     .agentActivitySendInput]: TuttiExternalAgentActivitySendResult;
   [desktopIpcChannels.appExternal.atQuery]: TuttiExternalAtQueryResult[];
+  [desktopIpcChannels.appExternal
+    .atQueryDirectory]: TuttiExternalAtQueryResult[];
   [desktopIpcChannels.appExternal
     .atResolve]: TuttiExternalAtResolveResult | null;
   [desktopIpcChannels.appExternal.filesOpen]: void;
@@ -1274,6 +1368,8 @@ export interface DesktopInvokeResultByChannel {
   [desktopIpcChannels.appExternal
     .pdfPrintHtml]: TuttiExternalPdfPrintHtmlResult;
   [desktopIpcChannels.appExternal.referencesOpen]: void;
+  [desktopIpcChannels.appExternal
+    .referencesSelect]: TuttiExternalReferenceSelectResult;
   [desktopIpcChannels.appExternal.settingsOpen]: void;
   [desktopIpcChannels.appExternal
     .userProjectsCheckPath]: WorkspaceUserProjectPathCheck;

@@ -40,6 +40,15 @@ export interface WorkspaceConversationRailMembership {
 export interface WorkspaceConversationRailSnapshot {
   errorCode: "request_failed" | null;
   loadingMoreSectionId: string | null;
+  search: {
+    failed: boolean;
+    hasMore: boolean;
+    loadingMore: boolean;
+    pending: boolean;
+    query: string;
+    resolvedQuery: string;
+    sessionIds: readonly string[];
+  };
   sections: readonly WorkspaceConversationRailMembership[];
   status: "idle" | "loading" | "ready";
 }
@@ -67,9 +76,19 @@ export class WorkspaceConversationRailService extends ObservableService<Workspac
   private controllerDetach: (() => void) | null = null;
   private loadPromise: Promise<void> | null = null;
   private pollTask: { cancel(): void } | null = null;
+  private searchQuery = "";
   private snapshot: WorkspaceConversationRailSnapshot = {
     errorCode: null,
     loadingMoreSectionId: null,
+    search: {
+      failed: false,
+      hasMore: false,
+      loadingMore: false,
+      pending: false,
+      query: "",
+      resolvedQuery: "",
+      sessionIds: []
+    },
     sections: [],
     status: "idle"
   };
@@ -156,6 +175,24 @@ export class WorkspaceConversationRailService extends ObservableService<Workspac
     this.schedulePoll();
   }
 
+  setSearchQuery(value: string): void {
+    if (this.disposed) return;
+    const query = value.trim();
+    if (query === this.searchQuery) return;
+    this.searchQuery = query;
+    this.controller.setSearchQuery(query);
+  }
+
+  loadMoreSearch(): void {
+    if (this.paused || this.disposed) return;
+    this.controller.loadMoreSearchResults();
+  }
+
+  retrySearch(): void {
+    if (this.paused || this.disposed) return;
+    this.controller.retrySearchResults();
+  }
+
   pause(): void {
     if (this.paused || this.disposed) return;
     this.paused = true;
@@ -233,6 +270,15 @@ export class WorkspaceConversationRailService extends ObservableService<Workspac
               loadingMoreSectionId,
               loadingMoreSectionId === "pinned" ? "pinned" : "conversations"
             ),
+      search: {
+        failed: snapshot.railSearch.failed,
+        hasMore: snapshot.railSearch.hasMore,
+        loadingMore: snapshot.railSearch.loadingMore,
+        pending: snapshot.railSearch.pending,
+        query: this.searchQuery,
+        resolvedQuery: snapshot.railSearch.resolvedQuery,
+        sessionIds: snapshot.railSearch.sessionIds
+      },
       sections,
       status:
         snapshot.runtimeRailMemberships === null &&
@@ -302,6 +348,26 @@ function createMobileConversationRailRuntime(input: {
   workspaceId: string;
 }): ConversationRailQueryRuntime {
   return {
+    async listSessionsPage(query) {
+      const response = await input.client.listWorkspaceAgentSessions(
+        input.workspaceId,
+        {
+          ...(query.agentTargetId
+            ? { agentTargetId: query.agentTargetId }
+            : {}),
+          ...(query.cursor ? { cursor: query.cursor } : {}),
+          ...(query.limit === undefined ? {} : { limit: query.limit }),
+          ...(query.searchQuery ? { searchQuery: query.searchQuery } : {})
+        },
+        { signal: query.signal }
+      );
+      return {
+        hasMore: response.hasMore,
+        ...(response.nextCursor ? { nextCursor: response.nextCursor } : {}),
+        sessions: response.sessions.map(input.mapSession),
+        workspaceId: response.workspaceId
+      };
+    },
     async listPinnedSessionsPage(query) {
       const response = await input.client.listWorkspaceAgentPinnedSessionPage(
         input.workspaceId,
@@ -399,6 +465,16 @@ function sameRailSnapshot(
     left.errorCode === right.errorCode &&
     left.loadingMoreSectionId === right.loadingMoreSectionId &&
     left.status === right.status &&
+    left.search.failed === right.search.failed &&
+    left.search.hasMore === right.search.hasMore &&
+    left.search.loadingMore === right.search.loadingMore &&
+    left.search.pending === right.search.pending &&
+    left.search.query === right.search.query &&
+    left.search.resolvedQuery === right.search.resolvedQuery &&
+    left.search.sessionIds.length === right.search.sessionIds.length &&
+    left.search.sessionIds.every(
+      (sessionId, index) => sessionId === right.search.sessionIds[index]
+    ) &&
     left.sections.length === right.sections.length &&
     left.sections.every((section, index) => {
       const other = right.sections[index];

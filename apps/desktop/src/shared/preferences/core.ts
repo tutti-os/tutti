@@ -81,11 +81,25 @@ export const defaultDesktopWorkspaceUiMode: DesktopWorkspaceUiMode = "os";
 export interface DesktopWorkbenchShortcuts {
   newAgentConversation: string | null;
   newSameTypeWindow: string | null;
+  /**
+   * Global screenshot capture binding. Unlike the other bindings, null means
+   * the built-in default accelerator applies, not "unbound".
+   */
+  captureScreenshot: string | null;
 }
+
+/**
+ * Wire-compatible shortcuts shape: generated client payloads may omit newer
+ * bindings, so boundaries that normalize accept this partial form.
+ */
+export type DesktopWorkbenchShortcutsInput = {
+  [Key in keyof DesktopWorkbenchShortcuts]?: string | null;
+};
 
 export const defaultDesktopWorkbenchShortcuts: DesktopWorkbenchShortcuts = {
   newAgentConversation: null,
-  newSameTypeWindow: null
+  newSameTypeWindow: null,
+  captureScreenshot: null
 };
 
 export const desktopAgentConversationDetailModes = [
@@ -270,6 +284,24 @@ export type DesktopAgentGuiConversationRailCollapsedByProvider = Partial<
   Record<DesktopAgentProvider, boolean>
 >;
 
+export const desktopAgentSessionLaunchModes = ["local", "worktree"] as const;
+
+export type DesktopAgentSessionLaunchMode =
+  (typeof desktopAgentSessionLaunchModes)[number];
+
+export type DesktopAgentSessionLaunchModesByProjectSectionKey = Record<
+  string,
+  DesktopAgentSessionLaunchMode
+>;
+
+export type DesktopAgentSessionLaunchModesByWorkspace = Record<
+  string,
+  DesktopAgentSessionLaunchModesByProjectSectionKey
+>;
+
+export const defaultDesktopAgentSessionLaunchModesByWorkspace: DesktopAgentSessionLaunchModesByWorkspace =
+  {};
+
 export const desktopFileDefaultOpeners = [
   "appBrowser",
   "defaultBrowser",
@@ -448,20 +480,22 @@ export function normalizeDesktopWorkbenchShortcuts(
     newAgentConversation: normalizeDesktopShortcutBinding(
       value.newAgentConversation
     ),
-    newSameTypeWindow: normalizeDesktopShortcutBinding(value.newSameTypeWindow)
+    newSameTypeWindow: normalizeDesktopShortcutBinding(value.newSameTypeWindow),
+    captureScreenshot: normalizeDesktopShortcutBinding(value.captureScreenshot)
   };
 }
 
 export function desktopWorkbenchShortcutsEqual(
-  left: DesktopWorkbenchShortcuts | null | undefined,
-  right: DesktopWorkbenchShortcuts | null | undefined
+  left: DesktopWorkbenchShortcutsInput | null | undefined,
+  right: DesktopWorkbenchShortcutsInput | null | undefined
 ): boolean {
   const normalizedLeft = normalizeDesktopWorkbenchShortcuts(left);
   const normalizedRight = normalizeDesktopWorkbenchShortcuts(right);
   return (
     normalizedLeft.newAgentConversation ===
       normalizedRight.newAgentConversation &&
-    normalizedLeft.newSameTypeWindow === normalizedRight.newSameTypeWindow
+    normalizedLeft.newSameTypeWindow === normalizedRight.newSameTypeWindow &&
+    normalizedLeft.captureScreenshot === normalizedRight.captureScreenshot
   );
 }
 
@@ -642,6 +676,97 @@ export function normalizeDesktopAgentGuiConversationRailCollapsedByProvider(
     }
   }
   return collapsedByProvider;
+}
+
+export function isDesktopAgentSessionLaunchMode(
+  value: unknown
+): value is DesktopAgentSessionLaunchMode {
+  return (
+    typeof value === "string" &&
+    desktopAgentSessionLaunchModes.includes(
+      value as DesktopAgentSessionLaunchMode
+    )
+  );
+}
+
+export function normalizeDesktopAgentSessionLaunchModesByWorkspace(
+  value: unknown
+): DesktopAgentSessionLaunchModesByWorkspace {
+  if (!isRecord(value)) {
+    return {};
+  }
+
+  const result: DesktopAgentSessionLaunchModesByWorkspace = {};
+  for (const [workspaceId, projectModesValue] of Object.entries(value)) {
+    const normalizedWorkspaceId = workspaceId.trim();
+    if (!normalizedWorkspaceId || !isRecord(projectModesValue)) {
+      continue;
+    }
+    const projectModes: DesktopAgentSessionLaunchModesByProjectSectionKey = {};
+    for (const [projectSectionKey, mode] of Object.entries(projectModesValue)) {
+      const normalizedProjectSectionKey = projectSectionKey.trim();
+      if (
+        normalizedProjectSectionKey &&
+        isDesktopAgentSessionLaunchMode(mode)
+      ) {
+        projectModes[normalizedProjectSectionKey] = mode;
+      }
+    }
+    if (Object.keys(projectModes).length > 0) {
+      result[normalizedWorkspaceId] = projectModes;
+    }
+  }
+  return result;
+}
+
+export function mergeDesktopAgentSessionLaunchMode(
+  current: DesktopAgentSessionLaunchModesByWorkspace | null | undefined,
+  workspaceId: string,
+  projectSectionKey: string,
+  mode: DesktopAgentSessionLaunchMode
+): DesktopAgentSessionLaunchModesByWorkspace {
+  const normalizedCurrent =
+    normalizeDesktopAgentSessionLaunchModesByWorkspace(current);
+  const normalizedWorkspaceId = workspaceId.trim();
+  const normalizedProjectSectionKey = projectSectionKey.trim();
+  if (!normalizedWorkspaceId || !normalizedProjectSectionKey) {
+    return normalizedCurrent;
+  }
+  return {
+    ...normalizedCurrent,
+    [normalizedWorkspaceId]: {
+      ...normalizedCurrent[normalizedWorkspaceId],
+      [normalizedProjectSectionKey]: mode
+    }
+  };
+}
+
+export function desktopAgentSessionLaunchModesByWorkspaceEqual(
+  left: DesktopAgentSessionLaunchModesByWorkspace | null | undefined,
+  right: DesktopAgentSessionLaunchModesByWorkspace | null | undefined
+): boolean {
+  const normalizedLeft =
+    normalizeDesktopAgentSessionLaunchModesByWorkspace(left);
+  const normalizedRight =
+    normalizeDesktopAgentSessionLaunchModesByWorkspace(right);
+  const workspaceIds = new Set([
+    ...Object.keys(normalizedLeft),
+    ...Object.keys(normalizedRight)
+  ]);
+  for (const workspaceId of workspaceIds) {
+    const leftModes = normalizedLeft[workspaceId] ?? {};
+    const rightModes = normalizedRight[workspaceId] ?? {};
+    const projectKeys = new Set([
+      ...Object.keys(leftModes),
+      ...Object.keys(rightModes)
+    ]);
+    for (const projectKey of projectKeys) {
+      if (leftModes[projectKey] !== rightModes[projectKey]) {
+        return false;
+      }
+    }
+  }
+  return true;
 }
 
 export function mergeDesktopAgentGuiConversationRailCollapsedByProvider(

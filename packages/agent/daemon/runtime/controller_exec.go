@@ -107,14 +107,15 @@ func (c *Controller) Exec(ctx context.Context, input ExecInput) (result ExecResu
 	if len(content) == 0 {
 		return ExecResult{}, fmt.Errorf("prompt is required")
 	}
+	providerContent := projectRuntimeConnectorPromptContent(content)
 	displayPrompt := strings.TrimSpace(input.DisplayPrompt)
 	if promptAdapter, ok := adapter.(PromptContentAdapter); ok {
-		if err := promptAdapter.ValidatePromptContent(session, content); err != nil {
+		if err := promptAdapter.ValidatePromptContent(session, providerContent); err != nil {
 			return ExecResult{}, err
 		}
 	}
 	if input.Guidance {
-		return c.guideActiveTurn(ctx, session, adapter, content, displayPrompt, metadata, input.CapabilityRefs, input.TurnID)
+		return c.guideActiveTurn(ctx, session, adapter, providerContent, displayPrompt, metadata, input.CapabilityRefs, input.TurnID)
 	}
 	previousSession := session
 	titleUpdated := false
@@ -194,7 +195,7 @@ func (c *Controller) Exec(ctx context.Context, input ExecInput) (result ExecResu
 			session,
 			historyAdapter,
 			HistoryReplacementExecInput{
-				Content:       content,
+				Content:       providerContent,
 				DisplayPrompt: displayPrompt,
 				TurnID:        turnID,
 			},
@@ -226,14 +227,14 @@ func (c *Controller) Exec(ctx context.Context, input ExecInput) (result ExecResu
 			runCtx,
 			session,
 			acceptanceAdapter,
-			content,
+			providerContent,
 			displayPrompt,
 			turnID,
 			dispatchObserver.Report,
 			acceptProviderTurn,
 		)
 	} else {
-		go c.runExecTurn(runCtx, session, adapter, content, displayPrompt, turnID)
+		go c.runExecTurn(runCtx, session, adapter, providerContent, displayPrompt, turnID)
 	}
 	result = ExecResult{
 		AgentSessionID:     session.AgentSessionID,

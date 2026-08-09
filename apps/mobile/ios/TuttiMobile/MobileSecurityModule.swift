@@ -208,8 +208,10 @@ final class MobileSecurityModule: NSObject {
       self.scannerActive = false
       self.scannerViewController = nil
       switch result {
-      case .success(let value):
-        resolve(value)
+      case .success(.manual):
+        resolve(["kind": "manual"])
+      case .success(.scanned(let value)):
+        resolve(["kind": "scanned", "value": value])
       case .failure(let error):
         switch error {
         case QRCodeScannerError.permissionDenied:
@@ -366,7 +368,7 @@ private final class MobileSecureStore {
 
 private final class MobileKeychain {
   private let service =
-    (Bundle.main.bundleIdentifier ?? "dev.tutti.mobile") + ".secure-state"
+    (Bundle.main.bundleIdentifier ?? "sh.tutti.mobile") + ".secure-state"
 
   func read(account: String) throws -> Data? {
     var query = baseQuery(account: account)

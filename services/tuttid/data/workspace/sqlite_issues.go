@@ -9,6 +9,7 @@ import (
 	"time"
 
 	workspaceissues "github.com/tutti-os/tutti/packages/workspace/issues"
+	workspacebiz "github.com/tutti-os/tutti/services/tuttid/biz/workspace"
 )
 
 var _ workspaceissues.Store = (*SQLiteStore)(nil)
@@ -414,30 +415,42 @@ func (s *SQLiteStore) AddContextRefs(ctx context.Context, refs []workspaceissues
 
 	saved := make([]workspaceissues.ContextRef, 0, len(refs))
 	for _, ref := range refs {
-		result, err := tx.ExecContext(ctx, `
-INSERT INTO workspace_issue_context_refs (
-  context_ref_id, workspace_id, issue_id, task_id, parent_kind,
-  ref_type, path, display_name, created_at_unix_ms
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`, ref.ContextRefID, ref.WorkspaceID, ref.IssueID, ref.TaskID, string(ref.ParentKind),
-			ref.RefType, ref.Path, ref.DisplayName, ref.CreatedAtUnixMS)
+		created, err := insertWorkspaceIssueContextRef(ctx, tx, ref)
 		if err != nil {
-			if isSQLiteUniqueConstraintError(err) {
-				return nil, workspaceissues.ErrContextRefAlreadyExists
-			}
-			return nil, fmt.Errorf("add workspace issue context ref: %w", err)
+			return nil, err
 		}
-		id, err := result.LastInsertId()
-		if err != nil {
-			return nil, fmt.Errorf("read workspace issue context ref id: %w", err)
-		}
-		ref.ID = uint64(id)
-		saved = append(saved, ref)
+		saved = append(saved, created)
 	}
 	if err := tx.Commit(); err != nil {
 		return nil, fmt.Errorf("commit workspace issue context refs: %w", err)
 	}
 	return saved, nil
+}
+
+func insertWorkspaceIssueContextRef(
+	ctx context.Context,
+	execer workspaceIssueExecer,
+	ref workspaceissues.ContextRef,
+) (workspaceissues.ContextRef, error) {
+	result, err := execer.ExecContext(ctx, `
+INSERT INTO workspace_issue_context_refs (
+  context_ref_id, workspace_id, issue_id, task_id, parent_kind,
+  ref_type, path, display_name, created_at_unix_ms
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+`, ref.ContextRefID, ref.WorkspaceID, ref.IssueID, ref.TaskID, string(ref.ParentKind),
+		ref.RefType, ref.Path, ref.DisplayName, ref.CreatedAtUnixMS)
+	if err != nil {
+		if isSQLiteUniqueConstraintError(err) {
+			return workspaceissues.ContextRef{}, workspaceissues.ErrContextRefAlreadyExists
+		}
+		return workspaceissues.ContextRef{}, fmt.Errorf("add workspace issue context ref: %w", err)
+	}
+	id, err := result.LastInsertId()
+	if err != nil {
+		return workspaceissues.ContextRef{}, fmt.Errorf("read workspace issue context ref id: %w", err)
+	}
+	ref.ID = uint64(id)
+	return ref, nil
 }
 
 func (s *SQLiteStore) ListContextRefs(
@@ -477,6 +490,79 @@ ORDER BY created_at_unix_ms ASC, id ASC
 	return items, nil
 }
 
+func (s *SQLiteStore) GetIssueAttachmentContextRef(
+	ctx context.Context,
+	workspaceID string,
+	issueID string,
+	contextRefID string,
+) (workspaceissues.ContextRef, error) {
+	if err := s.ensureIssueDatabase(); err != nil {
+		return workspaceissues.ContextRef{}, err
+	}
+	item, err := scanWorkspaceIssueContextRef(s.readDB.QueryRowContext(ctx, `
+SELECT id, context_ref_id, workspace_id, issue_id, task_id, parent_kind,
+       ref_type, path, display_name, created_at_unix_ms
+FROM workspace_issue_context_refs
+WHERE workspace_id = ? AND issue_id = ? AND context_ref_id = ?
+`, strings.TrimSpace(workspaceID), strings.TrimSpace(issueID), strings.TrimSpace(contextRefID)))
+	if errors.Is(err, sql.ErrNoRows) {
+		return workspaceissues.ContextRef{}, workspaceissues.ErrContextRefNotFound
+	}
+	if err != nil {
+		return workspaceissues.ContextRef{}, fmt.Errorf("get workspace issue attachment ContextRef: %w", err)
+	}
+	return item, nil
+}
+
+func (s *SQLiteStore) HasIssueAttachmentReferencePath(ctx context.Context, path string) (bool, error) {
+	if err := s.ensureIssueDatabase(); err != nil {
+		return false, err
+	}
+	var found int
+	err := s.readDB.QueryRowContext(ctx, `
+SELECT 1
+FROM workspace_issue_context_refs
+WHERE path = ?
+LIMIT 1
+`, path).Scan(&found)
+	if errors.Is(err, sql.ErrNoRows) {
+		found = 0
+	} else if err != nil {
+		return false, fmt.Errorf("find workspace issue attachment ContextRef path: %w", err)
+	}
+	if found == 1 {
+		return true, nil
+	}
+	rows, err := s.readDB.QueryContext(ctx, `
+SELECT payload_json
+FROM workspace_issue_run_launch_intents
+WHERE status IN ('prepared', 'leased')
+`)
+	if err != nil {
+		return false, fmt.Errorf("list pending Issue Run attachment pins: %w", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var payloadJSON string
+		if err := rows.Scan(&payloadJSON); err != nil {
+			return false, fmt.Errorf("scan pending Issue Run attachment pin: %w", err)
+		}
+		payload, err := workspacebiz.DecodeIssueRunLaunchPayload(payloadJSON)
+		if err != nil {
+			return false, fmt.Errorf("decode pending Issue Run attachment pins: %w", err)
+		}
+		for _, attachment := range payload.Attachments {
+			if attachment.Path == path {
+				return true, nil
+			}
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return false, fmt.Errorf("iterate pending Issue Run attachment pins: %w", err)
+	}
+	return false, nil
+}
+
 func (s *SQLiteStore) RemoveContextRef(
 	ctx context.Context,
 	workspaceID string,
@@ -511,7 +597,14 @@ func (s *SQLiteStore) CreateRun(ctx context.Context, run workspaceissues.Run) (w
 		return workspaceissues.Run{}, err
 	}
 
-	_, err := s.writeDB.ExecContext(ctx, `
+	if err := insertWorkspaceIssueRun(ctx, s.writeDB, run); err != nil {
+		return workspaceissues.Run{}, err
+	}
+	return s.GetRun(ctx, run.WorkspaceID, run.IssueID, run.TaskID, run.RunID)
+}
+
+func insertWorkspaceIssueRun(ctx context.Context, execer workspaceIssueExecer, run workspaceissues.Run) error {
+	_, err := execer.ExecContext(ctx, `
 INSERT INTO workspace_issue_runs (
   run_id, task_id, issue_id, workspace_id, requester_user_id, agent_user_id,
   agent_target_id, agent_session_id, agent_provider, model_plan_id, model,
@@ -528,11 +621,11 @@ INSERT INTO workspace_issue_runs (
 		run.StartedAtUnixMS, run.CompletedAtUnixMS, run.UpdatedAtUnixMS)
 	if err != nil {
 		if isSQLiteUniqueConstraintError(err) {
-			return workspaceissues.Run{}, workspaceissues.ErrRunAlreadyExists
+			return workspaceissues.ErrRunAlreadyExists
 		}
-		return workspaceissues.Run{}, fmt.Errorf("create workspace issue run: %w", err)
+		return fmt.Errorf("create workspace issue run: %w", err)
 	}
-	return s.GetRun(ctx, run.WorkspaceID, run.IssueID, run.TaskID, run.RunID)
+	return nil
 }
 
 func (s *SQLiteStore) CompleteRun(ctx context.Context, run workspaceissues.Run, outputs []workspaceissues.RunOutput) (workspaceissues.Run, []workspaceissues.RunOutput, error) {

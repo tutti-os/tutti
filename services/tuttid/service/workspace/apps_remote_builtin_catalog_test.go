@@ -284,7 +284,7 @@ func TestAppCenterServiceListsRemoteBuiltinWhenOlderLocalPackageExists(t *testin
 	}
 }
 
-func TestShouldUseRemoteBuiltinNeverDowngradesInstalledPackage(t *testing.T) {
+func TestShouldUseRemoteBuiltinFollowsActiveCatalogChannelVersion(t *testing.T) {
 	appPackage := workspacebiz.AppPackage{
 		AppID:   "design-app",
 		Version: "2.0.0",
@@ -297,12 +297,23 @@ func TestShouldUseRemoteBuiltinNeverDowngradesInstalledPackage(t *testing.T) {
 		},
 	}
 
-	if shouldUseRemoteBuiltin(appPackage, builtin) {
-		t.Fatal("older remote builtin must not replace installed package")
+	// Active channel catalog is authoritative even when its selected version is lower
+	// than a package previously installed from the other channel.
+	if !shouldUseRemoteBuiltin(appPackage, builtin) {
+		t.Fatal("active catalog version must replace a different installed package")
 	}
 	builtin.Manifest.Version = "3.0.0"
 	if !shouldUseRemoteBuiltin(appPackage, builtin) {
 		t.Fatal("newer remote builtin should replace installed package")
+	}
+	builtin.Manifest.Version = "2.0.0"
+	if shouldUseRemoteBuiltin(appPackage, builtin) {
+		t.Fatal("equal catalog version must not replace installed package")
+	}
+	appPackage.Version = "1.0.0+aaaa"
+	builtin.Manifest.Version = "1.0.0+bbbb"
+	if !shouldUseRemoteBuiltin(appPackage, builtin) {
+		t.Fatal("catalog build metadata change must replace installed package")
 	}
 	appPackage.Version = "legacy-a"
 	builtin.Manifest.Version = "legacy-b"

@@ -13,6 +13,7 @@ import {
 import { issueManagerStatusBadgeVariant } from "../status/IssueManagerStatusBadge.ts";
 import {
   IssueManagerLatestRunStatusSection,
+  IssueManagerAttachmentSection,
   IssueManagerOutputSection,
   IssueManagerSubtaskSection
 } from "../issue/IssueManagerIssueSections.tsx";
@@ -260,6 +261,11 @@ export function IssueManagerIssuePane({
                 onMentionAction={controller.openMention}
                 onOpen={controller.openReference}
                 variant="plain"
+              />
+              <IssueManagerAttachmentSection
+                copy={copy}
+                onOpen={controller.openContextRef}
+                refs={controller.issueDetail.value?.contextRefs ?? []}
               />
               <IssueManagerLatestRunStatusSection
                 copy={copy}

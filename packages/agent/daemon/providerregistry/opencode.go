@@ -48,10 +48,13 @@ func openCodeDescriptor() ProviderDescriptor {
 				"OPENCODE_PERMISSION",
 			},
 			Install: InstallerDescriptor{
-				Kind:           InstallerKindOfficialScript,
-				DisplayCommand: "curl -fsSL https://opencode.ai/install | bash",
-				ScriptURL:      "https://opencode.ai/install",
-				ScriptShell:    "bash",
+				Kind:            InstallerKindOfficialScript,
+				DisplayCommand:  "curl -fsSL https://opencode.ai/install | bash",
+				PackageName:     "opencode-ai",
+				BinaryName:      "opencode",
+				ScriptURL:       "https://opencode.ai/install",
+				ScriptShell:     "bash",
+				WindowsFallback: InstallerWindowsFallbackManagedNPM,
 			},
 			Update: UpdateDescriptor{
 				Capability:        UpdateCapabilityUnsupported,

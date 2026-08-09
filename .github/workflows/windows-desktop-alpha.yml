@@ -1,6 +1,12 @@
 name: Windows Desktop Alpha
 
 on:
+  pull_request:
+    paths:
+      - "apps/desktop/**"
+      - "services/tuttid/builtin-apps/**"
+      - "package.json"
+      - "pnpm-lock.yaml"
   workflow_dispatch:
 
 concurrency:
@@ -75,17 +81,16 @@ jobs:
           go test ./service/managedruntime -run 'TestNodeReadyAcceptsOfficialWindowsCorepackLayout$'
           go test ./service/agentstatus -run 'Test(NewInstallShellCommandUsesCmdInterpreter|PlatformExecutableFileAcceptsPlainWindowsFile|RunDefaultInstallCommandPreservesStructuredArguments)$'
           go test ./service/browser -run 'TestStableChromeDevToolsActivePortPathUsesLocalAppDataOnWindows$'
-          go test ./service/workspace -run 'Test(PlatformAppShellAdapter|NormalizeWindowsTerminalInput|TerminalServiceCreatesLocalPTY|TerminalServiceAttachStream|AppCenterServiceInitializesBuiltinCatalogAndInstallState)'
+          go test ./service/workspace -run 'Test(PlatformAppShellAdapter|NormalizeWindowsTerminalInput|TerminalServiceCreatesLocalPTY|TerminalServiceAttachStream|AppCenterServiceInitializesBuiltinCatalogAndInstallState|WorkspaceAppCLI)'
           go test ./integration -run 'TestTuttidBlackBoxWorkspaceTerminalWebSocketStreamsInputAndOutput$'
           go test ./integration -run 'TestTuttidBlackBoxWorkspaceTerminalWebSocketExitFrameCarriesExitCode$'
           Pop-Location
 
       - name: Test Desktop lifecycle
         shell: pwsh
-        run: >-
-          node --import ./apps/desktop/test/register-asset-stub.mjs
-          --test --experimental-strip-types
-          ./apps/desktop/src/main/daemon/tuttidManager.test.ts
+        run: |
+          node --import ./apps/desktop/test/register-asset-stub.mjs --test --experimental-strip-types --test-name-pattern='Windows|windows' ./apps/desktop/src/main/cli/cliInstaller.test.ts
+          node --import ./apps/desktop/test/register-asset-stub.mjs --test --experimental-strip-types ./apps/desktop/src/main/daemon/tuttidManager.test.ts
 
       - name: Typecheck Desktop
         shell: pwsh
@@ -102,10 +107,19 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           $PSNativeCommandUseErrorActionPreference = $true
+          $nativeCli = Resolve-Path 'apps/desktop/dist/win-unpacked/resources/bin/tutti.exe'
+          if (-not (Test-Path $nativeCli -PathType Leaf)) { throw 'packaged native tutti.exe is missing' }
           $shellRuntimeRoot = Resolve-Path 'apps/desktop/dist/win-unpacked/resources/bin/managed-posix-shell'
           $shellMetadata = Get-Content (Join-Path $shellRuntimeRoot 'runtime.json') -Raw | ConvertFrom-Json
           $shell = Resolve-Path (Join-Path $shellRuntimeRoot $shellMetadata.executable)
           $shellBin = Split-Path -Parent $shell
+          $mutagenRuntimeRoot = Resolve-Path 'apps/desktop/dist/win-unpacked/resources/bin/mutagen'
+          $mutagenMetadata = Get-Content (Join-Path $mutagenRuntimeRoot 'runtime.json') -Raw | ConvertFrom-Json
+          $mutagen = Resolve-Path (Join-Path $mutagenRuntimeRoot $mutagenMetadata.executable)
+          if (-not (Test-Path (Join-Path $mutagenRuntimeRoot 'LICENSE') -PathType Leaf)) { throw 'packaged Mutagen license is missing' }
+          if (-not (Test-Path (Join-Path $mutagenRuntimeRoot 'SSPL-LICENSE') -PathType Leaf)) { throw 'packaged Mutagen SSPL license is missing' }
+          & $mutagen version
+          if ($LASTEXITCODE -ne 0) { throw 'packaged Mutagen validation failed' }
           $package = Resolve-Path 'services/tuttid/builtin-apps/tutti-onboarding/build/package'
           $runtime = Join-Path $env:RUNNER_TEMP 'tutti-onboarding-runtime'
           $data = Join-Path $env:RUNNER_TEMP 'tutti-onboarding-data'

@@ -3,7 +3,7 @@
 static const NSUInteger TUTDeviceLinkFramingMaxReadChunk = 1 << 20;
 
 static NSError *TUTDeviceLinkFramingError(NSString *code, NSString *message) {
-  return [NSError errorWithDomain:@"dev.tutti.mobile.device-link"
+  return [NSError errorWithDomain:@"sh.tutti.mobile.device-link"
                              code:1
                          userInfo:@{
                            NSLocalizedDescriptionKey : message,

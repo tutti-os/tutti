@@ -212,16 +212,35 @@ jobs:
 
       - name: Verify staged release assets
         run: |
+          shopt -s nullglob
           test -f release-assets/SHA256SUMS.txt
           test -f release-assets/release-summary.json
           if ! grep -Eq "  .+\.(dmg|zip|exe|AppImage)$" release-assets/SHA256SUMS.txt; then
             echo "SHA256SUMS.txt does not contain an installable desktop artifact." >&2
             exit 1
           fi
+          windows_metadata="${TUTTI_DESKTOP_RELEASE_CHANNEL}.yml"
+          if [[ "${TUTTI_DESKTOP_RELEASE_CHANNEL}" == "stable" ]]; then
+            windows_metadata=latest.yml
+          fi
+          windows_installers=(release-assets/*-win-x64.exe)
+          windows_blockmaps=(release-assets/*-win-x64.exe.blockmap)
+          if (( ${#windows_installers[@]} != 1 )); then
+            echo "Expected exactly one Windows x64 installer, found ${#windows_installers[@]}." >&2
+            exit 1
+          fi
+          if (( ${#windows_blockmaps[@]} != 1 )); then
+            echo "Expected exactly one Windows x64 blockmap, found ${#windows_blockmaps[@]}." >&2
+            exit 1
+          fi
+          test -f "release-assets/${windows_metadata}"
           (
             cd release-assets
             sha256sum --check SHA256SUMS.txt
           )
+
+      - name: Validate Windows updater metadata
+        run: node apps/desktop/scripts/validate-windows-release-artifacts.mjs release-assets "${TUTTI_DESKTOP_RELEASE_CHANNEL}" "${TUTTI_DESKTOP_RELEASE_TAG}"
 
       - name: Validate staged release summary
         env:
@@ -314,6 +333,41 @@ jobs:
           aws s3 sync release-assets "${remote_dir}" \
             --size-only \
             --cache-control "public, max-age=31536000, immutable"
+
+      - name: Verify mirrored Windows release assets
+        shell: bash
+        run: |
+          windows_metadata="${TUTTI_DESKTOP_RELEASE_CHANNEL}.yml"
+          if [[ "${TUTTI_DESKTOP_RELEASE_CHANNEL}" == "stable" ]]; then
+            windows_metadata=latest.yml
+          fi
+          windows_files=(
+            release-assets/*-win-x64.exe
+            release-assets/*-win-x64.exe.blockmap
+            "release-assets/${windows_metadata}"
+          )
+          prefix="${TUTTI_DESKTOP_RELEASE_ASSETS_S3_PREFIX%/}/${TUTTI_DESKTOP_RELEASE_TAG}"
+          for file in "${windows_files[@]}"; do
+            asset_name="$(basename "${file}")"
+            local_size="$(stat -c %s "${file}")"
+            remote_size="$(aws s3api head-object \
+              --bucket "${TUTTI_DESKTOP_RELEASE_ASSETS_S3_BUCKET}" \
+              --key "${prefix}/${asset_name}" \
+              --query ContentLength \
+              --output text)"
+            if [[ "${remote_size}" != "${local_size}" ]]; then
+              echo "Mirrored asset size mismatch for ${asset_name}: local ${local_size}, remote ${remote_size}." >&2
+              exit 1
+            fi
+            local_sha256="$(sha256sum "${file}" | cut -d ' ' -f 1)"
+            remote_url="${TUTTI_DESKTOP_RELEASE_ASSETS_BASE_URL%/}/${TUTTI_DESKTOP_RELEASE_TAG}/${asset_name}"
+            remote_sha256="$(curl --fail --silent --show-error --location \
+              --retry 5 --retry-all-errors "${remote_url}" | sha256sum | cut -d ' ' -f 1)"
+            if [[ "${remote_sha256}" != "${local_sha256}" ]]; then
+              echo "Mirrored asset checksum mismatch for ${asset_name}: local ${local_sha256}, remote ${remote_sha256}." >&2
+              exit 1
+            fi
+          done
 
       - name: Upload desktop release summary artifact
         uses: actions/upload-artifact@v7

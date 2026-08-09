@@ -200,6 +200,27 @@ describe("AgentVisibleErrorMessage", () => {
     expect(queryByText("Raw error")).toBeNull();
   });
 
+  it("reveals shared-agent raw details only after the disclosure is opened", () => {
+    const { getByRole, getByText } = renderBlock(
+      buildRow({
+        code: "provider_error",
+        phase: "turn",
+        provider: "claude-code",
+        detail: "provider response: account is not authenticated",
+        detailAvailable: true,
+        retryable: false
+      })
+    );
+
+    const disclosure = getByRole("button", { name: "Raw error" });
+    expect(disclosure).toHaveAttribute("aria-expanded", "false");
+    fireEvent.click(disclosure);
+    expect(disclosure).toHaveAttribute("aria-expanded", "true");
+    expect(
+      getByText("provider response: account is not authenticated")
+    ).toBeTruthy();
+  });
+
   it("shows accurate copy but NO wizard CTA for transient/server-side failures", () => {
     const { getByText, queryByText } = renderBlock(
       buildRow({
@@ -348,6 +369,18 @@ describe("AgentVisibleErrorMessage", () => {
       provider: "claude-code",
       focus: "auth"
     });
+  });
+
+  it("recovers a failed Claude 522 response into a timeout card", () => {
+    const rawError =
+      'API Error: 522 {"title":"Error 522: Connection timed out"}';
+    const { getByText, queryByText } = renderBlock(
+      buildFailedTextRow(rawError),
+      "claude-code"
+    );
+
+    expect(getByText("Claude Code request timed out")).toBeTruthy();
+    expect(queryByText(rawError)).toBeNull();
   });
 
   it("recovers Claude SDK's completed login notice into the wizard card", () => {

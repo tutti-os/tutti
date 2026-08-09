@@ -59,6 +59,42 @@ func downloadRuntimeBinaryToFile(
 	artifact RuntimeBinaryArtifact,
 	file *os.File,
 ) (runtimeExecutableFingerprint, error) {
+	const maxAttempts = 3
+	var lastErr error
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		if attempt > 1 {
+			if err := file.Truncate(0); err != nil {
+				return runtimeExecutableFingerprint{}, err
+			}
+			if _, err := file.Seek(0, io.SeekStart); err != nil {
+				return runtimeExecutableFingerprint{}, err
+			}
+			timer := time.NewTimer(time.Duration(attempt-1) * 750 * time.Millisecond)
+			select {
+			case <-ctx.Done():
+				timer.Stop()
+				return runtimeExecutableFingerprint{}, ctx.Err()
+			case <-timer.C:
+			}
+		}
+		fingerprint, err := downloadRuntimeBinaryToFileOnce(ctx, client, artifact, file)
+		if err == nil {
+			return fingerprint, nil
+		}
+		lastErr = err
+		if !isTransientRuntimeDownloadError(err) || attempt == maxAttempts {
+			break
+		}
+	}
+	return runtimeExecutableFingerprint{}, lastErr
+}
+
+func downloadRuntimeBinaryToFileOnce(
+	ctx context.Context,
+	client *http.Client,
+	artifact RuntimeBinaryArtifact,
+	file *os.File,
+) (runtimeExecutableFingerprint, error) {
 	if err := validateRuntimeBinaryArtifacts([]RuntimeBinaryArtifact{artifact}); err != nil {
 		return runtimeExecutableFingerprint{}, err
 	}
@@ -112,15 +148,19 @@ func downloadRuntimeBinaryToFile(
 	}
 	expected := runtimeExecutableFingerprint{SHA256: artifact.SHA256, Size: artifact.SizeBytes}
 	info, err := file.Stat()
-	if err != nil || !info.Mode().IsRegular() || info.Size() != artifact.SizeBytes || info.Mode()&0o111 == 0 {
+	if err != nil || !isExecutableFileInfo(info) || info.Size() != artifact.SizeBytes {
 		return runtimeExecutableFingerprint{}, errors.New("runtime binary changed after download verification")
 	}
 	return expected, nil
 }
 
+func isTransientRuntimeDownloadError(err error) bool {
+	return errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF)
+}
+
 func verifyRuntimeExecutableUnchanged(path string, expected runtimeExecutableFingerprint) error {
 	info, err := os.Lstat(path)
-	if err != nil || !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 || info.Mode()&0o111 == 0 {
+	if err != nil || !isExecutableFileInfo(info) || info.Mode()&os.ModeSymlink != 0 {
 		return errors.New("runtime executable is not an ordinary executable file")
 	}
 	actual, err := fingerprintRuntimeExecutable(path)

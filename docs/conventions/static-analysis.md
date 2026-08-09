@@ -51,10 +51,41 @@ conditions. Do not use workflow-level `paths-ignore` for this gate because
 missing required checks can leave documentation-only PRs waiting on branch
 protection.
 
+PR workflows execute on a synthetic merge ref so tests cover the result that
+would land on `main`. Their selectors must still calculate the changed set from
+the exact pull-request range, `${base.sha}...${head.sha}`, and read manifest
+comparisons from the pull-request head. Do not diff the merge ref against the
+original base SHA: if `main` advances while a PR is open, unrelated main-branch
+changes would select extra TypeScript, package, or repository checks.
+
 PR CI keeps the existing `Tooling Consistency` required context as the owner of
 repository policy, contract, generated, and boundary checks. This preserves
 branch-protection compatibility while keeping those checks out of language
 jobs.
+
+Windows validation separates Agent process adapters, daemon adapters, and
+desktop packaging. Agent daemon changes run the process and downstream daemon
+adapter workflows in parallel; `services/tuttid` changes run only the daemon
+adapter workflow. The Agent process lane needs only Go, while the daemon lane
+prepares the builtin Onboarding package before its Go tests. Each lane invokes
+its selected Go packages together so independent packages can build and test in
+parallel.
+
+Both adapter workflows also run for matching pushes to `main`. Those trusted
+runs maintain default-branch Go and pnpm caches that new pull requests can
+restore; pull-request caches remain isolated to their merge refs. Adapter
+workflows use shallow checkouts because their tests do not inspect Git history.
+Desktop and builtin-app changes run the full unsigned Windows package build.
+Use the desktop workflow's manual dispatch for a full package check when a
+daemon-only change needs release-package confidence. Workflow definition files
+are validated by repository tool contracts and do not trigger runtime
+workflows themselves; this prevents a selector-only PR from starting a Windows
+runner.
+
+Changes to shared Go selector scripts are covered by the repository tool
+contract suite and continue to select only the affected Go modules. Go
+workspace, module, or lint configuration changes still select all relevant Go
+modules because they can change the validity of every target.
 
 Agent Session Replay has an additional changed-file lane,
 `run_agent_session_replay`. Changes to its core, provider transport, daemon
@@ -454,6 +485,10 @@ The current root entrypoint runs the linter from:
 - `packages/agent/store-sqlite/canonical`
 - `packages/appcli/core`
 - `packages/clients/device-authority-go`
+- `packages/connector/daemon`
+- `packages/connector/host`
+- `packages/connector/runtime`
+- `packages/connector/store-sqlite`
 - `packages/device-link`
 - `packages/agent/runtimeprep`
 - `packages/workspace/files`
@@ -474,7 +509,7 @@ Changed-aware Go validation includes the nested
 `packages/agent/host`,
 `packages/agent/runtimeprep`, `packages/agent/store-sqlite`, and
 `packages/agent/store-sqlite/canonical`, `packages/clients/device-authority-go`,
-and `packages/device-link` modules.
+the four `packages/connector/*` Go modules, and `packages/device-link` modules.
 Codex app-server protocol changes should also run
 `pnpm check:codexproto-generated` when schema, generator, or generated protocol
 files are touched.

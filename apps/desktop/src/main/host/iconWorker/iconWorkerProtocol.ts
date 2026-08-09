@@ -10,10 +10,6 @@
 export const ICON_WORKER_ROLE_ENV = "TUTTI_ROLE";
 export const ICON_WORKER_ROLE = "icon-worker";
 
-// Every worker response line is prefixed with this sentinel so the parent can
-// ignore unrelated stdout noise emitted by Electron/Chromium.
-export const ICON_WORKER_STDOUT_PREFIX = "@@tutti-icon-worker@@ ";
-
 export type IconWorkerMode = "fileIcon" | "imageThumbnail";
 
 export interface IconWorkerRequestMessage {

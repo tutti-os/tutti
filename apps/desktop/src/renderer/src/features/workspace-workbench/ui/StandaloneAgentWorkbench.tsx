@@ -55,7 +55,11 @@ export function StandaloneAgentWorkbench({
   }
 
   if (state.status === "loading" || !state.workspace) {
-    return <StandaloneAgentStartupShell />;
+    return (
+      <StandaloneAgentStartupShell
+        titleBarOverlay={state.platform === "win32"}
+      />
+    );
   }
 
   return (
@@ -91,7 +95,11 @@ function StandaloneAgentWindowWithSession(
     !hostSession.isActive ||
     hostSession.workspaceId !== props.workspace.id
   ) {
-    return <StandaloneAgentStartupShell />;
+    return (
+      <StandaloneAgentStartupShell
+        titleBarOverlay={props.platform === "win32"}
+      />
+    );
   }
 
   return (

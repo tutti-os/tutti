@@ -17,6 +17,8 @@ type workspaceAppProjectionKey struct {
 	displayName          string
 	enabled              bool
 	failureReason        string
+	failurePhase         string
+	hasFailurePhase      bool
 	hasFailureReason     bool
 	hasIconURL           bool
 	hasLastError         bool
@@ -92,6 +94,10 @@ func projectionKeyFromWorkspaceApp(app workspacebiz.WorkspaceApp) workspaceAppPr
 	if app.Runtime.FailureReason != nil {
 		key.hasFailureReason = true
 		key.failureReason = *app.Runtime.FailureReason
+	}
+	if app.Runtime.FailurePhase != nil {
+		key.hasFailurePhase = true
+		key.failurePhase = string(*app.Runtime.FailurePhase)
 	}
 	if app.Runtime.LastError != nil {
 		key.hasLastError = true

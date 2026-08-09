@@ -17,6 +17,11 @@ type SemanticRegistration struct {
 	CassetteID    string
 	RootSessionID string
 	WorkspaceID   string
+	// UserID is a runtime-owned authorization binding. It is never read from or
+	// written to a portable Cassette.
+	UserID              string
+	Profile             SemanticProfile
+	AgentTargetRewrites map[string]string
 }
 
 type SemanticCassetteSource interface {
@@ -46,6 +51,7 @@ type SemanticRuntime struct {
 	host          *agenthost.Host
 	store         SemanticWorkspaceStore
 	workspaceID   string
+	profile       SemanticProfile
 	registrations map[string]SemanticRegistration
 	plans         map[string]CheckpointPlan
 	expected      map[string]TuttiReplayState
@@ -86,6 +92,10 @@ func PrepareSemanticRuntime(
 		map[string]*semanticObservationState,
 		len(registrations),
 	)
+	workspaceID, runtimeUserID, profile, err := resolveSemanticRuntimeTarget(registrations)
+	if err != nil {
+		return nil, err
+	}
 	// The replay runner resolves portable `${REPLAY_CWD}` activity payloads
 	// against the repository workspace root and passes the same anchor through
 	// TUTTI_AGENT_SESSION_REPLAY_CWD. The daemon process cwd is only a
@@ -102,22 +112,28 @@ func PrepareSemanticRuntime(
 		}
 	}
 	initialStates := make([]TuttiReplayState, 0, len(registrations))
-	workspaceID := ""
 	for _, registration := range registrations {
 		registration.CassetteID = strings.TrimSpace(registration.CassetteID)
 		registration.RootSessionID = strings.TrimSpace(registration.RootSessionID)
 		registration.WorkspaceID = strings.TrimSpace(registration.WorkspaceID)
+		registration.UserID = strings.TrimSpace(registration.UserID)
 		if registration.CassetteID == "" || registration.RootSessionID == "" ||
 			registration.WorkspaceID == "" {
 			return nil, errors.New(
 				"agent session replay registration requires cassette, root Session, and Workspace",
 			)
 		}
-		if workspaceID == "" {
-			workspaceID = registration.WorkspaceID
-		} else if workspaceID != registration.WorkspaceID {
-			return nil, errors.New("agent session replay registrations must share one Workspace")
+		normalizedTargetRewrites, err := normalizeReplayAgentTargetRewrites(
+			registration.AgentTargetRewrites,
+		)
+		if err != nil {
+			return nil, fmt.Errorf(
+				"normalize Replay Cassette %q target rewrites: %w",
+				registration.CassetteID,
+				err,
+			)
 		}
+		registration.AgentTargetRewrites = normalizedTargetRewrites
 		if _, duplicate := byID[registration.CassetteID]; duplicate {
 			return nil, fmt.Errorf("duplicate Agent Session Replay cassette %q", registration.CassetteID)
 		}
@@ -126,6 +142,22 @@ func PrepareSemanticRuntime(
 			return nil, fmt.Errorf("load Replay Cassette %q: %w", registration.CassetteID, err)
 		}
 		manifest := artifact.Manifest
+		if artifact.InitialState != nil {
+			if err := ValidateTuttiReplayStateForProfile(*artifact.InitialState, profile); err != nil {
+				return nil, fmt.Errorf(
+					"Replay Cassette %q initial state profile: %w",
+					registration.CassetteID,
+					err,
+				)
+			}
+		}
+		if err := ValidateTuttiReplayStateForProfile(artifact.ExpectedState, profile); err != nil {
+			return nil, fmt.Errorf(
+				"Replay Cassette %q expected state profile: %w",
+				registration.CassetteID,
+				err,
+			)
+		}
 		if manifest.ID != registration.CassetteID ||
 			manifest.RootSessionID != registration.RootSessionID {
 			return nil, fmt.Errorf(
@@ -140,7 +172,17 @@ func PrepareSemanticRuntime(
 					registration.CassetteID,
 				)
 			}
-			state := *artifact.InitialState
+			state, err := rewriteReplayAgentTargetFields(
+				*artifact.InitialState,
+				registration.AgentTargetRewrites,
+			)
+			if err != nil {
+				return nil, fmt.Errorf(
+					"rewrite Replay Cassette %q initial state targets: %w",
+					registration.CassetteID,
+					err,
+				)
+			}
 			if state.Agent.RootSessionID != registration.RootSessionID {
 				return nil, fmt.Errorf(
 					"replay cassette %q initial-state root Session mismatch",
@@ -151,7 +193,17 @@ func PrepareSemanticRuntime(
 		}
 		// Expected state stays in its portable form for final comparison. The
 		// captured actual state is projected to the same form before Compare.
-		expected := artifact.ExpectedState
+		expected, err := rewriteReplayAgentTargetFields(
+			artifact.ExpectedState,
+			registration.AgentTargetRewrites,
+		)
+		if err != nil {
+			return nil, fmt.Errorf(
+				"rewrite Replay Cassette %q expected state targets: %w",
+				registration.CassetteID,
+				err,
+			)
+		}
 		plan := artifact.CheckpointPlan
 		byID[registration.CassetteID] = registration
 		plans[registration.CassetteID] = plan
@@ -182,7 +234,7 @@ func PrepareSemanticRuntime(
 		}
 		observationStates[registration.CassetteID] = observationState
 	}
-	merged, err := MergeTuttiReplayStates(initialStates)
+	merged, err := MergeTuttiReplayStatesForProfile(initialStates, profile)
 	if err != nil {
 		return nil, fmt.Errorf("merge Agent Session Replay initial states: %w", err)
 	}
@@ -217,7 +269,14 @@ func PrepareSemanticRuntime(
 		return nil, fmt.Errorf("initialize Agent Session Replay Workbench: %w", err)
 	}
 	for _, graph := range merged.Agents {
-		if err := host.RestoreHistoricalSessionGraph(ctx, workspaceID, graph); err != nil {
+		if err := host.RestoreHistoricalSessionGraph(
+			ctx,
+			agenthost.HistoricalSessionGraphRestoreInput{
+				WorkspaceID: workspaceID,
+				UserID:      runtimeUserID,
+				Graph:       graph,
+			},
+		); err != nil {
 			return nil, fmt.Errorf(
 				"restore Agent Session Replay root %q: %w",
 				graph.RootSessionID,
@@ -229,10 +288,58 @@ func PrepareSemanticRuntime(
 		return nil, err
 	}
 	return &SemanticRuntime{
-		host: host, store: store, workspaceID: workspaceID, registrations: byID,
-		plans: plans, expected: expectedStates,
+		host: host, store: store, workspaceID: workspaceID, profile: profile,
+		registrations: byID,
+		plans:         plans, expected: expectedStates,
 		expectedBindings: expectedBindings, observations: observationStates,
 	}, nil
+}
+
+func resolveSemanticRuntimeTarget(
+	registrations []SemanticRegistration,
+) (string, string, SemanticProfile, error) {
+	workspaceID := ""
+	userID := ""
+	profile := SemanticProfile{}
+	for index, registration := range registrations {
+		registrationWorkspaceID := strings.TrimSpace(registration.WorkspaceID)
+		registrationUserID := strings.TrimSpace(registration.UserID)
+		if registrationWorkspaceID == "" {
+			return "", "", SemanticProfile{}, errors.New(
+				"agent session replay registration requires a Workspace",
+			)
+		}
+		if registrationUserID == "" {
+			return "", "", SemanticProfile{}, errors.New(
+				"agent session replay registration requires a runtime user",
+			)
+		}
+		if err := validateSemanticProfile(registration.Profile); err != nil {
+			return "", "", SemanticProfile{}, err
+		}
+		if index == 0 {
+			workspaceID = registrationWorkspaceID
+			userID = registrationUserID
+			profile = registration.Profile
+			continue
+		}
+		if workspaceID != registrationWorkspaceID {
+			return "", "", SemanticProfile{}, errors.New(
+				"agent session replay registrations must share one Workspace",
+			)
+		}
+		if userID != registrationUserID {
+			return "", "", SemanticProfile{}, errors.New(
+				"agent session replay registrations must share one runtime user",
+			)
+		}
+		if profile != registration.Profile {
+			return "", "", SemanticProfile{}, errors.New(
+				"agent session replay registrations must share one semantic profile",
+			)
+		}
+	}
+	return workspaceID, userID, profile, nil
 }
 
 func replayWorkbenchSnapshot(
@@ -295,5 +402,5 @@ func (r *SemanticRuntime) Verify(
 	if err != nil {
 		return err
 	}
-	return CompareTuttiReplayState(expected, actual)
+	return CompareTuttiReplayStateForProfile(expected, actual, r.profile)
 }

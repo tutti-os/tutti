@@ -73,6 +73,9 @@ Goal state contains:
 - `syncStatus`: `pending`, `applying`, `synced`, `diverged`, `unknown`, or
   `failed`.
 - `pendingOperationId`, evidence, error, and observation timestamps.
+- `startedAtUnixMs` is the durable start of one Goal generation. Active UI
+  elapsed time derives from it, while terminal observations may add
+  `durationMs`; renderer mount time is never Goal timing authority.
 
 Each operation contains a stable operation ID, session identity, goal revision,
 action, objective, status, evidence, error, and timestamps. It never claims a
@@ -223,13 +226,17 @@ All providers implement one semantic boundary:
 Codex uses thread goal RPCs and an authoritative goal query. Claude Code has no
 equivalent query API, so the adapter forwards native slash commands. With the
 Claude Agent SDK Goal contract, the sidecar accepts the SDK `active_goal`
-message and the native `/goal` Stop hook's top-level `goal_status` attachment,
-then emits one normalized `goal_observed` event. A non-null `active_goal` or
-`goal_status.met=false` is active, while `goal_status.met=true` is complete. A
-null `active_goal` means the native Goal hook was cleared; the adapter uses the
-exact command action plus its previous observation to distinguish an explicit
-clear from provider-reported completion. An ordinary `turn_completed` is
-never Goal evidence.
+message and the native `/goal` top-level `goal_status` attachment, then emits
+one normalized `goal_observed` event. The SDK stream may omit the attachment,
+so the sidecar incrementally tails only newly appended root transcript rows
+and explicitly drains them at root result and provider-idle boundaries. A
+non-null `active_goal` or `goal_status.met=false` is active, while
+`goal_status.met=true` is complete. If the provider becomes idle after the
+final drain with no terminal verdict, the active Goal becomes `blocked` rather
+than remaining falsely running. A null `active_goal` means the native Goal hook
+was cleared; the adapter uses the exact command action plus its previous
+observation to distinguish an explicit clear from provider-reported
+completion. An ordinary `turn_completed` is never Goal evidence.
 
 Claude command consumption is a separate control transition. The sidecar emits
 `goal.control_applied` with immutable operation ID, revision, repair epoch, and

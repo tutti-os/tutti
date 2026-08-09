@@ -20,9 +20,10 @@ export function WorkspaceWindow({
 }) {
   const routeView =
     new URLSearchParams(window.location.search).get("view") || "workspace";
+  const isWindows = containerInput.desktopApi.platform.os === "win32";
   const routeFallback =
     routeView === "agent" ? (
-      <StandaloneAgentStartupShell />
+      <StandaloneAgentStartupShell titleBarOverlay={isWindows} />
     ) : (
       <main className="h-screen min-h-0 bg-background" />
     );

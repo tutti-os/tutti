@@ -24,6 +24,11 @@ describe("classifyFailedAgentMessage", () => {
     expect(
       classifyFailedAgentMessage("getaddrinfo ENOTFOUND api.anthropic.com")
     ).toBe("network_error");
+    expect(
+      classifyFailedAgentMessage(
+        'API Error: 522 {"title":"Error 522: Connection timed out"}'
+      )
+    ).toBe("request_timed_out");
   });
 
   it("returns null for unclassified failures so they stay plain", () => {

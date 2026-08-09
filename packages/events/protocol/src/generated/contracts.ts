@@ -14,8 +14,10 @@ export type BusinessEventTopic =
   | "agent.model.configuration.changed"
   | "agent.quickprompt.updated"
   | "analytics.debug.reported"
+  | "connector.market.changed"
   | "preferences.agent.composer.defaults.changed"
   | "preferences.agent.composer.defaults.patch.requested"
+  | "preferences.agent.session.launch.mode.patch.requested"
   | "preferences.desktop.update.requested"
   | "preferences.desktop.updated"
   | "user.project.updated"
@@ -113,6 +115,10 @@ export interface PreferencesDesktopPreferencesV1 {
     openclaw?: boolean;
     opencode?: boolean;
   };
+  agentSessionLaunchModesByWorkspace?: Record<
+    string,
+    Record<string, "local" | "worktree">
+  >;
   agentConversationDetailMode: "coding" | "general";
   agentDockLayout: "legacySplit" | "unified";
   appCatalogChannel: "production" | "staging";
@@ -134,6 +140,7 @@ export interface PreferencesDesktopPreferencesV1 {
   workbenchShortcuts: {
     newAgentConversation: string | null;
     newSameTypeWindow: string | null;
+    captureScreenshot?: string | null;
   };
   locale: "en" | "zh-CN";
   minimizeAnimation: "scale" | "genie" | "off";
@@ -213,6 +220,7 @@ export interface WorkspaceWorkspaceAppV1 {
   launchUrl: string | null;
   port: number | null;
   failureReason: string | null;
+  failurePhase?: "downloading" | "installing" | "starting" | "runtime" | null;
   lastError: string | null;
   startedAtUnixMs: number | null;
   updatedAtUnixMs: number | null;
@@ -236,6 +244,29 @@ export interface WorkspaceWorkspaceAppV1 {
 }
 
 export type AgentActivityUpdatedPayloadV1 =
+  | {
+      workspaceId: string;
+      agentSessionId: string;
+      eventType: "runtime_activity_update";
+      data: {
+        workspaceId: string;
+        agentSessionId: string;
+        eventType: "runtime_activity_update";
+        state: "idle" | "running";
+        occurredAtUnixMs: number;
+      };
+    }
+  | {
+      workspaceId: string;
+      agentSessionId: string;
+      eventType: "session_restored";
+      data: {
+        workspaceId: string;
+        agentSessionId: string;
+        eventType: "session_restored";
+        restoredAtUnixMs: number;
+      };
+    }
   | {
       workspaceId: string;
       agentSessionId: string;
@@ -461,6 +492,12 @@ export interface AnalyticsDebugReportedPayloadV1 {
   }[];
 }
 
+export interface ConnectorMarketChangedPayloadV1 {
+  connectorKey?: string;
+  operationId?: string;
+  revision: number;
+}
+
 export interface PreferencesAgentComposerDefaultsChangedPayloadV1 {
   agentTargetId: string;
 }
@@ -475,6 +512,12 @@ export interface PreferencesAgentComposerDefaultsPatchRequestedPayloadV1 {
     speed?: string | null;
   };
   clientMutationId?: string;
+}
+
+export interface PreferencesAgentSessionLaunchModePatchRequestedPayloadV1 {
+  workspaceId: string;
+  projectSectionKey: string;
+  mode: "local" | "worktree";
 }
 
 export interface PreferencesDesktopUpdateRequestedPayloadV1 {
@@ -587,6 +630,12 @@ export type AnalyticsDebugReportedEventV1 = BusinessEventEnvelopeV1<
   1
 >;
 
+export type ConnectorMarketChangedEventV1 = BusinessEventEnvelopeV1<
+  "connector.market.changed",
+  ConnectorMarketChangedPayloadV1,
+  1
+>;
+
 export type PreferencesAgentComposerDefaultsChangedEventV1 =
   BusinessEventEnvelopeV1<
     "preferences.agent.composer.defaults.changed",
@@ -598,6 +647,13 @@ export type PreferencesAgentComposerDefaultsPatchRequestedEventV1 =
   BusinessEventEnvelopeV1<
     "preferences.agent.composer.defaults.patch.requested",
     PreferencesAgentComposerDefaultsPatchRequestedPayloadV1,
+    1
+  >;
+
+export type PreferencesAgentSessionLaunchModePatchRequestedEventV1 =
+  BusinessEventEnvelopeV1<
+    "preferences.agent.session.launch.mode.patch.requested",
+    PreferencesAgentSessionLaunchModePatchRequestedPayloadV1,
     1
   >;
 
@@ -658,6 +714,7 @@ export type WorkspaceWorkflowUpdatedEventV1 = BusinessEventEnvelopeV1<
 
 export type ClientToServerEventTopic =
   | "preferences.agent.composer.defaults.patch.requested"
+  | "preferences.agent.session.launch.mode.patch.requested"
   | "preferences.desktop.update.requested";
 
 export type ServerToClientEventTopic =
@@ -668,6 +725,7 @@ export type ServerToClientEventTopic =
   | "agent.model.configuration.changed"
   | "agent.quickprompt.updated"
   | "analytics.debug.reported"
+  | "connector.market.changed"
   | "preferences.agent.composer.defaults.changed"
   | "preferences.desktop.updated"
   | "user.project.updated"
@@ -680,6 +738,7 @@ export type ServerToClientEventTopic =
 
 export type ClientToServerEventV1 =
   | PreferencesAgentComposerDefaultsPatchRequestedEventV1
+  | PreferencesAgentSessionLaunchModePatchRequestedEventV1
   | PreferencesDesktopUpdateRequestedEventV1;
 
 export type ServerToClientEventV1 =
@@ -690,6 +749,7 @@ export type ServerToClientEventV1 =
   | AgentModelConfigurationChangedEventV1
   | AgentQuickpromptUpdatedEventV1
   | AnalyticsDebugReportedEventV1
+  | ConnectorMarketChangedEventV1
   | PreferencesAgentComposerDefaultsChangedEventV1
   | PreferencesDesktopUpdatedEventV1
   | UserProjectUpdatedEventV1

@@ -18,7 +18,7 @@ function formatError(error: unknown): string {
 
 export class AppUpdateService implements IAppUpdateService {
   readonly _serviceBrand: undefined;
-  readonly store = createAppUpdateStore();
+  readonly store: ReturnType<typeof createAppUpdateStore>;
 
   private disposed = false;
   private readonly instanceId = `app-update-service-${++nextAppUpdateServiceInstanceNumber}`;
@@ -38,8 +38,10 @@ export class AppUpdateService implements IAppUpdateService {
     updateClient: DesktopAppUpdateClient,
     reporterService: Pick<IReporterService, "trackEvents"> | null = null,
     reporterNow?: () => number,
-    runtimeApi?: Pick<DesktopRuntimeApi, "logRendererDiagnostic">
+    runtimeApi?: Pick<DesktopRuntimeApi, "logRendererDiagnostic">,
+    options: { supportsReleaseChannels?: boolean } = {}
   ) {
+    this.store = createAppUpdateStore(options.supportsReleaseChannels ?? true);
     this.updateClient = updateClient;
     this.reporterService = reporterService;
     this.reporterNow = reporterNow;

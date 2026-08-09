@@ -1,9 +1,7 @@
 import { type ChildProcess, spawn } from "node:child_process";
-import { createInterface, type Interface } from "node:readline";
 import {
   ICON_WORKER_ROLE,
   ICON_WORKER_ROLE_ENV,
-  ICON_WORKER_STDOUT_PREFIX,
   type IconWorkerMode,
   type IconWorkerRequestMessage,
   type IconWorkerResponseMessage
@@ -28,7 +26,6 @@ interface InFlightRequest extends QueuedRequest {
 }
 
 let child: ChildProcess | null = null;
-let reader: Interface | null = null;
 let nextRequestId = 1;
 let starting = false;
 const queue: QueuedRequest[] = [];
@@ -81,7 +78,7 @@ async function pump(): Promise<void> {
   if (inFlight || queue.length === 0) {
     return;
   }
-  if (!worker?.stdin) {
+  if (!worker?.send || !worker.connected) {
     // Worker unavailable: drain the queue with fallbacks.
     for (const queued of queue.splice(0)) {
       queued.resolve(null);
@@ -101,7 +98,13 @@ async function pump(): Promise<void> {
   inFlight = { ...next, timer };
 
   try {
-    worker.stdin.write(`${JSON.stringify(next.message)}\n`);
+    worker.send(next.message, (error) => {
+      if (!error || inFlight?.message.id !== next.message.id) {
+        return;
+      }
+      finishInFlight(null);
+      restartWorker();
+    });
   } catch {
     finishInFlight(null);
     restartWorker();
@@ -128,35 +131,28 @@ async function ensureWorker(): Promise<ChildProcess | null> {
     const args = app.isPackaged ? [] : [app.getAppPath()];
     const spawned = spawn(process.execPath, args, {
       env: { ...process.env, [ICON_WORKER_ROLE_ENV]: ICON_WORKER_ROLE },
-      stdio: ["pipe", "pipe", "inherit"]
+      stdio: ["ignore", "ignore", "inherit", "ipc"]
     });
     spawned.on("exit", handleWorkerGone);
     spawned.on("error", handleWorkerGone);
-
-    if (spawned.stdout) {
-      const lineReader = createInterface({ input: spawned.stdout });
-      lineReader.on("line", handleStdoutLine);
-      reader = lineReader;
-    }
+    spawned.on("message", handleWorkerMessage);
     child = spawned;
     return spawned;
   } catch {
     child = null;
-    reader = null;
     return null;
   }
 }
 
-function handleStdoutLine(line: string): void {
-  if (!line.startsWith(ICON_WORKER_STDOUT_PREFIX)) {
+function handleWorkerMessage(value: unknown): void {
+  if (!value || typeof value !== "object") {
     return;
   }
-  let message: IconWorkerResponseMessage;
-  try {
-    message = JSON.parse(
-      line.slice(ICON_WORKER_STDOUT_PREFIX.length)
-    ) as IconWorkerResponseMessage;
-  } catch {
+  const message = value as Partial<IconWorkerResponseMessage>;
+  if (
+    typeof message.id !== "number" ||
+    (message.pngBase64 !== null && typeof message.pngBase64 !== "string")
+  ) {
     return;
   }
   if (!inFlight || inFlight.message.id !== message.id) {
@@ -170,8 +166,6 @@ function handleStdoutLine(line: string): void {
 }
 
 function handleWorkerGone(): void {
-  reader?.close();
-  reader = null;
   child = null;
   // Whatever request was in flight is the prime suspect for the crash; poison it
   // so we never feed it back to a fresh worker.
@@ -185,11 +179,10 @@ function handleWorkerGone(): void {
 function restartWorker(): void {
   const dying = child;
   child = null;
-  reader?.close();
-  reader = null;
   if (dying) {
     dying.removeListener("exit", handleWorkerGone);
     dying.removeListener("error", handleWorkerGone);
+    dying.removeListener("message", handleWorkerMessage);
     dying.kill();
   }
   void pump();

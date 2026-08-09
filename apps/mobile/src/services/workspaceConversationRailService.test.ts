@@ -42,6 +42,45 @@ describe("WorkspaceConversationRailService", () => {
     service.dispose();
   });
 
+  test("forwards Activity search to the flat session page endpoint", async () => {
+    const searchQueries: Array<Record<string, unknown>> = [];
+    const client = {
+      listWorkspaceAgentSessions: async (
+        _workspaceId: string,
+        query: Record<string, unknown>
+      ) => {
+        searchQueries.push(query);
+        return {
+          hasMore: false,
+          sessions: [createSession("search-result", 2)],
+          workspaceId: workspace.id
+        };
+      },
+      listWorkspaceAgentSessionSections: async () => ({
+        pinned: { hasMore: false, sessions: [], totalCount: 0 },
+        sections: [],
+        workspaceId: workspace.id
+      })
+    } as unknown as TuttidClient;
+    const clock = new ManualClock();
+    const service = createRailService(client, clock);
+
+    await service.start();
+    service.setSearchQuery("needle");
+    clock.run(300);
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(searchQueries).toEqual([{ limit: 100, searchQuery: "needle" }]);
+    expect(service.getSnapshot().search).toMatchObject({
+      pending: false,
+      query: "needle",
+      resolvedQuery: "needle",
+      sessionIds: ["search-result"]
+    });
+    service.dispose();
+  });
+
   test("keeps server section identity and loads the next exact page", async () => {
     const sectionQueries: Array<Record<string, unknown>> = [];
     const receivedSessionIds: string[] = [];
@@ -334,6 +373,15 @@ describe("WorkspaceConversationRailService", () => {
     expect(service.getSnapshot()).toEqual({
       errorCode: null,
       loadingMoreSectionId: null,
+      search: {
+        failed: false,
+        hasMore: false,
+        loadingMore: false,
+        pending: false,
+        query: "",
+        resolvedQuery: "",
+        sessionIds: []
+      },
       sections: [
         expect.objectContaining({
           sessionIds: ["session-1"],
@@ -438,12 +486,33 @@ function createSession(
 }
 
 class ManualClock implements ClockPort {
+  private readonly tasks: Array<{
+    canceled: boolean;
+    delayMs: number;
+    task: () => void;
+  }> = [];
+
   now(): number {
     return 1_000;
   }
 
-  schedule(): { cancel(): void } {
-    return { cancel: () => undefined };
+  schedule(delayMs: number, task: () => void): { cancel(): void } {
+    const scheduled = { canceled: false, delayMs, task };
+    this.tasks.push(scheduled);
+    return {
+      cancel: () => {
+        scheduled.canceled = true;
+      }
+    };
+  }
+
+  run(delayMs: number): void {
+    const scheduled = this.tasks.find(
+      (candidate) => !candidate.canceled && candidate.delayMs === delayMs
+    );
+    if (!scheduled) throw new Error(`no task scheduled for ${delayMs}ms`);
+    scheduled.canceled = true;
+    scheduled.task();
   }
 }
 

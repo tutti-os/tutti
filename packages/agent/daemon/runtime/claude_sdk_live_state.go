@@ -13,6 +13,23 @@ type claudeSDKLiveState struct {
 	configOptionDescriptors []map[string]any
 	usage                   claudeSDKUsageState
 	goal                    map[string]any
+	runtimeActivity         string
+}
+
+func (s *claudeSDKAdapterSession) applyRuntimeActivity(payload map[string]any) (string, bool) {
+	if s == nil || !strings.EqualFold(payloadString(payload, "sdkMessageType"), "system") ||
+		!strings.EqualFold(payloadString(payload, "sdkMessageSubtype"), "session_state_changed") {
+		return "", false
+	}
+	state := strings.ToLower(strings.TrimSpace(payloadString(payload, "state")))
+	if state != "running" && state != "idle" {
+		return "", false
+	}
+	if s.liveState.runtimeActivity == state {
+		return state, false
+	}
+	s.liveState.runtimeActivity = state
+	return state, true
 }
 
 type claudeSDKUsageState struct {

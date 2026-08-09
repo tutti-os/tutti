@@ -1,14 +1,14 @@
 import { defineConfig, type Options } from "tsup";
 
 import {
-  agentGUIBuildEntries,
+  agentGUIDtsBuildEntries,
   agentGUIDtsEntryGroups
 } from "./build/agentGuiBuildEntries";
 
 export default defineConfig(
   agentGUIDtsEntryGroups.map((entryNames, index): Options => {
     const entry = Object.fromEntries(
-      entryNames.map((name) => [name, agentGUIBuildEntries[name]])
+      entryNames.map((name) => [name, agentGUIDtsBuildEntries[name]])
     );
 
     return {

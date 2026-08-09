@@ -504,11 +504,11 @@ export function useAgentGUIComposerSettingsActions(
     }
   );
 
-  // Recovery entry for the composer-options terminal error state: re-issues
-  // the draft options load (the engine grants a fresh retry budget per
-  // user-driven request).
+  // Recovery entry for the composer-options terminal error state. Leave the
+  // request non-forced so Activity Core joins an already-running load when a
+  // user double-clicks the retry control instead of superseding it.
   const retryComposerOptions = useStableControllerEventCallback(() => {
-    loadDraftComposerOptions({ force: true });
+    loadDraftComposerOptions();
   });
 
   return {

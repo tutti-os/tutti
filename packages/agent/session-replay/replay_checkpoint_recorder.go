@@ -42,6 +42,10 @@ func (r *checkpointRecorder) ensureInitialized(
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.recordingID == recording.ID {
+		if recording.RootAgentSessionID != "" &&
+			!r.entities.ensureRecordingRoot(recording.RootAgentSessionID) {
+			return ErrInvalidState
+		}
 		return nil
 	}
 	r.initializeLocked(recording)

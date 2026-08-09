@@ -11,6 +11,7 @@ describe("AgentGUIConversationRailRelativeTime", () => {
 
   afterEach(() => {
     vi.useRealTimers();
+    vi.restoreAllMocks();
   });
 
   it("uses one timer and updates only relative-time consumers", () => {
@@ -49,6 +50,24 @@ describe("AgentGUIConversationRailRelativeTime", () => {
 
     expect(rowRenderCount).toBe(2);
     expect(screen.getAllByText("1 minute")).toHaveLength(2);
+
+    unmount();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("does not subscribe to the minute clock when Activity hides timestamps", () => {
+    const setIntervalSpy = vi.spyOn(window, "setInterval");
+    const { unmount } = render(
+      <AgentGUIConversationRailRelativeTime
+        hideTime
+        item={createConversation("session-1")}
+        labels={RELATIVE_TIME_LABELS}
+      />
+    );
+
+    expect(
+      setIntervalSpy.mock.calls.filter((call) => call[1] === 60_000)
+    ).toHaveLength(0);
 
     unmount();
     expect(vi.getTimerCount()).toBe(0);

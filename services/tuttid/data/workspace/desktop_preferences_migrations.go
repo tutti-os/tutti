@@ -10,6 +10,38 @@ import (
 	preferencesbiz "github.com/tutti-os/tutti/services/tuttid/biz/preferences"
 )
 
+func (s *SQLiteStore) applyDesktopPreferencesMigrations(ctx context.Context) error {
+	migrations := []func(context.Context) error{
+		s.applyDesktopPreferencesV1,
+		s.applyDesktopPreferencesAgentDockLayoutV1,
+		s.applyDesktopPreferencesSleepPreventionModeV1,
+		s.applyDesktopPreferencesDockPlacementV1,
+		s.applyDesktopPreferencesDockIconStyleV1,
+		s.applyDesktopPreferencesDefaultAgentProviderV1,
+		s.applyDesktopPreferencesAgentComposerDefaultsV1,
+		s.applyDesktopPreferencesAgentComposerDefaultsByAgentTargetV1,
+		s.applyDesktopPreferencesAgentGUIConversationRailV1,
+		s.applyDesktopPreferencesAgentSessionLaunchModesV1,
+		s.applyDesktopPreferencesBrowserUseConnectionModeV1,
+		s.applyDesktopPreferencesUpdateSettingsV1,
+		s.applyDesktopPreferencesFileDefaultOpenersV1,
+		s.applyDesktopPreferencesAppCatalogChannelV1,
+		s.applyDesktopPreferencesMinimizeAnimationV1,
+		s.applyDesktopPreferencesWindowSnappingV1,
+		s.applyDesktopPreferencesShowAppDeveloperSourcesV1,
+		s.applyDesktopPreferencesAgentConversationDetailModeV1,
+		s.applyDesktopPreferencesFeatureFlagsV1,
+		s.applyDesktopPreferencesDeletedAgentRetentionV1,
+		s.applyDesktopPreferencesAgentCLIUpdateCheckV1,
+	}
+	for _, apply := range migrations {
+		if err := apply(ctx); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func (s *SQLiteStore) applyDesktopPreferencesV1(ctx context.Context) error {
 	applied, err := s.hasMigration(ctx, schemaMigrationDesktopPreferencesV1)
 	if err != nil {
@@ -386,6 +418,37 @@ INSERT INTO tuttid_schema_migrations (id, applied_at_unix_ms)
 		return fmt.Errorf("migrate workspace database for desktop agent gui conversation rail: %w", err)
 	}
 
+	return nil
+}
+
+func (s *SQLiteStore) applyDesktopPreferencesAgentSessionLaunchModesV1(ctx context.Context) error {
+	applied, err := s.hasMigration(ctx, schemaMigrationDesktopPreferencesAgentSessionLaunchModesV1)
+	if err != nil {
+		return err
+	}
+	if applied {
+		return nil
+	}
+
+	now := unixMs(time.Now().UTC())
+	hasColumn, err := s.hasColumn(ctx, "desktop_preferences", "agent_session_launch_modes_by_workspace_json")
+	if err != nil {
+		return err
+	}
+	if !hasColumn {
+		if _, err := s.writeDB.ExecContext(ctx, `
+ALTER TABLE desktop_preferences
+  ADD COLUMN agent_session_launch_modes_by_workspace_json TEXT NOT NULL DEFAULT '{}';`); err != nil {
+			return fmt.Errorf("migrate workspace database for Agent Session launch modes: %w", err)
+		}
+	}
+	_, err = s.writeDB.ExecContext(ctx, `
+INSERT INTO tuttid_schema_migrations (id, applied_at_unix_ms)
+  VALUES (?, ?);
+`, schemaMigrationDesktopPreferencesAgentSessionLaunchModesV1, now)
+	if err != nil {
+		return fmt.Errorf("mark Agent Session launch modes migration: %w", err)
+	}
 	return nil
 }
 

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   DevSettings,
   StatusBar,
   StyleSheet,
@@ -10,11 +11,16 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { type NativeTheme, useNativeTheme } from "@tutti-os/ui-system/native";
 import { useServiceSnapshot } from "./bindings/useServiceSnapshot";
 import { MobileConnectionRecoveryOverlay } from "./components/MobileConnectionRecoveryOverlay";
+import { MobileSoftwareUpdateOverlay } from "./components/MobileSoftwareUpdateOverlay";
 import { MobileUIProviders } from "./components/MobileUIProviders";
+import {
+  presentMobileSoftwareUpdate,
+  updateInstallFailureDescription
+} from "./components/presentMobileSoftwareUpdate";
 import { NativeComponentGallery } from "./dev/NativeComponentGallery";
 import { t } from "./i18n";
 import "@tutti-os/ui-system/native.css";
-import { mobileApplicationService } from "./mobileRuntime";
+import { mobileApplicationService, mobileUpdateService } from "./mobileRuntime";
 import { MobileNavigator } from "./navigation/MobileNavigator";
 
 export default function App() {
@@ -29,6 +35,7 @@ function AppContent() {
   const theme = useNativeTheme();
   const styles = createStyles(theme);
   const snapshot = useServiceSnapshot(mobileApplicationService);
+  const updateSnapshot = useServiceSnapshot(mobileUpdateService);
   const [galleryOpen, setGalleryOpen] = useState(false);
 
   useEffect(() => {
@@ -36,6 +43,21 @@ function AppContent() {
       DevSettings.addMenuItem(t("nativeGallery"), () => setGalleryOpen(true));
     }
   }, []);
+
+  useEffect(() => {
+    const failureCode = updateSnapshot.installationFailureCode;
+    if (!failureCode) return;
+    Alert.alert(
+      t("updateInstallFailed"),
+      updateInstallFailureDescription(failureCode),
+      [
+        {
+          onPress: () => mobileUpdateService.acknowledgeInstallationFailure(),
+          text: t("acknowledge")
+        }
+      ]
+    );
+  }, [updateSnapshot.installationFailureCode]);
 
   return (
     <>
@@ -65,11 +87,18 @@ function AppContent() {
               onBackToDevices={() =>
                 void mobileApplicationService.disconnectDevice()
               }
+              onCheckForUpdates={() =>
+                presentMobileSoftwareUpdate(mobileUpdateService)
+              }
               onRetry={() =>
                 void mobileApplicationService.retryDeviceConnection()
               }
             />
           ) : null}
+          <MobileSoftwareUpdateOverlay
+            onCancel={() => mobileUpdateService.cancelUpdate()}
+            snapshot={updateSnapshot}
+          />
         </View>
       </SafeAreaView>
     </>

@@ -956,6 +956,93 @@ describe("AgentGUIConversationRailQueryController", () => {
     engine.dispose();
   });
 
+  it("retries a failed section page load when More is requested again", async () => {
+    const engine = createTestAgentSessionEngine();
+    const firstSession = createTestSession("session-1", "conversations");
+    const secondSession = createTestSession("session-2", "conversations");
+    let pageRequestCount = 0;
+    const listSessionSectionPage = vi.fn<
+      NonNullable<ConversationRailQueryRuntime["listSessionSectionPage"]>
+    >(async (input) => {
+      pageRequestCount += 1;
+      if (pageRequestCount === 1) throw new Error("transient page failure");
+      return {
+        hasMore: false,
+        kind: "conversations",
+        sectionKey: input.sectionKey,
+        sessions: [secondSession],
+        totalCount: 2
+      };
+    });
+    const controller = new AgentGUIConversationRailQueryController({
+      engine,
+      getActiveConversationId: () => null,
+      runtime: {
+        listSessionSectionPage,
+        listSessionSections: async (input) => ({
+          sections: [
+            {
+              hasMore: true,
+              kind: "conversations",
+              nextCursor: "cursor-2",
+              sectionKey: "conversations",
+              sessions: [firstSession],
+              totalCount: 2
+            }
+          ],
+          workspaceId: input.workspaceId
+        })
+      },
+      workspaceId: "test-workspace"
+    });
+    controller.configure({
+      conversationFilter: { kind: "all" },
+      userProjects: []
+    });
+    const detach = controller.attach();
+    await vi.waitFor(() =>
+      expect(controller.getSnapshot().runtimeRailSectionsPending).toBe(false)
+    );
+
+    controller.loadMoreSectionConversations({ id: "conversations" });
+    await vi.waitFor(() =>
+      expect(listSessionSectionPage).toHaveBeenCalledTimes(1)
+    );
+    await vi.waitFor(() =>
+      expect(controller.getSnapshot().runtimeRailFailed).toBe(true)
+    );
+    expect(
+      controller.getSnapshot().sectionPageStates.get("conversations")
+    ).toEqual({
+      hasMore: true,
+      isLoading: false,
+      nextCursor: "cursor-2",
+      totalCount: 2
+    });
+
+    controller.loadMoreSectionConversations({ id: "conversations" });
+    await vi.waitFor(() =>
+      expect(listSessionSectionPage).toHaveBeenCalledTimes(2)
+    );
+    await vi.waitFor(() =>
+      expect(controller.getSnapshot().runtimeRailFailed).toBe(false)
+    );
+    expect(
+      controller.getSnapshot().sectionPageStates.get("conversations")
+    ).toEqual({
+      hasMore: false,
+      isLoading: false,
+      nextCursor: null,
+      totalCount: 2
+    });
+    expect(
+      selectEngineSession(engine.getSnapshot(), secondSession.agentSessionId)
+    ).not.toBeNull();
+
+    detach();
+    engine.dispose();
+  });
+
   it("isolates subscriber failures from successful rail queries", async () => {
     const engine = createTestAgentSessionEngine();
     const controller = new AgentGUIConversationRailQueryController({

@@ -15,7 +15,7 @@ Classify the request before invoking any Tutti CLI command:
 2. Workspace app work uses app scopes from the command guide. If the request comes from `mention://workspace-app/<appId>?workspaceId=...`, invoke `$workspace-app` and use this skill as its command reference.
    {{if hasFamily "agent"}}3. Agent work uses the Host-advertised `agent ...` commands. Handoff decisions belong to `$tutti-handoff`; use this skill only as its CLI reference.
    {{end}}{{if hasFamily "browser"}}4. Browser automation uses the Host-advertised `browser ...` commands.
-   {{end}}{{if hasFamily "computer"}}5. macOS desktop automation uses the Host-advertised `computer ...` commands.
+   {{end}}{{if hasFamily "computer"}}5. Desktop automation uses the Host-advertised `computer ...` commands.
    {{end}}6. If none match, read `command-guide.md` before guessing.
 
 Completion criterion: every Tutti CLI call must be traceable to a routed family, a mention URI, prior command output, current CLI help, or a command-guide entry.

@@ -1,5 +1,14 @@
 import type { JSX } from "react";
-import type { AgentConversationPromptVM } from "../contracts/agentConversationVM";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger
+} from "@tutti-os/ui-system";
+import type {
+  AgentConversationPromptVM,
+  AgentInteractionResponseInput
+} from "../contracts/agentConversationVM";
 import { AgentAskUserPromptSurface } from "./AgentAskUserPromptSurface";
 import {
   ApprovalPromptSurface,
@@ -24,12 +33,9 @@ export interface AgentInteractivePromptSurfaceProps {
   edgeGlow?: boolean;
   keyboardShortcuts?: boolean;
   isSubmitting: boolean;
-  onSubmit: (input: {
-    requestId: string;
-    action?: string;
-    optionId?: string;
-    payload?: Record<string, unknown>;
-  }) => void;
+  isInteractionDisabled?: boolean;
+  interactionDisabledReason?: string | null;
+  onSubmit: (input: AgentInteractionResponseInput) => boolean | void;
   labels: {
     approvalLead: string;
     fileChangeApprovalLead: string;
@@ -58,6 +64,8 @@ export function AgentInteractivePromptSurface({
   embedded = false,
   keyboardShortcuts = true,
   isSubmitting,
+  isInteractionDisabled = false,
+  interactionDisabledReason = null,
   onSubmit,
   labels
 }: AgentInteractivePromptSurfaceProps & {
@@ -65,55 +73,106 @@ export function AgentInteractivePromptSurface({
 }): JSX.Element | null {
   "use memo";
 
+  const submitPrompt = (
+    input: AgentInteractionResponseInput
+  ): boolean | void => {
+    const agentSessionId =
+      "agentSessionId" in prompt ? prompt.agentSessionId?.trim() : "";
+    const turnId = "turnId" in prompt ? prompt.turnId?.trim() : "";
+    return onSubmit({
+      ...input,
+      ...(agentSessionId && turnId ? { agentSessionId, turnId } : {}),
+      requestId: prompt.requestId
+    });
+  };
+
+  let promptSurface: JSX.Element;
   if (prompt.kind === "approval") {
-    return (
+    promptSurface = (
       <ApprovalPromptSurface
         prompt={prompt}
         embedded={embedded}
         edgeGlow={edgeGlow}
         keyboardShortcuts={keyboardShortcuts}
         isSubmitting={isSubmitting}
-        onSubmit={onSubmit}
+        isInteractionDisabled={isInteractionDisabled}
+        onSubmit={submitPrompt}
         labels={labels}
       />
     );
-  }
-  if (prompt.kind === "exit-plan") {
-    return (
+  } else if (prompt.kind === "exit-plan") {
+    promptSurface = (
       <ExitPlanPromptSurface
         prompt={prompt}
         variant={variant}
         embedded={embedded}
         edgeGlow={edgeGlow}
         isSubmitting={isSubmitting}
-        onSubmit={onSubmit}
+        isInteractionDisabled={isInteractionDisabled}
+        onSubmit={submitPrompt}
         labels={labels}
       />
     );
-  }
-  if (prompt.kind === "plan-implementation") {
-    return (
+  } else if (prompt.kind === "plan-implementation") {
+    promptSurface = (
       <PlanImplementationSurface
         prompt={prompt}
         variant={variant}
         embedded={embedded}
         edgeGlow={edgeGlow}
         isSubmitting={isSubmitting}
-        onSubmit={onSubmit}
+        isInteractionDisabled={isInteractionDisabled}
+        onSubmit={submitPrompt}
+        labels={labels}
+      />
+    );
+  } else {
+    promptSurface = (
+      <AgentAskUserPromptSurface
+        key={prompt.requestId}
+        prompt={prompt}
+        variant={variant}
+        embedded={embedded}
+        edgeGlow={edgeGlow}
+        isSubmitting={isSubmitting}
+        isInteractionDisabled={isInteractionDisabled}
+        onSubmit={submitPrompt}
         labels={labels}
       />
     );
   }
+
+  const normalizedReason = interactionDisabledReason?.trim() ?? "";
+  if (!isInteractionDisabled || !normalizedReason) {
+    return promptSurface;
+  }
+
   return (
-    <AgentAskUserPromptSurface
-      key={prompt.requestId}
-      prompt={prompt}
-      variant={variant}
-      embedded={embedded}
-      edgeGlow={edgeGlow}
-      isSubmitting={isSubmitting}
-      onSubmit={onSubmit}
-      labels={labels}
-    />
+    <TooltipProvider delayDuration={120} skipDelayDuration={0}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <div
+            aria-disabled="true"
+            aria-label={normalizedReason}
+            className="cursor-not-allowed rounded-md outline-none"
+            data-agent-interaction-disabled="true"
+            role="group"
+            tabIndex={0}
+          >
+            {/* Disabled form controls do not reliably dispatch pointer events.
+                Keep the actual prompt out of hit testing so the wrapper can
+                receive hover/focus events and expose the disabled reason. */}
+            <div className="pointer-events-none">{promptSurface}</div>
+          </div>
+        </TooltipTrigger>
+        <TooltipContent
+          side="top"
+          align="start"
+          className="max-w-[min(360px,calc(100vw-32px))] whitespace-normal text-left [overflow-wrap:anywhere]"
+        >
+          {normalizedReason}
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
   );
 }

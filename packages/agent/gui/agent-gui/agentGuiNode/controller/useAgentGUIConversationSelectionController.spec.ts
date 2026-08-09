@@ -265,6 +265,31 @@ describe("clearRolledBackAgentGUISelection", () => {
     const transientConversation = {
       id: failedAgentSessionId
     } as AgentGUIConversationSummary;
+    const failedActivationSnapshot = {
+      pendingIntents: {
+        activationsByRequestId: {
+          "activation-1": {
+            agentSessionId: failedAgentSessionId,
+            agentTargetId: "target-1",
+            clientSubmitId: "submit-1",
+            content: [],
+            cwd: "/workspace",
+            errorCode: null,
+            errorMessage: "create failed",
+            expiresAtUnixMs: 45_001,
+            initialPromptRetracted: false,
+            initialTurnExpected: false,
+            mode: "new",
+            requestId: "activation-1",
+            requestedAtUnixMs: 1,
+            status: "failed",
+            title: null,
+            workspaceId: "workspace-1"
+          }
+        }
+      },
+      sessionLifecycle: { sessionsById: {} }
+    };
 
     const { result } = renderHook(() => {
       const [activeConversationId, setActiveConversationId] = useState<
@@ -318,9 +343,7 @@ describe("clearRolledBackAgentGUISelection", () => {
         onDataChangeRef: { current: onDataChange },
         sessionEngine: {
           dispatch: vi.fn(),
-          getSnapshot: vi.fn(() => ({
-            pendingIntents: { activationsByRequestId: {} }
-          }))
+          getSnapshot: vi.fn(() => failedActivationSnapshot)
         } as unknown as AgentSessionEngine,
         setActiveConversationId,
         setDetailError: vi.fn(),
@@ -353,9 +376,7 @@ describe("clearRolledBackAgentGUISelection", () => {
         },
         sessionEngine: {
           dispatch: vi.fn(),
-          getSnapshot: vi.fn(() => ({
-            pendingIntents: { activationsByRequestId: {} }
-          }))
+          getSnapshot: vi.fn(() => failedActivationSnapshot)
         } as unknown as AgentSessionEngine,
         setIntent,
         transientConversation,
@@ -457,7 +478,8 @@ describe("shouldMarkActiveConversationRead", () => {
     completionKey: "turn:session-1:turn-1:completed",
     isUnread: true,
     kind: "completed" as const,
-    markedUnreadByUser: false
+    markedUnreadByUser: false,
+    observationProvenance: "live" as const
   };
 
   it("keeps a manually marked unread completion unread in the current selection", () => {

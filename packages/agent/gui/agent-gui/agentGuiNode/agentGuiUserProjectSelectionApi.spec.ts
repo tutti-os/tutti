@@ -38,4 +38,17 @@ describe("createAgentGUIUserProjectSelectionApi", () => {
 
     expect(api?.selectDirectory).toBeUndefined();
   });
+
+  it("does not fabricate a project catalog for a directory-only host", () => {
+    const selectProjectDirectory = vi.fn(async () => ({
+      path: "/workspace/existing"
+    }));
+    const api = createAgentGUIUserProjectSelectionApi({
+      selectProjectDirectory,
+      userProjects: null
+    });
+
+    expect(api).toBeNull();
+    expect(selectProjectDirectory).not.toHaveBeenCalled();
+  });
 });

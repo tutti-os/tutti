@@ -84,6 +84,8 @@ func newClaudeBinaryFixture(t *testing.T, extraEnv ...string) claudeBinaryFixtur
 	}, extraEnv...)
 	service := Service{
 		Environ:              func() []string { return env },
+		HomeDir:              func() (string, error) { return stateDir, nil },
+		LookPath:             func(string) (string, error) { return "", os.ErrNotExist },
 		ClaudeCodeStateDir:   stateDir,
 		ClaudeCodeRuntimeDir: runtimeRoot,
 	}

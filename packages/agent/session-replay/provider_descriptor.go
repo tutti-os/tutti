@@ -97,6 +97,9 @@ var providerReplayDescriptors = []ProviderReplayDescriptor{
 				ValuePrefix:   "plan-decision:",
 				PortableValue: "plan-decision:<runtime-operation>",
 			}},
+			GeneratedIdentityFields: []string{
+				"clientUserMessageId",
+			},
 		},
 		PortableRuntime: ProviderPortableRuntimeDescriptor{
 			HomeEnvVars:          []string{"CODEX_HOME"},

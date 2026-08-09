@@ -2,7 +2,10 @@ import { useRef } from "react";
 import { normalizeOptionalWorkspaceAgentStatus } from "../../../shared/workspaceAgentStatusNormalizer";
 import type { UiLanguage } from "../../../contexts/settings/domain/agentSettings";
 import type { AgentMessageMarkdownWorkspaceAppIcon } from "../../../shared/AgentMessageMarkdown";
-import type { AgentConversationVM } from "../../../shared/agentConversation/contracts/agentConversationVM";
+import type {
+  AgentConversationPromptVM,
+  AgentConversationVM
+} from "../../../shared/agentConversation/contracts/agentConversationVM";
 import { createAgentSessionHandoffPrompt } from "../agentRichText/agentFileMentionExtension";
 import type {
   AgentComposerSlashStatus,
@@ -243,11 +246,31 @@ export function shouldShowAgentGUIStopButton(input: {
 export function isAgentGUIHomeStatusNoticeVisible(
   recovery: AgentGUISessionChrome["recovery"]
 ): boolean {
+  if (
+    recovery &&
+    "interactionScoped" in recovery &&
+    recovery.interactionScoped === true
+  ) {
+    return false;
+  }
   return (
     recovery?.kind === "agent-sharing-revoked" ||
     recovery?.kind === "transport-connecting" ||
     recovery?.kind === "transport-unavailable"
   );
+}
+
+export function resolveAgentGUIInteractionDisabledReason(input: {
+  promptKind: AgentConversationPromptVM["kind"] | null | undefined;
+  approvalReason: string | null;
+  interactivePromptReason: string | null;
+}): string | null {
+  if (input.promptKind === null || input.promptKind === undefined) {
+    return null;
+  }
+  return input.promptKind === "approval"
+    ? input.approvalReason
+    : input.interactivePromptReason;
 }
 
 export function resolveAgentGUIHomeNoticeChrome(input: {

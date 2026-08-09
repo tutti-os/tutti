@@ -35,6 +35,7 @@ export function sessionGoalsEqual(
       left.objective === right.objective &&
       left.status === right.status &&
       left.reason === right.reason &&
+      left.startedAtUnixMs === right.startedAtUnixMs &&
       left.iterations === right.iterations &&
       left.durationMs === right.durationMs &&
       left.tokens === right.tokens)

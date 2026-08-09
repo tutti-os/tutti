@@ -585,6 +585,7 @@ export class WorkspaceAgentActivityService
           agentTargetId: input.agentTargetId,
           capabilityRefs: input.capabilityRefs ?? null,
           cwd: resolvedCwd?.cwd ?? null,
+          ...(input.isolation ? { isolation: input.isolation } : {}),
           initialGoalControl: input.initialGoalControl ?? null,
           initialContent: input.initialContent ?? [],
           initialDisplayPrompt: input.initialDisplayPrompt ?? null,

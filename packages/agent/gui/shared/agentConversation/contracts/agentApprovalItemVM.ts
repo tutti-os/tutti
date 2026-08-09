@@ -10,6 +10,7 @@ export interface AgentApprovalOptionVM {
 export interface AgentApprovalItemVM {
   kind: "approval";
   id: string;
+  agentSessionId?: string;
   turnId: string;
   requestId: string;
   callId: string;

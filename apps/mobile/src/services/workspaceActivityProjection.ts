@@ -1,5 +1,6 @@
 import {
   canonicalInteractionKey,
+  selectAttentionReadState,
   selectRootAgentActivitySessions,
   selectRootAgentSessionIdsWithPendingInteractions,
   selectEngineTurnsForSession,
@@ -24,7 +25,7 @@ import {
   reconcileProjectedAgentConversationVM,
   type AgentConversationVM
 } from "@tutti-os/agent-gui/conversation-projection";
-import type { AgentTarget } from "@tutti-os/client-tuttid-ts";
+import type { AgentTarget, UserProject } from "@tutti-os/client-tuttid-ts";
 import type { MobileUserProjectDirectorySnapshot } from "./mobileUserProjectDirectoryService";
 import { projectWorkspaceConversationRail } from "./workspaceConversationRailProjection";
 import type { WorkspaceConversationRailSnapshot } from "./workspaceConversationRailService";
@@ -86,6 +87,7 @@ export function resolveWorkspaceComposerTarget({
 export function projectWorkspaceActivitySnapshot({
   activity,
   ambiguousSubmission,
+  currentUserId,
   draftSettings,
   draft,
   errorCode,
@@ -101,6 +103,7 @@ export function projectWorkspaceActivitySnapshot({
 }: {
   activity: AgentActivitySnapshot;
   ambiguousSubmission: boolean;
+  currentUserId: string;
   draftSettings: AgentActivitySessionSettings;
   draft: string;
   errorCode: "request_failed" | null;
@@ -231,6 +234,33 @@ export function projectWorkspaceActivitySnapshot({
       workspaceId
     }
   );
+  const projectBySessionId = new Map<string, UserProject>();
+  const projectBySectionKey = new Map<string, UserProject>();
+  for (const section of rail.sections) {
+    if (section.kind !== "project" || !section.project) continue;
+    const project = section.project;
+    const sectionKey = project.sectionKey?.trim() ?? section.id;
+    if (sectionKey) projectBySectionKey.set(sectionKey, project);
+    for (const sessionId of section.sessionIds) {
+      projectBySessionId.set(sessionId, project);
+    }
+  }
+  for (const project of userProjects.projects) {
+    const sectionKey = project.sectionKey?.trim();
+    if (sectionKey && !projectBySectionKey.has(sectionKey)) {
+      projectBySectionKey.set(sectionKey, project);
+    }
+  }
+  const attentionReadState = selectAttentionReadState(state, currentUserId);
+  const activityConversations = conversations.map((conversation) => ({
+    ...conversation,
+    hasUnreadCompletion:
+      attentionReadState.recordsBySessionId[conversation.id]?.isUnread ?? false,
+    project:
+      projectBySessionId.get(conversation.id) ??
+      projectBySectionKey.get(conversation.railSectionKey?.trim() ?? "") ??
+      null
+  }));
   const selectedRuntimeAvailability = selectEngineSessionRuntimeAvailability(
     state,
     navigation.selectedAgentSessionId
@@ -243,6 +273,7 @@ export function projectWorkspaceActivitySnapshot({
 
   return {
     activity,
+    activityConversations,
     ambiguousSubmission,
     composerOptions,
     composerOptionsLoadStatus,
@@ -264,6 +295,7 @@ export function projectWorkspaceActivitySnapshot({
       memberships: rail.sections
     }),
     railStatus: rail.status,
+    search: rail.search,
     selectedAgentSessionId: navigation.selectedAgentSessionId,
     selectedAgentTargetId: navigation.selectedAgentTargetId,
     selectedProjectPath,

@@ -14,6 +14,8 @@ var runtimeBinaryNamePattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,
 var runtimeSearchPathPattern = regexp.MustCompile(`^[A-Za-z0-9._-]+(?:/[A-Za-z0-9._-]+)*$`)
 var runtimeConstraintPartPattern = regexp.MustCompile(`^(?:>=|>|<=|<)[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?$`)
 var runtimeArgumentPlaceholderPattern = regexp.MustCompile(`\$\{[^}]+\}`)
+var runtimeEnvironmentKeyPattern = regexp.MustCompile(`^[A-Z][A-Z0-9_]{0,127}$`)
+var runtimeEnvironmentReferencePattern = regexp.MustCompile(`^\$\{env:(TUTTI_[A-Z0-9_]{1,120})\}$`)
 var runtimeArtifactPlatformPattern = regexp.MustCompile(`^[a-z0-9]+-[a-z0-9_]+$`)
 var runtimeArtifactSHA256Pattern = regexp.MustCompile(`^[a-f0-9]{64}$`)
 
@@ -120,6 +122,9 @@ func validateRuntimeContract(manifest Manifest) error {
 	if runner != "npm" && runner != "pnpm" && runner != "uv" && runner != "binary" {
 		return errors.New("extension runtime install runner is unsupported")
 	}
+	if err := validateRuntimeLaunchEnvironment(manifest.Runtime.Launch.Env); err != nil {
+		return err
+	}
 	for _, argument := range append(append([]string(nil), manifest.Runtime.Install.Args...), manifest.Runtime.Launch.Executable) {
 		if strings.TrimSpace(argument) == "" || strings.ContainsAny(argument, "|;&`\n\r<>") || strings.Contains(argument, "$(") {
 			return errors.New("extension runtime argument contains forbidden shell syntax")
@@ -197,6 +202,21 @@ func validateRuntimeContract(manifest Manifest) error {
 		}
 		if len(manifest.Runtime.Install.Args) != 3 || manifest.Runtime.Install.Args[0] != "tool" || manifest.Runtime.Install.Args[1] != "install" || !packagePattern.MatchString(manifest.Runtime.Install.Args[2]) {
 			return errors.New("extension uv runtime install must use the constrained tool install form")
+		}
+	}
+	return nil
+}
+
+func validateRuntimeLaunchEnvironment(environment map[string]string) error {
+	if len(environment) > 32 {
+		return errors.New("extension runtime launch environment has too many entries")
+	}
+	for key, value := range environment {
+		if !runtimeEnvironmentKeyPattern.MatchString(key) {
+			return errors.New("extension runtime launch environment key is invalid")
+		}
+		if !runtimeEnvironmentReferencePattern.MatchString(strings.TrimSpace(value)) {
+			return errors.New("extension runtime launch environment must reference a TUTTI_* variable")
 		}
 	}
 	return nil

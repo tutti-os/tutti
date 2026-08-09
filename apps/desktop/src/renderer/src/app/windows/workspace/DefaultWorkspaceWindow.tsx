@@ -21,6 +21,7 @@ export function DefaultWorkspaceWindow({
           fallback={<main className="h-screen min-h-0 bg-background" />}
         >
           <LazyWorkspaceWorkbench
+            appName={containerInput.desktopApi.platform.appName}
             agentSessionReplayComposition={
               containerInput.agentSessionReplayComposition
             }

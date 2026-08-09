@@ -15,22 +15,24 @@ import {
   WorkspaceAgentMessageCenterCard,
   dispatchAgentPlanPromptAction,
   useEngineSelector,
-  type WorkspaceAgentMessageCenterCardProps,
-  type WorkspaceAgentMessageCenterItem
+  type WorkspaceAgentMessageCenterCardProps
 } from "@tutti-os/agent-gui/agent-message-center";
 import {
-  selectEnginePendingInteractions,
   selectWorkspaceAgentConsumerSession,
-  type AgentActivityMessage,
-  type CanonicalAgentSession
+  type AgentActivityMessage
 } from "@tutti-os/agent-activity-core";
 import type { I18nRuntime } from "@tutti-os/ui-i18n-runtime";
 import type { DesktopLocale } from "@shared/i18n";
 import type { IssueManagerLatestRunStatusRenderInput } from "@tutti-os/workspace-issue-manager/ui";
 import type { IWorkspaceAgentActivityService } from "@renderer/features/workspace-agent";
+import {
+  hasCachedWorkspaceAgentSessionMessages,
+  resolveIssueManagerLatestRunMessageCenterItem,
+  submitIssueManagerPendingInteraction,
+  synchronizeIssueManagerLatestRunSession
+} from "./issueManagerLatestRunMessageCenterItem.ts";
 
 const MESSAGE_CENTER_SUMMARY_MESSAGE_LIMIT = 20;
-type MessageCenterAgentSession = CanonicalAgentSession;
 
 export function renderIssueManagerLatestRunMessageCenterCard(
   input: IssueManagerLatestRunStatusRenderInput,
@@ -96,12 +98,26 @@ function IssueManagerLatestRunMessageCenterCard({
     workspaceAgentConsumerSessionEqual
   );
 
+  useEffect(
+    () =>
+      synchronizeIssueManagerLatestRunSession({
+        agentSessionId,
+        service: workspaceAgentActivityService,
+        workspaceId
+      }),
+    [agentSessionId, workspaceAgentActivityService, workspaceId]
+  );
+
   const model = useMemo(
     () =>
       buildWorkspaceAgentMessageCenterModelFromEngine(
         messageCenterPresentation,
         { sessionMessagesById, workspaceId },
         {
+          // Tutti Mode delegate runs are hidden from ambient surfaces; this
+          // card's subject IS the delegate session, so keep it in the model
+          // so its pending prompts stay renderable and answerable here.
+          includeHiddenSessionIds: agentSessionId ? [agentSessionId] : [],
           promptFallbackLabels: {
             constraintHeader: i18n.t(
               "workspace.agentMessageCenter.promptConstraintHeader"
@@ -115,24 +131,25 @@ function IssueManagerLatestRunMessageCenterCard({
           workspaceRoot: null
         }
       ),
-    [i18n, messageCenterPresentation, sessionMessagesById, workspaceId]
+    [
+      agentSessionId,
+      i18n,
+      messageCenterPresentation,
+      sessionMessagesById,
+      workspaceId
+    ]
   );
   const targetSession = targetSessionConsumer?.session ?? null;
-  const modelItem = useMemo(
+  const item = useMemo(
     () =>
-      findWorkspaceAgentMessageCenterItem({
+      resolveIssueManagerLatestRunMessageCenterItem({
         agentSessionId,
+        input,
         itemCandidates: model.items,
         session: targetSession
       }),
-    [agentSessionId, model.items, targetSession]
+    [agentSessionId, input, model.items, targetSession]
   );
-  const item =
-    modelItem ??
-    createIssueManagerFallbackMessageCenterItem({
-      agentSessionId,
-      input
-    });
   const promptStatus = workspaceAgentMessageCenterPromptStatus(
     messageCenterPresentation,
     item
@@ -220,22 +237,20 @@ function IssueManagerLatestRunMessageCenterCard({
           workspaceId
         });
       } else {
-        const interaction = selectEnginePendingInteractions(
-          sessionEngine.getSnapshot(),
-          item.agentSessionId
-        ).find((candidate) => candidate.requestId === submitInput.requestId);
-        if (!interaction) return;
-        sessionEngine.submitInteractionResponse({
-          agentSessionId: item.agentSessionId,
-          requestId: submitInput.requestId,
-          turnId: interaction.turnId,
-          ...(submitInput.action ? { action: submitInput.action } : {}),
-          ...(submitInput.optionId ? { optionId: submitInput.optionId } : {}),
-          ...(submitInput.payload ? { payload: submitInput.payload } : {})
+        submitIssueManagerPendingInteraction({
+          engine: sessionEngine,
+          item,
+          submitInput
         });
       }
     },
-    [item.agentSessionId, item.pendingPrompt?.kind, sessionEngine, workspaceId]
+    [
+      item.agentSessionId,
+      item.pendingInteractionTarget,
+      item.pendingPrompt?.kind,
+      sessionEngine,
+      workspaceId
+    ]
   );
 
   return (
@@ -274,141 +289,4 @@ function workspaceAgentConsumerSessionEqual(
         (interaction, index) => interaction === right.pendingInteractions[index]
       ))
   );
-}
-
-function findWorkspaceAgentMessageCenterItem({
-  agentSessionId,
-  itemCandidates,
-  session
-}: {
-  agentSessionId: string;
-  itemCandidates: readonly WorkspaceAgentMessageCenterItem[];
-  session: MessageCenterAgentSession | null;
-}): WorkspaceAgentMessageCenterItem | null {
-  const aliases = new Set([
-    agentSessionId.trim(),
-    ...(session ? workspaceAgentSessionMessageAliases(session) : [])
-  ]);
-  aliases.delete("");
-  return (
-    itemCandidates.find((item) => aliases.has(item.agentSessionId.trim())) ??
-    null
-  );
-}
-
-function createIssueManagerFallbackMessageCenterItem({
-  agentSessionId,
-  input
-}: {
-  agentSessionId: string;
-  input: IssueManagerLatestRunStatusRenderInput;
-}): WorkspaceAgentMessageCenterItem {
-  const latestRun = input.latestRun;
-  const provider = latestRun.agentProvider?.trim() || "codex";
-  const summary =
-    latestRun.status === "failed"
-      ? latestRun.errorMessage?.trim() || latestRun.summary?.trim() || ""
-      : latestRun.summary?.trim() || "";
-  const sortTimeUnixMs = issueManagerRunTimestampToUnixMs(
-    latestRun.updatedAtUnix ??
-      latestRun.completedAtUnix ??
-      latestRun.startedAtUnix ??
-      latestRun.createdAtUnix
-  );
-  const status = issueManagerRunStatusToMessageCenterStatus(latestRun.status);
-  const digestSummary = summary || input.title || agentSessionId;
-
-  return {
-    agentSessionId,
-    cwd: "",
-    id: `issue-manager-run-${latestRun.runId}`,
-    identity: null,
-    lastAgentMessageAtUnixMs: sortTimeUnixMs || null,
-    lastAgentMessageSummary: summary,
-    digest: {
-      primary: {
-        kind: issueManagerRunStatusToDigestKind(status),
-        summary: digestSummary,
-        occurredAtUnixMs: sortTimeUnixMs || null
-      }
-    },
-    needsAttentionKind: null,
-    needsAttentionSummary: null,
-    pendingInteractionTarget: null,
-    pendingPrompt: null,
-    provider,
-    sortTimeUnixMs,
-    status,
-    title: input.title || agentSessionId,
-    userId: null
-  };
-}
-
-function issueManagerRunStatusToMessageCenterStatus(
-  status: string
-): WorkspaceAgentMessageCenterItem["status"] {
-  switch (status) {
-    case "running":
-      return "working";
-    case "pending_acceptance":
-      return "waiting";
-    case "completed":
-      return "completed";
-    case "failed":
-      return "failed";
-    case "canceled":
-      return "canceled";
-    default:
-      return "idle";
-  }
-}
-
-function issueManagerRunStatusToDigestKind(
-  status: WorkspaceAgentMessageCenterItem["status"]
-): WorkspaceAgentMessageCenterItem["digest"]["primary"]["kind"] {
-  switch (status) {
-    case "failed":
-      return "error";
-    case "completed":
-    case "canceled":
-    case "idle":
-      return "outcome";
-    case "working":
-      return "progress";
-    default:
-      return "summary";
-  }
-}
-
-function issueManagerRunTimestampToUnixMs(
-  value: number | null | undefined
-): number {
-  if (!Number.isFinite(value)) {
-    return 0;
-  }
-  const timestamp = Number(value);
-  return timestamp > 1_000_000_000_000 ? timestamp : timestamp * 1000;
-}
-
-function hasCachedWorkspaceAgentSessionMessages(
-  sessionMessagesById: Readonly<Record<string, AgentActivityMessage[]>>,
-  session: MessageCenterAgentSession
-): boolean {
-  return workspaceAgentSessionMessageAliases(session).some(
-    (alias) => (sessionMessagesById[alias]?.length ?? 0) > 0
-  );
-}
-
-function workspaceAgentSessionMessageAliases(
-  session: MessageCenterAgentSession
-): string[] {
-  return [
-    session.agentSessionId,
-    session.providerSessionId ?? "",
-    session.agentSessionId.trim(),
-    (session.providerSessionId ?? "").trim()
-  ].filter((alias, index, aliases) => {
-    const normalized = alias.trim();
-    return normalized.length > 0 && aliases.indexOf(alias) === index;
-  });
 }

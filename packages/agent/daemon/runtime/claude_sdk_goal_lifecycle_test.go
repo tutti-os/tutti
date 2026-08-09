@@ -719,6 +719,44 @@ func TestClaudeSDKGoalCompletesOnlyFromProviderGoalObservation(t *testing.T) {
 	if goal["status"] != "complete" || goal["iterations"] != int64(3) || goal["durationMs"] != int64(16_386) || goal["tokens"] != int64(1_479) || goal["reason"] != "all steps finished" {
 		t.Fatalf("goal_status completion mirror = %#v", goal)
 	}
+
+	adapter.applyLocalGoal(adapterSession, map[string]any{
+		"objective": "ship it", "status": "active", "startedAtUnixMs": int64(100),
+	})
+	updates, terminal, err = adapter.sidecarTurnEvents(adapterSession, session, "turn-goal", claudeSDKSidecarEvent{
+		Type: "goal_observed",
+		Payload: map[string]any{
+			"turnId": "turn-goal", "source": "goal_status", "updateType": "thread_goal_update",
+			"goal": map[string]any{"objective": "ship it", "status": "blocked"},
+		},
+	})
+	if err != nil || terminal {
+		t.Fatalf("blocked goal terminal=%v err=%v", terminal, err)
+	}
+	assertClaudeSDKGoalUpdateEvent(t, updates, "thread_goal_update")
+	goal = adapter.localGoal(adapterSession)
+	if goal["status"] != "blocked" || goal["startedAtUnixMs"] != int64(100) {
+		t.Fatalf("blocked goal mirror = %#v", goal)
+	}
+}
+
+func TestNormalizeClaudeGoalTimingPreservesGenerationStartAndTerminalDuration(t *testing.T) {
+	active := normalizeClaudeGoalTiming(
+		map[string]any{"objective": "ship it", "status": "active"},
+		map[string]any{"objective": "ship it", "status": "active", "startedAtUnixMs": int64(20)},
+		30,
+	)
+	if active["startedAtUnixMs"] != int64(20) {
+		t.Fatalf("active Goal timing = %#v", active)
+	}
+	blocked := normalizeClaudeGoalTiming(
+		map[string]any{"objective": "ship it", "status": "blocked"},
+		active,
+		50,
+	)
+	if blocked["startedAtUnixMs"] != int64(20) || blocked["durationMs"] != int64(30) {
+		t.Fatalf("blocked Goal timing = %#v", blocked)
+	}
 }
 
 func TestClaudeSDKExplicitClearUsesNilActiveGoalAsClear(t *testing.T) {

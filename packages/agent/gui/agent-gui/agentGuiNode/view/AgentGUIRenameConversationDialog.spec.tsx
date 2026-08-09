@@ -87,6 +87,40 @@ describe("AgentGUIRenameConversationDialog", () => {
     expect(screen.getByRole("textbox", { name: "Rename" })).toHaveValue("");
     expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
   });
+
+  it("keeps the saved title while the dialog closes", async () => {
+    const conversation = {
+      cwd: "/workspace",
+      id: "session-1",
+      provider: "codex" as const,
+      status: "ready" as const,
+      title: "Session 1",
+      updatedAtUnixMs: 1
+    };
+    const { rerender } = render(
+      <AgentGUIRenameConversationDialog
+        conversation={conversation}
+        labels={RENAME_LABELS}
+        open
+        onOpenChange={() => {}}
+        onRename={vi.fn()}
+      />
+    );
+    const input = screen.getByRole("textbox", { name: "Rename" });
+    fireEvent.change(input, { target: { value: "Renamed session" } });
+
+    rerender(
+      <AgentGUIRenameConversationDialog
+        conversation={null}
+        labels={RENAME_LABELS}
+        open={false}
+        onOpenChange={() => {}}
+        onRename={vi.fn()}
+      />
+    );
+
+    await waitFor(() => expect(input).toHaveValue("Renamed session"));
+  });
 });
 
 const RENAME_LABELS = {

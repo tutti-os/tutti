@@ -13,8 +13,10 @@ import (
 )
 
 const (
-	portableProcessCassetteAccountEmail = "replay-user@example.invalid"
-	portableProcessCassetteHomeToken    = replay.PortableReplayHomeToken
+	portableProcessCassetteAccountEmail     = "replay-user@example.invalid"
+	portableProcessCassetteHomeToken        = replay.PortableReplayHomeToken
+	portableProcessCassetteCLIVersionToken  = "<runtime-cli-version>"
+	portableProcessCassetteClientTitleToken = "<runtime-client-title>"
 )
 
 type processCassetteProjection struct {
@@ -366,6 +368,36 @@ func projectProcessCassetteRuntimeGeneratedFields(
 				current != field.PortableValue {
 				params[field.Parameter] = field.PortableValue
 			}
+		}
+	}
+}
+
+// projectProcessCassetteVolatileClientInfo normalizes product-owned initialize
+// clientInfo fields for request matching. The served CLI version and host title
+// may drift across cassette lifetime and consumer product; name remains the
+// protocol client identity and part of the semantic match.
+func projectProcessCassetteVolatileClientInfo(values []any) {
+	for _, value := range values {
+		message, ok := value.(map[string]any)
+		if !ok {
+			continue
+		}
+		if strings.TrimSpace(payloadString(message, "method")) != "initialize" {
+			continue
+		}
+		params, _ := message["params"].(map[string]any)
+		if params == nil {
+			continue
+		}
+		clientInfo, _ := params["clientInfo"].(map[string]any)
+		if clientInfo == nil {
+			continue
+		}
+		if _, ok := clientInfo["version"]; ok {
+			clientInfo["version"] = portableProcessCassetteCLIVersionToken
+		}
+		if _, ok := clientInfo["title"]; ok {
+			clientInfo["title"] = portableProcessCassetteClientTitleToken
 		}
 	}
 }

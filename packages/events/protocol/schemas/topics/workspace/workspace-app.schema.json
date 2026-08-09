@@ -119,6 +119,10 @@
     "failureReason": {
       "type": ["string", "null"]
     },
+    "failurePhase": {
+      "type": ["string", "null"],
+      "enum": ["downloading", "installing", "starting", "runtime", null]
+    },
     "lastError": {
       "type": ["string", "null"]
     },

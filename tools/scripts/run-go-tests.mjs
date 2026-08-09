@@ -1,6 +1,6 @@
-import { spawnSync } from "node:child_process";
-import { dirname, join, relative } from "node:path";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { discoverGoModuleRoots } from "./run-check-changed-targets.mjs";
 import {
   readPositiveIntegerOption,
   runValidationLanes
@@ -10,7 +10,7 @@ const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const workspaceRoot = join(scriptDirectory, "..", "..");
 const agentDaemonModule = "packages/agent/daemon";
 const agentDaemonOnly = process.argv.includes("--agent-daemon-only");
-const moduleRoots = loadGoWorkspaceModuleRoots().filter(
+const moduleRoots = discoverGoModuleRoots({ root: workspaceRoot }).filter(
   (moduleRoot) => !agentDaemonOnly || moduleRoot === agentDaemonModule
 );
 
@@ -35,22 +35,3 @@ const result = await runValidationLanes({
   workspaceRoot
 });
 process.exit(result.exitCode);
-
-function loadGoWorkspaceModuleRoots() {
-  const result = spawnSync("go", ["work", "edit", "-json"], {
-    cwd: workspaceRoot,
-    encoding: "utf8"
-  });
-  if (result.status !== 0) {
-    throw new Error(result.stderr.trim() || "go work edit -json failed");
-  }
-  const workspace = JSON.parse(result.stdout);
-  return (workspace.Use ?? [])
-    .map((entry) =>
-      relative(workspaceRoot, join(workspaceRoot, entry.DiskPath)).replaceAll(
-        "\\",
-        "/"
-      )
-    )
-    .sort();
-}

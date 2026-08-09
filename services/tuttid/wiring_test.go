@@ -69,6 +69,69 @@ func TestIssueRunAgentLauncherForwardsSourceRailPlacement(t *testing.T) {
 	}
 }
 
+func TestIssueRunAgentLauncherForwardsImageAttachments(t *testing.T) {
+	creator := &recordingIssueRunAgentSessionCreator{}
+	err := (issueRunAgentLauncher{Sessions: creator}).Launch(
+		context.Background(),
+		workspaceservice.IssueRunLaunch{
+			WorkspaceID:    "workspace-1",
+			ClientSubmitID: "issue-run:run-1",
+			AgentSessionID: "delegate-1",
+			AgentTargetID:  "local-codex",
+			Prompt:         "Inspect this screenshot",
+			Attachments: []workspaceservice.IssueRunImageAttachment{{
+				MimeType: "image/png",
+				Name:     "capture.png",
+				Path:     "/state/agent-prompt-assets/issues/capture.png",
+			}},
+		},
+	)
+	if err != nil {
+		t.Fatalf("Launch() error = %v", err)
+	}
+	if len(creator.input.InitialContent) != 2 {
+		t.Fatalf("InitialContent = %#v, want text and image", creator.input.InitialContent)
+	}
+	image := creator.input.InitialContent[1]
+	if image.Type != "image" || image.MimeType != "image/png" || image.Name != "capture.png" || image.Path != "/state/agent-prompt-assets/issues/capture.png" {
+		t.Fatalf("image content = %#v", image)
+	}
+}
+
+func TestIssueRunAgentLauncherForwardsSessionVisibility(t *testing.T) {
+	cases := []struct {
+		name        string
+		hideSession bool
+		wantVisible bool
+	}{
+		{name: "default launches stay visible", hideSession: false, wantVisible: true},
+		{name: "hidden launches create invisible sessions", hideSession: true, wantVisible: false},
+	}
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			creator := &recordingIssueRunAgentSessionCreator{}
+			launcher := issueRunAgentLauncher{Sessions: creator}
+
+			err := launcher.Launch(context.Background(), workspaceservice.IssueRunLaunch{
+				WorkspaceID:    "workspace-1",
+				ClientSubmitID: "issue-run:run-1",
+				AgentSessionID: "delegate-1",
+				AgentTargetID:  "local-codex",
+				RunID:          "run-1",
+				Title:          "Delegated task",
+				Prompt:         "Implement the task",
+				HideSession:    testCase.hideSession,
+			})
+			if err != nil {
+				t.Fatalf("Launch() error = %v", err)
+			}
+			if creator.input.Visible == nil || *creator.input.Visible != testCase.wantVisible {
+				t.Fatalf("Create() visible = %#v, want %v", creator.input.Visible, testCase.wantVisible)
+			}
+		})
+	}
+}
+
 type fakeIssueSourceSessionReader struct {
 	session agentservice.PersistedSession
 	found   bool

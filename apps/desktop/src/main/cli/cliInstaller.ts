@@ -40,31 +40,17 @@ export async function ensureDesktopCliShim(
   const resourcesPath = options.resourcesPath ?? process.resourcesPath;
   const stateRootDir =
     options.stateRootDir ?? resolveDesktopDefaultsFromEnv().state.rootDir;
-  const binaryName = platform === "win32" ? "tutti.exe" : "tutti";
-  const packagedCliPath = join(resourcesPath, "bin", binaryName);
+  const packagedCliPath = prepareDesktopCliTarget({
+    goBin: options.goBin,
+    isPackaged,
+    platform,
+    repoRoot: options.repoRoot,
+    resourcesPath
+  });
   const shimPath = resolveUserShimPath(stateRootDir, platform, {
     development: !isPackaged
   });
-  let cliTargetPath = packagedCliPath;
-
-  if (!isPackaged) {
-    const repoRoot = options.repoRoot ?? resolveRepoRoot();
-    const builtCliPath = join(
-      repoRoot,
-      "apps",
-      "cli",
-      "build",
-      "dev",
-      binaryName
-    );
-    ensureDevCliBinary({
-      goBin: options.goBin,
-      platform,
-      repoRoot,
-      targetPath: builtCliPath
-    });
-    cliTargetPath = builtCliPath;
-  }
+  const cliTargetPath = packagedCliPath;
 
   await mkdir(join(stateRootDir, "bin"), { recursive: true });
   if (platform === "win32") {
@@ -96,6 +82,41 @@ export async function ensureDesktopCliShim(
     pathShimPath,
     shimPath
   };
+}
+
+export function prepareDesktopCliTarget(
+  options: Pick<
+    EnsureDesktopCliShimOptions,
+    "goBin" | "isPackaged" | "platform" | "repoRoot" | "resourcesPath"
+  > = {}
+): string {
+  const isPackaged = options.isPackaged ?? false;
+  const platform = options.platform ?? process.platform;
+  const binaryName = platform === "win32" ? "tutti.exe" : "tutti";
+  if (isPackaged) {
+    return join(
+      options.resourcesPath ?? process.resourcesPath,
+      "bin",
+      binaryName
+    );
+  }
+
+  const repoRoot = options.repoRoot ?? resolveRepoRoot();
+  const builtCliPath = join(
+    repoRoot,
+    "apps",
+    "cli",
+    "build",
+    "dev",
+    binaryName
+  );
+  ensureDevCliBinary({
+    goBin: options.goBin,
+    platform,
+    repoRoot,
+    targetPath: builtCliPath
+  });
+  return builtCliPath;
 }
 
 export function resolveUserShimPath(
@@ -357,8 +378,8 @@ function ensureDevCliBinary(input: {
 }
 
 function resolveCommand(command: string, platform: NodeJS.Platform): string {
-  if (platform === "win32" && !command.toLowerCase().endsWith(".cmd")) {
-    return `${command}.cmd`;
+  if (platform === "win32" && !/\.[a-z0-9]+$/i.test(command)) {
+    return `${command}.exe`;
   }
   return command;
 }

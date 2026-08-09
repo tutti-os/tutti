@@ -39,6 +39,7 @@ export function projectAgentApprovalPromptFromInteraction(
   return {
     kind: "approval",
     id: `approval:${callId}`,
+    agentSessionId: interaction.agentSessionId,
     turnId: interaction.turnId,
     requestId: interaction.requestId,
     callId,
@@ -66,6 +67,8 @@ export function projectAgentInteractivePromptFromInteraction(
     );
     return {
       kind: "exit-plan",
+      agentSessionId: interaction.agentSessionId,
+      turnId: interaction.turnId,
       requestId: interaction.requestId,
       title: interaction.toolName?.trim() || "",
       options: extractExitPlanModeOptions(interaction.input),
@@ -81,6 +84,8 @@ export function projectAgentInteractivePromptFromInteraction(
   return questions.length > 0
     ? {
         kind: "ask-user",
+        agentSessionId: interaction.agentSessionId,
+        turnId: interaction.turnId,
         requestId: interaction.requestId,
         title: interaction.toolName?.trim() || "",
         questions

@@ -30,6 +30,8 @@ import {
   desktopWorkbenchWindowSnappingEqual
 } from "../../../../../../shared/preferences/index.ts";
 import {
+  isFeatureEnabled,
+  LAB_CONNECTORS_FLAG,
   resolveDesktopWorkspaceUiMode,
   withDesktopWorkspaceUiMode
 } from "../../../../../../shared/featureFlags/catalog.ts";
@@ -75,10 +77,21 @@ import {
 import { WorkspaceModelPlansController } from "./workspaceModelPlansController.ts";
 import { WorkspaceAgentsController } from "./workspaceAgentsController.ts";
 import { WorkspaceAutomationRulesController } from "./workspaceAutomationRulesController.ts";
+import { WorkspaceDeletedConversationsController } from "./workspaceDeletedConversationsController.ts";
+
+export interface WorkspaceUiModeChangeErrorInput {
+  error: unknown;
+  mode: "agent" | "os";
+  previousMode: "agent" | "os";
+  workspaceId: string | null;
+}
 
 export interface WorkspaceSettingsServiceDependencies {
   client: DesktopWorkspaceSettingsClient;
   onAgentTargetsChanged?: () => void | Promise<void>;
+  onWorkspaceUiModeChangeError?: (
+    input: WorkspaceUiModeChangeErrorInput
+  ) => void;
   replaceWorkspaceWindow?: (input: {
     clientTs: number;
     mode: "agent" | "os";
@@ -92,6 +105,7 @@ export class WorkspaceSettingsService implements IWorkspaceSettingsService {
   readonly store = createWorkspaceSettingsStore();
   readonly agents: WorkspaceAgentsController;
   readonly automationRules: WorkspaceAutomationRulesController;
+  readonly deletedConversations: WorkspaceDeletedConversationsController;
   readonly modelPlans: WorkspaceModelPlansController;
 
   private readonly dependencies: WorkspaceSettingsServiceDependencies;
@@ -142,6 +156,11 @@ export class WorkspaceSettingsService implements IWorkspaceSettingsService {
       client: dependencies.client,
       store: this.store
     });
+    this.deletedConversations = new WorkspaceDeletedConversationsController({
+      client: dependencies.client,
+      notifications,
+      store: this.store
+    });
   }
 
   openPanel(
@@ -175,6 +194,14 @@ export class WorkspaceSettingsService implements IWorkspaceSettingsService {
           ? options.provider
           : null;
       this.store.agentFocusRequestID += 1;
+    } else if (options?.pane === "connectors") {
+      this.store.activeSection = "agent";
+      const flags =
+        this.desktopPreferences.store.changingFeatureFlags ??
+        this.desktopPreferences.store.featureFlags;
+      this.store.agentTab = isFeatureEnabled(flags, LAB_CONNECTORS_FLAG)
+        ? "connectors"
+        : "general";
     } else if (
       options?.pane === "custom-agents" ||
       options?.pane === "workspace-agents"
@@ -260,6 +287,7 @@ export class WorkspaceSettingsService implements IWorkspaceSettingsService {
       this.modelPlans.reset();
       this.agents.reset();
       this.automationRules.reset();
+      this.deletedConversations.reset();
     }
   }
 
@@ -275,6 +303,9 @@ export class WorkspaceSettingsService implements IWorkspaceSettingsService {
     }
     if (sectionID === "agent") {
       this.refreshActiveAgentTab();
+    }
+    if (sectionID === "deletedConversations") {
+      void this.deletedConversations.refresh();
     }
   }
 
@@ -555,7 +586,13 @@ export class WorkspaceSettingsService implements IWorkspaceSettingsService {
           workspaceId: this.store.workspaceID
         });
       }
-    } catch {
+    } catch (error) {
+      this.dependencies.onWorkspaceUiModeChangeError?.({
+        error,
+        mode,
+        previousMode,
+        workspaceId: this.store.workspaceID
+      });
       this.notifications.error({
         title: createActiveTranslator().t(
           "workspace.settings.general.workspaceUiModeSaveFailed"
@@ -775,31 +812,6 @@ export class WorkspaceSettingsService implements IWorkspaceSettingsService {
     }
   }
 
-  async purgeDeletedConversations(): Promise<void> {
-    if (this.store.purgingDeletedConversations) {
-      return;
-    }
-    this.store.purgingDeletedConversations = true;
-    try {
-      const result =
-        await this.dependencies.client.purgeDeletedAgentConversations();
-      this.notifications.success({
-        title: createActiveTranslator().t(
-          "workspace.settings.general.deletedConversationPurgeCompleted",
-          { count: String(result.removedSessions) }
-        )
-      });
-    } catch {
-      this.notifications.error({
-        title: createActiveTranslator().t(
-          "workspace.settings.general.deletedConversationPurgeFailed"
-        )
-      });
-    } finally {
-      this.store.purgingDeletedConversations = false;
-    }
-  }
-
   async exportDeveloperLogs(input: ExportDeveloperLogsInput): Promise<void> {
     if (this.store.developerLogs.exporting) {
       return;
@@ -885,6 +897,10 @@ export class WorkspaceSettingsService implements IWorkspaceSettingsService {
     }
     if (this.store.activeSection === "agent") {
       this.refreshActiveAgentTab();
+      return;
+    }
+    if (this.store.activeSection === "deletedConversations") {
+      void this.deletedConversations.refresh();
     }
   }
 
@@ -976,6 +992,7 @@ const noopDesktopPreferencesStore: DesktopPreferencesReadableStoreState = {
   agentComposerDefaultsByProvider: {},
   agentComposerDefaultsByAgentTarget: {},
   agentGuiConversationRailCollapsedByProvider: {},
+  agentSessionLaunchModesByWorkspace: {},
   agentConversationDetailMode: "coding",
   appCatalogChannel: "production",
   browserUseConnectionMode: "isolated",
@@ -1083,6 +1100,9 @@ const noopDesktopPreferences: DesktopPreferencesService = {
     });
   },
   rememberAgentGuiConversationRailCollapsed() {
+    return Promise.resolve();
+  },
+  rememberAgentSessionLaunchMode() {
     return Promise.resolve();
   }
 };

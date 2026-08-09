@@ -27,7 +27,12 @@ export function createAgentActivitySnapshotProjector(
     const sessions =
       previousState &&
       previousSnapshot &&
-      state.sessionLifecycle === previousState.sessionLifecycle
+      state.sessionLifecycle.sessionsById ===
+        previousState.sessionLifecycle.sessionsById &&
+      state.sessionLifecycle.turnsById ===
+        previousState.sessionLifecycle.turnsById &&
+      state.sessionLifecycle.interactionsById ===
+        previousState.sessionLifecycle.interactionsById
         ? previousSnapshot.sessions
         : selectAllWorkspaceAgentConsumerSessions(state).map((item) =>
             projectAgentActivitySession(

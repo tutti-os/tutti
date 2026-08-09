@@ -33,7 +33,7 @@ function normalizeWorkspaceFileAbsolutePath(value?: string | null): string {
   const drive = readWindowsDrive(raw);
   const startsWithSlash = raw.startsWith("/");
   const body = drive
-    ? raw.slice(drive.length).replace(/^\/+/, "")
+    ? stripWindowsDrivePrefix(raw, drive)
     : startsWithSlash
       ? raw.slice(1)
       : raw;
@@ -51,10 +51,10 @@ function normalizeWorkspaceFileAbsolutePath(value?: string | null): string {
   }
 
   if (result.length === 0) {
-    return drive ? `${drive}/` : workspaceFileManagerLogicalRoot;
+    return drive ? `/${drive}/` : workspaceFileManagerLogicalRoot;
   }
   if (drive) {
-    return `${drive}/${result.join("/")}`;
+    return `/${drive}/${result.join("/")}`;
   }
   return `/${result.join("/")}`;
 }
@@ -80,13 +80,13 @@ export function workspaceFileDirectory(
   }
 
   const drive = readWindowsDrive(normalized);
-  const body = drive ? normalized.slice(drive.length) : normalized;
+  const body = drive ? stripWindowsDrivePrefix(normalized, drive) : normalized;
   const parts = body.split("/").filter(Boolean);
   parts.pop();
   const directory = drive
     ? parts.length === 0
-      ? `${drive}/`
-      : `${drive}/${parts.join("/")}`
+      ? `/${drive}/`
+      : `/${drive}/${parts.join("/")}`
     : parts.length === 0
       ? workspaceFileManagerLogicalRoot
       : `/${parts.join("/")}`;
@@ -184,5 +184,10 @@ function isWorkspaceFileAbsolutePath(path: string): boolean {
 }
 
 function readWindowsDrive(path: string): string {
-  return /^[A-Za-z]:/.exec(path)?.[0] ?? "";
+  return /^\/?([A-Za-z]:)(?=\/|$)/.exec(path)?.[1] ?? "";
+}
+
+function stripWindowsDrivePrefix(path: string, drive: string): string {
+  const prefixLength = drive.length + (path.startsWith("/") ? 1 : 0);
+  return path.slice(prefixLength).replace(/^\/+/, "");
 }

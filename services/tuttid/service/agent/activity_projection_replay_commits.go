@@ -9,6 +9,7 @@ import (
 )
 
 type ReplayCommitObserver interface {
+	agenthost.CommitObserver
 	ObserveReplayCommitted(
 		context.Context,
 		agenthost.CommittedDelta,

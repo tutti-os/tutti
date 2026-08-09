@@ -1,7 +1,7 @@
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { useEffect } from "react";
 import { useServiceSnapshot } from "../bindings/useServiceSnapshot";
-import { MobileConversationsView } from "../components/MobileConversationsView";
+import { MobileActivityView } from "../components/MobileActivityView";
 import type { MobileRootStackParamList } from "../navigation/mobileNavigation";
 import type { MobileApplicationService } from "../services/mobileApplicationService";
 
@@ -52,23 +52,22 @@ export function ConversationsScreen({ application, navigation, route }: Props) {
   };
 
   return (
-    <MobileConversationsView
+    <MobileActivityView
       connectionPhase={snapshot.connection.phase}
       deviceName={device.name}
       model={model}
       onBack={() => navigation.goBack()}
       onDeleteSession={(id) => service.deleteSession(id)}
-      onLoadMoreSessions={(sectionId) =>
-        void service.loadMoreSessions(sectionId)
-      }
+      onLoadMoreSearch={() => service.loadMoreSearch()}
       onMeasureLatency={() => application.measureConnectionLatency()}
       onNewSession={() => openConversation(null)}
       onRenameSession={(id, title) => service.renameSession(id, title)}
       onRefreshSessions={() => service.refreshSessions()}
+      onRetrySearch={() => service.retrySearch()}
+      onSearchQueryChange={(query) => service.setSearchQuery(query)}
       onSelectSession={(id) => openConversation(id)}
-      onTogglePinned={(id) => service.toggleSessionPinned(id)}
       pathScope={deviceModel.pathScope}
-      workspaceName={workspace.name}
+      workspaceId={workspace.id}
     />
   );
 }

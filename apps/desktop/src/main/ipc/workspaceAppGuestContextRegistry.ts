@@ -105,6 +105,7 @@ export function createWorkspaceAppContext(
       "files.open@1",
       "files.upload@1",
       "pdf.printHtmlToPdf@1",
+      "references.select@1",
       "userProjects@1",
       "workspace.openFeature@1"
     ],

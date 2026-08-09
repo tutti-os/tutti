@@ -6,6 +6,35 @@ import (
 	"testing"
 )
 
+func TestRecipientProjectorProjectsRuntimeActivityIdentity(t *testing.T) {
+	t.Parallel()
+	event, err := NewRuntimeActivityUpdateEvent(RuntimeActivityUpdateData{
+		WorkspaceID: "owner-workspace", AgentSessionID: "owner-session",
+		EventType: EventTypeRuntimeActivityUpdate, State: "running", OccurredAtUnixMS: 10,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	projector, err := NewRecipientProjector(ProjectionContext{
+		OwnerWorkspaceID: "owner-workspace", OwnerAgentSessionID: "owner-session",
+		RecipientWorkspaceID: "recipient-workspace", RecipientAgentSessionID: "recipient-session",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	projected, err := projector.Project(event)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var data RuntimeActivityUpdateData
+	if err := json.Unmarshal(projected.Data, &data); err != nil {
+		t.Fatal(err)
+	}
+	if data.WorkspaceID != "recipient-workspace" || data.AgentSessionID != "recipient-session" {
+		t.Fatalf("projected runtime activity identity = %#v", data)
+	}
+}
+
 func TestRecipientProjectorPreservesOpaqueJSONNumbers(t *testing.T) {
 	t.Parallel()
 

@@ -46,6 +46,10 @@ import type {
 import { resolveConversationRailQueryScope } from "./agentGuiConversationRailQueryTypes";
 import { AgentGUIConversationRailTargetedPageRefresher } from "./AgentGUIConversationRailTargetedPageRefresher";
 import { AgentGUIConversationRailSearchController } from "./AgentGUIConversationRailSearchController";
+import {
+  createAgentGUIConversationActivityController,
+  type AgentGUIConversationActivityController
+} from "./agentGUIConversationActivityController";
 export type { AgentGUIConversationRailQuerySnapshot } from "./agentConversationRailQuerySnapshot";
 export type {
   ConversationRailQueryRuntime,
@@ -57,6 +61,8 @@ const SECTION_REFRESH_LIMIT_MAX = 100;
 type Listener = (snapshot: AgentGUIConversationRailQuerySnapshot) => void;
 type PublicationRefreshState = "idle" | "pending" | "failed";
 export class AgentGUIConversationRailQueryController {
+  readonly activityController: AgentGUIConversationActivityController =
+    createAgentGUIConversationActivityController();
   readonly getSnapshot = (): AgentGUIConversationRailQuerySnapshot =>
     this.snapshot;
   readonly isInteractionLocked = (): boolean =>

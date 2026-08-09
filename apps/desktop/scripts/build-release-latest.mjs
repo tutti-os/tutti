@@ -89,6 +89,14 @@ function isMacosUniversalDmg(asset) {
   );
 }
 
+function isWindowsX64Exe(asset) {
+  return (
+    asset.platform === "windows" &&
+    asset.arch === "x64" &&
+    asset.format === "exe"
+  );
+}
+
 function normalizePlatform(value) {
   const normalized = value.toLowerCase();
   if (
@@ -184,6 +192,7 @@ async function buildDesktopReleaseLatest(options) {
   }
 
   const macosUniversalDmg = assets.find(isMacosUniversalDmg)?.url ?? null;
+  const windowsX64Exe = assets.find(isWindowsX64Exe)?.url ?? null;
 
   return {
     schemaVersion,
@@ -196,7 +205,8 @@ async function buildDesktopReleaseLatest(options) {
     sourceRef: sourceRef || null,
     baseUrl,
     preferredDownloads: {
-      macosUniversalDmg
+      macosUniversalDmg,
+      windowsX64Exe
     },
     assets
   };

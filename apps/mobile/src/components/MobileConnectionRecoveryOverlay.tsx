@@ -10,12 +10,14 @@ import type { MobileConnectionSnapshot } from "../services/mobileApplicationServ
 interface MobileConnectionRecoveryOverlayProps {
   connection: MobileConnectionSnapshot;
   onBackToDevices(): void;
+  onCheckForUpdates(): void;
   onRetry(): void;
 }
 
 export function MobileConnectionRecoveryOverlay({
   connection,
   onBackToDevices,
+  onCheckForUpdates,
   onRetry
 }: MobileConnectionRecoveryOverlayProps) {
   const theme = useNativeTheme();
@@ -24,6 +26,8 @@ export function MobileConnectionRecoveryOverlay({
     return null;
   }
   const failed = connection.phase === "failed";
+  const protocolIncompatible =
+    failed && connection.reasonCode === "protocol_revision_mismatch";
 
   return (
     <Modal
@@ -40,21 +44,29 @@ export function MobileConnectionRecoveryOverlay({
           )}
           <Text accessibilityRole="header" style={styles.title}>
             {failed
-              ? t("connectionRecoveryFailedTitle")
+              ? protocolIncompatible
+                ? t("connectionVersionIncompatibleTitle")
+                : t("connectionRecoveryFailedTitle")
               : connection.phase === "synchronizing"
                 ? t("connectionSynchronizingTitle")
                 : t("connectionReconnectingTitle")}
           </Text>
           <Text style={styles.description}>
             {failed
-              ? t("connectionRecoveryFailedDescription")
+              ? protocolIncompatible
+                ? t("connectionVersionIncompatibleDescription")
+                : t("connectionRecoveryFailedDescription")
               : t("connectionRecoveryDescription")}
           </Text>
           <View style={styles.actions}>
             {failed ? (
               <NativeButton
-                label={t("retryConnection")}
-                onPress={onRetry}
+                label={
+                  protocolIncompatible
+                    ? t("checkForUpdates")
+                    : t("retryConnection")
+                }
+                onPress={protocolIncompatible ? onCheckForUpdates : onRetry}
                 size="large"
               />
             ) : null}

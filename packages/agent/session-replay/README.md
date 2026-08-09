@@ -54,7 +54,9 @@ Recording portability is applied before candidate bytes are persisted.
 Product-owned Activity Event storage replaces only the structural
 Engine `session/activate` effect CWD and in-tree rail project path with
 `${REPLAY_CWD}`. API-origin `session.create` direct stimuli use the same
-projection because they remain a valid non-UI caller path. Prompt image blocks
+projection because they remain a valid non-UI caller path, and they retain the
+effective create-only `isolation` mode so a recorded Worktree launch creates an
+equivalent isolated checkout during replay. Prompt image blocks
 in activation `content`, `runtimeContent`, and `initialContent` replace only
 their state-owned asset path with inline bytes; persisted Agent attachments use
 the content-addressed blob manifest instead. Native generated-image outputs use
@@ -166,16 +168,25 @@ published Cassette. Active recordings must be canceled before deletion.
 The daemon creates a fresh Tutti `WorkspaceID` for every Replay Workspace,
 validates and merges all semantic initial states before mutation, restores
 canonical Agent history through Host before normal recovery, and verifies the
-semantic expected state. The JavaScript runner injects the transient identity
-only into product Activity Event envelopes.
+semantic expected state. Runtime registrations carry the current `UserID`
+beside the Workspace target; Host binds it during restore, while the portable
+Agent graph remains user-independent. Every batch declares one semantic
+profile. Tutti uses the full Agent, Tutti Mode, Workflow, and Issue profile;
+consumers that implement only Agent semantics use the Agent profile. A
+Cassette that contains state from an unsupported domain fails before restore,
+and actual state is checked against the same profile during verification.
+Product composition supplies a non-empty target User through runtime registration; the
+JavaScript runner injects the replay-created Workspace identity only into
+product Activity Event envelopes.
 The runner also binds every scenario to one user-project root outside the Tutti
 checkout. A caller may supply an absolute
 `TUTTI_AGENT_SESSION_REPLAY_PROJECT_ROOT`; otherwise the direct CLI creates a
 run-scoped Git project under the operating-system temporary directory and
 removes it on exit. `--keep-runtime` retains that project for diagnosis.
 Semantic settings readiness compares every recorded composer setting with the
-live canonical value but ignores live-only default fields. A Replay recorded
-before a provider began materializing a new default such as `speed` therefore
-remains valid, while a missing or changed recorded model, reasoning,
-permission, plan, or speed value that is not equivalent to an omitted default
-still fails closed.
+live canonical value but ignores live-only default fields. Final-state
+transport verification uses the same composer-settings contract for
+`Session.settings`, so a Replay recorded before a provider began materializing
+a new default such as `speed` or `codexSaverMode:false` remains valid, while a
+missing or changed recorded model, reasoning, permission, plan, or non-default
+speed / saver value still fails closed.

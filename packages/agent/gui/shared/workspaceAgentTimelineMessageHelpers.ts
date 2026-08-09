@@ -124,7 +124,7 @@ export function userMessageProjectionKey(
   if (normalizedBody) {
     return `text:${normalizedBody}`;
   }
-  if (!hasRenderableUserPromptContent(item.payload?.content)) {
+  if (!hasUserPromptContent(item.payload?.content)) {
     return null;
   }
   const clientSubmitId = stringRecordValue(item.payload, "clientSubmitId");
@@ -165,7 +165,7 @@ export function isRecentDuplicateUserMessage(
   return false;
 }
 
-function hasRenderableUserPromptContent(content: unknown): boolean {
+function hasUserPromptContent(content: unknown): boolean {
   if (!Array.isArray(content)) {
     return false;
   }
@@ -181,11 +181,10 @@ function hasRenderableUserPromptContent(content: unknown): boolean {
     if (block.type === "text") {
       return typeof block.text === "string" && block.text.trim().length > 0;
     }
-    return (
-      block.type === "image" &&
-      typeof block.mimeType === "string" &&
-      block.mimeType.trim().length > 0
-    );
+    // Keep the image block even when MIME/source metadata is incomplete. The
+    // renderer owns load failure presentation and must be able to show a
+    // retryable placeholder for an expired or malformed external URL.
+    return block.type === "image";
   });
 }
 

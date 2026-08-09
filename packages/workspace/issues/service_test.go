@@ -1032,6 +1032,39 @@ func TestServiceCreateIssueRunCreatesTaskRunWhenIssueHasNoTasks(t *testing.T) {
 	}
 }
 
+func TestServicePrepareRunDoesNotPersistImplicitTask(t *testing.T) {
+	store := newFakeStore()
+	service := testService(store)
+	ctx := context.Background()
+
+	issue, err := service.CreateIssue(ctx, CreateIssueInput{
+		WorkspaceID: "workspace-1",
+		TopicID:     DefaultTopicID,
+		ActorUserID: "user-1",
+		Title:       "Prepare atomic launch",
+	})
+	if err != nil {
+		t.Fatalf("CreateIssue() error = %v", err)
+	}
+
+	prepared, err := service.PrepareRun(ctx, CreateRunInput{
+		WorkspaceID:   issue.WorkspaceID,
+		IssueID:       issue.IssueID,
+		ActorUserID:   "user-1",
+		RunID:         "run-prepared",
+		AgentTargetID: "local:codex",
+	})
+	if err != nil {
+		t.Fatalf("PrepareRun() error = %v", err)
+	}
+	if !prepared.TaskIsNew || prepared.Task.TaskID == "" {
+		t.Fatalf("prepared Task = %+v, TaskIsNew = %v", prepared.Task, prepared.TaskIsNew)
+	}
+	if len(store.tasks) != 0 {
+		t.Fatalf("persisted tasks after PrepareRun() = %d, want 0", len(store.tasks))
+	}
+}
+
 func TestProjectIssueStatusUsesRunningForPartialWork(t *testing.T) {
 	tests := []struct {
 		name   string

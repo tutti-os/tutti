@@ -19,10 +19,14 @@ import {
 import {
   buildGoLintLane,
   buildGoTestLane,
+  discoverGoModuleRoots,
   buildPackageTestCommand,
   isBuiltinGenerateRequired,
+  isGlobalGoValidationRelevant,
+  isGoValidationRelevant,
   resolveGoModuleRoot,
-  resolveGoValidationTargets
+  resolveGoValidationTargets,
+  selectGoLintModuleRoots
 } from "./run-check-changed-targets.mjs";
 import {
   classifyChangedFiles,
@@ -222,8 +226,14 @@ function buildChangedLanes() {
     });
   }
 
+  const goModuleRoots = classification.runGo
+    ? discoverGoModuleRoots({ root: workspaceRoot })
+    : [];
   const goValidationTargets = classification.runGo
-    ? resolveGoValidationTargets(changedFiles)
+    ? resolveGoValidationTargets(changedFiles, {
+        lintModuleRoots: selectGoLintModuleRoots(goModuleRoots),
+        moduleRoots: goModuleRoots
+      })
     : null;
   const forceBuiltinGenerate = isBuiltinGenerateRequired(changedFiles);
   if (goValidationTargets) {
@@ -231,12 +241,15 @@ function buildChangedLanes() {
       const inputFiles = selectGoLaneInputs(
         changedFiles,
         moduleRoot,
-        forceBuiltinGenerate
+        forceBuiltinGenerate,
+        goModuleRoots
       );
       addLane({
         ...buildGoLintLane({
+          forceBuiltinGenerate,
           golangciLintBinary,
           moduleRoot,
+          pnpmCommand: pnpmShellCommand,
           targets,
           shellQuote,
           workspaceRoot
@@ -248,7 +261,8 @@ function buildChangedLanes() {
       const inputFiles = selectGoLaneInputs(
         changedFiles,
         moduleRoot,
-        forceBuiltinGenerate
+        forceBuiltinGenerate,
+        goModuleRoots
       );
       addLane({
         ...buildGoTestLane({
@@ -268,7 +282,7 @@ function buildChangedLanes() {
         label: "build:go",
         serialGroup: "tuttid-builtin-assets",
         command: [...pnpmCommand, "run", "build:go"],
-        inputFiles: changedFiles.filter(isGoValidationInput)
+        inputFiles: changedFiles.filter(isGoValidationRelevant)
       });
     }
   }
@@ -718,19 +732,17 @@ function isTypeScriptValidationInput(file) {
   );
 }
 
-function isGoValidationInput(file) {
-  return (
-    file.endsWith(".go") ||
-    /(?:^|\/)go\.(?:mod|sum)$/u.test(file) ||
-    ["go.work", "go.work.sum"].includes(file) ||
-    file.startsWith("services/tuttid/.golangci")
-  );
-}
-
-function selectGoLaneInputs(changedFiles, moduleRoot, forceBuiltinGenerate) {
+function selectGoLaneInputs(
+  changedFiles,
+  moduleRoot,
+  forceBuiltinGenerate,
+  moduleRoots
+) {
   return changedFiles.filter(
     (file) =>
-      (isGoValidationInput(file) && resolveGoModuleRoot(file) === moduleRoot) ||
+      (isGoValidationRelevant(file) &&
+        (isGlobalGoValidationRelevant(file) ||
+          resolveGoModuleRoot(file, moduleRoots) === moduleRoot)) ||
       (forceBuiltinGenerate &&
         moduleRoot === "services/tuttid" &&
         file.startsWith("services/tuttid/builtin-apps/tutti-onboarding/"))

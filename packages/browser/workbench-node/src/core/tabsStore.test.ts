@@ -58,3 +58,16 @@ test("browser tabs can create an automation page at a requested URL", () => {
   const tab = store.addTab("browser:one", "https://example.com/");
   assert.equal(tab.defaultUrl, "https://example.com/");
 });
+
+test("browser tabs materialize an existing cold surface for automation", () => {
+  const store = createBrowserNodeTabsStore();
+  const initial = store.ensureSurface("browser:one", "about:blank");
+
+  assert.equal(initial.tabs[0]?.materializeCold, undefined);
+
+  const materialized = store.ensureSurface("browser:one", "about:blank", {
+    materializeCold: true
+  });
+
+  assert.equal(materialized.tabs[0]?.materializeCold, true);
+});

@@ -12,6 +12,7 @@ import {
   type ClockPort,
   type MobileDiagnosticsPort,
   type PairingPort,
+  type QRCodeScanResult,
   type QRCodeScanOperation,
   type QRCodeScannerPort
 } from "./servicePorts";
@@ -129,32 +130,45 @@ export class DeviceService extends ObservableService<DeviceSnapshot> {
     }
   }
 
-  async scanAndPair(): Promise<void> {
-    if (!this.canStartPairing()) return;
+  async scanAndPair(): Promise<"manual" | null> {
+    if (!this.canStartPairing()) return null;
     this.transitionPairing("scanning", { errorCode: null }, "scanner");
     const operation = this.qrCodeScanner.start();
     this.scanOperation = operation;
-    let rawPayload: string;
+    let scanResult: QRCodeScanResult;
     try {
-      rawPayload = await operation.result;
+      scanResult = await operation.result;
     } catch (cause) {
       if (!this.disposed && this.snapshot.pairingState === "scanning") {
         const errorCode = this.scannerErrorCode(cause);
-        this.transitionPairing("idle", { errorCode });
+        const fallbackToManual =
+          errorCode === "camera_permission_required" ||
+          errorCode === "scanner_unavailable";
+        this.transitionPairing("idle", {
+          errorCode: fallbackToManual ? null : errorCode
+        });
         this.diagnostics.record({
           errorCode,
           name: "device_pairing.failed",
           stage: "scanner"
         });
+        if (fallbackToManual) return "manual";
       }
-      return;
+      return null;
     } finally {
       if (this.scanOperation === operation) {
         this.scanOperation = null;
       }
     }
-    if (this.disposed || this.snapshot.pairingState !== "scanning") return;
-    await this.pairWithRawPayload(rawPayload, "scanner");
+    if (this.disposed || this.snapshot.pairingState !== "scanning") {
+      return null;
+    }
+    if (scanResult.kind === "manual") {
+      this.transitionPairing("idle", { errorCode: null });
+      return "manual";
+    }
+    await this.pairWithRawPayload(scanResult.value, "scanner");
+    return null;
   }
 
   async pairWithCode(rawPayload: string): Promise<boolean> {

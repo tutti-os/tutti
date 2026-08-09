@@ -26,6 +26,7 @@ import type {
 import { SendFilledIcon } from "./AgentComposerDraftPreview";
 import { useOptionalAgentGUIRuntime } from "../../../agentActivityRuntime";
 import { reportAgentComposerDiagnostic } from "./agentComposerDiagnostics";
+import { submitAgentInteractionResponseAndDismiss } from "../../../shared/agentConversation/interactionResponseAdmission";
 
 interface Input {
   draftContent: AgentComposerDraft;
@@ -252,14 +253,12 @@ export function useComposerPresentation(input: Input) {
   }, [activePromptRequestId]);
 
   const submitInteractivePromptAndDismiss = useCallback(
-    (input: {
-      requestId: string;
-      action?: string;
-      optionId?: string;
-      payload?: Record<string, unknown>;
-    }) => {
-      onSubmitInteractivePrompt(input);
-      setDismissedPromptRequestId(input.requestId);
+    (input: Parameters<AgentComposerProps["onSubmitInteractivePrompt"]>[0]) => {
+      return submitAgentInteractionResponseAndDismiss({
+        response: input,
+        submit: onSubmitInteractivePrompt,
+        dismiss: setDismissedPromptRequestId
+      });
     },
     [onSubmitInteractivePrompt]
   );

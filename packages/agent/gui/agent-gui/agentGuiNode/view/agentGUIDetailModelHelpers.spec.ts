@@ -4,6 +4,7 @@ import {
   handoffProjectPathForConversation,
   isAgentGUIHomeStatusNoticeVisible,
   resolveAgentGUITuttiStopTargets,
+  resolveAgentGUIInteractionDisabledReason,
   resolveAgentGUIHomeNoticeChrome,
   resolveAgentGUIStopControl,
   shouldShowAgentGUIStopButton
@@ -85,6 +86,38 @@ describe("shouldShowAgentGUIStopButton", () => {
   });
 });
 
+describe("resolveAgentGUIInteractionDisabledReason", () => {
+  it("uses the approval reason for approval prompts", () => {
+    expect(
+      resolveAgentGUIInteractionDisabledReason({
+        promptKind: "approval",
+        approvalReason: "The shared Agent owner is offline",
+        interactivePromptReason: "The shared Agent caller is offline"
+      })
+    ).toBe("The shared Agent owner is offline");
+  });
+
+  it("uses the interactive prompt reason for non-approval prompts", () => {
+    expect(
+      resolveAgentGUIInteractionDisabledReason({
+        promptKind: "ask-user",
+        approvalReason: "The shared Agent owner is offline",
+        interactivePromptReason: "The shared Agent caller is offline"
+      })
+    ).toBe("The shared Agent caller is offline");
+  });
+
+  it("does not expose a reason when there is no active prompt", () => {
+    expect(
+      resolveAgentGUIInteractionDisabledReason({
+        promptKind: null,
+        approvalReason: "The shared Agent owner is offline",
+        interactivePromptReason: "The shared Agent caller is offline"
+      })
+    ).toBeNull();
+  });
+});
+
 describe("resolveAgentGUITuttiStopTargets", () => {
   it("stops only the Issue cascade when aggregate work outlives the source Turn", () => {
     expect(
@@ -142,6 +175,20 @@ describe("Home status presentation", () => {
       })
     ).toBe(false);
   });
+
+  it.each(["transport-connecting", "transport-unavailable"] as const)(
+    "keeps the pending prompt visible for interaction-scoped %s chrome",
+    (kind) => {
+      expect(
+        isAgentGUIHomeStatusNoticeVisible({
+          kind,
+          message: "Connection unavailable",
+          canRetry: false,
+          interactionScoped: true
+        })
+      ).toBe(false);
+    }
+  );
 
   it("projects target connection chrome onto the empty Home composer", () => {
     const inlineNoticeChrome = {

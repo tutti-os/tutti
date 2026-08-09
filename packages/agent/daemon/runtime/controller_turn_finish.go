@@ -6,75 +6,56 @@ import (
 	activityshared "github.com/tutti-os/tutti/packages/agent/daemon/activity/events"
 )
 
-func (c *Controller) storeTurnSession(session Session, turnID string) bool {
+// storeTurnSession commits a mid-turn lifecycle snapshot produced by a turn
+// execution goroutine through the unified commit boundary. The controller's
+// current session is the only accepted state, so a concurrent user mutation
+// (SetTitle/SetVisible/UpdateSettings) is never overwritten by the stale exec
+// copy. It returns the accepted session; callers must publish and report with
+// that value, never the exec-path snapshot.
+func (c *Controller) storeTurnSession(session Session, turnID string) (Session, bool) {
 	if c == nil {
-		return false
+		return Session{}, false
 	}
 	key := sessionKey(session.RoomID, session.AgentSessionID)
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	active, ok := c.turns[key]
-	if !ok || strings.TrimSpace(active.turnID) != strings.TrimSpace(turnID) {
-		return false
-	}
-	current, ok := c.sessions[key]
-	if !ok {
-		return false
-	}
-	// A blocking Exec owns a local Session snapshot while the adapter's
-	// session-event sink can advance lifecycle concurrently. Never let the
-	// older local snapshot erase a newer synthetic continuation.
-	if current.LifecycleAuthority && current.LifecycleSeq > session.LifecycleSeq {
-		return false
-	}
-	c.sessions[key] = session
-	return true
+	return c.commitTurnExecSessionLocked(key, turnID, session, false)
 }
 
-func (c *Controller) finishTurn(session Session, turnID string) bool {
+// finishTurn settles the turn owned by an execution goroutine through the
+// unified commit boundary and returns the accepted session. Like
+// storeTurnSession it merges only turn-execution-owned fields, so settlement
+// never reverts a concurrent user title, visibility, or settings change.
+func (c *Controller) finishTurn(session Session, turnID string) (Session, bool) {
 	if c == nil {
-		return false
+		return Session{}, false
 	}
 	key := sessionKey(session.RoomID, session.AgentSessionID)
+	needsFallback := session.LifecycleAuthority &&
+		lifecycleStillActiveForTurn(session.TurnLifecycle, turnID)
 	c.mu.Lock()
-	active, ok := c.turns[key]
-	if !ok || strings.TrimSpace(active.turnID) != strings.TrimSpace(turnID) {
-		c.mu.Unlock()
-		return false
-	}
-	delete(c.turns, key)
-	current, ok := c.sessions[key]
-	if !ok {
-		c.mu.Unlock()
-		return false
-	}
-	if sessionHasDifferentLiveTurn(current, turnID) {
-		c.mu.Unlock()
-		return false
-	}
-	session = c.preserveCurrentSessionSettingsLocked(key, session)
-	if session.LifecycleAuthority {
-		// ADR 0008: no silent record mutation. If the adapter already settled
-		// this turn via its snapshot, nothing is left to do; otherwise (steer
-		// absorption, adapter death before settle) publish a controller-origin
-		// settled snapshot so even the fallback flows through the single copy
-		// pipeline — and reaches reporter/GUI, unlike the old silent write.
-		needsFallback := session.TurnLifecycle != nil &&
-			session.TurnLifecycle.ActiveTurnID != nil &&
-			strings.TrimSpace(*session.TurnLifecycle.ActiveTurnID) == strings.TrimSpace(turnID) &&
-			runtimeTurnLifecyclePhaseIsLive(session.TurnLifecycle.Phase)
-		c.sessions[key] = session
-		c.mu.Unlock()
-		if needsFallback {
-			c.applySessionEventsByAgentSessionID(session.AgentSessionID, settledFallbackTurnEvents(session, turnID))
-		}
-		return true
-	}
-	session = settleFinishedTurnLifecycle(session, turnID)
-	session = c.reconcileSessionStatusLocked(key, session)
-	c.sessions[key] = session
+	accepted, ok := c.commitTurnExecSessionLocked(key, turnID, session, true)
 	c.mu.Unlock()
-	return true
+	if !ok {
+		return Session{}, false
+	}
+	if needsFallback {
+		c.applySessionEventsByAgentSessionID(accepted.AgentSessionID, settledFallbackTurnEvents(accepted, turnID))
+	}
+	return accepted, true
+}
+
+// lifecycleStillActiveForTurn reports that the exec-path lifecycle still marks
+// the given turn live after Exec returned. For snapshot-authority sessions that
+// means the adapter never settled the turn it owns (for example a submission
+// absorbed by steering), so the controller publishes its own settled snapshot
+// to reach reporter/GUI.
+func lifecycleStillActiveForTurn(lifecycle *TurnLifecycle, turnID string) bool {
+	if lifecycle == nil || lifecycle.ActiveTurnID == nil {
+		return false
+	}
+	return strings.TrimSpace(*lifecycle.ActiveTurnID) == strings.TrimSpace(turnID) &&
+		runtimeTurnLifecyclePhaseIsLive(lifecycle.Phase)
 }
 
 // settledFallbackTurnEvents builds the controller-origin settled snapshot the

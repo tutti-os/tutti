@@ -235,7 +235,11 @@ func (s *Service) recordGoalCheckpointLocked(
 			return nil
 		}
 	}
-	goalAddress, ok := s.checkpoints.entities.byRuntime[goalRuntimeKey(sessionID)]
+	// Goal identity is bound when the immutable Activity fact introduces it.
+	// A later commit may advance the checkpoint cursor, but it must not rewrite
+	// that origin to an unrelated Activity event.
+	goalAddress, ok :=
+		s.checkpoints.entities.byRuntime[goalRuntimeKey(sessionID)]
 	if !ok {
 		return nil
 	}

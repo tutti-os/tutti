@@ -212,6 +212,15 @@ behavior. A workspace-wide `engine/connectionChanged` event must not be used to
 represent one remote Session's transport because that would also block
 unrelated Sessions sharing the engine.
 
+Provider adapters may also publish exact session-level `running`/`idle`
+observations as `runtime_activity_update` before a canonical Turn identity
+exists. The workspace event coordinator stores this ephemeral runtime activity
+outside the canonical Session so consumers can bridge processing presentation
+without fabricating a Turn. The coordinator consumes `occurredAtUnixMs` as a
+monotonic fence, and a settled canonical Turn wins over an older `running`
+observation. `idle`, session removal, or event-stream disconnect clears it;
+canonical Turn state remains the lifecycle authority.
+
 ## Event Shape
 
 Canonical streams emit a versioned `message_update`:
@@ -267,17 +276,21 @@ accepts:
 - `interaction_update`: updates the canonical durable interaction projection
 - `session_reconcile_required`: asks the engine transport to reload the session
 - `session_deleted`: removes the session through the engine tombstone flow
+- `session_restored`: clears only that explicit deletion tombstone, then asks
+  the engine transport to hydrate authoritative Session detail
 
 Events with a different `workspaceId` are ignored. Unknown event types are
 ignored.
 
 The coordinator owns inline-message continuity, Engine observation intents,
-Session tombstones, discontinuity reconciliation, and reconnect hydration.
+Session tombstones, explicit restore admission, discontinuity reconciliation,
+and reconnect hydration.
 Desktop receives the full canonical event union. The paired-device live
 protocol carries only delta, Turn, Interaction, and audit variants; tuttid
 converts canonical message and reconcile-required events into scoped
-discontinuities. It preserves `session_deleted` as a typed deletion delivery so
-Mobile enters the same Engine tombstone flow as Desktop. Platform adapters
+discontinuities. It preserves `session_deleted` and `session_restored` as typed
+lifecycle deliveries so Mobile enters the same Engine tombstone/restore flow
+as Desktop. Platform adapters
 retain socket/DeviceLink lifecycle, diagnostics, Rail invalidation, and
 navigation.
 

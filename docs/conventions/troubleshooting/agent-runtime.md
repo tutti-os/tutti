@@ -69,6 +69,7 @@ Turn state, loading, cancel, restore, rail projection, event updates, imports, a
 - [Queued AgentGUI prompt stalls after no-active-turn failure](./agent-session-lifecycle.md#queued-agentgui-prompt-stalls-after-no-active-turn-failure)
 - [Agent session stays loading after a completed turn](./agent-session-lifecycle.md#agent-session-stays-loading-after-a-completed-turn)
 - [AgentGUI model switch changes defaults but not the active session](./agent-session-lifecycle.md#agentgui-model-switch-changes-defaults-but-not-the-active-session)
+- [New Agent conversation rejects a model that is no longer offered](./agent-session-lifecycle.md#new-agent-conversation-rejects-a-model-that-is-no-longer-offered)
 - [AgentGUI shows the selected settings but a new session does not inherit them](./agent-session-lifecycle.md#agentgui-shows-the-selected-settings-but-a-new-session-does-not-inherit-them)
 - [Historical AgentGUI permission changes time out or stop responding](./agent-session-lifecycle.md#historical-agentgui-permission-changes-time-out-or-stop-responding)
 - [AgentGUI pin or unpin appears stuck for a live session](./agent-session-lifecycle.md#agentgui-pin-or-unpin-appears-stuck-for-a-live-session)

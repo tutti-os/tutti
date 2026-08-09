@@ -101,7 +101,11 @@ func (s *Store) PrepareGoalControlOperation(ctx context.Context, input GoalContr
 	tombstoned := false
 	switch input.Action {
 	case "set":
-		desired = map[string]any{"objective": input.Objective, "status": "active"}
+		desired = map[string]any{
+			"objective":       input.Objective,
+			"status":          "active",
+			"startedAtUnixMs": input.OccurredAtUnixMS,
+		}
 	case "clear":
 		desired = nil
 		tombstoned = true
@@ -360,6 +364,12 @@ func (s *Store) CompleteGoalControlOperation(ctx context.Context, input GoalCont
 	if input.WorkspaceID == "" || input.OperationID == "" || input.OccurredAtUnixMS <= 0 {
 		return GoalControlOperation{}, SessionGoalState{}, false, errors.New("goal completion identity and occurred time are required")
 	}
+	if input.Mode == "" {
+		input.Mode = GoalControlCompletionModeProvider
+	}
+	if input.Mode != GoalControlCompletionModeProvider && input.Mode != GoalControlCompletionModeLocalStop {
+		return GoalControlOperation{}, SessionGoalState{}, false, errors.New("unsupported goal completion mode")
+	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return GoalControlOperation{}, SessionGoalState{}, false, err
@@ -373,35 +383,67 @@ func (s *Store) CompleteGoalControlOperation(ctx context.Context, input GoalCont
 	if err != nil || !stateFound {
 		return GoalControlOperation{}, SessionGoalState{}, false, err
 	}
-	if op.Status == GoalOperationStatusCompleted || op.Status == GoalOperationStatusFailed || op.Status == GoalOperationStatusSuperseded {
+	localStop := input.Mode == GoalControlCompletionModeLocalStop
+	if localStop && (!input.Succeeded || op.Action != "clear") {
+		return GoalControlOperation{}, SessionGoalState{}, false, errors.New("local stop completion requires a successful clear operation")
+	}
+	if localStop && state.Revision < op.GoalRevision {
+		return GoalControlOperation{}, SessionGoalState{}, false, errors.New("local stop clear revision exceeds current goal state")
+	}
+	if op.Status == GoalOperationStatusCompleted || op.Status == GoalOperationStatusSuperseded ||
+		(op.Status == GoalOperationStatusFailed && !localStop) {
 		if _, err := s.commitTransaction(ctx, tx, input.WorkspaceID, nil); err != nil {
 			return GoalControlOperation{}, SessionGoalState{}, false, err
 		}
 		return op, state, false, nil
 	}
-	if op.RepairRequired && input.RepairEpoch != op.RepairEpoch {
+	if op.RepairRequired && input.RepairEpoch != op.RepairEpoch && !localStop {
 		if _, err := s.commitTransaction(ctx, tx, input.WorkspaceID, nil); err != nil {
 			return GoalControlOperation{}, SessionGoalState{}, false, err
 		}
 		return op, state, false, nil
 	}
-	terminalFence, err := goalRevisionTerminalFenceTx(ctx, tx, state.WorkspaceID, state.AgentSessionID, state.Revision)
-	if err != nil {
-		return GoalControlOperation{}, SessionGoalState{}, false, err
+	if localStop {
+		input.Observed = cloneJSONMap(state.Observed)
+	} else {
+		input.Observed = normalizeObservedGoalTiming(input.Observed, state, input.OccurredAtUnixMS)
+	}
+	supersededLocalStop := localStop && state.Revision > op.GoalRevision
+	terminalFence := false
+	if !supersededLocalStop {
+		terminalFence, err = goalRevisionTerminalFenceTx(ctx, tx, state.WorkspaceID, state.AgentSessionID, state.Revision)
+		if err != nil {
+			return GoalControlOperation{}, SessionGoalState{}, false, err
+		}
 	}
 	status := GoalOperationStatusFailed
 	syncStatus := GoalSyncStatusFailed
-	if input.Succeeded {
+	if supersededLocalStop {
+		status = GoalOperationStatusSuperseded
+		syncStatus = state.SyncStatus
+	} else if input.Succeeded {
 		status = GoalOperationStatusCompleted
-		if goalStateConverged(state.Desired, input.Observed, state.Tombstoned) {
+		if localStop {
+			syncStatus = GoalSyncStatusUnknown
+		} else if goalStateConverged(state.Desired, input.Observed, state.Tombstoned) {
 			syncStatus = GoalSyncStatusSynced
 		} else {
 			syncStatus = GoalSyncStatusDiverged
 		}
 	}
 	stateLastError := strings.TrimSpace(input.LastError)
-	syncStatus, stateLastError = terminalGoalSyncState(state, syncStatus, stateLastError, terminalFence)
+	if supersededLocalStop {
+		stateLastError = state.LastError
+	} else {
+		syncStatus, stateLastError = terminalGoalSyncState(state, syncStatus, stateLastError, terminalFence)
+	}
 	evidenceJSON := marshalJSONMapOrEmpty(input.Evidence)
+	providerPhase := providerPhaseForCompletion(input.Succeeded)
+	observedAtUnixMS := input.OccurredAtUnixMS
+	if localStop {
+		providerPhase = GoalProviderPhaseUnknown
+		observedAtUnixMS = state.ObservedAtUnixMS
+	}
 	if _, err := tx.ExecContext(ctx, `
 UPDATE workspace_agent_goal_control_operations
 SET status = ?, evidence_json = ?, last_error = ?, provider_phase = ?,
@@ -409,17 +451,15 @@ SET status = ?, evidence_json = ?, last_error = ?, provider_phase = ?,
     repair_required = 0,
     updated_at_unix_ms = ?, completed_at_unix_ms = ?
 WHERE workspace_id = ? AND operation_id = ?
-`, status, evidenceJSON, strings.TrimSpace(input.LastError), providerPhaseForCompletion(input.Succeeded), input.OccurredAtUnixMS,
+`, status, evidenceJSON, strings.TrimSpace(input.LastError), providerPhase, input.OccurredAtUnixMS,
 		input.OccurredAtUnixMS, input.WorkspaceID, input.OperationID); err != nil {
 		return GoalControlOperation{}, SessionGoalState{}, false, err
 	}
-	if _, err := tx.ExecContext(ctx, `
-UPDATE workspace_agent_session_goals
-SET observed_json = ?, sync_status = ?, pending_operation_id = NULL,
-    last_evidence_json = ?, last_error = ?, observed_at_unix_ms = ?, updated_at_unix_ms = ?
-WHERE workspace_id = ? AND agent_session_id = ? AND pending_operation_id = ?
-`, nullableJSONMap(input.Observed), syncStatus, evidenceJSON, stateLastError,
-		input.OccurredAtUnixMS, input.OccurredAtUnixMS, input.WorkspaceID, op.AgentSessionID, input.OperationID); err != nil {
+	stateChanged, err := updateGoalStateForOperationCompletionTx(
+		ctx, tx, input, op, syncStatus, evidenceJSON, stateLastError,
+		observedAtUnixMS, localStop, supersededLocalStop,
+	)
+	if err != nil {
 		return GoalControlOperation{}, SessionGoalState{}, false, err
 	}
 	op, _, err = getGoalControlOperationTx(ctx, tx, input.WorkspaceID, input.OperationID)
@@ -430,10 +470,19 @@ WHERE workspace_id = ? AND agent_session_id = ? AND pending_operation_id = ?
 	if err != nil {
 		return GoalControlOperation{}, SessionGoalState{}, false, err
 	}
-	delta, err := s.commitTransaction(ctx, tx, input.WorkspaceID, []TransactionMutation{
-		transactionMutation(input.WorkspaceID, op.AgentSessionID, MutationEntityGoalOperation, op.OperationID, "complete", op.UpdatedAtUnixMS),
-		transactionMutation(input.WorkspaceID, op.AgentSessionID, MutationEntityGoalState, op.AgentSessionID, "upsert", state.Revision),
-	})
+	operationMutationAction := "complete"
+	if supersededLocalStop {
+		operationMutationAction = "supersede"
+	}
+	mutations := []TransactionMutation{
+		transactionMutation(input.WorkspaceID, op.AgentSessionID, MutationEntityGoalOperation, op.OperationID, operationMutationAction, op.UpdatedAtUnixMS),
+	}
+	if stateChanged {
+		mutations = append(mutations,
+			transactionMutation(input.WorkspaceID, op.AgentSessionID, MutationEntityGoalState, op.AgentSessionID, "upsert", state.Revision),
+		)
+	}
+	delta, err := s.commitTransaction(ctx, tx, input.WorkspaceID, mutations)
 	if err != nil {
 		return GoalControlOperation{}, SessionGoalState{}, false, err
 	}
@@ -490,6 +539,7 @@ func (s *Store) ReconcileSessionGoalObservation(ctx context.Context, input GoalO
 			_ = tx.Rollback()
 			return state, nil
 		}
+		input.Observed = normalizeObservedGoalTiming(input.Observed, state, input.OccurredAtUnixMS)
 		terminalFence, err := goalRevisionTerminalFenceTx(ctx, tx, input.WorkspaceID, input.AgentSessionID, state.Revision)
 		if err != nil {
 			_ = tx.Rollback()
@@ -645,6 +695,7 @@ func reconcileObservedGoalFromSessionTx(ctx context.Context, tx *sql.Tx, session
 	if err != nil {
 		return err
 	}
+	observed = normalizeObservedGoalTiming(observed, state, occurredAt)
 	if !found {
 		syncStatus := GoalSyncStatusUnknown
 		if len(observed) > 0 {

@@ -43,6 +43,7 @@ export interface AgentGUIConversationSummary {
   titleFallback?: AgentGUIConversationTitleFallback;
   status: AgentGUIConversationStatus;
   cwd: string;
+  isolation?: AgentActivitySession["isolation"];
   railSectionKey?: string;
   project?: AgentGUIConversationProjectSummary | null;
   projectMode?: "none";
@@ -52,6 +53,15 @@ export interface AgentGUIConversationSummary {
   hasUnreadCompletion?: boolean;
   unreadCompletionKey?: string | null;
   needsUserAction?: boolean;
+  // The backing session is invisible (session.visible === false). The summary
+  // still exists so an explicitly opened session presents its real identity,
+  // but it must never be rendered as a conversation rail row.
+  hiddenFromRail?: boolean;
+  // The summary was injected only because its session was explicitly selected
+  // while it was absent from the canonical conversation snapshot. The
+  // presentation layer may use it for the ordinary Rail/detail overlay, but
+  // it is excluded before Activity candidates are built.
+  isTransient?: boolean;
   projectionSource?: "pending_activation";
   isImported?: boolean;
   activeTurn?: AgentActivitySession["activeTurn"];
@@ -68,6 +78,7 @@ export type AgentGUIConversationProjectionSource = Pick<
   | "titleFallback"
   | "status"
   | "cwd"
+  | "isolation"
   | "railSectionKey"
   | "project"
   | "projectMode"
@@ -133,6 +144,8 @@ export type AgentGUIInteractivePrompt =
   | AgentGUIApprovalRequest
   | {
       kind: "ask-user";
+      agentSessionId?: string;
+      turnId?: string;
       requestId: string;
       title: string;
       questions: AgentGUIInteractiveQuestion[];

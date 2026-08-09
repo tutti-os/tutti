@@ -23,7 +23,7 @@ const tuttiAppRuntimeCacheRootEnv = "TUTTI_APP_RUNTIME_CACHE_ROOT"
 const tuttiAppRuntimeCatalogEnv = "TUTTI_APP_RUNTIME_CATALOG"
 const appRuntimeCatalogSchemaVersion = "tutti.app.runtimes.v2"
 const appRuntimeBaselineProfile = "baseline"
-const appRuntimeNodeStaticProfile = "node-static"
+const appRuntimeNodeStaticProfile = "connector-node-static"
 const defaultTuttiAppRuntimeCatalogURL = "https://d1x7gb6wqsqmnm.cloudfront.net/tutti-app-runtimes/catalog.json"
 
 const NodeStaticProfile = appRuntimeNodeStaticProfile
@@ -72,9 +72,10 @@ type appRuntimeCatalog struct {
 }
 
 type appRuntimeCatalogEntry struct {
-	Version    string                                `json:"version"`
-	Components map[string]appRuntimeCatalogComponent `json:"components"`
-	Profiles   map[string][]string                   `json:"profiles"`
+	Version     string                                `json:"version"`
+	Components  map[string]appRuntimeCatalogComponent `json:"components"`
+	Profiles    map[string][]string                   `json:"profiles"`
+	ProfileABIs map[string]string                     `json:"profileAbis,omitempty"`
 }
 
 type appRuntimeCatalogComponent struct {

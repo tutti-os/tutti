@@ -1,8 +1,10 @@
 import {
   NativeAvatar,
   NativeButton,
+  NativeControlGlyph,
   NativeIconButton,
   NativeListRow,
+  NativeProgressBar,
   NativeSheet,
   type NativeTheme,
   useNativeTheme
@@ -116,6 +118,32 @@ export function NativeComponentGallery({ onClose }: { onClose(): void }) {
           </View>
         </GallerySection>
 
+        <GallerySection title="native-control-glyph">
+          <View style={styles.glyphGrid}>
+            {(["add", "back", "send", "status", "stop"] as const).map(
+              (variant) => (
+                <View key={variant} style={styles.glyphPreview}>
+                  <NativeControlGlyph
+                    color={theme.color.text}
+                    variant={variant}
+                  />
+                  <Text style={styles.galleryStateLabel}>{variant}</Text>
+                </View>
+              )
+            )}
+            {(["down", "left", "right", "up"] as const).map((direction) => (
+              <View key={direction} style={styles.glyphPreview}>
+                <NativeControlGlyph
+                  color={theme.color.text}
+                  direction={direction}
+                  variant="chevron"
+                />
+                <Text style={styles.galleryStateLabel}>{direction}</Text>
+              </View>
+            ))}
+          </View>
+        </GallerySection>
+
         <GallerySection title="native-list-row">
           <NativeListRow
             description={t("recentSessions")}
@@ -131,6 +159,18 @@ export function NativeComponentGallery({ onClose }: { onClose(): void }) {
             title={t("newSession")}
             trailing={<Text style={styles.trailing}>›</Text>}
           />
+        </GallerySection>
+
+        <GallerySection title="native-progress-bar">
+          <GalleryState label="determinate">
+            <NativeProgressBar accessibilityLabel="64 percent" value={0.64} />
+          </GalleryState>
+          <GalleryState label="indeterminate">
+            <NativeProgressBar
+              accessibilityLabel="Indeterminate progress"
+              value={null}
+            />
+          </GalleryState>
         </GallerySection>
 
         <GallerySection title="native-sheet">
@@ -215,10 +255,24 @@ function createStyles(theme: NativeTheme) {
     },
     header: { alignItems: "flex-start", flexDirection: "row" },
     headerCopy: { flex: 1 },
-    galleryState: { alignItems: "center", gap: theme.space.small / 2 },
+    galleryState: {
+      alignItems: "center",
+      gap: theme.space.small / 2,
+      width: "100%"
+    },
     galleryStateLabel: {
       color: theme.color.muted,
       fontSize: theme.space.small
+    },
+    glyphGrid: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      gap: theme.space.medium
+    },
+    glyphPreview: {
+      alignItems: "center",
+      gap: theme.space.small / 2,
+      minWidth: theme.control.regular
     },
     inline: { flexDirection: "row", gap: theme.space.small },
     moreIcon: {

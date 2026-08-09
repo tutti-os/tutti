@@ -442,9 +442,10 @@ func TestStoreSnapshotCarriesTurnStateAndMessagesFromActivityEvents(t *testing.T
 		AgentSessionID:    "agent-1",
 		OccurredAtUnixMS:  1002,
 		Payload: activityshared.EventPayload{
-			TurnID:  "turn-1",
-			Role:    activityshared.MessageRoleAssistant,
-			Content: "working",
+			TurnID:    "turn-1",
+			Role:      activityshared.MessageRoleAssistant,
+			Content:   "working",
+			Semantics: activityshared.MessageSemantics{UserVisibleAssistantResponse: true},
 			Metadata: map[string]any{
 				"messageId": "assistant:turn-1:1",
 			},
@@ -462,6 +463,35 @@ func TestStoreSnapshotCarriesTurnStateAndMessagesFromActivityEvents(t *testing.T
 	messages := snapshot.SessionMessagesByID["agent-1"]
 	if len(messages) != 1 || messages[0].MessageID != "assistant:turn-1:1" || messages[0].Version != 1 {
 		t.Fatalf("snapshot messages = %#v, want one versioned message", snapshot.SessionMessagesByID)
+	}
+	if messages[0].Semantics == nil || !messages[0].Semantics.UserVisibleAssistantResponse {
+		t.Fatalf("snapshot message semantics = %#v, want explicit visible assistant response", messages[0].Semantics)
+	}
+}
+
+func TestSessionMessageUpdateFromActivityEventCarriesExplicitSemantics(t *testing.T) {
+	t.Parallel()
+
+	ctx := activityshared.EventContext{
+		EventID:        "event-1",
+		AgentSessionID: "agent-1",
+		TurnID:         "turn-1",
+	}
+	message := activityshared.NewMessageAppended(
+		ctx,
+		activityshared.MessageRoleAssistant,
+		"done",
+		true,
+	)
+	messageUpdate, ok := sessionMessageUpdateFromActivityEvent("agent-1", message, 1_000)
+	if !ok || messageUpdate.Semantics == nil || !messageUpdate.Semantics.UserVisibleAssistantResponse {
+		t.Fatalf("message update = %#v, want explicit visible assistant response", messageUpdate)
+	}
+
+	call := activityshared.NewCallStarted(ctx, "call-1", "tool", "Read", map[string]any{"path": "README.md"})
+	callUpdate, ok := sessionMessageUpdateFromActivityEvent("agent-1", call, 1_001)
+	if !ok || callUpdate.Semantics == nil || callUpdate.Semantics.UserVisibleAssistantResponse {
+		t.Fatalf("call update = %#v, want explicit non-visible assistant response", callUpdate)
 	}
 }
 
@@ -1267,6 +1297,7 @@ func TestStoreStoresMessageUpdatesForLocalReads(t *testing.T) {
 		Role:             "assistant",
 		Kind:             "text",
 		Status:           "streaming",
+		Semantics:        &WorkspaceAgentMessageSemantics{UserVisibleAssistantResponse: true},
 		Payload:          map[string]any{"text": "working"},
 		OccurredAtUnixMS: 1710000000002,
 	}, {
@@ -1304,6 +1335,9 @@ func TestStoreStoresMessageUpdatesForLocalReads(t *testing.T) {
 	}
 	if messages.Messages[1].Payload["text"] != "done" || messages.Messages[1].CompletedAtUnixMS != 1710000000003 {
 		t.Fatalf("merged message = %#v", messages.Messages[1])
+	}
+	if messages.Messages[1].Semantics == nil || !messages.Messages[1].Semantics.UserVisibleAssistantResponse {
+		t.Fatalf("merged message semantics = %#v, want original explicit visibility preserved", messages.Messages[1].Semantics)
 	}
 	messages.Messages[1].Payload["text"] = "mutated"
 

@@ -7,6 +7,22 @@ export function agentGUIConversationRailLabels(
   t: TranslateFn
 ): AgentGUIConversationRailLabels {
   return {
+    activityPriority: t("agentHost.agentGui.activityPriority"),
+    activityNothingNeedsAttention: t(
+      "agentHost.agentGui.activityNothingNeedsAttention"
+    ),
+    activityToday: t("agentHost.agentGui.activityToday"),
+    activityYesterday: t("agentHost.agentGui.activityYesterday"),
+    activityConversationSource: t(
+      "agentHost.agentGui.activityConversationSource"
+    ),
+    activityStatusFailed: t("agentHost.agentGui.activityStatusFailed"),
+    activityStatusRecentlyActive: t(
+      "agentHost.agentGui.activityStatusRecentlyActive"
+    ),
+    activityStatusUnread: t("agentHost.agentGui.activityStatusUnread"),
+    activityStatusWaiting: t("agentHost.agentGui.activityStatusWaiting"),
+    activityStatusWorking: t("agentHost.agentGui.activityStatusWorking"),
     batchDeleteConversations: t("agentHost.agentGui.batchDeleteConversations"),
     batchDeleteConversationsBody: (count: number) =>
       t("agentHost.agentGui.batchDeleteConversationsBody", { count }),
@@ -99,7 +115,9 @@ export function agentGUIConversationRailLabels(
       "agentHost.agentGui.removeProjectConfirmTitle"
     ),
     renameSession: t("agentHost.agentGui.renameSession"),
+    retryConversations: t("agentHost.agentGui.retryConversations"),
     retrySearch: t("agentHost.agentGui.retrySearch"),
+    conversationsLoadFailed: t("agentHost.agentGui.conversationsLoadFailed"),
     searchFailed: t("agentHost.agentGui.searchFailed"),
     searchNoConversations: t("agentHost.agentGui.searchNoConversations"),
     searchPlaceholder: t("agentHost.agentGui.searchPlaceholder"),
@@ -109,10 +127,15 @@ export function agentGUIConversationRailLabels(
     showLessConversations: t("agentHost.agentGui.showLessConversations"),
     showMoreConversations: t("agentHost.agentGui.showMoreConversations"),
     startConversation: t("agentHost.agentGui.startConversation"),
+    turnOffActivityView: t("agentHost.agentGui.turnOffActivityView"),
     unpinProject: t("agentHost.agentGui.unpinProject"),
     unpinSession: t("agentHost.agentGui.unpinSession"),
     untitledConversationTitle: t(
       "agentHost.workspaceAgentsUntitledConversation"
+    ),
+    viewActivity: t("agentHost.agentGui.viewActivity"),
+    viewActivityNeedsAttention: t(
+      "agentHost.agentGui.viewActivityNeedsAttention"
     )
   };
 }

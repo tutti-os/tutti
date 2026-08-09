@@ -3,6 +3,7 @@ package agenthost_test
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"path/filepath"
 	"sync"
 	"testing"
@@ -29,6 +30,7 @@ func (r liveGoalRuntime) RuntimeSessionLive(workspaceID, agentSessionID string) 
 type countingGoalRuntime struct {
 	mu    sync.Mutex
 	calls int
+	err   error
 }
 
 type createGoalRestartRuntime struct {
@@ -74,10 +76,65 @@ func (r *createGoalRestartRuntime) startCount() int {
 func (r *countingGoalRuntime) GoalControl(_ context.Context, input agenthost.RuntimeGoalControlInput) (agenthost.RuntimeGoalControlResult, error) {
 	r.mu.Lock()
 	r.calls++
+	err := r.err
 	r.mu.Unlock()
+	if err != nil {
+		return agenthost.RuntimeGoalControlResult{}, err
+	}
 	return agenthost.RuntimeGoalControlResult{
 		Goal: map[string]any{"objective": input.Objective, "status": "active"},
 	}, nil
+}
+
+func TestCreateWithInitialGoalPreservesAcceptedPendingIntent(t *testing.T) {
+	db, err := sql.Open("sqlite", filepath.Join(t.TempDir(), "agent-host-create-goal-pending.db"))
+	if err != nil {
+		t.Fatalf("open SQLite: %v", err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	db.SetMaxOpenConns(1)
+	store := storesqlite.New(db, storesqlite.Options{})
+	if err := store.Migrate(t.Context()); err != nil {
+		t.Fatalf("migrate SQLite: %v", err)
+	}
+	hostRuntime := &createGoalRestartRuntime{}
+	goalRuntime := &countingGoalRuntime{err: context.DeadlineExceeded}
+	host := agenthost.New(agenthost.Config{
+		CanonicalStore: &agenthost.SQLiteWorkspaceStore{
+			StoreForWorkspace: func(string) *storesqlite.Store { return store },
+			CurrentUserID:     func() string { return "user-1" },
+		},
+		Runtime: hostRuntime, GoalStore: store, GoalRuntime: goalRuntime,
+	})
+	input := agenthost.CreateSessionInput{
+		AgentSessionID: "session-1", AgentTargetID: "target-1", Provider: "codex",
+		ClientSubmitID: "create-goal-pending-1",
+		InitialGoalControl: &agenthost.TypedGoalControl{
+			Action: "set", Objective: "ship after retry",
+		},
+	}
+	first, err := host.CreateSession(t.Context(), "workspace-1", input)
+	if !errors.Is(err, context.DeadlineExceeded) || first.GoalControl == nil ||
+		!first.GoalControl.IntentAccepted || !goalControlResultIsPending(first.GoalControl) ||
+		first.InitialGoalStatus != agenthost.CreateSessionInitialGoalStatusUnknown {
+		t.Fatalf("first pending create=%#v error=%v", first, err)
+	}
+	second, err := host.CreateSession(t.Context(), "workspace-1", input)
+	if !errors.Is(err, agenthost.ErrRuntimeOperationInProgress) || second.GoalControl == nil ||
+		!second.GoalControl.IntentAccepted || !goalControlResultIsPending(second.GoalControl) ||
+		second.GoalControl.OperationID != first.GoalControl.OperationID {
+		t.Fatalf("replayed pending create=%#v error=%v", second, err)
+	}
+	if hostRuntime.startCount() != 1 || goalRuntime.callCount() != 1 {
+		t.Fatalf("pending create calls start=%d goal=%d", hostRuntime.startCount(), goalRuntime.callCount())
+	}
+}
+
+func goalControlResultIsPending(result *agenthost.GoalControlResult) bool {
+	return result != nil && result.GoalState != nil && result.OperationID != "" &&
+		result.GoalState.PendingOperationID == result.OperationID &&
+		(result.GoalState.SyncStatus == storesqlite.GoalSyncStatusPending ||
+			result.GoalState.SyncStatus == storesqlite.GoalSyncStatusApplying)
 }
 
 func (r *countingGoalRuntime) callCount() int {

@@ -29,6 +29,8 @@ export interface CreateDesktopAppServicesOptions {
   enableDevelopmentReloadShortcut?: boolean;
   fallbackLocale: DesktopLocale;
   browserNodeGuestPreloadPath?: string;
+  capturePreloadPath: string;
+  captureRendererFilePath: string;
   startedDaemonRuntime?: DesktopDaemonRuntime;
   isPackaged?: boolean;
   logger: DesktopLogger;
@@ -64,6 +66,8 @@ export async function createDesktopAppServices(
 
   const hostServices = await resolveHostServices(factories, {
     browserNodeGuestPreloadPath: options.browserNodeGuestPreloadPath,
+    capturePreloadPath: options.capturePreloadPath,
+    captureRendererFilePath: options.captureRendererFilePath,
     enableDevelopmentReloadShortcut: options.enableDevelopmentReloadShortcut,
     appVersion: options.appVersion,
     fallbackLocale: options.fallbackLocale,

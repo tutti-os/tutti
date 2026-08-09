@@ -345,7 +345,7 @@
 					"-ObjC",
 					"-lc++",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = dev.tutti.mobile;
+				PRODUCT_BUNDLE_IDENTIFIER = sh.tutti.mobile;
 				PRODUCT_NAME = TuttiMobile;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
@@ -374,7 +374,7 @@
 					"-ObjC",
 					"-lc++",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = dev.tutti.mobile;
+				PRODUCT_BUNDLE_IDENTIFIER = sh.tutti.mobile;
 				PRODUCT_NAME = TuttiMobile;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
 				SWIFT_VERSION = 5.0;

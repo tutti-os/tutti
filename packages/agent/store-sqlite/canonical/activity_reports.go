@@ -66,6 +66,7 @@ type WorkspaceAgentSessionStateUpdate struct {
 	Capabilities          *CapabilitySnapshot                       `json:"capabilities,omitempty"`
 	RuntimeContext        map[string]any                            `json:"runtimeContext,omitempty"`
 	RuntimeContextPatch   *RuntimeContextPatch                      `json:"runtimeContextPatch,omitempty"`
+	RuntimeActivity       *WorkspaceAgentRuntimeActivityObservation `json:"runtimeActivity,omitempty"`
 	TurnLifecycle         *WorkspaceAgentTurnLifecycle              `json:"turnLifecycle,omitempty"`
 	SubmitAvailability    *WorkspaceAgentSubmitAvailability         `json:"submitAvailability,omitempty"`
 	InteractionTransition *WorkspaceAgentInteractionTransition      `json:"interactionTransition,omitempty"`
@@ -80,6 +81,15 @@ type WorkspaceAgentSessionStateUpdate struct {
 	EndedAtUnixMS         int64                                     `json:"endedAtUnixMs,omitempty"`
 	Turn                  *WorkspaceAgentTurnStateUpdate            `json:"turn,omitempty"`
 	RootProviderTurn      *WorkspaceAgentRootProviderTurnTransition `json:"rootProviderTurn,omitempty"`
+}
+
+// WorkspaceAgentRuntimeActivityObservation is an ephemeral provider-runtime
+// observation. It travels with a state report so commit observers can publish
+// it after the report wins canonical ordering, but it is never persisted in a
+// Session's provider-private RuntimeContext.
+type WorkspaceAgentRuntimeActivityObservation struct {
+	State            string `json:"state"`
+	OccurredAtUnixMS int64  `json:"occurredAtUnixMs"`
 }
 
 // RuntimeContextPatch updates provider-private runtime context by top-level
@@ -228,7 +238,7 @@ type WorkspaceAgentSessionMessageUpdate struct {
 }
 
 type WorkspaceAgentMessageSemantics struct {
-	UserVisibleAssistantResponse bool   `json:"userVisibleAssistantResponse,omitempty"`
+	UserVisibleAssistantResponse bool   `json:"userVisibleAssistantResponse"`
 	TurnSettling                 bool   `json:"turnSettling,omitempty"`
 	NoticeCommand                string `json:"noticeCommand,omitempty"`
 	NoticeCommandStatus          string `json:"noticeCommandStatus,omitempty"`

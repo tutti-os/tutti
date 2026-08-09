@@ -45,8 +45,17 @@ export function buildWorkspaceAgentMessageCenterModelFromEngine(
   snapshot: Pick<AgentActivitySnapshot, "sessionMessagesById" | "workspaceId">,
   options: BuildWorkspaceAgentMessageCenterOptions = {}
 ): WorkspaceAgentMessageCenterModel {
+  const includeHiddenSessionIds = new Set(
+    (options.includeHiddenSessionIds ?? [])
+      .map((sessionId) => sessionId.trim())
+      .filter((sessionId) => sessionId.length > 0)
+  );
   const items = presentation.consumers
-    .filter((consumer) => consumer.session.visible !== false)
+    .filter(
+      (consumer) =>
+        consumer.session.visible !== false ||
+        includeHiddenSessionIds.has(consumer.session.agentSessionId.trim())
+    )
     .map((consumer) => {
       const interaction = latestPendingInteraction(consumer);
       const needsAttention = interaction

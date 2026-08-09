@@ -12,6 +12,7 @@ export * from "./dialog";
 export * from "./drawer";
 export * from "./dropdown-menu";
 export * from "./input";
+export * from "./image-with-fallback";
 export * from "./mention-pill";
 export * from "./menu-surface";
 export * from "./popover";

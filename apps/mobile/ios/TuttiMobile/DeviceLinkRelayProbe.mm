@@ -1,7 +1,7 @@
 #import "DeviceLinkRelayProbe.h"
 
 static NSError *TUTRelayProbeError(NSString *message) {
-  return [NSError errorWithDomain:@"dev.tutti.mobile.device-link.relay-probe"
+  return [NSError errorWithDomain:@"sh.tutti.mobile.device-link.relay-probe"
                              code:1
                          userInfo:@{NSLocalizedDescriptionKey : message}];
 }

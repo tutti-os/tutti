@@ -272,8 +272,14 @@ export const appCenterEn = {
       'Load the skill https://github.com/tutti-os/tutti-agent-skills/tree/main/plugins/tutti/skills/tutti-workspace-app-factory and adapt project directory "{{cwd}}" into a Tutti local debug app. Generate .tutti/dev-app/; bootstrap.sh must read the host-injected TUTTI_APP_HOST and TUTTI_APP_PORT, and must not hard-code a port.'
   },
   messages: {
+    appInstallFailed:
+      "The app failed to install. Retry or open the logs for details.",
     appRuntimeFailed:
-      "The app failed to start. Open its session or logs for details.",
+      "The app stopped unexpectedly. Open its session or logs for details.",
+    appStartFailed:
+      "The app failed to start. Retry or open the logs for details.",
+    appUnknownFailure:
+      "The app failed to run. Retry or open the logs for details.",
     catalogFailed:
       "Remote app catalog is unavailable. Local apps are still available.",
     catalogLoading: "Loading remote app catalog...",
@@ -554,7 +560,10 @@ export const appCenterZhCN = {
       "加载 skill https://github.com/tutti-os/tutti-agent-skills/tree/main/plugins/tutti/skills/tutti-workspace-app-factory，将项目目录“{{cwd}}”适配成本地调试 Tutti 应用。生成 .tutti/dev-app/；bootstrap.sh 必须读取宿主注入的 TUTTI_APP_HOST 和 TUTTI_APP_PORT，不要硬编码端口。"
   },
   messages: {
-    appRuntimeFailed: "应用启动失败。请打开会话或日志查看详情。",
+    appInstallFailed: "应用安装失败，请重试或查看日志",
+    appRuntimeFailed: "应用运行异常，请打开会话或日志查看详情",
+    appStartFailed: "应用启动失败，请重试或查看日志",
+    appUnknownFailure: "应用运行失败，请重试或查看日志",
     catalogFailed: "无法加载远程应用目录，本地应用仍可用。",
     catalogLoading: "正在加载远程应用目录...",
     empty: "还没有安装应用",

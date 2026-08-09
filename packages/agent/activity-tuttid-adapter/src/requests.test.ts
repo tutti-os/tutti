@@ -25,6 +25,7 @@ test("create and send projections share one prompt allowlist", () => {
       agentTargetId: "target-1",
       clientSubmitId: "submit-1",
       initialContent: content,
+      isolation: "worktree",
       mode: "new",
       settings: {
         browserUse: true,
@@ -50,6 +51,7 @@ test("create and send projections share one prompt allowlist", () => {
   }
   assert.equal(activationCreate.browserUse, true);
   assert.equal(activationCreate.codexSaverMode, true);
+  assert.equal(activationCreate.isolation, "worktree");
   assert.equal("computerUse" in activationCreate, false);
   assert.deepEqual(send.capabilityRefs, [
     { capability: "tutti", source: "slash_command" }
@@ -90,6 +92,24 @@ test("request projection carries the exact target only for guidance", () => {
   });
   assert.equal("guidance" in ordinary, false);
   assert.equal("turnId" in ordinary, false);
+});
+
+test("request projection preserves a structured local connector selection", () => {
+  const projected = tuttiSendWorkspaceAgentSessionInputRequestFromActivity({
+    agentSessionId: "session-1",
+    clientSubmitId: "submit-connector",
+    content: [
+      { text: "list my calendar events", type: "text" },
+      { connectorKey: "lark-cli", type: "connector" }
+    ],
+    displayPrompt: "/lark-cli list my calendar events",
+    workspaceId: "workspace-1"
+  });
+  assert.deepEqual(projected.content, [
+    { text: "list my calendar events", type: "text" },
+    { connectorKey: "lark-cli", type: "connector" }
+  ]);
+  assert.equal(projected.displayPrompt, "/lark-cli list my calendar events");
 });
 
 function activityTextBlock(): AgentPromptContentBlock {

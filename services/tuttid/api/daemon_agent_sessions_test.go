@@ -364,11 +364,20 @@ func TestDaemonAPIGeneratedRoutesCreateAgentSessionAllowsTargetOnlyRequest(t *te
 				if input.Provider != "" {
 					t.Fatalf("provider = %q, want empty pre-service target-only authority", input.Provider)
 				}
+				if input.Isolation != agentservice.WorktreeIsolationMode {
+					t.Fatalf("isolation = %q, want worktree", input.Isolation)
+				}
 				return agentservice.Session{
 					ID:            input.AgentSessionID,
 					AgentTargetID: input.AgentTargetID,
 					Provider:      "codex",
 					CreatedAt:     createdAt,
+					Isolation: &agentservice.SessionIsolation{
+						Mode:         agentservice.WorktreeIsolationMode,
+						WorktreePath: "/state/worktrees/session",
+						Branch:       "tutti/session",
+						BaseCommit:   "abc123",
+					},
 				}, nil
 			},
 		},
@@ -377,6 +386,7 @@ func TestDaemonAPIGeneratedRoutesCreateAgentSessionAllowsTargetOnlyRequest(t *te
 	recorder := performGeneratedRouteRequest(t, mux, http.MethodPost, "/v1/workspaces/ws-1/agent-sessions", map[string]any{
 		"agentSessionId": "11111111-1111-4111-8111-111111111111",
 		"agentTargetId":  agenttargetbiz.IDLocalCodex,
+		"isolation":      "worktree",
 		"initialContent": []map[string]any{{"type": "text", "text": "hello"}},
 	})
 	if recorder.Code != http.StatusCreated {
@@ -387,6 +397,11 @@ func TestDaemonAPIGeneratedRoutesCreateAgentSessionAllowsTargetOnlyRequest(t *te
 	decodeGeneratedRouteResponse(t, recorder, &response)
 	if response.Session.AgentTargetId == nil || *response.Session.AgentTargetId != agenttargetbiz.IDLocalCodex {
 		t.Fatalf("session agent target id = %#v, want %s", response.Session.AgentTargetId, agenttargetbiz.IDLocalCodex)
+	}
+	if response.Session.Isolation == nil ||
+		response.Session.Isolation.Mode != tuttigenerated.WorkspaceAgentSessionIsolationModeWorktree ||
+		response.Session.Isolation.WorktreePath != "/state/worktrees/session" {
+		t.Fatalf("session isolation = %#v", response.Session.Isolation)
 	}
 }
 

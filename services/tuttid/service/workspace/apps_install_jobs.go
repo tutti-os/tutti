@@ -8,48 +8,69 @@ import (
 
 func (s *AppCenterService) beginInstallJob(workspaceID string, appID string, options InstallOptions) bool {
 	key := appRuntimeKey(workspaceID, appID)
+	unlock := s.installPublishLocks.Lock(key)
+	defer unlock()
+	baselineRuntime := s.runner().State(workspaceID, appID)
 	s.installMu.Lock()
 	defer s.installMu.Unlock()
 	s.ensureInstallJobsLocked()
 	if job, ok := s.installJobs[key]; ok && job.Status == workspaceAppInstallJobInstalling {
 		return false
 	}
+	s.installGeneration += 1
 	s.installJobs[key] = workspaceAppInstallJob{
-		WorkspaceID:    workspaceID,
-		AppID:          appID,
-		Status:         workspaceAppInstallJobInstalling,
-		RestartRunning: options.RestartRunning,
+		Generation:                     s.installGeneration,
+		WorkspaceID:                    workspaceID,
+		AppID:                          appID,
+		Status:                         workspaceAppInstallJobInstalling,
+		CurrentPhase:                   workspacebiz.AppInstallUserPhaseDownloading,
+		RestartRunning:                 options.RestartRunning,
+		BaselineRuntimeStatus:          baselineRuntime.Status,
+		BaselineRuntimeUpdatedAtUnixMs: cloneInt64Ptr(baselineRuntime.UpdatedAtUnixMs),
 	}
 	return true
 }
 
-func (s *AppCenterService) finishInstallJob(workspaceID string, appID string) {
+func cloneInt64Ptr(value *int64) *int64 {
+	if value == nil {
+		return nil
+	}
+	copy := *value
+	return &copy
+}
+
+func (s *AppCenterService) finishInstallJob(workspaceID string, appID string, generation uint64) bool {
 	key := appRuntimeKey(workspaceID, appID)
 	s.installMu.Lock()
 	defer s.installMu.Unlock()
 	s.ensureInstallJobsLocked()
+	job, ok := s.installJobs[key]
+	if !ok || job.Generation != generation {
+		return false
+	}
 	delete(s.installJobs, key)
+	return true
 }
 
-func (s *AppCenterService) failInstallJob(workspaceID string, appID string, err error) {
+func (s *AppCenterService) failInstallJob(workspaceID string, appID string, generation uint64, err error) bool {
 	key := appRuntimeKey(workspaceID, appID)
 	s.installMu.Lock()
 	defer s.installMu.Unlock()
 	s.ensureInstallJobsLocked()
-	s.installJobs[key] = workspaceAppInstallJob{
-		WorkspaceID:   workspaceID,
-		AppID:         appID,
-		Status:        workspaceAppInstallJobFailed,
-		FailureReason: err.Error(),
+	job, ok := s.installJobs[key]
+	if !ok || job.Generation != generation || job.Status != workspaceAppInstallJobInstalling {
+		return false
 	}
-}
-
-func (s *AppCenterService) installJobOptions(workspaceID string, appID string) InstallOptions {
-	job, ok := s.installJob(workspaceID, appID)
-	if !ok {
-		return InstallOptions{}
+	failurePhase := workspacebiz.AppFailurePhase(job.CurrentPhase)
+	if failurePhase == "" {
+		failurePhase = workspacebiz.AppFailurePhaseDownloading
 	}
-	return InstallOptions{RestartRunning: job.RestartRunning}
+	job.Status = workspaceAppInstallJobFailed
+	job.FailureReason = err.Error()
+	job.FailurePhase = failurePhase
+	job.Progress = nil
+	s.installJobs[key] = job
+	return true
 }
 
 func (s *AppCenterService) installJob(workspaceID string, appID string) (workspaceAppInstallJob, bool) {
@@ -67,31 +88,74 @@ func (s *AppCenterService) ensureInstallJobsLocked() {
 	}
 }
 
-func (s *AppCenterService) setInstallJobProgress(workspaceID string, appID string, progress workspacebiz.AppInstallProgress) {
+func (s *AppCenterService) setInstallJobProgress(workspaceID string, appID string, generation uint64, progress workspacebiz.AppInstallProgress) bool {
 	key := appRuntimeKey(workspaceID, appID)
 	s.installMu.Lock()
 	defer s.installMu.Unlock()
 	s.ensureInstallJobsLocked()
 	job, ok := s.installJobs[key]
-	if !ok || job.Status != workspaceAppInstallJobInstalling {
-		return
+	if !ok || job.Generation != generation || job.Status != workspaceAppInstallJobInstalling {
+		return false
 	}
 	progressCopy := progress
+	job.CurrentPhase = progress.UserPhase
 	job.Progress = &progressCopy
 	s.installJobs[key] = job
+	return true
 }
 
-func (s *AppCenterService) clearInstallJobProgress(workspaceID string, appID string) {
+func (s *AppCenterService) setInstallJobPhase(workspaceID string, appID string, generation uint64, phase workspacebiz.AppInstallUserPhase) bool {
 	key := appRuntimeKey(workspaceID, appID)
 	s.installMu.Lock()
 	defer s.installMu.Unlock()
 	s.ensureInstallJobsLocked()
 	job, ok := s.installJobs[key]
-	if !ok {
-		return
+	if !ok || job.Generation != generation || job.Status != workspaceAppInstallJobInstalling {
+		return false
+	}
+	job.CurrentPhase = phase
+	s.installJobs[key] = job
+	return true
+}
+
+func (s *AppCenterService) clearInstallJobProgress(workspaceID string, appID string, generation uint64) bool {
+	key := appRuntimeKey(workspaceID, appID)
+	s.installMu.Lock()
+	defer s.installMu.Unlock()
+	s.ensureInstallJobsLocked()
+	job, ok := s.installJobs[key]
+	if !ok || job.Generation != generation {
+		return false
 	}
 	job.Progress = nil
 	s.installJobs[key] = job
+	return true
+}
+
+func (s *AppCenterService) markInstallProgressSent(workspaceID string, appID string, generation uint64) {
+	key := appRuntimeKey(workspaceID, appID)
+	s.installMu.Lock()
+	defer s.installMu.Unlock()
+	if s.installProgressSent == nil {
+		s.installProgressSent = make(map[string]uint64)
+	}
+	s.installProgressSent[key] = generation
+}
+
+func (s *AppCenterService) installProgressWasSent(workspaceID string, appID string, generation uint64) bool {
+	key := appRuntimeKey(workspaceID, appID)
+	s.installMu.Lock()
+	defer s.installMu.Unlock()
+	return s.installProgressSent[key] == generation
+}
+
+func (s *AppCenterService) clearInstallProgressSent(workspaceID string, appID string, generation uint64) {
+	key := appRuntimeKey(workspaceID, appID)
+	s.installMu.Lock()
+	defer s.installMu.Unlock()
+	if s.installProgressSent[key] == generation {
+		delete(s.installProgressSent, key)
+	}
 }
 
 func (s *AppCenterService) withInstallJobProjections(apps []workspacebiz.WorkspaceApp, workspaceID string) []workspacebiz.WorkspaceApp {
@@ -104,10 +168,12 @@ func (s *AppCenterService) withInstallJobProjections(apps []workspacebiz.Workspa
 		}
 		if job.Status == workspaceAppInstallJobFailed {
 			failureReason := job.FailureReason
+			failurePhase := job.FailurePhase
 			app.Installation = nil
 			app.InstallProgress = nil
 			app.Runtime = workspacebiz.AppRuntimeState{
 				Status:        workspacebiz.AppRuntimeStatusFailed,
+				FailurePhase:  &failurePhase,
 				FailureReason: &failureReason,
 				LastError:     &failureReason,
 			}
@@ -129,10 +195,15 @@ func (s *AppCenterService) failedInstallAppProjection(ctx context.Context, works
 		return workspacebiz.WorkspaceApp{}, err
 	}
 	failureReason := installErr.Error()
+	failurePhase := workspacebiz.AppFailurePhaseDownloading
+	if job, ok := s.installJob(workspaceID, appID); ok && job.FailurePhase != "" {
+		failurePhase = job.FailurePhase
+	}
 	app.Installation = nil
 	app.InstallProgress = nil
 	app.Runtime = workspacebiz.AppRuntimeState{
 		Status:        workspacebiz.AppRuntimeStatusFailed,
+		FailurePhase:  &failurePhase,
 		FailureReason: &failureReason,
 		LastError:     &failureReason,
 	}

@@ -133,7 +133,11 @@ func TestChildSessionReportReturnsCanonicalRelations(t *testing.T) {
 	if len(graph.Sessions) != 5 {
 		t.Fatalf("captured Sessions=%#v", graph.Sessions)
 	}
-	if err := store.RestoreHistoricalSessionGraph(ctx, "ws-restore", graph); err != nil {
+	if err := store.RestoreHistoricalSessionGraph(ctx, HistoricalSessionGraphRestoreInput{
+		WorkspaceID: "ws-restore",
+		UserID:      "user-restore",
+		Graph:       graph,
+	}); err != nil {
 		t.Fatal(err)
 	}
 	restored, err := store.ListChildSessions(ctx, "ws-restore", "root")
@@ -235,8 +239,8 @@ func TestDeleteSessionTombstonesEntireChildSessionTree(t *testing.T) {
 	for sessionID, turnID := range map[string]string{
 		"root": "root-turn", "child-1": "child-turn-1", "child-2": "child-turn-2",
 	} {
-		if turn, found, err := store.GetTurn(context.Background(), "ws-1", sessionID, turnID); err != nil || found {
-			t.Fatalf("GetTurn(%s)=%#v found=%v err=%v", sessionID, turn, found, err)
+		if turn, found, err := store.GetTurn(context.Background(), "ws-1", sessionID, turnID); err != nil || !found || turn.Phase != TurnPhaseSettled || turn.Outcome != TurnOutcomeInterrupted {
+			t.Fatalf("GetTurn(%s)=%#v found=%v err=%v, want preserved interrupted history", sessionID, turn, found, err)
 		}
 	}
 }

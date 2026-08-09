@@ -1,8 +1,14 @@
 import { act, renderHook } from "@testing-library/react";
-import { createAgentSessionEngine } from "@tutti-os/agent-activity-core";
+import {
+  createAgentSessionEngine,
+  type AgentActivityTurn,
+  type PendingActivationIntentRecord
+} from "@tutti-os/agent-activity-core";
 import { describe, expect, it, vi } from "vitest";
 import { createTestEngineCommandPort } from "../../../shared/testing/createTestAgentSessionEngine";
 import type {
+  AgentGUIInteractionReadiness,
+  AgentGUIInteractionReadinessSource,
   AgentGUIObservationGap,
   AgentGUIObservationGapSource,
   AgentGUITargetConnectionSource,
@@ -56,6 +62,18 @@ class FakeObservationGapSource implements AgentGUIObservationGapSource {
   }
 }
 
+class StaticInteractionSource implements AgentGUIInteractionReadinessSource {
+  constructor(private readonly state: AgentGUIInteractionReadiness) {}
+
+  getInteractionReadiness() {
+    return this.state;
+  }
+
+  subscribe(): () => void {
+    return () => undefined;
+  }
+}
+
 describe("useAgentGUISessionPresentation", () => {
   it("projects a revoked selected Home target into the shared status chrome", () => {
     expect(
@@ -71,6 +89,133 @@ describe("useAgentGUISessionPresentation", () => {
       message: "Jackson stopped sharing this agent",
       canRetry: false
     });
+  });
+
+  it("keeps a confirmed Session busy until its expected Turn exists", () => {
+    const sessionEngine = createAgentSessionEngine({
+      clock: { nowUnixMs: () => 1 },
+      commandPort: createTestEngineCommandPort({
+        execute: vi.fn(() => new Promise(() => undefined))
+      }),
+      identity: { origin: "test", workspaceId: "workspace-1" },
+      scheduler: { schedule: () => ({ cancel() {} }) }
+    });
+    const input = {
+      activeConversation: null,
+      activeConversationId: "session-1",
+      activeEngineActiveTurn: null,
+      activeEngineAvailability: "available",
+      activeEngineHasPendingInteractions: false,
+      activeEngineLatestTurn: null as AgentActivityTurn | null,
+      activeEngineRuntimeAvailability: null,
+      activeEngineRuntimeActivity: "idle" as "idle" | "running",
+      activeEngineSession: {
+        agentSessionId: "session-1",
+        goal: null,
+        resumable: true
+      },
+      activeEngineSettingsUpdate: null,
+      activeGoalControlPresentation: {
+        agentSessionId: "session-1",
+        goal: null,
+        optimistic: false,
+        status: "idle"
+      },
+      activeLatestPendingSubmitTurnId: null as string | null,
+      activeLiveState: "active",
+      activeMessages: [],
+      activePendingActivation: null as PendingActivationIntentRecord | null,
+      activeSessionState: null,
+      activeTimelineItems: [],
+      activationError: null,
+      activationErrorCode: null,
+      activationState: "active",
+      activityDisplayStatus: null,
+      agentActivityRuntime: {},
+      agentTargetsLoading: false,
+      composerSupport: {
+        model: false,
+        reasoningEffort: false,
+        permissionMode: false,
+        planMode: false,
+        planImplementation: false,
+        plan: false
+      },
+      conversation: null,
+      currentUserId: "user-1",
+      hasUnconfirmedSubmit: true,
+      isCreatingConversation: false,
+      isInterrupting: false,
+      isLoadingMessages: false,
+      isRespondingToInteraction: false,
+      isSubmitting: false,
+      lastRenderStateDiagnosticKeyRef: { current: null },
+      pendingApproval: null,
+      planImplementationTurnIdRef: { current: null },
+      providerReadinessGate: null,
+      selectedAgentTargetOwnerLabel: null,
+      selectedAgentTargetUnavailable: false,
+      selectedAgentTargetUnavailableReason: null,
+      serverInteractivePrompt: null,
+      sessionEngine,
+      targetConnectionAgentTargetId: null,
+      workspaceId: "workspace-1"
+    } as unknown as Parameters<typeof useAgentGUISessionPresentation>[0];
+
+    const rendered = renderHook(() => useAgentGUISessionPresentation(input));
+
+    expect(rendered.result.current.activeConversationBusy).toBe(true);
+
+    input.activeLatestPendingSubmitTurnId = "turn-1";
+    input.hasUnconfirmedSubmit = false;
+    rendered.rerender();
+
+    expect(rendered.result.current.activeConversationBusy).toBe(false);
+
+    input.activePendingActivation = {
+      agentSessionId: "session-1",
+      agentTargetId: "local:claude-code",
+      clientSubmitId: "submit-1",
+      content: [{ type: "text", text: "hello" }],
+      cwd: "/workspace",
+      errorCode: null,
+      errorMessage: null,
+      expiresAtUnixMs: Number.MAX_SAFE_INTEGER,
+      initialPromptRetracted: false,
+      initialTurnExpected: true,
+      mode: "new",
+      requestedAtUnixMs: 1,
+      requestId: "request-1",
+      status: "confirmed",
+      title: null,
+      workspaceId: "workspace-1"
+    };
+    rendered.rerender();
+    expect(rendered.result.current.activeConversationBusy).toBe(true);
+
+    input.activeEngineLatestTurn = {
+      agentSessionId: "session-1",
+      origin: "user_prompt",
+      outcome: "completed",
+      phase: "settled",
+      settledAtUnixMs: 3,
+      startedAtUnixMs: 2,
+      turnId: "turn-1",
+      updatedAtUnixMs: 3
+    };
+    rendered.rerender();
+
+    expect(rendered.result.current.activeConversationBusy).toBe(false);
+
+    input.activePendingActivation = null;
+    input.activeEngineLatestTurn = null;
+    input.activeEngineRuntimeActivity = "running";
+    rendered.rerender();
+    expect(rendered.result.current.activeConversationBusy).toBe(true);
+
+    input.activeEngineRuntimeActivity = "idle";
+    rendered.rerender();
+    expect(rendered.result.current.activeConversationBusy).toBe(false);
   });
 
   it("does not expose manual retry for failed activation", () => {
@@ -268,7 +413,7 @@ describe("useAgentGUISessionPresentation", () => {
     expect(rendered.result.current.composerGate).toBe(readyGate);
   });
 
-  it("keeps recovery chrome and commands blocked until an exact observation gap clears", () => {
+  it("keeps target and Turn recovery outside exact Interaction readiness authority", () => {
     const targetConnectionSource = new FakeTargetConnectionSource();
     targetConnectionSource.set({ status: "connected", retryAttempt: 0 });
     const observationGapSource = new FakeObservationGapSource();
@@ -359,7 +504,156 @@ describe("useAgentGUISessionPresentation", () => {
       reason: "target_connection"
     });
 
-    act(() => observationGapSource.clear());
+    act(() => {
+      targetConnectionSource.set({ status: "unavailable", retryAttempt: 1 });
+    });
+    expect(rendered.result.current.sessionChrome.recovery).toMatchObject({
+      kind: "transport-unavailable"
+    });
+
+    input.interactionReadinessSource = new StaticInteractionSource({
+      status: "ready"
+    });
+    input.pendingApproval = {
+      kind: "approval",
+      id: "approval-1",
+      agentSessionId: "session-1",
+      turnId: "turn-1",
+      requestId: "request-1",
+      callId: "call-1",
+      title: "Allow command?",
+      toolName: "shell",
+      status: "pending",
+      input: null,
+      options: [],
+      occurredAtUnixMs: 1
+    };
+    rendered.rerender();
+
+    expect(rendered.result.current.sessionChrome).toMatchObject({
+      approval: { requestId: "request-1" },
+      recovery: null
+    });
+    expect(rendered.result.current.composerGate.runtime).toMatchObject({
+      status: "blocked",
+      reason: "target_connection"
+    });
+    expect(rendered.result.current.isRespondingApproval).toBe(false);
+
+    const blockedInteractionCases = [
+      {
+        reason: "synchronizing",
+        recoveryKind: "transport-connecting",
+        preservesApproval: true
+      },
+      {
+        reason: "owner_offline",
+        recoveryKind: "transport-unavailable",
+        preservesApproval: true
+      },
+      {
+        reason: "binding_revoked",
+        recoveryKind: "agent-sharing-revoked",
+        preservesApproval: false
+      }
+    ] as const;
+    for (const blockedCase of blockedInteractionCases) {
+      input.interactionReadinessSource = new StaticInteractionSource({
+        status: "blocked",
+        reason: blockedCase.reason
+      });
+      rendered.rerender();
+
+      expect(rendered.result.current.sessionChrome.recovery).toMatchObject({
+        kind: blockedCase.recoveryKind
+      });
+      expect(rendered.result.current.sessionChrome.approval).toEqual(
+        blockedCase.preservesApproval
+          ? expect.objectContaining({ requestId: "request-1" })
+          : null
+      );
+      expect(rendered.result.current.composerGate.runtime).toMatchObject({
+        status: "blocked",
+        reason: "target_connection"
+      });
+      expect(rendered.result.current.isRespondingApproval).toBe(true);
+    }
+
+    const promptAwareReadinessSource = {
+      getInteractionReadiness: vi.fn((identity: { requestId: string }) =>
+        identity.requestId === "question-1"
+          ? ({ status: "ready" } as const)
+          : ({ status: "blocked", reason: "synchronizing" } as const)
+      ),
+      subscribe: vi.fn(() => () => undefined)
+    };
+    input.interactionReadinessSource = promptAwareReadinessSource;
+    input.serverInteractivePrompt = {
+      kind: "ask-user",
+      agentSessionId: "session-1",
+      turnId: "turn-2",
+      requestId: "question-1",
+      title: "Choose a deployment",
+      questions: []
+    };
+    rendered.rerender();
+
+    expect(
+      promptAwareReadinessSource.getInteractionReadiness
+    ).toHaveBeenCalledWith({
+      agentSessionId: "session-1",
+      requestId: "question-1",
+      turnId: "turn-2",
+      workspaceId: "workspace-1"
+    });
+    expect(
+      promptAwareReadinessSource.getInteractionReadiness
+    ).toHaveBeenCalledWith({
+      agentSessionId: "session-1",
+      requestId: "request-1",
+      turnId: "turn-1",
+      workspaceId: "workspace-1"
+    });
+    expect(rendered.result.current.pendingInteractivePrompt).toMatchObject({
+      requestId: "question-1"
+    });
+    expect(rendered.result.current.pendingApproval).toMatchObject({
+      requestId: "request-1"
+    });
+    expect(rendered.result.current.sessionChrome.recovery).toBeNull();
+    expect(rendered.result.current.composerGate.runtime).toMatchObject({
+      status: "blocked",
+      reason: "target_connection"
+    });
+    expect(rendered.result.current.isRespondingApproval).toBe(true);
+    expect(rendered.result.current.isRespondingInteractivePrompt).toBe(false);
+
+    input.interactionReadinessSource = {
+      getInteractionReadiness: vi.fn((identity: { requestId: string }) =>
+        identity.requestId === "question-1"
+          ? ({ status: "blocked", reason: "synchronizing" } as const)
+          : ({ status: "ready" } as const)
+      ),
+      subscribe: vi.fn(() => () => undefined)
+    };
+    rendered.rerender();
+
+    expect(rendered.result.current.sessionChrome.recovery).toMatchObject({
+      kind: "transport-connecting",
+      interactionScoped: true
+    });
+    expect(rendered.result.current.isRespondingApproval).toBe(false);
+    expect(rendered.result.current.isRespondingInteractivePrompt).toBe(true);
+
+    input.interactionReadinessSource = new StaticInteractionSource({
+      status: "ready"
+    });
+    input.serverInteractivePrompt = null;
+    rendered.rerender();
+    act(() => {
+      targetConnectionSource.set({ status: "connected", retryAttempt: 0 });
+      observationGapSource.clear();
+    });
 
     expect(rendered.result.current.sessionChrome.recovery).toBeNull();
     expect(rendered.result.current.composerGate.runtime).toMatchObject({

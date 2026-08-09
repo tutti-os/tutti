@@ -460,11 +460,16 @@ function dirnameForWorkspaceFilePath(path: string): string {
   if (index <= 0) {
     return path.startsWith("/") ? "/" : path;
   }
-  return path.slice(0, index);
+  const directory = path.slice(0, index);
+  return /^\/[A-Za-z]:$/.test(directory) ? `${directory}/` : directory;
 }
 
 function normalizeComparableWorkspaceFilePath(path: string): string {
-  const normalized = path.trim().replaceAll("\\", "/").replace(/\/+/g, "/");
+  const normalized = path
+    .trim()
+    .replaceAll("\\", "/")
+    .replace(/\/+/g, "/")
+    .replace(/^\/?([A-Za-z]:)(?=\/|$)/, "/$1");
   if (!normalized) {
     return "";
   }

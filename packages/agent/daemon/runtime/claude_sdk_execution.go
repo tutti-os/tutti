@@ -258,18 +258,15 @@ func (a *ClaudeCodeSDKAdapter) ExecWithProviderAcceptance(
 			if len(pendingEvents) > 0 {
 				// acceptProviderTurn already recorded Replay observations at the
 				// acceptance ProviderInputUnit (turn.working). Held pre-acceptance
-				// events still carry their earlier frame units (e.g. compact_started
-				// before identity). Emitting them unchanged regresses the provider
-				// cursor and fails checkpoint plan writes. Reanchor onto the
-				// acceptance unit so they coalesce with that checkpoint.
-				acceptanceUnit := claudeSDKAcceptanceProviderInputUnit(events, turnID)
+				// events still carry earlier frame units (e.g. compact_started
+				// before identity). Re-observing them either regresses the provider
+				// cursor or coalesces compaction readiness onto turn.working with
+				// conflicting compaction.status predicates. Strip input-unit
+				// metadata so flush publishes transcript/state only.
 				published := make([]activityshared.Event, 0, len(pendingEvents)+len(events))
 				published = append(
 					published,
-					restampClaudeSDKHeldEventsOntoAcceptanceUnit(
-						pendingEvents,
-						acceptanceUnit,
-					)...,
+					stripClaudeSDKHeldEventProviderInputUnits(pendingEvents)...,
 				)
 				published = append(published, events...)
 				pendingEvents = nil
@@ -334,38 +331,18 @@ func (a *ClaudeCodeSDKAdapter) ExecWithProviderAcceptance(
 	return events, err
 }
 
-func claudeSDKAcceptanceProviderInputUnit(
+func stripClaudeSDKHeldEventProviderInputUnits(
 	events []activityshared.Event,
-	turnID string,
-) *activityshared.ProviderInputUnitContext {
-	turnID = strings.TrimSpace(turnID)
-	for index := range events {
-		event := events[index]
-		if event.Type != activityshared.EventRootProviderTurnStarted ||
-			strings.TrimSpace(event.Payload.TurnID) != turnID ||
-			event.ProviderInputUnit == nil {
-			continue
-		}
-		unit := *event.ProviderInputUnit
-		return &unit
-	}
-	return nil
-}
-
-func restampClaudeSDKHeldEventsOntoAcceptanceUnit(
-	events []activityshared.Event,
-	acceptanceUnit *activityshared.ProviderInputUnitContext,
 ) []activityshared.Event {
-	if len(events) == 0 || acceptanceUnit == nil {
+	if len(events) == 0 {
 		return events
 	}
-	restamped := make([]activityshared.Event, len(events))
-	copy(restamped, events)
-	for index := range restamped {
-		unit := *acceptanceUnit
-		restamped[index].ProviderInputUnit = &unit
+	stripped := make([]activityshared.Event, len(events))
+	copy(stripped, events)
+	for index := range stripped {
+		stripped[index].ProviderInputUnit = nil
 	}
-	return restamped
+	return stripped
 }
 
 func claudeSDKEventsMayPrecedeProviderAcceptance(

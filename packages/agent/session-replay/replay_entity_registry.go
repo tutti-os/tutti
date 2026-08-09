@@ -24,21 +24,26 @@ type replayEntityRegistry struct {
 
 func newReplayEntityRegistry(rootSessionID string) replayEntityRegistry {
 	r := replayEntityRegistry{
-		rootSessionID: strings.TrimSpace(rootSessionID),
-		byRuntime:     make(map[string]EntityAddress),
-		byAddress:     make(map[string]replayEntityBinding),
+		byRuntime: make(map[string]EntityAddress),
+		byAddress: make(map[string]replayEntityBinding),
 	}
-	if r.rootSessionID != "" {
-		_, _ = r.bind(
-			sessionRuntimeKey(r.rootSessionID),
-			recordingRootAddress(),
-			replayEntityBinding{
-				SessionID: r.rootSessionID,
-				EntityID:  r.rootSessionID,
-			},
-		)
-	}
+	_ = r.ensureRecordingRoot(rootSessionID)
 	return r
+}
+
+func (r *replayEntityRegistry) ensureRecordingRoot(sessionID string) bool {
+	sessionID = strings.TrimSpace(sessionID)
+	if sessionID == "" ||
+		(r.rootSessionID != "" && r.rootSessionID != sessionID) {
+		return false
+	}
+	r.rootSessionID = sessionID
+	_, ok := r.bindFirst(
+		sessionRuntimeKey(sessionID),
+		recordingRootAddress(),
+		replayEntityBinding{SessionID: sessionID, EntityID: sessionID},
+	)
+	return ok
 }
 
 func (r replayEntityRegistry) clone() replayEntityRegistry {

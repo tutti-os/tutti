@@ -14,9 +14,9 @@ interface CurrentValue<T> {
 interface UseAgentGUIPlanActionsInput {
   activeConversationIdRef: CurrentValue<string | null>;
   planActionsRef: CurrentValue<{
-    implement: () => void;
-    feedback: (feedback: string) => void;
-    skip: () => void;
+    implement: () => boolean;
+    feedback: (feedback: string) => boolean;
+    skip: () => boolean;
   }>;
   planImplementationTurnIdRef: CurrentValue<string | null>;
   sessionEngine: AgentSessionEngine;
@@ -28,11 +28,11 @@ export function useAgentGUIPlanActions(input: UseAgentGUIPlanActionsInput) {
     (
       action: Parameters<typeof dispatchAgentPlanPromptAction>[0]["action"],
       feedbackText?: string
-    ) => {
+    ): boolean => {
       const agentSessionId = input.activeConversationIdRef.current;
       const turnId = input.planImplementationTurnIdRef.current;
-      if (!agentSessionId || !turnId) return;
-      dispatchAgentPlanPromptAction({
+      if (!agentSessionId || !turnId) return false;
+      return dispatchAgentPlanPromptAction({
         action,
         agentSessionId,
         engine: input.sessionEngine,
@@ -55,9 +55,9 @@ export function useAgentGUIPlanActions(input: UseAgentGUIPlanActionsInput) {
   const feedback = useCallback(
     (value: string) => {
       const trimmed = value.trim();
-      if (trimmed) {
-        dispatchPlanAction(PLAN_IMPLEMENTATION_ACTION_FEEDBACK, trimmed);
-      }
+      return trimmed
+        ? dispatchPlanAction(PLAN_IMPLEMENTATION_ACTION_FEEDBACK, trimmed)
+        : false;
     },
     [dispatchPlanAction]
   );

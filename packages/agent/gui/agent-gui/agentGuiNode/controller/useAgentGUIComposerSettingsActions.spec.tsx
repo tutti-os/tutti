@@ -810,6 +810,63 @@ describe("useAgentGUIComposerSettingsActions", () => {
       settings: {}
     });
   });
+
+  it("retries composer options without forcing a superseding request", () => {
+    const sessionEngine = createAgentSessionEngine({
+      clock: { nowUnixMs: () => 1 },
+      commandPort: createTestEngineCommandPort({ execute: vi.fn() }),
+      identity: { origin: "test", workspaceId: "workspace-1" },
+      scheduler: { schedule: () => ({ cancel() {} }) }
+    });
+    const data: AgentGUINodeData = {
+      agentTargetId: "local:codex",
+      lastActiveAgentSessionId: null,
+      provider: "codex"
+    };
+    const target = {
+      agentTargetId: "local:codex",
+      data,
+      provider: "codex" as const,
+      targetId: "local:codex"
+    };
+    const loadDraftComposerOptions = vi.fn();
+    const rendered = renderHook(() =>
+      useAgentGUIComposerSettingsActions({
+        activation: {
+          stateFor: vi.fn(() => "inactive" as const)
+        } as unknown as ReturnType<typeof useAgentGUIActivation>,
+        activeCanonicalComposerSettings: {},
+        activeConversationIdRef: { current: null },
+        activeEngineActiveTurn: null,
+        agentActivityRuntime: {
+          getSnapshot: () => ({})
+        } as unknown as AgentGUIRuntime,
+        composerSupportPermissionModeChangeDeferred: false,
+        dataRef: { current: data },
+        defaultReasoningEffort: null,
+        draftSettingsBySessionIdRef: { current: {} },
+        isMountedRef: { current: true },
+        loadDraftComposerOptions,
+        onComposerDefaultsAuthorityReloadedRef:
+          createComposerDefaultsAuthorityReconcilerRef(),
+        onDataChangeRef: { current: vi.fn() },
+        onRememberComposerDefaultsRef: { current: undefined },
+        onShowMessageRef: { current: vi.fn() },
+        reloadComposerOptionsForTarget: vi.fn(async () => {}),
+        selectedComposerTargetDataRef: { current: target },
+        sessionEngine,
+        setDraftSettingsBySessionId: vi.fn(),
+        updateComposerSettingsRef: { current: vi.fn() },
+        workspaceId: "workspace-1"
+      })
+    );
+
+    act(() => {
+      rendered.result.current.retryComposerOptions();
+    });
+
+    expect(loadDraftComposerOptions).toHaveBeenCalledWith();
+  });
 });
 
 function createComposerDefaultsAuthorityReconcilerRef(): {

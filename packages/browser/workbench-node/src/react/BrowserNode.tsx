@@ -87,6 +87,7 @@ export interface BrowserNodeProps {
   navigationPolicy?: BrowserNodeNavigationPolicy | null;
   navigationActions?: ReactNode;
   nodeId: string;
+  onCloseRequest?: () => void;
   onFocusRequest?: () => void;
   onNavigated?: (url: string) => void;
   profileId?: string | null;
@@ -112,6 +113,7 @@ export function BrowserNode({
   navigationPolicy = null,
   navigationActions,
   nodeId,
+  onCloseRequest,
   onFocusRequest,
   onNavigated,
   profileId = null,
@@ -132,6 +134,7 @@ export function BrowserNode({
         navigationPolicy={navigationPolicy}
         navigationActions={navigationActions}
         nodeId={nodeId}
+        onCloseRequest={onCloseRequest}
         onFocusRequest={onFocusRequest}
         onNavigated={onNavigated}
         profileId={profileId}
@@ -183,6 +186,7 @@ function TabbedBrowserNode({
   navigationPolicy,
   navigationActions,
   nodeId,
+  onCloseRequest,
   onFocusRequest,
   onNavigated,
   profileId,
@@ -228,6 +232,7 @@ function TabbedBrowserNode({
             defaultUrl={defaultUrl}
             feature={feature}
             navigationActions={navigationActions}
+            onCloseRequest={onCloseRequest}
             onFocusRequest={onFocusRequest}
             surfaceNodeId={nodeId}
           />

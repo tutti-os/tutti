@@ -1,4 +1,5 @@
 import type {
+  WorkspaceAppFailurePhase,
   WorkspaceAppInstallProgress,
   WorkspaceAppInstallUserPhase,
   WorkspaceAppRuntimeStatus
@@ -7,7 +8,11 @@ import type { WorkspaceAppFactoryJobStatus } from "./viewModel.ts";
 
 export type WorkspaceAppCenterRuntimeStatus = WorkspaceAppRuntimeStatus;
 
-export type { WorkspaceAppInstallProgress, WorkspaceAppInstallUserPhase };
+export type {
+  WorkspaceAppFailurePhase,
+  WorkspaceAppInstallProgress,
+  WorkspaceAppInstallUserPhase
+};
 
 export type WorkspaceAppCenterSource =
   | "builtin"
@@ -68,6 +73,7 @@ export interface WorkspaceAppCenterApp {
   createdAtUnixMs: number;
   enabled: boolean;
   exportable: boolean;
+  failurePhase?: WorkspaceAppFailurePhase;
   failureReason?: string | null;
   iconUrl?: string | null;
   installProgress?: WorkspaceAppInstallProgress | null;

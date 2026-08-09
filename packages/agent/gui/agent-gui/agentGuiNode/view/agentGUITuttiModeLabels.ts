@@ -7,14 +7,12 @@ type AgentGUITuttiModeLabels = Pick<
   | "tuttiBudgetSpeedLabel"
   | "tuttiBudgetModelPreferenceBalance"
   | "tuttiBudgetModelPreferenceCost"
-  | "tuttiBudgetModelPreferenceFastestSuitable"
   | "tuttiBudgetModelPreferenceLabel"
   | "tuttiBudgetModelPreferencePowerful"
   | "tuttiBudgetPreviewBalance"
   | "tuttiBudgetPreviewCost"
   | "tuttiBudgetPreviewHint"
   | "tuttiBudgetPreviewPowerful"
-  | "tuttiBudgetPreviewTitle"
   | "tuttiBudgetTitle"
   | "tuttiBudgetParallelismLabel"
   | "tuttiBudgetParallelismValue"
@@ -47,7 +45,6 @@ export function agentGUITuttiModeLabels(
     tuttiBudgetTitle: t("agentHost.agentGui.tuttiBudgetTitle"),
     tuttiBudgetEffectLabel: t("agentHost.agentGui.tuttiBudgetEffectLabel"),
     tuttiBudgetSpeedLabel: t("agentHost.agentGui.tuttiBudgetSpeedLabel"),
-    tuttiBudgetPreviewTitle: t("agentHost.agentGui.tuttiBudgetPreviewTitle"),
     tuttiBudgetPreviewHint: t("agentHost.agentGui.tuttiBudgetPreviewHint"),
     tuttiBudgetPreviewCost: t("agentHost.agentGui.tuttiBudgetPreviewCost"),
     tuttiBudgetPreviewBalance: t(
@@ -67,9 +64,6 @@ export function agentGUITuttiModeLabels(
     ),
     tuttiBudgetModelPreferencePowerful: t(
       "agentHost.agentGui.tuttiBudgetModelPreferencePowerful"
-    ),
-    tuttiBudgetModelPreferenceFastestSuitable: t(
-      "agentHost.agentGui.tuttiBudgetModelPreferenceFastestSuitable"
     ),
     tuttiBudgetParallelismLabel: t(
       "agentHost.agentGui.tuttiBudgetParallelismLabel"

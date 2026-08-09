@@ -176,7 +176,7 @@ func (h *Host) processRuntimeOperation(ctx context.Context, operation storesqlit
 	case storesqlite.RuntimeOperationKindInteractiveResponse:
 		return h.executeInteractiveRuntimeOperation(ctx, leased, owner, recovering)
 	case storesqlite.RuntimeOperationKindCancelTurn:
-		return h.executeCancelRuntimeOperation(ctx, leased, owner)
+		return h.executeCancelRuntimeOperation(ctx, leased, owner, recovering)
 	case storesqlite.RuntimeOperationKindPlanDecision:
 		return h.executePlanDecisionRuntimeOperation(ctx, leased, owner)
 	case storesqlite.RuntimeOperationKindEditRetry:
@@ -266,7 +266,21 @@ func (h *Host) executeInteractiveRuntimeOperation(ctx context.Context, operation
 	return completion.Operation, nil
 }
 
-func (h *Host) executeCancelRuntimeOperation(ctx context.Context, operation storesqlite.RuntimeOperation, owner string) (storesqlite.RuntimeOperation, error) {
+func (h *Host) executeCancelRuntimeOperation(
+	ctx context.Context,
+	operation storesqlite.RuntimeOperation,
+	owner string,
+	recovering bool,
+) (storesqlite.RuntimeOperation, error) {
+	if recovering {
+		locallyStopped, err := h.goalGenerationFenceStopsRuntimeCancel(ctx, operation)
+		if err != nil {
+			return h.releaseRuntimeOperation(ctx, operation, owner, err, false)
+		}
+		if locallyStopped {
+			return h.completeInterruptedCancelRuntimeOperation(ctx, operation, owner)
+		}
+	}
 	targets := runtimeCancelTargetsFromPayload(operation.Payload)
 	result, err := h.runtime.Cancel(ctx, RuntimeCancelInput{
 		WorkspaceID: operation.WorkspaceID, RootAgentSessionID: runtimeOperationPayloadText(operation.Payload, "rootAgentSessionId"),
@@ -287,6 +301,69 @@ func (h *Host) executeCancelRuntimeOperation(ctx context.Context, operation stor
 	completion.Operation.Payload["providerConfirmed"] = len(result.ConfirmedTargets) > 0
 	if err := h.publishRuntimeOperationEvents(ctx, operation.WorkspaceID); err != nil {
 		logRuntimeOperationFailure(completion.Operation, fmt.Errorf("publish completed cancel runtime operation: %w", err))
+	}
+	return completion.Operation, nil
+}
+
+// A live Goal revocation may crash after preparing its exact-Turn cancel but
+// before that runtime operation settles. On restart the durable Goal fence is
+// already the admission fact and no provider process exists to cancel. Finish
+// the orphaned cancel locally as interrupted so it cannot protect the stale
+// Turn from startup settlement or retry a missing Runtime forever.
+func (h *Host) goalGenerationFenceStopsRuntimeCancel(
+	ctx context.Context,
+	operation storesqlite.RuntimeOperation,
+) (bool, error) {
+	if h == nil || h.goalFences == nil || h.store == nil {
+		return false, nil
+	}
+	if _, ok := h.runtime.(RuntimeSessionLiveness); !ok {
+		return false, ErrRuntimeSessionLivenessUnavailable
+	}
+	if h.runtimeSessionLive(operation.WorkspaceID, operation.AgentSessionID) {
+		return false, nil
+	}
+	turn, found, err := h.store.GetTurn(ctx, operation.WorkspaceID, operation.AgentSessionID, operation.TurnID)
+	if err != nil || !found {
+		return false, err
+	}
+	fences, err := h.goalFences.ListGoalGenerationFencesForSession(ctx, operation.WorkspaceID, operation.AgentSessionID)
+	if err != nil {
+		return false, err
+	}
+	for _, fence := range fences {
+		if turn.SourceGoalOperationID == fence.TargetOperationID &&
+			turn.SourceGoalRevision == fence.TargetRevision &&
+			turn.SourceGoalRepairEpoch == fence.TargetRepairEpoch {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+func (h *Host) completeInterruptedCancelRuntimeOperation(
+	ctx context.Context,
+	operation storesqlite.RuntimeOperation,
+	owner string,
+) (storesqlite.RuntimeOperation, error) {
+	targets := runtimeCancelTargetsFromPayload(operation.Payload)
+	outcomes := make([]storesqlite.CancelRuntimeOperationTargetOutcome, 0, len(targets))
+	for _, target := range targets {
+		outcomes = append(outcomes, storesqlite.CancelRuntimeOperationTargetOutcome{
+			AgentSessionID: target.AgentSessionID,
+			TurnID:         target.TurnID,
+			Outcome:        storesqlite.TurnOutcomeInterrupted,
+		})
+	}
+	completion, _, err := h.operations.CompleteCancelRuntimeOperation(ctx, storesqlite.CompleteCancelRuntimeOperationInput{
+		WorkspaceID: operation.WorkspaceID, OperationID: operation.OperationID, LeaseOwner: owner,
+		TargetOutcomes: outcomes, NowUnixMS: h.now().UnixMilli(),
+	})
+	if err != nil {
+		return operation, err
+	}
+	if err := h.publishRuntimeOperationEvents(ctx, operation.WorkspaceID); err != nil {
+		logRuntimeOperationFailure(completion.Operation, fmt.Errorf("publish locally stopped cancel runtime operation: %w", err))
 	}
 	return completion.Operation, nil
 }

@@ -126,13 +126,14 @@ function receiveDetailSnapshot(
   }
   if (intent.live && intent.session.latestTurn) {
     followUpIntents.push({
+      live: true,
       turn: intent.session.latestTurn,
       type: "turn/upserted"
     });
   }
   followUpIntents.push(
     ...intent.turns.map(
-      (turn): EngineIntent => ({ turn, type: "turn/upserted" })
+      (turn): EngineIntent => ({ live: false, turn, type: "turn/upserted" })
     ),
     ...intent.childSessions.map(
       (session): EngineIntent => ({ session, type: "session/upserted" })

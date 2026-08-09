@@ -60,6 +60,50 @@ func TestClaudeCodeSDKAdapterCloseHonorsCallerDeadlineAndForcesTeardown(t *testi
 	}
 }
 
+func TestClaudeCodeSDKAdapterCloseStartsReaderBeforeRoundTrip(t *testing.T) {
+	t.Parallel()
+
+	adapter := NewClaudeCodeSDKAdapter(nil)
+	session := standardTestSession(ProviderClaudeCode)
+	conn := newBlockingClaudeSDKConnection()
+	adapterSession := &claudeSDKAdapterSession{
+		conn:             conn,
+		reader:           &claudeSDKLineReader{conn: conn},
+		pendingRequests:  make(map[string]*pendingInteractiveRequest),
+		pendingResponses: make(map[string]chan claudeSDKSidecarEvent),
+		turns:            make(map[string]*claudeSDKTurnWaiter),
+		liveState:        newClaudeSDKLiveState(),
+	}
+	adapter.storeSession(session.AgentSessionID, adapterSession)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	done := make(chan error, 1)
+	go func() {
+		done <- adapter.Close(ctx, session)
+	}()
+	request := waitForClaudeSDKSentRequest(t, conn, "close")
+	adapter.mu.Lock()
+	readerStarted := adapterSession.readerStarted
+	adapter.mu.Unlock()
+	conn.pushEvent(claudeSDKSidecarEvent{
+		ID:   request.ID,
+		Type: "ok",
+	})
+
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("Close() error = %v", err)
+		}
+	case <-ctx.Done():
+		t.Fatal("timed out waiting for Close()")
+	}
+	if !readerStarted {
+		t.Fatal("Close() sent request before starting the shared reader")
+	}
+}
+
 func TestClaudeCodeSDKAdapterResumeClassifiesMissingProviderSession(t *testing.T) {
 	session := standardTestSession(ProviderClaudeCode)
 	session.ProviderSessionID = "00000000-0000-4000-8000-000000000000"
@@ -233,11 +277,13 @@ func TestClaudeCodeSDKAdapterStartSendsInitialSettings(t *testing.T) {
 }
 
 func TestClaudeCodeSDKAdapterProviderLaunchPrepareMutatesSpecAndCleansUpOnClose(t *testing.T) {
-	conn := &scriptedClaudeSDKConnection{
-		frames: []ProcessFrame{{
-			Stdout: []byte(`{"type":"session_started","payload":{"providerSessionId":"provider-session-1"}}` + "\n"),
-		}},
-	}
+	conn := newBlockingClaudeSDKConnection()
+	conn.pushEvent(claudeSDKSidecarEvent{
+		Type: "session_started",
+		Payload: map[string]any{
+			"providerSessionId": "provider-session-1",
+		},
+	})
 	transport := &recordingClaudeSDKTransport{conn: conn}
 	adapter := NewClaudeCodeSDKAdapter(transport)
 	cleanupCalls := 0
@@ -289,8 +335,21 @@ func TestClaudeCodeSDKAdapterProviderLaunchPrepareMutatesSpecAndCleansUpOnClose(
 		t.Fatalf("start payload env = %#v, want session and hook env", startEnv)
 	}
 
-	if err := adapter.Close(context.Background(), session); err != nil {
-		t.Fatalf("Close: %v", err)
+	closeCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	closeDone := make(chan error, 1)
+	go func() {
+		closeDone <- adapter.Close(closeCtx, session)
+	}()
+	closeRequest := waitForClaudeSDKSentRequest(t, conn, "close")
+	conn.pushEvent(claudeSDKSidecarEvent{ID: closeRequest.ID, Type: "ok"})
+	select {
+	case err := <-closeDone:
+		if err != nil {
+			t.Fatalf("Close: %v", err)
+		}
+	case <-closeCtx.Done():
+		t.Fatal("timed out waiting for Close")
 	}
 	if cleanupCalls != 1 {
 		t.Fatalf("cleanup calls after close = %d, want 1", cleanupCalls)

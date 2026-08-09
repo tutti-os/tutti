@@ -1,13 +1,10 @@
 package runtimecmd
 
 import (
-	"context"
 	"net"
 	"net/http"
 	"net/url"
 	"os"
-	"os/exec"
-	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -18,28 +15,27 @@ import (
 // System proxy injection.
 //
 // Some standalone agent processes only honor the
-// HTTP(S)_PROXY environment variables — they do NOT read the macOS system proxy.
+// HTTP(S)_PROXY environment variables — they do NOT read the OS system proxy.
 // Desktop runtimes commonly work around this by resolving the OS proxy via
 // Electron's session.resolveProxy() (Chromium/SystemConfiguration) and injecting
 // HTTPS_PROXY/HTTP_PROXY into the spawned process. Without it, a child agent
 // connects directly and, from a restricted region, gets `403 Request not
 // allowed` from the upstream API while the app keeps working.
 //
-// We mirror that behavior here by reading the same SystemConfiguration data via
-// `scutil --proxy` and injecting equivalent env vars. To stay faithful to the
+// We mirror that behavior here through a narrow platform adapter and inject
+// equivalent env vars. To stay faithful to the
 // app we: skip SOCKS entries (downstream HTTP agents don't speak SOCKS), use the
 // same default NO_PROXY, and never override a proxy the user/session already set.
 //
 // Effective precedence, everywhere (spawned agents and in-process clients):
 //
 //	session-explicit env > process env (incl. the user's shell env, when the
-//	desktop forwards it) > macOS system proxy > direct
+//	desktop forwards it) > OS system proxy > direct
 //
 // Out of scope, deliberately: SOCKS proxies and PAC resolution (scutil only
-// exposes the PAC URL; the desktop's Chromium stack handles PAC natively for
-// its own requests), and Windows/Linux system-proxy detection (those platforms
-// conventionally drive proxies via env vars, which the precedence above already
-// honors). Setting TUTTI_DISABLE_PROXY_AUTODETECT=1 disables the system-proxy
+// exposes only a PAC URL; the desktop's Chromium stack handles PAC natively for
+// its own requests). Windows support intentionally covers the static per-user
+// proxy only. Setting TUTTI_DISABLE_PROXY_AUTODETECT=1 disables system-proxy
 // detection and injection entirely; explicit env proxies keep working.
 
 // noProxyDefault matches the value the Claude desktop app injects.
@@ -55,7 +51,7 @@ func proxyAutodetectDisabled() bool {
 }
 
 // injectSystemProxyEnv appends HTTPS_PROXY/HTTP_PROXY/NO_PROXY derived from the
-// macOS system proxy, but only for keys not already present (case-insensitive)
+// OS system proxy, but only for keys not already present (case-insensitive)
 // in env, so explicit user/session settings always win.
 func (r Resolver) injectSystemProxyEnv(env []string) []string {
 	if proxyAutodetectDisabled() {
@@ -78,12 +74,12 @@ func (r Resolver) injectSystemProxyEnv(env []string) []string {
 	return env
 }
 
-// InjectSystemProxyEnv appends the macOS system proxy variables
+// InjectSystemProxyEnv appends the OS system proxy variables
 // (HTTPS_PROXY/HTTP_PROXY/NO_PROXY) to env for any key not already present,
-// reading the same SystemConfiguration source as Resolver.Env(). It exists so
+// reading the same platform system-proxy source as Resolver.Env(). It exists so
 // the spawn paths that build their own environment instead of going through
 // Resolver.Env() — managed-runtime installs, agent logins, workspace terminals —
-// get identical proxy treatment. No-op on non-macOS or when no system proxy is
+// get identical proxy treatment. No-op on unsupported platforms or when no system proxy is
 // configured; never overrides a user/session-set value.
 func InjectSystemProxyEnv(env []string) []string {
 	return Resolver{}.injectSystemProxyEnv(env)
@@ -91,7 +87,7 @@ func InjectSystemProxyEnv(env []string) []string {
 
 // DynamicProxyFunc returns an http.Transport.Proxy function that resolves the
 // proxy per request: explicit proxies from the process environment win, the
-// macOS system proxy fills in the blanks, and NO_PROXY (from env, the system
+// OS system proxy fills in the blanks, and NO_PROXY (from env, the system
 // exceptions, or noProxyDefault) plus loopback targets always bypass. It is the
 // in-process counterpart of InjectSystemProxyEnv, so daemon HTTP clients and
 // spawned agents make the same routing decision. The system proxy is re-read
@@ -108,7 +104,7 @@ func DynamicProxyFunc() func(*http.Request) (*url.URL, error) {
 }
 
 // EffectiveProxySummary reports which source currently supplies the outbound
-// proxy — "env" (explicit environment variables), "system" (macOS system
+// proxy — "env" (explicit environment variables), "system" (OS system
 // proxy), or "none" — plus the proxy address as host:port with any credentials
 // stripped. Startup/diagnostic logging only; it answers "did requests on this
 // machine go through a proxy" without another capture round-trip.
@@ -151,7 +147,7 @@ func proxyHostForLog(raw string) string {
 	return parsed.Host
 }
 
-// SystemProxyEnv exposes the (cached) macOS system proxy as env-style keys
+// SystemProxyEnv exposes the cached OS system proxy as env-style keys
 // (HTTPS_PROXY/HTTP_PROXY/NO_PROXY) for observability call sites that want to
 // log the effective proxy source. Returns nil when autodetect is disabled or no
 // system proxy is configured.
@@ -182,9 +178,9 @@ func mergeSystemProxy(cfg *httpproxy.Config, systemEnv map[string]string) {
 	}
 }
 
-// systemProxyCache memoizes the parsed `scutil --proxy` output so hot paths
-// (per-spawn env injection, per-request proxy resolution) don't fork a scutil
-// process each time, while still noticing proxy-panel toggles within the TTL.
+// systemProxyCache memoizes platform proxy reads so hot paths (per-spawn env
+// injection, per-request proxy resolution) avoid native I/O each time, while
+// still noticing proxy-panel toggles within the TTL.
 var systemProxyCache = struct {
 	sync.Mutex
 	env       map[string]string
@@ -207,28 +203,10 @@ func (r Resolver) systemProxyEnv() map[string]string {
 	if time.Now().Before(systemProxyCache.expiresAt) {
 		return systemProxyCache.env
 	}
-	var env map[string]string
-	if output, ok := runScutilProxy(); ok {
-		env = parseScutilProxy(output)
-	}
+	env := readSystemProxyEnv()
 	systemProxyCache.env = env
 	systemProxyCache.expiresAt = time.Now().Add(systemProxyCacheTTL)
 	return env
-}
-
-// runScutilProxy reads the macOS system proxy configuration. It is a no-op on
-// non-macOS platforms, where proxies are conventionally driven by env vars.
-func runScutilProxy() (string, bool) {
-	if runtime.GOOS != "darwin" {
-		return "", false
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-	out, err := exec.CommandContext(ctx, "scutil", "--proxy").Output()
-	if err != nil {
-		return "", false
-	}
-	return string(out), true
 }
 
 // parseScutilProxy turns `scutil --proxy` output into proxy env vars.
@@ -283,4 +261,87 @@ func parseScutilProxy(output string) map[string]string {
 		"HTTP_PROXY":  url,
 		"NO_PROXY":    noProxyDefault,
 	}
+}
+
+// parseWindowsProxyServer converts the WinINet ProxyServer registry value into
+// env-style HTTP proxy settings. Windows accepts either one proxy for all
+// protocols ("host:port") or a protocol map ("http=...;https=...;socks=...").
+// SOCKS entries are deliberately ignored because downstream HTTP agents do not
+// consistently support SOCKS proxy URLs.
+func parseWindowsProxyServer(proxyServer, proxyOverride string) map[string]string {
+	proxyServer = strings.TrimSpace(proxyServer)
+	if proxyServer == "" {
+		return nil
+	}
+	values := map[string]string{}
+	if strings.Contains(proxyServer, "=") {
+		for _, part := range strings.Split(proxyServer, ";") {
+			key, value, ok := strings.Cut(part, "=")
+			if !ok {
+				continue
+			}
+			key = strings.ToLower(strings.TrimSpace(key))
+			value = normalizeHTTPProxyURL(value)
+			if value != "" && (key == "http" || key == "https") {
+				values[key] = value
+			}
+		}
+	} else if value := normalizeHTTPProxyURL(proxyServer); value != "" {
+		values["http"] = value
+		values["https"] = value
+	}
+	if len(values) == 0 {
+		return nil
+	}
+	if values["https"] == "" {
+		values["https"] = values["http"]
+	}
+	if values["http"] == "" {
+		values["http"] = values["https"]
+	}
+	result := map[string]string{
+		"HTTPS_PROXY": values["https"],
+		"HTTP_PROXY":  values["http"],
+		"NO_PROXY":    windowsNoProxy(proxyOverride),
+	}
+	return result
+}
+
+func normalizeHTTPProxyURL(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return ""
+	}
+	if !strings.Contains(value, "://") {
+		value = "http://" + value
+	}
+	parsed, err := url.Parse(value)
+	if err != nil || parsed.Host == "" || (parsed.Scheme != "http" && parsed.Scheme != "https") {
+		return ""
+	}
+	return parsed.String()
+}
+
+func windowsNoProxy(proxyOverride string) string {
+	items := strings.Split(noProxyDefault, ",")
+	seen := map[string]struct{}{}
+	for _, value := range items {
+		seen[strings.ToLower(value)] = struct{}{}
+	}
+	for _, raw := range strings.Split(proxyOverride, ";") {
+		value := strings.TrimSpace(raw)
+		if value == "" || strings.EqualFold(value, "<local>") {
+			continue
+		}
+		if strings.HasPrefix(value, "*.") {
+			value = value[1:]
+		}
+		key := strings.ToLower(value)
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		items = append(items, value)
+	}
+	return strings.Join(items, ",")
 }

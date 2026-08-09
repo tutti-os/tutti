@@ -605,6 +605,22 @@ function toWorkspaceAppRuntimeState(
     app.cli?.status === "warning" || app.cli?.status === "error"
       ? app.cli.issues[0]
       : null;
+  const failureMessage =
+    app.runtimeStatus === "failed"
+      ? app.failureReason?.trim() || app.lastError?.trim() || null
+      : null;
+  const runtimeError =
+    app.runtimeStatus === "failed" && (failureMessage || app.failurePhase)
+      ? {
+          message: failureMessage ?? "",
+          ...(app.failurePhase ? { failurePhase: app.failurePhase } : {})
+        }
+      : cliIssue
+        ? {
+            code: cliIssue.code,
+            message: cliIssue.message
+          }
+        : null;
   return {
     ...(app.runtimeId?.trim() ? { runtimeId: app.runtimeId.trim() } : {}),
     ...(app.installationId?.trim()
@@ -613,14 +629,7 @@ function toWorkspaceAppRuntimeState(
     appId: app.appId,
     launchUrl: app.launchUrl ?? null,
     ...(app.installProgress ? { installProgress: app.installProgress } : {}),
-    ...(cliIssue
-      ? {
-          error: {
-            code: cliIssue.code,
-            message: cliIssue.message
-          }
-        }
-      : {}),
+    ...(runtimeError ? { error: runtimeError } : {}),
     status:
       app.installProgress != null || app.runtimeStatus === "installing"
         ? "installing"

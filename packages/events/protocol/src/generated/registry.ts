@@ -22,10 +22,14 @@ export const businessEventTopicAgentQuickpromptUpdated =
   "agent.quickprompt.updated" as const;
 export const businessEventTopicAnalyticsDebugReported =
   "analytics.debug.reported" as const;
+export const businessEventTopicConnectorMarketChanged =
+  "connector.market.changed" as const;
 export const businessEventTopicPreferencesAgentComposerDefaultsChanged =
   "preferences.agent.composer.defaults.changed" as const;
 export const businessEventTopicPreferencesAgentComposerDefaultsPatchRequested =
   "preferences.agent.composer.defaults.patch.requested" as const;
+export const businessEventTopicPreferencesAgentSessionLaunchModePatchRequested =
+  "preferences.agent.session.launch.mode.patch.requested" as const;
 export const businessEventTopicPreferencesDesktopUpdateRequested =
   "preferences.desktop.update.requested" as const;
 export const businessEventTopicPreferencesDesktopUpdated =
@@ -53,7 +57,7 @@ export interface BusinessEventDefinition {
   scope: BusinessEventScopeName;
 }
 
-export const businessEventCatalogRevision = "sha256:0413e48c4012324e" as const;
+export const businessEventCatalogRevision = "sha256:92fde556d9bb44a6" as const;
 
 export const businessEventDefinitions = [
   {
@@ -106,6 +110,13 @@ export const businessEventDefinitions = [
     scope: "desktop"
   },
   {
+    topic: "connector.market.changed",
+    version: 1,
+    direction: "server->client",
+    owner: "core",
+    scope: "global"
+  },
+  {
     topic: "preferences.agent.composer.defaults.changed",
     version: 1,
     direction: "server->client",
@@ -114,6 +125,13 @@ export const businessEventDefinitions = [
   },
   {
     topic: "preferences.agent.composer.defaults.patch.requested",
+    version: 1,
+    direction: "client->server",
+    owner: "core",
+    scope: "desktop"
+  },
+  {
+    topic: "preferences.agent.session.launch.mode.patch.requested",
     version: 1,
     direction: "client->server",
     owner: "core",
@@ -234,6 +252,13 @@ export const businessEventDefinitionByTopic = {
     owner: "desktop",
     scope: "desktop"
   },
+  "connector.market.changed": {
+    topic: "connector.market.changed",
+    version: 1,
+    direction: "server->client",
+    owner: "core",
+    scope: "global"
+  },
   "preferences.agent.composer.defaults.changed": {
     topic: "preferences.agent.composer.defaults.changed",
     version: 1,
@@ -243,6 +268,13 @@ export const businessEventDefinitionByTopic = {
   },
   "preferences.agent.composer.defaults.patch.requested": {
     topic: "preferences.agent.composer.defaults.patch.requested",
+    version: 1,
+    direction: "client->server",
+    owner: "core",
+    scope: "desktop"
+  },
+  "preferences.agent.session.launch.mode.patch.requested": {
+    topic: "preferences.agent.session.launch.mode.patch.requested",
     version: 1,
     direction: "client->server",
     owner: "core",

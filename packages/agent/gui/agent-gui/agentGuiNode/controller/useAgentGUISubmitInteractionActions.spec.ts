@@ -210,6 +210,34 @@ describe("conversation stop", () => {
 });
 
 describe("interaction submissions", () => {
+  it.each([
+    ["implement", "implement"],
+    ["feedback", "feedback"],
+    ["skip", "skip"]
+  ] as const)(
+    "returns the plan %s handler admission result",
+    (action, handler) => {
+      const goalControl = vi.fn(async () => undefined);
+      const { input } = createGoalControlInput(goalControl as never);
+      input.planActionsRef.current[handler] = vi.fn(() => false);
+      const { result } = renderHook(() =>
+        useAgentGUISubmitInteractionActions(input)
+      );
+
+      let admitted = true;
+      act(() => {
+        admitted = result.current.submitInteractivePrompt({
+          action,
+          payload: action === "feedback" ? { text: "revise" } : undefined,
+          requestId: "turn-1"
+        });
+      });
+
+      expect(admitted).toBe(false);
+      expect(input.planActionsRef.current[handler]).toHaveBeenCalledOnce();
+    }
+  );
+
   it("routes the explicit answer through the Engine semantic operation", () => {
     const goalControl = vi.fn(async () => undefined);
     const { input, sessionEngine, setDetailError } = createGoalControlInput(
@@ -235,10 +263,17 @@ describe("interaction submissions", () => {
       })
     );
 
-    act(() =>
-      result.current.submitApprovalOption(" request-1 ", " allow-once ")
-    );
+    let admitted = false;
+    act(() => {
+      admitted = result.current.submitApprovalOption({
+        agentSessionId: " session-1 ",
+        optionId: " allow-once ",
+        requestId: " request-1 ",
+        turnId: " turn-1 "
+      });
+    });
 
+    expect(admitted).toBe(true);
     expect(submitInteractionResponse).toHaveBeenCalledWith({
       agentSessionId: "session-1",
       optionId: "allow-once",
@@ -246,6 +281,165 @@ describe("interaction submissions", () => {
       turnId: "turn-1"
     });
     expect(setDetailError).toHaveBeenCalledWith(null);
+  });
+
+  it("rechecks exact Host readiness at the interaction boundary", () => {
+    const goalControl = vi.fn(async () => undefined);
+    const { input, sessionEngine } = createGoalControlInput(
+      goalControl as never
+    );
+    const submitInteractionResponse = vi
+      .spyOn(sessionEngine, "submitInteractionResponse")
+      .mockReturnValue(true);
+    let readiness: "ready" | "blocked" = "blocked";
+    const interactionReadinessSource = {
+      getInteractionReadiness: vi.fn(() =>
+        readiness === "ready"
+          ? ({ status: "ready" } as const)
+          : ({ status: "blocked", reason: "synchronizing" } as const)
+      ),
+      subscribe: vi.fn(() => () => undefined)
+    };
+    const { result } = renderHook(() =>
+      useAgentGUISubmitInteractionActions({
+        ...input,
+        interactionReadinessSource,
+        activeEnginePendingInteractions: [
+          {
+            agentSessionId: "session-1",
+            createdAtUnixMs: 1,
+            kind: "question",
+            requestId: "request-1",
+            status: "pending",
+            turnId: "turn-1",
+            updatedAtUnixMs: 1
+          }
+        ]
+      })
+    );
+
+    let admitted = true;
+    act(() => {
+      admitted = result.current.submitApprovalOption({
+        agentSessionId: "session-1",
+        optionId: "allow",
+        requestId: "request-1",
+        turnId: "turn-1"
+      });
+    });
+    expect(admitted).toBe(false);
+    expect(submitInteractionResponse).not.toHaveBeenCalled();
+
+    readiness = "ready";
+    act(() => {
+      admitted = result.current.submitApprovalOption({
+        agentSessionId: "session-1",
+        optionId: "allow",
+        requestId: "request-1",
+        turnId: "turn-1"
+      });
+    });
+
+    expect(admitted).toBe(true);
+    expect(
+      interactionReadinessSource.getInteractionReadiness
+    ).toHaveBeenLastCalledWith({
+      workspaceId: "workspace-1",
+      agentSessionId: "session-1",
+      turnId: "turn-1",
+      requestId: "request-1"
+    });
+    expect(submitInteractionResponse).toHaveBeenCalledTimes(1);
+  });
+
+  it("submits only the exact pending interaction when request ids repeat", () => {
+    const goalControl = vi.fn(async () => undefined);
+    const { input, sessionEngine } = createGoalControlInput(
+      goalControl as never
+    );
+    const submitInteractionResponse = vi
+      .spyOn(sessionEngine, "submitInteractionResponse")
+      .mockReturnValue(true);
+    const interactionReadinessSource = {
+      getInteractionReadiness: vi.fn(() => ({ status: "ready" }) as const),
+      subscribe: vi.fn(() => () => undefined)
+    };
+    const { result } = renderHook(() =>
+      useAgentGUISubmitInteractionActions({
+        ...input,
+        interactionReadinessSource,
+        activeEnginePendingInteractions: [
+          {
+            agentSessionId: "session-1",
+            createdAtUnixMs: 1,
+            kind: "question",
+            requestId: "request-1",
+            status: "pending",
+            turnId: "turn-1",
+            updatedAtUnixMs: 1
+          },
+          {
+            agentSessionId: "session-2",
+            createdAtUnixMs: 2,
+            kind: "approval",
+            requestId: "request-1",
+            status: "pending",
+            turnId: "turn-2",
+            updatedAtUnixMs: 2
+          }
+        ]
+      })
+    );
+
+    let admitted = false;
+    act(() => {
+      admitted = result.current.submitInteractivePrompt({
+        action: "allow",
+        agentSessionId: "session-1",
+        requestId: "request-1",
+        turnId: "turn-1"
+      });
+    });
+
+    expect(admitted).toBe(true);
+    expect(
+      interactionReadinessSource.getInteractionReadiness
+    ).toHaveBeenCalledWith({
+      agentSessionId: "session-1",
+      requestId: "request-1",
+      turnId: "turn-1",
+      workspaceId: "workspace-1"
+    });
+    expect(submitInteractionResponse).toHaveBeenCalledWith({
+      action: "allow",
+      agentSessionId: "session-1",
+      requestId: "request-1",
+      turnId: "turn-1"
+    });
+  });
+
+  it("rejects a response without an exact pending interaction identity", () => {
+    const goalControl = vi.fn(async () => undefined);
+    const { input, sessionEngine } = createGoalControlInput(
+      goalControl as never
+    );
+    const submitInteractionResponse = vi.spyOn(
+      sessionEngine,
+      "submitInteractionResponse"
+    );
+    const { result } = renderHook(() =>
+      useAgentGUISubmitInteractionActions(input)
+    );
+
+    let admitted = true;
+    act(() => {
+      admitted = result.current.submitInteractivePrompt({
+        requestId: "request-1"
+      });
+    });
+
+    expect(admitted).toBe(false);
+    expect(submitInteractionResponse).not.toHaveBeenCalled();
   });
 });
 

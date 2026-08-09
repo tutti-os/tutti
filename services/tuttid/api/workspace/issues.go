@@ -3,6 +3,7 @@ package workspace
 import (
 	workspaceissues "github.com/tutti-os/tutti/packages/workspace/issues"
 	tuttigenerated "github.com/tutti-os/tutti/services/tuttid/api/generated"
+	workspaceservice "github.com/tutti-os/tutti/services/tuttid/service/workspace"
 )
 
 func GeneratedIssueManagerIssueFromDomain(item workspaceissues.Issue) tuttigenerated.IssueManagerIssue {
@@ -105,11 +106,14 @@ func GeneratedIssueManagerIssueResponseFromDomain(item workspaceissues.Issue) tu
 	}
 }
 
-func GeneratedIssueManagerIssueDetailResponseFromDomain(detail workspaceissues.IssueDetail) tuttigenerated.IssueManagerIssueDetailResponse {
+func GeneratedIssueManagerIssueDetailResponseFromDomain(
+	detail workspaceissues.IssueDetail,
+	contextRefs []workspaceservice.IssueManagerContextRefView,
+) tuttigenerated.IssueManagerIssueDetailResponse {
 	return tuttigenerated.IssueManagerIssueDetailResponse{
 		Issue:         GeneratedIssueManagerIssueFromDomain(detail.Issue),
 		Tasks:         GeneratedIssueManagerTasksFromDomain(detail.Tasks),
-		ContextRefs:   GeneratedIssueManagerContextRefsFromDomain(detail.ContextRefs),
+		ContextRefs:   GeneratedIssueManagerContextRefsFromService(contextRefs),
 		LatestRun:     latestRunPointer(detail.LatestRun),
 		RecentRuns:    GeneratedIssueManagerRunsFromDomain(detail.RecentRuns),
 		LatestOutputs: GeneratedIssueManagerRunOutputsFromDomain(detail.LatestOutputs),
@@ -179,10 +183,13 @@ func GeneratedIssueManagerTasksResponseFromDomain(items []workspaceissues.Task) 
 	}
 }
 
-func GeneratedIssueManagerTaskDetailResponseFromDomain(detail workspaceissues.TaskDetail) tuttigenerated.IssueManagerTaskDetailResponse {
+func GeneratedIssueManagerTaskDetailResponseFromDomain(
+	detail workspaceissues.TaskDetail,
+	contextRefs []workspaceservice.IssueManagerContextRefView,
+) tuttigenerated.IssueManagerTaskDetailResponse {
 	return tuttigenerated.IssueManagerTaskDetailResponse{
 		Task:          GeneratedIssueManagerTaskFromDomain(detail.Task),
-		ContextRefs:   GeneratedIssueManagerContextRefsFromDomain(detail.ContextRefs),
+		ContextRefs:   GeneratedIssueManagerContextRefsFromService(contextRefs),
 		LatestRun:     latestRunPointer(detail.LatestRun),
 		RecentRuns:    GeneratedIssueManagerRunsFromDomain(detail.RecentRuns),
 		LatestOutputs: GeneratedIssueManagerRunOutputsFromDomain(detail.LatestOutputs),
@@ -301,34 +308,42 @@ func GeneratedIssueManagerReferenceSearchResponseFromDomain(workspaceID string, 
 	}
 }
 
-func GeneratedIssueManagerContextRefsResponseFromDomain(items []workspaceissues.ContextRef) tuttigenerated.IssueManagerContextRefsResponse {
+func GeneratedIssueManagerContextRefsResponseFromService(
+	items []workspaceservice.IssueManagerContextRefView,
+) tuttigenerated.IssueManagerContextRefsResponse {
 	return tuttigenerated.IssueManagerContextRefsResponse{
-		ContextRefs: GeneratedIssueManagerContextRefsFromDomain(items),
+		ContextRefs: GeneratedIssueManagerContextRefsFromService(items),
 	}
 }
 
-func GeneratedIssueManagerContextRefsFromDomain(items []workspaceissues.ContextRef) []tuttigenerated.IssueManagerContextRef {
+func GeneratedIssueManagerContextRefsFromService(
+	items []workspaceservice.IssueManagerContextRefView,
+) []tuttigenerated.IssueManagerContextRef {
 	if len(items) == 0 {
 		return []tuttigenerated.IssueManagerContextRef{}
 	}
 	result := make([]tuttigenerated.IssueManagerContextRef, 0, len(items))
 	for _, item := range items {
-		result = append(result, GeneratedIssueManagerContextRefFromDomain(item))
+		result = append(result, GeneratedIssueManagerContextRefFromService(item))
 	}
 	return result
 }
 
-func GeneratedIssueManagerContextRefFromDomain(item workspaceissues.ContextRef) tuttigenerated.IssueManagerContextRef {
+func GeneratedIssueManagerContextRefFromService(
+	view workspaceservice.IssueManagerContextRefView,
+) tuttigenerated.IssueManagerContextRef {
+	item := view.Ref
 	if item.ParentKind == workspaceissues.ContextRefParentTask {
 		ref := tuttigenerated.IssueManagerContextRef{}
 		_ = ref.FromIssueManagerTaskContextRef(tuttigenerated.IssueManagerTaskContextRef{
+			AccessKind:    tuttigenerated.IssueManagerTaskContextRefAccessKind(view.AccessKind),
 			ContextRefId:  item.ContextRefID,
 			WorkspaceId:   item.WorkspaceID,
 			IssueId:       item.IssueID,
 			TaskId:        item.TaskID,
 			ParentKind:    tuttigenerated.IssueManagerTaskContextRefParentKindTask,
 			RefType:       item.RefType,
-			Path:          item.Path,
+			Path:          view.Path,
 			DisplayName:   item.DisplayName,
 			CreatedAtUnix: unixSecondsFromMillis(item.CreatedAtUnixMS),
 		})
@@ -337,12 +352,13 @@ func GeneratedIssueManagerContextRefFromDomain(item workspaceissues.ContextRef) 
 
 	ref := tuttigenerated.IssueManagerContextRef{}
 	_ = ref.FromIssueManagerIssueContextRef(tuttigenerated.IssueManagerIssueContextRef{
+		AccessKind:    tuttigenerated.IssueManagerIssueContextRefAccessKind(view.AccessKind),
 		ContextRefId:  item.ContextRefID,
 		WorkspaceId:   item.WorkspaceID,
 		IssueId:       item.IssueID,
 		ParentKind:    tuttigenerated.IssueManagerIssueContextRefParentKindIssue,
 		RefType:       item.RefType,
-		Path:          item.Path,
+		Path:          view.Path,
 		DisplayName:   item.DisplayName,
 		CreatedAtUnix: unixSecondsFromMillis(item.CreatedAtUnixMS),
 	})

@@ -11,6 +11,7 @@ import (
 	runtimeprep "github.com/tutti-os/tutti/packages/agent/runtimeprep"
 	agentactivitybiz "github.com/tutti-os/tutti/packages/agent/store-sqlite"
 	"github.com/tutti-os/tutti/packages/agent/store-sqlite/canonical"
+	market "github.com/tutti-os/tutti/packages/connector/host"
 	agenttargetbiz "github.com/tutti-os/tutti/services/tuttid/biz/agenttarget"
 	automationrulebiz "github.com/tutti-os/tutti/services/tuttid/biz/automationrule"
 	modelplanbiz "github.com/tutti-os/tutti/services/tuttid/biz/modelplan"
@@ -66,11 +67,15 @@ type Service struct {
 	WorkspaceIDs                   func(context.Context) ([]string, error)
 	PromptAttachmentStore          PromptAttachmentStore
 	RuntimePreparer                runtimeprep.Preparer
+	ConnectorRoutingHints          func() []runtimeprep.ConnectorRoutingHint
 	ModelGateway                   ModelGatewayRegistry
+	BrowserUseAvailable            func() bool
 	ComputerUseAvailable           func() bool
 	CapabilityLister               ComposerCapabilityLister
+	ConnectorMarketSnapshots       market.SnapshotReader
 	ExtensionComposerProfiles      ExtensionComposerProfileResolver
 	AgentComposerDefaultsReader    AgentComposerDefaultsReader
+	DesktopPreferencesReader       DesktopPreferencesReader
 	ProviderAvailabilityCacheTTL   time.Duration
 	CapabilityCatalogCacheTTL      time.Duration
 	LiveModelCacheTTL              time.Duration
@@ -175,6 +180,10 @@ type AgentTargetStore interface {
 
 type AgentComposerDefaultsReader interface {
 	GetAgentComposerDefaultsForTarget(context.Context, string) (preferencesbiz.AgentComposerDefaults, error)
+}
+
+type DesktopPreferencesReader interface {
+	Get(context.Context) (preferencesbiz.DesktopPreferences, error)
 }
 
 type WorkspaceAgentResolver interface {
@@ -450,6 +459,18 @@ type SessionReader interface {
 	SessionDeleted(ctx context.Context, workspaceID string, agentSessionID string) (bool, error)
 }
 
+type RecoverableDeletedSessionResourceReader interface {
+	ListRecoverableDeletedSessionResources(context.Context) ([]agentactivitybiz.DeletedSessionResource, error)
+}
+
+// GlobalAgentSessionIdentityReader checks the physical-resource identity,
+// which is currently agent-session scoped rather than Workspace scoped. It is
+// a tuttid product adapter contract and is intentionally not part of Host.
+type GlobalAgentSessionIdentityReader interface {
+	AgentSessionIDExists(context.Context, string) (bool, error)
+	OtherWorkspaceLiveAgentSessionIDExists(context.Context, string, string) (bool, error)
+}
+
 type PersistedSessionListPage struct {
 	Sessions   []PersistedSession
 	HasMore    bool
@@ -683,8 +704,10 @@ type CreateSessionInput struct {
 // for callers that need to correlate the initial submission. Create remains
 // the compatibility surface for consumers that only need the Session.
 type CreateSessionResult struct {
-	Session Session
-	TurnID  string
+	Session           Session
+	TurnID            string
+	SessionStatus     agenthost.CreateSessionStatus
+	InitialGoalStatus agenthost.CreateSessionInitialGoalStatus
 }
 
 type TuttiModeActivationIntent struct {

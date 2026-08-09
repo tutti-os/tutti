@@ -77,7 +77,10 @@ export function useAgentGUIViewModel(
     () => candidate.interaction,
     [
       candidate.interaction.inlineNotice,
+      candidate.interaction.approvalDisabledReason,
+      candidate.interaction.interactivePromptDisabledReason,
       candidate.interaction.isRespondingApproval,
+      candidate.interaction.isRespondingInteractivePrompt,
       candidate.interaction.pendingApproval,
       candidate.interaction.pendingInteractivePrompt,
       candidate.interaction.sessionChrome

@@ -113,6 +113,28 @@ export function logAgentGUIConversationRailPreferenceDiagnostic(input: {
   });
 }
 
+export function logAgentGUISessionLaunchModePreferenceDiagnostic(input: {
+  error: unknown;
+  mode: "local" | "worktree";
+  projectSectionKey: string;
+  runtimeApi?: Pick<DesktopRuntimeApi, "logTerminalDiagnostic">;
+  workspaceId: string;
+}): void {
+  if (!input.runtimeApi) {
+    return;
+  }
+  void input.runtimeApi.logTerminalDiagnostic({
+    details: {
+      error: stringifyDiagnosticError(input.error),
+      mode: input.mode,
+      projectSectionKey: input.projectSectionKey
+    },
+    event: "agent.gui.session_launch_mode_preference.remember_failed",
+    level: "warn",
+    workspaceId: input.workspaceId
+  });
+}
+
 export function stringifyDiagnosticError(error: unknown): string {
   if (error instanceof Error) {
     return error.message;

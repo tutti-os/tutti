@@ -15,8 +15,9 @@ recur and the repository now has implementation or debugging evidence for it.
 Use the focused runtime index or open one area directly:
 
 - [Agent Providers And Setup](./agent-provider-setup.md): Provider discovery, installation, authentication, models, configuration, and runtime reachability.
-  Includes Codex Model Plan Responses-to-Chat routing and extension
-  command/Skill palette hydration failures.
+  Includes Codex Model Plan Responses-to-Chat routing, oversized request
+  metadata compatibility, and extension command/Skill palette hydration
+  failures.
   Also covers uv-managed Extension installs that accidentally select an
   incompatible system Python.
   Also covers Kimi Code ACP sessions that advertise no model or hide provider
@@ -43,6 +44,8 @@ Use the focused runtime index or open one area directly:
   the durable transcript, and Claude Fork operations that fail because an empty
   query never creates a durable provider child. It also covers a Claude Query
   that keeps returning connection errors after the machine network recovers.
+  Also covers inactive Claude Resume timing out the queue send and leaving later
+  prompts stuck as 排队中 behind `uncertainDelivery`.
 - [Agent Approvals And Child Sessions](./agent-approvals-subagents.md): Approval gates, plan exits, root/parent/child event attribution, child sessions, and Message Center.
   Includes provider-native work that continues invisibly after root cancellation
   and late child creation racing the durable cancel boundary.
@@ -77,11 +80,13 @@ Electron startup, daemon supervision, macOS packaging, updates, and performance 
 - [App update diagnostics flood with identical download progress states](./desktop-release.md#app-update-diagnostics-flood-with-identical-download-progress-states)
 - [macOS in-app update closes Tutti but does not install the new version](./desktop-release.md#macos-in-app-update-closes-tutti-but-does-not-install-the-new-version)
 - [Desktop Performance trace export runs out of memory](./desktop-release.md#desktop-performance-trace-export-runs-out-of-memory)
+- [macOS screenshot selector leaves the menu bar and Dock uncovered](./desktop-release.md#macos-screenshot-selector-leaves-the-menu-bar-and-dock-uncovered)
 
 ## [Workbench And Renderer](./workbench-renderer.md)
 
 React rendering, Workbench state, external stores, input composition, and UI performance.
 
+- [Renderer Vite cannot resolve a workspace package subpath](./workbench-renderer.md#renderer-vite-cannot-resolve-a-workspace-package-subpath)
 - [Renderer body requests fail with `ERR_H2_OR_QUIC_REQUIRED`](./workbench-renderer.md#renderer-body-requests-fail-with-err_h2_or_quic_required)
 - [Renderer `fetch()` rejects an Electron image protocol that `<img>` can load](./workbench-renderer.md#renderer-fetch-rejects-an-electron-image-protocol-that-img-can-load)
 - [AgentGUI Mermaid flowcharts render shapes without labels](./workbench-renderer.md#agentgui-mermaid-flowcharts-render-shapes-without-labels)
@@ -106,6 +111,8 @@ React rendering, Workbench state, external stores, input composition, and UI per
 - [Daemon validation error appears as untranslated developer text](./workbench-renderer.md#daemon-validation-error-appears-as-untranslated-developer-text)
 - [Mask-backed icon renders as a solid color block](./workbench-renderer.md#mask-backed-icon-renders-as-a-solid-color-block)
 - [Restored fullscreen window overflows after the host surface becomes smaller](./workbench-renderer.md#restored-fullscreen-window-overflows-after-the-host-surface-becomes-smaller)
+- [Hidden workspace owner loads but its first IPC request times out](./workbench-renderer.md#hidden-workspace-owner-loads-but-its-first-ipc-request-times-out)
+- [Screenshot selection appears stuck and later opens duplicate floating Composers](./workbench-renderer.md#screenshot-selection-appears-stuck-and-later-opens-duplicate-floating-composers)
 
 ## [Workspace Apps And Files](./workspace-apps-files.md)
 
@@ -122,6 +129,7 @@ App Center, workspace-app lifecycle, App Factory, file references, and File Mana
 - [Agent GUI app mentions show unavailable workspace apps](./workspace-apps-files.md#agent-gui-app-mentions-show-unavailable-workspace-apps)
 - [Agent generated files under system temp do not open](./workspace-apps-files.md#agent-generated-files-under-system-temp-do-not-open)
 - [FileManager home-relative paths break only the list pane](./workspace-apps-files.md#filemanager-home-relative-paths-break-only-the-list-pane)
+- [Windows FileManager paths exist but fail validation or selection](./workspace-apps-files.md#windows-filemanager-paths-exist-but-fail-validation-or-selection)
 
 ## [Toolchain, Browser, And Terminal](./toolchain-browser-terminal.md)
 
@@ -155,7 +163,9 @@ CLI behavior, CI, package assets, skills, Browser Node, and terminal input.
 Android app login, native bridge, secure identity, and mobile transport diagnostics.
 
 - [Android QR scan closes without advancing pairing](./mobile.md#android-qr-scan-closes-without-advancing-pairing)
+- [Android stays on “Syncing the latest data” after pairing](./mobile.md#android-stays-on-syncing-the-latest-data-after-pairing)
 - [Android release bundling cannot resolve the JSX transform](./mobile.md#android-release-bundling-cannot-resolve-the-jsx-transform)
+- [Android update stays on MainActivity without opening the installer](./mobile.md#android-update-stays-on-mainactivity-without-opening-the-installer)
 - [Mobile quick prompts are missing from the plus menu](./mobile.md#mobile-quick-prompts-are-missing-from-the-plus-menu)
 - [Mobile composer model and permission controls are missing](./mobile.md#mobile-composer-model-and-permission-controls-are-missing)
 - [Mobile composer option chips do not open](./mobile.md#mobile-composer-option-chips-do-not-open)

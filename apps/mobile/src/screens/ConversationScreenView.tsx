@@ -1,5 +1,4 @@
 import {
-  canonicalInteractionKey,
   type AgentActivityInteraction,
   type AgentActivitySessionSettings
 } from "@tutti-os/agent-activity-core";
@@ -7,14 +6,15 @@ import { resolveAgentConversationNavigationAction } from "@tutti-os/agent-gui/co
 import { createAgentConversationFollowEndController } from "@tutti-os/agent-gui/agent-conversation/follow-end";
 import {
   NativeButton,
+  NativeControlGlyph,
   NativeIconButton,
   type NativeTheme,
   useNativeTheme
 } from "@tutti-os/ui-system/native";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Linking, ScrollView, StyleSheet, Text, View } from "react-native";
-import { MobileInteractionCard } from "../components/MobileConversationRows";
 import { MobileComposerDock } from "../components/MobileComposerDock";
+import { MobileConversationInteractionDock } from "../components/MobileConversationInteractionDock";
 import { MobileConversationTimeline } from "../components/MobileConversationTimeline";
 import {
   MobileKeyboardAvoidingView,
@@ -28,6 +28,12 @@ import { t } from "../i18n";
 import type { WorkspaceActivitySnapshot } from "../services/workspaceActivityService";
 import type { WorkspaceMediaSnapshot } from "../services/workspaceMediaService";
 import type { MobileQuickPromptLibrarySnapshot } from "../services/mobileQuickPromptLibraryService";
+import {
+  conversationDistanceFromBottom,
+  initialConversationScrollGeometry,
+  updateConversationScrollGeometry
+} from "./conversationScrollGeometry";
+import { createConversationScrollScheduler } from "./conversationScrollScheduler";
 
 export function ConversationScreenView({
   deviceName,
@@ -81,25 +87,46 @@ export function ConversationScreenView({
     createAgentConversationFollowEndController()
   );
   const followEndController = followEndControllerRef.current;
-  const lastScrollOffsetY = useRef(0);
+  const scrollGeometry = useRef(initialConversationScrollGeometry);
+  const scrollScheduler = useRef<
+    ReturnType<typeof createConversationScrollScheduler> | undefined
+  >(undefined);
+  if (!scrollScheduler.current) {
+    scrollScheduler.current = createConversationScrollScheduler({
+      getFollowState: () => followEndControllerRef.current.getSnapshot(),
+      onScrollToEnd: (animated) => scroll.current?.scrollToEnd({ animated })
+    });
+  }
   const window = model.selectedAgentSessionId
     ? model.activity.sessionMessageWindowsById?.[model.selectedAgentSessionId]
     : null;
 
+  const scheduleScrollToBottom = useCallback(
+    (animated: boolean, intent: "auto-follow" | "requested") => {
+      scrollScheduler.current?.schedule(animated, intent);
+    },
+    []
+  );
+
   useEffect(() => {
     followEndController.dispatch("conversation-changed");
-    lastScrollOffsetY.current = 0;
+    scrollGeometry.current = updateConversationScrollGeometry(
+      scrollGeometry.current,
+      { type: "conversation-changed" }
+    );
     setShowScrollToBottom(false);
-    const frame = requestAnimationFrame(() => {
-      scroll.current?.scrollToEnd({ animated: false });
-    });
-    return () => cancelAnimationFrame(frame);
-  }, [followEndController, model.selectedAgentSessionId]);
+    scheduleScrollToBottom(false, "auto-follow");
+    return () => scrollScheduler.current?.cancel();
+  }, [
+    followEndController,
+    model.selectedAgentSessionId,
+    scheduleScrollToBottom
+  ]);
 
   const scrollToBottom = (animated: boolean) => {
     followEndController.dispatch("scroll-to-end-requested");
     setShowScrollToBottom(false);
-    scroll.current?.scrollToEnd({ animated });
+    scheduleScrollToBottom(animated, "requested");
   };
   const openConversationLink = (href: string): boolean => {
     if (!model.conversation) return false;
@@ -125,40 +152,48 @@ export function ConversationScreenView({
   return (
     <MobileKeyboardAvoidingView style={styles.root}>
       <View style={styles.conversationHeader}>
-        <View style={styles.headerButtonSlot}>
+        <View style={styles.headerContent}>
           <NativeIconButton
             accessibilityLabel={t("sessions")}
             onPress={onBack}
-            icon={<Text style={styles.backIcon}>←</Text>}
-            style={styles.headerCircleButton}
-            variant="secondary"
-          />
-        </View>
-        <View style={styles.conversationTitle}>
-          <Text numberOfLines={1} style={styles.sessionTitle}>
-            {model.creating
-              ? t("newSession")
-              : model.selectedSession?.title || workspaceName}
-          </Text>
-          <View style={styles.locationRow}>
-            <View style={styles.locationItem}>
-              <MobileFolderGlyph color={theme.color.textSecondary} size={14} />
-              <Text numberOfLines={1} style={styles.locationLabel}>
-                {workspaceName}
-              </Text>
-            </View>
-            <View style={styles.locationItem}>
-              <MobileComputerGlyph
-                color={theme.color.textSecondary}
-                size={14}
+            icon={
+              <NativeControlGlyph
+                color={theme.color.text}
+                size={20}
+                variant="back"
               />
-              <Text numberOfLines={1} style={styles.locationLabel}>
-                {deviceName || t("desktopFallback")}
-              </Text>
+            }
+            style={styles.headerCircleButton}
+            variant="ghost"
+          />
+          <View style={styles.conversationTitle}>
+            <Text numberOfLines={1} style={styles.sessionTitle}>
+              {model.creating
+                ? t("newSession")
+                : model.selectedSession?.title || workspaceName}
+            </Text>
+            <View style={styles.locationRow}>
+              <View style={styles.locationItem}>
+                <MobileFolderGlyph
+                  color={theme.color.textSecondary}
+                  size={14}
+                />
+                <Text numberOfLines={1} style={styles.locationLabel}>
+                  {workspaceName}
+                </Text>
+              </View>
+              <View style={styles.locationItem}>
+                <MobileComputerGlyph
+                  color={theme.color.textSecondary}
+                  size={14}
+                />
+                <Text numberOfLines={1} style={styles.locationLabel}>
+                  {deviceName || t("desktopFallback")}
+                </Text>
+              </View>
             </View>
           </View>
         </View>
-        <View style={styles.headerButtonSlot} />
       </View>
 
       {model.loading ? (
@@ -167,8 +202,10 @@ export function ConversationScreenView({
           accessibilityLiveRegion="polite"
           style={styles.loadingSkeleton}
         >
-          <View style={[styles.skeletonBlock, styles.skeletonShort]} />
-          <View style={[styles.skeletonBlock, styles.skeletonLong]} />
+          <View style={styles.loadingColumn}>
+            <View style={[styles.skeletonBlock, styles.skeletonShort]} />
+            <View style={[styles.skeletonBlock, styles.skeletonLong]} />
+          </View>
         </View>
       ) : model.selectedSession && !model.creating ? (
         <View style={styles.conversationBody}>
@@ -177,17 +214,29 @@ export function ConversationScreenView({
             keyboardDismissMode={mobileKeyboardDismissMode}
             keyboardShouldPersistTaps="handled"
             maintainVisibleContentPosition={{ minIndexForVisible: 0 }}
-            onContentSizeChange={() => {
+            onContentSizeChange={(_width, height) => {
+              scrollGeometry.current = updateConversationScrollGeometry(
+                scrollGeometry.current,
+                { height, type: "content-size-changed" }
+              );
               if (followEndController.getSnapshot() === "following") {
-                scrollToBottom(false);
+                scheduleScrollToBottom(false, "auto-follow");
               }
             }}
-            onLayout={() => {
+            onLayout={({ nativeEvent }) => {
+              scrollGeometry.current = updateConversationScrollGeometry(
+                scrollGeometry.current,
+                {
+                  height: nativeEvent.layout.height,
+                  type: "layout-changed"
+                }
+              );
               if (followEndController.getSnapshot() === "following") {
-                scrollToBottom(false);
+                scheduleScrollToBottom(false, "auto-follow");
               }
             }}
             onScrollBeginDrag={() => {
+              scrollScheduler.current?.cancel();
               followEndController.dispatch("user-scrolled-away");
               setShowScrollToBottom(true);
             }}
@@ -203,8 +252,16 @@ export function ConversationScreenView({
                 nativeEvent.layoutMeasurement.height -
                 nativeEvent.contentOffset.y;
               const scrollingTowardEnd =
-                nativeEvent.contentOffset.y > lastScrollOffsetY.current;
-              lastScrollOffsetY.current = nativeEvent.contentOffset.y;
+                nativeEvent.contentOffset.y > scrollGeometry.current.offsetY;
+              scrollGeometry.current = updateConversationScrollGeometry(
+                scrollGeometry.current,
+                {
+                  contentHeight: nativeEvent.contentSize.height,
+                  offsetY: nativeEvent.contentOffset.y,
+                  type: "scrolled",
+                  viewportHeight: nativeEvent.layoutMeasurement.height
+                }
+              );
               if (
                 followEndController.getSnapshot() === "detached" &&
                 scrollingTowardEnd &&
@@ -216,6 +273,16 @@ export function ConversationScreenView({
                 followEndController.getSnapshot() === "detached"
               );
             }}
+            onTouchStart={() => {
+              const distanceFromBottom = conversationDistanceFromBottom(
+                scrollGeometry.current
+              );
+              if (distanceFromBottom > 48) {
+                scrollScheduler.current?.cancel();
+                followEndController.dispatch("user-scrolled-away");
+                setShowScrollToBottom(true);
+              }
+            }}
             ref={scroll}
             scrollEventThrottle={16}
             style={styles.messageScroller}
@@ -224,7 +291,9 @@ export function ConversationScreenView({
               <Text style={styles.loadOlder}>{t("loading")}</Text>
             ) : null}
             {!model.conversation || model.conversation.rows.length === 0 ? (
-              <Text style={styles.emptyText}>{t("emptyConversation")}</Text>
+              <Text style={[styles.emptyText, styles.transcriptFrame]}>
+                {t("emptyConversation")}
+              </Text>
             ) : (
               <MobileConversationTimeline
                 conversation={model.conversation}
@@ -232,34 +301,12 @@ export function ConversationScreenView({
                 onLinkPress={openConversationLink}
               />
             )}
-            {model.pendingInteractions.map((interaction) => {
-              const interactionKey = canonicalInteractionKey(
-                interaction.agentSessionId,
-                interaction.turnId,
-                interaction.requestId
-              );
-              const state = model.interactionStates[interactionKey] ?? {
-                failed: false,
-                runtimeAvailable: false,
-                submitting: false
-              };
-              return (
-                <MobileInteractionCard
-                  failed={state.failed}
-                  interaction={interaction}
-                  key={interactionKey}
-                  onSubmit={(input) => onRespond(interaction, input)}
-                  runtimeAvailable={state.runtimeAvailable}
-                  submitting={state.submitting}
-                />
-              );
-            })}
           </ScrollView>
           {showScrollToBottom ? (
             <NativeButton
               label={t("scrollToBottom")}
               onPress={() => scrollToBottom(true)}
-              size="compact"
+              size="regular"
               style={styles.scrollToBottom}
               variant="secondary"
             />
@@ -278,6 +325,11 @@ export function ConversationScreenView({
       {model.errorCode ? (
         <Text style={styles.inlineError}>{t("genericError")}</Text>
       ) : null}
+      <MobileConversationInteractionDock
+        interactionStates={model.interactionStates}
+        interactions={model.pendingInteractions}
+        onRespond={onRespond}
+      />
       {model.selectedSession || model.creating ? (
         <MobileComposerDock
           model={model}
@@ -306,17 +358,27 @@ function createStyles(theme: NativeTheme) {
     },
     conversationHeader: {
       alignItems: "center",
+      backgroundColor: theme.color.background,
+      borderBottomColor: theme.color.border,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      paddingHorizontal: theme.space.small,
+      paddingVertical: theme.space.small / 2
+    },
+    headerContent: {
+      alignItems: "center",
+      alignSelf: "center",
       flexDirection: "row",
       gap: theme.space.small,
-      paddingHorizontal: theme.space.medium,
-      paddingVertical: theme.space.small
+      maxWidth: 760,
+      width: "100%"
     },
     conversationBody: { flex: 1, minHeight: 0, position: "relative" },
     conversationTitle: {
-      alignItems: "center",
+      alignItems: "flex-start",
       flex: 1,
       justifyContent: "center",
-      minWidth: 0
+      minWidth: 0,
+      paddingRight: theme.space.small
     },
     emptyText: {
       color: theme.color.textSecondary,
@@ -324,27 +386,13 @@ function createStyles(theme: NativeTheme) {
       lineHeight: 22,
       textAlign: "center"
     },
-    backIcon: {
-      color: theme.color.text,
-      fontSize: 22,
-      fontWeight: "400",
-      lineHeight: 26
-    },
     headerCircleButton: {
       alignItems: "center",
-      backgroundColor: theme.color.panelRaised,
-      borderColor: theme.color.border,
-      borderRadius: 20,
-      borderWidth: StyleSheet.hairlineWidth,
+      borderRadius: theme.control.regular / 2,
       flexShrink: 0,
-      height: 40,
+      height: theme.control.regular,
       justifyContent: "center",
-      width: 40
-    },
-    headerButtonSlot: {
-      flexShrink: 0,
-      height: 40,
-      width: 40
+      width: theme.control.regular
     },
     inlineError: {
       backgroundColor: theme.color.panel,
@@ -353,17 +401,31 @@ function createStyles(theme: NativeTheme) {
       padding: theme.space.small,
       textAlign: "center"
     },
-    loadOlder: { color: theme.color.muted, fontSize: 12, textAlign: "center" },
+    loadOlder: {
+      alignSelf: "center",
+      color: theme.color.muted,
+      fontSize: 12,
+      maxWidth: 760,
+      paddingVertical: theme.space.small,
+      textAlign: "center",
+      width: "100%"
+    },
+    loadingColumn: {
+      alignSelf: "center",
+      gap: theme.space.medium,
+      maxWidth: 760,
+      width: "100%"
+    },
     loadingSkeleton: {
       flex: 1,
-      gap: theme.space.medium,
-      paddingHorizontal: theme.space.large,
+      paddingHorizontal: theme.space.medium,
       paddingTop: theme.space.xlarge
     },
     locationLabel: {
       color: theme.color.textSecondary,
       flexShrink: 1,
-      fontSize: 12
+      fontSize: 12,
+      lineHeight: 16
     },
     locationItem: {
       alignItems: "center",
@@ -375,21 +437,20 @@ function createStyles(theme: NativeTheme) {
     locationRow: {
       flexDirection: "row",
       gap: theme.space.small,
-      justifyContent: "center",
-      marginTop: 3,
+      marginTop: 2,
       overflow: "hidden"
     },
     messageList: {
-      gap: theme.space.medium,
+      gap: theme.space.small,
       paddingBottom: theme.space.xlarge,
       paddingHorizontal: theme.space.medium,
       paddingTop: theme.space.medium
     },
     messageScroller: { flex: 1 },
-    pressed: { opacity: 0.7 },
     root: { backgroundColor: theme.color.background, flex: 1 },
     scrollToBottom: {
       bottom: theme.space.medium,
+      borderRadius: theme.control.regular / 2,
       position: "absolute",
       right: theme.space.medium
     },
@@ -405,9 +466,15 @@ function createStyles(theme: NativeTheme) {
     },
     sessionTitle: {
       color: theme.color.text,
-      fontSize: 16,
+      fontSize: 17,
       fontWeight: "700",
-      textAlign: "center"
+      lineHeight: 22,
+      textAlign: "left"
+    },
+    transcriptFrame: {
+      alignSelf: "center",
+      maxWidth: 760,
+      width: "100%"
     }
   });
 }

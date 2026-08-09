@@ -36,6 +36,7 @@ export interface AgentActivityWorkspaceEventResult {
   reason:
     | "applied"
     | "deleted"
+    | "restored"
     | "identity_mismatch"
     | "invalid_delta"
     | "invalid_turn"
@@ -198,6 +199,18 @@ export function createAgentActivityWorkspaceEventCoordinator({
       const recovered =
         connectionStatus === "disconnected" && input.status === "connected";
       connectionStatus = input.status;
+      if (input.status === "disconnected" && transitioned) {
+        for (const agentSessionId of Object.keys(
+          engine.getSnapshot().sessionLifecycle.operationBySessionId
+        )) {
+          engine.dispatch({
+            agentSessionId,
+            occurredAtUnixMs: 0,
+            state: "idle",
+            type: "session/runtimeActivityChanged"
+          });
+        }
+      }
       if (input.status !== "connected" || !transitioned) return;
 
       engine.dispatch({
@@ -325,10 +338,44 @@ export function createAgentActivityWorkspaceEventCoordinator({
         removeSession(agentSessionId);
         return eventResult(eventType, true, "deleted");
       }
+      if (event.eventType === "session_restored") {
+        engine.dispatch({
+          agentSessionId,
+          type: "session/restored"
+        });
+        overlay.reset({
+          agentSessionId,
+          workspaceId: normalizedWorkspaceId
+        });
+        overlaySessionIds.delete(agentSessionId);
+        requestSessionReconcile({
+          agentSessionId,
+          needsMessages: true,
+          needsState: true
+        });
+        markChanged();
+        return eventResult(eventType, true, "restored");
+      }
       if (
         engine.getSnapshot().sessionLifecycle.deletedSessionIds[agentSessionId]
       ) {
         return eventResult(eventType, false, "tombstoned");
+      }
+      if (event.eventType === "runtime_activity_update") {
+        if (
+          (event.data.state !== "idle" && event.data.state !== "running") ||
+          !Number.isSafeInteger(event.data.occurredAtUnixMs) ||
+          event.data.occurredAtUnixMs <= 0
+        ) {
+          return eventResult(eventType, false, "identity_mismatch");
+        }
+        engine.dispatch({
+          agentSessionId,
+          occurredAtUnixMs: event.data.occurredAtUnixMs,
+          state: event.data.state,
+          type: "session/runtimeActivityChanged"
+        });
+        return eventResult(eventType, true, "applied");
       }
       if (event.eventType === "turn_update") {
         const projection = agentActivityTurnProjectionFromEvent(event);

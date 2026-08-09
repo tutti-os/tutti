@@ -458,9 +458,10 @@ async function main() {
     releaseAssetBaseUrl,
     tag
   );
-  const release = mirroredMacUrl
-    ? null
-    : await loadRelease(repository, tag, resolveGithubToken());
+  const release =
+    mirroredMacUrl && mirroredWinUrl
+      ? null
+      : await loadRelease(repository, tag, resolveGithubToken());
   const summary = await loadReleaseSummary(
     readOption(args, "summary", "RELEASE_SUMMARY_PATH")
   );

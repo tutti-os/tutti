@@ -3,16 +3,40 @@ import {
   type DesktopWorkspaceAppExternalRendererEvent,
   type DesktopWorkspaceAppExternalRendererRequest,
   type DesktopWorkspaceAppExternalRendererResponse
-} from "../../shared/contracts/ipc";
+} from "../../shared/contracts/ipc.ts";
 import type {
   DesktopWorkspaceAppExternalHostApi,
   DesktopWorkspaceAppExternalHostRequestResult
-} from "../types";
-import { ipcRenderer, type IpcRendererEvent } from "electron";
+} from "../types.ts";
+import electron, { type IpcRendererEvent } from "electron";
 
-export function createWorkspaceAppExternalDesktopApi(): DesktopWorkspaceAppExternalHostApi {
+const { ipcRenderer } = electron;
+
+interface WorkspaceAppExternalIpcRenderer {
+  off(
+    channel: string,
+    listener: (
+      event: IpcRendererEvent,
+      request: DesktopWorkspaceAppExternalRendererRequest
+    ) => void
+  ): void;
+  on(
+    channel: string,
+    listener: (
+      event: IpcRendererEvent,
+      request: DesktopWorkspaceAppExternalRendererRequest
+    ) => void
+  ): void;
+  send(channel: string, payload: unknown): void;
+}
+
+export function createWorkspaceAppExternalDesktopApi(
+  renderer: WorkspaceAppExternalIpcRenderer = ipcRenderer
+): DesktopWorkspaceAppExternalHostApi {
   return {
     onRequest(listener) {
+      let disposed = false;
+      let announcedReady = false;
       const handler = (
         _event: IpcRendererEvent,
         request: DesktopWorkspaceAppExternalRendererRequest
@@ -26,16 +50,28 @@ export function createWorkspaceAppExternalDesktopApi(): DesktopWorkspaceAppExter
           });
       };
 
-      ipcRenderer.on(desktopIpcChannels.appExternal.rendererRequest, handler);
+      renderer.on(desktopIpcChannels.appExternal.rendererRequest, handler);
+      queueMicrotask(() => {
+        if (disposed) {
+          return;
+        }
+        announcedReady = true;
+        renderer.send(desktopIpcChannels.appExternal.rendererReady, {
+          ready: true
+        });
+      });
       return () => {
-        ipcRenderer.off(
-          desktopIpcChannels.appExternal.rendererRequest,
-          handler
-        );
+        disposed = true;
+        renderer.off(desktopIpcChannels.appExternal.rendererRequest, handler);
+        if (announcedReady) {
+          renderer.send(desktopIpcChannels.appExternal.rendererReady, {
+            ready: false
+          });
+        }
       };
     },
     sendEvent(event: DesktopWorkspaceAppExternalRendererEvent) {
-      ipcRenderer.send(desktopIpcChannels.appExternal.rendererEvent, event);
+      renderer.send(desktopIpcChannels.appExternal.rendererEvent, event);
     }
   };
 }

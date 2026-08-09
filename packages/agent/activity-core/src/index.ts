@@ -209,6 +209,8 @@ export type {
   AttentionReadCommand,
   AttentionReadIntent,
   AttentionReadRecord,
+  AttentionObservationProvenance,
+  AttentionReadStateProvenance,
   AttentionReadState
 } from "./engine/attentionReadState.types.ts";
 export {
@@ -224,9 +226,12 @@ export {
   selectEngineLatestTurn,
   selectEnginePendingInteractions,
   selectEngineSession,
+  selectEngineSessionCanReload,
+  selectFailedNewActivationResolution,
   selectEngineSessionDeleted,
   selectEngineSessionIsRespondingToInteraction,
   selectEngineSessionRuntimeAvailability,
+  selectEngineSessionRuntimeActivity,
   selectEngineSessionSettingsUpdate,
   selectEngineSessionOperationError,
   selectEngineSessionOperation,
@@ -252,6 +257,7 @@ export {
   canonicalTurnKey
 } from "./engine/sessionEntityKeys.ts";
 export type {
+  FailedNewActivationResolution,
   WorkspaceAgentConsumerCounts,
   WorkspaceAgentConsumerSession
 } from "./engine/sessionLifecycle.selectors.ts";
@@ -264,6 +270,7 @@ export type {
   SessionCancelStatus,
   SessionOperationState,
   SessionRuntimeAvailability,
+  SessionRuntimeActivity,
   SessionSettingsUpdateState,
   SessionSettingsUpdateStatus,
   SessionLifecycleState,
@@ -380,6 +387,7 @@ export type {
   AgentActivityCollaborationTriggerSource,
   AgentActivityCollaborationUsage,
   AgentActivityCreateSessionInput,
+  AgentActivitySessionIsolation,
   AgentActivityDeleteSessionInput,
   AgentActivityDeleteSessionResult,
   AgentActivityDeleteSessionsInput,

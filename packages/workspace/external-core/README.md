@@ -16,9 +16,17 @@ trusted app APIs may read or update host workspace state directly.
   runtime and state used by Agent GUI; workspace apps must not create a second
   Activity engine or provider adapter around this surface.
 - `at.query()` for host-provided mention candidates, plus optional
+  `at.queryDirectory()` for provider-owned direct-child browsing and optional
   `at.resolve()` and `at.subscribe()` for exact mention hydration and dirty
   invalidation.
 - `files.select()` for user-activated workspace file picking.
+- `references.select()` for the user-activated multi-source reference picker.
+  Tutti Desktop currently offers project files, local files, and application
+  artifacts on this workspace-app surface. The result contains concrete paths
+  for files/folders and lazy `workspace-reference` handles for whole
+  application artifact groups; issue artifacts are not part of this surface.
+- `references.open()` for user-activated navigation from a serialized
+  `mention://` reference back to its owning workspace surface.
 - `files.open()` for user-activated host opening/revealing of a known workspace file path.
 - `files.upload()` for trusted app upload of a browser `File`/`Blob` into the
   app's managed durable data path, with optional progress and `AbortSignal`
@@ -66,7 +74,7 @@ import { createTuttiExternalRichTextMentionService } from "@tutti-os/workspace-e
 
 const mentionService = createTuttiExternalRichTextMentionService({
   getBridge: () => window.tuttiExternal,
-  providerIds: ["workspace-app", "agent-session", "agent-generated-file"]
+  providerIds: ["file"]
 });
 ```
 
@@ -75,12 +83,58 @@ app root. App-local providers can be supplied once through
 `appLocalProviders`; leaf inputs and message lists should not recreate adapters.
 
 The adapter feature-detects optional bridge methods. New hosts use exact
-`at.resolve()` and `at.subscribe()`. On an older query-only host, resolution
-first queries by the persisted fallback label, then uses a bounded empty-keyword
-query and exact provider/entity/scope match. The service TTL supplies eventual
-refresh for hosts or provider sources without a real-time dirty event. The existing
+`at.queryDirectory()`, `at.resolve()`, and `at.subscribe()`. A file provider
+only advertises its hierarchy methods when the current bridge supports
+`at.queryDirectory()`, so an older host keeps the existing flat ranked search.
+On an older query-only host, resolution first queries by the persisted fallback
+label, then uses a bounded empty-keyword query and exact
+provider/entity/scope match. The service TTL supplies eventual refresh for
+hosts or provider sources without a real-time dirty event. The existing
 `createTuttiExternalAtRichTextTriggerProviders` factory remains available for
 older bundles.
+
+For a file-only external composer, register only the file provider and one file
+category, then opt the shared editor into that provider's hierarchy:
+
+```tsx
+const mentionService = createTuttiExternalRichTextMentionService({
+  getBridge: () => window.tuttiExternal,
+  providerIds: ["file"]
+});
+
+<RichTextMentionServiceProvider service={mentionService}>
+  <RichTextTriggerEditor
+    value={draft}
+    onChange={setDraft}
+    palette={{
+      categories: [{ id: "file", label: labels.file, providerIds: ["file"] }],
+      defaultCategoryId: "file",
+      labels: {
+        tabHint: labels.tabHint,
+        cycleFilter: labels.cycleFilter,
+        moveSelection: labels.moveSelection
+      },
+      directoryNavigation: {
+        providerId: "file",
+        labels: {
+          back: labels.back,
+          enter: labels.enter,
+          navigateHierarchy: labels.navigateHierarchy
+        }
+      }
+    }}
+  />
+</RichTextMentionServiceProvider>;
+```
+
+The inserted value remains the host-provided file or folder path. The external
+app does not recursively enumerate a folder or create a second path protocol;
+the local Agent receives the serialized path in its prompt and owns execution.
+An empty directory path addresses the file provider root. Desktop constrains
+workspace-app directory traversal to that root and its descendants; arbitrary
+absolute paths outside the provider root are not part of this bridge contract.
+This workspace-app policy does not narrow AgentGUI's host-owned local-path
+provider.
 
 Provider ids and palette sections stay aligned with the host contract. The app
 still owns local-only mention sources, i18n labels, palette categories, row
@@ -89,3 +143,17 @@ invalidation.
 
 See `@tutti-os/ui-rich-text` for the generic trigger-provider and at-panel
 contracts.
+
+## Composer Reference Selection
+
+Workspace apps should feature-detect `window.tuttiExternal.references.select`
+before exposing a reference action. The host owns the available source set and
+the picker interaction. Apps append the returned references to their serialized
+rich-text prompt with `appendTuttiExternalReferenceSelections`; they must not
+expand an application artifact group into every child path.
+
+For a standard composer entry, use `WorkspaceReferenceAddControl` from
+`@tutti-os/workspace-file-reference/ui`. Apps with an upload workflow pass
+`onUploadFile` and receive an Upload / Browse menu. Apps without upload support
+omit it and the plus button opens the reference picker directly. All visible
+labels remain app-owned i18n input.

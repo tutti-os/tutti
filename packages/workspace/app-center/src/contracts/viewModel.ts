@@ -1,7 +1,10 @@
-import type { WorkspaceAppRuntimeStatus } from "./runtime.ts";
 import type { WorkspaceAppCatalogSourceKind } from "./catalog.ts";
-import type { WorkspaceAppInstallProgress } from "./runtime.ts";
 import type { WorkspaceAppCategoryId } from "./catalog.ts";
+import type {
+  WorkspaceAppFailurePhase,
+  WorkspaceAppInstallProgress,
+  WorkspaceAppRuntimeStatus
+} from "./runtime.ts";
 
 export type WorkspaceAppStatusTone =
   | "neutral"
@@ -76,6 +79,7 @@ export interface WorkspaceAppCardViewModel {
   readonly canUninstall: boolean;
   readonly canRetry: boolean;
   readonly canUpdate: boolean;
+  readonly failurePhase?: WorkspaceAppFailurePhase;
   readonly errorMessage?: string;
   readonly installProgress?: WorkspaceAppInstallProgress | null;
   readonly factoryEditAction?: WorkspaceAppFactoryEditAction | null;

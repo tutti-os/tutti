@@ -7,6 +7,7 @@ import (
 	agenthost "github.com/tutti-os/tutti/packages/agent/host"
 	runtimeprep "github.com/tutti-os/tutti/packages/agent/runtimeprep"
 	agentactivitybiz "github.com/tutti-os/tutti/packages/agent/store-sqlite"
+	market "github.com/tutti-os/tutti/packages/connector/host"
 	reporterservice "github.com/tutti-os/tutti/services/tuttid/service/reporter"
 )
 
@@ -32,6 +33,7 @@ type ServiceHostConfig struct {
 type ServiceRuntimeConfig struct {
 	Preparer                      runtimeprep.Preparer
 	ModelGateway                  ModelGatewayRegistry
+	BrowserUseAvailable           func() bool
 	ComputerUseAvailable          func() bool
 	RuntimeOperationStore         RuntimeOperationStore
 	RuntimeOperationOwner         string
@@ -53,6 +55,7 @@ type ServiceRuntimeConfig struct {
 type ServiceSessionConfig struct {
 	Initializer       SessionInitializer
 	Reader            SessionReader
+	DeletedSessions   agenthost.DeletedSessionStore
 	PurgeStore        agenthost.SessionPurgeStore
 	DeletionGuard     agenthost.SessionDeletionGuard
 	UserProjectReader UserProjectReader
@@ -73,7 +76,9 @@ type ServiceComposerConfig struct {
 	AgentTargetStore              AgentTargetStore
 	WorkspaceAgentResolver        WorkspaceAgentResolver
 	AgentComposerDefaultsReader   AgentComposerDefaultsReader
+	DesktopPreferencesReader      DesktopPreferencesReader
 	CapabilityLister              ComposerCapabilityLister
+	ConnectorMarketSnapshots      market.SnapshotReader
 	ExtensionComposerProfiles     ExtensionComposerProfileResolver
 	ProviderAvailabilityCacheTTL  time.Duration
 	CapabilityCatalogCacheTTL     time.Duration
@@ -146,10 +151,13 @@ func (s *Service) applyConfig(config ServiceConfig) {
 	s.PromptAttachmentStore = config.Resources.PromptAttachmentStore
 	s.RuntimePreparer = config.Runtime.Preparer
 	s.ModelGateway = config.Runtime.ModelGateway
+	s.BrowserUseAvailable = config.Runtime.BrowserUseAvailable
 	s.ComputerUseAvailable = config.Runtime.ComputerUseAvailable
 	s.CapabilityLister = config.Composer.CapabilityLister
+	s.ConnectorMarketSnapshots = config.Composer.ConnectorMarketSnapshots
 	s.ExtensionComposerProfiles = config.Composer.ExtensionComposerProfiles
 	s.AgentComposerDefaultsReader = config.Composer.AgentComposerDefaultsReader
+	s.DesktopPreferencesReader = config.Composer.DesktopPreferencesReader
 	s.ProviderAvailabilityCacheTTL = config.Composer.ProviderAvailabilityCacheTTL
 	s.CapabilityCatalogCacheTTL = config.Composer.CapabilityCatalogCacheTTL
 	s.LiveModelCacheTTL = config.Composer.LiveModelCacheTTL

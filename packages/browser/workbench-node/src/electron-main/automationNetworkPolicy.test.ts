@@ -26,53 +26,40 @@ function authorizationInput(
   };
 }
 
-test("automation network policy permits public pages and only routed loopback", async () => {
-  const authorize = createBrowserNodeAutomationNetworkAuthorizer({
-    isLoopbackUrlRouted: async (url) => url === "http://127.0.0.1:3000/",
-    resolveHost: async () => ["93.184.216.34"]
-  });
-  assert.deepEqual(await authorize(authorizationInput("https://example.com")), {
-    allowed: true
-  });
+test("automation network policy permits every HTTP and HTTPS target", async () => {
+  const authorize = createBrowserNodeAutomationNetworkAuthorizer();
+  for (const url of [
+    "https://example.com",
+    "http://127.0.0.1:3000",
+    "http://10.0.0.2",
+    "http://169.254.169.254/latest/meta-data",
+    "http://router.local",
+    "https://198.18.0.178"
+  ]) {
+    assert.deepEqual(await authorize(authorizationInput(url)), {
+      allowed: true
+    });
+  }
+});
+
+test("automation network policy retains URL and protocol validation", async () => {
+  const authorize = createBrowserNodeAutomationNetworkAuthorizer();
   assert.deepEqual(
-    await authorize(authorizationInput("http://127.0.0.1:3000")),
-    { allowed: true }
-  );
-  assert.equal(
-    (await authorize(authorizationInput("http://127.0.0.1:4000"))).allowed,
-    false
-  );
-});
-
-test("automation request policy uses the target Chromium session resolver", async () => {
-  let nodeResolverCalled = false;
-  const authorize = createBrowserNodeAutomationNetworkAuthorizer({
-    resolveHost: async () => {
-      nodeResolverCalled = true;
-      return ["10.0.0.2"];
+    await authorize(authorizationInput("https://example.com", "not a url")),
+    {
+      allowed: false,
+      code: "invalid_url",
+      message: "The browser URL is invalid"
     }
-  });
-  const input = authorizationInput("https://example.com");
-  input.resolveHost = async () => ["93.184.216.34"];
-
-  assert.deepEqual(await authorize(input), { allowed: true });
-  assert.equal(nodeResolverCalled, false);
-});
-
-test("automation network policy blocks private current pages and navigation", async () => {
-  const authorize = createBrowserNodeAutomationNetworkAuthorizer({
-    resolveHost: async () => ["10.0.0.2"]
-  });
-  assert.equal(
-    (await authorize(authorizationInput("https://internal.example"))).allowed,
-    false
   );
-  assert.equal(
-    (
-      await authorize(
-        authorizationInput("https://example.com", "http://169.254.169.254")
-      )
-    ).allowed,
-    false
+  assert.deepEqual(
+    await authorize(
+      authorizationInput("https://example.com", "file:///etc/hosts")
+    ),
+    {
+      allowed: false,
+      code: "unsupported_protocol",
+      message: "Browser automation only supports HTTP and HTTPS pages"
+    }
   );
 });

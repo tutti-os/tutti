@@ -10,7 +10,7 @@ struct MobileBrowserAuthError: LocalizedError {
 
 final class MobileBrowserAuthBridge {
   private let queue = DispatchQueue(
-    label: "dev.tutti.mobile.browser-auth",
+    label: "sh.tutti.mobile.browser-auth",
     qos: .userInitiated
   )
   private let lock = NSLock()

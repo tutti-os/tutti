@@ -53,6 +53,30 @@ func TestMessageDeltaContractRejectsSchemaDrift(t *testing.T) {
 	}
 }
 
+func TestRuntimeActivityUpdateContract(t *testing.T) {
+	t.Parallel()
+
+	event, err := NewRuntimeActivityUpdateEvent(RuntimeActivityUpdateData{
+		WorkspaceID: "workspace-1", AgentSessionID: "session-1",
+		EventType: EventTypeRuntimeActivityUpdate, State: "running", OccurredAtUnixMS: 10,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := MarshalEvent(event)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := DecodeEvent(raw); err != nil {
+		t.Fatal(err)
+	}
+
+	event.Data = []byte(`{"workspaceId":"workspace-1","agentSessionId":"session-1","eventType":"runtime_activity_update","state":"busy","occurredAtUnixMs":10}`)
+	if _, err := MarshalEvent(event); !errors.Is(err, ErrInvalidLiveEvent) {
+		t.Fatalf("invalid runtime activity error = %v, want ErrInvalidLiveEvent", err)
+	}
+}
+
 func TestTurnUpdateContractClosesTerminalAndActiveStates(t *testing.T) {
 	t.Parallel()
 

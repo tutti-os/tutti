@@ -9,6 +9,8 @@ import (
 	"strings"
 )
 
+const maxChatMetadataValueBytes = 512
+
 type responsesRequest struct {
 	Model              string                     `json:"model"`
 	Instructions       json.RawMessage            `json:"instructions"`
@@ -179,17 +181,7 @@ func convertResponsesRequest(request responsesRequest) (chatRequest, responseToo
 	if err != nil {
 		return chatRequest{}, nil, err
 	}
-	metadata := request.Metadata
-	if len(request.ClientMetadata) > 0 {
-		if metadata == nil {
-			metadata = make(map[string]string, len(request.ClientMetadata))
-		}
-		for key, value := range request.ClientMetadata {
-			if _, exists := metadata[key]; !exists {
-				metadata[key] = value
-			}
-		}
-	}
+	metadata := chatCompatibleMetadata(request.Metadata, request.ClientMetadata)
 	result := chatRequest{
 		Model:             request.Model,
 		Messages:          messages,
@@ -220,6 +212,31 @@ func convertResponsesRequest(request responsesRequest) (chatRequest, responseToo
 		result.ReasoningEffort = strings.TrimSpace(request.Reasoning.Effort)
 	}
 	return result, toolNamespaces, nil
+}
+
+// chatCompatibleMetadata keeps optional request metadata from blocking model
+// execution. Codex can encode workspace diagnostics as one value larger than
+// the limit enforced by common Chat-compatible endpoints. Dropping that value
+// preserves the model request without forwarding truncated diagnostic JSON.
+func chatCompatibleMetadata(metadata map[string]string, clientMetadata map[string]string) map[string]string {
+	result := make(map[string]string, len(metadata)+len(clientMetadata))
+	for key, value := range metadata {
+		if len(value) <= maxChatMetadataValueBytes {
+			result[key] = value
+		}
+	}
+	for key, value := range clientMetadata {
+		if _, exists := metadata[key]; exists {
+			continue
+		}
+		if len(value) <= maxChatMetadataValueBytes {
+			result[key] = value
+		}
+	}
+	if len(result) == 0 {
+		return nil
+	}
+	return result
 }
 
 type responseInputItem struct {

@@ -187,6 +187,14 @@ export abstract class WorkspaceAgentActivityReconcileBridge {
     this.composerOptionsInvalidation.onComposerDefaultsInvalidated.bind(
       this.composerOptionsInvalidation
     );
+  readonly onConnectorCatalogInvalidated =
+    this.composerOptionsInvalidation.onConnectorCatalogInvalidated.bind(
+      this.composerOptionsInvalidation
+    );
+  readonly invalidateConnectorCatalog =
+    this.composerOptionsInvalidation.invalidateConnectorCatalog.bind(
+      this.composerOptionsInvalidation
+    );
 
   dispose(): void {
     if (this.disposed) {
@@ -433,6 +441,7 @@ export abstract class WorkspaceAgentActivityReconcileBridge {
       // its user partition can be resolved. session/upserted itself is neutral
       // to provenance and cannot consume the completion marker.
       entry.engine.dispatch({
+        live: true,
         turn: input.session.latestTurn,
         type: "turn/upserted"
       });

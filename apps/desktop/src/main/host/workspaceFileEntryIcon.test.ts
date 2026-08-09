@@ -1,6 +1,5 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { pathToFileURL } from "node:url";
 import {
   resolveWorkspaceFileEntryIconUrl,
   type WorkspaceFileEntryIconInput
@@ -114,7 +113,7 @@ test("resolveWorkspaceFileEntryIconUrl returns cached image thumbnails before re
   assert.equal(cacheStore.writes.length, 0);
 });
 
-test("resolveWorkspaceFileEntryIconUrl falls back to file URLs when thumbnail generation fails", async () => {
+test("resolveWorkspaceFileEntryIconUrl falls back to the default icon when thumbnail generation fails", async () => {
   const cacheStore = createCacheStoreStub();
 
   const iconUrl = await resolveWorkspaceFileEntryIconUrl(
@@ -131,12 +130,12 @@ test("resolveWorkspaceFileEntryIconUrl falls back to file URLs when thumbnail ge
     }
   );
 
-  assert.equal(iconUrl, pathToFileURL("/workspace/photo.png").href);
+  assert.equal(iconUrl, null);
   assert.equal(cacheStore.reads.length, 1);
   assert.equal(cacheStore.writes.length, 0);
 });
 
-test("resolveWorkspaceFileEntryIconUrl falls back to file URLs when thumbnail cache write is rejected", async () => {
+test("resolveWorkspaceFileEntryIconUrl falls back to the default icon when thumbnail cache write is rejected", async () => {
   const cacheStore = createCacheStoreStub({ writeUrl: null });
 
   const iconUrl = await resolveWorkspaceFileEntryIconUrl(
@@ -153,7 +152,7 @@ test("resolveWorkspaceFileEntryIconUrl falls back to file URLs when thumbnail ca
     }
   );
 
-  assert.equal(iconUrl, pathToFileURL("/workspace/photo.png").href);
+  assert.equal(iconUrl, null);
   assert.equal(cacheStore.reads.length, 1);
   assert.equal(cacheStore.writes.length, 1);
 });

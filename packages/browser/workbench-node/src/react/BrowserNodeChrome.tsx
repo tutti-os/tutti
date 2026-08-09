@@ -34,6 +34,7 @@ import {
   openBrowserNodeExternal,
   resolveBrowserNodeOpenExternalUrl
 } from "./browserNodeOperations.ts";
+import { resolveBrowserNodeTabCloseIntent } from "./browserNodeTabClose.ts";
 import { useBrowserNodeController } from "./useBrowserNodeController.ts";
 
 export interface BrowserNodeChromeProps {
@@ -184,21 +185,31 @@ export function BrowserNodeChrome({
           className="nodrag flex min-w-0 max-w-[70%] items-center gap-1 overflow-x-auto"
           role="tablist"
         >
-          {tabsState.tabs.map((tab) => (
-            <BrowserNodeTabButton
-              active={tab.id === tabsState.activeTabId}
-              canClose={tabsState.tabs.length > 1}
-              feature={feature}
-              key={tab.id}
-              tab={tab}
-              onClose={() =>
-                closeBrowserNodeTab(feature, surfaceNodeId, tab.id)
-              }
-              onSelect={() =>
-                feature.tabsStore.selectTab(surfaceNodeId, tab.id)
-              }
-            />
-          ))}
+          {tabsState.tabs.map((tab) => {
+            const closeIntent = resolveBrowserNodeTabCloseIntent({
+              hasSurfaceCloseRequest: Boolean(onCloseRequest),
+              tabCount: tabsState.tabs.length
+            });
+            return (
+              <BrowserNodeTabButton
+                active={tab.id === tabsState.activeTabId}
+                canClose={closeIntent !== null}
+                feature={feature}
+                key={tab.id}
+                tab={tab}
+                onClose={() => {
+                  if (closeIntent === "surface") {
+                    onCloseRequest?.();
+                    return;
+                  }
+                  closeBrowserNodeTab(feature, surfaceNodeId, tab.id);
+                }}
+                onSelect={() =>
+                  feature.tabsStore.selectTab(surfaceNodeId, tab.id)
+                }
+              />
+            );
+          })}
         </div>
         <Button
           aria-label={feature.i18n.t("tabs.new")}

@@ -56,6 +56,12 @@ type PrepareInput struct {
 	AgentSkills               []string
 	AgentTools                []string
 	ExtraSkills               []ProviderSkillBundle
+	// ConnectorRoutingHints is a non-secret snapshot of Connector routes that
+	// are active when this provider runtime is prepared. Connector keys and
+	// display names are host-owned; aliases are declared by connector releases.
+	// SkillRoot points at the active release's verified, content-addressed Skill
+	// tree and remains stable across Connector runtime restarts.
+	ConnectorRoutingHints []ConnectorRoutingHint
 	// ExtensionSkillRoots carries the skill root paths declared by an agent
 	// extension's composer profile (Skills.Roots[].Path). When non-empty,
 	// native tutti skills materialize into these roots instead of the
@@ -94,6 +100,13 @@ type PrepareInput struct {
 	// conversation. Empty for non-imported sessions or when the source path
 	// wasn't captured at import time.
 	ExternalRolloutSourcePath string
+}
+
+type ConnectorRoutingHint struct {
+	ConnectorKey string
+	DisplayName  string
+	Aliases      []string
+	SkillRoot    string
 }
 
 type PreparedRuntime struct {
@@ -153,6 +166,11 @@ type CleanupInput struct {
 	WorkspaceID    string
 	AgentSessionID string
 	Provider       string
+	// PreserveRuntimeRoot releases live provider preparation resources while
+	// keeping the session-scoped sidecar directory available for a later
+	// restore. In particular, Codex keeps its resumable rollout below this
+	// directory. Permanent cleanup leaves this false.
+	PreserveRuntimeRoot bool
 }
 
 type RuntimeStore interface {
@@ -176,6 +194,7 @@ type ProviderPrepareInput struct {
 }
 
 type ProviderPrepareResult struct {
-	Cwd string
-	Env []string
+	Cwd     string
+	Env     []string
+	Cleanup func(context.Context) error
 }

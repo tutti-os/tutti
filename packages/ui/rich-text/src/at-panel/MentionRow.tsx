@@ -1,13 +1,16 @@
 import {
   ArrowLeftIcon,
   ArrowRightIcon,
+  AgentSessionsIcon,
   Badge,
   FileCodeIcon,
   FileTextIcon,
   FolderIcon,
+  ImageWithFallback,
   ImageFileIcon,
   ProductIcon,
   StatusDot,
+  UserLinedIcon,
   VideoFileIcon,
   cn,
   type IconProps
@@ -447,13 +450,17 @@ function MentionFileIcon({
         {...mentionRowDataAttribute(dataAttributeMode, "fileThumb", "true")}
         aria-hidden="true"
       >
-        <img
+        <ImageWithFallback
           src={thumbnailUrl}
           alt=""
           className="rich-text-at-mention-row__media"
-          decoding="async"
-          loading="lazy"
-          draggable={false}
+          fallback={
+            <MentionFileIcon
+              item={{ ...item, thumbnailUrl: null }}
+              classNames={classNames}
+              dataAttributeMode={dataAttributeMode}
+            />
+          }
         />
       </span>
     );
@@ -539,13 +546,18 @@ function MentionEntityIcon({
       aria-hidden="true"
     >
       {normalizedIconUrl ? (
-        <img
+        <ImageWithFallback
           src={normalizedIconUrl}
           alt=""
           className="rich-text-at-mention-row__media"
-          decoding="async"
-          loading="lazy"
-          draggable={false}
+          fallback={
+            <span
+              className={cn(
+                kindIconClassName,
+                "rich-text-at-mention-kind-icon--app"
+              )}
+            />
+          }
         />
       ) : (
         <span
@@ -582,13 +594,16 @@ function MentionSessionAvatarStack({
           className="rich-text-at-mention-avatar rich-text-at-mention-avatar--agent"
           {...mentionRowDataAttribute(dataAttributeMode, "agentAvatar", "true")}
         >
-          <img
+          <ImageWithFallback
             src={item.agentIconUrl}
             alt=""
             className="rich-text-at-mention-row__media"
-            decoding="async"
-            loading="lazy"
-            draggable={false}
+            fallback={
+              <AgentSessionsIcon
+                aria-hidden="true"
+                className="size-4 text-[var(--rich-text-at-mention-text-secondary)]"
+              />
+            }
           />
         </span>
       </span>
@@ -596,7 +611,33 @@ function MentionSessionAvatarStack({
   }
 
   const userAvatarUrl = item.userAvatarUrl?.trim() ?? "";
-  const placeholderUrl = item.userAvatarPlaceholderUrl;
+  const placeholderUrl = item.userAvatarPlaceholderUrl.trim();
+  const userAvatarFallback =
+    placeholderUrl && placeholderUrl !== userAvatarUrl ? (
+      <ImageWithFallback
+        src={placeholderUrl}
+        alt=""
+        className={cn(
+          "rich-text-at-mention-row__media",
+          classNames.avatarImgUserPlaceholder
+        )}
+        decoding="async"
+        loading="lazy"
+        referrerPolicy="no-referrer"
+        draggable={false}
+        fallback={
+          <UserLinedIcon
+            aria-hidden="true"
+            className="size-3.5 text-[var(--rich-text-at-mention-text-secondary)]"
+          />
+        }
+      />
+    ) : (
+      <UserLinedIcon
+        aria-hidden="true"
+        className="size-3.5 text-[var(--rich-text-at-mention-text-secondary)]"
+      />
+    );
   const userImageUrl = userAvatarUrl || placeholderUrl;
   return (
     <span className="rich-text-at-mention-avatar-stack" aria-hidden="true">
@@ -604,7 +645,7 @@ function MentionSessionAvatarStack({
         className="rich-text-at-mention-avatar rich-text-at-mention-avatar--user"
         {...mentionRowDataAttribute(dataAttributeMode, "userAvatar", "true")}
       >
-        <img
+        <ImageWithFallback
           src={userImageUrl}
           alt=""
           className={cn(
@@ -615,29 +656,32 @@ function MentionSessionAvatarStack({
           loading="lazy"
           referrerPolicy="no-referrer"
           draggable={false}
-          onError={(event) => {
-            if (event.currentTarget.dataset.fallbackAvatarApplied === "true") {
-              return;
-            }
-            event.currentTarget.dataset.fallbackAvatarApplied = "true";
-            event.currentTarget.src = placeholderUrl;
-            event.currentTarget.classList.add(
-              classNames.avatarImgUserPlaceholder
-            );
-          }}
+          fallback={
+            userAvatarUrl ? (
+              userAvatarFallback
+            ) : (
+              <UserLinedIcon
+                aria-hidden="true"
+                className="size-3.5 text-[var(--rich-text-at-mention-text-secondary)]"
+              />
+            )
+          }
         />
       </span>
       <span
         className="rich-text-at-mention-avatar rich-text-at-mention-avatar--agent"
         {...mentionRowDataAttribute(dataAttributeMode, "agentAvatar", "true")}
       >
-        <img
+        <ImageWithFallback
           src={item.agentIconUrl}
           alt=""
           className="rich-text-at-mention-row__media"
-          decoding="async"
-          loading="lazy"
-          draggable={false}
+          fallback={
+            <AgentSessionsIcon
+              aria-hidden="true"
+              className="size-4 text-[var(--rich-text-at-mention-text-secondary)]"
+            />
+          }
         />
       </span>
     </span>

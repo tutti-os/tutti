@@ -45,6 +45,8 @@ import {
   type IWorkspaceAppCenterService
 } from "@renderer/features/workspace-app-center";
 import { useService } from "@tutti-os/infra/di";
+import { IConnectorMarketModule } from "@tutti-os/connector-market/services";
+import { openConnectorDialogFromComposer } from "../services/openConnectorDialogFromComposer.ts";
 import { IWorkspaceFileManagerService } from "@renderer/features/workspace-file-manager";
 import { IWorkspaceFilePreviewSurfaceHost } from "@renderer/features/workspace-file-preview";
 import type {
@@ -68,6 +70,11 @@ import { createAgentGuiWorkbenchInstanceId } from "@tutti-os/agent-gui/workbench
 import { DesktopAgentGUISurface } from "@renderer/features/workspace-agent/ui/DesktopAgentGUIWorkbenchBody.tsx";
 import type { DesktopAgentGUISurfaceContext } from "@renderer/features/workspace-agent/ui/desktopAgentGUIWorkbenchModel.ts";
 import { useTranslation } from "@renderer/i18n";
+import { useDesktopPreferencesService } from "@renderer/features/desktop-preferences/ui/useDesktopPreferencesService";
+import {
+  isFeatureEnabled,
+  LAB_CONNECTORS_FLAG
+} from "../../../../../shared/featureFlags/catalog.ts";
 import { AppUpdateStatus } from "@renderer/features/app-update";
 import { StandaloneAgentToolSidebar } from "./StandaloneAgentToolSidebar";
 import type { StandaloneAgentFileOpenRequest } from "./StandaloneAgentToolSidebar";
@@ -176,6 +183,8 @@ export function StandaloneAgentWindow({
   );
   const workspaceFileManagerService = useService(IWorkspaceFileManagerService);
   const { service: workspaceSettingsService } = useWorkspaceSettingsService();
+  const { state: desktopPreferencesState } = useDesktopPreferencesService();
+  const connectorMarketModule = useService(IConnectorMarketModule);
   const workspaceId = workspace.id;
   const mentionService = useMemo(
     () =>
@@ -674,6 +683,27 @@ export function StandaloneAgentWindow({
   );
   const handleCapabilitySettingsRequest = useCallback(
     (target: WorkspaceWorkbenchCapabilitySettingsTarget) => {
+      if (typeof target !== "string") {
+        const featureFlags =
+          desktopPreferencesState.changingFeatureFlags ??
+          desktopPreferencesState.featureFlags;
+        if (!isFeatureEnabled(featureFlags, LAB_CONNECTORS_FLAG)) {
+          return;
+        }
+        if (target.action === "open") {
+          void openConnectorDialogFromComposer(
+            connectorMarketModule.root,
+            target.connectorKey
+          ).catch(() => undefined);
+          return;
+        }
+        workspaceSettingsService.openPanel(
+          { id: workspaceId },
+          { pane: "connectors" }
+        );
+        connectorMarketModule.root.uiState.openConnector(target.connectorKey);
+        return;
+      }
       workspaceSettingsService.openPanel(
         { id: workspaceId },
         {
@@ -682,7 +712,13 @@ export function StandaloneAgentWindow({
         }
       );
     },
-    [workspaceId, workspaceSettingsService]
+    [
+      connectorMarketModule,
+      desktopPreferencesState.changingFeatureFlags,
+      desktopPreferencesState.featureFlags,
+      workspaceId,
+      workspaceSettingsService
+    ]
   );
   const handleDuplicateStandaloneWindow = useCallback(() => {
     void hostWindowApi.openAgentWindow({
@@ -774,6 +810,9 @@ export function StandaloneAgentWindow({
               data-agent-gui-standalone-window-content-loading={
                 isContentLoading ? "true" : "false"
               }
+              data-tutti-titlebar-overlay={
+                desktopApi.platform.os === "win32" ? "true" : undefined
+              }
               displayMode={isWindowMaximized ? "fullscreen" : "floating"}
               data-agent-gui-standalone-window-header="true"
               data-workbench-drag-handle="true"
@@ -787,6 +826,7 @@ export function StandaloneAgentWindow({
               toolSidebar={isContentLoading ? null : toolSidebar}
               showConversationRailToggle={!isContentLoading}
               showAppTitle
+              showWindowControls={desktopApi.platform.os !== "win32"}
               title={i18n.t("workspace.agentGui.fallbackAgentLabel")}
               windowActions={{
                 close: () => {

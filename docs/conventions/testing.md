@@ -101,12 +101,18 @@ boundaries are selected from `tools/scripts/repository-checks.mjs`. Both PR CI
 and `check:changed` consume this registry; do not attach a repository-wide
 check to a TypeScript or Go lane based on its implementation language.
 
-Go tests are discovered from the modules declared in `go.work`. The blocking
-lane includes every module, so additions to `go.work` join the root test gate
-without a second registry.
+Go modules are discovered directly from `go.work`; do not maintain a second
+module-root registry. The explicit root commands (`pnpm test:go`,
+`pnpm test:go:prepared`, and `pnpm lint:go`) remain full-workspace gates.
 
-Changed-aware validation must recognize every current `go.work` module so a Go
-file change selects the matching package lint and test lanes.
+Changed-aware local validation and pull-request CI share package selection. An
+ordinary `.go` change runs tests for the owning package and, when the module is
+part of the established Go lint gate, lints that package. A module's `go.mod`
+or `go.sum` change expands those checks to the owning module. Changes to
+`go.work`, Go validation scripts, the Go PR workflow, or shared golangci-lint
+configuration fall back to every test module and every lint-enabled module.
+This keeps selection infrastructure self-testing while avoiding full-workspace
+Go runs for isolated package changes.
 
 ## Local Performance Reports
 

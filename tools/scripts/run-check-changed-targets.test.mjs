@@ -4,65 +4,109 @@ import {
   buildGoLintLane,
   buildGoTestLane,
   buildPackageTestCommand,
+  discoverGoModuleRoots,
   isBuiltinGenerateRequired,
   resolveGoModuleRoot,
   resolveGoValidationTargets
 } from "./run-check-changed-targets.mjs";
 
+const goModuleRoots = [
+  "apps/cli",
+  "packages/agent/daemon",
+  "packages/agent/session-replay",
+  "packages/agent/store-sqlite",
+  "packages/agent/store-sqlite/canonical",
+  "packages/connector/daemon",
+  "packages/connector/host",
+  "packages/connector/runtime",
+  "packages/connector/store-sqlite",
+  "packages/device-link",
+  "packages/events/stream-go",
+  "packages/workspace/issues",
+  "services/tuttid"
+];
+
+describe("discoverGoModuleRoots", () => {
+  it("reads every module from go.work instead of a maintained whitelist", () => {
+    const roots = discoverGoModuleRoots({
+      root: "/repo",
+      spawnSyncImpl: () => ({
+        status: 0,
+        stdout: JSON.stringify({
+          Use: [
+            { DiskPath: "./packages/connector/host" },
+            { DiskPath: "./packages/agent/session-replay" },
+            { DiskPath: "./services/tuttid" }
+          ]
+        })
+      })
+    });
+
+    assert.deepEqual(roots, [
+      "packages/agent/session-replay",
+      "packages/connector/host",
+      "services/tuttid"
+    ]);
+  });
+});
+
 describe("resolveGoModuleRoot", () => {
   it("maps changed files to their Go module root", () => {
     assert.equal(
       resolveGoModuleRoot(
-        "services/tuttid/service/workspace/apps_install_progress.go"
+        "services/tuttid/service/workspace/apps_install_progress.go",
+        goModuleRoots
       ),
       "services/tuttid"
     );
     assert.equal(
-      resolveGoModuleRoot("apps/cli/internal/app/foo.go"),
+      resolveGoModuleRoot("apps/cli/internal/app/foo.go", goModuleRoots),
       "apps/cli"
     );
     assert.equal(
       resolveGoModuleRoot(
-        "packages/agent/activity-replication/conformance/fixtures.go"
+        "packages/agent/session-replay/replay.go",
+        goModuleRoots
       ),
-      "packages/agent/activity-replication"
+      "packages/agent/session-replay"
     );
     assert.equal(
-      resolveGoModuleRoot("packages/agent/host/conformance/conformance.go"),
-      "packages/agent/host"
+      resolveGoModuleRoot(
+        "packages/connector/host/application.go",
+        goModuleRoots
+      ),
+      "packages/connector/host"
     );
     assert.equal(
-      resolveGoModuleRoot("packages/agent/runtimeprep/preparer.go"),
-      "packages/agent/runtimeprep"
-    );
-    assert.equal(
-      resolveGoModuleRoot("packages/agent/store-sqlite/store.go"),
+      resolveGoModuleRoot(
+        "packages/agent/store-sqlite/store.go",
+        goModuleRoots
+      ),
       "packages/agent/store-sqlite"
     );
     assert.equal(
       resolveGoModuleRoot(
-        "packages/agent/store-sqlite/canonical/vocabulary.go"
+        "packages/agent/store-sqlite/canonical/vocabulary.go",
+        goModuleRoots
       ),
       "packages/agent/store-sqlite/canonical"
     );
     assert.equal(
-      resolveGoModuleRoot("packages/auth/bridge-go/bridge.go"),
-      "packages/auth/bridge-go"
-    );
-    assert.equal(
-      resolveGoModuleRoot("packages/clients/device-authority-go/client.go"),
-      "packages/clients/device-authority-go"
-    );
-    assert.equal(
-      resolveGoModuleRoot("packages/device-link/mobile/probe.go"),
+      resolveGoModuleRoot(
+        "packages/device-link/mobile/probe.go",
+        goModuleRoots
+      ),
       "packages/device-link"
     );
     assert.equal(
-      resolveGoModuleRoot("packages/events/stream-go/stream.go"),
+      resolveGoModuleRoot("packages/events/stream-go/stream.go", goModuleRoots),
       "packages/events/stream-go"
     );
     assert.equal(
-      resolveGoModuleRoot("packages/workspace/issues/service.go"),
+      resolveGoModuleRoot(
+        "packages/workspace/issues/service.go",
+        goModuleRoots
+      ),
       "packages/workspace/issues"
     );
   });
@@ -70,10 +114,13 @@ describe("resolveGoModuleRoot", () => {
 
 describe("resolveGoValidationTargets", () => {
   it("scopes lint and test targets to changed Go packages", () => {
-    const targets = resolveGoValidationTargets([
-      "services/tuttid/service/workspace/apps_install_progress.go",
-      "services/tuttid/service/workspace/apps_install_progress_test.go"
-    ]);
+    const targets = resolveGoValidationTargets(
+      [
+        "services/tuttid/service/workspace/apps_install_progress.go",
+        "services/tuttid/service/workspace/apps_install_progress_test.go"
+      ],
+      { moduleRoots: goModuleRoots }
+    );
 
     assert.deepEqual(Array.from(targets.lintByModule.get("services/tuttid")), [
       "./service/workspace"
@@ -84,7 +131,9 @@ describe("resolveGoValidationTargets", () => {
   });
 
   it("runs the full module when go.mod changes", () => {
-    const targets = resolveGoValidationTargets(["services/tuttid/go.mod"]);
+    const targets = resolveGoValidationTargets(["services/tuttid/go.mod"], {
+      moduleRoots: goModuleRoots
+    });
 
     assert.deepEqual(Array.from(targets.testByModule.get("services/tuttid")), [
       "./..."
@@ -98,7 +147,7 @@ describe("resolveGoValidationTargets", () => {
         "packages/agent/daemon/activity/ingress/service.go",
         "packages/agent/daemon/internal/guestdesktoprelay/v1/types.go"
       ],
-      { pathExists: () => false }
+      { moduleRoots: goModuleRoots, pathExists: () => false }
     );
 
     assert.equal(targets, null);
@@ -107,7 +156,7 @@ describe("resolveGoValidationTargets", () => {
   it("keeps Go lanes for deleted files inside existing packages", () => {
     const targets = resolveGoValidationTargets(
       ["services/tuttid/service/workspace/deleted_file.go"],
-      { pathExists: () => true }
+      { moduleRoots: goModuleRoots, pathExists: () => true }
     );
 
     assert.deepEqual(Array.from(targets.lintByModule.get("services/tuttid")), [
@@ -116,6 +165,18 @@ describe("resolveGoValidationTargets", () => {
     assert.deepEqual(Array.from(targets.testByModule.get("services/tuttid")), [
       "./service/workspace/..."
     ]);
+  });
+
+  it("does not create Go lanes for shared selector scripts", () => {
+    const targets = resolveGoValidationTargets(
+      ["tools/scripts/run-changed-go-validation.mjs"],
+      {
+        moduleRoots: goModuleRoots,
+        pathExists: () => true
+      }
+    );
+
+    assert.equal(targets, null);
   });
 });
 
@@ -294,16 +355,19 @@ describe("builtin onboarding ensure", () => {
 });
 
 describe("buildGoLintLane", () => {
-  it("does not run generate:builtin-apps", () => {
+  it("ensures builtin assets before linting tuttid", () => {
     const lane = buildGoLintLane({
+      forceBuiltinGenerate: false,
       golangciLintBinary: "/tmp/go/bin/golangci-lint",
       moduleRoot: "services/tuttid",
+      pnpmCommand: "pnpm",
       targets: new Set(["./service/workspace/..."]),
       workspaceRoot: "/repo",
       shellQuote: (value) => value
     });
 
-    assert.doesNotMatch(lane.command[2], /generate:builtin-apps/);
+    assert.match(lane.command[2], /package:builtin:check/);
+    assert.match(lane.command[2], /generate:builtin-apps\) && cd/);
     assert.match(lane.command[2], /\/tmp\/go\/bin\/golangci-lint run/);
     assert.match(lane.command[2], /--allow-parallel-runners/);
   });

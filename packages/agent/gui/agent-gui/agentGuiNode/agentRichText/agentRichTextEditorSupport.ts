@@ -95,6 +95,25 @@ export function classifyAgentRichTextTextPaste(
     : "plain-text";
 }
 
+/**
+ * Hosts may resolve a single absolute path paste into a file/directory mention.
+ * Keep the sync gate strict so quoted paths, spaces, and multi-path pastes stay
+ * plain text until a host explicitly resolves them.
+ */
+export function isAgentRichTextAbsolutePathPasteCandidate(
+  text: string
+): boolean {
+  const candidate = text.trim();
+  if (!candidate || candidate[0] !== "/") {
+    return false;
+  }
+  // Reject multi-line and whitespace/quotes inside the path.
+  if (/[\s"'`]/.test(candidate)) {
+    return false;
+  }
+  return true;
+}
+
 export function buildWorkspaceFileMentionDropContent(
   entries: ReadonlyArray<{
     path: string;

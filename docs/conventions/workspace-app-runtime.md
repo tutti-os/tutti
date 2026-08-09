@@ -159,7 +159,7 @@ The runtime catalog consumed by tuttid has this shape:
       },
       "profiles": {
         "baseline": ["python", "node"],
-        "node-static": ["node"]
+        "connector-node-static": ["node"]
       }
     }
   }
@@ -167,13 +167,13 @@ The runtime catalog consumed by tuttid has this shape:
 ```
 
 tuttid resolves the `baseline` profile by default when launching apps, and may
-preload smaller profiles such as `node-static` during daemon startup or an
+preload smaller profiles such as `connector-node-static` during daemon startup or an
 explicit runtime-preparation workflow before first launch. Listing App Center
 apps must not preload runtimes as a side effect. App manifests must not declare
 a runtime kind. The Windows managed runtime publishes the same Python+Node
 `baseline` profile as Unix so existing Python apps (for example Automation)
 remain portable. Apps that only need Node may declare
-`runtime.profile: "node-static"` so launch does not require the Python
+`runtime.profile: "connector-node-static"` so launch does not require the Python
 component. If runtime requirements need to become more selective later, add a
 capability list such as runtime component requirements rather than restoring a
 single-kind manifest field. The Windows Python component is built from the

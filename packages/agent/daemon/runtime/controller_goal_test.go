@@ -109,6 +109,36 @@ func TestBackgroundGoalControlsRequireExistingLiveProvider(t *testing.T) {
 	}
 }
 
+func TestResumeInstallsPreloadedGoalFencesBeforePublishingSession(t *testing.T) {
+	adapter := &requireLiveGoalAdapter{recordingStartAdapter: recordingStartAdapter{provider: "resume-goal-fences"}}
+	controller := NewController([]Adapter{adapter}, nil)
+	adapter.onFence = func(session Session) {
+		if published, found := controller.Session(session.RoomID, session.AgentSessionID); found {
+			t.Fatalf("session published before durable fences were installed: %#v", published)
+		}
+	}
+	inputFence := GoalGenerationFenceInput{
+		OperationID: "old-goal", Revision: 4, RepairEpoch: 2, Reason: "binding_revoked",
+	}
+	session, err := controller.Resume(context.Background(), ResumeInput{
+		RoomID: "room-resume-fences", AgentSessionID: "session-resume-fences", Provider: adapter.Provider(),
+		ProviderSessionID:    "provider-session-resume-fences",
+		GoalGenerationFences: []GoalGenerationFenceInput{inputFence},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := strings.Join(adapter.calls, ","), "resume,fence"; got != want {
+		t.Fatalf("resume fence order=%q want=%q", got, want)
+	}
+	if adapter.lastFence != inputFence {
+		t.Fatalf("installed fence=%#v want=%#v", adapter.lastFence, inputFence)
+	}
+	if published, found := controller.Session(session.RoomID, session.AgentSessionID); !found || published.AgentSessionID != session.AgentSessionID {
+		t.Fatalf("resumed session was not published after fence installation: %#v found=%v", published, found)
+	}
+}
+
 type requireLiveGoalAdapter struct {
 	recordingStartAdapter
 	live        bool
@@ -118,6 +148,8 @@ type requireLiveGoalAdapter struct {
 	closeCalls  int
 	calls       []string
 	fenceErr    error
+	lastFence   GoalGenerationFenceInput
+	onFence     func(Session)
 }
 
 func (a *requireLiveGoalAdapter) Start(ctx context.Context, session Session) ([]activityshared.Event, error) {
@@ -161,9 +193,13 @@ func (*requireLiveGoalAdapter) ExecGoalControl(context.Context, Session, []Promp
 	return nil, false, nil
 }
 
-func (a *requireLiveGoalAdapter) FenceGoalGeneration(context.Context, Session, GoalGenerationFenceInput) error {
+func (a *requireLiveGoalAdapter) FenceGoalGeneration(_ context.Context, session Session, input GoalGenerationFenceInput) error {
 	a.fenceCalls++
 	a.calls = append(a.calls, "fence")
+	a.lastFence = input
+	if a.onFence != nil {
+		a.onFence(session)
+	}
 	return a.fenceErr
 }
 

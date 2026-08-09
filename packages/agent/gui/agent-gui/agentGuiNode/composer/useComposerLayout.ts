@@ -53,6 +53,7 @@ function hasInlineOverflow(element: HTMLElement | null): boolean {
 
 interface UseComposerLayoutInput {
   isActive: boolean;
+  isDockLayout: boolean;
   isHeroLayout: boolean;
   inputDisabled: boolean;
   projectMissingProbeEnabled: boolean;
@@ -74,6 +75,7 @@ interface UseComposerLayoutInput {
 export function useComposerLayout({
   isActive,
   isHeroLayout,
+  isDockLayout,
   inputDisabled,
   projectMissingProbeEnabled,
   showFileMentionPalette,
@@ -154,7 +156,7 @@ export function useComposerLayout({
   }, [activePromptTipId, activePromptTipText]);
   const measureDockComposer = useCallback((): void => {
     composerMeasurementFrameRef.current = null;
-    if (isHeroLayout) {
+    if (!isDockLayout) {
       setDockComposerMetrics((currentMetrics) =>
         areDockComposerMetricsEqual(
           currentMetrics,
@@ -224,7 +226,7 @@ export function useComposerLayout({
         ? currentMetrics
         : nextMetrics
     );
-  }, [isHeroLayout, promptInputAreaRef, setDockComposerMetrics]);
+  }, [isDockLayout, promptInputAreaRef, setDockComposerMetrics]);
 
   const invalidateComposerMeasurement = useCallback((): void => {
     if (composerMeasurementFrameRef.current !== null) {
@@ -239,7 +241,7 @@ export function useComposerLayout({
   }, [measureDockComposer]);
 
   useLayoutEffect(() => {
-    if (isHeroLayout) {
+    if (!isDockLayout) {
       invalidateComposerMeasurement();
       return () => {
         if (composerMeasurementFrameRef.current !== null) {
@@ -291,12 +293,12 @@ export function useComposerLayout({
     draftImages.length,
     draftLargeTexts.length,
     invalidateComposerMeasurement,
-    isHeroLayout,
+    isDockLayout,
     promptInputAreaRef
   ]);
   const composerStyle = useMemo<CSSProperties | undefined>(
     () =>
-      isHeroLayout
+      !isDockLayout
         ? undefined
         : ({
             // The dock keeps only the collapsed 56px input row in flow; a
@@ -309,7 +311,7 @@ export function useComposerLayout({
               dockComposerMetrics.inputHeight - DOCK_COMPOSER_INPUT_MIN_HEIGHT
             )}px`
           } as CSSProperties),
-    [dockComposerMetrics.inputHeight, isHeroLayout]
+    [dockComposerMetrics.inputHeight, isDockLayout]
   );
   const inputShellStyle = useMemo<CSSProperties | undefined>(
     () =>
@@ -320,7 +322,7 @@ export function useComposerLayout({
   );
   const promptInputAreaStyle = useMemo<CSSProperties | undefined>(
     () =>
-      isHeroLayout
+      !isDockLayout
         ? undefined
         : ({
             "--agent-gui-composer-attachment-height": `${dockComposerMetrics.attachmentHeight}px`,
@@ -331,7 +333,7 @@ export function useComposerLayout({
             "--agent-gui-composer-text-max-visible-lines": `${DOCK_COMPOSER_MAX_VISIBLE_TEXT_LINES}`,
             "--agent-gui-composer-text-viewport-height": `${DOCK_COMPOSER_TEXT_VIEWPORT_MAX_HEIGHT}px`
           } as CSSProperties),
-    [dockComposerMetrics, isHeroLayout]
+    [dockComposerMetrics, isDockLayout]
   );
 
   return {

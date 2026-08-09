@@ -47,6 +47,20 @@ export interface TuttiExternalAtQueryInput {
   providers?: readonly TuttiExternalAtProviderId[];
 }
 
+export interface TuttiExternalAtQueryDirectoryInput {
+  /** Empty string addresses the provider-owned root directory. */
+  directoryPath: string;
+  maxResults?: number;
+  providerId: TuttiExternalAtProviderId;
+}
+
+export interface TuttiExternalAtDirectoryDescriptor {
+  /** Canonical provider-owned directory path used for direct-child queries. */
+  path: string;
+  /** Number of direct children when the provider can determine it. */
+  childCount?: number | null;
+}
+
 export interface TuttiExternalAtQueryResult {
   providerId: TuttiExternalAtProviderId;
   itemId: string;
@@ -54,6 +68,7 @@ export interface TuttiExternalAtQueryResult {
   subtitle?: string;
   thumbnailUrl?: string | null;
   insert: TuttiExternalAtInsertResult;
+  directory?: TuttiExternalAtDirectoryDescriptor;
 }
 
 export interface TuttiExternalAtResolveInput {
@@ -225,6 +240,24 @@ export interface TuttiExternalReferenceOpenInput {
   href: string;
 }
 
+export type TuttiExternalReferenceSelection =
+  | {
+      selectionKind: "path";
+      reference: WorkspaceFileReference;
+    }
+  | {
+      selectionKind: "workspace-reference";
+      displayName: string;
+      fileCount?: number;
+      groupId?: string;
+      id: string;
+      source: "app";
+      workspaceId: string;
+    };
+
+export type TuttiExternalReferenceSelectResult =
+  TuttiExternalReferenceSelection[];
+
 export type TuttiExternalAgentAvailabilityStatus =
   | "ready"
   | "checking"
@@ -271,6 +304,12 @@ export interface TuttiExternalAgentActivityActivateSessionInput {
   cwd?: string | null;
   initialContent: AgentPromptContentBlock[];
   initialDisplayPrompt?: string | null;
+  /**
+   * Host-owned navigation request. When true, the workspace owner opens its
+   * Agent GUI on the activated session after activation succeeds. Missing
+   * preserves the existing activate-without-navigation behavior.
+   */
+  reveal?: boolean;
   settings?: AgentActivitySessionSettings;
   title?: string;
   visible?: boolean;
@@ -287,6 +326,21 @@ export interface TuttiExternalAgentActivitySendInput {
 export interface TuttiExternalAgentActivityCancelTurnInput {
   agentSessionId: string;
   turnId: string;
+}
+
+/**
+ * Explicit composer picks a launcher persists into the canonical per-target
+ * composer-defaults ledger. Absent fields stay untouched; null clears a field.
+ */
+export interface TuttiExternalAgentActivityRememberComposerDefaultsInput {
+  agentTargetId: string;
+  defaults: {
+    codexSaverMode?: boolean;
+    model?: string | null;
+    permissionModeId?: string | null;
+    reasoningEffort?: string | null;
+    speed?: string | null;
+  };
 }
 
 export type TuttiExternalAgentActivityActivateSessionResult =
@@ -374,6 +428,9 @@ export interface TuttiExternalBridge {
     ): Promise<TuttiExternalAgentActivityComposerOptions>;
     getSnapshot(): Promise<TuttiExternalAgentActivitySnapshot>;
     listTargets(): Promise<TuttiExternalAgentTargetCatalog>;
+    rememberComposerDefaults(
+      input: TuttiExternalAgentActivityRememberComposerDefaultsInput
+    ): Promise<void>;
     sendInput(
       input: TuttiExternalAgentActivitySendInput
     ): Promise<TuttiExternalAgentActivitySendResult>;
@@ -384,6 +441,9 @@ export interface TuttiExternalBridge {
   at: {
     query(
       input: TuttiExternalAtQueryInput
+    ): Promise<TuttiExternalAtQueryResult[]>;
+    queryDirectory?(
+      input: TuttiExternalAtQueryDirectoryInput
     ): Promise<TuttiExternalAtQueryResult[]>;
     resolve?(
       input: TuttiExternalAtResolveInput
@@ -417,6 +477,7 @@ export interface TuttiExternalBridge {
     openFeature(input: TuttiExternalWorkspaceOpenFeatureInput): Promise<void>;
   };
   references: {
+    select?(): Promise<TuttiExternalReferenceSelectResult>;
     open(input: TuttiExternalReferenceOpenInput): Promise<void>;
   };
   pdf: {
@@ -496,6 +557,13 @@ export type TuttiExternalRendererRequest =
     }
   | {
       appId: string;
+      input: TuttiExternalAgentActivityRememberComposerDefaultsInput;
+      operation: "agentActivity.rememberComposerDefaults";
+      requestId: string;
+      workspaceId: string;
+    }
+  | {
+      appId: string;
       input: TuttiExternalAgentActivitySendInput;
       operation: "agentActivity.sendInput";
       requestId: string;
@@ -512,6 +580,13 @@ export type TuttiExternalRendererRequest =
       appId: string;
       input: TuttiExternalAtQueryInput;
       operation: "at.query";
+      requestId: string;
+      workspaceId: string;
+    }
+  | {
+      appId: string;
+      input: TuttiExternalAtQueryDirectoryInput;
+      operation: "at.queryDirectory";
       requestId: string;
       workspaceId: string;
     }
@@ -540,6 +615,12 @@ export type TuttiExternalRendererRequest =
       appId: string;
       input: TuttiExternalReferenceOpenInput;
       operation: "references.open";
+      requestId: string;
+      workspaceId: string;
+    }
+  | {
+      appId: string;
+      operation: "references.select";
       requestId: string;
       workspaceId: string;
     }

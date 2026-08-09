@@ -58,12 +58,12 @@ func (s *Service) resolveExtensionRuntimePrep(ctx context.Context, providerTarge
 	return profile.RuntimePrep
 }
 
-func composerProviderCapabilities(provider string, computerUseAvailable bool) []string {
+func composerProviderCapabilities(provider string, computerUseAvailable, browserUseAvailable bool) []string {
 	if !composerProfileKnown(provider) {
 		return nil
 	}
 	capabilities := append([]string(nil), composerProfileFor(provider).Capabilities...)
-	if runtimeprep.BrowserUseDefaultEnabled() {
+	if browserUseAvailable && runtimeprep.BrowserUseDefaultEnabled() {
 		capabilities = append(capabilities, "browserUse")
 	}
 	if computerUseAvailable && runtimeprep.ComputerUseDefaultEnabled() {
@@ -73,7 +73,17 @@ func composerProviderCapabilities(provider string, computerUseAvailable bool) []
 }
 
 func (s *Service) computerUseAvailable() bool {
-	return s != nil && s.ComputerUseAvailable != nil && s.ComputerUseAvailable()
+	if s == nil || s.ComputerUseAvailable == nil {
+		return true
+	}
+	return s.ComputerUseAvailable()
+}
+
+func (s *Service) browserUseAvailable() bool {
+	if s == nil || s.BrowserUseAvailable == nil {
+		return true
+	}
+	return s.BrowserUseAvailable()
 }
 
 func composerProviderSupportsPlanMode(provider string) bool {
@@ -82,13 +92,13 @@ func composerProviderSupportsPlanMode(provider string) bool {
 
 func (s *Service) clampComposerBrowserUseForLaunch(ctx context.Context, provider string, providerTargetRef map[string]any, browserUse *bool) bool {
 	if composerProviderSupportsBrowserUse(agentprovider.Normalize(provider)) {
-		return browserUse == nil || *browserUse
+		return s.browserUseAvailable() && runtimeprep.BrowserUseDefaultEnabled() && (browserUse == nil || *browserUse)
 	}
 	profile, err := s.extensionComposerProfileForLaunch(ctx, providerTargetRef)
 	if err != nil || !extensionProfileDeclaresCapability(profile, "browserUse") {
 		return false
 	}
-	if !runtimeprep.BrowserUseDefaultEnabled() {
+	if !s.browserUseAvailable() || !runtimeprep.BrowserUseDefaultEnabled() {
 		return false
 	}
 	return browserUse == nil || *browserUse
@@ -107,7 +117,7 @@ func composerProviderSupportsBrowserUse(provider string) bool {
 
 func (s *Service) clampComposerComputerUseForLaunch(ctx context.Context, provider string, providerTargetRef map[string]any, computerUse *bool) bool {
 	if composerProviderSupportsComputerUse(agentprovider.Normalize(provider)) {
-		return computerUse == nil || *computerUse
+		return s.computerUseAvailable() && runtimeprep.ComputerUseDefaultEnabled() && (computerUse == nil || *computerUse)
 	}
 	profile, err := s.extensionComposerProfileForLaunch(ctx, providerTargetRef)
 	if err != nil || !extensionProfileDeclaresCapability(profile, "computerUse") {
@@ -117,6 +127,17 @@ func (s *Service) clampComposerComputerUseForLaunch(ctx context.Context, provide
 		return false
 	}
 	return computerUse == nil || *computerUse
+}
+
+// effectiveCapabilitySetting keeps the historical nil-as-default representation
+// when a capability remains available, but persists an explicit false when a
+// requested/default capability was clamped by provider or host readiness.
+func effectiveCapabilitySetting(requested *bool, effective bool) *bool {
+	if requested == nil && effective {
+		return nil
+	}
+	value := effective
+	return &value
 }
 
 func composerProviderSupportsComputerUse(provider string) bool {

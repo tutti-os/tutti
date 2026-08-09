@@ -234,11 +234,11 @@ func (c *IssueExecutionCoordinator) requestTimedOutRunCancellation(
 	}
 }
 
-// ReconcileTuttiModeRunLaunchesAndRunningRuns closes both durable crash
-// windows on the existing periodic Issue reconciliation cadence: an expired
-// launch owner is requeued and redelivered before canonical Run settlement is
-// inspected. Active leases remain fenced and keep the workspace queued.
-func (c *IssueExecutionCoordinator) ReconcileTuttiModeRunLaunchesAndRunningRuns(
+// ReconcileIssueExecutions closes generic Issue Run delivery and settlement
+// crash windows, then layers Tutti Mode settlement/launch policy into the same
+// workspace recovery cadence. Active leases remain fenced and keep the
+// workspace queued.
+func (c *IssueExecutionCoordinator) ReconcileIssueExecutions(
 	ctx context.Context,
 	workspaceID string,
 ) (IssueRunReconcileResult, error) {
@@ -249,6 +249,9 @@ func (c *IssueExecutionCoordinator) ReconcileTuttiModeRunLaunchesAndRunningRuns(
 		if _, err := c.Issues.TuttiModeExecutions.RepairRunSettlements(ctx, workspaceID); err != nil {
 			return IssueRunReconcileResult{}, err
 		}
+	}
+	if err := c.Issues.RecoverExplicitIssueRunLaunches(ctx, workspaceID); err != nil {
+		return IssueRunReconcileResult{}, err
 	}
 	if err := c.Issues.RecoverTuttiModeRunCancelCompensations(ctx, workspaceID); err != nil {
 		return IssueRunReconcileResult{}, err
@@ -264,6 +267,9 @@ func (c *IssueExecutionCoordinator) ReconcileTuttiModeRunLaunchesAndRunningRuns(
 		if _, err := c.Issues.TuttiModeExecutions.RepairRunSettlements(ctx, workspaceID); err != nil {
 			return result, err
 		}
+	}
+	if err := c.Issues.RecoverEligibleIssueDispatches(ctx, workspaceID); err != nil {
+		return result, err
 	}
 	return result, nil
 }

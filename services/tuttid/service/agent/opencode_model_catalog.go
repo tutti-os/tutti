@@ -50,7 +50,7 @@ func (l OpenCodeCLIModelLister) ListModels(ctx context.Context) (AgentModelListR
 	if len(args) == 0 {
 		args = []string{"models"}
 	}
-	cmd := exec.CommandContext(processCtx, command, args...)
+	cmd := newProviderCLICommand(processCtx, command, args...)
 	cmd.Env = env
 	if cwd := strings.TrimSpace(l.Cwd); cwd != "" {
 		cmd.Dir = cwd
@@ -134,9 +134,7 @@ func parseVerboseOpenCodeModelsOutput(output []byte) []AgentModelOption {
 
 func normalizeVerboseOpenCodeModel(modelID string, metadata map[string]any) AgentModelOption {
 	name := strings.TrimSpace(stringFromAny(metadata["name"]))
-	if name == "" {
-		name = modelID
-	}
+	displayName := openCodeModelDisplayName(modelID, name)
 	variants, variantsAdvertised := metadata["variants"].(map[string]any)
 	reasoningEfforts := make([]AgentModelReasoningEffortOption, 0, len(variants))
 	for value := range variants {
@@ -158,12 +156,32 @@ func normalizeVerboseOpenCodeModel(modelID string, metadata map[string]any) Agen
 	}
 	return AgentModelOption{
 		ID:                         modelID,
-		DisplayName:                name,
+		DisplayName:                displayName,
 		Description:                "OpenCode model",
 		ReasoningEffortsAdvertised: variantsAdvertised,
 		SupportedReasoningEfforts:  reasoningEfforts,
 		SupportsImageInput:         supportsImageInput,
 	}
+}
+
+func openCodeModelDisplayName(modelID string, name string) string {
+	modelID = strings.TrimSpace(modelID)
+	name = strings.TrimSpace(name)
+	providerID, modelName, qualified := strings.Cut(modelID, "/")
+	providerID = strings.TrimSpace(providerID)
+	if name == "" && qualified {
+		name = strings.TrimSpace(modelName)
+	}
+	if name == "" {
+		return modelID
+	}
+	if !qualified || providerID == "" {
+		return name
+	}
+	if strings.EqualFold(providerID, "opencode") {
+		return name
+	}
+	return name + " / " + providerID
 }
 
 func openCodeReasoningEffortOrder(value string) string {

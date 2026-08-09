@@ -84,7 +84,7 @@ func (h *Host) FenceGoalGeneration(ctx context.Context, input FenceGoalGeneratio
 	if result.Settled {
 		return result, nil
 	}
-	processed, processErr := h.processGoalGenerationFenceSerialized(ctx, fence)
+	processed, processErr := h.processGoalGenerationFenceSerialized(ctx, fence, false)
 	if processed.FenceID != "" {
 		result.Fence = processed
 		result.Settled = processed.Status == storesqlite.GoalGenerationFenceStatusCompleted
@@ -93,6 +93,10 @@ func (h *Host) FenceGoalGeneration(ctx context.Context, input FenceGoalGeneratio
 }
 
 func (h *Host) StepGoalGenerationFenceWorker(ctx context.Context) error {
+	return h.stepGoalGenerationFenceWorker(ctx, false)
+}
+
+func (h *Host) stepGoalGenerationFenceWorker(ctx context.Context, recovering bool) error {
 	if h == nil || h.goalFences == nil {
 		return nil
 	}
@@ -107,7 +111,7 @@ func (h *Host) StepGoalGenerationFenceWorker(ctx context.Context) error {
 		if ctx.Err() != nil {
 			break
 		}
-		if _, processErr := h.processGoalGenerationFenceSerialized(ctx, fence); processErr != nil &&
+		if _, processErr := h.processGoalGenerationFenceSerialized(ctx, fence, recovering); processErr != nil &&
 			!errors.Is(processErr, ErrRuntimeOperationInProgress) {
 			errs = append(errs, fmt.Errorf("process goal generation fence %s: %w", fence.FenceID, processErr))
 		}
@@ -118,19 +122,24 @@ func (h *Host) StepGoalGenerationFenceWorker(ctx context.Context) error {
 func (h *Host) processGoalGenerationFenceSerialized(
 	ctx context.Context,
 	fence storesqlite.GoalGenerationFence,
+	recovering bool,
 ) (storesqlite.GoalGenerationFence, error) {
 	var result storesqlite.GoalGenerationFence
 	err := h.withSessionMutationActor(ctx, fence.WorkspaceID, fence.AgentSessionID, func(commandCtx context.Context) error {
 		return h.withGoalActor(commandCtx, fence.WorkspaceID, fence.AgentSessionID, func(actorCtx context.Context) error {
 			var processErr error
-			result, processErr = h.processGoalGenerationFence(actorCtx, fence)
+			result, processErr = h.processGoalGenerationFence(actorCtx, fence, recovering)
 			return processErr
 		})
 	})
 	return result, err
 }
 
-func (h *Host) processGoalGenerationFence(ctx context.Context, candidate storesqlite.GoalGenerationFence) (storesqlite.GoalGenerationFence, error) {
+func (h *Host) processGoalGenerationFence(
+	ctx context.Context,
+	candidate storesqlite.GoalGenerationFence,
+	recovering bool,
+) (storesqlite.GoalGenerationFence, error) {
 	clearOperationID, err := h.ensureGoalGenerationFenceClear(ctx, candidate)
 	if err != nil {
 		return candidate, err
@@ -167,8 +176,26 @@ func (h *Host) processGoalGenerationFence(ctx context.Context, candidate storesq
 		})
 		return released, releaseErr
 	}
+	completeLocally := func() (storesqlite.GoalGenerationFence, error) {
+		if err := h.completeGoalGenerationFenceClearLocally(ctx, fence, clearOperationID); err != nil {
+			return retry(err)
+		}
+		return h.completeClaimedGoalGenerationFence(ctx, fence, clearOperationID)
+	}
+
+	// Startup recovery has no local provider process to quiesce. The durable
+	// conditional clear above is the restart-time source of truth, so finish it
+	// locally instead of reconnecting a provider merely to stop work that is no
+	// longer running.
+	if recovering && !h.runtimeSessionLive(fence.WorkspaceID, fence.AgentSessionID) {
+		return completeLocally()
+	}
 
 	if err = h.applyGoalGenerationFence(ctx, fence); err != nil {
+		if recovering && !h.runtimeSessionLive(fence.WorkspaceID, fence.AgentSessionID) &&
+			(errors.Is(err, ErrRuntimeSessionDisconnected) || errors.Is(err, ErrSessionNotFound)) {
+			return completeLocally()
+		}
 		if errors.Is(err, ErrRuntimeSessionDisconnected) {
 			return deferPending("waiting for a live provider session")
 		}
@@ -176,9 +203,16 @@ func (h *Host) processGoalGenerationFence(ctx context.Context, candidate storesq
 	}
 	turnSettled, err := h.cancelActiveTurnForGoalFence(ctx, fence)
 	if err != nil {
+		if recovering && !h.runtimeSessionLive(fence.WorkspaceID, fence.AgentSessionID) &&
+			(errors.Is(err, ErrRuntimeSessionDisconnected) || errors.Is(err, ErrSessionNotFound)) {
+			return completeLocally()
+		}
 		return retry(err)
 	}
 	if !turnSettled {
+		if recovering && !h.runtimeSessionLive(fence.WorkspaceID, fence.AgentSessionID) {
+			return completeLocally()
+		}
 		return deferPending("waiting for the exact fenced Turn to settle")
 	}
 	if clearOperationID != "" {
@@ -208,11 +242,69 @@ func (h *Host) processGoalGenerationFence(ctx context.Context, candidate storesq
 			}
 		}
 	}
-	completed, _, err := h.goalFences.CompleteGoalGenerationFence(ctx, storesqlite.CompleteGoalGenerationFenceInput{
+	return h.completeClaimedGoalGenerationFence(ctx, fence, clearOperationID)
+}
+
+func (h *Host) completeClaimedGoalGenerationFence(
+	ctx context.Context,
+	fence storesqlite.GoalGenerationFence,
+	clearOperationID string,
+) (storesqlite.GoalGenerationFence, error) {
+	completed, changed, err := h.goalFences.CompleteGoalGenerationFence(ctx, storesqlite.CompleteGoalGenerationFenceInput{
 		FenceID: fence.FenceID, LeaseOwner: h.goalOperationOwner(),
 		ClearOperationID: clearOperationID, OccurredAtUnixMS: h.goalOperationNow().UnixMilli(),
 	})
-	return completed, err
+	if err != nil || changed {
+		return completed, err
+	}
+	current, found, readErr := h.goalFences.GetGoalGenerationFence(ctx, fence.WorkspaceID, fence.FenceID)
+	if readErr != nil {
+		return current, readErr
+	}
+	if found && current.Status == storesqlite.GoalGenerationFenceStatusCompleted {
+		return current, nil
+	}
+	return current, ErrRuntimeOperationInProgress
+}
+
+func (h *Host) completeGoalGenerationFenceClearLocally(
+	ctx context.Context,
+	fence storesqlite.GoalGenerationFence,
+	clearOperationID string,
+) error {
+	if clearOperationID == "" {
+		return nil
+	}
+	clearOperation, found, err := h.goals.GetGoalControlOperation(ctx, fence.WorkspaceID, clearOperationID)
+	if err != nil {
+		return err
+	}
+	if !found {
+		return errors.New("goal generation fence clear operation is missing")
+	}
+	if clearOperation.Status == storesqlite.GoalOperationStatusCompleted ||
+		clearOperation.Status == storesqlite.GoalOperationStatusSuperseded {
+		return nil
+	}
+	completed, _, _, err := h.goals.CompleteGoalControlOperation(ctx, storesqlite.GoalControlOperationComplete{
+		WorkspaceID: fence.WorkspaceID, OperationID: clearOperation.OperationID,
+		Mode: storesqlite.GoalControlCompletionModeLocalStop, Succeeded: true,
+		Evidence: map[string]any{
+			"source":            "goal_generation_fence_recovery",
+			"fenceId":           fence.FenceID,
+			"targetOperationId": fence.TargetOperationID,
+			"reason":            fence.Reason,
+		},
+		OccurredAtUnixMS: h.goalOperationNow().UnixMilli(),
+	})
+	if err != nil {
+		return err
+	}
+	if completed.Status != storesqlite.GoalOperationStatusCompleted &&
+		completed.Status != storesqlite.GoalOperationStatusSuperseded {
+		return errors.New("goal generation fence clear did not complete locally")
+	}
+	return nil
 }
 
 func (h *Host) ensureGoalGenerationFenceClear(
@@ -286,16 +378,34 @@ func (h *Host) restoreGoalGenerationFences(ctx context.Context, ref SessionRef) 
 	if !ok {
 		return ErrGoalGenerationFenceUnavailable
 	}
-	fences, err := h.goalFences.ListGoalGenerationFencesForSession(ctx, ref.WorkspaceID, ref.AgentSessionID)
+	fences, err := h.listRuntimeGoalGenerationFences(ctx, ref)
 	if err != nil {
 		return err
 	}
 	for _, fence := range fences {
-		if err := applyGoalGenerationFenceWithRuntime(ctx, fencer, fence, false); err != nil {
+		if err := fencer.FenceGoalGeneration(ctx, fence); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+func (h *Host) listRuntimeGoalGenerationFences(
+	ctx context.Context,
+	ref SessionRef,
+) ([]RuntimeGoalGenerationFenceInput, error) {
+	if h == nil || h.goalFences == nil {
+		return nil, nil
+	}
+	fences, err := h.goalFences.ListGoalGenerationFencesForSession(ctx, ref.WorkspaceID, ref.AgentSessionID)
+	if err != nil {
+		return nil, err
+	}
+	result := make([]RuntimeGoalGenerationFenceInput, 0, len(fences))
+	for _, fence := range fences {
+		result = append(result, runtimeGoalGenerationFenceInput(fence, false))
+	}
+	return result, nil
 }
 
 func (h *Host) restoreGoalGenerationFencesOnce(ctx context.Context, ref SessionRef) error {
@@ -324,9 +434,16 @@ func applyGoalGenerationFenceWithRuntime(
 	fence storesqlite.GoalGenerationFence,
 	requireLive bool,
 ) error {
-	return fencer.FenceGoalGeneration(ctx, RuntimeGoalGenerationFenceInput{
+	return fencer.FenceGoalGeneration(ctx, runtimeGoalGenerationFenceInput(fence, requireLive))
+}
+
+func runtimeGoalGenerationFenceInput(
+	fence storesqlite.GoalGenerationFence,
+	requireLive bool,
+) RuntimeGoalGenerationFenceInput {
+	return RuntimeGoalGenerationFenceInput{
 		WorkspaceID: fence.WorkspaceID, AgentSessionID: fence.AgentSessionID,
 		TargetOperationID: fence.TargetOperationID, TargetRevision: fence.TargetRevision,
 		TargetRepairEpoch: fence.TargetRepairEpoch, Reason: fence.Reason, RequireLive: requireLive,
-	})
+	}
 }

@@ -274,6 +274,7 @@ function requestActivation(
     initialPromptRetracted: false,
     initialTurnExpected:
       intent.initialTurnExpected ?? runtimeContent.length > 0,
+    ...(intent.isolation ? { isolation: intent.isolation } : {}),
     ...pendingActivationGoalControlFields(intent),
     ...pendingActivationRailSectionKeyFields(intent),
     ...(intent.railPlacement
@@ -339,6 +340,7 @@ function requestActivation(
               : {}),
             ...(displayPrompt ? { initialDisplayPrompt: displayPrompt } : {}),
             ...pendingActivationGoalControlFields(intent),
+            ...(intent.isolation ? { isolation: intent.isolation } : {}),
             ...(intent.railPlacement
               ? { railPlacement: { ...intent.railPlacement } }
               : {}),

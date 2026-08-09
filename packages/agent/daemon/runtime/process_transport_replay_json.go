@@ -46,6 +46,8 @@ func processCassetteJSONMatch(
 	}
 	projectProcessCassetteRuntimeGeneratedFields(expectedValues, descriptor)
 	projectProcessCassetteRuntimeGeneratedFields(actualValues, descriptor)
+	projectProcessCassetteVolatileClientInfo(expectedValues)
+	projectProcessCassetteVolatileClientInfo(actualValues)
 	projectProcessCassetteEnvironment(expectedValues, descriptor)
 	projectProcessCassetteEnvironment(actualValues, descriptor)
 	responseIDs := map[string]any{}

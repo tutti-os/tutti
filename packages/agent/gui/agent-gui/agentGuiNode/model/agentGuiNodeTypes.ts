@@ -1,5 +1,6 @@
 import type {
   AgentActivityUsage,
+  AgentActivityComposerOptionsLoadStatus,
   CanonicalAgentSession,
   SessionRuntimeAvailability
 } from "@tutti-os/agent-activity-core";
@@ -53,6 +54,11 @@ export interface AgentGUISessionChrome {
         message: string;
         canRetry?: boolean;
         followupAction?: never;
+        /**
+         * The recovery only gates the currently displayed interaction. Keep
+         * that prompt visible while rendering the recovery as inline chrome.
+         */
+        interactionScoped?: boolean;
       }
     | {
         kind: "resume-unavailable";
@@ -105,6 +111,10 @@ export interface AgentGUIComposerSettingOption {
 export interface AgentGUIProviderSkillOption {
   name: string;
   trigger: string;
+  /** Stable daemon connector key used for host-owned setup navigation. */
+  connectorKey?: string;
+  /** Presentation icon projected by the connector catalog. */
+  iconUrl?: string;
   /** Daemon-issued invocation contract; never infer this from provider id. */
   invocation?: "promptItem" | "textTrigger";
   sourceKind:
@@ -119,6 +129,12 @@ export interface AgentGUIProviderSkillOption {
   pluginName?: string;
   path?: string;
   kind?: "skill" | "connector";
+  status?:
+    | "available"
+    | "disabled"
+    | "authRequired"
+    | "setupRequired"
+    | "unsupported";
 }
 
 export interface AgentComposerTextBlock {
@@ -295,6 +311,10 @@ export interface AgentGUIComposerSettingsVM {
   permissionModeChangeDuringTurn?: boolean;
   slashCommandPolicy?: AgentSlashCommandPolicy | null;
   isSettingsLoading: boolean;
+  /** Terminal composer-options failure with no cached catalog to render. */
+  composerOptionsError?: boolean;
+  /** Activity-core request lifecycle for the target-scoped options catalog. */
+  composerOptionsLoadStatus?: AgentActivityComposerOptionsLoadStatus;
   /** Initial slash command and capability catalog request is in flight. */
   isCapabilityOptionsLoading?: boolean;
   isModelOptionsLoading?: boolean;
@@ -494,7 +514,10 @@ export interface AgentGUIComposerViewModel {
 }
 
 export interface AgentGUIInteractionViewModel {
+  approvalDisabledReason: string | null;
+  interactivePromptDisabledReason: string | null;
   isRespondingApproval: boolean;
+  isRespondingInteractivePrompt: boolean;
   pendingApproval: AgentGUIApprovalRequest | null;
   pendingInteractivePrompt: AgentGUIInteractivePrompt | null;
   sessionChrome: AgentGUISessionChrome;

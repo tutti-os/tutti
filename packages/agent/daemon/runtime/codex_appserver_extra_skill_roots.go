@@ -16,6 +16,7 @@ const (
 	tuttiAgentExtraSkillRootsEnv    = "TUTTI_AGENT_EXTRA_SKILL_ROOTS_JSON"
 	tuttiAgentStableSystemSkillsEnv = "TUTTI_AGENT_STABLE_SYSTEM_SKILLS_ROOT"
 	tuttiAgentHomeEnv               = "TUTTI_AGENT_HOME"
+	tuttiAgentExtraSkillRootsLimit  = 32
 )
 
 func tuttiAgentStableSystemSkillsRoot(strategy providerregistry.AppServerSkillRootsStrategy, env []string) (string, error) {
@@ -48,7 +49,7 @@ func tuttiAgentExtraSkillRoots(strategy providerregistry.AppServerSkillRootsStra
 	if len(roots) == 0 {
 		return nil, fmt.Errorf("tutti-agent extra skill roots must not be empty")
 	}
-	if len(roots) > 16 {
+	if len(roots) > tuttiAgentExtraSkillRootsLimit {
 		return nil, fmt.Errorf("tutti-agent extra skill roots exceed limit")
 	}
 	cleaned := make([]string, 0, len(roots))

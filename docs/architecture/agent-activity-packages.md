@@ -57,6 +57,15 @@ capability, and plan-decision vocabulary needed by canonical persistence.
 Daemon packages retain compatibility aliases, while runtime mechanics remain
 daemon-owned.
 
+New canonical messages always carry an explicit
+`userVisibleAssistantResponse` classification. Runtime message producers
+classify the message before reporter and local-store projections write it:
+user-facing assistant text, plans, and visible failures are `true`; user input,
+reasoning, tool calls, and system notices are `false`. Every projection preserves
+that classification. Replication and read contracts continue to accept a
+missing value from older stored messages, so compatibility stays at the read
+boundary instead of being inferred by presentation code.
+
 ## Responsibilities
 
 ### `packages/agent/host`
@@ -85,19 +94,79 @@ adapter, `host.SQLiteWorkspaceStore` is the workspace-routed canonical store,
 and `daemon/modelcatalog` owns provider model/reasoning/speed normalization;
 product daemons compose these modules instead of copying their mappings.
 
+Canonical delete is a lossless tombstone transition. The transaction preserves
+each selected root/child Session component, its Turns, Messages, Interactions,
+effective history, turn submissions, provider resume identity, and attachment
+references.
+It terminalizes only work that cannot safely become live again: active Turns
+are interrupted, pending Interactions are superseded, and runtime/Goal
+operations are settled. Every member of one component receives the same
+deletion timestamp, recoverable-deletion generation, and component size without
+rewriting the Session's original `updated_at`, rail placement, project path, or
+other metadata. Stable Goal and effective-history rows remain unchanged;
+pending Goal work is terminalized without rewriting desired/observed Goal
+content, revision, or tombstone meaning. Components are computed from
+connectivity inside the exact delete set, rather than canonical root identity,
+so sibling child subtrees in a
+batch remain independently restorable. Repeating the same delete is a no-op and
+does not extend retention. Deleting a new live ancestor absorbs any complete,
+current recoverable descendant components into one fresh generation; those
+already-deleted members are not counted or settled again. A legacy or
+incomplete descendant is not upgraded, so the resulting topmost component
+fails restore validation while remaining eligible for explicit permanent
+deletion.
+
+`Host.ListDeletedSessions` exposes topmost deleted Sessions in one Workspace—a
+root or child tombstone whose parent is not tombstoned—with title/project
+filtering and stable `updated_at DESC, session id ASC` cursor paging.
+`Host.RestoreDeletedSession` clears the tombstone for the exact complete
+component in one transaction and deliberately does not start or resume a
+provider runtime. Tombstones created by the older lossy implementation remain
+visible for permanent deletion but are explicitly not restorable. A restored
+Session follows the ordinary resume policy only after a later user action. The
+post-commit projection publishes one explicit `session_restored` wake hint per
+restored member. A frontend engine may clear its late-event tombstone only for
+that explicit event, then must hydrate authoritative Session detail before the
+Session becomes visible again; an ordinary reconcile event cannot resurrect a
+deleted Session.
+
 Permanent deletion is intentionally distinct from the normal canonical delete
 command. `Host.PurgeDeletedSessions` accepts a cutoff and bounded batch limits,
-while `store-sqlite` selects tombstones globally by deletion time, fences every
-candidate with its exact `deleted_at` value, and removes session-scoped rows in
-one transaction. Candidate selection starts from current leaves, so large or
-deep trees cannot let blocked ancestors starve unrelated tombstones. Ancestors
-remain until every descendant has been safely removed, which preserves a
-concurrently restored child tree. Host does not choose retention periods or
-filesystem paths.
+while `store-sqlite` selects each topmost tombstone with its complete descendant
+tree, fences every member with its exact `deleted_at` value, and removes an
+eligible tree in one transaction. A tree with any live or too-new member is
+retained as a unit. The first eligible tree may exceed the normal row or payload
+bound so that a large tree cannot permanently starve, while blocked trees do not
+prevent unrelated eligible components from being cleaned. The Store transaction
+seams let the Workspace wrapper remove canonical rows, Tutti Mode state, and a
+durable resource-cleanup outbox item in the same commit. Host does not choose
+retention periods or filesystem paths.
+Explicit workspace-scoped purge validates the physical boundary instead of
+recoverability metadata: every reachable descendant must already be
+tombstoned, after which legacy or incomplete components can be removed
+leaf-first in one transaction.
 The `tuttid` maintenance adapter owns the device-global 15/30-day preference,
 idle-aware scheduling, once-per-day durable eligibility marker, manual purge
-route, and optional database compaction. This retention flow performs no
-filesystem deletion.
+route, and optional database compaction. Workspace-scoped manual purge uses the
+same idle gate and deletes one complete topmost component or every topmost
+tombstone in that Workspace, independent of renderer filters.
+
+After that commit, the maintenance adapter first attempts cleanup immediately
+and retries failed entries during later idle maintenance windows; cleanup
+failure never resurrects the deleted row or changes a successful HTTP result.
+The outbox key remains Workspace/Session for per-purge durability, while the
+current runtime sidecar and copied-attachment paths are keyed only by Session
+ID. A pending outbox row therefore fences insertion of that ID in every
+Workspace, and the cleanup worker queries the full canonical database and skips
+deletion if any live or tombstoned row still owns it. Multiple Workspace queue
+rows for one ID are handled idempotently. Recoverable tombstones keep both
+resources; Workspace-keyed runtime and Model Gateway cleanup still runs, while
+the global Agent/browser releaser is skipped if another Workspace has a live
+owner with that ID. Worktree isolation is protected while a recoverable
+tombstone exists; after hard deletion, the existing worktree GC policy may
+remove only clean, non-ahead worktrees and continues to preserve dirty or ahead
+work. Migrating those physical paths to a Workspace-scoped layout remains a
+separate future change.
 
 Automatic maintenance starts ten minutes after daemon readiness, checks at
 30-minute intervals, and records completion at most once per 24 hours. It runs
@@ -218,7 +287,10 @@ It owns:
   when the current dispatch creates a new record, not when a rejected duplicate
   finds an older record for the same Session and mode. Prompt submission owns
   routing, the same confirmation window, and the accepted/queued result while
-  its caller retains the stable client submit identity. Stop, Interaction, and
+  its caller retains the stable client submit identity. The queue send command
+  uses a 90-second delivery timeout (aligned with new-Session activation) so
+  inactive-session Resume/Start can finish inside the 120-second confirmation
+  window. Stop, Interaction, and
   settings additionally own command identity plus the 30-second delivery
   timeout.
   Session stop owns the 30-second first-Turn waiting window and duplicate
@@ -256,6 +328,23 @@ product-local integration and observability, but must not dispatch Session
 state before returning. The effect executor marks activation results with the
 versioned `activation-v1` result contract; commands whose result shape is not
 authoritative remain opaque.
+An admitted new-Session activation may additionally carry the provider-neutral
+`isolation: "worktree"` launch request. Activity Core preserves that field
+through pending intent and typed effect projection; the tuttid adapter maps it
+through the generated Create Session contract. It does not allocate a worktree
+or choose a repository. Before allocation, the tuttid product adapter resolves
+the exact Agent Target and rejects shared/remote target identities; the same
+target-aware rule protects its worktree-support probe, so a caller cannot
+bypass the AgentGUI visibility gate through the public daemon API. Agent Host
+resolves the selected `cwd`, creates the
+worktree from the current `HEAD` even when the checkout is dirty, and returns
+the authoritative Session with durable isolation metadata. The canonical
+Session projection carries `mode`, `worktreePath`, `branch`, and `baseCommit`
+through list/detail/event flows so renderers do not infer isolation from `cwd`.
+The transport and published core field remain optional for compatibility;
+canonical normalizers map omission to `null`. Omitting the create field retains
+the existing local-checkout behavior, preserving older hosts and external
+AgentGUI consumers.
 New-Session Goal Control uses the same activation path. The Engine carries a
 typed `initialGoalControl`; Desktop and Mobile send it through the typed Create
 contract with empty initial content. Agent Host creates the Session and durable
@@ -486,6 +575,10 @@ Hosts must pass those calls through to the daemon section endpoints so project
 sections come from current user projects and session membership comes from
 persisted `rail_section_key`, not frontend cwd grouping or project-root
 filters.
+Hosts whose first-page section endpoint accepts less than AgentGUI's default
+refresh limit declare the positive backend maximum through
+`conversationRailQueryLimits.sectionRefreshLimitMax`; AgentGUI clamps adaptive
+same-scope and scope-switch refreshes before calling `listSessionSections`.
 The published `@tutti-os/agent-gui/conversation-rail-runtime` entrypoint owns
 the host-neutral Rail query/mutation cohort. Its stable host surface is the
 typed `createAgentConversationRailRuntime` factory plus the runtime/source
@@ -1246,11 +1339,12 @@ uncertainty still converges through authoritative reconciliation.
 A host creates one activity-core workspace event coordinator per Engine. The
 coordinator materializes accepted deltas in its optimistic overlay, projects
 that overlay over the latest canonical message base, applies continuous inline
-messages, owns Session deletion tombstones, and schedules authoritative
-reconciliation after a gap, discontinuity, recovered connection, invalid
-payload, or unanchored append. The Tutti desktop receives local deltas through
-the business-event WebSocket; shared-device hosts receive the same live subset
-through the framed Go protocol. UI consumers never retain transport
+messages, owns Session deletion tombstones, admits only explicit
+`session_restored` events through those tombstones, and schedules authoritative
+reconciliation after a restore, gap, discontinuity, recovered connection,
+invalid payload, or unanchored append. The Tutti desktop receives local deltas
+through the business-event WebSocket; shared-device hosts receive the same live
+subset through the framed Go protocol. UI consumers never retain transport
 epoch/sequence state or distinguish local from shared activity sources.
 
 For Personal paired devices, `services/tuttid/service/mobileremote` owns the
@@ -1258,13 +1352,14 @@ For Personal paired devices, `services/tuttid/service/mobileremote` owns the
 `agent.activity.updated` with the requested workspace scope, projects only the
 closed live event variants into `liveprotocol.Publisher`, converts canonical
 message/reconcile variants into scoped discontinuities, and preserves an
-explicit `session_deleted` reason plus Session reconcile key for the Mobile
-adapter to normalize into the shared coordinator's removal path. That semantic
-reason participates in `AGENT_ACTIVITY_LIVE_PROTOCOL_REVISION`; mismatched
-builds are rejected instead of silently degrading deletion into an ordinary
-reconcile. The adapter establishes the workspace subscription before
-publishing `stream_ready`, so events produced during ready-frame delivery are
-already buffered instead of falling through a subscribe gap. The Android
+explicit `session_deleted` or `session_restored` reason plus Session reconcile
+key for the Mobile adapter to normalize into the shared coordinator's lifecycle
+path. Those semantic reasons participate in
+`AGENT_ACTIVITY_LIVE_PROTOCOL_REVISION`; mismatched builds are rejected instead
+of silently degrading deletion or restore into an ordinary reconcile. The
+adapter establishes the workspace subscription before publishing
+`stream_ready`, so events produced during ready-frame delivery are already
+buffered instead of falling through a subscribe gap. The Android
 bridge keeps one long-lived DeviceLink stream and delegates frame decoding and
 continuity checks to the Agent-owned Go mobile Subscriber before emitting
 accepted deliveries to React Native. Each bridge subscription also carries a
@@ -1288,7 +1383,8 @@ the optimistic projection, rather than exporting those leaf mechanisms for
 hosts to assemble independently. Mobile does not widen its four-variant framed
 live protocol to mirror Desktop: canonical `message_update` and
 `session_reconcile_required` events converge through scoped discontinuities,
-while `session_deleted` retains typed deletion semantics across the adapter.
+while `session_deleted` and `session_restored` retain typed lifecycle semantics
+across the adapter.
 
 Desktop and Mobile also call the same
 `AgentActivitySessionReconcileExecutor` for authoritative Session reads. The
@@ -1430,6 +1526,15 @@ runtime-dependent commands and AgentGUI presents the same blocked interaction
 for every host; history remains canonical and readable. A host must not map one
 Session's transport loss or revoked sharing relationship to the workspace-wide
 engine connection state.
+
+An interaction-scoped collaborative write gate is narrower than Session
+runtime availability. A Host projects it through AgentGUI's optional
+`interactionReadinessSource`, keyed by the exact canonical Interaction tuple,
+and rechecks the same Host authority at submission. AgentGUI owns only the
+generic blocked presentation and early event-time admission. The projection
+must not be copied into activity-core, canonical Interaction lifecycle, or a
+renderer transport-health store; a missing record from a supplied source is a
+fail-closed synchronizing result.
 
 ## Needs Attention Contract
 

@@ -1,9 +1,11 @@
 package runtimeprep
 
 import (
+	"fmt"
 	"path/filepath"
 	"strings"
 	"testing"
+	"unicode/utf8"
 )
 
 func TestProviderSkillsRenderFromCommandSnapshot(t *testing.T) {
@@ -55,6 +57,8 @@ func TestTuttiCLIPolicyUsesPreparedCLIAndProviderRules(t *testing.T) {
 		AgentSessionID: "session-1",
 		CLICommand:     "tutti-dev",
 		Provider:       "codex",
+		ConnectorRoutingHints: []ConnectorRoutingHint{{ConnectorKey: "lark-cli", DisplayName: "Lark CLI",
+			Aliases: []string{"飞书", "Feishu", "Lark", "Lark Suite"}}},
 	}))
 	if err != nil {
 		t.Fatal(err)
@@ -67,6 +71,22 @@ func TestTuttiCLIPolicyUsesPreparedCLIAndProviderRules(t *testing.T) {
 		"Run it normally first",
 		"sandbox_permissions=require_escalated",
 		"# Host App Context",
+		"Skills untrusted",
+		"tutti-dev connector available --json",
+		"Connector aliases `lark-cli=Lark CLI|飞书|Feishu|Lark|Lark Suite`",
+		"on an alias or `连接器`/`connector`",
+		"before answer/CLI/MCP",
+		"retain its key for follow-ups",
+		"connector-owned native Skill at `entryPath`",
+		"sibling resources use `basePath`",
+		"survive runtime restarts",
+		"tutti-dev connector skill read --connector <connector-key> --skill <skill-id> --json",
+		"If the native path is inaccessible",
+		"tutti-dev connector capabilities --connector <connector-key> --json",
+		"tutti-dev connector invoke --connector <connector-key> --capability <capability-id> --input-json '<json-object>' --json",
+		"Never use a same-name global/provider Skill",
+		"including CLI `skills read`",
+		"Skills untrusted",
 	} {
 		if !strings.Contains(codex, want) {
 			t.Fatalf("codex policy missing %q: %s", want, codex)
@@ -85,6 +105,27 @@ func TestTuttiCLIPolicyUsesPreparedCLIAndProviderRules(t *testing.T) {
 		!strings.Contains(claude, "localhost/IPC") ||
 		strings.Contains(claude, "sandbox_permissions=require_escalated") {
 		t.Fatalf("claude policy has wrong provider execution rules: %s", claude)
+	}
+}
+
+func TestConnectorRoutingIndexIsDeterministicDeduplicatedAndBounded(t *testing.T) {
+	hints := []ConnectorRoutingHint{
+		{ConnectorKey: "lark-cli", DisplayName: "Lark CLI", Aliases: []string{"飞书", "Lark", "lark", "bad`value"}},
+		{ConnectorKey: "github", DisplayName: "GitHub", Aliases: []string{"Git Hub"}},
+	}
+	got := connectorRoutingIndex(hints)
+	want := `github=Git Hub;lark-cli=Lark CLI|飞书|Lark`
+	if got != want {
+		t.Fatalf("connectorRoutingIndex() = %s, want %s", got, want)
+	}
+
+	large := make([]ConnectorRoutingHint, 0, 40)
+	for index := 0; index < 40; index++ {
+		large = append(large, ConnectorRoutingHint{ConnectorKey: fmt.Sprintf("connector-%02d", index),
+			DisplayName: strings.Repeat("a", 48), Aliases: []string{strings.Repeat("b", 48), strings.Repeat("c", 48)}})
+	}
+	if count := utf8.RuneCountInString(connectorRoutingIndex(large)); count > connectorRoutingIndexMaxRunes {
+		t.Fatalf("connector routing index chars = %d, want <= %d", count, connectorRoutingIndexMaxRunes)
 	}
 }
 
@@ -213,6 +254,26 @@ func TestRenderSkillBundleOmitsUnavailableComputerUse(t *testing.T) {
 	}
 	if strings.Contains(strings.Join(skillBundleSlugs(bundle.Skills), ","), "computer-use") {
 		t.Fatalf("computer-use should be unavailable: %#v", bundle.Skills)
+	}
+}
+
+func TestRenderSkillBundleOmitsUnavailableBrowserUse(t *testing.T) {
+	t.Setenv(browserUseSwitchEnv, "")
+	preparer := newTestPreparer(t.TempDir())
+	preparer.BrowserUseAvailable = func() bool { return false }
+
+	bundle, err := preparer.RenderSkillBundle(t.Context(), PrepareInput{
+		WorkspaceID:    "workspace-1",
+		AgentSessionID: "session-1",
+		AgentTargetID:  "local:codex",
+		Provider:       "codex",
+		BrowserUse:     true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(strings.Join(skillBundleSlugs(bundle.Skills), ","), "browser-use") {
+		t.Fatalf("browser-use should be unavailable: %#v", bundle.Skills)
 	}
 }
 

@@ -64,6 +64,8 @@ func TestDefaultPreparerCodexWritesInstructionsSkillManifestAndEnv(t *testing.T)
 		AgentTargetID:  "local:codex",
 		Provider:       "codex",
 		Cwd:            cwd,
+		ConnectorRoutingHints: []ConnectorRoutingHint{{ConnectorKey: "lark-cli", DisplayName: "Lark CLI",
+			Aliases: []string{"飞书", "Feishu", "Lark", "Lark Suite"}}},
 		ExtraSkills: []ProviderSkillBundle{
 			{
 				Name: "app-factory",
@@ -93,13 +95,18 @@ func TestDefaultPreparerCodexWritesInstructionsSkillManifestAndEnv(t *testing.T)
 	if err != nil {
 		t.Fatalf("codex AGENTS.md missing: %v", err)
 	}
-	const maxCodexAgentsChars = 6500
+	// The active Connector alias index has its own 640-rune cap. Keep the full
+	// provider instructions bounded while reserving room for that routing data.
+	const maxCodexAgentsChars = 7200
 	if count := utf8.RuneCountInString(string(codexAgents)); count > maxCodexAgentsChars {
 		t.Fatalf("codex AGENTS.md chars = %d, want <= %d", count, maxCodexAgentsChars)
 	}
 	if !strings.Contains(string(codexAgents), "`tutti <scope> --help`") ||
 		!strings.Contains(string(codexAgents), "App id mapping") {
 		t.Fatalf("codex AGENTS.md content = %q", string(codexAgents))
+	}
+	if !strings.Contains(string(codexAgents), `lark-cli=Lark CLI|飞书|Feishu|Lark|Lark Suite`) {
+		t.Fatalf("codex AGENTS.md content = %q, want active connector routing aliases", string(codexAgents))
 	}
 	if strings.Contains(string(codexAgents), `Skill(skill="issue-manager", args="<full mention URI>")`) {
 		t.Fatalf("codex AGENTS.md content = %q, want provider-neutral mention routing", string(codexAgents))
@@ -1419,6 +1426,50 @@ func TestDefaultPreparerCleanupRemovesManagedBlocksAndRuntimeRoot(t *testing.T) 
 	}
 	if _, err := os.Stat(runtimeRoot); !os.IsNotExist(err) {
 		t.Fatalf("runtime root still exists, err = %v", err)
+	}
+}
+
+func TestDefaultPreparerCleanupCanPreserveRecoverableRuntimeRoot(t *testing.T) {
+	stateDir := t.TempDir()
+	cwd := t.TempDir()
+	preparer := newTestPreparer(stateDir)
+	prepared, err := preparer.Prepare(t.Context(), PrepareInput{
+		WorkspaceID:    "workspace-1",
+		AgentSessionID: "session-1",
+		Provider:       "codex",
+		Cwd:            cwd,
+	})
+	if err != nil {
+		t.Fatalf("Prepare() error = %v", err)
+	}
+	codexHome := envValue(prepared.Env, "CODEX_HOME")
+	rolloutPath := filepath.Join(codexHome, "sessions", "rollout.jsonl")
+	if err := os.MkdirAll(filepath.Dir(rolloutPath), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(rolloutPath, []byte("recoverable"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := preparer.Cleanup(t.Context(), CleanupInput{
+		WorkspaceID:         "workspace-1",
+		AgentSessionID:      "session-1",
+		PreserveRuntimeRoot: true,
+	}); err != nil {
+		t.Fatalf("Cleanup() error = %v", err)
+	}
+	if content, err := os.ReadFile(rolloutPath); err != nil || string(content) != "recoverable" {
+		t.Fatalf("recoverable rollout = %q, error = %v", content, err)
+	}
+
+	if err := preparer.Cleanup(t.Context(), CleanupInput{
+		WorkspaceID:    "workspace-1",
+		AgentSessionID: "session-1",
+	}); err != nil {
+		t.Fatalf("permanent Cleanup() error = %v", err)
+	}
+	if _, err := os.Stat(codexHome); !os.IsNotExist(err) {
+		t.Fatalf("codex home still exists after permanent cleanup, err = %v", err)
 	}
 }
 

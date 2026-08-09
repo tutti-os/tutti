@@ -8,14 +8,19 @@ enum QRCodeScannerError: Error {
   case unavailable
 }
 
+enum QRCodeScannerResult {
+  case manual
+  case scanned(String)
+}
+
 final class QRCodeScannerViewController: UIViewController,
   AVCaptureMetadataOutputObjectsDelegate
 {
-  var onCompletion: ((Result<String, Error>) -> Void)?
+  var onCompletion: ((Result<QRCodeScannerResult, Error>) -> Void)?
 
   private let captureSession = AVCaptureSession()
   private let captureQueue = DispatchQueue(
-    label: "dev.tutti.mobile.qr-capture",
+    label: "sh.tutti.mobile.qr-capture",
     qos: .userInitiated
   )
   private let previewLayer = AVCaptureVideoPreviewLayer()
@@ -48,18 +53,34 @@ final class QRCodeScannerViewController: UIViewController,
     cancelButton.addTarget(self, action: #selector(cancel), for: .touchUpInside)
     view.addSubview(cancelButton)
 
+    let manualButton = UIButton(type: .system)
+    manualButton.translatesAutoresizingMaskIntoConstraints = false
+    manualButton.setTitle(
+      NSLocalizedString("scanner.manual", comment: ""),
+      for: .normal
+    )
+    manualButton.setTitleColor(.white, for: .normal)
+    manualButton.titleLabel?.font = .preferredFont(forTextStyle: .headline)
+    manualButton.addTarget(self, action: #selector(manualEntry), for: .touchUpInside)
+    view.addSubview(manualButton)
+
     NSLayoutConstraint.activate([
       titleLabel.topAnchor.constraint(
         equalTo: view.safeAreaLayoutGuide.topAnchor,
         constant: 24
       ),
-      titleLabel.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 24),
+      titleLabel.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 88),
       titleLabel.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -24),
-      cancelButton.bottomAnchor.constraint(
+      cancelButton.topAnchor.constraint(
+        equalTo: view.safeAreaLayoutGuide.topAnchor,
+        constant: 24
+      ),
+      cancelButton.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 24),
+      manualButton.bottomAnchor.constraint(
         equalTo: view.safeAreaLayoutGuide.bottomAnchor,
         constant: -24
       ),
-      cancelButton.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+      manualButton.centerXAnchor.constraint(equalTo: view.centerXAnchor),
     ])
 
     configureCapture()
@@ -90,7 +111,9 @@ final class QRCodeScannerViewController: UIViewController,
       readable.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines)
       ?? ""
     complete(
-      value.isEmpty ? .failure(QRCodeScannerError.emptyCode) : .success(value)
+      value.isEmpty
+        ? .failure(QRCodeScannerError.emptyCode)
+        : .success(.scanned(value))
     )
   }
 
@@ -150,12 +173,16 @@ final class QRCodeScannerViewController: UIViewController,
     complete(.failure(QRCodeScannerError.cancelled))
   }
 
+  @objc private func manualEntry() {
+    complete(.success(.manual))
+  }
+
   func cancelScanning() {
     complete(.failure(QRCodeScannerError.cancelled))
   }
 
   private func complete(
-    _ result: Result<String, Error>,
+    _ result: Result<QRCodeScannerResult, Error>,
     shouldDismiss: Bool = true
   ) {
     guard !completed else { return }

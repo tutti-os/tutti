@@ -69,6 +69,7 @@ import {
 import type { WorkspaceLaunchpadOpenTrigger } from "../services/workspaceLaunchpadAnalytics.ts";
 import { registerWorkspaceBrowserLaunchHandler } from "../services/workspaceBrowserLaunchCoordinator.ts";
 import { createWorkbenchWorkspaceBrowserPresenter } from "../services/workbenchWorkspaceBrowserPresenter.ts";
+import { createWorkbenchTerminalLoginPresenter } from "../services/workbenchTerminalLoginPresenter.ts";
 import { isWorkspaceMissionControlLayoutShortcut } from "../services/workspaceMissionControlShortcut.ts";
 import {
   registerWorkspaceFilesLaunchHandler,
@@ -105,7 +106,6 @@ import { WorkspaceFallbackState } from "./WorkspaceFallbackState.tsx";
 import type { WorkspaceWorkbenchHostSessionBinding } from "../services/workspaceWorkbenchHostService.interface.ts";
 import { useWorkspaceOnboardingAutoOpen } from "./useWorkspaceOnboardingAutoOpen.ts";
 import { resolveWorkspaceWorkbenchLayoutConstraints } from "./workspaceWorkbenchLayoutConstraints.ts";
-import { defaultWorkspaceTerminalWorkbenchTypeId } from "../services/workspaceWorkbenchNodeIds.ts";
 import type {
   DesktopRuntimeApi,
   DesktopWorkspaceAppExternalHostApi
@@ -134,6 +134,7 @@ const AgentSessionReplayWorkspaceRuntime = lazy(() =>
 );
 
 interface WorkspaceWorkbenchProps {
+  appName: string;
   agentSessionReplayComposition: AgentSessionReplayDesktopComposition | null;
   enableWindowCloseGuard: boolean;
   headerSlot?: React.ReactNode;
@@ -142,6 +143,7 @@ interface WorkspaceWorkbenchProps {
   workspaceID: string | null;
 }
 export function WorkspaceWorkbench({
+  appName,
   agentSessionReplayComposition,
   enableWindowCloseGuard,
   headerSlot,
@@ -178,6 +180,7 @@ export function WorkspaceWorkbench({
 
   return (
     <ReadyWorkspaceWorkbench
+      appName={appName}
       agentSessionReplayComposition={agentSessionReplayComposition}
       enableWindowCloseGuard={enableWindowCloseGuard}
       headerSlot={headerSlot}
@@ -192,6 +195,7 @@ export function WorkspaceWorkbench({
 }
 
 interface ReadyWorkspaceWorkbenchProps {
+  appName: string;
   agentSessionReplayComposition: AgentSessionReplayDesktopComposition | null;
   enableWindowCloseGuard: boolean;
   headerSlot?: React.ReactNode;
@@ -235,6 +239,7 @@ function ReadyWorkspaceWorkbench(props: ReadyWorkspaceWorkbenchProps) {
 }
 
 function ReadyWorkspaceWorkbenchWithSession({
+  appName,
   agentSessionReplayComposition,
   enableWindowCloseGuard,
   headerSlot,
@@ -491,26 +496,11 @@ function ReadyWorkspaceWorkbenchWithSession({
       unregisterTerminalLoginLaunchRef.current =
         registerWorkspaceTerminalLoginLaunchHandler(
           state.workspace.id,
-          async ({ command, cwd }) => {
-            const nodeId = await host.launchNode({
-              payload: {
-                cwd,
-                initialInput: /[\r\n]$/u.test(command)
-                  ? command
-                  : `${command}\n`
-              },
-              reason: "host",
-              typeId: defaultWorkspaceTerminalWorkbenchTypeId
-            });
-            if (!nodeId) {
-              throw new Error("Terminal login did not open a workbench node.");
-            }
-            return {
-              close: () => {
-                host.closeNode(nodeId);
-              }
-            };
-          }
+          createWorkbenchTerminalLoginPresenter({
+            contributions: hostInput.contributions ?? [],
+            host,
+            runtimeApi
+          })
         );
 
       unregisterAgentGuiLaunchRef.current =
@@ -638,7 +628,9 @@ function ReadyWorkspaceWorkbenchWithSession({
     [
       agentEnvService,
       appCenterService,
+      hostInput.contributions,
       runtime,
+      runtimeApi,
       state.workspace.id,
       workspaceAppExternalApi
     ]
@@ -941,6 +933,7 @@ function ReadyWorkspaceWorkbenchWithSession({
           onNodeCloseRequest={hostInput.onNodeCloseRequest}
           renderTopChrome={(chromeContext) => (
             <WorkspaceChrome
+              appName={appName}
               externalAgentSessionImportPromptEnabled={!replayRuntimeActive}
               headerSlot={headerSlot}
               launchNode={chromeContext.launchNode}

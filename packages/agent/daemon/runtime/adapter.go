@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"os"
 
 	activityshared "github.com/tutti-os/tutti/packages/agent/daemon/activity/events"
 	sessionreplay "github.com/tutti-os/tutti/packages/agent/session-replay"
@@ -22,6 +23,30 @@ type ProcessSpec struct {
 	Env                []string
 	DirectStart        bool
 	ExecutableIdentity *ExecutableIdentity
+	ArtifactTrees      []ArtifactTreeIdentity
+	// SensitiveInheritedFiles are opt-in descriptors whose contents must never
+	// be copied into argv or the process environment. Generic process
+	// transports reject this field; the connector transport maps each file to
+	// fd 3+n and publishes only that descriptor number through DescriptorEnvKey.
+	SensitiveInheritedFiles []SensitiveInheritedFile
+}
+
+// ArtifactTreeIdentity binds a connector artifact snapshot to the inventory
+// digest verified from the signed artifact. The connector transport rechecks
+// it immediately before launch, closing the receipt-to-launch pathname gap.
+type ArtifactTreeIdentity struct {
+	Root   string
+	SHA256 string
+}
+
+// SensitiveInheritedFile describes one host-owned secret-bearing descriptor.
+// DescriptorEnvKey is metadata, not a secret, and must use the reserved
+// TUTTI_CONNECTOR_FD_ prefix. Ownership stays with the caller; transports dup
+// the descriptor for the child and never close File.
+type SensitiveInheritedFile struct {
+	File             *os.File
+	DescriptorEnvKey string
+	Purpose          string
 }
 
 // ExecutableIdentity binds a process launch to bytes verified by an owning

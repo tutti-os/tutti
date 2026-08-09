@@ -39,10 +39,12 @@ describe("AgentSessionChrome", () => {
       screen.getByText("Waiting for permission to run the command")
     ).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Yes, proceed" }));
-    expect(onSubmitApprovalOption).toHaveBeenCalledWith(
-      "request-1",
-      "allow_once"
-    );
+    expect(onSubmitApprovalOption).toHaveBeenCalledWith({
+      agentSessionId: "session-1",
+      optionId: "allow_once",
+      requestId: "request-1",
+      turnId: "turn-1"
+    });
 
     const retryButtons = screen.getAllByRole("button", { name: "Retry" });
     expect(retryButtons).toHaveLength(1);
@@ -84,6 +86,34 @@ describe("AgentSessionChrome", () => {
     fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
 
     expect(onAuthLogin).toHaveBeenCalledTimes(1);
+  });
+
+  it("explains why approval actions are disabled on hover", async () => {
+    const reason = "The shared Agent owner is offline";
+    render(
+      <AgentSessionChrome
+        approvalDisabledReason={reason}
+        chrome={chromeState()}
+        isRespondingApproval
+        onSubmitApprovalOption={vi.fn()}
+        onRetryActivation={vi.fn()}
+        onContinueInNewConversation={vi.fn()}
+        labels={{
+          approvalRequired: "Approval required",
+          authRequired: "Authentication required",
+          activatingSession: "Connecting session...",
+          retryActivation: "Retry",
+          continueInNewConversation: "Continue in new session"
+        }}
+      />
+    );
+
+    const disabledGroup = screen.getByRole("group", { name: reason });
+    expect(screen.getByRole("button", { name: "Yes, proceed" })).toBeDisabled();
+
+    fireEvent.pointerMove(disabledGroup);
+
+    expect(await screen.findByRole("tooltip")).toHaveTextContent(reason);
   });
 
   it("offers login without manual retry for authentication failures", () => {
@@ -270,6 +300,7 @@ function chromeState(): AgentGUISessionChrome {
     approval: {
       kind: "approval",
       id: "approval:call-1",
+      agentSessionId: "session-1",
       turnId: "turn-1",
       requestId: "request-1",
       callId: "call-1",

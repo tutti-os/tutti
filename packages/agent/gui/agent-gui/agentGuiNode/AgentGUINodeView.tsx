@@ -54,13 +54,34 @@ import {
   useAgentGUIConversationRailResizePointerMove,
   type AgentGUIConversationRailResizeInteraction
 } from "./view/useAgentGUIConversationRailResizePointerMove";
-export * from "./AgentGUINodeView.exports";
+export type {
+  AgentGUIComposerFooterAccessoryContext,
+  AgentGUIComposerFooterAccessoryRenderer
+} from "./view/AgentGUIComposerFooterAccessory.types";
+export * from "./AgentGUINodeView.publicTypes";
+export {
+  buildAgentConversationHandoffPrompt,
+  handoffProjectPathForConversation,
+  isContextCanceledMessage,
+  isDifferentKnownConversationOwner,
+  resolveActiveConversationBusyStatus,
+  resolveConversationDetailStatus,
+  resolveSlashStatus,
+  useStableSlashStatus
+} from "./view/agentGUIDetailModelHelpers";
+export {
+  resolveAgentGUIHeroIconUrl,
+  shouldEmphasizeEmptyHeroProvider
+} from "./view/AgentGUIEmptyState";
 import { useAgentGUIExternalRequests } from "./view/useAgentGUIExternalRequests";
 export function AgentGUINodeView({
   viewModel,
   referenceProvenanceFilters = null,
   sessionInputHistoryEnabled = false,
   sessionForkEnabled = false,
+  sessionWorktreeEnabled = false,
+  sessionLaunchModesByProjectSectionKey,
+  onSessionLaunchModePreferenceChange,
   renderAgentTargetInfo,
   agentProviderUpdateNotices,
   renderProjectDirectoryPickerHeaderActions,
@@ -110,6 +131,7 @@ export function AgentGUINodeView({
   onWorkspaceFileReferencesAdded,
   resolveExternalPromptEntries = null,
   prepareExternalPromptFiles = null,
+  resolvePastedPath = null,
   promptAssetLimit = null,
   onConversationRailWidthChanged,
   onConversationRailLayoutChange,
@@ -612,9 +634,16 @@ export function AgentGUINodeView({
             inert={conversationRailCollapsed ? true : undefined}
           >
             <AgentConversationClockProvider isVisible={isVisible}>
+              {/* Activity is an all-provider rail snapshot. Selecting a row
+                  changes the active provider/target, but must not rebuild it. */}
               <AgentGUIConversationRailController
                 {...conversationRailStoreState}
+                activityContextKey={[
+                  viewModel.shell.currentUserId?.trim() ?? "",
+                  viewModel.shell.nodeId?.trim() ?? ""
+                ].join("\u0000")}
                 conversations={viewModel.rail.conversations}
+                currentUserId={viewModel.shell.currentUserId}
                 nodeId={viewModel.shell.nodeId}
                 registerInteractionLockProbe={registerRailInteractionLockProbe}
                 userProjects={viewModel.rail.userProjects}
@@ -665,6 +694,13 @@ export function AgentGUINodeView({
                 referenceProvenanceFilters={referenceProvenanceFilters}
                 sessionInputHistoryEnabled={sessionInputHistoryEnabled}
                 sessionForkEnabled={sessionForkEnabled}
+                sessionWorktreeEnabled={sessionWorktreeEnabled}
+                sessionLaunchModesByProjectSectionKey={
+                  sessionLaunchModesByProjectSectionKey
+                }
+                onSessionLaunchModePreferenceChange={
+                  onSessionLaunchModePreferenceChange
+                }
                 composerEngagement={composerEngagement}
                 actions={actions}
                 labels={labels}
@@ -694,6 +730,7 @@ export function AgentGUINodeView({
                 onRequestWorkspaceReferences={requestWorkspaceReferences}
                 resolveExternalPromptEntries={resolveExternalPromptEntries}
                 prepareExternalPromptFiles={prepareExternalPromptFiles}
+                resolvePastedPath={resolvePastedPath}
                 promptAssetLimit={promptAssetLimit}
                 selectProjectDirectory={effectiveSelectProjectDirectory}
                 onRequestGitBranches={onRequestGitBranches}

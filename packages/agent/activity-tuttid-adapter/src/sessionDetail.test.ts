@@ -27,6 +27,12 @@ test("detail mapping preserves the authoritative root, children, and Turns", () 
       lifecycleCapabilitiesProjected: true,
       session: createSession({
         id: "root-1",
+        isolation: {
+          baseCommit: "abc123",
+          branch: "tutti/session/root-1",
+          mode: "worktree",
+          worktreePath: "/worktrees/root-1"
+        },
         kind: "root"
       }),
       childSessions: [
@@ -53,6 +59,12 @@ test("detail mapping preserves the authoritative root, children, and Turns", () 
   assert.equal(detail.session.agentSessionId, "root-1");
   assert.equal(detail.session.userId, "account-user-1");
   assert.equal(detail.session.lifecycleCapabilitiesProjected, true);
+  assert.deepEqual(detail.session.isolation, {
+    baseCommit: "abc123",
+    branch: "tutti/session/root-1",
+    mode: "worktree",
+    worktreePath: "/worktrees/root-1"
+  });
   assert.deepEqual(detail.editRetry, {
     availableActions: ["reconcile"],
     eligible: true,
@@ -68,6 +80,7 @@ test("detail mapping preserves the authoritative root, children, and Turns", () 
       parentAgentSessionId: session.parentAgentSessionId,
       rootAgentSessionId: session.rootAgentSessionId,
       lifecycleCapabilitiesProjected: session.lifecycleCapabilitiesProjected,
+      isolation: session.isolation,
       userId: session.userId
     })),
     [
@@ -76,6 +89,7 @@ test("detail mapping preserves the authoritative root, children, and Turns", () 
         parentAgentSessionId: "root-1",
         rootAgentSessionId: "root-1",
         lifecycleCapabilitiesProjected: true,
+        isolation: null,
         userId: "account-user-1"
       }
     ]

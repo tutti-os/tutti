@@ -107,7 +107,7 @@ export interface AgentHostExecAgentSessionInput {
 }
 
 export interface AgentPromptContentBlock {
-  type: "text" | "image" | "file" | "skill" | "mention";
+  type: "text" | "image" | "file" | "skill" | "mention" | "connector";
   text?: string;
   mimeType?: "image/png" | "image/jpeg" | "image/webp" | string;
   data?: string;
@@ -115,6 +115,7 @@ export interface AgentPromptContentBlock {
   attachmentId?: string;
   name?: string;
   path?: string;
+  connectorKey?: string;
   uri?: string;
   hostPath?: string;
   uploadStatus?: string;

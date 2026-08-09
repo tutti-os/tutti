@@ -189,7 +189,7 @@ test("an explicit settled turn confirms its accepted submit", () => {
   };
   const result = pendingIntentsReducer(
     state,
-    { type: "turn/upserted", turn },
+    { live: true, type: "turn/upserted", turn },
     {
       deletedSessionIds: {},
       turnsById: { [canonicalTurnKey("session-1", "turn-1")]: turn },

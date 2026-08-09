@@ -157,6 +157,13 @@ export function normalizePromptContentBlocks(
       if (name && path) {
         result.push({ type: block.type, name, path });
       }
+      continue;
+    }
+    if (block.type === "connector") {
+      const connectorKey = block.connectorKey?.trim();
+      if (connectorKey && /^[a-z][a-z0-9._-]{0,127}$/.test(connectorKey)) {
+        result.push({ type: "connector", connectorKey });
+      }
     }
   }
   return result;

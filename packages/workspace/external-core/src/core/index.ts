@@ -5,9 +5,11 @@ import {
   type TuttiExternalAtProviderId,
   type TuttiExternalAgentActivityActivateSessionInput,
   type TuttiExternalAgentActivityCancelTurnInput,
+  type TuttiExternalAgentActivityRememberComposerDefaultsInput,
   type TuttiExternalAgentActivityComposerOptionsInput,
   type TuttiExternalAgentActivitySendInput,
   type TuttiExternalAtQueryInput,
+  type TuttiExternalAtQueryDirectoryInput,
   type TuttiExternalAtResolveInput,
   type TuttiExternalAtInvalidation,
   type TuttiExternalBrowserOpenUrlInput,
@@ -108,6 +110,25 @@ export function normalizeTuttiExternalAtQueryInput(
   };
 }
 
+export function normalizeTuttiExternalAtQueryDirectoryInput(
+  input: unknown
+): TuttiExternalAtQueryDirectoryInput {
+  if (!isRecord(input)) {
+    throw new Error("at.queryDirectory input must be an object.");
+  }
+  if (!isTuttiExternalAtProviderId(input.providerId)) {
+    throw new Error("at.queryDirectory providerId is unsupported.");
+  }
+  if (typeof input.directoryPath !== "string") {
+    throw new Error("at.queryDirectory directoryPath is required.");
+  }
+  return {
+    directoryPath: input.directoryPath.trim(),
+    maxResults: normalizeMaxResults(input.maxResults),
+    providerId: input.providerId
+  };
+}
+
 export function normalizeTuttiExternalAtResolveInput(
   input: unknown
 ): TuttiExternalAtResolveInput {
@@ -189,12 +210,76 @@ export function normalizeTuttiExternalAgentActivityActivateSessionInput(
       "initialDisplayPrompt",
       true
     ),
+    ...normalizeAgentActivityReveal(input.reveal),
     ...(input.settings === undefined || input.settings === null
       ? {}
       : { settings: normalizeAgentActivitySettings(input.settings) }),
     ...normalizeAgentActivityTitle(input.title),
     ...normalizeAgentActivityVisible(input.visible)
   };
+}
+
+export function normalizeTuttiExternalAgentActivityRememberComposerDefaultsInput(
+  input: unknown
+): TuttiExternalAgentActivityRememberComposerDefaultsInput {
+  if (!isRecord(input)) {
+    throw new Error(
+      "agentActivity.rememberComposerDefaults input must be an object."
+    );
+  }
+  if (!isRecord(input.defaults)) {
+    throw new Error(
+      "agentActivity.rememberComposerDefaults defaults must be an object."
+    );
+  }
+  const defaults = input.defaults;
+  if (
+    defaults.codexSaverMode !== undefined &&
+    typeof defaults.codexSaverMode !== "boolean"
+  ) {
+    throw new Error(
+      "agentActivity.rememberComposerDefaults codexSaverMode must be a boolean."
+    );
+  }
+  return {
+    agentTargetId: normalizeRequiredString(
+      input.agentTargetId,
+      "agentActivity.rememberComposerDefaults agentTargetId"
+    ),
+    defaults: {
+      ...(typeof defaults.codexSaverMode === "boolean"
+        ? { codexSaverMode: defaults.codexSaverMode }
+        : {}),
+      ...normalizeComposerDefaultsField(defaults.model, "model"),
+      ...normalizeComposerDefaultsField(
+        defaults.permissionModeId,
+        "permissionModeId"
+      ),
+      ...normalizeComposerDefaultsField(
+        defaults.reasoningEffort,
+        "reasoningEffort"
+      ),
+      ...normalizeComposerDefaultsField(defaults.speed, "speed")
+    }
+  };
+}
+
+function normalizeComposerDefaultsField<
+  Key extends "model" | "permissionModeId" | "reasoningEffort" | "speed"
+>(value: unknown, field: Key): Partial<Record<Key, string | null>> {
+  if (value === undefined) {
+    return {};
+  }
+  if (value === null) {
+    return { [field]: null } as Partial<Record<Key, string | null>>;
+  }
+  if (typeof value !== "string") {
+    throw new Error(
+      `agentActivity.rememberComposerDefaults ${field} must be a string or null.`
+    );
+  }
+  const normalized = value.trim();
+  return { [field]: normalized || null } as Partial<Record<Key, string | null>>;
 }
 
 export function normalizeTuttiExternalAgentActivityCancelTurnInput(
@@ -889,6 +974,18 @@ function normalizeAgentActivityVisible(
     throw new Error("agentActivity visible must be a boolean.");
   }
   return { visible: value };
+}
+
+function normalizeAgentActivityReveal(
+  value: unknown
+): Partial<Pick<TuttiExternalAgentActivityActivateSessionInput, "reveal">> {
+  if (value === undefined) {
+    return {};
+  }
+  if (typeof value !== "boolean") {
+    throw new Error("agentActivity reveal must be a boolean.");
+  }
+  return { reveal: value };
 }
 
 function normalizeAgentActivityContent(

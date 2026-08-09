@@ -34,6 +34,7 @@ import {
   resolveStandaloneAgentWindowWorkArea
 } from "./standaloneAgentWindowBounds.ts";
 import { WorkspaceWindowRegistry } from "./workspaceWindowRegistry.ts";
+import { resolveWorkspaceWindowChromeOptions } from "./workspaceWindowChrome.ts";
 
 export const workspaceAppBrowserPartitionPrefix = "persist:tutti-app:";
 
@@ -124,17 +125,19 @@ export function createWorkspaceWindow(
           workArea: agentDisplay.workArea
         })
       : defaultAgentWindowBounds;
+  const windowChromeOptions = resolveWorkspaceWindowChromeOptions(
+    process.platform,
+    windowKind
+  );
   const workspaceWindow = new BrowserWindow({
     backgroundColor: resolveDesktopWindowBackgroundColor(),
-    frame: windowKind === "agent" ? false : undefined,
+    ...windowChromeOptions,
     ...(process.platform === "linux" && windowKind === "agent"
       ? { roundedCorners: false }
       : {}),
-    // The agent window's green control is a native fullscreen toggle, and its
-    // frameless chrome draws custom traffic lights. Disabling native zoom stops
-    // macOS double-click-title-bar from zooming into an ambiguous "maximized"
-    // state that the custom restore icon can't reliably track.
-    ...(windowKind === "agent" ? { maximizable: false } : {}),
+    // The frameless agent window's green control is a native fullscreen toggle.
+    // Disabling native zoom stops macOS double-click-title-bar from zooming into
+    // an ambiguous "maximized" state that the custom restore icon can't track.
     width: agentWindowBounds?.width ?? 1280,
     height: agentWindowBounds?.height ?? 840,
     minWidth: windowKind === "agent" ? agentWindowMinWidthPx : 960,

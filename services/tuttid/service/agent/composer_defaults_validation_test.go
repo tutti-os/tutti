@@ -82,7 +82,7 @@ func TestValidateAgentComposerDefaultsPatchRetainsExtensionTargetCatalogAfterDis
 	}
 }
 
-func TestServiceCreateRevalidatesObservedExtensionDefaultForActualCwd(t *testing.T) {
+func TestServiceCreateResolvesObservedExtensionDefaultForActualCwd(t *testing.T) {
 	ctx := context.Background()
 	runtime, service := newExtensionComposerValidationService(t)
 	cwdA := resolvedComposerValidationCwd(t, service, t.TempDir())
@@ -105,15 +105,31 @@ func TestServiceCreateRevalidatesObservedExtensionDefaultForActualCwd(t *testing
 	service.AgentComposerDefaultsReader = fakeAgentComposerDefaultsReader{
 		extensionComposerValidationTargetID: {Model: "gemini-project-a"},
 	}
-	_, err := service.Create(ctx, "workspace-create-b", CreateSessionInput{
+	created, err := service.Create(ctx, "workspace-create-b", CreateSessionInput{
 		AgentTargetID: extensionComposerValidationTargetID,
 		Cwd:           &cwdB,
 	})
-	if !errors.Is(err, ErrInvalidArgument) {
-		t.Fatalf("Create() error = %v, want ErrInvalidArgument", err)
+	if err != nil {
+		t.Fatalf("Create() error = %v", err)
 	}
-	if starts := visibleRuntimeStarts(runtime.startCalls); len(starts) != 0 {
-		t.Fatalf("visible starts = %#v, want none", starts)
+	if created.Settings == nil || created.Settings.Model != "gemini-project-b" {
+		t.Fatalf("created settings = %#v, want current-cwd model", created.Settings)
+	}
+	if starts := visibleRuntimeStarts(runtime.startCalls); len(starts) != 1 || starts[0].Model != "gemini-project-b" {
+		t.Fatalf("visible starts = %#v, want current-cwd model", starts)
+	}
+
+	explicitModel := "gemini-project-a"
+	_, err = service.Create(ctx, "workspace-create-b-explicit", CreateSessionInput{
+		AgentTargetID: extensionComposerValidationTargetID,
+		Cwd:           &cwdB,
+		Model:         &explicitModel,
+	})
+	if !errors.Is(err, ErrInvalidArgument) {
+		t.Fatalf("Create() explicit model error = %v, want ErrInvalidArgument", err)
+	}
+	if starts := visibleRuntimeStarts(runtime.startCalls); len(starts) != 1 {
+		t.Fatalf("visible starts after rejected explicit model = %#v, want original start only", starts)
 	}
 }
 

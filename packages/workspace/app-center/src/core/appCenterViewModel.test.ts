@@ -43,6 +43,7 @@ describe("createAppCenterViewModel", () => {
         {
           appId: "zeta",
           error: {
+            failurePhase: "starting",
             message: "Launch failed"
           },
           status: "failed"
@@ -66,6 +67,7 @@ describe("createAppCenterViewModel", () => {
     assert.equal(viewModel.apps[1]?.canOpenFolder, true);
     assert.equal(viewModel.apps[1]?.canOpenPackageFolder, false);
     assert.equal(viewModel.apps[1]?.errorMessage, "Launch failed");
+    assert.equal(viewModel.apps[1]?.failurePhase, "starting");
   });
 
   it("shows restart and open when an installed app is pending restart", () => {

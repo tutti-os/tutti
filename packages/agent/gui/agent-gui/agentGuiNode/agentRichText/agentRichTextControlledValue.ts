@@ -57,3 +57,16 @@ export function shouldApplyAgentRichTextControlledValue(input: {
   tracker.pendingLocalEchoes = [];
   return true;
 }
+
+export function resolveAgentRichTextControlledSelection(
+  scopeChanged: boolean,
+  selection: { from: number; to: number },
+  documentEnd: number
+): number | { from: number; to: number } {
+  return scopeChanged
+    ? documentEnd
+    : {
+        from: Math.min(selection.from, documentEnd),
+        to: Math.min(selection.to, documentEnd)
+      };
+}

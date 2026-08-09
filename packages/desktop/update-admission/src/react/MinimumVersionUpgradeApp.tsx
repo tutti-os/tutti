@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Button, LoadingIcon } from "@tutti-os/ui-system";
+import { Button, CloseIcon, LoadingIcon } from "@tutti-os/ui-system";
 import type {
   DesktopMinimumVersionApi,
   MinimumVersionUpgradeError,
@@ -73,8 +73,19 @@ export function MinimumVersionUpgradeApp(props: {
     `errors.${state.message ?? "updateFailed"}` as `errors.${MinimumVersionUpgradeError}`;
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-[var(--background)] p-8 text-[var(--foreground)]">
-      <section className="w-full max-w-[440px] rounded-xl border border-[var(--border)] bg-[var(--card)] p-6 shadow-sm">
+    <main className="relative flex min-h-screen items-center justify-center bg-[var(--card)] p-8 text-[var(--foreground)]">
+      <Button
+        aria-label={t("exit")}
+        className="absolute top-3 left-3"
+        disabled={pending}
+        size="icon-sm"
+        title={t("exit")}
+        variant="ghost"
+        onClick={() => run(() => port.exit())}
+      >
+        <CloseIcon />
+      </Button>
+      <section className="w-full max-w-[440px]">
         <h1 className="text-lg font-semibold">{title}</h1>
         <p className="mt-2 text-sm leading-5 text-[var(--muted-foreground)]">
           {simulationComplete
@@ -90,19 +101,15 @@ export function MinimumVersionUpgradeApp(props: {
             {state.update.message}
           </p>
         ) : null}
-        <dl className="mt-6 grid grid-cols-[auto_1fr] gap-2 rounded-lg bg-[var(--muted)] p-4 text-sm">
+        <dl className="mt-6 grid grid-cols-[auto_1fr] items-center gap-x-2 gap-y-1 text-sm">
           <dt className="text-[var(--muted-foreground)]">
             {t("currentVersion")}
           </dt>
-          <dd className="text-right tabular-nums">
-            {state.check.currentVersion}
-          </dd>
+          <dd className="tabular-nums">{state.check.currentVersion}</dd>
           <dt className="text-[var(--muted-foreground)]">
             {t("minimumVersion")}
           </dt>
-          <dd className="text-right tabular-nums">
-            {state.check.minimumVersion}
-          </dd>
+          <dd className="tabular-nums">{state.check.minimumVersion}</dd>
         </dl>
         {downloading ? (
           <div className="mt-5">
@@ -128,17 +135,9 @@ export function MinimumVersionUpgradeApp(props: {
             <Button
               variant="secondary"
               disabled={pending}
-              onClick={() => run(() => port.exit())}
+              onClick={() => run(() => port.restart())}
             >
-              {t("exit")}
-            </Button>
-          ) : prompt ? (
-            <Button
-              variant="secondary"
-              disabled={pending}
-              onClick={() => run(() => port.later())}
-            >
-              {t("later")}
+              {t("restart")}
             </Button>
           ) : null}
           {failed ? (
@@ -166,7 +165,7 @@ export function MinimumVersionUpgradeApp(props: {
             </>
           ) : state.phase === "blocked" ? (
             <Button disabled={pending} onClick={() => run(() => port.start())}>
-              {prompt ? t("upgradeNow") : t("upgrade")}
+              {t("upgradeNow")}
             </Button>
           ) : null}
         </div>

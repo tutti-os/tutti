@@ -96,7 +96,7 @@ WHERE workspace_id = ? AND issue_id = ? AND task_id = ?
 	); err != nil {
 		return executionbiz.Checkpoint{}, false, err
 	}
-	if err := projectScheduledTuttiModeIssue(
+	if err := projectWorkspaceIssueTasks(
 		ctx, tx, failure.WorkspaceID, failure.IssueID, failure.Now,
 	); err != nil {
 		return executionbiz.Checkpoint{}, false, err
@@ -735,7 +735,7 @@ WHERE workspace_id = ? AND execution_id = ?
 		return executionbiz.AcknowledgeResult{}, err
 	}
 	if checkpoint.Kind == executionbiz.CheckpointKindTaskSettled {
-		if err := projectScheduledTuttiModeIssue(
+		if err := projectWorkspaceIssueTasks(
 			ctx, tx, admission.WorkspaceID, admission.IssueID, admission.Now,
 		); err != nil {
 			return executionbiz.AcknowledgeResult{}, err

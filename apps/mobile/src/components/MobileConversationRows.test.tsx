@@ -24,6 +24,7 @@ test("keeps the explicit Interaction choices available after a failed response",
   const option = renderer!.root.findByType(PrimaryButton);
   expect(option.props.disabled).toBe(false);
   expect(option.props.label).toBe("Allow");
+  expect(option.props.accessibilityLabel).toBe("Allow. Run this command once");
   act(() => option.props.onPress());
   expect(submissions).toEqual([{ optionId: "allow-once" }]);
   expect(
@@ -65,7 +66,13 @@ function approvalInteraction(): AgentActivityInteraction {
     createdAtUnixMs: 1,
     input: {
       callId: "call-1",
-      options: [{ label: "Allow", optionId: "allow-once" }]
+      options: [
+        {
+          description: "Run this command once",
+          label: "Allow",
+          optionId: "allow-once"
+        }
+      ]
     },
     kind: "approval",
     metadata: {},

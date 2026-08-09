@@ -35,6 +35,9 @@ const aliases = {
   "@tutti-os/workspace-external-core/core": resolve(
     "../../packages/workspace/external-core/src/core/index.ts"
   ),
+  "@tutti-os/workspace-external-core/rich-text": resolve(
+    "../../packages/workspace/external-core/src/rich-text/index.ts"
+  ),
   "@tutti-os/workspace-external-core": resolve(
     "../../packages/workspace/external-core/src/index.ts"
   ),
@@ -78,8 +81,19 @@ const bundledWsDefines = {
   "process.env.WS_NO_UTF_8_VALIDATE": '"true"'
 };
 
+// TUTTI_DESKTOP_DEV_PORT pins the renderer dev server to an explicit port so
+// a second local checkout (or another electron-vite project) can keep the
+// default 5173. strictPort makes a collision fail loudly instead of silently
+// hopping to a port the Electron main process did not expect.
+const devServerPort = Number.parseInt(
+  process.env.TUTTI_DESKTOP_DEV_PORT ?? "",
+  10
+);
 const devServer = {
   host: "127.0.0.1",
+  ...(Number.isInteger(devServerPort) && devServerPort > 0
+    ? { port: devServerPort, strictPort: true }
+    : {}),
   hmr: {
     host: "127.0.0.1"
   }
@@ -131,6 +145,7 @@ function createPerfMonitorPlugin(): PluginOption {
 
 const guestPreloadEntryFileNames = new Set([
   "browser-node-guest.cjs",
+  "minimum-version.cjs",
   "workspace-app.cjs"
 ]);
 
@@ -173,6 +188,7 @@ export default defineConfig({
           "browser-node-guest": resolve(
             "src/preload/entries/browserNodeGuest.ts"
           ),
+          capture: resolve("src/preload/entries/capture.ts"),
           index: resolve("src/preload/index.ts"),
           "minimum-version": resolve("src/preload/entries/minimumVersion.ts"),
           "workspace-app": resolve("src/preload/entries/workspaceApp.ts")
@@ -197,6 +213,7 @@ export default defineConfig({
     build: {
       rollupOptions: {
         input: {
+          capture: resolve("src/renderer/capture.html"),
           index: resolve("src/renderer/index.html"),
           "minimum-version": resolve("src/renderer/minimum-version.html")
         }

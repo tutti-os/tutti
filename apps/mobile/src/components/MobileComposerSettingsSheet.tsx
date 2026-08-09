@@ -1,12 +1,13 @@
 import type { AgentActivitySessionSettings } from "@tutti-os/agent-activity-core";
 import {
   NativeButton,
+  NativeControlGlyph,
   NativeListRow,
   NativeSheet,
   type NativeTheme,
   useNativeTheme
 } from "@tutti-os/ui-system/native";
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import { ScrollView, StyleSheet, Text, View } from "react-native";
 import { t } from "../i18n";
 import type { WorkspaceActivitySnapshot } from "../services/workspaceActivityService";
@@ -36,6 +37,15 @@ export function MobileComposerSettingsSheet({
   const styles = createStyles(theme);
   const activeActivationIdRef = useRef(activationId);
   const disabledRef = useRef(disabled);
+  const chipRailMetricsRef = useRef({
+    contentWidth: 0,
+    offset: 0,
+    viewportWidth: 0
+  });
+  const [chipRailHints, setChipRailHints] = useState({
+    leading: false,
+    trailing: false
+  });
   activeActivationIdRef.current = activationId;
   disabledRef.current = disabled;
   const options = model.composerOptions;
@@ -48,6 +58,21 @@ export function MobileComposerSettingsSheet({
   const showsModelChip = Boolean(
     model.composerSettingsSupport.model && options?.models.length
   );
+  const updateChipRailMetrics = (
+    metrics: Partial<(typeof chipRailMetricsRef)["current"]>
+  ): void => {
+    Object.assign(chipRailMetricsRef.current, metrics);
+    const { contentWidth, offset, viewportWidth } = chipRailMetricsRef.current;
+    const maxOffset = Math.max(0, contentWidth - viewportWidth);
+    const visibleOffset = Math.min(maxOffset, Math.max(0, offset));
+    const leading = visibleOffset > 4;
+    const trailing = maxOffset - visibleOffset > 4;
+    setChipRailHints((current) =>
+      current.leading === leading && current.trailing === trailing
+        ? current
+        : { leading, trailing }
+    );
+  };
 
   const closeWith = (settings: AgentActivitySessionSettings): void => {
     if (
@@ -63,67 +88,114 @@ export function MobileComposerSettingsSheet({
 
   return (
     <>
-      <View style={styles.chips}>
-        {showsModelChip ? (
-          <ComposerChip
-            disabled={disabled}
-            label={[
-              selectedOptionLabel(options?.models ?? [], selectedModel) ??
-                t("model"),
-              model.composerSettingsSupport.reasoning
-                ? selectedOptionLabel(
-                    reasoningOptions,
-                    model.composerSettings.reasoningEffort ?? null
-                  )
-                : null
-            ]
-              .filter(Boolean)
-              .join(" ")}
-            onPress={() => onMenuChange("model")}
-            testID="mobile-composer-model-settings"
-          />
+      <View style={styles.chipRail}>
+        <ScrollView
+          contentContainerStyle={styles.chips}
+          fadingEdgeLength={theme.space.large}
+          horizontal
+          keyboardShouldPersistTaps="handled"
+          onContentSizeChange={(width) =>
+            updateChipRailMetrics({ contentWidth: width })
+          }
+          onLayout={({ nativeEvent }) =>
+            updateChipRailMetrics({ viewportWidth: nativeEvent.layout.width })
+          }
+          onScroll={({ nativeEvent }) =>
+            updateChipRailMetrics({ offset: nativeEvent.contentOffset.x })
+          }
+          scrollEventThrottle={16}
+          showsHorizontalScrollIndicator={false}
+          testID="mobile-composer-settings-rail"
+        >
+          {showsModelChip ? (
+            <ComposerChip
+              disabled={disabled}
+              label={[
+                selectedOptionLabel(options?.models ?? [], selectedModel) ??
+                  t("model"),
+                model.composerSettingsSupport.reasoning
+                  ? selectedOptionLabel(
+                      reasoningOptions,
+                      model.composerSettings.reasoningEffort ?? null
+                    )
+                  : null
+              ]
+                .filter(Boolean)
+                .join(" ")}
+              onPress={() => onMenuChange("model")}
+              testID="mobile-composer-model-settings"
+            />
+          ) : null}
+          {!showsModelChip &&
+          model.composerSettingsSupport.reasoning &&
+          reasoningOptions.length ? (
+            <ComposerChip
+              disabled={disabled}
+              label={
+                selectedOptionLabel(
+                  reasoningOptions,
+                  model.composerSettings.reasoningEffort ?? null
+                ) ?? t("reasoning")
+              }
+              onPress={() => onMenuChange("reasoning")}
+              testID="mobile-composer-reasoning-settings"
+            />
+          ) : null}
+          {model.composerSettingsSupport.speed && options?.speeds.length ? (
+            <ComposerChip
+              disabled={disabled}
+              label={
+                selectedOptionLabel(
+                  options?.speeds ?? [],
+                  model.composerSettings.speed ?? null
+                ) ?? t("speed")
+              }
+              onPress={() => onMenuChange("speed")}
+              testID="mobile-composer-speed-settings"
+            />
+          ) : null}
+          {model.composerSettingsSupport.permission &&
+          options?.permissionConfig?.modes.length ? (
+            <ComposerChip
+              disabled={disabled}
+              label={
+                selectedOptionLabel(
+                  options?.permissionConfig?.modes ?? [],
+                  model.composerSettings.permissionModeId ?? null
+                ) ?? t("defaultPermissions")
+              }
+              onPress={() => onMenuChange("permission")}
+              testID="mobile-composer-permission-settings"
+            />
+          ) : null}
+        </ScrollView>
+        {chipRailHints.leading ? (
+          <View
+            pointerEvents="none"
+            style={[styles.chipRailHint, styles.chipRailHintLeading]}
+            testID="mobile-composer-settings-leading-hint"
+          >
+            <NativeControlGlyph
+              color={theme.color.textSecondary}
+              direction="left"
+              size={14}
+              variant="chevron"
+            />
+          </View>
         ) : null}
-        {!showsModelChip &&
-        model.composerSettingsSupport.reasoning &&
-        reasoningOptions.length ? (
-          <ComposerChip
-            disabled={disabled}
-            label={
-              selectedOptionLabel(
-                reasoningOptions,
-                model.composerSettings.reasoningEffort ?? null
-              ) ?? t("reasoning")
-            }
-            onPress={() => onMenuChange("reasoning")}
-            testID="mobile-composer-reasoning-settings"
-          />
-        ) : null}
-        {model.composerSettingsSupport.speed && options?.speeds.length ? (
-          <ComposerChip
-            disabled={disabled}
-            label={
-              selectedOptionLabel(
-                options?.speeds ?? [],
-                model.composerSettings.speed ?? null
-              ) ?? t("speed")
-            }
-            onPress={() => onMenuChange("speed")}
-            testID="mobile-composer-speed-settings"
-          />
-        ) : null}
-        {model.composerSettingsSupport.permission &&
-        options?.permissionConfig?.modes.length ? (
-          <ComposerChip
-            disabled={disabled}
-            label={
-              selectedOptionLabel(
-                options?.permissionConfig?.modes ?? [],
-                model.composerSettings.permissionModeId ?? null
-              ) ?? t("defaultPermissions")
-            }
-            onPress={() => onMenuChange("permission")}
-            testID="mobile-composer-permission-settings"
-          />
+        {chipRailHints.trailing ? (
+          <View
+            pointerEvents="none"
+            style={[styles.chipRailHint, styles.chipRailHintTrailing]}
+            testID="mobile-composer-settings-trailing-hint"
+          >
+            <NativeControlGlyph
+              color={theme.color.textSecondary}
+              direction="right"
+              size={14}
+              variant="chevron"
+            />
+          </View>
         ) : null}
       </View>
 
@@ -236,7 +308,7 @@ function ComposerChip({
       disabled={disabled}
       label={label}
       onPress={onPress}
-      size="compact"
+      size="regular"
       style={styles.chip}
       testID={testID}
       variant="secondary"
@@ -274,12 +346,33 @@ function createStyles(theme: NativeTheme) {
   return StyleSheet.create({
     chip: {
       backgroundColor: theme.color.panel,
-      borderColor: theme.color.panel,
-      borderRadius: 20,
-      minHeight: theme.control.compact,
-      paddingHorizontal: theme.space.medium
+      borderColor: theme.color.border,
+      borderRadius: theme.control.regular / 2,
+      minHeight: theme.control.regular,
+      paddingHorizontal: theme.space.small
     },
-    chips: { flexDirection: "row", flexWrap: "wrap", gap: theme.space.small },
+    chipRail: { flex: 1, minWidth: 0, position: "relative" },
+    chipRailHint: {
+      alignItems: "center",
+      backgroundColor: theme.color.panelRaised,
+      borderColor: theme.color.border,
+      borderRadius: theme.control.regular / 2,
+      borderWidth: StyleSheet.hairlineWidth,
+      height: theme.control.regular,
+      justifyContent: "center",
+      opacity: 0.96,
+      position: "absolute",
+      top: 0,
+      width: 24
+    },
+    chipRailHintLeading: { left: 0 },
+    chipRailHintTrailing: { right: 0 },
+    chips: {
+      alignItems: "center",
+      flexDirection: "row",
+      gap: 6,
+      paddingRight: theme.space.small
+    },
     loading: { color: theme.color.muted, padding: theme.space.medium },
     options: { padding: theme.space.small },
     sectionTitle: {

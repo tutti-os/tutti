@@ -65,6 +65,7 @@ export function serializeWorkspaceAppExternalAtMatch(
     label: match.label,
     ...(match.subtitle ? { subtitle: match.subtitle } : {}),
     ...(thumbnailUrl ? { thumbnailUrl } : {}),
+    ...(match.directory ? { directory: { ...match.directory } } : {}),
     insert
   };
 }

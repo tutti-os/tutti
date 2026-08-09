@@ -63,6 +63,7 @@ export const AgentGUINode = memo(function AgentGUINode({
     selectProjectDirectory,
     resolveExternalPromptEntries = null,
     prepareExternalPromptFiles = null,
+    resolvePastedPath = null,
     promptAssetLimit = null,
     projectDirectorySourceAggregator = null,
     referenceSourceAggregator = null,
@@ -108,6 +109,7 @@ export const AgentGUINode = memo(function AgentGUINode({
     comingSoonProviders,
     providerReadinessGates = null,
     targetConnectionSource = null,
+    interactionReadinessSource = null,
     observationGapSource = null,
     defaultAgentTargetId = null,
     providerAuthAccountLabels,
@@ -119,6 +121,8 @@ export const AgentGUINode = memo(function AgentGUINode({
     referenceProvenanceFilterEnabled = false,
     sessionInputHistoryEnabled = false,
     sessionForkEnabled = false,
+    sessionWorktreeEnabled = false,
+    sessionLaunchModesByProjectSectionKey,
     codexSaverModeEntryEnabled = false
   } = hostCapabilities;
   const referenceProvenanceFilters = useAgentMentionProvenanceFilters({
@@ -140,6 +144,7 @@ export const AgentGUINode = memo(function AgentGUINode({
     onResize,
     onUpdateNode,
     onRememberComposerDefaults,
+    onSessionLaunchModePreferenceChange,
     isMuted = false,
     onMinimize,
     onToggleMaximize,
@@ -295,6 +300,7 @@ export const AgentGUINode = memo(function AgentGUINode({
     comingSoonProviders,
     providerReadinessGates,
     targetConnectionSource,
+    interactionReadinessSource,
     observationGapSource,
     defaultAgentTargetId,
     onDataChange: handleDataChange,
@@ -545,6 +551,7 @@ export const AgentGUINode = memo(function AgentGUINode({
               }
               resolveExternalPromptEntries={resolveExternalPromptEntries}
               prepareExternalPromptFiles={prepareExternalPromptFiles}
+              resolvePastedPath={resolvePastedPath}
               promptAssetLimit={promptAssetLimit}
               onConversationRailWidthChanged={
                 handleConversationRailWidthChanged
@@ -577,6 +584,13 @@ export const AgentGUINode = memo(function AgentGUINode({
               referenceProvenanceFilters={referenceProvenanceFilters}
               sessionInputHistoryEnabled={sessionInputHistoryEnabled}
               sessionForkEnabled={sessionForkEnabled}
+              sessionWorktreeEnabled={sessionWorktreeEnabled}
+              sessionLaunchModesByProjectSectionKey={
+                sessionLaunchModesByProjectSectionKey
+              }
+              onSessionLaunchModePreferenceChange={
+                onSessionLaunchModePreferenceChange
+              }
               renderProjectDirectoryPickerHeaderActions={
                 renderProjectDirectoryPickerHeaderActions
               }

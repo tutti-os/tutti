@@ -257,16 +257,10 @@ surfaces, while User Browser tabs remain under user lifecycle ownership.
 Network authorization runs before leasing or creating a tab. `new_page`
 creates only `about:blank`, attaches CDP request interception, and then loads
 the requested URL. The same policy therefore covers the initial document,
-main-frame redirects, subresources, and script-initiated requests. For an
-attached target, hostname checks use that target's Chromium Session resolver,
-keeping policy resolution in the browser network context that will make the
-request. The standard policy permits public HTTP/HTTPS destinations while
-rejecting private, link-local, metadata, multicast, and local-network targets.
-Loopback is denied by default; a virtualized host may permit an exact URL only
-through the trusted `isLoopbackUrlRouted` capability after its product-owned
-preview router maps the URL to the caller's sandbox instead of host localhost.
-`list_pages` remains metadata-only so an Agent can report a restricted page's
-title and URL without reading its contents.
+main-frame redirects, subresources, and script-initiated requests. The standard
+policy permits public, private, local-network, metadata, and loopback HTTP/HTTPS
+destinations alike, matching manual Browser navigation reachability. It still
+rejects invalid URLs and non-HTTP protocols.
 
 `BrowserNode` also accepts a `renderHome` slot. The package shows it only for
 an empty/`about:blank` tab and supplies a package-owned navigation callback.

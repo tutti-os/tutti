@@ -46,6 +46,7 @@ type batchManagementStore struct {
 type batchCleanup struct {
 	failedSessionID string
 	calls           []string
+	inputs          []RuntimeCleanupInput
 }
 
 func (s *batchManagementStore) PlanClearSessions(_ context.Context, workspaceID string) (storesqlite.DeleteSessionsPlan, error) {
@@ -58,6 +59,7 @@ func (*batchCleanup) Prepare(context.Context, RuntimePreparationInput) (Prepared
 
 func (c *batchCleanup) Cleanup(_ context.Context, input RuntimeCleanupInput) error {
 	c.calls = append(c.calls, input.AgentSessionID)
+	c.inputs = append(c.inputs, input)
 	if input.AgentSessionID == c.failedSessionID {
 		return errors.New("cleanup failed")
 	}
@@ -326,6 +328,11 @@ func TestDeleteSessionsReportsPostCommitCleanupFailuresWithoutSkippingOtherSessi
 	}
 	if !reflect.DeepEqual(cleanup.calls, []string{"session-a", "session-b"}) {
 		t.Fatalf("cleanup calls = %#v", cleanup.calls)
+	}
+	for _, input := range cleanup.inputs {
+		if !input.PreserveRecoverableState || input.OrphanActivationCleanup {
+			t.Fatalf("soft-delete cleanup input = %#v, want recoverable state preserved", input)
+		}
 	}
 	if !reflect.DeepEqual(result.CleanupFailedIDs, []string{"session-a"}) {
 		t.Fatalf("cleanup failed ids = %#v", result.CleanupFailedIDs)

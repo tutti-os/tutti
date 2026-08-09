@@ -42,6 +42,13 @@
         "filter": [
           "**/*"
         ]
+      },
+      {
+        "from": "build/managed-uv",
+        "to": "bin/managed-uv",
+        "filter": [
+          "**/*"
+        ]
       }
     ],
     "publish": [
@@ -73,6 +80,14 @@
       "target": [
         "nsis"
       ],
+      "protocols": [
+        {
+          "name": "Tutti login callback",
+          "schemes": [
+            "tutti"
+          ]
+        }
+      ],
       "extraResources": [
         {
           "from": "build/managed-posix-shell",
@@ -80,7 +95,27 @@
           "filter": [
             "**/*"
           ]
+        },
+        {
+          "from": "build/mutagen",
+          "to": "bin/mutagen",
+          "filter": [
+            "**/*"
+          ]
         }
+      ]
+    },
+    "appx": {
+      "applicationId": "Tutti",
+      "artifactName": "${productName}-${version}-store-${arch}.${ext}",
+      "customManifestPath": "build/appxmanifest.xml",
+      "capabilities": [
+        "runFullTrust"
+      ],
+      "electronUpdaterAware": false,
+      "languages": [
+        "en-US",
+        "zh-CN"
       ]
     },
     "linux": {
@@ -97,6 +132,8 @@
     "build:mac:unsigned": "bash ../../tools/scripts/build-desktop-package.sh mac-unsigned",
     "build:unpack": "bash ../../tools/scripts/build-desktop-package.sh unpack",
     "build:win": "bash ../../tools/scripts/build-desktop-package.sh win",
+    "predev": "node scripts/prepare-managed-posix-shell-dev.mjs",
+    "build:win:store": "bash ../../tools/scripts/build-desktop-package.sh win-store",
     "dev": "electron-vite dev",
     "dev:web": "vite --config vite.web.config.mjs",
     "notify:release:feishu": "node scripts/send-release-feishu-card.mjs",
@@ -121,6 +158,7 @@
     "@tutti-os/browser-node": "workspace:*",
     "@tutti-os/client-tuttid-ts": "workspace:*",
     "@tutti-os/commerce": "workspace:*",
+    "@tutti-os/connector-market": "workspace:*",
     "@tutti-os/config-tsconfig": "workspace:*",
     "@tutti-os/desktop-update-admission": "workspace:*",
     "@tutti-os/ui-i18n-runtime": "workspace:*",
@@ -141,6 +179,7 @@
     "@tutti-os/workspace-user-project": "workspace:*",
     "@tutti-os/workspace-terminal": "workspace:*",
     "@tailwindcss/vite": "^4.1.8",
+    "@tanstack/react-virtual": "^3.14.8",
     "@types/node": "^24.0.1",
     "@types/react": "^19.1.6",
     "@types/react-dom": "^19.1.5",

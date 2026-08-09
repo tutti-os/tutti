@@ -23,12 +23,28 @@ const windowsAlphaWorkflowPath = new URL(
   "../../.github/workflows/windows-desktop-alpha.yml",
   import.meta.url
 );
+const storeWorkflowPath = new URL(
+  "../../.github/workflows/desktop-store-submit.yml",
+  import.meta.url
+);
 const managedPosixShellVendorScriptPath = new URL(
   "../../apps/desktop/scripts/vendor-managed-posix-shell.mjs",
   import.meta.url
 );
 const managedPosixShellLockPath = new URL(
   "../../config/tutti.managed-posix-shell.lock.json",
+  import.meta.url
+);
+const mutagenVendorScriptPath = new URL(
+  "../../apps/desktop/scripts/vendor-mutagen.mjs",
+  import.meta.url
+);
+const mutagenLockPath = new URL(
+  "../../config/tutti.mutagen.lock.json",
+  import.meta.url
+);
+const managedUVVendorScriptPath = new URL(
+  "../../apps/desktop/scripts/vendor-managed-uv.mjs",
   import.meta.url
 );
 const tuttidManagerPath = new URL(
@@ -55,6 +71,22 @@ const desktopBuildIconPath = new URL(
   "../../apps/desktop/build/icon.png",
   import.meta.url
 );
+const desktopStoreManifestPath = new URL(
+  "../../apps/desktop/build/appxmanifest.xml",
+  import.meta.url
+);
+const desktopStoreAssetDimensions = new Map([
+  ["StoreLogo.png", [50, 50]],
+  ["Square44x44Logo.png", [44, 44]],
+  ["Square150x150Logo.png", [150, 150]],
+  ["Wide310x150Logo.png", [310, 150]]
+]);
+
+function readPngDimensions(buffer) {
+  assert.equal(buffer.subarray(1, 4).toString("ascii"), "PNG");
+  assert.equal(buffer.subarray(12, 16).toString("ascii"), "IHDR");
+  return [buffer.readUInt32BE(16), buffer.readUInt32BE(20)];
+}
 
 test("desktop package includes runtime outputs without repository source", async () => {
   const packageJson = JSON.parse(await readFile(desktopPackagePath, "utf8"));
@@ -86,6 +118,119 @@ test("desktop release workflow uses the published desktop package name", async (
       filterName,
       packageName,
       `desktop release workflow filter should stay aligned with ${packageName}`
+    );
+  }
+});
+
+test("desktop release submits only stable builds to an isolated Store workflow", async () => {
+  const workflow = await readFile(workflowPath, "utf8");
+  const storeWorkflow = await readFile(storeWorkflowPath, "utf8");
+
+  assert.match(workflow, /submit-store:/);
+  assert.match(
+    workflow,
+    /needs\.resolve\.outputs\.release_channel == 'stable'/
+  );
+  assert.match(
+    workflow,
+    /vars\.TUTTI_WINDOWS_STORE_SUBMISSION_ENABLED == 'true'/
+  );
+  assert.match(workflow, /publication_mode == 'publish'/);
+  assert.match(workflow, /needs:\s*\[resolve, promote\]/);
+  assert.match(
+    workflow,
+    /uses:\s+\.\/\.github\/workflows\/desktop-store-submit\.yml/
+  );
+  assert.match(workflow, /store_environment:\s+microsoft-store-production/);
+  assert.doesNotMatch(
+    workflow,
+    /needs:\s*\[resolve, build-macos, build-windows, submit-store\]/
+  );
+
+  assert.match(storeWorkflow, /workflow_call:/);
+  assert.match(storeWorkflow, /workflow_dispatch:/);
+  const stableTagPattern = storeWorkflow.match(/-notmatch '([^']+)'/)?.[1];
+  assert.ok(stableTagPattern, "Store workflow should validate its stable tag");
+  const stableTagRegex = new RegExp(stableTagPattern);
+  assert.equal(stableTagRegex.exec("v1.2.3")?.groups?.version, "1.2.3");
+  assert.equal(stableTagRegex.exec("v0.0.0")?.groups?.version, "0.0.0");
+  assert.equal(stableTagRegex.test("v1.2.3-rc.1"), false);
+  assert.match(
+    storeWorkflow,
+    /uses:\s+microsoft\/microsoft-store-apppublisher@v1\.1/
+  );
+  assert.match(storeWorkflow, /msstore reconfigure/);
+  assert.match(storeWorkflow, /msstore publish/);
+  assert.match(storeWorkflow, /ChangeExtension\(\$appxPath, '\.msix'\)/);
+  assert.doesNotMatch(storeWorkflow, /msstore submission poll/);
+  assert.match(storeWorkflow, /TUTTI_STORE_IDENTITY_NAME/);
+  assert.match(storeWorkflow, /TUTTI_STORE_PUBLISHER/);
+  assert.match(
+    storeWorkflow,
+    /'TUTTI_STORE_APPLICATION_ID',[\s\S]*?'TUTTI_STORE_DISPLAY_NAME'/
+  );
+  assert.match(storeWorkflow, /Store package display name mismatch/);
+  assert.match(storeWorkflow, /Store application id mismatch/);
+  assert.match(storeWorkflow, /Store executable mismatch/);
+  assert.match(storeWorkflow, /Store entry point mismatch/);
+  assert.match(storeWorkflow, /Installed application display name mismatch/);
+  assert.match(storeWorkflow, /Store package did not use branded asset/);
+  for (const assetName of desktopStoreAssetDimensions.keys()) {
+    assert.match(storeWorkflow, new RegExp(assetName.replaceAll(".", "\\.")));
+  }
+  assert.match(storeWorkflow, /@Name='tutti'/);
+  assert.match(storeWorkflow, /@Name='runFullTrust'/);
+  assert.match(storeWorkflow, /Get-FileHash .* -Algorithm SHA256/);
+});
+
+test("desktop Store packaging reuses the Windows payload and emits AppX only", async () => {
+  const packageJson = JSON.parse(await readFile(desktopPackagePath, "utf8"));
+  const buildScript = await readFile(buildScriptPath, "utf8");
+  const storeManifest = await readFile(desktopStoreManifestPath, "utf8");
+
+  assert.equal(
+    packageJson.scripts["build:win:store"],
+    "bash ../../tools/scripts/build-desktop-package.sh win-store"
+  );
+  assert.equal(packageJson.build.appx.electronUpdaterAware, false);
+  assert.equal(
+    packageJson.build.appx.customManifestPath,
+    "build/appxmanifest.xml"
+  );
+  assert.deepEqual(packageJson.build.appx.capabilities, ["runFullTrust"]);
+  assert.match(
+    storeManifest,
+    /<Properties>[\s\S]*?<DisplayName>\$\{displayName\}<\/DisplayName>/
+  );
+  assert.match(storeManifest, /<uap:VisualElements[\s\S]*?DisplayName="Tutti"/);
+  assert.deepEqual(packageJson.build.win.protocols, [
+    {
+      name: "Tutti login callback",
+      schemes: ["tutti"]
+    }
+  ]);
+  assert.match(buildScript, /win\|win-store/);
+  assert.match(buildScript, /electron-builder --win appx --x64/);
+  assert.match(buildScript, /TUTTI_STORE_IDENTITY_NAME/);
+  assert.match(buildScript, /TUTTI_STORE_PUBLISHER/);
+  assert.match(
+    buildScript,
+    /win-store\)\s*\n\s*run_timed_phase "electron_builder_win_store" run_electron_builder_win_store/
+  );
+});
+
+test("desktop Store packaging provides branded assets for every manifest tile", async () => {
+  for (const [fileName, expectedDimensions] of desktopStoreAssetDimensions) {
+    const assetPath = new URL(
+      `../../apps/desktop/build/appx/${fileName}`,
+      import.meta.url
+    );
+    const asset = await readFile(assetPath);
+
+    assert.deepEqual(
+      readPngDimensions(asset),
+      expectedDimensions,
+      `${fileName} should use the dimensions expected by electron-builder`
     );
   }
 });
@@ -667,7 +812,7 @@ test("desktop release workflow refreshes the stable alias without taking Latest"
   assert.ok(releaseDeleteIndex < releaseCreateIndex);
 });
 
-test("desktop release workflow keeps Windows packaging opt-in and stages unsigned assets", async () => {
+test("desktop release workflow always builds Windows and stages unsigned assets", async () => {
   const workflow = await readFile(workflowPath, "utf8");
   const stageJobMatch = workflow.match(
     /stage:[\s\S]*?(?=\n\s{2}[a-z][a-z0-9_-]+:\n|$)/
@@ -678,17 +823,9 @@ test("desktop release workflow keeps Windows packaging opt-in and stages unsigne
 
   assert.ok(stageJobMatch, "stage job should exist");
   assert.ok(notifyJobMatch, "draft notify job should exist");
-  assert.match(
-    workflow,
-    /include_windows:[\s\S]*?type:\s+boolean[\s\S]*?default:\s+false/
-  );
-  assert.match(workflow, /id:\s+windows[\s\S]*?include_windows=false/);
+  assert.doesNotMatch(workflow, /include_windows/);
   assert.match(workflow, /\r?\n\s{2}build-windows:\r?\n/);
   assert.doesNotMatch(workflow, /\r?\n\s{2}build-linux:\r?\n/);
-  assert.match(
-    workflow,
-    /build-windows:[\s\S]*?if:\s+\$\{\{\s*needs\.resolve\.outputs\.include_windows\s*==\s*'true'\s*\}\}/
-  );
   assert.match(
     workflow,
     /build-windows:[\s\S]*?CSC_IDENTITY_AUTO_DISCOVERY:\s+"false"[\s\S]*?build:win/
@@ -699,6 +836,10 @@ test("desktop release workflow keeps Windows packaging opt-in and stages unsigne
   );
   assert.match(stageJobMatch[0], /always\(\)/);
   assert.match(
+    stageJobMatch[0],
+    /needs\.build-windows\.result\s*==\s*'success'/
+  );
+  assert.doesNotMatch(
     stageJobMatch[0],
     /needs\.build-windows\.result\s*==\s*'skipped'/
   );
@@ -713,6 +854,10 @@ test("desktop release workflow keeps Windows packaging opt-in and stages unsigne
   assert.match(stageJobMatch[0], /name:\s+Add Windows release artifacts/);
   assert.match(
     stageJobMatch[0],
+    /validate-windows-release-artifacts\.mjs release-assets/
+  );
+  assert.match(
+    stageJobMatch[0],
     /upsert-release-download-links\.mjs[\s\S]*?release-assets[\s\S]*?updated-release-body\.md/
   );
   assert.match(
@@ -724,6 +869,28 @@ test("desktop release workflow keeps Windows packaging opt-in and stages unsigne
     notifyJobMatch[0],
     /pattern:\s+tutti-desktop-release-assets-macos/
   );
+});
+
+test("desktop promotion verifies Windows artifacts in the release and S3 mirror", async () => {
+  const promoteWorkflow = await readFile(promoteWorkflowPath, "utf8");
+
+  assert.match(
+    promoteWorkflow,
+    /Verify staged release assets[\s\S]*?\*-win-x64\.exe[\s\S]*?\*-win-x64\.exe\.blockmap[\s\S]*?windows_metadata/
+  );
+  assert.match(
+    promoteWorkflow,
+    /name:\s+Validate Windows updater metadata[\s\S]*?validate-windows-release-artifacts\.mjs/
+  );
+  assert.match(
+    promoteWorkflow,
+    /name:\s+Verify mirrored Windows release assets/
+  );
+  assert.match(promoteWorkflow, /aws s3api head-object/);
+  assert.match(promoteWorkflow, /--query ContentLength/);
+  assert.match(promoteWorkflow, /Mirrored asset size mismatch/);
+  assert.match(promoteWorkflow, /curl --fail --silent --show-error --location/);
+  assert.match(promoteWorkflow, /Mirrored asset checksum mismatch/);
 });
 
 test("desktop release workflow materializes macOS signing certificate before packaging", async () => {
@@ -991,6 +1158,11 @@ test("desktop Windows package and daemon agree on the managed POSIX shell resour
       from: "build/managed-posix-shell",
       to: "bin/managed-posix-shell",
       filter: ["**/*"]
+    },
+    {
+      from: "build/mutagen",
+      to: "bin/mutagen",
+      filter: ["**/*"]
     }
   ]);
   assert.match(buildScript, /vendor-managed-posix-shell\.mjs/);
@@ -1004,4 +1176,54 @@ test("desktop Windows package and daemon agree on the managed POSIX shell resour
   assert.equal(lock.schemaVersion, "tutti.managed-posix-shell-lock.v1");
   assert.equal(lock.platforms["windows-amd64"].executable, "usr/bin/bash.exe");
   assert.doesNotMatch(alphaWorkflow, /\n\s+push:/);
+});
+
+test("desktop Windows package and daemon agree on the bundled Mutagen resource", async () => {
+  const packageJson = JSON.parse(await readFile(desktopPackagePath, "utf8"));
+  const buildScript = await readFile(buildScriptPath, "utf8");
+  const alphaWorkflow = await readFile(windowsAlphaWorkflowPath, "utf8");
+  const tuttidManager = await readFile(tuttidManagerPath, "utf8");
+  const lock = JSON.parse(await readFile(mutagenLockPath, "utf8"));
+
+  await access(mutagenVendorScriptPath);
+  assert.deepEqual(packageJson.build.win.extraResources[1], {
+    from: "build/mutagen",
+    to: "bin/mutagen",
+    filter: ["**/*"]
+  });
+  assert.match(buildScript, /vendor-mutagen\.mjs/);
+  assert.match(alphaWorkflow, /bin\/mutagen/);
+  assert.match(alphaWorkflow, /mutagenMetadata\.executable/);
+  assert.match(tuttidManager, /"mutagen"/);
+  assert.match(tuttidManager, /TUTTI_MUTAGEN_BIN/);
+  assert.match(tuttidManager, /tutti\.mutagen\.v1/);
+  assert.equal(lock.schemaVersion, "tutti.mutagen-lock.v1");
+  assert.equal(lock.platforms["windows-amd64"].executable, "mutagen.exe");
+});
+
+test("desktop packages and daemon agree on the bundled uv archive root", async () => {
+  const packageJson = JSON.parse(await readFile(desktopPackagePath, "utf8"));
+  const defaults = JSON.parse(
+    await readFile(new URL("../../config/tutti.defaults.json", import.meta.url), "utf8")
+  );
+  const buildScript = await readFile(buildScriptPath, "utf8");
+  const tuttidManager = await readFile(tuttidManagerPath, "utf8");
+
+  await access(managedUVVendorScriptPath);
+  assert.deepEqual(packageJson.build.extraResources.at(-1), {
+    from: "build/managed-uv",
+    to: "bin/managed-uv",
+    filter: ["**/*"]
+  });
+  assert.match(buildScript, /vendor-managed-uv\.mjs/);
+  assert.match(buildScript, /windows-amd64/);
+  assert.match(
+    buildScript,
+    /upstream macOS uv archives contain the uv and uvx executables/
+  );
+  assert.match(buildScript, /rm -rf "\$\{APP_DIR\}\/build\/managed-uv"/);
+  assert.match(buildScript, /mkdir -p "\$\{APP_DIR\}\/build\/managed-uv"/);
+  assert.match(tuttidManager, /TUTTI_BUNDLED_UV_ROOT/);
+  assert.equal(defaults.agentRuntimeTools.uv.version, "0.11.31");
+  assert.ok(defaults.agentRuntimeTools.uv.artifacts.length >= 5);
 });

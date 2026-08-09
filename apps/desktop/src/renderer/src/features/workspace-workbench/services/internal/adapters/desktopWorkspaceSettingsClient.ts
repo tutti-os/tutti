@@ -6,7 +6,6 @@ import type {
 import type {
   AgentTarget,
   AutomationRule,
-  DeletedAgentConversationPurgeResult,
   PutAutomationRuleRequest,
   PutWorkspaceAgentRequest,
   TuttidClient
@@ -26,6 +25,8 @@ import type {
   ExportDeveloperLogsResult
 } from "@shared/contracts/ipc";
 import type {
+  WorkspaceDeletedConversation,
+  WorkspaceDeletedConversationProjectOption,
   WorkspaceAgentDefinition,
   WorkspaceModelPlan,
   WorkspaceModelPlanDetection,
@@ -45,6 +46,27 @@ interface ModelPlanReferencesResponse {
 
 interface ClearWorkspaceAgentSessionsResponse {
   removedMessages: number;
+  removedSessions: number;
+}
+
+export interface ListWorkspaceDeletedAgentSessionsInput {
+  cursor: string | null;
+  limit: number;
+  projectPath: string | null;
+  projectScope: "all" | "project" | "unscoped";
+  search: string | null;
+}
+
+export interface WorkspaceDeletedAgentSessionPage {
+  hasMore: boolean;
+  nextCursor?: string | null;
+  projectOptions?: WorkspaceDeletedConversationProjectOption[];
+  sessions: WorkspaceDeletedConversation[];
+  totalCount: number;
+  workspaceTotalCount?: number;
+}
+
+export interface WorkspaceDeletedAgentSessionPurgeResult {
   removedSessions: number;
 }
 
@@ -138,7 +160,21 @@ export interface DesktopWorkspaceSettingsClient {
   clearWorkspaceAgentSessions(
     workspaceID: string
   ): Promise<ClearWorkspaceAgentSessionsResponse>;
-  purgeDeletedAgentConversations(): Promise<DeletedAgentConversationPurgeResult>;
+  listWorkspaceDeletedAgentSessions(
+    workspaceID: string,
+    input: ListWorkspaceDeletedAgentSessionsInput
+  ): Promise<WorkspaceDeletedAgentSessionPage>;
+  purgeWorkspaceDeletedAgentSession(
+    workspaceID: string,
+    agentSessionID: string
+  ): Promise<void>;
+  purgeWorkspaceDeletedAgentSessions(
+    workspaceID: string
+  ): Promise<WorkspaceDeletedAgentSessionPurgeResult>;
+  restoreWorkspaceDeletedAgentSession(
+    workspaceID: string,
+    agentSessionID: string
+  ): Promise<void>;
   exportLogs(
     input: ExportDeveloperLogsInput
   ): Promise<ExportDeveloperLogsResult>;
@@ -219,10 +255,13 @@ export function createDesktopWorkspaceSettingsClient(input: {
     | "deleteAutomationRule"
     | "deleteWorkspaceAgent"
     | "getAgentProviderComposerOptions"
+    | "listWorkspaceDeletedAgentSessions"
     | "listAgentTargets"
     | "listAutomationRules"
     | "listWorkspaceAgents"
-    | "purgeDeletedAgentConversations"
+    | "purgeWorkspaceDeletedAgentSession"
+    | "purgeWorkspaceDeletedAgentSessions"
+    | "restoreWorkspaceDeletedAgentSession"
     | "setSystemAgentTargetEnabled"
     | "updateAutomationRule"
     | "updateWorkspaceAgent"
@@ -327,9 +366,6 @@ export function createDesktopWorkspaceSettingsClient(input: {
         enabled
       );
     },
-    purgeDeletedAgentConversations() {
-      return input.tuttidClient.purgeDeletedAgentConversations();
-    },
     clearLogs() {
       return input.developerApi.clearLogs();
     },
@@ -352,6 +388,55 @@ export function createDesktopWorkspaceSettingsClient(input: {
         {
           method: "DELETE"
         }
+      );
+    },
+    async listWorkspaceDeletedAgentSessions(workspaceID, query) {
+      const page = await input.tuttidClient.listWorkspaceDeletedAgentSessions(
+        workspaceID,
+        {
+          cursor: query.cursor ?? undefined,
+          limit: query.limit,
+          projectPath:
+            query.projectScope === "project"
+              ? (query.projectPath ?? undefined)
+              : undefined,
+          projectScope:
+            query.projectScope === "unscoped" ? "unscoped" : undefined,
+          searchQuery: query.search ?? undefined
+        }
+      );
+      const projectsByPath = new Map(
+        page.projectOptions.map((project) => [project.projectPath, project])
+      );
+      return {
+        ...page,
+        sessions: page.sessions.map((session) => {
+          const project = session.projectPath
+            ? projectsByPath.get(session.projectPath)
+            : undefined;
+          return {
+            ...session,
+            projectAvailable: project?.projectAvailable ?? false,
+            projectLabel: project?.projectLabel ?? null
+          };
+        })
+      };
+    },
+    async purgeWorkspaceDeletedAgentSession(workspaceID, agentSessionID) {
+      await input.tuttidClient.purgeWorkspaceDeletedAgentSession(
+        workspaceID,
+        agentSessionID
+      );
+    },
+    async purgeWorkspaceDeletedAgentSessions(workspaceID) {
+      return await input.tuttidClient.purgeWorkspaceDeletedAgentSessions(
+        workspaceID
+      );
+    },
+    async restoreWorkspaceDeletedAgentSession(workspaceID, agentSessionID) {
+      await input.tuttidClient.restoreWorkspaceDeletedAgentSession(
+        workspaceID,
+        agentSessionID
       );
     },
     async listModelPlans(workspaceID) {

@@ -56,5 +56,9 @@ export const enAgentGuiRuntimeNotices = {
     "Connection to {{device}} was lost. The system will retry automatically.",
   runtimeUnavailableActive:
     "Connection to {{device}} was lost. Sending and stopping are temporarily unavailable; the task may still be running on the device.",
-  runtimeSynchronizingProgress: "Synchronizing the latest task progress…"
+  runtimeSynchronizingProgress: "Synchronizing the latest task progress…",
+  interactionSynchronizing:
+    "The shared Agent state is synchronizing. Try again in a moment.",
+  interactionOwnerOffline: "The shared Agent owner is offline",
+  interactionBindingRevoked: "The shared Agent is no longer available"
 } as const;

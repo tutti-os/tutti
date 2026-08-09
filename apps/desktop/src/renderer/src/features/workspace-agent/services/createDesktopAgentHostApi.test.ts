@@ -47,6 +47,11 @@ test("desktop agent host api routes terminal login through the launch coordinato
   const requests: Array<{
     command: string;
     cwd?: string;
+    startupAction?: {
+      type: "slash_command";
+      commandName: string;
+      readyText: string;
+    };
     workspaceId: string;
   }> = [];
   const unregister = registerWorkspaceTerminalLoginLaunchHandler(
@@ -56,17 +61,32 @@ test("desktop agent host api routes terminal login through the launch coordinato
       return {
         close: () => {
           closeCalls.push("close");
-        }
+        },
+        startupCompletion: Promise.resolve("submitted")
       };
     }
   );
   try {
     const handle = await api.terminalLogin?.run({
       agentTargetId: "extension:kimi-code",
-      command: "/opt/kimi/bin/kimi login"
+      command: "/opt/kimi/bin/kimi",
+      startupAction: {
+        type: "slash_command",
+        commandName: "login",
+        readyText: "Welcome to Kimi Code!"
+      }
     });
     assert.deepEqual(requests, [
-      { command: "/opt/kimi/bin/kimi login", cwd: undefined, workspaceId }
+      {
+        command: "/opt/kimi/bin/kimi",
+        cwd: undefined,
+        startupAction: {
+          type: "slash_command",
+          commandName: "login",
+          readyText: "Welcome to Kimi Code!"
+        },
+        workspaceId
+      }
     ]);
     assert.equal(await handle?.completion, "ready");
     handle?.close();
@@ -85,14 +105,56 @@ test("desktop agent host api routes terminal login through the launch coordinato
   );
 });
 
+test("desktop agent host api stops before readiness polling when terminal startup fails", async () => {
+  let setupRefreshes = 0;
+  const api = createAgentHostApi({
+    tuttidClient: createTuttidClient({
+      async getAgentTargetSetup(_workspaceId, agentTargetId) {
+        setupRefreshes += 1;
+        return readyAgentTargetSetup(agentTargetId);
+      }
+    })
+  });
+  const unregister = registerWorkspaceTerminalLoginLaunchHandler(
+    workspaceId,
+    async () => ({
+      close() {},
+      startupCompletion: Promise.resolve("write_failed")
+    })
+  );
+  try {
+    const handle = await api.terminalLogin?.run({
+      agentTargetId: "extension:kimi-code",
+      command: "/opt/kimi/bin/kimi",
+      startupAction: {
+        type: "slash_command",
+        commandName: "login",
+        readyText: "Welcome to Kimi Code!"
+      }
+    });
+
+    assert.equal(await handle?.completion, "unavailable");
+    assert.equal(setupRefreshes, 0);
+  } finally {
+    unregister();
+  }
+});
+
 type DesktopAgentHostApiUnderTest = AgentHostInputApi & {
   persistence: NonNullable<AgentHostInputApi["persistence"]>;
   userProjects: NonNullable<AgentHostInputApi["userProjects"]>;
 };
 
-test("desktop agent host api forwards model catalog and target defaults invalidation as host events", async () => {
+test("desktop agent host api forwards composer authority invalidations as host events", async () => {
   const topicHandlers = new Map<string, (event: unknown) => void>();
   const tuttidClient = createTuttidClient();
+  const getAgentProviderComposerOptions =
+    tuttidClient.getAgentProviderComposerOptions.bind(tuttidClient);
+  let composerOptionsReads = 0;
+  tuttidClient.getAgentProviderComposerOptions = async (...args) => {
+    composerOptionsReads += 1;
+    return getAgentProviderComposerOptions(...args);
+  };
   const activityService = new WorkspaceAgentActivityService({
     eventStreamClient: {
       connect: async () => {},
@@ -120,6 +182,7 @@ test("desktop agent host api forwards model catalog and target defaults invalida
     provider: "codex",
     workspaceId
   });
+  assert.equal(composerOptionsReads, 1);
   const invalidationHandler = topicHandlers.get(
     "agent.model.catalog.invalidated"
   );
@@ -156,11 +219,38 @@ test("desktop agent host api forwards model catalog and target defaults invalida
     scope: "global",
     type: "agent-composer-defaults-invalidated"
   });
+  const connectorInvalidationHandler = topicHandlers.get(
+    "connector.market.changed"
+  );
+  assert.ok(
+    connectorInvalidationHandler,
+    "expected connector catalog topic subscription"
+  );
+  activityService.invalidateConnectorCatalog({
+    connectorKey: "lark-cli",
+    revision: 7
+  });
+  assert.deepEqual(hostEvents.at(-1), {
+    connectorKey: "lark-cli",
+    revision: 7,
+    scope: "global",
+    type: "agent-connector-catalog-invalidated"
+  });
+  connectorInvalidationHandler({
+    payload: { connectorKey: "lark-cli", revision: 7 }
+  });
+  assert.equal(hostEvents.length, 3);
+  await activityService.getComposerOptions({
+    agentTargetId: "local:codex",
+    provider: "codex",
+    workspaceId
+  });
+  assert.equal(composerOptionsReads, 2);
   unsubscribe?.();
   invalidationHandler({
     payload: { providers: ["codex"], occurredAtUnixMs: 4300 }
   });
-  assert.equal(hostEvents.length, 2);
+  assert.equal(hostEvents.length, 3);
 });
 
 test("desktop agent host api writes images through the host clipboard", async () => {
@@ -219,7 +309,12 @@ test("desktop agent host api explicitly projects daemon target setup snapshots",
         id: "login",
         name: "Login with Kimi account",
         type: "terminal",
-        terminalCommand: "/opt/kimi-code/bin/kimi login"
+        terminalCommand: "/opt/kimi-code/bin/kimi",
+        terminalStartupAction: {
+          type: "slash_command",
+          commandName: "login",
+          readyText: "Welcome to Kimi Code!"
+        }
       }
     ],
     account: {
@@ -269,14 +364,20 @@ test("desktop agent host api explicitly projects daemon target setup snapshots",
         name: "Log in with Google",
         description: "Personal account",
         type: null,
-        terminalCommand: null
+        terminalCommand: null,
+        terminalStartupAction: null
       },
       {
         id: "login",
         name: "Login with Kimi account",
         description: null,
         type: "terminal",
-        terminalCommand: "/opt/kimi-code/bin/kimi login"
+        terminalCommand: "/opt/kimi-code/bin/kimi",
+        terminalStartupAction: {
+          type: "slash_command",
+          commandName: "login",
+          readyText: "Welcome to Kimi Code!"
+        }
       }
     ],
     account: {

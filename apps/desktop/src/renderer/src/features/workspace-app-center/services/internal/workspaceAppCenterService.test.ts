@@ -520,6 +520,7 @@ test("WorkspaceAppCenterService tracks accepted runtime failure transitions once
   eventStream.publishWorkspaceAppUpdated(
     createProtocolApp({
       appId: "app-1",
+      failurePhase: "runtime",
       failureReason: "process exited",
       status: "failed",
       stateRevision: 3
@@ -528,6 +529,7 @@ test("WorkspaceAppCenterService tracks accepted runtime failure transitions once
   eventStream.publishWorkspaceAppUpdated(
     createProtocolApp({
       appId: "app-1",
+      failurePhase: "runtime",
       failureReason: "process exited",
       status: "failed",
       stateRevision: 3
@@ -535,6 +537,7 @@ test("WorkspaceAppCenterService tracks accepted runtime failure transitions once
   );
 
   assert.equal(service.store.apps[0]?.runtimeStatus, "failed");
+  assert.equal(service.store.apps[0]?.failurePhase, "runtime");
   assert.deepEqual(reporterCalls, [
     [
       {

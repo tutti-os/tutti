@@ -13,10 +13,11 @@ type GoalStateStore = agenthost.GoalStateStore
 // GoalControlSessionResult preserves the daemon-facing session projection
 // while Host owns the durable goal saga.
 type GoalControlSessionResult struct {
-	Session     Session
-	Goal        map[string]any
-	OperationID string
-	GoalState   *agentactivitybiz.SessionGoalState
+	Session        Session
+	Goal           map[string]any
+	IntentAccepted bool
+	OperationID    string
+	GoalState      *agentactivitybiz.SessionGoalState
 }
 
 type GoalControlInput struct {
@@ -45,17 +46,17 @@ func (s *Service) GoalControl(ctx context.Context, input GoalControlInput) (Goal
 		ClientSubmitID:     strings.TrimSpace(input.ClientSubmitID),
 		SubmissionMetadata: clonePayload(input.SubmissionMetadata),
 	})
+	serviceResult := GoalControlSessionResult{
+		Goal: clonePayload(result.Goal), IntentAccepted: result.IntentAccepted,
+		OperationID: result.OperationID, GoalState: result.GoalState,
+	}
 	if err != nil {
-		return GoalControlSessionResult{}, normalizeRuntimeError(err)
+		return serviceResult, normalizeRuntimeError(err)
 	}
 	session, err := s.Get(ctx, input.WorkspaceID, input.AgentSessionID)
 	if err != nil {
-		return GoalControlSessionResult{}, err
+		return serviceResult, err
 	}
-	return GoalControlSessionResult{
-		Session:     session,
-		Goal:        clonePayload(result.Goal),
-		OperationID: result.OperationID,
-		GoalState:   result.GoalState,
-	}, nil
+	serviceResult.Session = session
+	return serviceResult, nil
 }

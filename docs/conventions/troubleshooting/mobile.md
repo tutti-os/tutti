@@ -1,5 +1,41 @@
 # Mobile Troubleshooting
 
+## Android stays on “Syncing the latest data” after pairing
+
+- **Symptom:** Device pairing and the direct DeviceLink handshake succeed, but
+  the mobile App remains on **Syncing the latest data**. The native log repeats
+  `Agent live stream rejected`, often once per retry interval.
+- **Quick checks:** Correlate the pairing ID and workspace across the phone and
+  computer logs. If DeviceLink reaches its connected stage and the Agent live
+  rejection reports `protocol_revision_mismatch`, compare the safe
+  `expectedRevision` and `receivedRevision` hashes. This is a protocol
+  compatibility failure, not a local-network or pairing failure.
+- **Root cause:** The computer rejects an Agent live subscription whose protocol
+  revision does not match its own. If the native rejection is collapsed into a
+  generic disconnect, the live lane treats a deterministic incompatibility as
+  transient and retries forever. Repeated disconnect callbacks can also keep
+  replacing the connection-ready deadline, so the App never reaches a visible
+  failed state.
+- **Fix:** Preserve the typed rejection reason and revision hashes through the
+  native bridge. Classify `protocol_revision_mismatch` as terminal for the
+  current connection attempt, close the rejected subscription without
+  scheduling another live retry, and keep the original synchronization
+  deadline for retryable transport failures. Present an explicit incompatible
+  version message with a mobile update action; do not automatically restart a
+  terminal attempt after foreground resume.
+- **Validation:** Verify an ordinary stream close still retries and rebuilds
+  DeviceLink after the recovery grace period. Inject a protocol-revision
+  rejection and assert that the connection enters the failed state once, emits
+  a `device_connection.phase_changed` diagnostic with stable
+  `protocol_revision_mismatch`, preserves both revision hashes, schedules no
+  additional subscription, and stays terminal across background and foreground
+  transitions. Confirm the failure UI offers **Check for updates** instead of
+  **Reconnect**.
+- **References:** `apps/mobile/src/native/agentLiveNativeBridge.ts`,
+  `apps/mobile/src/services/workspaceAgentLiveLane.ts`,
+  `apps/mobile/src/services/mobileApplicationService.ts`,
+  `apps/mobile/src/components/MobileConnectionRecoveryOverlay.tsx`
+
 ## Android QR scan closes without advancing pairing
 
 - **Symptom:** The pairing scanner opens, reads a valid Desktop QR code, and
@@ -31,7 +67,7 @@
   confirm no background event is emitted during the
   `MainActivity -> CaptureActivity -> MainActivity` sequence.
 - **References:**
-  `apps/mobile/android/app/src/main/java/dev/tutti/mobile/AppLifecycleModule.kt`,
+  `apps/mobile/android/app/src/main/java/sh/tutti/mobile/AppLifecycleModule.kt`,
   `apps/mobile/ios/TuttiMobile/AppLifecycleModule.swift`,
   `apps/mobile/src/native/appLifecyclePort.ts`
 
@@ -56,6 +92,99 @@
   `--dev false` Android Metro bundle, and run the `Android Internal Build`
   workflow through APK assembly.
 - **References:** `apps/mobile/package.json`, `apps/mobile/babel.config.js`
+
+## Android update stays on MainActivity without opening the installer
+
+- **Symptom:** The Android App remains in the update progress overlay or never
+  opens `PackageInstaller` / `.InstallStart`. A successful feed request does
+  not prove that Android downloaded, verified, and handed off the APK.
+- **Quick checks:** Filter the device logcat by the native update tag:
+
+  ```sh
+  adb -s <serial> logcat -v threadtime TuttiMobileSecurity:I '*:S'
+  ```
+
+  The UI phase narrows the boundary: **Preparing** means validation/storage,
+  **Downloading** or **Paused** is Android `DownloadManager`, **Verifying** is
+  exact-size plus SHA-256 verification, **Allow update installation** is the
+  per-app unknown-source permission handoff, and **Install the downloaded
+  update** is the Android package-installer handoff. Inspect the system-owned
+  job with:
+
+  ```sh
+  adb -s <serial> shell dumpsys download
+  ```
+
+  `DownloadManager` owns network reconnection and background continuation. The
+  App persists its download id and release metadata so reopening the App and
+  choosing the same release reconnects to the job or reuses a verified cached
+  APK. After verification it also records the target `versionCode`: a confirmed
+  install deletes the APK immediately, while a process replacement during
+  upgrade is handled on the next launch once the installed version reaches the
+  target. Installer cancellation or failure retains the APK for retry. The
+  in-App download cancel action removes the system job and cached artifact.
+
+- **Relevant error codes:** `UPDATE_URL_INVALID`, `UPDATE_VERSION_INVALID`,
+  `UPDATE_SIZE_INVALID`, `UPDATE_SIZE_MISMATCH`,
+  `UPDATE_STORAGE_INSUFFICIENT`, `UPDATE_DOWNLOAD_FILE_FAILED`,
+  `UPDATE_DOWNLOAD_SERVER_FAILED`, `UPDATE_DOWNLOAD_MANAGER_FAILED`,
+  `UPDATE_DOWNLOAD_QUERY_FAILED`, `UPDATE_CHECKSUM_INVALID`,
+  `UPDATE_CHECKSUM_FAILED`, `UPDATE_CACHE_FAILED`, `UPDATE_CACHE_REPLACE_FAILED`,
+  `UPDATE_INSTALL_DEFERRED`, `UPDATE_INSTALL_STORAGE_INSUFFICIENT`,
+  `UPDATE_INSTALL_INCOMPATIBLE`, `UPDATE_INSTALL_CONFLICT`,
+  `UPDATE_INSTALL_BLOCKED`, `UPDATE_INSTALL_PACKAGE_INVALID`,
+  `UPDATE_INSTALL_FAILED`, `UPDATE_URI_FAILED`, and
+  `UPDATE_INSTALLER_LAUNCH_FAILED`. If Android's
+  per-app unknown-source permission is missing, `UPDATE_INSTALL_PERMISSION_REQUIRED`
+  means the user returned without granting it rather than an APK failure;
+  `UPDATE_PERMISSION_SETTINGS_FAILED` means the system settings page itself
+  could not be opened. The `EXTRA_RETURN_RESULT` flow reports the package
+  manager result through `android.intent.extra.INSTALL_RESULT`; project that
+  legacy result to the public `PackageInstaller` status before choosing the
+  in-App error. A cancelled activity without an install result is user
+  cancellation; an aborted or rejected result remains a failure.
+- **Root cause:** The release feed, Android system download, artifact
+  verification, FileProvider, and PackageInstaller are separate trust
+  boundaries. A stale or malformed `sizeBytes`, a reused version URL with
+  different bytes, insufficient storage, a paused system job, or missing
+  unknown-source permission can stop the chain at different phases.
+- **Fix:** Keep release URLs credential-free HTTPS and publish immutable APK
+  paths under `<tag>/<sha256>/`. Preflight both the APK and checksum before
+  uploading either object, then update `latest.json` last. Treat `latest.json`
+  `sizeBytes` and `sha256` as mandatory: both must match before PackageInstaller
+  opens. If the permission settings page opens, enable **Allow from this
+  source** and return to the App; the verified cached APK continues to the
+  installer automatically. Returning without granting permission produces a
+  localized recovery prompt and keeps the package for an explicit retry. Keep
+  the target version with that pending artifact, delete it on confirmed
+  success, and repeat cleanup on the first launch whose installed
+  `versionCode` reaches the target. For paused downloads, restore an allowed
+  network or cancel and retry rather than deleting app data.
+- **Validation:** Run `pnpm --filter @tutti-os/mobile check`,
+  `./gradlew app:testDebugUnitTest`, and
+  `./gradlew app:compileDebugKotlin` from `apps/mobile/android`. On a physical
+  device, reproduce from Settings and verify determinate progress, cancel,
+  background/reopen continuation, offline pause/resume, exact-size/SHA failure,
+  and the installer handoff. Confirm that a late progress callback after cancel
+  cannot reopen the overlay. For permission recovery, revoke Tutti's
+  unknown-source permission, finish the download, grant the permission in
+  Android settings, return to the App, and confirm the installer opens without
+  another download action. Also deny the permission once and confirm the App
+  explains how to recover. Exercise an installer rejection and confirm it is
+  reported with the mapped failure rather than cancellation. Cancel once and
+  confirm the verified APK remains reusable; complete an update and confirm
+  the pending APK is gone either from the success callback or after the updated
+  App starts. For release recovery, simulate an APK-only upload, rerun the same
+  version with a different APK digest, and confirm the missing objects are
+  published before `latest.json` moves.
+- **References:**
+  `apps/mobile/android/app/src/main/java/sh/tutti/mobile/MobileSecurityModule.kt`,
+  `apps/mobile/android/app/src/main/java/sh/tutti/mobile/MobileUpdateArtifact.kt`,
+  `apps/mobile/android/app/src/main/java/sh/tutti/mobile/MobileUpdateCoordinator.kt`,
+  `apps/mobile/android/app/src/main/java/sh/tutti/mobile/MobileUpdateInstallResult.kt`,
+  `apps/mobile/android/app/src/main/java/sh/tutti/mobile/MobileUpdatePendingInstallStore.kt`,
+  `apps/mobile/src/services/mobileUpdateService.ts`,
+  `tools/scripts/build-mobile-release-latest.mjs`
 
 ## Mobile quick prompts are missing from the plus menu
 
@@ -184,8 +313,8 @@
   Tab support, and verify the transfer code is redeemed no more than once.
 - **References:** `apps/mobile/ios/TuttiMobile/MobileWebAuthenticationSession.swift`,
   `apps/mobile/ios/TuttiMobile/MobileBrowserAuthBridge.swift`,
-  `apps/mobile/android/app/src/main/java/dev/tutti/mobile/MainActivity.kt`,
-  `apps/mobile/android/app/src/main/java/dev/tutti/mobile/MobileBrowserAuthBridge.kt`
+  `apps/mobile/android/app/src/main/java/sh/tutti/mobile/MainActivity.kt`,
+  `apps/mobile/android/app/src/main/java/sh/tutti/mobile/MobileBrowserAuthBridge.kt`
 
 ## Browser login returns to the App but remains signed out
 
@@ -212,7 +341,7 @@
   device page, restart the App, and verify the same account session still
   authorizes device-list requests.
 - **References:** `apps/mobile/src/services/accountClient.ts`,
-  `apps/mobile/android/app/src/main/java/dev/tutti/mobile/MobileSecurityModule.kt`
+  `apps/mobile/android/app/src/main/java/sh/tutti/mobile/MobileSecurityModule.kt`
 
 ## Android DeviceLink opens a session and then repeatedly restarts
 
@@ -222,7 +351,7 @@
   `fatal error: bulkBarrierPreWrite: unaligned arguments` instead of a Java or
   React Native exception.
 - **Quick checks:** Run `adb shell dumpsys activity exit-info
-dev.tutti.mobile` and inspect a narrow logcat window for the Go fatal message.
+sh.tutti.mobile` and inspect a narrow logcat window for the Go fatal message.
   This distinguishes a Go runtime abort from an Android lifecycle transition or
   a React Native development reload.
 - **Root cause:** A gomobile-exported Go method returned a pointer-bearing value,
@@ -247,7 +376,7 @@ dev.tutti.mobile` and inspect a narrow logcat window for the Go fatal message.
   connect on an ARM64 Android device, receive Agent Live frames, and observe
   beyond the previous crash window with no new Go fatal message.
 - **References:** `packages/device-link/mobile/link.go`,
-  `apps/mobile/android/app/src/main/java/dev/tutti/mobile/DeviceLinkModule.kt`
+  `apps/mobile/android/app/src/main/java/sh/tutti/mobile/DeviceLinkModule.kt`
 
 ## Mobile shows output from a completed Session after foreground resume
 
@@ -281,7 +410,7 @@ dev.tutti.mobile` and inspect a narrow logcat window for the Go fatal message.
 - **References:**
   `apps/mobile/src/native/createMobileServicePorts.ts`,
   `apps/mobile/src/services/workspaceAgentLiveLane.ts`,
-  `apps/mobile/android/app/src/main/java/dev/tutti/mobile/DeviceLinkModule.kt`,
+  `apps/mobile/android/app/src/main/java/sh/tutti/mobile/DeviceLinkModule.kt`,
   `apps/mobile/ios/TuttiMobile/DeviceLinkModule.mm`
 
 ## Mobile stays connected after a long lock-screen interval but sends fail
@@ -312,7 +441,7 @@ dev.tutti.mobile` and inspect a narrow logcat window for the Go fatal message.
   send from the original conversation without revisiting the computer list.
 - **References:**
   `apps/mobile/src/services/mobileApplicationService.ts`,
-  `apps/mobile/android/app/src/main/java/dev/tutti/mobile/DeviceLinkModule.kt`
+  `apps/mobile/android/app/src/main/java/sh/tutti/mobile/DeviceLinkModule.kt`
 
 ## iOS App crashes after loading the JavaScript bundle
 

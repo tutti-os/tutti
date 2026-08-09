@@ -61,6 +61,7 @@ type IssueRunLaunch struct {
 	IssueID            string
 	Title              string
 	Prompt             string
+	Attachments        []IssueRunImageAttachment
 	ExecutionDirectory string
 	ModelPlanID        string
 	Model              string
@@ -69,7 +70,18 @@ type IssueRunLaunch struct {
 	PermissionModeID   string
 	WorktreeBase       string
 	WorktreeBranch     string
-	RailPlacement      *IssueRunRailPlacement
+	// HideSession creates the delegate Agent session with visible=false so it
+	// never enters the conversation rail. The session stays openable by id
+	// (task click-through opens it as a transient conversation). The zero
+	// value keeps today's visible-session behavior.
+	HideSession   bool
+	RailPlacement *IssueRunRailPlacement
+}
+
+type IssueRunImageAttachment struct {
+	MimeType string
+	Name     string
+	Path     string
 }
 
 // IssueRunRailPlacement is the source conversation's logical rail identity.

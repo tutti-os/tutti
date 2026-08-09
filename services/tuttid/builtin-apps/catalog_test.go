@@ -353,6 +353,33 @@ func TestCatalogLoadsRemoteAutomationWhenProvidedByCatalog(t *testing.T) {
 	}
 }
 
+func TestCatalogNormalizesLegacyNodeStaticRuntimeProfile(t *testing.T) {
+	t.Setenv(remoteCatalogURLEnv, "")
+	manifest := remoteCatalogManifestForTest("legacy-node-static")
+	manifest.Runtime.Profile = "node-static"
+	setRemoteCatalogFileForTest(t, remoteCatalogDocumentForTest(remoteCatalogApp{
+		Manifest: manifest,
+		Distribution: remoteDistribution{
+			Kind:           string(DistributionRemote),
+			ArtifactURL:    "https://cdn.example.test/legacy-node-static.zip",
+			ArtifactSHA256: strings.Repeat("a", 64),
+			IconURL:        "https://cdn.example.test/legacy-node-static.png",
+		},
+	}))
+
+	apps, err := Catalog()
+	if err != nil {
+		t.Fatalf("Catalog() error = %v", err)
+	}
+	app := findCatalogAppForTest(apps, "legacy-node-static")
+	if app == nil {
+		t.Fatal("legacy-node-static app missing from catalog")
+	}
+	if app.Manifest.Runtime.Profile != "connector-node-static" {
+		t.Fatalf("runtime profile = %q, want connector-node-static", app.Manifest.Runtime.Profile)
+	}
+}
+
 func TestParseRemoteCatalogSelectsHighestCompatibleAppVersion(t *testing.T) {
 	legacy := remoteCatalogAppForVersionTest("versioned-app", "1.0.0")
 	compatible := remoteCatalogAppForVersionTest("versioned-app", "1.1.0")

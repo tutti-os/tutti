@@ -13,6 +13,7 @@ import type {
   AgentHostAgentTargetSetupWatch,
   AgentHostTerminalLoginApi,
   AgentHostTerminalLoginHandle,
+  AgentHostTerminalStartupAction,
   AgentHostToastApi
 } from "../../host/agentHostApi.ts";
 import { useTranslation } from "../../i18n/index.ts";
@@ -51,7 +52,10 @@ export interface AgentTargetSetupController {
   refresh(): Promise<void>;
   selectAuthMethod(methodId: string): void;
   setDialogOpen(open: boolean): void;
-  startTerminalLogin(command: string): Promise<void>;
+  startTerminalLogin(input: {
+    command: string;
+    startupAction?: AgentHostTerminalStartupAction | null;
+  }): Promise<void>;
   subscribe(listener: () => void): () => void;
 }
 
@@ -262,9 +266,24 @@ function createAgentTargetSetupController(input: {
       });
     }
   };
-  const startTerminalLogin = async (command: string) => {
-    const normalizedCommand = command.trim();
+  const startTerminalLogin = async (request: {
+    command: string;
+    startupAction?: AgentHostTerminalStartupAction | null;
+  }) => {
+    const normalizedCommand = request.command.trim();
     if (!input.terminalLogin || !normalizedCommand) return;
+    if (
+      request.startupAction &&
+      !input.terminalLogin.supportedStartupActionTypes?.includes(
+        request.startupAction.type
+      )
+    ) {
+      update({
+        terminalLoginError: "unavailable",
+        terminalLoginPhase: "error"
+      });
+      return;
+    }
     cancelTerminalLogin(false);
     const generation = terminalLoginGeneration;
     update({
@@ -275,7 +294,10 @@ function createAgentTargetSetupController(input: {
     try {
       handle = await input.terminalLogin.run({
         agentTargetId: input.agentTargetId,
-        command: normalizedCommand
+        command: normalizedCommand,
+        ...(request.startupAction
+          ? { startupAction: request.startupAction }
+          : {})
       });
     } catch {
       settleTerminalLogin(generation, "unavailable");

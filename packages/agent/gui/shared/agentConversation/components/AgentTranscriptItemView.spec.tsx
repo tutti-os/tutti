@@ -735,6 +735,58 @@ describe("AgentTranscriptItemView render stability", () => {
     delete (window as { agentGUIRuntime?: unknown }).agentGUIRuntime;
   });
 
+  it("shows a failure placeholder and retries a remote image with the same URL", async () => {
+    const signedUrl = "https://objects.example.test/signed/screen.png";
+
+    render(
+      <AgentMessageBlock
+        workspaceRoot="/workspace/demo"
+        basePath="/workspace/demo"
+        row={userMessageRow({
+          kind: "message-content",
+          id: "user-images-url-failed",
+          turnId: "turn-1",
+          body: "",
+          contentKind: "image-grid",
+          images: [
+            {
+              id: "remote-image-failed",
+              workspaceId: "room-1",
+              agentSessionId: "session-1",
+              mimeType: "image/png",
+              name: "screen.png",
+              url: signedUrl
+            }
+          ],
+          occurredAtUnixMs: 1
+        })}
+        thinkingLabel="Thought process"
+      />
+    );
+
+    const image = screen.getByRole("img", { name: "screen.png" });
+    fireEvent.error(image);
+
+    expect(
+      await screen.findByTestId("agent-gui-message-image-failed")
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "agentHost.agentGui.retryImage" })
+    ).toBeInTheDocument();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "agentHost.agentGui.retryImage" })
+    );
+    const retriedImage = await screen.findByRole("img", {
+      name: "screen.png"
+    });
+    expect(retriedImage).not.toBe(image);
+    expect(retriedImage).toHaveAttribute("src", signedUrl);
+    fireEvent.load(retriedImage);
+
+    expect(screen.queryByTestId("agent-gui-message-image-failed")).toBeNull();
+  });
+
   it("shows a loading spinner while a user prompt image is being read", async () => {
     const readController: {
       resolve: (value: {

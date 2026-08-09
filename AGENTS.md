@@ -20,6 +20,7 @@ Read the closest `AGENTS.md` before editing:
 - `apps/desktop/*` -> `apps/desktop/AGENTS.md`
 - `services/tuttid/*` -> `services/tuttid/AGENTS.md`
 - `packages/agent/gui/*` -> `packages/agent/gui/AGENTS.md`
+- `packages/agent/session-replay/*` -> `packages/agent/session-replay/AGENTS.md`
 - `packages/ui/*` -> `packages/ui/AGENTS.md`
 - `packages/*` -> `packages/AGENTS.md`
 
@@ -86,6 +87,12 @@ adapter.
 Before preparing commits or pull requests, read `CONTRIBUTING.md` and follow it
 for repository-wide contribution requirements, including Conventional Commits,
 DCO sign-off, PR workflow, review gates, and multilingual documentation updates.
+
+When creating pull requests for the user, create a regular ready-for-review PR
+(not a draft), write the PR title in English, and write the PR description in
+Chinese.
+After creating or updating a pull request, read it back from GitHub and verify
+its draft state, title, description encoding, head commit, and CI status.
 
 ## Hard Rules
 

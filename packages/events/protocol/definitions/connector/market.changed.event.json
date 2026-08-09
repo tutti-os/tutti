@@ -1,0 +1,27 @@
+{
+  "$schema": "../../schemas/core/event-definition.schema.json",
+  "topic": "connector.market.changed",
+  "version": 1,
+  "direction": "server->client",
+  "owner": "core",
+  "scope": "global",
+  "payloadSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["revision"],
+    "properties": {
+      "connectorKey": {
+        "type": "string",
+        "minLength": 1
+      },
+      "operationId": {
+        "type": "string",
+        "minLength": 1
+      },
+      "revision": {
+        "type": "integer",
+        "minimum": 1
+      }
+    }
+  }
+}

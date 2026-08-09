@@ -7,9 +7,12 @@
   "exports": {
     ".": "./src/index.ts",
     "./contracts": "./src/contracts/index.ts",
+    "./core": "./src/services/core/index.ts",
+    "./i18n": "./src/i18n/index.ts",
     "./openapi/connector-market.v1.yaml": "./openapi/connector-market.v1.yaml",
-    "./react": "./src/react/index.ts",
-    "./services": "./src/services/index.ts"
+    "./renderer": "./src/renderer/index.ts",
+    "./services": "./src/services/index.ts",
+    "./ui": "./src/ui/index.ts"
   },
   "files": [
     "dist",
@@ -28,6 +31,8 @@
   },
   "dependencies": {
     "@tutti-os/infra": "0.1.0",
+    "@tutti-os/ui-i18n-runtime": "workspace:*",
+    "@tutti-os/ui-system": "workspace:*",
     "valtio": "^2.3.2"
   },
   "devDependencies": {
@@ -35,18 +40,15 @@
     "@types/node": "^24.0.1",
     "@types/react": "^19.1.6",
     "react": "^19.1.0",
+    "react-dom": "^19.1.0",
     "tsx": "^4.22.3",
     "typescript": "^5.8.3",
     "valtio": "^2.3.2"
   },
   "peerDependencies": {
     "react": "^19.1.0",
+    "react-dom": "^19.1.0",
     "valtio": "^2.3.2"
-  },
-  "peerDependenciesMeta": {
-    "react": {
-      "optional": true
-    }
   },
   "publishConfig": {
     "access": "public",
@@ -59,16 +61,31 @@
         "types": "./dist/contracts/index.d.ts",
         "import": "./dist/contracts/index.js"
       },
+      "./core": {
+        "types": "./dist/core/index.d.ts",
+        "import": "./dist/core/index.js"
+      },
+      "./i18n": {
+        "types": "./dist/i18n/index.d.ts",
+        "import": "./dist/i18n/index.js"
+      },
       "./openapi/connector-market.v1.yaml": "./openapi/connector-market.v1.yaml",
-      "./react": {
-        "types": "./dist/react/index.d.ts",
-        "import": "./dist/react/index.js"
+      "./renderer": {
+        "types": "./dist/renderer/index.d.ts",
+        "import": "./dist/renderer/index.js"
       },
       "./services": {
         "types": "./dist/services/index.d.ts",
         "import": "./dist/services/index.js"
+      },
+      "./ui": {
+        "types": "./dist/ui/index.d.ts",
+        "import": "./dist/ui/index.js"
       }
     },
     "types": "./dist/index.d.ts"
+  },
+  "tutti": {
+    "tailwindSourceRoot": "src"
   }
 }

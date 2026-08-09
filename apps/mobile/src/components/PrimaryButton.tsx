@@ -1,8 +1,11 @@
 import { NativeButton, type ButtonSize } from "@tutti-os/ui-system/native";
+import type { ReactNode } from "react";
 import type { StyleProp, ViewStyle } from "react-native";
 
 interface PrimaryButtonProps {
+  accessibilityLabel?: string;
   disabled?: boolean;
+  leading?: ReactNode;
   label: string;
   loading?: boolean;
   onPress(): void;
@@ -12,7 +15,9 @@ interface PrimaryButtonProps {
 }
 
 export function PrimaryButton({
+  accessibilityLabel,
   disabled = false,
+  leading,
   label,
   loading = false,
   onPress,
@@ -22,7 +27,9 @@ export function PrimaryButton({
 }: PrimaryButtonProps) {
   return (
     <NativeButton
+      accessibilityLabel={accessibilityLabel}
       disabled={disabled}
+      leading={leading}
       label={label}
       loading={loading}
       onPress={onPress}

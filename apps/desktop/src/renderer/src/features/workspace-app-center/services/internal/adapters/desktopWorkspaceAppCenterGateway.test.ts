@@ -88,6 +88,7 @@ test("Workspace App Center gateway preserves app failure details", () => {
   const app = normalizeWorkspaceAppCenterApp(
     createWorkspaceApp({
       appId: "broken",
+      failurePhase: "installing",
       failureReason: "install script exited 1",
       installed: false,
       lastError: "npm install failed",
@@ -98,6 +99,7 @@ test("Workspace App Center gateway preserves app failure details", () => {
 
   assert.equal(app.runtimeStatus, "failed");
   assert.equal(app.failureReason, "install script exited 1");
+  assert.equal(app.failurePhase, "installing");
   assert.equal(app.lastError, "npm install failed");
 });
 

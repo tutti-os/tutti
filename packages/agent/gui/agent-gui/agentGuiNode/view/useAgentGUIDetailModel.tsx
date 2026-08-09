@@ -85,6 +85,10 @@ export function useAgentGUIDetailModel(input: Input) {
   const activePrompt =
     viewModel.interaction.pendingInteractivePrompt ??
     viewModel.interaction.pendingApproval;
+  const activePromptResponsePending =
+    activePrompt?.kind === "approval"
+      ? viewModel.interaction.isRespondingApproval
+      : viewModel.interaction.isRespondingInteractivePrompt;
   const activePromptRequestId = activePrompt?.requestId ?? null;
   const sessionChrome = useMemo<AgentGUISessionChrome>(
     () => ({ ...viewModel.interaction.sessionChrome, approval: null }),
@@ -381,6 +385,12 @@ export function useAgentGUIDetailModel(input: Input) {
       modelTooltipVersionLabel: labels.modelTooltipVersionLabel,
       defaultModel: labels.defaultModel,
       loadingOptions: labels.loadingOptions,
+      composerOptionsLoadFailed: labels.composerOptionsLoadFailed,
+      retry: labels.composerOptionsRetry ?? labels.retryActivation,
+      retryTooltip:
+        labels.composerOptionsRetryTooltip ??
+        labels.composerOptionsRetry ??
+        labels.retryActivation,
       inheritedUnavailable: labels.inheritedUnavailable,
       loadingConversation: labels.loadingConversation,
       reasoningLabel: labels.reasoningLabel,
@@ -417,7 +427,6 @@ export function useAgentGUIDetailModel(input: Input) {
       tuttiBudgetTitle: labels.tuttiBudgetTitle,
       tuttiBudgetEffectLabel: labels.tuttiBudgetEffectLabel,
       tuttiBudgetSpeedLabel: labels.tuttiBudgetSpeedLabel,
-      tuttiBudgetPreviewTitle: labels.tuttiBudgetPreviewTitle,
       tuttiBudgetPreviewHint: labels.tuttiBudgetPreviewHint,
       tuttiBudgetPreviewCost: labels.tuttiBudgetPreviewCost,
       tuttiBudgetPreviewBalance: labels.tuttiBudgetPreviewBalance,
@@ -428,8 +437,6 @@ export function useAgentGUIDetailModel(input: Input) {
         labels.tuttiBudgetModelPreferenceBalance,
       tuttiBudgetModelPreferencePowerful:
         labels.tuttiBudgetModelPreferencePowerful,
-      tuttiBudgetModelPreferenceFastestSuitable:
-        labels.tuttiBudgetModelPreferenceFastestSuitable,
       tuttiBudgetParallelismLabel: labels.tuttiBudgetParallelismLabel,
       tuttiBudgetParallelismValue: labels.tuttiBudgetParallelismValue,
       planModeDescription: labels.planModeDescription,
@@ -453,6 +460,10 @@ export function useAgentGUIDetailModel(input: Input) {
       slashPaletteSkillsGroup: labels.slashPaletteSkillsGroup,
       slashPalettePluginsGroup: labels.slashPalettePluginsGroup,
       slashPaletteConnectorsGroup: labels.slashPaletteConnectorsGroup,
+      slashPaletteConnectorConnected: labels.slashPaletteConnectorConnected,
+      slashPaletteConnectorNotConnected:
+        labels.slashPaletteConnectorNotConnected,
+      slashPaletteConnectorUnsupported: labels.slashPaletteConnectorUnsupported,
       slashPaletteMcpGroup: labels.slashPaletteMcpGroup,
       slashCommandCompactLabel: labels.slashCommandCompactLabel,
       slashCommandContextLabel: labels.slashCommandContextLabel,
@@ -537,6 +548,13 @@ export function useAgentGUIDetailModel(input: Input) {
       removeMention: labels.removeMention,
       addReference: labels.addReference,
       addContent: labels.addContent,
+      addContentResourcePanel: labels.addContentResourcePanel,
+      addContentConnectors: labels.addContentConnectors,
+      addContentConnectorConnected: labels.addContentConnectorConnected,
+      addContentConnectorConnect: labels.addContentConnectorConnect,
+      addContentConnectorAuthorize: labels.addContentConnectorAuthorize,
+      addContentConnectorEmpty: labels.addContentConnectorEmpty,
+      addContentConnectorMore: labels.addContentConnectorMore,
       referenceWorkspaceFiles: labels.referenceWorkspaceFiles,
       handoffConversation: labels.handoffConversation,
       handoffConversationTooltip: labels.handoffConversationTooltip,
@@ -546,6 +564,9 @@ export function useAgentGUIDetailModel(input: Input) {
       handoffTargetShared: labels.handoffTargetShared,
       providerSwitchLabel: labels.providerSwitchLabel,
       projectLocked: labels.projectLocked,
+      sessionLaunchModeLabel: labels.sessionLaunchModeLabel,
+      sessionLaunchModeLocal: labels.sessionLaunchModeLocal,
+      sessionLaunchModeWorktree: labels.sessionLaunchModeWorktree,
       projectMissingDescription: labels.projectMissingDescription,
       promptTipsPrefix: labels.promptTipsPrefix,
       reviewPicker: labels.reviewPicker,
@@ -554,11 +575,21 @@ export function useAgentGUIDetailModel(input: Input) {
     }),
     [
       interactivePromptLabels,
+      labels.composerOptionsLoadFailed,
+      labels.composerOptionsRetry,
+      labels.composerOptionsRetryTooltip,
       labels.defaultModel,
       labels.tuttiModePlanSendAccept,
       labels.tuttiModePlanSendRequestChanges,
       labels.addReference,
       labels.addContent,
+      labels.addContentResourcePanel,
+      labels.addContentConnectors,
+      labels.addContentConnectorConnected,
+      labels.addContentConnectorConnect,
+      labels.addContentConnectorAuthorize,
+      labels.addContentConnectorEmpty,
+      labels.addContentConnectorMore,
       labels.deleteQueuedPrompt,
       labels.editQueuedPrompt,
       labels.fileMentionEmpty,
@@ -596,7 +627,6 @@ export function useAgentGUIDetailModel(input: Input) {
       labels.tuttiBudgetTitle,
       labels.tuttiBudgetEffectLabel,
       labels.tuttiBudgetSpeedLabel,
-      labels.tuttiBudgetPreviewTitle,
       labels.tuttiBudgetPreviewHint,
       labels.tuttiBudgetPreviewCost,
       labels.tuttiBudgetPreviewBalance,
@@ -605,7 +635,6 @@ export function useAgentGUIDetailModel(input: Input) {
       labels.tuttiBudgetModelPreferenceCost,
       labels.tuttiBudgetModelPreferenceBalance,
       labels.tuttiBudgetModelPreferencePowerful,
-      labels.tuttiBudgetModelPreferenceFastestSuitable,
       labels.tuttiBudgetParallelismLabel,
       labels.tuttiBudgetParallelismValue,
       labels.planModeDescription,
@@ -614,6 +643,9 @@ export function useAgentGUIDetailModel(input: Input) {
       labels.planUnavailable,
       labels.goalLabel,
       labels.projectLocked,
+      labels.sessionLaunchModeLabel,
+      labels.sessionLaunchModeLocal,
+      labels.sessionLaunchModeWorktree,
       labels.projectMissingDescription,
       labels.promptTipsPrefix,
       labels.reviewPicker,
@@ -660,6 +692,9 @@ export function useAgentGUIDetailModel(input: Input) {
       labels.slashPaletteCapabilitiesGroup,
       labels.slashPaletteCapabilitiesLoading,
       labels.slashPaletteCommandsGroup,
+      labels.slashPaletteConnectorConnected,
+      labels.slashPaletteConnectorNotConnected,
+      labels.slashPaletteConnectorUnsupported,
       labels.slashPaletteConnectorsGroup,
       labels.slashCommandCompactLabel,
       labels.slashCommandContextLabel,
@@ -718,6 +753,7 @@ export function useAgentGUIDetailModel(input: Input) {
   return {
     activeConversationTurnBusy,
     activePromptRequestId,
+    activePromptResponsePending,
     bottomDockLiftedPrompt,
     bottomDockReplacementPrompt,
     chromeLabels,

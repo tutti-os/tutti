@@ -346,6 +346,7 @@ export function conversationSummaryFromAgentSession(
       session.activeTurnId ? "working" : "idle"
     ),
     cwd: session.cwd?.trim() ?? "",
+    isolation: session.isolation,
     railSectionKey: session.railSectionKey,
     project: resolveConversationProject(session, projectResolver),
     ...(isExternalImportNoProjectSession(session)
@@ -353,6 +354,7 @@ export function conversationSummaryFromAgentSession(
       : {}),
     pinnedAtUnixMs: session.pinnedAtUnixMs ?? null,
     needsUserAction: options.needsUserAction ?? false,
+    ...(session.visible === false ? { hiddenFromRail: true } : {}),
     sortTimeUnixMs: resolveWorkspaceAgentSessionSortTimeUnixMs(session),
     updatedAtUnixMs:
       session.updatedAtUnixMs || session.createdAtUnixMs || Date.now()
@@ -477,6 +479,7 @@ function conversationSummaryFromActivity(
     titleFallback,
     status,
     cwd: session?.cwd.trim() ?? "",
+    isolation: session?.isolation ?? null,
     ...(session ? { railSectionKey: session.railSectionKey } : {}),
     project: resolveConversationProject(session, options.projectResolver),
     ...(isExternalImportNoProjectSession(session)

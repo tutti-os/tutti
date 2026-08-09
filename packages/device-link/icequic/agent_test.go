@@ -240,6 +240,16 @@ func TestNewAgentRejectsUnknownNetworkPolicy(t *testing.T) {
 	}
 }
 
+func TestEmptyNetworkPolicyDefaultsToSystem(t *testing.T) {
+	got, err := normalizeNetworkPolicy("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != NetworkPolicySystem {
+		t.Fatalf("empty network policy = %q, want %q", got, NetworkPolicySystem)
+	}
+}
+
 func TestAgentExcludeHostCandidatesThreadsToGathering(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()

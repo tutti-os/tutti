@@ -15,11 +15,23 @@ export const en = {
     loading: "Loading",
     neverOpened: "Never opened",
     ok: "OK",
+    retry: "Try again",
     selectFolder: "Select folder",
     unknownError: "Unknown error",
     unreachable: "unreachable",
     workspace: "workspace",
     zipArchive: "ZIP Archive"
+  },
+  capture: {
+    error: "Could not start the Agent. Try again.",
+    loading: "Preparing screenshot…",
+    screenPreviewAlt: "Screen ready for area selection",
+    selectHint: "Drag to select an area · Esc to cancel",
+    taskPrompt:
+      "Before starting, create a Qute Task to track this request. Then immediately carry out the request, using the Task as the ongoing work record and keeping its status and notes updated. Do not stop after creating the Task.",
+    taskPromptAction: "Create Task and track",
+    taskPromptHint: "Agent works now and keeps the Task updated",
+    title: "Tutti"
   },
   dashboard: {
     chooseWorkspaceTitle: "Choose a workspace",
@@ -66,7 +78,8 @@ export const en = {
     downloadingTitle: "Downloading {{percent}}",
     errorTitle: "Unable to check for updates",
     restartAction: "Restart & install",
-    retryAction: "Retry"
+    retryAction: "Retry",
+    storeManaged: "Updates are managed by Microsoft Store."
   },
   desktop: {
     installGuard: {
@@ -741,7 +754,7 @@ export const en = {
           "Cleanup couldn't run right now. Finish active Agent work and try again.",
         computerUseLabel: "Computer use",
         computerUseDescription:
-          "Allows the agent to control your Mac desktop — take screenshots, click, type, and more.",
+          "Allows the agent to control your desktop — take screenshots, click, type, and more.",
         computerUseInstallButton: "Install",
         computerUseInstalling: "Installing…",
         computerUseInstallSuccess: "cua-driver installed successfully.",
@@ -800,8 +813,7 @@ export const en = {
           "Screen Recording Settings is open. Enable CuaDriver there; Tutti will check automatically.",
         computerUsePrivacySettingsOpenedInstruction:
           "Privacy Settings is open. Enable CuaDriver permissions there; Tutti will check automatically.",
-        computerUseAuthorizedTooltip:
-          "CuaDriver has Screen Recording and Accessibility permissions.",
+        computerUseAuthorizedTooltip: "CuaDriver is ready for desktop control.",
         computerUsePermissionUnknownTooltip:
           "Authorization status cannot be confirmed. CuaDriver will check and guide authorization when clicked.",
         computerUsePermissionMissingTooltip:
@@ -886,6 +898,10 @@ export const en = {
           zhCN: "Simplified Chinese"
         },
         localeSaveFailed: "We couldn't switch the app language right now.",
+        captureShortcutDefaultPlaceholder: "Default: Cmd/Ctrl+Shift+S",
+        captureShortcutDescription:
+          "Global shortcut that starts a screen capture. Include Cmd, Ctrl, or Alt; clear to restore the default.",
+        captureShortcutLabel: "Screenshot shortcut",
         preventSleepDescription: "Controls whether the system can enter sleep",
         preventSleepLabel: "Sleep prevention",
         preventSleepOptions: {
@@ -900,6 +916,58 @@ export const en = {
         updatePolicySaveFailed: "We couldn't update the update mode right now.",
         versionLabel: "Desktop version"
       },
+      deletedConversations: {
+        allProjects: "All projects",
+        clearFilters: "Clear filters",
+        deleteAll: "Delete all",
+        deleteAllCompleted: "Permanently deleted {{count}} conversations.",
+        deleteAllConfirm: "Permanently delete all",
+        deleteAllConfirmationLabel: "Confirmation phrase",
+        deleteAllConfirmationPhrase: "permanently delete",
+        deleteAllDescription:
+          "This permanently deletes all {{count}} deleted conversations in this workspace, regardless of the current search or project filter. Type “{{phrase}}” to continue.",
+        deleteAllTitle: "Permanently delete all conversations?",
+        deleteAction: "Delete",
+        deleteCompleted: "Conversation permanently deleted.",
+        deleteDescription:
+          "“{{title}}” will be permanently deleted and cannot be restored.",
+        deleteTitle: "Permanently delete this conversation?",
+        deleting: "Deleting…",
+        deletingAll: "Deleting all…",
+        emptyDescription:
+          "Deleted conversations remain here until the automatic cleanup period ends.",
+        emptyTitle: "No deleted conversations",
+        legacyRestoreUnavailable:
+          "This older record does not contain the complete conversation data required for restore.",
+        incompleteRestoreUnavailable:
+          "This conversation does not contain the complete data required for restore.",
+        listLabel: "Deleted conversations",
+        loadFailedDescription:
+          "The deleted conversation list could not be loaded. Try again.",
+        loadFailedTitle: "Couldn't load deleted conversations",
+        loadingMore: "Loading more…",
+        noResultsDescription:
+          "Try another title or clear the current project filter.",
+        noResultsTitle: "No matching conversations",
+        permanentDelete: "Permanently delete",
+        permanentDeleteFailed:
+          "The conversations could not be permanently deleted. Finish active Agent work and try again.",
+        projectFilterLabel: "Filter by project",
+        removedProject: "{{project}} (removed)",
+        restore: "Restore conversation",
+        restoreCompleted: "Conversation restored.",
+        restoreFailed: "The conversation could not be restored. Try again.",
+        restoring: "Restoring…",
+        retentionDays: "{{count}} days",
+        retentionDescription:
+          "Deleted conversations are permanently removed after this period. This setting applies to every workspace on this device.",
+        retentionLabel: "Automatic cleanup",
+        searchLabel: "Search deleted conversations by title",
+        searchPlaceholder: "Search deleted conversations",
+        title: "Deleted conversations",
+        unscoped: "Chat (no project)",
+        untitled: "Untitled conversation"
+      },
       nav: {
         about: "About",
         apps: "Apps",
@@ -907,6 +975,7 @@ export const en = {
         appearance: "Appearance",
         agent: "Agent",
         connection: "Connection",
+        deletedConversations: "Trash",
         developer: "Developer",
         general: "General",
         lab: "Lab",
@@ -1292,13 +1361,16 @@ export const en = {
         visibilityLabel: "Show developer panel"
       },
       lab: {
-        agentInputHistoryDescription:
-          "Use Up and Down in Agent input to recall earlier prompts from the current session.",
-        agentInputHistoryLabel: "Agent input history",
         backLabel: "Back",
         automationRulesDescription:
           "Shows Automation Rule configuration and session overrides.",
         automationRulesLabel: "Automation Rules",
+        conversationActivityViewDescription:
+          "Shows the Activity View for conversations in the Agent sidebar.",
+        conversationActivityViewLabel: "Conversation Activity View",
+        connectorsDescription:
+          "Shows Connectors in Agent settings and the Agent composer.",
+        connectorsLabel: "Connectors",
         clearShortcutLabel: "Clear {{label}}",
         newAgentConversationShortcutLabel: "New Agent conversation",
         newSameTypeWindowShortcutLabel: "New same-type window",

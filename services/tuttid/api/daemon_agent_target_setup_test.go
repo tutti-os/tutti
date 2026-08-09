@@ -58,7 +58,13 @@ func TestDaemonAPIGeneratedRoutesAgentTargetSetupInstallAndAuthenticate(t *testi
 				Status: agentextensionservice.SetupNotInstalled, Plan: &plan,
 				AuthMethods: []agentextensionservice.RuntimeAuthMethod{
 					{ID: "external", Name: "Login with Google/GitHub"},
-					{ID: "login", Name: "Login with Fixture account", Type: "terminal", TerminalCommand: "/opt/fixture/bin/agent login"},
+					{
+						ID: "login", Name: "Login with Fixture account", Type: "terminal",
+						TerminalCommand: "/opt/fixture/bin/agent",
+						TerminalStartupAction: &agentextensionservice.RuntimeTerminalStartupAction{
+							Type: "slash_command", CommandName: "login", ReadyText: "Fixture Agent ready",
+						},
+					},
 				},
 				Account: &agentextensionservice.RuntimeAuthenticatedAccount{
 					ID: "user-1", DisplayName: "Rhinoc", AuthMethodID: "external", Organization: "Tutti",
@@ -100,10 +106,15 @@ func TestDaemonAPIGeneratedRoutesAgentTargetSetupInstallAndAuthenticate(t *testi
 	}
 	terminalMethod := getResponse.AuthMethods[1]
 	if terminalMethod.Type == nil || *terminalMethod.Type != "terminal" ||
-		terminalMethod.TerminalCommand == nil || *terminalMethod.TerminalCommand != "/opt/fixture/bin/agent login" {
+		terminalMethod.TerminalCommand == nil || *terminalMethod.TerminalCommand != "/opt/fixture/bin/agent" ||
+		terminalMethod.TerminalStartupAction == nil ||
+		terminalMethod.TerminalStartupAction.Type != tuttigenerated.AgentTargetTerminalStartupActionTypeSlashCommand ||
+		terminalMethod.TerminalStartupAction.CommandName != "login" ||
+		terminalMethod.TerminalStartupAction.ReadyText != "Fixture Agent ready" {
 		t.Fatalf("GET terminal auth method = %#v", terminalMethod)
 	}
-	if getResponse.AuthMethods[0].Type != nil || getResponse.AuthMethods[0].TerminalCommand != nil {
+	if getResponse.AuthMethods[0].Type != nil || getResponse.AuthMethods[0].TerminalCommand != nil ||
+		getResponse.AuthMethods[0].TerminalStartupAction != nil {
 		t.Fatalf("GET non-terminal auth method = %#v", getResponse.AuthMethods[0])
 	}
 	if getResponse.Account == nil || getResponse.Account.Id != "user-1" || getResponse.Account.DisplayName != "Rhinoc" ||

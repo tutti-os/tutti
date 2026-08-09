@@ -2,13 +2,16 @@ package agent
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"slices"
 	"testing"
 
 	"github.com/tutti-os/tutti/packages/agent/daemon/providerregistry"
+	market "github.com/tutti-os/tutti/packages/connector/host"
 	agenttargetbiz "github.com/tutti-os/tutti/services/tuttid/biz/agenttarget"
+	preferencesbiz "github.com/tutti-os/tutti/services/tuttid/biz/preferences"
 )
 
 func TestServiceGetsComposerOptionsWithoutStartingRuntime(t *testing.T) {
@@ -334,11 +337,12 @@ func TestServiceGetComposerOptionsSkipsCapabilityCatalogWhenDisabled(t *testing.
 	}
 }
 
-func TestServiceGetComposerOptionsIncludesCapabilityCatalogByDefault(t *testing.T) {
+func TestServiceGetComposerOptionsIncludesConnectorCatalogWhenLabFlagEnabled(t *testing.T) {
 	runtime := newFakeRuntime()
 	lister := &recordingComposerCapabilityLister{}
 	service := newIsolatedAgentService(runtime)
 	service.CapabilityLister = lister
+	service.DesktopPreferencesReader = connectorCatalogPreferencesReader(true)
 
 	options, err := service.GetComposerOptions(context.Background(), ComposerOptionsInput{
 		Provider: "codex",
@@ -354,11 +358,88 @@ func TestServiceGetComposerOptionsIncludesCapabilityCatalogByDefault(t *testing.
 	}
 }
 
+func TestServiceGetComposerOptionsHidesConnectorCatalogByDefault(t *testing.T) {
+	runtime := newFakeRuntime()
+	lister := &recordingComposerCapabilityLister{}
+	service := newIsolatedAgentService(runtime)
+	service.CapabilityLister = lister
+
+	options, err := service.GetComposerOptions(context.Background(), ComposerOptionsInput{
+		Provider: "codex",
+	})
+	if err != nil {
+		t.Fatalf("GetComposerOptions returned error: %v", err)
+	}
+	if lister.callCount != 1 {
+		t.Fatalf("capability lister calls = %d, want 1", lister.callCount)
+	}
+	if len(options.CapabilityCatalog) != 0 {
+		t.Fatalf("capability catalog = %#v, want connectors hidden", options.CapabilityCatalog)
+	}
+}
+
+func TestServiceGetComposerOptionsHidesConnectorCatalogWhenPreferencesAreUnavailable(t *testing.T) {
+	runtime := newFakeRuntime()
+	lister := &recordingComposerCapabilityLister{}
+	service := newIsolatedAgentService(runtime)
+	service.CapabilityLister = lister
+	service.DesktopPreferencesReader = fakeDesktopPreferencesReader{
+		err: errors.New("preferences unavailable"),
+	}
+
+	options, err := service.GetComposerOptions(context.Background(), ComposerOptionsInput{
+		Provider: "codex",
+	})
+	if err != nil {
+		t.Fatalf("GetComposerOptions returned error: %v", err)
+	}
+	if len(options.CapabilityCatalog) != 0 {
+		t.Fatalf("capability catalog = %#v, want connectors hidden", options.CapabilityCatalog)
+	}
+	errors, ok := options.RuntimeContext["capabilityCatalogErrors"].([]string)
+	if !ok || len(errors) != 1 || errors[0] != "load connector visibility: preferences unavailable" {
+		t.Fatalf("capability catalog errors = %#v", options.RuntimeContext["capabilityCatalogErrors"])
+	}
+}
+
+func TestServiceGetComposerOptionsUsesLocalInstalledConnectorCatalog(t *testing.T) {
+	runtime := newFakeRuntime()
+	lister := &recordingComposerCapabilityLister{}
+	service := newIsolatedAgentService(runtime)
+	service.CapabilityLister = lister
+	service.DesktopPreferencesReader = connectorCatalogPreferencesReader(true)
+	service.ConnectorMarketSnapshots = connectorMarketSnapshotStub{
+		snapshot: market.Snapshot{Connectors: []market.Connector{
+			localConnectorFixture(
+				"notion",
+				market.InstallationStateInstalled,
+				market.AuthorizationStateDisconnected,
+				market.CompatibilityStateSupported,
+			),
+		}},
+	}
+
+	options, err := service.GetComposerOptions(context.Background(), ComposerOptionsInput{
+		Provider: "codex",
+	})
+	if err != nil {
+		t.Fatalf("GetComposerOptions returned error: %v", err)
+	}
+	if len(options.CapabilityCatalog) != 1 {
+		t.Fatalf("capability catalog = %#v, want only local DB connector", options.CapabilityCatalog)
+	}
+	connector := options.CapabilityCatalog[0]
+	if connector.ID != "connector:notion" || connector.Source != "local-db" || connector.Status != "authRequired" {
+		t.Fatalf("connector = %#v", connector)
+	}
+}
+
 func TestServiceGetComposerOptionsCachesCapabilityCatalog(t *testing.T) {
 	runtime := newFakeRuntime()
 	lister := &recordingComposerCapabilityLister{}
 	service := newIsolatedAgentService(runtime)
 	service.CapabilityLister = lister
+	service.DesktopPreferencesReader = connectorCatalogPreferencesReader(true)
 
 	first, err := service.GetComposerOptions(context.Background(), ComposerOptionsInput{
 		Provider: "codex",
@@ -378,6 +459,16 @@ func TestServiceGetComposerOptionsCachesCapabilityCatalog(t *testing.T) {
 	}
 	if len(second.CapabilityCatalog) != 1 || second.CapabilityCatalog[0].ID != "connector:github" {
 		t.Fatalf("cached capability catalog = %#v, want unmutated github connector", second.CapabilityCatalog)
+	}
+}
+
+func connectorCatalogPreferencesReader(enabled bool) fakeDesktopPreferencesReader {
+	return fakeDesktopPreferencesReader{
+		preferences: preferencesbiz.DesktopPreferences{
+			FeatureFlags: map[string]bool{
+				preferencesbiz.LabFlagConnectors: enabled,
+			},
+		},
 	}
 }
 

@@ -48,6 +48,22 @@ func (r *activityProjectionRepoStub) ClearSessions(context.Context, string) (age
 	return r.clearResult, nil
 }
 
+func (*activityProjectionRepoStub) ListDeletedSessions(context.Context, agentactivitybiz.ListDeletedSessionsInput) (agentactivitybiz.DeletedSessionPage, error) {
+	return agentactivitybiz.DeletedSessionPage{}, nil
+}
+
+func (*activityProjectionRepoStub) RestoreDeletedSession(context.Context, agentactivitybiz.RestoreDeletedSessionInput) (agentactivitybiz.RestoreDeletedSessionResult, error) {
+	return agentactivitybiz.RestoreDeletedSessionResult{}, nil
+}
+
+func (*activityProjectionRepoStub) PurgeDeletedSessionTrees(context.Context, agentactivitybiz.PurgeDeletedSessionTreesInput) (agentactivitybiz.PurgeDeletedSessionTreesResult, error) {
+	return agentactivitybiz.PurgeDeletedSessionTreesResult{}, nil
+}
+
+func (*activityProjectionRepoStub) ListRecoverableDeletedSessionResources(context.Context) ([]agentactivitybiz.DeletedSessionResource, error) {
+	return []agentactivitybiz.DeletedSessionResource{}, nil
+}
+
 func (*activityProjectionRepoStub) GetSession(context.Context, string, string) (agentactivitybiz.Session, bool, error) {
 	return agentactivitybiz.Session{}, false, nil
 }

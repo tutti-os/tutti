@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
+	"sort"
 	"strings"
 
 	agentruntime "github.com/tutti-os/tutti/packages/agent/daemon/runtime"
@@ -34,6 +36,7 @@ type RuntimeBinding struct {
 	SetModelReasoningEffortMeta  bool
 	Capabilities                 []string
 	ExecutableIdentity           *agentruntime.ExecutableIdentity
+	Env                          []string
 }
 
 func (r RuntimeResolver) ResolveAdapter(ctx context.Context, input agentruntime.AdapterResolveInput) (agentruntime.Adapter, error) {
@@ -85,5 +88,29 @@ func runtimeAdapterConfig(binding RuntimeBinding, agentTargetID string) agentrun
 		AgentTargetID:                strings.TrimSpace(agentTargetID),
 		InstallationID:               binding.Installation.ID,
 		ExecutableIdentity:           binding.ExecutableIdentity,
+		Env:                          append([]string(nil), binding.Env...),
 	}
+}
+
+func resolveRuntimeLaunchEnv(declarations map[string]string) []string {
+	if len(declarations) == 0 {
+		return nil
+	}
+	keys := make([]string, 0, len(declarations))
+	for key := range declarations {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	result := make([]string, 0, len(keys))
+	for _, key := range keys {
+		matches := runtimeEnvironmentReferencePattern.FindStringSubmatch(strings.TrimSpace(declarations[key]))
+		if len(matches) != 2 {
+			continue
+		}
+		value := strings.TrimSpace(os.Getenv(matches[1]))
+		if value != "" {
+			result = append(result, key+"="+value)
+		}
+	}
+	return result
 }

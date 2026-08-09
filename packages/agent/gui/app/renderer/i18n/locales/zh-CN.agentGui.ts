@@ -1,4 +1,5 @@
 import { zhCNAgentGuiProviderIdentity } from "./zh-CN.agentGuiProviderIdentity.ts";
+import { zhCNAgentGuiAddContent } from "./zh-CN.agentGuiAddContent.ts";
 import { zhCNAgentGuiQuickPrompts } from "./zh-CN.agentGuiQuickPrompts.ts";
 import { zhCNAgentGuiReferencePicker } from "./zh-CN.agentGuiReferencePicker.ts";
 import { zhCNAgentGuiModelPlans } from "./zh-CN.agentGuiModelPlans.ts";
@@ -7,8 +8,12 @@ import { zhCNAgentGuiSlashPalette } from "./zh-CN.agentGuiSlashPalette.ts";
 import { zhCNAgentGuiSessionActions } from "./zh-CN.agentGuiSessionActions.ts";
 import { zhCNAgentGuiCollaboration } from "./zh-CN.agentGuiCollaboration.ts";
 import { zhCNTuttiModePlan } from "./zh-CN.tuttiModePlan.ts";
-
+import { zhCNAgentGuiComposer } from "./zh-CN.agentGuiComposer.ts";
+import { zhCNAgentGuiProjectLaunch } from "./zh-CN.agentGuiProjectLaunch.ts";
 export const zhCNAgentGui = {
+  imageDownloaded: "图片已下载",
+  imageLoadFailed: "图片加载失败",
+  retryImage: "重试",
   codexSaverModeLabel: "Codex 省额度模式",
   codexSaverModeDescription:
     "主模型保持不变；合适的独立子任务改用 Luna Max，按当前额度口径约为 Sol High 的 1/10。实际效果与速度因任务而异。",
@@ -105,8 +110,7 @@ export const zhCNAgentGui = {
   modelLabel: "模型",
   modelSelectionLabel: "模型选择",
   defaultModel: "默认模型",
-  loadingOptions: "正在加载",
-  inheritedUnavailable: "继承 / 不可用",
+  ...zhCNAgentGuiComposer,
   reasoningLabel: "推理强度",
   reasoningDegreeLabel: "推理程度",
   reasoningOptionDefault: "默认",
@@ -281,7 +285,6 @@ export const zhCNAgentGui = {
   tuttiBudgetTitle: "Tutti 偏好",
   tuttiBudgetEffectLabel: "效果",
   tuttiBudgetSpeedLabel: "速度",
-  tuttiBudgetPreviewTitle: "预期行为",
   tuttiBudgetPreviewHint: "实际并行数量取决于任务依赖",
   tuttiBudgetPreviewCost: "经济型",
   tuttiBudgetPreviewBalance: "均衡型",
@@ -290,7 +293,6 @@ export const zhCNAgentGui = {
   tuttiBudgetModelPreferenceCost: "经济模型",
   tuttiBudgetModelPreferenceBalance: "均衡模型",
   tuttiBudgetModelPreferencePowerful: "最强模型",
-  tuttiBudgetModelPreferenceFastestSuitable: "最快合适",
   tuttiBudgetParallelismLabel: "并行目标",
   tuttiBudgetParallelismValue: "最多 {{count}} 个 Agent",
   tuttiBudgetParallelismValue_one: "{{count}} 个 Agent",
@@ -478,11 +480,25 @@ export const zhCNAgentGui = {
   startConversation: "开始会话",
   selectConversation: "选择一个会话",
   loadingConversations: "正在加载会话...",
+  conversationsLoadFailed: "无法加载会话",
   loadingConversation: "正在加载会话...",
   scrollToBottom: "滚动至底部",
   searchNoConversations: "暂无相关会话",
   searchFailed: "无法搜索会话",
   retrySearch: "重试搜索",
+  activityPriority: "优先处理",
+  activityNothingNeedsAttention: "暂无需要你关注的会话",
+  activityToday: "今天",
+  activityYesterday: "昨天",
+  activityConversationSource: "对话",
+  activityStatusFailed: "执行失败",
+  activityStatusRecentlyActive: "最近活跃",
+  activityStatusUnread: "有未读结果",
+  activityStatusWaiting: "等待你处理",
+  activityStatusWorking: "正在运行",
+  viewActivity: "查看活动",
+  viewActivityNeedsAttention: "查看活动，有会话需要关注",
+  turnOffActivityView: "关闭活动视图",
   conversationUnavailable: "会话不可用。",
   contextPickerBrowseHint: "根据你输入的内容搜索工作区文件",
   contextPickerBrowseFileHint:
@@ -725,11 +741,11 @@ export const zhCNAgentGui = {
   mentionPalette: "引用或调用",
   addReference: "添加引用",
   addContent: "添加文件等内容",
+  ...zhCNAgentGuiAddContent,
   quickPrompts: zhCNAgentGuiQuickPrompts,
   referenceWorkspaceFiles: "引用空间文件",
   ...zhCNAgentGuiReferencePicker,
-  projectLocked: "会话开始后项目不可更改",
-  projectMissingDescription: "此对话的工作目录已不存在",
+  ...zhCNAgentGuiProjectLaunch,
   fileMentionEnterFolder: "进入文件夹",
   fileMentionSwitchCategory: "切换分类",
   fileMentionNavigateHierarchy: "进入/返回文件夹",

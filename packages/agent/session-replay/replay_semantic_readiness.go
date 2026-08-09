@@ -301,6 +301,9 @@ func projectBindingMatches(
 }
 
 func composerSettingsEqual(actual, expected map[string]any) bool {
+	// Shared by settings.equal readiness and final-state transport compare:
+	// require every recorded key, treat empty defaults as absent, and ignore
+	// live-only extras so older cassettes survive new default composer fields.
 	if len(expected) == 0 {
 		return true
 	}

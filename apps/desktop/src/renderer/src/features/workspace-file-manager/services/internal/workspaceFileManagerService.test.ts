@@ -219,6 +219,44 @@ test("workspace file manager service treats missing or unreadable entries as abs
   );
 });
 
+test("workspace file manager service compares native Windows paths with daemon logical paths", async () => {
+  const dependencies = createDependenciesStub();
+  let requestedPath: string | undefined;
+  dependencies.tuttidClient.listWorkspaceFileDirectory = async (
+    workspaceId,
+    input
+  ) => {
+    requestedPath = input?.path;
+    return {
+      directoryPath: "/C:/",
+      entries: [
+        {
+          createdTimeMs: null,
+          hasChildren: false,
+          kind: "file",
+          lastOpenedMs: null,
+          mtimeMs: null,
+          name: "README.md",
+          path: "/C:/README.md",
+          sizeBytes: 12
+        }
+      ],
+      root: "/C:/",
+      workspaceId
+    };
+  };
+  const service = new WorkspaceFileManagerService(dependencies);
+
+  assert.equal(
+    await service.entryExists({
+      path: "C:\\README.md",
+      workspaceID: "workspace-1"
+    }),
+    true
+  );
+  assert.equal(requestedPath, "/C:/");
+});
+
 test("workspace file manager service restores snapshot state without localStorage", () => {
   const restoreStorage = installForbiddenLocalStorage();
   try {
@@ -916,6 +954,7 @@ function createDependenciesStub(): {
       createWorkspaceIssueTasks: fail,
       createWorkspaceIssueTaskRun: fail,
       createWorkspaceIssueRun: fail,
+      startWorkspaceIssueRun: fail,
       createWorkspace: fail,
       createWorkspaceAgentSession: fail,
       forkWorkspaceAgentSession: fail,
@@ -933,6 +972,10 @@ function createDependenciesStub(): {
       deleteWorkspaceAgentSessionsBatch: fail,
       updateWorkspaceAgentSessionTitle: fail,
       clearWorkspaceAgentSessions: fail,
+      listWorkspaceDeletedAgentSessions: fail,
+      restoreWorkspaceDeletedAgentSession: fail,
+      purgeWorkspaceDeletedAgentSession: fail,
+      purgeWorkspaceDeletedAgentSessions: fail,
       deleteWorkspaceApp: fail,
       deleteWorkspaceAppFactoryJob: fail,
       deleteWorkspaceIssue: fail,
@@ -1023,6 +1066,7 @@ function createDependenciesStub(): {
       listWorkspaceAgentSessionGitBranches: fail,
       listWorkspaceGitBranches: fail,
       resolveWorkspaceGitPatchSupport: fail,
+      resolveWorkspaceAgentSessionWorktreeSupport: fail,
       updateWorkspaceAgentSessionSettings: fail,
       getWorkspaceAgentSessionTuttiModeActivation: fail,
       updateWorkspaceAgentSessionTuttiModeActivation: fail,
@@ -1046,7 +1090,8 @@ function createDependenciesStub(): {
       decideWorkspaceWorkflowCheckpoint: fail,
       cancelWorkspaceIssueExecution: fail,
       setCollaborationRunAdoption: fail,
-      cancelTuttiModeExecution: fail
+      cancelTuttiModeExecution: fail,
+      readWorkspaceIssueAttachment: fail
     },
     platformApi: {
       homeDirectory: "/Users/local",

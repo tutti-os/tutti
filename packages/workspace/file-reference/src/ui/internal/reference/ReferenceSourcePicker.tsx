@@ -66,6 +66,7 @@ import type { ReferenceSourceAggregator } from "../../../core/referenceSourceAgg
 import {
   base64UrlDecode,
   nodeRefKey,
+  SOURCE_ROOT_NODE_ID,
   type ReferenceFilterCategory
 } from "../../../core/index.ts";
 import {
@@ -111,6 +112,12 @@ export interface ReferenceSourcePickerProps {
   onConfirmBundles?: (result: ReferenceGroupedSelection) => void;
   open: boolean;
   purpose?: "directory" | "reference";
+  /**
+   * Directory purpose only. When the user is at the source root with nothing
+   * selected, confirm uses this path ("save/export here" = current location).
+   * Nested folders still confirm via the entered/selected folder.
+   */
+  confirmRootDirectoryPath?: string;
   workspaceId: string;
 }
 
@@ -187,6 +194,7 @@ export function ReferenceSourcePicker({
   onConfirmBundles,
   open,
   purpose = "reference",
+  confirmRootDirectoryPath,
   renderHeaderActions,
   resolveContentErrorAction,
   resolveEntryIconUrl,
@@ -211,6 +219,68 @@ export function ReferenceSourcePicker({
       onClose();
     }
   }, [onClose, view.isConfirming]);
+  const trimmedConfirmRootDirectoryPath =
+    confirmRootDirectoryPath?.trim() ?? "";
+  const atConfirmRootDirectory =
+    purpose === "directory" &&
+    Boolean(trimmedConfirmRootDirectoryPath) &&
+    !view.currentNode;
+  // When "confirm current location" is the workspace root, surface it in the
+  // preview pane so the enabled footer reads as a real selection.
+  const confirmRootDirectoryNode = useMemo((): ReferenceNode | null => {
+    if (!atConfirmRootDirectory || !view.activeSourceId) {
+      return null;
+    }
+    const segments = trimmedConfirmRootDirectoryPath.split("/").filter(Boolean);
+    return {
+      kind: "folder",
+      displayName:
+        view.activeTabLabel.trim() ||
+        segments.at(-1) ||
+        trimmedConfirmRootDirectoryPath,
+      hasChildren: true,
+      contextLabel: trimmedConfirmRootDirectoryPath,
+      ref: {
+        sourceId: view.activeSourceId,
+        nodeId: SOURCE_ROOT_NODE_ID
+      }
+    };
+  }, [
+    atConfirmRootDirectory,
+    trimmedConfirmRootDirectoryPath,
+    view.activeSourceId,
+    view.activeTabLabel
+  ]);
+  const previewNode = view.focusedNode ?? confirmRootDirectoryNode;
+  const canConfirmDirectory =
+    view.selectionCount > 0 ||
+    Boolean(view.currentNode) ||
+    Boolean(trimmedConfirmRootDirectoryPath);
+  const handleConfirm = useCallback(() => {
+    if (view.selectionCount > 0) {
+      void view.confirm();
+      return;
+    }
+    if (purpose !== "directory") {
+      return;
+    }
+    if (view.currentNode) {
+      void view.confirm([view.currentNode]);
+      return;
+    }
+    if (!trimmedConfirmRootDirectoryPath) {
+      return;
+    }
+    const segments = trimmedConfirmRootDirectoryPath.split("/").filter(Boolean);
+    onConfirm([
+      {
+        path: trimmedConfirmRootDirectoryPath,
+        kind: "folder",
+        displayName: segments.at(-1) || trimmedConfirmRootDirectoryPath
+      }
+    ]);
+    onClose();
+  }, [onClose, onConfirm, purpose, trimmedConfirmRootDirectoryPath, view]);
   const [createDirectoryDialog, setCreateDirectoryDialog] = useState<{
     errorMessage: string | null;
     name: string;
@@ -527,7 +597,8 @@ export function ReferenceSourcePicker({
     return null;
   }
 
-  const hasSelectedGroup = view.selectedGroupKey != null;
+  const hasSelectedGroup =
+    view.selectedGroupKey != null || atConfirmRootDirectory;
   const fitSidebar = () =>
     autoFitPanelWidth(
       layoutRef.current,
@@ -836,7 +907,7 @@ export function ReferenceSourcePicker({
                   copy={copy}
                   hierarchy={view.breadcrumb}
                   iconUrls={iconUrls}
-                  node={view.focusedNode}
+                  node={previewNode}
                   previewState={view.previewState}
                   sourceLabel={view.activeTabLabel}
                 />
@@ -853,9 +924,25 @@ export function ReferenceSourcePicker({
               : "referencePicker.confirm"
           )}
           countLabel={copy.t("referencePicker.selectedCount", {
-            count: view.selectionCount
+            count:
+              purpose === "directory" &&
+              view.selectionCount === 0 &&
+              canConfirmDirectory
+                ? 1
+                : view.selectionCount
           })}
-          disabled={view.selectionCount === 0}
+          selection={
+            view.selection.length > 0
+              ? view.selection
+              : confirmRootDirectoryNode
+                ? [confirmRootDirectoryNode]
+                : view.selection
+          }
+          disabled={
+            purpose === "directory"
+              ? !canConfirmDirectory
+              : view.selectionCount === 0
+          }
           errorMessage={
             view.confirmError
               ? (fileManagerCopy?.t("unknownErrorMessage") ??
@@ -863,9 +950,8 @@ export function ReferenceSourcePicker({
               : null
           }
           loading={view.isConfirming}
-          selection={view.selection}
           onClose={requestClose}
-          onConfirm={() => void view.confirm()}
+          onConfirm={handleConfirm}
         />
       </Card>
     </div>

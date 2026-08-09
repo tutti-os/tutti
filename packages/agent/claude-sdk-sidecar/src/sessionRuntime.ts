@@ -44,6 +44,7 @@ import { claudeSettingsEnv } from "./settingsEnv.ts";
 import { CompactionTracker } from "./compaction.ts";
 import { MessageProjection } from "./messageProjection.ts";
 import { SDKMessageRouter } from "./messageRouter.ts";
+import { claudeGoalTranscriptPath } from "./goalTranscript.ts";
 import { emit } from "./eventSink.ts";
 import {
   resolveClaudeTurnBindingByRecoveryToken,
@@ -288,7 +289,17 @@ export class SessionRuntime {
       peekGuidanceInterrupt: () => this.pendingGuidanceInterrupt,
       clearGuidanceInterrupt: () => {
         this.pendingGuidanceInterrupt = false;
-      }
+      },
+      resolveGoalTranscriptPath: (sessionId, providerCwd) =>
+        claudeGoalTranscriptPath({
+          sessionId,
+          cwd: providerCwd.trim() || this.cwd || process.cwd(),
+          env: {
+            ...process.env,
+            ...claudeSettingsEnv(this.cwd || process.cwd()),
+            ...this.env
+          }
+        })
     });
     this.claudeOptions = claudeOptions;
     this.queryFactory = queryFactory;
@@ -306,13 +317,13 @@ export class SessionRuntime {
       initialized: this.initialized,
       queryClosed: this.sessionClosed
     });
+    if (this.restore) {
+      await this.router.observeRootSession(this.providerSessionId, this.cwd);
+    }
     await this.ensureQuery({ initialize: true });
     await this.runConfigurationTask(() =>
       this.configuration.applyPendingFlags()
     );
-    if (this.restore) {
-      await this.compaction.emitContextUsageSnapshot("");
-    }
     emit({
       type: "session_started",
       payload: {
@@ -321,6 +332,13 @@ export class SessionRuntime {
         resumeCursor: this.currentResumeCursor()
       }
     });
+    // Restore must not await getContextUsage before session_started: the SDK
+    // call can hang for minutes with no timeout, and Host Resume/Send blocks
+    // on this start handshake. Refresh usage in the background like turn
+    // completion already does.
+    if (this.restore) {
+      void this.compaction.emitContextUsageSnapshot("");
+    }
     const generation = this.queryGeneration;
     if (generation && this.isQueryGenerationActive(generation)) {
       // The SDK publishes its per-user resolved model in system/init before it
@@ -451,6 +469,9 @@ export class SessionRuntime {
         generation.expectPromptEcho(turn.promptUuid);
         this.turns.expectProviderTurnIdentity(turn.turnId);
         this.providerTurnAcceptance.markDispatched(turn.turnId);
+        if (goal) {
+          this.router.trackGoalCommand(goal.action, prompt);
+        }
         generation.promptQueue.push({
           uuid: turn.promptUuid,
           type: "user",
@@ -625,6 +646,7 @@ export class SessionRuntime {
     this.providerTurnAcceptance.cancel();
     this.interactions.rejectAll(new Error("Tool use aborted"));
     this.activities.close();
+    await this.router.close();
     this.turns.close();
     const generation = this.queryGeneration;
     this.queryGeneration = undefined;
@@ -720,7 +742,8 @@ export class SessionRuntime {
             break;
           }
           const message = next.value;
-          if (!generation.shouldRouteMessage(message)) {
+          const shouldRoute = generation.shouldRouteMessage(message);
+          if (!shouldRoute) {
             continue;
           }
           await this.router.handle(message);
@@ -829,6 +852,7 @@ export class SessionRuntime {
         ? { pathToClaudeCodeExecutable: claudeExecutablePath }
         : {}),
       includePartialMessages: true,
+      includeHookEvents: true,
       canUseTool: (toolName, toolInput, callbackOptions) =>
         this.handleToolPermission(
           generation,
@@ -851,6 +875,10 @@ export class SessionRuntime {
       hooks: queryGenerationHooks({
         generation,
         isActive: () => this.isQueryGenerationActive(generation),
+        onSessionStart: async (input) => {
+          await this.router.observeSessionStartHook(input);
+          return { continue: true };
+        },
         onPostToolUse: (input, toolUseID) =>
           this.activities.handlePostToolUseHook(input, toolUseID),
         onTaskLifecycle: (input) =>

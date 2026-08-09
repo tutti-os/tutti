@@ -39,7 +39,7 @@ func (s Service) probeCommandWithReadyAfter(
 
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
-	cmd := exec.CommandContext(probeCtx, command[0], command[1:]...)
+	cmd := newInstallExecCommand(probeCtx, command[0], command[1:]...)
 	cmd.Env = env
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
@@ -635,8 +635,8 @@ func expandHomePath(path string, home string) string {
 	if path == "~" {
 		return home
 	}
-	if strings.HasPrefix(path, "~/") {
-		return filepath.Join(home, strings.TrimPrefix(path, "~/"))
+	if strings.HasPrefix(path, "~/") || strings.HasPrefix(path, `~\`) {
+		return filepath.Join(home, path[2:])
 	}
 	return path
 }
@@ -671,5 +671,5 @@ func loginCommandForRuntime(spec ProviderSpec, runtime providerRuntimeResolution
 		return ""
 	}
 	parts := append([]string{command}, spec.LoginArgs...)
-	return joinShellCommand(parts)
+	return joinLoginShellCommand(parts)
 }

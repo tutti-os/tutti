@@ -163,6 +163,7 @@ interface AgentActivityRuntimeActivateSessionInputBase {
   initialContent?: AgentActivitySendInput["content"];
   /** 仅展示用首轮文本(bundle 折叠成一个 chip);initialContent 仍带展开后的文件。 */
   initialDisplayPrompt?: string | null;
+  isolation?: AgentActivityCreateSessionInput["isolation"];
   railPlacement?: AgentActivityRailPlacement;
   submitDiagnostics?: AgentActivitySendInput["submitDiagnostics"];
   settings?: AgentActivitySessionSettings;
@@ -314,6 +315,18 @@ export interface AgentGUIRuntime {
    * means the canonical local origin.
    */
   origin?: string;
+  /**
+   * Enables the Codex-aligned in-memory conversation Activity View. Missing or
+   * false fails closed so external hosts opt in explicitly.
+   */
+  conversationActivityViewEnabled?: boolean;
+  /**
+   * Host query limits for the Conversation Rail. Omit when the backend accepts
+   * AgentGUI's default limits.
+   */
+  conversationRailQueryLimits?: {
+    sectionRefreshLimitMax: number;
+  };
   /**
    * The session cwd is not resolvable on the local filesystem (e.g. a
    * shared/cloud sandbox not mounted locally), so AgentGUI must not run its

@@ -1,7 +1,6 @@
 import {
-  isPendingActivationViable,
+  selectFailedNewActivationResolution,
   selectEngineSessionReconcile,
-  selectLatestActivationForSession,
   selectWorkspaceAgentConsumerSession,
   type AgentSessionEngine
 } from "@tutti-os/agent-activity-core";
@@ -135,13 +134,14 @@ export function useAgentGUIConversationRouting(
     }
 
     if (intent.tag !== "home") {
-      const activation = selectLatestActivationForSession(
-        sessionEngine.getSnapshot(),
-        intent.id
-      );
       if (
-        activation?.mode === "new" &&
-        !isPendingActivationViable(activation)
+        selectFailedNewActivationResolution(
+          sessionEngine.getSnapshot(),
+          intent.id,
+          intent.tag === "active"
+            ? { selectionSource: intent.source }
+            : undefined
+        ) === "rollback"
       ) {
         // Terminal activation settlement clears the optimistic selection in an
         // earlier effect. Do not let this effect's stale active/requested intent

@@ -457,6 +457,7 @@ function capabilityOptionsFromValue(
     }
     seen.add(id);
     const description = normalizeText(record.description);
+    const iconUrl = normalizeText(record.iconUrl);
     const source = normalizeText(record.source);
     const pluginName = normalizeText(record.pluginName);
     const serverName = normalizeText(record.serverName);
@@ -471,6 +472,7 @@ function capabilityOptionsFromValue(
       status,
       invocation,
       ...(description ? { description } : {}),
+      ...(iconUrl ? { iconUrl } : {}),
       ...(source ? { source } : {}),
       ...(pluginName ? { pluginName } : {}),
       ...(serverName ? { serverName } : {}),

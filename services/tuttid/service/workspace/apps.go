@@ -35,6 +35,8 @@ type AppCenterService struct {
 	ArtifactFetcher        AppArtifactFetcher
 	RemoteCatalogRefresher func(context.Context, string, builtinapps.CatalogHost) (builtinapps.CatalogSnapshot, error)
 
+	runnerMu sync.Mutex
+
 	mu                sync.Mutex
 	stateRevisions    map[string]int64
 	appProjectionKeys map[string]workspaceAppProjectionKey
@@ -42,6 +44,9 @@ type AppCenterService struct {
 	installMu             sync.Mutex
 	installJobs           map[string]workspaceAppInstallJob
 	activeInstallTrackers map[string]*installProgressTracker
+	installProgressSent   map[string]uint64
+	installGeneration     uint64
+	installPublishLocks   keyedOperationLocks
 
 	remoteBuiltinInstallLocks keyedOperationLocks
 
@@ -61,12 +66,17 @@ const (
 )
 
 type workspaceAppInstallJob struct {
-	WorkspaceID    string
-	AppID          string
-	Status         workspaceAppInstallJobStatus
-	FailureReason  string
-	RestartRunning bool
-	Progress       *workspacebiz.AppInstallProgress
+	Generation                     uint64
+	WorkspaceID                    string
+	AppID                          string
+	Status                         workspaceAppInstallJobStatus
+	FailureReason                  string
+	FailurePhase                   workspacebiz.AppFailurePhase
+	CurrentPhase                   workspacebiz.AppInstallUserPhase
+	RestartRunning                 bool
+	Progress                       *workspacebiz.AppInstallProgress
+	BaselineRuntimeStatus          workspacebiz.AppRuntimeStatus
+	BaselineRuntimeUpdatedAtUnixMs *int64
 }
 
 type WorkspaceRootResolver interface {
@@ -269,12 +279,17 @@ func (s *AppCenterService) runInstallJob(workspaceID string, appID string, runti
 	startedAt := time.Now()
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	options := s.installJobOptions(workspaceID, appID)
+	job, ok := s.installJob(workspaceID, appID)
+	if !ok || job.Status != workspaceAppInstallJobInstalling {
+		return
+	}
+	generation := job.Generation
+	options := InstallOptions{RestartRunning: job.RestartRunning}
 	plan := s.buildInstallProgressPlan(ctx, appID)
-	tracker := s.newInstallProgressTracker(workspaceID, appID, plan)
+	tracker := s.newInstallProgressTracker(workspaceID, appID, generation, plan)
 	s.registerActiveInstallTracker(workspaceID, appID, tracker)
 	defer func() {
-		s.unregisterActiveInstallTracker(workspaceID, appID)
+		s.unregisterActiveInstallTracker(workspaceID, appID, tracker)
 		tracker.clear()
 	}()
 
@@ -323,31 +338,51 @@ func (s *AppCenterService) runInstallJob(workspaceID string, appID string, runti
 		if result.err != nil {
 			cancel()
 			wg.Wait()
-			s.handleInstallJobFailure(context.Background(), workspaceID, appID, appPackage, result.err, startedAt)
+			s.handleInstallJobFailure(context.Background(), workspaceID, appID, generation, appPackage, result.err, startedAt)
 			return
 		}
 	}
 	wg.Wait()
 	if err := ctx.Err(); err != nil {
-		s.handleInstallJobFailure(ctx, workspaceID, appID, appPackage, err, startedAt)
+		s.handleInstallJobFailure(ctx, workspaceID, appID, generation, appPackage, err, startedAt)
 		return
 	}
 
 	tracker.beginInstalling()
 	if _, err := s.installPackage(ctx, workspaceID, appPackage, options); err != nil {
-		s.handleInstallJobFailure(ctx, workspaceID, appID, appPackage, err, startedAt)
+		s.handleInstallJobFailure(ctx, workspaceID, appID, generation, appPackage, err, startedAt)
 		return
 	}
 	tracker.finishInstalling()
 	tracker.finishStarting()
 
-	s.finishInstallJob(workspaceID, appID)
+	s.completeInstallJob(workspaceID, appID, generation)
 	slog.Info("workspace_app_install_job_succeeded", "workspaceId", workspaceID, "appId", appID, "packageSource", appPackage.Source, "version", appPackage.Version, "packageDir", appPackage.PackageDir, "durationMs", time.Since(startedAt).Milliseconds())
 }
 
-func (s *AppCenterService) handleInstallJobFailure(ctx context.Context, workspaceID string, appID string, appPackage workspacebiz.AppPackage, err error, startedAt time.Time) {
+func (s *AppCenterService) completeInstallJob(workspaceID string, appID string, generation uint64) bool {
+	unlock := s.installPublishLocks.Lock(appRuntimeKey(workspaceID, appID))
+	defer unlock()
+	job, ok := s.installJob(workspaceID, appID)
+	if !ok || job.Generation != generation || job.Status != workspaceAppInstallJobInstalling {
+		return false
+	}
+	s.clearInstallProgressLocked(workspaceID, appID, generation)
+	return s.finishInstallJob(workspaceID, appID, generation)
+}
+
+func (s *AppCenterService) handleInstallJobFailure(ctx context.Context, workspaceID string, appID string, generation uint64, appPackage workspacebiz.AppPackage, err error, startedAt time.Time) {
+	unlock := s.installPublishLocks.Lock(appRuntimeKey(workspaceID, appID))
+	defer unlock()
+
 	slog.Warn("workspace_app_install_job_failed", "workspaceId", workspaceID, "appId", appID, "packageSource", appPackage.Source, "version", appPackage.Version, "packageDir", appPackage.PackageDir, "failureReason", err.Error(), "durationMs", time.Since(startedAt).Milliseconds(), "error", err)
-	s.failInstallJob(workspaceID, appID, err)
+	if !s.failInstallJob(workspaceID, appID, generation, err) {
+		return
+	}
+	// Stop accepting tracker callbacks and remove any transient progress before
+	// publishing the failure terminal. The deferred tracker cleanup must never
+	// be able to publish a newer idle/running projection over this failure.
+	s.clearInstallProgressLocked(workspaceID, appID, generation)
 	if failedApp, projectionErr := s.failedInstallAppProjection(ctx, workspaceID, appID, err); projectionErr == nil {
 		_ = s.publishAppIfChanged(ctx, workspaceID, appID, failedApp)
 	} else {
@@ -486,6 +521,8 @@ func (s *AppCenterService) workspaceSummary(ctx context.Context, workspaceID str
 }
 
 func (s *AppCenterService) runner() *AppRunner {
+	s.runnerMu.Lock()
+	defer s.runnerMu.Unlock()
 	if s.Runner == nil {
 		s.Runner = &AppRunner{}
 	}
@@ -556,9 +593,19 @@ func (s *AppCenterService) withChangedRevision(app workspacebiz.WorkspaceApp, wo
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.ensureRevisionStateLocked()
-	if previous, ok := s.appProjectionKeys[key]; ok && previous == projection {
-		app.StateRevision = s.stateRevisions[key]
-		return app, false
+	if previous, ok := s.appProjectionKeys[key]; ok {
+		staleInstallProgress := projection.hasInstallProgress &&
+			previous.hasUpdatedAt &&
+			(!projection.hasUpdatedAt || projection.updatedAtUnixMs < previous.updatedAtUnixMs) &&
+			(previous.status == workspacebiz.AppRuntimeStatusFailed ||
+				previous.status == workspacebiz.AppRuntimeStatusStopping ||
+				previous.status == workspacebiz.AppRuntimeStatusRunning ||
+				previous.status == workspacebiz.AppRuntimeStatusInstalledPendingRestart)
+		if previous == projection ||
+			staleInstallProgress {
+			app.StateRevision = s.stateRevisions[key]
+			return app, false
+		}
 	}
 	s.stateRevisions[key] += 1
 	s.appProjectionKeys[key] = projection

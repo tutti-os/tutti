@@ -297,6 +297,7 @@ function dispatchTurn(
   turnId = "turn-1"
 ): void {
   engine.dispatch({
+    live: true,
     turn: canonicalTurn(phase, outcome, turnId),
     type: "turn/upserted"
   });

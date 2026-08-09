@@ -1,7 +1,8 @@
-import { execFileSync } from "node:child_process";
+import { execFile, execFileSync, spawn } from "node:child_process";
 import { readFile, readdir } from "node:fs/promises";
 import { join, relative, sep } from "node:path";
 import { pathToFileURL } from "node:url";
+import { promisify } from "node:util";
 
 import {
   getNpmReleasePackages,
@@ -12,6 +13,10 @@ import {
   parseStablePackageReleaseVersion
 } from "./package-release-version.mjs";
 import { preparePackageGoModuleReleaseTree } from "./go-module-release.mjs";
+
+const execFileAsync = promisify(execFile);
+const defaultPackagePublishConcurrency = 4;
+const maximumPackagePublishConcurrency = 8;
 
 if (isExecutedAsEntryPoint()) {
   await main();
@@ -27,6 +32,9 @@ async function main() {
       process.env.TUTTI_NPM_PROVENANCE
     )
   });
+  const publishConcurrency = resolvePackagePublishConcurrency(
+    process.env.TUTTI_NPM_PUBLISH_CONCURRENCY
+  );
 
   if (expectedVersion && releaseVersion !== expectedVersion) {
     throw new Error(
@@ -52,22 +60,19 @@ async function main() {
     ...rewrittenGoModules
   ]);
 
-  for (const packageConfig of packages) {
-    if (isPackageVersionPublished(packageConfig.name, releaseVersion)) {
-      console.log(
-        `Skipping ${packageConfig.name}@${releaseVersion}; version is already published`
-      );
-      continue;
-    }
-
-    console.log(
-      `Publishing ${packageConfig.name}@${releaseVersion} with latest tag`
-    );
-    execFileSync("pnpm", publishArguments, {
-      cwd: join(workspaceRoot, packageConfig.directory),
-      stdio: "inherit"
-    });
-  }
+  console.log(
+    `Publishing ${packages.length} packages with concurrency ${publishConcurrency}`
+  );
+  await publishPackageGroup({
+    concurrency: publishConcurrency,
+    isPublished: isPackageVersionPublished,
+    packages,
+    publish: (packageConfig) =>
+      runCommand("pnpm", publishArguments, {
+        cwd: join(workspaceRoot, packageConfig.directory)
+      }),
+    releaseVersion
+  });
 
   for (const tagName of releaseTagNames) {
     execFileSync("git", ["tag", tagName], {
@@ -80,6 +85,132 @@ async function main() {
     env: createReleaseGitEnvironment(),
     stdio: "inherit"
   });
+}
+
+// npm provenance can fail after creating a transparency-log entry but before
+// the registry accepts the package. Re-checking the immutable version before
+// a bounded retry makes workflow re-runs and this individual publish step
+// idempotent without disabling provenance.
+export async function publishPackageWithRetry({
+  packageName,
+  version,
+  publish,
+  isPublished,
+  maxAttempts = 3,
+  wait = defaultPublishRetryWait
+}) {
+  let lastError;
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    try {
+      await publish();
+      return;
+    } catch (error) {
+      lastError = error;
+      if (await isPublished()) {
+        console.log(
+          `${packageName}@${version} became visible after publish returned an error; continuing`
+        );
+        return;
+      }
+      if (attempt < maxAttempts) {
+        console.warn(
+          `Publish attempt ${attempt}/${maxAttempts} failed for ${packageName}@${version}; retrying`
+        );
+        await wait(attempt);
+      }
+    }
+  }
+  throw lastError;
+}
+
+export async function publishPackageGroup({
+  concurrency,
+  isPublished,
+  packages,
+  publish,
+  releaseVersion
+}) {
+  await runWithConcurrency(packages, concurrency, async (packageConfig) => {
+    if (await isPublished(packageConfig.name, releaseVersion)) {
+      console.log(
+        `Skipping ${packageConfig.name}@${releaseVersion}; version is already published`
+      );
+      return;
+    }
+
+    await publishPackageWithRetry({
+      packageName: packageConfig.name,
+      version: releaseVersion,
+      publish: async () => {
+        console.log(
+          `Publishing ${packageConfig.name}@${releaseVersion} with latest tag`
+        );
+        await publish(packageConfig);
+      },
+      isPublished: () => isPublished(packageConfig.name, releaseVersion)
+    });
+  });
+}
+
+export async function runWithConcurrency(items, concurrency, task) {
+  if (!Number.isInteger(concurrency) || concurrency < 1) {
+    throw new Error("Concurrency must be a positive integer");
+  }
+
+  let nextIndex = 0;
+  let failed = false;
+  let firstError;
+  const workerCount = Math.min(concurrency, items.length);
+  const workers = Array.from({ length: workerCount }, async () => {
+    while (!failed) {
+      const index = nextIndex;
+      nextIndex += 1;
+
+      if (index >= items.length) {
+        return;
+      }
+
+      try {
+        await task(items[index], index);
+      } catch (error) {
+        if (!failed) {
+          failed = true;
+          firstError = error;
+        }
+      }
+    }
+  });
+
+  await Promise.all(workers);
+
+  if (failed) {
+    throw firstError;
+  }
+}
+
+export function resolvePackagePublishConcurrency(value) {
+  if (value === undefined) {
+    return defaultPackagePublishConcurrency;
+  }
+
+  if (!/^\d+$/u.test(value)) {
+    throw new Error(
+      `TUTTI_NPM_PUBLISH_CONCURRENCY must be an integer from 1 to ${maximumPackagePublishConcurrency}`
+    );
+  }
+
+  const concurrency = Number(value);
+  if (concurrency < 1 || concurrency > maximumPackagePublishConcurrency) {
+    throw new Error(
+      `TUTTI_NPM_PUBLISH_CONCURRENCY must be an integer from 1 to ${maximumPackagePublishConcurrency}`
+    );
+  }
+
+  return concurrency;
+}
+
+function defaultPublishRetryWait(attempt) {
+  return new Promise((resolve) => setTimeout(resolve, attempt * 2_000));
 }
 
 export function createReleaseCommit(releaseVersion, releasePaths) {
@@ -188,6 +319,10 @@ export function createPublishArguments({ withProvenance }) {
   return arguments_;
 }
 
+export function createPublishedVersionViewArguments(packageName, version) {
+  return ["view", `${packageName}@${version}`, "version", "--json"];
+}
+
 export function createReleaseGitEnvironment() {
   return {
     ...process.env,
@@ -290,19 +425,18 @@ function toPosixPath(path) {
   return path.split(sep).join("/");
 }
 
-function isPackageVersionPublished(packageName, version) {
+async function isPackageVersionPublished(packageName, version) {
   try {
-    const output = execFileSync(
+    const { stdout } = await execFileAsync(
       "npm",
-      ["view", packageName, "versions", "--json"],
+      createPublishedVersionViewArguments(packageName, version),
       {
         cwd: workspaceRoot,
-        encoding: "utf8",
-        stdio: ["ignore", "pipe", "pipe"]
+        encoding: "utf8"
       }
     );
 
-    return isPublishedVersionListed(JSON.parse(output), version);
+    return isPublishedVersionListed(JSON.parse(stdout), version);
   } catch (error) {
     const stderr =
       error instanceof Error &&
@@ -321,4 +455,49 @@ function isPackageVersionPublished(packageName, version) {
 
     throw error;
   }
+}
+
+function runCommand(command, args, { cwd }) {
+  return new Promise((resolve, reject) => {
+    const outputChunks = [];
+    let outputFlushed = false;
+    const child = spawn(command, args, {
+      cwd,
+      stdio: ["ignore", "pipe", "pipe"]
+    });
+
+    child.stdout.on("data", (chunk) => {
+      outputChunks.push([process.stdout, chunk]);
+    });
+    child.stderr.on("data", (chunk) => {
+      outputChunks.push([process.stderr, chunk]);
+    });
+
+    const flushOutput = () => {
+      if (outputFlushed) {
+        return;
+      }
+      outputFlushed = true;
+      for (const [stream, chunk] of outputChunks) {
+        stream.write(chunk);
+      }
+    };
+
+    child.once("error", (error) => {
+      flushOutput();
+      reject(error);
+    });
+    child.once("close", (code, signal) => {
+      flushOutput();
+      if (code === 0) {
+        resolve();
+        return;
+      }
+
+      const termination = signal ? `signal ${signal}` : `exit code ${code}`;
+      reject(
+        new Error(`${command} ${args.join(" ")} failed with ${termination}`)
+      );
+    });
+  });
 }

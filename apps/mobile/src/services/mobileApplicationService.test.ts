@@ -6,8 +6,10 @@ import { InstantiationService } from "@tutti-os/infra/di";
 import type { AccountSession } from "./mobileDomain";
 import { MobileApplicationService } from "./mobileApplicationService";
 import type {
+  AgentLiveDelivery,
   AppLifecycleState,
   ClockPort,
+  MobileDiagnosticEvent,
   MobileServicePorts
 } from "./servicePorts";
 
@@ -128,10 +130,140 @@ describe("MobileApplicationService scopes", () => {
     expect(harness.closeCalls).toBe(0);
     expect(harness.connectCalls).toBe(1);
 
+    harness.emitAgentLiveConnection("disconnected");
+
     harness.clock.advanceBy(1);
     await flushPromises();
     expect(harness.closeCalls).toBe(1);
     expect(harness.connectCalls).toBe(2);
+  });
+
+  test("stops retrying and reports incompatible Agent live revisions", async () => {
+    const harness = createHarness(session, [workspace]);
+    const service = new MobileApplicationService(
+      new InstantiationService(),
+      harness.ports
+    );
+    await service.start();
+    await service.deviceService!.connect(pairing);
+
+    harness.emitAgentLiveConnection("disconnected", {
+      expectedRevision: "sha256:new",
+      reason: "protocol_revision_mismatch",
+      receivedRevision: "sha256:old",
+      retryable: false
+    });
+
+    expect(service.getSnapshot()).toMatchObject({
+      connection: {
+        expectedRevision: "sha256:new",
+        phase: "failed",
+        reasonCode: "protocol_revision_mismatch",
+        receivedRevision: "sha256:old",
+        trigger: "initial_connect"
+      },
+      workspace: { id: workspace.id }
+    });
+    expect(harness.subscribeCalls).toBe(1);
+    expect(harness.diagnosticEvents).toContainEqual({
+      expectedRevision: "sha256:new",
+      name: "device_connection.phase_changed",
+      phase: "failed",
+      reasonCode: "protocol_revision_mismatch",
+      receivedRevision: "sha256:old",
+      trigger: "initial_connect"
+    });
+
+    harness.clock.advanceBy(30_000);
+    await flushPromises();
+    expect(harness.subscribeCalls).toBe(1);
+    expect(harness.closeCalls).toBe(0);
+    expect(harness.connectCalls).toBe(1);
+
+    harness.emitLifecycle("background");
+    harness.clock.advanceBy(15_000);
+    harness.emitLifecycle("foreground");
+    await flushPromises();
+    expect(service.getSnapshot()).toMatchObject({
+      connection: {
+        phase: "failed",
+        reasonCode: "protocol_revision_mismatch"
+      }
+    });
+    expect(harness.closeCalls).toBe(0);
+    expect(harness.connectCalls).toBe(1);
+  });
+
+  test("preserves a synchronous protocol rejection during workspace startup", async () => {
+    const harness = createHarness(session, [workspace], {
+      agentLiveDeliveriesOnSubscribe: [
+        {
+          expectedRevision: "sha256:new",
+          kind: "connection",
+          reason: "protocol_revision_mismatch",
+          receivedRevision: "sha256:old",
+          retryable: false,
+          status: "disconnected"
+        }
+      ]
+    });
+    const service = new MobileApplicationService(
+      new InstantiationService(),
+      harness.ports
+    );
+    await service.start();
+    await service.deviceService!.connect(pairing);
+
+    expect(service.getSnapshot()).toMatchObject({
+      connection: {
+        expectedRevision: "sha256:new",
+        phase: "failed",
+        reasonCode: "protocol_revision_mismatch",
+        receivedRevision: "sha256:old",
+        trigger: "initial_connect"
+      },
+      workspace: { id: workspace.id }
+    });
+    expect(harness.subscribeCalls).toBe(1);
+    expect(harness.subscriptionCloseCalls).toBe(1);
+
+    harness.clock.advanceBy(30_000);
+    expect(harness.subscribeCalls).toBe(1);
+  });
+
+  test("retries after a synchronous retryable stream close", async () => {
+    const harness = createHarness(session, [workspace], {
+      agentLiveDeliveriesOnSubscribe: [
+        {
+          kind: "connection",
+          reason: "stream_closed",
+          retryable: true,
+          status: "disconnected"
+        },
+        { kind: "connection", status: "connected" }
+      ]
+    });
+    const service = new MobileApplicationService(
+      new InstantiationService(),
+      harness.ports
+    );
+    await service.start();
+    await service.deviceService!.connect(pairing);
+
+    expect(service.getSnapshot()).toMatchObject({
+      connection: { phase: "synchronizing", trigger: "initial_connect" }
+    });
+    expect(harness.subscribeCalls).toBe(1);
+    expect(harness.subscriptionCloseCalls).toBe(1);
+
+    harness.clock.advanceBy(999);
+    expect(harness.subscribeCalls).toBe(1);
+    harness.clock.advanceBy(1);
+
+    expect(harness.subscribeCalls).toBe(2);
+    expect(service.getSnapshot()).toMatchObject({
+      connection: { phase: "connected" }
+    });
   });
 
   test("keeps the workspace available after recovery fails and retries explicitly", async () => {
@@ -296,13 +428,24 @@ function createHarness(
   storedSession: AccountSession | null | Promise<AccountSession | null>,
   workspaces: readonly WorkspaceSummary[] = [],
   overrides: {
+    agentLiveDeliveriesOnSubscribe?: readonly AgentLiveDelivery[];
     closeLink?(): Promise<void>;
   } = {}
 ): {
   clock: ManualClock;
   closeCalls: number;
   connectCalls: number;
-  emitAgentLiveConnection(status: "connected" | "disconnected"): void;
+  diagnosticEvents: MobileDiagnosticEvent[];
+  emitAgentLiveConnection(
+    status: "connected" | "disconnected",
+    failure?: Pick<
+      Extract<
+        AgentLiveDelivery,
+        { kind: "connection"; status: "disconnected" }
+      >,
+      "expectedRevision" | "reason" | "receivedRevision" | "retryable"
+    >
+  ): void;
   emitLifecycle(state: AppLifecycleState): void;
   failNextConnection(): void;
   failNextLatencyProbe(): void;
@@ -310,6 +453,8 @@ function createHarness(
   ports: MobileServicePorts;
   registerCalls: number;
   requestCalls: number;
+  subscribeCalls: number;
+  subscriptionCloseCalls: number;
 } {
   const clock = new ManualClock();
   let lifecycleListener: ((state: AppLifecycleState) => void) | null = null;
@@ -318,12 +463,40 @@ function createHarness(
     | null = null;
   let failNextConnection = false;
   let failNextLatencyProbe = false;
+  const agentLiveDeliveriesOnSubscribe = [
+    ...(overrides.agentLiveDeliveriesOnSubscribe ?? [])
+  ];
   const harness = {
     clock,
     closeCalls: 0,
     connectCalls: 0,
-    emitAgentLiveConnection(status: "connected" | "disconnected") {
-      liveListener?.({ kind: "connection", status });
+    diagnosticEvents: [] as MobileDiagnosticEvent[],
+    emitAgentLiveConnection(
+      status: "connected" | "disconnected",
+      failure?: Pick<
+        Extract<
+          AgentLiveDelivery,
+          { kind: "connection"; status: "disconnected" }
+        >,
+        "expectedRevision" | "reason" | "receivedRevision" | "retryable"
+      >
+    ) {
+      if (status === "connected") {
+        liveListener?.({ kind: "connection", status });
+        return;
+      }
+      liveListener?.({
+        kind: "connection",
+        reason: failure?.reason ?? "stream_closed",
+        retryable: failure?.retryable ?? true,
+        status,
+        ...(failure?.expectedRevision
+          ? { expectedRevision: failure.expectedRevision }
+          : {}),
+        ...(failure?.receivedRevision
+          ? { receivedRevision: failure.receivedRevision }
+          : {})
+      });
     },
     legacyCookieClearCalls: 0,
     registerCalls: 0,
@@ -337,7 +510,9 @@ function createHarness(
       failNextLatencyProbe = true;
     },
     ports: null as unknown as MobileServicePorts,
-    requestCalls: 0
+    requestCalls: 0,
+    subscribeCalls: 0,
+    subscriptionCloseCalls: 0
   };
   harness.ports = {
     account: {
@@ -386,16 +561,20 @@ function createHarness(
         };
       },
       subscribeAgentLive: (_workspaceId, listener) => {
+        harness.subscribeCalls += 1;
         liveListener = listener;
+        const delivery = agentLiveDeliveriesOnSubscribe.shift();
+        if (delivery) listener(delivery);
         return {
           close() {
+            harness.subscriptionCloseCalls += 1;
             if (liveListener === listener) liveListener = null;
           }
         };
       }
     },
     diagnostics: {
-      record: () => undefined
+      record: (event) => harness.diagnosticEvents.push(event)
     },
     legacySessionCookie: {
       clear: async () => {
@@ -431,7 +610,7 @@ function createHarness(
     qrCodeScanner: {
       start: () => ({
         cancel: async () => undefined,
-        result: Promise.resolve("")
+        result: Promise.resolve({ kind: "scanned", value: "" })
       })
     },
     sessionStorage: {

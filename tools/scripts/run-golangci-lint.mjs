@@ -2,6 +2,10 @@ import { spawnSync } from "node:child_process";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { resolveGolangciLintBinary } from "./golangci-lint-tool.mjs";
+import {
+  discoverGoModuleRoots,
+  selectGoLintModuleRoots
+} from "./run-check-changed-targets.mjs";
 
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const workspaceRoot = join(scriptDirectory, "..", "..");
@@ -11,18 +15,9 @@ const sharedConfigPath = join(
   "tuttid",
   ".golangci.yml"
 );
-const goModuleRoots = [
-  join(workspaceRoot, "packages", "agent", "activity-replication"),
-  join(workspaceRoot, "packages", "agent", "host"),
-  join(workspaceRoot, "packages", "agent", "store-sqlite", "canonical"),
-  join(workspaceRoot, "packages", "agent", "runtimeprep"),
-  join(workspaceRoot, "packages", "appcli", "core"),
-  join(workspaceRoot, "packages", "clients", "device-authority-go"),
-  join(workspaceRoot, "packages", "device-link"),
-  join(workspaceRoot, "packages", "workbench", "service"),
-  join(workspaceRoot, "packages", "workspace", "files"),
-  join(workspaceRoot, "services", "tuttid")
-];
+const goModuleRoots = selectGoLintModuleRoots(
+  discoverGoModuleRoots({ root: workspaceRoot })
+).map((moduleRoot) => join(workspaceRoot, moduleRoot));
 const args = [
   "run",
   "--config",

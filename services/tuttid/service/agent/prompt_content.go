@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"github.com/google/uuid"
@@ -21,6 +22,8 @@ const (
 	maxPromptAttachmentSourceBytes int64 = 20 << 20
 	promptAttachmentSourceDirName        = "agent-prompt-assets"
 )
+
+var connectorPromptKeyPattern = regexp.MustCompile(`^[a-z][a-z0-9._-]{0,127}$`)
 
 type PromptAttachmentStore struct {
 	RootDir       string
@@ -175,6 +178,16 @@ func normalizePromptContent(content []PromptContentBlock) ([]PromptContentBlock,
 				Type: strings.TrimSpace(block.Type),
 				Name: name,
 				Path: path,
+			})
+		case "connector":
+			connectorKey := strings.TrimSpace(block.ConnectorKey)
+			if !connectorPromptKeyPattern.MatchString(connectorKey) {
+				return nil, "", ErrInvalidArgument
+			}
+			hasInput = true
+			normalized = append(normalized, PromptContentBlock{
+				Type:         "connector",
+				ConnectorKey: connectorKey,
 			})
 		default:
 			return nil, "", ErrInvalidArgument
@@ -405,6 +418,23 @@ func (s PromptAttachmentStore) LocalPath(workspaceID, agentSessionID, attachment
 	return path, nil
 }
 
+// DeleteSessionAttachments removes only Tutti-owned copies scoped to one
+// canonical Session. Original files referenced from the user's project are
+// never stored below this directory and are therefore never touched.
+func (s PromptAttachmentStore) DeleteSessionAttachments(workspaceID, agentSessionID string) error {
+	if strings.TrimSpace(workspaceID) == "" {
+		return ErrInvalidArgument
+	}
+	dir, err := s.sessionAttachmentDir(agentSessionID)
+	if err != nil {
+		return err
+	}
+	if err := os.RemoveAll(dir); err != nil {
+		return fmt.Errorf("delete agent prompt attachments: %w", err)
+	}
+	return nil
+}
+
 func (s PromptAttachmentStore) findAttachmentPath(workspaceID, agentSessionID, attachmentID string) (string, string, error) {
 	for _, candidate := range []struct {
 		mimeType string
@@ -439,7 +469,7 @@ func (s PromptAttachmentStore) attachmentPath(workspaceID, agentSessionID, attac
 	if ext == "" {
 		return "", ErrInvalidArgument
 	}
-	sessionSegment, err := sanitizePathSegment(agentSessionID)
+	sessionDir, err := s.sessionAttachmentDir(agentSessionID)
 	if err != nil {
 		return "", err
 	}
@@ -448,12 +478,30 @@ func (s PromptAttachmentStore) attachmentPath(workspaceID, agentSessionID, attac
 		return "", err
 	}
 	base := filepath.Join(root, "agent", "attachments")
-	path := filepath.Join(base, sessionSegment, attachmentSegment+ext)
+	path := filepath.Join(sessionDir, attachmentSegment+ext)
 	rel, err := filepath.Rel(base, path)
 	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
 		return "", ErrInvalidArgument
 	}
 	return path, nil
+}
+
+func (s PromptAttachmentStore) sessionAttachmentDir(agentSessionID string) (string, error) {
+	root := filepath.Clean(strings.TrimSpace(s.RootDir))
+	if root == "" || root == "." || root == string(filepath.Separator) {
+		return "", errors.New("agent prompt attachment root is not configured")
+	}
+	sessionSegment, err := sanitizePathSegment(agentSessionID)
+	if err != nil {
+		return "", err
+	}
+	base := filepath.Join(root, "agent", "attachments")
+	dir := filepath.Join(base, sessionSegment)
+	rel, err := filepath.Rel(base, dir)
+	if err != nil || rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return "", ErrInvalidArgument
+	}
+	return dir, nil
 }
 
 func promptImageExtension(mimeType string) string {

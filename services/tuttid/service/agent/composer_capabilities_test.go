@@ -97,3 +97,26 @@ func TestServiceClampExtensionComputerUseRequiresDeclaredCapability(t *testing.T
 		t.Fatal("unavailable computerUse runtime should clamp extension computerUse off")
 	}
 }
+
+func TestServiceClampBuiltinComputerUseRequiresHostAvailability(t *testing.T) {
+	t.Setenv("TUTTI_COMPUTER_USE", "1")
+	truePtr := true
+	service := newTestService(newFakeRuntime())
+	service.ComputerUseAvailable = func() bool { return false }
+	if service.clampComposerComputerUseForLaunch(context.Background(), "codex", nil, &truePtr) {
+		t.Fatal("unavailable built-in computerUse should clamp off")
+	}
+}
+
+func TestEffectiveCapabilitySettingPersistsOnlyClampedDefaults(t *testing.T) {
+	truePtr := true
+	if got := effectiveCapabilitySetting(nil, true); got != nil {
+		t.Fatalf("available nil default = %#v, want nil", got)
+	}
+	if got := effectiveCapabilitySetting(nil, false); got == nil || *got {
+		t.Fatalf("unavailable nil default = %#v, want explicit false", got)
+	}
+	if got := effectiveCapabilitySetting(&truePtr, false); got == nil || *got {
+		t.Fatalf("clamped explicit true = %#v, want explicit false", got)
+	}
+}

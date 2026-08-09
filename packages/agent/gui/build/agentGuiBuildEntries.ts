@@ -2,6 +2,8 @@ export const agentGUIBuildEntries = {
   index: "index.ts",
   "agent-gui": "AgentGUI.tsx",
   "startup-shell": "AgentGUIStartupShell.tsx",
+  "quick-composer": "AgentGUIQuickComposer.tsx",
+  "composer-settings-core/index": "composer-settings-core/index.ts",
   agents: "agents.ts",
   "custom-mention": "custom-mention.ts",
   "dock-icons": "dockIcons.ts",
@@ -22,6 +24,7 @@ export const agentGUIBuildEntries = {
     "agent-gui/agentGuiNode/agentContextMentionProvider.ts",
   "agent-title-text": "shared/utils/agentTitleText.ts",
   "activity-list-projection": "activity-list-projection.ts",
+  "conversation-activity-projection": "conversation-activity-projection.ts",
   "provider-identity": "provider-identity.ts",
   "provider-icons": "provider-icons.ts",
   "i18n/index": "i18n/index.ts",
@@ -47,11 +50,19 @@ export const agentGUIBuildEntries = {
 
 type AgentGUIBuildEntry = keyof typeof agentGUIBuildEntries;
 
+export const agentGUIDtsBuildEntries = Object.fromEntries(
+  Object.entries(agentGUIBuildEntries).map(([name, source]) => [
+    name,
+    `dist/.dts/${source.replace(/\.tsx?$/, ".d.ts")}`
+  ])
+) as Readonly<Record<AgentGUIBuildEntry, string>>;
+
 export const agentGUIDtsEntryGroups = [
   ["index"],
   [
     "agent-gui",
     "startup-shell",
+    "quick-composer",
     "agents",
     "mention-search",
     "agent-message-center/index",
@@ -72,13 +83,15 @@ export const agentGUIDtsEntryGroups = [
     "mention-file-presentation",
     "agent-title-text",
     "activity-list-projection",
+    "conversation-activity-projection",
     "workspace-agent-generated-files",
     "conversation-message-controller",
     "conversation-rail-controller",
     "conversation-rail-runtime",
     "conversation-rail-projection",
     "conversation-projection",
-    "composer-projection"
+    "composer-projection",
+    "composer-settings-core/index"
   ],
   [
     "dock-icons",

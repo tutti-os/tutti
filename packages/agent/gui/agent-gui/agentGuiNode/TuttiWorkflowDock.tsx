@@ -303,7 +303,12 @@ export function TuttiWorkflowDock({
                 </span>
               ))}
             </span>
-            <span className="inline-block w-[7ch] text-left text-[11px] tabular-nums">
+            {/*
+              Fixed-width value pair so dragging the sliders does not resize
+              the chip. Worst case is "100 · 100" (9ch), and whitespace-nowrap
+              guards against ch-unit rounding ever wrapping the pair.
+            */}
+            <span className="inline-block w-[9ch] whitespace-nowrap text-left text-[11px] tabular-nums">
               {reviewDisplayEffect ?? review.effect}
               {" · "}
               {reviewDisplaySpeed ?? review.speed}

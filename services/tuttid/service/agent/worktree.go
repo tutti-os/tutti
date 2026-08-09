@@ -13,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	agenttargetbiz "github.com/tutti-os/tutti/services/tuttid/biz/agenttarget"
 	tuttitypes "github.com/tutti-os/tutti/services/tuttid/types"
 )
 
@@ -33,6 +34,35 @@ var (
 type WorktreeIsolationError struct {
 	Kind   error
 	Detail string
+}
+
+type SessionWorktreeSupportErrorCode string
+
+const (
+	SessionWorktreeSupportGitUnavailable        SessionWorktreeSupportErrorCode = "git-unavailable"
+	SessionWorktreeSupportNotGitRepo            SessionWorktreeSupportErrorCode = "not-git-repo"
+	SessionWorktreeSupportTargetUnsupported     SessionWorktreeSupportErrorCode = "agent-target-unsupported"
+	SessionWorktreeSupportUnsupportedRepoLayout SessionWorktreeSupportErrorCode = "unsupported-repo-layout"
+)
+
+type SessionWorktreeSupport struct {
+	Supported bool
+	Root      string
+	ErrorCode SessionWorktreeSupportErrorCode
+}
+
+type sessionWorktreeSource struct {
+	Cwd          string
+	RepoRoot     string
+	GitCommonDir string
+	BaseCommit   string
+}
+
+type sessionWorktreeLaunch struct {
+	Isolation SessionIsolation
+	Cwd       string
+	Warnings  []SessionWarning
+	Created   bool
 }
 
 func (e *WorktreeIsolationError) Error() string {
@@ -60,6 +90,7 @@ type sessionWorktreeRecord struct {
 	SessionID   string `json:"sessionId"`
 	WorkspaceID string `json:"workspaceId"`
 	RepoRoot    string `json:"repoRoot"`
+	RelativeCwd string `json:"relativeCwd,omitempty"`
 	// GitCommonDir anchors GC git operations to the main repository's git
 	// directory, which stays valid even when RepoRoot was itself a linked
 	// worktree that has since been garbage-collected.
@@ -99,8 +130,69 @@ func (s *Service) createSessionWorktree(
 	workspaceID string,
 	cwd string,
 	sessionID string,
-) (SessionIsolation, []SessionWarning, error) {
+) (sessionWorktreeLaunch, error) {
 	return createSessionWorktree(ctx, s.worktreeStateDir(), workspaceID, cwd, sessionID)
+}
+
+func (s *Service) ResolveSessionWorktreeSupport(
+	ctx context.Context,
+	workspaceID string,
+	agentTargetID string,
+	cwd string,
+) (SessionWorktreeSupport, error) {
+	workspaceID = strings.TrimSpace(workspaceID)
+	agentTargetID = strings.TrimSpace(agentTargetID)
+	if workspaceID == "" || agentTargetID == "" || strings.TrimSpace(cwd) == "" {
+		return SessionWorktreeSupport{}, ErrInvalidArgument
+	}
+	if strings.HasPrefix(agentTargetID, "shared-agent:") {
+		return SessionWorktreeSupport{ErrorCode: SessionWorktreeSupportTargetUnsupported}, nil
+	}
+	input := CreateSessionInput{AgentTargetID: agentTargetID}
+	launch, err := s.resolveCreateSessionLaunch(ctx, workspaceID, &input)
+	if err != nil {
+		return SessionWorktreeSupport{}, err
+	}
+	if !sessionWorktreeTargetSupported(agentTargetID, launch.ProviderTargetRef) {
+		return SessionWorktreeSupport{ErrorCode: SessionWorktreeSupportTargetUnsupported}, nil
+	}
+	return s.ResolveSessionWorktreeSupportForPath(ctx, workspaceID, cwd)
+}
+
+func sessionWorktreeTargetSupported(agentTargetID string, providerTargetRef map[string]any) bool {
+	if strings.HasPrefix(strings.TrimSpace(agentTargetID), "shared-agent:") {
+		return false
+	}
+	switch providerTargetRefKind(providerTargetRef) {
+	case agenttargetbiz.LaunchRefTypeBuiltinLocal, agenttargetbiz.LaunchRefTypeAgentExtension:
+		return true
+	default:
+		return false
+	}
+}
+
+func (*Service) ResolveSessionWorktreeSupportForPath(
+	ctx context.Context,
+	workspaceID string,
+	cwd string,
+) (SessionWorktreeSupport, error) {
+	if strings.TrimSpace(workspaceID) == "" || strings.TrimSpace(cwd) == "" {
+		return SessionWorktreeSupport{}, ErrInvalidArgument
+	}
+	source, err := resolveSessionWorktreeSource(ctx, cwd)
+	if err == nil {
+		return SessionWorktreeSupport{Supported: true, Root: source.RepoRoot}, nil
+	}
+	support := SessionWorktreeSupport{Supported: false}
+	switch {
+	case errors.Is(err, ErrGitUnavailable):
+		support.ErrorCode = SessionWorktreeSupportGitUnavailable
+	case errors.Is(err, ErrNotAGitRepo):
+		support.ErrorCode = SessionWorktreeSupportNotGitRepo
+	default:
+		support.ErrorCode = SessionWorktreeSupportUnsupportedRepoLayout
+	}
+	return support, nil
 }
 
 func createSessionWorktree(
@@ -109,38 +201,192 @@ func createSessionWorktree(
 	workspaceID string,
 	cwd string,
 	sessionID string,
-) (SessionIsolation, []SessionWarning, error) {
+) (sessionWorktreeLaunch, error) {
+	source, err := resolveSessionWorktreeSource(ctx, cwd)
+	if err != nil {
+		return sessionWorktreeLaunch{}, err
+	}
+	repoRoot := source.RepoRoot
+	gitCommonDir := source.GitCommonDir
+	baseCommit := source.BaseCommit
+	relativeCwd, err := sessionWorktreeRelativeCwd(source)
+	if err != nil {
+		return sessionWorktreeLaunch{}, err
+	}
+
+	sessionID = strings.TrimSpace(sessionID)
+	if sessionID == "" || filepath.Base(sessionID) != sessionID || strings.ContainsAny(sessionID, `/\\`) {
+		return sessionWorktreeLaunch{}, &WorktreeIsolationError{Kind: ErrWorktreeCreateFailed, Detail: "agent session id is unsafe for a worktree path"}
+	}
+	worktreesRoot := filepath.Join(filepath.Clean(stateDir), "agent", "worktrees")
+	worktreePath := filepath.Join(worktreesRoot, sessionID)
+	branch := "tutti/" + sessionID
+	if reused, found, reuseErr := reuseSessionWorktree(
+		ctx,
+		worktreesRoot,
+		strings.TrimSpace(workspaceID),
+		sessionID,
+		source,
+		relativeCwd,
+		worktreePath,
+		branch,
+	); reuseErr != nil {
+		return sessionWorktreeLaunch{}, reuseErr
+	} else if found {
+		return reused, nil
+	}
+	if _, statErr := os.Lstat(worktreePath); statErr == nil || !errors.Is(statErr, os.ErrNotExist) {
+		return sessionWorktreeLaunch{}, &WorktreeIsolationError{Kind: ErrWorktreeCreateFailed, Detail: "session worktree path already exists"}
+	}
+	if _, statErr := os.Lstat(worktreeRecordPath(worktreesRoot, sessionID)); statErr == nil || !errors.Is(statErr, os.ErrNotExist) {
+		return sessionWorktreeLaunch{}, &WorktreeIsolationError{Kind: ErrWorktreeCreateFailed, Detail: "session worktree metadata already exists"}
+	}
+	if _, branchErr := gitOutput(ctx, repoRoot, "show-ref", "--verify", "refs/heads/"+branch); branchErr == nil {
+		return sessionWorktreeLaunch{}, &WorktreeIsolationError{Kind: ErrWorktreeCreateFailed, Detail: "session worktree branch already exists"}
+	}
+	info := SessionIsolation{Mode: WorktreeIsolationMode, WorktreePath: worktreePath, Branch: branch, BaseCommit: baseCommit}
+	record := sessionWorktreeRecord{
+		SessionIsolation: info,
+		SessionID:        sessionID, WorkspaceID: strings.TrimSpace(workspaceID),
+		RepoRoot: repoRoot, GitCommonDir: gitCommonDir, RelativeCwd: relativeCwd,
+	}
+	if err := writeSessionWorktreeRecord(worktreesRoot, record); err != nil {
+		return sessionWorktreeLaunch{}, &WorktreeIsolationError{Kind: ErrWorktreeCreateFailed, Detail: err.Error()}
+	}
+	created := false
+	defer func() {
+		if !created {
+			rollbackSessionWorktree(context.Background(), worktreesRoot, record)
+		}
+	}()
+	if _, err := gitOutput(ctx, repoRoot, "worktree", "add", "-b", branch, worktreePath, baseCommit); err != nil {
+		return sessionWorktreeLaunch{}, &WorktreeIsolationError{Kind: ErrWorktreeCreateFailed, Detail: gitErrorDetail(err)}
+	}
+	runtimeCwd := sessionWorktreeRuntimeCwd(worktreePath, relativeCwd)
+	if stat, statErr := os.Stat(runtimeCwd); statErr != nil || !stat.IsDir() {
+		detail := "selected project directory does not exist in the isolated worktree"
+		if statErr != nil && !errors.Is(statErr, os.ErrNotExist) {
+			detail = statErr.Error()
+		}
+		return sessionWorktreeLaunch{}, &WorktreeIsolationError{Kind: ErrWorktreeCreateFailed, Detail: detail}
+	}
+	created = true
+	return sessionWorktreeLaunch{
+		Isolation: info,
+		Cwd:       runtimeCwd,
+		Warnings:  sessionWorktreeWarnings(ctx, repoRoot),
+		Created:   true,
+	}, nil
+}
+
+func sessionWorktreeRelativeCwd(source sessionWorktreeSource) (string, error) {
+	relative, err := filepath.Rel(source.RepoRoot, source.Cwd)
+	if err != nil {
+		return "", &WorktreeIsolationError{Kind: ErrUnsupportedRepoLayout, Detail: err.Error()}
+	}
+	relative = filepath.Clean(relative)
+	if filepath.IsAbs(relative) || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
+		return "", &WorktreeIsolationError{Kind: ErrUnsupportedRepoLayout, Detail: "selected project directory is outside the repository root"}
+	}
+	return relative, nil
+}
+
+func sessionWorktreeRuntimeCwd(worktreePath string, relativeCwd string) string {
+	if relativeCwd == "" || relativeCwd == "." {
+		return filepath.Clean(worktreePath)
+	}
+	return filepath.Join(filepath.Clean(worktreePath), relativeCwd)
+}
+
+func reuseSessionWorktree(
+	ctx context.Context,
+	worktreesRoot string,
+	workspaceID string,
+	sessionID string,
+	source sessionWorktreeSource,
+	relativeCwd string,
+	worktreePath string,
+	branch string,
+) (sessionWorktreeLaunch, bool, error) {
+	record, err := readSessionWorktreeRecord(worktreeRecordPath(worktreesRoot, sessionID))
+	if errors.Is(err, os.ErrNotExist) {
+		return sessionWorktreeLaunch{}, false, nil
+	}
+	if err != nil {
+		return sessionWorktreeLaunch{}, false, &WorktreeIsolationError{Kind: ErrWorktreeCreateFailed, Detail: "session worktree metadata is unreadable"}
+	}
+	recordedRelativeCwd := filepath.Clean(strings.TrimSpace(record.RelativeCwd))
+	if strings.TrimSpace(record.RelativeCwd) == "" {
+		recordedRelativeCwd = "."
+	}
+	if strings.TrimSpace(record.SessionID) != sessionID ||
+		strings.TrimSpace(record.WorkspaceID) != workspaceID ||
+		canonicalWorktreePath(record.RepoRoot) != canonicalWorktreePath(source.RepoRoot) ||
+		canonicalWorktreePath(record.WorktreePath) != canonicalWorktreePath(worktreePath) ||
+		strings.TrimSpace(record.Branch) != branch ||
+		recordedRelativeCwd != relativeCwd ||
+		strings.TrimSpace(record.Mode) != WorktreeIsolationMode ||
+		strings.TrimSpace(record.BaseCommit) == "" {
+		return sessionWorktreeLaunch{}, false, &WorktreeIsolationError{Kind: ErrWorktreeCreateFailed, Detail: "session worktree metadata does not match the retried launch"}
+	}
+	topLevel, err := gitOutput(ctx, record.WorktreePath, "rev-parse", "--show-toplevel")
+	if err != nil || canonicalWorktreePath(strings.TrimSpace(topLevel)) != canonicalWorktreePath(worktreePath) {
+		return sessionWorktreeLaunch{}, false, &WorktreeIsolationError{Kind: ErrWorktreeCreateFailed, Detail: "session worktree checkout is unavailable"}
+	}
+	runtimeCwd := sessionWorktreeRuntimeCwd(worktreePath, relativeCwd)
+	if stat, statErr := os.Stat(runtimeCwd); statErr != nil || !stat.IsDir() {
+		return sessionWorktreeLaunch{}, false, &WorktreeIsolationError{Kind: ErrWorktreeCreateFailed, Detail: "selected project directory is unavailable in the isolated worktree"}
+	}
+	return sessionWorktreeLaunch{
+		Isolation: record.SessionIsolation,
+		Cwd:       runtimeCwd,
+		Warnings:  sessionWorktreeWarnings(ctx, source.RepoRoot),
+		Created:   false,
+	}, true, nil
+}
+
+func sessionWorktreeWarnings(ctx context.Context, repoRoot string) []SessionWarning {
+	if status, statusErr := gitOutput(ctx, repoRoot, "status", "--porcelain"); statusErr == nil && strings.TrimSpace(status) != "" {
+		return []SessionWarning{{
+			Code:    worktreeDirtyBaseWarningCode,
+			Message: "The source checkout has uncommitted changes; the isolated worktree is based on HEAD and does not include them.",
+		}}
+	}
+	return nil
+}
+
+func resolveSessionWorktreeSource(ctx context.Context, cwd string) (sessionWorktreeSource, error) {
 	if _, err := exec.LookPath("git"); err != nil {
-		return SessionIsolation{}, nil, &WorktreeIsolationError{Kind: ErrGitUnavailable, Detail: err.Error()}
+		return sessionWorktreeSource{}, &WorktreeIsolationError{Kind: ErrGitUnavailable, Detail: err.Error()}
 	}
 	cwd = strings.TrimSpace(cwd)
 	if cwd == "" {
-		return SessionIsolation{}, nil, &WorktreeIsolationError{Kind: ErrNotAGitRepo}
+		return sessionWorktreeSource{}, &WorktreeIsolationError{Kind: ErrNotAGitRepo}
 	}
 	absCwd, err := filepath.Abs(cwd)
 	if err != nil {
-		return SessionIsolation{}, nil, &WorktreeIsolationError{Kind: ErrNotAGitRepo, Detail: err.Error()}
+		return sessionWorktreeSource{}, &WorktreeIsolationError{Kind: ErrNotAGitRepo, Detail: err.Error()}
 	}
 	if resolved, resolveErr := filepath.EvalSymlinks(absCwd); resolveErr == nil {
 		absCwd = resolved
 	}
 	repoRoot, err := gitOutput(ctx, absCwd, "rev-parse", "--show-toplevel")
 	if err != nil || strings.TrimSpace(repoRoot) == "" {
-		return SessionIsolation{}, nil, &WorktreeIsolationError{Kind: ErrNotAGitRepo, Detail: gitErrorDetail(err)}
+		return sessionWorktreeSource{}, &WorktreeIsolationError{Kind: ErrNotAGitRepo, Detail: gitErrorDetail(err)}
 	}
 	repoRoot = filepath.Clean(strings.TrimSpace(repoRoot))
 	if resolved, resolveErr := filepath.EvalSymlinks(repoRoot); resolveErr == nil {
 		repoRoot = resolved
 	}
 	if superproject, superErr := gitOutput(ctx, repoRoot, "rev-parse", "--show-superproject-working-tree"); superErr == nil && strings.TrimSpace(superproject) != "" {
-		return SessionIsolation{}, nil, &WorktreeIsolationError{Kind: ErrUnsupportedRepoLayout, Detail: "git submodules are not supported for worktree isolation"}
+		return sessionWorktreeSource{}, &WorktreeIsolationError{Kind: ErrUnsupportedRepoLayout, Detail: "git submodules are not supported for worktree isolation"}
 	}
 	if outerRoot, outerErr := gitOutput(ctx, filepath.Dir(repoRoot), "rev-parse", "--show-toplevel"); outerErr == nil && strings.TrimSpace(outerRoot) != "" && filepath.Clean(strings.TrimSpace(outerRoot)) != repoRoot {
-		return SessionIsolation{}, nil, &WorktreeIsolationError{Kind: ErrUnsupportedRepoLayout, Detail: "nested git repositories are not supported for worktree isolation"}
+		return sessionWorktreeSource{}, &WorktreeIsolationError{Kind: ErrUnsupportedRepoLayout, Detail: "nested git repositories are not supported for worktree isolation"}
 	}
 	commonDirOut, err := gitOutput(ctx, absCwd, "rev-parse", "--git-common-dir")
 	if err != nil || strings.TrimSpace(commonDirOut) == "" {
-		return SessionIsolation{}, nil, &WorktreeIsolationError{Kind: ErrWorktreeCreateFailed, Detail: gitErrorDetail(err)}
+		return sessionWorktreeSource{}, &WorktreeIsolationError{Kind: ErrWorktreeCreateFailed, Detail: gitErrorDetail(err)}
 	}
 	gitCommonDir := strings.TrimSpace(commonDirOut)
 	if !filepath.IsAbs(gitCommonDir) {
@@ -152,52 +398,14 @@ func createSessionWorktree(
 	}
 	baseCommit, err := gitOutput(ctx, repoRoot, "rev-parse", "HEAD")
 	if err != nil || strings.TrimSpace(baseCommit) == "" {
-		return SessionIsolation{}, nil, &WorktreeIsolationError{Kind: ErrWorktreeCreateFailed, Detail: gitErrorDetail(err)}
+		return sessionWorktreeSource{}, &WorktreeIsolationError{Kind: ErrWorktreeCreateFailed, Detail: gitErrorDetail(err)}
 	}
-	baseCommit = strings.TrimSpace(baseCommit)
-	sessionID = strings.TrimSpace(sessionID)
-	if sessionID == "" || filepath.Base(sessionID) != sessionID || strings.ContainsAny(sessionID, `/\\`) {
-		return SessionIsolation{}, nil, &WorktreeIsolationError{Kind: ErrWorktreeCreateFailed, Detail: "agent session id is unsafe for a worktree path"}
-	}
-	worktreesRoot := filepath.Join(filepath.Clean(stateDir), "agent", "worktrees")
-	worktreePath := filepath.Join(worktreesRoot, sessionID)
-	branch := "tutti/" + sessionID
-	if _, statErr := os.Lstat(worktreePath); statErr == nil || !errors.Is(statErr, os.ErrNotExist) {
-		return SessionIsolation{}, nil, &WorktreeIsolationError{Kind: ErrWorktreeCreateFailed, Detail: "session worktree path already exists"}
-	}
-	if _, statErr := os.Lstat(worktreeRecordPath(worktreesRoot, sessionID)); statErr == nil || !errors.Is(statErr, os.ErrNotExist) {
-		return SessionIsolation{}, nil, &WorktreeIsolationError{Kind: ErrWorktreeCreateFailed, Detail: "session worktree metadata already exists"}
-	}
-	if _, branchErr := gitOutput(ctx, repoRoot, "show-ref", "--verify", "refs/heads/"+branch); branchErr == nil {
-		return SessionIsolation{}, nil, &WorktreeIsolationError{Kind: ErrWorktreeCreateFailed, Detail: "session worktree branch already exists"}
-	}
-	info := SessionIsolation{Mode: WorktreeIsolationMode, WorktreePath: worktreePath, Branch: branch, BaseCommit: baseCommit}
-	record := sessionWorktreeRecord{
-		SessionIsolation: info,
-		SessionID:        sessionID, WorkspaceID: strings.TrimSpace(workspaceID),
-		RepoRoot: repoRoot, GitCommonDir: gitCommonDir,
-	}
-	if err := writeSessionWorktreeRecord(worktreesRoot, record); err != nil {
-		return SessionIsolation{}, nil, &WorktreeIsolationError{Kind: ErrWorktreeCreateFailed, Detail: err.Error()}
-	}
-	created := false
-	defer func() {
-		if !created {
-			rollbackSessionWorktree(context.Background(), worktreesRoot, record)
-		}
-	}()
-	if _, err := gitOutput(ctx, repoRoot, "worktree", "add", "-b", branch, worktreePath, baseCommit); err != nil {
-		return SessionIsolation{}, nil, &WorktreeIsolationError{Kind: ErrWorktreeCreateFailed, Detail: gitErrorDetail(err)}
-	}
-	created = true
-	warnings := []SessionWarning(nil)
-	if status, statusErr := gitOutput(ctx, repoRoot, "status", "--porcelain"); statusErr == nil && strings.TrimSpace(status) != "" {
-		warnings = append(warnings, SessionWarning{
-			Code:    worktreeDirtyBaseWarningCode,
-			Message: "The source checkout has uncommitted changes; the isolated worktree is based on HEAD and does not include them.",
-		})
-	}
-	return info, warnings, nil
+	return sessionWorktreeSource{
+		Cwd:          absCwd,
+		RepoRoot:     repoRoot,
+		GitCommonDir: gitCommonDir,
+		BaseCommit:   strings.TrimSpace(baseCommit),
+	}, nil
 }
 
 type gitCommandError struct {
@@ -376,6 +584,19 @@ func sweepConfiguredWorktreeIsolation(
 				return listErr
 			}
 			sessions = append(sessions, children...)
+		}
+	}
+	if deletedReader, ok := sessionReader.(RecoverableDeletedSessionResourceReader); ok {
+		deleted, err := deletedReader.ListRecoverableDeletedSessionResources(ctx)
+		if err != nil {
+			return err
+		}
+		for _, resource := range deleted {
+			sessions = append(sessions, PersistedSession{
+				ID:          resource.AgentSessionID,
+				WorkspaceID: resource.WorkspaceID,
+				Cwd:         resource.Cwd,
+			})
 		}
 	}
 	if strings.TrimSpace(stateDir) == "" {

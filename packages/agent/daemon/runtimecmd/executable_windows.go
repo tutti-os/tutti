@@ -8,7 +8,7 @@ import (
 	"strings"
 )
 
-const defaultWindowsPathExt = ".COM;.EXE;.BAT;.CMD"
+const defaultWindowsPathExt = ".COM;.EXE;.BAT;.CMD;.PS1"
 
 func executableNameCandidates(command string, env []string) []string {
 	if filepath.Ext(command) != "" {
@@ -18,12 +18,25 @@ func executableNameCandidates(command string, env []string) []string {
 	if pathExt == "" {
 		pathExt = defaultWindowsPathExt
 	}
-	// Keep the explicit extensionless path first for compatibility with managed
-	// launchers, then follow normal Windows PATHEXT lookup for .exe/.cmd files.
-	result := make([]string, 0, 5)
-	seen := map[string]struct{}{strings.ToLower(command): {}}
-	result = append(result, command)
-	for _, extension := range strings.Split(pathExt, ";") {
+	// Prefer Windows PATHEXT launchers before an extensionless file. npm writes
+	// both a POSIX `opencode` shim and a Windows `opencode.cmd` shim into the
+	// same prefix; choosing the POSIX shim makes ACP probes hang or fail on
+	// Windows. Keep the extensionless candidate as a final fallback for managed
+	// PE launchers such as the Tutti agent binary.
+	result := make([]string, 0, 6)
+	seen := map[string]struct{}{}
+	extensions := strings.Split(pathExt, ";")
+	hasPowerShell := false
+	for _, extension := range extensions {
+		if strings.EqualFold(strings.TrimSpace(extension), ".PS1") {
+			hasPowerShell = true
+			break
+		}
+	}
+	if !hasPowerShell {
+		extensions = append(extensions, ".PS1")
+	}
+	for _, extension := range extensions {
 		extension = strings.TrimSpace(extension)
 		if extension == "" {
 			continue
@@ -38,6 +51,9 @@ func executableNameCandidates(command string, env []string) []string {
 		}
 		seen[key] = struct{}{}
 		result = append(result, candidate)
+	}
+	if _, ok := seen[strings.ToLower(command)]; !ok {
+		result = append(result, command)
 	}
 	return result
 }

@@ -7,6 +7,7 @@ var (
 	createWithRailPlacementScenario  = Scenario{Name: "create with explicit rail placement", run: runCreateWithRailPlacement}
 	resumePersistedSessionScenario   = Scenario{Name: "resume persisted session", run: runResumePersistedSession}
 	sendInputScenario                = Scenario{Name: "send input", run: runSendInput}
+	sendConnectorOnlyInputScenario   = Scenario{Name: "send connector-only input", run: runSendConnectorOnlyInput}
 	providerAcceptanceScenario       = Scenario{
 		Name: "new turns require durable provider acceptance",
 		run:  runNewTurnsRequireDurableProviderAcceptance,
@@ -58,6 +59,7 @@ func Scenarios() []Scenario {
 		createWithRailPlacementScenario,
 		resumePersistedSessionScenario,
 		sendInputScenario,
+		sendConnectorOnlyInputScenario,
 		guidanceTargetRequiredScenario,
 		guidanceExactTargetScenario,
 		guidanceTargetMismatchScenario,
@@ -139,7 +141,10 @@ func GoalScenarios() []Scenario {
 		{Name: "goal reconcile observation", run: runGoalReconcileObservation},
 		{Name: "goal revision actor fence", run: runGoalRevisionActorFence},
 		{Name: "goal generation fence preserves newer goal", run: runGoalGenerationFencePreservesNewerGoal},
+		{Name: "restart completes offline goal fence without replay", run: runRestartCompletesOfflineGoalFenceWithoutReplay},
 		{Name: "accepted goal control waits without replay", run: runAcceptedGoalControlWaitsWithoutReplay},
+		{Name: "turnless goal session resumes after disconnect", run: runTurnlessGoalSessionResumesAfterDisconnect},
+		{Name: "goal intent accepted before runtime readiness failure", run: runGoalIntentAcceptedBeforeRuntimeReadinessFailure},
 		{Name: "goal inbox consumer preflight", run: runGoalInboxConsumerPreflight},
 	}
 }
@@ -152,6 +157,16 @@ func SessionForkScenarios() []SessionForkScenario {
 		{Name: "through-turn fork replay does not redispatch provider", run: runThroughTurnForkReplay},
 		{Name: "provider-accepted fork recovers local commit", run: runProviderAcceptedForkRecovery},
 	}
+}
+
+// DeletedSessionLifecycleScenarios verifies the lifecycle boundary separately
+// from retention purge: deletion produces a restorable canonical tombstone,
+// and restore never starts or resumes provider work.
+func DeletedSessionLifecycleScenarios() []DeletedSessionLifecycleScenario {
+	return []DeletedSessionLifecycleScenario{{
+		Name: "lossless deleted session restores without provider resume",
+		run:  runLosslessDeletedSessionRestore,
+	}}
 }
 
 // InteractionTreeScenarios covers the canonical cross-session interaction
@@ -183,6 +198,7 @@ func ApplicationCoreScenarios() []Scenario {
 		createWithRailPlacementScenario,
 		resumePersistedSessionScenario,
 		sendInputScenario,
+		sendConnectorOnlyInputScenario,
 		guidanceTargetRequiredScenario,
 		guidanceExactTargetScenario,
 		guidanceTargetMismatchScenario,

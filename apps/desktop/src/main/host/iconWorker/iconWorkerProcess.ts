@@ -1,7 +1,5 @@
 import { readFile } from "node:fs/promises";
-import { createInterface } from "node:readline";
 import {
-  ICON_WORKER_STDOUT_PREFIX,
   type IconWorkerRequestMessage,
   type IconWorkerResponseMessage
 } from "./iconWorkerProtocol.ts";
@@ -10,8 +8,9 @@ type ElectronApp = typeof import("electron").app;
 type ElectronNativeImage = typeof import("electron").nativeImage;
 
 // Entry point for the child process spawned with `TUTTI_ROLE=icon-worker`.
-// Reads newline-delimited JSON requests on stdin and replies on stdout. If a
-// native call aborts the process, the parent observes the exit and recovers.
+// Reads requests from the Node child-process IPC channel and replies over the
+// same channel. If a native call aborts the process, the parent observes the
+// exit and recovers.
 export function runIconWorkerProcess(): void {
   void start().catch((error) => {
     process.stderr.write(
@@ -27,32 +26,26 @@ async function start(): Promise<void> {
   app.dock?.hide();
   await app.whenReady();
 
-  const reader = createInterface({ input: process.stdin });
-  reader.on("line", (line) => {
-    void handleLine(line, app, nativeImage);
+  if (!process.send) {
+    throw new Error("icon worker IPC channel is unavailable");
+  }
+  process.on("message", (message) => {
+    void handleMessage(message, app, nativeImage);
   });
-  // When the parent goes away its end of the pipe closes; exit with it.
-  reader.on("close", () => {
+  process.on("disconnect", () => {
     app.quit();
   });
 }
 
-async function handleLine(
-  line: string,
+async function handleMessage(
+  value: unknown,
   app: ElectronApp,
   nativeImage: ElectronNativeImage
 ): Promise<void> {
-  const trimmed = line.trim();
-  if (!trimmed) {
+  if (!isIconWorkerRequestMessage(value)) {
     return;
   }
-
-  let request: IconWorkerRequestMessage;
-  try {
-    request = JSON.parse(trimmed) as IconWorkerRequestMessage;
-  } catch {
-    return;
-  }
+  const request = value;
 
   let pngBase64: string | null = null;
   try {
@@ -73,8 +66,21 @@ async function handleLine(
 }
 
 function respond(message: IconWorkerResponseMessage): void {
-  process.stdout.write(
-    `${ICON_WORKER_STDOUT_PREFIX}${JSON.stringify(message)}\n`
+  process.send?.(message);
+}
+
+function isIconWorkerRequestMessage(
+  value: unknown
+): value is IconWorkerRequestMessage {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+  const request = value as Partial<IconWorkerRequestMessage>;
+  return (
+    typeof request.id === "number" &&
+    (request.mode === "fileIcon" || request.mode === "imageThumbnail") &&
+    typeof request.path === "string" &&
+    typeof request.sizePx === "number"
   );
 }
 

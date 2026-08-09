@@ -13,22 +13,24 @@ import (
 )
 
 const (
-	TopicAnalyticsDebugReported                         = "analytics.debug.reported"
-	TopicAgentActivityUpdated                           = "agent.activity.updated"
-	TopicAgentCollaborationUpdated                      = "agent.collaboration.updated"
-	TopicAgentModelCatalogInvalidated                   = "agent.model.catalog.invalidated"
-	TopicAgentQuickPromptUpdated                        = "agent.quickprompt.updated"
-	TopicPreferencesAgentComposerDefaultsChanged        = "preferences.agent.composer.defaults.changed"
-	TopicPreferencesAgentComposerDefaultsPatchRequested = "preferences.agent.composer.defaults.patch.requested"
-	TopicPreferencesDesktopUpdateRequested              = "preferences.desktop.update.requested"
-	TopicPreferencesDesktopUpdated                      = "preferences.desktop.updated"
-	TopicUserProjectUpdated                             = "user.project.updated"
-	TopicWorkspaceIssueUpdated                          = "workspace.issue.updated"
-	TopicWorkspaceWorkflowUpdated                       = "workspace.workflow.updated"
-	TopicWorkspaceTuttiModeUpdated                      = "workspace.tuttimode.updated"
-	TopicWorkspaceAppFactoryJobUpdated                  = "workspace.appfactory.job.updated"
-	TopicWorkspaceAppUpdated                            = "workspace.app.updated"
-	TopicWorkspaceWorkbenchNodeLaunchRequested          = "workspace.workbench.node.launch.requested"
+	TopicAnalyticsDebugReported                          = "analytics.debug.reported"
+	TopicAgentActivityUpdated                            = "agent.activity.updated"
+	TopicAgentCollaborationUpdated                       = "agent.collaboration.updated"
+	TopicAgentModelCatalogInvalidated                    = "agent.model.catalog.invalidated"
+	TopicAgentQuickPromptUpdated                         = "agent.quickprompt.updated"
+	TopicConnectorMarketChanged                          = "connector.market.changed"
+	TopicPreferencesAgentComposerDefaultsChanged         = "preferences.agent.composer.defaults.changed"
+	TopicPreferencesAgentComposerDefaultsPatchRequested  = "preferences.agent.composer.defaults.patch.requested"
+	TopicPreferencesAgentSessionLaunchModePatchRequested = "preferences.agent.session.launch.mode.patch.requested"
+	TopicPreferencesDesktopUpdateRequested               = "preferences.desktop.update.requested"
+	TopicPreferencesDesktopUpdated                       = "preferences.desktop.updated"
+	TopicUserProjectUpdated                              = "user.project.updated"
+	TopicWorkspaceIssueUpdated                           = "workspace.issue.updated"
+	TopicWorkspaceWorkflowUpdated                        = "workspace.workflow.updated"
+	TopicWorkspaceTuttiModeUpdated                       = "workspace.tuttimode.updated"
+	TopicWorkspaceAppFactoryJobUpdated                   = "workspace.appfactory.job.updated"
+	TopicWorkspaceAppUpdated                             = "workspace.app.updated"
+	TopicWorkspaceWorkbenchNodeLaunchRequested           = "workspace.workbench.node.launch.requested"
 )
 
 // Direction, ValidationCode and ValidationError now live in stream-go and are
@@ -90,6 +92,16 @@ func NewStaticCatalog(definitions []TopicDefinition) StaticCatalog {
 
 func DefaultCatalog() StaticCatalog {
 	definitions := []TopicDefinition{
+		{
+			Name:               TopicConnectorMarketChanged,
+			ClientCanPublish:   false,
+			ClientCanSubscribe: true,
+			Version:            1,
+			directions:         []Direction{DirectionServerToClient},
+			validators: map[Direction]PayloadValidator{
+				DirectionServerToClient: validateConnectorMarketChangedPayload,
+			},
+		},
 		{
 			Name:               TopicAnalyticsDebugReported,
 			ClientCanPublish:   false,
@@ -354,6 +366,11 @@ func validateDesktopPreferencesUpdateRequestedPayload(payload []byte) error {
 	if err != nil {
 		return err
 	}
+	if decoded.AgentSessionLaunchModesByWorkspace != nil {
+		if err := validateDesktopAgentSessionLaunchModesByWorkspace(*decoded.AgentSessionLaunchModesByWorkspace); err != nil {
+			return err
+		}
+	}
 	if decoded.DockPlacement == "" {
 		return fmt.Errorf("preferences.dockPlacement is required")
 	}
@@ -442,6 +459,9 @@ func validateDesktopPreferencesUpdatedPayload(payload []byte) error {
 	var decoded desktopPreferencesUpdatedPayload
 	if err := json.Unmarshal(payload, &decoded); err != nil {
 		return fmt.Errorf("decode payload: %w", err)
+	}
+	if err := validateDesktopAgentSessionLaunchModesByWorkspace(decoded.Preferences.AgentSessionLaunchModesByWorkspace); err != nil {
+		return err
 	}
 	if decoded.Preferences.DockPlacement == "" {
 		return fmt.Errorf("preferences.dockPlacement is required")
@@ -534,28 +554,6 @@ func validateDesktopPreferencesUpdatedPayload(payload []byte) error {
 	return nil
 }
 
-func validateAgentActivityUpdatedPayload(payload []byte) error {
-	var decoded agentActivityUpdatedPayload
-	if err := decodeJSONStrict(payload, &decoded); err != nil {
-		return fmt.Errorf("decode payload: %w", err)
-	}
-	if strings.TrimSpace(decoded.WorkspaceID) == "" {
-		return fmt.Errorf("workspaceId is required")
-	}
-	if strings.TrimSpace(decoded.AgentSessionID) == "" {
-		return fmt.Errorf("agentSessionId is required")
-	}
-	switch strings.TrimSpace(decoded.EventType) {
-	case "session_reconcile_required", "session_deleted", "session_audit", "message_delta", "message_update", "turn_update", "interaction_update":
-	default:
-		return fmt.Errorf("eventType is unsupported")
-	}
-	if len(decoded.Data) == 0 || string(decoded.Data) == "null" {
-		return fmt.Errorf("data is required")
-	}
-	return validateAgentActivityUpdatedData(decoded)
-}
-
 func validateAgentModelCatalogInvalidatedPayload(payload []byte) error {
 	var decoded agentModelCatalogInvalidatedPayload
 	if err := decodeJSONStrict(payload, &decoded); err != nil {
@@ -614,6 +612,8 @@ func validateAgentActivityUpdatedData(decoded agentActivityUpdatedPayload) error
 		return fmt.Errorf("data.eventType must match eventType")
 	}
 	switch eventType {
+	case "runtime_activity_update":
+		return validateAgentActivityRuntimeActivityUpdateData(decoded.Data)
 	case "session_reconcile_required":
 		var data agentActivitySessionUpdateData
 		if err := decodeJSONStrict(decoded.Data, &data); err != nil {
@@ -629,6 +629,14 @@ func validateAgentActivityUpdatedData(decoded agentActivityUpdatedPayload) error
 		}
 		if data.DeletedAtUnixMS == nil {
 			return fmt.Errorf("data.deletedAtUnixMs is required")
+		}
+	case "session_restored":
+		var data agentActivitySessionRestoredData
+		if err := decodeJSONStrict(decoded.Data, &data); err != nil {
+			return fmt.Errorf("decode session_restored data: %w", err)
+		}
+		if data.RestoredAtUnixMS == nil {
+			return fmt.Errorf("data.restoredAtUnixMs is required")
 		}
 	case "message_update":
 		if err := requireJSONArrayItemFields(decoded.Data, "messages", "turnId"); err != nil {

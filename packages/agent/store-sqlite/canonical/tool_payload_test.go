@@ -238,11 +238,14 @@ func TestCompactToolCallPayloadPreservesInvalidModifiedBodyWithoutDiff(t *testin
 		},
 	})
 	file := got["fileChanges"].(map[string]any)["files"].([]any)[0].(map[string]any)
-	if file["content"] != body || file["change"] != "modified" {
-		t.Fatalf("file = %#v, want invalid body preserved as content", file)
+	if file["newString"] != body || file["change"] != "modified" {
+		t.Fatalf("file = %#v, want invalid body preserved as newString", file)
 	}
 	if _, exists := file["diff"]; exists {
 		t.Fatalf("file retained invalid diff: %#v", file)
+	}
+	if _, exists := file["content"]; exists {
+		t.Fatalf("file retained obsolete content field: %#v", file)
 	}
 }
 

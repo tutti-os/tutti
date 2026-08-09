@@ -1,2 +1,3 @@
 "scanner.title" = "Scan pairing QR code";
 "scanner.cancel" = "Cancel";
+"scanner.manual" = "Can't scan? Enter pairing code";

@@ -18,6 +18,10 @@ type AgentComposerDefaultsPatcher interface {
 	PatchAgentComposerDefaultsForTarget(context.Context, preferencesservice.PatchAgentComposerDefaultsForTargetInput) (preferencesbiz.AgentComposerDefaults, error)
 }
 
+type AgentSessionLaunchModePatcher interface {
+	PatchAgentSessionLaunchMode(context.Context, preferencesservice.PatchAgentSessionLaunchModeInput) (preferencesbiz.DesktopPreferences, error)
+}
+
 func preferencesTopicDefinitions() []TopicDefinition {
 	return []TopicDefinition{
 		{
@@ -38,6 +42,16 @@ func preferencesTopicDefinitions() []TopicDefinition {
 			directions:         []Direction{DirectionClientToServer},
 			validators: map[Direction]PayloadValidator{
 				DirectionClientToServer: validateAgentComposerDefaultsPatchRequestedPayload,
+			},
+		},
+		{
+			Name:               TopicPreferencesAgentSessionLaunchModePatchRequested,
+			ClientCanPublish:   true,
+			ClientCanSubscribe: false,
+			Version:            1,
+			directions:         []Direction{DirectionClientToServer},
+			validators: map[Direction]PayloadValidator{
+				DirectionClientToServer: validateAgentSessionLaunchModePatchRequestedPayload,
 			},
 		},
 		{
@@ -84,6 +98,7 @@ func (p DesktopPreferencesPublisher) PublishDesktopPreferencesUpdated(ctx contex
 			AgentGUIConversationRailCollapsedByProvider: agentGUIConversationRailCollapsedByProviderPayloadFromBiz(
 				preferences.AgentGUIConversationRailCollapsedByProvider,
 			),
+			AgentSessionLaunchModesByWorkspace:    desktopAgentSessionLaunchModesByWorkspacePayload(preferences.AgentSessionLaunchModesByWorkspace),
 			AgentConversationDetailMode:           preferencesbiz.NormalizeDesktopAgentConversationDetailMode(preferences.AgentConversationDetailMode),
 			AgentDockLayout:                       preferencesbiz.NormalizeDesktopAgentDockLayout(preferences.AgentDockLayout),
 			AppCatalogChannel:                     preferences.AppCatalogChannel,
@@ -99,6 +114,7 @@ func (p DesktopPreferencesPublisher) PublishDesktopPreferencesUpdated(ctx contex
 			WorkbenchShortcuts: desktopWorkbenchShortcutsPayload{
 				NewAgentConversation: shortcutPointerFromBiz(preferences.WorkbenchShortcuts.NewAgentConversation),
 				NewSameTypeWindow:    shortcutPointerFromBiz(preferences.WorkbenchShortcuts.NewSameTypeWindow),
+				CaptureScreenshot:    shortcutPointerFromBiz(preferences.WorkbenchShortcuts.CaptureScreenshot),
 			},
 			Locale:                  preferences.Locale,
 			MinimizeAnimation:       preferences.MinimizeAnimation,
@@ -153,6 +169,28 @@ func NewPreferencesAgentComposerDefaultsPatchRequestedHandler(
 	}
 }
 
+func NewPreferencesAgentSessionLaunchModePatchRequestedHandler(
+	patcher AgentSessionLaunchModePatcher,
+) IntentHandler {
+	return func(ctx context.Context, event ClientEvent) error {
+		if patcher == nil {
+			return fmt.Errorf("agent session launch mode patcher is not configured")
+		}
+		var decoded agentSessionLaunchModePatchRequestedPayload
+		if err := json.Unmarshal(event.Payload, &decoded); err != nil {
+			return fmt.Errorf("decode payload: %w", err)
+		}
+		if _, err := patcher.PatchAgentSessionLaunchMode(ctx, preferencesservice.PatchAgentSessionLaunchModeInput{
+			WorkspaceID:       decoded.WorkspaceID,
+			ProjectSectionKey: decoded.ProjectSectionKey,
+			Mode:              decoded.Mode,
+		}); err != nil {
+			return fmt.Errorf("patch agent session launch mode: %w", err)
+		}
+		return nil
+	}
+}
+
 func NewPreferencesDesktopUpdateRequestedHandler(mutator PreferencesMutator) IntentHandler {
 	return func(ctx context.Context, event ClientEvent) error {
 		if mutator == nil {
@@ -169,6 +207,7 @@ func NewPreferencesDesktopUpdateRequestedHandler(mutator PreferencesMutator) Int
 			AgentComposerDefaultsByProvider:             decoded.AgentComposerDefaultsByProvider,
 			AgentComposerDefaultsByAgentTarget:          decoded.AgentComposerDefaultsByAgentTarget,
 			AgentGUIConversationRailCollapsedByProvider: decoded.AgentGUIConversationRailCollapsedByProvider,
+			AgentSessionLaunchModesByWorkspace:          decoded.AgentSessionLaunchModesByWorkspace,
 			AgentConversationDetailMode:                 decoded.AgentConversationDetailMode,
 			AgentDockLayout:                             decoded.AgentDockLayout,
 			AppCatalogChannel:                           decoded.AppCatalogChannel,
@@ -201,6 +240,7 @@ type decodedDesktopPreferencesMutationPayload struct {
 	AgentComposerDefaultsByProvider             map[string]preferencesbiz.AgentComposerDefaults
 	AgentComposerDefaultsByAgentTarget          map[string]preferencesbiz.AgentComposerDefaults
 	AgentGUIConversationRailCollapsedByProvider map[string]bool
+	AgentSessionLaunchModesByWorkspace          *map[string]map[string]string
 	AgentConversationDetailMode                 string
 	AgentDockLayout                             string
 	AppCatalogChannel                           string
@@ -250,6 +290,7 @@ func decodeDesktopPreferencesMutationPayload(payload []byte) (decodedDesktopPref
 		AgentGUIConversationRailCollapsedByProvider: agentGUIConversationRailCollapsedByProviderFromPayload(
 			decoded.Preferences.AgentGUIConversationRailCollapsedByProvider,
 		),
+		AgentSessionLaunchModesByWorkspace:    agentSessionLaunchModesByWorkspaceFromPayload(decoded.Preferences.AgentSessionLaunchModesByWorkspace),
 		AgentConversationDetailMode:           decoded.Preferences.AgentConversationDetailMode,
 		AgentDockLayout:                       decoded.Preferences.AgentDockLayout,
 		AppCatalogChannel:                     decoded.Preferences.AppCatalogChannel,
@@ -265,6 +306,7 @@ func decodeDesktopPreferencesMutationPayload(payload []byte) (decodedDesktopPref
 		WorkbenchShortcuts: preferencesbiz.DesktopWorkbenchShortcuts{
 			NewAgentConversation: shortcutStringFromPayload(decoded.Preferences.WorkbenchShortcuts.NewAgentConversation),
 			NewSameTypeWindow:    shortcutStringFromPayload(decoded.Preferences.WorkbenchShortcuts.NewSameTypeWindow),
+			CaptureScreenshot:    shortcutStringFromPayload(decoded.Preferences.WorkbenchShortcuts.CaptureScreenshot),
 		},
 		Locale:                  decoded.Preferences.Locale,
 		MinimizeAnimation:       decoded.Preferences.MinimizeAnimation,
@@ -275,6 +317,16 @@ func decodeDesktopPreferencesMutationPayload(payload []byte) (decodedDesktopPref
 		UpdatePolicy:            decoded.Preferences.UpdatePolicy,
 		WindowSnapping:          windowSnapping,
 	}, nil
+}
+
+func agentSessionLaunchModesByWorkspaceFromPayload(
+	value desktopAgentSessionLaunchModesByWorkspacePayload,
+) *map[string]map[string]string {
+	if value == nil {
+		return nil
+	}
+	result := map[string]map[string]string(value)
+	return &result
 }
 
 func fileDefaultOpenersByExtensionPayloadFromBiz(

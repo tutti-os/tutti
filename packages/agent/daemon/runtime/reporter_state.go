@@ -59,6 +59,12 @@ func statePatchFromSessionEvent(source canonical.EventSource, event activityshar
 	if runtimeContext := payloadMap(event.Payload.Metadata, "runtimeContext"); len(runtimeContext) > 0 {
 		patch.RuntimeContext = clonePayload(runtimeContext)
 	}
+	if event.Payload.RuntimeActivity != "" {
+		patch.RuntimeActivity = &canonical.WorkspaceAgentRuntimeActivityObservation{
+			State:            string(event.Payload.RuntimeActivity),
+			OccurredAtUnixMS: timestamp,
+		}
+	}
 	if turnID := strings.TrimSpace(event.Payload.TurnID); turnID != "" &&
 		event.Type != activityshared.EventRootProviderTurnStarted &&
 		event.Type != activityshared.EventRootProviderTurnCheckpoint &&

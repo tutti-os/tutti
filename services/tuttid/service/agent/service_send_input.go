@@ -37,6 +37,10 @@ func (s *Service) SendInput(ctx context.Context, workspaceID string, agentSessio
 		s.reportAgentServiceNodeFailure(ctx, agentSessionID, "message_send", "content_normalized", "", nodeStartedAt, err)
 		return SendInputResult{}, err
 	}
+	if err := s.validatePromptConnectors(ctx, normalizedContent); err != nil {
+		s.reportAgentServiceNodeFailure(ctx, agentSessionID, "message_send", "connectors_validated", "", nodeStartedAt, err)
+		return SendInputResult{}, err
+	}
 	s.reportAgentServiceNodeSuccess(ctx, agentSessionID, "message_send", "content_normalized", "", nodeStartedAt)
 	logAgentSubmitTrace("service.send.content_normalized", workspaceID, agentSessionID, input.ClientSubmitID, input.Metadata, map[string]any{
 		"content_block_count": len(normalizedContent),

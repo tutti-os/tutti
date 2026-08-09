@@ -739,14 +739,14 @@ func (a *ClaudeCodeSDKAdapter) applyClaudeSDKGoalObservation(
 	goal := payloadObject(payload["goal"])
 	objective := strings.TrimSpace(asString(goal["objective"]))
 	status := strings.TrimSpace(asString(goal["status"]))
-	if objective == "" || status != "active" && status != "complete" {
+	if objective == "" || status != "active" && status != "blocked" && status != "complete" {
 		return ""
 	}
 	next := map[string]any{"objective": objective, "status": status}
 	if reason := strings.TrimSpace(asString(goal["reason"])); reason != "" {
 		next["reason"] = reason
 	}
-	for _, key := range []string{"iterations", "durationMs", "tokens"} {
+	for _, key := range []string{"startedAtUnixMs", "iterations", "durationMs", "tokens"} {
 		if value, ok := firstInt64Value(goal, key); ok && value >= 0 {
 			next[key] = value
 		}
@@ -757,8 +757,31 @@ func (a *ClaudeCodeSDKAdapter) applyClaudeSDKGoalObservation(
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	adapterSession.goalArmTurnID = ""
-	adapterSession.liveState.goal = next
+	adapterSession.liveState.goal = normalizeClaudeGoalTiming(next, adapterSession.liveState.goal, time.Now().UnixMilli())
 	return updateType
+}
+
+func normalizeClaudeGoalTiming(goal, previous map[string]any, occurredAt int64) map[string]any {
+	if len(goal) == 0 {
+		return nil
+	}
+	normalized := clonePayload(goal)
+	startedAt, _ := firstInt64Value(normalized, "startedAtUnixMs")
+	if startedAt <= 0 && strings.TrimSpace(asString(normalized["objective"])) == strings.TrimSpace(asString(previous["objective"])) {
+		startedAt, _ = firstInt64Value(previous, "startedAtUnixMs")
+	}
+	if startedAt <= 0 {
+		startedAt = occurredAt
+	}
+	normalized["startedAtUnixMs"] = startedAt
+	status := strings.TrimSpace(asString(normalized["status"]))
+	if status != "" && status != "active" {
+		duration, _ := firstInt64Value(normalized, "durationMs")
+		if duration <= 0 && occurredAt >= startedAt {
+			normalized["durationMs"] = occurredAt - startedAt
+		}
+	}
+	return normalized
 }
 
 // localGoal returns a copy of the adapter-local goal mirror.
@@ -775,7 +798,7 @@ func (a *ClaudeCodeSDKAdapter) applyLocalGoal(adapterSession *claudeSDKAdapterSe
 		adapterSession.liveState.goal = nil
 		return
 	}
-	adapterSession.liveState.goal = clonePayload(goal)
+	adapterSession.liveState.goal = normalizeClaudeGoalTiming(goal, adapterSession.liveState.goal, time.Now().UnixMilli())
 }
 
 func (*ClaudeCodeSDKAdapter) goalMirrorEvents(session Session, updateType string) []activityshared.Event {

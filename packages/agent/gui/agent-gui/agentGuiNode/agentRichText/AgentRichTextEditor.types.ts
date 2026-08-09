@@ -41,6 +41,13 @@ export interface AgentRichTextEditorProps {
   onPasteLargeText?: (text: string) => void;
   onPasteFiles?: (files: readonly File[]) => void;
   onDropFiles?: (files: readonly File[]) => void;
+  /**
+   * Host-owned absolute-path paste resolution. Returning a reference inserts a
+   * file/directory mention; returning null falls back to plain text.
+   */
+  onResolvePastedPath?: (
+    text: string
+  ) => Promise<WorkspaceFileReference | null>;
 }
 
 export interface AgentRichTextEditorHandle {

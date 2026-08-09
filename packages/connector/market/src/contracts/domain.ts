@@ -28,7 +28,6 @@ export type ConnectorOperationKind =
   | "install"
   | "uninstall"
   | "start_authorization"
-  | "set_workspace_enabled"
   | "disconnect_authorization";
 
 export type ConnectorOperationState =
@@ -37,14 +36,76 @@ export type ConnectorOperationState =
   | "completed"
   | "failed";
 
-export interface ConnectorManifestImplementation {
-  kind: string;
+export type ConnectorOperationStage =
+  | "accepted"
+  | "refreshing"
+  | "installing"
+  | "installed"
+  | "deactivating"
+  | "authorizing"
+  | "disconnecting"
+  | "completed"
+  | "failed";
+
+export interface ConnectorBuiltinImplementation {
+  providerId: string;
+  mcp: boolean;
+  cli: boolean;
 }
 
-export interface ConnectorManifestArtifact {
+export interface ConnectorRuntimeRequirement {
+  language: "node" | "python";
+  profile: string;
+  abi: string;
+}
+
+export interface ConnectorManagedMcpInterface {
+  entrypoint: string;
+  arguments?: string[];
+}
+
+export interface ConnectorManagedCliCommand {
+  name: string;
+  description?: string;
+}
+
+export interface ConnectorManagedCliInterface {
+  entrypoint: string;
+  arguments?: string[];
+  commands: ConnectorManagedCliCommand[];
+}
+
+export interface ConnectorManagedCredentialBroker {
+  protocol: "tutti.connector.credentials.v1";
+  entrypoint: string;
+  timeoutMs: number;
+  allowedHosts: string[];
+}
+
+export interface ConnectorManagedStdioImplementation {
+  runtime: ConnectorRuntimeRequirement;
+  mcp?: ConnectorManagedMcpInterface;
+  cli?: ConnectorManagedCliInterface;
+  credentialBroker?: ConnectorManagedCredentialBroker;
+}
+
+export interface ConnectorRemoteStreamableHttpImplementation {
+  endpoint: string;
+  allowedHosts: string[];
+}
+
+export interface ConnectorManifestImplementation {
+  kind: "builtin" | "managed_stdio" | "remote_streamable_http";
+  builtin?: ConnectorBuiltinImplementation;
+  managedStdio?: ConnectorManagedStdioImplementation;
+  remoteStreamableHttp?: ConnectorRemoteStreamableHttpImplementation;
+}
+
+export interface ConnectorReleaseArtifact {
   key: string;
   sha256: string;
   sizeBytes: number;
+  mediaType: string;
 }
 
 export interface ConnectorCompatibilityRequirements {
@@ -53,22 +114,40 @@ export interface ConnectorCompatibilityRequirements {
   minimumHostVersion?: string;
 }
 
+export interface ConnectorAgentRouting {
+  aliases: string[];
+}
+
 export interface ConnectorManifest {
   schemaVersion: "1";
-  key: string;
-  version: string;
   displayName: string;
+  iconUrl: string;
   description?: string;
+  agentRouting?: ConnectorAgentRouting;
   permissions: string[];
-  artifact: ConnectorManifestArtifact;
   implementation: ConnectorManifestImplementation;
   authorizationKind: string;
   compatibility?: ConnectorCompatibilityRequirements;
 }
 
+export interface ConnectorRelease {
+  schemaVersion: "1";
+  releaseId: string;
+  connectorKey: string;
+  version: string;
+  releaseDigest: string;
+  manifestDigest: string;
+  manifest: ConnectorManifest;
+  artifact: ConnectorReleaseArtifact;
+  publishedAt: string;
+  status: "available" | "superseded";
+}
+
 export interface ConnectorInstallation {
   state: ConnectorInstallationState;
   installedVersion?: string;
+  installedReleaseId?: string;
+  installedReleaseDigest?: string;
   failureCode?: string;
 }
 
@@ -82,18 +161,12 @@ export interface ConnectorCompatibility {
   reason?: string;
 }
 
-export interface ConnectorWorkspaceBinding {
-  workspaceId: string;
-  enabled: boolean;
-}
-
 export interface Connector {
   key: string;
-  manifest: ConnectorManifest;
+  release: ConnectorRelease;
   installation: ConnectorInstallation;
   authorization: ConnectorAuthorization;
   compatibility: ConnectorCompatibility;
-  workspaceBinding?: ConnectorWorkspaceBinding;
   revision: number;
 }
 
@@ -103,10 +176,20 @@ export interface ConnectorOperation {
   connectorKey?: string;
   kind: ConnectorOperationKind;
   state: ConnectorOperationState;
-  stage?: string;
+  stage?: ConnectorOperationStage;
+  target?: ConnectorOperationTarget;
+  attempt: number;
   failureCode?: string;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface ConnectorOperationTarget {
+  connectorKey: string;
+  version: string;
+  releaseId: string;
+  releaseDigest: string;
+  artifactSha256?: string;
 }
 
 export interface ConnectorMarketSnapshot {
@@ -115,6 +198,28 @@ export interface ConnectorMarketSnapshot {
   operations: ConnectorOperation[];
   revision: number;
   sourceRevision?: string;
+}
+
+export type ConnectorMarketCategoryKind = "category" | "featured";
+
+export interface ConnectorMarketCategory {
+  categoryId: string;
+  kind: ConnectorMarketCategoryKind;
+  sortOrder: number;
+  itemCount: number;
+}
+
+export interface ConnectorMarketCatalogItem {
+  categoryId: string;
+  featured: boolean;
+  connector: Connector;
+}
+
+export interface ConnectorMarketCatalogPage {
+  sectionId: string;
+  items: ConnectorMarketCatalogItem[];
+  nextPageToken?: string;
+  revision: number;
 }
 
 export interface ConnectorMarketMutationInput {
@@ -126,9 +231,8 @@ export interface ConnectorMutationInput extends ConnectorMarketMutationInput {
   connectorKey: string;
 }
 
-export interface SetConnectorWorkspaceEnabledInput extends ConnectorMutationInput {
-  workspaceId: string;
-  enabled: boolean;
+export interface ConnectorAuthorizationInput extends ConnectorMutationInput {
+  secret?: string;
 }
 
 export interface ConnectorMutationResult {
@@ -141,12 +245,6 @@ export interface ConnectorAuthorizationResult {
   connector: Connector;
   operation: ConnectorOperation;
   authorizationUrl?: string;
-  revision: number;
-}
-
-export interface ConnectorWorkspaceBindingResult {
-  connector: Connector;
-  operation: ConnectorOperation;
   revision: number;
 }
 

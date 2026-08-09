@@ -559,37 +559,87 @@ func TestAgentTargetSetupGuidesTerminalAuthMethodFromMeta(t *testing.T) {
 	}
 }
 
-func TestTerminalLoginCommand(t *testing.T) {
+func TestTerminalLoginLaunch(t *testing.T) {
 	t.Parallel()
 
 	method := agentruntime.StandardACPAuthMethod{ID: "login", Type: "terminal", Args: []string{"login"}}
-	if got := terminalLoginCommand([]string{"/opt/agent/bin/kimi", "acp"}, method, nil); got != "/opt/agent/bin/kimi login" {
-		t.Fatalf("terminalLoginCommand = %q", got)
+	if got := terminalLoginLaunch([]string{"/opt/agent/bin/kimi", "acp"}, method, nil); got.Command != "/opt/agent/bin/kimi login" || got.StartupAction != nil {
+		t.Fatalf("terminalLoginLaunch = %#v", got)
 	}
 	flagMethod := agentruntime.StandardACPAuthMethod{ID: "login", Type: "terminal", Args: []string{"--login"}}
-	if got := terminalLoginCommand([]string{"/opt/agent/bin/kimi", "acp"}, flagMethod, nil); got != "/opt/agent/bin/kimi acp --login" {
-		t.Fatalf("terminalLoginCommand with flag args = %q", got)
+	if got := terminalLoginLaunch([]string{"/opt/agent/bin/kimi", "acp"}, flagMethod, nil); got.Command != "/opt/agent/bin/kimi acp --login" {
+		t.Fatalf("terminalLoginLaunch with flag args = %#v", got)
 	}
 	var declared AuthenticationMethodProfile
 	declared.ID = "login"
 	declared.Type = "terminal"
 	declared.Command.Strategy = "runtime-subcommand"
 	declared.Command.Args = []string{"login"}
-	if got := terminalLoginCommand([]string{"/opt/agent/bin/kimi", "acp"}, flagMethod, &declared); got != "/opt/agent/bin/kimi login" {
-		t.Fatalf("terminalLoginCommand with extension declaration = %q", got)
+	if got := terminalLoginLaunch([]string{"/opt/agent/bin/kimi", "acp"}, flagMethod, &declared); got.Command != "/opt/agent/bin/kimi login" {
+		t.Fatalf("terminalLoginLaunch with extension declaration = %#v", got)
+	}
+	declared.Command.Strategy = "runtime-slash-command"
+	declared.Command.Args = []string{"login"}
+	declared.Command.ReadyText = "Welcome to Kimi Code!"
+	if got := terminalLoginLaunch([]string{"/opt/agent/bin/kimi", "acp"}, flagMethod, &declared); got.Command != "/opt/agent/bin/kimi" ||
+		got.StartupAction == nil || got.StartupAction.Type != "slash_command" ||
+		got.StartupAction.CommandName != "login" || got.StartupAction.ReadyText != "Welcome to Kimi Code!" {
+		t.Fatalf("terminalLoginLaunch with slash command declaration = %#v", got)
 	}
 	browserMethod := agentruntime.StandardACPAuthMethod{ID: "login", Type: "browser", Args: []string{"runtime-browser"}}
-	if got := terminalLoginCommand([]string{"/opt/agent/bin/kimi", "acp"}, browserMethod, &declared); got != "" {
-		t.Fatalf("terminalLoginCommand with mismatched live type = %q", got)
+	if got := terminalLoginLaunch([]string{"/opt/agent/bin/kimi", "acp"}, browserMethod, &declared); got != (terminalAuthLaunch{}) {
+		t.Fatalf("terminalLoginLaunch with mismatched live type = %#v", got)
 	}
-	if got := terminalLoginCommand([]string{"/opt/agent dir/bin/kimi"}, method, nil); got != `'/opt/agent dir/bin/kimi' login` {
-		t.Fatalf("terminalLoginCommand with spaces = %q", got)
+	wantPathWithSpaces := `'/opt/agent dir/bin/kimi' login`
+	if runtime.GOOS == "windows" {
+		wantPathWithSpaces = `"/opt/agent dir/bin/kimi" login`
 	}
-	if got := terminalLoginCommand([]string{"/opt/agent/bin/kimi"}, agentruntime.StandardACPAuthMethod{ID: "oauth"}, nil); got != "" {
-		t.Fatalf("terminalLoginCommand for non-terminal method = %q", got)
+	if got := terminalLoginLaunch([]string{"/opt/agent dir/bin/kimi"}, method, nil); got.Command != wantPathWithSpaces {
+		t.Fatalf("terminalLoginLaunch with spaces = %#v", got)
 	}
-	if got := terminalLoginCommand(nil, method, nil); got != "" {
-		t.Fatalf("terminalLoginCommand without command = %q", got)
+	if got := terminalLoginLaunch([]string{"/opt/agent/bin/kimi"}, agentruntime.StandardACPAuthMethod{ID: "oauth"}, nil); got != (terminalAuthLaunch{}) {
+		t.Fatalf("terminalLoginLaunch for non-terminal method = %#v", got)
+	}
+	if got := terminalLoginLaunch(nil, method, nil); got != (terminalAuthLaunch{}) {
+		t.Fatalf("terminalLoginLaunch without command = %#v", got)
+	}
+}
+
+func TestProbeRuntimeAppliesSignedTerminalSetupPresentation(t *testing.T) {
+	t.Parallel()
+
+	var declared AuthenticationMethodProfile
+	declared.ID = "login"
+	declared.Name = "Set up Example Agent"
+	declared.Description = "Open the runtime login flow."
+	declared.Type = "terminal"
+	declared.Command.Strategy = "runtime-slash-command"
+	declared.Command.Args = []string{"login"}
+	declared.Command.ReadyText = "Example Agent ready"
+	binding := RuntimeBinding{
+		Installation: Installation{AgentKey: "example", Provider: "acp:example"},
+		Command:      []string{"/opt/example/bin/example", "acp"},
+		AuthenticationMethods: map[string]AuthenticationMethodProfile{
+			"login": declared,
+		},
+	}
+	result, err := ProbeRuntime(
+		context.Background(), binding, "extension:example", t.TempDir(),
+		&probeTransport{authRequired: true, terminalAuthMethod: true},
+		agentruntime.HostMetadata{},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Status != RuntimeProbeAuthRequired || len(result.AuthMethods) != 1 {
+		t.Fatalf("runtime probe = %#v", result)
+	}
+	method := result.AuthMethods[0]
+	if method.Name != declared.Name || method.Description != declared.Description ||
+		method.Type != "terminal" || method.TerminalCommand != "/opt/example/bin/example" ||
+		method.TerminalStartupAction == nil || method.TerminalStartupAction.Type != "slash_command" ||
+		method.TerminalStartupAction.CommandName != "login" || method.TerminalStartupAction.ReadyText != "Example Agent ready" {
+		t.Fatalf("projected auth method = %#v", method)
 	}
 }
 

@@ -16,6 +16,7 @@ import type {
   WorkspaceAppCenterCatalogStatus,
   WorkspaceAppCenterGateway,
   WorkspaceAppCenterLocalization,
+  WorkspaceAppFailurePhase,
   WorkspaceAppCenterSource,
   WorkspaceAppCenterRuntimeStatus,
   WorkspaceAppCenterSnapshot
@@ -60,6 +61,7 @@ export interface WorkspaceAppLike {
   readonly enabled: boolean;
   readonly exportable: boolean;
   readonly failureReason?: string | null;
+  readonly failurePhase?: WorkspaceAppFailurePhase | null;
   readonly iconUrl?: string | null;
   readonly installed: boolean;
   readonly installationId?: string | null;
@@ -342,6 +344,7 @@ export function normalizeWorkspaceAppCenterApp(
     enabled: app.enabled,
     exportable: app.exportable,
     failureReason: app.failureReason ?? null,
+    failurePhase: app.failurePhase ?? undefined,
     iconUrl: app.iconUrl,
     installProgress: normalizeWorkspaceAppInstallProgress(app.installProgress),
     installed: app.installed,

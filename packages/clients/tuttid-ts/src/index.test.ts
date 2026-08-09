@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  ConnectorMarketClientError,
   createTuttidClient,
   createClient,
   getTuttidErrorI18nCandidates,
@@ -17,6 +18,7 @@ import {
   type ListAgentTargetsResponse,
   type ListWorkspacesResponse,
   type WorkspaceFilePreviewResponse,
+  type WorkspaceAgentSessionWorktreeSupportResponse,
   type WorkspaceGitPatchSupportResponse,
   type WorkspaceGitPatchResponse
 } from "./index.ts";
@@ -95,6 +97,109 @@ test("shared tuttid client purges deleted Agent conversations", async () => {
     body: null,
     method: "POST",
     path: "/v1/agent-maintenance/deleted-conversations/purge",
+    query: {}
+  });
+});
+
+test("shared tuttid client manages workspace deleted Agent sessions", async () => {
+  const listResponse = {
+    workspaceId: "workspace-1",
+    sessions: [
+      {
+        agentSessionId: "session-1",
+        title: "Deleted session",
+        projectPath: "/projects/tutti",
+        updatedAtUnixMs: 20,
+        deletedAtUnixMs: 30,
+        restorable: true,
+        unavailableReason: null
+      }
+    ],
+    projectOptions: [
+      {
+        projectPath: "/projects/tutti",
+        projectLabel: "tutti",
+        projectAvailable: true
+      }
+    ],
+    hasMore: false,
+    totalCount: 1,
+    workspaceTotalCount: 2
+  };
+  const purgeResponse = {
+    removedSessions: 2,
+    removedMessages: 5,
+    payloadBytes: 128
+  };
+  const { client, requests } = captureClient((request) => {
+    if (request.method === "GET") return jsonResponse(listResponse);
+    if (request.path.endsWith("/restore")) {
+      return jsonResponse({ agentSessionId: "session-1", restored: true });
+    }
+    return jsonResponse(purgeResponse);
+  });
+  const controller = new AbortController();
+
+  assert.deepEqual(
+    await client.listWorkspaceDeletedAgentSessions(
+      "workspace-1",
+      {
+        cursor: "opaque-cursor",
+        limit: 25,
+        projectPath: "/projects/tutti",
+        searchQuery: "deleted"
+      },
+      { signal: controller.signal }
+    ),
+    listResponse
+  );
+  assert.deepEqual(
+    await client.restoreWorkspaceDeletedAgentSession(
+      "workspace-1",
+      "session-1"
+    ),
+    { agentSessionId: "session-1", restored: true }
+  );
+  assert.deepEqual(
+    await client.purgeWorkspaceDeletedAgentSession("workspace-1", "session-1"),
+    purgeResponse
+  );
+  assert.deepEqual(
+    await client.purgeWorkspaceDeletedAgentSessions("workspace-1"),
+    purgeResponse
+  );
+
+  assertRequest(requests[0]!, {
+    authorization: null,
+    body: null,
+    method: "GET",
+    path: "/v1/workspaces/workspace-1/deleted-agent-sessions",
+    query: {
+      cursor: "opaque-cursor",
+      limit: "25",
+      projectPath: "/projects/tutti",
+      searchQuery: "deleted"
+    }
+  });
+  assertRequest(requests[1]!, {
+    authorization: null,
+    body: null,
+    method: "POST",
+    path: "/v1/workspaces/workspace-1/deleted-agent-sessions/session-1/restore",
+    query: {}
+  });
+  assertRequest(requests[2]!, {
+    authorization: null,
+    body: null,
+    method: "DELETE",
+    path: "/v1/workspaces/workspace-1/deleted-agent-sessions/session-1",
+    query: {}
+  });
+  assertRequest(requests[3]!, {
+    authorization: null,
+    body: null,
+    method: "DELETE",
+    path: "/v1/workspaces/workspace-1/deleted-agent-sessions",
     query: {}
   });
 });
@@ -1720,6 +1825,30 @@ test("shared tuttid client resolves workspace git patch support", async () => {
   });
 });
 
+test("shared tuttid client carries the exact Agent target into worktree support", async () => {
+  const response = {
+    root: "/workspace",
+    supported: true
+  } satisfies WorkspaceAgentSessionWorktreeSupportResponse;
+  const { client, requests } = captureClient(jsonResponse(response));
+
+  assert.deepEqual(
+    await client.resolveWorkspaceAgentSessionWorktreeSupport(
+      "ws-1",
+      "local:codex",
+      "/workspace"
+    ),
+    response
+  );
+  assertRequest(requests[0]!, {
+    authorization: null,
+    body: null,
+    method: "GET",
+    path: "/v1/workspaces/ws-1/agent-session-worktree-support",
+    query: { agentTargetId: "local:codex", cwd: "/workspace" }
+  });
+});
+
 test("shared tuttid client loads agent provider composer options", async () => {
   let requestMethod = "";
   let requestPath = "";
@@ -2332,4 +2461,135 @@ test("getTuttidErrorI18nCandidates prefers reason-specific keys", () => {
     "errors.workspace_not_found.default",
     "errors.workspace_not_found"
   ]);
+});
+
+test("shared tuttid client preserves connector market read and install routes", async () => {
+  const snapshot = {
+    catalogState: "ready" as const,
+    connectors: [],
+    operations: [],
+    revision: 7,
+    sourceRevision: "sha256:catalog"
+  };
+  const mutation = {
+    operation: {
+      operationId: "operation-1",
+      clientRequestId: "request-1",
+      connectorKey: "notion",
+      kind: "install" as const,
+      state: "accepted" as const,
+      attempt: 0,
+      createdAt: "2026-08-03T00:00:00Z",
+      updatedAt: "2026-08-03T00:00:00Z"
+    },
+    revision: 8
+  };
+  const { client, requests } = captureClient((request) =>
+    jsonResponse(
+      request.method === "GET" ? snapshot : mutation,
+      request.method === "GET" ? 200 : 202
+    )
+  );
+
+  assert.deepEqual(await client.getConnectorMarket(), snapshot);
+  assert.deepEqual(
+    await client.installConnectorMarketConnector("notion", {
+      clientRequestId: "request-1",
+      expectedRevision: 7
+    }),
+    mutation
+  );
+  assertRequest(requests[0]!, {
+    authorization: null,
+    body: null,
+    method: "GET",
+    path: "/v1/connector-market",
+    query: {}
+  });
+  assertRequest(requests[1]!, {
+    authorization: null,
+    body: {
+      clientRequestId: "request-1",
+      expectedRevision: 7
+    },
+    method: "POST",
+    path: "/v1/connector-market/connectors/notion:install",
+    query: {}
+  });
+});
+
+test("shared tuttid connector client preserves structured market errors", async () => {
+  const details = {
+    code: "connector_market_revision_conflict" as const,
+    message: "connector market revision changed",
+    retryable: true,
+    revision: 12
+  };
+  const { client } = captureClient(jsonResponse(details, 409));
+
+  await assert.rejects(
+    client.installConnectorMarketConnector("notion", {
+      clientRequestId: "request-1",
+      expectedRevision: 11
+    }),
+    (error: unknown) => {
+      assert.ok(error instanceof ConnectorMarketClientError);
+      assert.equal(error.code, details.code);
+      assert.equal(error.retryable, true);
+      assert.equal(error.revision, 12);
+      assert.equal(error.statusCode, 409);
+      assert.deepEqual(error.details, details);
+      return true;
+    }
+  );
+});
+
+test("shared tuttid connector client preserves category and cursor pagination", async () => {
+  const categories = {
+    categories: [
+      {
+        categoryId: "development",
+        kind: "category" as const,
+        sortOrder: 20,
+        itemCount: 1
+      }
+    ]
+  };
+  const page = {
+    sectionId: "development",
+    items: [],
+    nextPageToken: "next-page",
+    revision: 8
+  };
+  const { client, requests } = captureClient((request) =>
+    jsonResponse(request.path.endsWith("/categories") ? categories : page)
+  );
+
+  assert.deepEqual(await client.listConnectorMarketCategories(), categories);
+  assert.deepEqual(
+    await client.listConnectorMarketCatalog({
+      sectionId: "development",
+      pageSize: 20,
+      pageToken: "cursor-1"
+    }),
+    page
+  );
+  assertRequest(requests[0]!, {
+    authorization: null,
+    body: null,
+    method: "GET",
+    path: "/v1/connector-market/categories",
+    query: {}
+  });
+  assertRequest(requests[1]!, {
+    authorization: null,
+    body: null,
+    method: "GET",
+    path: "/v1/connector-market/catalog",
+    query: {
+      pageSize: "20",
+      pageToken: "cursor-1",
+      sectionId: "development"
+    }
+  });
 });

@@ -15,10 +15,12 @@ export interface NativeListRowProps {
   description?: ReactNode;
   disabled?: boolean;
   leading?: ReactNode;
+  onLongPress?(): void;
   onPress?(): void;
   selected?: boolean;
   style?: StyleProp<ViewStyle>;
   title: string;
+  titleNumberOfLines?: number;
   trailing?: ReactNode;
 }
 
@@ -27,15 +29,17 @@ export function NativeListRow({
   description,
   disabled = false,
   leading,
+  onLongPress,
   onPress,
   selected = false,
   style,
   title,
+  titleNumberOfLines = 2,
   trailing
 }: NativeListRowProps) {
   const theme = useNativeTheme();
   const styles = createStyles(theme);
-  const interactive = onPress !== undefined;
+  const interactive = onLongPress !== undefined || onPress !== undefined;
 
   return (
     <Pressable
@@ -43,6 +47,7 @@ export function NativeListRow({
       accessibilityRole={interactive ? "button" : undefined}
       accessibilityState={{ disabled, selected }}
       disabled={!interactive || disabled}
+      onLongPress={onLongPress}
       onPress={onPress}
       style={({ pressed }) => [
         styles.row,
@@ -57,7 +62,7 @@ export function NativeListRow({
         {leading ? <View style={styles.leading}>{leading}</View> : null}
         <View style={styles.copy}>
           <Text
-            numberOfLines={2}
+            numberOfLines={titleNumberOfLines}
             style={[styles.title, selected ? styles.titleSelected : undefined]}
           >
             {title}

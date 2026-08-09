@@ -120,13 +120,16 @@ func visibleFailureMessageUpdate(
 	payload := clonePayload(projection.payload)
 	payload["source"] = "runtime"
 	return agentsessionstore.WorkspaceAgentMessageUpdate{
-		AgentSessionID:   strings.TrimSpace(sessionID),
-		MessageID:        "visible-error:" + projection.eventID,
-		Seq:              uint64(timestamp),
-		TurnID:           turnID,
-		Role:             string(activityshared.MessageRoleAssistant),
-		Kind:             "text",
-		Status:           messageStreamStateFailed,
+		AgentSessionID: strings.TrimSpace(sessionID),
+		MessageID:      "visible-error:" + projection.eventID,
+		Seq:            uint64(timestamp),
+		TurnID:         turnID,
+		Role:           string(activityshared.MessageRoleAssistant),
+		Kind:           "text",
+		Status:         messageStreamStateFailed,
+		Semantics: &canonical.WorkspaceAgentMessageSemantics{
+			UserVisibleAssistantResponse: true,
+		},
 		Payload:          payload,
 		OccurredAtUnixMS: timestamp,
 	}, true

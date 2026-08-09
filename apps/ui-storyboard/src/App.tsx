@@ -22,6 +22,7 @@ import {
   DrawerHeader,
   DrawerTitle,
   DrawerTrigger,
+  ImageWithFallback,
   Input,
   MenuSurface,
   MentionPill,
@@ -311,6 +312,11 @@ const buttonComponent = uiSystemMetadata.components.find(
 const sections = [
   ...foundationNavigationSections,
   ...componentSection("avatar", "Avatar", "身份图片、字母与加载回退"),
+  ...componentSection(
+    "image-with-fallback",
+    "ImageWithFallback",
+    "远程图片重试与稳定兜底"
+  ),
   ...componentSection("badge", "Badge", "状态标签与紧凑元信息"),
   ...componentSection("button", "Button", "按钮层级、尺寸与状态"),
   {
@@ -469,6 +475,10 @@ const sectionCopy: Record<
     colors: { label: "颜色", summary: colorsContent.description },
     typography: { label: "字体", summary: typographyContent.description },
     metrics: { label: "度量", summary: metricsContent.description },
+    "image-with-fallback": {
+      label: "ImageWithFallback",
+      summary: "远程图片重试与稳定兜底"
+    },
     badge: { label: "Badge", summary: "状态标签与紧凑元信息" },
     button: { label: "Button", summary: "按钮层级、尺寸与状态" },
     checkbox: { label: "Checkbox", summary: "多选项、文件选择与布尔配置" },
@@ -531,6 +541,10 @@ const sectionCopy: Record<
     metrics: {
       label: "Metrics",
       summary: "Spacing, radius, and motion values used across shared UI."
+    },
+    "image-with-fallback": {
+      label: "ImageWithFallback",
+      summary: "Bounded remote image retry and fallback."
     },
     badge: { label: "Badge", summary: "Status labels and compact metadata." },
     button: {
@@ -1661,6 +1675,78 @@ function AvatarStoryboard() {
               <code className="font-mono text-[11px] text-[var(--text-secondary)]">
                 {label}
               </code>
+            </div>
+          ))}
+        </div>
+      </ExampleCard>
+    </DocsSection>
+  );
+}
+
+function ImageWithFallbackStoryboard() {
+  if (!hasStoryboard("ImageWithFallback")) {
+    return null;
+  }
+
+  const fallback = (
+    <span className="grid size-12 place-items-center rounded-[10px] bg-[var(--transparency-block)] text-[var(--text-secondary)]">
+      <SystemIcons.ImageFileIcon className="size-5" />
+    </span>
+  );
+
+  const states = [
+    {
+      description: "Remote image delivered successfully",
+      label: "Loaded",
+      node: (
+        <ImageWithFallback
+          alt=""
+          className="size-12 rounded-[10px] object-contain"
+          src={avatarSampleImageUrl}
+          fallback={fallback}
+        />
+      )
+    },
+    {
+      description: "One same-URL retry, then the caller fallback",
+      label: "Retry then fallback",
+      node: (
+        <ImageWithFallback
+          alt=""
+          className="size-12 rounded-[10px] object-contain"
+          src="/__missing-image-with-fallback__.png"
+          fallback={fallback}
+        />
+      )
+    }
+  ];
+
+  return (
+    <DocsSection
+      id="image-with-fallback"
+      title="ImageWithFallback"
+      description="远程图片只做有限次同 URL 重试，失败后由调用方提供稳定兜底"
+      componentId={metadataFor("ImageWithFallback")?.id}
+    >
+      <ExampleCard
+        title="Delivery States"
+        description="同一个 URL 只重试一次，不通过追加 query 改写请求地址"
+      >
+        <div className="flex flex-wrap gap-5">
+          {states.map((state) => (
+            <div
+              className="grid min-w-32 justify-items-center gap-2 text-center"
+              key={state.label}
+            >
+              {state.node}
+              <div className="grid gap-0.5">
+                <span className="text-[13px] font-medium text-[var(--text-primary)]">
+                  {state.label}
+                </span>
+                <span className="text-[11px] text-[var(--text-secondary)]">
+                  {state.description}
+                </span>
+              </div>
             </div>
           ))}
         </div>
@@ -4059,6 +4145,7 @@ export function App() {
             />
           ) : null}
           <AvatarStoryboard />
+          <ImageWithFallbackStoryboard />
           <BadgeStoryboard />
           <ButtonStoryboard />
           <CheckboxStoryboard />

@@ -524,10 +524,13 @@ session-level child summaries.
 - Cause: deletion targeted only the selected session row instead of expanding
   its immutable parent tree.
 - Fix: resolve the selected session and every nested child in the deletion
-  transaction; tombstone the full tree and remove its turns, interactions, and
-  submit claims together.
+  transaction and tombstone the full tree with one deletion generation. Keep
+  its Turns, Interactions, submit claims, history, and Messages intact for
+  restore; terminalize only active work. Remove those rows only during the
+  separate permanent-purge transaction.
 - Validate: cover both single-session and batch deletion with a nested child
-  tree, and assert every descendant is tombstoned.
+  tree, assert every descendant receives the same tombstone, restore the exact
+  tree atomically, and verify legacy incomplete tombstones fail closed.
 
 ### Interactive response or exact-turn cancel succeeds but durable state stays pending
 

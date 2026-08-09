@@ -1,9 +1,11 @@
 import {
   tuttiExternalAtProviderIds,
   type TuttiExternalAtInvalidation,
+  type TuttiExternalAtQueryDirectoryInput,
   type TuttiExternalAtProviderId,
   type TuttiExternalAtQueryInput,
   type TuttiExternalAtQueryResult,
+  type TuttiExternalReferenceSelection,
   type TuttiExternalAtResolveInput,
   type TuttiExternalAtResolveResult
 } from "../contracts/index.ts";
@@ -12,6 +14,12 @@ import type {
   RichTextTriggerInsertResult,
   RichTextTriggerProvider
 } from "@tutti-os/ui-rich-text/types";
+import {
+  appendRichTextLinksToContent,
+  createRichTextMentionMarkdown,
+  extractRichTextMentionsFromContent,
+  normalizeRichTextContent
+} from "@tutti-os/ui-rich-text/core";
 import {
   createRichTextMentionService,
   canonicalizeRichTextMentionScope,
@@ -22,6 +30,11 @@ export interface TuttiExternalAtRichTextBridge {
   at?: {
     query(
       input: TuttiExternalAtQueryInput
+    ):
+      | Promise<readonly TuttiExternalAtQueryResult[]>
+      | readonly TuttiExternalAtQueryResult[];
+    queryDirectory?(
+      input: TuttiExternalAtQueryDirectoryInput
     ):
       | Promise<readonly TuttiExternalAtQueryResult[]>
       | readonly TuttiExternalAtQueryResult[];
@@ -66,6 +79,93 @@ export interface CreateTuttiExternalRichTextMentionServiceInput {
   maxResults?: number;
 }
 
+function workspaceReferenceIdentityKey(input: {
+  entityId: string;
+  providerId: string;
+  scope?: Readonly<Record<string, string>>;
+}): string | null {
+  if (input.providerId !== "workspace-reference") {
+    return null;
+  }
+  const entityId = input.entityId.trim();
+  const source = input.scope?.source?.trim() ?? "";
+  const workspaceId = input.scope?.workspaceId?.trim() ?? "";
+  if (!entityId || source !== "app" || !workspaceId) {
+    return null;
+  }
+  return JSON.stringify([
+    entityId,
+    source,
+    workspaceId,
+    input.scope?.groupId?.trim() ?? ""
+  ]);
+}
+
+/**
+ * Appends Host-selected paths and lazy workspace-reference handles to the
+ * serialized rich-text prompt. Selection order is stable within each kind,
+ * duplicate paths or handles are omitted, and existing prompt text is kept.
+ */
+export function appendTuttiExternalReferenceSelections(
+  value: string | null | undefined,
+  selections: readonly TuttiExternalReferenceSelection[]
+): string {
+  const pathSelections = selections.filter(
+    (
+      selection
+    ): selection is Extract<
+      TuttiExternalReferenceSelection,
+      { selectionKind: "path" }
+    > => selection.selectionKind === "path"
+  );
+  let content = appendRichTextLinksToContent(
+    value,
+    pathSelections.map(({ reference }) => ({
+      kind: reference.kind === "folder" ? "folder" : "file",
+      name: reference.displayName,
+      path: reference.path
+    }))
+  );
+  const existingWorkspaceReferenceKeys = new Set(
+    extractRichTextMentionsFromContent(content).flatMap((mention) => {
+      const key = workspaceReferenceIdentityKey(mention);
+      return key ? [key] : [];
+    })
+  );
+  const mentionMarkdown = selections.flatMap((selection) => {
+    if (selection.selectionKind !== "workspace-reference") {
+      return [];
+    }
+    const mention = {
+      providerId: "workspace-reference",
+      entityId: selection.id,
+      label: selection.displayName,
+      scope: {
+        workspaceId: selection.workspaceId,
+        source: selection.source,
+        ...(selection.groupId ? { groupId: selection.groupId } : {}),
+        ...(selection.fileCount && selection.fileCount > 0
+          ? { count: String(selection.fileCount) }
+          : {})
+      }
+    };
+    const key = workspaceReferenceIdentityKey(mention);
+    if (!key || existingWorkspaceReferenceKeys.has(key)) {
+      return [];
+    }
+    existingWorkspaceReferenceKeys.add(key);
+    const markdown = createRichTextMentionMarkdown(mention);
+    return markdown ? [markdown] : [];
+  });
+  if (mentionMarkdown.length === 0) {
+    return content;
+  }
+  content = normalizeRichTextContent(content);
+  return content
+    ? `${content} ${mentionMarkdown.join(" ")}`
+    : mentionMarkdown.join(" ");
+}
+
 export async function queryTuttiExternalAtRichTextTriggerItems(
   input: QueryTuttiExternalAtRichTextTriggerItemsInput
 ): Promise<readonly TuttiExternalAtQueryResult[]> {
@@ -100,6 +200,27 @@ export function createTuttiExternalAtRichTextTriggerProvider(
         providerIds: [input.providerId]
       });
     },
+    ...(input.providerId === "file" &&
+    (input.getBridge?.() ?? input.bridge)?.at?.queryDirectory
+      ? {
+          getItemDirectory(item: TuttiExternalAtQueryResult) {
+            return item.directory;
+          },
+          async queryDirectory(queryInput) {
+            const bridge = (input.getBridge?.() ?? input.bridge)?.at;
+            if (!bridge?.queryDirectory) {
+              throw new Error(
+                "Tutti external @ bridge does not support directory browsing."
+              );
+            }
+            return bridge.queryDirectory({
+              directoryPath: queryInput.directoryPath,
+              maxResults: queryInput.maxResults ?? input.maxResults,
+              providerId: input.providerId
+            });
+          }
+        }
+      : {}),
     async resolveMention(identity) {
       const bridge = (input.getBridge?.() ?? input.bridge)?.at;
       if (!bridge) return null;

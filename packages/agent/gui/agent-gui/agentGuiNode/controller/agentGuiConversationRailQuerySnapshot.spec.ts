@@ -93,6 +93,32 @@ describe("createConversationRailQuerySnapshotSelector", () => {
     expect(afterVisibleUpdate[2]).toBe(first[2]);
     expect(afterVisibleUpdate[3]).toBe(first[3]);
 
+    const isolation = {
+      mode: "worktree" as const,
+      worktreePath: "/workspace/.worktrees/session-1",
+      branch: "tutti/session-1",
+      baseCommit: "base-commit"
+    };
+    engine.dispatch({
+      session: createSession("session-1", "Changed title", 2_000, isolation),
+      type: "session/upserted"
+    });
+    const afterIsolationProjection = selectConversations(
+      {
+        engineState: engine.getSnapshot(),
+        interactionLocked: false,
+        querySnapshot
+      },
+      afterVisibleUpdate
+    );
+
+    expect(afterIsolationProjection).not.toBe(afterVisibleUpdate);
+    expect(afterIsolationProjection[0]).toBe(afterVisibleUpdate[0]);
+    expect(afterIsolationProjection[1]).not.toBe(afterVisibleUpdate[1]);
+    expect(afterIsolationProjection[1]?.isolation).toEqual(isolation);
+    expect(afterIsolationProjection[2]).toBe(afterVisibleUpdate[2]);
+    expect(afterIsolationProjection[3]).toBe(afterVisibleUpdate[3]);
+
     engine.dispose();
   });
 });
@@ -100,7 +126,13 @@ describe("createConversationRailQuerySnapshotSelector", () => {
 function createSession(
   agentSessionId: string,
   title: string,
-  updatedAtUnixMs: number
+  updatedAtUnixMs: number,
+  isolation?: {
+    mode: "worktree";
+    worktreePath: string;
+    branch: string;
+    baseCommit: string;
+  }
 ) {
   return normalizeAgentActivitySession({
     activeTurnId: null,
@@ -111,6 +143,7 @@ function createSession(
     pendingInteractions: [],
     provider: "codex",
     railSectionKey: "conversations",
+    ...(isolation ? { isolation } : {}),
     title,
     updatedAtUnixMs,
     workspaceId: "test-workspace"

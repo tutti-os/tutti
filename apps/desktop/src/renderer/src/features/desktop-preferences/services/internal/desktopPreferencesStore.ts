@@ -3,6 +3,7 @@ import type {
   DesktopAgentComposerDefaultsByAgentTarget,
   DesktopAgentComposerDefaultsByProvider,
   DesktopAgentGuiConversationRailCollapsedByProvider,
+  DesktopAgentSessionLaunchModesByWorkspace,
   DesktopAgentConversationDetailMode,
   DesktopDefaultAgentProvider,
   DesktopAppCatalogChannel,
@@ -28,6 +29,7 @@ export function createDesktopPreferencesStore(input: {
   agentComposerDefaultsByProvider?: DesktopAgentComposerDefaultsByProvider;
   agentComposerDefaultsByAgentTarget?: DesktopAgentComposerDefaultsByAgentTarget;
   agentGuiConversationRailCollapsedByProvider?: DesktopAgentGuiConversationRailCollapsedByProvider;
+  agentSessionLaunchModesByWorkspace?: DesktopAgentSessionLaunchModesByWorkspace;
   agentConversationDetailMode: DesktopAgentConversationDetailMode;
   appCatalogChannel: DesktopAppCatalogChannel;
   browserUseConnectionMode: DesktopBrowserUseConnectionMode;
@@ -72,6 +74,8 @@ export function createDesktopPreferencesStore(input: {
       input.agentComposerDefaultsByAgentTarget ?? {},
     agentGuiConversationRailCollapsedByProvider:
       input.agentGuiConversationRailCollapsedByProvider ?? {},
+    agentSessionLaunchModesByWorkspace:
+      input.agentSessionLaunchModesByWorkspace ?? {},
     agentConversationDetailMode: input.agentConversationDetailMode,
     appCatalogChannel: input.appCatalogChannel,
     browserUseConnectionMode: input.browserUseConnectionMode,

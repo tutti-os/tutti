@@ -1,4 +1,4 @@
-import { Spinner } from "@tutti-os/ui-system";
+import { Spinner, WorktreeLinedIcon } from "@tutti-os/ui-system";
 import { AskLinedIcon } from "@tutti-os/ui-system/icons";
 import { resolveAgentGUIConversationSortTimeUnixMs } from "./model/agentGuiConversationModel";
 import type { AgentGUINodeViewModel } from "./model/agentGuiNodeTypes";
@@ -16,10 +16,12 @@ export interface ConversationSection {
 export function ConversationMeta({
   item,
   nowMs,
-  labels
+  labels,
+  hideTime = false
 }: {
   item: AgentGUINodeViewModel["rail"]["conversations"][number];
   nowMs: number;
+  hideTime?: boolean;
   labels: Pick<
     AgentGUIViewLabels,
     | "relativeTimeJustNow"
@@ -29,18 +31,23 @@ export function ConversationMeta({
     | "relativeTimeMonths"
     | "relativeTimeYears"
   >;
-}): React.JSX.Element {
+}): React.JSX.Element | null {
   "use memo";
   const kind = conversationMetaKind(item);
+  const worktreeGlyph =
+    item.isolation?.mode === "worktree" ? <WorktreeGlyph /> : null;
+  const worktreeData = worktreeGlyph ? "true" : undefined;
 
   if (kind === "loading") {
     return (
       <span
         className={styles.conversationMeta}
         data-kind={kind}
+        data-worktree={worktreeData}
         data-testid={`agent-gui-conversation-meta-${item.id}`}
       >
         <LoadingGlyph />
+        {worktreeGlyph}
       </span>
     );
   }
@@ -50,12 +57,14 @@ export function ConversationMeta({
       <span
         className={styles.conversationMeta}
         data-kind={kind}
+        data-worktree={worktreeData}
         data-testid={`agent-gui-conversation-meta-${item.id}`}
       >
         <AskLinedIcon
           aria-hidden="true"
           className={styles.conversationStatusGlyph}
         />
+        {worktreeGlyph}
       </span>
     );
   }
@@ -65,9 +74,11 @@ export function ConversationMeta({
       <span
         className={styles.conversationMeta}
         data-kind={kind}
+        data-worktree={worktreeData}
         data-testid={`agent-gui-conversation-meta-${item.id}`}
       >
         <AttentionGlyph />
+        {worktreeGlyph}
       </span>
     );
   }
@@ -77,19 +88,34 @@ export function ConversationMeta({
       <span
         className={styles.conversationMeta}
         data-kind={kind}
+        data-worktree={worktreeData}
         data-testid={`agent-gui-conversation-meta-${item.id}`}
       >
         <span className={styles.conversationUnreadLamp} aria-hidden="true" />
+        {worktreeGlyph}
       </span>
     );
   }
 
-  return (
+  return hideTime ? (
+    worktreeGlyph ? (
+      <span
+        className={styles.conversationMeta}
+        data-kind="worktree"
+        data-worktree={worktreeData}
+        data-testid={`agent-gui-conversation-meta-${item.id}`}
+      >
+        {worktreeGlyph}
+      </span>
+    ) : null
+  ) : (
     <span
       className={styles.conversationMeta}
       data-kind={kind}
+      data-worktree={worktreeData}
       data-testid={`agent-gui-conversation-meta-${item.id}`}
     >
+      {worktreeGlyph}
       <span className={styles.conversationTime}>
         {formatConversationRelativeTime(
           resolveAgentGUIConversationSortTimeUnixMs(item),
@@ -98,6 +124,15 @@ export function ConversationMeta({
         )}
       </span>
     </span>
+  );
+}
+
+function WorktreeGlyph(): React.JSX.Element {
+  return (
+    <WorktreeLinedIcon
+      aria-hidden="true"
+      className={styles.conversationWorktreeGlyph}
+    />
   );
 }
 
@@ -121,14 +156,14 @@ export function filterConversationSectionsBySearchMatches(
 function conversationMetaKind(
   conversation: AgentGUINodeViewModel["rail"]["conversations"][number]
 ): "loading" | "waiting" | "failed" | "unread-complete" | "time" {
+  if (conversation.status === "failed") {
+    return "failed";
+  }
   if (conversation.needsUserAction) {
     return "waiting";
   }
   if (conversation.status === "working" || conversation.status === "waiting") {
     return "loading";
-  }
-  if (conversation.status === "failed") {
-    return "failed";
   }
   if (conversation.hasUnreadCompletion) {
     return "unread-complete";

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"runtime"
 	"strings"
 	"time"
 
@@ -28,6 +29,15 @@ type RuntimeAuthMethod struct {
 	// methods (runtime executable plus the provider-declared arguments).
 	// Empty for methods driven through ACP authenticate.
 	TerminalCommand string
+	// TerminalStartupAction is an optional typed action submitted only after the
+	// terminal runtime emits its bounded literal ready marker.
+	TerminalStartupAction *RuntimeTerminalStartupAction
+}
+
+type RuntimeTerminalStartupAction struct {
+	Type        string
+	CommandName string
+	ReadyText   string
 }
 
 type RuntimeProbeResult struct {
@@ -46,7 +56,7 @@ func ProbeRuntime(
 	transport agentruntime.ProcessTransport,
 	host agentruntime.HostMetadata,
 ) (RuntimeProbeResult, error) {
-	return runRuntimeSetup(ctx, binding, agentTargetID, cwd, "", 20*time.Second, transport, host)
+	return runRuntimeSetup(ctx, binding, agentTargetID, cwd, "", 75*time.Second, transport, host)
 }
 
 func AuthenticateRuntime(
@@ -93,10 +103,22 @@ func runRuntimeSetup(
 			strings.TrimSpace(method.Type) == strings.TrimSpace(declared.Type) {
 			declaration = &declared
 		}
+		name := method.Name
+		description := method.Description
+		if declaration != nil {
+			if declaredName := strings.TrimSpace(declaration.Name); declaredName != "" {
+				name = declaredName
+			}
+			if declaredDescription := strings.TrimSpace(declaration.Description); declaredDescription != "" {
+				description = declaredDescription
+			}
+		}
+		terminalLaunch := terminalLoginLaunch(binding.Command, method, declaration)
 		methods = append(methods, RuntimeAuthMethod{
-			ID: method.ID, Name: method.Name, Description: method.Description,
-			Type:            method.Type,
-			TerminalCommand: terminalLoginCommand(binding.Command, method, declaration),
+			ID: method.ID, Name: name, Description: description,
+			Type:                  method.Type,
+			TerminalCommand:       terminalLaunch.Command,
+			TerminalStartupAction: terminalLaunch.StartupAction,
 		})
 	}
 	var account *RuntimeAuthenticatedAccount
@@ -109,29 +131,44 @@ func runRuntimeSetup(
 	return RuntimeProbeResult{Status: RuntimeProbeStatus(result.Status), AuthMethods: methods, Account: account}, nil
 }
 
-// terminalLoginCommand renders the interactive sign-in command for a terminal
+type terminalAuthLaunch struct {
+	Command       string
+	StartupAction *RuntimeTerminalStartupAction
+}
+
+// terminalLoginLaunch renders the interactive sign-in launch for a terminal
 // auth method. The fresh ACP method type remains authoritative. A compatible
-// signed extension declaration may replace only the terminal command args, so
-// provider-specific subcommands stay in the extension package without turning
-// a future browser or device-code method with the same ID into terminal auth.
-func terminalLoginCommand(
+// signed extension declaration may select either a runtime subcommand or a
+// bounded TUI slash command that is submitted only after a literal ready marker
+// is observed.
+func terminalLoginLaunch(
 	command []string,
 	method agentruntime.StandardACPAuthMethod,
 	declaration *AuthenticationMethodProfile,
-) string {
+) terminalAuthLaunch {
 	methodType := method.Type
 	args := method.Args
-	runtimeSubcommand := false
+	strategy := ""
+	readyText := ""
 	if declaration != nil &&
 		strings.TrimSpace(method.Type) == strings.TrimSpace(declaration.Type) {
 		args = declaration.Command.Args
-		runtimeSubcommand = declaration.Command.Strategy == "runtime-subcommand"
+		strategy = declaration.Command.Strategy
+		readyText = declaration.Command.ReadyText
 	}
 	if methodType != "terminal" || len(command) == 0 || strings.TrimSpace(command[0]) == "" {
-		return ""
+		return terminalAuthLaunch{}
+	}
+	if strategy == "runtime-slash-command" && len(args) == 1 {
+		return terminalAuthLaunch{
+			Command: shellQuote(command[0]),
+			StartupAction: &RuntimeTerminalStartupAction{
+				Type: "slash_command", CommandName: args[0], ReadyText: readyText,
+			},
+		}
 	}
 	base := command[:1]
-	if !runtimeSubcommand && len(args) > 0 && strings.HasPrefix(args[0], "-") {
+	if strategy != "runtime-subcommand" && len(args) > 0 && strings.HasPrefix(args[0], "-") {
 		base = command
 	}
 	parts := make([]string, 0, len(base)+len(args))
@@ -141,10 +178,13 @@ func terminalLoginCommand(
 	for _, arg := range args {
 		parts = append(parts, shellQuote(arg))
 	}
-	return strings.Join(parts, " ")
+	return terminalAuthLaunch{Command: strings.Join(parts, " ")}
 }
 
 func shellQuote(value string) string {
+	if runtime.GOOS == "windows" {
+		return windowsShellQuote(value)
+	}
 	if value != "" && strings.IndexFunc(value, func(r rune) bool {
 		switch {
 		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9':
@@ -159,4 +199,18 @@ func shellQuote(value string) string {
 		return value
 	}
 	return "'" + strings.ReplaceAll(value, "'", `'\''`) + "'"
+}
+
+func windowsShellQuote(value string) string {
+	if value != "" && strings.IndexFunc(value, func(r rune) bool {
+		switch r {
+		case ' ', '\t', '"', '&', '|', '<', '>', '(', ')', '^', '%':
+			return true
+		default:
+			return false
+		}
+	}) == -1 {
+		return value
+	}
+	return `"` + strings.ReplaceAll(value, `"`, `\"`) + `"`
 }

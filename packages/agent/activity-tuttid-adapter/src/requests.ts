@@ -38,6 +38,7 @@ export function tuttiCreateWorkspaceAgentSessionRequestFromActivity(
     ...(capabilityRefs.length > 0 ? { capabilityRefs } : {}),
     clientSubmitId: input.clientSubmitId,
     cwd: input.cwd ?? null,
+    ...(input.isolation ? { isolation: input.isolation } : {}),
     initialContent: input.initialGoalControl
       ? []
       : tuttiPromptContentBlocksFromActivity(input.initialContent ?? []),
@@ -93,6 +94,7 @@ export function tuttiCreateWorkspaceAgentSessionRequestFromActivation(
       : undefined,
     clientSubmitId: input.clientSubmitId,
     cwd: input.cwd,
+    isolation: input.isolation,
     initialContent: input.initialContent
       ? input.initialContent.map((block) => ({ ...block }))
       : undefined,
@@ -154,7 +156,8 @@ function tuttiPromptContentBlocksFromActivity(
       block.type !== "text" &&
       block.type !== "image" &&
       block.type !== "skill" &&
-      block.type !== "mention"
+      block.type !== "mention" &&
+      block.type !== "connector"
     ) {
       throw new Error("Unsupported workspace agent prompt content block");
     }
@@ -183,6 +186,9 @@ function tuttiPromptContentBlocksFromActivity(
     }
     if (block.path !== undefined) {
       nextBlock.path = block.path;
+    }
+    if (block.connectorKey !== undefined) {
+      nextBlock.connectorKey = block.connectorKey;
     }
     if (block.text !== undefined) {
       nextBlock.text = block.text;

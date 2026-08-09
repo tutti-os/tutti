@@ -10,6 +10,8 @@ export const accountAppID = DEFAULT_APP_ID;
 export const accountAuthLoginURL = DEFAULT_AUTH_LOGIN_URL;
 export const controlPlaneBaseURL = "https://tutti.sh/api/desktop/v1";
 export const mobileAuthCallbackURL = "tutti://auth/login";
+export const mobileUpdateFeedURL =
+  "https://d1x7gb6wqsqmnm.cloudfront.net/tutti-mobile-release-assets/latest.json";
 export const mobileClientVersion = String(
   NativeModules.TuttiMobileSecurity?.clientVersion ?? "0.0.0"
 );

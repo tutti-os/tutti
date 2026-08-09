@@ -50,6 +50,14 @@ func (p *RecipientProjector) Project(event Event) (Event, error) {
 func projectEventData(event Event, context ProjectionContext) ([]byte, error) {
 	var data any
 	switch event.EventType {
+	case EventTypeRuntimeActivityUpdate:
+		var value RuntimeActivityUpdateData
+		if err := json.Unmarshal(event.Data, &value); err != nil {
+			return nil, fmt.Errorf("%w: %v", ErrInvalidLiveEvent, err)
+		}
+		value.WorkspaceID = projectedString(value.WorkspaceID, context.OwnerWorkspaceID, context.RecipientWorkspaceID)
+		value.AgentSessionID = projectedString(value.AgentSessionID, context.OwnerAgentSessionID, context.RecipientAgentSessionID)
+		data = value
 	case EventTypeMessageDelta:
 		var value MessageDeltaData
 		if err := json.Unmarshal(event.Data, &value); err != nil {

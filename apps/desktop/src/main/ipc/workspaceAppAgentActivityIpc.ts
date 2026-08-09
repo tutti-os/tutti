@@ -4,6 +4,7 @@ import {
   normalizeTuttiExternalAgentActivityActivateSessionInput,
   normalizeTuttiExternalAgentActivityCancelTurnInput,
   normalizeTuttiExternalAgentActivityComposerOptionsInput,
+  normalizeTuttiExternalAgentActivityRememberComposerDefaultsInput,
   normalizeTuttiExternalAgentActivitySendInput
 } from "@tutti-os/workspace-external-core/core";
 import type {
@@ -123,6 +124,23 @@ export function registerWorkspaceAppAgentActivityIpc(input: {
           workspaceId: context.workspaceID
         }
       );
+    }
+  );
+  registerDesktopIpcHandler(
+    desktopIpcChannels.appExternal.agentActivityRememberComposerDefaults,
+    async (event, payload) => {
+      const context = requireWorkspaceAppGuestContext(event.sender);
+      const activityInput =
+        normalizeTuttiExternalAgentActivityRememberComposerDefaultsInput(
+          payload
+        );
+      return requestWorkspaceAppExternalRenderer<void>(context, {
+        appId: context.appID,
+        input: activityInput,
+        operation: "agentActivity.rememberComposerDefaults",
+        requestId: randomUUID(),
+        workspaceId: context.workspaceID
+      });
     }
   );
   registerDesktopIpcHandler(

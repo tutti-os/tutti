@@ -55,6 +55,23 @@ test("registerAppUpdateServices hydrates update state immediately", async () => 
   ]);
 });
 
+test("registerAppUpdateServices disables release-channel controls for Store packages", () => {
+  const registeredServices: IAppUpdateService[] = [];
+
+  registerAppUpdateServices(
+    {
+      registerInstance(_key: unknown, service: unknown) {
+        registeredServices.push(service as IAppUpdateService);
+      }
+    } as unknown as ServiceRegistry,
+    createDesktopApi({}, [], "store")
+  );
+
+  const registeredService = registeredServices.at(0) ?? null;
+  assertRegisteredService(registeredService);
+  assert.equal(registeredService.store.supportsReleaseChannels, false);
+});
+
 function assertRegisteredService(
   service: IAppUpdateService | null
 ): asserts service is IAppUpdateService {
@@ -63,9 +80,13 @@ function assertRegisteredService(
 
 function createDesktopApi(
   updateOverrides: Partial<DesktopApi["update"]>,
-  diagnosticEvents: string[] = []
+  diagnosticEvents: string[] = [],
+  distribution: DesktopApi["platform"]["distribution"] = "direct"
 ): DesktopApi {
   return {
+    platform: {
+      distribution
+    },
     runtime: {
       async logRendererDiagnostic(input) {
         diagnosticEvents.push(input.event);

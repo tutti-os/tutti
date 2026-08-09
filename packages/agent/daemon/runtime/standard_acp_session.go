@@ -12,6 +12,13 @@ import (
 	activityshared "github.com/tutti-os/tutti/packages/agent/daemon/activity/events"
 )
 
+func (a *standardACPAdapter) startupCallTimeout() time.Duration {
+	if a != nil && a.config.startupTimeout > 0 {
+		return a.config.startupTimeout
+	}
+	return acpStartCallTimeout
+}
+
 func (a *standardACPAdapter) Start(ctx context.Context, session Session) ([]activityshared.Event, error) {
 	unlockLifecycle := a.lockSessionLifecycle(session.AgentSessionID)
 	defer unlockLifecycle()
@@ -70,9 +77,9 @@ func (a *standardACPAdapter) Start(ctx context.Context, session Session) ([]acti
 		"room_id":          session.RoomID,
 		"agent_session_id": session.AgentSessionID,
 		"cwd":              firstNonEmpty(session.CWD, "/"),
-		"timeout_ms":       acpStartCallTimeout.Milliseconds(),
+		"timeout_ms":       a.startupCallTimeout().Milliseconds(),
 	})
-	newSessionResult, err := client.CallWithTimeout(ctx, acpStartCallTimeout, acpMethodNewSession, newSessionParams, func(ctx context.Context, message acpMessage) error {
+	newSessionResult, err := client.CallWithTimeout(ctx, a.startupCallTimeout(), acpMethodNewSession, newSessionParams, func(ctx context.Context, message acpMessage) error {
 		_, err := a.handleACPMessage(ctx, client, session, "", message, nil, nil, nil)
 		return err
 	})
@@ -487,9 +494,9 @@ func (a *standardACPAdapter) startClient(
 	a.logStandardACPStartupDiagnostics("initialize.start", map[string]any{
 		"room_id":          session.RoomID,
 		"agent_session_id": session.AgentSessionID,
-		"timeout_ms":       acpStartCallTimeout.Milliseconds(),
+		"timeout_ms":       a.startupCallTimeout().Milliseconds(),
 	})
-	initializeResult, err := client.CallWithTimeout(ctx, acpStartCallTimeout, acpMethodInitialize, initializeParams, func(ctx context.Context, message acpMessage) error {
+	initializeResult, err := client.CallWithTimeout(ctx, a.startupCallTimeout(), acpMethodInitialize, initializeParams, func(ctx context.Context, message acpMessage) error {
 		_, err := a.handleACPMessage(ctx, client, session, "", message, nil, nil, nil)
 		return err
 	})

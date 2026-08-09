@@ -35,10 +35,8 @@ import type {
 } from "./AgentRichTextEditor.types";
 import {
   buildWorkspaceFileMentionDropContent,
-  classifyAgentRichTextTextPaste,
   createAgentRichTextCaretAnchorExtension,
   createAgentRichTextPlaceholderExtension,
-  insertAgentRichTextClipboardHtml,
   isAgentRichTextLargeTextPaste,
   isPromptVisualLineStart,
   readEditorDomSelectionRange,
@@ -51,6 +49,7 @@ import {
   writePlainTextToClipboard
 } from "./agentRichTextEditorSupport";
 export { isAgentRichTextLargeTextPaste } from "./agentRichTextEditorSupport";
+import { routeAgentRichTextTextPaste } from "./routeAgentRichTextTextPaste";
 import { useAgentRichTextEditorHandle } from "./useAgentRichTextEditorHandle";
 import { AgentRichTextEditorSurface } from "./AgentRichTextEditorSurface";
 import { handleAgentRichTextKeyDownCapture } from "./agentRichTextKeyboard";
@@ -61,6 +60,7 @@ import {
 import {
   createAgentRichTextControlledValueTracker,
   recordAgentRichTextLocalEdit,
+  resolveAgentRichTextControlledSelection,
   shouldApplyAgentRichTextControlledValue
 } from "./agentRichTextControlledValue";
 import { createAgentRichTextMentionSuggestionSuppression } from "./agentRichTextMentionSuggestionSuppression";
@@ -102,7 +102,8 @@ export const AgentRichTextEditor = forwardRef<
     onPasteImages,
     onPasteLargeText,
     onPasteFiles,
-    onDropFiles
+    onDropFiles,
+    onResolvePastedPath
   },
   ref
 ): React.JSX.Element {
@@ -112,6 +113,7 @@ export const AgentRichTextEditor = forwardRef<
   const controlledValueTrackerRef = useRef(
     createAgentRichTextControlledValueTracker(contentScopeKey)
   );
+  const appliedContentScopeKeyRef = useRef(contentScopeKey);
   const editorRef = useRef<Editor | null>(null);
   const onChangeRef = useRef(onChange);
   const onContentLayoutInvalidatedRef = useRef(onContentLayoutInvalidated);
@@ -134,6 +136,7 @@ export const AgentRichTextEditor = forwardRef<
   const onPasteLargeTextRef = useRef(onPasteLargeText);
   const onPasteFilesRef = useRef(onPasteFiles);
   const onDropFilesRef = useRef(onDropFiles);
+  const onResolvePastedPathRef = useRef(onResolvePastedPath);
   const promptImagesSupportedRef = useRef(promptImagesSupported);
   const placeholderRef = useRef(placeholder);
   const removeMentionLabelRef = useRef(removeMentionLabel);
@@ -145,11 +148,9 @@ export const AgentRichTextEditor = forwardRef<
   const scrollFrameRef = useRef<number | null>(null);
   const [contextMenu, setContextMenu] =
     useState<AgentRichTextContextMenuState | null>(null);
-
   const closeContextMenu = useCallback(() => {
     setContextMenu(null);
   }, []);
-
   const insertPlainText = useCallback((text: string): void => {
     const currentEditor = editorRef.current;
     if (!currentEditor || currentEditor.isDestroyed || !text) {
@@ -253,7 +254,6 @@ export const AgentRichTextEditor = forwardRef<
       scrollEditorSelectionIntoView(currentEditor);
     });
   };
-
   const extensions = useMemo(
     () => [
       ...createAgentRichTextInputExtensions(
@@ -291,6 +291,7 @@ export const AgentRichTextEditor = forwardRef<
   onPasteLargeTextRef.current = onPasteLargeText;
   onPasteFilesRef.current = onPasteFiles;
   onDropFilesRef.current = onDropFiles;
+  onResolvePastedPathRef.current = onResolvePastedPath;
   promptImagesSupportedRef.current = promptImagesSupported;
   placeholderRef.current = placeholder;
   removeMentionLabelRef.current = removeMentionLabel;
@@ -434,48 +435,20 @@ export const AgentRichTextEditor = forwardRef<
           }
           const html = event.clipboardData?.getData("text/html") ?? "";
           const text = event.clipboardData?.getData("text/plain") ?? "";
-          const textPasteKind = classifyAgentRichTextTextPaste(
-            text,
+          const handled = routeAgentRichTextTextPaste({
+            availableCapabilities: availableCapabilitiesRef.current,
+            availableSkills: availableSkillsRef.current,
+            editorRef,
             html,
-            Boolean(onPasteLargeTextRef.current)
-          );
-          if (textPasteKind === "empty") {
-            return false;
-          }
-          if (textPasteKind === "large-text") {
+            mentionSuggestionSuppression,
+            onPasteLargeText: onPasteLargeTextRef.current,
+            resolvePastedPath: onResolvePastedPathRef.current,
+            text
+          });
+          if (handled) {
             event.preventDefault();
-            onPasteLargeTextRef.current?.(text);
-            return true;
           }
-          if (textPasteKind === "structured-mention") {
-            event.preventDefault();
-            const currentEditor = editorRef.current;
-            if (!currentEditor) {
-              return true;
-            }
-            if (insertAgentRichTextClipboardHtml(currentEditor, html)) {
-              mentionSuggestionSuppression.suppressTextInsertion(text);
-            }
-            return true;
-          }
-          event.preventDefault();
-          const currentEditor = editorRef.current;
-          if (!currentEditor) {
-            return true;
-          }
-          if (!currentEditor.isFocused) {
-            currentEditor.commands.setTextSelection(
-              currentEditor.state.doc.content.size
-            );
-          }
-          mentionSuggestionSuppression.suppressTextInsertion(text);
-          currentEditor.commands.insertContent(
-            plainTextToAgentRichTextInlineContent(text, {
-              capabilities: availableCapabilitiesRef.current,
-              skills: availableSkillsRef.current
-            })
-          );
-          return true;
+          return handled;
         },
         keydown: (_view, event) => {
           if (isAgentRichTextImeComposing(event)) {
@@ -758,14 +731,25 @@ export const AgentRichTextEditor = forwardRef<
       capabilities: availableCapabilities,
       skills: availableSkills
     });
+    const scopeChanged = appliedContentScopeKeyRef.current !== contentScopeKey;
+    const previousSelection = editor.state.selection;
     mentionSuggestionSuppression.setRestoredValue(value);
     if (JSON.stringify(editor.getJSON()) === JSON.stringify(nextDoc)) {
       lastEmittedPromptRef.current = value;
+      appliedContentScopeKeyRef.current = contentScopeKey;
       return;
     }
     editor.commands.setContent(nextDoc, { emitUpdate: false });
-    editor.commands.setTextSelection(editor.state.doc.content.size);
+    const documentEnd = editor.state.doc.content.size;
+    editor.commands.setTextSelection(
+      resolveAgentRichTextControlledSelection(
+        scopeChanged,
+        previousSelection,
+        documentEnd
+      )
+    );
     lastEmittedPromptRef.current = value;
+    appliedContentScopeKeyRef.current = contentScopeKey;
     onContentLayoutInvalidatedRef.current?.();
   }, [availableCapabilities, availableSkills, contentScopeKey, editor, value]);
 

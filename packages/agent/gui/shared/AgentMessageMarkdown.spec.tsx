@@ -1106,6 +1106,7 @@ describe("AgentMessageMarkdown", () => {
     fireEvent.click(screen.getByRole("button", { name: "Download image" }));
     expect(clickDownload).toHaveBeenCalledTimes(1);
     expect(downloadedName).toMatch(/^dance-\d{8}-\d{6}-[a-z0-9]{4}\.png$/);
+    expect(screen.getByRole("status")).toHaveTextContent("Image downloaded");
 
     await act(async () => {
       await vi.advanceTimersByTimeAsync(1600);

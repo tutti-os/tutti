@@ -193,6 +193,9 @@ import type {
   DetectModelPlanData,
   DetectModelPlanErrors,
   DetectModelPlanResponses,
+  DisconnectConnectorMarketAuthorizationData,
+  DisconnectConnectorMarketAuthorizationErrors,
+  DisconnectConnectorMarketAuthorizationResponses,
   DismissAccountRegistrationCreditsRewardData,
   DismissAccountRegistrationCreditsRewardErrors,
   DismissAccountRegistrationCreditsRewardResponses,
@@ -256,6 +259,15 @@ import type {
   GetAutomationRuleData,
   GetAutomationRuleErrors,
   GetAutomationRuleResponses,
+  GetConnectorMarketConnectorData,
+  GetConnectorMarketConnectorErrors,
+  GetConnectorMarketConnectorResponses,
+  GetConnectorMarketData,
+  GetConnectorMarketErrors,
+  GetConnectorMarketOperationData,
+  GetConnectorMarketOperationErrors,
+  GetConnectorMarketOperationResponses,
+  GetConnectorMarketResponses,
   GetDesktopPreferencesData,
   GetDesktopPreferencesErrors,
   GetDesktopPreferencesResponses,
@@ -358,6 +370,9 @@ import type {
   InstallAgentTargetRuntimeData,
   InstallAgentTargetRuntimeErrors,
   InstallAgentTargetRuntimeResponses,
+  InstallConnectorMarketConnectorData,
+  InstallConnectorMarketConnectorErrors,
+  InstallConnectorMarketConnectorResponses,
   InstallWorkspaceAppData,
   InstallWorkspaceAppErrors,
   InstallWorkspaceAppResponses,
@@ -391,6 +406,12 @@ import type {
   ListCollaborationRunsData,
   ListCollaborationRunsErrors,
   ListCollaborationRunsResponses,
+  ListConnectorMarketCatalogData,
+  ListConnectorMarketCatalogErrors,
+  ListConnectorMarketCatalogResponses,
+  ListConnectorMarketCategoriesData,
+  ListConnectorMarketCategoriesErrors,
+  ListConnectorMarketCategoriesResponses,
   ListMobileRemotePairingsData,
   ListMobileRemotePairingsErrors,
   ListMobileRemotePairingsResponses,
@@ -445,6 +466,9 @@ import type {
   ListWorkspaceAppsData,
   ListWorkspaceAppsErrors,
   ListWorkspaceAppsResponses,
+  ListWorkspaceDeletedAgentSessionsData,
+  ListWorkspaceDeletedAgentSessionsErrors,
+  ListWorkspaceDeletedAgentSessionsResponses,
   ListWorkspaceFileDirectoryData,
   ListWorkspaceFileDirectoryErrors,
   ListWorkspaceFileDirectoryResponses,
@@ -520,6 +544,12 @@ import type {
   PurgeDeletedAgentConversationsData,
   PurgeDeletedAgentConversationsErrors,
   PurgeDeletedAgentConversationsResponses,
+  PurgeWorkspaceDeletedAgentSessionData,
+  PurgeWorkspaceDeletedAgentSessionErrors,
+  PurgeWorkspaceDeletedAgentSessionResponses,
+  PurgeWorkspaceDeletedAgentSessionsData,
+  PurgeWorkspaceDeletedAgentSessionsErrors,
+  PurgeWorkspaceDeletedAgentSessionsResponses,
   PutDesktopPreferencesData,
   PutDesktopPreferencesErrors,
   PutDesktopPreferencesResponses,
@@ -535,12 +565,18 @@ import type {
   ReadWorkspaceFilePreviewData,
   ReadWorkspaceFilePreviewErrors,
   ReadWorkspaceFilePreviewResponses,
+  ReadWorkspaceIssueAttachmentData,
+  ReadWorkspaceIssueAttachmentErrors,
+  ReadWorkspaceIssueAttachmentResponses,
   ReconcileWorkspaceAgentSessionGoalData,
   ReconcileWorkspaceAgentSessionGoalErrors,
   ReconcileWorkspaceAgentSessionGoalResponses,
   RecoverWorkspaceAgentEditRetryData,
   RecoverWorkspaceAgentEditRetryErrors,
   RecoverWorkspaceAgentEditRetryResponses,
+  RefreshConnectorMarketData,
+  RefreshConnectorMarketErrors,
+  RefreshConnectorMarketResponses,
   RefreshDesktopUpdateAdmissionData,
   RefreshDesktopUpdateAdmissionErrors,
   RefreshDesktopUpdateAdmissionResponses,
@@ -568,9 +604,15 @@ import type {
   ResizeWorkspaceTerminalData,
   ResizeWorkspaceTerminalErrors,
   ResizeWorkspaceTerminalResponses,
+  ResolveWorkspaceAgentSessionWorktreeSupportData,
+  ResolveWorkspaceAgentSessionWorktreeSupportErrors,
+  ResolveWorkspaceAgentSessionWorktreeSupportResponses,
   ResolveWorkspaceGitPatchSupportData,
   ResolveWorkspaceGitPatchSupportErrors,
   ResolveWorkspaceGitPatchSupportResponses,
+  RestoreWorkspaceDeletedAgentSessionData,
+  RestoreWorkspaceDeletedAgentSessionErrors,
+  RestoreWorkspaceDeletedAgentSessionResponses,
   RetryWorkspaceAppData,
   RetryWorkspaceAppErrors,
   RetryWorkspaceAppFactoryJobValidationData,
@@ -628,12 +670,18 @@ import type {
   StartAgentSessionRecordingData,
   StartAgentSessionRecordingErrors,
   StartAgentSessionRecordingResponses,
+  StartConnectorMarketAuthorizationData,
+  StartConnectorMarketAuthorizationErrors,
+  StartConnectorMarketAuthorizationResponses,
   StartEnabledWorkspaceAppsData,
   StartEnabledWorkspaceAppsErrors,
   StartEnabledWorkspaceAppsResponses,
   StartMobileRemotePairingData,
   StartMobileRemotePairingErrors,
   StartMobileRemotePairingResponses,
+  StartWorkspaceIssueRunData,
+  StartWorkspaceIssueRunErrors,
+  StartWorkspaceIssueRunResponses,
   StopAllWorkspaceAppsData,
   StopAllWorkspaceAppsErrors,
   StopAllWorkspaceAppsResponses,
@@ -652,6 +700,9 @@ import type {
   TrackEventsData,
   TrackEventsErrors,
   TrackEventsResponses,
+  UninstallConnectorMarketConnectorData,
+  UninstallConnectorMarketConnectorErrors,
+  UninstallConnectorMarketConnectorResponses,
   UninstallWorkspaceAppData,
   UninstallWorkspaceAppErrors,
   UninstallWorkspaceAppResponses,
@@ -3168,6 +3219,78 @@ export const deleteWorkspaceAgentSessionsBatch = <
   });
 
 /**
+ * Permanently purge all soft-deleted agent sessions in one workspace
+ */
+export const purgeWorkspaceDeletedAgentSessions = <
+  ThrowOnError extends boolean = false
+>(
+  options: Options<PurgeWorkspaceDeletedAgentSessionsData, ThrowOnError>
+) =>
+  (options.client ?? client).delete<
+    PurgeWorkspaceDeletedAgentSessionsResponses,
+    PurgeWorkspaceDeletedAgentSessionsErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/deleted-agent-sessions",
+    ...options
+  });
+
+/**
+ * List topmost soft-deleted agent session components for one workspace
+ */
+export const listWorkspaceDeletedAgentSessions = <
+  ThrowOnError extends boolean = false
+>(
+  options: Options<ListWorkspaceDeletedAgentSessionsData, ThrowOnError>
+) =>
+  (options.client ?? client).get<
+    ListWorkspaceDeletedAgentSessionsResponses,
+    ListWorkspaceDeletedAgentSessionsErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/deleted-agent-sessions",
+    ...options
+  });
+
+/**
+ * Permanently purge one topmost soft-deleted agent session component
+ */
+export const purgeWorkspaceDeletedAgentSession = <
+  ThrowOnError extends boolean = false
+>(
+  options: Options<PurgeWorkspaceDeletedAgentSessionData, ThrowOnError>
+) =>
+  (options.client ?? client).delete<
+    PurgeWorkspaceDeletedAgentSessionResponses,
+    PurgeWorkspaceDeletedAgentSessionErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/deleted-agent-sessions/{agentSessionID}",
+    ...options
+  });
+
+/**
+ * Restore one topmost soft-deleted agent session component
+ */
+export const restoreWorkspaceDeletedAgentSession = <
+  ThrowOnError extends boolean = false
+>(
+  options: Options<RestoreWorkspaceDeletedAgentSessionData, ThrowOnError>
+) =>
+  (options.client ?? client).post<
+    RestoreWorkspaceDeletedAgentSessionResponses,
+    RestoreWorkspaceDeletedAgentSessionErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/deleted-agent-sessions/{agentSessionID}/restore",
+    ...options
+  });
+
+/**
  * List agent session rail sections for one workspace
  */
 export const listWorkspaceAgentSessionSections = <
@@ -3677,6 +3800,27 @@ export const resolveWorkspaceGitPatchSupport = <
   >({
     security: [{ scheme: "bearer", type: "http" }],
     url: "/v1/workspaces/{workspaceID}/git-patch-support",
+    ...options
+  });
+
+/**
+ * Resolve whether a local Agent Session can launch in an isolated git worktree
+ */
+export const resolveWorkspaceAgentSessionWorktreeSupport = <
+  ThrowOnError extends boolean = false
+>(
+  options: Options<
+    ResolveWorkspaceAgentSessionWorktreeSupportData,
+    ThrowOnError
+  >
+) =>
+  (options.client ?? client).get<
+    ResolveWorkspaceAgentSessionWorktreeSupportResponses,
+    ResolveWorkspaceAgentSessionWorktreeSupportErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/agent-session-worktree-support",
     ...options
   });
 
@@ -4940,6 +5084,24 @@ export const removeWorkspaceIssueContextRef = <
   });
 
 /**
+ * Read one managed issue attachment by opaque ContextRef identity
+ */
+export const readWorkspaceIssueAttachment = <
+  ThrowOnError extends boolean = false
+>(
+  options: Options<ReadWorkspaceIssueAttachmentData, ThrowOnError>
+) =>
+  (options.client ?? client).get<
+    ReadWorkspaceIssueAttachmentResponses,
+    ReadWorkspaceIssueAttachmentErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/issues/{issueID}/context-refs/{contextRefID}/attachment",
+    ...options
+  });
+
+/**
  * Stop one issue-manager issue's execution
  *
  * Durably pauses future task dispatch, cancels the live agent turn of every running run's session, and settles those runs as canceled. Idempotent.
@@ -4988,6 +5150,28 @@ export const createWorkspaceIssueRun = <ThrowOnError extends boolean = false>(
   >({
     security: [{ scheme: "bearer", type: "http" }],
     url: "/v1/workspaces/{workspaceID}/issues/{issueID}/runs",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers
+    }
+  });
+
+/**
+ * Create and launch one Agent-backed run for an issue-manager issue
+ *
+ * Resolves the issue's managed image attachments before durably creating and delivering the run to Agent Host.
+ */
+export const startWorkspaceIssueRun = <ThrowOnError extends boolean = false>(
+  options: Options<StartWorkspaceIssueRunData, ThrowOnError>
+) =>
+  (options.client ?? client).post<
+    StartWorkspaceIssueRunResponses,
+    StartWorkspaceIssueRunErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/issues/{issueID}/run-launches",
     ...options,
     headers: {
       "Content-Type": "application/json",
@@ -5257,6 +5441,202 @@ export const completeWorkspaceIssueTaskRun = <
       "Content-Type": "application/json",
       ...options.headers
     }
+  });
+
+/**
+ * Get the authoritative connector-market snapshot
+ */
+export const getConnectorMarket = <ThrowOnError extends boolean = false>(
+  options?: Options<GetConnectorMarketData, ThrowOnError>
+) =>
+  (options?.client ?? client).get<
+    GetConnectorMarketResponses,
+    GetConnectorMarketErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/connector-market",
+    ...options
+  });
+
+/**
+ * List server-owned connector-market sections
+ */
+export const listConnectorMarketCategories = <
+  ThrowOnError extends boolean = false
+>(
+  options?: Options<ListConnectorMarketCategoriesData, ThrowOnError>
+) =>
+  (options?.client ?? client).get<
+    ListConnectorMarketCategoriesResponses,
+    ListConnectorMarketCategoriesErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/connector-market/categories",
+    ...options
+  });
+
+/**
+ * List one server-owned connector-market section
+ */
+export const listConnectorMarketCatalog = <
+  ThrowOnError extends boolean = false
+>(
+  options: Options<ListConnectorMarketCatalogData, ThrowOnError>
+) =>
+  (options.client ?? client).get<
+    ListConnectorMarketCatalogResponses,
+    ListConnectorMarketCatalogErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/connector-market/catalog",
+    ...options
+  });
+
+/**
+ * Get one connector projection
+ */
+export const getConnectorMarketConnector = <
+  ThrowOnError extends boolean = false
+>(
+  options: Options<GetConnectorMarketConnectorData, ThrowOnError>
+) =>
+  (options.client ?? client).get<
+    GetConnectorMarketConnectorResponses,
+    GetConnectorMarketConnectorErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/connector-market/connectors/{connectorKey}",
+    ...options
+  });
+
+/**
+ * Refresh and accept the upstream connector catalog
+ */
+export const refreshConnectorMarket = <ThrowOnError extends boolean = false>(
+  options: Options<RefreshConnectorMarketData, ThrowOnError>
+) =>
+  (options.client ?? client).post<
+    RefreshConnectorMarketResponses,
+    RefreshConnectorMarketErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/connector-market:refresh",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers
+    }
+  });
+
+/**
+ * Install or update one connector
+ */
+export const installConnectorMarketConnector = <
+  ThrowOnError extends boolean = false
+>(
+  options: Options<InstallConnectorMarketConnectorData, ThrowOnError>
+) =>
+  (options.client ?? client).post<
+    InstallConnectorMarketConnectorResponses,
+    InstallConnectorMarketConnectorErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/connector-market/connectors/{connectorKey}:install",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers
+    }
+  });
+
+/**
+ * Uninstall one connector
+ */
+export const uninstallConnectorMarketConnector = <
+  ThrowOnError extends boolean = false
+>(
+  options: Options<UninstallConnectorMarketConnectorData, ThrowOnError>
+) =>
+  (options.client ?? client).post<
+    UninstallConnectorMarketConnectorResponses,
+    UninstallConnectorMarketConnectorErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/connector-market/connectors/{connectorKey}:uninstall",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers
+    }
+  });
+
+/**
+ * Start connector authorization
+ */
+export const startConnectorMarketAuthorization = <
+  ThrowOnError extends boolean = false
+>(
+  options: Options<StartConnectorMarketAuthorizationData, ThrowOnError>
+) =>
+  (options.client ?? client).post<
+    StartConnectorMarketAuthorizationResponses,
+    StartConnectorMarketAuthorizationErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/connector-market/connectors/{connectorKey}/authorization:start",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers
+    }
+  });
+
+/**
+ * Disconnect connector authorization
+ */
+export const disconnectConnectorMarketAuthorization = <
+  ThrowOnError extends boolean = false
+>(
+  options: Options<DisconnectConnectorMarketAuthorizationData, ThrowOnError>
+) =>
+  (options.client ?? client).post<
+    DisconnectConnectorMarketAuthorizationResponses,
+    DisconnectConnectorMarketAuthorizationErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/connector-market/connectors/{connectorKey}/authorization:disconnect",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers
+    }
+  });
+
+/**
+ * Get one durable connector-market operation
+ */
+export const getConnectorMarketOperation = <
+  ThrowOnError extends boolean = false
+>(
+  options: Options<GetConnectorMarketOperationData, ThrowOnError>
+) =>
+  (options.client ?? client).get<
+    GetConnectorMarketOperationResponses,
+    GetConnectorMarketOperationErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/connector-market/operations/{operationID}",
+    ...options
   });
 
 /**

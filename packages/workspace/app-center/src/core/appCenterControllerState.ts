@@ -139,13 +139,39 @@ export abstract class WorkspaceAppCenterControllerState extends WorkspaceAppCent
     const acceptedRuntimeTransition =
       operationAdvance === true ||
       input.app.stateRevision > currentApp.stateRevision;
+    const installKey = appRuntimeKey(input.workspaceId, input.app.appId);
+    const installPending = this.pendingInstallKeys.has(installKey);
+    const pendingInstallReportsThroughSettlement =
+      this.pendingInstallReportKeys.has(installKey);
+    const failedDuringInstall =
+      input.app.failurePhase === "downloading" ||
+      input.app.failurePhase === "installing";
+    const failedDuringRuntime =
+      input.app.failurePhase === "starting" ||
+      input.app.failurePhase === "runtime";
     if (
       acceptedRuntimeTransition &&
       input.app.runtimeStatus === "failed" &&
-      currentApp.runtimeStatus !== "failed"
+      currentApp.runtimeStatus !== "failed" &&
+      (failedDuringRuntime ||
+        (input.app.failurePhase == null &&
+          (!installPending || input.app.installed)))
     ) {
       this.dependencies.hooks?.onAppRuntimeFailed?.({
         app: input.app,
+        failureReason: input.failureReason ?? null
+      });
+    }
+    if (
+      acceptedRuntimeTransition &&
+      input.app.runtimeStatus === "failed" &&
+      currentApp.runtimeStatus !== "failed" &&
+      failedDuringInstall &&
+      (!installPending || !pendingInstallReportsThroughSettlement)
+    ) {
+      this.dependencies.hooks?.onAppInstallFailed?.({
+        app: input.app,
+        appId: input.app.appId,
         failureReason: input.failureReason ?? null
       });
     }
@@ -482,6 +508,7 @@ export abstract class WorkspaceAppCenterControllerState extends WorkspaceAppCent
         currentApp.runtimeId !== snapshotApp.runtimeId ||
         currentApp.installationId !== snapshotApp.installationId ||
         currentApp.installProgress != null ||
+        currentApp.failurePhase != null ||
         currentApp.failureReason != null ||
         currentApp.lastError != null
       );
@@ -489,7 +516,9 @@ export abstract class WorkspaceAppCenterControllerState extends WorkspaceAppCent
     if (snapshotApp.runtimeStatus === "failed") {
       return (
         currentApp.runtimeStatus !== "failed" &&
-        (snapshotApp.failureReason != null || snapshotApp.lastError != null)
+        (snapshotApp.failurePhase != null ||
+          snapshotApp.failureReason != null ||
+          snapshotApp.lastError != null)
       );
     }
     if (
@@ -853,7 +882,11 @@ export abstract class WorkspaceAppCenterControllerState extends WorkspaceAppCent
     if (!this.pendingInstallReportKeys.delete(installKey)) {
       return;
     }
-    if (input.app.installed) {
+    const failedDuringInstall =
+      input.app.runtimeStatus === "failed" &&
+      (input.app.failurePhase === "downloading" ||
+        input.app.failurePhase === "installing");
+    if (input.app.installed && !failedDuringInstall) {
       this.dependencies.hooks?.onAppInstalled?.(input.app);
       return;
     }

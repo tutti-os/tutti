@@ -1,4 +1,7 @@
 import assert from "node:assert/strict";
+import { appendFile, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import test from "node:test";
 import type {
   Options as ClaudeQueryOptions,
@@ -1206,6 +1209,83 @@ test("SDK active_goal messages normalize provider goal lifecycle", async () => {
   }
 });
 
+test("provider idle blocks an active Goal without a terminal verdict", async () => {
+  const events: Array<{ type: string; payload?: Record<string, unknown> }> = [];
+  const restoreSink = withSidecarEventSinkForTest((event) =>
+    events.push(event)
+  );
+  try {
+    const session = new SessionRuntime(
+      "provider-session-goal-timeout",
+      "/repo",
+      {},
+      false,
+      false,
+      {
+        model: "",
+        permissionModeId: "default",
+        planMode: false,
+        effort: "",
+        speed: ""
+      },
+      sidecarClaudeOptionsFromPayload({}),
+      undefined,
+      ({ prompt }) => ({
+        async *[Symbol.asyncIterator]() {
+          const outbound = await prompt[Symbol.asyncIterator]().next();
+          yield {
+            ...outbound.value,
+            uuid: "provider-goal-timeout-turn",
+            type: "user",
+            parent_tool_use_id: null,
+            session_id: "provider-session-goal-timeout"
+          } as never;
+          yield { type: "result", subtype: "success" } as never;
+          yield {
+            type: "system",
+            subtype: "session_state_changed",
+            state: "idle",
+            session_id: "provider-session-goal-timeout"
+          } as never;
+        },
+        close() {}
+      })
+    );
+
+    await session.start();
+    session.exec(
+      "goal-timeout-turn",
+      "/goal finish the task",
+      undefined,
+      undefined,
+      {
+        operationId: "goal-timeout-operation",
+        revision: 1,
+        action: "set"
+      }
+    );
+    await waitForCondition(
+      () =>
+        events.some(
+          (event) =>
+            event.type === "goal_observed" &&
+            isRecord(event.payload?.goal) &&
+            event.payload.goal.status === "blocked"
+        ),
+      "blocked Goal at provider idle"
+    );
+
+    const updates = events.filter((event) => event.type === "goal_observed");
+    assert.equal(updates.length, 1);
+    assert.deepEqual(updates[0]?.payload?.goal, {
+      objective: "finish the task",
+      status: "blocked"
+    });
+  } finally {
+    restoreSink();
+  }
+});
+
 test("SDK active_goal clear keeps the exact goal command action", async () => {
   const events: Array<{ type: string; payload?: Record<string, unknown> }> = [];
   const restoreSink = withSidecarEventSinkForTest((event) =>
@@ -1266,8 +1346,18 @@ test("SDK active_goal clear keeps the exact goal command action", async () => {
   }
 });
 
-test("native goal_status attachments normalize the live Stop hook lifecycle", async () => {
+test("system init follows goal_status written after SDK result", async () => {
   const events: Array<{ type: string; payload?: Record<string, unknown> }> = [];
+  const tempDirectory = await mkdtemp(
+    join(tmpdir(), "tutti-claude-goal-transcript-")
+  );
+  const transcriptDirectory = join(tempDirectory, "projects", "-repo");
+  const transcriptPath = join(
+    transcriptDirectory,
+    "provider-session-goal-status.jsonl"
+  );
+  await mkdir(transcriptDirectory, { recursive: true });
+  await writeFile(transcriptPath, "", "utf8");
   const restoreSink = withSidecarEventSinkForTest((event) =>
     events.push(event)
   );
@@ -1275,7 +1365,7 @@ test("native goal_status attachments normalize the live Stop hook lifecycle", as
     const session = new SessionRuntime(
       "provider-session-goal-status",
       "/repo",
-      {},
+      { CLAUDE_CONFIG_DIR: tempDirectory },
       false,
       false,
       {
@@ -1289,6 +1379,21 @@ test("native goal_status attachments normalize the live Stop hook lifecycle", as
       undefined,
       ({ prompt }) => ({
         async *[Symbol.asyncIterator]() {
+          yield {
+            type: "system",
+            subtype: "init",
+            session_id: "provider-session-goal-status",
+            cwd: "/repo",
+            model: "haiku"
+          } as never;
+          yield {
+            type: "system",
+            subtype: "init",
+            session_id: "provider-subagent-goal-status",
+            parent_tool_use_id: "toolu-delegated-agent",
+            cwd: "/subagent",
+            model: "haiku"
+          } as never;
           const outbound = await prompt[Symbol.asyncIterator]().next();
           yield {
             ...outbound.value,
@@ -1297,36 +1402,46 @@ test("native goal_status attachments normalize the live Stop hook lifecycle", as
             parent_tool_use_id: null,
             session_id: "provider-session-goal-status"
           } as never;
-          yield {
-            type: "attachment",
-            attachment: {
-              type: "goal_status",
-              condition: "count to three"
-            }
-          } as never;
-          yield {
-            type: "attachment",
-            attachment: {
-              type: "goal_status",
-              met: false,
-              condition: "count to three",
-              reason: "only reached two",
-              iterations: 2
-            }
-          } as never;
-          yield {
-            type: "attachment",
-            attachment: {
-              type: "goal_status",
-              met: true,
-              condition: "count to three",
-              reason: "counted one number per turn",
-              iterations: 3,
-              durationMs: 16_386,
-              tokens: 1_479
-            }
-          } as never;
+          await appendFile(
+            transcriptPath,
+            `${JSON.stringify({
+              type: "attachment",
+              uuid: "goal-status-sentinel",
+              sessionId: "provider-session-goal-status",
+              attachment: {
+                type: "goal_status",
+                met: false,
+                sentinel: true,
+                condition: "count to three"
+              }
+            })}\n`,
+            "utf8"
+          );
           yield { type: "result", subtype: "success" } as never;
+          await appendFile(
+            transcriptPath,
+            `${JSON.stringify({
+              type: "attachment",
+              uuid: "goal-status-complete",
+              sessionId: "provider-session-goal-status",
+              attachment: {
+                type: "goal_status",
+                met: true,
+                condition: "count to three",
+                reason: "counted one number per turn",
+                iterations: 3,
+                durationMs: 16_386,
+                tokens: 1_479
+              }
+            })}\n`,
+            "utf8"
+          );
+          yield {
+            type: "system",
+            subtype: "session_state_changed",
+            state: "idle",
+            session_id: "provider-session-goal-status"
+          } as never;
         },
         close() {}
       })
@@ -1345,19 +1460,22 @@ test("native goal_status attachments normalize the live Stop hook lifecycle", as
       }
     );
     await waitForEvent(events, "turn_completed");
+    await waitForCondition(
+      () =>
+        events.some(
+          (event) =>
+            event.type === "goal_observed" &&
+            isRecord(event.payload?.goal) &&
+            event.payload.goal.status === "complete"
+        ),
+      "late transcript goal completion"
+    );
 
     const updates = events.filter((event) => event.type === "goal_observed");
     assert.equal(updates.length, 2);
-    assert.deepEqual(updates[0]?.payload?.goal, {
-      objective: "count to three",
-      status: "active",
-      reason: "only reached two",
-      iterations: 2
-    });
     assert.deepEqual(updates[1]?.payload, {
       turnId: "goal-status-turn",
       providerTurnId: "provider-goal-status-turn",
-      action: "set",
       source: "goal_status",
       updateType: "thread_goal_update",
       goal: {
@@ -1369,8 +1487,126 @@ test("native goal_status attachments normalize the live Stop hook lifecycle", as
         tokens: 1_479
       }
     });
+    assert.ok(
+      events.findIndex(
+        (event) =>
+          event.type === "goal_observed" &&
+          isRecord(event.payload?.goal) &&
+          event.payload.goal.status === "active"
+      ) < events.findIndex((event) => event.type === "turn_completed"),
+      "the sentinel goal evidence must be emitted before the root turn settles"
+    );
+    assert.ok(
+      events.findIndex(
+        (event) =>
+          event.type === "goal_observed" &&
+          isRecord(event.payload?.goal) &&
+          event.payload.goal.status === "complete"
+      ) > events.findIndex((event) => event.type === "turn_completed"),
+      "the final goal evidence may arrive after the SDK result"
+    );
   } finally {
     restoreSink();
+    await rm(tempDirectory, { recursive: true, force: true });
+  }
+});
+
+test("resume tails the known session transcript without system init", async () => {
+  const events: Array<{ type: string; payload?: Record<string, unknown> }> = [];
+  const tempDirectory = await mkdtemp(
+    join(tmpdir(), "tutti-claude-goal-resume-")
+  );
+  const transcriptDirectory = join(tempDirectory, "projects", "-repo");
+  const transcriptPath = join(
+    transcriptDirectory,
+    "provider-session-goal-resume.jsonl"
+  );
+  await mkdir(transcriptDirectory, { recursive: true });
+  await writeFile(
+    transcriptPath,
+    `${JSON.stringify({
+      type: "attachment",
+      uuid: "historical-goal-status",
+      attachment: {
+        type: "goal_status",
+        met: false,
+        condition: "historical goal"
+      }
+    })}\n`,
+    "utf8"
+  );
+  const restoreSink = withSidecarEventSinkForTest((event) =>
+    events.push(event)
+  );
+  try {
+    const session = new SessionRuntime(
+      "provider-session-goal-resume",
+      "/repo",
+      { CLAUDE_CONFIG_DIR: tempDirectory },
+      true,
+      false,
+      {
+        model: "",
+        permissionModeId: "default",
+        planMode: false,
+        effort: "",
+        speed: ""
+      },
+      sidecarClaudeOptionsFromPayload({}),
+      undefined,
+      ({ prompt }) => ({
+        async *[Symbol.asyncIterator]() {
+          const outbound = await prompt[Symbol.asyncIterator]().next();
+          yield {
+            ...outbound.value,
+            uuid: "provider-goal-resume-turn",
+            type: "user",
+            parent_tool_use_id: null,
+            session_id: "provider-session-goal-resume"
+          } as never;
+          await appendFile(
+            transcriptPath,
+            `${JSON.stringify({
+              type: "attachment",
+              uuid: "current-goal-status",
+              attachment: {
+                type: "goal_status",
+                met: true,
+                condition: "resume goal"
+              }
+            })}\n`,
+            "utf8"
+          );
+          yield { type: "result", subtype: "success" } as never;
+        },
+        close() {}
+      })
+    );
+
+    await session.start();
+    session.exec(
+      "goal-resume-turn",
+      "/goal resume goal",
+      undefined,
+      undefined,
+      {
+        operationId: "goal-op-resume",
+        revision: 1,
+        action: "set"
+      }
+    );
+    await waitForEvent(events, "turn_completed");
+
+    const updates = events.filter((event) => event.type === "goal_observed");
+    assert.equal(updates.length, 1);
+    assert.equal(updates[0]?.payload?.source, "goal_status");
+    assert.deepEqual(updates[0]?.payload?.goal, {
+      objective: "resume goal",
+      status: "complete"
+    });
+  } finally {
+    restoreSink();
+    await rm(tempDirectory, { recursive: true, force: true });
   }
 });
 
@@ -1383,6 +1619,7 @@ test("query enables bypass permission capability for later live mode switch", as
   let capturedOptions:
     | {
         allowDangerouslySkipPermissions?: boolean;
+        includeHookEvents?: boolean;
         permissionMode?: string;
       }
     | undefined;
@@ -1415,6 +1652,7 @@ test("query enables bypass permission capability for later live mode switch", as
 
     assert.equal(capturedOptions?.permissionMode, "default");
     assert.equal(capturedOptions?.allowDangerouslySkipPermissions, true);
+    assert.equal(capturedOptions?.includeHookEvents, true);
   } finally {
     if (previousSandbox === undefined) {
       delete process.env.IS_SANDBOX;
@@ -1661,6 +1899,61 @@ test("context usage prefers result modelUsage window over SDK maxTokens", async 
       ),
       false,
       "cumulative result usage must not replace the authoritative context snapshot"
+    );
+  } finally {
+    restoreSink();
+  }
+});
+
+test("restore start emits session_started without waiting for context usage", async () => {
+  const events: Array<{ type: string; payload?: Record<string, unknown> }> = [];
+  const contextUsageResolvers: Array<(value: unknown) => void> = [];
+  const restoreSink = withSidecarEventSinkForTest((event) =>
+    events.push(event)
+  );
+  try {
+    const session = new SessionRuntime(
+      "provider-session-restore",
+      "/repo",
+      {},
+      true,
+      false,
+      {
+        model: "haiku",
+        permissionModeId: "default",
+        planMode: false,
+        effort: "",
+        speed: ""
+      },
+      sidecarClaudeOptionsFromPayload({}),
+      undefined,
+      ({ prompt }) =>
+        fakeDeferredContextUsageQuery(prompt, contextUsageResolvers)
+    );
+
+    const started = session.start();
+    await waitForCondition(
+      () => events.some((event) => event.type === "session_started"),
+      "session_started before context usage resolves"
+    );
+    await started;
+    assert.equal(
+      events.some((event) => event.type === "usage_updated"),
+      false,
+      "restore start must not wait for getContextUsage"
+    );
+    assert.equal(contextUsageResolvers.length, 1);
+
+    contextUsageResolvers[0]?.({ totalTokens: 12_345, maxTokens: 200_000 });
+    await waitForCondition(
+      () =>
+        events.some(
+          (event) =>
+            event.type === "usage_updated" &&
+            isRecord(event.payload?.contextWindow) &&
+            event.payload.contextWindow.usedTokens === 12_345
+        ),
+      "background restore context usage"
     );
   } finally {
     restoreSink();

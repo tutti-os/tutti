@@ -14,7 +14,6 @@ const labels = {
   title: "Tutti preferences",
   effectLabel: "Effect",
   speedLabel: "Speed",
-  previewTitle: "Expected behavior",
   previewHint:
     "The exact model, total task count, and safe parallelism are inferred from the request and selected Skills.",
   previewCost: "Economical",
@@ -24,7 +23,6 @@ const labels = {
   modelPreferenceCost: "Economical",
   modelPreferenceBalance: "Balanced",
   modelPreferencePowerful: "Most capable",
-  modelPreferenceFastestSuitable: "Fastest suitable",
   parallelismLabel: "Parallel target",
   parallelismValue: (count: number) =>
     count === 1 ? "1 agent" : `Up to ${count} agents`

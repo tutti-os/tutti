@@ -22,13 +22,13 @@ type HistoricalStateDriver interface {
 	ResetHistoricalState(context.Context) error
 	RestoreHistoricalSessionGraph(
 		context.Context,
-		string,
-		agenthost.HistoricalSessionGraph,
+		agenthost.HistoricalSessionGraphRestoreInput,
 	) error
 	CaptureHistoricalSessionGraph(
 		context.Context,
 		agenthost.SessionRef,
 	) (agenthost.HistoricalSessionGraph, error)
+	HistoricalSessionUserID(context.Context, agenthost.SessionRef) (string, error)
 	EnsureHistoricalSession(
 		context.Context,
 		agenthost.SessionRef,
@@ -76,7 +76,21 @@ func runRestoreHistoricalSessionGraph(
 	}
 	graph := historicalStateScenarioGraph()
 	const workspaceID = "historical-state-workspace"
-	if err := driver.RestoreHistoricalSessionGraph(ctx, workspaceID, graph); err != nil {
+	const userID = "historical-state-user"
+	restoreInput := agenthost.HistoricalSessionGraphRestoreInput{
+		WorkspaceID: workspaceID,
+		UserID:      userID,
+		Graph:       graph,
+	}
+	missingOwner := restoreInput
+	missingOwner.UserID = ""
+	if err := driver.RestoreHistoricalSessionGraph(
+		ctx,
+		missingOwner,
+	); !errors.Is(err, agenthost.ErrInvalidArgument) {
+		return fmt.Errorf("missing historical owner restore error = %v", err)
+	}
+	if err := driver.RestoreHistoricalSessionGraph(ctx, restoreInput); err != nil {
 		return fmt.Errorf("restore historical graph: %w", err)
 	}
 	if metrics := driver.HistoricalStateMetrics(); metrics.ProviderStartCalls != 0 ||
@@ -92,16 +106,36 @@ func runRestoreHistoricalSessionGraph(
 	if !reflect.DeepEqual(captured, graph) {
 		return fmt.Errorf("restored historical graph differs: %#v", captured)
 	}
-	if err := driver.RestoreHistoricalSessionGraph(ctx, workspaceID, graph); err != nil {
+	boundUserID, err := driver.HistoricalSessionUserID(ctx, agenthost.SessionRef{
+		WorkspaceID: workspaceID, AgentSessionID: graph.RootSessionID,
+	})
+	if err != nil {
+		return fmt.Errorf("read restored historical Session ownership: %w", err)
+	}
+	if boundUserID != userID {
+		return fmt.Errorf("restored historical Session user = %q, want %q", boundUserID, userID)
+	}
+	if err := driver.RestoreHistoricalSessionGraph(ctx, restoreInput); err != nil {
 		return fmt.Errorf("idempotent historical restore: %w", err)
+	}
+	conflictingOwner := restoreInput
+	conflictingOwner.UserID = "different-user"
+	if err := driver.RestoreHistoricalSessionGraph(
+		ctx,
+		conflictingOwner,
+	); !errors.Is(err, agenthost.ErrHistoricalStateConflict) {
+		return fmt.Errorf("conflicting historical owner restore error = %v", err)
 	}
 	conflicting := graph
 	conflicting.Sessions = append([]agenthost.HistoricalSession(nil), graph.Sessions...)
 	conflicting.Sessions[0].Title = "conflicting title"
 	if err := driver.RestoreHistoricalSessionGraph(
 		ctx,
-		workspaceID,
-		conflicting,
+		agenthost.HistoricalSessionGraphRestoreInput{
+			WorkspaceID: workspaceID,
+			UserID:      userID,
+			Graph:       conflicting,
+		},
 	); !errors.Is(err, agenthost.ErrHistoricalStateConflict) {
 		return fmt.Errorf("conflicting historical restore error = %v", err)
 	}

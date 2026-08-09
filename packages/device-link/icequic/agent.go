@@ -21,11 +21,12 @@ import (
 // core devicelink PathScope / devicelinkdiag NetworkScope strings so callers
 // can cast directly; classification is categorical and carries no address.
 const (
-	ScopeLocalSubnet    = "local_subnet"
-	ScopePrivateNetwork = "private_network"
-	ScopePublicInternet = "public_internet"
-	maxSTUNEndpoints    = 8
-	maxSTUNEndpointSize = 128
+	ScopeLocalSubnet            = "local_subnet"
+	ScopePrivateNetwork         = "private_network"
+	ScopePublicInternet         = "public_internet"
+	maxSTUNEndpoints            = 8
+	maxSTUNEndpointSize         = 128
+	systemHostAcceptanceMinWait = 200 * time.Millisecond
 )
 
 // redactingLoggerFactory disables pion's logging entirely. Pion's default
@@ -57,7 +58,8 @@ func (discardLogger) Errorf(string, ...any) {}
 // gathering, which is also the graceful degradation when STUN is unavailable.
 type AgentConfig struct {
 	STUNEndpoints []string
-	// NetworkPolicySystem follows OS routing, including TUN interfaces.
+	// NetworkPolicySystem follows OS routing, including TUN interfaces, while
+	// applying the shared LAN-first candidate preference.
 	// NetworkPolicyDirect pins UDP sockets to eligible physical interfaces and
 	// is supported on macOS only. Empty defaults to system.
 	NetworkPolicy NetworkPolicy
@@ -104,6 +106,7 @@ type Agent struct {
 	closeOnce        sync.Once
 	startOnce        sync.Once
 	startErr         error
+	prioritizeHosts  bool
 }
 
 // NewAgent builds an ICE agent under the device-link razor. TURN and mDNS are
@@ -167,7 +170,10 @@ func NewAgent(cfg AgentConfig) (*Agent, error) {
 	if len(stunURLs) > 0 {
 		agentOptions = append(agentOptions, ice.WithUrls(stunURLs))
 	}
-	if networkPolicy == NetworkPolicyDirect {
+	switch networkPolicy {
+	case NetworkPolicySystem:
+		agentOptions = append(agentOptions, ice.WithHostAcceptanceMinWait(systemHostAcceptanceMinWait))
+	case NetworkPolicyDirect:
 		netTransport, err := newInterfaceBoundNet(cfg.IncludeLoopback)
 		if err != nil {
 			return nil, err
@@ -189,7 +195,7 @@ func NewAgent(cfg AgentConfig) (*Agent, error) {
 	}
 	a := &Agent{
 		agent: underlying, gathered: make(chan struct{}), changed: make(chan struct{}, 1), done: make(chan struct{}),
-		remoteCandidates: make(map[string]struct{}),
+		remoteCandidates: make(map[string]struct{}), prioritizeHosts: networkPolicy == NetworkPolicySystem,
 	}
 	if err := underlying.OnCandidate(a.onCandidate); err != nil {
 		_ = underlying.Close()
@@ -208,6 +214,9 @@ func (a *Agent) onCandidate(candidate ice.Candidate) {
 	// Re-marshal through the exact wire round-trip the peer will perform, so a
 	// candidate that cannot survive serialization is never advertised.
 	marshalled := candidate.Marshal()
+	if a.prioritizeHosts {
+		marshalled = prioritizeHostCandidate(marshalled)
+	}
 	if _, err := ice.UnmarshalCandidate(marshalled); err != nil {
 		return
 	}

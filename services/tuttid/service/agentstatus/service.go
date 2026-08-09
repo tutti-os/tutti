@@ -276,8 +276,9 @@ type Service struct {
 	RunOutcomes *RunOutcomeStore
 	// StatusCache is shared by the daemon API and agent session service so local
 	// readiness probes run once per provider instead of once per caller/window.
-	StatusCache    *ProviderStatusCache
-	StatusCacheTTL time.Duration
+	StatusCache                 *ProviderStatusCache
+	StatusCacheTTL              time.Duration
+	OnProviderStatusInvalidated func(string)
 	// CLIVersionCache, AdapterProbeCache and global-bin caches keep stable
 	// executable facts across forced auth refreshes. DetectionCommands bounds
 	// actual subprocess fan-out across concurrent requests.
@@ -545,6 +546,9 @@ func (s Service) cachedProviderStatusStillValid(spec ProviderSpec, cachedAt time
 
 func (s Service) invalidateProviderStatus(provider string) {
 	s.StatusCache.invalidate(provider)
+	if s.OnProviderStatusInvalidated != nil {
+		s.OnProviderStatusInvalidated(provider)
+	}
 }
 
 // Invalidate drops one provider's application readiness snapshot after the

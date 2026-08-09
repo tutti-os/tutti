@@ -1,0 +1,23 @@
+{
+  "schemaVersion": "tutti.mutagen-lock.v1",
+  "platforms": {
+    "windows-amd64": {
+      "version": "0.18.1",
+      "archiveUrl": "https://github.com/mutagen-io/mutagen/releases/download/v0.18.1/mutagen_windows_amd64_v0.18.1.tar.gz",
+      "archiveSha256": "3e237e77f69959ed520a0f877330a431507bb0a85d9da7919764ba0c87b702c7",
+      "executable": "mutagen.exe",
+      "licenseFiles": [
+        {
+          "name": "LICENSE",
+          "url": "https://raw.githubusercontent.com/mutagen-io/mutagen/v0.18.1/LICENSE",
+          "sha256": "886ee5c61fb4b87bfe80499a667e1b0e4ab0216d133b0c7ec9f0859f73127d55"
+        },
+        {
+          "name": "SSPL-LICENSE",
+          "url": "https://raw.githubusercontent.com/mutagen-io/mutagen/v0.18.1/sspl/LICENSE",
+          "sha256": "34e94c5087ba6e9fb34f35ae71df5e6533c5fc7cbbf6c44186a71e82806b69e1"
+        }
+      ]
+    }
+  }
+}

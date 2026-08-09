@@ -28,6 +28,10 @@ const ignoredPrefixes = [
 const allowedLegacyContentFiles = new Set([
   "packages/auth/bridge/src/shared.ts",
   "packages/auth/bridge-go/authbridge.go",
+  // Connector artifacts currently use the existing production CDN bucket.
+  // Keep this exception until that bucket is migrated; the runtime still pins
+  // the exact hostname and verifies the published digest and size.
+  "services/tuttid/wiring.go",
   // Removed workspace-root contracts are still explicitly stripped so old
   // inherited or caller-provided environment values cannot reach apps.
   "services/tuttid/service/workspace/app_runtime_env.go",

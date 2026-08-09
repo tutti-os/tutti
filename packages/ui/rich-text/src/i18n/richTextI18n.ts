@@ -21,6 +21,7 @@ export const richTextI18nModule = createScopedLocaleObjectsI18nModuleManifest({
 
 const richTextEn = {
   richTextAt: {
+    loadFailed: "Unable to load references",
     loading: "Loading...",
     noMatches: "No matches",
     removeReferenceActionLabel: "Remove reference"
@@ -29,6 +30,7 @@ const richTextEn = {
 
 const richTextZhCN = {
   richTextAt: {
+    loadFailed: "无法加载引用",
     loading: "正在加载...",
     noMatches: "没有匹配项",
     removeReferenceActionLabel: "移除引用"
@@ -36,6 +38,7 @@ const richTextZhCN = {
 } as const satisfies I18nDictionary;
 
 export type RichTextI18nKey =
+  | "richTextAt.loadFailed"
   | "richTextAt.loading"
   | "richTextAt.noMatches"
   | "richTextAt.removeReferenceActionLabel";

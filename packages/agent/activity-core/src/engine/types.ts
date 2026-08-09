@@ -331,6 +331,7 @@ interface AgentSessionActivateEffectInputBase {
   cwd?: string;
   initialContent?: AgentPromptContentBlock[];
   initialDisplayPrompt?: string;
+  isolation?: "worktree";
   railPlacement?: AgentActivityRailPlacement;
   settings?: AgentActivitySessionSettings;
   submitDiagnostics?: Readonly<AgentActivitySubmitDiagnostics>;
@@ -481,6 +482,7 @@ interface AgentSessionActivationInputBase {
   cwd?: string;
   initialContent?: readonly AgentPromptContentBlock[];
   initialDisplayPrompt?: string;
+  isolation?: "worktree";
   initialTurnExpected?: boolean;
   railPlacement?: AgentActivityRailPlacement;
   railSectionKey?: string;

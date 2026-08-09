@@ -14,6 +14,8 @@ func standardACPEnv(session Session, host HostMetadata) []string {
 	env := []string{
 		codexAgentRoutingEnv,
 		codexRoutingPreload,
+		gitTerminalPromptEnv,
+		gitOptionalLocksEnv,
 		"NO_BROWSER=1",
 	}
 	env = append(env, workspaceEnv(session, host)...)

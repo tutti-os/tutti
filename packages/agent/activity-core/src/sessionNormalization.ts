@@ -41,6 +41,14 @@ export function normalizeAgentActivitySession(
     parentToolCallId: source.parentToolCallId ?? null,
     agentTargetId: source.agentTargetId ?? null,
     providerSessionId: source.providerSessionId ?? null,
+    isolation: source.isolation
+      ? {
+          mode: source.isolation.mode,
+          worktreePath: source.isolation.worktreePath.trim(),
+          branch: source.isolation.branch.trim(),
+          baseCommit: source.isolation.baseCommit.trim()
+        }
+      : null,
     activeTurnId: source.activeTurnId,
     activeTurn: source.activeTurn ?? null,
     latestTurn: source.latestTurn ?? source.activeTurn ?? null,

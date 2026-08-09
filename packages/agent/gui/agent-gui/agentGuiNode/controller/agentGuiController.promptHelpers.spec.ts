@@ -5,7 +5,8 @@ import {
 } from "@tutti-os/agent-activity-core";
 import {
   createOptimisticGoalControlMessage,
-  createOptimisticPromptMessage
+  createOptimisticPromptMessage,
+  normalizePromptContentBlocks
 } from "./agentGuiController.promptHelpers";
 
 // Step 9 (ADR 0004 desktop-half): optimistic echoes must not carry
@@ -103,5 +104,19 @@ describe("createOptimisticPromptMessage", () => {
         text: "/goal ship it"
       }
     });
+  });
+});
+
+describe("normalizePromptContentBlocks", () => {
+  it("preserves a valid structured local connector selection", () => {
+    expect(
+      normalizePromptContentBlocks([
+        { type: "text", text: "list my calendar events" },
+        { type: "connector", connectorKey: " lark-cli " }
+      ])
+    ).toEqual([
+      { type: "text", text: "list my calendar events" },
+      { type: "connector", connectorKey: "lark-cli" }
+    ]);
   });
 });

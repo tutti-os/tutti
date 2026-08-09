@@ -145,6 +145,9 @@ func TestSessionReplayProcessTransportKeepsCassettePlaybackAndFailureIndependent
 	if stateB.Paused || stateB.Speed != 2 {
 		t.Fatalf("cassette B playback = %#v, want running at speed 2", stateB)
 	}
+	if err := transport.ReplayFailure("cassette-a"); err != nil {
+		t.Fatalf("unstarted cassette A failure = %v, want nil", err)
+	}
 
 	connectionA, err := transport.Start(context.Background(), ProcessSpec{
 		Provider:       ProviderCodex,
@@ -153,8 +156,17 @@ func TestSessionReplayProcessTransportKeepsCassettePlaybackAndFailureIndependent
 	if err != nil {
 		t.Fatal(err)
 	}
+	if err := transport.ReplayFailure("cassette-a"); err != nil {
+		t.Fatalf("undrained cassette A failure = %v, want nil", err)
+	}
 	if err := connectionA.Send([]byte(`{"wrong":true}`)); err == nil {
 		t.Fatal("cassette A outbound mismatch succeeded")
+	}
+	if err := transport.ReplayFailure("cassette-a"); err == nil {
+		t.Fatal("cassette A failure is nil after mismatch")
+	}
+	if err := transport.ReplayFailure("cassette-b"); err != nil {
+		t.Fatalf("cassette B failure after cassette A mismatch = %v, want nil", err)
 	}
 
 	connectionB, err := transport.Start(context.Background(), ProcessSpec{
@@ -175,6 +187,9 @@ func TestSessionReplayProcessTransportKeepsCassettePlaybackAndFailureIndependent
 	}
 	if _, err := transport.ReplayPlaybackState("missing"); err == nil {
 		t.Fatal("unknown replay cassette playback lookup succeeded")
+	}
+	if err := transport.ReplayFailure("missing"); err == nil {
+		t.Fatal("unknown replay cassette failure lookup succeeded")
 	}
 }
 

@@ -675,6 +675,88 @@ test("confirmation without exact turn id stays uncertain across expiry", () => {
   );
 });
 
+test("owned reconcile without turn proof drops timed-out send and drains later prompts", () => {
+  const available = canonicalLifecycle("settled", 1);
+  const first = reduce(
+    createInitialPromptQueueState(),
+    submit("prompt-1"),
+    available
+  );
+  let state = reduce(first.state, enqueue("prompt-2"), available).state;
+  const timedOut = reduce(
+    state,
+    commandResult(commandId(first.commands[0]), "queue/sendPrompt", "timedOut"),
+    available
+  );
+  assert.equal(timedOut.commands[0]?.type, "session/reconcile");
+  assert.equal(
+    timedOut.state.recordsBySessionId["session-1"]?.uncertainDelivery?.promptId,
+    "prompt-1"
+  );
+
+  const reconciled = reduce(
+    timedOut.state,
+    commandResult(
+      commandId(timedOut.commands[0]),
+      "session/reconcile",
+      "succeeded"
+    ),
+    available
+  );
+  assert.equal(
+    reconciled.state.recordsBySessionId["session-1"]?.uncertainDelivery,
+    null
+  );
+  assert.deepEqual(
+    reconciled.state.recordsBySessionId["session-1"]?.prompts.map(
+      (prompt) => prompt.id
+    ),
+    ["prompt-2"]
+  );
+  assert.equal(send(reconciled.commands[0]).promptId, "prompt-2");
+});
+
+test("failed owned reconcile releases uncertainty into a retryable failed head", () => {
+  const available = canonicalLifecycle("settled", 1);
+  const sending = reduce(
+    createInitialPromptQueueState(),
+    submit("prompt-1"),
+    available
+  );
+  const timedOut = reduce(
+    sending.state,
+    commandResult(
+      commandId(sending.commands[0]),
+      "queue/sendPrompt",
+      "timedOut"
+    ),
+    available
+  );
+  const reconcileFailed = reduce(
+    timedOut.state,
+    commandResult(
+      commandId(timedOut.commands[0]),
+      "session/reconcile",
+      "failed",
+      { errorMessage: "reconcile unavailable" }
+    ),
+    available
+  );
+  assert.equal(
+    reconcileFailed.state.recordsBySessionId["session-1"]?.uncertainDelivery,
+    null
+  );
+  assert.equal(
+    reconcileFailed.state.recordsBySessionId["session-1"]?.failedPromptId,
+    "prompt-1"
+  );
+  assert.equal(
+    reconcileFailed.state.recordsBySessionId["session-1"]?.failureMessage,
+    "reconcile unavailable"
+  );
+  assert.deepEqual(reconcileFailed.commands, []);
+});
+
 test("session removal cleans queue-owned delivery state", () => {
   const lifecycle = canonicalLifecycle("running", 1);
   const queued = reduce(
@@ -1043,7 +1125,7 @@ function settledTurn(
 }
 
 function turnUpserted(turn: AgentActivityTurn) {
-  return { type: "turn/upserted" as const, turn };
+  return { live: true, type: "turn/upserted" as const, turn };
 }
 
 function messagesReceived(clientSubmitId: string, turnId: string | null) {

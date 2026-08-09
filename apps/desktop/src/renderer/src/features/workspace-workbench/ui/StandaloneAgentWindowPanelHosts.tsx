@@ -17,6 +17,7 @@ import { AgentEnvPanel } from "@renderer/features/workspace-agent/ui/AgentEnvPan
 import { ExternalAgentSessionImportPrompt } from "./ExternalAgentSessionImportPrompt";
 import { ExternalAgentSessionImportWizard } from "./ExternalAgentSessionImportWizard";
 import { WorkspaceSettingsPanel } from "./WorkspaceSettingsPanel";
+import { WorkspaceConnectorMarketDialogHost } from "./WorkspaceConnectorMarketDialogHost";
 import { useWorkspaceSettingsService } from "./useWorkspaceSettingsService";
 import { useWorkspaceWorkbenchHostService } from "./useWorkspaceWorkbenchHostService";
 import type { WorkspaceSettingsSectionID } from "../services/workspaceSettingsService.interface";
@@ -112,6 +113,7 @@ export function StandaloneAgentWindowPanelHosts({
 
   return (
     <>
+      <WorkspaceConnectorMarketDialogHost />
       <WorkspaceSettingsPanel
         onOpenExternalAgentImport={() => openExternalAgentImport()}
         onSelectWallpaper={selectWallpaper}

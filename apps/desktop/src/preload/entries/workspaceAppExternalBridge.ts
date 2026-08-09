@@ -6,6 +6,7 @@ import type {
 } from "../../shared/contracts/ipc";
 import type {
   TuttiExternalAtQueryInput,
+  TuttiExternalAtQueryDirectoryInput,
   TuttiExternalAtQueryResult,
   TuttiExternalAtInvalidation,
   TuttiExternalAtResolveInput,
@@ -16,6 +17,7 @@ import type {
   TuttiExternalAgentActivityCancelTurnResult,
   TuttiExternalAgentActivityComposerOptions,
   TuttiExternalAgentActivityComposerOptionsInput,
+  TuttiExternalAgentActivityRememberComposerDefaultsInput,
   TuttiExternalAgentActivitySendInput,
   TuttiExternalAgentActivitySendResult,
   TuttiExternalAgentActivitySnapshot,
@@ -33,6 +35,7 @@ import type {
   TuttiExternalPdfPrintHtmlInput,
   TuttiExternalPdfPrintHtmlResult,
   TuttiExternalReferenceOpenInput,
+  TuttiExternalReferenceSelectResult,
   TuttiExternalSettingsOpenInput,
   TuttiExternalUserProjectCreateInput,
   TuttiExternalUserProjectPathInput,
@@ -104,8 +107,11 @@ export const workspaceAppExternalChannels = {
     "workspace-app-agent-activity:get-composer-options",
   agentActivityGetSnapshot: "workspace-app-agent-activity:get-snapshot",
   agentActivityListTargets: "workspace-app-agent-activity:list-targets",
+  agentActivityRememberComposerDefaults:
+    "workspace-app-agent-activity:remember-composer-defaults",
   agentActivitySendInput: "workspace-app-agent-activity:send-input",
   atQuery: "workspace-app-at:query",
+  atQueryDirectory: "workspace-app-at:query-directory",
   atResolve: "workspace-app-at:resolve",
   browserOpenUrl: "workspace-app:open-url",
   filesOpen: "workspace-app-files:open",
@@ -117,6 +123,7 @@ export const workspaceAppExternalChannels = {
   permissionsRequest: "workspace-app-permissions:request",
   pdfPrintHtml: "workspace-app-pdf:print-html",
   referencesOpen: "workspace-app-references:open",
+  referencesSelect: "workspace-app-references:select",
   settingsOpen: "workspace-app-settings:open",
   userProjectsCheckPath: "workspace-app-user-projects:check-path",
   userProjectsCreate: "workspace-app-user-projects:create",
@@ -188,6 +195,14 @@ export function createWorkspaceAppExternalBridge(
           workspaceAppExternalChannels.agentActivityListTargets
         );
       },
+      rememberComposerDefaults(
+        input: TuttiExternalAgentActivityRememberComposerDefaultsInput
+      ) {
+        return dependencies.invoke<void>(
+          workspaceAppExternalChannels.agentActivityRememberComposerDefaults,
+          input
+        );
+      },
       sendInput(input: TuttiExternalAgentActivitySendInput) {
         return dependencies.invoke<TuttiExternalAgentActivitySendResult>(
           workspaceAppExternalChannels.agentActivitySendInput,
@@ -209,6 +224,12 @@ export function createWorkspaceAppExternalBridge(
       query(input: TuttiExternalAtQueryInput) {
         return dependencies.invoke<TuttiExternalAtQueryResult[]>(
           workspaceAppExternalChannels.atQuery,
+          input
+        );
+      },
+      queryDirectory(input: TuttiExternalAtQueryDirectoryInput) {
+        return dependencies.invoke<TuttiExternalAtQueryResult[]>(
+          workspaceAppExternalChannels.atQueryDirectory,
           input
         );
       },
@@ -309,6 +330,15 @@ export function createWorkspaceAppExternalBridge(
       }
     },
     references: {
+      select() {
+        requireUserActivation(
+          dependencies.isUserActivationActive(),
+          "references.select"
+        );
+        return dependencies.invoke<TuttiExternalReferenceSelectResult>(
+          workspaceAppExternalChannels.referencesSelect
+        );
+      },
       open(input: TuttiExternalReferenceOpenInput) {
         requireUserActivation(
           dependencies.isUserActivationActive(),

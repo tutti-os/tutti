@@ -185,7 +185,7 @@ func TestControllerStoreTurnSessionRejectsOlderAdapterLifecycle(t *testing.T) {
 	}
 	stale.SubmitAvailability = availableSubmitAvailability()
 
-	if controller.storeTurnSession(stale, turnID) {
+	if _, ok := controller.storeTurnSession(stale, turnID); ok {
 		t.Fatal("older adapter lifecycle overwrote current session")
 	}
 	stored, ok := controller.get("room-1", "agent-session-1")
@@ -287,7 +287,7 @@ func TestControllerFinishTurnDoesNotOverwriteRestartedSession(t *testing.T) {
 
 	// The canceled turn can unwind after a same-ID session has restarted. Its
 	// stale snapshot must not replace the fresh controller session.
-	if controller.storeTurnSession(staleTurnSession, turnID) {
+	if _, ok := controller.storeTurnSession(staleTurnSession, turnID); ok {
 		t.Fatal("late turn event stored stale session after restart")
 	}
 	controller.finishTurn(staleTurnSession, turnID)

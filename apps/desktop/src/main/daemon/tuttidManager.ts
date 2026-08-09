@@ -73,12 +73,14 @@ export function createTuttidManager(
   tuttidClient: TuttidClient,
   options?: {
     desktopUpdateAdmission?: DesktopUpdateAdmissionDaemonConfig;
+    workspaceAppCliPath?: string;
   }
 ): TuttidManager {
   return new ManagedTuttid(
     endpoint,
     tuttidClient,
-    options?.desktopUpdateAdmission
+    options?.desktopUpdateAdmission,
+    options?.workspaceAppCliPath
   );
 }
 
@@ -91,15 +93,18 @@ class ManagedTuttid implements TuttidManager {
   private readonly desktopUpdateAdmission:
     | DesktopUpdateAdmissionDaemonConfig
     | undefined;
+  private readonly workspaceAppCliPath: string | undefined;
 
   constructor(
     endpoint: DesktopDaemonEndpoint,
     tuttidClient: TuttidClient,
-    desktopUpdateAdmission?: DesktopUpdateAdmissionDaemonConfig
+    desktopUpdateAdmission?: DesktopUpdateAdmissionDaemonConfig,
+    workspaceAppCliPath?: string
   ) {
     this.endpoint = endpoint;
     this.tuttidClient = tuttidClient;
     this.desktopUpdateAdmission = desktopUpdateAdmission;
+    this.workspaceAppCliPath = workspaceAppCliPath;
     this.restartController = createDaemonRestartController({
       restart: () => this.start(),
       isStopRequested: () => this.stopRequested,
@@ -135,6 +140,7 @@ class ManagedTuttid implements TuttidManager {
     const processEnv = resolveManagedDaemonProcessEnv({
       endpoint: this.endpoint,
       desktopUpdateAdmission: this.desktopUpdateAdmission,
+      workspaceAppCliPath: this.workspaceAppCliPath,
       logOutput,
       userShellEnv
     });
@@ -313,6 +319,7 @@ export interface ManagedDaemonProcessEnvInput {
   parentPID?: number;
   sessionID?: string;
   userShellEnv?: Record<string, string>;
+  workspaceAppCliPath?: string;
 }
 
 // Relative path (under the packaged Resources dir) to the vendored
@@ -335,6 +342,8 @@ const vendoredClaudeSDKSidecarRelPath = join(
   "main.ts"
 );
 const vendoredManagedPosixShellRootRelPath = join("bin", "managed-posix-shell");
+const vendoredMutagenRootRelPath = join("bin", "mutagen");
+const vendoredManagedUVRootRelPath = join("bin", "managed-uv");
 
 // resolveBrowserMcpDaemonEnv points the daemon at a vendored chrome-devtools-mcp
 // in packaged builds so browser use never has to fetch it over the network at
@@ -394,8 +403,49 @@ export function resolveClaudeSDKSidecarDaemonEnv(
   };
 }
 
+// resolveComputerMcpDaemonEnv keeps the managed tuttid process independent of
+// the Electron process's stale PATH. Windows Cua Driver installs are user
+// scoped, so resolve the documented installer locations directly. Explicit
+// operator overrides always win. The desktop package does not vendor the
+// native helper; installation remains an explicit prerequisite.
+export function resolveComputerMcpDaemonEnv(): Record<string, string> {
+  if (
+    process.platform !== "win32" ||
+    process.env.TUTTI_COMPUTER_MCP_COMMAND?.trim() ||
+    process.env.TUTTI_COMPUTER_MCP_ENTRY_PATH?.trim()
+  ) {
+    return {};
+  }
+  const candidates: string[] = [];
+  const localAppData = process.env.LOCALAPPDATA?.trim();
+  const userProfile = process.env.USERPROFILE?.trim();
+  if (localAppData) {
+    candidates.push(
+      join(
+        localAppData,
+        "Programs",
+        "Cua",
+        "cua-driver",
+        "bin",
+        "cua-driver.exe"
+      ),
+      join(localAppData, "Programs", "Cua", "cua-driver.exe"),
+      join(localAppData, "cua-driver", "cua-driver.exe")
+    );
+  }
+  if (userProfile) {
+    candidates.push(
+      join(userProfile, ".cua-driver", "packages", "current", "cua-driver.exe"),
+      join(userProfile, ".local", "bin", "cua-driver.exe")
+    );
+  }
+  const entry = candidates.find((candidate) => existsSync(candidate));
+  return entry ? { TUTTI_COMPUTER_MCP_ENTRY_PATH: entry } : {};
+}
+
 export function resolveManagedPosixShellDaemonEnv(
-  runtime?: DesktopElectronAppRuntime
+  runtime?: DesktopElectronAppRuntime,
+  options: ResolveLaunchSpecOptions = {}
 ): Record<string, string> {
   if (process.env.TUTTI_MANAGED_POSIX_SHELL?.trim()) {
     return {};
@@ -406,13 +456,12 @@ export function resolveManagedPosixShellDaemonEnv(
   } catch {
     return {};
   }
-  if (!appRuntime.isPackaged) {
-    return {};
-  }
-  const runtimeRoot = resolve(
-    appRuntime.resourcesPath,
-    vendoredManagedPosixShellRootRelPath
-  );
+  const runtimeRoot = appRuntime.isPackaged
+    ? resolve(appRuntime.resourcesPath, vendoredManagedPosixShellRootRelPath)
+    : resolve(
+        options.repoRoot ?? resolveRepoRoot(),
+        "apps/desktop/build/managed-posix-shell"
+      );
   let executable: unknown;
   try {
     const metadata = JSON.parse(
@@ -442,6 +491,83 @@ export function resolveManagedPosixShellDaemonEnv(
   return {
     TUTTI_MANAGED_POSIX_SHELL: shell
   };
+}
+
+export function resolveMutagenDaemonEnv(
+  runtime?: DesktopElectronAppRuntime,
+  options: ResolveLaunchSpecOptions & {
+    inheritedEnv?: Record<string, string>;
+  } = {}
+): Record<string, string> {
+  if (
+    process.env.TUTTI_MUTAGEN_BIN?.trim() ||
+    options.inheritedEnv?.TUTTI_MUTAGEN_BIN?.trim()
+  ) {
+    return {};
+  }
+  let appRuntime: DesktopElectronAppRuntime;
+  try {
+    appRuntime = runtime ?? resolveElectronAppRuntime();
+  } catch {
+    return {};
+  }
+  const runtimeRoot = appRuntime.isPackaged
+    ? resolve(appRuntime.resourcesPath, vendoredMutagenRootRelPath)
+    : resolve(
+        options.repoRoot ?? resolveRepoRoot(),
+        "apps/desktop/build/mutagen"
+      );
+  let executable: unknown;
+  try {
+    const metadata = JSON.parse(
+      readFileSync(join(runtimeRoot, "runtime.json"), "utf8")
+    ) as { schemaVersion?: unknown; executable?: unknown };
+    if (metadata.schemaVersion !== "tutti.mutagen.v1") {
+      return {};
+    }
+    executable = metadata.executable;
+  } catch {
+    return {};
+  }
+  if (typeof executable !== "string" || executable.trim() !== executable) {
+    return {};
+  }
+  const entry = resolve(runtimeRoot, executable);
+  const relativeEntry = relative(runtimeRoot, entry);
+  if (
+    executable === "" ||
+    relativeEntry === ".." ||
+    relativeEntry.startsWith(`..${sep}`) ||
+    isAbsolute(relativeEntry) ||
+    !existsSync(entry)
+  ) {
+    return {};
+  }
+  return { TUTTI_MUTAGEN_BIN: entry };
+}
+
+export function resolveManagedUVDaemonEnv(
+  runtime?: DesktopElectronAppRuntime,
+  options: ResolveLaunchSpecOptions & {
+    inheritedEnv?: Record<string, string>;
+  } = {}
+): Record<string, string> {
+  if (
+    process.env.TUTTI_BUNDLED_UV_ROOT?.trim() ||
+    options.inheritedEnv?.TUTTI_BUNDLED_UV_ROOT?.trim()
+  ) {
+    return {};
+  }
+  let appRuntime: DesktopElectronAppRuntime;
+  try {
+    appRuntime = runtime ?? resolveElectronAppRuntime();
+  } catch {
+    return {};
+  }
+  const runtimeRoot = appRuntime.isPackaged
+    ? resolve(appRuntime.resourcesPath, vendoredManagedUVRootRelPath)
+    : resolve(options.repoRoot ?? resolveRepoRoot(), "apps/desktop/build/managed-uv");
+  return existsSync(runtimeRoot) ? { TUTTI_BUNDLED_UV_ROOT: runtimeRoot } : {};
 }
 
 function resolveManagedRuntimeDaemonEnv(
@@ -474,8 +600,11 @@ export function resolveManagedDaemonProcessEnv(
     ...resolveEndpointEnv(input.endpoint),
     ...resolveManagedRuntimeDaemonEnv(input.userShellEnv),
     ...resolveBrowserMcpDaemonEnv(),
+    ...resolveComputerMcpDaemonEnv(),
     ...resolveClaudeSDKSidecarDaemonEnv(),
     ...resolveManagedPosixShellDaemonEnv(),
+    ...resolveMutagenDaemonEnv(undefined, { inheritedEnv: input.userShellEnv }),
+    ...resolveManagedUVDaemonEnv(undefined, { inheritedEnv: input.userShellEnv }),
     TUTTI_APP_VERSION: process.env.TUTTI_APP_VERSION?.trim() ?? "",
     TUTTI_DESKTOP_UPDATE_ADMISSION_ARCHITECTURE:
       desktopUpdateAdmission?.architecture ?? "",
@@ -494,6 +623,7 @@ export function resolveManagedDaemonProcessEnv(
     TUTTI_DESKTOP_PARENT_PID: String(input.parentPID ?? process.pid),
     TUTTI_LOG_DIR: input.logDir ?? resolveDesktopLogsDir(),
     TUTTI_SESSION_ID: input.sessionID ?? getDesktopLogSessionID(),
+    TUTTI_WORKSPACE_APP_CLI_PATH: input.workspaceAppCliPath?.trim() ?? "",
     TUTTID_LOG_OUTPUT: input.logOutput,
     TUTTI_ENV: resolveTuttiEnv()
   };

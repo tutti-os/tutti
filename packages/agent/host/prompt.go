@@ -3,10 +3,13 @@ package agenthost
 import (
 	"encoding/base64"
 	"net/url"
+	"regexp"
 	"strings"
 )
 
 const maxPromptImageBlocks = 8
+
+var connectorKeyPattern = regexp.MustCompile(`^[a-z][a-z0-9._-]{0,127}$`)
 
 func normalizePromptContent(content []PromptContentBlock) ([]PromptContentBlock, string, error) {
 	normalized := make([]PromptContentBlock, 0, len(content))
@@ -52,6 +55,13 @@ func normalizePromptContent(content []PromptContentBlock) ([]PromptContentBlock,
 				return nil, "", ErrInvalidArgument
 			}
 			normalized = append(normalized, PromptContentBlock{Type: strings.TrimSpace(block.Type), Name: name, Path: path})
+		case "connector":
+			connectorKey := strings.TrimSpace(block.ConnectorKey)
+			if !connectorKeyPattern.MatchString(connectorKey) {
+				return nil, "", ErrInvalidArgument
+			}
+			hasInput = true
+			normalized = append(normalized, PromptContentBlock{Type: "connector", ConnectorKey: connectorKey})
 		default:
 			return nil, "", ErrInvalidArgument
 		}

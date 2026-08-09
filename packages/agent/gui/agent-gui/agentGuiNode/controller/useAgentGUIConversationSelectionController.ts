@@ -1,6 +1,7 @@
 import {
-  isPendingActivationViable,
+  selectFailedNewActivationResolution,
   selectEngineSession,
+  selectEngineSessionCanReload,
   selectEngineSessionDetailHydrated,
   selectEngineSessionStateHydrated,
   selectLatestActivationForSession,
@@ -218,9 +219,13 @@ export function useAgentGUIConversationSelectionController(
     };
 
     if (
-      activePendingActivation?.mode === "new" &&
-      !isPendingActivationViable(activePendingActivation) &&
-      activeConversationIdRef.current === activePendingActivation.agentSessionId
+      activeConversationIdRef.current ===
+        activePendingActivation?.agentSessionId &&
+      selectFailedNewActivationResolution(
+        sessionEngine.getSnapshot(),
+        activePendingActivation.agentSessionId,
+        intent.tag === "active" ? { selectionSource: intent.source } : undefined
+      ) === "rollback"
     ) {
       rollbackSelection(
         activePendingActivation.agentSessionId,
@@ -369,16 +374,9 @@ export function useAgentGUIConversationSelectionController(
   const selection = useAgentConversationSelection({
     activation: {
       canReload: (agentSessionId) => {
-        const status =
-          selectLatestActivationForSession(
-            sessionEngine.getSnapshot(),
-            agentSessionId
-          )?.status ?? null;
-        return (
-          status !== "failed" &&
-          status !== "canceled" &&
-          status !== "requested" &&
-          status !== "uncertain"
+        return selectEngineSessionCanReload(
+          sessionEngine.getSnapshot(),
+          agentSessionId
         );
       },
       forget: activation.clearFailure,

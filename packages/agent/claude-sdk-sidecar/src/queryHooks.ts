@@ -8,6 +8,7 @@ type ClaudeHookCallback = (
 export function queryGenerationHooks(options: {
   generation: QueryGeneration;
   isActive: () => boolean;
+  onSessionStart: ClaudeHookCallback;
   onPostToolUse: ClaudeHookCallback;
   onTaskLifecycle: ClaudeHookCallback;
 }): Record<string, Array<{ hooks: ClaudeHookCallback[] }>> {
@@ -21,6 +22,7 @@ export function queryGenerationHooks(options: {
     };
 
   return {
+    SessionStart: [{ hooks: [guarded(options.onSessionStart)] }],
     PostToolUse: [{ hooks: [guarded(options.onPostToolUse)] }],
     TaskCreated: [{ hooks: [guarded(options.onTaskLifecycle)] }],
     TaskCompleted: [{ hooks: [guarded(options.onTaskLifecycle)] }]

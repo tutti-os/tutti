@@ -64,6 +64,9 @@ func generatedAgentProviderCapabilityOptions(options []agentservice.ComposerCapa
 		if description := strings.TrimSpace(option.Description); description != "" {
 			generated.Description = optionalStringPointer(description)
 		}
+		if iconURL := strings.TrimSpace(option.IconURL); iconURL != "" {
+			generated.IconUrl = optionalStringPointer(iconURL)
+		}
 		if source := strings.TrimSpace(option.Source); source != "" {
 			generated.Source = optionalStringPointer(source)
 		}

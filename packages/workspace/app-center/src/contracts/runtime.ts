@@ -15,6 +15,7 @@ export type WorkspaceAppRuntimeStatus =
 
 export interface WorkspaceAppRuntimeError {
   readonly code?: string;
+  readonly failurePhase?: WorkspaceAppFailurePhase;
   readonly message: string;
 }
 
@@ -22,6 +23,8 @@ export type WorkspaceAppInstallUserPhase =
   | "downloading"
   | "installing"
   | "starting";
+
+export type WorkspaceAppFailurePhase = WorkspaceAppInstallUserPhase | "runtime";
 
 export interface WorkspaceAppInstallProgress {
   readonly userPhase: WorkspaceAppInstallUserPhase;

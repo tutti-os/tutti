@@ -4,8 +4,17 @@ import type { WorkspaceSummary } from "@tutti-os/client-tuttid-ts";
 import {
   AppWindowIcon,
   Button,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
+  DropdownMenuTrigger,
+  AskLinedIcon,
   LockLayoutLinedIcon,
-  DownloadIcon,
   SettingsIcon,
   ShortcutBadge,
   Tooltip,
@@ -15,7 +24,9 @@ import {
 import { useWorkspaceSettingsPanelRequest } from "@tutti-os/agent-gui/workspace-settings-panel";
 import { useTranslation } from "@renderer/i18n";
 import { cn } from "@renderer/lib/format";
+import { useAppUpdateService } from "@renderer/features/app-update";
 import { WorkspaceSettingsPanel } from "./WorkspaceSettingsPanel";
+import { WorkspaceConnectorMarketDialogHost } from "./WorkspaceConnectorMarketDialogHost";
 import { useWorkspaceSettingsService } from "./useWorkspaceSettingsService";
 import type { WorkspaceSettingsSectionID } from "../services/workspaceSettingsService.interface";
 import type {
@@ -88,17 +99,20 @@ export function WorkspaceMissionControlActions({
 }
 
 /**
- * Windows keeps the workspace in a custom chrome surface, while the native
- * Help menu is not discoverable from that surface. Keep the existing native
- * menu action as the fallback, but expose the same export operation directly
- * in the Windows header so support logs remain reachable.
+ * Windows keeps the native application menu available through Alt, but does
+ * not render its extra menu row in the normal workspace chrome. Keep the
+ * support-facing Help actions discoverable in the existing custom header.
  */
-export function WorkspaceExportLogsAction({
-  platform
+export function WorkspaceHelpMenu({
+  platform,
+  workspace
 }: {
   platform: NodeJS.Platform;
+  workspace: WorkspaceSummary;
 }) {
   const { t } = useTranslation();
+  const { service: appUpdateService, state: appUpdateState } =
+    useAppUpdateService();
   const { service: settingsService, state: settingsState } =
     useWorkspaceSettingsService();
 
@@ -106,33 +120,114 @@ export function WorkspaceExportLogsAction({
     return null;
   }
 
-  const label = t("workspace.settings.developer.exportLogs");
-  const exporting = settingsState.developerLogs.exporting;
+  const exportLogs = (input: {
+    includeAgentSessions: boolean;
+    scope: "recent-10-minutes" | "recent-3-days";
+  }) => {
+    void settingsService.exportDeveloperLogs(input);
+  };
+
   return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <span className="inline-flex">
-          <Button
-            aria-label={label}
-            className="text-[var(--workbench-chrome-foreground)]"
-            disabled={exporting}
-            size="icon-sm"
-            title={label}
-            type="button"
-            variant="ghost"
-            onClick={() =>
-              void settingsService.exportDeveloperLogs({
-                includeAgentSessions: true,
-                scope: "recent-10-minutes"
-              })
-            }
-          >
-            <DownloadIcon className="size-4" />
-          </Button>
-        </span>
-      </TooltipTrigger>
-      <TooltipContent>{label}</TooltipContent>
-    </Tooltip>
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          aria-label={t("desktop.menu.help")}
+          className="text-[var(--workbench-chrome-foreground)]"
+          size="icon-sm"
+          title={t("desktop.menu.help")}
+          type="button"
+          variant="ghost"
+        >
+          <AskLinedIcon className="size-4" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent
+        align="end"
+        className="w-72"
+        style={{ zIndex: "var(--z-panel-popover)" }}
+      >
+        <DropdownMenuLabel>{t("desktop.menu.help")}</DropdownMenuLabel>
+        <DropdownMenuItem
+          onSelect={() =>
+            settingsService.openPanel(
+              { id: workspace.id },
+              { section: "about" }
+            )
+          }
+        >
+          {t("workspace.settings.nav.about")}
+        </DropdownMenuItem>
+        <DropdownMenuItem
+          disabled={appUpdateState.isActing}
+          onSelect={() => {
+            void appUpdateService.checkForUpdates();
+          }}
+        >
+          {appUpdateState.isActing
+            ? t("updates.checkingTitle")
+            : t("desktop.menu.checkForUpdates")}
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuSub>
+          <DropdownMenuSubTrigger>
+            {t("desktop.menu.exportRecentTenMinutesLogs")}
+          </DropdownMenuSubTrigger>
+          <DropdownMenuSubContent className="w-52">
+            <DropdownMenuItem
+              disabled={settingsState.developerLogs.exporting}
+              onSelect={() =>
+                exportLogs({
+                  includeAgentSessions: false,
+                  scope: "recent-10-minutes"
+                })
+              }
+            >
+              {t("desktop.menu.logsOnly")}
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              disabled={settingsState.developerLogs.exporting}
+              onSelect={() =>
+                exportLogs({
+                  includeAgentSessions: true,
+                  scope: "recent-10-minutes"
+                })
+              }
+            >
+              {t("desktop.menu.logsWithAgentSessions")}
+            </DropdownMenuItem>
+          </DropdownMenuSubContent>
+        </DropdownMenuSub>
+        <DropdownMenuSub>
+          <DropdownMenuSubTrigger>
+            {t("desktop.menu.exportRecentThreeDaysLogs")}
+          </DropdownMenuSubTrigger>
+          <DropdownMenuSubContent className="w-52">
+            <DropdownMenuItem
+              disabled={settingsState.developerLogs.exporting}
+              onSelect={() =>
+                exportLogs({
+                  includeAgentSessions: false,
+                  scope: "recent-3-days"
+                })
+              }
+            >
+              {t("desktop.menu.logsOnly")}
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              disabled={settingsState.developerLogs.exporting}
+              onSelect={() =>
+                exportLogs({
+                  includeAgentSessions: true,
+                  scope: "recent-3-days"
+                })
+              }
+            >
+              {t("desktop.menu.logsWithAgentSessions")}
+            </DropdownMenuItem>
+          </DropdownMenuSubContent>
+        </DropdownMenuSub>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 
@@ -252,6 +347,7 @@ export function WorkspaceSettingsTrigger({
 
   return (
     <>
+      <WorkspaceConnectorMarketDialogHost />
       <Tooltip>
         <TooltipTrigger asChild>
           <span

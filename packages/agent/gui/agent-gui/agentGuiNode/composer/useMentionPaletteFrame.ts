@@ -19,7 +19,8 @@ import { resolveComposerPortalTarget } from "./composerPortalTarget";
 
 export function useMentionPaletteFrame(
   inputShellRef: RefObject<HTMLDivElement | null>,
-  showFileMentionPalette: boolean
+  showFileMentionPalette: boolean,
+  viewportTopInset = MENTION_PALETTE_VIEWPORT_PADDING_PX
 ) {
   const [mentionPaletteFrame, setMentionPaletteFrame] =
     useState<MentionPaletteFrame | null>(null);
@@ -47,8 +48,11 @@ export function useMentionPaletteFrame(
         viewportWidth - MENTION_PALETTE_VIEWPORT_PADDING_PX - width
       )
     );
-    const availableAbove =
-      rect.top - MENTION_PALETTE_GAP_PX - MENTION_PALETTE_VIEWPORT_PADDING_PX;
+    const safeTop = Math.max(
+      MENTION_PALETTE_VIEWPORT_PADDING_PX,
+      viewportTopInset
+    );
+    const availableAbove = rect.top - MENTION_PALETTE_GAP_PX - safeTop;
     const height =
       availableAbove >= MENTION_PALETTE_MIN_HEIGHT_PX
         ? Math.min(MENTION_PALETTE_MAX_HEIGHT_PX, availableAbove)
@@ -59,7 +63,7 @@ export function useMentionPaletteFrame(
       left,
       portalTarget: resolveComposerPortalTarget(anchor),
       top: Math.max(
-        MENTION_PALETTE_VIEWPORT_PADDING_PX,
+        safeTop,
         Math.min(
           rect.top - MENTION_PALETTE_GAP_PX - height,
           viewportHeight - MENTION_PALETTE_VIEWPORT_PADDING_PX - height
@@ -68,7 +72,7 @@ export function useMentionPaletteFrame(
       width,
       zIndex: resolveMentionPaletteZIndex(anchor)
     });
-  }, []);
+  }, [viewportTopInset]);
 
   useLayoutEffect(() => {
     if (!showFileMentionPalette) {

@@ -53,6 +53,7 @@ export function requestSessionActivation(
     ...(input.initialTurnExpected !== undefined
       ? { initialTurnExpected: input.initialTurnExpected }
       : {}),
+    ...(input.isolation ? { isolation: input.isolation } : {}),
     ...(input.railPlacement
       ? { railPlacement: { ...input.railPlacement } }
       : {}),

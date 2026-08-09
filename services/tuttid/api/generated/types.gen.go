@@ -111,15 +111,18 @@ func (e AgentPromptContentBlockMimeType) Valid() bool {
 
 // Defines values for AgentPromptContentBlockType.
 const (
-	AgentPromptContentBlockTypeImage   AgentPromptContentBlockType = "image"
-	AgentPromptContentBlockTypeMention AgentPromptContentBlockType = "mention"
-	AgentPromptContentBlockTypeSkill   AgentPromptContentBlockType = "skill"
-	AgentPromptContentBlockTypeText    AgentPromptContentBlockType = "text"
+	AgentPromptContentBlockTypeConnector AgentPromptContentBlockType = "connector"
+	AgentPromptContentBlockTypeImage     AgentPromptContentBlockType = "image"
+	AgentPromptContentBlockTypeMention   AgentPromptContentBlockType = "mention"
+	AgentPromptContentBlockTypeSkill     AgentPromptContentBlockType = "skill"
+	AgentPromptContentBlockTypeText      AgentPromptContentBlockType = "text"
 )
 
 // Valid indicates whether the value is a known member of the AgentPromptContentBlockType enum.
 func (e AgentPromptContentBlockType) Valid() bool {
 	switch e {
+	case AgentPromptContentBlockTypeConnector:
+		return true
 	case AgentPromptContentBlockTypeImage:
 		return true
 	case AgentPromptContentBlockTypeMention:
@@ -946,6 +949,21 @@ func (e AgentTargetSource) Valid() bool {
 	}
 }
 
+// Defines values for AgentTargetTerminalStartupActionType.
+const (
+	AgentTargetTerminalStartupActionTypeSlashCommand AgentTargetTerminalStartupActionType = "slash_command"
+)
+
+// Valid indicates whether the value is a known member of the AgentTargetTerminalStartupActionType enum.
+func (e AgentTargetTerminalStartupActionType) Valid() bool {
+	switch e {
+	case AgentTargetTerminalStartupActionTypeSlashCommand:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ApiErrorDetailsCode.
 const (
 	AgentQuickPromptConflict              ApiErrorDetailsCode = "agent_quick_prompt_conflict"
@@ -1146,16 +1164,16 @@ func (e AutomationRuleTrigger) Valid() bool {
 
 // Defines values for CliCapabilitySourceKind.
 const (
-	App     CliCapabilitySourceKind = "app"
-	Builtin CliCapabilitySourceKind = "builtin"
+	CliCapabilitySourceKindApp     CliCapabilitySourceKind = "app"
+	CliCapabilitySourceKindBuiltin CliCapabilitySourceKind = "builtin"
 )
 
 // Valid indicates whether the value is a known member of the CliCapabilitySourceKind enum.
 func (e CliCapabilitySourceKind) Valid() bool {
 	switch e {
-	case App:
+	case CliCapabilitySourceKindApp:
 		return true
-	case Builtin:
+	case CliCapabilitySourceKindBuiltin:
 		return true
 	default:
 		return false
@@ -1327,6 +1345,360 @@ func (e CollaborationRunTriggerSource) Valid() bool {
 	}
 }
 
+// Defines values for ConnectorMarketAuthorizationState.
+const (
+	ConnectorMarketAuthorizationStateConnected    ConnectorMarketAuthorizationState = "connected"
+	ConnectorMarketAuthorizationStateDisconnected ConnectorMarketAuthorizationState = "disconnected"
+	ConnectorMarketAuthorizationStateExpired      ConnectorMarketAuthorizationState = "expired"
+	ConnectorMarketAuthorizationStateFailed       ConnectorMarketAuthorizationState = "failed"
+	ConnectorMarketAuthorizationStateNotRequired  ConnectorMarketAuthorizationState = "not_required"
+	ConnectorMarketAuthorizationStatePending      ConnectorMarketAuthorizationState = "pending"
+)
+
+// Valid indicates whether the value is a known member of the ConnectorMarketAuthorizationState enum.
+func (e ConnectorMarketAuthorizationState) Valid() bool {
+	switch e {
+	case ConnectorMarketAuthorizationStateConnected:
+		return true
+	case ConnectorMarketAuthorizationStateDisconnected:
+		return true
+	case ConnectorMarketAuthorizationStateExpired:
+		return true
+	case ConnectorMarketAuthorizationStateFailed:
+		return true
+	case ConnectorMarketAuthorizationStateNotRequired:
+		return true
+	case ConnectorMarketAuthorizationStatePending:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ConnectorMarketCatalogState.
+const (
+	ConnectorMarketCatalogStateFailed     ConnectorMarketCatalogState = "failed"
+	ConnectorMarketCatalogStateReady      ConnectorMarketCatalogState = "ready"
+	ConnectorMarketCatalogStateRefreshing ConnectorMarketCatalogState = "refreshing"
+	ConnectorMarketCatalogStateStale      ConnectorMarketCatalogState = "stale"
+)
+
+// Valid indicates whether the value is a known member of the ConnectorMarketCatalogState enum.
+func (e ConnectorMarketCatalogState) Valid() bool {
+	switch e {
+	case ConnectorMarketCatalogStateFailed:
+		return true
+	case ConnectorMarketCatalogStateReady:
+		return true
+	case ConnectorMarketCatalogStateRefreshing:
+		return true
+	case ConnectorMarketCatalogStateStale:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ConnectorMarketCategoryKind.
+const (
+	Category ConnectorMarketCategoryKind = "category"
+	Featured ConnectorMarketCategoryKind = "featured"
+)
+
+// Valid indicates whether the value is a known member of the ConnectorMarketCategoryKind enum.
+func (e ConnectorMarketCategoryKind) Valid() bool {
+	switch e {
+	case Category:
+		return true
+	case Featured:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ConnectorMarketCompatibilityState.
+const (
+	Supported                 ConnectorMarketCompatibilityState = "supported"
+	UnsupportedImplementation ConnectorMarketCompatibilityState = "unsupported_implementation"
+	UnsupportedPlatform       ConnectorMarketCompatibilityState = "unsupported_platform"
+	UnsupportedProduct        ConnectorMarketCompatibilityState = "unsupported_product"
+	UnsupportedVersion        ConnectorMarketCompatibilityState = "unsupported_version"
+)
+
+// Valid indicates whether the value is a known member of the ConnectorMarketCompatibilityState enum.
+func (e ConnectorMarketCompatibilityState) Valid() bool {
+	switch e {
+	case Supported:
+		return true
+	case UnsupportedImplementation:
+		return true
+	case UnsupportedPlatform:
+		return true
+	case UnsupportedProduct:
+		return true
+	case UnsupportedVersion:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ConnectorMarketErrorCode.
+const (
+	ConnectorAuthorizationFailed       ConnectorMarketErrorCode = "connector_authorization_failed"
+	ConnectorImplementationUnsupported ConnectorMarketErrorCode = "connector_implementation_unsupported"
+	ConnectorIncompatible              ConnectorMarketErrorCode = "connector_incompatible"
+	ConnectorInstallFailed             ConnectorMarketErrorCode = "connector_install_failed"
+	ConnectorManifestInvalid           ConnectorMarketErrorCode = "connector_manifest_invalid"
+	ConnectorMarketInvalidRequest      ConnectorMarketErrorCode = "connector_market_invalid_request"
+	ConnectorMarketRevisionConflict    ConnectorMarketErrorCode = "connector_market_revision_conflict"
+	ConnectorMarketUnavailable         ConnectorMarketErrorCode = "connector_market_unavailable"
+	ConnectorMarketUpstreamUnavailable ConnectorMarketErrorCode = "connector_market_upstream_unavailable"
+	ConnectorNotFound                  ConnectorMarketErrorCode = "connector_not_found"
+	ConnectorOperationInProgress       ConnectorMarketErrorCode = "connector_operation_in_progress"
+)
+
+// Valid indicates whether the value is a known member of the ConnectorMarketErrorCode enum.
+func (e ConnectorMarketErrorCode) Valid() bool {
+	switch e {
+	case ConnectorAuthorizationFailed:
+		return true
+	case ConnectorImplementationUnsupported:
+		return true
+	case ConnectorIncompatible:
+		return true
+	case ConnectorInstallFailed:
+		return true
+	case ConnectorManifestInvalid:
+		return true
+	case ConnectorMarketInvalidRequest:
+		return true
+	case ConnectorMarketRevisionConflict:
+		return true
+	case ConnectorMarketUnavailable:
+		return true
+	case ConnectorMarketUpstreamUnavailable:
+		return true
+	case ConnectorNotFound:
+		return true
+	case ConnectorOperationInProgress:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ConnectorMarketImplementationKind.
+const (
+	ConnectorMarketImplementationKindBuiltin              ConnectorMarketImplementationKind = "builtin"
+	ConnectorMarketImplementationKindManagedStdio         ConnectorMarketImplementationKind = "managed_stdio"
+	ConnectorMarketImplementationKindRemoteStreamableHttp ConnectorMarketImplementationKind = "remote_streamable_http"
+)
+
+// Valid indicates whether the value is a known member of the ConnectorMarketImplementationKind enum.
+func (e ConnectorMarketImplementationKind) Valid() bool {
+	switch e {
+	case ConnectorMarketImplementationKindBuiltin:
+		return true
+	case ConnectorMarketImplementationKindManagedStdio:
+		return true
+	case ConnectorMarketImplementationKindRemoteStreamableHttp:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ConnectorMarketInstallationState.
+const (
+	ConnectorMarketInstallationStateFailed       ConnectorMarketInstallationState = "failed"
+	ConnectorMarketInstallationStateInstalled    ConnectorMarketInstallationState = "installed"
+	ConnectorMarketInstallationStateInstalling   ConnectorMarketInstallationState = "installing"
+	ConnectorMarketInstallationStateNotInstalled ConnectorMarketInstallationState = "not_installed"
+	ConnectorMarketInstallationStateUninstalling ConnectorMarketInstallationState = "uninstalling"
+	ConnectorMarketInstallationStateUpdating     ConnectorMarketInstallationState = "updating"
+)
+
+// Valid indicates whether the value is a known member of the ConnectorMarketInstallationState enum.
+func (e ConnectorMarketInstallationState) Valid() bool {
+	switch e {
+	case ConnectorMarketInstallationStateFailed:
+		return true
+	case ConnectorMarketInstallationStateInstalled:
+		return true
+	case ConnectorMarketInstallationStateInstalling:
+		return true
+	case ConnectorMarketInstallationStateNotInstalled:
+		return true
+	case ConnectorMarketInstallationStateUninstalling:
+		return true
+	case ConnectorMarketInstallationStateUpdating:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ConnectorMarketManifestSchemaVersion.
+const (
+	ConnectorMarketManifestSchemaVersionN1 ConnectorMarketManifestSchemaVersion = "1"
+)
+
+// Valid indicates whether the value is a known member of the ConnectorMarketManifestSchemaVersion enum.
+func (e ConnectorMarketManifestSchemaVersion) Valid() bool {
+	switch e {
+	case ConnectorMarketManifestSchemaVersionN1:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ConnectorMarketOperationKind.
+const (
+	DisconnectAuthorization ConnectorMarketOperationKind = "disconnect_authorization"
+	Install                 ConnectorMarketOperationKind = "install"
+	RefreshCatalog          ConnectorMarketOperationKind = "refresh_catalog"
+	StartAuthorization      ConnectorMarketOperationKind = "start_authorization"
+	Uninstall               ConnectorMarketOperationKind = "uninstall"
+)
+
+// Valid indicates whether the value is a known member of the ConnectorMarketOperationKind enum.
+func (e ConnectorMarketOperationKind) Valid() bool {
+	switch e {
+	case DisconnectAuthorization:
+		return true
+	case Install:
+		return true
+	case RefreshCatalog:
+		return true
+	case StartAuthorization:
+		return true
+	case Uninstall:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ConnectorMarketOperationStage.
+const (
+	ConnectorMarketOperationStageAccepted      ConnectorMarketOperationStage = "accepted"
+	ConnectorMarketOperationStageAuthorizing   ConnectorMarketOperationStage = "authorizing"
+	ConnectorMarketOperationStageCompleted     ConnectorMarketOperationStage = "completed"
+	ConnectorMarketOperationStageDeactivating  ConnectorMarketOperationStage = "deactivating"
+	ConnectorMarketOperationStageDisconnecting ConnectorMarketOperationStage = "disconnecting"
+	ConnectorMarketOperationStageFailed        ConnectorMarketOperationStage = "failed"
+	ConnectorMarketOperationStageInstalled     ConnectorMarketOperationStage = "installed"
+	ConnectorMarketOperationStageInstalling    ConnectorMarketOperationStage = "installing"
+	ConnectorMarketOperationStageRefreshing    ConnectorMarketOperationStage = "refreshing"
+)
+
+// Valid indicates whether the value is a known member of the ConnectorMarketOperationStage enum.
+func (e ConnectorMarketOperationStage) Valid() bool {
+	switch e {
+	case ConnectorMarketOperationStageAccepted:
+		return true
+	case ConnectorMarketOperationStageAuthorizing:
+		return true
+	case ConnectorMarketOperationStageCompleted:
+		return true
+	case ConnectorMarketOperationStageDeactivating:
+		return true
+	case ConnectorMarketOperationStageDisconnecting:
+		return true
+	case ConnectorMarketOperationStageFailed:
+		return true
+	case ConnectorMarketOperationStageInstalled:
+		return true
+	case ConnectorMarketOperationStageInstalling:
+		return true
+	case ConnectorMarketOperationStageRefreshing:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ConnectorMarketOperationState.
+const (
+	ConnectorMarketOperationStateAccepted  ConnectorMarketOperationState = "accepted"
+	ConnectorMarketOperationStateCompleted ConnectorMarketOperationState = "completed"
+	ConnectorMarketOperationStateFailed    ConnectorMarketOperationState = "failed"
+	ConnectorMarketOperationStateRunning   ConnectorMarketOperationState = "running"
+)
+
+// Valid indicates whether the value is a known member of the ConnectorMarketOperationState enum.
+func (e ConnectorMarketOperationState) Valid() bool {
+	switch e {
+	case ConnectorMarketOperationStateAccepted:
+		return true
+	case ConnectorMarketOperationStateCompleted:
+		return true
+	case ConnectorMarketOperationStateFailed:
+		return true
+	case ConnectorMarketOperationStateRunning:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ConnectorMarketReleaseSchemaVersion.
+const (
+	ConnectorMarketReleaseSchemaVersionN1 ConnectorMarketReleaseSchemaVersion = "1"
+)
+
+// Valid indicates whether the value is a known member of the ConnectorMarketReleaseSchemaVersion enum.
+func (e ConnectorMarketReleaseSchemaVersion) Valid() bool {
+	switch e {
+	case ConnectorMarketReleaseSchemaVersionN1:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ConnectorMarketReleaseStatus.
+const (
+	ConnectorMarketReleaseStatusAvailable  ConnectorMarketReleaseStatus = "available"
+	ConnectorMarketReleaseStatusSuperseded ConnectorMarketReleaseStatus = "superseded"
+)
+
+// Valid indicates whether the value is a known member of the ConnectorMarketReleaseStatus enum.
+func (e ConnectorMarketReleaseStatus) Valid() bool {
+	switch e {
+	case ConnectorMarketReleaseStatusAvailable:
+		return true
+	case ConnectorMarketReleaseStatusSuperseded:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for CreateIssueManagerImageAttachmentRequestMimeType.
+const (
+	IssueAttachmentMimeTypeJPEG CreateIssueManagerImageAttachmentRequestMimeType = "image/jpeg"
+	IssueAttachmentMimeTypePNG  CreateIssueManagerImageAttachmentRequestMimeType = "image/png"
+	IssueAttachmentMimeTypeWebP CreateIssueManagerImageAttachmentRequestMimeType = "image/webp"
+)
+
+// Valid indicates whether the value is a known member of the CreateIssueManagerImageAttachmentRequestMimeType enum.
+func (e CreateIssueManagerImageAttachmentRequestMimeType) Valid() bool {
+	switch e {
+	case IssueAttachmentMimeTypeJPEG:
+		return true
+	case IssueAttachmentMimeTypePNG:
+		return true
+	case IssueAttachmentMimeTypeWebP:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for DecideWorkspaceWorkflowCheckpointRequestDecision.
 const (
 	DecideWorkspaceWorkflowCheckpointRequestDecisionAccepted DecideWorkspaceWorkflowCheckpointRequestDecision = "accepted"
@@ -1396,6 +1768,24 @@ func (e DesktopAgentDockLayout) Valid() bool {
 	case LegacySplit:
 		return true
 	case Unified:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for DesktopAgentSessionLaunchMode.
+const (
+	DesktopAgentSessionLaunchModeLocal    DesktopAgentSessionLaunchMode = "local"
+	DesktopAgentSessionLaunchModeWorktree DesktopAgentSessionLaunchMode = "worktree"
+)
+
+// Valid indicates whether the value is a known member of the DesktopAgentSessionLaunchMode enum.
+func (e DesktopAgentSessionLaunchMode) Valid() bool {
+	switch e {
+	case DesktopAgentSessionLaunchModeLocal:
+		return true
+	case DesktopAgentSessionLaunchModeWorktree:
 		return true
 	default:
 		return false
@@ -1963,6 +2353,27 @@ func (e IssueManagerAcceptanceState) Valid() bool {
 	}
 }
 
+// Defines values for IssueManagerAttachmentContentResponseMimeType.
+const (
+	IssueManagerAttachmentContentResponseMimeTypeImagejpeg IssueManagerAttachmentContentResponseMimeType = "image/jpeg"
+	IssueManagerAttachmentContentResponseMimeTypeImagepng  IssueManagerAttachmentContentResponseMimeType = "image/png"
+	IssueManagerAttachmentContentResponseMimeTypeImagewebp IssueManagerAttachmentContentResponseMimeType = "image/webp"
+)
+
+// Valid indicates whether the value is a known member of the IssueManagerAttachmentContentResponseMimeType enum.
+func (e IssueManagerAttachmentContentResponseMimeType) Valid() bool {
+	switch e {
+	case IssueManagerAttachmentContentResponseMimeTypeImagejpeg:
+		return true
+	case IssueManagerAttachmentContentResponseMimeTypeImagepng:
+		return true
+	case IssueManagerAttachmentContentResponseMimeTypeImagewebp:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for IssueManagerBudgetMode.
 const (
 	IssueManagerBudgetModeAuto  IssueManagerBudgetMode = "auto"
@@ -1993,6 +2404,24 @@ func (e IssueManagerBudgetStatus) Valid() bool {
 	case IssueManagerBudgetStatusActive:
 		return true
 	case IssueManagerBudgetStatusSoftLimited:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for IssueManagerIssueContextRefAccessKind.
+const (
+	IssueManagerIssueContextRefAccessKindManagedAttachment IssueManagerIssueContextRefAccessKind = "managed_attachment"
+	IssueManagerIssueContextRefAccessKindWorkspacePath     IssueManagerIssueContextRefAccessKind = "workspace_path"
+)
+
+// Valid indicates whether the value is a known member of the IssueManagerIssueContextRefAccessKind enum.
+func (e IssueManagerIssueContextRefAccessKind) Valid() bool {
+	switch e {
+	case IssueManagerIssueContextRefAccessKindManagedAttachment:
+		return true
+	case IssueManagerIssueContextRefAccessKindWorkspacePath:
 		return true
 	default:
 		return false
@@ -2134,6 +2563,24 @@ func (e IssueManagerStatusFilter) Valid() bool {
 	case IssueManagerStatusFilterPendingAcceptance:
 		return true
 	case IssueManagerStatusFilterRunning:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for IssueManagerTaskContextRefAccessKind.
+const (
+	IssueManagerTaskContextRefAccessKindManagedAttachment IssueManagerTaskContextRefAccessKind = "managed_attachment"
+	IssueManagerTaskContextRefAccessKindWorkspacePath     IssueManagerTaskContextRefAccessKind = "workspace_path"
+)
+
+// Valid indicates whether the value is a known member of the IssueManagerTaskContextRefAccessKind enum.
+func (e IssueManagerTaskContextRefAccessKind) Valid() bool {
+	switch e {
+	case IssueManagerTaskContextRefAccessKindManagedAttachment:
+		return true
+	case IssueManagerTaskContextRefAccessKindWorkspacePath:
 		return true
 	default:
 		return false
@@ -3003,19 +3450,19 @@ func (e WorkspaceAgentRailPlacementVersion) Valid() bool {
 
 // Defines values for WorkspaceAgentSessionAttachmentResponseMimeType.
 const (
-	WorkspaceAgentSessionAttachmentResponseMimeTypeImagejpeg WorkspaceAgentSessionAttachmentResponseMimeType = "image/jpeg"
-	WorkspaceAgentSessionAttachmentResponseMimeTypeImagepng  WorkspaceAgentSessionAttachmentResponseMimeType = "image/png"
-	WorkspaceAgentSessionAttachmentResponseMimeTypeImagewebp WorkspaceAgentSessionAttachmentResponseMimeType = "image/webp"
+	Imagejpeg WorkspaceAgentSessionAttachmentResponseMimeType = "image/jpeg"
+	Imagepng  WorkspaceAgentSessionAttachmentResponseMimeType = "image/png"
+	Imagewebp WorkspaceAgentSessionAttachmentResponseMimeType = "image/webp"
 )
 
 // Valid indicates whether the value is a known member of the WorkspaceAgentSessionAttachmentResponseMimeType enum.
 func (e WorkspaceAgentSessionAttachmentResponseMimeType) Valid() bool {
 	switch e {
-	case WorkspaceAgentSessionAttachmentResponseMimeTypeImagejpeg:
+	case Imagejpeg:
 		return true
-	case WorkspaceAgentSessionAttachmentResponseMimeTypeImagepng:
+	case Imagepng:
 		return true
-	case WorkspaceAgentSessionAttachmentResponseMimeTypeImagewebp:
+	case Imagewebp:
 		return true
 	default:
 		return false
@@ -3193,6 +3640,21 @@ func (e WorkspaceAgentSessionGoalStateSyncStatus) Valid() bool {
 	}
 }
 
+// Defines values for WorkspaceAgentSessionIsolationMode.
+const (
+	WorkspaceAgentSessionIsolationModeWorktree WorkspaceAgentSessionIsolationMode = "worktree"
+)
+
+// Valid indicates whether the value is a known member of the WorkspaceAgentSessionIsolationMode enum.
+func (e WorkspaceAgentSessionIsolationMode) Valid() bool {
+	switch e {
+	case WorkspaceAgentSessionIsolationModeWorktree:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for WorkspaceAgentSessionKind.
 const (
 	Child WorkspaceAgentSessionKind = "child"
@@ -3223,6 +3685,30 @@ func (e WorkspaceAgentSessionSectionKind) Valid() bool {
 	case WorkspaceAgentSessionSectionKindConversations:
 		return true
 	case WorkspaceAgentSessionSectionKindProject:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for WorkspaceAgentSessionWorktreeSupportErrorCode.
+const (
+	WorkspaceAgentSessionWorktreeSupportErrorCodeAgentTargetUnsupported WorkspaceAgentSessionWorktreeSupportErrorCode = "agent-target-unsupported"
+	WorkspaceAgentSessionWorktreeSupportErrorCodeGitUnavailable         WorkspaceAgentSessionWorktreeSupportErrorCode = "git-unavailable"
+	WorkspaceAgentSessionWorktreeSupportErrorCodeNotGitRepo             WorkspaceAgentSessionWorktreeSupportErrorCode = "not-git-repo"
+	WorkspaceAgentSessionWorktreeSupportErrorCodeUnsupportedRepoLayout  WorkspaceAgentSessionWorktreeSupportErrorCode = "unsupported-repo-layout"
+)
+
+// Valid indicates whether the value is a known member of the WorkspaceAgentSessionWorktreeSupportErrorCode enum.
+func (e WorkspaceAgentSessionWorktreeSupportErrorCode) Valid() bool {
+	switch e {
+	case WorkspaceAgentSessionWorktreeSupportErrorCodeAgentTargetUnsupported:
+		return true
+	case WorkspaceAgentSessionWorktreeSupportErrorCodeGitUnavailable:
+		return true
+	case WorkspaceAgentSessionWorktreeSupportErrorCodeNotGitRepo:
+		return true
+	case WorkspaceAgentSessionWorktreeSupportErrorCodeUnsupportedRepoLayout:
 		return true
 	default:
 		return false
@@ -3361,6 +3847,30 @@ func (e WorkspaceAgentTurnPhase) Valid() bool {
 	case WorkspaceAgentTurnPhaseSubmitted:
 		return true
 	case WorkspaceAgentTurnPhaseWaiting:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for WorkspaceAppFailurePhase.
+const (
+	Downloading WorkspaceAppFailurePhase = "downloading"
+	Installing  WorkspaceAppFailurePhase = "installing"
+	Runtime     WorkspaceAppFailurePhase = "runtime"
+	Starting    WorkspaceAppFailurePhase = "starting"
+)
+
+// Valid indicates whether the value is a known member of the WorkspaceAppFailurePhase enum.
+func (e WorkspaceAppFailurePhase) Valid() bool {
+	switch e {
+	case Downloading:
+		return true
+	case Installing:
+		return true
+	case Runtime:
+		return true
+	case Starting:
 		return true
 	default:
 		return false
@@ -3598,6 +4108,24 @@ func (e WorkspaceAppUploadPurpose) Valid() bool {
 	}
 }
 
+// Defines values for WorkspaceDeletedAgentSessionUnavailableReason.
+const (
+	IncompleteSessionTree WorkspaceDeletedAgentSessionUnavailableReason = "incompleteSessionTree"
+	LegacyDataUnavailable WorkspaceDeletedAgentSessionUnavailableReason = "legacyDataUnavailable"
+)
+
+// Valid indicates whether the value is a known member of the WorkspaceDeletedAgentSessionUnavailableReason enum.
+func (e WorkspaceDeletedAgentSessionUnavailableReason) Valid() bool {
+	switch e {
+	case IncompleteSessionTree:
+		return true
+	case LegacyDataUnavailable:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for WorkspaceFileEntryKind.
 const (
 	Directory WorkspaceFileEntryKind = "directory"
@@ -3720,19 +4248,19 @@ func (e WorkspaceFileUploadConflictKind) Valid() bool {
 
 // Defines values for WorkspaceGitPatchErrorCode.
 const (
-	InvalidPatch      WorkspaceGitPatchErrorCode = "invalid-patch"
-	NotGitRepo        WorkspaceGitPatchErrorCode = "not-git-repo"
-	PatchDoesNotApply WorkspaceGitPatchErrorCode = "patch-does-not-apply"
+	WorkspaceGitPatchErrorCodeInvalidPatch      WorkspaceGitPatchErrorCode = "invalid-patch"
+	WorkspaceGitPatchErrorCodeNotGitRepo        WorkspaceGitPatchErrorCode = "not-git-repo"
+	WorkspaceGitPatchErrorCodePatchDoesNotApply WorkspaceGitPatchErrorCode = "patch-does-not-apply"
 )
 
 // Valid indicates whether the value is a known member of the WorkspaceGitPatchErrorCode enum.
 func (e WorkspaceGitPatchErrorCode) Valid() bool {
 	switch e {
-	case InvalidPatch:
+	case WorkspaceGitPatchErrorCodeInvalidPatch:
 		return true
-	case NotGitRepo:
+	case WorkspaceGitPatchErrorCodeNotGitRepo:
 		return true
-	case PatchDoesNotApply:
+	case WorkspaceGitPatchErrorCodePatchDoesNotApply:
 		return true
 	default:
 		return false
@@ -3972,25 +4500,25 @@ func (e WorkspaceWorkflowOperationKind) Valid() bool {
 
 // Defines values for WorkspaceWorkflowOperationStatus.
 const (
-	WorkspaceWorkflowOperationStatusCanceled  WorkspaceWorkflowOperationStatus = "canceled"
-	WorkspaceWorkflowOperationStatusFailed    WorkspaceWorkflowOperationStatus = "failed"
-	WorkspaceWorkflowOperationStatusPending   WorkspaceWorkflowOperationStatus = "pending"
-	WorkspaceWorkflowOperationStatusRunning   WorkspaceWorkflowOperationStatus = "running"
-	WorkspaceWorkflowOperationStatusSucceeded WorkspaceWorkflowOperationStatus = "succeeded"
+	Canceled  WorkspaceWorkflowOperationStatus = "canceled"
+	Failed    WorkspaceWorkflowOperationStatus = "failed"
+	Pending   WorkspaceWorkflowOperationStatus = "pending"
+	Running   WorkspaceWorkflowOperationStatus = "running"
+	Succeeded WorkspaceWorkflowOperationStatus = "succeeded"
 )
 
 // Valid indicates whether the value is a known member of the WorkspaceWorkflowOperationStatus enum.
 func (e WorkspaceWorkflowOperationStatus) Valid() bool {
 	switch e {
-	case WorkspaceWorkflowOperationStatusCanceled:
+	case Canceled:
 		return true
-	case WorkspaceWorkflowOperationStatusFailed:
+	case Failed:
 		return true
-	case WorkspaceWorkflowOperationStatusPending:
+	case Pending:
 		return true
-	case WorkspaceWorkflowOperationStatusRunning:
+	case Running:
 		return true
-	case WorkspaceWorkflowOperationStatusSucceeded:
+	case Succeeded:
 		return true
 	default:
 		return false
@@ -4207,6 +4735,21 @@ func (e SubmitWorkspaceAgentPlanDecisionParamsXTuttiAgentCommandOrigin) Valid() 
 	}
 }
 
+// Defines values for ListWorkspaceDeletedAgentSessionsParamsProjectScope.
+const (
+	Unscoped ListWorkspaceDeletedAgentSessionsParamsProjectScope = "unscoped"
+)
+
+// Valid indicates whether the value is a known member of the ListWorkspaceDeletedAgentSessionsParamsProjectScope enum.
+func (e ListWorkspaceDeletedAgentSessionsParamsProjectScope) Valid() bool {
+	switch e {
+	case Unscoped:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ListWorkspaceWorkflowsParamsCheckpointStatus.
 const (
 	ListWorkspaceWorkflowsParamsCheckpointStatusPending ListWorkspaceWorkflowsParamsCheckpointStatus = "pending"
@@ -4347,6 +4890,9 @@ type AgentModelBinding struct {
 type AgentPromptContentBlock struct {
 	AttachmentId *string `json:"attachmentId,omitempty"`
 
+	// ConnectorKey Stable key of an installed local connector selected for this prompt.
+	ConnectorKey *string `json:"connectorKey,omitempty"`
+
 	// Data Base64-encoded image bytes. Mutually exclusive with url.
 	Data     *string                          `json:"data,omitempty"`
 	MimeType *AgentPromptContentBlockMimeType `json:"mimeType,omitempty"`
@@ -4463,6 +5009,7 @@ type AgentProviderAvailabilityStatus string
 // AgentProviderCapabilityOption defines model for AgentProviderCapabilityOption.
 type AgentProviderCapabilityOption struct {
 	Description *string                                 `json:"description,omitempty"`
+	IconUrl     *string                                 `json:"iconUrl,omitempty"`
 	Id          string                                  `json:"id"`
 	Invocation  AgentProviderCapabilityOptionInvocation `json:"invocation"`
 	Kind        AgentProviderCapabilityOptionKind       `json:"kind"`
@@ -4960,8 +5507,11 @@ type AgentTargetAuthMethod struct {
 	Id          string  `json:"id"`
 	Name        string  `json:"name"`
 
-	// TerminalCommand Ready-to-run interactive sign-in command for terminal-type methods.
+	// TerminalCommand Ready-to-run interactive sign-in launch command for terminal-type methods.
 	TerminalCommand *string `json:"terminalCommand,omitempty"`
+
+	// TerminalStartupAction Optional typed terminal action submitted after the interactive runtime reaches its declared ready marker.
+	TerminalStartupAction *AgentTargetTerminalStartupAction `json:"terminalStartupAction,omitempty"`
 
 	// Type Provider-declared method kind (for example "terminal").
 	Type *string `json:"type,omitempty"`
@@ -5075,6 +5625,16 @@ type AgentTargetSetupStatus string
 
 // AgentTargetSource defines model for AgentTargetSource.
 type AgentTargetSource string
+
+// AgentTargetTerminalStartupAction defines model for AgentTargetTerminalStartupAction.
+type AgentTargetTerminalStartupAction struct {
+	CommandName string                               `json:"commandName"`
+	ReadyText   string                               `json:"readyText"`
+	Type        AgentTargetTerminalStartupActionType `json:"type"`
+}
+
+// AgentTargetTerminalStartupActionType defines model for AgentTargetTerminalStartupAction.Type.
+type AgentTargetTerminalStartupActionType string
 
 // ApiErrorDetails defines model for ApiErrorDetails.
 type ApiErrorDetails struct {
@@ -5518,6 +6078,234 @@ type CompleteWorkspaceAppUploadResponse struct {
 	File WorkspaceAppUploadedFile `json:"file"`
 }
 
+// ConnectorMarketAgentRouting defines model for ConnectorMarketAgentRouting.
+type ConnectorMarketAgentRouting struct {
+	Aliases []string `json:"aliases"`
+}
+
+// ConnectorMarketArtifact defines model for ConnectorMarketArtifact.
+type ConnectorMarketArtifact struct {
+	Key       string `json:"key"`
+	MediaType string `json:"mediaType"`
+	Sha256    string `json:"sha256"`
+	SizeBytes int64  `json:"sizeBytes"`
+}
+
+// ConnectorMarketAuthorization defines model for ConnectorMarketAuthorization.
+type ConnectorMarketAuthorization struct {
+	FailureCode *string                           `json:"failureCode,omitempty"`
+	State       ConnectorMarketAuthorizationState `json:"state"`
+}
+
+// ConnectorMarketAuthorizationRequest defines model for ConnectorMarketAuthorizationRequest.
+type ConnectorMarketAuthorizationRequest struct {
+	ClientRequestId  string  `json:"clientRequestId"`
+	ExpectedRevision int64   `json:"expectedRevision"`
+	Secret           *string `json:"secret,omitempty"`
+}
+
+// ConnectorMarketAuthorizationResponse defines model for ConnectorMarketAuthorizationResponse.
+type ConnectorMarketAuthorizationResponse struct {
+	AuthorizationUrl *string                  `json:"authorizationUrl,omitempty"`
+	Connector        ConnectorMarketConnector `json:"connector"`
+	Operation        ConnectorMarketOperation `json:"operation"`
+	Revision         int64                    `json:"revision"`
+}
+
+// ConnectorMarketAuthorizationState defines model for ConnectorMarketAuthorizationState.
+type ConnectorMarketAuthorizationState string
+
+// ConnectorMarketCatalogItem defines model for ConnectorMarketCatalogItem.
+type ConnectorMarketCatalogItem struct {
+	CategoryId string                   `json:"categoryId"`
+	Connector  ConnectorMarketConnector `json:"connector"`
+	Featured   bool                     `json:"featured"`
+}
+
+// ConnectorMarketCatalogPage defines model for ConnectorMarketCatalogPage.
+type ConnectorMarketCatalogPage struct {
+	Items         []ConnectorMarketCatalogItem `json:"items"`
+	NextPageToken *string                      `json:"nextPageToken,omitempty"`
+	Revision      int64                        `json:"revision"`
+	SectionId     string                       `json:"sectionId"`
+}
+
+// ConnectorMarketCatalogState defines model for ConnectorMarketCatalogState.
+type ConnectorMarketCatalogState string
+
+// ConnectorMarketCategoriesResponse defines model for ConnectorMarketCategoriesResponse.
+type ConnectorMarketCategoriesResponse struct {
+	Categories []ConnectorMarketCategory `json:"categories"`
+}
+
+// ConnectorMarketCategory defines model for ConnectorMarketCategory.
+type ConnectorMarketCategory struct {
+	CategoryId string                      `json:"categoryId"`
+	ItemCount  int64                       `json:"itemCount"`
+	Kind       ConnectorMarketCategoryKind `json:"kind"`
+	SortOrder  int32                       `json:"sortOrder"`
+}
+
+// ConnectorMarketCategoryKind defines model for ConnectorMarketCategory.Kind.
+type ConnectorMarketCategoryKind string
+
+// ConnectorMarketCompatibility defines model for ConnectorMarketCompatibility.
+type ConnectorMarketCompatibility struct {
+	Reason *string                           `json:"reason,omitempty"`
+	State  ConnectorMarketCompatibilityState `json:"state"`
+}
+
+// ConnectorMarketCompatibilityRequirements defines model for ConnectorMarketCompatibilityRequirements.
+type ConnectorMarketCompatibilityRequirements struct {
+	MinimumHostVersion *string   `json:"minimumHostVersion,omitempty"`
+	Platforms          *[]string `json:"platforms,omitempty"`
+	Products           *[]string `json:"products,omitempty"`
+}
+
+// ConnectorMarketCompatibilityState defines model for ConnectorMarketCompatibilityState.
+type ConnectorMarketCompatibilityState string
+
+// ConnectorMarketConnector defines model for ConnectorMarketConnector.
+type ConnectorMarketConnector struct {
+	Authorization ConnectorMarketAuthorization `json:"authorization"`
+	Compatibility ConnectorMarketCompatibility `json:"compatibility"`
+	Installation  ConnectorMarketInstallation  `json:"installation"`
+	Key           string                       `json:"key"`
+	Release       ConnectorMarketRelease       `json:"release"`
+	Revision      int64                        `json:"revision"`
+}
+
+// ConnectorMarketConnectorResponse defines model for ConnectorMarketConnectorResponse.
+type ConnectorMarketConnectorResponse struct {
+	Connector ConnectorMarketConnector `json:"connector"`
+	Operation ConnectorMarketOperation `json:"operation"`
+	Revision  int64                    `json:"revision"`
+}
+
+// ConnectorMarketError defines model for ConnectorMarketError.
+type ConnectorMarketError struct {
+	Code      ConnectorMarketErrorCode `json:"code"`
+	Message   string                   `json:"message"`
+	Retryable bool                     `json:"retryable"`
+	Revision  *int64                   `json:"revision,omitempty"`
+}
+
+// ConnectorMarketErrorCode defines model for ConnectorMarketErrorCode.
+type ConnectorMarketErrorCode string
+
+// ConnectorMarketImplementation Public implementation discriminator; sensitive host configuration is never returned.
+type ConnectorMarketImplementation struct {
+	Kind ConnectorMarketImplementationKind `json:"kind"`
+}
+
+// ConnectorMarketImplementationKind defines model for ConnectorMarketImplementation.Kind.
+type ConnectorMarketImplementationKind string
+
+// ConnectorMarketInstallation defines model for ConnectorMarketInstallation.
+type ConnectorMarketInstallation struct {
+	FailureCode            *string                          `json:"failureCode,omitempty"`
+	InstalledReleaseDigest *string                          `json:"installedReleaseDigest,omitempty"`
+	InstalledReleaseId     *string                          `json:"installedReleaseId,omitempty"`
+	InstalledVersion       *string                          `json:"installedVersion,omitempty"`
+	State                  ConnectorMarketInstallationState `json:"state"`
+}
+
+// ConnectorMarketInstallationState defines model for ConnectorMarketInstallationState.
+type ConnectorMarketInstallationState string
+
+// ConnectorMarketManifest defines model for ConnectorMarketManifest.
+type ConnectorMarketManifest struct {
+	AgentRouting      *ConnectorMarketAgentRouting              `json:"agentRouting,omitempty"`
+	AuthorizationKind string                                    `json:"authorizationKind"`
+	Compatibility     *ConnectorMarketCompatibilityRequirements `json:"compatibility,omitempty"`
+	Description       *string                                   `json:"description,omitempty"`
+	DisplayName       string                                    `json:"displayName"`
+	IconUrl           string                                    `json:"iconUrl"`
+
+	// Implementation Public implementation discriminator; sensitive host configuration is never returned.
+	Implementation ConnectorMarketImplementation        `json:"implementation"`
+	Permissions    []string                             `json:"permissions"`
+	SchemaVersion  ConnectorMarketManifestSchemaVersion `json:"schemaVersion"`
+}
+
+// ConnectorMarketManifestSchemaVersion defines model for ConnectorMarketManifest.SchemaVersion.
+type ConnectorMarketManifestSchemaVersion string
+
+// ConnectorMarketMutationRequest defines model for ConnectorMarketMutationRequest.
+type ConnectorMarketMutationRequest struct {
+	ClientRequestId  string `json:"clientRequestId"`
+	ExpectedRevision int64  `json:"expectedRevision"`
+}
+
+// ConnectorMarketMutationResponse defines model for ConnectorMarketMutationResponse.
+type ConnectorMarketMutationResponse struct {
+	Connector *ConnectorMarketConnector `json:"connector,omitempty"`
+	Operation ConnectorMarketOperation  `json:"operation"`
+	Revision  int64                     `json:"revision"`
+}
+
+// ConnectorMarketOperation defines model for ConnectorMarketOperation.
+type ConnectorMarketOperation struct {
+	Attempt         int32                           `json:"attempt"`
+	ClientRequestId string                          `json:"clientRequestId"`
+	ConnectorKey    *string                         `json:"connectorKey,omitempty"`
+	CreatedAt       time.Time                       `json:"createdAt"`
+	FailureCode     *string                         `json:"failureCode,omitempty"`
+	Kind            ConnectorMarketOperationKind    `json:"kind"`
+	OperationId     string                          `json:"operationId"`
+	Stage           *ConnectorMarketOperationStage  `json:"stage,omitempty"`
+	State           ConnectorMarketOperationState   `json:"state"`
+	Target          *ConnectorMarketOperationTarget `json:"target,omitempty"`
+	UpdatedAt       time.Time                       `json:"updatedAt"`
+}
+
+// ConnectorMarketOperationKind defines model for ConnectorMarketOperationKind.
+type ConnectorMarketOperationKind string
+
+// ConnectorMarketOperationStage defines model for ConnectorMarketOperationStage.
+type ConnectorMarketOperationStage string
+
+// ConnectorMarketOperationState defines model for ConnectorMarketOperationState.
+type ConnectorMarketOperationState string
+
+// ConnectorMarketOperationTarget defines model for ConnectorMarketOperationTarget.
+type ConnectorMarketOperationTarget struct {
+	ArtifactSha256 *string `json:"artifactSha256,omitempty"`
+	ConnectorKey   string  `json:"connectorKey"`
+	ReleaseDigest  string  `json:"releaseDigest"`
+	ReleaseId      string  `json:"releaseId"`
+	Version        string  `json:"version"`
+}
+
+// ConnectorMarketRelease defines model for ConnectorMarketRelease.
+type ConnectorMarketRelease struct {
+	Artifact       ConnectorMarketArtifact             `json:"artifact"`
+	ConnectorKey   string                              `json:"connectorKey"`
+	Manifest       ConnectorMarketManifest             `json:"manifest"`
+	ManifestDigest string                              `json:"manifestDigest"`
+	PublishedAt    time.Time                           `json:"publishedAt"`
+	ReleaseDigest  string                              `json:"releaseDigest"`
+	ReleaseId      string                              `json:"releaseId"`
+	SchemaVersion  ConnectorMarketReleaseSchemaVersion `json:"schemaVersion"`
+	Status         ConnectorMarketReleaseStatus        `json:"status"`
+	Version        string                              `json:"version"`
+}
+
+// ConnectorMarketReleaseSchemaVersion defines model for ConnectorMarketRelease.SchemaVersion.
+type ConnectorMarketReleaseSchemaVersion string
+
+// ConnectorMarketReleaseStatus defines model for ConnectorMarketRelease.Status.
+type ConnectorMarketReleaseStatus string
+
+// ConnectorMarketSnapshot defines model for ConnectorMarketSnapshot.
+type ConnectorMarketSnapshot struct {
+	CatalogState   ConnectorMarketCatalogState `json:"catalogState"`
+	Connectors     []ConnectorMarketConnector  `json:"connectors"`
+	Operations     []ConnectorMarketOperation  `json:"operations"`
+	Revision       int64                       `json:"revision"`
+	SourceRevision *string                     `json:"sourceRevision,omitempty"`
+}
+
 // CopyWorkspaceFileEntryRequest defines model for CopyWorkspaceFileEntryRequest.
 type CopyWorkspaceFileEntryRequest struct {
 	Path string `json:"path"`
@@ -5559,14 +6347,49 @@ type CreateCollaborationRunRequest struct {
 	TriggerSource       CollaborationRunTriggerSource `json:"triggerSource"`
 }
 
+// CreateIssueManagerImageAttachmentRequest defines model for CreateIssueManagerImageAttachmentRequest.
+type CreateIssueManagerImageAttachmentRequest struct {
+	AttachmentId *openapi_types.UUID `json:"attachmentId,omitempty"`
+
+	// DataBase64 Base64-encoded image bytes. Decoded content is limited to 20 MiB.
+	DataBase64  string                                           `json:"dataBase64"`
+	DisplayName *string                                          `json:"displayName,omitempty"`
+	MimeType    CreateIssueManagerImageAttachmentRequestMimeType `json:"mimeType"`
+}
+
+// CreateIssueManagerImageAttachmentRequestMimeType defines model for CreateIssueManagerImageAttachmentRequest.MimeType.
+type CreateIssueManagerImageAttachmentRequestMimeType string
+
 // CreateIssueManagerIssueFromPlanRequest defines model for CreateIssueManagerIssueFromPlanRequest.
 type CreateIssueManagerIssueFromPlanRequest struct {
-	Issue CreateIssueManagerIssueRequest  `json:"issue"`
-	Tasks []CreateIssueManagerTaskRequest `json:"tasks"`
+	Issue CreateIssueManagerPlannedIssueRequest `json:"issue"`
+	Tasks []CreateIssueManagerTaskRequest       `json:"tasks"`
 }
 
 // CreateIssueManagerIssueRequest defines model for CreateIssueManagerIssueRequest.
 type CreateIssueManagerIssueRequest struct {
+	// Attachments Inline image attachments persisted as managed issue context references.
+	Attachments      *[]CreateIssueManagerImageAttachmentRequest `json:"attachments,omitempty"`
+	Budget           *IssueManagerBudget                         `json:"budget,omitempty"`
+	Content          *string                                     `json:"content,omitempty"`
+	ExecutionProfile *IssueManagerExecutionProfile               `json:"executionProfile,omitempty"`
+	IssueId          *string                                     `json:"issueId,omitempty"`
+
+	// ParallelExecution Persist the user's parallel Create-and-Start choice. Mutually exclusive with sequentialExecution.
+	ParallelExecution *bool `json:"parallelExecution,omitempty"`
+
+	// PlanningSource How the issue entered the durable execution workflow.
+	PlanningSource *IssueManagerPlanningSource `json:"planningSource,omitempty"`
+
+	// SequentialExecution Persist the user's Create-and-Start choice so successor dispatch survives desktop restarts.
+	SequentialExecution *bool   `json:"sequentialExecution,omitempty"`
+	SourceSessionId     *string `json:"sourceSessionId,omitempty"`
+	Title               string  `json:"title"`
+	TopicId             string  `json:"topicId"`
+}
+
+// CreateIssueManagerPlannedIssueRequest defines model for CreateIssueManagerPlannedIssueRequest.
+type CreateIssueManagerPlannedIssueRequest struct {
 	Budget           *IssueManagerBudget           `json:"budget,omitempty"`
 	Content          *string                       `json:"content,omitempty"`
 	ExecutionProfile *IssueManagerExecutionProfile `json:"executionProfile,omitempty"`
@@ -5649,7 +6472,10 @@ type CreateWorkspaceAgentSessionRequest struct {
 
 	// InitialTuttiModeActivation Optional independent Tutti mode activation intent applied before the first turn starts.
 	InitialTuttiModeActivation *TuttiModeActivationIntent `json:"initialTuttiModeActivation,omitempty"`
-	Model                      *string                    `json:"model,omitempty"`
+
+	// Isolation Optional create-only isolation mode. Omit or set null to launch in the selected checkout.
+	Isolation *WorkspaceAgentSessionIsolationMode `json:"isolation,omitempty"`
+	Model     *string                             `json:"model,omitempty"`
 
 	// NoProject Classifies a session that is intentionally not attached to a workspace project.
 	NoProject        *bool                        `json:"noProject,omitempty"`
@@ -5860,6 +6686,15 @@ type DesktopAgentGuiConversationRailCollapsedByProvider struct {
 	TuttiAgent *bool `json:"tutti-agent,omitempty"`
 }
 
+// DesktopAgentSessionLaunchMode defines model for DesktopAgentSessionLaunchMode.
+type DesktopAgentSessionLaunchMode string
+
+// DesktopAgentSessionLaunchModesByProject defines model for DesktopAgentSessionLaunchModesByProject.
+type DesktopAgentSessionLaunchModesByProject map[string]DesktopAgentSessionLaunchMode
+
+// DesktopAgentSessionLaunchModesByWorkspace defines model for DesktopAgentSessionLaunchModesByWorkspace.
+type DesktopAgentSessionLaunchModesByWorkspace map[string]DesktopAgentSessionLaunchModesByProject
+
 // DesktopAppCatalogChannel defines model for DesktopAppCatalogChannel.
 type DesktopAppCatalogChannel string
 
@@ -5899,6 +6734,7 @@ type DesktopPreferences struct {
 	AgentConversationDetailMode                 DesktopAgentConversationDetailMode                 `json:"agentConversationDetailMode"`
 	AgentDockLayout                             DesktopAgentDockLayout                             `json:"agentDockLayout"`
 	AgentGuiConversationRailCollapsedByProvider DesktopAgentGuiConversationRailCollapsedByProvider `json:"agentGuiConversationRailCollapsedByProvider"`
+	AgentSessionLaunchModesByWorkspace          *DesktopAgentSessionLaunchModesByWorkspace         `json:"agentSessionLaunchModesByWorkspace,omitempty"`
 	AppCatalogChannel                           DesktopAppCatalogChannel                           `json:"appCatalogChannel"`
 	BrowserUseConnectionMode                    *DesktopBrowserUseConnectionMode                   `json:"browserUseConnectionMode,omitempty"`
 	DefaultAgentProvider                        DesktopDefaultAgentProvider                        `json:"defaultAgentProvider"`
@@ -6033,6 +6869,9 @@ type DesktopUpdatePolicy string
 
 // DesktopWorkbenchShortcuts defines model for DesktopWorkbenchShortcuts.
 type DesktopWorkbenchShortcuts struct {
+	// CaptureScreenshot Keyboard shortcut binding for the global screenshot capture, or null/absent when the built-in CommandOrControl+Shift+S default applies. Unlike the other bindings, null does not mean unbound.
+	CaptureScreenshot *string `json:"captureScreenshot,omitempty"`
+
 	// NewAgentConversation Keyboard shortcut binding for opening an AgentGUI new conversation, or null when unbound.
 	NewAgentConversation *string `json:"newAgentConversation"`
 
@@ -6279,6 +7118,17 @@ type InstallWorkspaceAppRequest struct {
 // IssueManagerAcceptanceState Three-step completion ladder. Only user_accepted closes a successful task.
 type IssueManagerAcceptanceState string
 
+// IssueManagerAttachmentContentResponse defines model for IssueManagerAttachmentContentResponse.
+type IssueManagerAttachmentContentResponse struct {
+	ContextRefId string                                        `json:"contextRefId"`
+	Data         []byte                                        `json:"data"`
+	DisplayName  string                                        `json:"displayName"`
+	MimeType     IssueManagerAttachmentContentResponseMimeType `json:"mimeType"`
+}
+
+// IssueManagerAttachmentContentResponseMimeType defines model for IssueManagerAttachmentContentResponse.MimeType.
+type IssueManagerAttachmentContentResponseMimeType string
+
 // IssueManagerAutoTokenBudgetEstimate defines model for IssueManagerAutoTokenBudgetEstimate.
 type IssueManagerAutoTokenBudgetEstimate struct {
 	// DeterministicTokenLimit Scale and intensity estimate before historical calibration.
@@ -6392,15 +7242,19 @@ type IssueManagerIssue struct {
 
 // IssueManagerIssueContextRef defines model for IssueManagerIssueContextRef.
 type IssueManagerIssueContextRef struct {
+	AccessKind    IssueManagerIssueContextRefAccessKind `json:"accessKind"`
 	ContextRefId  string                                `json:"contextRefId"`
 	CreatedAtUnix int64                                 `json:"createdAtUnix"`
 	DisplayName   string                                `json:"displayName"`
 	IssueId       string                                `json:"issueId"`
 	ParentKind    IssueManagerIssueContextRefParentKind `json:"parentKind"`
-	Path          string                                `json:"path"`
+	Path          *string                               `json:"path,omitempty"`
 	RefType       string                                `json:"refType"`
 	WorkspaceId   string                                `json:"workspaceId"`
 }
+
+// IssueManagerIssueContextRefAccessKind defines model for IssueManagerIssueContextRef.AccessKind.
+type IssueManagerIssueContextRefAccessKind string
 
 // IssueManagerIssueContextRefParentKind defines model for IssueManagerIssueContextRef.ParentKind.
 type IssueManagerIssueContextRefParentKind string
@@ -6581,16 +7435,20 @@ type IssueManagerTask struct {
 
 // IssueManagerTaskContextRef defines model for IssueManagerTaskContextRef.
 type IssueManagerTaskContextRef struct {
+	AccessKind    IssueManagerTaskContextRefAccessKind `json:"accessKind"`
 	ContextRefId  string                               `json:"contextRefId"`
 	CreatedAtUnix int64                                `json:"createdAtUnix"`
 	DisplayName   string                               `json:"displayName"`
 	IssueId       string                               `json:"issueId"`
 	ParentKind    IssueManagerTaskContextRefParentKind `json:"parentKind"`
-	Path          string                               `json:"path"`
+	Path          *string                              `json:"path,omitempty"`
 	RefType       string                               `json:"refType"`
 	TaskId        string                               `json:"taskId"`
 	WorkspaceId   string                               `json:"workspaceId"`
 }
+
+// IssueManagerTaskContextRefAccessKind defines model for IssueManagerTaskContextRef.AccessKind.
+type IssueManagerTaskContextRefAccessKind string
 
 // IssueManagerTaskContextRefParentKind defines model for IssueManagerTaskContextRef.ParentKind.
 type IssueManagerTaskContextRefParentKind string
@@ -7057,6 +7915,12 @@ type ResizeWorkspaceTerminalRequest struct {
 	Rows int `json:"rows"`
 }
 
+// RestoreWorkspaceDeletedAgentSessionResponse defines model for RestoreWorkspaceDeletedAgentSessionResponse.
+type RestoreWorkspaceDeletedAgentSessionResponse struct {
+	AgentSessionId string `json:"agentSessionId"`
+	Restored       bool   `json:"restored"`
+}
+
 // RollbackWorkspaceAppRequest defines model for RollbackWorkspaceAppRequest.
 type RollbackWorkspaceAppRequest struct {
 	Version string `json:"version"`
@@ -7163,6 +8027,12 @@ type StartAgentSessionRecordingRequest struct {
 	AgentSessionId      *string                         `json:"agentSessionId,omitempty"`
 	AgentTargetId       string                          `json:"agentTargetId"`
 	ReplayPrerequisites AgentSessionReplayPrerequisites `json:"replayPrerequisites"`
+}
+
+// StartIssueManagerRunRequest defines model for StartIssueManagerRunRequest.
+type StartIssueManagerRunRequest struct {
+	AgentTargetId      string  `json:"agentTargetId"`
+	ExecutionDirectory *string `json:"executionDirectory,omitempty"`
 }
 
 // StartupWorkspaceResponse defines model for StartupWorkspaceResponse.
@@ -7889,6 +8759,9 @@ type WorkspaceAgentSession struct {
 	// Imported Protocol v2. True when the session was imported from external provider history. Explicit field extracted from runtimeContext.
 	Imported bool `json:"imported"`
 
+	// Isolation Durable launch isolation metadata. Null for sessions launched in the selected checkout.
+	Isolation *WorkspaceAgentSessionIsolation `json:"isolation,omitempty"`
+
 	// Kind Root sessions are user-visible conversations. Child sessions are provider-native agents reached through their immutable parent fields.
 	Kind WorkspaceAgentSessionKind `json:"kind"`
 
@@ -8052,12 +8925,13 @@ type WorkspaceAgentSessionGitBranchesResponse struct {
 
 // WorkspaceAgentSessionGoal Protocol v2 explicit field extracted from runtimeContext.
 type WorkspaceAgentSessionGoal struct {
-	DurationMs *int64                          `json:"durationMs,omitempty"`
-	Iterations *int                            `json:"iterations,omitempty"`
-	Objective  string                          `json:"objective"`
-	Reason     *string                         `json:"reason,omitempty"`
-	Status     WorkspaceAgentSessionGoalStatus `json:"status"`
-	Tokens     *int64                          `json:"tokens,omitempty"`
+	DurationMs      *int64                          `json:"durationMs,omitempty"`
+	Iterations      *int                            `json:"iterations,omitempty"`
+	Objective       string                          `json:"objective"`
+	Reason          *string                         `json:"reason,omitempty"`
+	StartedAtUnixMs *int64                          `json:"startedAtUnixMs,omitempty"`
+	Status          WorkspaceAgentSessionGoalStatus `json:"status"`
+	Tokens          *int64                          `json:"tokens,omitempty"`
 }
 
 // WorkspaceAgentSessionGoalStatus defines model for WorkspaceAgentSessionGoal.Status.
@@ -8107,6 +8981,17 @@ type WorkspaceAgentSessionGoalStateResponse struct {
 	Session WorkspaceAgentSession          `json:"session"`
 	State   WorkspaceAgentSessionGoalState `json:"state"`
 }
+
+// WorkspaceAgentSessionIsolation defines model for WorkspaceAgentSessionIsolation.
+type WorkspaceAgentSessionIsolation struct {
+	BaseCommit   string                             `json:"baseCommit"`
+	Branch       string                             `json:"branch"`
+	Mode         WorkspaceAgentSessionIsolationMode `json:"mode"`
+	WorktreePath string                             `json:"worktreePath"`
+}
+
+// WorkspaceAgentSessionIsolationMode defines model for WorkspaceAgentSessionIsolationMode.
+type WorkspaceAgentSessionIsolationMode string
 
 // WorkspaceAgentSessionKind Root sessions are user-visible conversations. Child sessions are provider-native agents reached through their immutable parent fields.
 type WorkspaceAgentSessionKind string
@@ -8230,6 +9115,16 @@ type WorkspaceAgentSessionSectionsResponse struct {
 	WorkspaceId string                         `json:"workspaceId"`
 }
 
+// WorkspaceAgentSessionWorktreeSupportErrorCode defines model for WorkspaceAgentSessionWorktreeSupportErrorCode.
+type WorkspaceAgentSessionWorktreeSupportErrorCode string
+
+// WorkspaceAgentSessionWorktreeSupportResponse defines model for WorkspaceAgentSessionWorktreeSupportResponse.
+type WorkspaceAgentSessionWorktreeSupportResponse struct {
+	ErrorCode *WorkspaceAgentSessionWorktreeSupportErrorCode `json:"errorCode,omitempty"`
+	Root      *string                                        `json:"root,omitempty"`
+	Supported bool                                           `json:"supported"`
+}
+
 // WorkspaceAgentSource Origin of the workspace Agent configuration. legacy_binding rows were migrated from the former fixed-target binding model.
 type WorkspaceAgentSource string
 
@@ -8290,6 +9185,7 @@ type WorkspaceAgentTurnCancelResultReason string
 // WorkspaceAgentTurnError Protocol v2 turn-scoped error; never pollutes session state.
 type WorkspaceAgentTurnError struct {
 	Code    *string `json:"code,omitempty"`
+	Detail  *string `json:"detail,omitempty"`
 	Message string  `json:"message"`
 }
 
@@ -8330,6 +9226,7 @@ type WorkspaceApp struct {
 	DisplayName      string                       `json:"displayName"`
 	Enabled          bool                         `json:"enabled"`
 	Exportable       bool                         `json:"exportable"`
+	FailurePhase     *WorkspaceAppFailurePhase    `json:"failurePhase,omitempty"`
 	FailureReason    *string                      `json:"failureReason"`
 	IconUrl          *string                      `json:"iconUrl"`
 	InstallProgress  *WorkspaceAppInstallProgress `json:"installProgress,omitempty"`
@@ -8355,6 +9252,9 @@ type WorkspaceApp struct {
 	WindowMinHeight  *int                         `json:"windowMinHeight"`
 	WindowMinWidth   *int                         `json:"windowMinWidth"`
 }
+
+// WorkspaceAppFailurePhase defines model for WorkspaceApp.FailurePhase.
+type WorkspaceAppFailurePhase string
 
 // WorkspaceAppAgentPreferencesResponse defines model for WorkspaceAppAgentPreferencesResponse.
 type WorkspaceAppAgentPreferencesResponse struct {
@@ -8533,6 +9433,58 @@ type WorkspaceAppUploadedFile struct {
 	Sha256    string `json:"sha256"`
 	SizeBytes int64  `json:"sizeBytes"`
 }
+
+// WorkspaceDeletedAgentSession defines model for WorkspaceDeletedAgentSession.
+type WorkspaceDeletedAgentSession struct {
+	// AgentSessionId Identity of the topmost Session in this deleted component. It may be a canonical root or a child whose parent is not deleted.
+	AgentSessionId string `json:"agentSessionId"`
+
+	// DeletedAtUnixMs Tombstone time used by the retention policy.
+	DeletedAtUnixMs int64 `json:"deletedAtUnixMs"`
+
+	// ProjectPath Persisted original project path; null means the conversations section.
+	ProjectPath *string `json:"projectPath"`
+	Restorable  bool    `json:"restorable"`
+
+	// Title Original canonical title. Empty titles remain empty.
+	Title string `json:"title"`
+
+	// UnavailableReason Null when the complete deleted Session component can be restored.
+	UnavailableReason *WorkspaceDeletedAgentSessionUnavailableReason `json:"unavailableReason"`
+
+	// UpdatedAtUnixMs Last session update before deletion. This value is not the deletion time.
+	UpdatedAtUnixMs int64 `json:"updatedAtUnixMs"`
+}
+
+// WorkspaceDeletedAgentSessionListResponse defines model for WorkspaceDeletedAgentSessionListResponse.
+type WorkspaceDeletedAgentSessionListResponse struct {
+	HasMore bool `json:"hasMore"`
+
+	// NextCursor Opaque cursor for the next older matching page.
+	NextCursor *string `json:"nextCursor,omitempty"`
+
+	// ProjectOptions Distinct original tombstone projects for the workspace, independent of search, project filter, cursor, and limit.
+	ProjectOptions []WorkspaceDeletedAgentSessionProjectOption `json:"projectOptions"`
+	Sessions       []WorkspaceDeletedAgentSession              `json:"sessions"`
+
+	// TotalCount Total matching topmost soft-deleted Session components before cursor pagination.
+	TotalCount  int    `json:"totalCount"`
+	WorkspaceId string `json:"workspaceId"`
+
+	// WorkspaceTotalCount Total topmost soft-deleted Session components in this workspace before search, project filtering, and cursor pagination.
+	WorkspaceTotalCount int `json:"workspaceTotalCount"`
+}
+
+// WorkspaceDeletedAgentSessionProjectOption defines model for WorkspaceDeletedAgentSessionProjectOption.
+type WorkspaceDeletedAgentSessionProjectOption struct {
+	// ProjectAvailable Whether the original project is still registered in the current project catalog.
+	ProjectAvailable bool   `json:"projectAvailable"`
+	ProjectLabel     string `json:"projectLabel"`
+	ProjectPath      string `json:"projectPath"`
+}
+
+// WorkspaceDeletedAgentSessionUnavailableReason defines model for WorkspaceDeletedAgentSessionUnavailableReason.
+type WorkspaceDeletedAgentSessionUnavailableReason string
 
 // WorkspaceFileDirectoryResponse defines model for WorkspaceFileDirectoryResponse.
 type WorkspaceFileDirectoryResponse struct {
@@ -8944,6 +9896,21 @@ type CliCommandID = string
 // CollaborationRunID defines model for CollaborationRunID.
 type CollaborationRunID = string
 
+// ConnectorMarketConnectorKey defines model for ConnectorMarketConnectorKey.
+type ConnectorMarketConnectorKey = string
+
+// ConnectorMarketOperationID defines model for ConnectorMarketOperationID.
+type ConnectorMarketOperationID = string
+
+// ConnectorMarketPageSize defines model for ConnectorMarketPageSize.
+type ConnectorMarketPageSize = int
+
+// ConnectorMarketPageToken defines model for ConnectorMarketPageToken.
+type ConnectorMarketPageToken = string
+
+// ConnectorMarketSectionID defines model for ConnectorMarketSectionID.
+type ConnectorMarketSectionID = string
+
 // IssueID defines model for IssueID.
 type IssueID = string
 
@@ -9049,6 +10016,24 @@ type AgentQuickPromptOperationError = ApiErrorResponse
 // AgentTargetNotFoundError defines model for AgentTargetNotFoundError.
 type AgentTargetNotFoundError = ApiErrorResponse
 
+// ConnectorMarketConflictError defines model for ConnectorMarketConflictError.
+type ConnectorMarketConflictError = ConnectorMarketError
+
+// ConnectorMarketInvalidRequestError defines model for ConnectorMarketInvalidRequestError.
+type ConnectorMarketInvalidRequestError = ConnectorMarketError
+
+// ConnectorMarketNotFoundError defines model for ConnectorMarketNotFoundError.
+type ConnectorMarketNotFoundError = ConnectorMarketError
+
+// ConnectorMarketUnauthorizedError defines model for ConnectorMarketUnauthorizedError.
+type ConnectorMarketUnauthorizedError = ConnectorMarketError
+
+// ConnectorMarketUnavailableError defines model for ConnectorMarketUnavailableError.
+type ConnectorMarketUnavailableError = ConnectorMarketError
+
+// ConnectorMarketUnprocessableError defines model for ConnectorMarketUnprocessableError.
+type ConnectorMarketUnprocessableError = ConnectorMarketError
+
 // InvalidRequestError defines model for InvalidRequestError.
 type InvalidRequestError = ApiErrorResponse
 
@@ -9146,6 +10131,13 @@ type ListCliCapabilitiesParams struct {
 	IncludeIntegration *bool `form:"includeIntegration,omitempty" json:"includeIntegration,omitempty"`
 }
 
+// ListConnectorMarketCatalogParams defines parameters for ListConnectorMarketCatalog.
+type ListConnectorMarketCatalogParams struct {
+	SectionId ConnectorMarketSectionID  `form:"sectionId" json:"sectionId"`
+	PageSize  *ConnectorMarketPageSize  `form:"pageSize,omitempty" json:"pageSize,omitempty"`
+	PageToken *ConnectorMarketPageToken `form:"pageToken,omitempty" json:"pageToken,omitempty"`
+}
+
 // ListWorkspaceAgentGeneratedFilesParams defines parameters for ListWorkspaceAgentGeneratedFiles.
 type ListWorkspaceAgentGeneratedFilesParams struct {
 	Query *string `form:"query,omitempty" json:"query,omitempty"`
@@ -9200,6 +10192,12 @@ type ListWorkspaceAgentPinnedSessionPageParams struct {
 
 	// AgentTargetId Optional agent target filter applied before pinned pagination and hasMore calculation.
 	AgentTargetId *string `form:"agentTargetId,omitempty" json:"agentTargetId,omitempty"`
+}
+
+// ResolveWorkspaceAgentSessionWorktreeSupportParams defines parameters for ResolveWorkspaceAgentSessionWorktreeSupport.
+type ResolveWorkspaceAgentSessionWorktreeSupportParams struct {
+	AgentTargetId string `form:"agentTargetId" json:"agentTargetId"`
+	Cwd           string `form:"cwd" json:"cwd"`
 }
 
 // ListWorkspaceAgentSessionsParams defines parameters for ListWorkspaceAgentSessions.
@@ -9307,6 +10305,25 @@ type ListCollaborationRunsParams struct {
 	SourceSessionId *string `form:"sourceSessionId,omitempty" json:"sourceSessionId,omitempty"`
 	Limit           *int    `form:"limit,omitempty" json:"limit,omitempty"`
 }
+
+// ListWorkspaceDeletedAgentSessionsParams defines parameters for ListWorkspaceDeletedAgentSessions.
+type ListWorkspaceDeletedAgentSessionsParams struct {
+	// SearchQuery Case-insensitive search over the original session title only.
+	SearchQuery *string `form:"searchQuery,omitempty" json:"searchQuery,omitempty"`
+
+	// ProjectScope Select sessions without an original project. Mutually exclusive with projectPath; omit both project filters to list every location.
+	ProjectScope *ListWorkspaceDeletedAgentSessionsParamsProjectScope `form:"projectScope,omitempty" json:"projectScope,omitempty"`
+
+	// ProjectPath Select sessions by their persisted original project path. Mutually exclusive with projectScope.
+	ProjectPath *string `form:"projectPath,omitempty" json:"projectPath,omitempty"`
+
+	// Cursor Opaque cursor returned by the previous page.
+	Cursor *string `form:"cursor,omitempty" json:"cursor,omitempty"`
+	Limit  *int    `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// ListWorkspaceDeletedAgentSessionsParamsProjectScope defines parameters for ListWorkspaceDeletedAgentSessions.
+type ListWorkspaceDeletedAgentSessionsParamsProjectScope string
 
 // ListWorkspaceFileDirectoryParams defines parameters for ListWorkspaceFileDirectory.
 type ListWorkspaceFileDirectoryParams struct {
@@ -9430,6 +10447,21 @@ type SetSystemAgentTargetEnabledJSONRequestBody = SetSystemAgentTargetEnabledReq
 
 // InvokeCliCommandJSONRequestBody defines body for InvokeCliCommand for application/json ContentType.
 type InvokeCliCommandJSONRequestBody = CliInvokeRequest
+
+// DisconnectConnectorMarketAuthorizationJSONRequestBody defines body for DisconnectConnectorMarketAuthorization for application/json ContentType.
+type DisconnectConnectorMarketAuthorizationJSONRequestBody = ConnectorMarketMutationRequest
+
+// StartConnectorMarketAuthorizationJSONRequestBody defines body for StartConnectorMarketAuthorization for application/json ContentType.
+type StartConnectorMarketAuthorizationJSONRequestBody = ConnectorMarketAuthorizationRequest
+
+// InstallConnectorMarketConnectorJSONRequestBody defines body for InstallConnectorMarketConnector for application/json ContentType.
+type InstallConnectorMarketConnectorJSONRequestBody = ConnectorMarketMutationRequest
+
+// UninstallConnectorMarketConnectorJSONRequestBody defines body for UninstallConnectorMarketConnector for application/json ContentType.
+type UninstallConnectorMarketConnectorJSONRequestBody = ConnectorMarketMutationRequest
+
+// RefreshConnectorMarketJSONRequestBody defines body for RefreshConnectorMarket for application/json ContentType.
+type RefreshConnectorMarketJSONRequestBody = ConnectorMarketMutationRequest
 
 // RefreshDesktopUpdateAdmissionJSONRequestBody defines body for RefreshDesktopUpdateAdmission for application/json ContentType.
 type RefreshDesktopUpdateAdmissionJSONRequestBody = DesktopUpdateAdmissionRefreshRequest
@@ -9655,6 +10687,9 @@ type UpdateWorkspaceIssueJSONRequestBody = UpdateIssueManagerIssueRequest
 
 // AddWorkspaceIssueContextRefsJSONRequestBody defines body for AddWorkspaceIssueContextRefs for application/json ContentType.
 type AddWorkspaceIssueContextRefsJSONRequestBody = AddIssueManagerContextRefsRequest
+
+// StartWorkspaceIssueRunJSONRequestBody defines body for StartWorkspaceIssueRun for application/json ContentType.
+type StartWorkspaceIssueRunJSONRequestBody = StartIssueManagerRunRequest
 
 // CreateWorkspaceIssueRunJSONRequestBody defines body for CreateWorkspaceIssueRun for application/json ContentType.
 type CreateWorkspaceIssueRunJSONRequestBody = CreateIssueManagerRunRequest

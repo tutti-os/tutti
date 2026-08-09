@@ -178,6 +178,16 @@ func (a *ClaudeCodeSDKAdapter) Close(ctx context.Context, session Session) error
 	if adapterSession == nil {
 		return nil
 	}
+	a.mu.Lock()
+	readerStarted := adapterSession.readerStarted
+	a.mu.Unlock()
+	if !readerStarted {
+		if err := a.startClaudeSDKReader(session.AgentSessionID, adapterSession); err != nil {
+			a.removeSession(session.AgentSessionID, adapterSession)
+			_ = adapterSession.conn.Close()
+			return err
+		}
+	}
 	closeBaseCtx := context.WithoutCancel(ctx)
 	var closeCtx context.Context
 	var cancel context.CancelFunc

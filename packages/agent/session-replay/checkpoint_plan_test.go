@@ -253,6 +253,80 @@ func TestMergeCheckpointCandidateDeduplicatesEntityAddresses(t *testing.T) {
 	}
 }
 
+func TestMergeCheckpointCandidateKeepsTurnWorkingOverCompaction(t *testing.T) {
+	cursor := ReplayCursor{
+		ActivityEventSequence: 5,
+		ProviderConnections: []ProviderUnitPosition{{
+			ConnectionID: "connection-1", ChunkSeq: 62, UnitIndex: 1,
+		}},
+	}
+	turnPosition := ProviderObservationPosition{
+		ConnectionID: "connection-1", ChunkSeq: 62, UnitIndex: 1, EventIndex: 1,
+	}
+	compactPosition := ProviderObservationPosition{
+		ConnectionID: "connection-1", ChunkSeq: 62, UnitIndex: 1, EventIndex: 2,
+	}
+	turn := providerAddress(EntityKindTurn, turnPosition)
+	startedFingerprint, err := ObservationFingerprint(ProviderObservation{
+		SchemaVersion: ObservationSchemaVersion,
+		Type:          "root_provider_turn.started",
+		Address:       turn,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	compactFingerprint, err := ObservationFingerprint(ProviderObservation{
+		SchemaVersion: ObservationSchemaVersion,
+		Type:          "compaction.updated",
+		Address:       turn,
+		Stable: map[string]any{
+			"noticeCommand":       "compact",
+			"noticeCommandStatus": "completed",
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	merged := MergeCheckpointCandidate(
+		ReplayCheckpoint{
+			Kind: "turn.working", Tags: []string{"turn.working"},
+			Cursor: cursor,
+			Trigger: CheckpointTrigger{
+				Source:      CheckpointTriggerProviderObservation,
+				Position:    &turnPosition,
+				UnitKind:    ProviderInputUnitProtocolMessage,
+				Type:        "root_provider_turn.started",
+				Fingerprint: startedFingerprint,
+			},
+			Subjects: []EntityAddress{turn},
+			Readiness: CheckpointReadiness{All: []ReadinessPredicate{{
+				Type: "turn.phase", Subject: 0, Equals: "running",
+			}}},
+		},
+		ReplayCheckpoint{
+			Kind: "compaction.completed", Tags: []string{"compaction.completed"},
+			Cursor: cursor,
+			Trigger: CheckpointTrigger{
+				Source:      CheckpointTriggerProviderObservation,
+				Position:    &compactPosition,
+				UnitKind:    ProviderInputUnitProtocolMessage,
+				Type:        "compaction.updated",
+				Fingerprint: compactFingerprint,
+			},
+			Subjects: []EntityAddress{turn},
+			Readiness: CheckpointReadiness{All: []ReadinessPredicate{{
+				Type: "compaction.status", Subject: 0, Equals: "completed",
+			}}},
+		},
+	)
+	if merged.Kind != "turn.working" ||
+		merged.Trigger.Type != "root_provider_turn.started" ||
+		merged.Trigger.Fingerprint != startedFingerprint ||
+		!slices.Contains(merged.Tags, "compaction.completed") {
+		t.Fatalf("merged=%#v, want turn.working primary with compaction tag", merged)
+	}
+}
+
 func TestMergeCheckpointCandidatePrefersTerminalOverToolCompleted(t *testing.T) {
 	cursor := ReplayCursor{
 		ActivityEventSequence: 1,

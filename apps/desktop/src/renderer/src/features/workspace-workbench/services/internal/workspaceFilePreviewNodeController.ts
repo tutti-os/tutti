@@ -21,6 +21,7 @@ import {
   type WorkspaceFilePreviewTextHeaderState
 } from "../../ui/workspaceFilePreviewNodeState.ts";
 import { saveWorkspaceFilePreviewText } from "./workspaceFilePreviewTextSave.ts";
+import { normalizeWorkspaceFilePreviewLocalPath } from "../workspaceFilePreviewLaunch.ts";
 
 export type WorkspaceFilePreviewTextSaveStatus =
   | "error"
@@ -136,7 +137,9 @@ class WorkspaceFilePreviewNodeControllerImpl implements WorkspaceFilePreviewNode
       getEntryKey: workspaceFilePreviewNodeFileKey,
       read: async ({ entry }) => ({
         bytes: isAbsoluteFilesystemPath(entry.path)
-          ? await input.hostFilesApi.readLocalPreviewFile(entry.path)
+          ? await input.hostFilesApi.readLocalPreviewFile(
+              normalizeWorkspaceFilePreviewLocalPath(entry.path)
+            )
           : decodeBase64Bytes(
               (
                 await input.tuttidClient.readWorkspaceFilePreview(

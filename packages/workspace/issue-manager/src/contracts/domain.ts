@@ -161,19 +161,41 @@ interface IssueManagerContextRefBase {
   workspaceId: string;
   issueId: string;
   refType: string;
-  path: string;
   displayName: string;
   createdAtUnix?: number;
 }
 
-export interface IssueManagerIssueContextRef extends IssueManagerContextRefBase {
-  parentKind: "issue";
+interface IssueManagerWorkspacePathContextRef {
+  accessKind: "workspace_path";
+  path: string;
 }
 
-export interface IssueManagerTaskContextRef extends IssueManagerContextRefBase {
-  parentKind: "task";
-  taskId: string;
+interface IssueManagerManagedAttachmentContextRef {
+  accessKind: "managed_attachment";
+  path?: never;
 }
+
+/** Compatibility shape for hosts that predate the explicit access-kind field. */
+interface IssueManagerLegacyWorkspacePathContextRef {
+  accessKind?: undefined;
+  path: string;
+}
+
+type IssueManagerContextRefAccess =
+  | IssueManagerWorkspacePathContextRef
+  | IssueManagerManagedAttachmentContextRef
+  | IssueManagerLegacyWorkspacePathContextRef;
+
+export type IssueManagerIssueContextRef = IssueManagerContextRefBase &
+  IssueManagerContextRefAccess & {
+    parentKind: "issue";
+  };
+
+export type IssueManagerTaskContextRef = IssueManagerContextRefBase &
+  IssueManagerContextRefAccess & {
+    parentKind: "task";
+    taskId: string;
+  };
 
 export type IssueManagerContextRef =
   | IssueManagerIssueContextRef

@@ -26,6 +26,9 @@ func (p *ActivityProjection) ObserveCommitted(ctx context.Context, delta agentho
 			p.publishPersistedTurnState(ctx, committed.Input, committed.Result)
 		}
 		if committed.Result.State.Accepted && !provisional {
+			if committed.Result.State.StateApplied {
+				p.publishRuntimeActivityUpdate(ctx, committed.Input)
+			}
 			p.publishActivityUpdated(ctx, committed.Input.WorkspaceID, committed.Input.AgentSessionID,
 				"session_reconcile_required", activitySessionUpdateEventPayload(
 					committed.Input.WorkspaceID, committed.Input.AgentSessionID,
@@ -47,11 +50,23 @@ func (p *ActivityProjection) ObserveCommitted(ctx context.Context, delta agentho
 	if committed := delta.GoalOperation; committed != nil && committed.Stage == agenthost.GoalOperationPrepared && committed.Audit != nil {
 		p.PublishGoalControlAudit(ctx, committed.Operation.WorkspaceID, committed.Operation.AgentSessionID, *committed.Audit)
 	}
+	// Bottom-up session reports attach GoalOperation on ActivityStateDelta but
+	// NotifyCommitted only targets ActivityProjection. Forward those Goal
+	// checkpoints to the Replay observer (Host GoalOperation path already
+	// reaches it through the commit-observer relay).
+	if delta.GoalOperation != nil && delta.ActivityState != nil {
+		agenthost.NotifyCommitted(ctx, p.replayCommitObserver, delta)
+	}
 	if delta.ActivityState == nil && delta.SessionMessages == nil && delta.RuntimeOperation == nil && delta.GoalOperation == nil {
 		for _, invalidated := range delta.ViewsInvalidated {
 			if canonicalSessionDeleted(delta, invalidated) {
 				p.publishActivityUpdated(ctx, invalidated.WorkspaceID, invalidated.AgentSessionID,
 					"session_deleted", activitySessionDeletedEventPayload(invalidated.WorkspaceID, invalidated.AgentSessionID))
+				continue
+			}
+			if canonicalSessionRestored(delta, invalidated) {
+				p.publishActivityUpdated(ctx, invalidated.WorkspaceID, invalidated.AgentSessionID,
+					"session_restored", activitySessionRestoredEventPayload(invalidated.WorkspaceID, invalidated.AgentSessionID))
 				continue
 			}
 			p.publishActivityUpdated(ctx, invalidated.WorkspaceID, invalidated.AgentSessionID,
@@ -80,6 +95,27 @@ func (p *ActivityProjection) ObserveCommitted(ctx context.Context, delta agentho
 	return nil
 }
 
+func (p *ActivityProjection) publishRuntimeActivityUpdate(ctx context.Context, input canonical.ReportSessionStateInput) {
+	observation := input.State.RuntimeActivity
+	if observation == nil {
+		return
+	}
+	state := strings.ToLower(strings.TrimSpace(observation.State))
+	if state != "running" && state != "idle" {
+		return
+	}
+	if observation.OccurredAtUnixMS <= 0 {
+		return
+	}
+	p.publishActivityUpdated(ctx, input.WorkspaceID, input.AgentSessionID, "runtime_activity_update", map[string]any{
+		"workspaceId":      strings.TrimSpace(input.WorkspaceID),
+		"agentSessionId":   strings.TrimSpace(input.AgentSessionID),
+		"eventType":        "runtime_activity_update",
+		"state":            state,
+		"occurredAtUnixMs": observation.OccurredAtUnixMS,
+	})
+}
+
 func activityStateIsProvisional(input canonical.ReportSessionStateInput) bool {
 	return runtimeContextBool(input.State.RuntimeContext, "provisional")
 }
@@ -90,9 +126,21 @@ func runtimeContextBool(runtimeContext map[string]any, key string) bool {
 }
 
 func canonicalSessionDeleted(delta agenthost.CommittedDelta, invalidated agenthost.CanonicalViewInvalidated) bool {
+	return canonicalSessionMutationMatches(delta, invalidated, "delete")
+}
+
+func canonicalSessionRestored(delta agenthost.CommittedDelta, invalidated agenthost.CanonicalViewInvalidated) bool {
+	return canonicalSessionMutationMatches(delta, invalidated, "restore")
+}
+
+func canonicalSessionMutationMatches(
+	delta agenthost.CommittedDelta,
+	invalidated agenthost.CanonicalViewInvalidated,
+	operation string,
+) bool {
 	for _, mutation := range delta.ProjectionDirty {
 		if mutation.WorkspaceID == invalidated.WorkspaceID && mutation.AgentSessionID == invalidated.AgentSessionID &&
-			mutation.EntityKind == agentactivitybiz.MutationEntitySession && mutation.Operation == "delete" {
+			mutation.EntityKind == agentactivitybiz.MutationEntitySession && mutation.Operation == operation {
 			return true
 		}
 	}

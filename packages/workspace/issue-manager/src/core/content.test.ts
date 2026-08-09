@@ -146,6 +146,7 @@ test("issue-manager task breakdown prompt captures issue context", () => {
     issueDetail: {
       contextRefs: [
         {
+          accessKind: "workspace_path",
           contextRefId: "ctx-1",
           displayName: "spec.md",
           issueId: "issue-1",

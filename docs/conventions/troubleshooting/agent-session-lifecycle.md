@@ -2,6 +2,31 @@
 
 [Agent runtime index](./agent-runtime.md) · [All troubleshooting](./README.md)
 
+### Claude Goal stays active after the model becomes idle
+
+- **Symptom:** Claude has stopped producing output and the Session becomes
+  idle, but the Goal banner remains active indefinitely. The elapsed time may
+  also reset after leaving and reopening the workspace.
+- **Quick checks:** Inspect sidecar events and the root Claude transcript. A
+  failed evaluator has an active `active_goal` or `goal_status.met=false`, a
+  root `session_state_changed(state=idle)`, and no later
+  `goal_status.met=true`.
+- **Root cause:** Claude's SDK stream may omit top-level `goal_status`
+  attachments. A native evaluator timeout can then reach idle without a
+  terminal verdict. Separately, a timer based on React mount time cannot
+  survive workspace navigation.
+- **Fix:** Tail only new root transcript rows, drain once more at provider idle,
+  and transition a still-active Goal to canonical `blocked`. Persist one
+  `startedAtUnixMs` per Goal generation and derive active elapsed time from it.
+- **Validation:** Cover both boundaries: terminal transcript evidence written
+  immediately before idle must win, while idle without terminal evidence must
+  emit `blocked`. Unmount and remount the Goal banner with the same canonical
+  start and require the elapsed value not to reset.
+- **References:**
+  [goalProjection.ts](../../../packages/agent/claude-sdk-sidecar/src/goalProjection.ts),
+  [messageRouter.ts](../../../packages/agent/claude-sdk-sidecar/src/messageRouter.ts),
+  [AgentGoalBanner.tsx](../../../packages/agent/gui/agent-gui/agentGuiNode/AgentGoalBanner.tsx)
+
 ### Older extension session fails because its launch identity is incomplete
 
 - **Symptom:** Sending a new message to a previously created extension session
@@ -818,6 +843,42 @@ Turn state, loading, cancel, restore, file-change undo, rail projection, event u
   [sessionReconcile.reducer.ts](../../../packages/agent/activity-core/src/engine/sessionReconcile.reducer.ts)
   [useAgentGUIConversationSelectionController.ts](../../../packages/agent/gui/agent-gui/agentGuiNode/controller/useAgentGUIConversationSelectionController.ts)
 
+### New Goal spinner stops before the first reply, then starts after it appears
+
+- Symptom:
+  Creating a Session with an initial Goal starts the processing indicator, then
+  stops it as soon as the canonical Session appears. The provider continues
+  working without an indicator. When the first assistant message and canonical
+  Turn arrive, the indicator starts again until the Turn settles.
+- Quick checks:
+  Compare the Claude SDK `session_state_changed` lifecycle log, activity stream
+  connection, Engine runtime activity, canonical Session, and canonical latest
+  Turn. The characteristic gap has SDK state `running`, a canonical Session, no
+  latest Turn, and Engine runtime activity still `idle`. Do not use assistant
+  message arrival as Turn identity. If the desktop log reports `Event stream
+catalog revision mismatch`, fully restart `dev:desktop`; renderer HMR cannot
+  replace the already running Go daemon binary.
+- Root cause:
+  Claude emits an exact session-level `running` observation before the first
+  provider Turn identity, but the daemon previously logged and discarded it.
+  Goal-only creation correctly has `initialTurnExpected = false`, so neither a
+  pending prompt nor a canonical Turn can bridge that interval.
+- Fix:
+  Normalize the SDK observation to provider-neutral `running`/`idle` runtime
+  activity, publish it as an ephemeral activity-stream event, and let the
+  workspace Engine drive AgentGUI and rail busy projection. Clear ephemeral
+  runtime activity on disconnect. Keep Goal turnless and do not invent
+  lifecycle state, provider-specific timers, or synthetic Turn IDs.
+- Validation:
+  Cover SDK projection without Turn identity, post-commit event publication,
+  activity-stream ingestion before canonical Session hydration, AgentGUI busy
+  projection, `idle`, and disconnect cleanup.
+- References:
+  [claude_sdk_events.go](../../../packages/agent/daemon/runtime/claude_sdk_events.go)
+  [workspaceEventCoordinator.ts](../../../packages/agent/activity-core/src/workspaceEventCoordinator.ts)
+  [useAgentGUISessionPresentation.ts](../../../packages/agent/gui/agent-gui/agentGuiNode/controller/useAgentGUISessionPresentation.ts)
+  [agent-gui-node.md](../../architecture/agent-gui-node.md)
+
 ### AgentGUI detail misses or misplaces a canonical Turn error
 
 - Symptom:
@@ -901,6 +962,30 @@ Turn state, loading, cancel, restore, file-change undo, rail projection, event u
   [controller_root_turn.go](../../../packages/agent/daemon/runtime/controller_root_turn.go)
   [visible_error.go](../../../packages/agent/daemon/runtime/visible_error.go)
   [agent_runtime_adapter.go](../../../services/tuttid/agent_runtime_adapter.go)
+
+### Failed Claude Turn looks like no reply or renders raw 522 payload
+
+- Symptom:
+  Claude produces no normal assistant reply, and the eventual failed message is
+  a raw `API Error: 522` payload instead of the standard timeout card.
+- Quick checks:
+  Confirm the canonical Turn settled as failed with `request_timed_out`, while
+  its persisted assistant message is plain failed text containing the explicit
+  522 signature rather than a structured visible error.
+- Root cause:
+  The SDK can report a gateway timeout as a failed assistant text message. The
+  generic failed-message recovery recognized network socket markers but not the
+  unambiguous HTTP 522 signature, so the raw provider payload reached Markdown.
+- Fix:
+  Classify only explicit 522 markers as `request_timed_out` in the shared failed
+  message presentation. Keep generic timeout prose unclassified to avoid
+  rewriting ordinary assistant content.
+- Validation:
+  Cover both classification and rendered output: the timeout card is visible
+  and the raw payload is absent.
+- References:
+  [agentErrorPresentation.ts](../../../packages/agent/gui/shared/agentEnv/agentErrorPresentation.ts)
+  [AgentMessageBlock.tsx](../../../packages/agent/gui/shared/agentConversation/components/AgentMessageBlock.tsx)
 
 ### Codex WebSocket reconnect rejects a long prompt metadata header
 
@@ -3612,31 +3697,75 @@ inline data URL instead`. Claude or standard ACP may instead receive no
   system notice arrives before provider-turn acceptance; the Claude acceptance
   gate previously treated it as premature provider output and dropped it. The
   daemon already settles an active compact notice when the turn closes; it needs
-  a held `compact_started` (or an adapter-emitted running notice) first.
+  a held `compact_started` (or an adapter-emitted running notice) first. Flushing
+  those held events after acceptance must not re-observe their earlier provider
+  input units: that either regresses the Replay cursor or coalesces conflicting
+  `compaction.status` readiness onto the durable `turn.working` checkpoint.
 - Fix:
   Emit a running compact notice from the Claude adapter when `/compact` is
   selected, allow compact system notices to precede provider-turn acceptance,
   accept `local_command` / `local_command_output` and camelCase boundary
   metadata in the sidecar, and map known failure copy to `compact_failed`
   before a successful result can settle the banner as completed. When the
-  acceptance barrier later flushes those held events, restamp their
-  `ProviderInputUnit` onto the acceptance unit so Session Replay does not
-  observe an earlier chunk after the durable `turn.working` checkpoint (that
-  regression fails recording with
-  `provider cursor moved backward`).
+  acceptance barrier later flushes held events, strip their
+  `ProviderInputUnit` so they publish transcript/state only.
 - Validation:
   Add daemon coverage that `/compact` banners stay held until durable
-  acceptance, then flush on the acceptance unit; add sidecar coverage for
+  acceptance, then flush without provider-input units; add sidecar coverage for
   silent `/compact` (result only), local_command failure, and camelCase
   `compactMetadata`. Re-run L04-CLAUDE recording and confirm the progress
   divider appears, then becomes `Context compacted.` (or the interrupted
-  divider with the failure detail), and that recording status stays
-  `recording` through compact.
+  divider with the failure detail), and that record+replay both pass.
 - References:
   [compaction.ts](../../../packages/agent/claude-sdk-sidecar/src/compaction.ts)
   [claude_sdk_execution.go](../../../packages/agent/daemon/runtime/claude_sdk_execution.go)
   [claude_sdk_turn.go](../../../packages/agent/daemon/runtime/claude_sdk_turn.go)
   [AgentMessageBlock.tsx](../../../packages/agent/gui/shared/agentConversation/components/AgentMessageBlock.tsx)
+
+### Inactive Claude resume times out then later sends stay queued
+
+- Symptom:
+  On a large inactive Claude session, `/compact` or any send shows working then
+  fails after ~30s with `engine command timed out` / tuttíd `context canceled`.
+  Compact never runs. A later send shows 排队中 and never reaches tuttíd
+  (`api.send.received` missing).
+- Quick checks:
+  Confirm `activeLiveState=inactive` and `resumable=true` before send. Order
+  desktop `renderer_adapter.send.http_requested` → tuttíd
+  `process_start.env_diagnostics` → `api.send.failed` (~30s, no
+  `runtime.exec`). Check Claude transcript size under
+  `~/.claude/projects/.../<provider-session-id>.jsonl`. After the timeout,
+  inspect whether a second submit stamps `queued:true` without a daemon send.
+- Root cause:
+  `SendInput` blocks on `ensureRuntimeSession` / Claude `Resume`→`Start` until
+  the sidecar emits `session_started`. On restore, the sidecar previously
+  awaited `query.getContextUsage()` before that event; the SDK call has no
+  timeout and has hung for minutes. The Engine then treated the client send
+  timeout as `uncertainDelivery`, which blocks all queue drain and prevents
+  remove/send-now of the timed-out head, so later prompts stay visible as
+  排队中 forever even after reconcile finds no delivery proof.
+- Fix:
+  Emit `session_started` before the restore usage snapshot, and refresh usage
+  in the background (same as turn completion). Keep queue send timeout at 90s
+  inside the 120s confirmation window as defense in depth. When an owned
+  `queue:reconcile:*` completes without exact turn proof, drop the timed-out
+  prompt (definitive non-delivery) or release uncertainty into a retryable
+  failed head so later queued work can drain.
+- Validation:
+  Sidecar coverage that restore `start()` reaches `session_started` while
+  `getContextUsage` never resolves, then still emits `usage_updated` after
+  resolve. `promptQueue.reducer` coverage for owned reconcile without turn
+  proof. Manually: open a large inactive Claude session, send `/compact`,
+  confirm Resume completes without waiting on usage and later messages are not
+  stuck behind uncertain delivery.
+- References:
+  [sessionRuntime.ts](../../../packages/agent/claude-sdk-sidecar/src/sessionRuntime.ts)
+  [compaction.ts](../../../packages/agent/claude-sdk-sidecar/src/compaction.ts)
+  [promptQueue.reducer.ts](../../../packages/agent/activity-core/src/engine/promptQueue.reducer.ts)
+  [promptQueue.ownedReconcile.ts](../../../packages/agent/activity-core/src/engine/promptQueue.ownedReconcile.ts)
+  [promptQueue.drainDecision.ts](../../../packages/agent/activity-core/src/engine/promptQueue.drainDecision.ts)
+  [lifecycle.go](../../../packages/agent/host/lifecycle.go)
+  [claude_sdk_lifecycle.go](../../../packages/agent/daemon/runtime/claude_sdk_lifecycle.go)
 
 ### AgentGUI compaction timer keeps running after compaction completed
 
@@ -3825,6 +3954,48 @@ inline data URL instead`. Claude or standard ACP may instead receive no
   [Agent Goal Control Design](../../specs/2026-07-15-agent-goal-control-design.md)
   [controller_exec.go](../../../packages/agent/daemon/runtime/controller_exec.go)
   [goal_state.go](../../../packages/agent/store-sqlite/goal_state.go)
+
+### Claude Goal completes but the UI remains active
+
+- Symptom:
+  Claude finishes the requested work and its session JSONL contains an
+  `attachment.type=goal_status` row with `met=true`, but Tutti emits no
+  `goal_observed`; durable desired and observed Goal state remain active.
+- Quick checks:
+  Correlate the Tutti Session with the Claude provider Session ID. Inspect the
+  provider transcript for the final `goal_status` attachment, then check dev
+  logs for a matching sidecar `goal_observed`. Do not infer Goal completion
+  from a successful root result or from a successful Stop hook process.
+- Root cause:
+  Local Claude Agent SDK `SDKMessage` streams through `0.3.222` omit transcript
+  attachments. `SDKActiveGoalMessage` is also absent from the public
+  `SDKMessage` union, and local Claude Code only publishes `active_goal` on its
+  remote path. A test that manually yielded `type=attachment` therefore proved
+  the projection but not the real SDK boundary.
+- Fix:
+  Locate the provider transcript from root `system/init.session_id + cwd`
+  using the pinned SDK's project-key algorithm. Start restored Sessions from
+  their already known provider Session ID. Keep
+  `SessionStart.transcript_path` as an exact-path auxiliary signal, not the
+  required trigger. Read only newly appended complete JSONL rows, forward only
+  `goal_status` attachments through the existing Goal projection, drain before
+  root Turn completion, and keep following after the SDK result because the
+  native evaluator can flush its terminal row slightly later. Late evidence
+  retains the latest settled root Turn identity. Do not parse evaluator hook
+  stdout and do not configure an alpha `SessionStore` solely for this signal;
+  both change a larger and less reliable boundary.
+- Validation:
+  Run a query fixture whose SDK iterator emits root `system/init`, the root
+  user message, and result. Reproduce the observed ordering where transcript
+  `met=false` precedes `turn_completed` and `met=true` lands afterward; require
+  the late completion to retain the original Turn identity. Also cover resume
+  without another init, delegated init exclusion, watcher cleanup,
+  historical-row skipping, partial JSONL rows, and repeated-drain
+  deduplication.
+- References:
+  [goalTranscript.ts](../../../packages/agent/claude-sdk-sidecar/src/goalTranscript.ts)
+  [messageRouter.ts](../../../packages/agent/claude-sdk-sidecar/src/messageRouter.ts)
+  [Anthropic SDK issue #336](https://github.com/anthropics/claude-agent-sdk-typescript/issues/336)
 
 ### Accepted Goal clear is sent repeatedly until convergence times out
 
@@ -4513,3 +4684,33 @@ permanently ambiguous`. Provider status may already be `active` while the
 - References:
   [checkpoint_provider_candidates.go](../../../services/tuttid/service/agentsessionreplay/checkpoint_provider_candidates.go)
   [checkpoint_activity_boundaries.go](../../../services/tuttid/service/agentsessionreplay/checkpoint_activity_boundaries.go)
+
+### New Agent conversation rejects a model that is no longer offered
+
+- Symptom:
+  A newly submitted conversation fails with `model value is not supported by
+agent target`, although the current model picker does not offer that model.
+  Alternatively, the selected model appears to start but the provider actually
+  continues on its own default.
+- Root cause:
+  A target-scoped remembered composer default outlived a changed model catalog,
+  or a dependent reasoning default remained bound to the retired model after
+  model fallback,
+  or the ACP runtime treated a rejected startup model selection as a
+  best-effort setting and silently retained the provider default. Reapplying a
+  model that `session/new` already selected can also trigger an unnecessary
+  provider-side reconfiguration failure.
+- Fix:
+  At Create, distinguish a target-scoped persisted default from a model
+  explicitly supplied by the caller. For an Agent Extension, resolve an
+  obsolete persisted default to the current model reported by that same
+  extension; never use a different provider. Resolve non-explicit per-model
+  reasoning against that effective model while keeping explicit caller values
+  strict. Treat an explicit ACP model selection as identity-bearing: leave an
+  already-selected model unchanged, and if a real model change is rejected,
+  abort startup rather than falling back.
+- Validation:
+  Cover an obsolete persisted default with a multi-model catalog whose reported
+  current model is not first, a stale dependent reasoning default, and an
+  unsupported explicit selection separately with generic extension fixtures.
+  Inject a `session/set_model` rejection into the standard ACP transport test.

@@ -264,8 +264,11 @@ export function useAgentGUIViewAssembly(input: UseAgentGUIViewAssemblyInput) {
       drainingQueuedPromptId: detail.drainingQueuedPromptId
     },
     interaction: {
+      approvalDisabledReason: session.approvalDisabledReason,
+      interactivePromptDisabledReason: session.interactivePromptDisabledReason,
       isRespondingApproval: session.isRespondingApproval,
-      pendingApproval: detail.pendingApproval,
+      isRespondingInteractivePrompt: session.isRespondingInteractivePrompt,
+      pendingApproval: session.pendingApproval,
       pendingInteractivePrompt: session.pendingInteractivePrompt,
       sessionChrome: session.sessionChrome,
       inlineNotice: detail.effectiveDetailError

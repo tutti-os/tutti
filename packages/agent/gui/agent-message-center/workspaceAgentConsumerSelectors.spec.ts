@@ -637,6 +637,100 @@ describe("workspaceAgentConsumerSelectors", () => {
     });
     expect(model.waitingCount).toBe(0);
   });
+
+  it("omits hidden sessions from the message center model by default", () => {
+    const engine = createEngine();
+    engine.dispatch({
+      type: "session/snapshotReceived",
+      sessions: [session({ visible: false })]
+    });
+
+    const model = buildWorkspaceAgentMessageCenterModelFromEngine(
+      selectWorkspaceAgentMessageCenterPresentation(engine.getSnapshot()),
+      { workspaceId: "workspace-1", sessionMessagesById: {} }
+    );
+
+    expect(model.items).toHaveLength(0);
+  });
+
+  it("does not treat a provider-native id as a hidden-session opt-in", () => {
+    const engine = createEngine();
+    engine.dispatch({
+      type: "session/snapshotReceived",
+      sessions: [
+        session({
+          visible: false,
+          providerSessionId: "provider-session-1"
+        })
+      ]
+    });
+
+    const model = buildWorkspaceAgentMessageCenterModelFromEngine(
+      selectWorkspaceAgentMessageCenterPresentation(engine.getSnapshot()),
+      { workspaceId: "workspace-1", sessionMessagesById: {} },
+      { includeHiddenSessionIds: ["provider-session-1"] }
+    );
+
+    expect(model.items).toHaveLength(0);
+  });
+
+  it("keeps an allowlisted hidden delegate session and its pending prompt", () => {
+    const engine = createEngine();
+    engine.dispatch({
+      type: "session/snapshotReceived",
+      sessions: [
+        session({
+          visible: false,
+          activeTurnId: "turn-1",
+          activeTurn: {
+            turnId: "turn-1",
+            agentSessionId: "session-1",
+            origin: "user_prompt",
+            phase: "waiting",
+            startedAtUnixMs: 10,
+            updatedAtUnixMs: 21
+          },
+          pendingInteractions: [
+            {
+              requestId: "request-approval",
+              agentSessionId: "session-1",
+              turnId: "turn-1",
+              kind: "approval",
+              status: "pending",
+              toolName: "Bash",
+              input: {
+                command: "pnpm test",
+                options: [{ optionId: "allow", label: "Allow" }]
+              },
+              createdAtUnixMs: 21,
+              updatedAtUnixMs: 21
+            }
+          ]
+        })
+      ]
+    });
+
+    const model = buildWorkspaceAgentMessageCenterModelFromEngine(
+      selectWorkspaceAgentMessageCenterPresentation(engine.getSnapshot()),
+      { workspaceId: "workspace-1", sessionMessagesById: {} },
+      { includeHiddenSessionIds: ["session-1"] }
+    );
+
+    expect(model.items).toHaveLength(1);
+    expect(model.items[0]).toMatchObject({
+      agentSessionId: "session-1",
+      needsAttentionKind: "permission",
+      pendingInteractionTarget: {
+        agentSessionId: "session-1",
+        requestId: "request-approval",
+        turnId: "turn-1"
+      },
+      pendingPrompt: {
+        kind: "approval",
+        requestId: "request-approval"
+      }
+    });
+  });
 });
 
 function createEngine() {

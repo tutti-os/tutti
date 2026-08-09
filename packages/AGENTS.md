@@ -14,6 +14,12 @@ If you are editing Agent session, Turn, Goal, runtime-operation, or recovery
 lifecycle under `packages/agent/*`, read the root `Agent Host Boundary` and
 [packages/agent/host/README.md](agent/host/README.md) first.
 
+If you are editing Cassette projection, checkpoint readiness, or final-state
+replay compare under `packages/agent/session-replay/*`, read
+[packages/agent/session-replay/AGENTS.md](agent/session-replay/AGENTS.md) and
+[packages/agent/session-replay/README.md](agent/session-replay/README.md)
+first.
+
 If the task mentions AgentGUI, AgentGuiNode, Agent GUI, the agent conversation
 module, agent composer, workspace agent timeline, agent approvals, or
 interactive agent prompts, read
@@ -42,7 +48,11 @@ If you are editing `packages/ui/*`, also read [packages/ui/AGENTS.md](ui/AGENTS.
 - name packages by responsibility, not by audience
 - avoid vague names such as `shared`, `common`, `utils`, or `client-sdk`
 - keep `clients/*` focused on domain-specific access patterns
-- keep `connector/*` focused on host-neutral connector semantics, contracts, and state; concrete catalog endpoints, persistence, credentials, installation directories, and generated daemon clients stay in host adapters
+- keep `connector/*` focused on host-neutral connector semantics, contracts,
+  state, canonical persistence, daemon lifecycle, and same-machine runtime
+  mechanics shared by real hosts; remote endpoint authentication, credentials,
+  host state-root selection, generated daemon clients, product command
+  publication, and OS process integration stay in host adapters
 - keep `device-link` transport-only: it may own candidate selection, authenticated peer streams, generation-fenced admission, product-neutral pooling/racing/probe mechanics, WebSocket/yamux Relay byte-stream mechanics, and platform build boundaries, but not account, pairing, rendezvous, path-specific authentication, Relay authorization or product policy, or Agent/Workspace DTOs
 - keep `events/*` focused on repository-owned business event protocol contracts, topic catalogs, generated validators, and transport metadata rather than socket lifecycle or daemon business workflows
 - keep `browser/*` focused on browser mechanics, workbench node integration, bridge shape, Electron webview guest management, and package-local i18n defaults; host product globals, backend-token access, preview proxy behavior, and business bridge methods stay in host adapters

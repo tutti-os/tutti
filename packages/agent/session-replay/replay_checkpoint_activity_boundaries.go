@@ -23,6 +23,9 @@ func (s *Service) recordActivityBoundary(
 	if len(events) == 0 {
 		return nil
 	}
+	if err := r.bindActivityGoalIntroductions(events); err != nil {
+		return err
+	}
 	// The activity stream is global, but completeActivityBoundary only inspects
 	// this batch. A later complete batch must not cut the plan at a sequence
 	// that still contains an earlier unresolved intent (cancelRequested /
@@ -102,6 +105,26 @@ func (s *Service) recordActivityBoundary(
 	AppendCheckpoint(&r.plan, checkpoint)
 	r.lastActivity = snapshot.ActivityEventSequence
 	return s.Workflow.RecordCheckpointPlan(ctx, snapshot.Recording.ID, r.plan)
+}
+
+func (r *checkpointRecorder) bindActivityGoalIntroductions(
+	events []ActivityEvent,
+) error {
+	for _, event := range events {
+		if event.Kind != ActivityEventKindEffect ||
+			event.Type != "session/activate" {
+			continue
+		}
+		outcome, _ := event.Payload["outcome"].(string)
+		initialGoal, _ := event.Payload["initialGoalControl"].(map[string]any)
+		if strings.TrimSpace(outcome) != "succeeded" || len(initialGoal) == 0 {
+			continue
+		}
+		if _, ok := r.ensureGoalAddress(event.AgentSessionID, event.Sequence); !ok {
+			return ErrInvalidState
+		}
+	}
+	return nil
 }
 
 func activityHasProjectBinding(events []ActivityEvent) bool {
@@ -364,22 +387,32 @@ func (r *checkpointRecorder) goalAddress(
 	if sessionID == "" {
 		sessionID = r.entities.rootSessionID
 	}
-	if sessionID == "" || event.Sequence == 0 {
-		return EntityAddress{}, false
-	}
-	sessionAddress, ok := r.entities.sessionAddress(sessionID)
-	if !ok {
+	return r.ensureGoalAddress(sessionID, event.Sequence)
+}
+
+// ensureGoalAddress returns the Goal entity for a session, binding one to the
+// Activity fact that introduced it.
+func (r *checkpointRecorder) ensureGoalAddress(
+	sessionID string,
+	activitySequence uint64,
+) (EntityAddress, bool) {
+	sessionID = strings.TrimSpace(sessionID)
+	if sessionID == "" || activitySequence == 0 {
 		return EntityAddress{}, false
 	}
 	key := goalRuntimeKey(sessionID)
 	if existing, ok := r.entities.byRuntime[key]; ok {
 		return existing, true
 	}
+	sessionAddress, ok := r.entities.sessionAddress(sessionID)
+	if !ok {
+		return EntityAddress{}, false
+	}
 	return r.entities.bind(
 		key,
 		replayActivityAddress(
 			EntityKindGoal,
-			event.Sequence,
+			activitySequence,
 			entityParentDiscriminator(sessionAddress),
 		),
 		replayEntityBinding{

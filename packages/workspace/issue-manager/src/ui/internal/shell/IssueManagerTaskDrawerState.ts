@@ -1,4 +1,5 @@
 import type {
+  IssueManagerContextRef,
   IssueManagerIssueSummary,
   IssueManagerStatus,
   IssueManagerTaskSummary
@@ -66,7 +67,7 @@ export function resolveIssueManagerTaskDrawerViewState(input: {
 
 export function resolveIssueManagerTaskRefs(input: {
   controller: Pick<IssueManagerController, "taskDetail">;
-}) {
+}): IssueManagerContextRef[] {
   return (
     input.controller.taskDetail.value?.contextRefs.filter(
       (ref) => ref.parentKind === "task"

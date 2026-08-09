@@ -221,7 +221,16 @@ func (c *standardACPConnection) Send(data []byte) error {
 			if c.models != nil {
 				result["models"] = clonePayload(c.models)
 			}
+			setModelError := c.setModelError
 			c.mu.Unlock()
+			if setModelError != nil {
+				c.sendJSON(map[string]any{
+					"jsonrpc": "2.0",
+					"id":      message.ID,
+					"error":   setModelError,
+				})
+				return nil
+			}
 			c.sendJSON(map[string]any{
 				"jsonrpc": "2.0",
 				"id":      message.ID,

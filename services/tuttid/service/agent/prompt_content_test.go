@@ -33,6 +33,29 @@ func TestNormalizePromptContentAcceptsImagePath(t *testing.T) {
 	}
 }
 
+func TestNormalizePromptContentAcceptsConnectorOnlyInput(t *testing.T) {
+	content, text, err := normalizePromptContent([]PromptContentBlock{{
+		Type: "connector", ConnectorKey: " lark-cli ",
+	}})
+	if err != nil {
+		t.Fatalf("normalizePromptContent() error = %v, want nil", err)
+	}
+	if len(content) != 1 || content[0].Type != "connector" || content[0].ConnectorKey != "lark-cli" {
+		t.Fatalf("content = %#v, want normalized connector", content)
+	}
+	if text != "" {
+		t.Fatalf("text = %q, want connector to stay structured", text)
+	}
+}
+
+func TestNormalizePromptContentRejectsInvalidConnectorKey(t *testing.T) {
+	if _, _, err := normalizePromptContent([]PromptContentBlock{{
+		Type: "connector", ConnectorKey: "../../global-cli",
+	}}); !errors.Is(err, ErrInvalidArgument) {
+		t.Fatalf("normalizePromptContent() error = %v, want ErrInvalidArgument", err)
+	}
+}
+
 func TestNormalizePromptContentAcceptsHTTPSImageURL(t *testing.T) {
 	signedURL := "https://bucket.example/image.png?X-Amz-Signature=secret"
 	content, _, err := normalizePromptContent([]PromptContentBlock{{
@@ -106,6 +129,37 @@ func TestPromptAttachmentStoreUsesSessionScopedPath(t *testing.T) {
 	}
 	if strings.Contains(path, "workspace-1") {
 		t.Fatalf("attachment path leaks workspace id: %q", path)
+	}
+}
+
+func TestPromptAttachmentStoreDeletesOnlyOneSessionAttachmentDirectory(t *testing.T) {
+	root := t.TempDir()
+	store := PromptAttachmentStore{RootDir: root}
+	first, err := store.attachmentPath("workspace-1", "session-1", "attachment-1", "image/png")
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := store.attachmentPath("workspace-1", "session-2", "attachment-2", "image/png")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{first, second} {
+		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte("attachment"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	if err := store.DeleteSessionAttachments("workspace-1", "session-1"); err != nil {
+		t.Fatalf("DeleteSessionAttachments() error = %v", err)
+	}
+	if _, err := os.Stat(first); !os.IsNotExist(err) {
+		t.Fatalf("deleted attachment still exists, err = %v", err)
+	}
+	if _, err := os.Stat(second); err != nil {
+		t.Fatalf("other session attachment was removed: %v", err)
 	}
 }
 

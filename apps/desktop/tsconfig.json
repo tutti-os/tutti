@@ -32,6 +32,9 @@
       "@tutti-os/workspace-external-core/core": [
         "../../packages/workspace/external-core/src/core/index.ts"
       ],
+      "@tutti-os/workspace-external-core/rich-text": [
+        "../../packages/workspace/external-core/src/rich-text/index.ts"
+      ],
       "@tutti-os/workspace-file-manager": [
         "../../packages/workspace/file-manager/src/index.ts"
       ],

@@ -222,6 +222,15 @@ type SessionPurgeStore interface {
 	PurgeDeletedSessions(context.Context, storesqlite.PurgeDeletedSessionsInput) (storesqlite.PurgeDeletedSessionsResult, error)
 }
 
+// DeletedSessionStore is the lossless tombstone read/restore/permanent-delete
+// boundary. Restore is a lifecycle command; presentation and retention policy
+// remain with the composing host adapter.
+type DeletedSessionStore interface {
+	ListDeletedSessions(context.Context, storesqlite.ListDeletedSessionsInput) (storesqlite.DeletedSessionPage, error)
+	RestoreDeletedSession(context.Context, storesqlite.RestoreDeletedSessionInput) (storesqlite.RestoreDeletedSessionResult, error)
+	PurgeDeletedSessionTrees(context.Context, storesqlite.PurgeDeletedSessionTreesInput) (storesqlite.PurgeDeletedSessionTreesResult, error)
+}
+
 // HistoricalSessionStateStore is the canonical persistence boundary used by
 // Replay before normal Host recovery. The contract contains business entities,
 // not rows, table names, or migration details.
@@ -233,8 +242,7 @@ type HistoricalSessionStateStore interface {
 	) (HistoricalSessionGraph, error)
 	RestoreHistoricalSessionGraph(
 		context.Context,
-		string,
-		HistoricalSessionGraph,
+		HistoricalSessionGraphRestoreInput,
 	) error
 }
 
@@ -428,6 +436,10 @@ type RuntimeCleanupInput struct {
 	// OrphanActivationCleanup requests Tutti Mode activation cleanup for
 	// runtime-only session state that never received a canonical tombstone.
 	OrphanActivationCleanup bool
+	// PreserveRecoverableState keeps provider resume identity and other
+	// session-owned persistent resources while still releasing live/transient
+	// runtime resources after a lossless soft delete.
+	PreserveRecoverableState bool
 }
 
 type RuntimePreparationPort interface {

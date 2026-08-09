@@ -29,13 +29,18 @@ import {
   listWorkspaceAgentSessionSectionPage,
   listWorkspaceAgentSessionSections,
   listWorkspaceAgentSessions,
+  listWorkspaceDeletedAgentSessions,
   listWorkspaceGitBranches,
+  purgeWorkspaceDeletedAgentSession,
+  purgeWorkspaceDeletedAgentSessions,
   readWorkspaceAgentSessionAttachment,
   recoverWorkspaceAgentEditRetry,
   renameAgentSessionRecording,
+  restoreWorkspaceDeletedAgentSession,
   reconcileWorkspaceAgentSessionGoal,
   prepareAgentSessionReplayWorkspace,
   resolveWorkspaceGitPatchSupport,
+  resolveWorkspaceAgentSessionWorktreeSupport,
   scanWorkspaceExternalAgentSessionImports,
   sendWorkspaceAgentSessionInput,
   startAgentSessionRecording,
@@ -86,13 +91,18 @@ type WorkspaceAgentClient = Pick<
   | "listWorkspaceAgentSessionSectionPage"
   | "listWorkspaceAgentSessionSections"
   | "listWorkspaceAgentSessions"
+  | "listWorkspaceDeletedAgentSessions"
   | "listWorkspaceGitBranches"
+  | "purgeWorkspaceDeletedAgentSession"
+  | "purgeWorkspaceDeletedAgentSessions"
   | "readWorkspaceAgentSessionAttachment"
   | "recoverEditRetry"
   | "renameAgentSessionRecording"
+  | "restoreWorkspaceDeletedAgentSession"
   | "reconcileWorkspaceAgentSessionGoal"
   | "prepareAgentSessionReplayWorkspace"
   | "resolveWorkspaceGitPatchSupport"
+  | "resolveWorkspaceAgentSessionWorktreeSupport"
   | "scanWorkspaceExternalAgentSessionImports"
   | "sendWorkspaceAgentSessionInput"
   | "startAgentSessionRecording"
@@ -315,6 +325,59 @@ export function createWorkspaceAgentClient(
       return unwrapData(
         await clearWorkspaceAgentSessions({ client, path: { workspaceID } }),
         "Clear workspace agent sessions request failed."
+      );
+    },
+    async listWorkspaceDeletedAgentSessions(
+      workspaceID,
+      request,
+      requestOptions
+    ) {
+      return unwrapData(
+        await listWorkspaceDeletedAgentSessions({
+          client,
+          path: { workspaceID },
+          query: request,
+          ...requestOptions
+        }),
+        "List workspace deleted agent sessions request failed."
+      );
+    },
+    async restoreWorkspaceDeletedAgentSession(
+      workspaceID,
+      agentSessionID,
+      requestOptions
+    ) {
+      return unwrapData(
+        await restoreWorkspaceDeletedAgentSession({
+          client,
+          path: { agentSessionID, workspaceID },
+          ...requestOptions
+        }),
+        "Restore workspace deleted agent session request failed."
+      );
+    },
+    async purgeWorkspaceDeletedAgentSession(
+      workspaceID,
+      agentSessionID,
+      requestOptions
+    ) {
+      return unwrapData(
+        await purgeWorkspaceDeletedAgentSession({
+          client,
+          path: { agentSessionID, workspaceID },
+          ...requestOptions
+        }),
+        "Purge workspace deleted agent session request failed."
+      );
+    },
+    async purgeWorkspaceDeletedAgentSessions(workspaceID, requestOptions) {
+      return unwrapData(
+        await purgeWorkspaceDeletedAgentSessions({
+          client,
+          path: { workspaceID },
+          ...requestOptions
+        }),
+        "Purge workspace deleted agent sessions request failed."
       );
     },
     async getWorkspaceAgentSession(
@@ -627,6 +690,20 @@ export function createWorkspaceAgentClient(
           query: { cwd }
         }),
         "Resolve workspace git patch support failed."
+      );
+    },
+    async resolveWorkspaceAgentSessionWorktreeSupport(
+      workspaceID,
+      agentTargetId,
+      cwd
+    ) {
+      return unwrapData(
+        await resolveWorkspaceAgentSessionWorktreeSupport({
+          client,
+          path: { workspaceID },
+          query: { agentTargetId, cwd }
+        }),
+        "Resolve workspace Agent Session worktree support failed."
       );
     },
     async applyWorkspaceGitPatch(workspaceID, request) {

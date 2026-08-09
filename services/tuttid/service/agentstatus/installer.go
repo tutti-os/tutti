@@ -148,12 +148,6 @@ func (s Service) installMissingProviderRuntime(
 			"stdout", trimActionOutput(result.Stdout),
 			"stderr", trimActionOutput(result.Stderr),
 		)
-		s.reportProviderSetupNodeResult(ctx, providerSetupNodeResultInput{
-			Node:      installNodeForTarget(installTarget),
-			Provider:  spec.Provider,
-			Result:    RunActionResult{Status: RunActionCompleted},
-			StartedAt: nodeStartedAt,
-		})
 		selectedInstallDir := current.InstallDir
 		resolvedSpec, _ := s.resolveProviderSpec(ctx, spec, false)
 		current = s.resolveProviderRuntime(ctx, resolvedSpec)
@@ -167,6 +161,28 @@ func (s Service) installMissingProviderRuntime(
 			"adapterVersion", current.AdapterVersion,
 			"installDir", current.InstallDir,
 		)
+		stillMissing := (installTarget == "cli" && strings.TrimSpace(current.CLIPath) == "") ||
+			(installTarget == "adapter" && strings.TrimSpace(current.AdapterPath) == "")
+		if stillMissing {
+			err := fmt.Errorf("provider %s is still unavailable after installer exited successfully", spec.Provider)
+			s.reportProviderSetupNodeResult(ctx, providerSetupNodeResultInput{
+				Node:     installNodeForTarget(installTarget),
+				Provider: spec.Provider,
+				Result: RunActionResult{
+					ReasonCode: "install_runtime_unavailable",
+					Status:     RunActionFailed,
+					Message:    err.Error(),
+				},
+				StartedAt: nodeStartedAt,
+			})
+			return summary, current, err
+		}
+		s.reportProviderSetupNodeResult(ctx, providerSetupNodeResultInput{
+			Node:      installNodeForTarget(installTarget),
+			Provider:  spec.Provider,
+			Result:    RunActionResult{Status: RunActionCompleted},
+			StartedAt: nodeStartedAt,
+		})
 	}
 }
 
@@ -369,6 +385,9 @@ func shellCommandUsesNPM(command string) bool {
 }
 
 func installerLockCommand(spec InstallerSpec) string {
+	if runtime.GOOS == "windows" && spec.Kind == InstallerKindOfficialScript && spec.WindowsFallback == providerregistry.InstallerWindowsFallbackManagedNPM && spec.ManagedNPM != nil {
+		return installerLockCommand(InstallerSpec{Kind: InstallerKindManagedNPMPackage, ManagedNPM: spec.ManagedNPM})
+	}
 	if spec.Kind == InstallerKindShellCommand {
 		return spec.ShellCommand
 	}
@@ -390,11 +409,38 @@ func installerLockCommand(spec InstallerSpec) string {
 }
 
 func (s Service) runOfficialScriptInstaller(ctx context.Context, provider string, spec InstallerSpec) (InstallCommandResult, error) {
-	if runtime.GOOS == "windows" && spec.WindowsFallback == providerregistry.InstallerWindowsFallbackManagedRuntime {
-		// Some official Unix installers deliberately reject Windows. The daemon
-		// provisions the provider's verified native runtime from its descriptor,
-		// so use that same path instead of feeding a Unix installer to MSYS2.
-		return s.runManagedClaudeCodeInstaller(ctx)
+	if runtime.GOOS == "windows" {
+		switch spec.WindowsFallback {
+		case providerregistry.InstallerWindowsFallbackPowerShell:
+			command := strings.TrimSpace(spec.WindowsPowerShellCommand)
+			if command == "" {
+				return InstallCommandResult{ExitCode: 1, Stderr: "Windows PowerShell installer command is missing"}, nil
+			}
+			return s.installCommand(ctx, InstallCommandInput{
+				Args:     []string{"powershell.exe", "-NoLogo", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", command},
+				Env:      s.commandResolver().Env(nil),
+				OnStdout: activeActionStdoutAppender(ctx, provider),
+			})
+		case providerregistry.InstallerWindowsFallbackManagedRuntime:
+			// Some official Unix installers deliberately reject Windows. The daemon
+			// provisions the provider's verified native runtime from its descriptor,
+			// so use that same path instead of feeding a Unix installer to MSYS2.
+			return s.runManagedClaudeCodeInstaller(ctx)
+		case providerregistry.InstallerWindowsFallbackManagedNPM:
+			if spec.ManagedNPM == nil {
+				return InstallCommandResult{ExitCode: 1, Stderr: "Windows managed npm fallback is missing its package configuration"}, nil
+			}
+			return s.runManagedNPMPackageInstaller(ctx, provider, *spec.ManagedNPM, "")
+		default:
+			// Never send a Unix-only curl | bash installer to MSYS/bash on native
+			// Windows. That path produces misleading OS/POSIX-tool errors and can
+			// leave the provider half-installed. The provider can still be used via
+			// WSL or an already-installed native CLI when the resolver finds one.
+			return InstallCommandResult{
+				ExitCode: 1,
+				Stderr:   "this provider's official installer is Unix-only and cannot run on native Windows; install the CLI in WSL or provide an existing native CLI",
+			}, nil
+		}
 	}
 	installerFile, err := os.CreateTemp("", "tutti-agent-provider-install-*.sh")
 	if err != nil {

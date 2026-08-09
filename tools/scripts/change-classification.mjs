@@ -5,6 +5,7 @@ import { execFileSync } from "node:child_process";
 
 import { createIsolatedGitEnvironment } from "./git-environment.mjs";
 import { selectedRepositoryCheckGroups } from "./repository-checks.mjs";
+import { isGoValidationRelevant } from "./run-check-changed-targets.mjs";
 
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const workspaceRoot = resolve(scriptDirectory, "../..");
@@ -39,7 +40,7 @@ export function classifyChangedFiles(
     runBoundaries: groups.has("boundaries"),
     runContracts: groups.has("contracts"),
     runGenerated: groups.has("generated"),
-    runGo: normalizedFiles.some(isGoRelevant),
+    runGo: normalizedFiles.some(isGoValidationRelevant),
     runPack: packSelection.packAll || packSelection.packageNames.length > 0,
     runTs: normalizedFiles.some(isTypeScriptRelevant),
     runTsTests: testSelection.testAll || testSelection.packageNames.length > 0,
@@ -182,15 +183,6 @@ export function isAgentSessionReplayRelevant(file) {
     /services\/tuttid\/data\/workspace\/\S*agent_session_(?:fixture|replay)\S*\.go$/u.test(
       file
     )
-  );
-}
-
-function isGoRelevant(file) {
-  return (
-    file.endsWith(".go") ||
-    /(?:^|\/)go\.(?:mod|sum)$/u.test(file) ||
-    ["go.work", "go.work.sum"].includes(file) ||
-    file.startsWith("services/tuttid/.golangci")
   );
 }
 
@@ -354,13 +346,17 @@ export function isPackagePackRelevantPath(file) {
 
 export function createPackageManifestPackRelevance({
   baseRef,
+  headRef = "HEAD",
   root = workspaceRoot
 }) {
   const cache = new Map();
 
   return (file) => {
     if (!cache.has(file)) {
-      cache.set(file, isPackageManifestPackRelevant(baseRef, file, root));
+      cache.set(
+        file,
+        isPackageManifestPackRelevant(baseRef, headRef, file, root)
+      );
     }
     return cache.get(file);
   };
@@ -368,6 +364,7 @@ export function createPackageManifestPackRelevance({
 
 export function createRootManifestTestRelevance({
   baseRef,
+  headRef = "HEAD",
   root = workspaceRoot
 }) {
   return () => {
@@ -380,17 +377,21 @@ export function createRootManifestTestRelevance({
       );
       const candidates = [
         normalizedManifestAtRef(
-          "HEAD",
+          headRef,
           "package.json",
           root,
           testRelevantRootManifest
-        ),
-        JSON.stringify(
-          testRelevantRootManifest(
-            JSON.parse(readFileSync(join(root, "package.json"), "utf8"))
-          )
         )
       ];
+      if (headRef === "HEAD") {
+        candidates.push(
+          JSON.stringify(
+            testRelevantRootManifest(
+              JSON.parse(readFileSync(join(root, "package.json"), "utf8"))
+            )
+          )
+        );
+      }
       return candidates.some((candidate) => candidate !== before);
     } catch {
       return true;
@@ -398,15 +399,17 @@ export function createRootManifestTestRelevance({
   };
 }
 
-function isPackageManifestPackRelevant(baseRef, file, root) {
+function isPackageManifestPackRelevant(baseRef, headRef, file, root) {
   try {
     const before = normalizedManifestAtRef(baseRef, file, root);
-    const candidates = [
-      normalizedManifestAtRef("HEAD", file, root),
-      JSON.stringify(
-        withoutTestScripts(JSON.parse(readFileSync(join(root, file), "utf8")))
-      )
-    ];
+    const candidates = [normalizedManifestAtRef(headRef, file, root)];
+    if (headRef === "HEAD") {
+      candidates.push(
+        JSON.stringify(
+          withoutTestScripts(JSON.parse(readFileSync(join(root, file), "utf8")))
+        )
+      );
+    }
     return candidates.some((candidate) => candidate !== before);
   } catch {
     return true;
@@ -513,9 +516,10 @@ if (isMainModule()) {
   if (!base) {
     throw new Error("--base is required");
   }
+  const head = readOption("--head") ?? "HEAD";
   const changedFiles = execFileSync(
     "git",
-    ["diff", "--name-only", `${base}...HEAD`],
+    ["diff", "--name-only", `${base}...${head}`],
     { cwd: workspaceRoot, encoding: "utf8" }
   )
     .split("\n")
@@ -524,10 +528,12 @@ if (isMainModule()) {
   const output = formatClassificationOutputs(
     classifyChangedFiles(changedFiles, {
       isPackageManifestPackRelevant: createPackageManifestPackRelevance({
-        baseRef: base
+        baseRef: base,
+        headRef: head
       }),
       isRootManifestTestRelevant: createRootManifestTestRelevance({
-        baseRef: base
+        baseRef: base,
+        headRef: head
       })
     })
   );

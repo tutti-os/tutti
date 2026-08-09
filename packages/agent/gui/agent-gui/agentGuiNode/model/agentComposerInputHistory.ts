@@ -1,5 +1,6 @@
 import type { AgentPromptContentBlock } from "../../../shared/contracts/dto";
 import type { AgentConversationVM } from "../../../shared/agentConversation/contracts/agentConversationVM";
+import type { WorkspaceAgentSessionDetailGoalControl } from "../../../shared/workspaceAgentSessionDetailViewModel";
 import type { AgentComposerDraft } from "./agentGuiNodeTypes";
 import {
   agentComposerDraftHasContent,
@@ -36,6 +37,12 @@ const inputHistoryByConversation = new WeakMap<
   AgentComposerInputHistoryEntry[]
 >();
 
+interface ProjectedHistoryEntry {
+  entry: AgentComposerInputHistoryEntry;
+  occurredAtUnixMs: number | null;
+  sequence: number;
+}
+
 export function projectAgentComposerInputHistory(
   conversation: AgentConversationVM | null
 ): AgentComposerInputHistoryEntry[] {
@@ -46,24 +53,44 @@ export function projectAgentComposerInputHistory(
   if (cached) {
     return cached;
   }
+  const projectedEntries: ProjectedHistoryEntry[] = [];
+  let sequence = 0;
+  const append = (
+    entry: AgentComposerInputHistoryEntry | null,
+    occurredAtUnixMs?: number | null
+  ): void => {
+    if (!entry) {
+      return;
+    }
+    projectedEntries.push({
+      entry,
+      occurredAtUnixMs: occurredAtUnixMs ?? null,
+      sequence: sequence++
+    });
+  };
+
   const entries: AgentComposerInputHistoryEntry[] = [];
   for (const turn of conversation.sourceDetail.turns) {
     for (const message of turn.userMessages) {
-      const entry = projectHistoryEntry(message, turn.id);
-      if (!entry) {
-        continue;
-      }
-      const previous = entries.at(-1);
-      if (
-        previous &&
-        historyEntryDuplicateKey(previous) === historyEntryDuplicateKey(entry)
-      ) {
-        // Keep the newest duplicate id. Prepending an older page then cannot
-        // invalidate a cursor that already points at the loaded copy.
-        entries[entries.length - 1] = entry;
-      } else {
-        entries.push(entry);
-      }
+      append(projectHistoryEntry(message, turn.id), message.occurredAtUnixMs);
+    }
+  }
+  for (const control of conversation.sourceDetail.goalControls ?? []) {
+    append(projectGoalControlHistoryEntry(control), control.occurredAtUnixMs);
+  }
+
+  projectedEntries.sort(compareProjectedHistoryEntries);
+  for (const { entry } of projectedEntries) {
+    const previous = entries.at(-1);
+    if (
+      previous &&
+      historyEntryDuplicateKey(previous) === historyEntryDuplicateKey(entry)
+    ) {
+      // Keep the newest duplicate id. Prepending an older page then cannot
+      // invalidate a cursor that already points at the loaded copy.
+      entries[entries.length - 1] = entry;
+    } else {
+      entries.push(entry);
     }
   }
   inputHistoryByConversation.set(conversation, entries);
@@ -226,6 +253,33 @@ function projectHistoryEntry(
     })
   );
   return entry;
+}
+
+function projectGoalControlHistoryEntry(
+  control: WorkspaceAgentSessionDetailGoalControl
+): AgentComposerInputHistoryEntry | null {
+  const draft = buildAgentComposerDraft({ prompt: control.body });
+  if (!agentComposerDraftHasContent(draft)) {
+    return null;
+  }
+  return {
+    id: `goal-control:${control.id}`,
+    draft
+  };
+}
+
+function compareProjectedHistoryEntries(
+  left: ProjectedHistoryEntry,
+  right: ProjectedHistoryEntry
+): number {
+  if (
+    left.occurredAtUnixMs !== null &&
+    right.occurredAtUnixMs !== null &&
+    left.occurredAtUnixMs !== right.occurredAtUnixMs
+  ) {
+    return left.occurredAtUnixMs - right.occurredAtUnixMs;
+  }
+  return left.sequence - right.sequence;
 }
 
 const historyDuplicateKeyByEntry = new WeakMap<

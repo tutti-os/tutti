@@ -3,7 +3,6 @@ package agentruntime
 import (
 	"context"
 	"errors"
-	"strings"
 	"testing"
 	"time"
 
@@ -79,32 +78,24 @@ func TestClaudeSDKProviderAcceptanceHoldsCompactBannerUntilIdentity(t *testing.T
 	}
 
 	var sawCompactRunning bool
-	var compactUnit *activityshared.ProviderInputUnitContext
-	var identityUnit *activityshared.ProviderInputUnitContext
 	deadline := time.After(2 * time.Second)
 	for !sawCompactRunning {
 		select {
 		case event := <-emitted:
-			if event.Type == activityshared.EventRootProviderTurnStarted &&
-				strings.TrimSpace(event.Payload.TurnID) == "turn-compact" {
-				identityUnit = event.ProviderInputUnit
-			}
 			if event.Type == activityshared.EventMessageAppended &&
 				payloadString(event.Payload.Metadata, "noticeCommand") == "compact" &&
 				payloadString(event.Payload.Metadata, "noticeCommandStatus") == "running" {
 				sawCompactRunning = true
-				compactUnit = event.ProviderInputUnit
+				if event.ProviderInputUnit != nil {
+					t.Fatalf(
+						"flushed compact still carries ProviderInputUnit %#v",
+						event.ProviderInputUnit,
+					)
+				}
 			}
 		case <-deadline:
 			t.Fatal("timed out waiting for held compact banner after acceptance")
 		}
-	}
-	if identityUnit != nil && compactUnit != nil && *identityUnit != *compactUnit {
-		t.Fatalf(
-			"flushed compact ProviderInputUnit=%#v, want acceptance unit %#v",
-			compactUnit,
-			identityUnit,
-		)
 	}
 
 	conn.pushEvent(claudeSDKSidecarEvent{
@@ -151,16 +142,9 @@ func TestClaudeSDKEventMayPrecedeProviderAcceptanceAllowsCompactNotice(t *testin
 	}
 }
 
-func TestRestampClaudeSDKHeldEventsOntoAcceptanceUnit(t *testing.T) {
+func TestStripClaudeSDKHeldEventProviderInputUnits(t *testing.T) {
 	t.Parallel()
 
-	acceptance := &activityshared.ProviderInputUnitContext{
-		ConnectionID: "connection-1",
-		ChunkSeq:     62,
-		UnitIndex:    1,
-		EventIndex:   1,
-		UnitKind:     "protocol-message",
-	}
 	early := &activityshared.ProviderInputUnitContext{
 		ConnectionID: "connection-1",
 		ChunkSeq:     53,
@@ -175,37 +159,25 @@ func TestRestampClaudeSDKHeldEventsOntoAcceptanceUnit(t *testing.T) {
 		},
 		{
 			Type: activityshared.EventTurnStarted,
+			ProviderInputUnit: &activityshared.ProviderInputUnitContext{
+				ConnectionID: "connection-1",
+				ChunkSeq:     52,
+				UnitIndex:    1,
+				EventIndex:   1,
+			},
 		},
 	}
-	restamped := restampClaudeSDKHeldEventsOntoAcceptanceUnit(held, acceptance)
-	if len(restamped) != 2 {
-		t.Fatalf("restamped=%#v", restamped)
+	stripped := stripClaudeSDKHeldEventProviderInputUnits(held)
+	if len(stripped) != 2 {
+		t.Fatalf("stripped=%#v", stripped)
 	}
-	for index, event := range restamped {
-		if event.ProviderInputUnit == nil ||
-			*event.ProviderInputUnit != *acceptance {
-			t.Fatalf(
-				"event[%d] ProviderInputUnit=%#v, want acceptance unit %#v",
-				index,
-				event.ProviderInputUnit,
-				acceptance,
-			)
+	for index, event := range stripped {
+		if event.ProviderInputUnit != nil {
+			t.Fatalf("event[%d] still has ProviderInputUnit %#v", index, event.ProviderInputUnit)
 		}
 	}
 	if held[0].ProviderInputUnit == nil || *held[0].ProviderInputUnit != *early {
-		t.Fatalf("restamp mutated the held slice: %#v", held[0].ProviderInputUnit)
-	}
-	identity := []activityshared.Event{{
-		Type: activityshared.EventRootProviderTurnStarted,
-		Payload: activityshared.EventPayload{
-			TurnID:         "turn-compact",
-			ProviderTurnID: "provider-compact",
-		},
-		ProviderInputUnit: acceptance,
-	}}
-	if got := claudeSDKAcceptanceProviderInputUnit(identity, "turn-compact"); got == nil ||
-		*got != *acceptance {
-		t.Fatalf("acceptance unit=%#v, want %#v", got, acceptance)
+		t.Fatalf("strip mutated the held slice: %#v", held[0].ProviderInputUnit)
 	}
 }
 

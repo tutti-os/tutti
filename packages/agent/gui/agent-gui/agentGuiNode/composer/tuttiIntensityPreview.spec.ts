@@ -17,11 +17,11 @@ describe("projectTuttiPreferencePreview", () => {
     });
   });
 
-  it("uses speed for the fastest suitable model and a bounded parallel target", () => {
+  it("keeps the model strategy effect-driven as speed rises", () => {
     expect(projectTuttiPreferencePreview(80, 80)).toMatchObject({
       effectTier: "powerful",
       speedTier: "powerful",
-      modelPreference: "fastestSuitable",
+      modelPreference: "mostCapable",
       verificationPreference: "thorough",
       parallelTarget: 4
     });

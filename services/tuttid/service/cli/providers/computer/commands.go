@@ -82,7 +82,7 @@ func (p Provider) newScreenshotCommand() cliservice.Command {
 	return framework.Register(framework.CommandSpec[screenshotInput]{
 		ID:          "computer.screenshot",
 		Path:        []string{"computer", "screenshot"},
-		Summary:     "Take a screenshot of a macOS window",
+		Summary:     "Take a screenshot of a desktop window",
 		Description: "Capture the selected visible window, save it as a PNG file, and return its path.",
 		Kind:        framework.KindAction,
 		Workspace:   framework.WorkspaceRequired,

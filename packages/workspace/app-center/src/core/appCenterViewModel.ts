@@ -190,6 +190,9 @@ export function createAppCenterViewModel({
         ...(runtime?.error?.message
           ? { errorMessage: runtime.error.message }
           : {}),
+        ...(runtime?.error?.failurePhase
+          ? { failurePhase: runtime.error.failurePhase }
+          : {}),
         ...(runtime?.installProgress
           ? { installProgress: runtime.installProgress }
           : {}),

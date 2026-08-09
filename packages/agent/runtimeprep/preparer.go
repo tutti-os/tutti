@@ -7,26 +7,33 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 )
 
 var ErrCwdNotDirectory = errors.New("agent runtime cwd is not a directory")
 
 type DefaultPreparer struct {
-	StateDir             string
-	CLICommand           string
-	CommandCatalog       CommandCatalog
-	Store                RuntimeStore
+	StateDir       string
+	CLICommand     string
+	CommandCatalog CommandCatalog
+	Store          RuntimeStore
+	// BrowserUseAvailable is an optional live readiness probe. A nil probe
+	// preserves configuration-only behavior for embedders without a browser service.
+	BrowserUseAvailable  func() bool
 	ComputerUseAvailable func() bool
 	Profile              DeploymentProfile
 	SkillSources         []SkillSource
 	providers            map[string]ProviderPreparer
+	cleanupMu            sync.Mutex
+	providerCleanup      map[string]func(context.Context) error
 }
 
 func NewDefaultPreparer(stateDir string) *DefaultPreparer {
 	preparer := &DefaultPreparer{
-		StateDir:  stateDir,
-		Profile:   StandardProfile(),
-		providers: make(map[string]ProviderPreparer),
+		StateDir:        stateDir,
+		Profile:         StandardProfile(),
+		providers:       make(map[string]ProviderPreparer),
+		providerCleanup: make(map[string]func(context.Context) error),
 	}
 	preparer.RegisterProvider(CodexPreparer{})
 	preparer.RegisterProvider(ClaudeCodePreparer{StateDir: stateDir})
@@ -150,10 +157,16 @@ func (p *DefaultPreparer) Prepare(ctx context.Context, input PrepareInput) (Prep
 		"env_count": len(result.Env),
 	})
 	if err := store.SaveManifest(runtimeRoot, manifest); err != nil {
+		if result.Cleanup != nil {
+			_ = result.Cleanup(ctx)
+		}
 		return PreparedRuntime{}, err
 	}
+	if result.Cleanup != nil {
+		p.rememberProviderCleanup(workspaceID, agentSessionID, result.Cleanup)
+	}
 	logRuntimePrepareTrace("runtime_prepare.manifest_saved", input, nil)
-	return PreparedRuntime(result), nil
+	return PreparedRuntime{Cwd: result.Cwd, Env: result.Env}, nil
 }
 
 func (p *DefaultPreparer) RenderSkillBundle(ctx context.Context, input PrepareInput) (SkillBundle, error) {
@@ -192,16 +205,60 @@ func (p *DefaultPreparer) RenderSkillBundle(ctx context.Context, input PrepareIn
 	return renderProviderSkillBundle(input)
 }
 
-func (p *DefaultPreparer) Cleanup(_ context.Context, input CleanupInput) error {
+func (p *DefaultPreparer) Cleanup(ctx context.Context, input CleanupInput) error {
 	workspaceID := strings.TrimSpace(input.WorkspaceID)
 	agentSessionID := strings.TrimSpace(input.AgentSessionID)
 	if workspaceID == "" || agentSessionID == "" {
 		return errors.New("agent runtime cleanup requires workspace and session")
 	}
+	if cleanup := p.providerCleanupFor(workspaceID, agentSessionID); cleanup != nil {
+		if err := cleanup(ctx); err != nil {
+			return err
+		}
+		p.forgetProviderCleanup(workspaceID, agentSessionID)
+	}
+	runtimeRoot, err := p.runtimeStore().RuntimeRoot(workspaceID, agentSessionID)
+	if err != nil {
+		return err
+	}
+	if err := recoverMutagenAuthSessions(ctx, p.StateDir, runtimeRoot); err != nil {
+		return err
+	}
+	if input.PreserveRuntimeRoot {
+		return nil
+	}
 	return p.runtimeStore().CleanupRuntime(StoreCleanupInput{
 		WorkspaceID:    workspaceID,
 		AgentSessionID: agentSessionID,
 	})
+}
+
+func providerCleanupKey(workspaceID, agentSessionID string) string {
+	return workspaceID + "\x00" + agentSessionID
+}
+
+func (p *DefaultPreparer) rememberProviderCleanup(workspaceID, agentSessionID string, cleanup func(context.Context) error) {
+	p.cleanupMu.Lock()
+	defer p.cleanupMu.Unlock()
+	if p.providerCleanup == nil {
+		p.providerCleanup = make(map[string]func(context.Context) error)
+	}
+	key := providerCleanupKey(workspaceID, agentSessionID)
+	if _, exists := p.providerCleanup[key]; !exists {
+		p.providerCleanup[key] = cleanup
+	}
+}
+
+func (p *DefaultPreparer) providerCleanupFor(workspaceID, agentSessionID string) func(context.Context) error {
+	p.cleanupMu.Lock()
+	defer p.cleanupMu.Unlock()
+	return p.providerCleanup[providerCleanupKey(workspaceID, agentSessionID)]
+}
+
+func (p *DefaultPreparer) forgetProviderCleanup(workspaceID, agentSessionID string) {
+	p.cleanupMu.Lock()
+	defer p.cleanupMu.Unlock()
+	delete(p.providerCleanup, providerCleanupKey(workspaceID, agentSessionID))
 }
 
 func ensureCwdDirectory(cwd string) error {
@@ -246,6 +303,9 @@ func (p *DefaultPreparer) runtimeStore() RuntimeStore {
 }
 
 func (p *DefaultPreparer) normalizeCapabilities(input PrepareInput) PrepareInput {
+	if input.BrowserUse && p != nil && p.BrowserUseAvailable != nil {
+		input.BrowserUse = p.BrowserUseAvailable()
+	}
 	if input.ComputerUse && p != nil && p.ComputerUseAvailable != nil {
 		input.ComputerUse = p.ComputerUseAvailable()
 	}

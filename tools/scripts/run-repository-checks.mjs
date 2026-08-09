@@ -10,6 +10,7 @@ const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const workspaceRoot = resolve(scriptDirectory, "../..");
 const group = readOption("--group");
 const base = readOption("--base");
+const head = readOption("--head") ?? "HEAD";
 
 if (!group || !base) {
   throw new Error("--group and --base are required");
@@ -17,7 +18,7 @@ if (!group || !base) {
 
 const changedFiles = execFileSync(
   "git",
-  ["diff", "--name-only", `${base}...HEAD`],
+  ["diff", "--name-only", `${base}...${head}`],
   { cwd: workspaceRoot, encoding: "utf8" }
 )
   .split("\n")

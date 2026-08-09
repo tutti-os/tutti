@@ -71,6 +71,7 @@ packages/
   browser/
   clients/
   configs/
+  connector/
   device-link/
   events/
   ui/
@@ -192,12 +193,18 @@ desktop daemons.
 
 Current packages:
 
-- `packages/connector/market`: connector catalog, installation,
-  authorization, compatibility, workspace-binding, operation, OpenAPI, and
-  renderer state contracts shared by Tutti and external hosts
+- `packages/connector/market`: TypeScript contracts, renderer state, reusable
+  UI, i18n, and local OpenAPI fragment
+- `packages/connector/host`: connector catalog, installation, authorization,
+  compatibility, operation, and recovery application core
+- `packages/connector/daemon`: reusable daemon lifecycle and workers
+- `packages/connector/store-sqlite`: canonical local persistence and outbox
+- `packages/connector/runtime`: latest-only artifact caching, no-network archive
+  import, same-machine composition, and managed-runtime installation primitives
 
-Catalog endpoints, local persistence, credentials, installation directories,
-generated daemon clients, and product integration remain in host adapters.
+Remote endpoint authentication, credentials, state-root selection, generated
+daemon clients, product command publication, and OS process integration remain
+in host adapters.
 
 ### `services/tuttid`
 

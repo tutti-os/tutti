@@ -69,6 +69,13 @@ export interface AgentActivitySessionForkLineage {
   forkedAtUnixMs: number;
 }
 
+export interface AgentActivitySessionIsolation {
+  mode: "worktree";
+  worktreePath: string;
+  branch: string;
+  baseCommit: string;
+}
+
 export interface AgentActivitySession {
   workspaceId: string;
   agentSessionId: string;
@@ -85,6 +92,7 @@ export interface AgentActivitySession {
   model?: string | null;
   noProject?: boolean | null;
   cwd: string;
+  isolation?: AgentActivitySessionIsolation | null;
   /** Backend-owned conversation-rail membership; absent for non-rail runtimes. */
   railSectionKey?: string;
   title: string;
@@ -203,13 +211,28 @@ export type AgentActivitySnapshotListener = (
 ) => void;
 
 export type AgentActivityUpdatedEvent =
+  | AgentActivityRuntimeActivityUpdatedEvent
   | AgentActivitySessionReconcileRequiredEvent
   | AgentActivitySessionDeletedEvent
+  | AgentActivitySessionRestoredEvent
   | AgentActivitySessionAuditEvent
   | AgentActivityMessageDeltaEvent
   | AgentActivityMessageUpdatedEvent
   | AgentActivityTurnUpdatedEvent
   | AgentActivityInteractionUpdatedEvent;
+
+export interface AgentActivityRuntimeActivityUpdatedEvent {
+  workspaceId: string;
+  agentSessionId: string;
+  eventType: "runtime_activity_update";
+  data: {
+    workspaceId: string;
+    agentSessionId: string;
+    eventType: "runtime_activity_update";
+    state: "idle" | "running";
+    occurredAtUnixMs: number;
+  };
+}
 
 export interface AgentActivitySessionReconcileRequiredEvent {
   workspaceId: string;
@@ -233,6 +256,18 @@ export interface AgentActivitySessionDeletedEvent {
     agentSessionId: string;
     eventType: "session_deleted";
     deletedAtUnixMs: number;
+  };
+}
+
+export interface AgentActivitySessionRestoredEvent {
+  workspaceId: string;
+  agentSessionId: string;
+  eventType: "session_restored";
+  data: {
+    workspaceId: string;
+    agentSessionId: string;
+    eventType: "session_restored";
+    restoredAtUnixMs: number;
   };
 }
 
@@ -347,6 +382,7 @@ export interface AgentActivityCreateSessionInput {
   agentSessionId?: string | null;
   agentTargetId: string;
   cwd?: string | null;
+  isolation?: AgentActivitySessionIsolation["mode"] | null;
   noProject?: boolean | null;
   capabilityRefs?: readonly AgentActivityCapabilityReference[] | null;
   initialGoalControl?: AgentActivityInitialGoalControl | null;
@@ -412,7 +448,7 @@ export type AgentActivitySendInputResult =
     };
 
 export interface AgentPromptContentBlock {
-  type: "text" | "image" | "file" | "skill" | "mention";
+  type: "text" | "image" | "file" | "skill" | "mention" | "connector";
   text?: string;
   mimeType?: "image/png" | "image/jpeg" | "image/webp" | string;
   data?: string;
@@ -420,6 +456,7 @@ export interface AgentPromptContentBlock {
   attachmentId?: string;
   name?: string;
   path?: string;
+  connectorKey?: string;
   uri?: string;
   hostPath?: string;
   uploadStatus?: string;
@@ -553,7 +590,7 @@ export interface AgentActivityTurn {
   /** Audit-only capability provenance for the turn; never current mode state. */
   capabilityRefs?: readonly AgentActivityCapabilityReference[];
   completedCommand?: AgentActivityCompletedCommand | null;
-  error?: { code?: string; message: string } | null;
+  error?: { code?: string; message: string; detail?: string } | null;
   fileChanges?: Record<string, unknown> | null;
   outcome?: AgentActivityTurnOutcome | null;
   origin: AgentActivityTurnOrigin;
@@ -622,6 +659,7 @@ export interface AgentActivitySessionGoal {
     | "budgetLimited"
     | "complete";
   reason?: string;
+  startedAtUnixMs?: number;
   iterations?: number;
   durationMs?: number;
   tokens?: number;

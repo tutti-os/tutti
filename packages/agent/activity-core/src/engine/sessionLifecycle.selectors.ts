@@ -43,6 +43,49 @@ export interface EngineSubmitAvailability {
   state: "available" | "blocked";
 }
 
+/**
+ * A failed new-session activation is only a missing session when the
+ * canonical session entity is absent. The runtime may be unavailable while
+ * the session remains a durable, selectable conversation.
+ */
+export type FailedNewActivationResolution =
+  | "not-applicable"
+  | "preserve"
+  | "rollback";
+
+export function selectFailedNewActivationResolution(
+  state: AgentSessionEngineStateBase,
+  agentSessionId: string | null | undefined,
+  options?: { selectionSource?: "activation" | "user-selection" }
+): FailedNewActivationResolution {
+  if (options?.selectionSource === "user-selection") {
+    return "not-applicable";
+  }
+  const activation = selectLatestActivationForSession(state, agentSessionId);
+  if (activation?.mode !== "new" || isPendingActivationViable(activation)) {
+    return "not-applicable";
+  }
+  return state.sessionLifecycle?.sessionsById &&
+    selectEngineSession(state, agentSessionId)
+    ? "preserve"
+    : "rollback";
+}
+
+/**
+ * Session selection may reload after a failed or canceled activation. Only an
+ * activation whose delivery is still pending/uncertain must wait for an
+ * authoritative result before starting detail hydration.
+ */
+export function selectEngineSessionCanReload(
+  state: AgentSessionEngineStateBase,
+  agentSessionId: string | null | undefined
+): boolean {
+  const activation = selectLatestActivationForSession(state, agentSessionId);
+  return (
+    activation?.status !== "requested" && activation?.status !== "uncertain"
+  );
+}
+
 export function selectEngineSessionRuntimeAvailability(
   state: AgentSessionEngineStateBase,
   agentSessionId: string | null | undefined
@@ -50,6 +93,16 @@ export function selectEngineSessionRuntimeAvailability(
   const id = agentSessionId?.trim() ?? "";
   return (
     state.sessionLifecycle.operationBySessionId[id]?.runtimeAvailability ?? null
+  );
+}
+
+export function selectEngineSessionRuntimeActivity(
+  state: AgentSessionEngineStateBase,
+  agentSessionId: string | null | undefined
+) {
+  const id = agentSessionId?.trim() ?? "";
+  return (
+    state.sessionLifecycle.operationBySessionId[id]?.runtimeActivity ?? "idle"
   );
 }
 
@@ -459,7 +512,10 @@ export function selectAllWorkspaceAgentConsumerSessions(
           latestTurn
         ),
         latestTurn,
-        pendingInteractions
+        pendingInteractions,
+        runtimeActivity:
+          state.sessionLifecycle.operationBySessionId[session.agentSessionId] ??
+          null
       }),
       latestTurn,
       pendingInteractions,
@@ -488,7 +544,8 @@ export function selectWorkspaceAgentConsumerSession(
         latestTurn
       ),
       latestTurn,
-      pendingInteractions
+      pendingInteractions,
+      runtimeActivity: state.sessionLifecycle.operationBySessionId[id] ?? null
     }),
     latestTurn,
     pendingInteractions,
@@ -513,11 +570,13 @@ function displayStatusFromCanonicalState(state: {
   initialActivationTurnPending: boolean;
   latestTurn: AgentActivityTurn | null;
   pendingInteractions: readonly AgentActivityInteraction[];
+  runtimeActivity: SessionOperationState | null;
 }): AgentActivityDisplayStatus {
   if (state.pendingInteractions.length > 0) return "waiting";
   if (state.activeTurn && state.activeTurn.phase !== "settled") {
     return state.activeTurn.phase === "waiting" ? "waiting" : "working";
   }
+  if (runtimeActivityCanOverrideCanonicalTurn(state)) return "working";
   if (!state.latestTurn) {
     return state.initialActivationTurnPending ? "working" : "idle";
   }
@@ -533,6 +592,22 @@ function displayStatusFromCanonicalState(state: {
     default:
       return "idle";
   }
+}
+
+function runtimeActivityCanOverrideCanonicalTurn(state: {
+  latestTurn: AgentActivityTurn | null;
+  runtimeActivity: SessionOperationState | null;
+}): boolean {
+  if (state.runtimeActivity?.runtimeActivity !== "running") return false;
+  if (!state.latestTurn || state.latestTurn.phase !== "settled") return true;
+  const canonicalTerminalAtUnixMs = Math.max(
+    state.latestTurn.updatedAtUnixMs,
+    state.latestTurn.settledAtUnixMs ?? 0
+  );
+  return (
+    state.runtimeActivity.runtimeActivityOccurredAtUnixMs >
+    canonicalTerminalAtUnixMs
+  );
 }
 
 function initialActivationTurnIsPending(

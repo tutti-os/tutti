@@ -25,6 +25,7 @@ import (
 	"github.com/tutti-os/tutti/packages/agent/daemon/providerregistry"
 	"github.com/tutti-os/tutti/packages/agent/daemon/providerstatus"
 	agentruntime "github.com/tutti-os/tutti/packages/agent/daemon/runtime"
+	"github.com/tutti-os/tutti/services/tuttid/biz/agentprovider"
 	externalagentregistry "github.com/tutti-os/tutti/services/tuttid/service/externalagentregistry"
 	managedruntime "github.com/tutti-os/tutti/services/tuttid/service/managedruntime"
 )
@@ -506,6 +507,40 @@ func TestServiceListReportsCodexAPIKeyAsAuthenticatedWithoutLogin(t *testing.T) 
 	}
 }
 
+func TestServiceStatusReportsOpenCodeConfigAPIKeyAsAuthenticatedWithoutLogin(t *testing.T) {
+	home := t.TempDir()
+	writeFile(t, filepath.Join(home, ".config", "opencode", "opencode.json"), `{
+		"provider": {
+			"newapi": {"options": {"apiKey": "sk-test"}}
+		}
+	}`)
+
+	service := customConfigService(home)
+	service.LookPath = func(string) (string, error) {
+		return filepath.Join(home, "opencode"), nil
+	}
+	service.IsExecutableFile = func(string) bool { return true }
+	service.RunOutcomes = NewRunOutcomeStore()
+	specs, err := DefaultRegistry().Select([]string{agentprovider.OpenCode})
+	if err != nil {
+		t.Fatalf("Select(opencode) error = %v", err)
+	}
+	status := service.statusForSpec(
+		context.Background(),
+		specs[0],
+		time.Now(),
+		statusDetectionOptions{skipAdapterProbe: true},
+	)
+	if status.Availability.Status != AvailabilityReady {
+		t.Fatalf("availability = %q, want %q", status.Availability.Status, AvailabilityReady)
+	}
+	if status.Auth.Status != AuthAuthenticated ||
+		status.Auth.AuthMethod != "apiKey" ||
+		status.Auth.AccountLabel != "API Usage Billing" {
+		t.Fatalf("auth = %#v, want API billing authentication", status.Auth)
+	}
+}
+
 func TestServiceListDoesNotUseCodexAuthMarkerAfterConfigError(t *testing.T) {
 	service := testService(func(name string) (string, error) {
 		return "/usr/local/bin/" + name, nil
@@ -819,7 +854,7 @@ func TestServiceListStandardACPHandshakeProbe(t *testing.T) {
 			provider:   "cursor",
 			binaryName: "cursor-agent",
 			script:     "#!/bin/sh\ncase \"$*\" in\n*acp*) sleep 5 ;;\nesac\nexit 0\n",
-			wantStatus: AvailabilityNotInstalled,
+			wantStatus: AvailabilityUnknown,
 			wantReason: "acp_adapter_launch_failed",
 		},
 		{
@@ -829,7 +864,7 @@ func TestServiceListStandardACPHandshakeProbe(t *testing.T) {
 			script: "#!/bin/sh\ncase \"$*\" in\n" +
 				"*acp*) echo '{\"jsonrpc\":\"2.0\",\"id\":1,\"error\":{\"code\":-32000,\"message\":\"unsupported\"}}'; exit 1 ;;\n" +
 				"esac\nexit 0\n",
-			wantStatus: AvailabilityNotInstalled,
+			wantStatus: AvailabilityUnknown,
 			wantReason: "acp_adapter_launch_failed",
 		},
 		{
@@ -844,7 +879,7 @@ func TestServiceListStandardACPHandshakeProbe(t *testing.T) {
 			provider:   "opencode",
 			binaryName: "opencode",
 			script:     "#!/bin/sh\ncase \"$*\" in\n*acp*) sleep 5 ;;\nesac\nexit 0\n",
-			wantStatus: AvailabilityNotInstalled,
+			wantStatus: AvailabilityUnknown,
 			wantReason: "acp_adapter_launch_failed",
 		},
 		{
@@ -854,7 +889,7 @@ func TestServiceListStandardACPHandshakeProbe(t *testing.T) {
 			script: "#!/bin/sh\ncase \"$*\" in\n" +
 				"*acp*) echo '{\"jsonrpc\":\"2.0\",\"id\":1,\"error\":{\"code\":-32000,\"message\":\"unsupported\"}}'; exit 1 ;;\n" +
 				"esac\nexit 0\n",
-			wantStatus: AvailabilityNotInstalled,
+			wantStatus: AvailabilityUnknown,
 			wantReason: "acp_adapter_launch_failed",
 		},
 		{
@@ -871,7 +906,7 @@ func TestServiceListStandardACPHandshakeProbe(t *testing.T) {
 			script: "#!/bin/sh\ncase \"$*\" in\n" +
 				"*acp*) echo '{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{}}'; exit 0 ;;\n" +
 				"esac\nexit 0\n",
-			wantStatus: AvailabilityNotInstalled,
+			wantStatus: AvailabilityUnknown,
 			wantReason: "acp_adapter_launch_failed",
 		},
 		{
@@ -881,7 +916,7 @@ func TestServiceListStandardACPHandshakeProbe(t *testing.T) {
 			script: "#!/bin/sh\ncase \"$*\" in\n" +
 				"*acp*) echo '{\"id\":1,\"result\":{}}'; exit 0 ;;\n" +
 				"esac\nexit 0\n",
-			wantStatus: AvailabilityNotInstalled,
+			wantStatus: AvailabilityUnknown,
 			wantReason: "acp_adapter_launch_failed",
 		},
 		{
@@ -891,7 +926,7 @@ func TestServiceListStandardACPHandshakeProbe(t *testing.T) {
 			script: "#!/bin/sh\ncase \"$*\" in\n" +
 				"*acp*) echo '{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{}}'; exit 0 ;;\n" +
 				"esac\nexit 0\n",
-			wantStatus: AvailabilityNotInstalled,
+			wantStatus: AvailabilityUnknown,
 			wantReason: "acp_adapter_launch_failed",
 		},
 		{
@@ -901,7 +936,7 @@ func TestServiceListStandardACPHandshakeProbe(t *testing.T) {
 			script: "#!/bin/sh\ncase \"$*\" in\n" +
 				"*acp*) echo '{\"id\":1,\"result\":{}}'; exit 0 ;;\n" +
 				"esac\nexit 0\n",
-			wantStatus: AvailabilityNotInstalled,
+			wantStatus: AvailabilityUnknown,
 			wantReason: "acp_adapter_launch_failed",
 		},
 	} {
@@ -1453,12 +1488,15 @@ func TestServiceProbeTreatsTemporarilyUnsupportedProviderAsUnsupported(t *testin
 }
 
 func TestServiceRunActionInstallsThenProbesProvider(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("shell-script fixture and POSIX adapter probe are not a native Windows test")
+	}
 	home := t.TempDir()
 	binDir := filepath.Join(home, ".nvm", "versions", "node", "v24.12.0", "bin")
 	if err := os.MkdirAll(binDir, 0o755); err != nil {
 		t.Fatalf("mkdir bin dir: %v", err)
 	}
-	adapterArchive, adapterSHA256 := releaseBinaryArchive(t, "codex-acp", "#!/bin/sh\nsleep 5\n")
+	adapterArchive, adapterSHA256 := releaseBinaryArchive(t, "codex-acp", "#!/bin/sh\nread -r line\nid=$(printf '%s' \"$line\" | sed -n 's/.*\"id\":\\([0-9]*\\).*/\\1/p')\nprintf '{\"jsonrpc\":\"2.0\",\"id\":%s,\"result\":{}}\\n' \"$id\"\n")
 	installerServer := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		switch request.URL.Path {
 		case "/install.sh":
@@ -1717,7 +1755,7 @@ func TestServiceRunActionReportsActiveActionForClaudeInstall(t *testing.T) {
 	}
 	runtimeRoot := fakeManagedRuntimeRoot(t)
 	service := probeTestService(home)
-	service.ClaudeCodeStateDir = filepath.Join(home, ".tutti")
+	service.ClaudeCodeStateDir = t.TempDir()
 	service.FileExists = fileExistsForTest
 	service.Environ = func() []string {
 		return []string{"PATH=" + binDir, claudeSDKSidecarEntryPathEnv + "=" + entry}

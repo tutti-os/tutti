@@ -426,6 +426,26 @@ MVP 优先共享 conversation projection、稳定 row identity、相邻消息合
 
 所有移动端文案仍进入 i18n。不得在 Native 组件中硬编码用户可见文案。
 
+### 11.4 会话详情展示节奏
+
+Native Mobile 会话详情保持正常时间顺序，不在展示层重组 Turn 或推断新的
+Interaction 状态。页面 Header 使用两层信息展示会话标题与现有 workspace/device
+上下文；Transcript 在宽屏上限制阅读宽度，用户消息使用紧凑气泡，Assistant 正文保持
+平面排版，Reasoning、Tool、Processing 和文件摘要使用低权重的渐进披露样式。
+会话首次进入时在最终布局帧跟随最新消息；用户已离开底部并触摸历史内容时，应先退出
+follow-end，再处理 Reasoning、Tool 或文件摘要的展开，避免内容高度变化把阅读位置强制跳回
+末尾。离开底部后保留明确的“回到底部”动作。
+
+Pending Interaction 是 Composer 前的 normal-flow sibling，并且仍是当前 exact
+Interaction 的唯一 actionable 挂载点。多个 pending 项在有限高度的独立滚动区中保持
+canonical 顺序和 exact identity；页面不把它复制为第二张 transcript 操作卡，也不使用
+absolute overlay，也不参与 Transcript 的滚动锚点或 follow-end 几何计算。Composer 使用单一 token-backed surface
+组织草稿、现有设置入口和 Send/Stop action，继续服从原有 Engine projection、草稿、
+readiness 和 overlay activation fence，不在 Native presentation 中重解释业务状态。
+窄屏上的 Composer 设置入口允许水平滚动，并使用跨平台边缘方向提示表达仍有更多设置
+（Android 同时保留原生渐隐）；键盘弹起时
+Composer 整体上移，Transcript 继续保留可阅读区域。
+
 ## 12. Composer
 
 MVP 支持：
@@ -703,16 +723,16 @@ P2P 成功率不是单独的发布门槛。发布目标是 direct 优先且 Rela
 
 ## 18. 风险与缓解
 
-| 风险                                                  | 影响                         | 缓解                                                                      |
-| ----------------------------------------------------- | ---------------------------- | ------------------------------------------------------------------------- |
-| gomobile、Pion ICE 与 quic-go 在 Android 真机行为不同 | 核心链路不可用或不稳定       | M0 先做 vertical slice；在 UI 投入前完成跨网络真机测试                    |
-| Android 网络/VPN 路由与 macOS 物理接口策略不同        | candidate 不可达或错误选路   | Android 初期使用系统路由，保留分类诊断；VPN/TUN 单独验收                  |
-| 直接导入 AgentGUI 带入 DOM/Monaco                     | Metro 构建失败或 bundle 膨胀 | 平台无关 subpath 建立严格 import boundary 和检查                          |
-| Relay 当前 channel 只覆盖既有 query lane              | 写操作被错误复用或授权过宽   | 增加明确 paired-device Agent channel，复用身份校验但不复用业务含义        |
-| App 与 Desktop 快速迭代产生协议漂移                   | 无法连接                     | 单一 `protocolEpoch` fail-fast，并协调开发期发布，不维护兼容分支          |
-| Desktop/Mobile 并发导致 ambiguous delivery            | 重复消息或重复响应           | 稳定 submit/request identity；超时后先读权威状态再重试                    |
-| UI 跨平台统一范围过大                                 | 阻塞 MVP                     | 首批共享 projection 与行为；Native renderer 独立；验证后再提炼 token/组件 |
-| 控制面意外记录敏感数据                                | 隐私泄露                     | schema、日志和指标只允许身份/分类信息；Agent payload 保持端到端数据面     |
+| 风险                                                  | 影响                         | 缓解                                                                                                                                     |
+| ----------------------------------------------------- | ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| gomobile、Pion ICE 与 quic-go 在 Android 真机行为不同 | 核心链路不可用或不稳定       | M0 先做 vertical slice；在 UI 投入前完成跨网络真机测试                                                                                   |
+| Android 网络/VPN 路由与 macOS 物理接口策略不同        | candidate 不可达或错误选路   | Android 默认使用 `system` 的共享 LAN-first host priority，并保留 server-reflexive 公网 fallback；Android Network 绑定与 VPN/TUN 单独验收 |
+| 直接导入 AgentGUI 带入 DOM/Monaco                     | Metro 构建失败或 bundle 膨胀 | 平台无关 subpath 建立严格 import boundary 和检查                                                                                         |
+| Relay 当前 channel 只覆盖既有 query lane              | 写操作被错误复用或授权过宽   | 增加明确 paired-device Agent channel，复用身份校验但不复用业务含义                                                                       |
+| App 与 Desktop 快速迭代产生协议漂移                   | 无法连接                     | 单一 `protocolEpoch` fail-fast，并协调开发期发布，不维护兼容分支                                                                         |
+| Desktop/Mobile 并发导致 ambiguous delivery            | 重复消息或重复响应           | 稳定 submit/request identity；超时后先读权威状态再重试                                                                                   |
+| UI 跨平台统一范围过大                                 | 阻塞 MVP                     | 首批共享 projection 与行为；Native renderer 独立；验证后再提炼 token/组件                                                                |
+| 控制面意外记录敏感数据                                | 隐私泄露                     | schema、日志和指标只允许身份/分类信息；Agent payload 保持端到端数据面                                                                    |
 
 ## 19. 后续演进
 

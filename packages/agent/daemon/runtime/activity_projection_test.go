@@ -1000,6 +1000,9 @@ func TestProjectActivityEventsToStreamEventsAddsVisibleTurnFailureMessage(t *tes
 	if item.Kind != "text" || item.Status != messageStreamStateFailed {
 		t.Fatalf("visible failure item = %#v", item)
 	}
+	if item.Semantics == nil || !item.Semantics.UserVisibleAssistantResponse {
+		t.Fatalf("visible failure semantics = %#v, want explicit user-visible assistant response", item.Semantics)
+	}
 	if item.Payload["kind"] != visibleErrorKind ||
 		item.Payload["phase"] != "turn" ||
 		item.Payload["code"] != "quota_or_rate_limit" ||

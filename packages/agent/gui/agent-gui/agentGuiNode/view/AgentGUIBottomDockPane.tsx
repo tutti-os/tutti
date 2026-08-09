@@ -15,6 +15,7 @@ import {
   TuttiWorkflowDock,
   type TuttiWorkflowDockLabels
 } from "../TuttiWorkflowDock";
+import { resolveAgentGUIInteractionDisabledReason } from "./agentGUIDetailModelHelpers";
 import type {
   TuttiModePlanPanelLabels,
   TuttiPlanIssuePanelLabels
@@ -47,6 +48,8 @@ interface AgentGUIBottomDockPaneProps {
     | AgentGUINodeViewModel["interaction"]["pendingApproval"]
     | AgentGUINodeViewModel["interaction"]["pendingInteractivePrompt"];
   composerProps: AgentComposerProps;
+  approvalDisabledReason: string | null;
+  interactivePromptDisabledReason: string | null;
   inlineNoticeChrome: AgentGUISessionChrome | null;
   isRespondingApproval: boolean;
   sessionChrome: AgentGUISessionChrome;
@@ -76,6 +79,8 @@ export const AgentGUIBottomDockPane = memo(function AgentGUIBottomDockPane({
   bottomDockLiftedPrompt,
   bottomDockReplacementPrompt,
   composerProps,
+  approvalDisabledReason,
+  interactivePromptDisabledReason,
   inlineNoticeChrome,
   isRespondingApproval,
   sessionChrome,
@@ -98,6 +103,18 @@ export const AgentGUIBottomDockPane = memo(function AgentGUIBottomDockPane({
 }: AgentGUIBottomDockPaneProps): React.JSX.Element {
   "use memo";
 
+  const liftedPromptDisabledReason = resolveAgentGUIInteractionDisabledReason({
+    promptKind: bottomDockLiftedPrompt?.kind,
+    approvalReason: approvalDisabledReason,
+    interactivePromptReason: interactivePromptDisabledReason
+  });
+  const replacementPromptDisabledReason =
+    resolveAgentGUIInteractionDisabledReason({
+      promptKind: bottomDockReplacementPrompt?.kind,
+      approvalReason: approvalDisabledReason,
+      interactivePromptReason: interactivePromptDisabledReason
+    });
+
   // Active thread goal rides the same runtimeContext channel as account /
   // rateLimits, so we read it straight off the session chrome's raw state.
   const goal = objectRecord(sessionChrome.rawState?.goal);
@@ -105,6 +122,7 @@ export const AgentGUIBottomDockPane = memo(function AgentGUIBottomDockPane({
   const goalStatus = goal ? stringValue(goal.status) : "";
   const goalTokenBudget = goal ? numberValue(goal.tokenBudget) : null;
   const goalTokensUsed = goal ? numberValue(goal.tokens) : null;
+  const goalStartedAtUnixMs = goal ? numberValue(goal.startedAtUnixMs) : null;
   const goalDurationMs = goal ? numberValue(goal.durationMs) : null;
   const goalIsOptimistic = sessionChrome.rawState?.goalIsOptimistic === true;
   const goalControlPending =
@@ -147,6 +165,8 @@ export const AgentGUIBottomDockPane = memo(function AgentGUIBottomDockPane({
               edgeGlow={true}
               keyboardShortcuts={keyboardShortcutsEnabled}
               isSubmitting={isRespondingApproval}
+              isInteractionDisabled={Boolean(liftedPromptDisabledReason)}
+              interactionDisabledReason={liftedPromptDisabledReason}
               onSubmit={onSubmitBottomDockInteractivePrompt}
               labels={promptLabels}
             />
@@ -158,6 +178,7 @@ export const AgentGUIBottomDockPane = memo(function AgentGUIBottomDockPane({
           {inlineNoticeChrome ? (
             <AgentSessionChrome
               chrome={inlineNoticeChrome}
+              approvalDisabledReason={approvalDisabledReason}
               isRespondingApproval={isRespondingApproval}
               onSubmitApprovalOption={onSubmitApprovalOption}
               onAuthLogin={onAuthLogin}
@@ -168,6 +189,7 @@ export const AgentGUIBottomDockPane = memo(function AgentGUIBottomDockPane({
           ) : null}
           <AgentSessionChrome
             chrome={sessionChrome}
+            approvalDisabledReason={approvalDisabledReason}
             isRespondingApproval={isRespondingApproval}
             onSubmitApprovalOption={onSubmitApprovalOption}
             onAuthLogin={onAuthLogin}
@@ -181,6 +203,7 @@ export const AgentGUIBottomDockPane = memo(function AgentGUIBottomDockPane({
               status={goalStatus}
               tokenBudget={goalTokenBudget ?? undefined}
               tokensUsed={goalTokensUsed ?? undefined}
+              startedAtUnixMs={goalStartedAtUnixMs ?? undefined}
               durationMs={goalDurationMs ?? undefined}
               optimistic={goalIsOptimistic}
               labels={goalBannerLabels}
@@ -207,7 +230,6 @@ export const AgentGUIBottomDockPane = memo(function AgentGUIBottomDockPane({
                 title: composerProps.labels.tuttiBudgetTitle,
                 effectLabel: composerProps.labels.tuttiBudgetEffectLabel,
                 speedLabel: composerProps.labels.tuttiBudgetSpeedLabel,
-                previewTitle: composerProps.labels.tuttiBudgetPreviewTitle,
                 previewHint: composerProps.labels.tuttiBudgetPreviewHint,
                 previewCost: composerProps.labels.tuttiBudgetPreviewCost,
                 previewBalance: composerProps.labels.tuttiBudgetPreviewBalance,
@@ -221,9 +243,6 @@ export const AgentGUIBottomDockPane = memo(function AgentGUIBottomDockPane({
                   composerProps.labels.tuttiBudgetModelPreferenceBalance,
                 modelPreferencePowerful:
                   composerProps.labels.tuttiBudgetModelPreferencePowerful,
-                modelPreferenceFastestSuitable:
-                  composerProps.labels
-                    .tuttiBudgetModelPreferenceFastestSuitable,
                 parallelismLabel:
                   composerProps.labels.tuttiBudgetParallelismLabel,
                 parallelismValue:
@@ -257,6 +276,8 @@ export const AgentGUIBottomDockPane = memo(function AgentGUIBottomDockPane({
               edgeGlow={true}
               keyboardShortcuts={keyboardShortcutsEnabled}
               isSubmitting={isRespondingApproval}
+              isInteractionDisabled={Boolean(replacementPromptDisabledReason)}
+              interactionDisabledReason={replacementPromptDisabledReason}
               onSubmit={onSubmitBottomDockInteractivePrompt}
               labels={promptLabels}
             />

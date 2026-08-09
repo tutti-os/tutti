@@ -14,7 +14,12 @@ use ./packages/device-link
 
 use ./packages/desktop/update-admission
 
-use ./packages/connector/market
+use (
+	./packages/connector/daemon
+	./packages/connector/host
+	./packages/connector/runtime
+	./packages/connector/store-sqlite
+)
 
 use ./apps/cli
 

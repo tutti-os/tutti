@@ -150,6 +150,15 @@ func (l issueRunAgentLauncher) Launch(ctx context.Context, launch workspaceservi
 	title := launch.Title
 	reasoningIntensity := launch.ReasoningIntensity
 	permissionModeID := optionalString(launch.PermissionModeID)
+	initialContent := []agentservice.PromptContentBlock{{Type: "text", Text: launch.Prompt}}
+	for _, attachment := range launch.Attachments {
+		initialContent = append(initialContent, agentservice.PromptContentBlock{
+			Type:     "image",
+			MimeType: attachment.MimeType,
+			Name:     attachment.Name,
+			Path:     attachment.Path,
+		})
+	}
 	result, err := l.Sessions.CreateWithResult(ctx, launch.WorkspaceID, agentservice.CreateSessionInput{
 		AgentSessionID:       launch.AgentSessionID,
 		AgentTargetID:        launch.AgentTargetID,
@@ -157,13 +166,13 @@ func (l issueRunAgentLauncher) Launch(ctx context.Context, launch workspaceservi
 		ReasoningEffort:      optionalString(launch.ReasoningEffort),
 		PermissionModeID:     permissionModeID,
 		StrictPermissionMode: permissionModeID != nil,
-		InitialContent:       []agentservice.PromptContentBlock{{Type: "text", Text: launch.Prompt}},
+		InitialContent:       initialContent,
 		ClientSubmitID:       clientSubmitID,
 		Title:                &title,
 		Cwd:                  optionalString(launch.ExecutionDirectory),
 		Model:                optionalString(launch.Model),
 		ModelPlanID:          optionalString(launch.ModelPlanID),
-		Visible:              boolPointer(true),
+		Visible:              boolPointer(!launch.HideSession),
 		RailPlacement:        agentRailPlacementFromIssueRun(launch.RailPlacement),
 	})
 	if err == nil ||

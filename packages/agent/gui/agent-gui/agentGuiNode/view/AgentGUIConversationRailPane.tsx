@@ -1,17 +1,13 @@
 import { Fragment, memo, useEffect, useMemo, useRef, useState } from "react";
-import { Button as SystemButton } from "@tutti-os/ui-system";
 import { ScrollArea } from "@tutti-os/ui-system/components";
-import { CreateChatIcon } from "@tutti-os/ui-system/icons";
-import { Button } from "../../../app/renderer/components/ui/button";
 import type { UiLanguage } from "../../../contexts/settings/domain/agentSettings";
 import type { WorkspaceLinkAction } from "../../../actions/workspaceLinkActions";
 import type { WorkspaceUserProjectI18nRuntime } from "@tutti-os/workspace-user-project/i18n";
-import { TaskSearchField } from "../../RoomIssueNode/TaskSearchField";
-import { AgentConversationListSkeleton } from "../AgentConversationListSkeleton";
+import { useOptionalAgentHostApi } from "../../../agentActivityHost";
 import type { AgentGUINodeViewModel } from "../model/agentGuiNodeTypes";
 import { matchesAgentGUIConversationSummaryFilter } from "../model/agentGuiConversationFilter";
-import type { AgentGUINodeViewProps } from "../AgentGUINodeView";
 import type { ConversationSection } from "../agentGuiNodeViewConversation";
+import { showAgentGUIControllerErrorToast } from "../controller/agentGuiController.reporting";
 import {
   isConversationRailInitialLoadPending,
   projectConversationRailMemberships,
@@ -31,36 +27,33 @@ import { agentGUIConversationRailViewScopeKey } from "../model/agentGuiConversat
 import type { useAgentGUIConversationRailQuery } from "../controller/useAgentGUIConversationRailQuery";
 import { useAgentGUIProjectDrag } from "../controller/useAgentGUIProjectDrag";
 import { AgentGUIConversationRailSection } from "./AgentGUIConversationRailSection";
+import { AgentGUIConversationActivityView } from "./AgentGUIConversationActivityView";
+import { AgentGUIConversationRailToolbar } from "./AgentGUIConversationRailToolbar";
+import { AgentGUIConversationRailContentState } from "./AgentGUIConversationRailContentState";
 import { AgentGUIConversationRailSectionPresentationProvider } from "./agentGUIConversationRailSectionPresentationContext";
 import { AgentGUIProjectActionConfirmationDialog } from "./AgentGUIProjectActionConfirmationDialog";
 import { AgentGUIProjectRailHeader } from "./AgentGUIConversationRailItem";
 import {
   agentGuiPerfNowMs,
   conversationPlainTitle,
-  roundAgentGuiPerfMs,
-  useStableEventCallback
+  roundAgentGuiPerfMs
 } from "./agentGUIViewUtils";
 import type { AgentGUIConversationRailLabels } from "./agentGUIConversationRailLabels";
 import styles from "../AgentGUINode.styles";
 import { useAgentGUIConversationRailViewState } from "./useAgentGUIConversationRailViewState";
 import { useAgentGUIProjectMenuState } from "./useAgentGUIProjectMenuState";
-
-function useDelayedBoolean(value: boolean, delayMs: number): boolean {
-  const [delayedValue, setDelayedValue] = useState(false);
-  useEffect(() => {
-    if (!value) {
-      setDelayedValue(false);
-      return;
-    }
-    // timing: caller-provided debounce before reflecting the value as true
-    const timer = window.setTimeout(() => setDelayedValue(true), delayMs);
-    return () => window.clearTimeout(timer);
-  }, [delayMs, value]);
-  return delayedValue;
-}
-
+import { useAgentGUIConversationActivityView } from "../controller/useAgentGUIConversationActivityView";
+import { useDelayedBoolean } from "../controller/useDelayedBoolean";
+import type {
+  AgentGUIConversationFilterTargetSelection,
+  AgentGUIProjectActionDialog
+} from "./agentGUIConversationRailTypes";
+import { useAgentGUIConversationRailBatchDeletion } from "./useAgentGUIConversationRailBatchDeletion";
+export type { AgentGUIProjectActionDialog } from "./agentGUIConversationRailTypes";
 export interface AgentGUIConversationRailControllerProps {
+  activityContextKey?: string;
   conversations: AgentGUINodeViewModel["rail"]["conversations"];
+  currentUserId?: string | null;
   nodeId?: string | null;
   footer?: React.ReactNode;
   workspaceId: string;
@@ -89,7 +82,7 @@ export interface AgentGUIConversationRailControllerProps {
   onUpdateConversationFilter: (
     filter: AgentGUINodeViewModel["rail"]["conversationFilter"]
   ) => void;
-  onSelectConversationFilterTarget: AgentGUINodeViewProps["actions"]["selectConversationFilterTarget"];
+  onSelectConversationFilterTarget: AgentGUIConversationFilterTargetSelection;
   onCreateConversation: (options?: {
     projectPath?: string | null;
     source?: string;
@@ -125,25 +118,6 @@ export type AgentGUIConversationRailPaneProps =
     onConversationQueryChange: (query: string) => void;
     railQuery: ReturnType<typeof useAgentGUIConversationRailQuery>;
   };
-
-export type AgentGUIProjectActionDialog =
-  | {
-      kind: "batch-delete";
-      conversationCount: number;
-      label: string;
-      sessionIds: string[];
-    }
-  | {
-      kind: "batch-delete-conversations";
-      conversationCount: number;
-      label: string;
-      sessionIds: string[];
-    }
-  | {
-      kind: "remove";
-      label: string;
-      path: string;
-    };
 
 type AgentGUIConversationRailDataProps = Pick<
   AgentGUIConversationRailControllerProps,
@@ -196,18 +170,21 @@ export const AgentGUIConversationRailPane = memo(
     onConversationQueryChange
   }: AgentGUIConversationRailPaneProps): React.JSX.Element {
     "use memo";
+    const agentHostApi = useOptionalAgentHostApi();
     const [pendingProjectAction, setPendingProjectAction] =
       useState<AgentGUIProjectActionDialog | null>(null);
     const [isRequestingBatchDeletion, setIsRequestingBatchDeletion] =
       useState(false);
     const { railSearch } = railQuery;
     const railElementRef = useRef<HTMLElement | null>(null);
+    const railFailureToastShownRef = useRef(false);
     const railActiveConversationRef = useRef<
       AgentGUINodeViewModel["rail"]["conversations"]
     >([]);
     const groupedConversationsRef = useRef<ConversationSection[] | null>(null);
     const {
       batchDeletionAvailable,
+      deletedSessionIds,
       loadMoreSectionConversations,
       isInteractionLocked,
       runtimeSectionsEnabled,
@@ -224,7 +201,6 @@ export const AgentGUIConversationRailPane = memo(
         isUserProjectMutationPending
       );
     const projectActionLocked = isProjectActionLocked();
-
     const railConversationEntitiesById = new Map(
       runtimeRailConversations.map((conversation) => [
         conversation.id,
@@ -236,6 +212,16 @@ export const AgentGUIConversationRailPane = memo(
     }
     const railConversationEntities = [...railConversationEntitiesById.values()];
     const hasConversationQuery = conversationQuery.trim().length > 0;
+    const railViewScopeKey = agentGUIConversationRailViewScopeKey({
+      conversationFilter,
+      workspaceId
+    });
+    const activityView = useAgentGUIConversationActivityView({
+      activityController: railQuery.activityController,
+      conversations: railQuery.activityConversations,
+      deletedSessionIds,
+      hasConversationQuery
+    });
     const backendSearchActive = hasConversationQuery && railSearch.enabled;
     const railInteractionsLocked = isInteractionLocked();
     const projectDragBaseLocked =
@@ -407,6 +393,11 @@ export const AgentGUIConversationRailPane = memo(
       userProjects
     ]);
     const groupedConversations = groupedConversationResult.groups;
+    const hasRailContent = groupedConversations.some(
+      (section) =>
+        section.items.length > 0 ||
+        (section.kind === "project" && section.project !== null)
+    );
     const appendProjectRailHeader =
       groupedConversations.length > 0 &&
       !groupedConversations.some(
@@ -417,10 +408,6 @@ export const AgentGUIConversationRailPane = memo(
             isConversationRailProjectPinned(section.project)
           )
       );
-    const railViewScopeKey = agentGUIConversationRailViewScopeKey({
-      conversationFilter,
-      workspaceId
-    });
     const groupedConversationIdentityKey = useMemo(
       () =>
         `${groupedConversations
@@ -435,38 +422,17 @@ export const AgentGUIConversationRailPane = memo(
       conversationFilter.kind === "agentTarget"
         ? conversationFilter.agentTargetId.trim()
         : "";
-    const requestSectionBatchDeletion = useStableEventCallback(
-      (section: ConversationSection) => {
-        if (
-          !batchDeletionAvailable ||
-          isInteractionLocked() ||
-          isDeletingProjectConversations ||
-          isRequestingBatchDeletion
-        ) {
-          return;
-        }
-        setIsRequestingBatchDeletion(true);
-        void onConfirmDeleteProjectConversations(
-          section.id,
-          sectionAgentTargetId || undefined
-        )
-          .then((sessionIds) => {
-            if (isInteractionLocked() || sessionIds.length === 0) {
-              return;
-            }
-            setPendingProjectAction({
-              kind:
-                section.kind === "project"
-                  ? "batch-delete"
-                  : "batch-delete-conversations",
-              conversationCount: sessionIds.length,
-              label: section.label,
-              sessionIds: [...sessionIds]
-            });
-          })
-          .finally(() => setIsRequestingBatchDeletion(false));
-      }
-    );
+    const requestSectionBatchDeletion =
+      useAgentGUIConversationRailBatchDeletion({
+        batchDeletionAvailable,
+        isDeletingProjectConversations,
+        isInteractionLocked,
+        isRequestingBatchDeletion,
+        onConfirmDeleteProjectConversations,
+        sectionAgentTargetId,
+        setIsRequestingBatchDeletion,
+        setPendingProjectAction
+      });
     const isRuntimeRailLoading = isConversationRailInitialLoadPending({
       pending: runtimeRailSectionsPending,
       runtimeSectionsEnabled,
@@ -486,6 +452,17 @@ export const AgentGUIConversationRailPane = memo(
       backendSearchActive &&
       railSearch.failed &&
       railSearch.sessionIds.length === 0;
+    const activityProjection = activityView.presentationActive
+      ? activityView.projection
+      : null;
+    const activityViewVisible = activityProjection !== null;
+    const conversationRailError =
+      runtimeSectionsEnabled &&
+      railQuery.runtimeRailFailed &&
+      runtimeRailScopeResolved &&
+      !backendSearchActive &&
+      !activityViewVisible;
+    const hostToast = agentHostApi?.toast;
     const railViewState = useAgentGUIConversationRailViewState({
       activeConversationId,
       contentReady:
@@ -515,8 +492,23 @@ export const AgentGUIConversationRailPane = memo(
     });
     const projectDragLocked = projectDragBaseLocked || isProjectMovePending;
     useEffect(() => {
+      if (!conversationRailError || !hasRailContent) {
+        railFailureToastShownRef.current = false;
+      } else if (!railFailureToastShownRef.current) {
+        railFailureToastShownRef.current = true;
+        showAgentGUIControllerErrorToast(
+          hostToast,
+          labels.conversationsLoadFailed
+        );
+      }
       return installProjectDragGlobalListeners();
-    }, [installProjectDragGlobalListeners]);
+    }, [
+      conversationRailError,
+      hasRailContent,
+      hostToast,
+      installProjectDragGlobalListeners,
+      labels.conversationsLoadFailed
+    ]);
 
     return (
       <aside
@@ -524,257 +516,269 @@ export const AgentGUIConversationRailPane = memo(
         className={styles.rail}
         aria-hidden={isCollapsed ? "true" : undefined}
       >
-        <div className={styles.railToolbar}>
-          <TaskSearchField
-            value={conversationQuery}
-            placeholder={labels.searchPlaceholder}
-            onChange={onConversationQueryChange}
-          />
-          <Button
-            type="button"
-            variant="secondary"
-            size="dialog"
-            className={styles.newConversationIconButton}
-            data-testid="agent-gui-new-conversation"
-            title={labels.newConversation}
-            disabled={createConversationDisabled}
-            onClick={() => onCreateConversation()}
-          >
-            <CreateChatIcon aria-hidden="true" />
-            <span>{labels.newConversation}</span>
-          </Button>
-        </div>
+        <AgentGUIConversationRailToolbar
+          activityView={activityView}
+          conversationQuery={conversationQuery}
+          createConversationDisabled={createConversationDisabled}
+          labels={labels}
+          onConversationQueryChange={onConversationQueryChange}
+          onCreateConversation={() => onCreateConversation()}
+        />
         <ScrollArea
           scrollbarMode="native"
           className="min-h-0 flex-1 [&_[data-orientation=vertical][data-slot=scroll-area-scrollbar]]:opacity-100"
           viewportRef={railViewState.conversationListRef}
           viewportClassName={styles.conversationList}
+          viewportContentStyle={{
+            display: "flex",
+            flexDirection: "column",
+            minHeight: "100%"
+          }}
           viewportProps={{
             onDragOver: keepValidProjectDropTarget,
             onDrop: dropProject
           }}
         >
-          {shouldShowConversationSkeleton ? (
-            <AgentConversationListSkeleton
-              label={labels.loadingConversations}
-            />
-          ) : shouldShowConversationSearchError ? (
-            <div className={styles.emptyState}>
-              <span>{labels.searchFailed}</span>
-              <SystemButton
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={railSearch.retry}
-              >
-                {labels.retrySearch}
-              </SystemButton>
-            </div>
-          ) : shouldShowConversationEmptyState ? (
-            <div className={styles.emptyState}>
-              <span>
-                {conversationQuery.trim()
-                  ? labels.searchNoConversations
-                  : conversations.length === 0
-                    ? labels.noConversations
-                    : labels.conversationUnavailable}
-              </span>
-            </div>
-          ) : (
-            <fieldset className="contents" disabled={railInteractionsLocked}>
-              {groupedConversations.map((section, sectionIndex) => {
-                const projectPath =
-                  section.kind === "project"
-                    ? (section.project?.path ?? "")
-                    : "";
-                const projectLabel =
-                  section.kind === "project" ? section.label : "";
-                const isProjectSection = section.kind === "project";
-                const {
-                  showPinnedHeader: showPinnedProjectHeader,
-                  showProjectsHeader: showProjectRailHeader
-                } = conversationRailSectionHeaderVisibility(
-                  groupedConversations,
-                  sectionIndex
-                );
-                const isSectionCollapsed =
-                  isProjectSection &&
-                  railViewState.collapsedSectionIds.has(section.id);
-                const sectionPageState = sectionPageStates.get(section.id);
-                const searchSectionHasMore =
-                  backendSearchActive &&
-                  sectionIndex === groupedConversations.length - 1 &&
-                  railSearch.hasMore;
-                const activeOverlayConversation =
-                  !backendSearchActive &&
-                  railActiveOverlay?.sectionId === section.id &&
-                  (!conversationQuery.trim() ||
-                    filteredConversations.some(
-                      (conversation) =>
-                        conversation.id === railActiveOverlay.conversation.id
-                    ))
-                    ? railActiveOverlay.conversation
-                    : null;
-                const activeOverlayIsCanonical = Boolean(
-                  activeOverlayConversation &&
-                  section.items.some(
-                    (item) =>
-                      item.projectionSource !== "pending_activation" &&
-                      item.id === activeOverlayConversation.id
-                  )
-                );
-                const activeOverlayCountsTowardTotal = Boolean(
-                  activeOverlayConversation &&
-                  activeOverlayConversation.projectionSource !==
-                    "pending_activation" &&
-                  matchesAgentGUIConversationSummaryFilter(
-                    activeOverlayConversation,
-                    conversationFilter
-                  )
-                );
-                const sectionTotalCount = backendSearchActive
-                  ? section.items.length + (searchSectionHasMore ? 1 : 0)
-                  : (sectionPageState?.totalCount ??
-                    section.items.filter(
-                      (item) => item.projectionSource !== "pending_activation"
-                    ).length +
-                      (activeOverlayCountsTowardTotal &&
-                      !activeOverlayIsCanonical
-                        ? 1
-                        : 0));
-                const sectionHasMore =
-                  searchSectionHasMore ||
-                  (!conversationQuery.trim() &&
-                    sectionPageState?.hasMore === true);
-                const batchDeletionDisabled =
-                  !batchDeletionAvailable ||
-                  hasConversationQuery ||
-                  (section.items.length === 0 && !sectionHasMore) ||
-                  isDeletingProjectConversations ||
-                  isRequestingBatchDeletion;
-                return (
-                  <Fragment key={section.id}>
-                    {showPinnedProjectHeader ? (
-                      <div className={styles.pinnedProjectRailHeader}>
-                        {labels.sectionPinned}
-                      </div>
-                    ) : null}
-                    {showProjectRailHeader ? (
-                      <AgentGUIProjectRailHeader
-                        disabled={
-                          railInteractionsLocked || isUserProjectMutationPending
-                        }
-                        labels={labels}
-                        selectProjectDirectory={selectProjectDirectory}
-                        workspaceUserProjectI18n={workspaceUserProjectI18n}
-                      />
-                    ) : null}
-                    <AgentGUIConversationRailSectionPresentationProvider
-                      batchDeletionDisabled={batchDeletionDisabled}
-                      projectActionLocked={projectActionLocked}
-                      projectDragDisabled={projectDragLocked}
-                    >
-                      <AgentGUIConversationRailSection
-                        activeConversation={activeOverlayConversation}
-                        activeConversationCountsTowardTotal={
-                          activeOverlayCountsTowardTotal
-                        }
-                        activeConversationId={conversationRailSectionActiveConversationId(
-                          {
-                            activeConversation: activeOverlayConversation,
-                            activeConversationId,
-                            section
+          <AgentGUIConversationRailContentState
+            conversationQuery={conversationQuery}
+            conversations={conversations}
+            hasRailContent={hasRailContent}
+            isLoading={shouldShowConversationSkeleton && !activityViewVisible}
+            labels={labels}
+            onRetry={() => {
+              void railQuery.retryRuntimeRail();
+            }}
+            onRetrySearch={railSearch.retry}
+            railError={conversationRailError}
+            searchError={shouldShowConversationSearchError}
+            showEmptyState={shouldShowConversationEmptyState}
+          >
+            {activityProjection ? (
+              <AgentGUIConversationActivityView
+                activeConversationId={activeConversationId}
+                conversationsById={activityView.conversationsById}
+                isDeletingConversation={isDeletingConversation}
+                isRailInteractionLocked={isInteractionLocked}
+                labels={labels}
+                pendingDeleteConversationId={pendingDeleteConversationId}
+                projection={activityProjection}
+                registerItemElement={
+                  railViewState.registerConversationItemElement
+                }
+                uiLanguage={uiLanguage}
+                workspaceId={workspaceId}
+                onCancelDeleteConversation={onCancelDeleteConversation}
+                onConfirmDeleteConversation={onConfirmDeleteConversation}
+                onMarkConversationUnread={onMarkConversationUnread}
+                onOpenConversationWindow={onOpenConversationWindow}
+                onRequestDeleteConversation={onRequestDeleteConversation}
+                onRequestRenameConversation={onRequestRenameConversation}
+                onSelectConversation={onSelectConversation}
+                onToggleConversationPinned={onToggleConversationPinned}
+              />
+            ) : (
+              <fieldset className="contents" disabled={railInteractionsLocked}>
+                {groupedConversations.map((section, sectionIndex) => {
+                  const projectPath =
+                    section.kind === "project"
+                      ? (section.project?.path ?? "")
+                      : "";
+                  const projectLabel =
+                    section.kind === "project" ? section.label : "";
+                  const isProjectSection = section.kind === "project";
+                  const {
+                    showPinnedHeader: showPinnedProjectHeader,
+                    showProjectsHeader: showProjectRailHeader
+                  } = conversationRailSectionHeaderVisibility(
+                    groupedConversations,
+                    sectionIndex
+                  );
+                  const isSectionCollapsed =
+                    isProjectSection &&
+                    railViewState.collapsedSectionIds.has(section.id);
+                  const sectionPageState = sectionPageStates.get(section.id);
+                  const searchSectionHasMore =
+                    backendSearchActive &&
+                    sectionIndex === groupedConversations.length - 1 &&
+                    railSearch.hasMore;
+                  const activeOverlayConversation =
+                    !backendSearchActive &&
+                    railActiveOverlay?.sectionId === section.id &&
+                    (!conversationQuery.trim() ||
+                      filteredConversations.some(
+                        (conversation) =>
+                          conversation.id === railActiveOverlay.conversation.id
+                      ))
+                      ? railActiveOverlay.conversation
+                      : null;
+                  const activeOverlayIsCanonical = Boolean(
+                    activeOverlayConversation &&
+                    section.items.some(
+                      (item) =>
+                        item.projectionSource !== "pending_activation" &&
+                        item.id === activeOverlayConversation.id
+                    )
+                  );
+                  const activeOverlayCountsTowardTotal = Boolean(
+                    activeOverlayConversation &&
+                    activeOverlayConversation.projectionSource !==
+                      "pending_activation" &&
+                    matchesAgentGUIConversationSummaryFilter(
+                      activeOverlayConversation,
+                      conversationFilter
+                    )
+                  );
+                  const sectionTotalCount = backendSearchActive
+                    ? section.items.length + (searchSectionHasMore ? 1 : 0)
+                    : (sectionPageState?.totalCount ??
+                      section.items.filter(
+                        (item) => item.projectionSource !== "pending_activation"
+                      ).length +
+                        (activeOverlayCountsTowardTotal &&
+                        !activeOverlayIsCanonical
+                          ? 1
+                          : 0));
+                  const sectionHasMore =
+                    searchSectionHasMore ||
+                    (!conversationQuery.trim() &&
+                      sectionPageState?.hasMore === true);
+                  const batchDeletionDisabled =
+                    !batchDeletionAvailable ||
+                    hasConversationQuery ||
+                    (section.items.length === 0 && !sectionHasMore) ||
+                    isDeletingProjectConversations ||
+                    isRequestingBatchDeletion;
+                  return (
+                    <Fragment key={section.id}>
+                      {showPinnedProjectHeader ? (
+                        <div className={styles.pinnedProjectRailHeader}>
+                          {labels.sectionPinned}
+                        </div>
+                      ) : null}
+                      {showProjectRailHeader ? (
+                        <AgentGUIProjectRailHeader
+                          disabled={
+                            railInteractionsLocked ||
+                            isUserProjectMutationPending
                           }
-                        )}
-                        createConversationDisabled={createConversationDisabled}
-                        isDeletingConversation={isDeletingConversation}
-                        isLoadingMoreConversations={
-                          backendSearchActive
-                            ? railSearch.loadingMore
-                            : (sectionPageState?.isLoading ?? false)
-                        }
-                        isRailInteractionLocked={isInteractionLocked}
-                        isProjectActionLocked={isProjectActionLocked}
-                        projectDragging={
-                          projectDragState !== null &&
-                          projectDragState.projectId === section.project?.id
-                        }
-                        projectDropIndicator={
-                          projectDragState?.indicatorSectionId === section.id
-                            ? projectDragState.indicator
-                            : null
-                        }
-                        isSectionCollapsed={isSectionCollapsed}
-                        labels={labels}
-                        pendingDeleteConversationId={
-                          pendingDeleteConversationId
-                        }
-                        projectLabel={projectLabel}
-                        projectPath={projectPath}
-                        registerItemElement={
-                          railViewState.registerConversationItemElement
-                        }
-                        section={section}
-                        sectionHasMore={sectionHasMore}
-                        sectionTotalCount={sectionTotalCount}
-                        visibleItemLimit={railViewState.visibleItemLimitForSection(
-                          section.id
-                        )}
-                        uiLanguage={uiLanguage}
-                        workspaceId={workspaceId}
-                        onCancelDeleteConversation={onCancelDeleteConversation}
-                        onConfirmDeleteConversation={
-                          onConfirmDeleteConversation
-                        }
-                        onCreateConversation={onCreateConversation}
-                        onLoadMoreConversations={
-                          backendSearchActive
-                            ? railSearch.loadMore
-                            : loadMoreSectionConversations
-                        }
-                        onRequestDeleteConversation={
-                          onRequestDeleteConversation
-                        }
-                        onRequestRenameConversation={
-                          onRequestRenameConversation
-                        }
-                        onSelectConversation={onSelectConversation}
-                        onRequestSectionBatchDeletion={
-                          requestSectionBatchDeletion
-                        }
-                        setPendingProjectAction={setPendingProjectAction}
-                        onToggleConversationPinned={onToggleConversationPinned}
-                        onToggleProjectPinned={onToggleProjectPinned}
-                        onMarkConversationUnread={onMarkConversationUnread}
-                        onOpenProjectFiles={onOpenProjectFiles}
-                        onOpenConversationWindow={onOpenConversationWindow}
-                        onToggleProjectSectionCollapsed={
-                          railViewState.toggleProjectSectionCollapsed
-                        }
-                        onVisibleItemLimitChange={
-                          railViewState.setSectionVisibleItemLimit
-                        }
-                        onProjectDragStart={startProjectDrag}
-                        onProjectDragEnd={clearProjectDrag}
-                        onProjectDragOver={updateProjectDropTarget}
-                        onProjectMenuOpenChange={onProjectMenuOpenChange}
-                      />
-                    </AgentGUIConversationRailSectionPresentationProvider>
-                  </Fragment>
-                );
-              })}
-              {appendProjectRailHeader ? (
-                <AgentGUIProjectRailHeader
-                  disabled={
-                    railInteractionsLocked || isUserProjectMutationPending
-                  }
-                  labels={labels}
-                  selectProjectDirectory={selectProjectDirectory}
-                  workspaceUserProjectI18n={workspaceUserProjectI18n}
-                />
-              ) : null}
-            </fieldset>
-          )}
+                          labels={labels}
+                          selectProjectDirectory={selectProjectDirectory}
+                          workspaceUserProjectI18n={workspaceUserProjectI18n}
+                        />
+                      ) : null}
+                      <AgentGUIConversationRailSectionPresentationProvider
+                        batchDeletionDisabled={batchDeletionDisabled}
+                        projectActionLocked={projectActionLocked}
+                        projectDragDisabled={projectDragLocked}
+                      >
+                        <AgentGUIConversationRailSection
+                          activeConversation={activeOverlayConversation}
+                          activeConversationCountsTowardTotal={
+                            activeOverlayCountsTowardTotal
+                          }
+                          activeConversationId={conversationRailSectionActiveConversationId(
+                            {
+                              activeConversation: activeOverlayConversation,
+                              activeConversationId,
+                              section
+                            }
+                          )}
+                          createConversationDisabled={
+                            createConversationDisabled
+                          }
+                          isDeletingConversation={isDeletingConversation}
+                          isLoadingMoreConversations={
+                            backendSearchActive
+                              ? railSearch.loadingMore
+                              : (sectionPageState?.isLoading ?? false)
+                          }
+                          isRailInteractionLocked={isInteractionLocked}
+                          isProjectActionLocked={isProjectActionLocked}
+                          projectDragging={
+                            projectDragState !== null &&
+                            projectDragState.projectId === section.project?.id
+                          }
+                          projectDropIndicator={
+                            projectDragState?.indicatorSectionId === section.id
+                              ? projectDragState.indicator
+                              : null
+                          }
+                          isSectionCollapsed={isSectionCollapsed}
+                          labels={labels}
+                          pendingDeleteConversationId={
+                            pendingDeleteConversationId
+                          }
+                          projectLabel={projectLabel}
+                          projectPath={projectPath}
+                          registerItemElement={
+                            railViewState.registerConversationItemElement
+                          }
+                          section={section}
+                          sectionHasMore={sectionHasMore}
+                          sectionTotalCount={sectionTotalCount}
+                          visibleItemLimit={railViewState.visibleItemLimitForSection(
+                            section.id
+                          )}
+                          uiLanguage={uiLanguage}
+                          workspaceId={workspaceId}
+                          onCancelDeleteConversation={
+                            onCancelDeleteConversation
+                          }
+                          onConfirmDeleteConversation={
+                            onConfirmDeleteConversation
+                          }
+                          onCreateConversation={onCreateConversation}
+                          onLoadMoreConversations={
+                            backendSearchActive
+                              ? railSearch.loadMore
+                              : loadMoreSectionConversations
+                          }
+                          onRequestDeleteConversation={
+                            onRequestDeleteConversation
+                          }
+                          onRequestRenameConversation={
+                            onRequestRenameConversation
+                          }
+                          onSelectConversation={onSelectConversation}
+                          onRequestSectionBatchDeletion={
+                            requestSectionBatchDeletion
+                          }
+                          setPendingProjectAction={setPendingProjectAction}
+                          onToggleConversationPinned={
+                            onToggleConversationPinned
+                          }
+                          onToggleProjectPinned={onToggleProjectPinned}
+                          onMarkConversationUnread={onMarkConversationUnread}
+                          onOpenProjectFiles={onOpenProjectFiles}
+                          onOpenConversationWindow={onOpenConversationWindow}
+                          onToggleProjectSectionCollapsed={
+                            railViewState.toggleProjectSectionCollapsed
+                          }
+                          onVisibleItemLimitChange={
+                            railViewState.setSectionVisibleItemLimit
+                          }
+                          onProjectDragStart={startProjectDrag}
+                          onProjectDragEnd={clearProjectDrag}
+                          onProjectDragOver={updateProjectDropTarget}
+                          onProjectMenuOpenChange={onProjectMenuOpenChange}
+                        />
+                      </AgentGUIConversationRailSectionPresentationProvider>
+                    </Fragment>
+                  );
+                })}
+                {appendProjectRailHeader ? (
+                  <AgentGUIProjectRailHeader
+                    disabled={
+                      railInteractionsLocked || isUserProjectMutationPending
+                    }
+                    labels={labels}
+                    selectProjectDirectory={selectProjectDirectory}
+                    workspaceUserProjectI18n={workspaceUserProjectI18n}
+                  />
+                ) : null}
+              </fieldset>
+            )}
+          </AgentGUIConversationRailContentState>
         </ScrollArea>
         {footer ? <div className="shrink-0 pb-2">{footer}</div> : null}
         <AgentGUIProjectActionConfirmationDialog

@@ -133,13 +133,17 @@ func (s IssueManagerService) ScheduleTuttiModeIssue(
 		unlockIssue()
 		return ScheduleTuttiModeIssueResult{}, err
 	}
-	launches := s.tuttiModeLaunchesForRuns(
+	launches, err := s.tuttiModeLaunchesForRuns(
 		ctx,
 		detail.Issue,
 		detail.Tasks,
 		preparedRuns,
 		sourceContext,
 	)
+	if err != nil {
+		unlockIssue()
+		return ScheduleTuttiModeIssueResult{}, err
+	}
 	unlockIssue()
 
 	s.launchScheduledTuttiModeRuns(ctx, launches)
@@ -324,7 +328,7 @@ func (s IssueManagerService) tuttiModeLaunchesForRuns(
 	tasks []workspaceissues.Task,
 	preparedRuns []executionbiz.PreparedRunLaunch,
 	sourceContext IssueSourceSessionContext,
-) []IssueRunLaunch {
+) ([]IssueRunLaunch, error) {
 	byID := make(map[string]workspaceissues.Task, len(tasks))
 	for _, task := range tasks {
 		byID[task.TaskID] = task
@@ -335,6 +339,10 @@ func (s IssueManagerService) tuttiModeLaunchesForRuns(
 		task, ok := byID[run.TaskID]
 		if !ok {
 			continue
+		}
+		attachments, err := s.issueRunImageAttachments(ctx, issue, task)
+		if err != nil {
+			return nil, err
 		}
 		isolation := issueTaskIsolation{}
 		if task.Parallelizable {
@@ -359,6 +367,7 @@ func (s IssueManagerService) tuttiModeLaunchesForRuns(
 			IssueID:            run.IssueID,
 			Title:              task.Title,
 			Prompt:             issueTaskPrompt(issue, task, executionDirectory, worktreeBase, worktreeBranch, s.dependencyWorktreeOutputs(ctx, issue, task, byID)),
+			Attachments:        attachments,
 			ExecutionDirectory: executionDirectory,
 			ModelPlanID:        run.ModelPlanID,
 			Model:              run.Model,
@@ -367,10 +376,21 @@ func (s IssueManagerService) tuttiModeLaunchesForRuns(
 			PermissionModeID:   task.PermissionModeID,
 			WorktreeBase:       worktreeBase,
 			WorktreeBranch:     worktreeBranch,
-			RailPlacement:      cloneIssueRunRailPlacement(sourceContext.RailPlacement),
+			// Tutti Mode fans out many delegate runs; they are managed from the
+			// Issue task view, not the conversation rail.
+			HideSession:   true,
+			RailPlacement: cloneIssueRunRailPlacement(sourceContext.RailPlacement),
 		})
 	}
-	return launches
+	for index, launch := range launches {
+		if err := s.pinIssueRunAttachments(launch.Attachments); err != nil {
+			for _, pinned := range launches[:index] {
+				s.AttachmentLaunchPins.Release(pinned.Attachments)
+			}
+			return nil, err
+		}
+	}
+	return launches, nil
 }
 
 func (s IssueManagerService) issueRunClientSubmitID(
@@ -415,6 +435,7 @@ func (s IssueManagerService) launchScheduledTuttiModeRuns(
 			leaseDuration,
 		)
 		if err != nil || !claimed {
+			s.releaseIssueRunAttachmentPins(ctx, launch.WorkspaceID, launch.Attachments)
 			continue
 		}
 		renewalInterval := leaseDuration / 3
@@ -503,6 +524,7 @@ func (s IssueManagerService) launchScheduledTuttiModeRuns(
 			},
 		})
 		stopRenewal()
+		s.releaseIssueRunAttachmentPins(ctx, launch.WorkspaceID, launch.Attachments)
 	}
 }
 
@@ -576,7 +598,7 @@ func (s IssueManagerService) RecoverTuttiModeRunLaunchIntents(
 			unlockIssue()
 			continue
 		}
-		launches := s.tuttiModeLaunchesForRuns(
+		launches, launchErr := s.tuttiModeLaunchesForRuns(
 			ctx,
 			detail.Issue,
 			detail.Tasks,
@@ -584,6 +606,9 @@ func (s IssueManagerService) RecoverTuttiModeRunLaunchIntents(
 			sourceContext,
 		)
 		unlockIssue()
+		if launchErr != nil {
+			return launchErr
+		}
 		s.launchScheduledTuttiModeRuns(ctx, launches)
 	}
 	return nil

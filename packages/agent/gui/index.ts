@@ -17,6 +17,7 @@ export type {
   AgentGUIReferenceProvenanceFilterCatalog
 } from "./AgentGUI";
 export type { AgentGUIAgentConfigMenuContext } from "./agent-gui/agentGuiNode/AgentGUINode.types";
+export type { AgentGUISessionLaunchMode } from "./agent-gui/agentGuiNode/model/agentSessionLaunchMode";
 export { AgentGUIConfigAccountFallbackSuppressed } from "./agent-gui/agentGuiNode/view/AgentGUIAccountConfig";
 export type {
   TuttiModePlanAssignmentAgentDetail,
@@ -122,6 +123,10 @@ export type {
   AgentGUIProviderUpdateNotice,
   AgentGUIProviderUpdateNoticeAction,
   AgentGUIProviderUpdateNoticePhase,
+  AgentGUIInteractionReadiness,
+  AgentGUIInteractionReadinessIdentity,
+  AgentGUIInteractionReadinessReason,
+  AgentGUIInteractionReadinessSource,
   AgentGUIObservationGap,
   AgentGUIObservationGapSource,
   AgentGUITargetConnectionSource,
@@ -210,11 +215,14 @@ export type {
   AgentHostAgentTargetSetupState,
   AgentHostAgentTargetSetupWatch,
   AgentHostApplyWorkspaceGitPatchInput,
+  AgentHostResolveSessionWorktreeSupportInput,
+  AgentHostResolveSessionWorktreeSupportResult,
   AgentHostInputApi,
   AgentHostQuickPrompt,
   AgentHostQuickPromptSnapshot,
   AgentHostQuickPromptsApi,
   AgentHostSelectFilesInput,
+  AgentHostTerminalStartupAction,
   AgentHostRuntimeApi,
   AgentHostUserProject,
   AgentProviderProbeListInput,

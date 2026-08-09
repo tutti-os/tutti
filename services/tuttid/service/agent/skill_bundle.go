@@ -38,11 +38,25 @@ func (s *Service) GetSkillBundle(ctx context.Context, workspaceID string, input 
 	}
 	provider := launch.Provider
 	return renderer.RenderSkillBundle(ctx, runtimeprep.PrepareInput{
-		WorkspaceID:    workspaceID,
-		AgentSessionID: strings.TrimSpace(input.AgentSessionID),
-		AgentTargetID:  agentTargetID,
-		Provider:       provider,
-		BrowserUse:     input.BrowserUse,
-		ComputerUse:    input.ComputerUse,
+		WorkspaceID:           workspaceID,
+		AgentSessionID:        strings.TrimSpace(input.AgentSessionID),
+		AgentTargetID:         agentTargetID,
+		Provider:              provider,
+		BrowserUse:            input.BrowserUse,
+		ComputerUse:           input.ComputerUse,
+		ConnectorRoutingHints: s.activeConnectorRoutingHints(),
 	})
+}
+
+func (s *Service) activeConnectorRoutingHints() []runtimeprep.ConnectorRoutingHint {
+	if s == nil || s.ConnectorRoutingHints == nil {
+		return nil
+	}
+	hints := s.ConnectorRoutingHints()
+	result := make([]runtimeprep.ConnectorRoutingHint, 0, len(hints))
+	for _, hint := range hints {
+		hint.Aliases = append([]string(nil), hint.Aliases...)
+		result = append(result, hint)
+	}
+	return result
 }

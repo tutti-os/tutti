@@ -12,6 +12,7 @@ import {
 import { AgentGUI } from "@tutti-os/agent-gui/agent-gui";
 import {
   type AgentGUIProps,
+  type AgentGUISessionLaunchMode,
   type AgentHostInputApi,
   type AgentVisibleErrorOverrides
 } from "@tutti-os/agent-gui";
@@ -80,6 +81,7 @@ import {
   useDesktopAgentGUIConversationRailPreference,
   useDesktopAgentGUIConversationRailToggle
 } from "./useDesktopAgentGUIConversationRailPreference.ts";
+import { useDesktopAgentGUISessionLaunchModePreference } from "./useDesktopAgentGUISessionLaunchModePreference.ts";
 import { IAgentEnvService } from "../services/agentEnvService.interface.ts";
 import { IAgentCLIUpdateNoticeService } from "../services/agentCLIUpdateNoticeService.interface.ts";
 import { preloadDesktopAgentGuiMentionBrowse } from "../services/preloadDesktopAgentGuiMentionBrowse.ts";
@@ -87,11 +89,16 @@ import { DESKTOP_AGENT_GUI_CURRENT_USER_ID } from "../services/desktopAgentGuiId
 import {
   AGENT_SESSION_RECORDING_FLAG,
   AGENT_REFERENCE_PROVENANCE_FILTER_FLAG,
+  LAB_CONVERSATION_ACTIVITY_VIEW_FLAG,
   isFeatureEnabled,
-  LAB_AGENT_INPUT_HISTORY_FLAG,
   LAB_AGENT_SESSION_FORK_FLAG,
-  LAB_CODEX_SAVER_MODE_FLAG
+  LAB_CODEX_SAVER_MODE_FLAG,
+  LAB_CONNECTORS_FLAG
 } from "../../../../../shared/featureFlags/catalog.ts";
+
+const EMPTY_AGENT_SESSION_LAUNCH_MODES_BY_PROJECT_SECTION_KEY: Readonly<
+  Record<string, AgentGUISessionLaunchMode>
+> = Object.freeze({});
 
 const AgentSessionReplayNodeReadiness = lazy(() =>
   import("../../agent-session-replay/ui/AgentSessionReplayNodeReadiness.tsx").then(
@@ -100,7 +107,7 @@ const AgentSessionReplayNodeReadiness = lazy(() =>
 );
 
 function DesktopAgentGUISurfaceImpl({
-  agentActivityRuntime,
+  agentActivityRuntime: hostAgentActivityRuntime,
   agentHostApi,
   agentSessionReplayService,
   agentStatusSource,
@@ -148,6 +155,26 @@ function DesktopAgentGUISurfaceImpl({
     useDesktopAgentConfigCommerce(commerceEnabled);
   const { service: desktopPreferencesService, state: desktopPreferencesState } =
     useDesktopPreferencesService();
+  const agentActivityRuntime = useMemo<
+    AgentGUIProps["agentActivityRuntime"]
+  >(() => {
+    const activityViewEnabled =
+      hostAgentActivityRuntime.conversationActivityViewEnabled === true &&
+      isFeatureEnabled(
+        desktopPreferencesState.featureFlags,
+        LAB_CONVERSATION_ACTIVITY_VIEW_FLAG
+      );
+    if (
+      hostAgentActivityRuntime.conversationActivityViewEnabled ===
+      activityViewEnabled
+    ) {
+      return hostAgentActivityRuntime;
+    }
+    return {
+      ...hostAgentActivityRuntime,
+      conversationActivityViewEnabled: activityViewEnabled
+    };
+  }, [desktopPreferencesState.featureFlags, hostAgentActivityRuntime]);
   const rawWorkbenchState = normalizeDesktopAgentGUIWorkbenchState(
     surface.state
   );
@@ -304,6 +331,15 @@ function DesktopAgentGUISurfaceImpl({
   onStateChangeRef.current = onStateChange;
   const rememberConversationRailPreference =
     useDesktopAgentGUIConversationRailPreference({
+      desktopPreferencesService,
+      runtimeApi,
+      workspaceId
+    });
+  const sessionLaunchModesByProjectSectionKey =
+    desktopPreferencesState.agentSessionLaunchModesByWorkspace[workspaceId] ??
+    EMPTY_AGENT_SESSION_LAUNCH_MODES_BY_PROJECT_SECTION_KEY;
+  const handleSessionLaunchModePreferenceChange =
+    useDesktopAgentGUISessionLaunchModePreference({
       desktopPreferencesService,
       runtimeApi,
       workspaceId
@@ -519,8 +555,11 @@ function DesktopAgentGUISurfaceImpl({
       : (prefillPromptRequest?.sequence ?? null));
   const capabilityMenuState = useMemo<
     AgentGUIProps["hostCapabilities"]["capabilityMenuState"]
-  >(
-    () => ({
+  >(() => {
+    const featureFlags =
+      desktopPreferencesState.changingFeatureFlags ??
+      desktopPreferencesState.featureFlags;
+    return {
       browserUse: {
         connectionMode: desktopPreferencesState.browserUseConnectionMode
       },
@@ -528,12 +567,19 @@ function DesktopAgentGUISurfaceImpl({
         authorization: resolveComputerUseAuthorizationState(computerUseStatus),
         installed: computerUseStatus?.installed ?? null
       },
+      connectors: {
+        enabled: isFeatureEnabled(featureFlags, LAB_CONNECTORS_FLAG)
+      },
       tuttiMode: {
         enabled: true
       }
-    }),
-    [computerUseStatus, desktopPreferencesState.browserUseConnectionMode]
-  );
+    };
+  }, [
+    computerUseStatus,
+    desktopPreferencesState.browserUseConnectionMode,
+    desktopPreferencesState.changingFeatureFlags,
+    desktopPreferencesState.featureFlags
+  ]);
   const handleAgentEnvPanelOpen = useCallback<
     NonNullable<AgentGUIProps["hostActions"]["onAgentEnvPanelOpen"]>
   >((input) => agentEnvService.open(input), [agentEnvService]);
@@ -550,10 +596,7 @@ function DesktopAgentGUISurfaceImpl({
     desktopPreferencesState.featureFlags,
     AGENT_REFERENCE_PROVENANCE_FILTER_FLAG
   );
-  const sessionInputHistoryEnabled = isFeatureEnabled(
-    desktopPreferencesState.featureFlags,
-    LAB_AGENT_INPUT_HISTORY_FLAG
-  );
+  const sessionInputHistoryEnabled = true;
   const sessionForkEnabled = isFeatureEnabled(
     desktopPreferencesState.featureFlags,
     LAB_AGENT_SESSION_FORK_FLAG
@@ -636,6 +679,8 @@ function DesktopAgentGUISurfaceImpl({
       referenceProvenanceFilterEnabled,
       sessionInputHistoryEnabled,
       sessionForkEnabled,
+      sessionWorktreeEnabled: true,
+      sessionLaunchModesByProjectSectionKey,
       codexSaverModeEntryEnabled,
       capabilityMenuState,
       visibleErrorPresentationOverrides,
@@ -663,6 +708,8 @@ function DesktopAgentGUISurfaceImpl({
       onShowMessage: handleDesktopAgentGUIShowMessage,
       onUpdateNode: handleUpdateNode,
       onRememberComposerDefaults: handleRememberComposerDefaults,
+      onSessionLaunchModePreferenceChange:
+        handleSessionLaunchModePreferenceChange,
       onEngagementEvent: onEngagementEvent,
       onConversationRailLayoutChange,
       onOpenConversationWindow: !onOpenAgentConversationWindow

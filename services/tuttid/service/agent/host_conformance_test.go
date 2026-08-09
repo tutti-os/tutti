@@ -16,6 +16,7 @@ import (
 	hostconformance "github.com/tutti-os/tutti/packages/agent/host/conformance"
 	agentactivitybiz "github.com/tutti-os/tutti/packages/agent/store-sqlite"
 	"github.com/tutti-os/tutti/packages/agent/store-sqlite/canonical"
+	market "github.com/tutti-os/tutti/packages/connector/host"
 	agenttargetbiz "github.com/tutti-os/tutti/services/tuttid/biz/agenttarget"
 	workspacebiz "github.com/tutti-os/tutti/services/tuttid/biz/workspace"
 	workspacedata "github.com/tutti-os/tutti/services/tuttid/data/workspace"
@@ -289,6 +290,16 @@ func (d *legacyHostConformanceDriver) Reset(_ context.Context, fixture hostconfo
 	d.operationPort = &conformanceRuntimeOperationStore{runtimeOperationMemoryStore: d.operations, steps: &steps}
 	d.service = newUnconfiguredIsolatedAgentService(d.runtime)
 	d.service.AgentTargetStore = fakeAgentTargetStore{targets: defaultTestAgentTargets()}
+	d.service.ConnectorMarketSnapshots = connectorMarketSnapshotStub{snapshot: market.Snapshot{
+		Connectors: []market.Connector{
+			localConnectorFixture(
+				"lark-cli",
+				market.InstallationStateInstalled,
+				market.AuthorizationStateConnected,
+				market.CompatibilityStateSupported,
+			),
+		},
+	}}
 	d.runtime.provenanceHook = func(input RuntimeSubmitProvenanceInput) error {
 		d.recordSubmittedTurn(input.WorkspaceID, input.AgentSessionID, input.TurnID)
 		return nil
@@ -423,6 +434,22 @@ func (d *legacyHostConformanceDriver) Reset(_ context.Context, fixture hostconfo
 			AgentSessionID: input.AgentSessionID, Goal: clonePayload(providerGoal),
 			Evidence: map[string]any{"confidence": "authoritative"},
 		}, nil
+	}
+	if fixture.DisconnectGoalFenceDelivery {
+		var disconnectOnce sync.Once
+		d.runtime.goalGenerationFenceHook = func(_ context.Context, input RuntimeGoalGenerationFenceInput) error {
+			disconnected := false
+			disconnectOnce.Do(func() {
+				d.runtime.mu.Lock()
+				delete(d.runtime.sessions, input.WorkspaceID+":"+input.AgentSessionID)
+				d.runtime.mu.Unlock()
+				disconnected = true
+			})
+			if disconnected {
+				return ErrSessionNotFound
+			}
+			return nil
+		}
 	}
 	if fixture.LiveOnlySession != nil {
 		seed := *fixture.LiveOnlySession
@@ -598,6 +625,13 @@ func (d *legacyHostConformanceDriver) Reset(_ context.Context, fixture hostconfo
 	return nil
 }
 
+func (d *legacyHostConformanceDriver) DisconnectRuntimeSession(ctx context.Context, ref agenthost.SessionRef) error {
+	return d.runtime.Close(ctx, RuntimeCloseInput{
+		WorkspaceID: ref.WorkspaceID, AgentSessionID: ref.AgentSessionID,
+		PreserveCanonicalState: true,
+	})
+}
+
 func (d *legacyHostConformanceDriver) Create(
 	ctx context.Context,
 	workspaceID string,
@@ -716,13 +750,11 @@ func (d *legacyHostConformanceDriver) ResetHistoricalState(ctx context.Context) 
 
 func (d *legacyHostConformanceDriver) RestoreHistoricalSessionGraph(
 	ctx context.Context,
-	workspaceID string,
-	graph agenthost.HistoricalSessionGraph,
+	input agenthost.HistoricalSessionGraphRestoreInput,
 ) error {
 	return d.service.ApplicationHost().RestoreHistoricalSessionGraph(
 		ctx,
-		workspaceID,
-		graph,
+		input,
 	)
 }
 
@@ -731,6 +763,17 @@ func (d *legacyHostConformanceDriver) CaptureHistoricalSessionGraph(
 	ref agenthost.SessionRef,
 ) (agenthost.HistoricalSessionGraph, error) {
 	return d.service.ApplicationHost().CaptureHistoricalSessionGraph(ctx, ref)
+}
+
+func (d *legacyHostConformanceDriver) HistoricalSessionUserID(
+	ctx context.Context,
+	ref agenthost.SessionRef,
+) (string, error) {
+	result, err := d.service.ApplicationHost().GetSession(ctx, ref)
+	if err != nil {
+		return "", err
+	}
+	return result.Canonical.UserID, nil
 }
 
 func (d *legacyHostConformanceDriver) EnsureHistoricalSession(
@@ -767,22 +810,26 @@ func (d *legacyHostConformanceDriver) HistoricalStateMetrics() hostconformance.H
 type conformanceHistoricalStateStore struct {
 	driver      *legacyHostConformanceDriver
 	workspaceID string
+	userID      string
 	graph       *agenthost.HistoricalSessionGraph
 }
 
 func (s *conformanceHistoricalStateStore) RestoreHistoricalSessionGraph(
 	_ context.Context,
-	workspaceID string,
-	graph agenthost.HistoricalSessionGraph,
+	input agenthost.HistoricalSessionGraphRestoreInput,
 ) error {
+	workspaceID := input.WorkspaceID
+	graph := input.Graph
 	if s.graph != nil {
-		if s.workspaceID == workspaceID && reflect.DeepEqual(*s.graph, graph) {
+		if s.workspaceID == workspaceID && s.userID == input.UserID &&
+			reflect.DeepEqual(*s.graph, graph) {
 			return nil
 		}
 		return agenthost.ErrHistoricalStateConflict
 	}
 	copied := graph
 	s.workspaceID = workspaceID
+	s.userID = input.UserID
 	s.graph = &copied
 	for _, historical := range graph.Sessions {
 		settingsRaw, err := json.Marshal(historical.Settings)
@@ -796,7 +843,7 @@ func (s *conformanceHistoricalStateStore) RestoreHistoricalSessionGraph(
 		key := workspaceID + ":" + historical.ID
 		s.driver.sessions.sessions[key] = PersistedSession{
 			ID: historical.ID, WorkspaceID: workspaceID, Kind: historical.Kind,
-			Origin: historical.Origin, Provider: historical.Provider,
+			Origin: historical.Origin, UserID: input.UserID, Provider: historical.Provider,
 			AgentTargetID:     historical.AgentTargetID,
 			ProviderSessionID: historical.ProviderSessionID,
 			RailSectionKind:   "conversations", RailSectionKey: "conversations",
@@ -1048,16 +1095,16 @@ func (d *legacyHostConformanceDriver) GoalControl(ctx context.Context, input age
 		ClientSubmitID:     input.ClientSubmitID,
 		SubmissionMetadata: input.SubmissionMetadata,
 	})
-	if err != nil {
-		return hostconformance.GoalObservation{}, err
+	observation := hostconformance.GoalObservation{
+		Goal: clonePayload(result.Goal), IntentAccepted: result.IntentAccepted,
+		OperationID: result.OperationID, PendingOperationID: result.OperationID,
 	}
-	observation := hostconformance.GoalObservation{Goal: clonePayload(result.Goal), OperationID: result.OperationID, PendingOperationID: result.OperationID}
 	if result.GoalState != nil {
 		observation.Revision = result.GoalState.Revision
 		observation.PendingOperationID = result.GoalState.PendingOperationID
 		observation.SyncStatus = result.GoalState.SyncStatus
 	}
-	return observation, nil
+	return observation, err
 }
 
 func (d *legacyHostConformanceDriver) AdoptProviderGoal(ctx context.Context, input agenthost.ProviderGoalAdoptionInput) (hostconformance.GoalObservation, error) {
@@ -1120,7 +1167,10 @@ func (d *legacyHostConformanceDriver) StepGoalOperations(ctx context.Context, no
 }
 
 func hostGoalControlObservation(result agenthost.GoalControlResult) hostconformance.GoalObservation {
-	observation := hostconformance.GoalObservation{Goal: clonePayload(result.Goal), OperationID: result.OperationID, PendingOperationID: result.OperationID}
+	observation := hostconformance.GoalObservation{
+		Goal: clonePayload(result.Goal), IntentAccepted: result.IntentAccepted,
+		OperationID: result.OperationID, PendingOperationID: result.OperationID,
+	}
 	if result.GoalState != nil {
 		observation.Revision = result.GoalState.Revision
 		observation.PendingOperationID = result.GoalState.PendingOperationID
@@ -1183,7 +1233,11 @@ func (d *legacyHostConformanceDriver) Metrics() hostconformance.Metrics {
 			last.RequireProviderAcceptance
 	}
 	if len(d.runtime.resumeCalls) > 0 {
-		metrics.LastResumeRecreate = d.runtime.resumeCalls[len(d.runtime.resumeCalls)-1].RecreateIfMissing
+		lastResume := d.runtime.resumeCalls[len(d.runtime.resumeCalls)-1]
+		metrics.LastResumeRecreate = lastResume.RecreateIfMissing
+		metrics.LastResumeGoalGenerationFences = append(
+			[]agenthost.RuntimeGoalGenerationFenceInput(nil), lastResume.GoalGenerationFences...,
+		)
 	}
 	return metrics
 }

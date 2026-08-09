@@ -206,6 +206,20 @@ func (t *ReplayProcessTransport) ReplayPlaybackState() ReplayPlaybackState {
 	return state
 }
 
+func (t *ReplayProcessTransport) ReplayFailure() error {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	for _, connection := range t.started {
+		connection.mu.Lock()
+		failure := connection.failure
+		connection.mu.Unlock()
+		if failure != nil {
+			return failure
+		}
+	}
+	return nil
+}
+
 func (t *ReplayProcessTransport) SetReplayPlaybackSpeed(speed float64) error {
 	return t.playback.setSpeed(speed)
 }

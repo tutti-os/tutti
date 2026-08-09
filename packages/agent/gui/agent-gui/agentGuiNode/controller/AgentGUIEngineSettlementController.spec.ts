@@ -203,6 +203,7 @@ describe("AgentGUIEngineSettlementController", () => {
       })
     });
     engine.dispatch({
+      live: true,
       type: "turn/upserted",
       turn: {
         agentSessionId: "session-1",
@@ -264,6 +265,7 @@ describe("AgentGUIEngineSettlementController", () => {
       )
     ).toBe(true);
     engine.dispatch({
+      live: true,
       type: "turn/upserted",
       turn: {
         agentSessionId: "session-1",

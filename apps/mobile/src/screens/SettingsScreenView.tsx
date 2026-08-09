@@ -14,20 +14,24 @@ import type { AccountSession } from "../services/mobileDomain";
 import type { MobileThemePreference } from "../services/mobileThemePreferenceService";
 
 export interface SettingsScreenViewProps {
-  appVersion: string;
   onBack(): void;
+  onSoftwareUpdatePress(): void;
   onSignOut(): void;
   onThemePreferenceChange(preference: MobileThemePreference): void;
   session: AccountSession;
+  softwareUpdateDescription: string;
+  softwareUpdateDisabled: boolean;
   themePreference: MobileThemePreference;
 }
 
 export function SettingsScreenView({
-  appVersion,
   onBack,
+  onSoftwareUpdatePress,
   onSignOut,
   onThemePreferenceChange,
   session,
+  softwareUpdateDescription,
+  softwareUpdateDisabled,
   themePreference
 }: SettingsScreenViewProps) {
   const theme = useNativeTheme();
@@ -102,8 +106,11 @@ export function SettingsScreenView({
             />
             <View style={styles.separator} />
             <NativeListRow
-              description={t("versionLabel", { version: appVersion })}
+              description={softwareUpdateDescription}
+              disabled={softwareUpdateDisabled}
+              onPress={onSoftwareUpdatePress}
               title={t("softwareUpdate")}
+              trailing={<Text style={styles.chevron}>›</Text>}
             />
             <View style={styles.separator} />
             <NativeListRow

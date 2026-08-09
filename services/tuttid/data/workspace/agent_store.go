@@ -167,6 +167,50 @@ func (s *SQLiteStore) SessionDeleted(ctx context.Context, workspaceID string, ag
 	return s.agentReadStore().SessionDeleted(ctx, workspaceID, agentSessionID)
 }
 
+func (s *SQLiteStore) ListDeletedSessions(ctx context.Context, input agentactivitybiz.ListDeletedSessionsInput) (agentactivitybiz.DeletedSessionPage, error) {
+	return s.agentReadStore().ListDeletedSessions(ctx, input)
+}
+
+func (s *SQLiteStore) RestoreDeletedSession(ctx context.Context, input agentactivitybiz.RestoreDeletedSessionInput) (agentactivitybiz.RestoreDeletedSessionResult, error) {
+	return s.agentStore().RestoreDeletedSession(ctx, input)
+}
+
+func (s *SQLiteStore) PurgeDeletedSessionTrees(ctx context.Context, input agentactivitybiz.PurgeDeletedSessionTreesInput) (agentactivitybiz.PurgeDeletedSessionTreesResult, error) {
+	if s == nil || s.writeDB == nil {
+		return agentactivitybiz.PurgeDeletedSessionTreesResult{}, errors.New("workspace database is not initialized")
+	}
+	tx, err := s.writeDB.BeginTx(ctx, nil)
+	if err != nil {
+		return agentactivitybiz.PurgeDeletedSessionTreesResult{}, fmt.Errorf("begin purge deleted agent and Tutti mode sessions: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	result, err := s.agentStore().PurgeDeletedSessionTreesTx(ctx, tx, input)
+	if err != nil {
+		return agentactivitybiz.PurgeDeletedSessionTreesResult{}, err
+	}
+	if err := deleteTuttiModeSessionStatesTx(ctx, tx, strings.TrimSpace(input.WorkspaceID), result.PurgedSessionIDs); err != nil {
+		return agentactivitybiz.PurgeDeletedSessionTreesResult{}, err
+	}
+	cleanupItems := make([]AgentSessionResourceCleanup, 0, len(result.PurgedSessionIDs))
+	for _, sessionID := range result.PurgedSessionIDs {
+		cleanupItems = append(cleanupItems, AgentSessionResourceCleanup{
+			WorkspaceID: strings.TrimSpace(input.WorkspaceID), AgentSessionID: sessionID,
+		})
+	}
+	if err := enqueueAgentSessionResourceCleanupTx(ctx, tx, cleanupItems); err != nil {
+		return agentactivitybiz.PurgeDeletedSessionTreesResult{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return agentactivitybiz.PurgeDeletedSessionTreesResult{}, fmt.Errorf("commit purge deleted agent and Tutti mode sessions: %w", err)
+	}
+	return result, nil
+}
+
+func (s *SQLiteStore) ListRecoverableDeletedSessionResources(ctx context.Context) ([]agentactivitybiz.DeletedSessionResource, error) {
+	return s.agentReadStore().ListRecoverableDeletedSessionResources(ctx)
+}
+
 func (s *SQLiteStore) RollbackRuntimeSessionInitialization(ctx context.Context, workspaceID string, agentSessionID string) (bool, error) {
 	return s.agentStore().RollbackRuntimeSessionInitialization(ctx, workspaceID, agentSessionID)
 }
@@ -200,11 +244,7 @@ func (s *SQLiteStore) ListWorkspaceGeneratedFileTurns(ctx context.Context, input
 }
 
 func (s *SQLiteStore) DeleteSession(ctx context.Context, workspaceID string, agentSessionID string) (bool, error) {
-	result, err := s.deleteAgentSessionsWithTuttiModeTx(ctx, agentactivitybiz.DeleteSessionsBatchInput{
-		WorkspaceID: workspaceID,
-		SessionIDs:  []string{agentSessionID},
-	})
-	return result.RemovedSessions > 0, err
+	return s.agentStore().DeleteSession(ctx, workspaceID, agentSessionID)
 }
 
 func (s *SQLiteStore) DeleteSessionWithCommit(ctx context.Context, workspaceID string, agentSessionID string) (agentactivitybiz.DeleteSessionResult, error) {
@@ -212,7 +252,7 @@ func (s *SQLiteStore) DeleteSessionWithCommit(ctx context.Context, workspaceID s
 }
 
 func (s *SQLiteStore) DeleteSessionsBatch(ctx context.Context, input agentactivitybiz.DeleteSessionsBatchInput) (agentactivitybiz.DeleteSessionsBatchResult, error) {
-	return s.deleteAgentSessionsWithTuttiModeTx(ctx, input)
+	return s.agentStore().DeleteSessionsBatch(ctx, input)
 }
 
 func (s *SQLiteStore) PlanDeleteSessions(ctx context.Context, input agentactivitybiz.DeleteSessionsBatchInput) (agentactivitybiz.DeleteSessionsPlan, error) {
@@ -249,28 +289,6 @@ func (s *SQLiteStore) ClearSessions(ctx context.Context, workspaceID string) (ag
 	return result, nil
 }
 
-func (s *SQLiteStore) deleteAgentSessionsWithTuttiModeTx(ctx context.Context, input agentactivitybiz.DeleteSessionsBatchInput) (agentactivitybiz.DeleteSessionsBatchResult, error) {
-	if s == nil || s.writeDB == nil {
-		return agentactivitybiz.DeleteSessionsBatchResult{}, errors.New("workspace database is not initialized")
-	}
-	tx, err := s.writeDB.BeginTx(ctx, nil)
-	if err != nil {
-		return agentactivitybiz.DeleteSessionsBatchResult{}, fmt.Errorf("begin delete agent and Tutti mode sessions: %w", err)
-	}
-	defer func() { _ = tx.Rollback() }()
-	result, err := s.agentStore().DeleteSessionsBatchTx(ctx, tx, input)
-	if err != nil {
-		return agentactivitybiz.DeleteSessionsBatchResult{}, err
-	}
-	if err := deleteTuttiModeSessionStatesTx(ctx, tx, strings.TrimSpace(input.WorkspaceID), result.RemovedSessionIDs); err != nil {
-		return agentactivitybiz.DeleteSessionsBatchResult{}, err
-	}
-	if err := tx.Commit(); err != nil {
-		return agentactivitybiz.DeleteSessionsBatchResult{}, fmt.Errorf("commit delete agent and Tutti mode sessions: %w", err)
-	}
-	return result, nil
-}
-
 func deleteTuttiModeSessionStatesTx(ctx context.Context, tx *sql.Tx, workspaceID string, sessionIDs []string) error {
 	for _, sessionID := range sessionIDs {
 		sessionID = strings.TrimSpace(sessionID)
@@ -298,7 +316,40 @@ func deleteTuttiModeWorkspaceSessionStateTx(ctx context.Context, tx *sql.Tx, wor
 }
 
 func (s *SQLiteStore) PurgeDeletedSessions(ctx context.Context, input agentactivitybiz.PurgeDeletedSessionsInput) (agentactivitybiz.PurgeDeletedSessionsResult, error) {
-	return s.agentStore().PurgeDeletedSessions(ctx, input)
+	if s == nil || s.writeDB == nil {
+		return agentactivitybiz.PurgeDeletedSessionsResult{}, errors.New("workspace database is not initialized")
+	}
+	tx, err := s.writeDB.BeginTx(ctx, nil)
+	if err != nil {
+		return agentactivitybiz.PurgeDeletedSessionsResult{}, fmt.Errorf("begin purge deleted agent and Tutti mode sessions: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	result, err := s.agentStore().PurgeDeletedSessionsTx(ctx, tx, input)
+	if err != nil {
+		return agentactivitybiz.PurgeDeletedSessionsResult{}, err
+	}
+	sessionIDsByWorkspace := make(map[string][]string)
+	cleanupItems := make([]AgentSessionResourceCleanup, 0, len(result.Sessions))
+	for _, session := range result.Sessions {
+		workspaceID := strings.TrimSpace(session.WorkspaceID)
+		sessionIDsByWorkspace[workspaceID] = append(sessionIDsByWorkspace[workspaceID], session.AgentSessionID)
+		cleanupItems = append(cleanupItems, AgentSessionResourceCleanup{
+			WorkspaceID: workspaceID, AgentSessionID: session.AgentSessionID,
+		})
+	}
+	for workspaceID, sessionIDs := range sessionIDsByWorkspace {
+		if err := deleteTuttiModeSessionStatesTx(ctx, tx, workspaceID, sessionIDs); err != nil {
+			return agentactivitybiz.PurgeDeletedSessionsResult{}, err
+		}
+	}
+	if err := enqueueAgentSessionResourceCleanupTx(ctx, tx, cleanupItems); err != nil {
+		return agentactivitybiz.PurgeDeletedSessionsResult{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return agentactivitybiz.PurgeDeletedSessionsResult{}, fmt.Errorf("commit purge deleted agent and Tutti mode sessions: %w", err)
+	}
+	return result, nil
 }
 
 func (s *SQLiteStore) UpdateSessionPinned(ctx context.Context, workspaceID string, agentSessionID string, pinned bool) (agentactivitybiz.Session, bool, error) {

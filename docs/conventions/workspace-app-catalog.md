@@ -141,8 +141,15 @@ Packaged Desktop uses the Electron package version; `make dev-gui` resolves the
 same Git-derived version used by desktop packaging before launching Electron.
 The daemon applies compatibility selection consistently to list, refresh,
 install, and update workflows. Missing or invalid host versions use `apps[]`.
-An installed app is updateable only when the selected catalog version is
-greater; catalog selection never automatically downgrades an app.
+
+Desktop preferences choose the active app catalog channel (`production` or
+`staging`). That channel selects which remote catalog URL to load. Once a
+catalog entry is selected for the host, it is authoritative for App Center
+update and materialize decisions: when the installed builtin package version
+differs from the selected catalog version, Tutti offers or applies that catalog
+package even if the catalog version is lower than a package previously installed
+from the other channel. Equal version strings leave the installed package in
+place.
 
 When a package manifest declares `localizationInfo`, release tooling reads the
 referenced package-local manifest locale files and writes their `name`,
@@ -150,7 +157,7 @@ referenced package-local manifest locale files and writes their `name`,
 Center uses this catalog metadata for uninstalled remote apps, because it must
 not download or unzip the app package just to render localized catalog cards.
 
-Workspace app packages do not declare arbitrary runtime kinds or bundle Python/Node. Packages that only need the managed Node/static runtime may declare `runtime.profile: "node-static"`; all other managed runtime release and download rules belong to [Workspace App Runtime](./workspace-app-runtime.md).
+Workspace app packages do not declare arbitrary runtime kinds or bundle Python/Node. Packages that only need the managed Node/static runtime may declare `runtime.profile: "connector-node-static"`; all other managed runtime release and download rules belong to [Workspace App Runtime](./workspace-app-runtime.md).
 
 ## Release Flow
 
@@ -184,8 +191,12 @@ compatibility metadata fails before package upload; there is no permissive
 default.
 
 Staging app releases do not create release tags. When `release_bump` is empty,
-the reusable workflow publishes `manifest.version+<short git sha>` from the
-packaged manifest.
+the reusable workflow resolves a stable seed from the greater of the packaged
+manifest version and existing `<appId>-v*` release tags, then publishes
+`<seed>+<short git sha>`. Production tags therefore keep staging builds aligned
+with the current product line (for example `0.1.45+<sha>` after `ai-doc-v0.1.45`),
+instead of freezing on a stale source-manifest version that production never
+rewrites.
 
 Staging caller workflows should run automatically on `push` to `main`, which is
 the event produced after a pull request is merged. Push-triggered staging runs
@@ -242,6 +253,14 @@ publishes one shared `catalog.json`. It defaults to merge mode, which preserves
 existing catalog apps and updates only selected app ids. Replace mode publishes
 only the selected app ids and should be used only for deliberate full catalog
 replacement.
+
+For a controlled withdrawal, dispatch the production workflow in `merge` mode
+with `withdraw_app_versions` set to comma- or newline-separated
+`appId@version` entries. The workflow marks those records `withdrawn` in their
+mutable `versions.json` indexes and then rebuilds the catalog. It never deletes
+the immutable release directory or `latest.json`, so restoring a withdrawn
+release remains a metadata-only operation. Withdrawal is intentionally rejected
+in `replace` mode to prevent an accidental partial catalog publication.
 
 There are three normal publishing modes:
 

@@ -79,6 +79,29 @@ provider-status-focus-refresh --all-process-time-profile` on macOS when a
   [manager.go](../../../services/tuttid/service/agentextension/manager.go)
   [runtime_version_cache.go](../../../services/tuttid/service/agentextension/runtime_version_cache.go)
 
+### Workspace Apps repeatedly probe extension authentication
+
+- Symptom:
+  Several Workspace Apps opening together repeatedly start the same Extension
+  ACP process. A logged-in target can intermittently become unavailable when
+  duplicate setup probes exhaust the caller timeout.
+- Root cause:
+  Older Apps consume only the broad Agent catalog, while newer Apps refine an
+  exact target. If the broad catalog exposes installation readiness without
+  authentication, old Apps can also show an unconfigured extension as usable.
+- Fix:
+  Resolve installed extension authentication for broad and exact
+  `agent list` requests, run broad probes concurrently, coalesce them by
+  workspace and target in the daemon, and retain the result for a short bounded
+  interval. Preserve `auth_required` as the canonical reason code even when the
+  runtime supplies a more specific diagnostic reason. Explicit refresh bypasses
+  the short cache.
+- Validation:
+  Broad and exact-target requests within the cache window should share one setup
+  probe per target. A ready Kimi target reports `available`; an unconfigured
+  Hermes target reports `unavailable` with `auth_required` in both response
+  shapes. A refreshed broad request probes each installed extension once.
+
 ### An extension Agent is installed in the terminal but Tutti cannot detect it
 
 - Symptom:
@@ -1589,7 +1612,9 @@ invalid_grant`. Search `tuttid.log` for
 - Symptom:
   `opencode models --verbose` lists more models in a local terminal than the
   OpenCode model picker in Agent GUI. Custom provider ids or recently published
-  model variants are commonly absent.
+  model variants are commonly absent. A related presentation symptom shows a
+  provider-qualified recent item such as `newapi/deepseek-v4-pro`, while the
+  searchable catalog shows only the ambiguous model name `DeepSeek V4 Pro`.
 - Quick checks:
   Run `opencode models --verbose` from the same workspace cwd passed to the
   composer. Count exact `provider/model` lines and compare them with the
@@ -1601,18 +1626,25 @@ invalid_grant`. Search `tuttid.log` for
   daemon previously ran model discovery in its own inherited cwd and stored the
   resulting provider-wide list for six hours. A smaller result from the wrong
   project context therefore remained visible even after the terminal catalog
-  changed.
+  changed. Separately, verbose catalog normalization previously used only the
+  model metadata `name` as the display label even though the exact launch
+  identity remained the provider-qualified `provider/model` id.
 - Fix:
   Pass the composer workspace cwd through the daemon model-catalog request and
   set it as the `opencode models --verbose` process directory. Do not cache
   OpenCode model-list successes or failures. Keep one request-scoped catalog
   projection so a composer-options request starts the CLI only once. Preserve
   the auth/config invalidation event so an already-open composer refreshes when
-  global OpenCode credentials or config files change.
+  global OpenCode credentials or config files change. Append a non-built-in
+  provider id to verbose model labels while preserving the exact
+  provider-qualified id as the selection value. Keep the built-in `opencode`
+  provider suffix hidden so ordinary catalog entries stay concise, and avoid
+  renderer-side provider branches.
 - Validation:
   Cover cwd propagation, repeated uncached OpenCode lookups, all provider/model
   prefixes from verbose output, one catalog lookup per composer-options request,
-  and unchanged cache policies for Codex and Tutti Agent. Run
+  duplicate model names under different provider ids, and unchanged cache
+  policies for Codex and Tutti Agent. Run
   `cd services/tuttid && go test ./service/agent` and `pnpm check:changed`.
 - References:
   [opencode_model_catalog.go](../../../services/tuttid/service/agent/opencode_model_catalog.go)
@@ -2122,13 +2154,19 @@ invalid_grant`. Search `tuttid.log` for
   A Codex session bound to an OpenAI-protocol Model Plan fails immediately,
   stays working without output, or loses tool-call messages. The Plan's
   connection check can still pass because detection calls
-  `/v1/chat/completions` directly.
+  `/v1/chat/completions` directly. Another immediate-failure shape is a
+  terminal provider error such as `metadata value too long: ... (578 > 512)`
+  after a short prompt that produced no assistant content.
 - Quick checks:
   Inspect the session-scoped Codex `config.toml`. The
   `tutti-model-plan` provider must use a loopback `base_url`, a temporary
   `TUTTI_MODEL_PLAN_API_KEY`, and `wire_api = "responses"`. Verify the upstream
   server receives `/v1/chat/completions`, not `/v1/responses`. A direct
-  Chat-only Base URL paired with `wire_api = "responses"` is incomplete.
+  Chat-only Base URL paired with `wire_api = "responses"` is incomplete. For
+  the metadata failure, inspect the exported Session's terminal Turn error and
+  compare the reported value length with 512. Codex workspace diagnostics can
+  grow with Git remotes and usage-attribution fields. Adjacent model-list 404s
+  are not the terminal cause when the thread and Turn both start successfully.
 - Root cause:
   Current Codex emits Responses-shaped requests and requires terminal
   Responses SSE events. A Chat-only provider neither owns `/v1/responses` nor
@@ -2139,7 +2177,11 @@ invalid_grant`. Search `tuttid.log` for
   tools that Chat Completions cannot execute. Codex also sends Responses
   `developer` messages; Chat-compatible providers that only recognize
   `system`/`user`/`assistant`/`tool` can reject the otherwise valid request
-  during tokenization.
+  during tokenization. The gateway also used to forward Responses
+  `metadata`/`client_metadata` unchanged. Codex can encode its workspace
+  diagnostics as one optional metadata value larger than the 512-byte limit
+  enforced by common Chat-compatible endpoints, so the upstream rejects the
+  request before model execution.
 - Fix:
   Keep Codex on `wire_api = "responses"` and route the session through
   tuttid's loopback Model Gateway. The gateway authenticates the temporary
@@ -2157,6 +2199,11 @@ invalid_grant`. Search `tuttid.log` for
   index zero. This preserves instruction precedence without requiring newer
   OpenAI-only roles or mid-conversation system roles from the upstream
   tokenizer. OpenCode continues to use the Plan endpoint directly.
+  Before sending the converted Chat request, omit only metadata values larger
+  than 512 bytes. Do not truncate them, because a truncated diagnostic JSON
+  value is misleading and may be invalid. Keep the original Responses
+  metadata for local response reconstruction; metadata at or below the limit
+  and Responses-over-client key precedence remain unchanged.
 - Validation:
   Cover request/tool conversion, interleaved parallel tool arguments, UTF-8
   and arbitrary SSE byte boundaries, large arguments, usage, upstream errors,
@@ -2166,10 +2213,13 @@ invalid_grant`. Search `tuttid.log` for
   internal-role normalization and system-message collapse. A real smoke test
   must complete two Codex turns and one tool call while the upstream records
   `/v1/chat/completions` without any upstream `developer` role or `system`
-  message after index zero.
+  message after index zero. Cover the metadata boundary explicitly: a 512-byte
+  value is forwarded, a 513-byte value is omitted, and an omitted Responses
+  value is not replaced by lower-priority client metadata with the same key.
 - References:
   [model-access-plans.md](../../architecture/model-access-plans.md)
   [gateway.go](../../../services/tuttid/service/modelgateway/gateway.go)
+  [responses_request.go](../../../services/tuttid/service/modelgateway/responses_request.go)
   [stream_converter.go](../../../services/tuttid/service/modelgateway/stream_converter.go)
   [model_endpoint.go](../../../packages/agent/runtimeprep/model_endpoint.go)
 
@@ -2210,6 +2260,40 @@ invalid_grant`. Search `tuttid.log` for
   [agent-extensions.md](../../architecture/agent-extensions.md)
   [manager.go](../../../services/tuttid/service/agentextension/manager.go)
   [wiring_daemon_api.go](../../../services/tuttid/wiring_daemon_api.go)
+
+### Kimi setup opens a browser before showing the platform selector
+
+- Symptom:
+  Clicking the Kimi setup action immediately opens the Kimi website instead of
+  showing the Kimi Code TUI selector for OAuth or a Platform API key.
+- Quick checks:
+  Inspect the exact terminal launch. `kimi login` and starting `kimi` followed
+  by `/login` are different interfaces: the former may start a device-code flow
+  and open a browser, while the latter opens the interactive platform selector
+  inside the running TUI. Confirm the installed runtime's `login --help` and
+  verify the welcome marker still appears before assuming the two paths are
+  equivalent.
+- Root cause:
+  A terminal authentication profile projected the TUI slash command as a CLI
+  subcommand. Provider-owned commands with the same spelling do not necessarily
+  share behavior across those two command surfaces.
+- Fix:
+  Declare the signed authentication method as `runtime-slash-command`, with one
+  safe command name and a bounded literal ready marker. Launch the bare runtime,
+  wait for that marker on the matching terminal session, then submit the
+  Desktop-generated slash command through the terminal transport. The daemon
+  and AgentGUI Host boundary must carry one typed startup action rather than
+  independent raw input and marker fields. Do not put raw terminal input or
+  shell source in the extension profile.
+- Validation:
+  Cover output split across terminal events, output received before the session
+  is armed, unrelated terminal sessions, timeout, and transport failure. In a
+  fresh isolated Kimi home, verify setup first shows the in-TUI platform
+  selector and opens a browser only after the user chooses OAuth.
+- References:
+  [agent-extensions.md](../../architecture/agent-extensions.md)
+  [runtime_probe.go](../../../services/tuttid/service/agentextension/runtime_probe.go)
+  [workbenchTerminalLoginPresenter.ts](../../../apps/desktop/src/renderer/src/features/workspace-workbench/services/workbenchTerminalLoginPresenter.ts)
 
 ### Kimi Code remains in setup or reports login after authentication
 
@@ -2255,3 +2339,34 @@ invalid_grant`. Search `tuttid.log` for
   [runtime-overrides.md](../runtime-overrides.md)
   [visible_error.go](../../../packages/agent/daemon/runtime/visible_error.go)
   [setup.go](../../../services/tuttid/service/agentextension/setup.go)
+
+### Terminal login succeeds but the setup terminal remains open
+
+- Symptom:
+  The provider's terminal login reports success and returns to its normal TUI,
+  but AgentGUI keeps the setup terminal open and continues polling the Target as
+  `auth_required`.
+- Quick checks:
+  Confirm the Desktop terminal diagnostic reports the startup action as
+  `submitted`, then inspect repeated Target setup probes. Compare the fresh ACP
+  `initialize` response with `session/new`: some runtimes keep advertising a
+  terminal login method even after authentication succeeds.
+- Root cause:
+  ACP `authMethods` is a catalog of available authentication methods, not the
+  current authentication state. Treating a terminal-only catalog as an
+  immediate `auth_required` verdict skips `session/new`, so a successfully
+  configured runtime can never become `ready` and the Host never closes its
+  login-terminal handle.
+- Fix:
+  Preserve the advertised methods for presentation, but verify readiness with
+  the bounded setup `session/new` probe. Continue mapping explicit
+  authentication, missing-model, missing-provider, and terminal-method timeout
+  outcomes to `auth_required`. Do not scrape terminal output or inject an exit
+  command to infer login completion.
+- Validation:
+  Cover a runtime that still advertises only a terminal login method while
+  `session/new` returns a usable model, plus unconfigured runtimes whose
+  `session/new` returns no usable model, a missing-provider error, or a timeout.
+- References:
+  [standard_acp_setup.go](../../../packages/agent/daemon/runtime/standard_acp_setup.go)
+  [desktopTerminalLoginReadinessMonitor.ts](../../../apps/desktop/src/renderer/src/features/workspace-agent/services/internal/desktopTerminalLoginReadinessMonitor.ts)

@@ -74,6 +74,56 @@ func TestTuttiAgentStableSkillsReuseRootAcrossSessions(t *testing.T) {
 	}
 }
 
+func TestTuttiAgentAddsVerifiedConnectorSkillRoots(t *testing.T) {
+	stateDir := t.TempDir()
+	connectorRoot := filepath.Join(stateDir, "connectors", "lark-cli", "skills")
+	if err := os.MkdirAll(connectorRoot, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	preparer := TuttiAgentPreparer{
+		ResolveAuthSource:     func(context.Context, PrepareInput) (string, error) { return "", nil },
+		StableSkillBundleRoot: filepath.Join(stateDir, "agent", "skill-bundles"),
+	}
+	result, err := preparer.Prepare(t.Context(), ProviderPrepareInput{
+		PrepareInput: testResolvedInput(t, PrepareInput{
+			AgentSessionID: "session-a",
+			AgentTargetID:  "local:tutti-agent",
+			Provider:       "tutti-agent",
+			CLICommand:     "tutti",
+			ConnectorRoutingHints: []ConnectorRoutingHint{
+				{ConnectorKey: "lark-cli", SkillRoot: connectorRoot},
+				{ConnectorKey: "lark-cli-copy", SkillRoot: connectorRoot},
+			},
+		}),
+		RuntimeRoot: filepath.Join(stateDir, "agent", "runs", "session-a"),
+		Store:       LocalStore{StateDir: stateDir},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var roots []string
+	if err := json.Unmarshal([]byte(envValue(result.Env, "TUTTI_AGENT_EXTRA_SKILL_ROOTS_JSON")), &roots); err != nil {
+		t.Fatal(err)
+	}
+	if len(roots) != 2 || roots[1] != connectorRoot {
+		t.Fatalf("extra roots = %#v, want stable provider root followed by deduplicated connector root", roots)
+	}
+}
+
+func TestConnectorSkillRootsRejectsRelativeOrSymlinkRoots(t *testing.T) {
+	if _, err := connectorSkillRoots([]ConnectorRoutingHint{{ConnectorKey: "demo", SkillRoot: "relative/skills"}}); err == nil {
+		t.Fatal("relative connector Skill root was accepted")
+	}
+	realRoot := t.TempDir()
+	link := filepath.Join(t.TempDir(), "skills")
+	if err := os.Symlink(realRoot, link); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := connectorSkillRoots([]ConnectorRoutingHint{{ConnectorKey: "demo", SkillRoot: link}}); err == nil {
+		t.Fatal("symlink connector Skill root was accepted")
+	}
+}
+
 func TestStableSkillBundleDigestChangesWithContentNotMapOrder(t *testing.T) {
 	specA := providerSkillSpec{
 		baseName: "sample",

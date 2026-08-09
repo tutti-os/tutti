@@ -3,6 +3,7 @@ import type {
   DesktopAgentComposerDefaultsByAgentTarget,
   DesktopAgentComposerDefaultsByProvider,
   DesktopAgentGuiConversationRailCollapsedByProvider,
+  DesktopAgentSessionLaunchModesByWorkspace,
   DesktopAgentConversationDetailMode,
   DesktopDefaultAgentProvider,
   DesktopAppCatalogChannel,
@@ -43,6 +44,7 @@ export interface DesktopPreferencesStoreState {
   agentCliUpdateCheckEnabled: boolean;
   agentComposerDefaultsByAgentTarget: DesktopAgentComposerDefaultsByAgentTarget;
   agentGuiConversationRailCollapsedByProvider: DesktopAgentGuiConversationRailCollapsedByProvider;
+  agentSessionLaunchModesByWorkspace: DesktopAgentSessionLaunchModesByWorkspace;
   agentConversationDetailMode: DesktopAgentConversationDetailMode;
   appCatalogChannel: DesktopAppCatalogChannel;
   browserUseConnectionMode: DesktopBrowserUseConnectionMode;
@@ -85,6 +87,7 @@ export interface DesktopPreferencesReadableStoreState {
   readonly agentCliUpdateCheckEnabled: boolean;
   readonly agentComposerDefaultsByAgentTarget: DesktopAgentComposerDefaultsByAgentTarget;
   readonly agentGuiConversationRailCollapsedByProvider: DesktopAgentGuiConversationRailCollapsedByProvider;
+  readonly agentSessionLaunchModesByWorkspace: DesktopAgentSessionLaunchModesByWorkspace;
   readonly agentConversationDetailMode: DesktopAgentConversationDetailMode;
   readonly appCatalogChannel: DesktopAppCatalogChannel;
   readonly browserUseConnectionMode: DesktopBrowserUseConnectionMode;
