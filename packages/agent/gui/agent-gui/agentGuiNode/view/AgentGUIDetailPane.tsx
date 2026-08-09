@@ -1,5 +1,4 @@
 import { memo, useCallback, useMemo, useRef, useState } from "react";
-import type { AgentMessageMarkdownWorkspaceAppIcon } from "../../../shared/AgentMessageMarkdown";
 import { latestAssistantMessageText } from "../../../shared/agentConversation/projection/agentConversationProjection";
 import { AGENT_GUI_WORKBENCH_OPEN_EXTERNAL_IMPORT_EVENT } from "../../../workbench/contribution";
 import type { AgentComposerProps } from "../AgentComposer";
@@ -32,8 +31,7 @@ import type { AgentTranscriptVirtualScrollController } from "../../../shared/age
 import type { AgentGUIDetailPaneProps } from "./AgentGUIDetailPane.types";
 import { useAgentGUIDetailEditRetry } from "./useAgentGUIDetailEditRetry";
 import { submitAgentInteractionResponseAndDismiss } from "../../../shared/agentConversation/interactionResponseAdmission";
-export const EMPTY_WORKSPACE_APP_ICONS: readonly AgentMessageMarkdownWorkspaceAppIcon[] =
-  [];
+import { EMPTY_WORKSPACE_APP_ICONS } from "./agentGUIWorkspaceAppIcons";
 export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
   shell,
   rail,

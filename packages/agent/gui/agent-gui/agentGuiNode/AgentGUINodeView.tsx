@@ -31,10 +31,8 @@ import { AgentGUIConfigMenu } from "./view/AgentGUIAccountConfig";
 import { AgentGUIProviderRail } from "./view/AgentGUIProviderRail";
 import { type AgentGUIConversationRailState } from "./view/AgentGUIConversationRailPane";
 import { AgentGUIConversationRailController } from "./controller/AgentGUIConversationRailController";
-import {
-  AgentGUIDetailPane,
-  EMPTY_WORKSPACE_APP_ICONS
-} from "./view/AgentGUIDetailPane";
+import { AgentGUIDetailPane } from "./view/AgentGUIDetailPane";
+import { EMPTY_WORKSPACE_APP_ICONS } from "./view/agentGUIWorkspaceAppIcons";
 import { mergeWorkspaceAppIconsFromCommands } from "./view/agentGUIDetailModelHelpers";
 import { AgentGUIRenameConversationDialog } from "./view/AgentGUIRenameConversationDialog";
 import { AgentGUIReferencePickerSurface } from "./view/AgentGUIReferencePickerSurface";
@@ -54,25 +52,7 @@ import {
   useAgentGUIConversationRailResizePointerMove,
   type AgentGUIConversationRailResizeInteraction
 } from "./view/useAgentGUIConversationRailResizePointerMove";
-export type {
-  AgentGUIComposerFooterAccessoryContext,
-  AgentGUIComposerFooterAccessoryRenderer
-} from "./view/AgentGUIComposerFooterAccessory.types";
-export * from "./AgentGUINodeView.publicTypes";
-export {
-  buildAgentConversationHandoffPrompt,
-  handoffProjectPathForConversation,
-  isContextCanceledMessage,
-  isDifferentKnownConversationOwner,
-  resolveActiveConversationBusyStatus,
-  resolveConversationDetailStatus,
-  resolveSlashStatus,
-  useStableSlashStatus
-} from "./view/agentGUIDetailModelHelpers";
-export {
-  resolveAgentGUIHeroIconUrl,
-  shouldEmphasizeEmptyHeroProvider
-} from "./view/AgentGUIEmptyState";
+export * from "./AgentGUINodeView.exports";
 import { useAgentGUIExternalRequests } from "./view/useAgentGUIExternalRequests";
 export function AgentGUINodeView({
   viewModel,
