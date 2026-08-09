@@ -88,7 +88,7 @@ func TestControllerReleaseIdleLiveSessionsSkipsFreshActiveUnsupportedAndNotLive(
 	waitForSessionStatus(t, controller, active.Session.RoomID, active.Session.AgentSessionID, SessionStatusReady)
 }
 
-func TestControllerReleaseIdleLiveSessionsFailureContinuesAndDoesNotReportCompletion(t *testing.T) {
+func TestControllerReleaseIdleLiveSessionsFailureDefersSameAdapterAndDoesNotReportCompletion(t *testing.T) {
 	t.Parallel()
 
 	reporter := &recordingReporter{}
@@ -100,14 +100,15 @@ func TestControllerReleaseIdleLiveSessionsFailureContinuesAndDoesNotReportComple
 	setSessionUpdatedAt(t, controller, failing.Session, stale)
 	setSessionUpdatedAt(t, controller, released.Session, stale)
 	adapter.releaseErrByAgentSessionID[failing.Session.AgentSessionID] = errors.New("close failed")
+	adapter.releaseErrByAgentSessionID[released.Session.AgentSessionID] = errors.New("close failed too")
 	reporter.waitForCalls(t, 2)
 
 	result := controller.ReleaseIdleLiveSessions(context.Background(), ReleaseIdleLiveSessionsInput{
 		IdleAfter: 30 * time.Minute,
 		Now:       time.Now(),
 	})
-	if result.Failed != 1 || result.Released != 1 {
-		t.Fatalf("release result = %#v, want one failure and one release", result)
+	if result.Failed != 1 || result.Released != 0 || result.SkippedCleanupBudget != 1 {
+		t.Fatalf("release result = %#v, want one failure and one same-adapter defer", result)
 	}
 	time.Sleep(50 * time.Millisecond)
 	for _, call := range reporter.snapshot() {
@@ -396,7 +397,7 @@ func TestControllerCloseAllLiveSessionsForcesClosureDuringActiveTurn(t *testing.
 	}
 }
 
-func TestControllerCloseAllLiveSessionsFailureIsCountedAndDoesNotStopOtherSessions(t *testing.T) {
+func TestControllerCloseAllLiveSessionsBoundsFailedCloseBudgetPerAdapter(t *testing.T) {
 	t.Parallel()
 
 	adapter := newReleasableAdapter()
@@ -404,17 +405,95 @@ func TestControllerCloseAllLiveSessionsFailureIsCountedAndDoesNotStopOtherSessio
 	failing := startReleasableSession(t, controller, "failing-session")
 	closes := startReleasableSession(t, controller, "closes-session")
 	adapter.closeErrByAgentSessionID[failing.Session.AgentSessionID] = errors.New("close failed")
+	adapter.closeErrByAgentSessionID[closes.Session.AgentSessionID] = errors.New("close failed too")
 
 	result := controller.CloseAllLiveSessions(context.Background())
-	if result.Scanned != 2 || result.Failed != 1 || result.Closed != 1 {
-		t.Fatalf("close-all result = %#v, want one failure and one closed session", result)
+	if result.Scanned != 1 || result.Failed != 1 || result.Closed != 0 || result.SkippedCleanupBudget != 1 {
+		t.Fatalf("close-all result = %#v, want one failure budget and one deferred session", result)
 	}
 	if !adapter.hasLiveSession(failing.Session.AgentSessionID) {
 		t.Fatalf("failing session should remain live since Close returned an error")
 	}
-	if adapter.hasLiveSession(closes.Session.AgentSessionID) {
-		t.Fatalf("closes-session still live, want it closed despite the other session's failure")
+	if !adapter.hasLiveSession(closes.Session.AgentSessionID) {
+		t.Fatalf("closes-session was attempted after the adapter spent its failed close budget")
 	}
+}
+
+func TestControllerDetachedCleanupGivesEveryAdapterOneBoundedAttempt(t *testing.T) {
+	t.Parallel()
+
+	first := &detachedCleanupTestAdapter{
+		Adapter: &recordingStartAdapter{provider: "acp:cleanup-first"},
+		result:  LiveSessionResourceCleanupResult{Attempted: 1, Cleaned: 1},
+	}
+	second := &detachedCleanupTestAdapter{
+		Adapter: &recordingStartAdapter{provider: "acp:cleanup-second"},
+		result:  LiveSessionResourceCleanupResult{Attempted: 1, Failed: 1},
+	}
+	controller := NewController([]Adapter{first, second}, nil)
+	result := controller.ReleaseIdleLiveSessions(context.Background(), ReleaseIdleLiveSessionsInput{
+		IdleAfter: time.Minute,
+	})
+	if result.Scanned != 0 || result.Released != 0 || result.Failed != 0 {
+		t.Fatalf("canonical release counters = %#v, want unchanged", result)
+	}
+	if result.ResourceCleanupAttempted != 2 || result.ResourceCleanupCleaned != 1 || result.ResourceCleanupFailed != 1 {
+		t.Fatalf("resource cleanup counters = %#v", result)
+	}
+	if first.callCount() != 1 || second.callCount() != 1 {
+		t.Fatalf("cleanup calls = first:%d second:%d, want one each", first.callCount(), second.callCount())
+	}
+}
+
+func TestControllerReleaseIdleLiveSessionsBoundsFailedCloseBudgetPerAdapter(t *testing.T) {
+	t.Parallel()
+
+	adapter := newReleasableAdapter()
+	controller := NewController([]Adapter{adapter}, nil)
+	first := startReleasableSession(t, controller, "first-failing-session")
+	second := startReleasableSession(t, controller, "second-failing-session")
+	adapter.releaseErrByAgentSessionID[first.Session.AgentSessionID] = errors.New("release failed")
+	adapter.releaseErrByAgentSessionID[second.Session.AgentSessionID] = errors.New("release failed too")
+	now := time.Now()
+	setSessionUpdatedAt(t, controller, first.Session, now.Add(-2*time.Hour))
+	setSessionUpdatedAt(t, controller, second.Session, now.Add(-2*time.Hour))
+
+	result := controller.ReleaseIdleLiveSessions(context.Background(), ReleaseIdleLiveSessionsInput{
+		IdleAfter: time.Hour,
+		Now:       now,
+	})
+	if result.Scanned != 2 || result.Failed != 1 || result.SkippedCleanupBudget != 1 {
+		t.Fatalf("release result = %#v, want one failed budget and one deferred session", result)
+	}
+	adapter.mu.Lock()
+	releaseCalls := adapter.releaseCalls
+	adapter.mu.Unlock()
+	if releaseCalls != 1 {
+		t.Fatalf("release calls = %d, want one per failed adapter sweep", releaseCalls)
+	}
+}
+
+type detachedCleanupTestAdapter struct {
+	Adapter
+	mu     sync.Mutex
+	calls  int
+	result LiveSessionResourceCleanupResult
+}
+
+func (a *detachedCleanupTestAdapter) CleanupLiveSessionResources(_ context.Context, limit int) LiveSessionResourceCleanupResult {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if limit != 1 {
+		return LiveSessionResourceCleanupResult{Failed: 1}
+	}
+	a.calls++
+	return a.result
+}
+
+func (a *detachedCleanupTestAdapter) callCount() int {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.calls
 }
 
 type releasableAdapter struct {

@@ -102,6 +102,26 @@ test("command timeout is uncertain until the same client submit id is durable", 
   assert.deepEqual(confirmed.commands, []);
 });
 
+test("failed submit preserves the structured protocol reason for presentation", () => {
+  let state = reduce(createInitialPendingIntentsState(), submit()).state;
+  state = reduce(state, {
+    type: "engine/commandResult",
+    commandId: "queue:send:session-1:1",
+    commandType: "queue/sendPrompt",
+    correlationId: "submit-1",
+    errorCode: "workspace_operation_failed",
+    errorMessage: "agent process cleanup is still pending",
+    errorReason: "agent.process_cleanup_pending",
+    outcome: "failed"
+  }).state;
+
+  const record = state.submitsByClientSubmitId["submit-1"];
+  assert.equal(record?.errorCode, "workspace_operation_failed");
+  assert.equal(record?.errorMessage, "agent process cleanup is still pending");
+  assert.equal(record?.errorReason, "agent.process_cleanup_pending");
+  assert.equal(record?.status, "failed");
+});
+
 test("successful send records the authoritative turn result", () => {
   let state = reduce(createInitialPendingIntentsState(), submit()).state;
   state = reduce(state, {

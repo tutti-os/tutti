@@ -11,6 +11,8 @@ export const AGENT_SETTINGS_REQUIRE_NEW_SESSION_ERROR =
   "agent.settings_require_new_session";
 export const AGENT_CONFIG_DEPENDENCY_UNAVAILABLE_REASON =
   "agent.config_dependency_unavailable";
+export const AGENT_PROCESS_CLEANUP_PENDING_REASON =
+  "agent.process_cleanup_pending";
 export const AGENT_SESSION_TITLE_TOO_LONG_REASON =
   "workspace_agent_session_title_too_long";
 export const AGENT_SESSION_NOT_FOUND_ERROR = "session.not_found";
@@ -202,6 +204,8 @@ export function getAgentGUIErrorMessage(error: unknown): string {
       provider
     });
   }
+  if (getAgentGUIErrorReason(error) === AGENT_PROCESS_CLEANUP_PENDING_REASON)
+    return translate("messages.agentProcessCleanupPending");
   const code = getAgentGUIErrorCode(error);
   if (isProviderSessionNotFoundErrorCode(code))
     return translate("messages.agentProviderSessionNotFound");

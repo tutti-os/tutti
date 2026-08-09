@@ -177,6 +177,25 @@ transport and its CLI process; it does not send `session/close`. The next
 `Exec` launches a replacement CLI process and restores the preserved provider
 session. Extensions that do not advertise a restore method remain live, and a
 pending interactive request makes the session busy rather than releasable.
+Replacement processes continue the durable Session's lifecycle snapshot
+sequence so restored activity cannot be rejected as stale. Release, resume,
+and live settings RPCs (including permission changes) share the per-Session
+lifecycle fence; a failed transport close keeps the live handle registered so
+a later release can retry.
+The local process transport serializes concurrent close attempts and retries
+termination after a failed attempt instead of caching that failure forever.
+An ACP client whose release failed remains owned as a physical handle but is
+not considered usable. One replacement may reconnect the durable provider
+session, but the old client's inbound handler is quarantined before close so
+late output cannot enter the replacement Turn. If that old handle still cannot
+close, later Start/Resume attempts spend one bounded cleanup attempt and return
+`agent.process_cleanup_pending` without spawning another process while the
+retired handle remains.
+The Controller also sweeps adapter-owned retired handles independently of its
+canonical Session registry, so provisional or preserve-state removal cannot
+orphan cleanup ownership. Each sweep gives every cleanup-capable adapter at
+most one failed Close budget across canonical and detached handles, and reports
+resource counters separately from canonical idle-session release results.
 
 Claude Code SDK sessions keep the SDK `session_id` in `ProviderSessionID` and
 mirror the opaque SDK resume cursor in `runtimeContext.resumeCursor`. The sidecar

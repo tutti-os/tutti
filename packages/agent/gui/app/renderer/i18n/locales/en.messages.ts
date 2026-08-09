@@ -12,6 +12,8 @@ export const enMessages = {
   agentSessionReconnecting: "Reconnecting to the live agent session…",
   agentSettingsRequireNewSession:
     "This model can only be used in a new session to preserve context.",
+  agentProcessCleanupPending:
+    "The previous Agent process is still shutting down. To avoid starting a duplicate process, this request was stopped. Try again shortly.",
   agentConfigDependencyUnavailable:
     "{{provider}} configuration references a file that is unavailable. Check its local configuration and try again.",
   agentSessionTitleTooLong:

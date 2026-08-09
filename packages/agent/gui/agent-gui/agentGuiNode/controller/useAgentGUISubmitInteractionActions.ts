@@ -4,6 +4,7 @@ import {
   type AgentActivityInteraction,
   type AgentActivityTurn,
   type AgentSessionEngine,
+  type PendingSubmitIntentRecord,
   type SessionGoalControlSettlement
 } from "@tutti-os/agent-activity-core";
 import type { Dispatch, RefObject, SetStateAction } from "react";
@@ -370,6 +371,11 @@ export function useAgentGUISubmitInteractionActions(
           settlement.errorMessage
             ? getAgentGUIErrorMessage(goalControlSettlementError(settlement))
             : translate("agentHost.agentGui.goalControlFailed")
+        );
+      },
+      onSubmitFailed: (submit) => {
+        setDetailError(
+          getAgentGUIErrorMessage(agentGUISubmitSettlementError(submit))
         );
       },
       snapshots: submittedDraftSnapshotsRef.current
@@ -742,4 +748,21 @@ function goalControlSettlementError(
   if (settlement.errorCode) error.code = settlement.errorCode;
   if (settlement.errorReason) error.reason = settlement.errorReason;
   return error;
+}
+
+export function agentGUISubmitSettlementError(
+  submit: Pick<
+    PendingSubmitIntentRecord,
+    "errorCode" | "errorMessage" | "errorReason"
+  >
+): Error {
+  return Object.assign(
+    new Error(
+      submit.errorMessage?.trim() || translate("agentHost.agentGui.sendFailed")
+    ),
+    {
+      ...(submit.errorCode ? { code: submit.errorCode } : {}),
+      ...(submit.errorReason ? { reason: submit.errorReason } : {})
+    }
+  );
 }

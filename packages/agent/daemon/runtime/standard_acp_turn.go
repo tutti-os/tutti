@@ -20,7 +20,7 @@ func (a *standardACPAdapter) Exec(
 	emit EventSink,
 	emitCommands CommandSnapshotSink,
 ) ([]activityshared.Event, error) {
-	acpSession := a.getSession(session.AgentSessionID)
+	acpSession := a.getUsableSession(session.AgentSessionID)
 	if acpSession == nil || acpSession.client == nil {
 		return []activityshared.Event{standardACPRootProviderTurnCompletedEvent(
 			session,

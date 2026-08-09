@@ -4714,3 +4714,40 @@ agent target`, although the current model picker does not offer that model.
   current model is not first, a stale dependent reasoning default, and an
   unsupported explicit selection separately with generic extension fixtures.
   Inject a `session/set_model` rejection into the standard ACP transport test.
+
+### Standard ACP send is stopped while an earlier process is still exiting
+
+- Symptom:
+  After an idle Standard ACP session is released, the next message may reconnect
+  once, but a later Start/Resume returns
+  `workspace_operation_failed` with reason
+  `agent.process_cleanup_pending`. The message does not reach the provider; in
+  AgentGUI the submitted draft is restored and a localized retry message is
+  shown.
+- Quick checks:
+  Correlate `agent_session.acp.close` stages with
+  `agent_session.live_resource_cleanup.failed`. A close failure followed by one
+  replacement-process start, then no additional start for the rejected retry,
+  confirms cleanup backpressure rather than provider prompt rejection.
+- Root cause:
+  A provider process can ignore graceful termination and fail the bounded
+  transport Close. Dropping that handle allows unbounded orphan processes;
+  allowing its late inbound handler to remain active can also attribute old
+  output or approval requests to the replacement Turn.
+- Fix:
+  Keep failed and replaced clients under adapter ownership, quarantine their
+  message handlers, and retry at most one failed Close budget per adapter sweep.
+  Once a failed handle is retired, Start/Resume performs one bounded cleanup
+  attempt and refuses to spawn another process while cleanup remains pending.
+  Preserve the stable reason through the Host/API boundary so AgentGUI can
+  restore the draft and present i18n copy.
+- Validation:
+  Cover release failure followed by one successful replacement, a blocked next
+  Resume with unchanged spawn/prompt counts, startup/load failure retention,
+  stale retired-client output, Plan-mode persistence without an eager spawn,
+  per-adapter sweep budgets, API classification, localized presentation, and
+  failed-submit draft restoration.
+- References:
+  [standard_acp_session.go](../../../packages/agent/daemon/runtime/standard_acp_session.go)
+  [standard_acp_resource_ownership.go](../../../packages/agent/daemon/runtime/standard_acp_resource_ownership.go)
+  [AgentGUIEngineSettlementController.ts](../../../packages/agent/gui/agent-gui/agentGuiNode/controller/AgentGUIEngineSettlementController.ts)

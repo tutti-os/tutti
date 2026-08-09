@@ -137,22 +137,30 @@ type ReleaseIdleLiveSessionsInput struct {
 }
 
 type ReleaseIdleLiveSessionsResult struct {
-	Scanned            int
-	Released           int
-	SkippedFresh       int
-	SkippedActiveTurn  int
-	SkippedUnsupported int
-	SkippedNotLive     int
-	SkippedBusy        int
-	Failed             int
+	Scanned                  int
+	Released                 int
+	SkippedFresh             int
+	SkippedActiveTurn        int
+	SkippedUnsupported       int
+	SkippedNotLive           int
+	SkippedBusy              int
+	SkippedCleanupBudget     int
+	Failed                   int
+	ResourceCleanupAttempted int
+	ResourceCleanupCleaned   int
+	ResourceCleanupFailed    int
 }
 
 // CloseAllLiveSessionsResult reports the outcome of CloseAllLiveSessions.
 type CloseAllLiveSessionsResult struct {
 	// Scanned counts sessions whose adapter reported a live provider process.
-	Scanned int
-	Closed  int
-	Failed  int
+	Scanned                  int
+	Closed                   int
+	SkippedCleanupBudget     int
+	Failed                   int
+	ResourceCleanupAttempted int
+	ResourceCleanupCleaned   int
+	ResourceCleanupFailed    int
 }
 
 type asyncActivityReporter interface {

@@ -77,13 +77,16 @@ func (c *Controller) Start(ctx context.Context, input StartInput) (StartResult, 
 	}
 	events, err := adapter.Start(ctx, session)
 	if err != nil {
-		detail := cleanVisibleErrorText(err.Error())
-		code := visibleFailureCode(detail)
-		startError := &AppError{
-			Code:         code,
-			Message:      visibleFailureContent(provider, "start", code),
-			DebugMessage: detail,
-			Cause:        err,
+		startError := err
+		if AppErrorCode(err) == "" {
+			detail := cleanVisibleErrorText(err.Error())
+			code := visibleFailureCode(detail)
+			startError = &AppError{
+				Code:         code,
+				Message:      visibleFailureContent(provider, "start", code),
+				DebugMessage: detail,
+				Cause:        err,
+			}
 		}
 		// Provider adapters may emit command/config snapshots before Start returns.
 		// Roll those provisional side channels back with the failed transaction so

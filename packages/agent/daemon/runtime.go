@@ -189,14 +189,18 @@ func (r *Runtime) closeAllLiveSessions() {
 	ctx, cancel := context.WithTimeout(context.Background(), shutdownCloseAllLiveSessionsTimeout)
 	defer cancel()
 	result := r.controller.CloseAllLiveSessions(ctx)
-	if result.Scanned == 0 {
+	if result.Scanned == 0 && result.ResourceCleanupAttempted == 0 {
 		return
 	}
 	slog.Info("agent live session shutdown close completed",
 		"event", "agent_session.shutdown_close.completed",
 		"scanned", result.Scanned,
 		"closed", result.Closed,
+		"skipped_cleanup_budget", result.SkippedCleanupBudget,
 		"failed", result.Failed,
+		"resource_cleanup_attempted", result.ResourceCleanupAttempted,
+		"resource_cleanup_cleaned", result.ResourceCleanupCleaned,
+		"resource_cleanup_failed", result.ResourceCleanupFailed,
 	)
 }
 
@@ -228,7 +232,7 @@ func (r *Runtime) startLiveSessionReaper(config LiveSessionReaperConfig) {
 					IdleAfter: idleAfter,
 					Now:       time.Now(),
 				})
-				if result.Scanned == 0 {
+				if result.Scanned == 0 && result.ResourceCleanupAttempted == 0 {
 					continue
 				}
 				slog.Info("agent live session reaper sweep completed",
@@ -240,7 +244,11 @@ func (r *Runtime) startLiveSessionReaper(config LiveSessionReaperConfig) {
 					"skipped_unsupported", result.SkippedUnsupported,
 					"skipped_not_live", result.SkippedNotLive,
 					"skipped_busy", result.SkippedBusy,
+					"skipped_cleanup_budget", result.SkippedCleanupBudget,
 					"failed", result.Failed,
+					"resource_cleanup_attempted", result.ResourceCleanupAttempted,
+					"resource_cleanup_cleaned", result.ResourceCleanupCleaned,
+					"resource_cleanup_failed", result.ResourceCleanupFailed,
 				)
 			}
 		}

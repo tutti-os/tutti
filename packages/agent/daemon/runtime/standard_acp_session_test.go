@@ -7,6 +7,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	activityshared "github.com/tutti-os/tutti/packages/agent/daemon/activity/events"
 )
@@ -300,6 +301,546 @@ func TestStandardACPAdapterReleaseLiveSessionClosesOnlyTransport(t *testing.T) {
 	}
 	if adapter.HasLiveSession(session) {
 		t.Fatal("adapter still reports a live session after release")
+	}
+}
+
+func TestStandardACPAdapterResumeContinuesLifecycleSequenceAfterRelease(t *testing.T) {
+	t.Parallel()
+
+	transport := &multiProcStandardACPTransport{
+		agentTitle:               "Kimi Code",
+		sessionID:                "kimi-session-lifecycle",
+		supportsAgentLoadSession: true,
+	}
+	adapter := newKimiCodeExtensionTestAdapter(t, transport)
+	session := standardTestSession("acp:kimi-code")
+	session.ProviderSessionID = transport.sessionID
+
+	if _, err := adapter.Start(context.Background(), session); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	live := adapter.getSession(session.AgentSessionID)
+	first := adapter.stampTurnLifecycleSnapshots(live, []activityshared.Event{
+		standardACPRootProviderTurnStartedEvent(session, "turn-before-release"),
+	})
+	snapshot, ok := activityshared.TurnLifecycleSnapshotFromEvent(first[0])
+	if !ok || snapshot.Seq == 0 {
+		t.Fatalf("initial lifecycle snapshot = %#v, want non-zero sequence", snapshot)
+	}
+	session = applyTurnLifecycleSnapshot(session, snapshot, "turn-before-release")
+
+	if err := adapter.ReleaseLiveSession(context.Background(), session); err != nil {
+		t.Fatalf("ReleaseLiveSession: %v", err)
+	}
+	if err := adapter.Resume(context.Background(), session); err != nil {
+		t.Fatalf("Resume: %v", err)
+	}
+	resumed := adapter.getSession(session.AgentSessionID)
+	next := adapter.stampTurnLifecycleSnapshots(resumed, []activityshared.Event{
+		standardACPRootProviderTurnStartedEvent(session, "turn-after-release"),
+	})
+	nextSnapshot, ok := activityshared.TurnLifecycleSnapshotFromEvent(next[0])
+	if !ok {
+		t.Fatal("resumed lifecycle event has no snapshot")
+	}
+	if nextSnapshot.Seq <= session.LifecycleSeq {
+		t.Fatalf("resumed lifecycle sequence = %d, want > persisted %d", nextSnapshot.Seq, session.LifecycleSeq)
+	}
+	updated := applyTurnLifecycleSnapshot(session, nextSnapshot, "turn-after-release")
+	if updated.LifecycleSeq != nextSnapshot.Seq {
+		t.Fatalf("controller lifecycle sequence = %d, want accepted %d", updated.LifecycleSeq, nextSnapshot.Seq)
+	}
+}
+
+func TestStandardACPAdapterReleaseLiveSessionRetainsClientAfterCloseFailure(t *testing.T) {
+	t.Parallel()
+
+	transport := newStandardACPTransport("Kimi Code", "kimi-session-close-retry")
+	transport.conn.supportsAgentLoadSession = true
+	transport.conn.closeFailures = 1
+	adapter := newKimiCodeExtensionTestAdapter(t, transport)
+	session := standardTestSession("acp:kimi-code")
+
+	if _, err := adapter.Start(context.Background(), session); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	if err := adapter.ReleaseLiveSession(context.Background(), session); err == nil {
+		t.Fatal("first ReleaseLiveSession error = nil, want injected close failure")
+	}
+	if adapter.HasLiveSession(session) {
+		t.Fatal("failed release exposed the client as usable after closing its input")
+	}
+	if !adapter.hasTrackedLiveSession(session) {
+		t.Fatal("failed release lost ownership of the physical client")
+	}
+	cleanup := adapter.CleanupLiveSessionResources(context.Background(), 1)
+	if cleanup.Attempted != 1 || cleanup.Cleaned != 1 || cleanup.Failed != 0 {
+		t.Fatalf("cleanup result = %#v, want one successful retry", cleanup)
+	}
+	if adapter.HasLiveSession(session) {
+		t.Fatal("successful release kept the live client")
+	}
+	transport.conn.mu.Lock()
+	closeCalls := transport.conn.closeCalls
+	transport.conn.mu.Unlock()
+	if closeCalls != 2 {
+		t.Fatalf("transport close calls = %d, want 2", closeCalls)
+	}
+}
+
+func TestStandardACPAdapterResumesAfterReleaseFailureAndRetainsOldHandle(t *testing.T) {
+	t.Parallel()
+
+	transport := &multiProcStandardACPTransport{
+		agentTitle:               "Kimi Code",
+		sessionID:                "kimi-session-release-recovery",
+		supportsAgentLoadSession: true,
+	}
+	adapter := newKimiCodeExtensionTestAdapter(t, transport)
+	session := standardTestSession("acp:kimi-code")
+	session.ProviderSessionID = transport.sessionID
+	if _, err := adapter.Start(context.Background(), session); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	transport.mu.Lock()
+	oldConnection := transport.conns[0]
+	transport.mu.Unlock()
+	oldConnection.mu.Lock()
+	oldConnection.closeFailures = 3
+	oldConnection.mu.Unlock()
+
+	if err := adapter.ReleaseLiveSession(context.Background(), session); err == nil {
+		t.Fatal("ReleaseLiveSession error = nil, want injected close failure")
+	}
+	if adapter.HasLiveSession(session) {
+		t.Fatal("failed release client remained usable")
+	}
+	if err := adapter.Resume(context.Background(), session); err != nil {
+		t.Fatalf("Resume: %v", err)
+	}
+	if !adapter.HasLiveSession(session) {
+		t.Fatal("replacement client is not live")
+	}
+	if _, err := adapter.Exec(context.Background(), session, textPrompt("continue after release"), "", "turn-after-release-failure", nil, nil); err != nil {
+		t.Fatalf("Exec on replacement client: %v", err)
+	}
+	transport.mu.Lock()
+	replacementConnection := transport.conns[1]
+	transport.mu.Unlock()
+	replacementConnection.mu.Lock()
+	promptCallsBeforeBackpressure := replacementConnection.promptCallCount
+	replacementConnection.mu.Unlock()
+
+	// Releasing the replacement does not retry the retired handle in the same
+	// canonical sweep. The next replacement attempt gets one bounded cleanup
+	// budget and is rejected before spawning another process when cleanup still
+	// fails.
+	if err := adapter.ReleaseLiveSession(context.Background(), session); err != nil {
+		t.Fatalf("replacement release: %v", err)
+	}
+	if !adapter.hasTrackedLiveSession(session) {
+		t.Fatal("retired handle was not tracked after replacement release")
+	}
+	spawnedBefore, _ := transport.snapshot()
+	err := adapter.Resume(context.Background(), session)
+	if AppErrorCode(err) != AppErrorProcessCleanupPending {
+		t.Fatalf("Resume error code = %q (err=%v), want %q", AppErrorCode(err), err, AppErrorProcessCleanupPending)
+	}
+	spawnedAfter, _ := transport.snapshot()
+	if spawnedAfter != spawnedBefore {
+		t.Fatalf("spawned processes = %d after blocked resume, want %d", spawnedAfter, spawnedBefore)
+	}
+	replacementConnection.mu.Lock()
+	promptCallsAfterBackpressure := replacementConnection.promptCallCount
+	replacementConnection.mu.Unlock()
+	if promptCallsAfterBackpressure != promptCallsBeforeBackpressure {
+		t.Fatalf("provider prompt calls changed from %d to %d after blocked resume", promptCallsBeforeBackpressure, promptCallsAfterBackpressure)
+	}
+	cleanup := adapter.CleanupLiveSessionResources(context.Background(), 1)
+	if cleanup.Attempted != 1 || cleanup.Cleaned != 1 || cleanup.Failed != 0 {
+		t.Fatalf("cleanup result = %#v, want retired handle cleanup", cleanup)
+	}
+	oldConnection.mu.Lock()
+	closeCalls := oldConnection.closeCalls
+	oldConnection.mu.Unlock()
+	if closeCalls != 4 {
+		t.Fatalf("old transport close calls = %d, want release + replacement + admission + cleanup", closeCalls)
+	}
+	adapter.mu.Lock()
+	retired := len(adapter.retiredSessions[session.AgentSessionID])
+	adapter.mu.Unlock()
+	if retired != 0 {
+		t.Fatalf("retired handles = %d, want 0", retired)
+	}
+}
+
+func TestStandardACPAdapterRetainsInitializeFailureWhenTransportCloseFails(t *testing.T) {
+	t.Parallel()
+
+	transport := &multiProcStandardACPTransport{
+		agentTitle:      "Kimi Code",
+		sessionID:       "kimi-session-initialize-failure",
+		initializeError: &acpError{Code: -32603, Message: "initialize failed"},
+		closeFailures:   1,
+	}
+	adapter := newKimiCodeExtensionTestAdapter(t, transport)
+	session := standardTestSession("acp:kimi-code")
+
+	if _, err := adapter.Start(context.Background(), session); err == nil {
+		t.Fatal("Start error = nil, want initialize failure")
+	}
+	spawned, _ := transport.snapshot()
+	if spawned != 1 || !adapter.hasTrackedLiveSession(session) {
+		t.Fatalf("spawned=%d tracked=%v, want failed client retained", spawned, adapter.hasTrackedLiveSession(session))
+	}
+	cleanup := adapter.CleanupLiveSessionResources(context.Background(), 1)
+	if cleanup.Attempted != 1 || cleanup.Cleaned != 1 || cleanup.Failed != 0 {
+		t.Fatalf("cleanup result = %#v", cleanup)
+	}
+}
+
+func TestStandardACPAdapterRetainsStartAndResumeFailuresWhenTransportCloseFails(t *testing.T) {
+	t.Parallel()
+
+	t.Run("session new", func(t *testing.T) {
+		transport := &multiProcStandardACPTransport{
+			agentTitle:      "Kimi Code",
+			sessionID:       "kimi-session-new-failure",
+			newSessionError: &acpError{Code: -32603, Message: "new failed"},
+			closeFailures:   1,
+		}
+		adapter := newKimiCodeExtensionTestAdapter(t, transport)
+		session := standardTestSession("acp:kimi-code")
+		if _, err := adapter.Start(context.Background(), session); err == nil {
+			t.Fatal("Start error = nil, want session/new failure")
+		}
+		if !adapter.hasTrackedLiveSession(session) {
+			t.Fatal("session/new failed client was not retained")
+		}
+	})
+
+	t.Run("session load", func(t *testing.T) {
+		transport := &multiProcStandardACPTransport{
+			agentTitle:               "Kimi Code",
+			sessionID:                "kimi-session-load-failure",
+			supportsAgentLoadSession: true,
+		}
+		adapter := newKimiCodeExtensionTestAdapter(t, transport)
+		session := standardTestSession("acp:kimi-code")
+		if _, err := adapter.Start(context.Background(), session); err != nil {
+			t.Fatalf("Start: %v", err)
+		}
+		if err := adapter.ReleaseLiveSession(context.Background(), session); err != nil {
+			t.Fatalf("ReleaseLiveSession: %v", err)
+		}
+		transport.mu.Lock()
+		transport.loadSessionError = &acpError{Code: -32603, Message: "load failed"}
+		transport.closeFailures = 1
+		transport.mu.Unlock()
+		if err := adapter.Resume(context.Background(), session); err == nil {
+			t.Fatal("Resume error = nil, want session/load failure")
+		}
+		if !adapter.hasTrackedLiveSession(session) {
+			t.Fatal("session/load failed client was not retained")
+		}
+	})
+}
+
+func TestStandardACPAdapterQuarantinesRetiredClientMessages(t *testing.T) {
+	t.Parallel()
+
+	transport := &multiProcStandardACPTransport{
+		agentTitle:               "Kimi Code",
+		sessionID:                "kimi-session-stale-message",
+		supportsAgentLoadSession: true,
+	}
+	adapter := newKimiCodeExtensionTestAdapter(t, transport)
+	session := standardTestSession("acp:kimi-code")
+	session.ProviderSessionID = transport.sessionID
+	if _, err := adapter.Start(context.Background(), session); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	transport.mu.Lock()
+	oldConnection := transport.conns[0]
+	transport.mu.Unlock()
+	oldConnection.mu.Lock()
+	oldConnection.closeFailures = 2
+	oldConnection.mu.Unlock()
+	if err := adapter.ReleaseLiveSession(context.Background(), session); err == nil {
+		t.Fatal("ReleaseLiveSession error = nil, want injected close failure")
+	}
+	if err := adapter.Resume(context.Background(), session); err != nil {
+		t.Fatalf("Resume: %v", err)
+	}
+	if _, err := adapter.Exec(context.Background(), session, textPrompt("new generation"), "", "turn-new", nil, nil); err != nil {
+		t.Fatalf("Exec: %v", err)
+	}
+
+	staleEvents := make(chan []activityshared.Event, 1)
+	adapter.SetSessionEventSink(func(_ string, events []activityshared.Event) {
+		staleEvents <- events
+	})
+	oldConnection.sendJSON(map[string]any{
+		"jsonrpc": "2.0",
+		"method":  acpMethodUpdate,
+		"params": map[string]any{
+			"sessionId": transport.sessionID,
+			"update": map[string]any{
+				"sessionUpdate": "agent_message_chunk",
+				"content":       map[string]any{"type": "text", "text": "stale output"},
+			},
+		},
+	})
+	select {
+	case events := <-staleEvents:
+		t.Fatalf("retired client emitted events into replacement timeline: %#v", events)
+	case <-time.After(100 * time.Millisecond):
+	}
+}
+
+func TestStandardACPAdapterDefersSettingsAfterReleaseFailureUntilResume(t *testing.T) {
+	t.Parallel()
+
+	transport := &multiProcStandardACPTransport{
+		agentTitle:               "Kimi Code",
+		sessionID:                "kimi-session-settings-recovery",
+		supportsAgentLoadSession: true,
+		configOptions: []map[string]any{{
+			"id":      "model",
+			"options": []any{map[string]any{"name": "Model B", "value": "model-b"}},
+		}},
+	}
+	adapterValue, err := NewStandardACPAdapter(StandardACPAdapterConfig{
+		Provider:            "acp:kimi-code",
+		Name:                "kimi-code-acp",
+		DisplayName:         "Kimi Code",
+		Command:             []string{"kimi", "acp"},
+		ModelConfigOptionID: "model",
+		PermissionModes:     map[string]string{"full-access": "yolo"},
+	}, transport, LegacyHostMetadata())
+	if err != nil {
+		t.Fatalf("NewStandardACPAdapter: %v", err)
+	}
+	adapter := adapterValue.(*standardACPAdapter)
+	session := standardTestSession("acp:kimi-code")
+	session.ProviderSessionID = transport.sessionID
+	if _, err := adapter.Start(context.Background(), session); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	transport.mu.Lock()
+	oldConnection := transport.conns[0]
+	transport.mu.Unlock()
+	oldConnection.mu.Lock()
+	oldConnection.closeFailures = 1
+	oldConnection.mu.Unlock()
+	if err := adapter.ReleaseLiveSession(context.Background(), session); err == nil {
+		t.Fatal("ReleaseLiveSession error = nil, want injected close failure")
+	}
+
+	model := "model-b"
+	if err := adapter.ApplySessionSettings(context.Background(), session, SessionSettingsPatch{Model: &model}); err != nil {
+		t.Fatalf("ApplySessionSettings on unusable client: %v", err)
+	}
+	session.PermissionModeID = "full-access"
+	if err := adapter.ApplyPermissionMode(context.Background(), session); err != nil {
+		t.Fatalf("ApplyPermissionMode on unusable client: %v", err)
+	}
+	if calls := oldConnection.setConfigOptionCalls(); len(calls) != 0 {
+		t.Fatalf("unusable client settings calls = %#v, want none", calls)
+	}
+	if got := oldConnection.lastModeID(); got != "" {
+		t.Fatalf("unusable client mode = %q, want no RPC", got)
+	}
+
+	session.Settings = &SessionSettings{Model: model}
+	if err := adapter.Resume(context.Background(), session); err != nil {
+		t.Fatalf("Resume: %v", err)
+	}
+	transport.mu.Lock()
+	resumedConnection := transport.conns[1]
+	transport.mu.Unlock()
+	calls := resumedConnection.setConfigOptionCalls()
+	if len(calls) != 1 || calls[0]["configId"] != "model" || calls[0]["value"] != model {
+		t.Fatalf("resumed settings calls = %#v, want durable model", calls)
+	}
+	if got := resumedConnection.lastModeID(); got != "yolo" {
+		t.Fatalf("resumed mode = %q, want durable permission mode", got)
+	}
+}
+
+func TestControllerCleansRetiredACPHandleAfterCanonicalSessionRemoval(t *testing.T) {
+	t.Parallel()
+
+	transport := &multiProcStandardACPTransport{
+		agentTitle:               "Kimi Code",
+		sessionID:                "kimi-session-detached-cleanup",
+		supportsAgentLoadSession: true,
+	}
+	adapter := newKimiCodeExtensionTestAdapter(t, transport)
+	controller := NewController([]Adapter{adapter}, &recordingReporter{})
+	started, err := controller.Start(context.Background(), StartInput{
+		RoomID:         "room-detached-cleanup",
+		AgentSessionID: "agent-detached-cleanup",
+		Provider:       "acp:kimi-code",
+		CWD:            "/workspace",
+	})
+	if err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	transport.mu.Lock()
+	connection := transport.conns[0]
+	transport.mu.Unlock()
+	connection.mu.Lock()
+	connection.closeFailures = 2
+	connection.mu.Unlock()
+
+	if _, err := controller.Close(context.Background(), CloseInput{
+		RoomID:                 started.Session.RoomID,
+		AgentSessionID:         started.Session.AgentSessionID,
+		PreserveCanonicalState: true,
+	}); err == nil {
+		t.Fatal("Close error = nil, want retained physical handle failure")
+	}
+	if _, ok := controller.Session(started.Session.RoomID, started.Session.AgentSessionID); ok {
+		t.Fatal("controller retained canonical session")
+	}
+	if !adapter.hasTrackedLiveSession(started.Session) {
+		t.Fatal("adapter lost detached physical handle")
+	}
+
+	result := controller.CloseAllLiveSessions(context.Background())
+	if result.Scanned != 0 || result.Closed != 0 || result.Failed != 0 ||
+		result.ResourceCleanupAttempted != 1 || result.ResourceCleanupCleaned != 0 || result.ResourceCleanupFailed != 1 {
+		t.Fatalf("CloseAllLiveSessions result = %#v, want one bounded detached cleanup failure", result)
+	}
+	if !adapter.hasTrackedLiveSession(started.Session) {
+		t.Fatal("detached physical handle was dropped after bounded cleanup failure")
+	}
+	result = controller.CloseAllLiveSessions(context.Background())
+	if result.Scanned != 0 || result.Closed != 0 || result.Failed != 0 ||
+		result.ResourceCleanupAttempted != 1 || result.ResourceCleanupCleaned != 1 || result.ResourceCleanupFailed != 0 {
+		t.Fatalf("second CloseAllLiveSessions result = %#v, want detached cleanup success", result)
+	}
+	if adapter.hasTrackedLiveSession(started.Session) {
+		t.Fatal("detached physical handle remained after cleanup")
+	}
+}
+
+func TestStandardACPAdapterReleaseWaitsForLiveSettingsRPC(t *testing.T) {
+	t.Parallel()
+
+	transport := newStandardACPTransport("Kimi Code", "kimi-session-settings-release")
+	transport.conn.supportsAgentLoadSession = true
+	transport.conn.configOptions = []map[string]any{{
+		"id":      "model",
+		"options": []any{map[string]any{"name": "Model B", "value": "model-b"}},
+	}}
+	adapter := newKimiCodeExtensionTestAdapter(t, transport)
+	session := standardTestSession("acp:kimi-code")
+	if _, err := adapter.Start(context.Background(), session); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+
+	started := make(chan struct{}, 1)
+	releaseRPC := make(chan struct{})
+	transport.conn.mu.Lock()
+	transport.conn.pauseSettingsRPCStarted = started
+	transport.conn.pauseSettingsRPCRelease = releaseRPC
+	transport.conn.mu.Unlock()
+
+	settingsDone := make(chan error, 1)
+	go func() {
+		settingsDone <- adapter.ApplySessionSettings(context.Background(), session, SessionSettingsPatch{Model: stringPtr("model-b")})
+	}()
+	select {
+	case <-started:
+	case <-time.After(time.Second):
+		t.Fatal("settings RPC did not start")
+	}
+
+	releaseDone := make(chan error, 1)
+	go func() {
+		releaseDone <- adapter.ReleaseLiveSession(context.Background(), session)
+	}()
+	select {
+	case err := <-releaseDone:
+		t.Fatalf("release completed while settings RPC was blocked: %v", err)
+	case <-time.After(50 * time.Millisecond):
+	}
+	if !adapter.HasLiveSession(session) {
+		t.Fatal("release closed the client while settings RPC was blocked")
+	}
+
+	close(releaseRPC)
+	if err := <-settingsDone; err != nil {
+		t.Fatalf("ApplySessionSettings: %v", err)
+	}
+	if err := <-releaseDone; err != nil {
+		t.Fatalf("ReleaseLiveSession: %v", err)
+	}
+	if adapter.HasLiveSession(session) {
+		t.Fatal("release did not close the client after settings completed")
+	}
+}
+
+func TestStandardACPAdapterReleaseWaitsForPermissionModeRPC(t *testing.T) {
+	t.Parallel()
+
+	transport := newStandardACPTransport("Kimi Code", "kimi-session-permission-release")
+	transport.conn.supportsAgentLoadSession = true
+	adapterValue, err := NewStandardACPAdapter(StandardACPAdapterConfig{
+		Provider:        "acp:kimi-code",
+		Name:            "kimi-code-acp",
+		DisplayName:     "Kimi Code",
+		Command:         []string{"kimi", "acp"},
+		PermissionModes: map[string]string{"full-access": "yolo"},
+	}, transport, LegacyHostMetadata())
+	if err != nil {
+		t.Fatalf("NewStandardACPAdapter: %v", err)
+	}
+	adapter := adapterValue.(*standardACPAdapter)
+	session := standardTestSession("acp:kimi-code")
+	if _, err := adapter.Start(context.Background(), session); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+
+	started := make(chan struct{}, 1)
+	releaseRPC := make(chan struct{})
+	transport.conn.mu.Lock()
+	transport.conn.pauseSettingsRPCStarted = started
+	transport.conn.pauseSettingsRPCRelease = releaseRPC
+	transport.conn.mu.Unlock()
+	session.PermissionModeID = "full-access"
+
+	settingsDone := make(chan error, 1)
+	go func() {
+		settingsDone <- adapter.ApplyPermissionMode(context.Background(), session)
+	}()
+	select {
+	case <-started:
+	case <-time.After(time.Second):
+		t.Fatal("permission mode RPC did not start")
+	}
+
+	releaseDone := make(chan error, 1)
+	go func() {
+		releaseDone <- adapter.ReleaseLiveSession(context.Background(), session)
+	}()
+	select {
+	case err := <-releaseDone:
+		t.Fatalf("release completed while permission RPC was blocked: %v", err)
+	case <-time.After(50 * time.Millisecond):
+	}
+	if !adapter.HasLiveSession(session) {
+		t.Fatal("release closed the client while permission RPC was blocked")
+	}
+
+	close(releaseRPC)
+	if err := <-settingsDone; err != nil {
+		t.Fatalf("ApplyPermissionMode: %v", err)
+	}
+	if err := <-releaseDone; err != nil {
+		t.Fatalf("ReleaseLiveSession: %v", err)
 	}
 }
 

@@ -3,6 +3,7 @@ package agentruntime
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"sync"
 )
@@ -19,6 +20,11 @@ type multiProcStandardACPTransport struct {
 	sessionID                string
 	supportsLoadSession      bool
 	supportsAgentLoadSession bool
+	configOptions            []map[string]any
+	initializeError          *acpError
+	newSessionError          *acpError
+	loadSessionError         *acpError
+	closeFailures            int
 	specs                    []ProcessSpec
 	conns                    []*standardACPConnection
 }
@@ -43,12 +49,21 @@ func (t *standardACPTransport) Start(_ context.Context, spec ProcessSpec) (Proce
 func (t *multiProcStandardACPTransport) Start(_ context.Context, spec ProcessSpec) (ProcessConnection, error) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
+	configOptions := make([]map[string]any, 0, len(t.configOptions))
+	for _, option := range t.configOptions {
+		configOptions = append(configOptions, clonePayloadDeep(option))
+	}
 	conn := &standardACPConnection{
 		recv:                     make(chan ProcessFrame, 32),
 		agentTitle:               t.agentTitle,
 		sessionID:                t.sessionID,
 		supportsLoadSession:      t.supportsLoadSession,
 		supportsAgentLoadSession: t.supportsAgentLoadSession,
+		configOptions:            configOptions,
+		initializeError:          t.initializeError,
+		newSessionError:          t.newSessionError,
+		loadSessionError:         t.loadSessionError,
+		closeFailures:            t.closeFailures,
 	}
 	t.specs = append(t.specs, spec)
 	t.conns = append(t.conns, conn)
@@ -85,6 +100,8 @@ type standardACPConnection struct {
 	pauseBeforePromptResult       chan struct{}
 	pauseBeforeToolCallCompletion chan struct{}
 	pauseBeforeAskUserToolUpdate  chan struct{}
+	pauseSettingsRPCStarted       chan struct{}
+	pauseSettingsRPCRelease       chan struct{}
 	pendingPermissionCallID       json.RawMessage
 	selectedPermissionOption      string
 	selectedInteractiveResult     map[string]any
@@ -136,8 +153,11 @@ type standardACPConnection struct {
 	authMethods              []map[string]any
 	authenticateResult       map[string]any
 	authenticateError        *acpError
+	initializeError          *acpError
 	newSessionError          *acpError
 	requireAuthentication    bool
+	closeFailures            int
+	closeCalls               int
 }
 
 func (c *standardACPConnection) Recv() (ProcessFrame, error) {
@@ -150,6 +170,12 @@ func (c *standardACPConnection) Recv() (ProcessFrame, error) {
 
 func (c *standardACPConnection) Close() error {
 	c.mu.Lock()
+	c.closeCalls++
+	if c.closeFailures > 0 {
+		c.closeFailures--
+		c.mu.Unlock()
+		return errors.New("injected transport close failure")
+	}
 	c.isClosed = true
 	c.mu.Unlock()
 	c.closeRecv()

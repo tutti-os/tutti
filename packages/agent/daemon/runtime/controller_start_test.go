@@ -52,6 +52,24 @@ func TestControllerStartFailureDoesNotCreateCanonicalSessionOrTurnlessMessage(t 
 	}
 }
 
+func TestControllerStartPreservesStructuredCleanupBackpressureError(t *testing.T) {
+	t.Parallel()
+
+	controller := NewController([]Adapter{cleanupPendingStartAdapter{}}, nil)
+	_, err := controller.Start(context.Background(), StartInput{
+		RoomID:         "room-cleanup-pending",
+		AgentSessionID: "agent-cleanup-pending",
+		Provider:       hermesExtensionTestProvider,
+		CWD:            "/workspace",
+	})
+	if AppErrorCode(err) != AppErrorProcessCleanupPending {
+		t.Fatalf("Start error code = %q (err=%v), want %q", AppErrorCode(err), err, AppErrorProcessCleanupPending)
+	}
+	if AppErrorDebugMessage(err) != "old process close failed" {
+		t.Fatalf("Start debug message = %q", AppErrorDebugMessage(err))
+	}
+}
+
 func TestControllerStartupOperationsDoNotBlockIndependentSessions(t *testing.T) {
 	tests := []struct {
 		name              string
@@ -704,6 +722,16 @@ func (a *recordingPromptAdapter) ValidatePromptContent(_ Session, content []Prom
 }
 
 type failingStartAdapter struct{}
+
+type cleanupPendingStartAdapter struct{ failingStartAdapter }
+
+func (cleanupPendingStartAdapter) Start(context.Context, Session) ([]activityshared.Event, error) {
+	return nil, &AppError{
+		Code:         AppErrorProcessCleanupPending,
+		Message:      "agent process cleanup is still pending",
+		DebugMessage: "old process close failed",
+	}
+}
 
 func (failingStartAdapter) Provider() string { return hermesExtensionTestProvider }
 

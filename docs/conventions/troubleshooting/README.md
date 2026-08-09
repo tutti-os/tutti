@@ -45,7 +45,9 @@ Use the focused runtime index or open one area directly:
   query never creates a durable provider child. It also covers a Claude Query
   that keeps returning connection errors after the machine network recovers.
   Also covers inactive Claude Resume timing out the queue send and leaving later
-  prompts stuck as 排队中 behind `uncertainDelivery`.
+  prompts stuck as 排队中 behind `uncertainDelivery`, and Standard ACP process
+  cleanup failures that stop a send before provider dispatch while preserving
+  the composer draft.
 - [Agent Approvals And Child Sessions](./agent-approvals-subagents.md): Approval gates, plan exits, root/parent/child event attribution, child sessions, and Message Center.
   Includes provider-native work that continues invisibly after root cancellation
   and late child creation racing the durable cancel boundary.

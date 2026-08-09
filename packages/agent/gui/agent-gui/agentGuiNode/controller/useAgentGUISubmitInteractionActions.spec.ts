@@ -15,11 +15,26 @@ import {
   restoreFailedAgentGUIHomeDraft
 } from "./agentGuiController.homeDraftHelpers";
 import {
+  agentGUISubmitSettlementError,
   typedGoalControlFromComposer,
   useAgentGUISubmitInteractionActions
 } from "./useAgentGUISubmitInteractionActions";
 
 const draftKey = "node-default:codex:local:codex";
+
+it("preserves a failed submit reason for package-owned presentation", () => {
+  expect(
+    agentGUISubmitSettlementError({
+      errorCode: "workspace_operation_failed",
+      errorMessage: "agent process cleanup is still pending",
+      errorReason: "agent.process_cleanup_pending"
+    })
+  ).toMatchObject({
+    code: "workspace_operation_failed",
+    message: "agent process cleanup is still pending",
+    reason: "agent.process_cleanup_pending"
+  });
+});
 
 function draft(prompt: string): AgentComposerDraft {
   return [{ type: "text", text: prompt }];

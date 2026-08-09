@@ -376,7 +376,9 @@ func Classify(err error) *ProtocolError {
 		if reason == "" {
 			reason = ReasonWorkspaceOperationFailed
 		}
-		return New(StatusWorkspaceOperationFailed, tuttigenerated.WorkspaceOperationFailed, reason, WithCause(err))
+		result := New(StatusWorkspaceOperationFailed, tuttigenerated.WorkspaceOperationFailed, reason, WithCause(err))
+		result.Retryable = reason == agentruntime.AppErrorProcessCleanupPending
+		return result
 	}
 	var providerUnavailableErr *agentservice.ProviderUnavailableError
 	if errors.As(err, &providerUnavailableErr) {

@@ -94,6 +94,7 @@ export interface PendingSubmitIntentRecord {
   displayPrompt?: string;
   errorCode: string | null;
   errorMessage: string | null;
+  errorReason: string | null;
   expiresAtUnixMs: number;
   submitDiagnostics?: Readonly<AgentActivitySubmitDiagnostics>;
   requestedAtUnixMs: number;

@@ -4,12 +4,33 @@ import (
 	"errors"
 	"testing"
 
+	agentruntime "github.com/tutti-os/tutti/packages/agent/daemon/runtime"
+	agenthost "github.com/tutti-os/tutti/packages/agent/host"
 	runtimeprep "github.com/tutti-os/tutti/packages/agent/runtimeprep"
 	workspaceissues "github.com/tutti-os/tutti/packages/workspace/issues"
 	tuttigenerated "github.com/tutti-os/tutti/services/tuttid/api/generated"
 	agentservice "github.com/tutti-os/tutti/services/tuttid/service/agent"
 	workspaceservice "github.com/tutti-os/tutti/services/tuttid/service/workspace"
 )
+
+func TestClassifyPendingAgentProcessCleanupPreservesRetryableReason(t *testing.T) {
+	runtimeErr := &agentruntime.AppError{
+		Code:         agentruntime.AppErrorProcessCleanupPending,
+		Message:      "agent process cleanup is still pending",
+		DebugMessage: "injected transport close failure",
+	}
+	classified := Classify(agenthost.NewProviderError(
+		runtimeErr.Code,
+		runtimeErr.Message,
+		runtimeErr.DebugMessage,
+		runtimeErr,
+	))
+	if classified.Code != tuttigenerated.WorkspaceOperationFailed ||
+		classified.Reason != agentruntime.AppErrorProcessCleanupPending ||
+		!classified.Retryable {
+		t.Fatalf("classified = %#v, want retryable process cleanup reason", classified)
+	}
+}
 
 func TestClassifyConfigDependencyUnavailable(t *testing.T) {
 	classified := Classify(&runtimeprep.ConfigDependencyUnavailableError{
