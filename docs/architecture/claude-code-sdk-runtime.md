@@ -218,6 +218,17 @@ provider progress but does not commit the optimistic mirror; an authoritative
 Goal observation or successful command terminal commits it, while cancellation,
 failure, or supersession closes the exact pending transaction.
 
+Guidance preempts a provider response without ending its canonical Turn. The
+sidecar captures the already-active Query and calls its SDK `interrupt()` before
+the guidance handler first yields; it never waits for query creation or pending
+configuration while the old response continues. As soon as that interrupt
+succeeds, the sidecar emits `guidance_interrupted`, and only then queues the
+guidance prompt. The daemon uses that response boundary to settle open thinking,
+assistant, and tool projections without emitting a Turn terminal. Claude's
+later matching `error_during_execution` is bookkeeping only. Output produced
+for the guidance then starts a fresh response projection on the same canonical
+Turn.
+
 Background-task lifecycle uses the SDK's `background_tasks_changed` system
 message as a level signal. Its `tasks` array fully replaces the previous live
 set. An empty set means the background children have quiesced; it does not mean

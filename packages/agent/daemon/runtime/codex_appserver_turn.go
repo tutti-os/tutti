@@ -119,21 +119,21 @@ func (a *CodexAppServerAdapter) GuideActiveTurn(
 	if appSession == nil || appSession.client == nil {
 		return nil, ErrSessionDisconnected
 	}
-	activeTurnID := a.sessionActiveTurnID(session.AgentSessionID)
 	session.ProviderSessionID = appSession.threadID
-	explicitDisplayPrompt, visibleText := explicitAndVisiblePromptText(content, displayPrompt)
-	mentionRoutingApplied, mentionRoutingSkills := tuttiMentionRoutingSkills(visibleText)
-	if activeTurnID != "" {
-		providerContent := content
-		if mentionRoutingApplied {
-			providerContent = appendTuttiMentionRoutingContent(providerContent, mentionRoutingSkills)
-		}
-		var err error
-		providerContent, err = materializeProviderPromptImagesAtBoundary(ctx, providerContent, a.promptImageMaterializer)
-		if err != nil {
-			return nil, err
-		}
-		return a.steerActiveTurn(ctx, appSession, session, content, providerContent, explicitDisplayPrompt, visibleText, turnID, activeTurnID, emit)
+	activeTurn, activeTurnID := a.sessionActiveTurnSnapshot(session.AgentSessionID)
+	if activeTurn != nil && activeTurnID != "" {
+		return a.preemptActiveTurnAndStartGuidance(
+			ctx,
+			appSession,
+			activeTurn,
+			activeTurnID,
+			session,
+			content,
+			displayPrompt,
+			turnID,
+			emit,
+			emitCommands,
+		)
 	}
 	// The canonical root turn remains active while child sessions drain even
 	// after the provider's root turn has ended. Guidance in that window starts
@@ -144,42 +144,15 @@ func (a *CodexAppServerAdapter) GuideActiveTurn(
 		// starting another turn would race the existing one.
 		return nil, ErrSessionNoActiveTurn
 	}
-	attemptID := "continuation:" + newID()
-	eventContext, ok := activityEventContext(session, "root-provider-turn-started:"+attemptID, turnID)
-	if !ok {
-		return nil, ErrSessionDisconnected
-	}
-	started := activityshared.NewRootProviderTurnStarted(eventContext, turnID, attemptID)
-	if binding, err := a.WriteProviderTurnBinding(
-		ProviderTurnBindingWriteInput{
-			Kind:           ProviderTurnBindingWriteStarted,
-			ProviderTurnID: attemptID,
-		},
-	); err == nil {
-		started.Payload.ProviderTurnBindingJSON = binding
-	}
-	started.Payload.Metadata = map[string]any{"guidanceContinuation": true}
-	continuation := newCodexGuidanceContinuationAdmission(attemptID)
-	if err := a.execAsync(
-		context.WithoutCancel(ctx),
+	return a.startGuidanceContinuation(
+		ctx,
 		session,
 		content,
 		displayPrompt,
 		turnID,
 		emit,
 		emitCommands,
-		continuation,
-	); err != nil {
-		return nil, err
-	}
-	if err := <-continuation.admitted; err != nil {
-		return nil, err
-	}
-	if emit != nil {
-		emit([]activityshared.Event{started})
-	}
-	close(continuation.provisionalStarted)
-	return []activityshared.Event{started}, nil
+	)
 }
 
 func (appTurn *codexAppServerActiveTurn) markTerminated() {

@@ -329,6 +329,8 @@ func (a *ClaudeCodeSDKAdapter) sidecarTurnEvents(adapterSession *claudeSDKAdapte
 			payloadString(event.Payload, "content"),
 			true,
 		), false, nil
+	case "guidance_interrupted":
+		return a.finishClaudeSDKGuidanceResponse(adapterSession, session, rootTurnID, eventTurnID, strings.TrimSpace(turnID))
 	case "tool_started":
 		if a.claudeSDKToolEventTargetsClosedTurn(adapterSession, rootTurnID, event.Payload) {
 			return nil, false, nil

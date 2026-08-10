@@ -1397,21 +1397,32 @@ inline data URL instead`. Claude or standard ACP may instead receive no
   Message insertion is one product intent with two transport realizations.
   Treating every provider as native guidance sends a same-turn request that the
   standard ACP protocol does not define. Treating every provider as
-  cancel-then-send discards
-  Codex `turn/steer` and Claude SDK `guide`, and can couple prompt delivery to a
-  server-owned queue that does not exist.
+  cancel-then-send discards the same-Turn semantics offered by Codex and the
+  Claude SDK. A native guidance implementation that merely queues provider
+  input is also insufficient: the old response can keep thinking or running a
+  tool before it observes the inserted message.
 - Fix:
   Keep the prompt queue in the workspace `AgentSessionEngine`. Resolve send-now
   from typed runtime capabilities: use native guidance when
-  `activeTurnGuidance` is true; otherwise use exact-turn cancel when `interrupt`
-  is true, retain the prompt in the frontend queue, and send it normally only
-  after validated cancellation or authoritative turn settlement. Route both the
-  composer shortcut and queued-item action through the same atomic engine
-  transition.
+  `activeTurnGuidance` is true, with no canonical Turn cancel. The provider
+  adapter must first terminate the active provider response, close its streaming
+  projections, and only then admit the guided response on the same canonical
+  Turn. Claude uses its SDK interrupt before enqueueing the prompt. Codex/Tutti
+  Agent publishes a provisional provider-turn fence, waits for the exact
+  `turn/interrupt` target to terminate, then starts the continuation through
+  `turn/start`; queued native guidance must not use `turn/steer`. Otherwise use
+  exact-turn cancel when `interrupt` is true, retain the prompt in the frontend
+  queue, and send it normally only after validated cancellation or authoritative
+  turn settlement. Route both the composer shortcut and queued-item action
+  through the same atomic engine transition.
 - Validation:
   Cover both entry points and both capability combinations. Native guidance must
   emit a guidance send with no cancel. ACP fallback must emit cancel with no
-  prompt send, then emit one normal prompt send after cancellation settles.
+  prompt send, then emit one normal prompt send after cancellation settles. At
+  each native provider boundary, assert that the old response terminal and all
+  old thinking-stream terminals precede the guidance message/provider start;
+  for Codex also assert there is no guidance `turn/steer` and the provisional
+  provider-turn fence prevents the interrupted terminal from settling the root.
 - References:
   [promptQueue.reducer.ts](../../../packages/agent/activity-core/src/engine/promptQueue.reducer.ts)
   [sessionLifecycle.reducer.ts](../../../packages/agent/activity-core/src/engine/sessionLifecycle.reducer.ts)

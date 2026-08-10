@@ -114,7 +114,7 @@ export async function handleRequest(
       case "guide": {
         const payload = request.payload ?? {};
         const session = requireSession(stringValue(payload.agentSessionId));
-        session.guide(
+        await session.guide(
           // Prefer structured content; prompt is the legacy text fallback.
           stringValue(payload.prompt),
           payload.content

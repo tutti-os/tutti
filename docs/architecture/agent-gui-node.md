@@ -1133,7 +1133,19 @@ A `waiting` Turn does not imply user action. Only a pending Interaction produces
 The busy-session prompt queue is ephemeral durable-intent coordination in the workspace engine. It is neither a daemon queue nor component state.
 
 - a normal prompt waits for canonical availability
-- a provider with native guidance capability may guide the active Turn
+- a queued-prompt `Send next` action uses native guidance when the provider
+  supports it, even when the provider also supports interruption; guidance
+  preempts the provider's current response but stays on the same canonical Turn
+- Claude SDK guidance acknowledges delivery only after its SDK interrupt has
+  succeeded and the guidance prompt has been enqueued; a failed interrupt is a
+  failed guidance request and must not allow the old response to keep running.
+  The confirmed interruption settles the old response's streaming projections
+  while the canonical Turn remains active for the guidance response
+- Codex/Tutti Agent guidance first installs a provisional provider-turn fence,
+  sends an exact `turn/interrupt`, and waits for the interrupted response to
+  terminate before starting the guided response with `turn/start` on the same
+  canonical Turn. Queued native guidance does not use `turn/steer`, because
+  that RPC can queue input without stopping the response already being sampled
 - guidance captures the canonical `activeTurnId` at the interaction boundary
   and carries it through the queue, activity adapter, daemon API, Agent Host,
   and runtime Controller; `turnId` is required for every cross-process

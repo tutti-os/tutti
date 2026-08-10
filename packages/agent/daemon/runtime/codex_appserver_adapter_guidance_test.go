@@ -4,11 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	activityshared "github.com/tutti-os/tutti/packages/agent/daemon/activity/events"
 	"strings"
 	"sync"
 	"testing"
 	"time"
+
+	activityshared "github.com/tutti-os/tutti/packages/agent/daemon/activity/events"
 )
 
 func TestCodexAppServerAdapterExecSteersActiveTurn(t *testing.T) {
@@ -76,42 +77,102 @@ func TestCodexAppServerAdapterExecSteersActiveTurn(t *testing.T) {
 	}
 }
 
-func TestCodexAppServerAdapterGuideActiveTurnUsesTurnSteer(t *testing.T) {
+func TestCodexAppServerAdapterGuideActiveTurnPreemptsBeforeContinuation(t *testing.T) {
 	t.Parallel()
 
 	adapter, transport, session := startedAppServerAdapter(t)
 	transport.server.holdTurn = true
 
+	var streamedMu sync.Mutex
+	var streamed []activityshared.Event
+	emit := func(events []activityshared.Event) {
+		streamedMu.Lock()
+		streamed = append(streamed, events...)
+		streamedMu.Unlock()
+	}
 	execDone := make(chan struct{})
 	go func() {
-		_, _ = adapter.Exec(context.Background(), session, textPrompt("long task"), "", "turn-local-1", nil, nil)
+		_, _ = adapter.Exec(context.Background(), session, textPrompt("long task"), "", "turn-local-1", emit, nil)
 		close(execDone)
 	}()
 	waitForCondition(t, func() bool {
 		return adapter.sessionActiveTurnID(session.AgentSessionID) == "turn-1"
 	})
 
-	events, err := adapter.GuideActiveTurn(context.Background(), session, textPrompt("guide current turn"), "", "turn-guidance", nil, nil)
+	returned, err := adapter.GuideActiveTurn(
+		context.Background(), session, textPrompt("guide current turn"), "", "turn-local-1", emit, nil,
+	)
 	if err != nil {
 		t.Fatalf("GuideActiveTurn: %v", err)
 	}
-	steer := appServerRequestParams(t, transport.conn, appServerMethodTurnSteer)
-	if asString(steer["expectedTurnId"]) != "turn-1" {
-		t.Fatalf("turn/steer params = %#v", steer)
+	if requests := appServerRequestParamsList(t, transport.conn, appServerMethodTurnSteer); len(requests) != 0 {
+		t.Fatalf("turn/steer requests = %#v, want hard preemption", requests)
 	}
-	messages := eventsOfType(events, activityshared.EventMessageAppended)
-	if len(messages) != 1 {
-		t.Fatalf("guidance events = %#v, want one message", events)
+	interrupt := appServerRequestParams(t, transport.conn, appServerMethodTurnInterrupt)
+	if asString(interrupt["threadId"]) != "codex-thread-1" || asString(interrupt["turnId"]) != "turn-1" {
+		t.Fatalf("turn/interrupt params = %#v", interrupt)
 	}
-	if guidance, ok := messages[0].Payload.Metadata["guidance"].(bool); !ok || !guidance {
-		t.Fatalf("guidance metadata = %#v, want guidance=true", messages[0].Payload.Metadata)
+	if len(returned) != 1 || returned[0].Type != activityshared.EventRootProviderTurnStarted ||
+		returned[0].Payload.Metadata["guidanceContinuation"] != true {
+		t.Fatalf("guidance return events = %#v, want provisional continuation", returned)
+	}
+	waitForCondition(t, func() bool {
+		return len(appServerRequestParamsList(t, transport.conn, appServerMethodTurnStart)) == 2
+	})
+
+	streamedMu.Lock()
+	snapshot := append([]activityshared.Event(nil), streamed...)
+	streamedMu.Unlock()
+	provisionalIndex, interruptedIndex, guidanceIndex, continuationIndex := -1, -1, -1, -1
+	for index, event := range snapshot {
+		switch {
+		case event.Type == activityshared.EventRootProviderTurnStarted &&
+			event.Payload.Metadata["guidanceContinuation"] == true:
+			provisionalIndex = index
+		case event.Type == activityshared.EventRootProviderTurnCompleted &&
+			event.Payload.ProviderTurnID == "turn-1" &&
+			event.Payload.TurnOutcome == string(activityshared.TurnOutcomeCanceled):
+			interruptedIndex = index
+		case event.Type == activityshared.EventMessageAppended &&
+			event.Payload.Role == activityshared.MessageRoleUser &&
+			event.Payload.Content == "guide current turn":
+			guidanceIndex = index
+		case event.Type == activityshared.EventRootProviderTurnStarted &&
+			event.Payload.ProviderTurnID == "turn-1" && index > interruptedIndex:
+			continuationIndex = index
+		}
+	}
+	if provisionalIndex < 0 || interruptedIndex <= provisionalIndex || guidanceIndex <= interruptedIndex ||
+		continuationIndex <= guidanceIndex {
+		t.Fatalf("guidance event order provisional=%d interrupted=%d guidance=%d continuation=%d events=%#v",
+			provisionalIndex, interruptedIndex, guidanceIndex, continuationIndex, snapshot)
+	}
+	oldThinkingStates := map[string]string{}
+	for index, event := range snapshot {
+		if index >= guidanceIndex || event.Type != activityshared.EventMessageAppended ||
+			event.Payload.Role != activityshared.MessageRoleAssistantThinking {
+			continue
+		}
+		messageID := asString(event.Payload.Metadata["messageId"])
+		oldThinkingStates[messageID] = asString(event.Payload.Metadata["streamState"])
+	}
+	if len(oldThinkingStates) == 0 {
+		t.Fatalf("interrupted response emitted no thinking stream: %#v", snapshot)
+	}
+	for messageID, state := range oldThinkingStates {
+		if state == messageStreamStateStreaming {
+			t.Fatalf("interrupted response left thinking stream %q open before guidance: %#v", messageID, snapshot)
+		}
 	}
 
+	transport.server.mu.Lock()
+	transport.server.turnStatus = "completed"
+	transport.server.mu.Unlock()
 	transport.server.completePendingTurn()
 	select {
 	case <-execDone:
 	case <-time.After(5 * time.Second):
-		t.Fatalf("Exec did not finish after guidance")
+		t.Fatalf("original Exec did not finish after preemption")
 	}
 }
 
@@ -135,26 +196,35 @@ func TestCodexAppServerAdapterGuideMaterializesRemoteImageAtProviderBoundary(t *
 	if _, err := adapter.GuideActiveTurn(context.Background(), session, []PromptContentBlock{
 		{Type: "text", Text: "use this screenshot"},
 		{Type: "image", MimeType: "image/png", URL: imageURL},
-	}, "", "turn-guidance", nil, nil); err != nil {
+	}, "", "turn-local-1", nil, nil); err != nil {
 		t.Fatalf("GuideActiveTurn: %v", err)
 	}
 
-	steer := appServerRequestParams(t, transport.conn, appServerMethodTurnSteer)
-	input, _ := steer["input"].([]any)
+	waitForCondition(t, func() bool {
+		return len(appServerRequestParamsList(t, transport.conn, appServerMethodTurnStart)) == 2
+	})
+	starts := appServerRequestParamsList(t, transport.conn, appServerMethodTurnStart)
+	input, _ := starts[1]["input"].([]any)
 	if len(input) != 2 {
-		t.Fatalf("turn/steer input = %#v, want text+image", steer["input"])
+		t.Fatalf("guidance turn/start input = %#v, want text+image", starts[1]["input"])
 	}
 	image := payloadObject(input[1])
 	if got := asString(image["url"]); got != "data:image/png;base64,aGk=" {
-		t.Fatalf("turn/steer image URL = %q, want inline data URL", got)
+		t.Fatalf("guidance turn/start image URL = %q, want inline data URL", got)
 	}
 
-	transport.server.completePendingTurn()
 	select {
 	case <-execDone:
 	case <-time.After(5 * time.Second):
-		t.Fatal("Exec did not finish after guidance")
+		t.Fatal("original Exec did not finish after guidance preemption")
 	}
+	transport.server.mu.Lock()
+	transport.server.turnStatus = "completed"
+	transport.server.mu.Unlock()
+	transport.server.completePendingTurn()
+	waitForCondition(t, func() bool {
+		return adapter.sessionActiveTurnID(session.AgentSessionID) == ""
+	})
 }
 
 func TestCodexAppServerAdapterGuidanceStartsProviderContinuationOnSameRootTurn(t *testing.T) {

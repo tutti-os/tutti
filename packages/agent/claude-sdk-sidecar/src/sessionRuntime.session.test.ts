@@ -984,10 +984,20 @@ test("SDK api_retry authentication error fails before retrying", async () => {
   }
 });
 
-test("guidance prompt stays on the active SDK turn", async () => {
+test("guidance preempts immediately and stays on the active SDK turn", async () => {
   const events: Array<{ type: string; payload?: Record<string, unknown> }> = [];
   const prompts: string[] = [];
-  const interrupts = { count: 0 };
+  let releaseInterrupt = () => {};
+  let releaseAbortResult = () => {};
+  const interrupts = {
+    count: 0,
+    wait: new Promise<void>((resolve) => {
+      releaseInterrupt = resolve;
+    }),
+    resultWait: new Promise<void>((resolve) => {
+      releaseAbortResult = resolve;
+    })
+  };
   const restoreSink = withSidecarEventSinkForTest((event) =>
     events.push(event)
   );
@@ -1012,11 +1022,36 @@ test("guidance prompt stays on the active SDK turn", async () => {
 
     await session.start();
     session.exec("turn-1", "start working");
-    session.guide("prefer the focused path");
+    await waitForCondition(() => prompts.length === 1, "initial prompt");
+    let guidanceAcknowledged = false;
+    const guidance = session.guide("prefer the focused path").then(() => {
+      guidanceAcknowledged = true;
+    });
+
+    assert.equal(interrupts.count, 1);
+    assert.deepEqual(prompts, ["start working"]);
+    assert.equal(guidanceAcknowledged, false);
+
+    releaseInterrupt();
+    await guidance;
+    const interruptedIndex = events.findIndex(
+      (event) => event.type === "guidance_interrupted"
+    );
+    assert.ok(interruptedIndex >= 0);
+    assert.equal(events[interruptedIndex]?.payload?.turnId, "turn-1");
+    assert.deepEqual(prompts, ["start working"]);
+
+    releaseAbortResult();
     await waitForEvent(events, "turn_completed");
 
     assert.deepEqual(prompts, ["start working", "prefer the focused path"]);
     assert.equal(interrupts.count, 1);
+    const guidedAssistantIndex = events.findIndex(
+      (event) =>
+        event.type === "assistant_completed" &&
+        event.payload?.content === "Guided response"
+    );
+    assert.ok(guidedAssistantIndex > interruptedIndex);
     const completed = events.find((event) => event.type === "turn_completed");
     assert.equal(completed?.payload?.turnId, "turn-1");
     assert.equal(
@@ -1037,6 +1072,52 @@ test("guidance prompt stays on the active SDK turn", async () => {
       ),
       false
     );
+  } finally {
+    restoreSink();
+  }
+});
+
+test("guidance rejects instead of enqueueing when SDK preemption fails", async () => {
+  const prompts: string[] = [];
+  const restoreSink = withSidecarEventSinkForTest(() => {});
+  try {
+    const session = new SessionRuntime(
+      "provider-session-1",
+      "/repo",
+      {},
+      false,
+      false,
+      {
+        model: "",
+        permissionModeId: "default",
+        planMode: false,
+        effort: "",
+        speed: ""
+      },
+      sidecarClaudeOptionsFromPayload({}),
+      undefined,
+      ({ prompt }) => {
+        const query = fakeGuidancePromptQuery(prompt, prompts);
+        return {
+          ...query,
+          async interrupt() {
+            throw new Error("interrupt rejected");
+          }
+        };
+      }
+    );
+
+    await session.start();
+    session.exec("turn-1", "start working");
+    await waitForCondition(() => prompts.length === 1, "initial prompt");
+
+    await assert.rejects(
+      session.guide("prefer the focused path"),
+      /guidance preemption failed: interrupt rejected/
+    );
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    assert.deepEqual(prompts, ["start working"]);
   } finally {
     restoreSink();
   }

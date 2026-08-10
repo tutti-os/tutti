@@ -720,7 +720,10 @@ export function fakeStoppableDelegatedTaskQuery(
 
 export function fakeGuidedDelegatedContinuationQuery(
   prompt: AsyncIterable<SDKUserMessage>
-): AsyncIterable<SDKMessage> & { close: () => void } {
+): AsyncIterable<SDKMessage> & {
+  interrupt: () => Promise<void>;
+  close: () => void;
+} {
   return {
     async *[Symbol.asyncIterator]() {
       yield* fakeDelegatedTaskQuery(prompt);
@@ -749,6 +752,7 @@ export function fakeGuidedDelegatedContinuationQuery(
         subtype: "success"
       } as unknown as SDKMessage;
     },
+    async interrupt() {},
     close() {}
   };
 }

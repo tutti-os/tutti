@@ -295,8 +295,10 @@ type RootProviderTurnLifecycleAdapter interface {
 }
 
 type ActiveTurnGuidanceAdapter interface {
-	// GuideActiveTurn appends guidance to the exact controller turn identified
-	// by turnID. The guidance submit does not own a separate turn lifecycle.
+	// GuideActiveTurn applies guidance to the exact controller turn identified
+	// by turnID. It must terminate the provider's current response and close its
+	// streaming projections before admitting the guided response, while keeping
+	// the same canonical turn lifecycle.
 	GuideActiveTurn(context.Context, Session, []PromptContentBlock, string, string, EventSink, CommandSnapshotSink) ([]activityshared.Event, error)
 }
 

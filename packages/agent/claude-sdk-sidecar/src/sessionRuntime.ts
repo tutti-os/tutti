@@ -537,59 +537,74 @@ export class SessionRuntime {
       });
   }
 
-  guide(prompt: string, content?: unknown): void {
+  async guide(prompt: string, content?: unknown): Promise<void> {
     if (this.driver) {
       this.driver.guide(prompt);
       return;
     }
     if (this.sessionClosed) {
-      emit({
-        type: "error",
-        payload: {
-          error: "Claude SDK query is closed"
-        }
-      });
-      return;
+      throw new Error("Claude SDK query is closed");
     }
     const executionEpoch = this.executionEpoch;
-    void this.ensureQuery()
-      .then(() =>
-        this.runConfigurationTask(() => this.configuration.applyPendingFlags())
-      )
-      .then(async () => {
-        const generation = this.queryGeneration;
-        if (
-          !generation ||
-          !this.isQueryGenerationActive(generation) ||
-          executionEpoch !== this.executionEpoch
-        ) {
-          return;
-        }
-        // Preempt in-flight tool work before enqueueing guidance. Without
-        // interrupt, Bash/etc. finish first and the model often ignores the
-        // steered prompt — unlike Codex turn/steer which interrupts mid-turn.
-        // Mark the interrupt so the following error_during_execution result
-        // keeps this turn alive for the guided prompt (see messageRouter).
-        this.pendingGuidanceInterrupt = true;
-        try {
-          await generation.query?.interrupt?.();
-        } catch (error) {
-          this.pendingGuidanceInterrupt = false;
-          this.logAuthRefresh("guide.interrupt_failed", {
-            error: errorPayload(error)
-          });
-        }
-        if (
-          !this.isQueryGenerationActive(generation) ||
-          executionEpoch !== this.executionEpoch
-        ) {
-          this.pendingGuidanceInterrupt = false;
-          return;
-        }
-        const sdkContent = sdkContentFromPromptBlocks(
-          content,
-          prompt
-        ) as unknown as SDKUserMessage["message"]["content"];
+    try {
+      const generation = this.queryGeneration;
+      if (
+        !generation ||
+        !this.isQueryGenerationActive(generation) ||
+        executionEpoch !== this.executionEpoch
+      ) {
+        throw new Error("Claude SDK query changed before guidance preemption");
+      }
+      const turnId = this.turns.activeId.trim();
+      if (!turnId) {
+        throw new Error("Claude SDK guidance requires an active turn");
+      }
+      const interrupt = generation.query?.interrupt;
+      if (typeof interrupt !== "function") {
+        throw new Error(
+          "Claude SDK query does not support guidance preemption"
+        );
+      }
+      // Preempt in-flight tool work before enqueueing guidance. Without
+      // interrupt, Bash/etc. finish first and the model often ignores the
+      // inserted prompt while the old response remains active.
+      // Mark the interrupt so the following error_during_execution result
+      // keeps this turn alive for the guided prompt (see messageRouter).
+      this.pendingGuidanceInterrupt = true;
+      try {
+        // Calling the SDK method happens before this async function first
+        // yields. Guidance must not wait behind query setup or configuration
+        // work while the current provider response keeps running.
+        await interrupt.call(generation.query);
+      } catch (error) {
+        this.pendingGuidanceInterrupt = false;
+        this.logAuthRefresh("guide.interrupt_failed", {
+          error: errorPayload(error)
+        });
+        throw new Error(
+          `Claude SDK guidance preemption failed: ${errorMessage(error)}`,
+          { cause: error }
+        );
+      }
+      if (
+        !this.isQueryGenerationActive(generation) ||
+        executionEpoch !== this.executionEpoch
+      ) {
+        this.pendingGuidanceInterrupt = false;
+        throw new Error("Claude SDK query changed during guidance preemption");
+      }
+      // Publish the response boundary as soon as the SDK confirms the
+      // interrupt, before the guided prompt is enqueued. The later
+      // error_during_execution result is only a provider bookkeeping event.
+      emit({
+        type: "guidance_interrupted",
+        payload: { turnId }
+      });
+      const sdkContent = sdkContentFromPromptBlocks(
+        content,
+        prompt
+      ) as unknown as SDKUserMessage["message"]["content"];
+      try {
         generation.promptQueue.push({
           uuid: crypto.randomUUID(),
           type: "user",
@@ -601,21 +616,16 @@ export class SessionRuntime {
           }
         } as SDKUserMessage);
         this.consume(generation);
-      })
-      .catch((error) => {
-        if (executionEpoch !== this.executionEpoch) {
-          return;
-        }
-        this.logAuthRefresh("guide.ensure_query_failed", {
-          error: errorPayload(error)
-        });
-        emit({
-          type: "error",
-          payload: {
-            error: errorMessage(error)
-          }
-        });
+      } catch (error) {
+        this.pendingGuidanceInterrupt = false;
+        throw error;
+      }
+    } catch (error) {
+      this.logAuthRefresh("guide.failed", {
+        error: errorPayload(error)
       });
+      throw error;
+    }
   }
 
   async cancel(expectedTurnId = ""): Promise<SessionCancelResult> {
