@@ -19,7 +19,14 @@ import (
 )
 
 func (*Service) ScanExternalImports(ctx context.Context, input ExternalImportScanInput) (ExternalImportScanResult, error) {
-	data, err := scanExternalAgentSessions(ctx, normalizeExternalImportProviders(input.Providers), input.Days, input.ArchivePath, input.ArchiveKind)
+	data, err := scanExternalAgentSessionsWithRetention(
+		ctx,
+		normalizeExternalImportProviders(input.Providers),
+		input.Days,
+		input.ArchivePath,
+		input.ArchiveKind,
+		externalScanSummaryOnly,
+	)
 	if err != nil {
 		return ExternalImportScanResult{}, err
 	}
@@ -227,6 +234,24 @@ func externalImportAgentTargetID(provider string) string {
 }
 
 func scanExternalAgentSessions(ctx context.Context, providers []string, days int, archivePath string, archiveKind string) (externalScanData, error) {
+	return scanExternalAgentSessionsWithRetention(
+		ctx,
+		providers,
+		days,
+		archivePath,
+		archiveKind,
+		externalScanRetainTranscripts,
+	)
+}
+
+func scanExternalAgentSessionsWithRetention(
+	ctx context.Context,
+	providers []string,
+	days int,
+	archivePath string,
+	archiveKind string,
+	retention externalScanRetention,
+) (externalScanData, error) {
 	if strings.TrimSpace(archivePath) != "" {
 		archiveKind = normalizeExternalImportArchiveKind(archiveKind)
 		// The Claude archive scan still requires the claude-code provider to be
@@ -247,55 +272,28 @@ func scanExternalAgentSessions(ctx context.Context, providers []string, days int
 		}
 		switch archiveKind {
 		case ExternalImportArchiveKindChatGPT:
-			return scanChatGPTExportArchive(ctx, archivePath, cutoffUnixMS)
+			return scanChatGPTExportArchiveWithRetention(ctx, archivePath, cutoffUnixMS, retention)
 		default:
-			return scanClaudeExportArchive(ctx, archivePath, cutoffUnixMS)
+			return scanClaudeExportArchiveWithRetention(ctx, archivePath, cutoffUnixMS, retention)
 		}
 	}
 	data := externalScanData{}
-	projects := map[string]*ExternalImportProject{}
+	collector := newExternalScanCollector(&data, retention)
 	cutoffUnixMS := externalScanCutoffUnixMS(days)
 	for _, provider := range normalizeExternalImportProviders(providers) {
 		if ctx.Err() != nil {
 			break
 		}
-		sessions, summary, errors := scanExternalProviderSessions(provider, cutoffUnixMS)
+		summary, errors := scanExternalProviderSessions(provider, cutoffUnixMS, collector.add)
 		data.result.Providers = append(data.result.Providers, summary)
 		data.result.Errors = append(data.result.Errors, errors...)
-		for _, session := range sessions {
-			project, ok := projectFromExternalSession(session)
-			if !ok {
-				data.result.SkippedSessions++
-				continue
-			}
-			data.sessions = append(data.sessions, session)
-			data.result.ScannedSessions++
-			data.result.ScannedMessages += len(session.Messages)
-			data.result.Sessions = append(data.result.Sessions, externalImportSessionSummary(session, project.Path))
-			upsertExternalImportProject(projects, project, session.Provider)
-		}
 	}
-	for _, project := range projects {
-		sort.Strings(project.Providers)
-		data.result.Projects = append(data.result.Projects, *project)
-	}
-	sort.SliceStable(data.result.Projects, func(left, right int) bool {
-		if data.result.Projects[left].LastUpdatedAtUnixMS == data.result.Projects[right].LastUpdatedAtUnixMS {
-			return data.result.Projects[left].Path < data.result.Projects[right].Path
-		}
-		return data.result.Projects[left].LastUpdatedAtUnixMS > data.result.Projects[right].LastUpdatedAtUnixMS
-	})
-	sort.SliceStable(data.result.Sessions, func(left, right int) bool {
-		if data.result.Sessions[left].LastUpdatedAtUnixMS == data.result.Sessions[right].LastUpdatedAtUnixMS {
-			return data.result.Sessions[left].ID < data.result.Sessions[right].ID
-		}
-		return data.result.Sessions[left].LastUpdatedAtUnixMS > data.result.Sessions[right].LastUpdatedAtUnixMS
-	})
 	// The provider loop breaks on cancellation, so surface it instead of
 	// letting a partial scan pass as a complete result.
 	if err := ctx.Err(); err != nil {
 		return externalScanData{}, err
 	}
+	collector.finish()
 	return data, nil
 }
 
@@ -339,24 +337,28 @@ func externalScanCutoffUnixMS(days int) int64 {
 	return time.Now().Add(-time.Duration(days) * 24 * time.Hour).UnixMilli()
 }
 
-func scanExternalProviderSessions(provider string, cutoffUnixMS int64) ([]externalImportedSession, ExternalImportProvider, []ExternalImportError) {
+func scanExternalProviderSessions(
+	provider string,
+	cutoffUnixMS int64,
+	visit func(externalImportedSession),
+) (ExternalImportProvider, []ExternalImportError) {
 	descriptor, ok := providerregistry.Find(provider)
 	if !ok || !descriptor.ExternalImport.Enabled {
-		return nil, ExternalImportProvider{Provider: provider}, nil
+		return ExternalImportProvider{Provider: provider}, nil
 	}
 	root := externalProviderRoot(descriptor.ExternalImport)
 	summary := ExternalImportProvider{Provider: provider, Root: root}
 	if root == "" {
-		return nil, summary, nil
+		return summary, nil
 	}
 	if info, err := os.Stat(root); err != nil || !info.IsDir() {
-		return nil, summary, nil
+		return summary, nil
 	}
 	summary.Available = true
 	files, err := externalProviderJSONLFiles(descriptor.ExternalImport, root)
 	if err != nil {
 		summary.Error = err.Error()
-		return nil, summary, []ExternalImportError{{Provider: provider, Message: err.Error()}}
+		return summary, []ExternalImportError{{Provider: provider, Message: err.Error()}}
 	}
 	// Codex stores the generated conversation title in its app-server SQLite
 	// state DB rather than in the rollout transcript, so resolve it up front and
@@ -365,7 +367,6 @@ func scanExternalProviderSessions(provider string, cutoffUnixMS int64) ([]extern
 	if descriptor.ExternalImport.TitleCatalogKind == providerregistry.ExternalImportTitleCatalogKindCodexSQLite {
 		importedTitles = codexThreadTitles(root)
 	}
-	sessions := make([]externalImportedSession, 0, len(files))
 	errors := make([]ExternalImportError, 0)
 	for _, file := range files {
 		session, ok, err := parseExternalProviderJSONL(descriptor, file)
@@ -382,11 +383,11 @@ func scanExternalProviderSessions(provider string, cutoffUnixMS int64) ([]extern
 		if title := strings.TrimSpace(importedTitles[session.ProviderSessionID]); title != "" {
 			session.Title = truncateExternalTitle(title)
 		}
-		sessions = append(sessions, session)
 		summary.SessionCount++
 		summary.MessageCount += len(session.Messages)
+		visit(session)
 	}
-	return sessions, summary, errors
+	return summary, errors
 }
 
 func externalProviderRoot(descriptor providerregistry.ExternalImportDescriptor) string {

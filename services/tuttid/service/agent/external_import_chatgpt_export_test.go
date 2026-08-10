@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"sort"
 	"strings"
@@ -14,6 +15,38 @@ import (
 
 	workspacebiz "github.com/tutti-os/tutti/services/tuttid/biz/workspace"
 )
+
+func TestScanChatGPTExportArchiveSummaryOnlyMatchesRetainedResult(t *testing.T) {
+	archivePath := writeChatGPTExportArchive(t, []map[string]any{
+		chatgptExportConversationFixture("summary-only", "Summary only", "n-user", map[string]any{
+			"root":   chatgptExportNodeFixture("root", "", []string{"n-user"}, nil),
+			"n-user": chatgptExportNodeFixture("n-user", "root", []string{}, chatgptExportTextMessageFixture("m-user", "user", 1785542401, "Hello")),
+		}),
+	})
+
+	summaryOnly, err := scanChatGPTExportArchiveWithRetention(
+		context.Background(),
+		archivePath,
+		0,
+		externalScanSummaryOnly,
+	)
+	if err != nil {
+		t.Fatalf("summary-only scan error = %v", err)
+	}
+	retained, err := scanChatGPTExportArchive(context.Background(), archivePath, 0)
+	if err != nil {
+		t.Fatalf("retained scan error = %v", err)
+	}
+	if !reflect.DeepEqual(summaryOnly.result, retained.result) {
+		t.Fatalf("summary-only result = %#v, want retained result %#v", summaryOnly.result, retained.result)
+	}
+	if len(summaryOnly.sessions) != 0 {
+		t.Fatalf("summary-only sessions = %#v, want no retained transcripts", summaryOnly.sessions)
+	}
+	if len(retained.sessions) != 1 {
+		t.Fatalf("retained sessions = %#v, want one full transcript", retained.sessions)
+	}
+}
 
 func TestScanChatGPTExportArchiveNormalizesRolesTextAndAssetPlaceholders(t *testing.T) {
 	archivePath := writeChatGPTExportArchive(t, []map[string]any{
