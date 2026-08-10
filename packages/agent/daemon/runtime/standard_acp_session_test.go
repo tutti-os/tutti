@@ -456,6 +456,19 @@ func TestStandardACPAdapterResumesAfterReleaseFailureAndRetainsOldHandle(t *test
 	if promptCallsAfterBackpressure != promptCallsBeforeBackpressure {
 		t.Fatalf("provider prompt calls changed from %d to %d after blocked resume", promptCallsBeforeBackpressure, promptCallsAfterBackpressure)
 	}
+	otherSession := session
+	otherSession.AgentSessionID = "agent-session-unaffected"
+	otherSession.ProviderSessionID = ""
+	if _, err := adapter.Start(context.Background(), otherSession); err != nil {
+		t.Fatalf("Start other session while first is backpressured: %v", err)
+	}
+	spawnedWithOtherSession, _ := transport.snapshot()
+	if spawnedWithOtherSession != spawnedAfter+1 {
+		t.Fatalf("spawned processes after other session start = %d, want %d", spawnedWithOtherSession, spawnedAfter+1)
+	}
+	if !adapter.HasLiveSession(otherSession) {
+		t.Fatal("other session was affected by first session cleanup backpressure")
+	}
 	cleanup := adapter.CleanupLiveSessionResources(context.Background(), 1)
 	if cleanup.Attempted != 1 || cleanup.Cleaned != 1 || cleanup.Failed != 0 {
 		t.Fatalf("cleanup result = %#v, want retired handle cleanup", cleanup)
@@ -471,6 +484,17 @@ func TestStandardACPAdapterResumesAfterReleaseFailureAndRetainsOldHandle(t *test
 	adapter.mu.Unlock()
 	if retired != 0 {
 		t.Fatalf("retired handles = %d, want 0", retired)
+	}
+	spawnedBeforeRecovery, _ := transport.snapshot()
+	if err := adapter.Resume(context.Background(), session); err != nil {
+		t.Fatalf("Resume after retired cleanup: %v", err)
+	}
+	spawnedAfterRecovery, _ := transport.snapshot()
+	if spawnedAfterRecovery != spawnedBeforeRecovery+1 {
+		t.Fatalf("spawned processes after cleanup recovery = %d, want %d", spawnedAfterRecovery, spawnedBeforeRecovery+1)
+	}
+	if !adapter.HasLiveSession(session) {
+		t.Fatal("session did not recover after retired handle cleanup")
 	}
 }
 

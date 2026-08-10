@@ -15,6 +15,79 @@ func boolPtr(value bool) *bool {
 	return &value
 }
 
+func TestControllerExecCleanupBackpressurePrecedesTurnAndProviderDispatch(t *testing.T) {
+	t.Parallel()
+
+	transport := &multiProcStandardACPTransport{
+		agentTitle:               "Kimi Code",
+		sessionID:                "kimi-session-exec-backpressure",
+		supportsAgentLoadSession: true,
+	}
+	adapter := newKimiCodeExtensionTestAdapter(t, transport)
+	controller := NewController([]Adapter{adapter}, &recordingReporter{})
+	started, err := controller.Start(context.Background(), StartInput{
+		RoomID:         "room-exec-backpressure",
+		AgentSessionID: "agent-exec-backpressure",
+		Provider:       "acp:kimi-code",
+		CWD:            "/workspace",
+	})
+	if err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	transport.mu.Lock()
+	oldConnection := transport.conns[0]
+	transport.mu.Unlock()
+	oldConnection.mu.Lock()
+	oldConnection.closeFailures = 3
+	oldConnection.mu.Unlock()
+
+	if err := adapter.ReleaseLiveSession(context.Background(), started.Session); err == nil {
+		t.Fatal("ReleaseLiveSession error = nil, want injected close failure")
+	}
+	if err := adapter.Resume(context.Background(), started.Session); err != nil {
+		t.Fatalf("first replacement Resume: %v", err)
+	}
+	if err := adapter.ReleaseLiveSession(context.Background(), started.Session); err != nil {
+		t.Fatalf("replacement release: %v", err)
+	}
+	spawnedBefore, _ := transport.snapshot()
+
+	result, err := controller.Exec(context.Background(), ExecInput{
+		RoomID:                          started.Session.RoomID,
+		AgentSessionID:                  started.Session.AgentSessionID,
+		ClientSubmitID:                  "submit-exec-backpressure",
+		CanonicalSubmitOccurredAtUnixMS: time.Now().UnixMilli(),
+		Content:                         textPrompt("keep this draft"),
+		RequireProviderAcceptance:       true,
+		TurnID:                          "turn-must-not-exist",
+	})
+	if AppErrorCode(err) != AppErrorProcessCleanupPending {
+		t.Fatalf("Exec error code = %q (err=%v), want %q", AppErrorCode(err), err, AppErrorProcessCleanupPending)
+	}
+	if result.ProviderDispatch == nil || result.ProviderDispatch.Disposition != DispatchDispositionNotDispatched {
+		t.Fatalf("provider dispatch = %#v, want not dispatched", result.ProviderDispatch)
+	}
+	if controller.HasActiveTurn(started.Session.RoomID, started.Session.AgentSessionID) {
+		t.Fatal("cleanup backpressure created an active Turn")
+	}
+	if session, ok := controller.Session(started.Session.RoomID, started.Session.AgentSessionID); !ok || session.Status != SessionStatusReady {
+		t.Fatalf("session after blocked Exec = %#v (ok=%v), want ready canonical session", session, ok)
+	}
+	spawnedAfter, _ := transport.snapshot()
+	if spawnedAfter != spawnedBefore {
+		t.Fatalf("spawned processes after blocked Exec = %d, want %d", spawnedAfter, spawnedBefore)
+	}
+	transport.mu.Lock()
+	replacementConnection := transport.conns[1]
+	transport.mu.Unlock()
+	replacementConnection.mu.Lock()
+	promptCalls := replacementConnection.promptCallCount
+	replacementConnection.mu.Unlock()
+	if promptCalls != 0 {
+		t.Fatalf("provider prompt calls = %d, want 0", promptCalls)
+	}
+}
+
 func TestControllerHiddenSessionPublishesLiveEventsAndReportsActivity(t *testing.T) {
 	t.Parallel()
 
