@@ -20,6 +20,7 @@ import {
   parsedDocumentCacheStatsForTests,
   resetParsedDocumentCacheForTests
 } from "./parsedDocumentCache";
+import { resolveMarkdownWorkspaceMediaPath } from "./agentMessageMarkdownLinks";
 
 describe("AgentMessageMarkdown", () => {
   afterEach(() => {
@@ -606,6 +607,62 @@ describe("AgentMessageMarkdown", () => {
     expect(readFile).toHaveBeenCalledWith({
       path: "/workspace/可爱小狗.png"
     });
+  });
+
+  it("renders Windows markdown image paths from workspace file bytes", async () => {
+    const readFile = vi.fn().mockResolvedValue({
+      bytes: new Uint8Array([137, 80, 78, 71])
+    });
+    window.agentHostApi = {
+      ...(window.agentHostApi ?? {}),
+      workspace: {
+        ...(window.agentHostApi?.workspace ?? {}),
+        readFile
+      }
+    } as typeof window.agentHostApi;
+    Object.defineProperty(URL, "createObjectURL", {
+      configurable: true,
+      value: vi.fn(() => "blob:tsh-windows-markdown-image")
+    });
+    Object.defineProperty(URL, "revokeObjectURL", {
+      configurable: true,
+      value: vi.fn()
+    });
+
+    render(
+      <AgentMessageMarkdown
+        content={"![generated image](<C:/Users/local user/project/image.png>)"}
+      />
+    );
+
+    expect(readFile).toHaveBeenCalledWith({
+      path: "C:/Users/local user/project/image.png"
+    });
+    expect(
+      await screen.findByRole("img", {
+        name: "generated image"
+      })
+    ).toHaveAttribute("src", "blob:tsh-windows-markdown-image");
+  });
+
+  it("recognizes Windows backslash media paths", () => {
+    const path = String.raw`C:\Users\local user\project\image.png`;
+    expect(resolveMarkdownWorkspaceMediaPath(path)).toBe(path);
+    expect(
+      resolveMarkdownWorkspaceMediaPath(
+        "C:/Users/local%20user/project/image.png"
+      )
+    ).toBe("C:/Users/local user/project/image.png");
+  });
+
+  it("does not pass unknown one-letter media protocols to the DOM", () => {
+    const { container } = render(
+      <AgentMessageMarkdown content={"![unsafe](x://example.com/image.png)"} />
+    );
+
+    expect(
+      container.querySelector('img[src="x://example.com/image.png"]')
+    ).toBeNull();
   });
 
   it("renders workspace markdown videos from workspace file bytes", async () => {
