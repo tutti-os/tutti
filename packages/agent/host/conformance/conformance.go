@@ -115,9 +115,11 @@ type CancelObservation struct {
 }
 
 type OperationObservation struct {
-	OperationID string
-	Status      string
-	Result      string
+	OperationID          string
+	Status               string
+	Result               string
+	ConfirmedTurnID      string
+	IdentityAnchorTurnID string
 }
 
 type InteractiveObservation struct {

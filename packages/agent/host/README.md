@@ -57,6 +57,14 @@ the Turn to `durably_accepted`. Streaming, waiting for approval/input, running
 tools, checkpoints, and terminal events all follow the barrier and retain the
 same authoritative provider Turn ID. Correlation IDs are never provider IDs.
 
+Canonical external identity inheritance is separate from provider acceptance
+and Turn lifecycle. A Turn may carry one immutable `IdentityAnchorTurnID`
+pointing to an ultimate Turn in the same Session. Plan-decision completion uses
+that generic relation when it confirms the implementation Turn, and commits the
+anchor before the completed notice in the same canonical transaction. Host and
+downstream projections consume only the relation; they never recover it from
+plan text, status notices, submit IDs, or transcript page history.
+
 The acceptance barrier does not decide whether the user's prompt is durable.
 After `Exec` returns an explicit rejection or an outcome-unknown timeout, Host
 records the submit provenance and lossless replay envelope on a

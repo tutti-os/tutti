@@ -137,7 +137,7 @@ func (s *Store) captureHistoricalTurns(
 	session *HistoricalSession,
 ) error {
 	rows, err := s.db.QueryContext(ctx, `
-SELECT turn_id, phase, COALESCE(outcome, ''), COALESCE(error_json, '{}'),
+SELECT turn_id, COALESCE(identity_anchor_turn_id, ''), phase, COALESCE(outcome, ''), COALESCE(error_json, '{}'),
        COALESCE(file_changes_json, '{}'), COALESCE(completed_command_json, '{}'),
        turn_origin, COALESCE(source_goal_operation_id, ''),
        COALESCE(source_goal_revision, 0), COALESCE(source_goal_repair_epoch, 0),
@@ -160,7 +160,7 @@ ORDER BY COALESCE((
 		var turn HistoricalTurn
 		var errorJSON, filesJSON, commandJSON, capabilitiesJSON string
 		if err := rows.Scan(
-			&turn.ID, &turn.Phase, &turn.Outcome, &errorJSON, &filesJSON,
+			&turn.ID, &turn.IdentityAnchorTurnID, &turn.Phase, &turn.Outcome, &errorJSON, &filesJSON,
 			&commandJSON, &turn.Origin, &turn.SourceGoalOperationID,
 			&turn.SourceGoalRevision, &turn.SourceGoalRepairEpoch,
 			&turn.RootProviderTurnID, &capabilitiesJSON,

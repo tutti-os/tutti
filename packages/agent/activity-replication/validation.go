@@ -224,6 +224,12 @@ func validTurnMutation(mutation Mutation) bool {
 	if turn.Outcome != nil && !canonical.IsKnownTurnOutcome(*turn.Outcome) {
 		return false
 	}
+	if turn.IdentityAnchorTurnID != nil {
+		anchorTurnID := strings.TrimSpace(*turn.IdentityAnchorTurnID)
+		if anchorTurnID == "" || anchorTurnID == strings.TrimSpace(turn.TurnID) {
+			return false
+		}
+	}
 	if turn.Phase == canonical.TurnPhaseSettled {
 		if turn.Outcome == nil || turn.SettledAtUnixMS == nil {
 			return false

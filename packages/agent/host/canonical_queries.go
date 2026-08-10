@@ -108,8 +108,11 @@ func (h *Host) GetPlanDecisionContinuation(
 		operation.TurnID != parentTurnID {
 		return PlanDecisionContinuation{}, false, ErrRuntimeOperationIdentityMismatch
 	}
-	if operation.Status == storesqlite.RuntimeOperationStatusFailed {
+	if operation.Status != storesqlite.RuntimeOperationStatusCompleted {
 		return PlanDecisionContinuation{}, false, nil
+	}
+	if operation.Result != storesqlite.RuntimeOperationResultApplied {
+		return PlanDecisionContinuation{}, false, ErrRuntimeOperationIdentityMismatch
 	}
 	if runtimeOperationPayloadText(operation.Payload, "step") != "send_confirmed" {
 		return PlanDecisionContinuation{}, false, nil
@@ -142,6 +145,13 @@ func (h *Host) GetPlanDecisionContinuation(
 		turn.AgentSessionID != ref.AgentSessionID {
 		return PlanDecisionContinuation{}, false, ErrTurnNotFound
 	}
+	parentIdentityTurnID, err := h.resolveUltimateTurnIdentity(ctx, ref, parentTurnID)
+	if err != nil {
+		return PlanDecisionContinuation{}, false, err
+	}
+	if strings.TrimSpace(turn.IdentityAnchorTurnID) != parentIdentityTurnID {
+		return PlanDecisionContinuation{}, false, ErrRuntimeOperationIdentityMismatch
+	}
 	latest, err := h.store.ListSessionTurnSummaries(ctx, storesqlite.ListSessionTurnSummariesInput{
 		WorkspaceID: ref.WorkspaceID, AgentSessionID: ref.AgentSessionID, Limit: 1,
 	})
@@ -158,6 +168,41 @@ func (h *Host) GetPlanDecisionContinuation(
 		Session: session,
 		Turn:    turn,
 	}, true, nil
+}
+
+// resolveUltimateTurnIdentity returns the one-hop canonical Turn whose
+// external identity the requested Turn represents. Canonical persistence
+// flattens inherited identities, so a nested or dangling anchor is corruption
+// rather than another relation for callers to traverse.
+func (h *Host) resolveUltimateTurnIdentity(
+	ctx context.Context,
+	ref SessionRef,
+	turnID string,
+) (string, error) {
+	turn, found, err := h.store.GetTurn(ctx, ref.WorkspaceID, ref.AgentSessionID, turnID)
+	if err != nil {
+		return "", err
+	}
+	if !found || turn.TurnID != turnID || turn.AgentSessionID != ref.AgentSessionID {
+		return "", ErrTurnNotFound
+	}
+	anchorTurnID := strings.TrimSpace(turn.IdentityAnchorTurnID)
+	if anchorTurnID == "" {
+		return turnID, nil
+	}
+	if anchorTurnID == turnID {
+		return "", ErrRuntimeOperationIdentityMismatch
+	}
+	anchor, found, err := h.store.GetTurn(ctx, ref.WorkspaceID, ref.AgentSessionID, anchorTurnID)
+	if err != nil {
+		return "", err
+	}
+	if !found || anchor.TurnID != anchorTurnID ||
+		anchor.AgentSessionID != ref.AgentSessionID ||
+		strings.TrimSpace(anchor.IdentityAnchorTurnID) != "" {
+		return "", ErrRuntimeOperationIdentityMismatch
+	}
+	return anchorTurnID, nil
 }
 
 // FindTurnByClientSubmitID exposes the canonical idempotency lookup without

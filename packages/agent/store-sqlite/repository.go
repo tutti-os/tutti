@@ -466,9 +466,14 @@ const (
 // provider-initiated interaction and carries both Goal provenance and the
 // root-provider completion projection.
 type Turn struct {
-	WorkspaceID                            string
-	AgentSessionID                         string
-	TurnID                                 string
+	WorkspaceID    string
+	AgentSessionID string
+	TurnID         string
+	// IdentityAnchorTurnID is the canonical Turn whose externally projected
+	// identity this Turn inherits. Empty means the Turn anchors itself. The
+	// field never replaces TurnID for lifecycle, provider, or interaction
+	// operations.
+	IdentityAnchorTurnID                   string
 	CapabilityRefs                         []CapabilityReference
 	Phase                                  string
 	Outcome                                string

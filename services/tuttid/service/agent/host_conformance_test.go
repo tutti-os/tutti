@@ -283,7 +283,10 @@ func (d *legacyHostConformanceDriver) Reset(_ context.Context, fixture hostconfo
 		turns:        map[string]agentactivitybiz.Turn{},
 		interactions: map[string][]agentactivitybiz.Interaction{},
 	}
-	d.operations = &runtimeOperationMemoryStore{interactionStore: d.turns}
+	d.operations = &runtimeOperationMemoryStore{
+		interactionStore:  d.turns,
+		turnIdentityStore: d.turns,
+	}
 	d.createdTurns = make(map[string]string)
 	steps := make([]string, 0)
 	d.recoverySteps = &steps
@@ -302,6 +305,7 @@ func (d *legacyHostConformanceDriver) Reset(_ context.Context, fixture hostconfo
 	}}
 	d.runtime.provenanceHook = func(input RuntimeSubmitProvenanceInput) error {
 		d.recordSubmittedTurn(input.WorkspaceID, input.AgentSessionID, input.TurnID)
+		d.operations.recordConfirmedTurn(input.ClientSubmitID, input.TurnID)
 		return nil
 	}
 	if fixture.RejectInitialExec {
@@ -869,7 +873,8 @@ func (s *conformanceHistoricalStateStore) RestoreHistoricalSessionGraph(
 				WorkspaceID: workspaceID, AgentSessionID: historical.ID,
 				TurnID: turn.ID, Phase: turn.Phase, Outcome: turn.Outcome,
 				Origin: turn.Origin, RootProviderTurnID: turn.RootProviderTurnID,
-				StartedAtUnixMS: 1, SettledAtUnixMS: 1,
+				IdentityAnchorTurnID: turn.IdentityAnchorTurnID,
+				StartedAtUnixMS:      1, SettledAtUnixMS: 1,
 			}
 		}
 	}
@@ -960,9 +965,44 @@ func (d *legacyHostConformanceDriver) SubmitPlanDecision(
 	} else {
 		operation, err = d.service.SubmitPlanDecision(ctx, ref.WorkspaceID, ref.AgentSessionID, turnID, requestID, input)
 	}
-	return hostconformance.OperationObservation{
+	observation := hostconformance.OperationObservation{
 		OperationID: operation.OperationID, Status: operation.Status, Result: operation.Result,
-	}, err
+	}
+	if err != nil {
+		return observation, err
+	}
+	deadline := time.Now().Add(time.Second)
+	for {
+		continuation, found, continuationErr := d.service.ApplicationHost().GetPlanDecisionContinuation(ctx, ref, turnID)
+		if continuationErr != nil {
+			return observation, continuationErr
+		}
+		if found {
+			observation.ConfirmedTurnID = continuation.Turn.TurnID
+			observation.IdentityAnchorTurnID = continuation.Turn.IdentityAnchorTurnID
+			return observation, nil
+		}
+		if time.Now().After(deadline) {
+			persisted, persistedFound, persistedErr := d.service.ApplicationHost().GetRuntimeOperation(
+				ctx,
+				ref.WorkspaceID,
+				operation.OperationID,
+			)
+			d.t.Logf(
+				"plan continuation timeout: operation=%#v found=%v err=%v turns=%#v",
+				persisted,
+				persistedFound,
+				persistedErr,
+				d.turns.turns,
+			)
+			return observation, nil
+		}
+		select {
+		case <-ctx.Done():
+			return observation, ctx.Err()
+		case <-time.After(5 * time.Millisecond):
+		}
+	}
 }
 
 func (d *legacyHostConformanceDriver) UpdateTitle(ctx context.Context, input agenthost.UpdateTitleInput) (hostconformance.SessionObservation, error) {
@@ -1396,9 +1436,10 @@ func (d *legacyHostConformanceDriver) recordSubmittedTurn(workspaceID, sessionID
 	if turnID == "" {
 		return
 	}
+	startedAtUnixMS := int64(len(d.turns.turns) + 1)
 	d.turns.turns[sessionID+":"+turnID] = agentactivitybiz.Turn{
 		WorkspaceID: workspaceID, AgentSessionID: sessionID, TurnID: turnID,
-		Phase: agentactivitybiz.TurnPhaseSubmitted,
+		Phase: agentactivitybiz.TurnPhaseSubmitted, StartedAtUnixMS: startedAtUnixMS,
 	}
 	d.service.TurnStore = d.turns
 }

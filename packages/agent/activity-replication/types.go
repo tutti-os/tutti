@@ -104,6 +104,7 @@ type Turn struct {
 	WorkspaceID                      string          `json:"workspaceId"`
 	AgentSessionID                   string          `json:"agentSessionId"`
 	TurnID                           string          `json:"turnId"`
+	IdentityAnchorTurnID             *string         `json:"identityAnchorTurnId,omitempty"`
 	Phase                            string          `json:"phase"`
 	Outcome                          *string         `json:"outcome"`
 	Error                            json.RawMessage `json:"error"`
