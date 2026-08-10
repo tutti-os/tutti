@@ -12,6 +12,70 @@ type historicalTurnIdentityAnchor struct {
 	anchorTurnID   string
 }
 
+type historicalTurnIdentityKey struct {
+	workspaceID    string
+	agentSessionID string
+	turnID         string
+}
+
+func (anchor historicalTurnIdentityAnchor) turnKey() historicalTurnIdentityKey {
+	return historicalTurnIdentityKey{
+		workspaceID:    anchor.workspaceID,
+		agentSessionID: anchor.agentSessionID,
+		turnID:         anchor.turnID,
+	}
+}
+
+func (anchor historicalTurnIdentityAnchor) anchorKey() historicalTurnIdentityKey {
+	return historicalTurnIdentityKey{
+		workspaceID:    anchor.workspaceID,
+		agentSessionID: anchor.agentSessionID,
+		turnID:         anchor.anchorTurnID,
+	}
+}
+
+// orderHistoricalTurnIdentityAnchorRepairs puts every repair after any repair
+// that establishes its requested anchor. This lets the binder flatten a
+// continuation chain to its ultimate identity even when operation timestamps
+// tie and their stable query order is not causal.
+func orderHistoricalTurnIdentityAnchorRepairs(
+	repairs []historicalTurnIdentityAnchor,
+) ([]historicalTurnIdentityAnchor, error) {
+	pendingByTurn := make(map[historicalTurnIdentityKey]int, len(repairs))
+	for _, repair := range repairs {
+		pendingByTurn[repair.turnKey()]++
+	}
+
+	waitingForTurn := make(map[historicalTurnIdentityKey][]int, len(repairs))
+	ready := make([]int, 0, len(repairs))
+	for index, repair := range repairs {
+		anchorKey := repair.anchorKey()
+		if pendingByTurn[anchorKey] == 0 {
+			ready = append(ready, index)
+			continue
+		}
+		waitingForTurn[anchorKey] = append(waitingForTurn[anchorKey], index)
+	}
+
+	ordered := make([]historicalTurnIdentityAnchor, 0, len(repairs))
+	for len(ready) > 0 {
+		index := ready[0]
+		ready = ready[1:]
+		repair := repairs[index]
+		ordered = append(ordered, repair)
+
+		turnKey := repair.turnKey()
+		pendingByTurn[turnKey]--
+		if pendingByTurn[turnKey] == 0 {
+			ready = append(ready, waitingForTurn[turnKey]...)
+		}
+	}
+	if len(ordered) != len(repairs) {
+		return nil, fmt.Errorf("%w: historical repair dependencies contain a cycle", ErrTurnIdentityAnchorConflict)
+	}
+	return ordered, nil
+}
+
 // applyWorkspaceAgentTurnIdentityAnchorV1 adds the provider-neutral identity
 // inheritance relation and repairs only historical plan continuations that
 // still have complete canonical operation and submit-message proof. Rows with
@@ -91,6 +155,10 @@ ORDER BY operation.completed_at_unix_ms, operation.operation_id`)
 	}
 	if err := rows.Close(); err != nil {
 		return fmt.Errorf("close historical workspace agent turn identity anchors: %w", err)
+	}
+	repairs, err = orderHistoricalTurnIdentityAnchorRepairs(repairs)
+	if err != nil {
+		return fmt.Errorf("order historical workspace agent turn identity anchors: %w", err)
 	}
 	for _, repair := range repairs {
 		if _, _, err := bindTurnIdentityAnchorTx(
