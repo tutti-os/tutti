@@ -106,10 +106,12 @@ func (a *standardACPAdapter) handleACPMessage(
 			_ = client.Respond(ctx, message.ID, nil, &acpError{Code: -32000, Message: err.Error()})
 			return nil, err
 		}
-		// Automatic tiers resolve the request from the live permission tier
-		// without prompting; the tool call still streams its own activity via
-		// session/update.
-		if decision := a.automaticPermissionDecision(session.AgentSessionID); decision != "" {
+		// Automatic tiers resolve execution authorization from the live
+		// permission tier without prompting; the tool call still streams its own
+		// activity via session/update. Interactive requests such as
+		// AskUserQuestion and ExitPlanMode remain user-owned decisions.
+		if decision := a.automaticPermissionDecision(session.AgentSessionID); decision != "" &&
+			!acpPermissionRequestIsInteractive(message.Params) {
 			if optionID, ok := acpPermissionRequestDecisionOptionID(
 				message.Params,
 				decision,

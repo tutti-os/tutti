@@ -29,6 +29,19 @@ func acpPermissionRequestDecisionOptionID(
 	return resolveACPPermissionDecisionOptionID(params.Options, decision)
 }
 
+// acpPermissionRequestIsInteractive distinguishes workflow/user-input prompts
+// from execution authorization. Automatic permission tiers may resolve the
+// latter, but must never choose an answer or workflow transition for the user.
+func acpPermissionRequestIsInteractive(raw json.RawMessage) bool {
+	var params struct {
+		ToolCall map[string]any `json:"toolCall"`
+	}
+	if err := json.Unmarshal(raw, &params); err != nil {
+		return false
+	}
+	return normalizedInteractiveToolName(params.ToolCall) != ""
+}
+
 func resolveACPPermissionDecisionOptionID(options []map[string]any, decision string) (string, bool) {
 	aliases := permissionOptionDecisionAliases(decision)
 	if len(aliases) == 0 {

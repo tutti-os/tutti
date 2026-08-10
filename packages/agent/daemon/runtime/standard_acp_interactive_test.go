@@ -2,6 +2,7 @@ package agentruntime
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"strings"
 	"sync"
@@ -10,6 +11,83 @@ import (
 
 	activityshared "github.com/tutti-os/tutti/packages/agent/daemon/activity/events"
 )
+
+func TestACPPermissionRequestInteractiveClassification(t *testing.T) {
+	t.Parallel()
+
+	for _, test := range []struct {
+		name string
+		raw  string
+		want bool
+	}{
+		{name: "ask user", raw: `{"toolCall":{"title":"AskUserQuestion"}}`, want: true},
+		{name: "exit plan", raw: `{"toolCall":{"name":"exit_plan_mode"}}`, want: true},
+		{name: "ordinary authorization", raw: `{"toolCall":{"title":"Allow Bash"}}`, want: false},
+		{name: "invalid request", raw: `{`, want: false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			if got := acpPermissionRequestIsInteractive(json.RawMessage(test.raw)); got != test.want {
+				t.Fatalf("acpPermissionRequestIsInteractive() = %t, want %t", got, test.want)
+			}
+		})
+	}
+}
+
+func TestStandardACPAdapterAutomaticPermissionTierPreservesAskUserPrompt(t *testing.T) {
+	t.Parallel()
+
+	transport := newStandardACPTransport("Hermes Agent", "hermes-session-auto-ask-user")
+	transport.conn.promptKind = "ask-user-after-permission"
+	adapter := newHermesExtensionTestAdapter(transport)
+	session := standardTestSession(hermesExtensionTestProvider)
+	session.PermissionModeID = "yolo"
+	if _, err := adapter.Start(context.Background(), session); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	session.ProviderSessionID = "hermes-session-auto-ask-user"
+
+	execDone := make(chan error, 1)
+	go func() {
+		_, err := adapter.Exec(context.Background(), session, textPrompt("ask how I feel"), "", "turn-auto-ask-user", func([]activityshared.Event) {}, nil)
+		execDone <- err
+	}()
+
+	waitForCondition(t, func() bool {
+		snapshot := adapter.SessionState(session)
+		return snapshot.PendingInteractive != nil &&
+			snapshot.PendingInteractive.Kind == "ask-user" &&
+			snapshot.PendingInteractive.RequestID == "permission-1"
+	})
+	if got := transport.conn.permissionOptionID(); got != "" {
+		t.Fatalf("permission option id before user input = %q, want empty", got)
+	}
+
+	if _, err := adapter.SubmitInteractive(context.Background(), session, SubmitInteractiveInput{
+		RoomID:         session.RoomID,
+		AgentSessionID: session.AgentSessionID,
+		TurnID:         "turn-auto-ask-user",
+		RequestID:      "permission-1",
+		Action:         "submit",
+		Payload: map[string]any{
+			"answers":             []any{"很好"},
+			"answersByQuestionId": map[string]any{"question-1": "很好"},
+		},
+	}); err != nil {
+		t.Fatalf("SubmitInteractive: %v", err)
+	}
+	select {
+	case err := <-execDone:
+		if err != nil {
+			t.Fatalf("Exec after interactive submission: %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("Exec did not finish after interactive submission")
+	}
+	if got := transport.conn.permissionOptionID(); got != "q0_opt_0" {
+		t.Fatalf("permission option id after user input = %q, want q0_opt_0", got)
+	}
+}
 
 func TestStandardACPAdapterSessionStateExposesPendingAskUserPrompt(t *testing.T) {
 	t.Parallel()

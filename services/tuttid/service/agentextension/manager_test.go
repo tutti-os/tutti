@@ -999,6 +999,29 @@ func TestComposerAutomaticPermissionDecisionsAreRestrictedBySemantic(t *testing.
 	}
 }
 
+func TestComposerAutomaticPermissionDecisionsPreserveExactRuntimeIDScope(t *testing.T) {
+	var profile ComposerProfile
+	if err := json.Unmarshal([]byte(`{
+		"schemaVersion":"tutti.agent.composer.v1",
+		"permissionModes":[
+			{"runtimeId":"bypassPermissions","semantic":"full-access"},
+			{"runtimeId":"fullAccess","semantic":"full-access","automaticDecision":"approved"}
+		]
+	}`), &profile); err != nil {
+		t.Fatal(err)
+	}
+	if err := validateComposerProfile(profile); err != nil {
+		t.Fatalf("validateComposerProfile() error = %v", err)
+	}
+	decisions := profile.AutomaticPermissionDecisions()
+	if decisions["fullaccess"] != "approved" {
+		t.Fatalf("fullAccess decision = %q, want approved", decisions["fullaccess"])
+	}
+	if decision, exists := decisions["bypasspermissions"]; exists {
+		t.Fatalf("bypassPermissions decision = %q, want no automatic decision", decision)
+	}
+}
+
 func TestComposerProfileACPConfigOptionIDs(t *testing.T) {
 	t.Run("canonical", func(t *testing.T) {
 		profile := ComposerProfile{SchemaVersion: "tutti.agent.composer.v1"}
