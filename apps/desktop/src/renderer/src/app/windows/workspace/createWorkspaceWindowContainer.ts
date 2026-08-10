@@ -306,7 +306,8 @@ export async function createWorkspaceWindowContainer(): Promise<WorkspaceWindowC
       const snapshot =
         workspaceAgentServices.agentProviderStatusService.getSnapshot();
       return snapshot.capturedAt === null ? undefined : snapshot.statuses;
-    }
+    },
+    getUserProjects: () => workspaceUserProjectService.getSnapshot().projects
   });
   registerWorkspaceWorkbenchServices(registry, {
     agentQuickPromptService: workspaceAgentServices.agentQuickPromptService,

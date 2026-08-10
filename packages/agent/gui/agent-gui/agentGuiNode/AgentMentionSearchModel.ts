@@ -573,6 +573,7 @@ export function providerItemToAgentMentionItem(input: {
       href,
       path: directoryPath || href,
       name: label,
+      contextLabel: compactText(input.subtitle) || undefined,
       entryKind: directoryPath || href.endsWith("/") ? "directory" : "unknown",
       directoryPath: dirnameFromProviderWorkspaceFileHref(
         directoryPath || href
@@ -614,6 +615,7 @@ export function providerItemToAgentMentionItem(input: {
       }),
       path: directoryPath || targetId,
       name: label,
+      contextLabel: compactText(input.subtitle) || undefined,
       entryKind:
         directoryPath || targetId.endsWith("/") ? "directory" : "unknown",
       directoryPath: dirnameFromProviderWorkspaceFileHref(

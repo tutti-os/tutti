@@ -13,6 +13,7 @@ import {
   createRichTextTriggerProvider
 } from "@tutti-os/ui-rich-text/plugins";
 import type { RichTextTriggerProvider } from "@tutti-os/ui-rich-text/types";
+import type { WorkspaceUserProject } from "@tutti-os/workspace-user-project/contracts";
 import {
   tuttiFileAssetUrls,
   tuttiFolderAssetUrls
@@ -43,6 +44,10 @@ import {
   type DesktopRichTextAtContributor
 } from "./desktopRichTextAtMentionSupport.ts";
 import { createWorkspaceIssueAtContributor } from "./desktopWorkspaceIssueAtContributor.ts";
+import {
+  presentDesktopWorkspaceFileMentionEntries,
+  type DesktopWorkspaceFileMentionEntry
+} from "./desktopWorkspaceFileMentionPresentation.ts";
 
 export interface DesktopRichTextAtServiceDependencies {
   agentsService?: Pick<IAgentsService, "load">;
@@ -59,14 +64,11 @@ export interface DesktopRichTextAtServiceDependencies {
   ) => DesktopAgentSessionStatusView | null;
   /** Live getter for agent availability, used to hide unbound agent apps. */
   agentProviderStatuses?: () => readonly AgentProviderStatus[] | undefined;
+  /** Live registered-project snapshot used for file-result workspace labels. */
+  getUserProjects?: () => readonly WorkspaceUserProject[];
 }
 
-interface WorkspaceFileAtItem {
-  displayName?: string | null;
-  kind?: "directory" | "file" | (string & {});
-  name?: string | null;
-  path: string;
-}
+type WorkspaceFileAtItem = DesktopWorkspaceFileMentionEntry;
 
 interface WorkspaceAppAtItem {
   appId: string;
@@ -115,7 +117,10 @@ export class DesktopRichTextAtService implements IDesktopRichTextAtService {
   constructor(dependencies: DesktopRichTextAtServiceDependencies) {
     this.dependencies = dependencies;
     this.contributors = [
-      createWorkspaceFileAtContributor(dependencies.tuttidClient),
+      createWorkspaceFileAtContributor({
+        getUserProjects: dependencies.getUserProjects,
+        tuttidClient: dependencies.tuttidClient
+      }),
       createWorkspaceIssueAtContributor(dependencies.tuttidClient),
       createAgentTargetAtContributor({
         agentsService: dependencies.agentsService,
@@ -590,7 +595,10 @@ function isWorkspaceFilePathWithinProviderRoot(
 }
 
 function createWorkspaceFileAtContributor(
-  tuttidClient: TuttidClient
+  dependencies: Pick<
+    DesktopRichTextAtServiceDependencies,
+    "getUserProjects" | "tuttidClient"
+  >
 ): DesktopRichTextAtContributor {
   return {
     capability: "file",
@@ -606,20 +614,21 @@ function createWorkspaceFileAtContributor(
             if (searchInput.abortSignal?.aborted) {
               return [];
             }
-            const response = await tuttidClient.searchWorkspaceFiles(
-              input.workspaceId,
-              {
-                limit: searchInput.maxResults,
-                query: searchInput.keyword
-              },
-              {
-                signal: searchInput.abortSignal
-              }
-            );
+            const response =
+              await dependencies.tuttidClient.searchWorkspaceFiles(
+                input.workspaceId,
+                {
+                  limit: searchInput.maxResults,
+                  query: searchInput.keyword
+                },
+                {
+                  signal: searchInput.abortSignal
+                }
+              );
             if (searchInput.abortSignal?.aborted) {
               return [];
             }
-            return response.entries
+            const entries = response.entries
               .filter(
                 (entry) =>
                   !isIssueWorkspaceRuntimePath(entry.path, response.root)
@@ -629,6 +638,17 @@ function createWorkspaceFileAtContributor(
                 kind: entry.kind,
                 path: entry.path
               }));
+            return shouldPresentAgentGuiFileContext(input)
+              ? presentDesktopWorkspaceFileMentionEntries({
+                  currentWorkspacePath: queryMetadataString(
+                    searchInput.context.metadata,
+                    "sessionCwd"
+                  ),
+                  entries,
+                  projects: dependencies.getUserProjects?.() ?? [],
+                  searchRoot: response.root
+                })
+              : entries;
           },
           async queryDirectory(directoryInput) {
             if (directoryInput.abortSignal?.aborted) {
@@ -639,9 +659,10 @@ function createWorkspaceFileAtContributor(
               ReturnType<TuttidClient["listWorkspaceFileDirectory"]>
             > | null = null;
             if (restrictDirectoryToProviderRoot && providerRootPath === null) {
-              rootResponse = await tuttidClient.listWorkspaceFileDirectory(
-                input.workspaceId
-              );
+              rootResponse =
+                await dependencies.tuttidClient.listWorkspaceFileDirectory(
+                  input.workspaceId
+                );
               providerRootPath = rootResponse.root.trim();
             }
             if (
@@ -669,7 +690,7 @@ function createWorkspaceFileAtContributor(
                 normalizedDirectoryPath ===
                   normalizeWorkspaceFileBoundaryPath(rootResponse.root))
                 ? rootResponse
-                : await tuttidClient.listWorkspaceFileDirectory(
+                : await dependencies.tuttidClient.listWorkspaceFileDirectory(
                     input.workspaceId,
                     directoryPath ? { path: directoryPath } : undefined
                   );
@@ -696,15 +717,30 @@ function createWorkspaceFileAtContributor(
                 kind: entry.kind,
                 path: entry.path
               }));
+            const presentedEntries = shouldPresentAgentGuiFileContext(input)
+              ? presentDesktopWorkspaceFileMentionEntries({
+                  currentWorkspacePath: queryMetadataString(
+                    directoryInput.context.metadata,
+                    "sessionCwd"
+                  ),
+                  entries,
+                  projects: dependencies.getUserProjects?.() ?? [],
+                  searchRoot: response.root
+                })
+              : entries;
             return directoryInput.maxResults === undefined
-              ? entries
-              : entries.slice(0, Math.max(0, directoryInput.maxResults));
+              ? presentedEntries
+              : presentedEntries.slice(
+                  0,
+                  Math.max(0, directoryInput.maxResults)
+                );
           },
           getItemDirectory: (item) =>
             item.kind === "directory" ? { path: item.path.trim() } : null,
           getItemKey: (item) => item.path,
           getItemLabel: resolveWorkspaceFileLabel,
-          getItemSubtitle: (item) => item.path.trim(),
+          getItemSubtitle: (item) =>
+            item.contextLabel?.trim() || item.path.trim(),
           getItemIconUrl: workspaceFileIconUrl,
           toInsertResult(item) {
             return createRichTextMarkdownLinkInsertResult(
@@ -716,6 +752,20 @@ function createWorkspaceFileAtContributor(
       ];
     }
   };
+}
+
+function shouldPresentAgentGuiFileContext(
+  input: DesktopRichTextTriggerProviderRequest
+): boolean {
+  return input.surface === "composer" && input.target === "agent-gui";
+}
+
+function queryMetadataString(
+  metadata: Readonly<Record<string, unknown>> | undefined,
+  key: string
+): string {
+  const value = metadata?.[key];
+  return typeof value === "string" ? value.trim() : "";
 }
 
 function workspaceFileReferenceHref(item: WorkspaceFileAtItem): string {

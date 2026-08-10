@@ -7,6 +7,7 @@ import { DesktopRichTextAtService } from "./internal/desktopRichTextAtService";
 import { IDesktopRichTextAtService } from "./richTextAtService.interface";
 import type { IAgentsService } from "../../workspace-agent/services/agentsService.interface";
 import type { DesktopAgentSessionStatusView } from "../providers/desktopAgentSessionMentionProvider";
+import type { WorkspaceUserProject } from "@tutti-os/workspace-user-project/contracts";
 
 export interface RichTextAtServiceRegistrationInput {
   agentsService?: IAgentsService;
@@ -18,6 +19,7 @@ export interface RichTextAtServiceRegistrationInput {
     status: string
   ) => DesktopAgentSessionStatusView | null;
   agentProviderStatuses?: () => readonly AgentProviderStatus[] | undefined;
+  getUserProjects?: () => readonly WorkspaceUserProject[];
 }
 
 export function registerRichTextAtServices(
@@ -31,7 +33,8 @@ export function registerRichTextAtServices(
     resolveAgentIconUrl: input.resolveAgentIconUrl,
     userAvatarPlaceholderUrl: input.userAvatarPlaceholderUrl,
     resolveSessionStatusView: input.resolveSessionStatusView,
-    agentProviderStatuses: input.agentProviderStatuses
+    agentProviderStatuses: input.agentProviderStatuses,
+    getUserProjects: input.getUserProjects
   });
   registry.registerInstance(IDesktopRichTextAtService, service);
   return service;
