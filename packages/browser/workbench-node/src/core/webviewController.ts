@@ -275,6 +275,7 @@ function reconcileBrowserNodeWebviewControllerState(
       }
       void entry.context.feature.hostApi
         .prepareSession({
+          automationTarget: entry.context.automationTarget,
           navigationPolicy: entry.context.navigationPolicy,
           nodeId: entry.context.nodeId,
           profileId: entry.context.profileId,

@@ -1477,9 +1477,14 @@ test("keeps Browser Node navigation failures as the final emitted event", async 
 
 test("uses registerGuest URL before loading a newly attached guest", async () => {
   const contents = new MockBrowserGuestWebContents(21);
+  const preparedWorkspaceIds: Array<string | null> = [];
   const manager = createBrowserGuestManager({
     emit: () => undefined,
     openExternal: () => undefined,
+    prepareSession: (input) => {
+      preparedWorkspaceIds.push(input.automationTarget?.workspaceId ?? null);
+      return Promise.resolve();
+    },
     resolveWebContents: (id) => (id === contents.id ? contents : null)
   });
 
@@ -1491,6 +1496,14 @@ test("uses registerGuest URL before loading a newly attached guest", async () =>
   });
 
   await manager.registerGuest({
+    automationTarget: {
+      focused: false,
+      selected: true,
+      surfaceId: "surface-1",
+      surfaceRole: "user",
+      tabId: "tab-1",
+      workspaceId: "workspace-1"
+    },
     nodeId: "browser-stale-desired",
     profileId: null,
     sessionMode: "shared",
@@ -1499,6 +1512,7 @@ test("uses registerGuest URL before loading a newly attached guest", async () =>
   });
 
   assert.deepEqual(contents.loadedUrls, ["http://127.0.0.1:51103/"]);
+  assert.deepEqual(preparedWorkspaceIds, [null, "workspace-1"]);
   assert.equal(
     manager.debugDump({ nodeId: "browser-stale-desired" })?.desiredUrl,
     "http://127.0.0.1:51103/"

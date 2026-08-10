@@ -7,13 +7,18 @@ import type { BrowserNodeHostApi } from "./types.ts";
 import type { BrowserNodeWebviewTag } from "../react/webviewTag.ts";
 
 test("Browser Node webview controller prepares sessions when active", async () => {
-  const prepareCalls: Array<{ nodeId: string; profileId: string | null }> = [];
+  const prepareCalls: Array<{
+    nodeId: string;
+    profileId: string | null;
+    workspaceId: string | null;
+  }> = [];
   const feature = createBrowserNodeFeature({
     hostApi: createBrowserNodeHostApi({
       prepareSession(payload) {
         prepareCalls.push({
           nodeId: payload.nodeId,
-          profileId: payload.profileId
+          profileId: payload.profileId,
+          workspaceId: payload.automationTarget?.workspaceId ?? null
         });
         return Promise.resolve();
       }
@@ -21,6 +26,14 @@ test("Browser Node webview controller prepares sessions when active", async () =
   });
 
   const controller = acquireBrowserNodeWebviewController({
+    automationTarget: {
+      focused: false,
+      selected: true,
+      surfaceId: "surface-1",
+      surfaceRole: "user",
+      tabId: "tab-1",
+      workspaceId: "workspace-1"
+    },
     feature,
     initialUrl: "https://example.com/",
     lifecycle: "active",
@@ -31,7 +44,13 @@ test("Browser Node webview controller prepares sessions when active", async () =
 
   controller.retain();
   await Promise.resolve();
-  assert.deepEqual(prepareCalls, [{ nodeId: "browser-1", profileId: null }]);
+  assert.deepEqual(prepareCalls, [
+    {
+      nodeId: "browser-1",
+      profileId: null,
+      workspaceId: "workspace-1"
+    }
+  ]);
   controller.release();
 });
 
