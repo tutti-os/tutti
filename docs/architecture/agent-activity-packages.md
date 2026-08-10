@@ -1480,6 +1480,11 @@ the normalized event is applied:
   projection that updates the Turn and the cached Session's `activeTurnId`
   together; a settled Turn may clear only its own active reference, so delayed
   events cannot clear a newer Turn
+- after the host has fenced transport identity and ordering, it may explicitly
+  mark settlement of that same immutable Turn as absorbing when the cached
+  nonterminal projection belongs to another source version domain; unmarked
+  realtime projections and generic Turn and Session upserts retain their
+  canonical version guards
 - use canonical Turn versions as the Engine-local fence against stale Session
   snapshots; event-envelope `occurredAtUnixMs` is transport metadata and must
   not advance canonical Session timestamps or participate in entity ordering

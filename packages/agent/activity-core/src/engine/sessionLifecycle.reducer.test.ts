@@ -23,6 +23,7 @@ import {
   validateCancelResult,
   validateSendInputResult
 } from "./commandResult.validation.ts";
+import { deriveCanonicalSubmitAvailability } from "./sessionLifecycle.availability.ts";
 
 test("snapshot decomposes protocol v2 session and turn entities", () => {
   const result = reduce(createInitialSessionLifecycleState(), {
@@ -1873,6 +1874,135 @@ test("realtime Turn projection atomically clears its owned Session reference", (
   }).state;
   assert.equal(state.sessionsById["session-1"]?.title, "Reconciled");
   assert.equal(state.sessionsById["session-1"]?.updatedAtUnixMs, 3);
+});
+
+test("host-fenced same-Turn settlement survives cross-device clock skew", () => {
+  const running = activeTurn(200);
+  let state = reduce(createInitialSessionLifecycleState(), {
+    sessions: [session(running, 300)],
+    type: "session/snapshotReceived"
+  }).state;
+
+  state = reduce(state, {
+    activeTurnId: null,
+    hostFencedSameTurnSettlement: true,
+    turn: {
+      ...running,
+      outcome: "completed",
+      phase: "settled",
+      settledAtUnixMs: 190,
+      updatedAtUnixMs: 190
+    },
+    type: "turn/projectionReceived",
+    workspaceId: "workspace-1"
+  }).state;
+
+  assert.equal(state.sessionsById["session-1"]?.activeTurnId, null);
+  assert.equal(state.sessionsById["session-1"]?.updatedAtUnixMs, 300);
+  assert.deepEqual(state.turnsById[canonicalTurnKey("session-1", "turn-1")], {
+    ...running,
+    outcome: "completed",
+    phase: "settled",
+    settledAtUnixMs: 190,
+    updatedAtUnixMs: 190
+  });
+
+  state = reduce(state, {
+    session: session(running, 300),
+    type: "session/upserted"
+  }).state;
+  assert.equal(state.sessionsById["session-1"]?.activeTurnId, null);
+});
+
+test("host-fenced settlement cannot clear a different active Turn", () => {
+  const turnA = { ...activeTurn(200), turnId: "turn-a" };
+  const turnB = { ...activeTurn(300), turnId: "turn-b" };
+  let state = reduce(createInitialSessionLifecycleState(), {
+    sessions: [session(turnB, 300)],
+    type: "session/snapshotReceived"
+  }).state;
+  state = reduce(state, {
+    live: true,
+    turn: turnA,
+    type: "turn/upserted"
+  }).state;
+
+  state = reduce(state, {
+    activeTurnId: null,
+    hostFencedSameTurnSettlement: true,
+    turn: {
+      ...turnA,
+      outcome: "completed",
+      phase: "settled",
+      settledAtUnixMs: 190,
+      updatedAtUnixMs: 190
+    },
+    type: "turn/projectionReceived",
+    workspaceId: "workspace-1"
+  }).state;
+
+  assert.equal(
+    state.turnsById[canonicalTurnKey("session-1", "turn-a")]?.phase,
+    "settled"
+  );
+  assert.equal(state.sessionsById["session-1"]?.activeTurnId, "turn-b");
+  assert.deepEqual(deriveCanonicalSubmitAvailability(state, "session-1"), {
+    state: "blocked",
+    reason: "active_turn"
+  });
+});
+
+test("unmarked Turn projection still rejects an older settlement", () => {
+  const running = activeTurn(200);
+  let state = reduce(createInitialSessionLifecycleState(), {
+    sessions: [session(running, 300)],
+    type: "session/snapshotReceived"
+  }).state;
+
+  state = reduce(state, {
+    activeTurnId: null,
+    turn: {
+      ...running,
+      outcome: "completed",
+      phase: "settled",
+      settledAtUnixMs: 190,
+      updatedAtUnixMs: 190
+    },
+    type: "turn/projectionReceived",
+    workspaceId: "workspace-1"
+  }).state;
+
+  assert.equal(state.sessionsById["session-1"]?.activeTurnId, "turn-1");
+  assert.equal(
+    state.turnsById[canonicalTurnKey("session-1", "turn-1")]?.phase,
+    "running"
+  );
+});
+
+test("generic Turn upsert still rejects an older settlement", () => {
+  const running = activeTurn(200);
+  let state = reduce(createInitialSessionLifecycleState(), {
+    sessions: [session(running, 300)],
+    type: "session/snapshotReceived"
+  }).state;
+
+  state = reduce(state, {
+    live: true,
+    turn: {
+      ...running,
+      outcome: "completed",
+      phase: "settled",
+      settledAtUnixMs: 190,
+      updatedAtUnixMs: 190
+    },
+    type: "turn/upserted"
+  }).state;
+
+  assert.equal(state.sessionsById["session-1"]?.activeTurnId, "turn-1");
+  assert.equal(
+    state.turnsById[canonicalTurnKey("session-1", "turn-1")]?.phase,
+    "running"
+  );
 });
 
 test("cached Turn projection fences a stale Session loaded afterward", () => {

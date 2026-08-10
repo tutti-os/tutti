@@ -59,7 +59,8 @@ export interface AgentActivityWorkspaceEventCoordinator {
   }): void;
   dispose(): void;
   ingestEvent(
-    event: AgentActivityWorkspaceEventInput
+    event: AgentActivityWorkspaceEventInput,
+    options?: AgentActivityWorkspaceEventIngestOptions
   ): AgentActivityWorkspaceEventResult;
   isSessionDeleted(agentSessionId: string): boolean;
   project(canonical: AgentActivitySnapshot): AgentActivitySnapshot;
@@ -78,6 +79,15 @@ export interface AgentActivityWorkspaceEventCoordinator {
   ): void;
   removeSession(agentSessionId: string): boolean;
   subscribe(listener: () => void): () => void;
+}
+
+export interface AgentActivityWorkspaceEventIngestOptions {
+  /**
+   * Use only after the host has fenced transport identity and ordering. It
+   * makes settlement absorbing for the same immutable Turn across otherwise
+   * incomparable source version domains.
+   */
+  hostFencedSameTurnSettlement?: true;
 }
 
 export interface CreateAgentActivityWorkspaceEventCoordinatorInput {
@@ -257,7 +267,7 @@ export function createAgentActivityWorkspaceEventCoordinator({
       listeners.clear();
       snapshotCache = null;
     },
-    ingestEvent(event) {
+    ingestEvent(event, options) {
       const agentSessionId = event.agentSessionId.trim();
       const eventType = event.eventType;
       if (
@@ -390,6 +400,9 @@ export function createAgentActivityWorkspaceEventCoordinator({
         }
         engine.dispatch({
           ...projection,
+          ...(options?.hostFencedSameTurnSettlement
+            ? { hostFencedSameTurnSettlement: true as const }
+            : {}),
           type: "turn/projectionReceived",
           workspaceId: normalizedWorkspaceId
         });

@@ -277,6 +277,15 @@ export function upsertCanonicalTurn(
   const key = canonicalTurnKey(turn.agentSessionId, turn.turnId);
   const current = state.turnsById[key];
   if (current && !shouldUseIncomingTurn(current, turn)) return state;
+  return writeCanonicalTurn(state, turn, current);
+}
+
+function writeCanonicalTurn(
+  state: SessionLifecycleState,
+  turn: AgentActivityTurn,
+  current: AgentActivityTurn | undefined
+): SessionLifecycleState {
+  const key = canonicalTurnKey(turn.agentSessionId, turn.turnId);
   const nextTurn = current ? preserveTurnProvenance(current, turn) : turn;
   if (current && areJsonLikeValuesEqual(current, nextTurn)) return state;
   return {
@@ -300,11 +309,18 @@ export function upsertCanonicalTurnProjection(
 
   const key = canonicalTurnKey(agentSessionId, turnId);
   const currentTurn = state.turnsById[key];
-  if (currentTurn && !shouldUseIncomingTurn(currentTurn, input.turn)) {
+  if (
+    currentTurn &&
+    !shouldUseIncomingTurnProjection(
+      currentTurn,
+      input.turn,
+      input.hostFencedSameTurnSettlement === true
+    )
+  ) {
     return state;
   }
 
-  const withTurn = upsertCanonicalTurn(state, input.turn);
+  const withTurn = writeCanonicalTurn(state, input.turn, currentTurn);
   const session = withTurn.sessionsById[agentSessionId];
   if (!session) return withTurn;
 
@@ -420,8 +436,25 @@ function shouldUseIncomingTurn(
   return true;
 }
 
+function shouldUseIncomingTurnProjection(
+  current: AgentActivityTurn,
+  incoming: AgentActivityTurn,
+  hostFencedSameTurnSettlement: boolean
+): boolean {
+  if (
+    hostFencedSameTurnSettlement &&
+    current.phase !== "settled" &&
+    incoming.phase === "settled" &&
+    allowedTurnTransition(current.phase, incoming.phase)
+  ) {
+    return true;
+  }
+  return shouldUseIncomingTurn(current, incoming);
+}
+
 interface CanonicalTurnProjection {
   activeTurnId: string | null;
+  hostFencedSameTurnSettlement?: true;
   turn: AgentActivityTurn;
 }
 
