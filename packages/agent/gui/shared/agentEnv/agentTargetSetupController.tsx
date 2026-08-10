@@ -351,17 +351,23 @@ function createAgentTargetSetupController(input: {
         unsubscribe = input.watch.subscribe((setup) => {
           const notification = notifications.observe(setup);
           if (notification) input.onNotification(notification);
-          if (
-            state.terminalLoginPhase === "waiting" &&
-            setup.snapshot?.status === "ready"
-          ) {
+          const ready = setup.snapshot?.status === "ready";
+          // Setup projection is the source of truth for signed-in. Clear local
+          // in-flight flags as soon as ready arrives so CTAs cannot keep saying
+          // "opening login" after the checklist already shows a signed-in account.
+          if (ready && state.terminalLoginPhase === "waiting") {
             terminalLoginGeneration += 1;
             closeTerminalLoginHandle();
             update({
               setup,
+              authenticatePending: false,
               terminalLoginError: null,
               terminalLoginPhase: "idle"
             });
+            return;
+          }
+          if (ready && state.authenticatePending) {
+            update({ setup, authenticatePending: false });
             return;
           }
           update({ setup });

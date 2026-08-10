@@ -95,6 +95,58 @@ async function checkPackage(packageConfig, destination) {
     }
   }
 
+  if (packageConfig.name === "@tutti-os/agent-session-replay-runner") {
+    const unpackedDirectory = join(destination, `${tarball}.unpacked`);
+    await mkdir(unpackedDirectory, { recursive: true });
+    execFileSync("tar", ["-xzf", tarballPath, "-C", unpackedDirectory]);
+    const packageRoot = join(unpackedDirectory, "package");
+    const missingImports = await missingPackedRelativeImports(
+      packageRoot,
+      "dist/index.mjs"
+    );
+    for (const missingImport of missingImports) {
+      violations.push(`missing runtime import ${missingImport}`);
+    }
+    try {
+      execFileSync(
+        process.execPath,
+        [
+          "--input-type=module",
+          "--eval",
+          `
+            const { readFile } = await import("node:fs/promises");
+            const { fileURLToPath } = await import("node:url");
+            const runner = await import("@tutti-os/agent-session-replay-runner");
+            const policyPath = fileURLToPath(import.meta.resolve(
+              "@tutti-os/agent-session-replay-runner/cassette-policy.json"
+            ));
+            const contractPath = fileURLToPath(import.meta.resolve(
+              "@tutti-os/agent-session-replay-runner/activity-contract.json"
+            ));
+            const policy = await runner.loadCassettePolicy(policyPath);
+            const contract = JSON.parse(await readFile(contractPath, "utf8"));
+            if (policy.schemaVersion !== 7) {
+              throw new Error(\`unexpected cassette policy schema: \${policy.schemaVersion}\`);
+            }
+            if (contract.schemaVersion !== 1) {
+              throw new Error(\`unexpected activity contract schema: \${contract.schemaVersion}\`);
+            }
+          `
+        ],
+        {
+          cwd: packageRoot,
+          stdio: "pipe"
+        }
+      );
+    } catch (error) {
+      const detail =
+        error instanceof Error && "stderr" in error
+          ? String(error.stderr).trim()
+          : String(error);
+      violations.push(`Node package import failed: ${detail}`);
+    }
+  }
+
   if (packageConfig.name === "@tutti-os/agent-gui") {
     const unpackedDirectory = join(destination, `${tarball}.unpacked`);
     await mkdir(unpackedDirectory, { recursive: true });

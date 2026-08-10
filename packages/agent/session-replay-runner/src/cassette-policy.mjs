@@ -1,10 +1,9 @@
 import { readFile } from "node:fs/promises";
-import { join } from "node:path";
 
 /**
  * Load and lightly validate a Cassette policy document.
- * Products choose the JSON path; this helper stays path-agnostic so TSH can
- * keep a local policy copy while Tutti points at packages/agent/session-replay.
+ * Products choose the JSON path. Published consumers should resolve the
+ * package's `cassette-policy.json` export and pass that installed path here.
  */
 export async function loadCassettePolicy(policyPath) {
   const path = String(policyPath ?? "").trim();
@@ -32,21 +31,4 @@ export function assertCassettePolicyShape(policy, source = "cassette-policy") {
     throw new Error(`cassette policy is invalid: ${source}`);
   }
   return policy;
-}
-
-/** Default Tutti checkout path for the shared Go cassette-policy.json. */
-export function defaultTuttiCassettePolicyPath(tuttiCheckoutRoot) {
-  const root = String(tuttiCheckoutRoot ?? "").trim();
-  if (!root) {
-    throw new Error(
-      "Tutti checkout root is required for default cassette policy"
-    );
-  }
-  return join(
-    root,
-    "packages",
-    "agent",
-    "session-replay",
-    "cassette-policy.json"
-  );
 }

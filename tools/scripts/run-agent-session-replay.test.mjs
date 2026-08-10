@@ -47,6 +47,7 @@ import {
   checkpointNeedsScreenshotSettle,
   captureCheckpointScreenshot,
   captureScreenshot,
+  hasOpenToolDetailText,
   normalizeScreenshotClip,
   parseArgs,
   resolveDesktopHeadless,
@@ -77,6 +78,15 @@ import {
 const replayCassetteAID = "277377ed-af34-454f-a8b9-1047b4064e74";
 const replayCassetteBID = "628c61c4-cbcb-4445-83f7-718bbbd414bd";
 const workspaceRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
+
+test("open tool detail accepts short rendered fileChange content", () => {
+  assert.equal(hasOpenToolDetailText(["R15_TEST"]), true);
+});
+
+test("open tool detail rejects missing or empty content", () => {
+  assert.equal(hasOpenToolDetailText([]), false);
+  assert.equal(hasOpenToolDetailText([null, undefined, " \n\t "]), false);
+});
 
 function respondToCheckpointVerification(request, response) {
   const match = request.url?.match(

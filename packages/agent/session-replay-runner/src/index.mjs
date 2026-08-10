@@ -12,7 +12,6 @@ export {
 } from "./cassette.mjs";
 export {
   assertCassettePolicyShape,
-  defaultTuttiCassettePolicyPath,
   loadCassettePolicy
 } from "./cassette-policy.mjs";
 export {
@@ -88,7 +87,6 @@ export {
   waitForPendingReplayInteraction,
   waitForSessionIdle
 } from "./replay-stimuli.mjs";
-export { resolveTuttiCheckoutRoot } from "./resolve-tutti-checkout.mjs";
 export { createSerialAsyncQueue } from "./serial-queue.mjs";
 export { runReplayCassetteBatch } from "./replay-orchestration.mjs";
 export {

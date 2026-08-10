@@ -51,7 +51,7 @@ export function ConnectorInstallationDialog({
           : description || i18n.t("dialogInstallationDescription")}
       </DialogDescription>
 
-      <DialogFooter className="gap-2.5 pt-2 sm:justify-center">
+      <DialogFooter>
         <Button
           disabled={installing}
           size="dialog"

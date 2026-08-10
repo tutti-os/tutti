@@ -1,10 +1,7 @@
-import { dirname, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createCassetteHelpers } from "../../../packages/agent/session-replay-runner/src/cassette.mjs";
-import {
-  defaultTuttiCassettePolicyPath,
-  loadCassettePolicy
-} from "../../../packages/agent/session-replay-runner/src/cassette-policy.mjs";
+import { loadCassettePolicy } from "../../../packages/agent/session-replay-runner/src/cassette-policy.mjs";
 import { resolveAgentSessionReplayProjectRoot } from "./project-root.mjs";
 
 export { resolveAgentSessionReplayProjectRoot } from "./project-root.mjs";
@@ -14,7 +11,13 @@ const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const workspaceRoot = resolve(scriptDirectory, "..", "..", "..");
 
 export const cassettePolicy = await loadCassettePolicy(
-  defaultTuttiCassettePolicyPath(workspaceRoot)
+  join(
+    workspaceRoot,
+    "packages",
+    "agent",
+    "session-replay",
+    "cassette-policy.json"
+  )
 );
 
 const helpers = createCassetteHelpers(cassettePolicy, {

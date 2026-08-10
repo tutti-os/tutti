@@ -2912,10 +2912,10 @@ export async function captureScreenshot(client, outputPath, options = {}) {
               return (element.textContent ?? '').trim().length > 0;
             });
             const commandVisible = Boolean(visibleCommand);
-            const toolDetailTextVisible = openRowReveals.some((reveal) => {
-              const text = (reveal.textContent ?? '').trim();
-              return text.length > 12;
-            });
+            const hasOpenToolDetailText = ${hasOpenToolDetailText.toString()};
+            const toolDetailTextVisible = hasOpenToolDetailText(
+              openRowReveals.map((reveal) => reveal.textContent ?? '')
+            );
             return {
               ready: commandVisible || toolDetailTextVisible,
               reason:
@@ -3390,10 +3390,10 @@ export async function prepareToolEvidenceForScreenshot(
           if (!painted) return false;
           return (element.textContent ?? '').trim().length > 0;
         });
-        const toolDetailTextVisible = openRowReveals.some((reveal) => {
-          const text = (reveal.textContent ?? '').trim();
-          return text.length > 12;
-        });
+        const hasOpenToolDetailText = ${hasOpenToolDetailText.toString()};
+        const toolDetailTextVisible = hasOpenToolDetailText(
+          openRowReveals.map((reveal) => reveal.textContent ?? '')
+        );
         return {
           ready: commandVisible || toolDetailTextVisible,
           openToolRevealCount: openRowReveals.length,
@@ -3415,6 +3415,12 @@ export async function prepareToolEvidenceForScreenshot(
     );
   }
   return null;
+}
+
+export function hasOpenToolDetailText(texts) {
+  return texts.some(
+    (text) => typeof text === "string" && text.trim().length > 0
+  );
 }
 
 function setMode(options, mode, directory) {

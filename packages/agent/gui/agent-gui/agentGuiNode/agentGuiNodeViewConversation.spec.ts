@@ -77,6 +77,38 @@ describe("ConversationMeta", () => {
     expect(screen.getByTestId("agent-gui-conversation-spinner")).toBeVisible();
   });
 
+  it("keeps the worktree mark to the left of the loading indicator", () => {
+    const nowMs = new Date("2026-06-05T12:00:00Z").getTime();
+    const item = conversation("working-worktree", nowMs, {
+      status: "working",
+      isolation: {
+        mode: "worktree",
+        worktreePath: "/state/worktrees/session",
+        branch: "tutti/session",
+        baseCommit: "abc123"
+      }
+    });
+
+    const { container } = render(
+      createElement(ConversationMeta, {
+        item,
+        nowMs,
+        labels: relativeLabels
+      })
+    );
+
+    const meta = container.querySelector(
+      ".agent-gui-node__conversation-meta"
+    );
+    expect(meta?.firstElementChild).toHaveClass(
+      "agent-gui-node__conversation-worktree-glyph"
+    );
+    expect(meta?.lastElementChild).toHaveAttribute(
+      "data-testid",
+      "agent-gui-conversation-spinner"
+    );
+  });
+
   it("shows the ask indicator whenever a conversation needs user action", () => {
     const nowMs = new Date("2026-06-05T12:00:00Z").getTime();
     const item = conversation("user-action-waiting", nowMs, {

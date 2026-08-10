@@ -156,6 +156,10 @@ export function AgentTargetSetupGate({
     account !== null ||
     snapshot?.status === "auth_required" ||
     snapshot?.status === "authenticating";
+  // Prefer setup projection over the local authenticate promise. OAuth can mark
+  // the account ready before the host login call settles.
+  const loginActionPending =
+    authenticatePending && snapshot?.status !== "ready";
 
   return (
     <>
@@ -295,10 +299,10 @@ export function AgentTargetSetupGate({
                       <Button
                         type="button"
                         size="sm"
-                        disabled={!effectiveAuthMethodId || authenticatePending}
+                        disabled={!effectiveAuthMethodId || loginActionPending}
                         onClick={() => void handleAuthenticate()}
                       >
-                        {authenticatePending
+                        {loginActionPending
                           ? t("agentHost.agentGui.targetSetupAuthStarting")
                           : snapshot?.status === "ready"
                             ? t("agentHost.agentGui.targetSetupReauthenticate")

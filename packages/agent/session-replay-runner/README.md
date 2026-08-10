@@ -4,21 +4,38 @@ Product-neutral **JS runner kernel** for Agent Session Replay.
 
 ## Status
 
-**Local-link / relative-path only for now.** Do not publish this package.
-Products (Tutti, TSH, …) consume it from a Tutti checkout via workspace
-relative import or an explicit filesystem path.
+This is a public npm package in Tutti's fixed `@tutti-os/*` release cohort.
+External products install the same exact cohort version as their other Tutti
+dependencies:
+
+```sh
+pnpm add --save-exact @tutti-os/agent-session-replay-runner@<version>
+```
+
+```js
+import {
+  createReplayProductPorts,
+  runReplayCassetteBatch
+} from "@tutti-os/agent-session-replay-runner";
+```
 
 Shared Go Cassette / Replay contracts stay in `packages/agent/session-replay`.
 This package owns Node orchestration helpers that must stay isomorphic across
 products.
 
+## Bundled contracts
+
+The published tarball carries the canonical cross-language contracts from the
+Go core at these public subpaths:
+
+- `@tutti-os/agent-session-replay-runner/cassette-policy.json`
+- `@tutti-os/agent-session-replay-runner/activity-contract.json`
+
+Consumers resolve those package subpaths and read the files from the installed
+package. They do not locate or read a Tutti source checkout.
+
 ## What products must supply
 
-- Cassette policy JSON **directory** resolution (Tutti: fixed
-  `packages/agent/session-replay/cassette-policy.json`; TSH:
-  `resolve-session-replay-core.mjs` chooses Tutti-core only — fail-closed,
-  no vendor JSON). The shared loader only reads/validates **file bytes** once
-  a path is known.
 - Desktop / Electron launch + ports (CDP, daemon listener, control path).
 - Room / Workspace / shared-agent product surfaces (TSH Room bootstrap, Tutti
   workspace rail, ui-drive product adapters).
@@ -35,7 +52,6 @@ Extracted and wired from both runners:
 - checkpoint plan load / validate (schemaVersion injected by product)
 - stimulus idle precondition + duplicate engine-send guard +
   `replayStimulusRequest` (scope segment: `workspaces` / `rooms`)
-- Tutti checkout resolver (for TSH local path)
 - recording helpers (`resolveRecordScenarioProject`, binding verify,
   `assertForbiddenPathAbsent`, `seedRecordingUserProject`)
 - playback sub-helpers (activity clock, provider cursor math, status/failure
@@ -83,21 +99,3 @@ Still product-local:
 - runtime / ui-drive / Room bootstrap / Electron launch / CDP evaluate waits
 - TSH shared-agent target rewrite + Room project-binding helpers that sit
   beside the shared cassette kernel ports
-
-## TSH local path
-
-Prefer resolving Tutti from:
-
-1. `TUTTI_CHECKOUT_ROOT` (or `TUTTI_AGENT_SESSION_REPLAY_TUTTI_ROOT`)
-2. `go.work` `use` entries that point at Tutti `packages/agent/...`
-3. sibling layout `../../tutti-os/tutti` from the TSH repo root
-
-Then import:
-
-`{tuttiRoot}/packages/agent/session-replay-runner/src/index.mjs`
-
-Cassette **policy JSON** resolution stays in TSH
-`resolve-session-replay-core.mjs` (env → go.work → layout → local-link;
-**fail-closed**, no vendor). That module then calls this package's
-`loadCassettePolicy(path)` for bytes + shape validation (also fail-closed if
-the shared runner package itself cannot be resolved).

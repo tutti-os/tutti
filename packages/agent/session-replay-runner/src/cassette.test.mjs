@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
-import { dirname, join, resolve } from "node:path";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -14,18 +14,14 @@ import {
   validComposerDefaultsPrerequisites,
   verifyCassette
 } from "./cassette.mjs";
-import {
-  defaultTuttiCassettePolicyPath,
-  loadCassettePolicy
-} from "./cassette-policy.mjs";
+import { loadCassettePolicy } from "./cassette-policy.mjs";
 
-const packageRoot = fileURLToPath(new URL("..", import.meta.url));
-const tuttiRoot = resolve(packageRoot, "../../..");
+const cassettePolicyPath = fileURLToPath(
+  new URL("../../session-replay/cassette-policy.json", import.meta.url)
+);
 
 test("createCassetteHelpers binds verify/parse against Tutti policy", async () => {
-  const policy = await loadCassettePolicy(
-    defaultTuttiCassettePolicyPath(tuttiRoot)
-  );
+  const policy = await loadCassettePolicy(cassettePolicyPath);
   const helpers = createCassetteHelpers(policy, {
     canonicalizeResolvedPaths: true
   });
@@ -39,9 +35,7 @@ test("createCassetteHelpers binds verify/parse against Tutti policy", async () =
 });
 
 test("verifyCassette rejects unrelated inventory files", async () => {
-  const policy = await loadCassettePolicy(
-    defaultTuttiCassettePolicyPath(tuttiRoot)
-  );
+  const policy = await loadCassettePolicy(cassettePolicyPath);
   const root = await mkdtemp(join(tmpdir(), "shared-cassette-unrelated-"));
   const cassette = join(root, "cassette");
   await writeValidCassette(cassette, policy);
@@ -50,9 +44,7 @@ test("verifyCassette rejects unrelated inventory files", async () => {
 });
 
 test("parseActivityEvents requires monotonic sequences", async () => {
-  const policy = await loadCassettePolicy(
-    defaultTuttiCassettePolicyPath(tuttiRoot)
-  );
+  const policy = await loadCassettePolicy(cassettePolicyPath);
   assert.throws(
     () =>
       parseActivityEvents(
@@ -109,9 +101,7 @@ test("replayTurnIdentityPlan subtracts initial turns", () => {
 });
 
 test("requireManifestIdentity rejects missing id", async () => {
-  const policy = await loadCassettePolicy(
-    defaultTuttiCassettePolicyPath(tuttiRoot)
-  );
+  const policy = await loadCassettePolicy(cassettePolicyPath);
   const root = await mkdtemp(join(tmpdir(), "shared-cassette-id-"));
   const cassette = join(root, "cassette");
   await writeValidCassette(cassette, policy, { omitId: true });

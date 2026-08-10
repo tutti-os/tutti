@@ -158,6 +158,7 @@ $env:TUTTI_DESKTOP_USER_DATA_DIR = if ($IsolatedUserData) {
 $env:TUTTI_STATE_DIR = $StateDir
 $env:TUTTID_BIN = $desktopTuttid
 $env:TUTTI_MANAGED_POSIX_SHELL = $managedShell
+$env:TUTTI_ANALYTICS_DISABLED = "1"
 $env:ELECTRON_RENDERER_URL = "http://127.0.0.1:5173"
 $env:TUTTI_DESKTOP_PERFORMANCE_HEADLESS = $null
 $env:TUTTI_ELECTRON_REMOTE_DEBUGGING_PORT = [string]$RemoteDebuggingPort

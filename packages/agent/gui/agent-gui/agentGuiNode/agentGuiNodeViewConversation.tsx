@@ -46,8 +46,8 @@ export function ConversationMeta({
         data-worktree={worktreeData}
         data-testid={`agent-gui-conversation-meta-${item.id}`}
       >
-        <LoadingGlyph />
         {worktreeGlyph}
+        <LoadingGlyph />
       </span>
     );
   }
@@ -60,11 +60,11 @@ export function ConversationMeta({
         data-worktree={worktreeData}
         data-testid={`agent-gui-conversation-meta-${item.id}`}
       >
+        {worktreeGlyph}
         <AskLinedIcon
           aria-hidden="true"
           className={styles.conversationStatusGlyph}
         />
-        {worktreeGlyph}
       </span>
     );
   }
@@ -77,8 +77,8 @@ export function ConversationMeta({
         data-worktree={worktreeData}
         data-testid={`agent-gui-conversation-meta-${item.id}`}
       >
-        <AttentionGlyph />
         {worktreeGlyph}
+        <AttentionGlyph />
       </span>
     );
   }
@@ -91,8 +91,8 @@ export function ConversationMeta({
         data-worktree={worktreeData}
         data-testid={`agent-gui-conversation-meta-${item.id}`}
       >
-        <span className={styles.conversationUnreadLamp} aria-hidden="true" />
         {worktreeGlyph}
+        <span className={styles.conversationUnreadLamp} aria-hidden="true" />
       </span>
     );
   }

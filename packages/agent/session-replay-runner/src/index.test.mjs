@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, writeFile } from "node:fs/promises";
+import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { join } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { EventEmitter } from "node:events";
@@ -16,7 +16,6 @@ import {
   createReplayActivityClock,
   createReplayProductPorts,
   createSerialAsyncQueue,
-  defaultTuttiCassettePolicyPath,
   encodeCamelTimingModeValue,
   encodeKebabTimingModeValue,
   KEBAB_REPLAY_TRANSPORT_COMMANDS,
@@ -42,15 +41,13 @@ import {
   replayStimulusRetryableStatus,
   requiredReplayRegistrations,
   resolveRecordScenarioProject,
-  resolveTuttiCheckoutRoot,
   screenshotEvidenceLabel,
   submitRequestedRequiresSessionIdle,
   validateReplayCheckpointPlan
 } from "./index.mjs";
 
-const packageRoot = fileURLToPath(new URL("..", import.meta.url));
-const tuttiRoot = resolve(
-  fileURLToPath(new URL("../../../..", import.meta.url))
+const cassettePolicyPath = fileURLToPath(
+  new URL("../../session-replay/cassette-policy.json", import.meta.url)
 );
 
 test("createSerialAsyncQueue serializes tasks", async () => {
@@ -77,9 +74,7 @@ test("createSerialAsyncQueue serializes tasks", async () => {
 });
 
 test("loadCassettePolicy reads Tutti shared policy", async () => {
-  const policy = await loadCassettePolicy(
-    defaultTuttiCassettePolicyPath(tuttiRoot)
-  );
+  const policy = await loadCassettePolicy(cassettePolicyPath);
   assert.equal(typeof policy.schemaVersion, "number");
   assert.equal(policy.files.checkpointPlan.path, "checkpoint-plan.json");
 });
@@ -92,9 +87,7 @@ test("validateReplayCheckpointPlan requires injected schema version", () => {
 });
 
 test("validateReplayCheckpointPlan accepts portable v2 plan", async () => {
-  const policy = await loadCassettePolicy(
-    defaultTuttiCassettePolicyPath(tuttiRoot)
-  );
+  const policy = await loadCassettePolicy(cassettePolicyPath);
   const checkpoints = validateReplayCheckpointPlan(
     {
       schemaVersion: 2,
@@ -118,9 +111,7 @@ test("validateReplayCheckpointPlan accepts portable v2 plan", async () => {
 });
 
 test("loadReplayCheckpointPlan reads file from cassette directory", async () => {
-  const policy = await loadCassettePolicy(
-    defaultTuttiCassettePolicyPath(tuttiRoot)
-  );
+  const policy = await loadCassettePolicy(cassettePolicyPath);
   const root = await mkdtemp(join(tmpdir(), "asr-runner-checkpoint-"));
   await writeFile(
     join(root, "checkpoint-plan.json"),
@@ -181,21 +172,6 @@ test("managed prefixes and control router", () => {
     schemaVersion: 2,
     cassettes: { "cass-1": { command: "pause", revision: 3 } }
   });
-});
-
-test("resolveTuttiCheckoutRoot finds this checkout", async () => {
-  const root = resolveTuttiCheckoutRoot({ checkoutRoot: tuttiRoot });
-  assert.equal(root, tuttiRoot);
-  const sibling = await mkdtemp(join(tmpdir(), "asr-product-"));
-  await mkdir(join(sibling, "packages"), { recursive: true });
-  // productRoot with go.work pointing at this Tutti agent package
-  await writeFile(
-    join(sibling, "go.work"),
-    `go 1.26.3\n\nuse (\n\t.\n\t${join(tuttiRoot, "packages/agent/session-replay")}\n)\n`
-  );
-  const resolved = resolveTuttiCheckoutRoot({ productRoot: sibling });
-  assert.equal(resolved, tuttiRoot);
-  void packageRoot;
 });
 
 test("resolveRecordScenarioProject builds portable binding", () => {

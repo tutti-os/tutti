@@ -30,6 +30,7 @@ The current fixed release group is:
 @tutti-os/agent-activity-core
 @tutti-os/agent-gui
 @tutti-os/agent-session-replay
+@tutti-os/agent-session-replay-runner
 @tutti-os/commerce
 @tutti-os/claude-sdk-sidecar
 @tutti-os/browser-node
@@ -171,6 +172,7 @@ Install beta packages explicitly:
 
 ```bash
 pnpm add @tutti-os/browser-node@beta
+pnpm add @tutti-os/agent-session-replay-runner@beta
 pnpm add @tutti-os/workspace-file-reference@beta
 pnpm add @tutti-os/workspace-file-preview@beta
 pnpm add @tutti-os/workspace-file-manager@beta
@@ -295,6 +297,25 @@ The stable package entrypoints are:
 
 ```text
 @tutti-os/agent-activity-core
+@tutti-os/agent-session-replay-runner
+@tutti-os/agent-session-replay-runner/activity-contract.json
+@tutti-os/agent-session-replay-runner/cassette-policy.json
+@tutti-os/agent-session-replay-runner/cassette
+@tutti-os/agent-session-replay-runner/cassette-policy
+@tutti-os/agent-session-replay-runner/checkpoint-plan
+@tutti-os/agent-session-replay-runner/evidence-helpers
+@tutti-os/agent-session-replay-runner/managed-log-prefixes
+@tutti-os/agent-session-replay-runner/managed-shutdown
+@tutti-os/agent-session-replay-runner/playback-controller
+@tutti-os/agent-session-replay-runner/playback-helpers
+@tutti-os/agent-session-replay-runner/product-ports
+@tutti-os/agent-session-replay-runner/recording
+@tutti-os/agent-session-replay-runner/replay-stimuli
+@tutti-os/agent-session-replay-runner/serial-queue
+@tutti-os/agent-session-replay-runner/stimulus
+@tutti-os/agent-session-replay-runner/turn-freshness
+@tutti-os/agent-session-replay-runner/turn-identity-tracker
+@tutti-os/agent-session-replay-runner/wait-diagnostics
 @tutti-os/analytics
 @tutti-os/analytics-debug
 @tutti-os/analytics-debug/react

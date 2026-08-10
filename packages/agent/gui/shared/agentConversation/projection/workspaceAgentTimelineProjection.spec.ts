@@ -510,6 +510,37 @@ describe("projectWorkspaceAgentTimelineToConversationVM", () => {
 
     expect(detail.showProcessingIndicator).toBe(false);
   });
+
+  it("keeps processing after settle until authoritative terminal transcript content arrives", () => {
+    const userOnlyTimelineItems: WorkspaceAgentActivityTimelineItem[] = [
+      timelineItems()[0]!
+    ];
+    const settledWithoutFinal = {
+      ...session({
+        effectiveStatus: "working",
+        turnPhase: "working"
+      }),
+      activeTurn: activeTurn("settled")
+    };
+
+    const detail = buildCanonicalWorkspaceAgentDetailView({
+      activity: activity(),
+      session: settledWithoutFinal,
+      workspaceRoot: "/workspace/demo",
+      timelineItems: userOnlyTimelineItems
+    });
+    const conversation = projectWorkspaceAgentTimelineToConversationVM({
+      activity: activity(),
+      session: settledWithoutFinal,
+      workspaceRoot: "/workspace/demo",
+      timelineItems: userOnlyTimelineItems
+    });
+
+    expect(detail.showProcessingIndicator).toBe(true);
+    expect(conversation.rows.some((row) => row.kind === "processing")).toBe(
+      true
+    );
+  });
 });
 
 function activity(

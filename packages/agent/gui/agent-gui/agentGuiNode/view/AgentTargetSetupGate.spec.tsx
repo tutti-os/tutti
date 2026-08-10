@@ -107,6 +107,51 @@ describe("AgentTargetSetupGate", () => {
     expect(authenticate.mock.calls[0]?.[0]).toMatchObject({ methodId: "iOA" });
   });
 
+  it("stops showing Opening sign in once setup becomes ready while authenticate is still in flight", async () => {
+    let resolveAuthenticate: (() => void) | undefined;
+    const authenticate = vi.fn<AgentHostAgentTargetSetupWatch["authenticate"]>(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveAuthenticate = resolve;
+        })
+    );
+    const setup = createWatch(authRequired("extension:gemini"), {
+      authenticate
+    });
+    installHost(new Map([["extension:gemini", setup.watch]]));
+    render(<Harness openDialog target={geminiTarget} />);
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Continue to sign in" })
+    );
+    await waitFor(() => expect(authenticate).toHaveBeenCalledTimes(1));
+    expect(
+      screen.getByRole("button", { name: "Opening sign in…" })
+    ).toBeTruthy();
+
+    act(() =>
+      setup.publish({
+        ...ready("extension:gemini"),
+        authMethods: authRequired("extension:gemini").snapshot!.authMethods,
+        account: {
+          id: "user-1",
+          displayName: "sunhello135@gmail.com",
+          authMethodId: "oauth-personal",
+          organization: null
+        }
+      })
+    );
+
+    expect(await screen.findByText("Signed-in account")).toBeTruthy();
+    expect(screen.getByText("sunhello135@gmail.com")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Sign in again" })).toBeTruthy();
+    expect(
+      screen.queryByRole("button", { name: "Opening sign in…" })
+    ).toBeNull();
+
+    resolveAuthenticate?.();
+  });
+
   it("installs from the shared dialog and can reopen after dismissal", async () => {
     const install = vi.fn<AgentHostAgentTargetSetupWatch["install"]>();
     const setup = createWatch(notInstalled("extension:codebuddy"), { install });
