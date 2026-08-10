@@ -1552,6 +1552,41 @@ describe("AgentMessageMarkdown", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("hydrates shared agent-target mention icons from the presentation catalog", () => {
+    const iconUrl = "data:image/png;base64,shared-codex";
+    const { container } = render(
+      <AgentMessageMarkdown
+        agentTargets={[
+          {
+            agentTargetId: "shared-agent:jun-codex",
+            iconUrl,
+            name: "Jun Sun 的 Codex",
+            provider: "codex",
+            workspaceId: "room-1"
+          }
+        ]}
+        content="[@Jun Sun 的 Codex](mention://agent-target/shared-agent:jun-codex?workspaceId=room-1) what is this"
+      />
+    );
+
+    const mention = container.querySelector('[data-agent-file-mention="true"]');
+    expect(mention).toHaveAttribute("data-agent-mention-kind", "agent-target");
+    expect(mention).toHaveAttribute("data-agent-mention-icon-url", iconUrl);
+    expect(mention?.querySelector("img")).toHaveAttribute("src", iconUrl);
+  });
+
+  it("falls back to a scoped provider icon when the presentation catalog misses", () => {
+    const { container } = render(
+      <AgentMessageMarkdown content="[@Jun Sun 的 Codex](mention://agent-target/shared-agent:jun-codex?workspaceId=room-1&agentProviderId=codex) what is this" />
+    );
+
+    const mention = container.querySelector('[data-agent-file-mention="true"]');
+    expect(mention).toHaveAttribute(
+      "data-agent-mention-icon-url",
+      managedAgentRoundedIconUrl("codex")
+    );
+  });
+
   it("renders workspace app factory mentions as object tokens", () => {
     const { container, queryByText } = render(
       <AgentMessageMarkdown content="[@Create App](mention://workspace-app-factory/create)" />

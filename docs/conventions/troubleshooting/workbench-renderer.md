@@ -93,6 +93,40 @@
   [workbench.css](../../../packages/workbench/surface/src/styles/workbench.css)
   [browser-node-package.md](../../architecture/browser-node-package.md)
 
+### Overflowing custom header widens the Workbench body
+
+- Symptom:
+  A resizable Workbench node remains visually inside its frame, but after a
+  custom header gains enough non-wrapping content, its body and embedded
+  webview retain a much wider layout viewport. Narrowing the node clips the
+  page instead of triggering its responsive layout.
+- Quick checks:
+  Compare the bounding widths of `.workbench-window`,
+  `.workbench-window__header--custom`, and `.workbench-window__body`, then
+  inspect the computed Grid columns. If the outer window keeps its saved width
+  while the implicit column, header, and body all resolve wider, trace the
+  header's min-content contribution rather than changing the webview width.
+- Root cause:
+  A Grid that defines only rows leaves its single implicit column sized as
+  `auto`. A custom header with `overflow: visible` retains a content-based
+  automatic minimum, so non-wrapping tabs or controls can enlarge that column.
+  The body shares the enlarged track, and a `width: 100%` webview then receives
+  the wrong layout viewport even though the outer window clips the result.
+- Fix:
+  Define the Workbench window's single column as `minmax(0, 1fr)`. Keep the
+  header's intentional visible overflow for inline overlays; the explicit
+  zero-minimum track prevents horizontal min-content from resizing the shared
+  body column. Adding `min-width: 0` only inside the custom header does not
+  change the Grid item's automatic minimum contribution.
+- Validation:
+  Open enough fixed-minimum-width tabs to overflow a Browser node, then resize
+  the node narrower and wider. Confirm the tab list scrolls, the header and
+  body widths remain equal to the Workbench frame, and the guest page responds
+  to each available width instead of being clipped at its previous viewport.
+- References:
+  [workbench.css](../../../packages/workbench/surface/src/styles/workbench.css)
+  [BrowserNodeChrome.tsx](../../../packages/browser/workbench-node/src/react/BrowserNodeChrome.tsx)
+
 ### Standalone Agent dev window stays black during cold startup
 
 - Symptom:

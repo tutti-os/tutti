@@ -213,6 +213,12 @@ be passed through OpenCode config; Tutti injects `OPENCODE_CONFIG_CONTENT` with
 custom-provider environment allowlist for OpenCode includes `OPENCODE_CONFIG`,
 `OPENCODE_CONFIG_DIR`, `OPENCODE_CONFIG_CONTENT`, and `OPENCODE_PERMISSION`
 so operator-supplied OpenCode config stays explicit and provider-owned.
+AgentGUI Sessions add a final session-scoped `OPENCODE_CONFIG_DIR` overlay that
+contains Tutti's managed `AGENTS.md` and native `skills/` tree. The overlay is
+created for every OpenCode Session and is removed with that Session's runtime;
+it does not write managed Skills into the Workspace or the user's global
+OpenCode config directory. A model access plan, when present, writes its
+`OPENCODE_CONFIG` file into that same isolated directory.
 OpenCode composer model options and model-specific reasoning variants come from
 `opencode models --verbose`. Run that command from the composer workspace cwd
 because OpenCode resolves project configuration relative to the current

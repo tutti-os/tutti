@@ -2,11 +2,59 @@ package runtimeprep
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"unicode/utf8"
 )
+
+func TestSessionScopedSkillReconciliationRemovesOnlyStaleManagedDirectories(t *testing.T) {
+	root := t.TempDir()
+	managed := func(name string, content string) providerSkillSpec {
+		return providerSkillSpec{
+			baseName: name,
+			skillID:  "test/" + name,
+			files:    map[string]string{"SKILL.md": content},
+		}
+	}
+	firstPaths, err := installProviderNativeSkillSpecsStable(root, []providerSkillSpec{
+		managed("active", "first"),
+		managed("retired", "retired"),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := removeStaleManagedProviderSkills(root, firstPaths); err != nil {
+		t.Fatal(err)
+	}
+	unmanagedPath := filepath.Join(root, "user-owned")
+	if err := os.MkdirAll(unmanagedPath, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	secondPaths, err := installProviderNativeSkillSpecsStable(root, []providerSkillSpec{
+		managed("active", "second"),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := removeStaleManagedProviderSkills(root, secondPaths); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(root, "retired")); !os.IsNotExist(err) {
+		t.Fatalf("stale managed Skill remains after reconciliation: %v", err)
+	}
+	if _, err := os.Stat(unmanagedPath); err != nil {
+		t.Fatalf("unmanaged directory was removed: %v", err)
+	}
+	content, err := os.ReadFile(filepath.Join(root, "active", "SKILL.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(content) != "second" {
+		t.Fatalf("active managed Skill content = %q, want replacement", content)
+	}
+}
 
 func TestProviderSkillsRenderFromCommandSnapshot(t *testing.T) {
 	input := testInputWithCommands(t, PrepareInput{

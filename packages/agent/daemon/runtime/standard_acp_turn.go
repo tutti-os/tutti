@@ -85,6 +85,13 @@ func (a *standardACPAdapter) Exec(
 	if mentionRoutingApplied {
 		acpPromptContent = appendTuttiMentionRoutingPrompt(acpPromptContent, mentionRoutingSkills)
 	}
+	initialPromptContext := a.pendingInitialPromptContext(acpSession)
+	if initialPromptContext != "" {
+		acpPromptContent = append(acpPromptContent, map[string]any{
+			"type": "text",
+			"text": initialPromptContext,
+		})
+	}
 	// ACP v1 has no developer/system or synthetic-message channel. Keep the
 	// canonical Tutti-owned context in the provider-only prompt payload; the
 	// activity event above is still projected exclusively from the original
@@ -217,6 +224,10 @@ execLoop:
 				emitEvents(terminalEvents)
 			}
 			return snapshotEvents(), nil
+		}
+		if initialPromptContext != "" {
+			a.consumeInitialPromptContext(acpSession)
+			initialPromptContext = ""
 		}
 
 		stopReason := acpStopReason(result)

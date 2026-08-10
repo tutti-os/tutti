@@ -3,12 +3,51 @@ package agentruntime
 import (
 	"context"
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	activityshared "github.com/tutti-os/tutti/packages/agent/daemon/activity/events"
 	"github.com/tutti-os/tutti/packages/agent/daemon/providerregistry"
 )
+
+func TestCursorAdapterInjectsPreparedContextIntoFirstProviderPromptOnly(t *testing.T) {
+	t.Parallel()
+
+	contextPath := filepath.Join(t.TempDir(), "cursor-context.md")
+	contextText := "resolved provider context with a dynamic Skill catalog"
+	if err := os.WriteFile(contextPath, []byte(contextText), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	transport := newStandardACPTransport("Cursor Agent", "cursor-session-context")
+	adapter := newCursorAdapterWithHostMetadata(transport, LegacyHostMetadata(), nil)
+	session := standardTestSession(ProviderCursor)
+	session.Env = []string{cursorPromptContextFileEnv + "=" + contextPath}
+	if _, err := adapter.Start(context.Background(), session); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	session.ProviderSessionID = "cursor-session-context"
+	if _, err := adapter.Exec(context.Background(), session, textPrompt("first user prompt"), "", "turn-1", nil, nil); err != nil {
+		t.Fatalf("first Exec: %v", err)
+	}
+	if _, err := adapter.Exec(context.Background(), session, textPrompt("second user prompt"), "", "turn-2", nil, nil); err != nil {
+		t.Fatalf("second Exec: %v", err)
+	}
+
+	transport.conn.mu.Lock()
+	snapshots := append([]map[string]any(nil), transport.conn.promptParamsSnapshots...)
+	transport.conn.mu.Unlock()
+	if len(snapshots) != 2 {
+		t.Fatalf("provider prompt count = %d, want 2", len(snapshots))
+	}
+	if first := acpTestPromptText(snapshots[0]); !strings.Contains(first, "first user prompt") || !strings.Contains(first, contextText) {
+		t.Fatalf("first provider prompt = %q, want user content plus prepared context", first)
+	}
+	if second := acpTestPromptText(snapshots[1]); !strings.Contains(second, "second user prompt") || strings.Contains(second, contextText) {
+		t.Fatalf("second provider prompt = %q, want user content without repeated prepared context", second)
+	}
+}
 
 func TestCursorAdapterStartUsesInjectedProviderCommand(t *testing.T) {
 	t.Parallel()

@@ -507,7 +507,9 @@ export function parseMentionLink(
       agentTargets,
       workspaceId
     });
-    const agentProviderId = target?.provider?.trim() || undefined;
+    const scopedProvider = mention.scope?.agentProviderId?.trim() || "";
+    const agentProviderId =
+      target?.provider?.trim() || scopedProvider || undefined;
     const targetLabel = target?.name?.trim() || label;
     return {
       ...identity,

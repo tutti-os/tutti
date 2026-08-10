@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { AgentGUIAgentTarget } from "../../../types";
 import {
   agentTargetPresentationKey,
+  mergeAgentTargetsForMentionPresentations,
   projectAgentTargetPresentations
 } from "./agentGuiTargetPresentation";
 
@@ -76,5 +77,46 @@ describe("Agent GUI target presentation projection", () => {
         }
       ])
     );
+  });
+
+  it("merges handoff-only shared targets into mention presentation lookup", () => {
+    const local: AgentGUIAgentTarget = {
+      ...TARGET,
+      agentTargetId: "local:codex",
+      label: "Codex",
+      provider: "codex",
+      targetId: "local:codex"
+    };
+    const shared: AgentGUIAgentTarget = {
+      ...TARGET,
+      agentTargetId: "shared-agent:jun-codex",
+      iconUrl: "data:image/png;base64,shared-codex",
+      label: "Codex",
+      ownerLabel: "Jun Sun",
+      ownership: "shared",
+      provider: "codex",
+      targetId: "shared-agent:jun-codex"
+    };
+
+    expect(
+      mergeAgentTargetsForMentionPresentations([local], [local, shared])
+    ).toEqual([local, shared]);
+    expect(
+      projectAgentTargetPresentations({
+        agentTargets: mergeAgentTargetsForMentionPresentations(
+          [local],
+          [shared]
+        ),
+        ownerSeparator: " 的 ",
+        workspaceId: "workspace-1"
+      })
+    ).toMatchObject([
+      { agentTargetId: "local:codex", iconUrl: local.iconUrl },
+      {
+        agentTargetId: "shared-agent:jun-codex",
+        iconUrl: "data:image/png;base64,shared-codex",
+        name: "Jun Sun 的 Codex"
+      }
+    ]);
   });
 });

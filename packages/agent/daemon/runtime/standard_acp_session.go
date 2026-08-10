@@ -57,17 +57,22 @@ func (a *standardACPAdapter) Start(ctx context.Context, session Session) ([]acti
 			}
 		}
 	}()
+	initialPromptContext, err := a.resolveInitialPromptContext(session)
+	if err != nil {
+		return nil, err
+	}
 	acpSession = &standardACPSession{
-		client:           client,
-		agentInfo:        acpAgentInfo(initializeResult),
-		promptImage:      standardACPProviderPromptImageSupported(a.config.provider, initializeResult),
-		sessionClose:     standardACPSessionCloseSupported(initializeResult),
-		resumeMethod:     acpResumeMethod(initializeResult),
-		acpLiveState:     standardACPInitialLiveState(),
-		pendingApprovals: make(map[string]*pendingACPApproval),
-		permissionModeID: strings.TrimSpace(session.PermissionModeID),
-		planMode:         session.SettingsValue().PlanMode,
-		lifecycleSeq:     session.LifecycleSeq,
+		client:               client,
+		agentInfo:            acpAgentInfo(initializeResult),
+		promptImage:          standardACPProviderPromptImageSupported(a.config.provider, initializeResult),
+		sessionClose:         standardACPSessionCloseSupported(initializeResult),
+		resumeMethod:         acpResumeMethod(initializeResult),
+		acpLiveState:         standardACPInitialLiveState(),
+		pendingApprovals:     make(map[string]*pendingACPApproval),
+		permissionModeID:     strings.TrimSpace(session.PermissionModeID),
+		planMode:             session.SettingsValue().PlanMode,
+		lifecycleSeq:         session.LifecycleSeq,
+		initialPromptContext: initialPromptContext,
 	}
 	a.storeSession(session.AgentSessionID, acpSession)
 
@@ -208,6 +213,10 @@ func (a *standardACPAdapter) resumeLocked(ctx context.Context, session Session) 
 			}
 		}
 	}()
+	initialPromptContext, err := a.resolveInitialPromptContext(session)
+	if err != nil {
+		return err
+	}
 	if attachedCheckpoint {
 		liveState := standardACPInitialLiveState()
 		liveState.currentMode = firstNonEmpty(
@@ -225,6 +234,7 @@ func (a *standardACPAdapter) resumeLocked(ctx context.Context, session Session) 
 			permissionModeID:     strings.TrimSpace(session.PermissionModeID),
 			planMode:             session.SettingsValue().PlanMode,
 			lifecycleSeq:         session.LifecycleSeq,
+			initialPromptContext: initialPromptContext,
 		}
 		started = true
 		keepSession = true
@@ -233,17 +243,18 @@ func (a *standardACPAdapter) resumeLocked(ctx context.Context, session Session) 
 		return nil
 	}
 	acpSession = &standardACPSession{
-		client:            client,
-		providerSessionID: session.ProviderSessionID,
-		agentInfo:         acpAgentInfo(initializeResult),
-		promptImage:       standardACPProviderPromptImageSupported(a.config.provider, initializeResult),
-		sessionClose:      standardACPSessionCloseSupported(initializeResult),
-		resumeMethod:      acpResumeMethod(initializeResult),
-		acpLiveState:      standardACPInitialLiveState(),
-		pendingApprovals:  make(map[string]*pendingACPApproval),
-		permissionModeID:  strings.TrimSpace(session.PermissionModeID),
-		planMode:          session.SettingsValue().PlanMode,
-		lifecycleSeq:      session.LifecycleSeq,
+		client:               client,
+		providerSessionID:    session.ProviderSessionID,
+		agentInfo:            acpAgentInfo(initializeResult),
+		promptImage:          standardACPProviderPromptImageSupported(a.config.provider, initializeResult),
+		sessionClose:         standardACPSessionCloseSupported(initializeResult),
+		resumeMethod:         acpResumeMethod(initializeResult),
+		acpLiveState:         standardACPInitialLiveState(),
+		pendingApprovals:     make(map[string]*pendingACPApproval),
+		permissionModeID:     strings.TrimSpace(session.PermissionModeID),
+		planMode:             session.SettingsValue().PlanMode,
+		lifecycleSeq:         session.LifecycleSeq,
+		initialPromptContext: initialPromptContext,
 	}
 	if previousSession != nil {
 		acpSession.acpLiveState = cloneACPLiveState(previousSession.acpLiveState)

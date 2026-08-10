@@ -292,6 +292,44 @@ func installProviderNativeSkillsStable(root string, input PrepareInput) ([]strin
 	return installProviderNativeSkillSpecsStable(root, skills)
 }
 
+func installProviderNativeSkillsSessionScoped(root string, input PrepareInput) ([]string, error) {
+	skills, err := providerSkills(input)
+	if err != nil {
+		return nil, err
+	}
+	skillPaths, err := installProviderNativeSkillSpecsStable(root, skills)
+	if err != nil {
+		return nil, err
+	}
+	if err := removeStaleManagedProviderSkills(root, skillPaths); err != nil {
+		return nil, err
+	}
+	return skillPaths, nil
+}
+
+func renderProviderPromptContext(policy string, skillPaths []string) string {
+	sections := make([]string, 0, 2)
+	if policy = strings.TrimSpace(policy); policy != "" {
+		sections = append(sections, policy)
+	}
+	var catalog strings.Builder
+	for _, skillPath := range skillPaths {
+		skillPath = filepath.Clean(strings.TrimSpace(skillPath))
+		if skillPath == "." || skillPath == "" {
+			continue
+		}
+		if catalog.Len() == 0 {
+			catalog.WriteString("## Available Skills\n\n")
+			catalog.WriteString("These session-injected Skills are available now. Their exact names and materialized files are authoritative:\n\n")
+		}
+		fmt.Fprintf(&catalog, "- `$%s`: `%s`\n", filepath.Base(skillPath), filepath.Join(skillPath, "SKILL.md"))
+	}
+	if catalog.Len() > 0 {
+		sections = append(sections, strings.TrimSpace(catalog.String()))
+	}
+	return strings.Join(sections, "\n\n")
+}
+
 func renderProviderSkillBundle(input PrepareInput) (SkillBundle, error) {
 	skills, err := providerSkills(input)
 	if err != nil {
@@ -407,6 +445,30 @@ func installProviderNativeSkillSpecsStable(root string, skills []providerSkillSp
 		skillPaths = append(skillPaths, skillPath)
 	}
 	return skillPaths, nil
+}
+
+func removeStaleManagedProviderSkills(root string, currentPaths []string) error {
+	keep := make(map[string]struct{}, len(currentPaths))
+	for _, skillPath := range currentPaths {
+		keep[filepath.Clean(skillPath)] = struct{}{}
+	}
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		return fmt.Errorf("read session provider skill root: %w", err)
+	}
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		path := filepath.Join(root, entry.Name())
+		if _, current := keep[filepath.Clean(path)]; current || !providerSkillDirectoryLooksManaged(path) {
+			continue
+		}
+		if err := os.RemoveAll(path); err != nil {
+			return fmt.Errorf("remove stale tutti provider skill: %w", err)
+		}
+	}
+	return nil
 }
 
 func stableManagedSkillName(root string, baseName string) (string, error) {
