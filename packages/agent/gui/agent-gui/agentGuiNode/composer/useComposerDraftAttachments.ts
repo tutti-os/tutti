@@ -56,6 +56,7 @@ import {
 } from "./composerDraftUtils";
 import { reportAgentComposerDiagnostic } from "./agentComposerDiagnostics";
 import type { AgentGUIComposerContentType } from "../engagement/agentGUIEngagement.types";
+import type { ComposerCommandPaletteAction } from "./composerCommandPaletteState";
 
 export interface WorkspaceReferencePickResult {
   files: readonly WorkspaceFileReference[];
@@ -86,8 +87,8 @@ interface UseComposerDraftAttachmentsInput {
   draftImagesRef: RefObject<AgentComposerDraftImage[]>;
   draftFilesRef: RefObject<AgentComposerDraftFile[]>;
   draftLargeTextsRef: RefObject<AgentComposerDraftLargeText[]>;
-  setPaletteDraftPrompt: Dispatch<SetStateAction<string>>;
-  setIsPaletteOpen: Dispatch<SetStateAction<boolean>>;
+  setEditorDraftPrompt: Dispatch<SetStateAction<string>>;
+  dispatchCommandPalette: Dispatch<ComposerCommandPaletteAction>;
   clearActiveFileMentionTrigger: () => void;
   onDraftContentChange: (
     draft: AgentComposerDraft,
@@ -120,8 +121,8 @@ export function useComposerDraftAttachments({
   draftImagesRef,
   draftFilesRef,
   draftLargeTextsRef,
-  setPaletteDraftPrompt,
-  setIsPaletteOpen,
+  setEditorDraftPrompt,
+  dispatchCommandPalette,
   clearActiveFileMentionTrigger,
   onDraftContentChange,
   onPromptImagesUnsupported,
@@ -176,9 +177,9 @@ export function useComposerDraftAttachments({
       if (isGoalModeActive) {
         const nextGoalPrompt = buildGoalModePrompt(nextDraft);
         draftPromptRef.current = nextGoalPrompt;
+        dispatchCommandPalette({ type: "draftChanged", prompt: nextDraft });
         startTransition(() => {
-          setPaletteDraftPrompt(nextDraft);
-          setIsPaletteOpen(true);
+          setEditorDraftPrompt(nextDraft);
           updateScopedDraft(draftScopeKey, (currentDraft) =>
             updateDraftPromptAndReconcileFiles(currentDraft, nextGoalPrompt)
           );
@@ -189,9 +190,12 @@ export function useComposerDraftAttachments({
       if (nextGoalObjective !== null) {
         const nextGoalPrompt = buildGoalModePrompt(nextGoalObjective);
         draftPromptRef.current = nextGoalPrompt;
+        dispatchCommandPalette({
+          type: "draftChanged",
+          prompt: nextGoalObjective
+        });
         startTransition(() => {
-          setPaletteDraftPrompt(nextGoalObjective);
-          setIsPaletteOpen(true);
+          setEditorDraftPrompt(nextGoalObjective);
           updateScopedDraft(draftScopeKey, (currentDraft) =>
             updateDraftPromptAndReconcileFiles(currentDraft, nextGoalPrompt)
           );
@@ -199,9 +203,9 @@ export function useComposerDraftAttachments({
         return;
       }
       draftPromptRef.current = nextDraft;
+      dispatchCommandPalette({ type: "draftChanged", prompt: nextDraft });
       startTransition(() => {
-        setPaletteDraftPrompt(nextDraft);
-        setIsPaletteOpen(true);
+        setEditorDraftPrompt(nextDraft);
         updateScopedDraft(draftScopeKey, (currentDraft) =>
           updateDraftPromptAndReconcileFiles(currentDraft, nextDraft)
         );
@@ -215,7 +219,8 @@ export function useComposerDraftAttachments({
     }
     const nextPrompt = goalDraftObjective ?? "";
     draftPromptRef.current = nextPrompt;
-    setPaletteDraftPrompt(nextPrompt);
+    dispatchCommandPalette({ type: "draftChanged", prompt: nextPrompt });
+    setEditorDraftPrompt(nextPrompt);
     updateScopedDraft(draftScopeKey, (currentDraft) =>
       updateDraftPromptAndReconcileFiles(currentDraft, nextPrompt)
     );
@@ -599,7 +604,8 @@ export function useComposerDraftAttachments({
       );
       draftPromptRef.current = nextPrompt;
       draftLargeTextsRef.current = nextDraftLargeTexts;
-      setPaletteDraftPrompt(nextPrompt);
+      dispatchCommandPalette({ type: "draftChanged", prompt: nextPrompt });
+      setEditorDraftPrompt(nextPrompt);
       publishScopedDraft(
         draftScopeKey,
         buildAgentComposerDraft({

@@ -1,10 +1,56 @@
 import { renderHook } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import type { AgentGUIComposerSettingsVM } from "../model/agentGuiNodeTypes";
+import type { AgentRichTextEditorHandle } from "../agentRichText/AgentRichTextEditor";
 import type { AgentComposerProps } from "./AgentComposer.types";
 import { useComposerPaletteCatalog } from "./useComposerPaletteCatalog";
 
 describe("useComposerPaletteCatalog", () => {
+  it("opens the slash palette from text before the caret when trailing text remains", () => {
+    const { result } = renderHook(() =>
+      useComposerPaletteCatalog({
+        provider: "cursor",
+        isGoalModeActive: false,
+        goalSupported: false,
+        paletteDraftPrompt: "/ ",
+        availableCommands: [],
+        availableSkills: [
+          {
+            name: "review",
+            trigger: "/review",
+            sourceKind: "project",
+            kind: "skill"
+          }
+        ],
+        hasCompactableContext: false,
+        compactSupported: false,
+        composerSettings: {
+          supportsPlanMode: false,
+          supportsBrowser: false,
+          supportsComputerUse: false,
+          slashCommandPolicy: {
+            fallbackCommands: [],
+            commandEffects: [],
+            commandCatalogAuthoritative: true
+          }
+        } as unknown as AgentGUIComposerSettingsVM,
+        capabilityControlsReadOnly: false,
+        labels: {} as AgentComposerProps["labels"],
+        uiLanguage: "en",
+        editorHandleRef: {
+          current: {
+            getPromptTextBeforeSelection: () => "/"
+          } as AgentRichTextEditorHandle
+        }
+      })
+    );
+
+    expect(result.current.slashQuery).toBe("");
+    expect(result.current.slashPaletteEntries).toEqual([
+      expect.objectContaining({ label: "review", type: "skill" })
+    ]);
+  });
+
   it("places connector entries before ordinary skills", () => {
     const { result } = renderHook(() =>
       useComposerPaletteCatalog({

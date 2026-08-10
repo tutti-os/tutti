@@ -46,6 +46,7 @@ import { resolvePermissionModeControlsDisabled } from "../model/composerModeSele
 import { GOAL_MODE_SLASH_COMMAND } from "./AgentComposerChrome";
 import type { AgentComposerProps } from "./AgentComposer.types";
 import { reportAgentComposerDiagnostic } from "./agentComposerDiagnostics";
+import type { ComposerCommandPaletteAction } from "./composerCommandPaletteState";
 
 type TriggerMatch = ReturnType<typeof getAgentComposerTriggerQueryMatch>;
 
@@ -97,8 +98,8 @@ interface UseComposerSlashActionsInput extends Props {
   draftImagesRef: RefObject<AgentComposerDraftImage[]>;
   draftFilesRef: RefObject<AgentComposerDraftFile[]>;
   draftLargeTextsRef: RefObject<AgentComposerDraftLargeText[]>;
-  setPaletteDraftPrompt: Dispatch<SetStateAction<string>>;
-  setIsPaletteOpen: Dispatch<SetStateAction<boolean>>;
+  setEditorDraftPrompt: Dispatch<SetStateAction<string>>;
+  dispatchCommandPalette: Dispatch<ComposerCommandPaletteAction>;
   setIsReviewPickerOpen: Dispatch<SetStateAction<boolean>>;
   setIsSlashStatusPanelOpen: Dispatch<SetStateAction<boolean>>;
   setHighlightedIndex: Dispatch<SetStateAction<number>>;
@@ -157,16 +158,16 @@ export function useComposerSlashActions(input: UseComposerSlashActionsInput) {
     draftImagesRef,
     draftFilesRef,
     draftLargeTextsRef,
-    setPaletteDraftPrompt,
-    setIsPaletteOpen,
+    setEditorDraftPrompt,
+    dispatchCommandPalette,
     setIsReviewPickerOpen,
     setIsSlashStatusPanelOpen,
     setHighlightedIndex
   } = input;
   const clearSlashCommandDraft = useCallback((): void => {
     draftPromptRef.current = "";
-    setPaletteDraftPrompt("");
-    setIsPaletteOpen(false);
+    setEditorDraftPrompt("");
+    dispatchCommandPalette({ type: "replaceAndDismiss", prompt: "" });
     onDraftContentChange(emptyAgentComposerDraft());
   }, [onDraftContentChange]);
 
@@ -197,11 +198,11 @@ export function useComposerSlashActions(input: UseComposerSlashActionsInput) {
     }
     setIsSlashStatusPanelOpen(false);
     setIsReviewPickerOpen(false);
-    setIsPaletteOpen(false);
+    dispatchCommandPalette({ type: "dismissCurrent" });
   }, [
+    dispatchCommandPalette,
     isSlashStatusPanelOpen,
     onSlashStatusClose,
-    setIsPaletteOpen,
     setIsReviewPickerOpen,
     setIsSlashStatusPanelOpen
   ]);
@@ -278,10 +279,10 @@ export function useComposerSlashActions(input: UseComposerSlashActionsInput) {
           onSlashStatusClose?.();
         }
         draftPromptRef.current = GOAL_MODE_SLASH_COMMAND;
-        setPaletteDraftPrompt("");
+        setEditorDraftPrompt("");
+        dispatchCommandPalette({ type: "replaceAndDismiss", prompt: "" });
         setIsSlashStatusPanelOpen(false);
         setIsReviewPickerOpen(false);
-        setIsPaletteOpen(false);
         onDraftContentChange(
           updateAgentComposerDraft(draftContent, {
             prompt: GOAL_MODE_SLASH_COMMAND
@@ -304,11 +305,14 @@ export function useComposerSlashActions(input: UseComposerSlashActionsInput) {
       if (effect.kind === "enableBrowserUse") {
         const nextDraft = effect.draft;
         draftPromptRef.current = nextDraft;
-        setPaletteDraftPrompt(nextDraft);
+        setEditorDraftPrompt(nextDraft);
+        dispatchCommandPalette({
+          type: "replaceAndDismiss",
+          prompt: nextDraft
+        });
         onDraftContentChange(
           updateAgentComposerDraft(draftContent, { prompt: nextDraft })
         );
-        setIsPaletteOpen(false);
         if (!settingsControlsDisabled) {
           onSettingsChange({ browserUse: true });
         }
@@ -317,11 +321,14 @@ export function useComposerSlashActions(input: UseComposerSlashActionsInput) {
       if (effect.kind === "enableComputerUse") {
         const nextDraft = effect.draft;
         draftPromptRef.current = nextDraft;
-        setPaletteDraftPrompt(nextDraft);
+        setEditorDraftPrompt(nextDraft);
+        dispatchCommandPalette({
+          type: "replaceAndDismiss",
+          prompt: nextDraft
+        });
         onDraftContentChange(
           updateAgentComposerDraft(draftContent, { prompt: nextDraft })
         );
-        setIsPaletteOpen(false);
         if (!settingsControlsDisabled) {
           onSettingsChange({ computerUse: true });
         }
@@ -342,11 +349,11 @@ export function useComposerSlashActions(input: UseComposerSlashActionsInput) {
       }
       const nextDraft = effect.draft;
       draftPromptRef.current = nextDraft;
-      setPaletteDraftPrompt(nextDraft);
+      setEditorDraftPrompt(nextDraft);
+      dispatchCommandPalette({ type: "replaceAndDismiss", prompt: nextDraft });
       onDraftContentChange(
         updateAgentComposerDraft(draftContent, { prompt: nextDraft })
       );
-      setIsPaletteOpen(false);
     },
     [
       clearSlashCommandDraft,
@@ -412,9 +419,13 @@ export function useComposerSlashActions(input: UseComposerSlashActionsInput) {
       if (capability.capability !== "tutti") {
         onCapabilitySettingsRequest?.(capability.capability);
       }
-      setIsPaletteOpen(false);
+      dispatchCommandPalette({ type: "dismissCurrent" });
     },
-    [capabilityControlsReadOnly, onCapabilitySettingsRequest]
+    [
+      capabilityControlsReadOnly,
+      dispatchCommandPalette,
+      onCapabilitySettingsRequest
+    ]
   );
 
   const selectSkill = useCallback(
@@ -428,7 +439,7 @@ export function useComposerSlashActions(input: UseComposerSlashActionsInput) {
             connectorKey: skill.connectorKey
           });
         }
-        setIsPaletteOpen(false);
+        dispatchCommandPalette({ type: "dismissCurrent" });
         return;
       }
       const trigger = skillTriggerForPrefix(skill, skillQueryMatch?.prefix);
@@ -447,11 +458,11 @@ export function useComposerSlashActions(input: UseComposerSlashActionsInput) {
           match: skillQueryMatch
         });
       draftPromptRef.current = nextDraft;
-      setPaletteDraftPrompt(nextDraft);
+      setEditorDraftPrompt(nextDraft);
+      dispatchCommandPalette({ type: "replaceAndDismiss", prompt: nextDraft });
       onDraftContentChange(
         updateAgentComposerDraft(draftContent, { prompt: nextDraft })
       );
-      setIsPaletteOpen(false);
     },
     [
       draftContent,
@@ -543,7 +554,7 @@ export function useComposerSlashActions(input: UseComposerSlashActionsInput) {
           return;
         }
       }
-      setIsPaletteOpen(false);
+      dispatchCommandPalette({ type: "dismissCurrent" });
       // workspace-reference 保持为单条 mention，由 skill+CLI 按需解析。
       const submission = projectAgentComposerDraftSubmission({
         draft: nextDraftContent,
@@ -627,7 +638,7 @@ export function useComposerSlashActions(input: UseComposerSlashActionsInput) {
       }
       if (event.key === "Escape") {
         event.preventDefault();
-        setIsPaletteOpen(false);
+        dispatchCommandPalette({ type: "dismissCurrent" });
         return true;
       }
       if (event.key === "Tab" || event.key === "Enter") {

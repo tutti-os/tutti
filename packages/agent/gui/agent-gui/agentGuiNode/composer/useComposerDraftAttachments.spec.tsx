@@ -310,6 +310,26 @@ describe("useComposerDraftAttachments", () => {
     ]);
   });
 
+  it("publishes every editor revision to the command palette lifecycle", () => {
+    const onCommandPaletteDraftChange = vi.fn();
+    const input = createInput({
+      draft: buildAgentComposerDraft({ prompt: "" }),
+      onCommandPaletteDraftChange,
+      prepareExternalPromptFiles: vi.fn()
+    });
+    const rendered = renderHook(() => useComposerDraftAttachments(input));
+
+    act(() => rendered.result.current.handleDraftChange("/"));
+    act(() => rendered.result.current.handleDraftChange(""));
+    act(() => rendered.result.current.handleDraftChange("/"));
+
+    expect(onCommandPaletteDraftChange.mock.calls).toEqual([
+      ["/"],
+      [""],
+      ["/"]
+    ]);
+  });
+
   it("keeps picker files as workspace references", async () => {
     const reference = {
       kind: "file",
@@ -347,6 +367,7 @@ function createInput(input: {
     files: readonly WorkspaceFileReference[];
     mentionItems: [];
   }>;
+  onCommandPaletteDraftChange?: (prompt: string) => void;
   prepareExternalPromptFiles: AgentExternalPromptFilePreparer;
 }) {
   const draftByScopeKeyRef = { current: { home: input.draft } };
@@ -379,8 +400,12 @@ function createInput(input: {
     draftImagesRef: { current: [] },
     draftFilesRef: { current: [] },
     draftLargeTextsRef: { current: [] },
-    setPaletteDraftPrompt: vi.fn(),
-    setIsPaletteOpen: vi.fn(),
+    setEditorDraftPrompt: vi.fn(),
+    dispatchCommandPalette: vi.fn((action) => {
+      if (action.type === "draftChanged") {
+        input.onCommandPaletteDraftChange?.(action.prompt);
+      }
+    }),
     clearActiveFileMentionTrigger: vi.fn(),
     onDraftContentChange: input.onDraftContentChange ?? vi.fn(),
     onRequestWorkspaceReferences: input.onRequestWorkspaceReferences,

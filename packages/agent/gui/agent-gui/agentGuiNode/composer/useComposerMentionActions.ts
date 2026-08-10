@@ -34,6 +34,7 @@ import {
   type AgentMentionSearchState,
   AgentMentionSearchController
 } from "../AgentMentionSearchController";
+import type { ComposerCommandPaletteAction } from "./composerCommandPaletteState";
 
 interface Input {
   workspaceId: string;
@@ -48,8 +49,9 @@ interface Input {
   mentionControllerRef: RefObject<AgentMentionSearchController | null>;
   editorHandleRef: RefObject<AgentRichTextEditorHandle | null>;
   draftPromptRef: RefObject<string>;
-  setPaletteDraftPrompt: Dispatch<SetStateAction<string>>;
-  setIsPaletteOpen: Dispatch<SetStateAction<boolean>>;
+  setEditorDraftPrompt: Dispatch<SetStateAction<string>>;
+  dispatchCommandPalette: Dispatch<ComposerCommandPaletteAction>;
+  setIsFileMentionPaletteOpen: Dispatch<SetStateAction<boolean>>;
   onDraftContentChange: (draft: AgentComposerDraft) => void;
   showFileMentionPalette: boolean;
   mentionHighlightedKey: string | null;
@@ -92,8 +94,9 @@ export function useComposerMentionActions(input: Input) {
     mentionControllerRef,
     editorHandleRef,
     draftPromptRef,
-    setPaletteDraftPrompt,
-    setIsPaletteOpen,
+    setEditorDraftPrompt,
+    dispatchCommandPalette,
+    setIsFileMentionPaletteOpen,
     onDraftContentChange,
     showFileMentionPalette,
     mentionHighlightedKey,
@@ -127,7 +130,7 @@ export function useComposerMentionActions(input: Input) {
       }
       mentionControllerRef.current?.close();
       setFileMentionSuggestion(null);
-      setIsPaletteOpen(false);
+      setIsFileMentionPaletteOpen(false);
     },
     [fileMentionSuggestion]
   );
@@ -138,7 +141,7 @@ export function useComposerMentionActions(input: Input) {
     }
     mentionControllerRef.current?.close();
     setFileMentionSuggestion(null);
-    setIsPaletteOpen(false);
+    setIsFileMentionPaletteOpen(false);
   }, [fileMentionSuggestion]);
 
   const clearActiveFileMentionTrigger = useCallback((): void => {
@@ -157,7 +160,8 @@ export function useComposerMentionActions(input: Input) {
       return;
     }
     draftPromptRef.current = nextDraft;
-    setPaletteDraftPrompt(nextDraft);
+    dispatchCommandPalette({ type: "draftChanged", prompt: nextDraft });
+    setEditorDraftPrompt(nextDraft);
     onDraftContentChange(
       updateAgentComposerDraft(draftContent, { prompt: nextDraft })
     );
@@ -167,8 +171,8 @@ export function useComposerMentionActions(input: Input) {
       closeFileMentionPalette();
       return;
     }
-    setIsPaletteOpen(false);
-  }, [closeFileMentionPalette, showFileMentionPalette]);
+    dispatchCommandPalette({ type: "dismissCurrent" });
+  }, [closeFileMentionPalette, dispatchCommandPalette, showFileMentionPalette]);
 
   const createFileMentionPaletteAdapter = useCallback(
     (highlightedKey: string | null = mentionHighlightedKey) =>
@@ -371,9 +375,10 @@ export function useComposerMentionActions(input: Input) {
       setFileMentionSuggestion(state);
       if (!state) {
         mentionControllerRef.current?.close();
+        setIsFileMentionPaletteOpen(false);
         return;
       }
-      setIsPaletteOpen(true);
+      setIsFileMentionPaletteOpen(true);
       mentionControllerRef.current?.updateQuery({
         workspaceId,
         currentUserId,
