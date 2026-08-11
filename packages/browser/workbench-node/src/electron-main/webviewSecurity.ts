@@ -4,6 +4,10 @@ import {
   type BrowserSessionPartitionAllowedOptions
 } from "../core/session.ts";
 import { resolveBrowserNavigationUrl } from "../core/url.ts";
+import {
+  installBrowserGuestWindowOpenRouter,
+  type BrowserGuestWindowOpenHandler
+} from "./guestWindowOpenRouter.ts";
 import { applyBrowserGuestUserAgent } from "./userAgent.ts";
 import type { BrowserNodeElectronLogger } from "./types.ts";
 
@@ -24,7 +28,7 @@ export type BrowserNodeWebviewMatcher = (
 ) => boolean;
 
 interface PendingBrowserWebviewAttach {
-  allowNativePopups: boolean;
+  params: Readonly<Record<string, string>>;
 }
 
 export interface BrowserWebviewPreloadResolverInput {
@@ -34,6 +38,16 @@ export interface BrowserWebviewPreloadResolverInput {
 export type BrowserWebviewPreloadResolver = (
   input: BrowserWebviewPreloadResolverInput
 ) => string | null | undefined;
+
+export type BrowserWebviewWindowOpenHandler = BrowserGuestWindowOpenHandler;
+
+export interface BrowserWebviewGuestAttachment {
+  windowOpenHandler?: BrowserWebviewWindowOpenHandler;
+}
+
+export interface BrowserWebviewGuestAttachedInput {
+  params: Readonly<Record<string, string>>;
+}
 
 function isBrowserNodeInitialWebviewUrl(url: string | undefined): boolean {
   return (url ?? "").trim() === "about:blank";
@@ -153,7 +167,10 @@ export interface InstallBrowserWebviewSecurityInput {
   allowedSessionPartitions?: BrowserSessionPartitionAllowedOptions;
   contents: WebContents;
   logger?: BrowserNodeElectronLogger;
-  onGuestAttached?: (guestContents: WebContents) => void;
+  onGuestAttached?: (
+    guestContents: WebContents,
+    input: BrowserWebviewGuestAttachedInput
+  ) => BrowserWebviewGuestAttachment | undefined;
   openExternal: (url: string) => Promise<void> | void;
   resolvePreload?: BrowserWebviewPreloadResolver;
   shouldHandleWebview?: BrowserNodeWebviewMatcher;
@@ -209,9 +226,7 @@ export function installBrowserWebviewSecurity({
       event.preventDefault();
       return;
     }
-    pendingBrowserAttaches.push({
-      allowNativePopups
-    });
+    pendingBrowserAttaches.push({ params: { ...params } });
     logger?.debug?.("Browser Node webview attach allowed", {
       partition: params.partition ?? null,
       src: params.src ?? null
@@ -232,26 +247,23 @@ export function installBrowserWebviewSecurity({
     }
 
     applyBrowserGuestUserAgent(guestContents, logger);
-    if (pendingAttach.allowNativePopups) {
-      guestContents.setWindowOpenHandler(({ url }) => {
-        return externalizeBrowserNodePopupWindow({
-          guestWebContentsId: guestContents.id ?? null,
-          logger,
-          openExternal,
-          url
-        });
+    const attachment = onGuestAttached?.(guestContents, {
+      params: pendingAttach.params
+    });
+    const fallbackHandler: BrowserWebviewWindowOpenHandler = ({ url }) =>
+      externalizeBrowserNodePopupWindow({
+        guestWebContentsId: guestContents.id ?? null,
+        logger,
+        openExternal,
+        url
       });
-    } else {
-      guestContents.setWindowOpenHandler(({ url }) => {
-        return externalizeBrowserNodePopupWindow({
-          guestWebContentsId: guestContents.id ?? null,
-          logger,
-          openExternal,
-          url
-        });
-      });
-    }
-    onGuestAttached?.(guestContents);
+    installBrowserGuestWindowOpenRouter({
+      contents: guestContents,
+      fallbackHandler,
+      ...(attachment?.windowOpenHandler
+        ? { hostHandler: attachment.windowOpenHandler }
+        : {})
+    });
     logger?.debug?.("Browser Node webview guest attached", {
       guestWebContentsId: guestContents.id ?? null,
       pendingBrowserAttachCount: pendingBrowserAttaches.length

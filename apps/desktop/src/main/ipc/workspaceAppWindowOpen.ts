@@ -2,14 +2,11 @@ import {
   resolveBrowserNavigationUrl,
   type BrowserNodeOpenUrlEvent
 } from "@tutti-os/browser-node";
-import { randomUUID } from "node:crypto";
+import type { BrowserWebviewWindowOpenHandler } from "@tutti-os/browser-node/electron-main";
 import { desktopIpcChannels } from "../../shared/contracts/ipc.ts";
 
 interface WorkspaceAppWindowOpenContents {
   id: number;
-  setWindowOpenHandler?(
-    handler: (details: { url: string }) => { action: "allow" | "deny" }
-  ): void;
 }
 
 interface WorkspaceAppWindowOpenOwnerWindow {
@@ -36,30 +33,29 @@ interface WorkspaceAppOpenUrlInput extends WorkspaceAppWindowOpenHandlerInput {
   url: string;
 }
 
-export function installWorkspaceAppWindowOpenHandler({
+export function createWorkspaceAppWindowOpenHandler({
   contents,
   logger,
   ownerWindow
-}: WorkspaceAppWindowOpenHandlerInput): void {
-  const hasSetWindowOpenHandler =
-    typeof contents.setWindowOpenHandler === "function";
-  if (!hasSetWindowOpenHandler) {
-    logger?.warn?.("workspace app guest window-open handler unavailable", {
-      webContentsId: contents.id
-    });
-    return;
-  }
-
-  contents.setWindowOpenHandler?.(({ url }) => {
+}: WorkspaceAppWindowOpenHandlerInput): BrowserWebviewWindowOpenHandler {
+  return (details) => {
+    if (details.postBody) {
+      logger?.warn?.("workspace app guest rejected POST popup", {
+        contentType: details.postBody.contentType,
+        url: details.url,
+        webContentsId: contents.id
+      });
+      return { action: "deny" };
+    }
     dispatchWorkspaceAppOpenUrl({
       contents,
       logger,
       ownerWindow,
       producer: "window-open-handler",
-      url
+      url: details.url
     });
     return { action: "deny" };
-  });
+  };
 }
 
 export function dispatchWorkspaceAppOpenUrl({
@@ -93,14 +89,12 @@ export function dispatchWorkspaceAppOpenUrl({
   }
 
   const payload: BrowserNodeOpenUrlEvent = {
-    operationId: randomUUID(),
     reuseIfOpen: false,
     sourceNodeId: `workspace-app:${contents.id}`,
     type: "open-url",
     url: resolved.url
   };
   logger?.info?.("workspace app emitted open-url", {
-    operationId: payload.operationId,
     producer,
     sourceNodeId: payload.sourceNodeId,
     url: payload.url,

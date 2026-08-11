@@ -1,4 +1,5 @@
 import electron, { type BrowserWindow, type WebContents } from "electron";
+import type { BrowserWebviewGuestAttachment } from "@tutti-os/browser-node/electron-main";
 import {
   desktopIpcChannels,
   type DesktopWorkspaceAppContext,
@@ -15,7 +16,7 @@ import {
 import { createWorkspaceAppContextToken } from "./workspaceAppContextToken.ts";
 import type { WorkspaceAppGuestContext } from "./workspaceAppContextTypes.ts";
 import { isRecord, isStringRecord } from "./workspaceAppPayloadValidation.ts";
-import { installWorkspaceAppWindowOpenHandler } from "./workspaceAppWindowOpen.ts";
+import { createWorkspaceAppWindowOpenHandler } from "./workspaceAppWindowOpen.ts";
 
 const { webContents } = electron;
 
@@ -32,7 +33,7 @@ export function registerWorkspaceAppGuestContext(input: {
   onDestroyed?: (webContentsId: number) => void;
   ownerWindow: BrowserWindow;
   partition?: string | null;
-}): void {
+}): BrowserWebviewGuestAttachment {
   const { contents, logger, onDestroyed, ownerWindow, partition } = input;
   workspaceAppGuestWebContents.add(contents);
   const context = readWorkspaceAppGuestContext(ownerWindow, partition);
@@ -44,7 +45,6 @@ export function registerWorkspaceAppGuestContext(input: {
       webContentsId: contents.id
     });
   }
-  installWorkspaceAppWindowOpenHandler({ contents, logger, ownerWindow });
   contents.on("preload-error", (_event, preloadPath, error) => {
     logger?.warn("workspace app guest preload failed", {
       error: error.message,
@@ -57,6 +57,13 @@ export function registerWorkspaceAppGuestContext(input: {
     workspaceAppGuestContexts.delete(contents.id);
     onDestroyed?.(contents.id);
   });
+  return {
+    windowOpenHandler: createWorkspaceAppWindowOpenHandler({
+      contents,
+      logger,
+      ownerWindow
+    })
+  };
 }
 
 export function getWorkspaceAppGuestContext(

@@ -1,17 +1,5 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { createBrowserNodeFeature } from "@tutti-os/browser-node";
-import type {
-  BrowserNodeEvent,
-  BrowserNodeHostApi,
-  BrowserNodeOpenUrlEvent
-} from "@tutti-os/browser-node";
-import type { WorkbenchHostHandle } from "@tutti-os/workbench-surface";
-import { installWorkspaceAppWindowOpenHandler } from "../../main/ipc/workspaceAppWindowOpen.ts";
-import { createWorkspaceBrowserService } from "../../renderer/src/features/workspace-workbench/services/internal/workspaceBrowserService.ts";
-import { createWorkbenchWorkspaceBrowserPresenter } from "../../renderer/src/features/workspace-workbench/services/workbenchWorkspaceBrowserPresenter.ts";
-import { registerWorkspaceBrowserLaunchHandler } from "../../renderer/src/features/workspace-workbench/services/workspaceBrowserLaunchCoordinator.ts";
-
 import { installWorkspaceAppLinkInterception } from "./workspaceAppLinks.ts";
 
 type MainWorldExecutionScript = {
@@ -137,26 +125,6 @@ function createFakeWindow(input?: {
   };
 }
 
-function createBoundaryBrowserApi(
-  setListener: (listener: (event: BrowserNodeEvent) => void) => void
-): BrowserNodeHostApi {
-  return {
-    activate: () => Promise.resolve(),
-    close: () => Promise.resolve(),
-    goBack: () => Promise.resolve(),
-    goForward: () => Promise.resolve(),
-    navigate: () => Promise.resolve(),
-    onEvent(listener) {
-      setListener(listener);
-      return () => setListener(() => undefined);
-    },
-    prepareSession: () => Promise.resolve(),
-    registerGuest: () => Promise.resolve(),
-    reload: () => Promise.resolve(),
-    unregisterGuest: () => Promise.resolve()
-  };
-}
-
 test("workspace app link interception delegates cross-origin _blank opens to Electron", () => {
   const restoreGlobals = installFakeAnchorGlobals();
   const fakeWindow = createFakeWindow();
@@ -193,128 +161,6 @@ test("workspace app link interception delegates cross-origin _blank opens to Ele
 
     assert.equal(fakeWindow.listeners.length, 0);
   } finally {
-    restoreGlobals();
-  }
-});
-
-test("one cross-origin popup produces one event, launch, and Workbench surface", async () => {
-  const restoreGlobals = installFakeAnchorGlobals();
-  let emitDesktopBrowserEvent = (_event: BrowserNodeEvent): void => undefined;
-  let nativeWindowOpen:
-    | ((details: { url: string }) => { action: "allow" | "deny" })
-    | undefined;
-  const counts = { events: 0, launches: 0, producerCallbacks: 0, surfaces: 0 };
-  const emittedEvents: BrowserNodeOpenUrlEvent[] = [];
-  const producers: unknown[] = [];
-  const windowOpenActions: string[] = [];
-  const activations: unknown[] = [];
-  const logger = {
-    info(_message: string, details?: Record<string, unknown>) {
-      if (details?.producer) {
-        producers.push(details.producer);
-      }
-    }
-  };
-  const workspaceId = "workspace-app-popup-boundary";
-  const service = createWorkspaceBrowserService({
-    browserApi: createBoundaryBrowserApi((listener) => {
-      emitDesktopBrowserEvent = listener;
-    })
-  });
-  const appFeature = createBrowserNodeFeature({
-    hostApi: service.createFeatureHostApi({
-      acceptsEvent: (event) =>
-        (event.type === "open-url"
-          ? event.sourceNodeId
-          : event.nodeId
-        ).startsWith("workspace-app:"),
-      source: "workspace_app",
-      workspaceId
-    })
-  });
-  const ownerWindow = {
-    webContents: {
-      send(_channel: string, event: BrowserNodeOpenUrlEvent) {
-        counts.events += 1;
-        emittedEvents.push(event);
-        emitDesktopBrowserEvent(event);
-      }
-    }
-  };
-  const contents = {
-    id: 99,
-    setWindowOpenHandler(
-      handler: (details: { url: string }) => { action: "allow" | "deny" }
-    ) {
-      nativeWindowOpen = (details) => {
-        counts.producerCallbacks += 1;
-        const result = handler(details);
-        windowOpenActions.push(result.action);
-        return result;
-      };
-    }
-  };
-  const fakeWindow = createFakeWindow({
-    open(url) {
-      nativeWindowOpen?.({ url: String(url) });
-      return null;
-    }
-  });
-  const presenter = createWorkbenchWorkspaceBrowserPresenter({
-    host: {
-      activateNode(...args: unknown[]) {
-        activations.push(args);
-      },
-      getSnapshot() {
-        return { nodeStack: [], nodes: [] };
-      },
-      async launchNode() {
-        counts.surfaces += 1;
-        return `browser:surface-${counts.surfaces}`;
-      }
-    } as unknown as WorkbenchHostHandle
-  });
-  const disposeLaunchHandler = registerWorkspaceBrowserLaunchHandler(
-    workspaceId,
-    (request) => {
-      counts.launches += 1;
-      return presenter(request);
-    }
-  );
-
-  try {
-    service.ensureFeatureConnected(appFeature);
-    installWorkspaceAppWindowOpenHandler({ contents, logger, ownerWindow });
-    const disposeLinkInterception = installWorkspaceAppLinkInterception({
-      scope: fakeWindow
-    });
-    const anchor = new FakeAnchorElement(
-      "https://open.feishu.cn/open-apis/authen/v1/authorize"
-    );
-    const click = createClickEvent(anchor);
-
-    fakeWindow.listeners[0]?.(click);
-    if (!click.defaultPrevented) {
-      fakeWindow.open(anchor.href, "_blank");
-    }
-    await settleAsyncLaunch();
-
-    assert.equal(click.defaultPrevented, false);
-    assert.deepEqual(counts, {
-      events: 1,
-      launches: 1,
-      producerCallbacks: 1,
-      surfaces: 1
-    });
-    assert.deepEqual(producers, ["window-open-handler"]);
-    assert.deepEqual(windowOpenActions, ["deny"]);
-    assert.equal(emittedEvents.length, 1);
-    assert.equal(typeof emittedEvents[0]?.operationId, "string");
-    assert.equal(activations.length, 1);
-    disposeLinkInterception();
-  } finally {
-    disposeLaunchHandler();
-    service.disposeWorkspace(workspaceId);
     restoreGlobals();
   }
 });
@@ -456,9 +302,3 @@ test("workspace app link interception installs same-origin window.open handling 
     (globalThis as { window?: unknown }).window = originalWindow;
   }
 });
-
-async function settleAsyncLaunch(): Promise<void> {
-  await Promise.resolve();
-  await Promise.resolve();
-  await Promise.resolve();
-}

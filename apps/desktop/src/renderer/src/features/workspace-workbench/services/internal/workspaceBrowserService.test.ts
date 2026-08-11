@@ -144,7 +144,6 @@ test("workspace browser service opens Browser popups in tabs and launches app UR
     url: "https://www.baidu.com/s?wd=tutti"
   });
   emitDesktopBrowserEvent({
-    operationId: "workspace-app-open:1",
     reuseIfOpen: false,
     sourceNodeId: "workspace-app:99",
     type: "open-url",
@@ -199,7 +198,6 @@ test("workspace browser service launches every canonical Workspace App popup eve
     }
   );
   const event = {
-    operationId: "workspace-app-open:1",
     reuseIfOpen: false,
     sourceNodeId: "workspace-app:99",
     type: "open-url" as const,

@@ -330,17 +330,16 @@ test("externalizes popup windows before Browser Node guests register", () => {
   assert.equal(params.allowpopups, "true");
 });
 
-test("allows attached guests to override the default window-open handler", () => {
+test("keeps the host window-open route after the guest registers", async () => {
   const contents = new EventEmitter();
   const webPreferences: Record<string, unknown> = {};
   const params = {
     partition: "persist:tutti-app:workspace:hello",
     src: "http://127.0.0.1:4100/"
   };
-  type WindowOpenHandler = (details: {
-    url: string;
-  }) => BrowserGuestWindowOpenHandlerResponse;
-  const captured: { windowOpenHandler?: WindowOpenHandler } = {};
+  const events: BrowserNodeEvent[] = [];
+  const guestContents = new MockBrowserGuestWebContents(42);
+  let attachedPartition: string | null = null;
   let customOpenedUrl: string | null = null;
   let externallyOpenedUrl: string | null = null;
   const cleanup = installBrowserWebviewSecurity({
@@ -349,11 +348,14 @@ test("allows attached guests to override the default window-open handler", () =>
     },
     contents:
       contents as unknown as InstallBrowserWebviewSecurityInput["contents"],
-    onGuestAttached: (guestContents) => {
-      guestContents.setWindowOpenHandler?.(({ url }) => {
-        customOpenedUrl = url;
-        return { action: "deny" };
-      });
+    onGuestAttached: (_guestContents, { params: attachedParams }) => {
+      attachedPartition = attachedParams.partition ?? null;
+      return {
+        windowOpenHandler: ({ url }) => {
+          customOpenedUrl = url;
+          return { action: "deny" };
+        }
+      };
     },
     openExternal: (url) => {
       externallyOpenedUrl = url;
@@ -370,31 +372,40 @@ test("allows attached guests to override the default window-open handler", () =>
     webPreferences,
     params
   );
-  contents.emit(
-    "did-attach-webview",
-    {},
-    {
-      id: 42,
-      setWindowOpenHandler(handler: WindowOpenHandler) {
-        captured.windowOpenHandler = handler;
-      }
-    }
-  );
+  contents.emit("did-attach-webview", {}, guestContents);
 
-  cleanup();
+  const manager = createBrowserGuestManager({
+    emit: (event) => events.push(event),
+    openExternal: () => undefined,
+    resolveWebContents: (id) => (id === guestContents.id ? guestContents : null)
+  });
+  await manager.registerGuest({
+    nodeId: "workspace-app-browser-node",
+    profileId: null,
+    sessionMode: "shared",
+    sessionPartition: params.partition,
+    url: params.src,
+    webContentsId: guestContents.id
+  });
 
-  if (!captured.windowOpenHandler) {
+  if (!guestContents.windowOpenHandler) {
     throw new Error("expected a window-open handler to be installed");
   }
 
   assert.deepEqual(
-    captured.windowOpenHandler({ url: "https://example.com/" }),
+    guestContents.windowOpenHandler({ url: "https://example.com/" }),
     {
       action: "deny"
     }
   );
+  assert.equal(attachedPartition, "persist:tutti-app:workspace:hello");
+  assert.equal(guestContents.setWindowOpenHandlerCount, 1);
   assert.equal(customOpenedUrl, "https://example.com/");
   assert.equal(externallyOpenedUrl, null);
+  assert.equal(events.filter((event) => event.type === "open-url").length, 0);
+
+  manager.dispose();
+  cleanup();
 });
 
 test("sanitizes Electron token from Browser Node guest user agents", () => {
@@ -972,6 +983,7 @@ test("blocks cross-origin Browser Node guest navigation for policy-bound session
       }
     ]
   );
+  assert.equal(contents.setWindowOpenHandlerCount, 1);
 });
 
 test("opens Browser Node URLs externally after validation", async () => {
@@ -1759,6 +1771,7 @@ class MockBrowserGuestWebContents
   loading = false;
   printCalls = 0;
   reloadCalls = 0;
+  setWindowOpenHandlerCount = 0;
   findInPageCalls: Array<{
     options: Record<string, unknown> | undefined;
     text: string;
@@ -1861,6 +1874,7 @@ class MockBrowserGuestWebContents
   setWindowOpenHandler(
     handler: (details: { url: string }) => BrowserGuestWindowOpenHandlerResponse
   ): void {
+    this.setWindowOpenHandlerCount += 1;
     this.windowOpenHandler = handler;
   }
 

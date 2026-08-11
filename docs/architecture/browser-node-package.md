@@ -117,13 +117,18 @@ page. Explicit non-reuse requests continue to launch a new surface.
 Workspace App cross-origin popups have one canonical event producer. Preload
 only converts same-origin blank-link and `window.open` calls into in-app
 navigation; it does not prevent cross-origin popup defaults or emit a competing
-open-url IPC. Cross-origin blank links, `window.open`, and popup forms therefore
-reach Electron's `setWindowOpenHandler`. Main validates the URL, denies the
-native child window, and emits exactly one Browser open-url event for each
-handler callback. An operation ID may accompany that event for tracing, but
-Renderer behavior does not deduplicate or merge events by that ID, source node,
-or URL. Every real popup request remains an independent `reuseIfOpen: false`
-launch, and the Workbench presenter remains the narrow launch/focus adapter.
+open-url IPC. Webview attachment installs one delegate
+`setWindowOpenHandler`. The host-provided Workspace App route has priority over
+the default Browser route; later `registerGuest` calls only update the delegate's
+Browser route and never reinstall or override the handler. Cross-origin blank
+links, `window.open`, and GET popup forms reach the selected host route. Main
+validates the URL, denies the native child window, and emits exactly one Browser
+open-url event for each accepted handler callback. POST popup forms are denied
+without emitting an event because the Browser open-url contract is URL-only and
+cannot preserve a request body. Renderer behavior does not deduplicate or merge
+events by source node or URL. Every accepted popup request remains an
+independent `reuseIfOpen: false` launch, and the Workbench presenter remains the
+narrow launch/focus adapter.
 The explicit Workspace App `browser.openUrl` bridge remains an IPC command and
 is logged as `external-browser-api`; it is an application API request, not a
 second DOM-popup transport.

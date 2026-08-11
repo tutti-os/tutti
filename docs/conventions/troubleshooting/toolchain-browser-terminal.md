@@ -473,21 +473,24 @@ delimited by ---`, and the composer skill picker may show partial or
   Starting from one user action, count Electron window-open producer callbacks,
   `workspace app emitted open-url` events, Workbench launch requests, and
   materialized Browser surfaces. Popup events should report
-  `producer=window-open-handler`; the operation ID is trace-only. Equal URLs do
-  not prove duplicate delivery, and different OAuth query parameters do not
-  prove separate user intent.
+  `producer=window-open-handler`. Equal URLs do not prove duplicate delivery,
+  and different OAuth query parameters do not prove separate user intent.
 - Root cause:
   Intercepting one cross-origin blank-link in preload while also installing
   Electron's window-open handler creates two popup transports. A downstream
-  operation ID, workspace, source node, or URL cannot prove that independently
+  workspace, source node, local UUID, or URL cannot prove that independently
   produced events represent one user action. Renderer deduplication therefore
   masks the producer boundary and can merge intentional popup requests.
 - Fix:
-  Leave cross-origin blank links, `window.open`, and popup forms to Electron's
-  `setWindowOpenHandler`. Main validates the URL, denies the native child window,
-  and emits the Browser event. Keep preload interception only for same-origin
-  in-app navigation, and keep the renderer as a stateless one-event/one-launch
-  adapter. Locally generated operation IDs are for trace correlation only.
+  Leave cross-origin blank links, `window.open`, and GET popup forms to
+  Electron's `setWindowOpenHandler`. Install one delegate while attaching the
+  guest and give its host-provided Workspace App route priority. Browser Node
+  `registerGuest` may update only the delegate's ordinary Browser route; it must
+  not install a second handler. Main validates the URL, denies the native child
+  window, and emits the Browser event. Reject POST popup forms without emitting
+  an event instead of silently replaying their URL as GET. Keep preload
+  interception only for same-origin in-app navigation, and keep the renderer as
+  a stateless one-event/one-launch adapter.
 - Validation:
   Start from one real cross-origin popup and assert producer callback count one,
   Browser event count one, Workbench launch count one, and surface count one.
@@ -495,6 +498,13 @@ delimited by ---`, and the composer skill picker may show partial or
   indicates duplicate routing or subscription; one launch with two surfaces
   indicates a Workbench materialization race. Two real `window.open` requests
   must remain two independent launches even when their URLs are equal.
+  The Electron integration fixture covers `did-attach-webview` followed by
+  `registerGuest`, installs the real Workspace App preload, and uses different
+  loopback origins for the guest and popup target. It then covers blank links,
+  `window.open`, GET forms, POST rejection, callback counts, Browser event
+  counts, and denied native child windows. The package boundary test also
+  asserts that this lifecycle installs the Electron handler once. Renderer and
+  Workbench tests cover the downstream event/launch and launch/surface seams.
 - References:
   [workspaceAppWindowOpen.ts](../../../apps/desktop/src/main/ipc/workspaceAppWindowOpen.ts)
   [workspaceBrowserService.ts](../../../apps/desktop/src/renderer/src/features/workspace-workbench/services/internal/workspaceBrowserService.ts)
