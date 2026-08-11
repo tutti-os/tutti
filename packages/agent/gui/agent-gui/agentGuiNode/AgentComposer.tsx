@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import type {
   AgentComposerDraft,
   AgentComposerDraftFile,
@@ -53,6 +53,11 @@ import {
   resolveAgentExternalPromptEntries
 } from "./model/agentExternalPromptEntries";
 import { useComposerInputHistory } from "./composer/useComposerInputHistory";
+import {
+  createComposerCommandPaletteState,
+  isComposerCommandPaletteDismissed,
+  reduceComposerCommandPaletteState
+} from "./composer/composerCommandPaletteState";
 
 export { formatSlashStatusTokenCount };
 
@@ -197,7 +202,17 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
       hadPrefill: agentComposerDraftHasContent(draftContent)
     });
   };
-  const [isPaletteOpen, setIsPaletteOpen] = useState(true);
+  const initialEditorDraftPrompt = goalDraftObjective ?? draftPrompt;
+  const [editorDraftPrompt, setEditorDraftPrompt] = useState(
+    initialEditorDraftPrompt
+  );
+  const [commandPaletteState, dispatchCommandPalette] = useReducer(
+    reduceComposerCommandPaletteState,
+    initialEditorDraftPrompt,
+    createComposerCommandPaletteState
+  );
+  const [isFileMentionPaletteOpen, setIsFileMentionPaletteOpen] =
+    useState(true);
   const [isReviewPickerOpen, setIsReviewPickerOpen] = useState(false);
   const submitGuidanceWithComposerModifiers: NonNullable<
     AgentComposerProps["onSubmitGuidance"]
@@ -222,9 +237,6 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
     shouldResetMentionHighlightToFilter,
     setShouldResetMentionHighlightToFilter
   ] = useState(false);
-  const [paletteDraftPrompt, setPaletteDraftPrompt] = useState(
-    goalDraftObjective ?? draftPrompt
-  );
   const [fileMentionSuggestion, setFileMentionSuggestion] =
     useState<AgentFileMentionSuggestionState | null>(null);
   const selectedProjectPath =
@@ -272,6 +284,7 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
   const previousSlashStatusAgentSessionIdRef = useRef<string | null>(
     slashStatusAgentSessionId
   );
+  const previousDraftScopeKeyRef = useRef(draftScopeKey);
   const previousSelectedProjectPathRef = useRef(selectedProjectPath);
   const composerRef = useRef<HTMLFormElement | null>(null);
   const inputShellRef = useRef<HTMLDivElement | null>(null);
@@ -318,7 +331,7 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
     provider,
     isGoalModeActive,
     goalSupported: canGoalControl,
-    paletteDraftPrompt,
+    paletteDraftPrompt: commandPaletteState.prompt,
     availableCommands,
     availableSkills,
     hasCompactableContext,
@@ -340,11 +353,11 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
     promptBeforeSelection
   } = paletteCatalog;
   const showFileMentionPalette =
-    !disabled && isPaletteOpen && fileMentionSuggestion !== null;
+    !disabled && isFileMentionPaletteOpen && fileMentionSuggestion !== null;
   const showSlashPalette =
     !showFileMentionPalette &&
     !disabled &&
-    isPaletteOpen &&
+    !isComposerCommandPaletteDismissed(commandPaletteState) &&
     ((slashQuery !== null &&
       (slashPaletteEntries.length > 0 ||
         composerSettings.isCapabilityOptionsLoading === true)) ||
@@ -415,8 +428,17 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
     draftFilesRef.current = agentComposerDraftFiles(draftContent);
     draftLargeTextsRef.current = agentComposerDraftLargeTexts(draftContent);
     const isExternalDraftReplacement = draftPromptRef.current !== draftPrompt;
+    const didDraftScopeChange =
+      previousDraftScopeKeyRef.current !== draftScopeKey;
+    previousDraftScopeKeyRef.current = draftScopeKey;
     draftPromptRef.current = draftPrompt;
-    setPaletteDraftPrompt(goalDraftObjective ?? draftPrompt);
+    setEditorDraftPrompt(goalDraftObjective ?? draftPrompt);
+    if (isExternalDraftReplacement || didDraftScopeChange) {
+      dispatchCommandPalette({
+        type: "reset",
+        prompt: goalDraftObjective ?? draftPrompt
+      });
+    }
     settlePendingInputHistory();
     if (isExternalDraftReplacement && draftPrompt) {
       window.requestAnimationFrame(() => {
@@ -430,6 +452,7 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
   }, [
     draftContent,
     draftPrompt,
+    draftScopeKey,
     goalDraftObjective,
     settlePendingInputHistory
   ]);
@@ -490,8 +513,8 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
     draftImagesRef,
     draftFilesRef,
     draftLargeTextsRef,
-    setPaletteDraftPrompt,
-    setIsPaletteOpen,
+    setEditorDraftPrompt,
+    dispatchCommandPalette,
     setIsReviewPickerOpen,
     setIsSlashStatusPanelOpen,
     setHighlightedIndex
@@ -512,8 +535,9 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
     mentionControllerRef,
     editorHandleRef,
     draftPromptRef,
-    setPaletteDraftPrompt,
-    setIsPaletteOpen,
+    setEditorDraftPrompt,
+    dispatchCommandPalette,
+    setIsFileMentionPaletteOpen,
     onDraftContentChange,
     showFileMentionPalette,
     mentionHighlightedKey,
@@ -554,8 +578,8 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
     draftImagesRef,
     draftFilesRef,
     draftLargeTextsRef,
-    setPaletteDraftPrompt,
-    setIsPaletteOpen,
+    setEditorDraftPrompt,
+    dispatchCommandPalette,
     clearActiveFileMentionTrigger,
     onDraftContentChange,
     onPromptImagesUnsupported,
@@ -719,7 +743,7 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
       externalPromptEntriesSupported={externalPromptEntriesSupported}
       addExternalPromptEntries={addExternalPromptEntries}
       onDismissProjectMenuAutoFocus={restoreComposerCaretAfterProjectMenu}
-      paletteDraftPrompt={paletteDraftPrompt}
+      editorDraftPrompt={editorDraftPrompt}
       showFileMentionPalette={showFileMentionPalette}
       showSlashPalette={showSlashPalette}
       activeHighlight={activeHighlight}
@@ -731,7 +755,7 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
       isReviewPickerOpen={isReviewPickerOpen}
       isSelectedProjectMissing={isSelectedProjectMissing}
       setIsSelectedProjectMissing={setIsSelectedProjectMissing}
-      setIsPaletteOpen={setIsPaletteOpen}
+      setIsFileMentionPaletteOpen={setIsFileMentionPaletteOpen}
       setHighlightedIndex={setHighlightedIndex}
       isGoalModeActive={isGoalModeActive}
       isPlanModeActive={composerSettings.draftSettings.planMode}

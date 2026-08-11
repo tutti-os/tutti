@@ -87,7 +87,7 @@ interface Props {
   externalPromptEntriesSupported: boolean;
   addExternalPromptEntries: (files: readonly File[]) => void;
   onDismissProjectMenuAutoFocus?: (event: Event) => void;
-  paletteDraftPrompt: string;
+  editorDraftPrompt: string;
   showFileMentionPalette: boolean;
   showSlashPalette: boolean;
   activeHighlight: number;
@@ -99,7 +99,7 @@ interface Props {
   isReviewPickerOpen: boolean;
   isSelectedProjectMissing: boolean;
   setIsSelectedProjectMissing: (value: boolean) => void;
-  setIsPaletteOpen: Dispatch<SetStateAction<boolean>>;
+  setIsFileMentionPaletteOpen: Dispatch<SetStateAction<boolean>>;
   setHighlightedIndex: Dispatch<SetStateAction<number>>;
   isGoalModeActive: boolean;
   isPlanModeActive: boolean;
@@ -419,7 +419,7 @@ export function AgentComposerView(input: Props): React.JSX.Element {
         >
           <Popover
             open={input.showFileMentionPalette}
-            onOpenChange={input.setIsPaletteOpen}
+            onOpenChange={input.setIsFileMentionPaletteOpen}
             modal={false}
           >
             <PopoverAnchor asChild>
@@ -453,7 +453,7 @@ export function AgentComposerView(input: Props): React.JSX.Element {
                 >
                   <AgentRichTextEditor
                     ref={input.editorHandleRef}
-                    value={input.paletteDraftPrompt}
+                    value={input.editorDraftPrompt}
                     contentScopeKey={input.props.draftScopeKey}
                     placeholder={effectivePlaceholder}
                     disabled={inputDisabled}

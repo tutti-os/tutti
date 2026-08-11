@@ -2049,11 +2049,19 @@ animation frame; ResizeObserver and MutationObserver keep layout roots current.
 Composer text transactions may publish the current draft, but the draft value
 must not drive synchronous pre-paint geometry reads or an urgent AgentGUI tree
 render. The rich-text editor DOM owns the urgent input transaction. The latest
-prompt ref updates synchronously for submit and attachment reconciliation,
-while palette and controlled-draft projections publish in a React transition.
-The editor recognizes stale controlled echoes from that transition so an older
+prompt ref and command-palette trigger revision update synchronously for submit,
+attachment reconciliation, and Slash/Skill palette visibility, while the
+controlled editor value and full draft publication remain in a React
+transition. Command-palette dismissal applies only to the current trigger
+revision: a later user edit, including deleting and retyping `/`, creates a new
+revision and may reopen the palette, while a programmatic command replacement
+dismisses the replacement revision. File-mention palette openness is a separate
+local channel and cannot dismiss or reopen the Slash/Skill palette. The editor
+projects trigger queries from text before the current caret, so invisible text
+remaining after the caret cannot suppress a newly typed Slash/Skill trigger.
+The editor recognizes stale controlled echoes from the transition so an older
 projection cannot overwrite newer local input; a value not emitted locally
-remains an authoritative external replacement.
+remains an authoritative external replacement and resets the palette revision.
 
 An existing-Session composer derives input history from that Session's
 canonical user-message projection and its turnless Goal-control audit entries;

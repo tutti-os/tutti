@@ -75,14 +75,14 @@ export function useComposerPaletteCatalog({
   uiLanguage,
   editorHandleRef
 }: UseComposerPaletteCatalogInput) {
-  const slashQuery = isGoalModeActive
-    ? null
-    : getPromptStartSlashCommandQuery(paletteDraftPrompt);
-  const slashCommandPolicy = composerSettings.slashCommandPolicy;
   const promptBeforeSelection =
     editorHandleRef.current?.getPromptTextBeforeSelection() ?? "";
-  const skillQueryDraft = promptBeforeSelection || paletteDraftPrompt;
-  const skillQueryMatch = getAgentComposerTriggerQueryMatch(skillQueryDraft);
+  const triggerQueryDraft = promptBeforeSelection || paletteDraftPrompt;
+  const slashQuery = isGoalModeActive
+    ? null
+    : getPromptStartSlashCommandQuery(triggerQueryDraft);
+  const slashCommandPolicy = composerSettings.slashCommandPolicy;
+  const skillQueryMatch = getAgentComposerTriggerQueryMatch(triggerQueryDraft);
   const presentationSkills = useMemo(
     () =>
       capabilityMenuState?.connectors?.enabled === false
