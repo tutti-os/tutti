@@ -287,6 +287,129 @@ describe("useAgentGUIConversationRailQuery Activity facts", () => {
     engine.dispose();
   });
 
+  it("keeps plan-implementation waiting on non-active conversations", async () => {
+    const engine = createTestAgentSessionEngine("workspace-1");
+    engine.dispatch({
+      type: "session/snapshotReceived",
+      sessions: [
+        normalizeAgentActivitySession({
+          activeTurnId: null,
+          agentSessionId: "plan-session",
+          capabilities: {
+            imageInput: false,
+            modelImageInputRequired: false,
+            modelPlanBinding: false,
+            modelSwitch: false,
+            skills: false,
+            compact: false,
+            tokenUsage: false,
+            rateLimits: false,
+            planMode: true,
+            interrupt: false,
+            activeTurnGuidance: false,
+            browserUse: false,
+            computerUse: false,
+            goalPause: false,
+            planImplementation: true,
+            permissionModeChangeDuringTurn: false,
+            permissionModeChangeDeferred: false,
+            review: false,
+            resumeRunningTurn: false
+          },
+          cwd: "/workspace",
+          latestTurn: {
+            turnId: "turn-plan",
+            agentSessionId: "plan-session",
+            origin: "user_prompt",
+            phase: "settled",
+            outcome: "completed",
+            startedAtUnixMs: 10,
+            settledAtUnixMs: 20,
+            updatedAtUnixMs: 20
+          },
+          latestTurnInteractions: [],
+          pendingInteractions: [],
+          provider: "codex",
+          title: "Plan session",
+          workspaceId: "workspace-1"
+        }),
+        normalizeAgentActivitySession({
+          activeTurnId: null,
+          agentSessionId: "other-session",
+          cwd: "/workspace",
+          latestTurnInteractions: [],
+          pendingInteractions: [],
+          provider: "codex",
+          title: "Other session",
+          workspaceId: "workspace-1"
+        })
+      ]
+    });
+    engine.dispatch({
+      type: "message/snapshotReceived",
+      messages: [
+        {
+          agentSessionId: "plan-session",
+          kind: "message",
+          messageId: "plan-message",
+          occurredAtUnixMs: 20,
+          payload: { messageKind: "plan" },
+          role: "agent",
+          turnId: "turn-plan",
+          version: 1,
+          workspaceId: "workspace-1"
+        }
+      ]
+    });
+    const runtime = {
+      conversationActivityViewEnabled: true,
+      getSessionEngine: () => engine
+    } as unknown as AgentGUIRuntime;
+    const wrapper = ({ children }: { children: React.ReactNode }) => (
+      <AgentGUIRuntimeProvider runtime={runtime}>
+        {children}
+      </AgentGUIRuntimeProvider>
+    );
+    const rendered = renderHook(
+      () =>
+        useAgentGUIConversationRailQuery({
+          activeConversationId: "other-session",
+          conversationFilter: { kind: "all" },
+          conversationQuery: "",
+          userProjects: [],
+          workspaceId: "workspace-1"
+        }),
+      { wrapper }
+    );
+
+    await waitFor(() =>
+      expect(
+        rendered.result.current.activityRootFacts.get("plan-session")
+      ).toEqual({
+        needsUserAction: true,
+        status: "completed"
+      })
+    );
+    expect(
+      rendered.result.current.activityConversations.find(
+        (conversation) => conversation.id === "plan-session"
+      )
+    ).toMatchObject({
+      id: "plan-session",
+      needsUserAction: true,
+      status: "completed"
+    });
+    expect(
+      rendered.result.current.activityRootFacts.get("other-session")
+    ).toEqual({
+      needsUserAction: false,
+      status: "ready"
+    });
+
+    rendered.unmount();
+    engine.dispose();
+  });
+
   it("returns the shared empty Activity facts when the host capability is disabled", () => {
     const engine = createTestAgentSessionEngine("workspace-1");
     engine.dispatch({

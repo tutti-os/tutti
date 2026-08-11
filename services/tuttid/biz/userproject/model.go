@@ -31,11 +31,11 @@ func SectionKeyFromPath(path string) string {
 }
 
 func LabelFromPath(path string) string {
-	path = strings.TrimRight(strings.TrimSpace(path), "/")
+	path = strings.TrimRight(strings.TrimSpace(path), "/\\")
 	if path == "" {
 		return ""
 	}
-	index := strings.LastIndex(path, "/")
+	index := strings.LastIndexAny(path, "/\\")
 	if index < 0 {
 		return path
 	}

@@ -16,6 +16,7 @@ import type {
   DesktopRuntimeApi
 } from "@preload/types";
 import type { WorkspaceFileEntry } from "@tutti-os/workspace-file-manager/services";
+import { areWorkspaceUserProjectPathsEqual } from "@tutti-os/workspace-user-project/core";
 import type { IDesktopRichTextAtService } from "@renderer/features/rich-text-at";
 import type { IReporterService } from "@renderer/features/analytics";
 import type { IWorkspaceFileManagerService } from "@renderer/features/workspace-file-manager";
@@ -210,8 +211,11 @@ export function createDesktopAgentGUIWorkbenchHostInput({
           const sectionKey =
             workspaceUserProjectService
               ?.getSnapshot()
-              .projects.find(
-                (project) => project.path === searchInput.withinNodeId
+              .projects.find((project) =>
+                areWorkspaceUserProjectPathsEqual(
+                  project.path,
+                  searchInput.withinNodeId
+                )
               )
               ?.sectionKey?.trim() ?? "";
           const items = await agentGeneratedFileMentionProvider.query({

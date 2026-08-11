@@ -170,6 +170,43 @@ func TestSessionRestoredPayloadPassesEventstreamCatalog(t *testing.T) {
 	}
 }
 
+func TestProjectedMessageSemanticsPassesEventstreamCatalog(t *testing.T) {
+	t.Parallel()
+
+	service := eventstreamservice.NewService(eventstreamservice.DefaultCatalog(), nil)
+	publisher := eventstreamservice.AgentActivityPublisher{Service: service}
+	payload := map[string]any{
+		"latestVersion": uint64(1),
+		"acceptedCount": 1,
+		"messages": activityMessagesEventPayload([]agentactivitybiz.Message{{
+			ID:               1,
+			AgentSessionID:   "session-1",
+			MessageID:        "message-1",
+			TurnID:           "turn-1",
+			Role:             "assistant",
+			Kind:             "text",
+			Version:          1,
+			OccurredAtUnixMS: 42,
+			Payload:          map[string]any{"text": "hello"},
+			Semantics: &agentactivitybiz.MessageSemantics{
+				UserVisibleAssistantResponse: true,
+				TurnSettling:                 true,
+				NoticeCommand:                "compact",
+				NoticeCommandStatus:          "running",
+			},
+		}}),
+	}
+	if err := publisher.PublishAgentActivityUpdated(
+		context.Background(),
+		"workspace-1",
+		"session-1",
+		"message_update",
+		payload,
+	); err != nil {
+		t.Fatalf("projected message semantics failed eventstream validation: %v", err)
+	}
+}
+
 func TestCanonicalMessagesForRealtimePublishSuppressesOnlyProjectedRuntimeDeltas(t *testing.T) {
 	streamingText := agentactivitybiz.Message{
 		MessageID: "streaming-text",

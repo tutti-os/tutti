@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  areWorkspaceUserProjectPathsEqual,
   basenameWorkspaceUserProjectPath,
   getWorkspaceUserProjectErrorCode,
   pinWorkspaceUserProjectOptimistically,
@@ -9,6 +10,20 @@ import {
   stripAbsolutePathFromWorkspaceUserProjectLabel,
   upsertWorkspaceUserProject
 } from "./index.ts";
+
+test("workspace user project path identity handles Windows separators and case", () => {
+  assert.equal(
+    areWorkspaceUserProjectPathsEqual(
+      "C:\\Users\\Demo\\Repo\\",
+      "c:/users/demo/repo"
+    ),
+    true
+  );
+  assert.equal(
+    areWorkspaceUserProjectPathsEqual("/Users/Demo/Repo", "/users/demo/repo"),
+    false
+  );
+});
 
 test("workspace user project labels hide absolute paths", () => {
   assert.equal(
@@ -90,6 +105,26 @@ test("workspace user project upsert replaces by id or path", () => {
       {
         ...first,
         label: "Tutti"
+      }
+    ]
+  );
+  const windowsProject = {
+    id: "windows-project",
+    label: "Windows",
+    path: "C:\\Users\\Demo\\Repo",
+    pinnedAtUnixMs: 0
+  };
+  assert.deepEqual(
+    upsertWorkspaceUserProject([windowsProject], {
+      ...windowsProject,
+      id: "windows-project-reported",
+      path: "c:/users/demo/repo/"
+    }),
+    [
+      {
+        ...windowsProject,
+        id: "windows-project-reported",
+        path: "c:/users/demo/repo/"
       }
     ]
   );
@@ -322,6 +357,48 @@ test("prepareWorkspaceUserProjectSelection resolves fallback decisions", async (
       isSelectedPathMissing: true,
       projects,
       selection: { kind: "none" }
+    }
+  );
+});
+
+test("prepareWorkspaceUserProjectSelection matches Windows path identity", async () => {
+  const projects = [
+    {
+      id: "windows-project",
+      label: "Windows",
+      path: "C:\\Users\\Demo\\Repo",
+      pinnedAtUnixMs: 0
+    }
+  ];
+  const api = {
+    async getDefaultSelection() {
+      return { path: "c:/users/demo/repo/" };
+    },
+    async list() {
+      return { projects };
+    }
+  };
+
+  assert.deepEqual(
+    await prepareWorkspaceUserProjectSelection(api, {
+      projectLocked: false,
+      selectedPath: "c:/users/demo/repo/"
+    }),
+    {
+      isSelectedPathMissing: false,
+      projects,
+      selection: { kind: "none" }
+    }
+  );
+  assert.deepEqual(
+    await prepareWorkspaceUserProjectSelection(api, {
+      projectLocked: false,
+      selectedPath: null
+    }),
+    {
+      isSelectedPathMissing: false,
+      projects,
+      selection: { kind: "select", path: "c:/users/demo/repo/" }
     }
   );
 });

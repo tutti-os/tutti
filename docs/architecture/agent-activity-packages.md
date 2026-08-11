@@ -914,6 +914,10 @@ confirmed turn and notice update. These payloads contain semantic IDs only;
 user-visible copy belongs to consumer i18n. Provider-originated exit-plan
 prompts remain ordinary durable interaction responses and use the existing
 `interactive_response` operation rather than this synthetic-plan endpoint.
+Until the user confirms or dismisses the plan, AgentGUI projects that wait
+through one shared awaiting predicate into conversation-rail
+`needsUserAction`, conversation-list awaiting sets, and Message Center
+attention; it must not invent an active-session-only overlay for the same fact.
 
 Provider interaction lifecycle is an explicit entity stream, independent of
 transcript projection and runtime session snapshots:

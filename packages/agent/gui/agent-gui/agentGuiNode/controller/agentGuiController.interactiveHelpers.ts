@@ -2,6 +2,7 @@ import type {
   AgentHostUserProject,
   AgentHostUserProjectsApi
 } from "../../../host/agentHostApi";
+import { areWorkspaceUserProjectPathsEqual } from "@tutti-os/workspace-user-project/core";
 export {
   projectAgentApprovalPromptFromInteraction as interactiveApprovalFromInteraction,
   projectAgentInteractivePromptFromInteraction as interactivePromptFromInteraction
@@ -42,7 +43,7 @@ export function areAgentGUIUserProjectsEqual(
       return (
         candidate !== undefined &&
         project.id === candidate.id &&
-        project.path === candidate.path &&
+        areWorkspaceUserProjectPathsEqual(project.path, candidate.path) &&
         project.label === candidate.label &&
         project.sectionKey === candidate.sectionKey &&
         project.pinnedAtUnixMs === candidate.pinnedAtUnixMs &&
@@ -89,7 +90,7 @@ export function upsertAgentGUIUserProject(
   const index = projects.findIndex(
     (candidate) =>
       candidate.id === normalizedProject.id ||
-      candidate.path === normalizedProject.path
+      areWorkspaceUserProjectPathsEqual(candidate.path, normalizedProject.path)
   );
   if (index === -1) {
     return [...projects, normalizedProject];

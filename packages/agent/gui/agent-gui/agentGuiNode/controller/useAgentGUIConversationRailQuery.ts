@@ -27,6 +27,7 @@ import {
 } from "../model/agentGuiConversationFilter";
 import { createAgentGUIConversationRailTitlePromptSelector } from "../../../shared/agentConversationRailTitlePromptSelector";
 import { projectCanonicalAgentGUIConversationSummaries } from "../../../shared/agentGUIConversationSummaryProjection";
+import { selectRootAgentSessionIdsAwaitingPlanImplementation } from "../../../shared/agentConversation/planImplementationAwaiting";
 import { conversationSummariesRenderEqual } from "./agentGuiController.stableHelpers";
 import { createConversationRailConversationsSelector } from "./agentGuiConversationRailQuerySnapshot";
 import { resolveConversationRailQueryScope } from "./agentGuiConversationRailQueryTypes";
@@ -272,9 +273,10 @@ function selectEmptyAgentGUIConversationActivityRootFacts(): ReadonlyMap<
 function selectAgentGUIConversationActivityRootFacts(
   state: Parameters<typeof selectWorkspaceAgentConsumerSessions>[0]
 ): ReadonlyMap<string, AgentGUIConversationActivityRootFact> {
-  const rootSessionIdsAwaitingUserAction = new Set(
-    selectRootAgentSessionIdsWithPendingInteractions(state)
-  );
+  const rootSessionIdsAwaitingUserAction = new Set([
+    ...selectRootAgentSessionIdsWithPendingInteractions(state),
+    ...selectRootAgentSessionIdsAwaitingPlanImplementation(state)
+  ]);
   return new Map(
     selectWorkspaceAgentConsumerSessions(state)
       .filter((item) => item.session.visible !== false)

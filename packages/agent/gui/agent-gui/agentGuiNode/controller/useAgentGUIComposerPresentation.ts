@@ -4,6 +4,7 @@ import type {
   AgentActivitySession
 } from "@tutti-os/agent-activity-core";
 import { useMemo } from "react";
+import { areWorkspaceUserProjectPathsEqual } from "@tutti-os/workspace-user-project/core";
 import type { AgentGUIRuntime } from "../../../agentActivityRuntime";
 import type {
   AgentSessionComposerSettings,
@@ -374,7 +375,9 @@ function resolveSelectedProjectSectionKey(
   }
   return (
     userProjects
-      .find((project) => project.path.trim() === projectPath)
+      .find((project) =>
+        areWorkspaceUserProjectPathsEqual(project.path, projectPath)
+      )
       ?.sectionKey?.trim() || null
   );
 }

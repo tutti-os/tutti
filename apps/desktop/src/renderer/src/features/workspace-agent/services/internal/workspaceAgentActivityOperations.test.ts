@@ -96,7 +96,7 @@ test("activity import operations refresh activity and projects after daemon impo
   assert.equal(result.importedSessions, 1);
   assert.deepEqual(events, [
     "import:workspace-1",
-    "activity:workspace-1",
-    "projects"
+    "projects",
+    "activity:workspace-1"
   ]);
 });

@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	agentactivitybiz "github.com/tutti-os/tutti/packages/agent/store-sqlite"
 	userprojectbiz "github.com/tutti-os/tutti/services/tuttid/biz/userproject"
 )
 
@@ -76,12 +77,10 @@ WHERE id = ?
 	return nil
 }
 
-// DeleteUserProjectByPath removes a user project by its unique path rather
-// than by a recomputed id. The `path` column carries the table's UNIQUE
-// constraint (see applyUserProjectsV1), so it is the durable lookup key for a
-// caller-supplied path; deleting by an id that gets recomputed from the path
-// on every call can silently miss the row if that derivation ever drifts from
-// what was actually stored, leaving the "removed" project in place.
+// DeleteUserProjectByPath removes a user project by its stored path rather
+// than by a recomputed id. The path column remains the durable lookup key, with
+// a platform-aware identity fallback so Windows slash/case variants resolve
+// to the same stored row.
 func (s *SQLiteStore) DeleteUserProjectByPath(ctx context.Context, path string) error {
 	if s == nil || s.writeDB == nil {
 		return errors.New("workspace database is not initialized")
@@ -91,10 +90,23 @@ func (s *SQLiteStore) DeleteUserProjectByPath(ctx context.Context, path string) 
 		return fmt.Errorf("begin delete user project by path: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
+	storedPath, found, err := findUserProjectPathTx(ctx, tx, path)
+	if err != nil {
+		return fmt.Errorf("find user project by path before delete: %w", err)
+	}
+	if !found {
+		if err := compactUserProjectOrder(ctx, tx); err != nil {
+			return err
+		}
+		if err := tx.Commit(); err != nil {
+			return fmt.Errorf("commit delete user project by path: %w", err)
+		}
+		return nil
+	}
 	_, err = tx.ExecContext(ctx, `
 DELETE FROM user_projects
 WHERE path = ?
-`, path)
+`, storedPath)
 	if err != nil {
 		return fmt.Errorf("delete user project by path: %w", err)
 	}
@@ -125,12 +137,17 @@ func (s *SQLiteStore) PutUserProject(ctx context.Context, project userprojectbiz
 		return userprojectbiz.Project{}, fmt.Errorf("begin put user project: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
-	var existingID string
-	err = tx.QueryRowContext(ctx, `SELECT id FROM user_projects WHERE path = ?`, project.Path).Scan(&existingID)
-	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+	existingPath, found, err := findUserProjectPathTx(ctx, tx, project.Path)
+	if err != nil {
 		return userprojectbiz.Project{}, fmt.Errorf("find user project before put: %w", err)
 	}
-	if errors.Is(err, sql.ErrNoRows) {
+	if found {
+		// Preserve the first stored spelling while treating Windows path
+		// variants as one project identity. The UNIQUE(path) constraint then
+		// remains the final write guard without a schema change.
+		project.Path = existingPath
+	}
+	if !found {
 		var firstUnpinnedOrder int
 		if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM user_projects WHERE pinned_at_unix_ms > 0`).Scan(&firstUnpinnedOrder); err != nil {
 			return userprojectbiz.Project{}, fmt.Errorf("find first unpinned user project order: %w", err)
@@ -174,10 +191,46 @@ WHERE path = ?
 		return userprojectbiz.Project{}, fmt.Errorf("get user project after put: %w", err)
 	}
 	stored.SectionKey = userprojectbiz.SectionKeyFromPath(stored.Path)
+	if _, err := s.agentStore().RepairImportedProjectRailSectionsTx(ctx, tx, stored.Path); err != nil {
+		return userprojectbiz.Project{}, fmt.Errorf("repair imported project rail after put: %w", err)
+	}
 	if err := tx.Commit(); err != nil {
 		return userprojectbiz.Project{}, fmt.Errorf("commit put user project: %w", err)
 	}
 	return stored, nil
+}
+
+// findUserProjectPathTx first uses the UNIQUE column directly, then applies
+// the platform path identity rules for a Windows slash/case variant. The
+// fallback scan is intentionally limited to project registration/deletion,
+// which are low-frequency mutations; rail reads keep their indexed section
+// key queries.
+func findUserProjectPathTx(ctx context.Context, tx *sql.Tx, path string) (string, bool, error) {
+	row := tx.QueryRowContext(ctx, `SELECT path FROM user_projects WHERE path = ?`, path)
+	var storedPath string
+	if err := row.Scan(&storedPath); err == nil {
+		return storedPath, true, nil
+	} else if !errors.Is(err, sql.ErrNoRows) {
+		return "", false, fmt.Errorf("find exact user project path: %w", err)
+	}
+
+	rows, err := tx.QueryContext(ctx, `SELECT path FROM user_projects`)
+	if err != nil {
+		return "", false, fmt.Errorf("list user project paths for identity match: %w", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		if err := rows.Scan(&storedPath); err != nil {
+			return "", false, fmt.Errorf("scan user project path for identity match: %w", err)
+		}
+		if agentactivitybiz.AreProjectPathsEqual(path, storedPath) {
+			return storedPath, true, nil
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return "", false, fmt.Errorf("iterate user project paths for identity match: %w", err)
+	}
+	return "", false, nil
 }
 
 func (s *SQLiteStore) TouchUserProject(ctx context.Context, id string, atUnixMS int64) error {

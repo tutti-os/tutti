@@ -1,4 +1,8 @@
-import { resolveWorkspaceUserProjectDisplayLabel } from "@tutti-os/workspace-user-project/core";
+import {
+  normalizeWorkspaceUserProjectPath,
+  resolveWorkspaceUserProjectDisplayLabel,
+  workspaceUserProjectPathIdentityKey
+} from "@tutti-os/workspace-user-project/core";
 import type { AgentHostUserProject } from "../../../host/agentHostApi";
 
 const AGENT_GUI_CONVERSATION_PROJECT_SUMMARY_CACHE_LIMIT = 512;
@@ -68,7 +72,8 @@ export function resolveAgentGUISelectedUserProject(
   selectedPath: string | null | undefined,
   userProjects: readonly AgentGUIConversationUserProject[] = []
 ): AgentGUIConversationProjectSummary | null {
-  const normalizedSelectedPath = normalizeAgentGUIProjectPath(selectedPath);
+  const normalizedSelectedPath =
+    workspaceUserProjectPathIdentityKey(selectedPath);
   if (!normalizedSelectedPath) {
     return null;
   }
@@ -145,7 +150,7 @@ function buildAgentGUISelectedProjectPathIndex(
     AgentGUIConversationUserProject
   >();
   for (const project of userProjects) {
-    const projectPath = normalizeAgentGUIProjectPath(project.path);
+    const projectPath = workspaceUserProjectPathIdentityKey(project.path);
     if (!projectPath || projectByNormalizedPath.has(projectPath)) {
       continue;
     }
@@ -179,11 +184,7 @@ function lookupAgentGUISelectedProject(
 export function normalizeAgentGUIProjectPath(
   path: string | null | undefined
 ): string {
-  const normalized = path?.trim().replaceAll("\\", "/") ?? "";
-  if (!normalized) {
-    return "";
-  }
-  return normalized.replace(/\/+$/, "") || "/";
+  return normalizeWorkspaceUserProjectPath(path);
 }
 
 function cachedAgentGUIConversationProjectSummary(

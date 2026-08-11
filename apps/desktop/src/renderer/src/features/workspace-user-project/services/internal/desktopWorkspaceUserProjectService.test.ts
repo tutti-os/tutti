@@ -42,6 +42,39 @@ test("workspace user project service loads projects into Valtio state once", asy
   assert.equal(service.getRevision() > 0, true);
 });
 
+test("workspace user project service matches Windows project paths by identity", async () => {
+  const service = createService({
+    platformApi: createPlatformApi({
+      homeDirectory: "C:/Users/Demo",
+      os: "win32"
+    }),
+    tuttidClient: createTuttidClient({
+      async listUserProjects() {
+        return {
+          projects: [
+            createProject({
+              id: "project-windows",
+              path: "C:\\Users\\Demo\\Repo"
+            })
+          ]
+        };
+      }
+    })
+  });
+
+  await service.ensureLoaded();
+  assert.equal(service.isNoProjectPath("c:/users/demo/repo/"), false);
+  assert.deepEqual(
+    (
+      await service.prepareSelection({
+        projectLocked: false,
+        selectedPath: "c:/users/demo/repo/"
+      })
+    ).selection,
+    { kind: "none" }
+  );
+});
+
 test("workspace user project service refresh updates projects and preserves them on API failure", async () => {
   const service = createService({
     tuttidClient: createTuttidClient({

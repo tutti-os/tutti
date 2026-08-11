@@ -3,12 +3,104 @@ package workspace
 import (
 	"context"
 	"errors"
+	"os"
 	"path/filepath"
+	"runtime"
+	"strings"
 	"testing"
 	"time"
 
+	agentactivitybiz "github.com/tutti-os/tutti/packages/agent/store-sqlite"
 	userprojectbiz "github.com/tutti-os/tutti/services/tuttid/biz/userproject"
+	workspacebiz "github.com/tutti-os/tutti/services/tuttid/biz/workspace"
 )
+
+func TestSQLiteStorePutUserProjectRepairsImportedSessionRail(t *testing.T) {
+	ctx := context.Background()
+	store := openTestSQLiteStore(t)
+	if err := store.Create(ctx, workspacebiz.Summary{ID: "ws-project-rail", Name: "Project rail"}); err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+	projectPath := filepath.Join(t.TempDir(), "project")
+	cwd := filepath.Join(projectPath, "src")
+	if err := os.MkdirAll(cwd, 0o755); err != nil {
+		t.Fatalf("MkdirAll() error = %v", err)
+	}
+	if _, err := store.ReportSessionState(ctx, agentactivitybiz.SessionStateReport{
+		WorkspaceID:    "ws-project-rail",
+		AgentSessionID: "imported-before-registration",
+		Origin:         "runtime",
+		Provider:       "codex",
+		Cwd:            cwd,
+		RuntimeContext: map[string]any{"imported": true},
+	}); err != nil {
+		t.Fatalf("ReportSessionState() error = %v", err)
+	}
+	initial := getTestAgentSessionRailSection(t, store, "ws-project-rail", "imported-before-registration")
+	if initial.Key != agentactivitybiz.RailSectionKeyConversations {
+		t.Fatalf("initial rail = %#v, want conversations", initial)
+	}
+
+	if _, err := store.PutUserProject(ctx, userprojectbiz.Project{
+		ID:    "project-rail",
+		Path:  projectPath,
+		Label: "project",
+	}); err != nil {
+		t.Fatalf("PutUserProject() error = %v", err)
+	}
+	final := getTestAgentSessionRailSection(t, store, "ws-project-rail", "imported-before-registration")
+	wantPath := agentactivitybiz.NormalizeProjectPath(projectPath)
+	if final.Kind != agentactivitybiz.RailSectionKindProject || final.ProjectPath != wantPath || final.Key != agentactivitybiz.RailSectionKeyForProject(wantPath) {
+		t.Fatalf("final rail = %#v, want project path=%q", final, wantPath)
+	}
+}
+
+func TestSQLiteStoreUserProjectPathIdentityTreatsWindowsVariantsAsOneProject(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("Windows filesystem identity is platform-specific")
+	}
+
+	ctx := context.Background()
+	store := openTestSQLiteStore(t)
+	projectPath := agentactivitybiz.NormalizeProjectPath(t.TempDir())
+	variantPath := strings.ToLower(filepath.ToSlash(projectPath))
+	first, err := store.PutUserProject(ctx, userprojectbiz.Project{
+		ID:    "windows-project",
+		Path:  projectPath,
+		Label: "Windows project",
+	})
+	if err != nil {
+		t.Fatalf("PutUserProject(first) error = %v", err)
+	}
+	second, err := store.PutUserProject(ctx, userprojectbiz.Project{
+		ID:    "windows-project-variant",
+		Path:  variantPath,
+		Label: "Windows project variant",
+	})
+	if err != nil {
+		t.Fatalf("PutUserProject(variant) error = %v", err)
+	}
+	if second.ID != first.ID || second.Path != first.Path {
+		t.Fatalf("variant project = %#v, want existing project %#v", second, first)
+	}
+	projects, err := store.ListUserProjects(ctx)
+	if err != nil {
+		t.Fatalf("ListUserProjects() error = %v", err)
+	}
+	if len(projects) != 1 {
+		t.Fatalf("ListUserProjects() len = %d, want 1", len(projects))
+	}
+	if err := store.DeleteUserProjectByPath(ctx, variantPath); err != nil {
+		t.Fatalf("DeleteUserProjectByPath(variant) error = %v", err)
+	}
+	projects, err = store.ListUserProjects(ctx)
+	if err != nil {
+		t.Fatalf("ListUserProjects() after delete error = %v", err)
+	}
+	if len(projects) != 0 {
+		t.Fatalf("ListUserProjects() after delete len = %d, want 0", len(projects))
+	}
+}
 
 func TestSQLiteStorePutUserProjectKeepsDurableOrderWhenReused(t *testing.T) {
 	ctx := context.Background()

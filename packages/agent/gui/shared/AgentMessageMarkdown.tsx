@@ -45,6 +45,7 @@ import {
 import {
   isClickableMarkdownHref,
   isLocalAbsolutePath,
+  isWindowsAbsolutePath,
   isMentionOnlyMarkdownContent,
   markdownUrlTransform,
   normalizeMentionMarkdownLinks,
@@ -52,6 +53,8 @@ import {
   normalizePlainIssueMentionTitleContent,
   normalizePlainSessionMentionTitle,
   parseMentionLink,
+  resolveMarkdownWorkspaceMediaPath,
+  resolveRenderableMarkdownMediaSrc,
   type ParsedMentionLink
 } from "./agentMessageMarkdownLinks";
 import { MarkdownLinkContext } from "./agentMessageMarkdownContext";
@@ -97,9 +100,35 @@ const MARKDOWN_SANITIZE_SCHEMA: RehypeSanitizeOptions = {
       "mention",
       ...STANDARD_MARKDOWN_LINK_PROTOCOLS,
       ...WINDOWS_DRIVE_HREF_PROTOCOLS
-    ]
+    ],
+    src: [...(defaultSchema.protocols?.src ?? []), "file"]
   }
 };
+
+interface MarkdownHastNode {
+  type?: string;
+  properties?: Record<string, unknown>;
+  children?: MarkdownHastNode[];
+}
+
+function normalizeWindowsMarkdownMediaPaths() {
+  return (tree: MarkdownHastNode): void => {
+    normalizeWindowsMarkdownMediaPathNode(tree);
+  };
+}
+
+function normalizeWindowsMarkdownMediaPathNode(node: MarkdownHastNode): void {
+  if (node.type === "element" && typeof node.properties?.src === "string") {
+    const src = node.properties.src;
+    const workspacePath = resolveMarkdownWorkspaceMediaPath(src);
+    if (workspacePath && isWindowsAbsolutePath(workspacePath)) {
+      node.properties.src = resolveRenderableMarkdownMediaSrc(src);
+    }
+  }
+  for (const child of node.children ?? []) {
+    normalizeWindowsMarkdownMediaPathNode(child);
+  }
+}
 
 export interface AgentMessageMarkdownWorkspaceLinkContext {
   workspaceRoot?: string | null;
@@ -333,7 +362,10 @@ export function AgentMessageMarkdown({
         ) : (
           <ReactMarkdown
             remarkPlugins={settledRemarkPlugins}
-            rehypePlugins={[[rehypeSanitize, MARKDOWN_SANITIZE_SCHEMA]]}
+            rehypePlugins={[
+              normalizeWindowsMarkdownMediaPaths,
+              [rehypeSanitize, MARKDOWN_SANITIZE_SCHEMA]
+            ]}
             urlTransform={markdownUrlTransform}
             components={markdownComponents}
           >
@@ -388,7 +420,10 @@ const MemoizedMarkdownBlock = memo(function MemoizedMarkdownBlock({
   return (
     <ReactMarkdown
       remarkPlugins={[remarkGfm, remarkLiteralAutolinkBoundary]}
-      rehypePlugins={[[rehypeSanitize, MARKDOWN_SANITIZE_SCHEMA]]}
+      rehypePlugins={[
+        normalizeWindowsMarkdownMediaPaths,
+        [rehypeSanitize, MARKDOWN_SANITIZE_SCHEMA]
+      ]}
       urlTransform={markdownUrlTransform}
       components={components}
     >

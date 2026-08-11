@@ -16,7 +16,10 @@ import {
   conversationSummaryFromAgentSession,
   type AgentGUIConversationSummary
 } from "../model/agentGuiConversationModel";
-import { normalizeAgentComposerDraftProjectPath } from "../model/agentComposerDraftScope";
+import {
+  areAgentComposerProjectPathsEqual,
+  normalizeAgentComposerDraftProjectPath
+} from "../model/agentComposerDraftScope";
 import { mergeVisibleConversations } from "./agentGuiController.conversationHelpers";
 import { reuseAgentActivityDisplayStatusesIfUnchanged } from "./agentGuiController.draftMessageHelpers";
 import {
@@ -528,7 +531,11 @@ export function useAgentGUINodeController({
     ) => {
       const normalizedPath = normalizeAgentComposerDraftProjectPath(path);
       const project = metadata?.project;
-      if (project && normalizedPath && project.path === normalizedPath) {
+      if (
+        project &&
+        normalizedPath &&
+        areAgentComposerProjectPathsEqual(project.path, normalizedPath)
+      ) {
         const nextProjects = upsertAgentGUIUserProject(
           userProjectsRef.current,
           project

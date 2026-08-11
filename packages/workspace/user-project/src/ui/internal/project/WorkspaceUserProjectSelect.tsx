@@ -40,6 +40,7 @@ import type {
   WorkspaceUserProjectService
 } from "../../../contracts/index.ts";
 import {
+  areWorkspaceUserProjectPathsEqual,
   basenameWorkspaceUserProjectPath,
   getWorkspaceUserProjectErrorCode,
   prepareWorkspaceUserProjectSelection,
@@ -258,7 +259,8 @@ export function WorkspaceUserProjectSelect({
   const [isSelectedPathMissing, setIsSelectedPathMissing] = useState(false);
   const rawSelectedPath = selectedProjectPath?.trim() ?? "";
   const selectedPath =
-    rawSelectedPath && rawSelectedPath === suppressedSelectedPath
+    rawSelectedPath &&
+    areWorkspaceUserProjectPathsEqual(rawSelectedPath, suppressedSelectedPath)
       ? ""
       : rawSelectedPath;
   const projects = service ? [...serviceSnapshot.projects] : apiProjects;
@@ -272,7 +274,9 @@ export function WorkspaceUserProjectSelect({
   const selectedPathLabel =
     basenameWorkspaceUserProjectPath(selectedPath) || selectedPath;
   const selectedProject = showKnownProjectOptions
-    ? (projects.find((project) => project.path === selectedPath) ?? null)
+    ? (projects.find((project) =>
+        areWorkspaceUserProjectPathsEqual(project.path, selectedPath)
+      ) ?? null)
     : null;
   const selectedProjectLabel = selectedProject
     ? resolveWorkspaceUserProjectDisplayLabel(selectedProject)
@@ -337,7 +341,11 @@ export function WorkspaceUserProjectSelect({
     }
     if (
       suppressedSelectedPath &&
-      (!rawSelectedPath || rawSelectedPath !== suppressedSelectedPath)
+      (!rawSelectedPath ||
+        !areWorkspaceUserProjectPathsEqual(
+          rawSelectedPath,
+          suppressedSelectedPath
+        ))
     ) {
       setSuppressedSelectedPath(null);
     }
@@ -520,7 +528,9 @@ export function WorkspaceUserProjectSelect({
         .catch(() => {});
       return;
     }
-    const knownProject = projects.find((project) => project.path === nextValue);
+    const knownProject = projects.find((project) =>
+      areWorkspaceUserProjectPathsEqual(project.path, nextValue)
+    );
     if (knownProject) {
       void effectiveApi.rememberDefaultSelection?.({ path: knownProject.path });
       setHasPinnedNoProjectSelection(false);

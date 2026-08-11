@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 )
@@ -201,7 +202,7 @@ func ClassifyRailSection(
 	projects := normalizeRailProjectPaths(projectPaths)
 	normalizedCWD := NormalizeProjectPath(cwd)
 	for _, project := range projects {
-		if project == normalizedCWD {
+		if sameRailPath(project, normalizedCWD) {
 			return RailSection{
 				Kind:        RailSectionKindProject,
 				ProjectPath: project,
@@ -269,15 +270,21 @@ func NormalizeProjectPath(path string) string {
 }
 
 func agentSessionRailPathContains(parent string, child string) bool {
+	return IsProjectPathWithin(parent, child)
+}
+
+// IsProjectPathWithin reports whether child is the same as, or nested below,
+// parent using the current platform's filesystem identity rules.
+func IsProjectPathWithin(parent string, child string) bool {
 	parent = NormalizeProjectPath(parent)
 	child = NormalizeProjectPath(child)
 	if parent == "" || child == "" {
 		return false
 	}
-	if parent == child {
+	if sameRailPath(parent, child) {
 		return true
 	}
-	rel, err := filepath.Rel(parent, child)
+	rel, err := filepath.Rel(railPathForComparison(parent), railPathForComparison(child))
 	if err != nil {
 		return false
 	}
@@ -354,7 +361,7 @@ func conversationsAgentSessionRailSection() RailSection {
 // the given project are stored under, matching the SectionKey accepted by
 // ListSessionSection.
 func RailSectionKeyForProject(projectPath string) string {
-	projectPath = NormalizeProjectPath(projectPath)
+	projectPath = railIdentityPath(projectPath)
 	if projectPath == "" {
 		return RailSectionKeyConversations
 	}
@@ -374,6 +381,38 @@ func NormalizeRailSectionKey(sectionKey string) string {
 		return RailSectionKeyForProject(strings.TrimPrefix(sectionKey, prefix))
 	}
 	return sectionKey
+}
+
+func railIdentityPath(path string) string {
+	path = NormalizeProjectPath(path)
+	if runtime.GOOS == "windows" {
+		return strings.ToLower(path)
+	}
+	return path
+}
+
+func railPathForComparison(path string) string {
+	if runtime.GOOS == "windows" {
+		return strings.ToLower(path)
+	}
+	return path
+}
+
+func sameRailPath(left string, right string) bool {
+	return railPathForComparison(left) == railPathForComparison(right)
+}
+
+// AreProjectPathsEqual compares project paths using the filesystem identity
+// rules of the current platform. Windows drive and UNC paths are
+// case-insensitive and accept either slash direction; POSIX paths remain
+// case-sensitive.
+func AreProjectPathsEqual(left string, right string) bool {
+	left = NormalizeProjectPath(left)
+	right = NormalizeProjectPath(right)
+	if left == "" || right == "" {
+		return left == right
+	}
+	return sameRailPath(left, right)
 }
 
 func normalizeAgentSessionRailSection(section RailSection) RailSection {

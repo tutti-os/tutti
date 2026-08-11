@@ -73,6 +73,26 @@ system:
 This is dependency inversion at the native boundary, not a requirement to
 create parallel copies of each service.
 
+### Workspace project identity and imported rail placement
+
+Project paths have one display form and one comparison form; callers must not
+compare raw strings when the path crosses a desktop/daemon boundary. The shared
+user-project core normalizes slash direction and trailing separators, then
+folds case only for Windows-shaped drive or UNC paths. POSIX paths remain
+case-sensitive. The Go rail store keeps the existing canonical filesystem path
+for display and derives a Windows-stable section key for persistence. Project
+registration and deletion resolve an incoming path variant to the existing
+stored row before applying the table's ordinary unique-path write guard, so no
+second identity column is needed.
+
+External session import can persist a session before its selected project is
+registered. The import path therefore registers projects and repairs only
+sessions carrying the durable `imported` marker in the same workspace SQLite
+transaction. Startup migration `workspace_agent_activity_rail_v2` replays the
+same repair for historical rows; ordinary conversations are not moved. This
+uses existing APIs and tables—no new wire fields or database columns are
+required.
+
 ## Workspace App Data Flow
 
 Workspace Apps keep one manifest and one POSIX `bootstrap.sh` across platforms:

@@ -630,6 +630,40 @@ test("ephemeral Claude session state UUID does not replace the durable checkpoin
           } as never;
           yield {
             type: "system",
+            subtype: "hook_started",
+            hook_id: "hook-1",
+            hook_name: "demo-hook",
+            hook_event: "PostToolUse",
+            uuid: "ephemeral-hook-started-uuid",
+            session_id: "provider-session-checkpoint"
+          } as never;
+          yield {
+            type: "system",
+            subtype: "hook_progress",
+            hook_id: "hook-1",
+            hook_name: "demo-hook",
+            hook_event: "PostToolUse",
+            stdout: "progress",
+            stderr: "",
+            output: "progress",
+            uuid: "ephemeral-hook-progress-uuid",
+            session_id: "provider-session-checkpoint"
+          } as never;
+          yield {
+            type: "system",
+            subtype: "hook_response",
+            hook_id: "hook-1",
+            hook_name: "demo-hook",
+            hook_event: "PostToolUse",
+            output: "done",
+            stdout: "",
+            stderr: "",
+            outcome: "success",
+            uuid: "ephemeral-hook-response-uuid",
+            session_id: "provider-session-checkpoint"
+          } as never;
+          yield {
+            type: "system",
             subtype: "session_state_changed",
             state: "idle",
             uuid: "ephemeral-idle-uuid",

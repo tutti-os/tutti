@@ -8,6 +8,7 @@ import {
   dispatchSessionForkThroughTurn,
   type AgentSessionEngine
 } from "@tutti-os/agent-activity-core";
+import { areWorkspaceUserProjectPathsEqual } from "@tutti-os/workspace-user-project/core";
 import type { AgentGUIRuntime } from "../../../agentActivityRuntime";
 import type { useAgentHostApi } from "../../../agentActivityHost";
 import type { AgentHostUserProject } from "../../../host/agentHostApi";
@@ -81,7 +82,11 @@ export function useAgentGUIConversationMetadataActions(
           .then(() => {
             setUserProjectsSnapshot(
               userProjectsRef.current.filter(
-                (project) => project.path !== normalizedPath
+                (project) =>
+                  !areWorkspaceUserProjectPathsEqual(
+                    project.path,
+                    normalizedPath
+                  )
               )
             );
           })
