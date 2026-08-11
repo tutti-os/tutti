@@ -1,5 +1,20 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { createBrowserNodeFeature } from "@tutti-os/browser-node";
+import type {
+  BrowserNodeEvent,
+  BrowserNodeHostApi,
+  BrowserNodeOpenUrlEvent
+} from "@tutti-os/browser-node";
+import {
+  dispatchWorkspaceAppOpenUrl,
+  installWorkspaceAppWindowOpenHandler
+} from "../../main/ipc/workspaceAppWindowOpen.ts";
+import { createWorkspaceBrowserService } from "../../renderer/src/features/workspace-workbench/services/internal/workspaceBrowserService.ts";
+import {
+  registerWorkspaceBrowserLaunchHandler,
+  type WorkspaceBrowserLaunchRequest
+} from "../../renderer/src/features/workspace-workbench/services/workspaceBrowserLaunchCoordinator.ts";
 
 import { installWorkspaceAppLinkInterception } from "./workspaceAppLinks.ts";
 
@@ -126,6 +141,26 @@ function createFakeWindow(input?: {
   };
 }
 
+function createBoundaryBrowserApi(
+  setListener: (listener: (event: BrowserNodeEvent) => void) => void
+): BrowserNodeHostApi {
+  return {
+    activate: () => Promise.resolve(),
+    close: () => Promise.resolve(),
+    goBack: () => Promise.resolve(),
+    goForward: () => Promise.resolve(),
+    navigate: () => Promise.resolve(),
+    onEvent(listener) {
+      setListener(listener);
+      return () => setListener(() => undefined);
+    },
+    prepareSession: () => Promise.resolve(),
+    registerGuest: () => Promise.resolve(),
+    reload: () => Promise.resolve(),
+    unregisterGuest: () => Promise.resolve()
+  };
+}
+
 test("workspace app link interception forwards _blank opens through workspace app IPC", () => {
   const restoreGlobals = installFakeAnchorGlobals();
   const fakeWindow = createFakeWindow();
@@ -149,17 +184,137 @@ test("workspace app link interception forwards _blank opens through workspace ap
     assert.equal(event.defaultPrevented, true);
     assert.equal(event.stopped, true);
     assert.equal(event.stoppedImmediate, true);
-    assert.deepEqual(sent, [
-      {
-        channel: "workspace-app:open-url",
-        payload: { url: "https://example.com/product" }
-      }
-    ]);
+    assert.equal(sent.length, 1);
+    assert.equal(sent[0]?.channel, "workspace-app:open-url");
+    const payload = sent[0]?.payload as Record<string, unknown>;
+    assert.equal(typeof payload.operationId, "string");
+    assert.equal(payload.url, "https://example.com/product");
 
     dispose();
 
     assert.equal(fakeWindow.listeners.length, 0);
   } finally {
+    restoreGlobals();
+  }
+});
+
+test("one Workspace App blank-link operation uses one entry and launches one Browser", async () => {
+  const restoreGlobals = installFakeAnchorGlobals();
+  let emitDesktopBrowserEvent = (_event: BrowserNodeEvent): void => undefined;
+  let nativeWindowOpen:
+    | ((details: { url: string }) => { action: "allow" | "deny" })
+    | undefined;
+  const entryCounts = { nativeWindowOpen: 0, preloadIpc: 0 };
+  const launchRequests: WorkspaceBrowserLaunchRequest[] = [];
+  const emittedEvents: BrowserNodeOpenUrlEvent[] = [];
+  const emittedEntries: unknown[] = [];
+  const logger = {
+    info(_message: string, details?: Record<string, unknown>) {
+      if (details?.entry) {
+        emittedEntries.push(details.entry);
+      }
+    }
+  };
+  const workspaceId = "workspace-app-popup-boundary";
+  const service = createWorkspaceBrowserService({
+    browserApi: createBoundaryBrowserApi((listener) => {
+      emitDesktopBrowserEvent = listener;
+    })
+  });
+  const appFeature = createBrowserNodeFeature({
+    hostApi: service.createFeatureHostApi({
+      acceptsEvent: (event) =>
+        (event.type === "open-url"
+          ? event.sourceNodeId
+          : event.nodeId
+        ).startsWith("workspace-app:"),
+      source: "workspace_app",
+      workspaceId
+    })
+  });
+  const ownerWindow = {
+    webContents: {
+      send(_channel: string, event: BrowserNodeOpenUrlEvent) {
+        emittedEvents.push(event);
+        emitDesktopBrowserEvent(event);
+      }
+    }
+  };
+  const contents = {
+    id: 99,
+    setWindowOpenHandler(
+      handler: (details: { url: string }) => { action: "allow" | "deny" }
+    ) {
+      nativeWindowOpen = (details) => {
+        entryCounts.nativeWindowOpen += 1;
+        return handler(details);
+      };
+    }
+  };
+  const fakeWindow = createFakeWindow({
+    open(url) {
+      nativeWindowOpen?.({ url: String(url) });
+      return null;
+    }
+  });
+  const disposeLaunchHandler = registerWorkspaceBrowserLaunchHandler(
+    workspaceId,
+    (request) => {
+      launchRequests.push(request);
+      return "browser:authorization";
+    }
+  );
+
+  try {
+    service.ensureFeatureConnected(appFeature);
+    installWorkspaceAppWindowOpenHandler({ contents, logger, ownerWindow });
+    const disposeLinkInterception = installWorkspaceAppLinkInterception({
+      scope: fakeWindow,
+      send(_channel, payload) {
+        entryCounts.preloadIpc += 1;
+        const request = payload as { operationId: string; url: string };
+        dispatchWorkspaceAppOpenUrl({
+          contents,
+          entry: "preload-ipc",
+          logger,
+          operationId: request.operationId,
+          ownerWindow,
+          url: request.url
+        });
+      }
+    });
+    const anchor = new FakeAnchorElement(
+      "https://open.feishu.cn/open-apis/authen/v1/authorize"
+    );
+    const click = createClickEvent(anchor);
+
+    fakeWindow.listeners[0]?.(click);
+    if (!click.defaultPrevented) {
+      fakeWindow.open(anchor.href, "_blank");
+    }
+    await Promise.resolve();
+
+    assert.deepEqual(entryCounts, { nativeWindowOpen: 0, preloadIpc: 1 });
+    assert.deepEqual(emittedEntries, ["preload-ipc"]);
+    assert.equal(emittedEvents.length, 1);
+    assert.equal(typeof emittedEvents[0]?.operationId, "string");
+    assert.equal(launchRequests.length, 1);
+
+    fakeWindow.open(anchor.href, "_blank");
+    await Promise.resolve();
+
+    assert.deepEqual(entryCounts, { nativeWindowOpen: 1, preloadIpc: 1 });
+    assert.deepEqual(emittedEntries, ["preload-ipc", "native-window-open"]);
+    assert.equal(emittedEvents.length, 2);
+    assert.notEqual(
+      emittedEvents[0]?.operationId,
+      emittedEvents[1]?.operationId
+    );
+    assert.equal(launchRequests.length, 2);
+    disposeLinkInterception();
+  } finally {
+    disposeLaunchHandler();
+    service.disposeWorkspace(workspaceId);
     restoreGlobals();
   }
 });

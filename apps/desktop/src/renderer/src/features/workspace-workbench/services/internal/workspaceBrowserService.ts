@@ -15,9 +15,10 @@ import type {
 } from "../workspaceWorkbenchHostService.interface.ts";
 import {
   requestWorkspaceBrowserLaunch,
-  requestWorkspaceBrowserNodeLaunch,
   requestWorkspaceBrowserSurfaceFocus
 } from "../workspaceBrowserLaunchCoordinator.ts";
+
+const recentWorkspaceAppOpenUrlOperationLimit = 256;
 
 export type WorkspaceBrowserEventMatcher = (event: BrowserNodeEvent) => boolean;
 
@@ -62,10 +63,13 @@ export function createWorkspaceBrowserService(
     WorkspaceBrowserEventRoute
   >();
   const featureReleases = new WeakMap<BrowserNodeFeature, () => void>();
-  const activeRoutesByWorkspace: WorkspaceBrowserRoutesByWorkspace = new Map();
-  const workspaceAppPopupsByWorkspace = new Map<
+  const activeRoutesByWorkspace = new Map<
     string,
-    WorkspaceAppPopupTracking
+    Map<WorkspaceBrowserFeatureSource, WorkspaceBrowserEventRoute>
+  >();
+  const recentWorkspaceAppOpenUrlOperationsByWorkspace = new Map<
+    string,
+    Set<string>
   >();
   let disconnectBrowserEvents: (() => void) | null = null;
   let disconnectUserAutomation: (() => void) | null = null;
@@ -112,13 +116,12 @@ export function createWorkspaceBrowserService(
         }
       }
       if (launchWorkspaceId && event.type === "open-url" && !openUrlHandled) {
-        launchOpenUrl({
-          activeRoutesByWorkspace,
+        launchOpenUrl(
           event,
-          source: launchSource,
-          trackingByWorkspace: workspaceAppPopupsByWorkspace,
-          workspaceId: launchWorkspaceId
-        });
+          launchWorkspaceId,
+          launchSource,
+          recentWorkspaceAppOpenUrlOperationsByWorkspace
+        );
       }
     });
   };
@@ -218,7 +221,7 @@ export function createWorkspaceBrowserService(
           disposeRoute(route);
         }
       }
-      workspaceAppPopupsByWorkspace.delete(workspaceId);
+      recentWorkspaceAppOpenUrlOperationsByWorkspace.delete(workspaceId);
     },
     ensureFeatureConnected(feature) {
       if (featureReleases.has(feature)) {
@@ -373,11 +376,6 @@ type WorkspaceBrowserFeatureSource = NonNullable<
   WorkspaceBrowserEventRoute["source"]
 >;
 
-type WorkspaceBrowserRoutesByWorkspace = Map<
-  string,
-  Map<WorkspaceBrowserFeatureSource, WorkspaceBrowserEventRoute>
->;
-
 function openBrowserUrlInNewTab(
   feature: BrowserNodeFeature,
   event: BrowserNodeOpenUrlEvent
@@ -397,130 +395,56 @@ function openBrowserUrlInNewTab(
   return true;
 }
 
-interface WorkspaceAppPopupTracking {
-  inFlightByRequest: Map<string, Promise<void>>;
-  nodeByRequest: Map<string, string>;
-}
-
-function launchOpenUrl(input: {
-  activeRoutesByWorkspace: WorkspaceBrowserRoutesByWorkspace;
-  event: BrowserNodeOpenUrlEvent;
-  source?: "browser" | "workspace_app";
-  trackingByWorkspace: Map<string, WorkspaceAppPopupTracking>;
-  workspaceId: string;
-}): void {
-  if (input.source !== "workspace_app" || input.event.reuseIfOpen !== false) {
-    void requestWorkspaceBrowserLaunch({
-      reuseIfOpen: input.event.reuseIfOpen,
-      ...(input.source ? { source: input.source } : {}),
-      sourceNodeId: input.event.sourceNodeId,
-      url: input.event.url,
-      workspaceId: input.workspaceId
-    });
-    return;
-  }
-
-  const tracking =
-    input.trackingByWorkspace.get(input.workspaceId) ??
-    createWorkspaceAppPopupTracking();
-  input.trackingByWorkspace.set(input.workspaceId, tracking);
-  const normalizedUrl = normalizeComparableBrowserUrl(input.event.url);
-  if (!normalizedUrl) {
-    return;
-  }
-  const requestKey = JSON.stringify([input.event.sourceNodeId, normalizedUrl]);
-  if (tracking.inFlightByRequest.has(requestKey)) {
-    return;
-  }
-
-  let openRequest!: Promise<void>;
-  openRequest = openWorkspaceAppPopup({
-    activeRoutesByWorkspace: input.activeRoutesByWorkspace,
-    event: input.event,
-    requestKey,
-    tracking,
-    url: normalizedUrl,
-    workspaceId: input.workspaceId
-  })
-    .catch(() => undefined)
-    .finally(() => {
-      if (tracking.inFlightByRequest.get(requestKey) === openRequest) {
-        tracking.inFlightByRequest.delete(requestKey);
-      }
-    });
-  tracking.inFlightByRequest.set(requestKey, openRequest);
-}
-
-async function openWorkspaceAppPopup(input: {
-  activeRoutesByWorkspace: WorkspaceBrowserRoutesByWorkspace;
-  event: BrowserNodeOpenUrlEvent;
-  requestKey: string;
-  tracking: WorkspaceAppPopupTracking;
-  url: string;
-  workspaceId: string;
-}): Promise<void> {
-  const rememberedNodeId = input.tracking.nodeByRequest.get(input.requestKey);
+function launchOpenUrl(
+  event: BrowserNodeOpenUrlEvent,
+  workspaceId: string,
+  source: "browser" | "workspace_app" | undefined,
+  recentOperationsByWorkspace: Map<string, Set<string>>
+): void {
   if (
-    rememberedNodeId &&
-    resolveBrowserSurfaceUrl({
-      activeRoutesByWorkspace: input.activeRoutesByWorkspace,
-      surfaceNodeId: rememberedNodeId,
-      workspaceId: input.workspaceId
-    }) === input.url
+    source === "workspace_app" &&
+    event.reuseIfOpen === false &&
+    !admitWorkspaceAppOpenUrlOperation({
+      operationId: event.operationId,
+      recentOperationsByWorkspace,
+      workspaceId
+    })
   ) {
-    const focusedNodeId = await requestWorkspaceBrowserSurfaceFocus({
-      fallbackToCurrent: false,
-      preferredNodeId: rememberedNodeId,
-      workspaceId: input.workspaceId
-    });
-    if (focusedNodeId === rememberedNodeId) {
-      return;
-    }
+    return;
   }
-  input.tracking.nodeByRequest.delete(input.requestKey);
 
-  const nodeId = await requestWorkspaceBrowserNodeLaunch({
-    reuseIfOpen: input.event.reuseIfOpen,
-    source: "workspace_app",
-    sourceNodeId: input.event.sourceNodeId,
-    url: input.url,
-    workspaceId: input.workspaceId
+  void requestWorkspaceBrowserLaunch({
+    reuseIfOpen: event.reuseIfOpen,
+    ...(source ? { source } : {}),
+    url: event.url,
+    workspaceId
   });
-  if (nodeId) {
-    input.tracking.nodeByRequest.set(input.requestKey, nodeId);
-  }
 }
 
-function createWorkspaceAppPopupTracking(): WorkspaceAppPopupTracking {
-  return {
-    inFlightByRequest: new Map(),
-    nodeByRequest: new Map()
-  };
-}
-
-function resolveBrowserSurfaceUrl(input: {
-  activeRoutesByWorkspace: WorkspaceBrowserRoutesByWorkspace;
-  surfaceNodeId: string;
+function admitWorkspaceAppOpenUrlOperation(input: {
+  operationId: string | undefined;
+  recentOperationsByWorkspace: Map<string, Set<string>>;
   workspaceId: string;
-}): string | null {
-  const feature = input.activeRoutesByWorkspace
-    .get(input.workspaceId)
-    ?.get("browser")?.feature;
-  const state = feature?.tabsStore.getSurfaceState(input.surfaceNodeId);
-  const activeTab = state?.tabs.find((tab) => tab.id === state.activeTabId);
-  if (!feature || !activeTab) {
-    return null;
+}): boolean {
+  const operationId = input.operationId?.trim() ?? "";
+  if (!operationId) {
+    return true;
   }
-  const runtimeUrl = feature.runtimeStore
-    .getNodeState(activeTab.nodeId)
-    .url?.trim();
-  return normalizeComparableBrowserUrl(runtimeUrl || activeTab.defaultUrl);
-}
 
-function normalizeComparableBrowserUrl(url: string): string | null {
-  try {
-    return new URL(url.trim()).toString();
-  } catch {
-    return null;
+  const recentOperations =
+    input.recentOperationsByWorkspace.get(input.workspaceId) ?? new Set();
+  input.recentOperationsByWorkspace.set(input.workspaceId, recentOperations);
+  if (recentOperations.has(operationId)) {
+    return false;
   }
+
+  recentOperations.add(operationId);
+  while (recentOperations.size > recentWorkspaceAppOpenUrlOperationLimit) {
+    const oldestOperationId = recentOperations.values().next().value;
+    if (typeof oldestOperationId !== "string") {
+      break;
+    }
+    recentOperations.delete(oldestOperationId);
+  }
+  return true;
 }

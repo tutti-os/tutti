@@ -114,14 +114,17 @@ recent initialized Browser surface. If that surface's tab state is not
 available, it launches a new Browser surface instead of replacing the active
 page. Explicit non-reuse requests continue to launch a new surface.
 
-Workspace App popup events retain their source Workspace App node identity
-while the Desktop launch coordinator normalizes the URL. The workspace Browser
-service uses the source node and normalized URL as the identity of a launched
-popup: concurrent duplicates share one launch, and a later repeat focuses the
-remembered Browser only while its active page still shows that URL. A redirect
-after authorization success or cancellation invalidates the association, as
-does closing the Browser. The Workbench presenter remains the narrow
-launch/focus adapter and does not own authorization-attempt lifecycle.
+Workspace App popup entry points assign a causal operation ID before the event
+reaches the Renderer. A captured blank-link click prevents the Chromium default
+and enters through preload IPC; programmatic or otherwise unhandled popup calls
+enter through Electron's native window-open handler. The workspace Browser
+service suppresses repeated delivery of one operation ID, not requests that
+merely share a source node or URL. Distinct user operations therefore remain
+distinct even when their complete OAuth URLs match, while volatile OAuth query
+parameters cannot split one repeated delivery. The per-workspace recent-ID set
+is capped at 256 entries and released with the workspace; it does not retain a
+Browser node or infer authorization-attempt lifetime. The Workbench presenter
+remains the narrow launch/focus adapter.
 
 ## Package Entry Points
 

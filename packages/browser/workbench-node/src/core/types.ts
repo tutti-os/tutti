@@ -105,6 +105,7 @@ export interface BrowserNodeErrorEvent {
 }
 
 export interface BrowserNodeOpenUrlEvent {
+  operationId?: string;
   type: "open-url";
   sourceNodeId: string;
   url: string;

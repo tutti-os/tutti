@@ -2,6 +2,7 @@ import {
   resolveBrowserNavigationUrl,
   type BrowserNodeOpenUrlEvent
 } from "@tutti-os/browser-node";
+import { randomUUID } from "node:crypto";
 import { desktopIpcChannels } from "../../shared/contracts/ipc.ts";
 
 interface WorkspaceAppWindowOpenContents {
@@ -31,6 +32,8 @@ interface WorkspaceAppWindowOpenHandlerInput {
 }
 
 interface WorkspaceAppOpenUrlInput extends WorkspaceAppWindowOpenHandlerInput {
+  entry: "native-window-open" | "preload-ipc";
+  operationId?: string;
   url: string;
 }
 
@@ -49,14 +52,22 @@ export function installWorkspaceAppWindowOpenHandler({
   }
 
   contents.setWindowOpenHandler?.(({ url }) => {
-    dispatchWorkspaceAppOpenUrl({ contents, logger, ownerWindow, url });
+    dispatchWorkspaceAppOpenUrl({
+      contents,
+      entry: "native-window-open",
+      logger,
+      ownerWindow,
+      url
+    });
     return { action: "deny" };
   });
 }
 
 export function dispatchWorkspaceAppOpenUrl({
   contents,
+  entry,
   logger,
+  operationId,
   ownerWindow,
   url
 }: WorkspaceAppOpenUrlInput): boolean {
@@ -84,12 +95,15 @@ export function dispatchWorkspaceAppOpenUrl({
   }
 
   const payload: BrowserNodeOpenUrlEvent = {
+    operationId: operationId?.trim() || randomUUID(),
     reuseIfOpen: false,
     sourceNodeId: `workspace-app:${contents.id}`,
     type: "open-url",
     url: resolved.url
   };
   logger?.info?.("workspace app emitted open-url", {
+    entry,
+    operationId: payload.operationId,
     sourceNodeId: payload.sourceNodeId,
     url: payload.url,
     webContentsId: contents.id

@@ -221,7 +221,9 @@ export function registerWorkspaceAppShellIpc(input: {
     }
     dispatchWorkspaceAppOpenUrl({
       contents: event.sender,
+      entry: "preload-ipc",
       logger,
+      operationId: payload.operationId,
       ownerWindow: context.ownerWindow,
       url: payload.url
     });
@@ -284,8 +286,13 @@ function isWorkspaceAppDiagnosticPayload(
 
 function isWorkspaceAppOpenUrlPayload(
   value: unknown
-): value is { url: string } {
-  return isRecord(value) && typeof value.url === "string";
+): value is { operationId: string; url: string } {
+  return (
+    isRecord(value) &&
+    typeof value.operationId === "string" &&
+    value.operationId.trim().length > 0 &&
+    typeof value.url === "string"
+  );
 }
 
 function normalizeWorkspaceAppOpenUrlLogPayload(
@@ -294,8 +301,13 @@ function normalizeWorkspaceAppOpenUrlLogPayload(
   if (!isRecord(value)) {
     return null;
   }
+  const operationId = value.operationId;
   const url = value.url;
   return {
+    operationId:
+      typeof operationId === "string" && operationId.trim().length > 0
+        ? operationId
+        : null,
     hasUrl: typeof url === "string" && url.trim().length > 0,
     url: typeof url === "string" ? url : null
   };

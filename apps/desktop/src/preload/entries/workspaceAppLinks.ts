@@ -27,7 +27,10 @@ export function installWorkspaceAppLinkInterception({
     reportDiagnostic,
     scope,
     sendOpenUrl(url) {
-      send(workspaceAppOpenUrlChannel, { url });
+      send(workspaceAppOpenUrlChannel, {
+        operationId: globalThis.crypto.randomUUID(),
+        url
+      });
     }
   });
 }
