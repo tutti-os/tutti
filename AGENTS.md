@@ -39,13 +39,19 @@ workspace agent timeline, agent approvals, or interactive agent prompts, read
 `packages/agent/gui/AGENTS.md`, before planning or editing, even when no file
 path is supplied.
 
-If a request mentions Microsoft Windows support, Windows packaging, ConPTY,
-platform-specific process behavior, or managed POSIX shell portability, read
-`docs/architecture/windows-platform-support.md` before planning or editing.
-Keep product logic platform-neutral: callers depend on capability interfaces,
-and operating-system differences stay in the narrow owning adapter or
-composition root. Do not scatter OS checks, executable suffixes, path literals,
-or user-directory assumptions through business logic.
+Microsoft Windows is part of the default compatibility contract for every
+change, even when the request and target code do not mention Windows. Before
+editing, assess whether the change can affect paths, filesystem semantics,
+temporary directories, executable discovery or suffixes, command quoting,
+shell selection, environment variables, process creation, signals, permissions,
+symlinks, sockets, packaging, or native dependencies. If it can, read
+`docs/architecture/windows-platform-support.md` before planning or editing and
+validate both Windows and POSIX behavior. Keep product logic platform-neutral:
+callers depend on capability interfaces, and operating-system differences stay
+in the narrow owning adapter or composition root. Do not scatter OS checks,
+executable suffixes, path literals, shell assumptions, or user-directory
+assumptions through business logic. A task being reported or developed on
+macOS/Linux is not evidence that Windows is unaffected.
 
 ## Agent Host Boundary
 
@@ -146,6 +152,12 @@ documentation impact was found.
   [Testing](docs/conventions/testing.md#validation-selection). Closest-area
   instructions may add a domain-specific check, but they do not redefine the
   repository workflow.
+- Every change, including presentation-only changes, must include a Windows
+  impact assessment. For platform-sensitive behavior, add or update focused
+  Windows coverage alongside POSIX coverage, or document why automated Windows
+  verification is not currently possible and identify the remaining manual
+  gate. Tests that only assert a serialized request shape do not replace
+  validation by the receiving platform API, parser, or process boundary.
 
 ## Hooks
 

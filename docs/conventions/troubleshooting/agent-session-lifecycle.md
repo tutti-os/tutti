@@ -4803,3 +4803,27 @@ agent target`, although the current model picker does not offer that model.
   current model is not first, a stale dependent reasoning default, and an
   unsupported explicit selection separately with generic extension fixtures.
   Inject a `session/set_model` rejection into the standard ACP transport test.
+
+### Codex rejects `turn/start` with `AbsolutePathBuf deserialized without a base path`
+
+- Symptom:
+  Codex initializes and `thread/start` succeeds, but the first `turn/start`
+  fails with JSON-RPC `-32600` and `AbsolutePathBuf deserialized without a base
+path`. Tutti then reports that the provider Turn was not durably accepted.
+- Root cause:
+  Tutti sent the POSIX-only `/sandbox-tmp` writable root as though it were a
+  portable absolute host path. Codex's Windows `AbsolutePathBuf` parser rejects
+  it even when the request also carries `cwd`; the per-turn working-directory
+  override does not make a POSIX-rooted string into a Windows absolute path.
+  Tutti also omitted the Session `cwd` from the Turn override. A request-shape
+  mock accepted both omissions and did not exercise the real Rust parser.
+- Fix:
+  Send the canonical non-empty Session `cwd` on every Codex `turn/start` and
+  omit the POSIX `/sandbox-tmp` projection on Windows. Keep the projection on
+  POSIX hosts where it represents the logical `/tmp` write target.
+- Validation:
+  Assert the emitted `turn/start.cwd`, cover Windows and POSIX sandbox policy
+  construction, and run the Windows contract test against a real pinned
+  `codex.exe app-server`. The contract test submits the historical payload both
+  without and with `cwd` as negative controls, then verifies that the production
+  payload crosses the same parser without an `AbsolutePathBuf` error.
