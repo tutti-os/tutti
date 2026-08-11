@@ -1601,6 +1601,16 @@ reply content.
 This presentation input is view data only and must not enter canonical Session,
 Turn, Message, activity-runtime, or workspace-engine state.
 
+Standalone hosts rendering `AgentConversationFlow` may also pass the current
+Agent target presentation catalog through the `agent-conversation` entrypoint.
+The flow scopes that catalog to all historical rich-text rows, so `agent-target`
+and `agent-session` mentions use the same provider icon and identity
+presentation as the full AgentGUI node without copying the catalog into
+canonical activity data. Omitting the catalog preserves an inherited AgentGUI
+presentation context. The standalone flow also owns its visibility-aware
+conversation clock, so a hidden host does not keep elapsed-time presentation
+timers active.
+
 ## 5. Agent identity and provider architecture
 
 ### 5.1 `agentTargetId` is UI identity
