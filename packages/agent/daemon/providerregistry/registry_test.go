@@ -90,13 +90,14 @@ func TestMigratedTuttiAgentDescriptorRequiresRefreshCapableVersion(t *testing.T)
 	}
 	if !slices.Equal(
 		descriptor.ComposerProfile.SlashCommandPolicy.FallbackCommands,
-		[]string{"plan", "goal", "review"},
+		[]string{"compact", "plan", "goal", "review"},
 	) {
 		t.Fatalf("SlashCommandPolicy.FallbackCommands = %#v", descriptor.ComposerProfile.SlashCommandPolicy.FallbackCommands)
 	}
 	if !slices.Equal(
 		descriptor.ComposerProfile.SlashCommandPolicy.CommandEffects,
 		[]SlashCommandEffectDescriptor{
+			{Command: "compact", Effect: SlashCommandEffectSubmitImmediate},
 			{Command: "plan", Effect: SlashCommandEffectTogglePlanMode},
 			{Command: "goal", Effect: SlashCommandEffectActivateGoalMode},
 			{Command: "review", Effect: SlashCommandEffectShowReviewPicker},
