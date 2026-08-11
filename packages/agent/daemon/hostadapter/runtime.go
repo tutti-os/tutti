@@ -554,7 +554,7 @@ func (a *RuntimeController) GoalControl(ctx context.Context, input host.RuntimeG
 	})
 	return host.RuntimeGoalControlResult{
 		AgentSessionID: result.AgentSessionID, Goal: cloneMap(result.Goal), Evidence: cloneMap(result.Evidence),
-		ProviderPhase: result.ProviderPhase,
+		ProviderPhase: result.ProviderPhase, ExecutionPending: result.ExecutionPending,
 	}, mapRuntimeError(err)
 }
 

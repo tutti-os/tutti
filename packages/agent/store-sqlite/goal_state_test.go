@@ -7,6 +7,44 @@ import (
 	"testing"
 )
 
+func TestListSessionGoalStatesReturnsRequestedRowsInOneRead(t *testing.T) {
+	t.Parallel()
+	store := openTestStore(t, testOptions(&staticProjectPaths{}))
+	ctx := context.Background()
+	for index, sessionID := range []string{"session-1", "session-2"} {
+		if _, err := store.ReportSessionState(ctx, SessionStateReport{
+			AgentSessionID:   sessionID,
+			OccurredAtUnixMS: int64(index + 1),
+			Provider:         "codex",
+			WorkspaceID:      "workspace-goal-list",
+		}); err != nil {
+			t.Fatal(err)
+		}
+		if _, _, _, err := store.PrepareGoalControlOperation(ctx, GoalControlOperationPrepare{
+			Action:           "set",
+			AgentSessionID:   sessionID,
+			Objective:        "ship " + sessionID,
+			OccurredAtUnixMS: int64(index + 10),
+			OperationID:      "goal-" + sessionID,
+			WorkspaceID:      "workspace-goal-list",
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	states, err := store.ListSessionGoalStates(ctx, " workspace-goal-list ", []string{
+		" session-2 ", "session-missing", "session-1", "session-2", "",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(states) != 2 ||
+		states["session-1"].PendingOperationID != "goal-session-1" ||
+		states["session-2"].PendingOperationID != "goal-session-2" {
+		t.Fatalf("states = %#v", states)
+	}
+}
+
 func TestProviderGoalAdoptionCompletesWithoutProviderRedispatch(t *testing.T) {
 	t.Parallel()
 	store := openTestStore(t, testOptions(&staticProjectPaths{}))
@@ -268,13 +306,38 @@ func TestGoalControlOperationPersistsWithoutTurn(t *testing.T) {
 		WorkspaceID: "ws-1", OperationID: "goal-op-1", Succeeded: true,
 		Observed:         map[string]any{"objective": "ship it", "status": "active"},
 		Evidence:         map[string]any{"source": "provider_ack", "confidence": "authoritative"},
+		ExecutionPending: true,
 		OccurredAtUnixMS: 30,
 	})
-	if err != nil || !changed || op.Status != GoalOperationStatusCompleted || state.SyncStatus != GoalSyncStatusSynced || state.PendingOperationID != "" {
+	if err != nil || !changed || op.Status != GoalOperationStatusCompleted || state.SyncStatus != GoalSyncStatusSynced || state.PendingOperationID != "" || !state.ExecutionPending {
 		t.Fatalf("complete op=%#v state=%#v changed=%v error=%v", op, state, changed, err)
 	}
 	if jsonMapInt64(state.Observed, "startedAtUnixMs") != 20 {
 		t.Fatalf("completed Goal lost canonical start: %#v", state.Observed)
+	}
+	if _, accepted, err := store.RecordTurnTransition(ctx, TurnTransition{
+		WorkspaceID: "ws-1", AgentSessionID: "session-1", TurnID: "invocation-turn-1",
+		Phase: TurnPhaseSettled, Outcome: TurnOutcomeCompleted, Origin: TurnOriginUserPrompt,
+		SourceGoalOperationID: "goal-op-1", SourceGoalRevision: 1,
+		SourceGoalRepairEpoch: 0, OccurredAtUnixMS: 34,
+	}); err != nil || !accepted {
+		t.Fatalf("record non-Goal Turn accepted=%v error=%v", accepted, err)
+	}
+	state, found, err = store.GetSessionGoalState(ctx, "ws-1", "session-1")
+	if err != nil || !found || !state.ExecutionPending {
+		t.Fatalf("non-Goal Turn cleared execution pending: %#v found=%v error=%v", state, found, err)
+	}
+	if _, accepted, err := store.RecordTurnTransition(ctx, TurnTransition{
+		WorkspaceID: "ws-1", AgentSessionID: "session-1", TurnID: "goal-turn-1",
+		Phase: TurnPhaseRunning, Origin: TurnOriginGoalArm,
+		SourceGoalOperationID: "goal-op-1", SourceGoalRevision: 1,
+		SourceGoalRepairEpoch: 0, OccurredAtUnixMS: 35,
+	}); err != nil || !accepted {
+		t.Fatalf("record exact Goal Turn accepted=%v error=%v", accepted, err)
+	}
+	state, found, err = store.GetSessionGoalState(ctx, "ws-1", "session-1")
+	if err != nil || !found || state.ExecutionPending {
+		t.Fatalf("Goal Turn did not clear execution pending: %#v found=%v error=%v", state, found, err)
 	}
 
 	_, cleared, created, err := store.PrepareGoalControlOperation(ctx, GoalControlOperationPrepare{
@@ -290,6 +353,32 @@ func TestGoalControlOperationPersistsWithoutTurn(t *testing.T) {
 	})
 	if err != nil || !changed || cleared.SyncStatus != GoalSyncStatusSynced || len(cleared.Observed) != 0 {
 		t.Fatalf("clear completion state=%#v changed=%v error=%v", cleared, changed, err)
+	}
+}
+
+func TestGoalExecutionPendingAfterObservationRequiresExecutingState(t *testing.T) {
+	t.Parallel()
+	active := map[string]any{"status": "active"}
+	for _, tc := range []struct {
+		name       string
+		current    bool
+		observed   map[string]any
+		syncStatus string
+		want       bool
+	}{
+		{name: "applying active", current: true, observed: active, syncStatus: GoalSyncStatusApplying, want: true},
+		{name: "synced active", current: true, observed: active, syncStatus: GoalSyncStatusSynced, want: true},
+		{name: "unknown active", current: true, observed: active, syncStatus: GoalSyncStatusUnknown},
+		{name: "failed active", current: true, observed: active, syncStatus: GoalSyncStatusFailed},
+		{name: "diverged active", current: true, observed: active, syncStatus: GoalSyncStatusDiverged},
+		{name: "synced complete", current: true, observed: map[string]any{"status": "complete"}, syncStatus: GoalSyncStatusSynced},
+		{name: "not previously pending", observed: active, syncStatus: GoalSyncStatusSynced},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := goalExecutionPendingAfterObservation(tc.current, tc.observed, tc.syncStatus); got != tc.want {
+				t.Fatalf("goalExecutionPendingAfterObservation() = %v, want %v", got, tc.want)
+			}
+		})
 	}
 }
 
@@ -438,8 +527,9 @@ func TestGoalAcceptedIgnoresSessionMetadataUntilHostCompletesOperation(t *testin
 	_, state, changed, err := store.AcknowledgeGoalControlOperation(ctx, GoalControlOperationAcknowledge{
 		WorkspaceID: "ws-accepted", OperationID: "goal-op-accepted",
 		Evidence: map[string]any{"phase": "accepted"}, OccurredAtUnixMS: 22,
+		ExecutionPending: true,
 	})
-	if err != nil || !changed || state.SyncStatus != GoalSyncStatusApplying || state.PendingOperationID != "goal-op-accepted" {
+	if err != nil || !changed || state.SyncStatus != GoalSyncStatusApplying || state.PendingOperationID != "goal-op-accepted" || !state.ExecutionPending {
 		t.Fatalf("ack state=%#v changed=%v error=%v", state, changed, err)
 	}
 	appliedReport, err := store.ReportSessionState(ctx, SessionStateReport{
@@ -454,7 +544,7 @@ func TestGoalAcceptedIgnoresSessionMetadataUntilHostCompletesOperation(t *testin
 	assertParticipantMutationKinds(t, appliedReport.CommitDelta,
 		MutationEntitySession, MutationEntityGoalState)
 	state, found, err := store.GetSessionGoalState(ctx, "ws-accepted", "session-accepted")
-	if err != nil || !found || state.SyncStatus != GoalSyncStatusApplying || state.PendingOperationID != "goal-op-accepted" {
+	if err != nil || !found || state.SyncStatus != GoalSyncStatusApplying || state.PendingOperationID != "goal-op-accepted" || !state.ExecutionPending {
 		t.Fatalf("reported state=%#v found=%v error=%v", state, found, err)
 	}
 	if jsonMapInt64(state.Observed, "startedAtUnixMs") != 20 {
@@ -468,7 +558,8 @@ func TestGoalAcceptedIgnoresSessionMetadataUntilHostCompletesOperation(t *testin
 		WorkspaceID: "ws-accepted", OperationID: "goal-op-accepted", Succeeded: true,
 		Observed: map[string]any{"objective": "ship it", "status": "active"},
 		Evidence: map[string]any{"source": "runtime_goal_control_lifecycle"}, OccurredAtUnixMS: 31,
-	}); err != nil || !changed || state.SyncStatus != GoalSyncStatusSynced || state.PendingOperationID != "" {
+		ExecutionPending: state.ExecutionPending,
+	}); err != nil || !changed || state.SyncStatus != GoalSyncStatusSynced || state.PendingOperationID != "" || !state.ExecutionPending {
 		t.Fatalf("completed state=%#v changed=%v error=%v", state, changed, err)
 	}
 	repair, _, created, err := store.EnsureOrWakeGoalRepairOperation(ctx, EnsureGoalRepairOperationInput{WorkspaceID: "ws-accepted", AgentSessionID: "session-accepted", SourceOperationID: "stale-provider-op", SourceRevision: 0, CurrentRevision: 1, OccurredAtUnixMS: 40})

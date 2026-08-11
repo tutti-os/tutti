@@ -463,6 +463,7 @@ func (d *legacyHostConformanceDriver) Reset(_ context.Context, fixture hostconfo
 		return RuntimeGoalControlResult{
 			AgentSessionID: input.AgentSessionID, Goal: clonePayload(resultGoal),
 			Evidence: evidence, ProviderPhase: providerPhase,
+			ExecutionPending: input.Action == "set" && resultGoal["status"] == "active",
 		}, nil
 	}
 	if fixture.AcceptGoalControlsOnly {
@@ -1182,6 +1183,7 @@ func (d *legacyHostConformanceDriver) GoalControl(ctx context.Context, input age
 		observation.Revision = result.GoalState.Revision
 		observation.PendingOperationID = result.GoalState.PendingOperationID
 		observation.SyncStatus = result.GoalState.SyncStatus
+		observation.ExecutionPending = result.GoalState.ExecutionPending
 	}
 	return observation, err
 }
@@ -1208,7 +1210,8 @@ func (d *legacyHostConformanceDriver) AdoptProviderGoal(ctx context.Context, inp
 	return hostconformance.GoalObservation{
 		Goal: clonePayload(result.Goal), OperationID: result.OperationID,
 		Revision: state.State.Revision, PendingOperationID: state.State.PendingOperationID,
-		SyncStatus: state.State.SyncStatus,
+		SyncStatus:       state.State.SyncStatus,
+		ExecutionPending: state.State.ExecutionPending,
 	}, nil
 }
 
@@ -1254,6 +1257,7 @@ func hostGoalControlObservation(result agenthost.GoalControlResult) hostconforma
 		observation.Revision = result.GoalState.Revision
 		observation.PendingOperationID = result.GoalState.PendingOperationID
 		observation.SyncStatus = result.GoalState.SyncStatus
+		observation.ExecutionPending = result.GoalState.ExecutionPending
 	}
 	return observation
 }
@@ -1262,6 +1266,7 @@ func hostGoalStateObservation(result agenthost.GoalStateResult) hostconformance.
 	return hostconformance.GoalObservation{
 		Goal: clonePayload(result.State.Desired), Revision: result.State.Revision,
 		PendingOperationID: result.State.PendingOperationID, SyncStatus: result.State.SyncStatus,
+		ExecutionPending: result.State.ExecutionPending,
 	}
 }
 

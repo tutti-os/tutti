@@ -3640,6 +3640,36 @@ func (e WorkspaceAgentSessionGoalStateSyncStatus) Valid() bool {
 	}
 }
 
+// Defines values for WorkspaceAgentSessionGoalSyncStateSyncStatus.
+const (
+	WorkspaceAgentSessionGoalSyncStateSyncStatusApplying WorkspaceAgentSessionGoalSyncStateSyncStatus = "applying"
+	WorkspaceAgentSessionGoalSyncStateSyncStatusDiverged WorkspaceAgentSessionGoalSyncStateSyncStatus = "diverged"
+	WorkspaceAgentSessionGoalSyncStateSyncStatusFailed   WorkspaceAgentSessionGoalSyncStateSyncStatus = "failed"
+	WorkspaceAgentSessionGoalSyncStateSyncStatusPending  WorkspaceAgentSessionGoalSyncStateSyncStatus = "pending"
+	WorkspaceAgentSessionGoalSyncStateSyncStatusSynced   WorkspaceAgentSessionGoalSyncStateSyncStatus = "synced"
+	WorkspaceAgentSessionGoalSyncStateSyncStatusUnknown  WorkspaceAgentSessionGoalSyncStateSyncStatus = "unknown"
+)
+
+// Valid indicates whether the value is a known member of the WorkspaceAgentSessionGoalSyncStateSyncStatus enum.
+func (e WorkspaceAgentSessionGoalSyncStateSyncStatus) Valid() bool {
+	switch e {
+	case WorkspaceAgentSessionGoalSyncStateSyncStatusApplying:
+		return true
+	case WorkspaceAgentSessionGoalSyncStateSyncStatusDiverged:
+		return true
+	case WorkspaceAgentSessionGoalSyncStateSyncStatusFailed:
+		return true
+	case WorkspaceAgentSessionGoalSyncStateSyncStatusPending:
+		return true
+	case WorkspaceAgentSessionGoalSyncStateSyncStatusSynced:
+		return true
+	case WorkspaceAgentSessionGoalSyncStateSyncStatusUnknown:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for WorkspaceAgentSessionIsolationMode.
 const (
 	WorkspaceAgentSessionIsolationModeWorktree WorkspaceAgentSessionIsolationMode = "worktree"
@@ -4500,25 +4530,25 @@ func (e WorkspaceWorkflowOperationKind) Valid() bool {
 
 // Defines values for WorkspaceWorkflowOperationStatus.
 const (
-	Canceled  WorkspaceWorkflowOperationStatus = "canceled"
-	Failed    WorkspaceWorkflowOperationStatus = "failed"
-	Pending   WorkspaceWorkflowOperationStatus = "pending"
-	Running   WorkspaceWorkflowOperationStatus = "running"
-	Succeeded WorkspaceWorkflowOperationStatus = "succeeded"
+	WorkspaceWorkflowOperationStatusCanceled  WorkspaceWorkflowOperationStatus = "canceled"
+	WorkspaceWorkflowOperationStatusFailed    WorkspaceWorkflowOperationStatus = "failed"
+	WorkspaceWorkflowOperationStatusPending   WorkspaceWorkflowOperationStatus = "pending"
+	WorkspaceWorkflowOperationStatusRunning   WorkspaceWorkflowOperationStatus = "running"
+	WorkspaceWorkflowOperationStatusSucceeded WorkspaceWorkflowOperationStatus = "succeeded"
 )
 
 // Valid indicates whether the value is a known member of the WorkspaceWorkflowOperationStatus enum.
 func (e WorkspaceWorkflowOperationStatus) Valid() bool {
 	switch e {
-	case Canceled:
+	case WorkspaceWorkflowOperationStatusCanceled:
 		return true
-	case Failed:
+	case WorkspaceWorkflowOperationStatusFailed:
 		return true
-	case Pending:
+	case WorkspaceWorkflowOperationStatusPending:
 		return true
-	case Running:
+	case WorkspaceWorkflowOperationStatusRunning:
 		return true
-	case Succeeded:
+	case WorkspaceWorkflowOperationStatusSucceeded:
 		return true
 	default:
 		return false
@@ -8739,7 +8769,10 @@ type WorkspaceAgentSession struct {
 
 	// Goal Protocol v2. Explicit field extracted from runtimeContext.
 	Goal *WorkspaceAgentSessionGoal `json:"goal"`
-	Id   string                     `json:"id"`
+
+	// GoalSyncState Narrow Host-owned evidence for the durable Goal operation. Null means no Goal state exists for this Session; clients must not infer pending execution from the visible Goal alone.
+	GoalSyncState *WorkspaceAgentSessionGoalSyncState `json:"goalSyncState"`
+	Id            string                              `json:"id"`
 
 	// Imported Protocol v2. True when the session was imported from external provider history. Explicit field extracted from runtimeContext.
 	Imported bool `json:"imported"`
@@ -8966,6 +8999,18 @@ type WorkspaceAgentSessionGoalStateResponse struct {
 	Session WorkspaceAgentSession          `json:"session"`
 	State   WorkspaceAgentSessionGoalState `json:"state"`
 }
+
+// WorkspaceAgentSessionGoalSyncState defines model for WorkspaceAgentSessionGoalSyncState.
+type WorkspaceAgentSessionGoalSyncState struct {
+	// ExecutionPending Host-owned proof that an accepted initial Goal is expected to begin autonomous execution and has not produced its first exact Goal Turn yet.
+	ExecutionPending   bool                                         `json:"executionPending"`
+	PendingOperationId *string                                      `json:"pendingOperationId"`
+	Revision           int64                                        `json:"revision"`
+	SyncStatus         WorkspaceAgentSessionGoalSyncStateSyncStatus `json:"syncStatus"`
+}
+
+// WorkspaceAgentSessionGoalSyncStateSyncStatus defines model for WorkspaceAgentSessionGoalSyncState.SyncStatus.
+type WorkspaceAgentSessionGoalSyncStateSyncStatus string
 
 // WorkspaceAgentSessionIsolation defines model for WorkspaceAgentSessionIsolation.
 type WorkspaceAgentSessionIsolation struct {

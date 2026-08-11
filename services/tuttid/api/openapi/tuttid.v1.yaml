@@ -12685,6 +12685,7 @@ components:
         - forkedFrom
         - usage
         - goal
+        - goalSyncState
         - tuttiModeActivation
         - imported
       properties:
@@ -12833,6 +12834,14 @@ components:
             - $ref: "#/components/schemas/WorkspaceAgentSessionGoal"
           nullable: true
           description: Protocol v2. Explicit field extracted from runtimeContext.
+        goalSyncState:
+          allOf:
+            - $ref: "#/components/schemas/WorkspaceAgentSessionGoalSyncState"
+          nullable: true
+          description: >-
+            Narrow Host-owned evidence for the durable Goal operation. Null
+            means no Goal state exists for this Session; clients must not infer
+            pending execution from the visible Goal alone.
         tuttiModeActivation:
           allOf:
             - $ref: "#/components/schemas/TuttiModeActivation"
@@ -14290,6 +14299,37 @@ components:
           allOf:
             - $ref: "#/components/schemas/WorkspaceAgentSessionGoalState"
           nullable: true
+    WorkspaceAgentSessionGoalSyncState:
+      type: object
+      additionalProperties: false
+      required:
+        - revision
+        - syncStatus
+        - pendingOperationId
+        - executionPending
+      properties:
+        revision:
+          type: integer
+          format: int64
+          minimum: 0
+        syncStatus:
+          type: string
+          enum:
+            - pending
+            - applying
+            - synced
+            - diverged
+            - unknown
+            - failed
+        pendingOperationId:
+          type: string
+          nullable: true
+        executionPending:
+          type: boolean
+          description: >-
+            Host-owned proof that an accepted initial Goal is expected to
+            begin autonomous execution and has not produced its first exact
+            Goal Turn yet.
     WorkspaceAgentSessionGoalState:
       type: object
       additionalProperties: false

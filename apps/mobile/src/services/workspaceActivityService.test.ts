@@ -2176,6 +2176,7 @@ function createSession(): WorkspaceAgentSession {
     endedAtUnixMs: null,
     forkedFrom: null,
     goal: null,
+    goalSyncState: null,
     id: "session-1",
     imported: false,
     kind: "root",

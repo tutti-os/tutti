@@ -2031,6 +2031,7 @@ export type {
   WorkspaceAgentSessionGoalControlResponse,
   WorkspaceAgentSessionGoalState,
   WorkspaceAgentSessionGoalStateResponse,
+  WorkspaceAgentSessionGoalSyncState,
   WorkspaceAgentSessionIsolation,
   WorkspaceAgentSessionIsolationMode,
   WorkspaceAgentSessionKind,

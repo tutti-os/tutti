@@ -444,6 +444,10 @@ func (s *SQLiteStore) GetSessionGoalState(ctx context.Context, workspaceID, agen
 	return s.agentReadStore().GetSessionGoalState(ctx, workspaceID, agentSessionID)
 }
 
+func (s *SQLiteStore) ListSessionGoalStates(ctx context.Context, workspaceID string, agentSessionIDs []string) (map[string]agentactivitybiz.SessionGoalState, error) {
+	return s.agentReadStore().ListSessionGoalStates(ctx, workspaceID, agentSessionIDs)
+}
+
 func (s *SQLiteStore) ReconcileSessionGoalObservation(ctx context.Context, input agentactivitybiz.GoalObservationReconcile) (agentactivitybiz.SessionGoalState, error) {
 	return s.agentStore().ReconcileSessionGoalObservation(ctx, input)
 }

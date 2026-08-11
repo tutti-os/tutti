@@ -2567,6 +2567,10 @@ export type WorkspaceAgentSession = {
    */
   goal: WorkspaceAgentSessionGoal | null;
   /**
+   * Narrow Host-owned evidence for the durable Goal operation. Null means no Goal state exists for this Session; clients must not infer pending execution from the visible Goal alone.
+   */
+  goalSyncState: WorkspaceAgentSessionGoalSyncState | null;
+  /**
    * Independent, session-scoped Tutti mode activation projection. Null until the first activation revision exists; capability references are audit records and never determine this state.
    */
   tuttiModeActivation: TuttiModeActivation | null;
@@ -3171,6 +3175,22 @@ export type WorkspaceAgentSessionGoalControlResponse = {
    */
   operationId?: string | null;
   state?: WorkspaceAgentSessionGoalState | null;
+};
+
+export type WorkspaceAgentSessionGoalSyncState = {
+  revision: number;
+  syncStatus:
+    | "pending"
+    | "applying"
+    | "synced"
+    | "diverged"
+    | "unknown"
+    | "failed";
+  pendingOperationId: string | null;
+  /**
+   * Host-owned proof that an accepted initial Goal is expected to begin autonomous execution and has not produced its first exact Goal Turn yet.
+   */
+  executionPending: boolean;
 };
 
 export type WorkspaceAgentSessionGoalState = {

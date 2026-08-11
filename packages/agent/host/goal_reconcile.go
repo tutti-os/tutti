@@ -96,6 +96,7 @@ func (h *Host) ObserveRuntimeGoalControlApplied(ctx context.Context, input Runti
 			},
 			OccurredAtUnixMS: occurredAt,
 			RepairEpoch:      input.RepairEpoch,
+			ExecutionPending: state.ExecutionPending || input.ExecutionPending,
 		})
 		return err
 	})

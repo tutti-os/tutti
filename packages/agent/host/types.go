@@ -905,6 +905,10 @@ type RuntimeGoalControlResult struct {
 	Goal           map[string]any
 	Evidence       map[string]any
 	ProviderPhase  string
+	// ExecutionPending is explicit provider evidence that this Goal mutation
+	// will begin autonomous execution. Host persists it until the first exact
+	// Goal Turn is canonical or the Goal reaches a terminal state.
+	ExecutionPending bool
 }
 
 // RuntimeGoalControlAppliedInput is an internal runtime-to-Host lifecycle
@@ -920,6 +924,7 @@ type RuntimeGoalControlAppliedInput struct {
 	ProviderTurnID   string
 	Observed         map[string]any
 	OccurredAtUnixMS int64
+	ExecutionPending bool
 }
 
 type RuntimeGoalReconcileResult struct {

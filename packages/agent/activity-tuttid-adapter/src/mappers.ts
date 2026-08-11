@@ -73,6 +73,15 @@ export function agentActivitySessionFromTuttidSession(
       : null,
     usage: session.usage ? cloneSerializable(session.usage) : null,
     goal: session.goal ? cloneSerializable(session.goal) : null,
+    goalSyncState: session.goalSyncState
+      ? {
+          revision: session.goalSyncState.revision,
+          syncStatus: session.goalSyncState.syncStatus,
+          pendingOperationId:
+            session.goalSyncState.pendingOperationId?.trim() || null,
+          executionPending: session.goalSyncState.executionPending === true
+        }
+      : null,
     tuttiModeActivation: session.tuttiModeActivation
       ? agentActivityTuttiModeActivationFromTuttid(session.tuttiModeActivation)
       : null,
@@ -148,6 +157,7 @@ export function assertTuttidProtocolV2SessionContract(
     "latestTurnInteractions",
     "lifecycleCapabilities",
     "forkedFrom",
+    "goalSyncState",
     "pendingInteractions",
     "railSectionKey",
     "tuttiModeActivation"
@@ -163,6 +173,11 @@ export function assertTuttidProtocolV2SessionContract(
   ) {
     throw new Error(
       "Protocol v2 contract error: workspace agent interaction collections must be arrays"
+    );
+  }
+  if (!isTuttidGoalSyncState(value.goalSyncState)) {
+    throw new Error(
+      "Protocol v2 contract error: workspace agent goalSyncState is invalid"
     );
   }
   if (
@@ -183,6 +198,30 @@ export function assertTuttidProtocolV2SessionContract(
     );
   }
 }
+
+function isTuttidGoalSyncState(value: unknown): boolean {
+  if (value === null) return true;
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const state = value as Record<string, unknown>;
+  return (
+    Number.isSafeInteger(state.revision) &&
+    (state.revision as number) >= 0 &&
+    typeof state.syncStatus === "string" &&
+    TUTTID_GOAL_SYNC_STATUSES.has(state.syncStatus) &&
+    (state.pendingOperationId === null ||
+      typeof state.pendingOperationId === "string") &&
+    typeof state.executionPending === "boolean"
+  );
+}
+
+const TUTTID_GOAL_SYNC_STATUSES = new Set([
+  "pending",
+  "applying",
+  "synced",
+  "diverged",
+  "unknown",
+  "failed"
+]);
 
 export function agentActivityTuttiModeActivationFromTuttid(
   activation: TuttiModeActivation

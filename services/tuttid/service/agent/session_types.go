@@ -294,9 +294,19 @@ type Session struct {
 	LatestTurn             *agentactivitybiz.Turn
 	LatestTurnInteractions []agentactivitybiz.Interaction
 	PendingInteractions    []agentactivitybiz.Interaction
+	GoalSyncState          *SessionGoalSyncState
 	TuttiModeActivation    *tuttimodeactivationbiz.Activation
 	LifecycleCapabilities  SessionLifecycleCapabilities
 	ForkedFrom             *SessionForkLineage
+}
+
+// SessionGoalSyncState is the narrow durable Goal-operation evidence exposed
+// with a Session read. Goal lifecycle and recovery remain Host-owned.
+type SessionGoalSyncState struct {
+	Revision           int64
+	SyncStatus         string
+	PendingOperationID string
+	ExecutionPending   bool
 }
 
 // SessionForkLineage is the durable provenance of a user-initiated root

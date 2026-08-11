@@ -12,8 +12,8 @@ func TestPublishedScenarioCatalogsHaveUniqueNames(t *testing.T) {
 		scenarios []Scenario
 		wantCount int
 	}{
-		{name: "adapter lifecycle", scenarios: Scenarios(), wantCount: 31},
-		{name: "application core", scenarios: ApplicationCoreScenarios(), wantCount: 26},
+		{name: "adapter lifecycle", scenarios: Scenarios(), wantCount: 32},
+		{name: "application core", scenarios: ApplicationCoreScenarios(), wantCount: 27},
 		{name: "guidance", scenarios: GuidanceScenarios(), wantCount: 3},
 		{name: "resume policy", scenarios: ResumePolicyScenarios(), wantCount: 5},
 		{name: "submission fence", scenarios: SubmissionFenceScenarios(), wantCount: 1},
@@ -84,6 +84,7 @@ func TestScenarioOwnershipIsExplicit(t *testing.T) {
 		"create empty session",
 		"create with initial content",
 		"create with typed initial goal",
+		"initial Goal exposes execution pending",
 		"typed initial goal waits for canonical rail initialization",
 		"failed canonical initialization aborts unpublished runtime",
 		"create with explicit rail placement",
@@ -117,6 +118,7 @@ func TestScenarioOwnershipIsExplicit(t *testing.T) {
 		"create empty session",
 		"create with initial content",
 		"create with typed initial goal",
+		"initial Goal exposes execution pending",
 		"typed initial goal waits for canonical rail initialization",
 		"failed canonical initialization aborts unpublished runtime",
 		"create with explicit rail placement",

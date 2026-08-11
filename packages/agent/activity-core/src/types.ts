@@ -115,6 +115,12 @@ export interface AgentActivitySession {
   usage: AgentActivitySessionUsage | null;
   goal: AgentActivitySessionGoal | null;
   /**
+   * Optional host-owned projection of the durable Goal synchronization state.
+   * Absence means the host cannot prove operation progress; it is not an idle,
+   * failed, or synced assertion.
+   */
+  goalSyncState?: AgentActivitySessionGoalSyncState | null;
+  /**
    * Read projection of the independent daemon-owned TuttiModeActivation.
    * The session does not own this lifecycle; activity-core normalizes it into
    * its dedicated activation slice.
@@ -672,6 +678,14 @@ export type AgentActivitySessionGoalSyncStatus =
   | "diverged"
   | "unknown"
   | "failed";
+
+export interface AgentActivitySessionGoalSyncState {
+  revision: number;
+  syncStatus: AgentActivitySessionGoalSyncStatus;
+  pendingOperationId: string | null;
+  /** Optional for mixed-version hosts; true is authoritative Host evidence. */
+  executionPending?: boolean;
+}
 
 export interface AgentActivitySessionGoalState {
   desired?: AgentActivitySessionGoal | null;

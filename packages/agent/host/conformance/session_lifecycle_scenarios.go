@@ -117,6 +117,9 @@ func runCreateWithInitialGoal(ctx context.Context, driver Driver) error {
 	if goal.Goal["objective"] != "ship the feature" {
 		return fmt.Errorf("typed initial goal = %#v", goal.Goal)
 	}
+	if goal.ExecutionPending {
+		return fmt.Errorf("completed initial Goal retained execution pending: %#v", goal)
+	}
 	replayed, replayedTurnID, err := driver.Create(ctx, "workspace-1", input)
 	if err != nil {
 		return fmt.Errorf("retry create with typed initial goal: %w", err)
@@ -137,6 +140,34 @@ func runCreateWithInitialGoal(ctx context.Context, driver Driver) error {
 			metrics.ExecCalls,
 			metrics.GoalControlCalls,
 		)
+	}
+	return nil
+}
+
+func runInitialGoalExecutionPending(ctx context.Context, driver Driver) error {
+	if err := driver.Reset(ctx, Fixture{}); err != nil {
+		return err
+	}
+	ref := agenthost.SessionRef{
+		WorkspaceID: "workspace-1", AgentSessionID: "session-initial-goal-execution-pending",
+	}
+	if _, turnID, err := driver.Create(ctx, ref.WorkspaceID, agenthost.CreateSessionInput{
+		AgentSessionID: ref.AgentSessionID, AgentTargetID: "target-1", Provider: "codex",
+		ClientSubmitID: "create-goal-execution-pending-1",
+		InitialGoalControl: &agenthost.TypedGoalControl{
+			Action: "set", Objective: "start autonomous execution",
+		},
+	}); err != nil {
+		return fmt.Errorf("create initial Goal execution: %w", err)
+	} else if turnID != "" {
+		return fmt.Errorf("initial Goal manufactured turn %q", turnID)
+	}
+	goal, err := driver.GetGoalState(ctx, ref)
+	if err != nil {
+		return fmt.Errorf("read initial Goal execution state: %w", err)
+	}
+	if goal.SyncStatus != storesqlite.GoalSyncStatusSynced || !goal.ExecutionPending {
+		return fmt.Errorf("initial Goal execution state=%#v", goal)
 	}
 	return nil
 }

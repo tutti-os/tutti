@@ -166,6 +166,7 @@ func (c *Controller) observeGoalControlLifecycle(
 			ProviderTurnID:   stringFromPayload(metadata, "providerTurnId"),
 			Observed:         payloadObject(metadata["goal"]),
 			OccurredAtUnixMS: event.OccurredAtUnixMS,
+			ExecutionPending: payloadBoolValue(metadata, "executionPending"),
 		}
 		if err := observer.ObserveGoalControlApplied(ctx, observation); err != nil {
 			slog.Warn(

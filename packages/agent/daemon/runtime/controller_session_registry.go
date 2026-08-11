@@ -654,6 +654,23 @@ func (c *Controller) applySessionEventsByAgentSessionID(agentSessionID string, e
 	if publicationPending {
 		return
 	}
+	// Session-scoped adapter callbacks can carry child terminals after the
+	// owning root Turn emitter has detached. They still cross the same durable
+	// commit-before-publish barrier as terminals emitted by an active Turn.
+	if eventsRequireDurablePublish(events) {
+		if err := c.reportSessionBeforePublish(context.Background(), session, events); err != nil {
+			slog.Error(
+				"agent session sink terminal activity report failed before publish",
+				"event", "agent_session.activity_report.session_sink_terminal_barrier_failed",
+				"room_id", session.RoomID,
+				"agent_session_id", session.AgentSessionID,
+				"error", err,
+			)
+			return
+		}
+		c.publish(session, events)
+		return
+	}
 	c.publish(session, events)
 	c.enqueueSessionReport(context.Background(), session, events)
 }

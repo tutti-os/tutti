@@ -360,6 +360,17 @@ title from the display prompt, or from a synthesized `/goal` command when the
 display prompt is absent. Non-empty initial content and typed initial Goal are
 mutually exclusive, and product adapters must not reconstruct the command from
 display text.
+The public Session contract optionally carries `goalSyncState` as a narrow
+Host-owned observation: revision, sync status, pending operation identity, and
+optional `executionPending` proof. It does not move Goal saga ownership into
+Activity Core. Missing state means the host cannot prove progress; explicit
+`null` clears prior evidence, and Session merge preserves prior evidence when a
+compatible partial projection merely omits the field. AgentGUI may use an
+identified pending/applying/unknown operation for initial-Goal loading
+continuity without inventing a Turn or a UI timeout. `synced` alone is terminal
+mutation evidence, not proof that a future Turn will exist; only explicit
+Host-owned `executionPending=true` bridges convergence to the first exact Goal
+Turn. Terminal/non-active Goal evidence and that Turn clear the proof.
 Desktop AgentGUI and Mobile call `stopSession` instead of constructing
 `session/stopRequested` protocol fields. The same method stops an active Turn
 or records a bounded request that cancels the first Turn produced by an
@@ -1287,12 +1298,31 @@ metadata, image base64, and unknown provider-only result keys are not retained.
 Provider adapters may continue accepting those wire shapes, but shared
 business code consumes only the explicit canonical fields. Each canonical
 `output` or `error` `text`, `stdout`, and `stderr` field, including nested tool
-steps, is bounded to 1 MiB total by retaining a valid UTF-8 prefix and the fixed
-`[Output truncated]` marker. Agent
+steps, first receives a 1 MiB per-field bound by retaining a valid UTF-8 prefix
+and the fixed `[Output truncated]` marker. Durable tool-call payloads then fit
+those formal output streams into a 768 KiB aggregate JSON budget, leaving
+deterministic headroom below the 1 MiB replication request limit for mutation
+identity, scope, and batch framing. Inputs and structured results are never
+discarded merely to satisfy that output budget.
+
+A terminal command snapshot omits `text` only when it is exactly
+reconstructible as `strings.TrimSpace(stdout)` or
+`strings.TrimSpace(stderr)`; the raw stream remains canonical. The Reporter
+recognizes that alias before per-field truncation and emits a tombstone so a
+terminal snapshot also clears any `text` retained from its running snapshot.
+Nested steps use their own lifecycle status, even beneath a running parent.
+Explicit non-command tool identity wins over command-shaped input, so MCP and
+other non-command tools retain `text` as their provider-neutral display
+contract. Running command output retains `text` for ordered live deltas. Agent
 reference/session output uses the same canonical projection rather than
-depending on a retained raw tool result. This is a forward-write rule: existing
-rows are not rewritten, their removed fields are ignored, and normal retention
-eventually ages them out.
+depending on a retained raw tool result.
+
+Canonical compaction is normally a forward-write rule. One bounded migration
+also repairs retained terminal command rows, including deleted/tombstoned rows
+that remain replication inputs, whose payload reaches the 768 KiB safe budget.
+It removes only reconstructible aliases and refits formal output streams without
+changing message versions or timestamps. Rows whose structured data cannot fit
+without semantic loss remain unchanged for explicit handling.
 
 The Go live-protocol adapter owns the complete fast-lane envelope on both sides
 of a device link: schema validation, recipient identity projection,

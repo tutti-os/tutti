@@ -91,6 +91,7 @@ type GoalControlAppliedObservation struct {
 	ProviderTurnID   string
 	Observed         map[string]any
 	OccurredAtUnixMS int64
+	ExecutionPending bool
 }
 
 type GoalControlLifecycleObserver interface {

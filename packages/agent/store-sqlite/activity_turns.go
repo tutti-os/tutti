@@ -202,6 +202,22 @@ WHERE workspace_id = ? AND agent_session_id = ? AND deleted_at_unix_ms = 0
 			return Turn{}, false, fmt.Errorf("set workspace agent session active turn: %w", err)
 		}
 	}
+	if acceptedGoalExecutionTurn(merged) {
+		if _, err := tx.ExecContext(ctx, `
+UPDATE workspace_agent_session_goals
+SET execution_pending = 0, updated_at_unix_ms = MAX(updated_at_unix_ms, ?)
+WHERE workspace_id = ? AND agent_session_id = ? AND revision = ? AND execution_pending = 1
+  AND EXISTS (
+    SELECT 1 FROM workspace_agent_goal_control_operations operation
+    WHERE operation.workspace_id = workspace_agent_session_goals.workspace_id
+      AND operation.agent_session_id = workspace_agent_session_goals.agent_session_id
+      AND operation.operation_id = ? AND operation.goal_revision = ? AND operation.repair_epoch = ?
+  )
+`, occurred, workspaceID, agentSessionID, merged.SourceGoalRevision,
+			merged.SourceGoalOperationID, merged.SourceGoalRevision, merged.SourceGoalRepairEpoch); err != nil {
+			return Turn{}, false, fmt.Errorf("clear Goal execution-pending state: %w", err)
+		}
+	}
 
 	stored, ok, err := getAgentTurnTx(ctx, tx, workspaceID, agentSessionID, turnID)
 	if err != nil {
@@ -211,6 +227,14 @@ WHERE workspace_id = ? AND agent_session_id = ? AND deleted_at_unix_ms = 0
 		return Turn{}, false, fmt.Errorf("read recorded workspace agent turn: %w", sql.ErrNoRows)
 	}
 	return stored, true, nil
+}
+
+func acceptedGoalExecutionTurn(turn Turn) bool {
+	if turn.Origin != TurnOriginGoalArm && turn.Origin != TurnOriginGoalContinuation {
+		return false
+	}
+	return strings.TrimSpace(turn.SourceGoalOperationID) != "" &&
+		turn.SourceGoalRevision > 0 && turn.SourceGoalRepairEpoch >= 0
 }
 
 // validateLiveTurnSlotTx enforces the session-to-live-turn cardinality at the

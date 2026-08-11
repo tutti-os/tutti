@@ -24,6 +24,10 @@ type TurnStore interface {
 	ListPendingInteractionsBySession(context.Context, string, []string) (map[string][]agentactivitybiz.Interaction, error)
 }
 
+type sessionGoalStateBatchReader interface {
+	ListSessionGoalStates(context.Context, string, []string) (map[string]agentactivitybiz.SessionGoalState, error)
+}
+
 // TurnCancelObserver is notified after CancelTurn actually canceled a live
 // turn. The Issue manager uses it to cascade a user's stop on a planning
 // conversation to every running task run that conversation orchestrates.
@@ -203,10 +207,10 @@ func (s *Service) persistedActiveTurnID(ctx context.Context, workspaceID string,
 }
 
 // projectSessionForResponse is the canonical boundary for every public service
-// response that contains one Session. Keep the persisted Turn projection and
-// the Tutti-owned, session-associated activation read projection here so
-// mutations cannot accidentally return a partial Session that clears newer
-// client state.
+// response that contains one Session. Keep the persisted Turn projection, the
+// Host-owned Goal synchronization evidence, and the Tutti-owned,
+// session-associated activation read projection here so mutations cannot
+// accidentally return a partial Session that clears newer client state.
 func (s *Service) projectSessionForResponse(ctx context.Context, workspaceID string, session Session) (Session, error) {
 	return s.withProtocolV2TurnState(ctx, strings.TrimSpace(workspaceID), session)
 }
@@ -222,7 +226,8 @@ func (s *Service) projectSessionsForResponse(ctx context.Context, workspaceID st
 // persisted v2 turn state: activeTurnId pointer, embedded active/latest turns,
 // and pending interactions. latestTurn remains an independent turn entity
 // projection; it is never persisted on the session row. The Tutti-owned,
-// session-associated TuttiModeActivation read projection is attached last.
+// session-associated TuttiModeActivation and Host-owned Goal synchronization
+// read projections are attached last.
 func (s *Service) withProtocolV2TurnState(ctx context.Context, workspaceID string, session Session) (Session, error) {
 	return s.withProtocolV2TurnStateProjectionOptions(
 		ctx,
@@ -247,7 +252,11 @@ func (s *Service) withProtocolV2TurnStateProjectionOptions(
 		if err != nil {
 			return Session{}, err
 		}
-		return s.withTuttiModeActivation(ctx, workspaceID, session)
+		session, err = s.withTuttiModeActivation(ctx, workspaceID, session)
+		if err != nil {
+			return Session{}, err
+		}
+		return s.withSessionGoalSyncState(ctx, workspaceID, session)
 	}
 	latestTurn, ok, err := s.TurnStore.GetLatestTurn(ctx, workspaceID, session.ID)
 	if err != nil {
@@ -284,7 +293,11 @@ func (s *Service) withProtocolV2TurnStateProjectionOptions(
 	if err != nil {
 		return Session{}, err
 	}
-	return s.withTuttiModeActivation(ctx, workspaceID, session)
+	session, err = s.withTuttiModeActivation(ctx, workspaceID, session)
+	if err != nil {
+		return Session{}, err
+	}
+	return s.withSessionGoalSyncState(ctx, workspaceID, session)
 }
 
 func (s *Service) withProtocolV2TurnStateProjection(ctx context.Context, workspaceID string, session Session, latestTurn *agentactivitybiz.Turn, latestTurnInteractions []agentactivitybiz.Interaction) (Session, error) {
@@ -324,7 +337,11 @@ func (s *Service) withProtocolV2TurnStates(ctx context.Context, workspaceID stri
 		return sessions, nil
 	}
 	if s == nil || s.TurnStore == nil {
-		return s.withTuttiModeActivations(ctx, workspaceID, sessions)
+		result, err := s.withTuttiModeActivations(ctx, workspaceID, sessions)
+		if err != nil {
+			return nil, err
+		}
+		return s.withSessionGoalSyncStates(ctx, workspaceID, result)
 	}
 	ids := make([]string, 0, len(sessions))
 	activeTurnIDBySessionID := make(map[string]string)
@@ -370,7 +387,98 @@ func (s *Service) withProtocolV2TurnStates(ctx context.Context, workspaceID stri
 		}
 		result[i] = session
 	}
-	return s.withTuttiModeActivations(ctx, workspaceID, result)
+	result, err = s.withTuttiModeActivations(ctx, workspaceID, result)
+	if err != nil {
+		return nil, err
+	}
+	return s.withSessionGoalSyncStates(ctx, workspaceID, result)
+}
+
+func (s *Service) withSessionGoalSyncState(
+	ctx context.Context,
+	workspaceID string,
+	session Session,
+) (Session, error) {
+	session.GoalSyncState = nil
+	if s == nil || s.GoalStateStore == nil {
+		return session, nil
+	}
+	state, found, err := s.GoalStateStore.GetSessionGoalState(
+		ctx,
+		strings.TrimSpace(workspaceID),
+		strings.TrimSpace(session.ID),
+	)
+	if err != nil {
+		return Session{}, err
+	}
+	if found {
+		session.GoalSyncState = projectedSessionGoalSyncState(state)
+	}
+	return session, nil
+}
+
+func (s *Service) withSessionGoalSyncStates(
+	ctx context.Context,
+	workspaceID string,
+	sessions []Session,
+) ([]Session, error) {
+	if len(sessions) == 0 {
+		return sessions, nil
+	}
+	result := make([]Session, len(sessions))
+	for i, session := range sessions {
+		session.GoalSyncState = nil
+		result[i] = session
+	}
+	if s == nil || s.GoalStateStore == nil {
+		return result, nil
+	}
+	ids := make([]string, 0, len(sessions))
+	for _, session := range result {
+		ids = append(ids, strings.TrimSpace(session.ID))
+	}
+	states := make(map[string]agentactivitybiz.SessionGoalState)
+	if reader, ok := s.GoalStateStore.(sessionGoalStateBatchReader); ok {
+		var err error
+		states, err = reader.ListSessionGoalStates(
+			ctx,
+			strings.TrimSpace(workspaceID),
+			ids,
+		)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		for _, id := range ids {
+			state, found, err := s.GoalStateStore.GetSessionGoalState(
+				ctx,
+				strings.TrimSpace(workspaceID),
+				id,
+			)
+			if err != nil {
+				return nil, err
+			}
+			if found {
+				states[id] = state
+			}
+		}
+	}
+	for i, session := range result {
+		if state, ok := states[strings.TrimSpace(session.ID)]; ok {
+			session.GoalSyncState = projectedSessionGoalSyncState(state)
+		}
+		result[i] = session
+	}
+	return result, nil
+}
+
+func projectedSessionGoalSyncState(state agentactivitybiz.SessionGoalState) *SessionGoalSyncState {
+	return &SessionGoalSyncState{
+		Revision:           state.Revision,
+		SyncStatus:         strings.TrimSpace(state.SyncStatus),
+		PendingOperationID: strings.TrimSpace(state.PendingOperationID),
+		ExecutionPending:   state.ExecutionPending,
+	}
 }
 
 func (s *Service) withSessionForkLineage(

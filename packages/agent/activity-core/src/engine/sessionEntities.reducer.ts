@@ -699,17 +699,25 @@ function preserveProjectedSessionState(
   current: CanonicalAgentSession | undefined,
   incoming: CanonicalAgentSession
 ): CanonicalAgentSession {
+  const goalSyncState =
+    current?.goalSyncState !== undefined &&
+    !Object.prototype.hasOwnProperty.call(incoming, "goalSyncState")
+      ? current.goalSyncState
+      : undefined;
   if (
     current?.lifecycleCapabilitiesProjected === true &&
     incoming.lifecycleCapabilitiesProjected !== true
   ) {
     return {
       ...incoming,
+      ...(goalSyncState === undefined ? {} : { goalSyncState }),
       lifecycleCapabilities: current.lifecycleCapabilities,
       lifecycleCapabilitiesProjected: true
     };
   }
-  return incoming;
+  return goalSyncState === undefined
+    ? incoming
+    : { ...incoming, goalSyncState };
 }
 
 function sessionVersion(session: CanonicalAgentSession): number {

@@ -113,6 +113,7 @@ type GoalObservation struct {
 	Revision           int64
 	PendingOperationID string
 	SyncStatus         string
+	ExecutionPending   bool
 }
 
 type CancelObservation struct {

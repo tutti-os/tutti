@@ -52,11 +52,15 @@ type SessionGoalState struct {
 	Tombstoned          bool
 	SyncStatus          string
 	PendingOperationID  string
-	LastEvidence        map[string]any
-	LastError           string
-	ObservedAtUnixMS    int64
-	CreatedAtUnixMS     int64
-	UpdatedAtUnixMS     int64
+	// ExecutionPending is Host-owned proof that the accepted Goal command is
+	// expected to begin autonomous execution but no exact Goal Turn has been
+	// persisted yet. It is cleared by the first provenance-matched Turn.
+	ExecutionPending bool
+	LastEvidence     map[string]any
+	LastError        string
+	ObservedAtUnixMS int64
+	CreatedAtUnixMS  int64
+	UpdatedAtUnixMS  int64
 }
 
 type GoalControlOperation struct {
@@ -126,6 +130,7 @@ type GoalControlOperationComplete struct {
 	Evidence         map[string]any
 	LastError        string
 	Succeeded        bool
+	ExecutionPending bool
 	OccurredAtUnixMS int64
 	RepairEpoch      int64
 }
@@ -136,6 +141,7 @@ type GoalControlOperationAcknowledge struct {
 	Evidence         map[string]any
 	OccurredAtUnixMS int64
 	RepairEpoch      int64
+	ExecutionPending bool
 }
 
 type GoalObservationReconcile struct {

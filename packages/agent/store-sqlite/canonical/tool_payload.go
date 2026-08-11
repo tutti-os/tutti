@@ -192,6 +192,12 @@ func CompactToolCallPayload(status string, payload map[string]any) map[string]an
 		delete(result, "fileChanges")
 	}
 
+	// Compare aliases before per-field truncation can make equal source
+	// strings diverge at the byte boundary.
+	if isTerminalToolStatus(status) && isTerminalCommandPayload(result, input) {
+		compactTerminalCommandBodyAlias(output)
+		compactTerminalCommandBodyAlias(toolError)
+	}
 	if output != nil {
 		delete(output, "content")
 		output = TruncateToolOutputBody(selectToolKeys(output, canonicalToolBodyKeys))
@@ -223,7 +229,10 @@ func CompactToolCallPayload(status string, payload map[string]any) map[string]an
 		result["steps"] = steps
 	}
 
-	return selectToolKeys(result, canonicalToolPayloadKeys)
+	result = selectToolKeys(result, canonicalToolPayloadKeys)
+	CompactTerminalCommandOutputAliases(status, result)
+	FitToolCallPayloadOutputBudget(result, ToolCallPayloadMaxBytes)
+	return result
 }
 
 func compactToolSteps(value any) []any {
@@ -289,14 +298,20 @@ func compactToolSteps(value any) []any {
 		if len(input) > 0 {
 			step["toolInput"] = input
 		}
+		if len(metadata) > 0 {
+			step["metadata"] = metadata
+		}
+		if isTerminalToolStatus(status) && isTerminalCommandPayload(step, input) {
+			compactTerminalCommandBodyAlias(output)
+			compactTerminalCommandBodyAlias(toolError)
+		}
+		output = TruncateToolOutputBody(output)
+		toolError = TruncateToolOutputBody(toolError)
 		if len(output) > 0 {
 			step["toolResult"] = output
 		}
 		if len(toolError) > 0 && !isCompletedToolStatus(status) {
 			step["toolError"] = toolError
-		}
-		if len(metadata) > 0 {
-			step["metadata"] = metadata
 		}
 		if fileChanges := normalizeToolFileChanges(firstToolValue(rawStep["fileChanges"], payload["fileChanges"])); fileChanges != nil {
 			step["fileChanges"] = fileChanges
@@ -396,7 +411,7 @@ func compactToolBody(value any) map[string]any {
 	delete(body, "content")
 	delete(body, "metadata")
 	delete(body, "toolResponse")
-	return TruncateToolOutputBody(selectToolKeys(body, canonicalToolBodyKeys))
+	return selectToolKeys(body, canonicalToolBodyKeys)
 }
 
 func compactToolMetadata(value any) map[string]any {

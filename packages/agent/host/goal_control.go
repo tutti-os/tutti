@@ -449,6 +449,7 @@ func (h *Host) goalControlSerialized(
 				_, state, _, err := h.goals.AcknowledgeGoalControlOperation(actorCtx, storesqlite.GoalControlOperationAcknowledge{
 					WorkspaceID: workspaceID, OperationID: operationID,
 					Evidence: clonePayload(controlResult.Evidence), OccurredAtUnixMS: h.goalOperationNow().UnixMilli(),
+					ExecutionPending: controlResult.ExecutionPending,
 				})
 				persistedState = &state
 				return err
@@ -457,6 +458,7 @@ func (h *Host) goalControlSerialized(
 				WorkspaceID: workspaceID, OperationID: operationID, Succeeded: true,
 				Observed: clonePayload(controlResult.Goal), Evidence: clonePayload(controlResult.Evidence),
 				OccurredAtUnixMS: h.goalOperationNow().UnixMilli(),
+				ExecutionPending: controlResult.ExecutionPending,
 			})
 			persistedState = &state
 			return err

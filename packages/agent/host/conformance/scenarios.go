@@ -4,6 +4,7 @@ var (
 	createEmptySessionScenario          = Scenario{Name: "create empty session", run: runCreateEmptySession}
 	createWithInitialContentScenario    = Scenario{Name: "create with initial content", run: runCreateWithInitialContent}
 	createWithInitialGoalScenario       = Scenario{Name: "create with typed initial goal", run: runCreateWithInitialGoal}
+	initialGoalExecutionPendingScenario = Scenario{Name: "initial Goal exposes execution pending", run: runInitialGoalExecutionPending}
 	typedInitialGoalRailBarrierScenario = Scenario{
 		Name: "typed initial goal waits for canonical rail initialization",
 		run:  runTypedInitialGoalWaitsForCanonicalRailInitialization,
@@ -64,6 +65,7 @@ func Scenarios() []Scenario {
 		createEmptySessionScenario,
 		createWithInitialContentScenario,
 		createWithInitialGoalScenario,
+		initialGoalExecutionPendingScenario,
 		typedInitialGoalRailBarrierScenario,
 		failedCanonicalInitializationScenario,
 		createWithRailPlacementScenario,
@@ -214,6 +216,7 @@ func ApplicationCoreScenarios() []Scenario {
 		createEmptySessionScenario,
 		createWithInitialContentScenario,
 		createWithInitialGoalScenario,
+		initialGoalExecutionPendingScenario,
 		typedInitialGoalRailBarrierScenario,
 		failedCanonicalInitializationScenario,
 		createWithRailPlacementScenario,

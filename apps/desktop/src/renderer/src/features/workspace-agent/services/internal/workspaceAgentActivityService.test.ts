@@ -202,7 +202,7 @@ test("WorkspaceAgentActivityService.sendInput preserves the authoritative ready 
   assert.equal(snapshotSession?.activeTurn, null);
 });
 
-test("Desktop Engine applies send results without a host-side Session dispatch", async () => {
+test("Desktop Engine applies send results without a host-side Session dispatch", async (t) => {
   const readySession = workspaceAgentSession({ status: "ready" });
   const observedIntentTypes: string[] = [];
   const service = new WorkspaceAgentActivityService({
@@ -222,6 +222,7 @@ test("Desktop Engine applies send results without a host-side Session dispatch",
     runtimeApi: { logTerminalDiagnostic: async () => {} },
     sessionReplayEnabled: true
   });
+  t.after(() => service.dispose());
   await service.load("ws-1");
   service.addSessionEngineActivityObserver("ws-1", {
     observeCommand() {},
@@ -352,7 +353,7 @@ test("WorkspaceAgentActivityService.activateSession creates target-backed sessio
   });
 });
 
-test("Desktop Engine applies activation results through its authoritative projection", async () => {
+test("Desktop Engine applies activation results through its authoritative projection", async (t) => {
   const observedIntentTypes: string[] = [];
   const service = new WorkspaceAgentActivityService({
     tuttidClient: {
@@ -362,6 +363,7 @@ test("Desktop Engine applies activation results through its authoritative projec
     runtimeApi: { logTerminalDiagnostic: async () => {} },
     sessionReplayEnabled: true
   });
+  t.after(() => service.dispose());
   service.addSessionEngineActivityObserver("ws-1", {
     observeCommand() {},
     observeIntent(intent) {
@@ -521,7 +523,7 @@ test("WorkspaceAgentActivityService does not report a cached availability snapsh
   );
 });
 
-test("WorkspaceAgentActivityService confirms engine activation from the realtime session upsert", async () => {
+test("WorkspaceAgentActivityService confirms engine activation from the realtime session upsert", async (t) => {
   const createRequests: unknown[] = [];
   const service = new WorkspaceAgentActivityService({
     tuttidClient: {
@@ -543,6 +545,7 @@ test("WorkspaceAgentActivityService confirms engine activation from the realtime
     } as unknown as TuttidClient,
     runtimeApi: { logTerminalDiagnostic: async () => {} }
   });
+  t.after(() => service.dispose());
   const engine = service.getSessionEngine("ws-1");
   const requestedAtUnixMs = Date.now();
   engine.dispatch({
@@ -3933,6 +3936,7 @@ function workspaceAgentSession(overrides: {
     endedAtUnixMs: null,
     forkedFrom: null,
     goal: null,
+    goalSyncState: null,
     id: "session-1",
     imported: false,
     kind: "root",

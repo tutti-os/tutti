@@ -676,6 +676,45 @@ test("typed activation rejects malformed nested Session entities", () => {
   assert.deepEqual(result.followUpIntents, undefined);
 });
 
+test("typed activation rejects malformed Goal synchronization evidence", () => {
+  for (const goalSyncState of [
+    { pendingOperationId: 42, revision: 1, syncStatus: "applying" },
+    { pendingOperationId: null, revision: -1, syncStatus: "applying" },
+    { pendingOperationId: null, revision: 1, syncStatus: "future" },
+    { revision: 1, syncStatus: "applying" }
+  ]) {
+    const state = reduce(
+      createInitialPendingIntentsState(),
+      activation()
+    ).state;
+    const result = reduce(state, {
+      commandId: "activate:activation-1",
+      commandType: "session/activate",
+      correlationId: "activation-1",
+      outcome: "succeeded",
+      resultContract: "activation-v1",
+      type: "engine/commandResult",
+      value: {
+        activation: { mode: "new", status: "attached" },
+        session: {
+          ...session("session-new"),
+          goalSyncState
+        }
+      }
+    });
+
+    assert.equal(
+      result.state.activationsByRequestId["activation-1"]?.errorCode,
+      "invalid_command_result"
+    );
+    assert.equal(
+      result.state.activationsByRequestId["activation-1"]?.status,
+      "uncertain"
+    );
+    assert.deepEqual(result.followUpIntents, undefined);
+  }
+});
+
 test("confirmed activation may hydrate detail but cannot be failed by a late result", () => {
   let state = reduce(
     createInitialPendingIntentsState(),

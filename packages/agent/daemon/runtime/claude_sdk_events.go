@@ -215,12 +215,13 @@ func (a *ClaudeCodeSDKAdapter) sidecarTurnEvents(adapterSession *claudeSDKAdapte
 	case "goal_command_started":
 		a.markClaudeSDKPendingGoalCommandStarted(adapterSession, event)
 		metadata := map[string]any{
-			"operationId":    payloadString(event.Payload, "operationId"),
-			"revision":       payloadInt64(event.Payload, "revision"),
-			"repairEpoch":    payloadInt64(event.Payload, "repairEpoch"),
-			"action":         payloadString(event.Payload, "action"),
-			"providerTurnId": firstNonEmptyString(payloadString(event.Payload, "providerTurnId"), turnID),
-			"goal":           a.localGoal(adapterSession),
+			"operationId":      payloadString(event.Payload, "operationId"),
+			"revision":         payloadInt64(event.Payload, "revision"),
+			"repairEpoch":      payloadInt64(event.Payload, "repairEpoch"),
+			"action":           payloadString(event.Payload, "action"),
+			"providerTurnId":   firstNonEmptyString(payloadString(event.Payload, "providerTurnId"), turnID),
+			"goal":             a.localGoal(adapterSession),
+			"executionPending": payloadString(event.Payload, "action") == string(GoalControlSet),
 		}
 		events := make([]activityshared.Event, 0, 2)
 		if ctx, ok := activityEventContext(session, newID(), ""); ok {

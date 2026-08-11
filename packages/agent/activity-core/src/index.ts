@@ -417,6 +417,7 @@ export type {
   AgentActivitySessionCapabilities,
   AgentActivitySessionGoal,
   AgentActivitySessionGoalState,
+  AgentActivitySessionGoalSyncState,
   AgentActivitySessionGoalSyncStatus,
   AgentActivitySessionPermissionConfig,
   AgentActivitySessionUsage,

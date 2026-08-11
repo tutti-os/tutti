@@ -460,6 +460,9 @@ type GoalAdapterResult struct {
 	// ProviderPhase separates transport acceptance from evidence that the
 	// provider actually consumed/applied the command.
 	ProviderPhase string
+	// ExecutionPending is set only when the provider accepted a command that
+	// is expected to start autonomous Goal execution.
+	ExecutionPending bool
 }
 
 // GoalApplyInput carries the durable control identity allocated above the

@@ -196,8 +196,9 @@ func (a *ClaudeCodeSDKAdapter) ApplyGoal(
 	}
 	return GoalAdapterResult{
 		Events: events, Observation: a.localGoal(adapterSession),
-		Evidence:      map[string]any{"source": "claude_command_ack", "confidence": "accepted_only", "phase": "accepted", "repairEpoch": input.RepairEpoch},
-		ProviderPhase: "accepted",
+		Evidence:         map[string]any{"source": "claude_command_ack", "confidence": "accepted_only", "phase": "accepted", "repairEpoch": input.RepairEpoch},
+		ProviderPhase:    "accepted",
+		ExecutionPending: action == GoalControlSet,
 	}, nil
 }
 

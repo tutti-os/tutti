@@ -3,6 +3,7 @@ package agentruntime
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"log/slog"
 	"reflect"
@@ -906,14 +907,14 @@ func TestReporterProjectsCanonicalFieldsFromStartedAndCompletedCallsToMessageUpd
 	if got := updates[1].Payload["output"].(map[string]any)["stdout"]; got != "README.md\n" {
 		t.Fatalf("payload = %#v, want completed output preserved", updates[1].Payload)
 	}
-	if got := updates[1].Payload["output"].(map[string]any)["text"]; got != "README.md" {
-		t.Fatalf("payload = %#v, want canonical output text", updates[1].Payload)
+	if got := updates[1].Payload["output"].(map[string]any)["text"]; got != nil {
+		t.Fatalf("payload = %#v, want terminal output text tombstone", updates[1].Payload)
 	}
 	if got := updates[1].Payload["error"].(map[string]any)["stderr"]; got != "warning: truncated\n" {
 		t.Fatalf("payload = %#v, want completed error preserved", updates[1].Payload)
 	}
-	if got := updates[1].Payload["error"].(map[string]any)["text"]; got != "warning: truncated" {
-		t.Fatalf("payload = %#v, want canonical error text", updates[1].Payload)
+	if got := updates[1].Payload["error"].(map[string]any)["text"]; got != nil {
+		t.Fatalf("payload = %#v, want terminal error text tombstone", updates[1].Payload)
 	}
 	if got := updates[1].Status; got != "completed" {
 		t.Fatalf("completed update = %#v, want completed status preserved", updates[1])
@@ -956,8 +957,129 @@ func TestReporterProjectsStandardACPToolLifecycleToStableMessageUpdates(t *testi
 	if got := updates[1].Payload["output"].(map[string]any)["stdout"]; got != "/workspace/app\n" {
 		t.Fatalf("payload = %#v, want preserved output", updates[1].Payload)
 	}
-	if got := updates[1].Payload["output"].(map[string]any)["text"]; got != "/workspace/app" {
-		t.Fatalf("payload = %#v, want canonical output text", updates[1].Payload)
+	if got := updates[1].Payload["output"].(map[string]any)["text"]; got != nil {
+		t.Fatalf("payload = %#v, want terminal output text tombstone", updates[1].Payload)
+	}
+}
+
+func TestReporterCompactsTerminalCommandAliasBeforeTruncationAndMerge(
+	t *testing.T,
+) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		stdout string
+	}{
+		{
+			name: "leading whitespace shifts independent truncation windows",
+			stdout: " " + strings.Repeat(
+				"x",
+				canonical.ToolOutputTextMaxBytes+64,
+			) + "\n",
+		},
+		{
+			name: "trailing whitespace pushes raw stream over field limit",
+			stdout: strings.Repeat(
+				"y",
+				canonical.ToolOutputTextMaxBytes,
+			) + strings.Repeat("\n", 64),
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			session := reportTestSession()
+			report := reportActivityInput(session, []activityshared.Event{
+				newTurnActivityEventWithID(
+					session,
+					"terminal-alias",
+					EventCallCompleted,
+					"turn-terminal-alias",
+					messageStreamStateCompleted,
+					"",
+					"Run command",
+					map[string]any{
+						"callId":   "call-terminal-alias",
+						"name":     "Run command",
+						"toolName": "Bash",
+						"input": map[string]any{
+							"command": "print output",
+						},
+						"output": map[string]any{
+							"stdout": test.stdout,
+						},
+					},
+				),
+			})
+			if len(report.MessageUpdates) != 1 {
+				t.Fatalf("message updates = %#v, want one", report.MessageUpdates)
+			}
+			update := report.MessageUpdates[0]
+			output := update.Payload["output"].(map[string]any)
+			if output["text"] != nil {
+				t.Fatalf("reporter output retained alias: %#v", output)
+			}
+			stdout := output["stdout"].(string)
+			if len(stdout) > canonical.ToolOutputTextMaxBytes ||
+				!strings.HasSuffix(stdout, canonical.ToolOutputTruncationMarker) {
+				t.Fatalf("reporter stdout was not bounded: %d bytes", len(stdout))
+			}
+
+			existing := canonical.MessageSnapshot{
+				AgentSessionID: "session-1",
+				MessageID:      update.MessageID,
+				Version:        1,
+				TurnID:         update.TurnID,
+				Role:           update.Role,
+				Kind:           update.Kind,
+				Status:         "running",
+				Payload: map[string]any{
+					"toolName": "Bash",
+					"input":    map[string]any{"command": "print output"},
+					"output": map[string]any{
+						"text": canonical.TruncateToolOutputText(
+							strings.TrimSpace(test.stdout),
+						),
+					},
+				},
+				OccurredAtUnixMS: 10,
+				StartedAtUnixMS:  10,
+				CreatedAtUnixMS:  10,
+				UpdatedAtUnixMS:  10,
+			}
+			projected, ok := canonical.ProjectMessageUpdate(
+				existing,
+				true,
+				canonical.MessageUpdate{
+					MessageID:         update.MessageID,
+					TurnID:            update.TurnID,
+					Role:              update.Role,
+					Kind:              update.Kind,
+					Status:            update.Status,
+					Payload:           update.Payload,
+					OccurredAtUnixMS:  update.OccurredAtUnixMS,
+					StartedAtUnixMS:   update.StartedAtUnixMS,
+					CompletedAtUnixMS: update.CompletedAtUnixMS,
+				},
+				2,
+				20,
+			)
+			if !ok {
+				t.Fatal("ProjectMessageUpdate() rejected terminal report")
+			}
+			projectedOutput := projected.Payload["output"].(map[string]any)
+			if _, exists := projectedOutput["text"]; exists {
+				t.Fatalf("durable output retained running text alias: %#v", projectedOutput)
+			}
+			encoded, err := json.Marshal(projected.Payload)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(encoded) > canonical.ToolCallPayloadMaxBytes {
+				t.Fatalf("durable payload has %d bytes", len(encoded))
+			}
+		})
 	}
 }
 

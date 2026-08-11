@@ -245,6 +245,109 @@ func TestProtocolV2BatchProjectionUsesFourBulkReadsWithoutPerSessionQueries(t *t
 	}
 }
 
+func TestProtocolV2ProjectionIncludesDurableGoalSyncState(t *testing.T) {
+	t.Parallel()
+	store := &goalStateProjectionStore{states: map[string]agentactivitybiz.SessionGoalState{
+		"session-1": {
+			AgentSessionID:     "session-1",
+			PendingOperationID: " goal-operation-1 ",
+			Revision:           4,
+			SyncStatus:         agentactivitybiz.GoalSyncStatusApplying,
+			ExecutionPending:   true,
+			WorkspaceID:        "workspace-1",
+		},
+	}}
+	service := &Service{GoalStateStore: store}
+
+	projected, err := service.withProtocolV2TurnState(
+		context.Background(),
+		"workspace-1",
+		Session{ID: "session-1"},
+	)
+	if err != nil {
+		t.Fatalf("withProtocolV2TurnState() error = %v", err)
+	}
+	if projected.GoalSyncState == nil ||
+		projected.GoalSyncState.Revision != 4 ||
+		projected.GoalSyncState.SyncStatus != agentactivitybiz.GoalSyncStatusApplying ||
+		projected.GoalSyncState.PendingOperationID != "goal-operation-1" ||
+		!projected.GoalSyncState.ExecutionPending {
+		t.Fatalf("GoalSyncState = %#v", projected.GoalSyncState)
+	}
+}
+
+func TestProtocolV2BatchProjectionReadsGoalSyncStatesOnce(t *testing.T) {
+	t.Parallel()
+	listCalls, getCalls := 0, 0
+	store := &goalStateProjectionStore{
+		getCalls:  &getCalls,
+		listCalls: &listCalls,
+		states: map[string]agentactivitybiz.SessionGoalState{
+			"session-1": {
+				AgentSessionID:     "session-1",
+				PendingOperationID: "goal-operation-1",
+				Revision:           2,
+				SyncStatus:         agentactivitybiz.GoalSyncStatusPending,
+				WorkspaceID:        "workspace-1",
+			},
+		},
+	}
+	service := &Service{GoalStateStore: store}
+
+	projected, err := service.withProtocolV2TurnStates(
+		context.Background(),
+		"workspace-1",
+		[]Session{{ID: "session-1"}, {ID: "session-2"}},
+	)
+	if err != nil {
+		t.Fatalf("withProtocolV2TurnStates() error = %v", err)
+	}
+	if listCalls != 1 || getCalls != 0 {
+		t.Fatalf("Goal state reads list=%d get=%d, want 1/0", listCalls, getCalls)
+	}
+	if projected[0].GoalSyncState == nil || projected[0].GoalSyncState.Revision != 2 {
+		t.Fatalf("first GoalSyncState = %#v", projected[0].GoalSyncState)
+	}
+	if projected[1].GoalSyncState != nil {
+		t.Fatalf("second GoalSyncState = %#v, want nil", projected[1].GoalSyncState)
+	}
+}
+
+type goalStateProjectionStore struct {
+	GoalStateStore
+	getCalls  *int
+	listCalls *int
+	states    map[string]agentactivitybiz.SessionGoalState
+}
+
+func (s *goalStateProjectionStore) GetSessionGoalState(
+	_ context.Context,
+	_, agentSessionID string,
+) (agentactivitybiz.SessionGoalState, bool, error) {
+	if s.getCalls != nil {
+		*s.getCalls = *s.getCalls + 1
+	}
+	state, ok := s.states[agentSessionID]
+	return state, ok, nil
+}
+
+func (s *goalStateProjectionStore) ListSessionGoalStates(
+	_ context.Context,
+	_ string,
+	agentSessionIDs []string,
+) (map[string]agentactivitybiz.SessionGoalState, error) {
+	if s.listCalls != nil {
+		*s.listCalls = *s.listCalls + 1
+	}
+	result := make(map[string]agentactivitybiz.SessionGoalState)
+	for _, id := range agentSessionIDs {
+		if state, ok := s.states[id]; ok {
+			result[id] = state
+		}
+	}
+	return result, nil
+}
+
 type failingTurnStore struct {
 	getTurnErr                 error
 	latestTurnErr              error

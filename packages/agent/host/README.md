@@ -40,6 +40,12 @@ its submit claim before provider delivery and rolls back the provisional
 canonical shell when delivery fails. Typed initial Goal is mutually exclusive
 with non-empty initial content; it creates a non-provisional Session and enters
 the same durable Goal saga under `ClientSubmitID` without opening a Turn.
+When the provider confirms that the accepted `set` command will begin
+autonomous execution, Host persists `execution_pending` on that Goal
+generation. Only a canonical `goal_arm` or `goal_continuation` Turn carrying the
+exact operation, revision, and repair epoch clears it; terminal/non-active Goal
+observation, divergence, failure, replacement, and clear also release it. This
+fact bridges loading presentation without making Goal convergence imply a Turn.
 Before runtime preparation or provider startup, a retry with that identity
 checks the canonical Goal operation. A completed retry returns the existing
 Session and operation; an in-progress or failed operation returns its existing

@@ -4,6 +4,7 @@ import { normalizeAgentActivitySession } from "../sessionNormalization.ts";
 import type { AgentActivityGoalControlResult } from "../types.ts";
 import { createAgentSessionEngine } from "./createAgentSessionEngine.ts";
 import { createTestEngineCommandPort } from "./testEngineCommandPort.ts";
+import { selectEngineSession } from "./sessionLifecycle.selectors.ts";
 import {
   selectSessionGoalControlPresentation,
   selectSessionGoalControlSettlement
@@ -547,7 +548,12 @@ test("new-session Goal projection stops being optimistic after canonical hydrati
   engine.dispatch({
     session: {
       ...session(goal("ship it", "active"), 2),
-      agentSessionId: "session-new"
+      agentSessionId: "session-new",
+      goalSyncState: {
+        pendingOperationId: "goal-operation-1",
+        revision: 1,
+        syncStatus: "applying"
+      }
     },
     type: "session/upserted"
   });
@@ -560,6 +566,45 @@ test("new-session Goal projection stops being optimistic after canonical hydrati
       optimistic: false,
       status: "idle"
     }
+  );
+  assert.deepEqual(
+    selectEngineSession(engine.getSnapshot(), "session-new")?.goalSyncState,
+    {
+      executionPending: false,
+      pendingOperationId: "goal-operation-1",
+      revision: 1,
+      syncStatus: "applying"
+    }
+  );
+
+  engine.dispatch({
+    session: {
+      ...session(goal("ship it", "active"), 2),
+      agentSessionId: "session-new"
+    },
+    type: "session/upserted"
+  });
+  assert.deepEqual(
+    selectEngineSession(engine.getSnapshot(), "session-new")?.goalSyncState,
+    {
+      executionPending: false,
+      pendingOperationId: "goal-operation-1",
+      revision: 1,
+      syncStatus: "applying"
+    }
+  );
+
+  engine.dispatch({
+    session: {
+      ...session(goal("ship it", "active"), 2),
+      agentSessionId: "session-new",
+      goalSyncState: null
+    },
+    type: "session/upserted"
+  });
+  assert.equal(
+    selectEngineSession(engine.getSnapshot(), "session-new")?.goalSyncState,
+    null
   );
 });
 
