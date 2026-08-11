@@ -69,7 +69,8 @@ import type {
   DesktopBrowserAutomationRequest,
   DesktopBrowserAutomationHostReady,
   DesktopBrowserAutomationTurnClaim,
-  DesktopBrowserAutomationResponse
+  DesktopBrowserAutomationResponse,
+  DesktopWorkspaceAppPopupRejectedEvent
 } from "../shared/contracts/ipc";
 import type { BrowserNodeHostApi } from "@tutti-os/browser-node";
 import type { DesktopDistribution } from "../shared/distribution/desktopDistribution.ts";
@@ -327,6 +328,9 @@ export type DesktopBrowserApi = Pick<
   claimAutomationTurn?(input: DesktopBrowserAutomationTurnClaim): void;
   onAutomationRequest(
     listener: (request: DesktopBrowserAutomationRequest) => void
+  ): () => void;
+  onWorkspaceAppPopupRejected?(
+    listener: (event: DesktopWorkspaceAppPopupRejectedEvent) => void
   ): () => void;
   respondAutomationRequest(response: DesktopBrowserAutomationResponse): void;
 };

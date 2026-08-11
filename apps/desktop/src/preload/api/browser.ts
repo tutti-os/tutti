@@ -2,7 +2,8 @@ import { ipcRenderer } from "electron";
 import { createBrowserNodeElectronRendererApi } from "@tutti-os/browser-node/electron-renderer";
 import {
   desktopIpcChannels,
-  type DesktopInvokeChannel
+  type DesktopInvokeChannel,
+  type DesktopWorkspaceAppPopupRejectedEvent
 } from "../../shared/contracts/ipc";
 import { isDesktopDevelopmentRuntime } from "../../shared/runtimeEnvironment";
 import type { DesktopBrowserApi } from "../types";
@@ -15,6 +16,7 @@ type BrowserInvokeChannel = Exclude<
   | typeof desktopIpcChannels.browser.automationResponse
   | typeof desktopIpcChannels.browser.automationTurnClaim
   | typeof desktopIpcChannels.browser.event
+  | typeof desktopIpcChannels.browser.workspaceAppPopupRejected
 > &
   DesktopInvokeChannel;
 
@@ -63,6 +65,23 @@ export function createBrowserDesktopApi(): DesktopBrowserApi {
         ipcRenderer.removeListener(
           desktopIpcChannels.browser.automationRequest,
           handleRequest
+        );
+    },
+    onWorkspaceAppPopupRejected(listener) {
+      const handleRejected = (
+        _event: Electron.IpcRendererEvent,
+        payload: unknown
+      ) => {
+        listener(payload as DesktopWorkspaceAppPopupRejectedEvent);
+      };
+      ipcRenderer.on(
+        desktopIpcChannels.browser.workspaceAppPopupRejected,
+        handleRejected
+      );
+      return () =>
+        ipcRenderer.removeListener(
+          desktopIpcChannels.browser.workspaceAppPopupRejected,
+          handleRejected
         );
     },
     respondAutomationRequest(response) {

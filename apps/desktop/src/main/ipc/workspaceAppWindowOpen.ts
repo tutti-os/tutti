@@ -3,7 +3,10 @@ import {
   type BrowserNodeOpenUrlEvent
 } from "@tutti-os/browser-node";
 import type { BrowserWebviewWindowOpenHandler } from "@tutti-os/browser-node/electron-main";
-import { desktopIpcChannels } from "../../shared/contracts/ipc.ts";
+import {
+  desktopIpcChannels,
+  type DesktopWorkspaceAppPopupRejectedEvent
+} from "../../shared/contracts/ipc.ts";
 
 interface WorkspaceAppWindowOpenContents {
   id: number;
@@ -13,7 +16,10 @@ interface WorkspaceAppWindowOpenOwnerWindow {
   isDestroyed?(): boolean;
   webContents: {
     isDestroyed?(): boolean;
-    send(channel: string, payload: BrowserNodeOpenUrlEvent): void;
+    send(
+      channel: string,
+      payload: BrowserNodeOpenUrlEvent | DesktopWorkspaceAppPopupRejectedEvent
+    ): void;
   };
 }
 
@@ -45,6 +51,15 @@ export function createWorkspaceAppWindowOpenHandler({
         url: details.url,
         webContentsId: contents.id
       });
+      if (
+        ownerWindow.isDestroyed?.() !== true &&
+        ownerWindow.webContents.isDestroyed?.() !== true
+      ) {
+        ownerWindow.webContents.send(
+          desktopIpcChannels.browser.workspaceAppPopupRejected,
+          { reason: "post-unsupported" }
+        );
+      }
       return { action: "deny" };
     }
     dispatchWorkspaceAppOpenUrl({

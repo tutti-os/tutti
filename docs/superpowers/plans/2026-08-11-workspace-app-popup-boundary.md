@@ -209,7 +209,7 @@ node --import ./apps/desktop/test/register-asset-stub.mjs --test --experimental-
 
 Expected: both pass and the fixture still reports zero native child windows.
 
-- [ ] **Step 6: Commit Task 2**
+- [x] **Step 6: Commit Task 2**
 
 ```bash
 git add apps/desktop/src/main/windows/workspaceWebviewSecurity.ts apps/desktop/src/main/windows/workspaceWebviewSecurity.test.ts apps/desktop/src/main/windows/workspaceWindow.ts apps/desktop/src/main/ipc/workspaceAppPopup.electron.fixture.ts
@@ -235,7 +235,7 @@ git commit -s -m "refactor(desktop): share workspace webview composition"
 - Produces: `DesktopBrowserApi.onWorkspaceAppPopupRejected(listener): () => void`.
 - Produces: `registerWorkspaceAppPopupNotifications({ browserApi, notifications, translate }): () => void`.
 
-- [ ] **Step 1: Extend the existing POST handler test and verify RED**
+- [x] **Step 1: Extend the existing POST handler test and verify RED**
 
 Assert the owner receives one message on
 `desktopIpcChannels.browser.workspaceAppPopupRejected` with only:
@@ -247,7 +247,7 @@ Assert the owner receives one message on
 Keep the Browser open-URL event array empty and assert the request body bytes
 never appear in the payload or logs.
 
-- [ ] **Step 2: Add the renderer notification test and verify RED**
+- [x] **Step 2: Add the renderer notification test and verify RED**
 
 Register the wished-for notification binding against a fake typed subscription,
 emit `{ reason: "post-unsupported" }`, and assert one error notification uses:
@@ -263,14 +263,14 @@ emit `{ reason: "post-unsupported" }`, and assert one error notification uses:
 Run both exact test files and confirm failure because the event and binding do
 not exist.
 
-- [ ] **Step 3: Implement the private IPC and preload subscription**
+- [x] **Step 3: Implement the private IPC and preload subscription**
 
 Add the channel and shared payload type. In the main handler, send only the
 reason code before returning `{ action: "deny" }`. Add the preload subscription
 with `ipcRenderer.on/removeListener`; exclude this send-only channel from the
 generic Browser invoke-channel union.
 
-- [ ] **Step 4: Implement and compose localized notification binding**
+- [x] **Step 4: Implement and compose localized notification binding**
 
 Add English and Simplified Chinese resources:
 
@@ -293,7 +293,7 @@ workspaceAppPopup: {
 Register the binding after creating the workspace notification service and
 dispose it with the window container.
 
-- [ ] **Step 5: Run focused POST, preload, notification, and i18n checks**
+- [x] **Step 5: Run focused POST, preload, notification, and i18n checks**
 
 Run the exact tests, `pnpm check:i18n`, and the Desktop preload typecheck lane.
 Expected: POST produces no Browser event, the private event contains no body,

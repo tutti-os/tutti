@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import type { BrowserNodeOpenUrlEvent } from "@tutti-os/browser-node";
 import type { BrowserWebviewWindowOpenHandler } from "@tutti-os/browser-node/electron-main";
+import { desktopIpcChannels } from "../../shared/contracts/ipc.ts";
 import {
   createWorkspaceAppWindowOpenHandler,
   dispatchWorkspaceAppOpenUrl
@@ -46,6 +47,7 @@ test("workspace app window-open handler emits one event for an accepted GET popu
 
 test("workspace app window-open handler rejects POST popup bodies instead of replaying them as GET", () => {
   const events: BrowserNodeOpenUrlEvent[] = [];
+  const messages: Array<{ channel: string; payload: unknown }> = [];
   const warnings: { details?: Record<string, unknown>; message: string }[] = [];
   const handler = createWorkspaceAppWindowOpenHandler({
     contents: { id: 100 },
@@ -54,7 +56,13 @@ test("workspace app window-open handler rejects POST popup bodies instead of rep
         warnings.push({ details, message });
       }
     },
-    ownerWindow: createOwnerWindow(events)
+    ownerWindow: {
+      webContents: {
+        send(channel: string, payload: unknown) {
+          messages.push({ channel, payload });
+        }
+      }
+    } as never
   });
 
   assert.deepEqual(
@@ -69,6 +77,14 @@ test("workspace app window-open handler rejects POST popup bodies instead of rep
     { action: "deny" }
   );
   assert.deepEqual(events, []);
+  assert.deepEqual(messages, [
+    {
+      channel: desktopIpcChannels.browser.workspaceAppPopupRejected,
+      payload: { reason: "post-unsupported" }
+    }
+  ]);
+  assert.equal(JSON.stringify(messages).includes("code=secret"), false);
+  assert.equal(JSON.stringify(warnings).includes("code=secret"), false);
   assert.deepEqual(warnings, [
     {
       details: {
@@ -100,9 +116,7 @@ test("workspace app open-url dispatch emits no event for invalid URLs or unavail
       ownerWindow: {
         isDestroyed: () => true,
         webContents: {
-          send(_channel, event) {
-            events.push(event);
-          }
+          send(_channel: string, _event: unknown) {}
         }
       },
       producer: "window-open-handler",

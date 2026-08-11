@@ -221,7 +221,8 @@ export const desktopIpcChannels = {
     showDevToolsContextMenu: "browser:showDevToolsContextMenu",
     stopFindInPage: "browser:stopFindInPage",
     unregisterGuest: "browser:unregisterGuest",
-    updateAutomationTarget: "browser:updateAutomationTarget"
+    updateAutomationTarget: "browser:updateAutomationTarget",
+    workspaceAppPopupRejected: "browser:workspaceAppPopupRejected"
   },
   dockPreviewCache: {
     read: "dock-preview-cache:read",
@@ -1098,6 +1099,10 @@ export interface DesktopBrowserAutomationTurnClaim {
   agentSessionId: string;
   agentTurnId: string;
   workspaceId: string;
+}
+
+export interface DesktopWorkspaceAppPopupRejectedEvent {
+  reason: "post-unsupported";
 }
 
 export type DesktopBrowserAutomationResponse =

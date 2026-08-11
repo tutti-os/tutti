@@ -8,6 +8,11 @@ export const en = {
       title: "Login state import"
     }
   },
+  workspaceAppPopup: {
+    postUnsupportedDescription:
+      "POST-based popups are not supported. Try another sign-in method or contact the app provider.",
+    postUnsupportedTitle: "This app cannot open the authorization popup"
+  },
   common: {
     cancel: "Cancel",
     close: "Close",
