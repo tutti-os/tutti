@@ -6,15 +6,11 @@ import type {
   BrowserNodeHostApi,
   BrowserNodeOpenUrlEvent
 } from "@tutti-os/browser-node";
-import {
-  dispatchWorkspaceAppOpenUrl,
-  installWorkspaceAppWindowOpenHandler
-} from "../../main/ipc/workspaceAppWindowOpen.ts";
+import type { WorkbenchHostHandle } from "@tutti-os/workbench-surface";
+import { installWorkspaceAppWindowOpenHandler } from "../../main/ipc/workspaceAppWindowOpen.ts";
 import { createWorkspaceBrowserService } from "../../renderer/src/features/workspace-workbench/services/internal/workspaceBrowserService.ts";
-import {
-  registerWorkspaceBrowserLaunchHandler,
-  type WorkspaceBrowserLaunchRequest
-} from "../../renderer/src/features/workspace-workbench/services/workspaceBrowserLaunchCoordinator.ts";
+import { createWorkbenchWorkspaceBrowserPresenter } from "../../renderer/src/features/workspace-workbench/services/workbenchWorkspaceBrowserPresenter.ts";
+import { registerWorkspaceBrowserLaunchHandler } from "../../renderer/src/features/workspace-workbench/services/workspaceBrowserLaunchCoordinator.ts";
 
 import { installWorkspaceAppLinkInterception } from "./workspaceAppLinks.ts";
 
@@ -161,17 +157,17 @@ function createBoundaryBrowserApi(
   };
 }
 
-test("workspace app link interception forwards _blank opens through workspace app IPC", () => {
+test("workspace app link interception delegates cross-origin _blank opens to Electron", () => {
   const restoreGlobals = installFakeAnchorGlobals();
   const fakeWindow = createFakeWindow();
-  const sent: Array<{ channel: string; payload: unknown }> = [];
+  const diagnostics: unknown[] = [];
 
   try {
     const dispose = installWorkspaceAppLinkInterception({
-      scope: fakeWindow,
-      send(channel, payload) {
-        sent.push({ channel, payload });
-      }
+      reportDiagnostic(diagnostic) {
+        diagnostics.push(diagnostic);
+      },
+      scope: fakeWindow
     });
 
     assert.equal(fakeWindow.listeners.length, 1);
@@ -181,14 +177,17 @@ test("workspace app link interception forwards _blank opens through workspace ap
 
     fakeWindow.listeners[0]?.(event);
 
-    assert.equal(event.defaultPrevented, true);
-    assert.equal(event.stopped, true);
-    assert.equal(event.stoppedImmediate, true);
-    assert.equal(sent.length, 1);
-    assert.equal(sent[0]?.channel, "workspace-app:open-url");
-    const payload = sent[0]?.payload as Record<string, unknown>;
-    assert.equal(typeof payload.operationId, "string");
-    assert.equal(payload.url, "https://example.com/product");
+    assert.equal(event.defaultPrevented, false);
+    assert.equal(event.stopped, false);
+    assert.equal(event.stoppedImmediate, false);
+    assert.deepEqual(diagnostics.at(-1), {
+      action: "delegate-window-open",
+      button: 0,
+      defaultPrevented: false,
+      href: "https://example.com/product",
+      modifiers: { alt: false, ctrl: false, meta: false, shift: false },
+      target: "_blank"
+    });
 
     dispose();
 
@@ -198,20 +197,21 @@ test("workspace app link interception forwards _blank opens through workspace ap
   }
 });
 
-test("one Workspace App blank-link operation uses one entry and launches one Browser", async () => {
+test("one cross-origin popup produces one event, launch, and Workbench surface", async () => {
   const restoreGlobals = installFakeAnchorGlobals();
   let emitDesktopBrowserEvent = (_event: BrowserNodeEvent): void => undefined;
   let nativeWindowOpen:
     | ((details: { url: string }) => { action: "allow" | "deny" })
     | undefined;
-  const entryCounts = { nativeWindowOpen: 0, preloadIpc: 0 };
-  const launchRequests: WorkspaceBrowserLaunchRequest[] = [];
+  const counts = { events: 0, launches: 0, producerCallbacks: 0, surfaces: 0 };
   const emittedEvents: BrowserNodeOpenUrlEvent[] = [];
-  const emittedEntries: unknown[] = [];
+  const producers: unknown[] = [];
+  const windowOpenActions: string[] = [];
+  const activations: unknown[] = [];
   const logger = {
     info(_message: string, details?: Record<string, unknown>) {
-      if (details?.entry) {
-        emittedEntries.push(details.entry);
+      if (details?.producer) {
+        producers.push(details.producer);
       }
     }
   };
@@ -235,6 +235,7 @@ test("one Workspace App blank-link operation uses one entry and launches one Bro
   const ownerWindow = {
     webContents: {
       send(_channel: string, event: BrowserNodeOpenUrlEvent) {
+        counts.events += 1;
         emittedEvents.push(event);
         emitDesktopBrowserEvent(event);
       }
@@ -246,8 +247,10 @@ test("one Workspace App blank-link operation uses one entry and launches one Bro
       handler: (details: { url: string }) => { action: "allow" | "deny" }
     ) {
       nativeWindowOpen = (details) => {
-        entryCounts.nativeWindowOpen += 1;
-        return handler(details);
+        counts.producerCallbacks += 1;
+        const result = handler(details);
+        windowOpenActions.push(result.action);
+        return result;
       };
     }
   };
@@ -257,11 +260,25 @@ test("one Workspace App blank-link operation uses one entry and launches one Bro
       return null;
     }
   });
+  const presenter = createWorkbenchWorkspaceBrowserPresenter({
+    host: {
+      activateNode(...args: unknown[]) {
+        activations.push(args);
+      },
+      getSnapshot() {
+        return { nodeStack: [], nodes: [] };
+      },
+      async launchNode() {
+        counts.surfaces += 1;
+        return `browser:surface-${counts.surfaces}`;
+      }
+    } as unknown as WorkbenchHostHandle
+  });
   const disposeLaunchHandler = registerWorkspaceBrowserLaunchHandler(
     workspaceId,
     (request) => {
-      launchRequests.push(request);
-      return "browser:authorization";
+      counts.launches += 1;
+      return presenter(request);
     }
   );
 
@@ -269,19 +286,7 @@ test("one Workspace App blank-link operation uses one entry and launches one Bro
     service.ensureFeatureConnected(appFeature);
     installWorkspaceAppWindowOpenHandler({ contents, logger, ownerWindow });
     const disposeLinkInterception = installWorkspaceAppLinkInterception({
-      scope: fakeWindow,
-      send(_channel, payload) {
-        entryCounts.preloadIpc += 1;
-        const request = payload as { operationId: string; url: string };
-        dispatchWorkspaceAppOpenUrl({
-          contents,
-          entry: "preload-ipc",
-          logger,
-          operationId: request.operationId,
-          ownerWindow,
-          url: request.url
-        });
-      }
+      scope: fakeWindow
     });
     const anchor = new FakeAnchorElement(
       "https://open.feishu.cn/open-apis/authen/v1/authorize"
@@ -292,25 +297,20 @@ test("one Workspace App blank-link operation uses one entry and launches one Bro
     if (!click.defaultPrevented) {
       fakeWindow.open(anchor.href, "_blank");
     }
-    await Promise.resolve();
+    await settleAsyncLaunch();
 
-    assert.deepEqual(entryCounts, { nativeWindowOpen: 0, preloadIpc: 1 });
-    assert.deepEqual(emittedEntries, ["preload-ipc"]);
+    assert.equal(click.defaultPrevented, false);
+    assert.deepEqual(counts, {
+      events: 1,
+      launches: 1,
+      producerCallbacks: 1,
+      surfaces: 1
+    });
+    assert.deepEqual(producers, ["window-open-handler"]);
+    assert.deepEqual(windowOpenActions, ["deny"]);
     assert.equal(emittedEvents.length, 1);
     assert.equal(typeof emittedEvents[0]?.operationId, "string");
-    assert.equal(launchRequests.length, 1);
-
-    fakeWindow.open(anchor.href, "_blank");
-    await Promise.resolve();
-
-    assert.deepEqual(entryCounts, { nativeWindowOpen: 1, preloadIpc: 1 });
-    assert.deepEqual(emittedEntries, ["preload-ipc", "native-window-open"]);
-    assert.equal(emittedEvents.length, 2);
-    assert.notEqual(
-      emittedEvents[0]?.operationId,
-      emittedEvents[1]?.operationId
-    );
-    assert.equal(launchRequests.length, 2);
+    assert.equal(activations.length, 1);
     disposeLinkInterception();
   } finally {
     disposeLaunchHandler();
@@ -324,14 +324,10 @@ test("workspace app link interception navigates same-origin _blank anchors in pl
   const fakeWindow = createFakeWindow({
     href: "https://app.local/home"
   });
-  const sent: Array<{ channel: string; payload: unknown }> = [];
 
   try {
     const dispose = installWorkspaceAppLinkInterception({
-      scope: fakeWindow,
-      send(channel, payload) {
-        sent.push({ channel, payload });
-      }
+      scope: fakeWindow
     });
 
     const anchor = new FakeAnchorElement(
@@ -345,8 +341,6 @@ test("workspace app link interception navigates same-origin _blank anchors in pl
     assert.deepEqual(fakeWindow.assignedUrls, [
       "https://app.local/canvas?id=canvas-1"
     ]);
-    assert.deepEqual(sent, []);
-
     dispose();
   } finally {
     restoreGlobals();
@@ -362,13 +356,8 @@ test("workspace app link interception navigates same-origin window.open calls in
       return null;
     }
   });
-  const sent: Array<{ channel: string; payload: unknown }> = [];
-
   const dispose = installWorkspaceAppLinkInterception({
-    scope: fakeWindow,
-    send(channel, payload) {
-      sent.push({ channel, payload });
-    }
+    scope: fakeWindow
   });
 
   const opened = fakeWindow.open("/canvas?id=canvas-1", "_blank");
@@ -378,8 +367,6 @@ test("workspace app link interception navigates same-origin window.open calls in
     "https://app.local/canvas?id=canvas-1"
   ]);
   assert.deepEqual(originalOpenCalls, []);
-  assert.deepEqual(sent, []);
-
   dispose();
 });
 
@@ -395,8 +382,7 @@ test("workspace app link interception delegates cross-origin window.open calls",
   });
 
   const dispose = installWorkspaceAppLinkInterception({
-    scope: fakeWindow,
-    send() {}
+    scope: fakeWindow
   });
 
   const opened = fakeWindow.open(
@@ -445,8 +431,7 @@ test("workspace app link interception installs same-origin window.open handling 
       reportDiagnostic(diagnostic) {
         diagnostics.push(diagnostic);
       },
-      scope: isolatedWorldWindow,
-      send() {}
+      scope: isolatedWorldWindow
     });
 
     const opened = mainWorldWindow.open("/canvas?id=canvas-1", "_blank");
@@ -471,3 +456,9 @@ test("workspace app link interception installs same-origin window.open handling 
     (globalThis as { window?: unknown }).window = originalWindow;
   }
 });
+
+async function settleAsyncLaunch(): Promise<void> {
+  await Promise.resolve();
+  await Promise.resolve();
+  await Promise.resolve();
+}

@@ -50,10 +50,7 @@ function installWorkspaceAppMainFrameBridge(): void {
         ...diagnostic
       });
     },
-    scope: globalThis.window,
-    send(channel, payload) {
-      ipcRenderer.send(channel, payload);
-    }
+    scope: globalThis.window
   });
 
   const contextListeners = new Set<

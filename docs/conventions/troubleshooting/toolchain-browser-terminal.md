@@ -468,35 +468,33 @@ delimited by ---`, and the composer skill picker may show partial or
 
 - Symptom:
   One Workspace App connection action opens two internal Browser windows for
-  the same authorization URL, or clicking the connection action again while
-  its authorization page is still open creates another Browser window.
+  the same authorization URL.
 - Quick checks:
-  Compare the `workspace app open-url IPC received` and `workspace app emitted
-open-url` logs by `entry`, `operationId`, source node, and URL. Equal URLs do
+  Starting from one user action, count Electron window-open producer callbacks,
+  `workspace app emitted open-url` events, Workbench launch requests, and
+  materialized Browser surfaces. Popup events should report
+  `producer=window-open-handler`; the operation ID is trace-only. Equal URLs do
   not prove duplicate delivery, and different OAuth query parameters do not
-  prove separate user intent. For an intercepted blank-link click, expect one
-  `preload-ipc` entry and no native entry; programmatic `window.open` uses the
-  `native-window-open` entry.
+  prove separate user intent.
 - Root cause:
-  Workspace App popup events request a separate Browser window. Treating the
-  workspace, source node, and complete URL as an authorization-attempt identity
-  infers causality after the event has already crossed its producer boundary.
-  It can merge an intentional retry or fail to correlate repeated delivery when
-  OAuth state changes. If one operation ID produces one event and one launch but
-  two surfaces still appear, investigate Workbench launch/materialization
-  instead of adding URL-based suppression.
+  Intercepting one cross-origin blank-link in preload while also installing
+  Electron's window-open handler creates two popup transports. A downstream
+  operation ID, workspace, source node, or URL cannot prove that independently
+  produced events represent one user action. Renderer deduplication therefore
+  masks the producer boundary and can merge intentional popup requests.
 - Fix:
-  Assign a new operation ID at each preload or native popup entry and carry it
-  on the Browser event. Let the workspace Browser service suppress only repeated
-  delivery of the same operation ID. Keep the recent-ID set bounded and clear it
-  with the workspace; do not retain Browser nodes or derive operation identity
-  from OAuth URLs.
+  Leave cross-origin blank links, `window.open`, and popup forms to Electron's
+  `setWindowOpenHandler`. Main validates the URL, denies the native child window,
+  and emits the Browser event. Keep preload interception only for same-origin
+  in-app navigation, and keep the renderer as a stateless one-event/one-launch
+  adapter. Locally generated operation IDs are for trace correlation only.
 - Validation:
-  Start from one blank-link user operation and assert preload-entry count one,
-  native-entry count zero, Browser event count one, and launch count one. Cover
-  programmatic native entry separately. Repeated delivery with one operation ID
-  must launch once even if the observed URLs differ; distinct operation IDs must
-  launch independently even when their full URLs are equal.
+  Start from one real cross-origin popup and assert producer callback count one,
+  Browser event count one, Workbench launch count one, and surface count one.
+  Two events indicate duplicate production; one event with two launches
+  indicates duplicate routing or subscription; one launch with two surfaces
+  indicates a Workbench materialization race. Two real `window.open` requests
+  must remain two independent launches even when their URLs are equal.
 - References:
   [workspaceAppWindowOpen.ts](../../../apps/desktop/src/main/ipc/workspaceAppWindowOpen.ts)
   [workspaceBrowserService.ts](../../../apps/desktop/src/renderer/src/features/workspace-workbench/services/internal/workspaceBrowserService.ts)

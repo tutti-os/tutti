@@ -32,8 +32,7 @@ interface WorkspaceAppWindowOpenHandlerInput {
 }
 
 interface WorkspaceAppOpenUrlInput extends WorkspaceAppWindowOpenHandlerInput {
-  entry: "native-window-open" | "preload-ipc";
-  operationId?: string;
+  producer: "external-browser-api" | "window-open-handler";
   url: string;
 }
 
@@ -54,9 +53,9 @@ export function installWorkspaceAppWindowOpenHandler({
   contents.setWindowOpenHandler?.(({ url }) => {
     dispatchWorkspaceAppOpenUrl({
       contents,
-      entry: "native-window-open",
       logger,
       ownerWindow,
+      producer: "window-open-handler",
       url
     });
     return { action: "deny" };
@@ -65,10 +64,9 @@ export function installWorkspaceAppWindowOpenHandler({
 
 export function dispatchWorkspaceAppOpenUrl({
   contents,
-  entry,
   logger,
-  operationId,
   ownerWindow,
+  producer,
   url
 }: WorkspaceAppOpenUrlInput): boolean {
   const resolved = resolveBrowserNavigationUrl(url);
@@ -95,15 +93,15 @@ export function dispatchWorkspaceAppOpenUrl({
   }
 
   const payload: BrowserNodeOpenUrlEvent = {
-    operationId: operationId?.trim() || randomUUID(),
+    operationId: randomUUID(),
     reuseIfOpen: false,
     sourceNodeId: `workspace-app:${contents.id}`,
     type: "open-url",
     url: resolved.url
   };
   logger?.info?.("workspace app emitted open-url", {
-    entry,
     operationId: payload.operationId,
+    producer,
     sourceNodeId: payload.sourceNodeId,
     url: payload.url,
     webContentsId: contents.id

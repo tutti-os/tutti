@@ -18,8 +18,6 @@ import {
   requestWorkspaceBrowserSurfaceFocus
 } from "../workspaceBrowserLaunchCoordinator.ts";
 
-const recentWorkspaceAppOpenUrlOperationLimit = 256;
-
 export type WorkspaceBrowserEventMatcher = (event: BrowserNodeEvent) => boolean;
 
 export interface WorkspaceBrowserFeatureHostApiInput {
@@ -67,10 +65,6 @@ export function createWorkspaceBrowserService(
     string,
     Map<WorkspaceBrowserFeatureSource, WorkspaceBrowserEventRoute>
   >();
-  const recentWorkspaceAppOpenUrlOperationsByWorkspace = new Map<
-    string,
-    Set<string>
-  >();
   let disconnectBrowserEvents: (() => void) | null = null;
   let disconnectUserAutomation: (() => void) | null = null;
 
@@ -116,12 +110,7 @@ export function createWorkspaceBrowserService(
         }
       }
       if (launchWorkspaceId && event.type === "open-url" && !openUrlHandled) {
-        launchOpenUrl(
-          event,
-          launchWorkspaceId,
-          launchSource,
-          recentWorkspaceAppOpenUrlOperationsByWorkspace
-        );
+        launchOpenUrl(event, launchWorkspaceId, launchSource);
       }
     });
   };
@@ -221,7 +210,6 @@ export function createWorkspaceBrowserService(
           disposeRoute(route);
         }
       }
-      recentWorkspaceAppOpenUrlOperationsByWorkspace.delete(workspaceId);
     },
     ensureFeatureConnected(feature) {
       if (featureReleases.has(feature)) {
@@ -398,53 +386,12 @@ function openBrowserUrlInNewTab(
 function launchOpenUrl(
   event: BrowserNodeOpenUrlEvent,
   workspaceId: string,
-  source: "browser" | "workspace_app" | undefined,
-  recentOperationsByWorkspace: Map<string, Set<string>>
+  source?: "browser" | "workspace_app"
 ): void {
-  if (
-    source === "workspace_app" &&
-    event.reuseIfOpen === false &&
-    !admitWorkspaceAppOpenUrlOperation({
-      operationId: event.operationId,
-      recentOperationsByWorkspace,
-      workspaceId
-    })
-  ) {
-    return;
-  }
-
   void requestWorkspaceBrowserLaunch({
     reuseIfOpen: event.reuseIfOpen,
     ...(source ? { source } : {}),
     url: event.url,
     workspaceId
   });
-}
-
-function admitWorkspaceAppOpenUrlOperation(input: {
-  operationId: string | undefined;
-  recentOperationsByWorkspace: Map<string, Set<string>>;
-  workspaceId: string;
-}): boolean {
-  const operationId = input.operationId?.trim() ?? "";
-  if (!operationId) {
-    return true;
-  }
-
-  const recentOperations =
-    input.recentOperationsByWorkspace.get(input.workspaceId) ?? new Set();
-  input.recentOperationsByWorkspace.set(input.workspaceId, recentOperations);
-  if (recentOperations.has(operationId)) {
-    return false;
-  }
-
-  recentOperations.add(operationId);
-  while (recentOperations.size > recentWorkspaceAppOpenUrlOperationLimit) {
-    const oldestOperationId = recentOperations.values().next().value;
-    if (typeof oldestOperationId !== "string") {
-      break;
-    }
-    recentOperations.delete(oldestOperationId);
-  }
-  return true;
 }

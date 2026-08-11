@@ -114,17 +114,19 @@ recent initialized Browser surface. If that surface's tab state is not
 available, it launches a new Browser surface instead of replacing the active
 page. Explicit non-reuse requests continue to launch a new surface.
 
-Workspace App popup entry points assign a causal operation ID before the event
-reaches the Renderer. A captured blank-link click prevents the Chromium default
-and enters through preload IPC; programmatic or otherwise unhandled popup calls
-enter through Electron's native window-open handler. The workspace Browser
-service suppresses repeated delivery of one operation ID, not requests that
-merely share a source node or URL. Distinct user operations therefore remain
-distinct even when their complete OAuth URLs match, while volatile OAuth query
-parameters cannot split one repeated delivery. The per-workspace recent-ID set
-is capped at 256 entries and released with the workspace; it does not retain a
-Browser node or infer authorization-attempt lifetime. The Workbench presenter
-remains the narrow launch/focus adapter.
+Workspace App cross-origin popups have one canonical event producer. Preload
+only converts same-origin blank-link and `window.open` calls into in-app
+navigation; it does not prevent cross-origin popup defaults or emit a competing
+open-url IPC. Cross-origin blank links, `window.open`, and popup forms therefore
+reach Electron's `setWindowOpenHandler`. Main validates the URL, denies the
+native child window, and emits exactly one Browser open-url event for each
+handler callback. An operation ID may accompany that event for tracing, but
+Renderer behavior does not deduplicate or merge events by that ID, source node,
+or URL. Every real popup request remains an independent `reuseIfOpen: false`
+launch, and the Workbench presenter remains the narrow launch/focus adapter.
+The explicit Workspace App `browser.openUrl` bridge remains an IPC command and
+is logged as `external-browser-api`; it is an application API request, not a
+second DOM-popup transport.
 
 ## Package Entry Points
 
@@ -361,7 +363,7 @@ const browserNodeFeature = createBrowserNodeFeature({
     const searchUrl = new URL("https://www.google.com/search");
     searchUrl.searchParams.set("q", query);
     return searchUrl.toString();
-  }
+  },
 });
 ```
 
@@ -373,7 +375,7 @@ import { createBrowserNodeDefinition } from "@tutti-os/browser-node/workbench";
 const browserNode = createBrowserNodeDefinition({
   defaultUrl: "https://www.google.com/",
   feature: browserNodeFeature,
-  typeId: "browser"
+  typeId: "browser",
 });
 ```
 
@@ -388,7 +390,7 @@ registerBrowserNodeElectronMain({
   logger,
   openExternal,
   resolveWebContents,
-  registerHandler
+  registerHandler,
 });
 ```
 
@@ -399,7 +401,7 @@ import { createMacosChromeCookieImportAdapter } from "@tutti-os/browser-node/chr
 
 const chromeCookieImport = createMacosChromeCookieImportAdapter({
   isEnabled: () => preferences.isEnabled("browser.chromeCookieImport"),
-  logger
+  logger,
 });
 
 registerBrowserNodeElectronMain({
@@ -408,7 +410,7 @@ registerBrowserNodeElectronMain({
   getOwnerWindow,
   openExternal,
   registerHandler,
-  resolveWebContents
+  resolveWebContents,
 });
 ```
 
@@ -422,7 +424,7 @@ import { installBrowserWebviewSecurity } from "@tutti-os/browser-node/electron-m
 installBrowserWebviewSecurity({
   contents: ownerWindow.webContents,
   openExternal,
-  resolvePreload: () => browserGuestPreloadPath
+  resolvePreload: () => browserGuestPreloadPath,
 });
 ```
 
@@ -437,7 +439,7 @@ import { installBrowserNodeGuestBridge } from "@tutti-os/browser-node/electron-p
 installBrowserNodeGuestBridge({
   call,
   methods,
-  namespace: "__tutti"
+  namespace: "__tutti",
 });
 ```
 

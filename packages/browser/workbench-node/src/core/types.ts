@@ -105,6 +105,7 @@ export interface BrowserNodeErrorEvent {
 }
 
 export interface BrowserNodeOpenUrlEvent {
+  /** Producer-assigned trace identity; consumers must not use it for deduplication. */
   operationId?: string;
   type: "open-url";
   sourceNodeId: string;

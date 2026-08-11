@@ -1,5 +1,3 @@
-const workspaceAppOpenUrlChannel = "workspace-app:open-url";
-
 interface WorkspaceAppMainWorldExecutionScript {
   args?: unknown[];
   func: (...args: never[]) => unknown;
@@ -13,33 +11,24 @@ interface WorkspaceAppLinkInterceptionOptions {
     diagnostic: WorkspaceAppLinkInterceptionDiagnostic
   ) => void;
   scope: Window;
-  send(this: void, channel: string, payload: unknown): void;
 }
 
 export function installWorkspaceAppLinkInterception({
   executeInMainWorld,
   reportDiagnostic,
-  scope,
-  send
+  scope
 }: WorkspaceAppLinkInterceptionOptions): () => void {
   return installPreloadLinkInterception({
     executeInMainWorld,
     reportDiagnostic,
-    scope,
-    sendOpenUrl(url) {
-      send(workspaceAppOpenUrlChannel, {
-        operationId: globalThis.crypto.randomUUID(),
-        url
-      });
-    }
+    scope
   });
 }
 
 export function installPreloadLinkInterception({
   executeInMainWorld,
   reportDiagnostic,
-  scope,
-  sendOpenUrl
+  scope
 }: {
   executeInMainWorld?: (
     script: WorkspaceAppMainWorldExecutionScript
@@ -48,7 +37,6 @@ export function installPreloadLinkInterception({
     diagnostic: WorkspaceAppLinkInterceptionDiagnostic
   ) => void;
   scope: Window;
-  sendOpenUrl: (url: string) => void;
 }): () => void {
   installMainWorldOpenInterception({ executeInMainWorld, reportDiagnostic });
 
@@ -111,33 +99,32 @@ export function installPreloadLinkInterception({
       return;
     }
 
-    event.preventDefault();
-    event.stopPropagation();
-    event.stopImmediatePropagation();
     const resolvedSameOriginUrl = resolveSameOriginUrl(scope, href);
-    if (resolvedSameOriginUrl) {
+    if (!resolvedSameOriginUrl) {
       reportDiagnostic?.({
-        action: "navigate-in-place",
+        action: "delegate-window-open",
         button: event.button,
         defaultPrevented: event.defaultPrevented,
         href,
         modifiers: getMouseModifiers(event),
-        target,
-        url: resolvedSameOriginUrl
+        target
       });
-      scope.location.assign(resolvedSameOriginUrl);
       return;
     }
 
+    event.preventDefault();
+    event.stopPropagation();
+    event.stopImmediatePropagation();
     reportDiagnostic?.({
-      action: "open-url",
+      action: "navigate-in-place",
       button: event.button,
       defaultPrevented: event.defaultPrevented,
       href,
       modifiers: getMouseModifiers(event),
-      target
+      target,
+      url: resolvedSameOriginUrl
     });
-    sendOpenUrl(href);
+    scope.location.assign(resolvedSameOriginUrl);
   };
 
   reportDiagnostic?.({
@@ -327,8 +314,8 @@ interface WorkspaceAppLinkInterceptionDiagnostic {
   readonly action:
     | "installed"
     | "installed-main-world"
+    | "delegate-window-open"
     | "navigate-in-place"
-    | "open-url"
     | "skip";
   readonly button?: number;
   readonly defaultPrevented?: boolean;
