@@ -148,8 +148,7 @@ func CoordinatorScenarios() []Scenario {
 		interactiveResponseReusedIDScenario,
 		interactiveResponseRaceScenario,
 		planDecisionScenario,
-		{Name: "recover operations before stale turns and worktree sweep", run: runRecoveryOrder},
-		{Name: "worktree sweep failure propagates", run: runWorktreeSweepFailure},
+		{Name: "recover operations before stale turns", run: runRecoveryOrder},
 	}
 }
 

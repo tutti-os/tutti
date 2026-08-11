@@ -65,7 +65,8 @@ func TestFrameRoundTripCarriesAttachmentRecoveryFence(t *testing.T) {
 				AttachmentChanged: &AttachmentChanged{
 					BindingID: "binding-1", WorkspaceID: "workspace-1", AgentSessionID: "session-1",
 					CanonicalTurnID: "canonical-turn-1", CanonicalTurnIDs: []string{"canonical-turn-1", "child-turn-1"},
-					CallerTurnID: "caller-turn-1", AttachmentRevision: 3,
+					CallerTurnID: "caller-turn-1", CurrentInteractionRootTurnID: "canonical-turn-1",
+					AttachmentRevision: 3,
 				},
 			},
 			{
@@ -74,7 +75,8 @@ func TestFrameRoundTripCarriesAttachmentRecoveryFence(t *testing.T) {
 				AttachmentCaughtUp: &AttachmentCaughtUp{
 					BindingID: "binding-1", WorkspaceID: "workspace-1", AgentSessionID: "session-1",
 					CanonicalTurnID: "canonical-turn-1", CanonicalTurnIDs: []string{"canonical-turn-1", "child-turn-1"},
-					CallerTurnID: "caller-turn-1", AttachmentRevision: 3,
+					CallerTurnID: "caller-turn-1", CurrentInteractionRootTurnID: "canonical-turn-1",
+					AttachmentRevision: 3,
 				},
 			},
 		},
@@ -89,11 +91,13 @@ func TestFrameRoundTripCarriesAttachmentRecoveryFence(t *testing.T) {
 	}
 	if changed := decoded.Deliveries[0].AttachmentChanged; changed == nil ||
 		changed.AttachmentRevision != 3 || changed.CallerTurnID != "caller-turn-1" ||
+		changed.CurrentInteractionRootTurnID != "canonical-turn-1" ||
 		len(changed.CanonicalTurnIDs) != 2 || changed.CanonicalTurnIDs[1] != "child-turn-1" {
 		t.Fatalf("decoded attachment changed = %#v", changed)
 	}
 	if caughtUp := decoded.Deliveries[1].AttachmentCaughtUp; caughtUp == nil ||
-		caughtUp.AttachmentRevision != 3 || caughtUp.CanonicalTurnID != "canonical-turn-1" {
+		caughtUp.AttachmentRevision != 3 || caughtUp.CanonicalTurnID != "canonical-turn-1" ||
+		caughtUp.CurrentInteractionRootTurnID != "canonical-turn-1" {
 		t.Fatalf("decoded attachment caught up = %#v", caughtUp)
 	}
 }
@@ -109,7 +113,8 @@ func TestFrameRoundTripCarriesTurnlessGoalAuthorizationSet(t *testing.T) {
 			Seq: 1, Kind: DeliveryKindAttachmentChanged,
 			AttachmentChanged: &AttachmentChanged{
 				BindingID: "binding-1", WorkspaceID: "workspace-1", AgentSessionID: "session-1",
-				CanonicalTurnIDs: []string{"goal-turn-1", "goal-turn-2"}, AttachmentRevision: 3,
+				CanonicalTurnIDs:             []string{"goal-turn-1", "goal-turn-2"},
+				CurrentInteractionRootTurnID: "goal-turn-2", AttachmentRevision: 3,
 			},
 		}},
 	}
@@ -123,6 +128,7 @@ func TestFrameRoundTripCarriesTurnlessGoalAuthorizationSet(t *testing.T) {
 	}
 	changed := decoded.Deliveries[0].AttachmentChanged
 	if changed == nil || changed.CanonicalTurnID != "" || changed.CallerTurnID != "" ||
+		changed.CurrentInteractionRootTurnID != "goal-turn-2" ||
 		!reflect.DeepEqual(changed.CanonicalTurnIDs, []string{"goal-turn-1", "goal-turn-2"}) {
 		t.Fatalf("decoded turnless Goal attachment = %#v", changed)
 	}
@@ -164,9 +170,56 @@ func TestAttachmentRecoveryControlsRejectInvalidIdentityOrRevision(t *testing.T)
 				CanonicalTurnIDs: []string{"goal-turn-1", "goal-turn-1"}, AttachmentRevision: 1,
 			},
 		},
+		{
+			Seq: 1, Kind: DeliveryKindAttachmentChanged,
+			AttachmentChanged: &AttachmentChanged{
+				BindingID: "binding-1", WorkspaceID: "workspace-1", AgentSessionID: "session-1",
+				CanonicalTurnIDs: []string{"goal-turn-1", "goal-turn-2"}, AttachmentRevision: 1,
+			},
+		},
+		{
+			Seq: 1, Kind: DeliveryKindAttachmentCaughtUp,
+			AttachmentCaughtUp: &AttachmentCaughtUp{
+				BindingID: "binding-1", WorkspaceID: "workspace-1", AgentSessionID: "session-1",
+				CanonicalTurnIDs:             []string{"goal-turn-1", "goal-turn-2"},
+				CurrentInteractionRootTurnID: "unproven-turn", AttachmentRevision: 1,
+			},
+		},
+		{
+			Seq: 1, Kind: DeliveryKindAttachmentChanged,
+			AttachmentChanged: &AttachmentChanged{
+				BindingID: "binding-1", WorkspaceID: "workspace-1", AgentSessionID: "session-1",
+				CanonicalTurnID: "canonical-turn-1", CanonicalTurnIDs: []string{"canonical-turn-1", "child-turn-1"},
+				CallerTurnID: "caller-turn-1", CurrentInteractionRootTurnID: "child-turn-1",
+				AttachmentRevision: 1,
+			},
+		},
 	} {
 		if _, err := encodeDelivery(delivery); !errors.Is(err, ErrInvalidFrame) {
 			t.Fatalf("encodeDelivery(%v) error = %v, want %v", delivery.Kind, err, ErrInvalidFrame)
+		}
+	}
+}
+
+func TestAttachmentRecoveryControlDecodeRequiresExplicitCurrentInteractionRoot(t *testing.T) {
+	t.Parallel()
+	for name, raw := range map[string][]byte{
+		"missing": []byte(`{"bindingId":"binding-1","workspaceId":"workspace-1","agentSessionId":"session-1","attachmentRevision":1}`),
+		"null":    []byte(`{"bindingId":"binding-1","workspaceId":"workspace-1","agentSessionId":"session-1","currentInteractionRootTurnId":null,"attachmentRevision":1}`),
+	} {
+		for _, target := range []any{&AttachmentChanged{}, &AttachmentCaughtUp{}} {
+			if err := strictControlDecode(raw, target); !errors.Is(err, ErrInvalidFrame) {
+				t.Fatalf("strictControlDecode(%T) %s root error = %v, want %v", target, name, err, ErrInvalidFrame)
+			}
+		}
+	}
+
+	// Empty is a meaningful value for a turnless attachment that has not yet
+	// observed a Goal Turn; the field itself must still be present on the wire.
+	explicitEmptyRoot := []byte(`{"bindingId":"binding-1","workspaceId":"workspace-1","agentSessionId":"session-1","currentInteractionRootTurnId":"","attachmentRevision":1}`)
+	for _, target := range []any{&AttachmentChanged{}, &AttachmentCaughtUp{}} {
+		if err := strictControlDecode(explicitEmptyRoot, target); err != nil {
+			t.Fatalf("strictControlDecode(%T) explicit empty root error = %v", target, err)
 		}
 	}
 }

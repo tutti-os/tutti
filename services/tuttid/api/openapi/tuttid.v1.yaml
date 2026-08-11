@@ -4963,6 +4963,74 @@ paths:
           $ref: "#/components/responses/WorkspaceOperationError"
         "503":
           $ref: "#/components/responses/ServiceUnavailableError"
+  /v1/workspaces/{workspaceID}/managed-worktrees:
+    parameters:
+      - $ref: "#/components/parameters/WorkspaceID"
+    get:
+      operationId: listWorkspaceManagedWorktrees
+      tags:
+        - workspace
+      summary: List explicitly managed Git worktrees for a workspace
+      responses:
+        "200":
+          description: Managed worktrees
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkspaceManagedWorktreeListResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "502":
+          $ref: "#/components/responses/WorkspaceOperationError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
+  /v1/workspaces/{workspaceID}/managed-worktrees/{worktreeID}:
+    parameters:
+      - $ref: "#/components/parameters/WorkspaceID"
+      - in: path
+        name: worktreeID
+        required: true
+        schema:
+          type: string
+          minLength: 1
+    delete:
+      operationId: deleteWorkspaceManagedWorktree
+      tags:
+        - workspace
+      summary: Explicitly delete one clean managed Git worktree
+      responses:
+        "200":
+          description: Managed worktree deletion result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeleteWorkspaceManagedWorktreeResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
+        "404":
+          description: Managed worktree was not found in this workspace
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "409":
+          description: Managed worktree is dirty, ahead of its base, or changed during deletion
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+        "502":
+          $ref: "#/components/responses/WorkspaceOperationError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
   /v1/workspaces/{workspaceID}/git-patch:
     parameters:
       - $ref: "#/components/parameters/WorkspaceID"
@@ -15177,6 +15245,10 @@ components:
         - branch
         - baseCommit
       properties:
+        worktreeId:
+          type: string
+          minLength: 1
+          description: Independent managed worktree resource identity. Legacy sessions may omit it.
         mode:
           $ref: "#/components/schemas/WorkspaceAgentSessionIsolationMode"
         worktreePath:
@@ -15207,6 +15279,55 @@ components:
           type: string
         errorCode:
           $ref: "#/components/schemas/WorkspaceAgentSessionWorktreeSupportErrorCode"
+    WorkspaceManagedWorktree:
+      type: object
+      additionalProperties: false
+      required:
+        - worktreeId
+        - workspaceId
+        - repoRoot
+        - worktreePath
+        - branch
+        - baseCommit
+      properties:
+        worktreeId:
+          type: string
+          minLength: 1
+        workspaceId:
+          type: string
+          minLength: 1
+        repoRoot:
+          type: string
+          minLength: 1
+        worktreePath:
+          type: string
+          minLength: 1
+        branch:
+          type: string
+          minLength: 1
+        baseCommit:
+          type: string
+          minLength: 1
+        relativeCwd:
+          type: string
+    WorkspaceManagedWorktreeListResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - worktrees
+      properties:
+        worktrees:
+          type: array
+          items:
+            $ref: "#/components/schemas/WorkspaceManagedWorktree"
+    DeleteWorkspaceManagedWorktreeResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - deleted
+      properties:
+        deleted:
+          type: boolean
     WorkspaceGitPatchExecOutput:
       type: object
       additionalProperties: false

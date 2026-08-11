@@ -31,6 +31,7 @@ test("detail mapping preserves the authoritative root, children, and Turns", () 
           baseCommit: "abc123",
           branch: "tutti/session/root-1",
           mode: "worktree",
+          worktreeId: "worktree-1",
           worktreePath: "/worktrees/root-1"
         },
         kind: "root"
@@ -63,6 +64,7 @@ test("detail mapping preserves the authoritative root, children, and Turns", () 
     baseCommit: "abc123",
     branch: "tutti/session/root-1",
     mode: "worktree",
+    worktreeId: "worktree-1",
     worktreePath: "/worktrees/root-1"
   });
   assert.deepEqual(detail.editRetry, {

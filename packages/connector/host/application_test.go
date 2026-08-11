@@ -1214,7 +1214,7 @@ func testManagedAuthorizedConnector(key string) Connector {
 	connector.Release.Manifest.Implementation.ManagedStdio.Runtime.VersionRange = ">=20.0.0 <21.0.0"
 	connector.Release.Manifest.Implementation.ManagedStdio.CLI = &ManagedCLIInterface{Entrypoint: "bin/lark-cli", TimeoutMS: 120_000}
 	connector.Release.Manifest.Implementation.ManagedStdio.CredentialBroker = &ManagedCredentialBroker{
-		Protocol: CredentialBrokerProtocolV2, Entrypoint: "authorization/broker.mjs", TimeoutMS: 30_000,
+		Protocol: CredentialBrokerProtocolV1, Entrypoint: "authorization/broker.mjs", TimeoutMS: 30_000,
 		AllowedHosts: []string{"open.larksuite.com"},
 	}
 	connector.Installation = Installation{State: InstallationStateInstalled, InstalledVersion: connector.Release.Version,

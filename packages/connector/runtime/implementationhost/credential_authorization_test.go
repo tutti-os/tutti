@@ -150,7 +150,7 @@ func TestManagedCredentialAuthorizationContinuesConnectorOwnedBroker(t *testing.
 	if connected.State != market.AuthorizationStateConnected {
 		t.Fatalf("connected session = %#v", connected)
 	}
-	if !reflect.DeepEqual(host.requests, []credentialBrokerRequest{{Protocol: market.CredentialBrokerProtocolV2, Operation: "begin"}}) {
+	if !reflect.DeepEqual(host.requests, []credentialBrokerRequest{{Protocol: market.CredentialBrokerProtocolV1, Operation: "begin"}}) {
 		t.Fatalf("broker requests = %#v", host.requests)
 	}
 	observed := awaitAuthorizationObservations(t, host, 3)
@@ -172,7 +172,7 @@ func TestManagedCredentialAuthorizationDisconnectUsesBrokerProtocol(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !reflect.DeepEqual(host.requests, []credentialBrokerRequest{{Protocol: market.CredentialBrokerProtocolV2, Operation: "disconnect"}}) {
+	if !reflect.DeepEqual(host.requests, []credentialBrokerRequest{{Protocol: market.CredentialBrokerProtocolV1, Operation: "disconnect"}}) {
 		t.Fatalf("broker requests = %#v", host.requests)
 	}
 	observed := awaitAuthorizationObservations(t, host, 1)
@@ -207,7 +207,7 @@ func TestManagedCredentialAuthorizationInspectReturnsFencedObservation(t *testin
 		observation.ReleaseDigest != strings.Repeat("a", 64) || observation.StateRevision != 9 || observation.ObservedAt.IsZero() {
 		t.Fatalf("observation = %#v", observation)
 	}
-	if !reflect.DeepEqual(host.requests, []credentialBrokerRequest{{Protocol: market.CredentialBrokerProtocolV2, Operation: "inspect"}}) {
+	if !reflect.DeepEqual(host.requests, []credentialBrokerRequest{{Protocol: market.CredentialBrokerProtocolV1, Operation: "inspect"}}) {
 		t.Fatalf("broker requests = %#v", host.requests)
 	}
 }

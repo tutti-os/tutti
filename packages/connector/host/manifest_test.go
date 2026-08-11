@@ -30,7 +30,7 @@ func TestImplementationRegistryValidatesSupportedManifest(t *testing.T) {
 					VersionRange: ">=20.0.0 <21.0.0"},
 				CLI: &ManagedCLIInterface{Entrypoint: "github-cli", TimeoutMS: 120_000,
 					Commands: []CLICommand{{Name: "run", InputSchema: map[string]any{"type": "object"}, TimeoutMS: 30_000}}},
-				CredentialBroker: &ManagedCredentialBroker{Protocol: CredentialBrokerProtocolV2,
+				CredentialBroker: &ManagedCredentialBroker{Protocol: CredentialBrokerProtocolV1,
 					Entrypoint: "authorization/broker.mjs", TimeoutMS: 300_000, AllowedHosts: []string{"github.com"}},
 			},
 		},
@@ -95,7 +95,7 @@ func TestManagedCredentialBrokerRequiresConnectorOwnedEntrypointAndAllowedHosts(
 				VersionRange: ">=22.0.0 <23.0.0"},
 			CLI: &ManagedCLIInterface{Entrypoint: "example", TimeoutMS: 120_000,
 				Commands: []CLICommand{{Name: "run", InputSchema: map[string]any{"type": "object"}, TimeoutMS: 30_000}}},
-			CredentialBroker: &ManagedCredentialBroker{Protocol: CredentialBrokerProtocolV2,
+			CredentialBroker: &ManagedCredentialBroker{Protocol: CredentialBrokerProtocolV1,
 				Entrypoint: "authorization/broker.mjs", TimeoutMS: 300_000, AllowedHosts: []string{"accounts.example.com"}},
 		}}}
 	if err := ValidateManifestShape(manifest); err != nil {

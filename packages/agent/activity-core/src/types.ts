@@ -71,6 +71,7 @@ export interface AgentActivitySessionForkLineage {
 
 export interface AgentActivitySessionIsolation {
   mode: "worktree";
+  worktreeId?: string;
   worktreePath: string;
   branch: string;
   baseCommit: string;

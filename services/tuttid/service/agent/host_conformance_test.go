@@ -386,14 +386,7 @@ func (d *legacyHostConformanceDriver) Reset(_ context.Context, fixture hostconfo
 	}
 	d.historicalState = &conformanceHistoricalStateStore{driver: d}
 	hostStore := serviceHostStore{service: d.service}
-	hostSupport := hostSupportPortsForService(
-		d.service,
-		nil,
-		conformanceWorktreeGarbageCollector{
-			steps: &steps,
-			err:   fixture.WorktreeGCSweepErr,
-		},
-	)
+	hostSupport := hostSupportPortsForService(d.service, nil)
 	d.service.SetApplicationHost(composeApplicationHost(
 		hostSupport,
 		hostStore,
@@ -1500,16 +1493,6 @@ type conformanceStaleTurnSettler struct{ steps *[]string }
 func (s conformanceStaleTurnSettler) SettleStaleTurnsOnStartup(context.Context) error {
 	*s.steps = append(*s.steps, "stale_settle")
 	return nil
-}
-
-type conformanceWorktreeGarbageCollector struct {
-	steps *[]string
-	err   error
-}
-
-func (c conformanceWorktreeGarbageCollector) SweepWorktreeIsolation(context.Context) error {
-	*c.steps = append(*c.steps, "worktree_sweep")
-	return c.err
 }
 
 func (d *legacyHostConformanceDriver) recordSubmittedTurn(workspaceID, sessionID, turnID string) {

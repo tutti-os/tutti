@@ -187,9 +187,9 @@ Migrated agent runtime state should derive from the same root:
     sessions/
       <date>-<sequence>/
     worktrees/
-      <agent-session-id>/
+      <worktree-id>/
       .metadata/
-        <agent-session-id>.json
+        <worktree-id>.json
     runs/
       <agent-session-id>/
         sidecar-manifest.json
@@ -362,10 +362,8 @@ filesystem cleanup fails. Cleanup is limited to the two Session-scoped roots
 above; it never deletes a user project, arbitrary Session cwd, provider
 installation, shared provider home, or custom external provider home. A future
 migration to Workspace-scoped physical paths is outside this change.
-Worktrees continue through their separate metadata-backed GC policy: a
-recoverable tombstone protects its worktree, while hard deletion merely makes
-the record eligible for the existing clean/non-ahead check. Dirty and ahead
-worktrees remain preserved.
+Managed worktrees are independent Workspace resources. Recoverable deletion,
+restore, hard deletion, and purge do not retain, release, or remove them.
 
 Deleted SQLite pages are immediately reusable by the database. After an
 explicit manual sweep only, the daemon may additionally run a three-second
@@ -374,19 +372,25 @@ best-effort `VACUUM` when the whole database is no larger than 64 MiB, at least
 Automatic maintenance never performs this compaction; a busy, timed-out, or
 failed attempt does not roll back the committed purge.
 
-`agent/worktrees/<agent-session-id>` is a daemon-managed Git checkout for a
-worktree-isolated agent session. The tuttid agent adapter owns the corresponding
-`.metadata/<agent-session-id>.json` record used for enumeration, failed-create
-rollback, and orphan recovery; it records the repository root, branch, base
-commit, session scope, and selected repository-relative working directory. An
-exact retried launch may reuse that checkout; a Workspace, repository, Session,
-or relative-directory mismatch fails closed. Canonical isolation coordinates
-remain in the session's existing runtime-context/metadata JSON, so this layout
-does not add a SQLite schema. Host startup recovery and the periodic Host worker
-only schedule cleanup through the adapter port. A tree is deleted only when it
-is clean with no commits ahead of its base, its creator is absent or not
-resumable, and no session cwd is inside the tree. Turn/runtime completion and
-session end times must never trigger this cleanup.
+`agent/worktrees/<worktree-id>` is a daemon-managed Git checkout with its own
+resource identity and explicit lifecycle. The tuttid agent adapter owns the
+corresponding `.metadata/<worktree-id>.json` record used for enumeration,
+creation-transaction recovery, and explicit deletion. It records the Workspace,
+repository root, branch, base commit, selected repository-relative working
+directory, and opaque creation-request hash; new records never persist a
+Session id. Metadata moves from `creating` to `ready` after `git worktree add`
+and cwd validation. An exact retry repairs an interrupted `creating` transaction
+or reuses its ready checkout; a Workspace, repository, or relative-directory
+mismatch fails closed. Legacy Session-keyed records remain readable but their
+Session id is compatibility data, not ownership.
+
+Canonical Session isolation JSON references the independent worktree id and Git
+coordinates as runtime facts. Fork copies the prepared cwd and runtime context
+without validating a Session-to-worktree ownership relation. Session deletion,
+restore, and purge never remove a worktree, and Host startup or periodic work
+never sweeps this directory. The Workspace managed-worktree API is the only
+normal deletion entrypoint. It refuses dirty or ahead resources and deletes the
+branch with an expected-object-id compare so a concurrent commit is preserved.
 
 `agent/extensions` is daemon-owned verified Agent Extension state. Version
 directories are immutable after installation; `active.json` selects the

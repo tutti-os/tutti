@@ -16,7 +16,7 @@ const (
 	ImplementationKindBuiltin              = "builtin"
 	ImplementationKindManagedStdio         = "managed_stdio"
 	ImplementationKindRemoteStreamableHTTP = "remote_streamable_http"
-	CredentialBrokerProtocolV2             = "tutti.connector.credentials.v2"
+	CredentialBrokerProtocolV1             = "tutti.connector.credentials.v1"
 	maxAgentRoutingAliases                 = 12
 	maxAgentRoutingAliasRunes              = 48
 )
@@ -332,8 +332,8 @@ func validateManagedCredentialBroker(broker *ManagedCredentialBroker, hasCLI boo
 	if broker == nil || !hasCLI {
 		return invalidManifest("authorized managed_stdio connectors require a CLI credential broker", nil)
 	}
-	if broker.Protocol != CredentialBrokerProtocolV2 || !safeRelativeEntrypoint(broker.Entrypoint) {
-		return invalidManifest("credential broker requires the v2 protocol and a safe connector-relative entrypoint", nil)
+	if broker.Protocol != CredentialBrokerProtocolV1 || !safeRelativeEntrypoint(broker.Entrypoint) {
+		return invalidManifest("credential broker requires the v1 protocol and a safe connector-relative entrypoint", nil)
 	}
 	if broker.TimeoutMS < 1_000 || broker.TimeoutMS > 10*60*1_000 {
 		return invalidManifest("credential broker timeoutMs must be between 1000 and 600000", nil)

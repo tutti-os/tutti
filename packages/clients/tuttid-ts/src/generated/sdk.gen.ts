@@ -189,6 +189,9 @@ import type {
   DeleteWorkspaceIssueTopicData,
   DeleteWorkspaceIssueTopicErrors,
   DeleteWorkspaceIssueTopicResponses,
+  DeleteWorkspaceManagedWorktreeData,
+  DeleteWorkspaceManagedWorktreeErrors,
+  DeleteWorkspaceManagedWorktreeResponses,
   DeleteWorkspaceResponses,
   DetectModelPlanData,
   DetectModelPlanErrors,
@@ -487,6 +490,9 @@ import type {
   ListWorkspaceIssueTopicsData,
   ListWorkspaceIssueTopicsErrors,
   ListWorkspaceIssueTopicsResponses,
+  ListWorkspaceManagedWorktreesData,
+  ListWorkspaceManagedWorktreesErrors,
+  ListWorkspaceManagedWorktreesResponses,
   ListWorkspaceRecentFilesData,
   ListWorkspaceRecentFilesErrors,
   ListWorkspaceRecentFilesResponses,
@@ -3771,6 +3777,42 @@ export const resolveWorkspaceAgentSessionWorktreeSupport = <
   >({
     security: [{ scheme: "bearer", type: "http" }],
     url: "/v1/workspaces/{workspaceID}/agent-session-worktree-support",
+    ...options
+  });
+
+/**
+ * List explicitly managed Git worktrees for a workspace
+ */
+export const listWorkspaceManagedWorktrees = <
+  ThrowOnError extends boolean = false
+>(
+  options: Options<ListWorkspaceManagedWorktreesData, ThrowOnError>
+) =>
+  (options.client ?? client).get<
+    ListWorkspaceManagedWorktreesResponses,
+    ListWorkspaceManagedWorktreesErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/managed-worktrees",
+    ...options
+  });
+
+/**
+ * Explicitly delete one clean managed Git worktree
+ */
+export const deleteWorkspaceManagedWorktree = <
+  ThrowOnError extends boolean = false
+>(
+  options: Options<DeleteWorkspaceManagedWorktreeData, ThrowOnError>
+) =>
+  (options.client ?? client).delete<
+    DeleteWorkspaceManagedWorktreeResponses,
+    DeleteWorkspaceManagedWorktreeErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/managed-worktrees/{worktreeID}",
     ...options
   });
 

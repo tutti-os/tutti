@@ -918,6 +918,8 @@ function createDependenciesStub(): {
       setAgentSessionAutomationRuleOverride: fail,
       listModelPlans: fail,
       listWorkspaceAgents: fail,
+      listWorkspaceManagedWorktrees: fail,
+      deleteWorkspaceManagedWorktree: fail,
       createWorkspaceAgent: fail,
       updateWorkspaceAgent: fail,
       deleteWorkspaceAgent: fail,
