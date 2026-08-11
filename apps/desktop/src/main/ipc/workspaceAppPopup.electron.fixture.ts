@@ -1,13 +1,20 @@
-import { BrowserWindow, app, ipcMain, type WebContents } from "electron";
+import {
+  BrowserWindow,
+  app,
+  ipcMain,
+  session,
+  type WebContents
+} from "electron";
 import { once } from "node:events";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
-import {
-  installBrowserWebviewSecurity,
-  registerBrowserNodeElectronMain
-} from "@tutti-os/browser-node/electron-main";
+import { registerBrowserNodeElectronMain } from "@tutti-os/browser-node/electron-main";
 import { desktopIpcChannels } from "../../shared/contracts/ipc.ts";
-import { createWorkspaceAppWindowOpenHandler } from "./workspaceAppWindowOpen.ts";
+import { registerBrowserGuestWebContents } from "../browser/browserGuestRegistry.ts";
+import { registerTuttiAssetProtocolForSession } from "../host/tuttiAssetProtocol.ts";
+import { registerWorkspaceAppGuestContext } from "./workspaceAppGuestContextRegistry.ts";
+import type { DesktopLogger } from "../logging.ts";
+import { installWorkspaceWindowWebviewSecurity } from "../windows/workspaceWebviewSecurity.ts";
 
 const resultPrefix = "WORKSPACE_APP_POPUP_INTEGRATION=";
 const rendererAckChannel = "workspace-app-popup-test:browser-event";
@@ -55,6 +62,22 @@ async function runWorkspaceAppPopupIntegration() {
   };
   const mainHandlers = new Map<string, FixtureMainHandler>();
   let attachedGuestContents: WebContents | null = null;
+  const logger: DesktopLogger = {
+    async close() {},
+    debug() {},
+    error() {},
+    info(message) {
+      if (message === "workspace app emitted open-url") {
+        counts.producerCallbacks += 1;
+      }
+    },
+    warn(message) {
+      if (message === "workspace app guest rejected POST popup") {
+        counts.postPopupRejections += 1;
+        counts.producerCallbacks += 1;
+      }
+    }
+  };
   const ownerWindow = new BrowserWindow({
     show: false,
     webPreferences: {
@@ -100,48 +123,30 @@ async function runWorkspaceAppPopupIntegration() {
         : null;
     }
   });
-  const cleanupWebviewSecurity = installBrowserWebviewSecurity({
-    allowedSessionPartitions: {
-      additionalAllowedPrefixes: ["persist:tutti-app:"]
-    },
+  const cleanupWebviewSecurity = installWorkspaceWindowWebviewSecurity({
     contents: ownerWindow.webContents,
-    logger: {
-      warn(message) {
-        if (message === "workspace app guest rejected POST popup") {
-          counts.postPopupRejections += 1;
-        }
+    logger,
+    ownerWindow,
+    runtime: {
+      openExternal() {
+        throw new Error("workspace app popup must not use the default handler");
+      },
+      registerBrowserGuest(window, guestContents) {
+        registerBrowserGuestWebContents(window, guestContents, logger);
+      },
+      registerWorkspaceAppAssetProtocol(partition) {
+        registerTuttiAssetProtocolForSession(session.fromPartition(partition));
+      },
+      registerWorkspaceAppGuest(window, guestContents, partition) {
+        return registerWorkspaceAppGuestContext({
+          contents: guestContents,
+          logger,
+          ownerWindow: window,
+          partition
+        });
       }
     },
-    resolveGuestAttachment: (guestContents, { params }) => {
-      if (params.partition !== workspaceAppPartition) {
-        return undefined;
-      }
-      const handler = createWorkspaceAppWindowOpenHandler({
-        contents: guestContents,
-        logger: {
-          warn(message) {
-            if (message === "workspace app guest rejected POST popup") {
-              counts.postPopupRejections += 1;
-            }
-          }
-        },
-        ownerWindow
-      });
-      return {
-        windowOpenHandler: (details) => {
-          counts.producerCallbacks += 1;
-          return handler(details);
-        }
-      };
-    },
-    openExternal: () => {
-      throw new Error("workspace app popup must not use the default handler");
-    },
-    resolvePreload({ params }) {
-      return params.partition === workspaceAppPartition
-        ? preloadPath
-        : undefined;
-    }
+    workspaceAppPreloadPath: preloadPath
   });
 
   try {

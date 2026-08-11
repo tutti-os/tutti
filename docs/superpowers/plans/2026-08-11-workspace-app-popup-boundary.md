@@ -130,7 +130,7 @@ deny delegate.
 Run the Task 1 Node command. Expected: all package Electron-main tests pass,
 including setter cardinality and the legacy override.
 
-- [ ] **Step 7: Commit Task 1**
+- [x] **Step 7: Commit Task 1**
 
 ```bash
 git add packages/browser/workbench-node/src/electron-main/webviewSecurity.ts packages/browser/workbench-node/src/electron-main/electronMain.test.ts packages/browser/workbench-node/src/electron-main/index.ts
@@ -150,7 +150,7 @@ git commit -s -m "fix(browser-node): fail closed during guest attachment"
 - Produces: `installWorkspaceWindowWebviewSecurity(input): () => void`.
 - Owns: Workspace App partition allowance, both guest registries, preload selection, Tutti asset-protocol registration, and external popup fallback.
 
-- [ ] **Step 1: Write the failing production-composition test**
+- [x] **Step 1: Write the failing production-composition test**
 
 Create a focused test with injected registration and preload dependencies. Emit
 a Workspace App attach and assert exactly one Browser guest registration, one
@@ -158,7 +158,7 @@ Workspace App registration, the Workspace App preload path, and one returned
 host attachment route. Emit an ordinary Browser attach and assert only Browser
 registration and the Browser preload path.
 
-- [ ] **Step 2: Run the composition test and verify RED**
+- [x] **Step 2: Run the composition test and verify RED**
 
 ```bash
 node --import ./apps/desktop/test/register-asset-stub.mjs --test --experimental-strip-types apps/desktop/src/main/windows/workspaceWebviewSecurity.test.ts
@@ -166,7 +166,7 @@ node --import ./apps/desktop/test/register-asset-stub.mjs --test --experimental-
 
 Expected: FAIL because the shared Desktop installer does not exist.
 
-- [ ] **Step 3: Extract the production installer**
+- [x] **Step 3: Extract the production installer**
 
 Create `installWorkspaceWindowWebviewSecurity` with explicit injectable runtime
 dependencies defaulting to the real Electron/session/registry functions. It
@@ -193,14 +193,14 @@ calls `installBrowserWebviewSecurity` with:
 
 Move the existing preload selection into this installer unchanged.
 
-- [ ] **Step 4: Replace manual production and fixture wiring**
+- [x] **Step 4: Replace manual production and fixture wiring**
 
 `workspaceWindow.ts` calls the new installer. The real Electron fixture calls
 the same installer with its test preload path and logger; remove its direct
 `installBrowserWebviewSecurity` and `createWorkspaceAppWindowOpenHandler`
 composition.
 
-- [ ] **Step 5: Run unit and real Electron tests and verify GREEN**
+- [x] **Step 5: Run unit and real Electron tests and verify GREEN**
 
 ```bash
 node --import ./apps/desktop/test/register-asset-stub.mjs --test --experimental-strip-types apps/desktop/src/main/windows/workspaceWebviewSecurity.test.ts
