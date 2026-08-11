@@ -26,7 +26,6 @@ import {
   agentMentionItemKey,
   isAgentMentionItemDisabled
 } from "../AgentFileMentionPalette";
-import { MENTION_PALETTE_DISMISS_INTERACTION_SELECTOR } from "./AgentComposerChrome";
 import { updateAgentComposerDraft } from "../model/agentComposerDraft";
 import {
   type AgentMentionFilterId,
@@ -69,6 +68,7 @@ interface Input {
   workspaceReferencePickerOpen: boolean;
   composerRef: RefObject<HTMLFormElement | null>;
   paletteContentRef: RefObject<HTMLDivElement | null>;
+  promptInputAreaRef: RefObject<HTMLDivElement | null>;
   shouldCenterMentionHighlight: boolean;
 }
 
@@ -113,6 +113,7 @@ export function useComposerMentionActions(input: Input) {
     workspaceReferencePickerOpen,
     composerRef,
     paletteContentRef,
+    promptInputAreaRef,
     shouldCenterMentionHighlight
   } = input;
   const selectFileMention = useCallback(
@@ -396,14 +397,24 @@ export function useComposerMentionActions(input: Input) {
       return;
     }
 
+    // Mirror the slash palette's ComposerFloatingMenuSurface dismissal: any
+    // pointer interaction outside the prompt input area and the palette
+    // surface closes the palette, instead of forcing Escape or a selection.
+    // The prompt input stays interactive because caret moves inside the
+    // active trigger are handled by the suggestion plugin itself.
     const handlePointerDown = (event: PointerEvent): void => {
       const target = event.target;
-      if (!(target instanceof Element)) {
+      if (!(target instanceof Node)) {
         return;
       }
-      if (target.closest(MENTION_PALETTE_DISMISS_INTERACTION_SELECTOR)) {
-        closeOpenPalette();
+      const isInsidePromptInput =
+        promptInputAreaRef.current?.contains(target) ?? false;
+      const isInsidePalette =
+        paletteContentRef.current?.contains(target) ?? false;
+      if (isInsidePromptInput || isInsidePalette) {
+        return;
       }
+      closeOpenPalette();
     };
     const handleWindowResize = (): void => {
       closeOpenPalette();
