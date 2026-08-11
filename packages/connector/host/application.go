@@ -259,12 +259,28 @@ func (application *Application) Install(
 			if !CanTransitionInstallation(connector.Installation.State, target) {
 				return Connector{}, invalidTransition("installation", string(connector.Installation.State), string(target))
 			}
+			if installationRequiresPhysicalRepair(connector.Installation) {
+				// Calibration deliberately retains the last committed release while
+				// an installation is absent or invalid so a later observation can
+				// restore it without reinstalling. Once the user explicitly repairs
+				// the Connector, that evidence no longer describes a usable
+				// installation and must not survive the transition to installing.
+				connector.Installation = Installation{}
+			}
 			connector.Installation.State = target
 			connector.Installation.FailureCode = ""
 			return connector, nil
 		},
 	)
 	return result, err
+}
+
+func installationRequiresPhysicalRepair(installation Installation) bool {
+	if installation.State != InstallationStateFailed {
+		return false
+	}
+	return installation.FailureCode == InstallationFailureCodePhysicallyAbsent ||
+		installation.FailureCode == InstallationFailureCodePhysicallyInvalid
 }
 
 // Uninstall removes the Connector runtime and release from this device. It is

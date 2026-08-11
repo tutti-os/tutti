@@ -46,6 +46,75 @@ func TestApplicationInstallIsDurableAndIdempotent(t *testing.T) {
 	}
 }
 
+func TestApplicationRepairInstallClearsInvalidInstalledEvidence(t *testing.T) {
+	for _, failureCode := range []string{
+		InstallationFailureCodePhysicallyAbsent,
+		InstallationFailureCodePhysicallyInvalid,
+	} {
+		t.Run(failureCode, func(t *testing.T) {
+			connector := testConnector("github")
+			connector.Installation = Installation{
+				State:                  InstallationStateFailed,
+				InstalledVersion:       connector.Release.Version,
+				InstalledReleaseID:     connector.Release.ReleaseID,
+				InstalledReleaseDigest: connector.Release.ReleaseDigest,
+				FailureCode:            failureCode,
+			}
+			repository := newMemoryRepository(connector)
+			application := newTestApplication(t, repository, &memoryScheduler{}, &memoryInstallRuntime{}, CatalogSnapshot{})
+
+			accepted, err := application.Install(context.Background(), ConnectorMutation{
+				Mutation:     Mutation{ClientRequestID: "repair-" + failureCode, ExpectedRevision: 0},
+				ConnectorKey: connector.Key,
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if accepted.Connector == nil {
+				t.Fatal("accepted repair omitted Connector projection")
+			}
+			installation := accepted.Connector.Installation
+			if installation.State != InstallationStateInstalling ||
+				installation.InstalledVersion != "" ||
+				installation.InstalledReleaseID != "" ||
+				installation.InstalledReleaseDigest != "" ||
+				installation.FailureCode != "" {
+				t.Fatalf("accepted repair installation = %#v", installation)
+			}
+		})
+	}
+}
+
+func TestApplicationUpdateInstallRetainsUsableInstalledEvidence(t *testing.T) {
+	connector := testConnector("github")
+	connector.Installation = Installation{
+		State:                  InstallationStateInstalled,
+		InstalledVersion:       "0.9.0",
+		InstalledReleaseID:     "github@0.9.0",
+		InstalledReleaseDigest: strings.Repeat("a", 64),
+	}
+	repository := newMemoryRepository(connector)
+	application := newTestApplication(t, repository, &memoryScheduler{}, &memoryInstallRuntime{}, CatalogSnapshot{})
+
+	accepted, err := application.Install(context.Background(), ConnectorMutation{
+		Mutation:     Mutation{ClientRequestID: "update-github", ExpectedRevision: 0},
+		ConnectorKey: connector.Key,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if accepted.Connector == nil {
+		t.Fatal("accepted update omitted Connector projection")
+	}
+	installation := accepted.Connector.Installation
+	if installation.State != InstallationStateUpdating ||
+		installation.InstalledVersion != connector.Installation.InstalledVersion ||
+		installation.InstalledReleaseID != connector.Installation.InstalledReleaseID ||
+		installation.InstalledReleaseDigest != connector.Installation.InstalledReleaseDigest {
+		t.Fatalf("accepted update installation = %#v", installation)
+	}
+}
+
 func TestApplicationClientRequestIDIsReusableOnlyAfterTerminalRetention(t *testing.T) {
 	repository := newMemoryRepository(testConnector("github"))
 	scheduler := &memoryScheduler{}

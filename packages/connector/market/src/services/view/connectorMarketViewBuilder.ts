@@ -257,6 +257,12 @@ function buildConnectorDialogView(
 
 function connectorHasInstalledArtifact(connector: Connector): boolean {
   if (
+    connector.installation.state === "not_installed" ||
+    connector.installation.state === "installing"
+  ) {
+    return false;
+  }
+  if (
     connector.installation.state === "failed" &&
     [
       "connector_installation_absent",
