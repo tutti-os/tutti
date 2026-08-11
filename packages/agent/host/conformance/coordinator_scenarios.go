@@ -82,7 +82,7 @@ func runRecoveryOrder(ctx context.Context, driver Driver) error {
 		)
 	}
 	steps := metrics.RecoverySteps
-	want := []string{"runtime_requeue", "runtime_complete", "goal_requeue", "goal_inbox_requeue", "stale_settle", "worktree_sweep"}
+	want := []string{"runtime_requeue", "runtime_complete", "goal_requeue", "goal_inbox_requeue", "stale_settle"}
 	if len(steps) != len(want) {
 		return fmt.Errorf("recovery steps=%v, want %v", steps, want)
 	}

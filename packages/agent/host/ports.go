@@ -324,17 +324,9 @@ type RuntimeOperationEventPublisher interface {
 }
 
 // StaleTurnSettler runs after durable runtime operations, goal operations, and
-// goal reconcile inbox work have been recovered and before the adapter-specific
-// worktree-isolation sweep.
+// goal reconcile inbox work have been recovered.
 type StaleTurnSettler interface {
 	SettleStaleTurnsOnStartup(context.Context) error
-}
-
-// WorktreeGarbageCollector owns adapter-specific git/filesystem cleanup. Host
-// schedules it during startup recovery and from the periodic Run worker so
-// cleanup cannot accidentally follow a turn or runtime terminal transition.
-type WorktreeGarbageCollector interface {
-	SweepWorktreeIsolation(context.Context) error
 }
 
 type GoalStateStore interface {

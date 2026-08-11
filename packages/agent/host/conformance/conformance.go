@@ -81,7 +81,6 @@ type Fixture struct {
 	// explicit TurnID is not the Session.ActiveTurnID. It models the runtime
 	// target race without exposing a runtime/provider API to scenarios.
 	GuidanceTargetMismatch bool
-	WorktreeGCSweepErr     error
 	DeleteAdmissionErr     error
 	DeleteSessionPlans     [][]string
 }

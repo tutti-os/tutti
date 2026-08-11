@@ -594,9 +594,10 @@ action. Tuttid independently enforces the same flag on new Fork writes;
 disabling it leaves existing lineage, operation reads, and operation
 acknowledgements available.
 
-Execution still rejects a worktree-isolated source because a provider-native
-Fork retains the provider cwd and Tutti must not silently transfer worktree
-ownership. Non-isolated runtime facts are frozen into the target snapshot.
+Execution accepts a worktree-isolated source. A provider-native Fork retains
+the provider cwd, and Tutti freezes the same cwd and isolation coordinates into
+the target snapshot without creating or transferring worktree ownership.
+Other runtime facts are frozen into the target snapshot as well.
 Only attachments referenced by that snapshot are staged into the target
 namespace; the source attachment directory is never copied wholesale.
 

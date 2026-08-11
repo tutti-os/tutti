@@ -6652,6 +6652,11 @@ type DeleteWorkspaceFileEntryResponse struct {
 	WorkspaceId string `json:"workspaceId"`
 }
 
+// DeleteWorkspaceManagedWorktreeResponse defines model for DeleteWorkspaceManagedWorktreeResponse.
+type DeleteWorkspaceManagedWorktreeResponse struct {
+	Deleted bool `json:"deleted"`
+}
+
 // DeleteWorkspaceResponse defines model for DeleteWorkspaceResponse.
 type DeleteWorkspaceResponse struct {
 	WorkspaceId string `json:"workspaceId"`
@@ -9014,10 +9019,13 @@ type WorkspaceAgentSessionGoalSyncStateSyncStatus string
 
 // WorkspaceAgentSessionIsolation defines model for WorkspaceAgentSessionIsolation.
 type WorkspaceAgentSessionIsolation struct {
-	BaseCommit   string                             `json:"baseCommit"`
-	Branch       string                             `json:"branch"`
-	Mode         WorkspaceAgentSessionIsolationMode `json:"mode"`
-	WorktreePath string                             `json:"worktreePath"`
+	BaseCommit string                             `json:"baseCommit"`
+	Branch     string                             `json:"branch"`
+	Mode       WorkspaceAgentSessionIsolationMode `json:"mode"`
+
+	// WorktreeId Independent managed worktree resource identity. Legacy sessions may omit it.
+	WorktreeId   *string `json:"worktreeId,omitempty"`
+	WorktreePath string  `json:"worktreePath"`
 }
 
 // WorkspaceAgentSessionIsolationMode defines model for WorkspaceAgentSessionIsolationMode.
@@ -9681,6 +9689,22 @@ type WorkspaceGitPatchSupportResponse struct {
 
 // WorkspaceGitPatchTarget defines model for WorkspaceGitPatchTarget.
 type WorkspaceGitPatchTarget string
+
+// WorkspaceManagedWorktree defines model for WorkspaceManagedWorktree.
+type WorkspaceManagedWorktree struct {
+	BaseCommit   string  `json:"baseCommit"`
+	Branch       string  `json:"branch"`
+	RelativeCwd  *string `json:"relativeCwd,omitempty"`
+	RepoRoot     string  `json:"repoRoot"`
+	WorkspaceId  string  `json:"workspaceId"`
+	WorktreeId   string  `json:"worktreeId"`
+	WorktreePath string  `json:"worktreePath"`
+}
+
+// WorkspaceManagedWorktreeListResponse defines model for WorkspaceManagedWorktreeListResponse.
+type WorkspaceManagedWorktreeListResponse struct {
+	Worktrees []WorkspaceManagedWorktree `json:"worktrees"`
+}
 
 // WorkspaceResponse defines model for WorkspaceResponse.
 type WorkspaceResponse struct {

@@ -87,3 +87,25 @@ test("clones an explicitly projected Goal synchronization state", () => {
     syncStatus: "applying"
   });
 });
+
+test("preserves an independent managed Worktree identity", () => {
+  const session = normalizeAgentActivitySession({
+    activeTurnId: null,
+    agentSessionId: "session-worktree",
+    cwd: "/state/worktrees/worktree-1",
+    isolation: {
+      baseCommit: "base-1",
+      branch: "tutti/worktree/worktree-1",
+      mode: "worktree",
+      worktreeId: " worktree-1 ",
+      worktreePath: "/state/worktrees/worktree-1"
+    },
+    latestTurnInteractions: [],
+    pendingInteractions: [],
+    provider: "codex",
+    title: "Worktree session",
+    workspaceId: "workspace-1"
+  });
+
+  assert.equal(session.isolation?.worktreeId, "worktree-1");
+});

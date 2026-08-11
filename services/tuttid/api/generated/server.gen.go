@@ -686,6 +686,12 @@ type ServerInterface interface {
 	// Switch a failed independent Tutti Mode Goal Review to self review
 	// (POST /v1/workspaces/{workspaceID}/issues/{issueID}/tutti-mode-review/self)
 	SwitchTuttiModeGoalReviewToSelf(w http.ResponseWriter, r *http.Request, workspaceID WorkspaceID, issueID IssueID)
+	// List explicitly managed Git worktrees for a workspace
+	// (GET /v1/workspaces/{workspaceID}/managed-worktrees)
+	ListWorkspaceManagedWorktrees(w http.ResponseWriter, r *http.Request, workspaceID WorkspaceID)
+	// Explicitly delete one clean managed Git worktree
+	// (DELETE /v1/workspaces/{workspaceID}/managed-worktrees/{worktreeID})
+	DeleteWorkspaceManagedWorktree(w http.ResponseWriter, r *http.Request, workspaceID WorkspaceID, worktreeID string)
 	// List workspace model access plans
 	// (GET /v1/workspaces/{workspaceID}/model-plans)
 	ListModelPlans(w http.ResponseWriter, r *http.Request, workspaceID WorkspaceID)
@@ -9897,6 +9903,79 @@ func (siw *ServerInterfaceWrapper) SwitchTuttiModeGoalReviewToSelf(w http.Respon
 	handler.ServeHTTP(w, r)
 }
 
+// ListWorkspaceManagedWorktrees operation middleware
+func (siw *ServerInterfaceWrapper) ListWorkspaceManagedWorktrees(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "workspaceID" -------------
+	var workspaceID WorkspaceID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "workspaceID", r.PathValue("workspaceID"), &workspaceID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "workspaceID", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListWorkspaceManagedWorktrees(w, r, workspaceID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteWorkspaceManagedWorktree operation middleware
+func (siw *ServerInterfaceWrapper) DeleteWorkspaceManagedWorktree(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "workspaceID" -------------
+	var workspaceID WorkspaceID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "workspaceID", r.PathValue("workspaceID"), &workspaceID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "workspaceID", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "worktreeID" -------------
+	var worktreeID string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "worktreeID", r.PathValue("worktreeID"), &worktreeID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "worktreeID", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteWorkspaceManagedWorktree(w, r, workspaceID, worktreeID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListModelPlans operation middleware
 func (siw *ServerInterfaceWrapper) ListModelPlans(w http.ResponseWriter, r *http.Request) {
 
@@ -11481,6 +11560,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/issues/{issueID}/tasks/{taskID}/runs/{runID}", wrapper.GetWorkspaceIssueTaskRun)
 	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/issues/{issueID}/tasks/{taskID}/runs/{runID}", wrapper.CompleteWorkspaceIssueTaskRun)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/issues/{issueID}/tutti-mode-review/self", wrapper.SwitchTuttiModeGoalReviewToSelf)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/managed-worktrees", wrapper.ListWorkspaceManagedWorktrees)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/managed-worktrees/{worktreeID}", wrapper.DeleteWorkspaceManagedWorktree)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/model-plans", wrapper.ListModelPlans)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/model-plans", wrapper.CreateModelPlan)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/model-plans/detect", wrapper.DetectModelPlan)
@@ -35453,6 +35534,235 @@ func (response SwitchTuttiModeGoalReviewToSelf503JSONResponse) VisitSwitchTuttiM
 	return err
 }
 
+type ListWorkspaceManagedWorktreesRequestObject struct {
+	WorkspaceID WorkspaceID `json:"workspaceID"`
+}
+
+type ListWorkspaceManagedWorktreesResponseObject interface {
+	VisitListWorkspaceManagedWorktreesResponse(w http.ResponseWriter) error
+}
+
+type ListWorkspaceManagedWorktrees200JSONResponse WorkspaceManagedWorktreeListResponse
+
+func (response ListWorkspaceManagedWorktrees200JSONResponse) VisitListWorkspaceManagedWorktreesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListWorkspaceManagedWorktrees400JSONResponse struct {
+	InvalidRequestErrorJSONResponse
+}
+
+func (response ListWorkspaceManagedWorktrees400JSONResponse) VisitListWorkspaceManagedWorktreesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListWorkspaceManagedWorktrees401JSONResponse struct{ UnauthorizedErrorJSONResponse }
+
+func (response ListWorkspaceManagedWorktrees401JSONResponse) VisitListWorkspaceManagedWorktreesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListWorkspaceManagedWorktrees405JSONResponse struct {
+	MethodNotAllowedErrorJSONResponse
+}
+
+func (response ListWorkspaceManagedWorktrees405JSONResponse) VisitListWorkspaceManagedWorktreesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(405)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListWorkspaceManagedWorktrees502JSONResponse struct {
+	WorkspaceOperationErrorJSONResponse
+}
+
+func (response ListWorkspaceManagedWorktrees502JSONResponse) VisitListWorkspaceManagedWorktreesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(502)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListWorkspaceManagedWorktrees503JSONResponse struct {
+	ServiceUnavailableErrorJSONResponse
+}
+
+func (response ListWorkspaceManagedWorktrees503JSONResponse) VisitListWorkspaceManagedWorktreesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteWorkspaceManagedWorktreeRequestObject struct {
+	WorkspaceID WorkspaceID `json:"workspaceID"`
+	WorktreeID  string      `json:"worktreeID"`
+}
+
+type DeleteWorkspaceManagedWorktreeResponseObject interface {
+	VisitDeleteWorkspaceManagedWorktreeResponse(w http.ResponseWriter) error
+}
+
+type DeleteWorkspaceManagedWorktree200JSONResponse DeleteWorkspaceManagedWorktreeResponse
+
+func (response DeleteWorkspaceManagedWorktree200JSONResponse) VisitDeleteWorkspaceManagedWorktreeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteWorkspaceManagedWorktree400JSONResponse struct {
+	InvalidRequestErrorJSONResponse
+}
+
+func (response DeleteWorkspaceManagedWorktree400JSONResponse) VisitDeleteWorkspaceManagedWorktreeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteWorkspaceManagedWorktree401JSONResponse struct{ UnauthorizedErrorJSONResponse }
+
+func (response DeleteWorkspaceManagedWorktree401JSONResponse) VisitDeleteWorkspaceManagedWorktreeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteWorkspaceManagedWorktree404JSONResponse ApiErrorResponse
+
+func (response DeleteWorkspaceManagedWorktree404JSONResponse) VisitDeleteWorkspaceManagedWorktreeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteWorkspaceManagedWorktree405JSONResponse struct {
+	MethodNotAllowedErrorJSONResponse
+}
+
+func (response DeleteWorkspaceManagedWorktree405JSONResponse) VisitDeleteWorkspaceManagedWorktreeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(405)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteWorkspaceManagedWorktree409JSONResponse ApiErrorResponse
+
+func (response DeleteWorkspaceManagedWorktree409JSONResponse) VisitDeleteWorkspaceManagedWorktreeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteWorkspaceManagedWorktree502JSONResponse struct {
+	WorkspaceOperationErrorJSONResponse
+}
+
+func (response DeleteWorkspaceManagedWorktree502JSONResponse) VisitDeleteWorkspaceManagedWorktreeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(502)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteWorkspaceManagedWorktree503JSONResponse struct {
+	ServiceUnavailableErrorJSONResponse
+}
+
+func (response DeleteWorkspaceManagedWorktree503JSONResponse) VisitDeleteWorkspaceManagedWorktreeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListModelPlansRequestObject struct {
 	WorkspaceID WorkspaceID `json:"workspaceID"`
 }
@@ -39745,6 +40055,12 @@ type StrictServerInterface interface {
 	// Switch a failed independent Tutti Mode Goal Review to self review
 	// (POST /v1/workspaces/{workspaceID}/issues/{issueID}/tutti-mode-review/self)
 	SwitchTuttiModeGoalReviewToSelf(ctx context.Context, request SwitchTuttiModeGoalReviewToSelfRequestObject) (SwitchTuttiModeGoalReviewToSelfResponseObject, error)
+	// List explicitly managed Git worktrees for a workspace
+	// (GET /v1/workspaces/{workspaceID}/managed-worktrees)
+	ListWorkspaceManagedWorktrees(ctx context.Context, request ListWorkspaceManagedWorktreesRequestObject) (ListWorkspaceManagedWorktreesResponseObject, error)
+	// Explicitly delete one clean managed Git worktree
+	// (DELETE /v1/workspaces/{workspaceID}/managed-worktrees/{worktreeID})
+	DeleteWorkspaceManagedWorktree(ctx context.Context, request DeleteWorkspaceManagedWorktreeRequestObject) (DeleteWorkspaceManagedWorktreeResponseObject, error)
 	// List workspace model access plans
 	// (GET /v1/workspaces/{workspaceID}/model-plans)
 	ListModelPlans(ctx context.Context, request ListModelPlansRequestObject) (ListModelPlansResponseObject, error)
@@ -46640,6 +46956,59 @@ func (sh *strictHandler) SwitchTuttiModeGoalReviewToSelf(w http.ResponseWriter, 
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(SwitchTuttiModeGoalReviewToSelfResponseObject); ok {
 		if err := validResponse.VisitSwitchTuttiModeGoalReviewToSelfResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListWorkspaceManagedWorktrees operation middleware
+func (sh *strictHandler) ListWorkspaceManagedWorktrees(w http.ResponseWriter, r *http.Request, workspaceID WorkspaceID) {
+	var request ListWorkspaceManagedWorktreesRequestObject
+
+	request.WorkspaceID = workspaceID
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListWorkspaceManagedWorktrees(ctx, request.(ListWorkspaceManagedWorktreesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListWorkspaceManagedWorktrees")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListWorkspaceManagedWorktreesResponseObject); ok {
+		if err := validResponse.VisitListWorkspaceManagedWorktreesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeleteWorkspaceManagedWorktree operation middleware
+func (sh *strictHandler) DeleteWorkspaceManagedWorktree(w http.ResponseWriter, r *http.Request, workspaceID WorkspaceID, worktreeID string) {
+	var request DeleteWorkspaceManagedWorktreeRequestObject
+
+	request.WorkspaceID = workspaceID
+	request.WorktreeID = worktreeID
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteWorkspaceManagedWorktree(ctx, request.(DeleteWorkspaceManagedWorktreeRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteWorkspaceManagedWorktree")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteWorkspaceManagedWorktreeResponseObject); ok {
+		if err := validResponse.VisitDeleteWorkspaceManagedWorktreeResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

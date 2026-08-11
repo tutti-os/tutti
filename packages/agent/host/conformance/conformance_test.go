@@ -19,7 +19,7 @@ func TestPublishedScenarioCatalogsHaveUniqueNames(t *testing.T) {
 		{name: "submission fence", scenarios: SubmissionFenceScenarios(), wantCount: 1},
 		{name: "title policy", scenarios: TitlePolicyScenarios(), wantCount: 1},
 		{name: "deletion admission", scenarios: DeletionAdmissionScenarios(), wantCount: 3},
-		{name: "coordinator", scenarios: CoordinatorScenarios(), wantCount: 7},
+		{name: "coordinator", scenarios: CoordinatorScenarios(), wantCount: 6},
 		{name: "goal", scenarios: GoalScenarios(), wantCount: 17},
 		{name: "commit observer", scenarios: CommitObserverScenarios(), wantCount: 2},
 	}
@@ -151,8 +151,7 @@ func TestScenarioOwnershipIsExplicit(t *testing.T) {
 		"interactive response reuses provider request id across turns",
 		"interactive response race",
 		"plan decision",
-		"recover operations before stale turns and worktree sweep",
-		"worktree sweep failure propagates",
+		"recover operations before stale turns",
 	}
 	if got := scenarioNames(Scenarios()); !slices.Equal(got, wantAdapterLifecycle) {
 		t.Fatalf("adapter lifecycle scenarios=%v, want %v", got, wantAdapterLifecycle)

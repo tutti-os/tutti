@@ -44,6 +44,9 @@ export function normalizeAgentActivitySession(
     isolation: source.isolation
       ? {
           mode: source.isolation.mode,
+          ...(source.isolation.worktreeId?.trim()
+            ? { worktreeId: source.isolation.worktreeId.trim() }
+            : {}),
           worktreePath: source.isolation.worktreePath.trim(),
           branch: source.isolation.branch.trim(),
           baseCommit: source.isolation.baseCommit.trim()

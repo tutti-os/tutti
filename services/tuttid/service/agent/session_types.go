@@ -328,6 +328,7 @@ type SessionLifecycleCapabilities struct {
 }
 
 type SessionIsolation struct {
+	WorktreeID   string `json:"worktreeId,omitempty"`
 	Mode         string `json:"mode"`
 	WorktreePath string `json:"worktreePath"`
 	Branch       string `json:"branch"`

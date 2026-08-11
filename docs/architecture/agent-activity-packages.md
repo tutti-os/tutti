@@ -169,11 +169,9 @@ deletion if any live or tombstoned row still owns it. Multiple Workspace queue
 rows for one ID are handled idempotently. Recoverable tombstones keep both
 resources; Workspace-keyed runtime and Model Gateway cleanup still runs, while
 the global Agent/browser releaser is skipped if another Workspace has a live
-owner with that ID. Worktree isolation is protected while a recoverable
-tombstone exists; after hard deletion, the existing worktree GC policy may
-remove only clean, non-ahead worktrees and continues to preserve dirty or ahead
-work. Migrating those physical paths to a Workspace-scoped layout remains a
-separate future change.
+owner with that ID. Managed worktrees are independent Workspace resources:
+soft deletion, hard deletion, restore, and purge do not retain or remove them.
+They are removed only through the explicit managed-worktree operation.
 
 Automatic maintenance starts ten minutes after daemon readiness, checks at
 30-minute intervals, and records completion at most once per 24 hours. It runs

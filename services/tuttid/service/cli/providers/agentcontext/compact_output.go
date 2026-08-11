@@ -75,10 +75,14 @@ func sessionActionValue(session agentservice.Session) map[string]any {
 }
 
 func isolationCompactValue(isolation agentservice.SessionIsolation) map[string]any {
-	return map[string]any{
+	value := map[string]any{
 		"mode": strings.TrimSpace(isolation.Mode), "worktreePath": strings.TrimSpace(isolation.WorktreePath),
 		"branch": strings.TrimSpace(isolation.Branch), "baseCommit": strings.TrimSpace(isolation.BaseCommit),
 	}
+	if worktreeID := strings.TrimSpace(isolation.WorktreeID); worktreeID != "" {
+		value["worktreeId"] = worktreeID
+	}
+	return value
 }
 
 func sessionSummaryValues(sessions []agentservice.Session) []any {

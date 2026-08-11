@@ -23,7 +23,7 @@ The module owns:
 - narrow canonical store, runtime, preparation, attachment, clock, scheduler,
   and post-commit observer ports;
 - the runtime-operation coordinator, worker, typed interactive dispositions,
-  startup recovery order, and adapter-specific worktree GC scheduling;
+  and startup recovery order;
 - the direct and typed goal-control saga, revision actor, durable operation and
   reconcile-inbox workers, exact Goal-generation fences, provider evidence
   repair, and goal recovery policy;
@@ -163,8 +163,7 @@ read: only `GoalControl`, `AdoptProviderGoal`, `ReconcileGoal`, and recovery
 workers may create or change the durable goal projection. `Recover` first
 requeues and recovers
 durable runtime operations, then goal operations and the goal reconcile inbox,
-then settles unrecoverable stale turns, and finally invokes the adapter's
-worktree-isolation sweep. Configuring a goal store
+then settles unrecoverable stale turns. Configuring a goal store
 without its runtime or inbox consumer fails recovery with
 `ErrGoalConsumerUnavailable` instead of silently accumulating work.
 
@@ -539,11 +538,10 @@ verification.
 
 Startup invokes `Host.Recover` before serving traffic and starts the Host-owned
 runtime and goal workers. Adapters can use the supervised
-`Host.Run` entrypoint to start the runtime-operation, goal-operation, goal
-reconcile-inbox, and periodic worktree-GC workers as one lifecycle; an
+`Host.Run` entrypoint to start the runtime-operation, goal-operation, and goal
+reconcile-inbox workers as one lifecycle; an
 infrastructure-level worker exit cancels its siblings, while retryable item
-failures remain worker-local. Host owns when GC runs, while the adapter port
-retains all Git, filesystem, and eligibility decisions. The
+failures remain worker-local. The
 individual worker entrypoints remain available for existing focused wiring and
 tests. The service package translates
 HTTP/query/composer/analytics concerns and provider-specific preparation only;
@@ -575,9 +573,8 @@ runtime fakes in `Reset`, and runs every value returned by
 `conformance.Scenarios`. This lets `tuttid`, the extracted Host, and downstream
 adapters share one behavior baseline without importing one another.
 Coordinator, goal, and commit-observer scenario groups extend the same driver
-with recovery ordering through the worktree sweep, recovery failure
-propagation, post-commit failure semantics, and exact-tombstone permanent
-removal semantics.
+with recovery ordering, recovery failure propagation, post-commit failure
+semantics, and exact-tombstone permanent removal semantics.
 Deletion-admission scenarios are required members of both the standard adapter
 and application-core catalogs; the focused deletion-admission catalog reuses
 those same scenario values rather than defining a second behavior suite.
