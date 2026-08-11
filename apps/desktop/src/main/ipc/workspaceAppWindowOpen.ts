@@ -24,6 +24,7 @@ interface WorkspaceAppWindowOpenOwnerWindow {
 }
 
 interface WorkspaceAppWindowOpenLogger {
+  debug?(message: string, details?: Record<string, unknown>): void;
   info?(message: string, details?: Record<string, unknown>): void;
   warn?(message: string, details?: Record<string, unknown>): void;
 }
@@ -45,6 +46,10 @@ export function createWorkspaceAppWindowOpenHandler({
   ownerWindow
 }: WorkspaceAppWindowOpenHandlerInput): BrowserWebviewWindowOpenHandler {
   return (details) => {
+    logger?.debug?.("workspace app guest window-open callback", {
+      hasPostBody: details.postBody !== undefined,
+      webContentsId: contents.id
+    });
     if (details.postBody) {
       logger?.warn?.("workspace app guest rejected POST popup", {
         contentType: details.postBody.contentType,

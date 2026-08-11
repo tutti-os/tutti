@@ -18,6 +18,8 @@ import { installWorkspaceWindowWebviewSecurity } from "../windows/workspaceWebvi
 
 const resultPrefix = "WORKSPACE_APP_POPUP_INTEGRATION=";
 const rendererAckChannel = "workspace-app-popup-test:browser-event";
+const rendererObservationChannel = "workspace-app-popup-test:observation";
+const rendererReadyChannel = "workspace-app-popup-test:renderer-ready";
 const workspaceAppDiagnosticChannel = "workspace-app-context:diagnostic";
 const workspaceAppPartition = "persist:tutti-app:popup-integration";
 
@@ -42,18 +44,28 @@ async function runWorkspaceAppPopupIntegration() {
   await app.whenReady();
   const preloadPath =
     process.env.TUTTI_WORKSPACE_APP_POPUP_PRELOAD_PATH?.trim();
-  if (!preloadPath) {
-    throw new Error("Workspace App popup fixture requires a preload path");
+  const rendererPath =
+    process.env.TUTTI_WORKSPACE_APP_POPUP_RENDERER_PATH?.trim();
+  if (!preloadPath || !rendererPath) {
+    throw new Error(
+      "Workspace App popup fixture requires fixture bundle paths"
+    );
   }
   const popupServer = createPopupTargetServer();
   const popupOrigin = await listenOnLoopback(popupServer);
-  const workspaceAppServer = createWorkspaceAppTestServer(popupOrigin);
+  const workspaceAppServer = createWorkspaceAppTestServer(
+    popupOrigin,
+    rendererPath
+  );
   const workspaceAppOrigin = await listenOnLoopback(workspaceAppServer);
   const counts = {
     browserEvents: 0,
+    browserSurfaces: 0,
     nativeChildWindows: 0,
     postPopupRejections: 0,
-    producerCallbacks: 0
+    producerCallbacks: 0,
+    rejectionNotifications: 0,
+    workbenchLaunches: 0
   };
   const events: unknown[] = [];
   const preload = {
@@ -64,17 +76,16 @@ async function runWorkspaceAppPopupIntegration() {
   let attachedGuestContents: WebContents | null = null;
   const logger: DesktopLogger = {
     async close() {},
-    debug() {},
-    error() {},
-    info(message) {
-      if (message === "workspace app emitted open-url") {
+    debug(message) {
+      if (message === "workspace app guest window-open callback") {
         counts.producerCallbacks += 1;
       }
     },
+    error() {},
+    info() {},
     warn(message) {
       if (message === "workspace app guest rejected POST popup") {
         counts.postPopupRejections += 1;
-        counts.producerCallbacks += 1;
       }
     }
   };
@@ -97,6 +108,14 @@ async function runWorkspaceAppPopupIntegration() {
     }
     counts.browserEvents += 1;
     events.push(payload);
+  });
+  ipcMain.on(rendererObservationChannel, (event, payload) => {
+    if (event.sender.id !== ownerWindow.webContents.id || !payload) {
+      return;
+    }
+    counts.browserSurfaces = Number(payload.browserSurfaces) || 0;
+    counts.rejectionNotifications = Number(payload.rejectionNotifications) || 0;
+    counts.workbenchLaunches = Number(payload.workbenchLaunches) || 0;
   });
   ipcMain.on(workspaceAppDiagnosticChannel, (_event, payload) => {
     if (payload?.event !== "workspace-app-link-interception") {
@@ -151,7 +170,9 @@ async function runWorkspaceAppPopupIntegration() {
 
   try {
     const guestAttached = waitForGuestAttachment(ownerWindow.webContents);
+    const rendererReady = waitForRendererReady(ownerWindow.webContents);
     await ownerWindow.loadURL(`${workspaceAppOrigin}/host`);
+    await rendererReady;
     const guestContents = await guestAttached;
     attachedGuestContents = guestContents;
     guestContents.on("did-create-window", () => {
@@ -182,7 +203,10 @@ async function runWorkspaceAppPopupIntegration() {
     cases.push(
       await triggerPopup({
         counts,
-        expectBrowserEvent: true,
+        expectedBrowserEvents: 1,
+        expectedPostPopupRejections: 0,
+        expectedProducerCallbacks: 1,
+        expectedRejectionNotifications: 0,
         guestContents,
         kind: "blank-link",
         script: "document.querySelector('#blank-link').click(); true"
@@ -191,7 +215,10 @@ async function runWorkspaceAppPopupIntegration() {
     cases.push(
       await triggerPopup({
         counts,
-        expectBrowserEvent: true,
+        expectedBrowserEvents: 1,
+        expectedPostPopupRejections: 0,
+        expectedProducerCallbacks: 1,
+        expectedRejectionNotifications: 0,
         guestContents,
         kind: "window-open",
         script: `void window.open(${JSON.stringify(`${popupOrigin}/popup?kind=window-open`)}, '_blank'); true`
@@ -200,7 +227,10 @@ async function runWorkspaceAppPopupIntegration() {
     cases.push(
       await triggerPopup({
         counts,
-        expectBrowserEvent: true,
+        expectedBrowserEvents: 1,
+        expectedPostPopupRejections: 0,
+        expectedProducerCallbacks: 1,
+        expectedRejectionNotifications: 0,
         guestContents,
         kind: "get-form",
         script: "document.querySelector('#get-form').requestSubmit(); true"
@@ -209,7 +239,22 @@ async function runWorkspaceAppPopupIntegration() {
     cases.push(
       await triggerPopup({
         counts,
-        expectBrowserEvent: false,
+        expectedBrowserEvents: 2,
+        expectedPostPopupRejections: 0,
+        expectedProducerCallbacks: 2,
+        expectedRejectionNotifications: 0,
+        guestContents,
+        kind: "double-window-open",
+        script: `void window.open(${JSON.stringify(`${popupOrigin}/popup?kind=double-window-open-1`)}, '_blank'); void window.open(${JSON.stringify(`${popupOrigin}/popup?kind=double-window-open-2`)}, '_blank'); true`
+      })
+    );
+    cases.push(
+      await triggerPopup({
+        counts,
+        expectedBrowserEvents: 0,
+        expectedPostPopupRejections: 1,
+        expectedProducerCallbacks: 1,
+        expectedRejectionNotifications: 1,
         guestContents,
         kind: "post-form",
         script: "document.querySelector('#post-form').requestSubmit(); true"
@@ -226,6 +271,8 @@ async function runWorkspaceAppPopupIntegration() {
   } finally {
     cleanupWebviewSecurity();
     ipcMain.removeAllListeners(rendererAckChannel);
+    ipcMain.removeAllListeners(rendererObservationChannel);
+    ipcMain.removeAllListeners(rendererReadyChannel);
     ipcMain.removeAllListeners(workspaceAppDiagnosticChannel);
     if (!ownerWindow.isDestroyed()) {
       ownerWindow.destroy();
@@ -237,18 +284,17 @@ async function runWorkspaceAppPopupIntegration() {
   }
 }
 
-function createWorkspaceAppTestServer(popupOrigin: string): Server {
+function createWorkspaceAppTestServer(
+  popupOrigin: string,
+  rendererPath: string
+): Server {
   return createServer((request, response) => {
     const origin = `http://${request.headers.host}`;
     if (request.url === "/host") {
       response.setHeader("content-type", "text/html; charset=utf-8");
       response.end(`<!doctype html>
-        <script>
-          const { ipcRenderer } = require("electron");
-          ipcRenderer.on(${JSON.stringify(desktopIpcChannels.browser.event)}, (_event, payload) => {
-            ipcRenderer.send(${JSON.stringify(rendererAckChannel)}, payload);
-          });
-        </script>
+        <div id="root"></div>
+        <script>require(${JSON.stringify(rendererPath)});</script>
         <webview
           allowpopups
           data-browser-node-webview="true"
@@ -300,43 +346,97 @@ function waitForGuestAttachment(contents: WebContents): Promise<WebContents> {
   });
 }
 
+function waitForRendererReady(contents: WebContents): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const handleReady = (event: Electron.IpcMainEvent) => {
+      if (event.sender.id !== contents.id) {
+        return;
+      }
+      clearTimeout(timeout);
+      ipcMain.removeListener(rendererReadyChannel, handleReady);
+      resolve();
+    };
+    const timeout = setTimeout(() => {
+      ipcMain.removeListener(rendererReadyChannel, handleReady);
+      reject(new Error("timed out waiting for popup fixture renderer"));
+    }, 10_000);
+    ipcMain.on(rendererReadyChannel, handleReady);
+  });
+}
+
 async function triggerPopup(input: {
   counts: {
     browserEvents: number;
+    browserSurfaces: number;
     nativeChildWindows: number;
     postPopupRejections: number;
     producerCallbacks: number;
+    rejectionNotifications: number;
+    workbenchLaunches: number;
   };
-  expectBrowserEvent: boolean;
+  expectedBrowserEvents: number;
+  expectedPostPopupRejections: number;
+  expectedProducerCallbacks: number;
+  expectedRejectionNotifications: number;
   guestContents: WebContents;
   kind: string;
   script: string;
 }) {
   const before = { ...input.counts };
   await input.guestContents.executeJavaScript(input.script, true);
-  if (input.expectBrowserEvent) {
-    await waitForCondition(
-      () => input.counts.browserEvents === before.browserEvents + 1
-    );
-  } else {
-    await new Promise((resolve) => setTimeout(resolve, 300));
-  }
+  await waitForCondition(
+    () =>
+      input.counts.browserEvents ===
+        before.browserEvents + input.expectedBrowserEvents &&
+      input.counts.browserSurfaces ===
+        before.browserSurfaces + input.expectedBrowserEvents &&
+      input.counts.workbenchLaunches ===
+        before.workbenchLaunches + input.expectedBrowserEvents &&
+      input.counts.postPopupRejections ===
+        before.postPopupRejections + input.expectedPostPopupRejections &&
+      input.counts.producerCallbacks ===
+        before.producerCallbacks + input.expectedProducerCallbacks &&
+      input.counts.rejectionNotifications ===
+        before.rejectionNotifications + input.expectedRejectionNotifications,
+    () =>
+      JSON.stringify({
+        actual: input.counts,
+        before,
+        expected: {
+          browserEvents: input.expectedBrowserEvents,
+          postPopupRejections: input.expectedPostPopupRejections,
+          producerCallbacks: input.expectedProducerCallbacks,
+          rejectionNotifications: input.expectedRejectionNotifications
+        },
+        kind: input.kind
+      })
+  );
   return {
     browserEvents: input.counts.browserEvents - before.browserEvents,
+    browserSurfaces: input.counts.browserSurfaces - before.browserSurfaces,
     kind: input.kind,
     nativeChildWindows:
       input.counts.nativeChildWindows - before.nativeChildWindows,
     postPopupRejections:
       input.counts.postPopupRejections - before.postPopupRejections,
-    producerCallbacks: input.counts.producerCallbacks - before.producerCallbacks
+    producerCallbacks:
+      input.counts.producerCallbacks - before.producerCallbacks,
+    rejectionNotifications:
+      input.counts.rejectionNotifications - before.rejectionNotifications,
+    workbenchLaunches: input.counts.workbenchLaunches - before.workbenchLaunches
   };
 }
 
-async function waitForCondition(condition: () => boolean): Promise<void> {
+async function waitForCondition(
+  condition: () => boolean,
+  describe: () => string = () => ""
+): Promise<void> {
   const deadline = Date.now() + 5_000;
   while (!condition()) {
     if (Date.now() >= deadline) {
-      throw new Error("timed out waiting for Workspace App popup event");
+      throw new Error(
+        `timed out waiting for Workspace App popup event ${describe()}`
+      );
     }
     await new Promise((resolve) => setTimeout(resolve, 20));
   }

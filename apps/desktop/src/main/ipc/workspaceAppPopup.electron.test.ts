@@ -21,21 +21,36 @@ test(
     const preloadEntryPath = fileURLToPath(
       new URL("../../preload/entries/workspaceApp.ts", import.meta.url)
     );
+    const rendererEntryPath = fileURLToPath(
+      new URL(
+        "../../../test/fixtures/workspaceAppPopupRenderer.electron.fixture.tsx",
+        import.meta.url
+      )
+    );
     const userDataPath = await mkdtemp(
       join(tmpdir(), "tutti-workspace-app-popup-electron-")
     );
     const preloadOutputDirectory = join(userDataPath, "preload");
     const preloadPath = join(preloadOutputDirectory, "workspace-app-popup.cjs");
+    const rendererPath = join(
+      preloadOutputDirectory,
+      "workspace-app-popup-renderer.cjs"
+    );
 
     try {
       await buildWorkspaceAppPreload({
         entryPath: preloadEntryPath,
         outputDirectory: preloadOutputDirectory
       });
+      await buildWorkspaceAppPopupRenderer({
+        entryPath: rendererEntryPath,
+        outputDirectory: preloadOutputDirectory
+      });
       const result = await runElectronFixture({
         electronPath,
         fixturePath,
         preloadPath,
+        rendererPath,
         userDataPath
       });
       assert.equal(
@@ -54,46 +69,71 @@ test(
 
       assert.deepEqual(payload.cases, [
         {
+          browserSurfaces: 1,
           browserEvents: 1,
           kind: "blank-link",
           nativeChildWindows: 0,
           postPopupRejections: 0,
-          producerCallbacks: 1
+          producerCallbacks: 1,
+          rejectionNotifications: 0,
+          workbenchLaunches: 1
         },
         {
+          browserSurfaces: 1,
           browserEvents: 1,
           kind: "window-open",
           nativeChildWindows: 0,
           postPopupRejections: 0,
-          producerCallbacks: 1
+          producerCallbacks: 1,
+          rejectionNotifications: 0,
+          workbenchLaunches: 1
         },
         {
+          browserSurfaces: 1,
           browserEvents: 1,
           kind: "get-form",
           nativeChildWindows: 0,
           postPopupRejections: 0,
-          producerCallbacks: 1
+          producerCallbacks: 1,
+          rejectionNotifications: 0,
+          workbenchLaunches: 1
+        },
+        {
+          browserEvents: 2,
+          browserSurfaces: 2,
+          kind: "double-window-open",
+          nativeChildWindows: 0,
+          postPopupRejections: 0,
+          producerCallbacks: 2,
+          rejectionNotifications: 0,
+          workbenchLaunches: 2
         },
         {
           browserEvents: 0,
+          browserSurfaces: 0,
           kind: "post-form",
           nativeChildWindows: 0,
           postPopupRejections: 1,
-          producerCallbacks: 1
+          producerCallbacks: 1,
+          rejectionNotifications: 1,
+          workbenchLaunches: 0
         }
       ]);
       assert.deepEqual(payload.counts, {
-        browserEvents: 3,
+        browserEvents: 5,
+        browserSurfaces: 5,
         nativeChildWindows: 0,
         postPopupRejections: 1,
-        producerCallbacks: 4
+        producerCallbacks: 6,
+        rejectionNotifications: 1,
+        workbenchLaunches: 5
       });
       assert.notEqual(payload.origins.popup, payload.origins.workspaceApp);
       assert.deepEqual(payload.preload, {
         delegatedCrossOriginLinks: 1,
         installed: true
       });
-      assert.equal(payload.events.length, 3);
+      assert.equal(payload.events.length, 5);
       for (const event of payload.events) {
         assert.equal(event.type, "open-url");
         assert.equal(event.reuseIfOpen, false);
@@ -111,6 +151,7 @@ function runElectronFixture(input: {
   electronPath: string;
   fixturePath: string;
   preloadPath: string;
+  rendererPath: string;
   userDataPath: string;
 }): Promise<{ exitCode: number | null; stderr: string; stdout: string }> {
   const electronArgs = [
@@ -131,7 +172,8 @@ function runElectronFixture(input: {
       env: {
         ...process.env,
         ELECTRON_DISABLE_SECURITY_WARNINGS: "true",
-        TUTTI_WORKSPACE_APP_POPUP_PRELOAD_PATH: input.preloadPath
+        TUTTI_WORKSPACE_APP_POPUP_PRELOAD_PATH: input.preloadPath,
+        TUTTI_WORKSPACE_APP_POPUP_RENDERER_PATH: input.rendererPath
       },
       stdio: ["ignore", "pipe", "pipe"]
     });
@@ -184,6 +226,35 @@ async function buildWorkspaceAppPreload(input: {
       target: "node22"
     },
     configFile: false,
+    logLevel: "silent"
+  });
+}
+
+async function buildWorkspaceAppPopupRenderer(input: {
+  entryPath: string;
+  outputDirectory: string;
+}): Promise<void> {
+  await viteBuild({
+    build: {
+      emptyOutDir: false,
+      minify: false,
+      outDir: input.outputDirectory,
+      rollupOptions: {
+        external: ["electron"],
+        input: input.entryPath,
+        output: {
+          entryFileNames: "workspace-app-popup-renderer.cjs",
+          format: "cjs",
+          inlineDynamicImports: true
+        }
+      },
+      sourcemap: false,
+      target: "chrome134"
+    },
+    configFile: false,
+    define: {
+      "process.env.NODE_ENV": JSON.stringify("test")
+    },
     logLevel: "silent"
   });
 }
