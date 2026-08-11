@@ -330,6 +330,193 @@ test("externalizes popup windows before Browser Node guests register", () => {
   assert.equal(params.allowpopups, "true");
 });
 
+test("keeps Browser Node webview guests fail closed when host attachment setup throws", () => {
+  const contents = new EventEmitter();
+  const params = {
+    partition: "persist:browser-node-shared",
+    src: "about:blank"
+  };
+  type WindowOpenHandler = (details: {
+    url: string;
+  }) => BrowserGuestWindowOpenHandlerResponse;
+  const captured: { windowOpenHandler?: WindowOpenHandler } = {};
+  let externallyOpenedUrl: string | null = null;
+  const warnings: string[] = [];
+  const cleanup = installBrowserWebviewSecurity({
+    contents:
+      contents as unknown as InstallBrowserWebviewSecurityInput["contents"],
+    logger: {
+      warn(message) {
+        warnings.push(message);
+      }
+    },
+    openExternal(url) {
+      externallyOpenedUrl = url;
+    },
+    resolveGuestAttachment() {
+      throw new Error("host attachment failed");
+    }
+  });
+
+  contents.emit(
+    "will-attach-webview",
+    {
+      preventDefault() {
+        throw new Error("webview should not be blocked");
+      }
+    },
+    {},
+    params
+  );
+  contents.emit(
+    "did-attach-webview",
+    {},
+    {
+      id: 43,
+      setWindowOpenHandler(handler: WindowOpenHandler) {
+        captured.windowOpenHandler = handler;
+      }
+    }
+  );
+
+  cleanup();
+
+  if (!captured.windowOpenHandler) {
+    throw new Error("expected a fail-closed window-open handler");
+  }
+  assert.deepEqual(
+    captured.windowOpenHandler({ url: "https://example.com/popup" }),
+    { action: "deny" }
+  );
+  assert.equal(externallyOpenedUrl, null);
+  assert.deepEqual(warnings, ["Browser Node webview guest setup failed"]);
+});
+
+test("allows legacy attached guests to override the default window-open handler", () => {
+  const contents = new EventEmitter();
+  const params = {
+    partition: "persist:browser-node-shared",
+    src: "about:blank"
+  };
+  type WindowOpenHandler = (details: {
+    url: string;
+  }) => BrowserGuestWindowOpenHandlerResponse;
+  const captured: { windowOpenHandler?: WindowOpenHandler } = {};
+  let externallyOpenedUrl: string | null = null;
+  let legacyOpenedUrl: string | null = null;
+  let setWindowOpenHandlerCount = 0;
+  const guestContents = {
+    id: 44,
+    setWindowOpenHandler(handler: WindowOpenHandler) {
+      setWindowOpenHandlerCount += 1;
+      captured.windowOpenHandler = handler;
+    }
+  };
+  const cleanup = installBrowserWebviewSecurity({
+    contents:
+      contents as unknown as InstallBrowserWebviewSecurityInput["contents"],
+    onGuestAttached(attachedContents) {
+      attachedContents.setWindowOpenHandler(({ url }) => {
+        legacyOpenedUrl = url;
+        return { action: "deny" };
+      });
+    },
+    openExternal(url) {
+      externallyOpenedUrl = url;
+    }
+  });
+
+  contents.emit(
+    "will-attach-webview",
+    {
+      preventDefault() {
+        throw new Error("webview should not be blocked");
+      }
+    },
+    {},
+    params
+  );
+  contents.emit("did-attach-webview", {}, guestContents);
+
+  cleanup();
+
+  if (!captured.windowOpenHandler) {
+    throw new Error("expected a legacy window-open handler");
+  }
+  assert.deepEqual(
+    captured.windowOpenHandler({ url: "https://example.com/legacy" }),
+    { action: "deny" }
+  );
+  assert.equal(setWindowOpenHandlerCount, 2);
+  assert.equal(legacyOpenedUrl, "https://example.com/legacy");
+  assert.equal(externallyOpenedUrl, null);
+});
+
+test("restores the fail-closed route when a legacy guest callback throws after overriding it", () => {
+  const contents = new EventEmitter();
+  const params = {
+    partition: "persist:browser-node-shared",
+    src: "about:blank"
+  };
+  type WindowOpenHandler = (details: {
+    url: string;
+  }) => BrowserGuestWindowOpenHandlerResponse;
+  const captured: { windowOpenHandler?: WindowOpenHandler } = {};
+  let externallyOpenedUrl: string | null = null;
+  let setWindowOpenHandlerCount = 0;
+  const warnings: string[] = [];
+  const guestContents = {
+    id: 45,
+    setWindowOpenHandler(handler: WindowOpenHandler) {
+      setWindowOpenHandlerCount += 1;
+      captured.windowOpenHandler = handler;
+    }
+  };
+  const cleanup = installBrowserWebviewSecurity({
+    contents:
+      contents as unknown as InstallBrowserWebviewSecurityInput["contents"],
+    logger: {
+      warn(message) {
+        warnings.push(message);
+      }
+    },
+    onGuestAttached(attachedContents) {
+      attachedContents.setWindowOpenHandler(() => ({ action: "allow" }));
+      throw new Error("legacy attachment failed");
+    },
+    openExternal(url) {
+      externallyOpenedUrl = url;
+    }
+  });
+
+  contents.emit(
+    "will-attach-webview",
+    {
+      preventDefault() {
+        throw new Error("webview should not be blocked");
+      }
+    },
+    {},
+    params
+  );
+  assert.doesNotThrow(() => {
+    contents.emit("did-attach-webview", {}, guestContents);
+  });
+
+  cleanup();
+
+  if (!captured.windowOpenHandler) {
+    throw new Error("expected a restored fail-closed window-open handler");
+  }
+  assert.deepEqual(
+    captured.windowOpenHandler({ url: "https://example.com/blocked" }),
+    { action: "deny" }
+  );
+  assert.equal(setWindowOpenHandlerCount, 3);
+  assert.equal(externallyOpenedUrl, null);
+  assert.deepEqual(warnings, ["Browser Node webview guest setup failed"]);
+});
+
 test("keeps the host window-open route after the guest registers", async () => {
   const contents = new EventEmitter();
   const webPreferences: Record<string, unknown> = {};
@@ -348,7 +535,7 @@ test("keeps the host window-open route after the guest registers", async () => {
     },
     contents:
       contents as unknown as InstallBrowserWebviewSecurityInput["contents"],
-    onGuestAttached: (_guestContents, { params: attachedParams }) => {
+    resolveGuestAttachment: (_guestContents, { params: attachedParams }) => {
       attachedPartition = attachedParams.partition ?? null;
       return {
         windowOpenHandler: ({ url }) => {

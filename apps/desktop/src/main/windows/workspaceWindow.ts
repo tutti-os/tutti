@@ -197,7 +197,7 @@ export function createWorkspaceWindow(
     },
     contents: workspaceWindow.webContents,
     logger,
-    onGuestAttached: (guestContents, { params }) => {
+    resolveGuestAttachment: (guestContents, { params }) => {
       registerBrowserGuestWebContents(workspaceWindow, guestContents, logger);
       const workspaceAppPartition = params.partition;
       if (isWorkspaceAppSessionPartition(workspaceAppPartition)) {

@@ -29,18 +29,18 @@
 - Consumes: current `upstream/main`.
 - Produces: a conflict-free PR branch whose merge base includes the latest main.
 
-- [ ] **Step 1: Fetch and inspect divergence**
+- [x] **Step 1: Fetch and inspect divergence**
 
 Run `git fetch upstream main`, then inspect `git rev-list --left-right --count
 HEAD...upstream/main` and the upstream diff for every file already touched by
 this PR.
 
-- [ ] **Step 2: Merge upstream main without automatic conflict shortcuts**
+- [x] **Step 2: Merge upstream main without automatic conflict shortcuts**
 
 Run `git merge --no-edit upstream/main`. Resolve any conflict by preserving both
 branch intents; never use `--ours` or `--theirs` for source files.
 
-- [ ] **Step 3: Verify the synchronized baseline**
+- [x] **Step 3: Verify the synchronized baseline**
 
 Run `git diff --name-only --diff-filter=U` and require empty output. Re-run the
 47 focused package, Desktop, and real Electron popup baseline tests before Task
@@ -60,7 +60,7 @@ Run `git diff --name-only --diff-filter=U` and require empty output. Re-run the
 - Produces: `resolveGuestAttachment?: (guestContents, input) => BrowserWebviewGuestAttachment | undefined` on `InstallBrowserWebviewSecurityInput`.
 - Preserves: `onGuestAttached?: (guestContents: WebContents) => void`.
 
-- [ ] **Step 1: Add the failing fail-closed regression**
+- [x] **Step 1: Add the failing fail-closed regression**
 
 Add a Node test that emits a valid `will-attach-webview`, makes
 `resolveGuestAttachment` throw, captures the installed window-open handler, and
@@ -80,7 +80,7 @@ test("keeps Browser guests fail closed when host attachment setup throws", () =>
 });
 ```
 
-- [ ] **Step 2: Run the package test and verify RED**
+- [x] **Step 2: Run the package test and verify RED**
 
 Run:
 
@@ -91,19 +91,19 @@ node --test --experimental-strip-types packages/browser/workbench-node/src/elect
 Expected: FAIL because `resolveGuestAttachment` is not accepted and the host
 exception currently happens before any handler installation.
 
-- [ ] **Step 3: Add the failing legacy-override regression**
+- [x] **Step 3: Add the failing legacy-override regression**
 
 Restore the published behavior test: `onGuestAttached` directly calls
 `guestContents.setWindowOpenHandler(legacyHandler)`, then a popup must invoke
 the legacy handler rather than the package fallback. Assert two setter calls:
 the package default first and the legacy host override second.
 
-- [ ] **Step 4: Run the package test and verify the compatibility test is RED**
+- [x] **Step 4: Run the package test and verify the compatibility test is RED**
 
 Run the same Node test command. Expected: FAIL because the current package
 installs its router after `onGuestAttached` and overwrites the legacy handler.
 
-- [ ] **Step 5: Implement the minimal API split and deny-first order**
+- [x] **Step 5: Implement the minimal API split and deny-first order**
 
 Change the input shape and `did-attach-webview` order:
 
@@ -125,7 +125,7 @@ the legacy callback last. Catch setup errors and log
 `Browser Node webview guest setup failed`; do not remove or replace the initial
 deny delegate.
 
-- [ ] **Step 6: Run the package regression suite and verify GREEN**
+- [x] **Step 6: Run the package regression suite and verify GREEN**
 
 Run the Task 1 Node command. Expected: all package Electron-main tests pass,
 including setter cardinality and the legacy override.

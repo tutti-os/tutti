@@ -112,7 +112,7 @@ async function runWorkspaceAppPopupIntegration() {
         }
       }
     },
-    onGuestAttached: (guestContents, { params }) => {
+    resolveGuestAttachment: (guestContents, { params }) => {
       if (params.partition !== workspaceAppPartition) {
         return undefined;
       }

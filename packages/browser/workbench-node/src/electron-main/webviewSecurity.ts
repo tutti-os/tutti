@@ -6,6 +6,7 @@ import {
 import { resolveBrowserNavigationUrl } from "../core/url.ts";
 import {
   installBrowserGuestWindowOpenRouter,
+  restoreBrowserGuestWindowOpenRouter,
   type BrowserGuestWindowOpenHandler
 } from "./guestWindowOpenRouter.ts";
 import { applyBrowserGuestUserAgent } from "./userAgent.ts";
@@ -167,11 +168,12 @@ export interface InstallBrowserWebviewSecurityInput {
   allowedSessionPartitions?: BrowserSessionPartitionAllowedOptions;
   contents: WebContents;
   logger?: BrowserNodeElectronLogger;
-  onGuestAttached?: (
+  onGuestAttached?: (guestContents: WebContents) => void;
+  openExternal: (url: string) => Promise<void> | void;
+  resolveGuestAttachment?: (
     guestContents: WebContents,
     input: BrowserWebviewGuestAttachedInput
   ) => BrowserWebviewGuestAttachment | undefined;
-  openExternal: (url: string) => Promise<void> | void;
   resolvePreload?: BrowserWebviewPreloadResolver;
   shouldHandleWebview?: BrowserNodeWebviewMatcher;
 }
@@ -182,6 +184,7 @@ export function installBrowserWebviewSecurity({
   logger,
   onGuestAttached,
   openExternal,
+  resolveGuestAttachment,
   resolvePreload,
   shouldHandleWebview
 }: InstallBrowserWebviewSecurityInput): () => void {
@@ -246,9 +249,12 @@ export function installBrowserWebviewSecurity({
       return;
     }
 
-    applyBrowserGuestUserAgent(guestContents, logger);
-    const attachment = onGuestAttached?.(guestContents, {
-      params: pendingAttach.params
+    const denyPopup: BrowserWebviewWindowOpenHandler = () => ({
+      action: "deny"
+    });
+    installBrowserGuestWindowOpenRouter({
+      contents: guestContents,
+      fallbackHandler: denyPopup
     });
     const fallbackHandler: BrowserWebviewWindowOpenHandler = ({ url }) =>
       externalizeBrowserNodePopupWindow({
@@ -257,13 +263,38 @@ export function installBrowserWebviewSecurity({
         openExternal,
         url
       });
-    installBrowserGuestWindowOpenRouter({
-      contents: guestContents,
-      fallbackHandler,
-      ...(attachment?.windowOpenHandler
-        ? { hostHandler: attachment.windowOpenHandler }
-        : {})
-    });
+    try {
+      applyBrowserGuestUserAgent(guestContents, logger);
+      const attachment = resolveGuestAttachment?.(guestContents, {
+        params: pendingAttach.params
+      });
+      installBrowserGuestWindowOpenRouter({
+        contents: guestContents,
+        fallbackHandler,
+        ...(attachment?.windowOpenHandler
+          ? { hostHandler: attachment.windowOpenHandler }
+          : {})
+      });
+    } catch (error) {
+      logger?.warn?.("Browser Node webview guest setup failed", {
+        error: error instanceof Error ? error.message : String(error),
+        guestWebContentsId: guestContents.id ?? null
+      });
+      return;
+    }
+    try {
+      onGuestAttached?.(guestContents);
+    } catch (error) {
+      restoreBrowserGuestWindowOpenRouter({
+        contents: guestContents,
+        fallbackHandler: denyPopup
+      });
+      logger?.warn?.("Browser Node webview guest setup failed", {
+        error: error instanceof Error ? error.message : String(error),
+        guestWebContentsId: guestContents.id ?? null
+      });
+      return;
+    }
     logger?.debug?.("Browser Node webview guest attached", {
       guestWebContentsId: guestContents.id ?? null,
       pendingBrowserAttachCount: pendingBrowserAttaches.length

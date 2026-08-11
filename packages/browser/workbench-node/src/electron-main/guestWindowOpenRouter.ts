@@ -23,7 +23,7 @@ const denyUnownedPopup: BrowserGuestWindowOpenHandler = () => ({
   action: "deny"
 });
 
-function installWindowOpenHandlerOnce(
+function setWindowOpenRouterDelegate(
   contents: object,
   state: BrowserGuestWindowOpenRouteState
 ): void {
@@ -55,7 +55,22 @@ export function installBrowserGuestWindowOpenRouter(input: {
     registeredHandler: null
   };
   routeStateByContents.set(input.contents, state);
-  installWindowOpenHandlerOnce(input.contents, state);
+  setWindowOpenRouterDelegate(input.contents, state);
+}
+
+export function restoreBrowserGuestWindowOpenRouter(input: {
+  contents: object;
+  fallbackHandler: BrowserGuestWindowOpenHandler;
+}): void {
+  const state = routeStateByContents.get(input.contents);
+  if (!state) {
+    installBrowserGuestWindowOpenRouter(input);
+    return;
+  }
+  state.fallbackHandler = input.fallbackHandler;
+  state.hostHandler = null;
+  state.registeredHandler = null;
+  setWindowOpenRouterDelegate(input.contents, state);
 }
 
 export function registerBrowserGuestWindowOpenRoute(
