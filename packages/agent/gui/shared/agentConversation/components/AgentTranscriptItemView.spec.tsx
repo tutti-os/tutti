@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import {
   act,
   fireEvent,
@@ -5,7 +7,7 @@ import {
   screen,
   waitFor
 } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   resetAgentHostApiForTests,
   setAgentHostApiForTests
@@ -25,6 +27,16 @@ const mockState = vi.hoisted(() => ({
   markdownStreamingFlags: [] as Array<boolean | undefined>,
   toolGroupOnLinkClicks: [] as Array<((href: string) => void) | undefined>
 }));
+const agentActivityStyles = readFileSync(
+  resolve(process.cwd(), "app/renderer/agentactivity.css"),
+  "utf8"
+);
+const agentActivityStyleElement = document.createElement("style");
+agentActivityStyleElement.textContent = agentActivityStyles;
+
+afterEach(() => {
+  agentActivityStyleElement.remove();
+});
 
 vi.mock("../../../i18n/index", () => ({
   getActiveUiLanguage: () => "en",
@@ -630,9 +642,10 @@ describe("AgentTranscriptItemView render stability", () => {
         attachmentId: "attachment-1"
       });
     });
+    const image = await screen.findByRole("img", { name: "screen.png" });
+    expect(image).toHaveAttribute("src", "data:image/png;base64,aW1hZ2U=");
+    fireEvent.load(image);
     await waitFor(() => {
-      const image = screen.getByRole("img", { name: "screen.png" });
-      expect(image).toHaveAttribute("src", "data:image/png;base64,aW1hZ2U=");
       expect(
         screen.getByRole("button", { name: "common.expandImage" })
       ).toBeTruthy();
@@ -712,6 +725,12 @@ describe("AgentTranscriptItemView render stability", () => {
       "src",
       "data:image/png;base64,b3B0aW1pc3RpYw=="
     );
+    fireEvent.load(optimisticImage);
+    await waitFor(() => {
+      expect(
+        screen.queryByTestId("agent-gui-message-image-loading")
+      ).toBeNull();
+    });
 
     rerender(
       <AgentMessageBlock
@@ -732,7 +751,8 @@ describe("AgentTranscriptItemView render stability", () => {
     delete (window as { agentGUIRuntime?: unknown }).agentGUIRuntime;
   });
 
-  it("renders a user prompt image directly from its remote HTTPS URL", () => {
+  it("reserves a loading slot until a remote HTTPS image loads", async () => {
+    document.head.append(agentActivityStyleElement);
     const readPromptAsset = vi.fn();
     Object.defineProperty(window, "agentGUIRuntime", {
       configurable: true,
@@ -767,10 +787,34 @@ describe("AgentTranscriptItemView render stability", () => {
       />
     );
 
-    expect(screen.getByRole("img", { name: "screen.png" })).toHaveAttribute(
+    const image = screen.getByRole("img", { name: "screen.png" });
+    expect(image).toHaveAttribute(
       "src",
       "https://objects.example.test/signed/screen.png"
     );
+    expect(
+      screen.getByTestId("agent-gui-message-image-loading")
+    ).toBeInTheDocument();
+    expect(image.closest("[data-image-state]")).toHaveAttribute(
+      "data-image-state",
+      "loading"
+    );
+    const imageSlot = image.closest("[data-image-state]");
+    expect(imageSlot).not.toBeNull();
+    expect(window.getComputedStyle(imageSlot as Element).height).toBe("80px");
+
+    fireEvent.load(image);
+
+    await waitFor(() => {
+      expect(
+        screen.queryByTestId("agent-gui-message-image-loading")
+      ).toBeNull();
+      expect(image.closest("[data-image-state]")).toHaveAttribute(
+        "data-image-state",
+        "loaded"
+      );
+      expect(window.getComputedStyle(imageSlot as Element).height).toBe("80px");
+    });
     expect(readPromptAsset).not.toHaveBeenCalled();
 
     delete (window as { agentGUIRuntime?: unknown }).agentGUIRuntime;
@@ -806,6 +850,9 @@ describe("AgentTranscriptItemView render stability", () => {
     );
 
     const image = screen.getByRole("img", { name: "screen.png" });
+    expect(
+      screen.getByTestId("agent-gui-message-image-loading")
+    ).toBeInTheDocument();
     fireEvent.error(image);
 
     expect(
@@ -823,9 +870,66 @@ describe("AgentTranscriptItemView render stability", () => {
     });
     expect(retriedImage).not.toBe(image);
     expect(retriedImage).toHaveAttribute("src", signedUrl);
+    expect(
+      screen.getByTestId("agent-gui-message-image-loading")
+    ).toBeInTheDocument();
     fireEvent.load(retriedImage);
 
     expect(screen.queryByTestId("agent-gui-message-image-failed")).toBeNull();
+    expect(screen.queryByTestId("agent-gui-message-image-loading")).toBeNull();
+  });
+
+  it("starts a fresh load when a failed remote image URL changes", async () => {
+    const firstUrl = "https://objects.example.test/signed/screen-v1.png";
+    const secondUrl = "https://objects.example.test/signed/screen-v2.png";
+    const renderMessage = (url: string) => (
+      <AgentMessageBlock
+        workspaceRoot="/workspace/demo"
+        basePath="/workspace/demo"
+        row={userMessageRow({
+          kind: "message-content",
+          id: "user-images-url-refreshed",
+          turnId: "turn-1",
+          body: "",
+          contentKind: "image-grid",
+          images: [
+            {
+              id: "remote-image-refreshed",
+              workspaceId: "room-1",
+              agentSessionId: "session-1",
+              mimeType: "image/png",
+              name: "screen.png",
+              url
+            }
+          ],
+          occurredAtUnixMs: 1
+        })}
+        thinkingLabel="Thought process"
+      />
+    );
+    const { rerender } = render(renderMessage(firstUrl));
+
+    const firstImage = screen.getByRole("img", { name: "screen.png" });
+    fireEvent.error(firstImage);
+    expect(
+      await screen.findByTestId("agent-gui-message-image-failed")
+    ).toBeInTheDocument();
+
+    rerender(renderMessage(secondUrl));
+
+    const refreshedImage = await screen.findByRole("img", {
+      name: "screen.png"
+    });
+    expect(refreshedImage).not.toBe(firstImage);
+    expect(refreshedImage).toHaveAttribute("src", secondUrl);
+    expect(screen.queryByTestId("agent-gui-message-image-failed")).toBeNull();
+    expect(
+      screen.getByTestId("agent-gui-message-image-loading")
+    ).toBeInTheDocument();
+
+    fireEvent.load(refreshedImage);
+
+    expect(screen.queryByTestId("agent-gui-message-image-loading")).toBeNull();
   });
 
   it("shows a loading spinner while a user prompt image is being read", async () => {
@@ -897,14 +1001,18 @@ describe("AgentTranscriptItemView render stability", () => {
       name: "screen.png"
     });
 
+    const image = await screen.findByRole("img", { name: "screen.png" });
+    expect(image).toHaveAttribute("src", "data:image/png;base64,aW1hZ2U=");
+    expect(
+      screen.getByTestId("agent-gui-message-image-loading")
+    ).toBeInTheDocument();
+
+    fireEvent.load(image);
+
     await waitFor(() => {
       expect(
         screen.queryByTestId("agent-gui-message-image-loading")
       ).toBeNull();
-      expect(screen.getByRole("img", { name: "screen.png" })).toHaveAttribute(
-        "src",
-        "data:image/png;base64,aW1hZ2U="
-      );
     });
 
     delete (window as { agentGUIRuntime?: unknown }).agentGUIRuntime;

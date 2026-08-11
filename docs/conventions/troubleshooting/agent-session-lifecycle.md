@@ -689,6 +689,47 @@ be resent`). The app never opens.
   [report_coalescer.go](../../../packages/agent/daemon/runtime/report_coalescer.go),
   [controller_report_queue_test.go](../../../packages/agent/daemon/runtime/controller_report_queue_test.go)
 
+### Claude fails before provider Turn identity but AgentGUI keeps thinking
+
+- **Symptom:** Claude returns no assistant result and the provider invocation
+  has already failed, but AgentGUI keeps showing the Turn as processing. Later
+  sends may be rejected because the runtime still reports an active Turn.
+- **Quick checks:** Correlate the canonical Turn ID across the submit report,
+  Claude sidecar event, and runtime controller. The characteristic sequence has
+  a durable submitted Turn, `turn_failed` without `providerTurnId`, dispatch
+  disposition `applied_without_provider_turn`, and a canonical failed report,
+  while `HasActiveTurn` remains true. Do not interpret
+  `applied_without_provider_turn` itself as a failure; cancel-before-acceptance
+  legitimately uses the same admission result.
+- **Root cause:** Provider acceptance and canonical completion are independent
+  contracts. The acceptance wrapper treated an exact providerless
+  `turn.failed` as premature provider output, while the blocking controller
+  released its active-Turn fence only for failures carrying explicit rejection
+  metadata. A non-rejection failure could therefore be durable but never close
+  the runtime fence.
+- **Fix:** Hold an exact canonical terminal behind the acceptance barrier and
+  return it to the controller without inventing provider identity. Classify
+  completion from the typed terminal event for the exact Turn, never from the
+  dispatch disposition or error text. Partition every pre-acceptance batch so
+  an exact terminal cannot carry provider-dependent assistant/tool output
+  through the barrier. Release the active-Turn fence only after the terminal
+  crosses the synchronous durable-report barrier. If that commit fails or its
+  acknowledgement is lost, retain the terminal and retry it idempotently until
+  the commit succeeds or daemon reconciliation proves the Turn already settled.
+  Provider-root completion with an identity continues through canonical
+  aggregation.
+- **Validation:** Cover Claude translation of a providerless `turn_failed`,
+  mixed terminal/provider-output batches, controller settlement after a
+  successful terminal report, transient report failure, commit-success/ACK-loss,
+  explicit rejection, cancel-before-acceptance, and outcome-unknown. Run the
+  Host conformance scenario for initial and ordinary idempotent submissions.
+  Retain a root-provider lifecycle test proving provider-root completion does
+  not clear the canonical Turn before daemon reconciliation.
+- **References:**
+  [claude_sdk_execution.go](../../../packages/agent/daemon/runtime/claude_sdk_execution.go),
+  [controller_turn_completion.go](../../../packages/agent/daemon/runtime/controller_turn_completion.go),
+  [controller_turn_exec.go](../../../packages/agent/daemon/runtime/controller_turn_exec.go)
+
 ### Tutti mode is active in the composer but disappears after the first submit
 
 - **Symptom:** The home composer shows Tutti enabled and the submit trace records
@@ -1091,20 +1132,27 @@ catalog revision mismatch`, fully restart `dev:desktop`; renderer HMR cannot
 - Symptom:
   A submitted Codex turn stays working without assistant text, reasoning, or
   tool activity. Stop may return quickly, but the next prompt on the same
-  conversation can stall in the same way.
+  conversation can stall in the same way. This also occurs when a conversation
+  is left offline and its first later submit loses the app-server connection.
 - Quick checks:
   Correlate `agent.submit.trace` records by `client_submit_id`, `turn_id`, and
   `agent_session_id`. A `turn.start.requested` without
   `turn.start.succeeded` means the immediate app-server acknowledgement did
   not arrive. After the bounded failure, confirm
   `agent_session.app_server.turn_start.client_invalidated` appears and the next
-  submit starts a new local process with `thread/resume`.
+  submit starts a new local process with `thread/resume`. An immediate
+  `turn.start.failed` with `error=EOF` is an outcome-unknown transport loss and
+  must still project one visible failed assistant message.
 - Root cause:
   Codex `turn/start` should acknowledge immediately and stream the actual work
   through notifications, but the adapter previously called it with no client
   deadline. A graceful Stop could acknowledge `turn/interrupt` without proving
   that the unacknowledged `turn/start` connection was healthy, so the adapter
-  retained and reused the same bad process.
+  retained and reused the same bad process. The live-session probe also treated
+  a retained client pointer as live after its `Done` channel closed. Finally, a
+  pre-acceptance `turn/start` failure was buffered as provider output even
+  though it had no provider Turn identity, hiding the canonical terminal from
+  the controller and GUI.
 - Fix:
   Bound only the `turn/start` acknowledgement to 30 seconds; do not bound the
   subsequent running turn. Treat deadline, cancellation before acknowledgement,
@@ -1112,12 +1160,17 @@ catalog revision mismatch`, fully restart `dev:desktop`; renderer HMR cannot
   from the live-session registry, and close it. Do not automatically replay the
   prompt because delivery is unknown. The next explicit submit uses the
   existing session recovery path to start a process and resume the provider
-  thread. Bound `turn/steer` acknowledgement separately to 10 seconds.
+  thread. A live-session probe must also reject terminated clients. Publish the
+  exact canonical `turn.failed` directly when `turn/start` fails before provider
+  acceptance, while dropping unaccepted provider-dependent output; this reuses
+  the normal visible-error projection without inventing provider identity.
+  Bound `turn/steer` acknowledgement separately to 10 seconds.
 - Validation:
   Run
-  `go test ./packages/agent/daemon/runtime -run 'TestCodexAppServerAdapter(Turn(StartAckTimeoutInvalidatesClient|StartCancelBeforeAckInvalidatesClient|StartAckTimeoutDoesNotBoundRunningTurn|SteerTimesOut)|CanResumeAfterTurnStartAckTimeout)$'`.
-  Cover timeout, pre-ack cancellation, a long post-ack turn, bounded guidance,
-  and successful `thread/resume` followed by a completed turn.
+  `go test ./packages/agent/daemon/runtime -run 'Test(CodexAppServerAdapter(Turn(StartAckTimeoutInvalidatesClient|StartEOFProjectsVisibleFailureBeforeAcceptance|StartCancelBeforeAckInvalidatesClient|StartAckTimeoutDoesNotBoundRunningTurn|SteerTimesOut)|CanResumeAfterTurnStartAckTimeout|HasLiveSessionRejectsClosedClient)|StandardACPAdapterHasLiveSessionRejectsClosedClient)$'`.
+  Cover timeout, EOF before acceptance, terminated-client liveness, pre-ack
+  cancellation, a long post-ack turn, bounded guidance, and successful
+  `thread/resume` followed by a completed turn.
 - References:
   [codex_appserver_turn.go](../../../packages/agent/daemon/runtime/codex_appserver_turn.go)
   [codex_appserver_registry.go](../../../packages/agent/daemon/runtime/codex_appserver_registry.go)
@@ -4762,3 +4815,27 @@ agent target`, although the current model picker does not offer that model.
   current model is not first, a stale dependent reasoning default, and an
   unsupported explicit selection separately with generic extension fixtures.
   Inject a `session/set_model` rejection into the standard ACP transport test.
+
+### Codex rejects `turn/start` with `AbsolutePathBuf deserialized without a base path`
+
+- Symptom:
+  Codex initializes and `thread/start` succeeds, but the first `turn/start`
+  fails with JSON-RPC `-32600` and `AbsolutePathBuf deserialized without a base
+path`. Tutti then reports that the provider Turn was not durably accepted.
+- Root cause:
+  Tutti sent the POSIX-only `/sandbox-tmp` writable root as though it were a
+  portable absolute host path. Codex's Windows `AbsolutePathBuf` parser rejects
+  it even when the request also carries `cwd`; the per-turn working-directory
+  override does not make a POSIX-rooted string into a Windows absolute path.
+  Tutti also omitted the Session `cwd` from the Turn override. A request-shape
+  mock accepted both omissions and did not exercise the real Rust parser.
+- Fix:
+  Send the canonical non-empty Session `cwd` on every Codex `turn/start` and
+  omit the POSIX `/sandbox-tmp` projection on Windows. Keep the projection on
+  POSIX hosts where it represents the logical `/tmp` write target.
+- Validation:
+  Assert the emitted `turn/start.cwd`, cover Windows and POSIX sandbox policy
+  construction, and run the Windows contract test against a real pinned
+  `codex.exe app-server`. The contract test submits the historical payload both
+  without and with `cwd` as negative controls, then verifies that the production
+  payload crosses the same parser without an `AbsolutePathBuf` error.

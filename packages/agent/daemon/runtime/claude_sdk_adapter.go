@@ -19,6 +19,7 @@ const (
 	claudeSDKSidecarDefaultNodeArg = "--experimental-strip-types"
 	claudeSDKAuthRefreshLogPrefix  = "CLAUDE_CODE_AUTH_REFRESH_DEBUG"
 	claudeSDKCancelLogPrefix       = "CLAUDE_CODE_CANCEL_DIAGNOSTIC"
+	claudeSDKProviderTurnLogPrefix = "CLAUDE_CODE_PROVIDER_TURN_DIAGNOSTIC"
 )
 
 type ClaudeCodeSDKAdapter struct {
@@ -179,10 +180,11 @@ type claudeSDKTurnResult struct {
 }
 
 type claudeSDKLineReader struct {
-	conn            ProcessConnection
-	buffer          string
-	trackInputUnits bool
-	lines           []claudeSDKBufferedLine
+	conn                   ProcessConnection
+	buffer                 string
+	stderrDiagnosticBuffer string
+	trackInputUnits        bool
+	lines                  []claudeSDKBufferedLine
 	// stderrTail keeps only a bounded, sanitized classification of sidecar
 	// diagnostics. Raw stderr may contain prompts, paths, credentials, or stack
 	// traces and must never enter durable activity or user-visible errors.

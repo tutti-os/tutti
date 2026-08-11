@@ -322,7 +322,15 @@ func (*standardACPAdapter) CanResume(session Session) bool {
 
 func (a *standardACPAdapter) HasLiveSession(session Session) bool {
 	acpSession := a.getSession(session.AgentSessionID)
-	return acpSession != nil && acpSession.client != nil
+	if acpSession == nil || acpSession.client == nil {
+		return false
+	}
+	select {
+	case <-acpSession.client.Done():
+		return false
+	default:
+		return true
+	}
 }
 
 func (a *standardACPAdapter) Close(ctx context.Context, session Session) error {

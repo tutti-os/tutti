@@ -548,15 +548,12 @@ export function ArrowRightIcon(props: IconProps) {
 
 export function CheckIcon(props: IconProps) {
   return (
-    <SvgIcon {...props}>
+    <FilledPathIcon {...props}>
       <path
-        d="M20 6L9 17L4 12"
-        stroke="currentColor"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth="2.2"
+        d="M19.293 5.29297C19.6835 4.90245 20.3165 4.90245 20.707 5.29297C21.0975 5.68349 21.0975 6.31651 20.707 6.70703L9.70702 17.707C9.31649 18.0976 8.68348 18.0976 8.29295 17.707L3.29295 12.707C2.90243 12.3165 2.90243 11.6835 3.29295 11.293C3.68348 10.9024 4.31649 10.9024 4.70702 11.293L8.99999 15.5859L19.293 5.29297Z"
+        fill="currentColor"
       />
-    </SvgIcon>
+    </FilledPathIcon>
   );
 }
 

@@ -594,9 +594,10 @@ action. Tuttid independently enforces the same flag on new Fork writes;
 disabling it leaves existing lineage, operation reads, and operation
 acknowledgements available.
 
-Execution still rejects a worktree-isolated source because a provider-native
-Fork retains the provider cwd and Tutti must not silently transfer worktree
-ownership. Non-isolated runtime facts are frozen into the target snapshot.
+Execution accepts a worktree-isolated source. A provider-native Fork retains
+the provider cwd, and Tutti freezes the same cwd and isolation coordinates into
+the target snapshot without creating or transferring worktree ownership.
+Other runtime facts are frozen into the target snapshot as well.
 Only attachments referenced by that snapshot are staged into the target
 namespace; the source attachment directory is never copied wholesale.
 
@@ -1584,6 +1585,15 @@ text, but they are not an additional transcript text block when the canonical
 structured content already renders the same image. Explicit display prompts
 remain transcript content and continue to replace expanded rich prompt text.
 
+Structured user-prompt transcript images keep resource acquisition and browser
+image decoding as separate presentation states. A URL or hydrated data source
+is not proof that pixels are ready: AgentGUI reserves the final thumbnail
+geometry and shows its loading treatment until the exact image element reports
+`load`. `error` replaces that slot with the retryable failure treatment. A retry
+of the same URL or a replacement effective source starts a new decode attempt
+instead of reusing stale loaded or failed state. These loading and retry states
+are UI-local and never enter canonical Message or workspace-engine state.
+
 Standalone hosts may opt a transcript into participant avatars through the
 `agent-conversation` entrypoint's explicit presentation contract. Omitted or
 disabled presentation preserves the existing transcript DOM. Enabled
@@ -1610,6 +1620,16 @@ canonical activity data. Omitting the catalog preserves an inherited AgentGUI
 presentation context. The standalone flow also owns its visibility-aware
 conversation clock, so a hidden host does not keep elapsed-time presentation
 timers active.
+
+Hosts whose action directories omit valid identities supply the complete
+presentation-only catalog through `mentionAgentDirectory`. It retains exact
+target IDs and unavailable Agents without making them launchable. Hosts that
+omit this capability keep the existing union of provider-rail and handoff
+targets. Interactive composer mentions, readonly rich text, and Markdown links
+must resolve presentation through the shared target-presentation resolver.
+They must not infer icons from target-id formats such as `local:*`; serialized
+mention presentation is only the fallback when the current catalog no longer
+contains a historical target.
 
 ## 5. Agent identity and provider architecture
 
@@ -1731,6 +1751,13 @@ Desktop Workspace Agent projections first inherit the resolved icon of their
 Harness target by exact target ID, then use the provider/icon catalog fallback.
 Host projections preserve these roles independently and do not create
 provider-specific renderer catalogs.
+
+AgentGUI accepts separate directory projections for separate responsibilities:
+`agentDirectory` owns the current runtime rail, `handoffAgentDirectory` owns
+launch choices, and optional `mentionAgentDirectory` owns exact rendered
+identity. The mention directory may include offline or otherwise unavailable
+Agents and must not participate in selection, admission, setup, or handoff.
+This keeps availability as action state instead of deleting identity metadata.
 
 Agent presentation images decoded for a canvas-backed texture must use
 anonymous CORS loading before assigning `src`. Any host-owned custom protocol
@@ -2177,6 +2204,13 @@ otherwise recover interactively.
 | `hostCapabilities` | host catalog, readiness, menus, icons     |
 | `hostActions`      | host mutations, Workbench/window actions  |
 | `renderSlots`      | narrow product-neutral presentation slots |
+
+`AgentToolBrowserPanel` owns its BrowserNode feature, surface identity, and
+tab state. It also owns the single browser chrome instance for that surface.
+Hosts compose window controls into the tab strip through `defaultActions`,
+pass draggable-header semantics through `dragHandleProps`, and use
+`navigationActions` for address-row actions. A host must not wrap the panel in
+a second visible title bar or recreate the browser header outside the panel.
 
 Host-issued `runtimeRequests.composerAppend` values are one-shot requests.
 AgentGUI waits until the exact requested Session is the active conversation,

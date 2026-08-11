@@ -36,7 +36,9 @@ export function ConnectorCard({ connectorKey }: { connectorKey: string }) {
       return;
     }
     if (card.action === "install") {
-      uiState.openConnector(connectorKey);
+      void market.install(connectorKey).catch(() => {
+        onError?.(i18n.t("connectorInstallFailed"));
+      });
       return;
     }
     if (card.action !== "busy") {

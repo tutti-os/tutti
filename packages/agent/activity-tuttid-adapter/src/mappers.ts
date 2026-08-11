@@ -44,6 +44,9 @@ export function agentActivitySessionFromTuttidSession(
     isolation: session.isolation
       ? {
           mode: session.isolation.mode,
+          ...(session.isolation.worktreeId
+            ? { worktreeId: session.isolation.worktreeId }
+            : {}),
           worktreePath: session.isolation.worktreePath,
           branch: session.isolation.branch,
           baseCommit: session.isolation.baseCommit

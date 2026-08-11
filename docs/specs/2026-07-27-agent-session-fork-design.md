@@ -224,7 +224,6 @@ child 不继承：
 - Tutti mode activation；
 - prompt queue、unread、pin；
 - usage observation；
-- source worktree ownership；
 - provider-native child Sessions。
 
 历史克隆不是原 ID 的浅复制。Store 根据 operation/workspace/source/target/entity/source ID

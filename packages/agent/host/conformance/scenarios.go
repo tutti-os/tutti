@@ -21,6 +21,10 @@ var (
 		Name: "new turns require durable provider acceptance",
 		run:  runNewTurnsRequireDurableProviderAcceptance,
 	}
+	providerlessCanonicalTerminalScenario = Scenario{
+		Name: "providerless canonical terminal settles and replays submission",
+		run:  runProviderlessCanonicalTerminalSettlesAndReplaysSubmission,
+	}
 	rejectedInitialSubmitScenario = Scenario{
 		Name: "rejected initial submit discards runtime without completing canonical session",
 		run:  runRejectedInitialSubmitDiscardsRuntime,
@@ -76,6 +80,7 @@ func Scenarios() []Scenario {
 		guidanceExactTargetScenario,
 		guidanceTargetMismatchScenario,
 		providerAcceptanceScenario,
+		providerlessCanonicalTerminalScenario,
 		rejectedInitialSubmitScenario,
 		duplicateClientSubmitIDScenario,
 		exactTurnCancelScenario,
@@ -143,8 +148,7 @@ func CoordinatorScenarios() []Scenario {
 		interactiveResponseReusedIDScenario,
 		interactiveResponseRaceScenario,
 		planDecisionScenario,
-		{Name: "recover operations before stale turns and worktree sweep", run: runRecoveryOrder},
-		{Name: "worktree sweep failure propagates", run: runWorktreeSweepFailure},
+		{Name: "recover operations before stale turns", run: runRecoveryOrder},
 	}
 }
 
@@ -227,6 +231,7 @@ func ApplicationCoreScenarios() []Scenario {
 		guidanceExactTargetScenario,
 		guidanceTargetMismatchScenario,
 		providerAcceptanceScenario,
+		providerlessCanonicalTerminalScenario,
 		rejectedInitialSubmitScenario,
 		duplicateClientSubmitIDScenario,
 		initialTitleCASScenario,

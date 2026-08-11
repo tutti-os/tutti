@@ -18,7 +18,7 @@ const windowsWorkflows = [
   },
   {
     expectedPaths: ["packages/agent/daemon/**"],
-    expectedSetupSteps: ["Setup Go"],
+    expectedSetupSteps: ["Setup Go", "Setup Node"],
     path: ".github/workflows/windows-agent-adapters.yml"
   },
   {

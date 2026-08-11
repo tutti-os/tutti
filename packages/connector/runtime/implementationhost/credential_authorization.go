@@ -162,7 +162,7 @@ func (provider *managedCredentialAuthorizationProvider) Disconnect(
 	operationContext, cancel := context.WithTimeout(ctx, route.credentialBrokerLaunch.timeout)
 	defer cancel()
 	connection, processID, err := provider.host.startCredentialBroker(operationContext, route, credentialBrokerRequest{
-		Protocol: market.CredentialBrokerProtocolV2, Operation: "disconnect",
+		Protocol: market.CredentialBrokerProtocolV1, Operation: "disconnect",
 	})
 	if err != nil {
 		return fmt.Errorf("start connector credential broker disconnect: %w", err)
@@ -191,7 +191,7 @@ func (provider *managedCredentialAuthorizationProvider) Inspect(
 	operationContext, cancel := context.WithTimeout(ctx, route.credentialBrokerLaunch.timeout)
 	defer cancel()
 	connection, processID, err := provider.host.startCredentialBroker(operationContext, route, credentialBrokerRequest{
-		Protocol: market.CredentialBrokerProtocolV2, Operation: "inspect",
+		Protocol: market.CredentialBrokerProtocolV1, Operation: "inspect",
 	})
 	if err != nil {
 		return market.AuthorizationObservation{}, fmt.Errorf("start connector credential broker inspect: %w", err)
@@ -240,7 +240,7 @@ func (provider *managedCredentialAuthorizationProvider) authorizationSessionOrSt
 	}
 	processContext, cancel := context.WithTimeout(context.Background(), route.credentialBrokerLaunch.timeout)
 	connection, processID, err := provider.host.startCredentialBroker(processContext, route, credentialBrokerRequest{
-		Protocol: market.CredentialBrokerProtocolV2, Operation: "begin",
+		Protocol: market.CredentialBrokerProtocolV1, Operation: "begin",
 	})
 	if err != nil {
 		cancel()
@@ -481,7 +481,7 @@ func (host *Host) startCredentialBroker(
 	request credentialBrokerRequest,
 ) (agentruntime.ProcessConnection, uint64, error) {
 	launch := route.credentialBrokerLaunch
-	if launch == nil || request.Protocol != market.CredentialBrokerProtocolV2 ||
+	if launch == nil || request.Protocol != market.CredentialBrokerProtocolV1 ||
 		(request.Operation != "begin" && request.Operation != "inspect" && request.Operation != "disconnect") {
 		return nil, 0, errors.New("connector credential broker request is invalid")
 	}
@@ -492,7 +492,7 @@ func (host *Host) startCredentialBroker(
 		return nil, 0, err
 	}
 	spec.Env = append(spec.Env,
-		"TUTTI_CONNECTOR_CREDENTIAL_BROKER_PROTOCOL="+market.CredentialBrokerProtocolV2,
+		"TUTTI_CONNECTOR_CREDENTIAL_BROKER_PROTOCOL="+market.CredentialBrokerProtocolV1,
 		"TUTTI_CONNECTOR_CLI_LAUNCH_JSON="+string(cliLaunch),
 	)
 	connection, processID, err := host.startProcess(ctx, route, spec, false)

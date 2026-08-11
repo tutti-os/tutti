@@ -778,6 +778,66 @@ test("sources can route file-type-only filters through scoped search", async () 
   assert.equal(searchInputs[0]?.withinNodeId, "host-path-downloads");
 });
 
+test("controller-owned state stays cloneable across source service calls", async () => {
+  const searchInputs: SearchInput[] = [];
+  let preparedNode: ReferenceNode | null = null;
+  const aggregator = fakeAggregator({
+    tabs: [
+      {
+        sourceId: "host-local-file",
+        label: "Local files",
+        capabilities: {
+          filterable: true,
+          filtersUseSearch: true,
+          paginated: false,
+          previewable: true,
+          searchable: true
+        }
+      }
+    ],
+    children: {},
+    searchImpl: async (input) => {
+      searchInputs.push(input);
+      return {
+        entries: Array.from({ length: input.limit ?? 0 }, (_, index) =>
+          file("host-local-file", `/photo-${index}.png`)
+        ),
+        nextCursor: null
+      };
+    }
+  });
+  aggregator.prepareSelection = async (_scope, node) => {
+    preparedNode = node;
+    return { kind: node.kind, path: node.ref.nodeId };
+  };
+  const controller = createReferenceSourcePickerController({
+    aggregator,
+    scope,
+    searchDebounceMs: 0,
+    searchResultKind: "file"
+  });
+  controller.open();
+  await flush();
+
+  controller.setSearchFilters(["image"], "host-path-downloads");
+  await flush();
+  controller.loadMoreSearch();
+  await flush();
+
+  assert.equal(searchInputs.length, 2);
+  assert.doesNotThrow(() => structuredClone(searchInputs[1]?.filters));
+  assert.doesNotThrow(() => structuredClone(controller.getSnapshot()));
+
+  const selected =
+    controller.getSnapshot().bySource["host-local-file"]?.searchEntries[0];
+  assert.ok(selected);
+  controller.toggleSelection(selected);
+  await controller.confirm();
+
+  assert.ok(preparedNode);
+  assert.doesNotThrow(() => structuredClone(preparedNode));
+});
+
 test("semantically equal provenance filters do not repeat the active search", async () => {
   const searchInputs: SearchInput[] = [];
   const controller = createReferenceSourcePickerController({

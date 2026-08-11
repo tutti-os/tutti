@@ -3539,6 +3539,10 @@ export type WorkspaceGitPatchSupportResponse = {
 export type WorkspaceAgentSessionIsolationMode = "worktree";
 
 export type WorkspaceAgentSessionIsolation = {
+  /**
+   * Independent managed worktree resource identity. Legacy sessions may omit it.
+   */
+  worktreeId?: string;
   mode: WorkspaceAgentSessionIsolationMode;
   worktreePath: string;
   branch: string;
@@ -3555,6 +3559,24 @@ export type WorkspaceAgentSessionWorktreeSupportResponse = {
   supported: boolean;
   root?: string;
   errorCode?: WorkspaceAgentSessionWorktreeSupportErrorCode;
+};
+
+export type WorkspaceManagedWorktree = {
+  worktreeId: string;
+  workspaceId: string;
+  repoRoot: string;
+  worktreePath: string;
+  branch: string;
+  baseCommit: string;
+  relativeCwd?: string;
+};
+
+export type WorkspaceManagedWorktreeListResponse = {
+  worktrees: Array<WorkspaceManagedWorktree>;
+};
+
+export type DeleteWorkspaceManagedWorktreeResponse = {
+  deleted: boolean;
 };
 
 export type WorkspaceGitPatchExecOutput = {
@@ -12400,6 +12422,105 @@ export type ResolveWorkspaceAgentSessionWorktreeSupportResponses = {
 
 export type ResolveWorkspaceAgentSessionWorktreeSupportResponse =
   ResolveWorkspaceAgentSessionWorktreeSupportResponses[keyof ResolveWorkspaceAgentSessionWorktreeSupportResponses];
+
+export type ListWorkspaceManagedWorktreesData = {
+  body?: never;
+  path: {
+    workspaceID: string;
+  };
+  query?: never;
+  url: "/v1/workspaces/{workspaceID}/managed-worktrees";
+};
+
+export type ListWorkspaceManagedWorktreesErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Workspace operation failed in an upstream adapter or command
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type ListWorkspaceManagedWorktreesError =
+  ListWorkspaceManagedWorktreesErrors[keyof ListWorkspaceManagedWorktreesErrors];
+
+export type ListWorkspaceManagedWorktreesResponses = {
+  /**
+   * Managed worktrees
+   */
+  200: WorkspaceManagedWorktreeListResponse;
+};
+
+export type ListWorkspaceManagedWorktreesResponse =
+  ListWorkspaceManagedWorktreesResponses[keyof ListWorkspaceManagedWorktreesResponses];
+
+export type DeleteWorkspaceManagedWorktreeData = {
+  body?: never;
+  path: {
+    workspaceID: string;
+    worktreeID: string;
+  };
+  query?: never;
+  url: "/v1/workspaces/{workspaceID}/managed-worktrees/{worktreeID}";
+};
+
+export type DeleteWorkspaceManagedWorktreeErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * Managed worktree was not found in this workspace
+   */
+  404: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Managed worktree is dirty, ahead of its base, or changed during deletion
+   */
+  409: ApiErrorResponse;
+  /**
+   * Workspace operation failed in an upstream adapter or command
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type DeleteWorkspaceManagedWorktreeError =
+  DeleteWorkspaceManagedWorktreeErrors[keyof DeleteWorkspaceManagedWorktreeErrors];
+
+export type DeleteWorkspaceManagedWorktreeResponses = {
+  /**
+   * Managed worktree deletion result
+   */
+  200: DeleteWorkspaceManagedWorktreeResponse;
+};
+
+export type DeleteWorkspaceManagedWorktreeResponse2 =
+  DeleteWorkspaceManagedWorktreeResponses[keyof DeleteWorkspaceManagedWorktreeResponses];
 
 export type ApplyWorkspaceGitPatchData = {
   body: WorkspaceGitPatchRequest;

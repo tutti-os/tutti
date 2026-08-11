@@ -50,7 +50,6 @@ type HostSupportPorts struct {
 	OperationEvents        agenthost.RuntimeOperationEventPublisher
 	OperationOwner         string
 	StaleTurnSettler       agenthost.StaleTurnSettler
-	WorktreeGC             agenthost.WorktreeGarbageCollector
 	GoalStore              agenthost.GoalStateStore
 	GoalFences             agenthost.GoalGenerationFenceStore
 	GoalInbox              agenthost.GoalReconcileInboxStore
@@ -87,9 +86,7 @@ func NewServiceComponents(
 		DeletedSessions:      config.Sessions.DeletedSessions,
 		SessionPurge:         config.Sessions.PurgeStore,
 		SessionDeletionGuard: config.Sessions.DeletionGuard,
-		SessionForkContext: serviceHostSessionForkContextPolicy{
-			runtimePreparer: config.Runtime.Preparer,
-		},
+		SessionForkContext:   serviceHostSessionForkContextPolicy{},
 		SessionForkState: serviceHostSessionForkProviderStateBinder{
 			runtimePreparer: config.Runtime.Preparer,
 		},
@@ -112,17 +109,8 @@ func NewServiceComponents(
 		OperationEvents: serviceHostRuntimeOperationEventPublisher{
 			publisher: config.Observers.RuntimeOperationEventPublisher,
 		},
-		OperationOwner:   config.Runtime.RuntimeOperationOwner,
-		StaleTurnSettler: config.Runtime.StaleTurnSettler,
-		WorktreeGC: serviceHostWorktreeGC{
-			mu:                     worktreeIsolationLock,
-			stateDir:               config.Resources.WorktreeStateDir,
-			workspaceIDs:           config.Resources.WorkspaceIDs,
-			sessionReader:          config.Sessions.Reader,
-			runtime:                runtime,
-			agentTargetStore:       config.Composer.AgentTargetStore,
-			workspaceAgentResolver: config.Composer.WorkspaceAgentResolver,
-		},
+		OperationOwner:       config.Runtime.RuntimeOperationOwner,
+		StaleTurnSettler:     config.Runtime.StaleTurnSettler,
 		GoalStore:            config.Runtime.GoalStateStore,
 		GoalFences:           config.Runtime.GoalGenerationFenceStore,
 		GoalInbox:            config.Runtime.GoalReconcileInboxStore,
@@ -220,8 +208,7 @@ func composeApplicationHost(
 		CommitObserver:    support.CommitObserver,
 		RuntimeOperations: support.RuntimeOperations, OperationEvents: support.OperationEvents,
 		OperationOwner: support.OperationOwner, StaleTurnSettler: support.StaleTurnSettler,
-		WorktreeGC: support.WorktreeGC,
-		GoalStore:  support.GoalStore, GoalFences: support.GoalFences,
+		GoalStore: support.GoalStore, GoalFences: support.GoalFences,
 		GoalRuntime: goalRuntime, GoalInbox: support.GoalInbox,
 		GoalOwner: support.GoalOwner, GoalClock: support.GoalClock,
 		GoalAttemptTimeout: support.GoalAttemptTimeout, GoalRecoveryBudget: support.GoalRecoveryBudget,

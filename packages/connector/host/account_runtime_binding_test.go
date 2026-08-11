@@ -79,7 +79,7 @@ func TestAccountRuntimeBindingResolverUsesConnectorOwnedCredentialBrokerWithoutS
 	release := testReleaseWithImplementation("lark-cli", "1.0.0", ImplementationKindManagedStdio)
 	release.Manifest.AuthorizationKind = "oauth2"
 	release.Manifest.Implementation.ManagedStdio.CredentialBroker = &ManagedCredentialBroker{
-		Protocol: CredentialBrokerProtocolV2, Entrypoint: "credential-broker.mjs", TimeoutMS: 30_000,
+		Protocol: CredentialBrokerProtocolV1, Entrypoint: "credential-broker.mjs", TimeoutMS: 30_000,
 	}
 	projections := &authorizationProjectionStoreStub{projection: AuthorizationProjection{
 		AccountID: "account-1", ConnectorKey: "lark-cli", State: AuthorizationStateConnected,

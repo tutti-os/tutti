@@ -150,6 +150,8 @@ export interface AgentGUINodeHostCapabilities {
   visibleErrorPresentationOverrides?: AgentVisibleErrorOverrides | null;
   agentTargets?: readonly AgentGUIAgentTarget[];
   agentTargetsLoading?: boolean;
+  /** Complete presentation-only catalog for resolving Agent mention identity. */
+  mentionAgentTargets?: readonly AgentGUIAgentTarget[];
   /** Launch-only targets for active-conversation handoff. */
   handoffAgentTargets?: readonly AgentGUIAgentTarget[];
   handoffAgentTargetsLoading?: boolean;

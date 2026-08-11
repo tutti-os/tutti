@@ -133,6 +133,17 @@ func (application *Application) executeInstall(ctx context.Context, operation Op
 	if err != nil {
 		return err
 	}
+	// The physical owner must publish the verified installation before the
+	// repository projects installed. If desktopd crashes after this commit but
+	// before the transaction below, bootstrap calibration sees an extra physical
+	// installation and the user can safely retry. The inverse ordering can leave
+	// durable installed truth pointing at an uncommitted VM candidate.
+	if err := application.config.ReleaseInstallations.CommitReleaseInstallation(ctx, CommitReleaseInstallationRequest{
+		OperationID: operation.OperationID, Scope: operation.Scope, Generation: operation.HostGeneration,
+		Release: release, Receipt: installed,
+	}); err != nil {
+		return NewDomainError(ErrorCodeInstallFailed, "connector release installation commit failed", true, err)
+	}
 	if err := application.completeConnectorOperation(ctx, operation.OperationID, func(connector Connector) Connector {
 		connector.Installation = Installation{
 			State:                  InstallationStateInstalled,
@@ -143,12 +154,6 @@ func (application *Application) executeInstall(ctx context.Context, operation Op
 		return connector
 	}); err != nil {
 		return err
-	}
-	if err := application.config.ReleaseInstallations.CommitReleaseInstallation(ctx, CommitReleaseInstallationRequest{
-		OperationID: operation.OperationID, Scope: operation.Scope, Generation: operation.HostGeneration,
-		Release: release, Receipt: installed,
-	}); err != nil {
-		return NewDomainError(ErrorCodeInstallFailed, "connector release cache commit failed", true, err)
 	}
 	// Runtime publication is a distinct durable operation. Failure to enqueue it
 	// cannot roll back installed truth; bootstrap and authorization observation

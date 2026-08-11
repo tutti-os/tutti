@@ -32,6 +32,7 @@ type AgentGUIPublicHostCapabilities = Omit<
   AgentGUINodeProps["hostCapabilities"],
   | "agentTargets"
   | "agentTargetsLoading"
+  | "mentionAgentTargets"
   | "handoffAgentTargets"
   | "handoffAgentTargetsLoading"
   | "providerRailAllPresentation"
@@ -49,6 +50,12 @@ export interface AgentGUIProps extends Omit<
   "hostCapabilities" | "renderSlots"
 > {
   agentDirectory: AgentGUIAgentDirectorySnapshot;
+  /**
+   * Complete host-owned identity catalog for rendered Agent mentions. Unlike
+   * handoff, this directory may include unavailable targets because it does
+   * not grant launch capability.
+   */
+  mentionAgentDirectory?: AgentGUIAgentDirectorySnapshot;
   /**
    * Host-owned launch catalog for conversation handoff. When omitted, handoff
    * uses `agentDirectory`, preserving the single-runtime host contract.
@@ -72,6 +79,7 @@ export const AgentGUI = memo(function AgentGUI({
   agentHostApi,
   tuttiModePlanReviewRuntime,
   agentDirectory,
+  mentionAgentDirectory,
   handoffAgentDirectory,
   allAgentsPresentation = null,
   renderAgentsEmpty,
@@ -118,6 +126,11 @@ export const AgentGUI = memo(function AgentGUI({
         agentDirectory.agents.length === 0 &&
         (agentDirectory.status === "idle" ||
           agentDirectory.status === "loading"),
+      mentionAgentTargets: mentionAgentDirectory
+        ? projectAgentGUIAgentsToTargets(
+            normalizeAgentGUIAgents(mentionAgentDirectory.agents)
+          )
+        : undefined,
       handoffAgentTargets,
       handoffAgentTargetsLoading:
         effectiveHandoffAgentDirectory.agents.length === 0 &&
@@ -136,7 +149,8 @@ export const AgentGUI = memo(function AgentGUI({
       effectiveHandoffAgentDirectory.agents.length,
       effectiveHandoffAgentDirectory.status,
       handoffAgentTargets,
-      hostCapabilities
+      hostCapabilities,
+      mentionAgentDirectory?.agents
     ]
   );
   const nodeRenderSlots = useMemo<AgentGUINodeProps["renderSlots"]>(

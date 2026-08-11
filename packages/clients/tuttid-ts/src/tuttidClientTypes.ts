@@ -158,6 +158,8 @@ import type {
   WorkspaceAgentSessionGitBranchesResponse,
   WorkspaceGitPatchSupportResponse,
   WorkspaceAgentSessionWorktreeSupportResponse,
+  WorkspaceManagedWorktreeListResponse,
+  DeleteWorkspaceManagedWorktreeResponse,
   WorkspaceAgentSessionPageResponse,
   WorkspaceAgentSessionSectionDeletionCandidatesResponse,
   WorkspaceAgentSessionSectionPageResponse,
@@ -1006,6 +1008,13 @@ export interface TuttidClient
     agentTargetId: string,
     cwd: string
   ): Promise<WorkspaceAgentSessionWorktreeSupportResponse>;
+  listWorkspaceManagedWorktrees(
+    workspaceID: string
+  ): Promise<WorkspaceManagedWorktreeListResponse>;
+  deleteWorkspaceManagedWorktree(
+    workspaceID: string,
+    worktreeID: string
+  ): Promise<DeleteWorkspaceManagedWorktreeResponse>;
   applyWorkspaceGitPatch(
     workspaceID: string,
     request: WorkspaceGitPatchRequest

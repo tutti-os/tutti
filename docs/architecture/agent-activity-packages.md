@@ -169,11 +169,9 @@ deletion if any live or tombstoned row still owns it. Multiple Workspace queue
 rows for one ID are handled idempotently. Recoverable tombstones keep both
 resources; Workspace-keyed runtime and Model Gateway cleanup still runs, while
 the global Agent/browser releaser is skipped if another Workspace has a live
-owner with that ID. Worktree isolation is protected while a recoverable
-tombstone exists; after hard deletion, the existing worktree GC policy may
-remove only clean, non-ahead worktrees and continues to preserve dirty or ahead
-work. Migrating those physical paths to a Workspace-scoped layout remains a
-separate future change.
+owner with that ID. Managed worktrees are independent Workspace resources:
+soft deletion, hard deletion, restore, and purge do not retain or remove them.
+They are removed only through the explicit managed-worktree operation.
 
 Automatic maintenance starts ten minutes after daemon readiness, checks at
 30-minute intervals, and records completion at most once per 24 hours. It runs
@@ -1342,11 +1340,15 @@ canonical reconciliation; it is not a compatibility conversion path.
 `StreamReady` is transport-only and must not be interpreted as canonical
 catch-up. `AttachmentChanged` starts a baseline for one positive attachment
 revision; hosts publish their canonical baseline and then
-`AttachmentCaughtUp` with the exact same binding, workspace, Session, Turn,
-caller-Turn, and revision identity. Consumers reject a missing or mismatched
-barrier. The protocol carries this fence but does not choose recovery state:
-the host adapter must reread its canonical store, which remains the lifecycle
-authority after a runtime or host-process restart.
+`AttachmentCaughtUp` with the exact same binding, workspace, Session,
+authorization set, explicit `currentInteractionRootTurnId`, caller-Turn, and
+revision identity. `canonicalTurnIds` is an authorization set, never an ordered
+current-Turn pointer. Every complete `interaction_snapshot` carries its
+required exact `rootTurnId`, including an empty collection. Consumers reject a
+snapshot whose root does not resolve to the controlled root and reject a
+missing or mismatched barrier. The protocol carries this fence but does not
+choose recovery state: the host adapter must reread its canonical store, which
+remains the lifecycle authority after a runtime or host-process restart.
 
 Replay resumes the same epoch, so replayed attachment or caught-up controls may
 precede the replacement RPC's newly emitted `StreamReady`. Consumers persist

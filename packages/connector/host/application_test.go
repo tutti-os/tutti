@@ -46,6 +46,75 @@ func TestApplicationInstallIsDurableAndIdempotent(t *testing.T) {
 	}
 }
 
+func TestApplicationRepairInstallClearsInvalidInstalledEvidence(t *testing.T) {
+	for _, failureCode := range []string{
+		InstallationFailureCodePhysicallyAbsent,
+		InstallationFailureCodePhysicallyInvalid,
+	} {
+		t.Run(failureCode, func(t *testing.T) {
+			connector := testConnector("github")
+			connector.Installation = Installation{
+				State:                  InstallationStateFailed,
+				InstalledVersion:       connector.Release.Version,
+				InstalledReleaseID:     connector.Release.ReleaseID,
+				InstalledReleaseDigest: connector.Release.ReleaseDigest,
+				FailureCode:            failureCode,
+			}
+			repository := newMemoryRepository(connector)
+			application := newTestApplication(t, repository, &memoryScheduler{}, &memoryInstallRuntime{}, CatalogSnapshot{})
+
+			accepted, err := application.Install(context.Background(), ConnectorMutation{
+				Mutation:     Mutation{ClientRequestID: "repair-" + failureCode, ExpectedRevision: 0},
+				ConnectorKey: connector.Key,
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if accepted.Connector == nil {
+				t.Fatal("accepted repair omitted Connector projection")
+			}
+			installation := accepted.Connector.Installation
+			if installation.State != InstallationStateInstalling ||
+				installation.InstalledVersion != "" ||
+				installation.InstalledReleaseID != "" ||
+				installation.InstalledReleaseDigest != "" ||
+				installation.FailureCode != "" {
+				t.Fatalf("accepted repair installation = %#v", installation)
+			}
+		})
+	}
+}
+
+func TestApplicationUpdateInstallRetainsUsableInstalledEvidence(t *testing.T) {
+	connector := testConnector("github")
+	connector.Installation = Installation{
+		State:                  InstallationStateInstalled,
+		InstalledVersion:       "0.9.0",
+		InstalledReleaseID:     "github@0.9.0",
+		InstalledReleaseDigest: strings.Repeat("a", 64),
+	}
+	repository := newMemoryRepository(connector)
+	application := newTestApplication(t, repository, &memoryScheduler{}, &memoryInstallRuntime{}, CatalogSnapshot{})
+
+	accepted, err := application.Install(context.Background(), ConnectorMutation{
+		Mutation:     Mutation{ClientRequestID: "update-github", ExpectedRevision: 0},
+		ConnectorKey: connector.Key,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if accepted.Connector == nil {
+		t.Fatal("accepted update omitted Connector projection")
+	}
+	installation := accepted.Connector.Installation
+	if installation.State != InstallationStateUpdating ||
+		installation.InstalledVersion != connector.Installation.InstalledVersion ||
+		installation.InstalledReleaseID != connector.Installation.InstalledReleaseID ||
+		installation.InstalledReleaseDigest != connector.Installation.InstalledReleaseDigest {
+		t.Fatalf("accepted update installation = %#v", installation)
+	}
+}
+
 func TestApplicationClientRequestIDIsReusableOnlyAfterTerminalRetention(t *testing.T) {
 	repository := newMemoryRepository(testConnector("github"))
 	scheduler := &memoryScheduler{}
@@ -112,6 +181,30 @@ func TestApplicationExecutesAcceptedInstall(t *testing.T) {
 	}
 	if operation.State != OperationStateCompleted || installationHost.prepares != 1 || installationHost.activations != 0 {
 		t.Fatalf("operation = %#v, prepares = %d, activations = %d", operation, installationHost.prepares, installationHost.activations)
+	}
+}
+
+func TestApplicationDoesNotProjectInstalledBeforePhysicalCommit(t *testing.T) {
+	repository := newMemoryRepository(testConnector("github"))
+	scheduler := &memoryScheduler{}
+	physicalCommitErr := errors.New("physical commit unavailable")
+	installationHost := &memoryInstallRuntime{installationCommitErr: physicalCommitErr}
+	application := newTestApplication(t, repository, scheduler, installationHost, CatalogSnapshot{})
+	accepted, err := application.Install(context.Background(), ConnectorMutation{
+		Mutation: Mutation{ClientRequestID: "request-physical-commit", ExpectedRevision: 0}, ConnectorKey: "github",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := application.ExecuteOperation(context.Background(), accepted.Operation.OperationID); err == nil {
+		t.Fatal("physical commit failure was accepted")
+	}
+	connector, err := repository.Connector(context.Background(), "github")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if connector.Installation.State == InstallationStateInstalled {
+		t.Fatalf("installation projected before physical commit: %#v", connector.Installation)
 	}
 }
 
@@ -1190,7 +1283,7 @@ func testManagedAuthorizedConnector(key string) Connector {
 	connector.Release.Manifest.Implementation.ManagedStdio.Runtime.VersionRange = ">=20.0.0 <21.0.0"
 	connector.Release.Manifest.Implementation.ManagedStdio.CLI = &ManagedCLIInterface{Entrypoint: "bin/lark-cli", TimeoutMS: 120_000}
 	connector.Release.Manifest.Implementation.ManagedStdio.CredentialBroker = &ManagedCredentialBroker{
-		Protocol: CredentialBrokerProtocolV2, Entrypoint: "authorization/broker.mjs", TimeoutMS: 30_000,
+		Protocol: CredentialBrokerProtocolV1, Entrypoint: "authorization/broker.mjs", TimeoutMS: 30_000,
 		AllowedHosts: []string{"open.larksuite.com"},
 	}
 	connector.Installation = Installation{State: InstallationStateInstalled, InstalledVersion: connector.Release.Version,
@@ -1303,6 +1396,7 @@ type memoryInstallRuntime struct {
 	installationInspections int
 	installationResult      ReleaseInstallationObservation
 	installationInspectErr  error
+	installationCommitErr   error
 }
 
 func (host *memoryInstallRuntime) Reconcile(_ context.Context, request RuntimeReconcileRequest) (RuntimeReceipt, error) {
@@ -1396,8 +1490,8 @@ func (host *memoryInstallRuntime) UninstallRelease(ctx context.Context, request 
 		ReleaseDigest: request.Release.ReleaseDigest})
 }
 
-func (*memoryInstallRuntime) CommitReleaseInstallation(context.Context, CommitReleaseInstallationRequest) error {
-	return nil
+func (host *memoryInstallRuntime) CommitReleaseInstallation(context.Context, CommitReleaseInstallationRequest) error {
+	return host.installationCommitErr
 }
 
 type runtimeBindingResolverStub struct {

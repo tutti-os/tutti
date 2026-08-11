@@ -47,8 +47,8 @@ and affects runtime interface readiness, not installation truth.
 
 Authorized `managed_stdio` Connectors declare a connector-owned
 credential broker entrypoint. The broker translates its provider-specific
-flow into the `tutti.connector.credentials.v2` event protocol. Version 2 adds
-typed `inspect` alongside `begin` and `disconnect`, so a runtime owner can
+flow into the `tutti.connector.credentials.v1` event protocol. The final v1
+contract includes typed `inspect` alongside `begin` and `disconnect`, so a runtime owner can
 calibrate connected, disconnected, expired, and failed state after restart.
 Tutti validates
 every authorization URL against the manifest's exact HTTPS host allowlist and

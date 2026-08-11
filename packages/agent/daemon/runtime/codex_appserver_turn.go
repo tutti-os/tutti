@@ -410,6 +410,21 @@ func (a *CodexAppServerAdapter) execBlocking(
 			emitProviderLocked(next)
 		}
 	}
+	// A turn/start failure has no provider identity to accept. Publish its
+	// canonical terminal directly so the controller can settle the Turn, while
+	// dropping any provider events that arrived before the failed response.
+	emitProviderlessTerminal := func(next []activityshared.Event) {
+		eventsMu.Lock()
+		defer eventsMu.Unlock()
+		if turnClosed {
+			return
+		}
+		turnClosed = true
+		pendingProviderEvents = nil
+		if len(next) > 0 {
+			emitLocked(next)
+		}
+	}
 	releaseProviderEvents := func() {
 		eventsMu.Lock()
 		defer eventsMu.Unlock()
@@ -575,11 +590,11 @@ func (a *CodexAppServerAdapter) execBlocking(
 			terminalEvents = append(terminalEvents, newTurnActivityEvent(session, EventTurnCanceled, turnID, SessionStatusCanceled, "", "", map[string]any{
 				"error": err.Error(),
 			}))
-			emitTerminal(terminalEvents)
+			emitProviderlessTerminal(terminalEvents)
 		} else {
 			terminalEvents := normalizer.FinishFailed(session, turnID)
 			terminalEvents = append(terminalEvents, newTurnActivityEvent(session, EventTurnFailed, turnID, SessionStatusFailed, "", "", acpFailureMetadata(err)))
-			emitTerminal(terminalEvents)
+			emitProviderlessTerminal(terminalEvents)
 		}
 		if invalidateClient && a.invalidateSessionClient(session.AgentSessionID, appSession.client) {
 			slog.Warn(

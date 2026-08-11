@@ -80,7 +80,7 @@ export interface ConnectorManagedCliInterface {
 }
 
 export interface ConnectorManagedCredentialBroker {
-  protocol: "tutti.connector.credentials.v2";
+  protocol: "tutti.connector.credentials.v1";
   entrypoint: string;
   timeoutMs: number;
   allowedHosts: string[];

@@ -10,9 +10,9 @@ import {
 import { managedAgentRoundedIconUrl } from "./managedAgentIcons";
 import { isDirectAgentGeneratedMediaPath } from "../actions/workspaceFilePathCandidate";
 import {
-  resolveAgentTargetPresentation,
+  resolveAgentMentionTargetPresentation,
   type AgentMessageMarkdownAgentTarget
-} from "./AgentTargetPresentationContext";
+} from "./agentTargetPresentation";
 import type { AgentMessageMarkdownWorkspaceAppIcon } from "./AgentMessageMarkdown";
 
 const PLAIN_SESSION_MENTION_AGENT_LABELS = [
@@ -550,42 +550,36 @@ export function parseMentionLink(
   }
   if (kind === "agent-target") {
     const workspaceId = mention.scope?.workspaceId?.trim() || "";
-    const target = resolveAgentTargetPresentation({
+    const scopedProvider = mention.scope?.agentProviderId?.trim() || "";
+    const presentation = resolveAgentMentionTargetPresentation({
       agentTargetId: entityId,
       agentTargets,
+      fallbackIconUrl: managedAgentRoundedIconUrl(scopedProvider || undefined),
+      fallbackName: label,
+      fallbackProvider: scopedProvider,
       workspaceId
     });
-    const scopedProvider = mention.scope?.agentProviderId?.trim() || "";
-    const agentProviderId =
-      target?.provider?.trim() || scopedProvider || undefined;
-    const targetLabel = target?.name?.trim() || label;
     return {
       ...identity,
-      agentProviderId,
+      agentProviderId: presentation.provider,
       kind,
-      label: targetLabel,
-      iconUrl:
-        target?.iconUrl?.trim() || managedAgentRoundedIconUrl(agentProviderId)
+      label: presentation.name ?? label,
+      iconUrl: presentation.iconUrl
     };
   }
   if (kind === "session") {
     const workspaceId = mention.scope?.workspaceId?.trim() || "";
     const agentTargetId = mention.scope?.agentTargetId?.trim() || "";
-    const target = resolveAgentTargetPresentation({
+    const presentation = resolveAgentMentionTargetPresentation({
       agentTargetId,
       agentTargets,
       workspaceId
     });
-    const localProvider = agentTargetId.startsWith("local:")
-      ? agentTargetId.slice("local:".length).trim()
-      : "";
     return {
       ...identity,
       kind,
       label,
-      iconUrl:
-        target?.iconUrl?.trim() ||
-        (localProvider ? managedAgentRoundedIconUrl(localProvider) : undefined)
+      iconUrl: presentation.iconUrl
     };
   }
   if (kind === "workspace-reference") {

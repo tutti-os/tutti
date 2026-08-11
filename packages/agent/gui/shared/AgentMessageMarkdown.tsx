@@ -32,6 +32,7 @@ import {
   useAgentTargetPresentations,
   type AgentMessageMarkdownAgentTarget
 } from "./AgentTargetPresentationContext";
+import { resolveAgentMentionTargetPresentation } from "./agentTargetPresentation";
 import {
   activateMarkdownLink,
   activateMarkdownLinkFromKey,
@@ -461,6 +462,7 @@ function MarkdownLink({
     return (
       <MentionLink
         {...props}
+        agentTargets={agentTargets ?? EMPTY_AGENT_TARGETS}
         href={targetHref}
         mention={mention}
         onLinkClick={onLinkClick}
@@ -653,12 +655,14 @@ function WorkspaceFileMentionLink({
 }
 
 function MentionLink({
+  agentTargets,
   onClick: _onClick,
   onLinkClick,
   href,
   mention,
   ...props
 }: AnchorHTMLAttributes<HTMLAnchorElement> & {
+  agentTargets: readonly AgentMessageMarkdownAgentTarget[];
   href: string;
   mention: ParsedMentionLink;
   onLinkClick?: (href: string) => void;
@@ -671,13 +675,33 @@ function MentionLink({
     scope: mention.scope
   });
   const resolved = snapshot.state === "ready" ? snapshot.resolved : undefined;
-  const label = resolved?.label?.trim() || mention.label;
   const presentation = resolved?.presentation;
-  const iconUrl =
+  const fallbackIconUrl =
     presentation?.iconUrl?.trim() ||
     presentation?.thumbnailUrl?.trim() ||
     presentation?.agentIconUrl?.trim() ||
     mention.iconUrl;
+  const fallbackLabel = resolved?.label?.trim() || mention.label;
+  const agentTargetPresentation =
+    mention.kind === "agent-target" || mention.kind === "session"
+      ? resolveAgentMentionTargetPresentation({
+          agentTargetId:
+            mention.kind === "agent-target"
+              ? mention.entityId
+              : mention.scope?.agentTargetId,
+          agentTargets,
+          fallbackIconUrl,
+          fallbackName: fallbackLabel,
+          fallbackProvider:
+            presentation?.agentProviderId?.trim() || mention.agentProviderId,
+          workspaceId: mention.scope?.workspaceId
+        })
+      : null;
+  const label =
+    mention.kind === "agent-target"
+      ? (agentTargetPresentation?.name ?? fallbackLabel)
+      : fallbackLabel;
+  const iconUrl = agentTargetPresentation?.iconUrl ?? fallbackIconUrl;
   const pillKind =
     mention.kind === "workspace-issue" || mention.referenceSource === "task"
       ? "issue"

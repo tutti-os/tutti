@@ -129,9 +129,14 @@ func (s *Service) CreateWithResult(ctx context.Context, workspaceID string, inpu
 		value(input.Model),
 		input.ReasoningEffort,
 	)
-	worktreeLock := s.worktreeLock()
-	worktreeLock.RLock()
-	defer worktreeLock.RUnlock()
+	if isolationMode == WorktreeIsolationMode {
+		// Serialize the explicit worktree create transaction with worktree
+		// management operations. Ordinary Session creation has no worktree
+		// lifecycle relationship and does not take this lock.
+		worktreeLock := s.worktreeLock()
+		worktreeLock.Lock()
+		defer worktreeLock.Unlock()
+	}
 	nodeStartedAt = time.Now()
 	if isolationMode == WorktreeIsolationMode && strings.TrimSpace(value(input.Cwd)) == "" {
 		err := &WorktreeIsolationError{Kind: ErrNotAGitRepo}

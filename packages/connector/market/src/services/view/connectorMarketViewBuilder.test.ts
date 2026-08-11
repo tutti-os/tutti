@@ -138,6 +138,60 @@ test("keeps connector details open through installation and advances to authoriz
   );
 });
 
+test("keeps a physical repair in the available segment until installation completes", () => {
+  const market = createConnectorMarketStoreState();
+  const connector = connectorFixture();
+  connector.installation = {
+    installedReleaseDigest: connector.release.releaseDigest,
+    installedReleaseId: connector.release.releaseId,
+    installedVersion: connector.release.version,
+    state: "installing"
+  };
+  market.connectorKeys = [connector.key];
+  market.connectorsByKey[connector.key] = connector;
+  market.catalogSections = [
+    {
+      categoryId: "productivity",
+      connectorKeys: [connector.key],
+      itemCount: 1,
+      kind: "category",
+      loadState: "ready",
+      sortOrder: 10
+    }
+  ];
+  market.operationsByConnectorKey[connector.key] = {
+    attempt: 1,
+    clientRequestId: "repair-github",
+    connectorKey: connector.key,
+    createdAt: "2026-08-11T00:00:00Z",
+    kind: "install",
+    operationId: "repair-operation",
+    stage: "installing",
+    state: "running",
+    updatedAt: "2026-08-11T00:00:01Z"
+  };
+
+  const installingView = buildConnectorMarketView(market, uiState);
+  assert.equal(installingView.installedCount, 0);
+  assert.equal(installingView.availableCount, 1);
+  assert.deepEqual(installingView.sections[0]?.connectorKeys, [connector.key]);
+  assert.equal(installingView.cardsByKey[connector.key]?.status, "installing");
+
+  connector.installation.state = "installed";
+  market.operationsByConnectorKey[connector.key] = {
+    ...market.operationsByConnectorKey[connector.key]!,
+    stage: "completed",
+    state: "completed",
+    updatedAt: "2026-08-11T00:00:02Z"
+  };
+  const installedView = buildConnectorMarketView(market, {
+    ...uiState,
+    segment: "installed"
+  });
+  assert.equal(installedView.installedCount, 1);
+  assert.deepEqual(installedView.sections[0]?.connectorKeys, [connector.key]);
+});
+
 test("requires an installed connector to update before authorization when the active release changes", () => {
   const market = createConnectorMarketStoreState();
   const connector = connectorFixture();

@@ -162,16 +162,18 @@ func (r *claudeSDKLineReader) next(ctx context.Context) (claudeSDKSidecarEvent, 
 		}
 		if err != nil {
 			if errors.Is(err, io.EOF) {
+				r.flushStderrDiagnostics()
 				return claudeSDKSidecarEvent{}, ErrSessionDisconnected
 			}
 			return claudeSDKSidecarEvent{}, err
 		}
 		if len(frame.Stderr) > 0 {
-			logClaudeSDKSidecarDebugStderr(frame.Stderr)
+			r.appendStderrDiagnostics(frame.Stderr)
 			r.appendStderrTail(frame.Stderr)
 			continue
 		}
 		if frame.ExitCode != nil {
+			r.flushStderrDiagnostics()
 			return claudeSDKSidecarEvent{}, claudeSDKSidecarExitError(*frame.ExitCode, r.stderrTail)
 		}
 		if len(frame.Stdout) > 0 {
@@ -232,6 +234,28 @@ func nextBufferedLine(buffer *string) (string, bool) {
 	return line, line != ""
 }
 
+func (r *claudeSDKLineReader) appendStderrDiagnostics(content []byte) {
+	if len(content) == 0 {
+		return
+	}
+	r.stderrDiagnosticBuffer += string(content)
+	for {
+		line, ok := nextBufferedLine(&r.stderrDiagnosticBuffer)
+		if !ok {
+			return
+		}
+		logClaudeSDKSidecarDebugStderr([]byte(line))
+	}
+}
+
+func (r *claudeSDKLineReader) flushStderrDiagnostics() {
+	line := strings.TrimSpace(r.stderrDiagnosticBuffer)
+	r.stderrDiagnosticBuffer = ""
+	if line != "" {
+		logClaudeSDKSidecarDebugStderr([]byte(line))
+	}
+}
+
 func (r *claudeSDKLineReader) appendStderrTail(content []byte) {
 	summary := claudeSDKStderrSummary(content)
 	if summary == "" {
@@ -281,6 +305,12 @@ func logClaudeSDKSidecarDebugStderr(content []byte) {
 				claudeSDKCancelLogPrefix,
 				"agent_session.claude_sdk.cancel_diagnostic",
 			)
+		case strings.HasPrefix(line, claudeSDKProviderTurnLogPrefix):
+			logClaudeSDKStructuredDiagnostic(
+				line,
+				claudeSDKProviderTurnLogPrefix,
+				"agent_session.claude_sdk.provider_turn_diagnostic",
+			)
 		}
 	}
 }
@@ -289,6 +319,16 @@ func logClaudeSDKStructuredDiagnostic(line string, prefix string, event string) 
 	payloadJSON := strings.TrimSpace(strings.TrimPrefix(line, prefix))
 	if !json.Valid([]byte(payloadJSON)) {
 		payloadJSON = `{"stage":"invalid_diagnostic_payload"}`
+	}
+	var envelope struct {
+		Severity string `json:"severity"`
+	}
+	if json.Unmarshal([]byte(payloadJSON), &envelope) == nil && envelope.Severity == "warning" {
+		slog.Warn(prefix,
+			"event", event,
+			"payload_json", payloadJSON,
+		)
+		return
 	}
 	slog.Info(prefix,
 		"event", event,

@@ -7,6 +7,11 @@ import {
   waitFor
 } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { RichTextMentionServiceProvider } from "@tutti-os/ui-rich-text/editor";
+import type {
+  RichTextMentionService,
+  RichTextMentionSnapshot
+} from "@tutti-os/ui-rich-text/service";
 import {
   AgentMessageMarkdown,
   resetCachedMarkdownImagesForTests,
@@ -1630,6 +1635,71 @@ describe("AgentMessageMarkdown", () => {
     expect(mention).toHaveAttribute("data-agent-mention-kind", "agent-target");
     expect(mention).toHaveAttribute("data-agent-mention-icon-url", iconUrl);
     expect(mention?.querySelector("img")).toHaveAttribute("src", iconUrl);
+  });
+
+  it("keeps exact target-directory icons over stale mention-service presentations", () => {
+    const currentIconUrl = "data:image/png;base64,current-codex";
+    const staleUnifiedIconUrl = "data:image/png;base64,stale-unified";
+    const snapshot: RichTextMentionSnapshot = {
+      state: "ready",
+      resolved: {
+        label: "Stale Unified Agent",
+        presentation: { iconUrl: staleUnifiedIconUrl }
+      }
+    };
+    const mentionService: RichTextMentionService = {
+      dispose: vi.fn(),
+      getProvider: () => undefined,
+      getSnapshot: () => snapshot,
+      invalidate: vi.fn(),
+      listProviders: () => [],
+      listTriggerConfigs: () => [],
+      query: async () => [],
+      resolve: async () => snapshot,
+      subscribe: () => () => {}
+    };
+    const { container } = render(
+      <RichTextMentionServiceProvider service={mentionService}>
+        <AgentMessageMarkdown
+          agentTargets={[
+            {
+              agentTargetId: "shared-agent:rv4no-codex",
+              iconUrl: currentIconUrl,
+              name: "rv4no's Codex",
+              provider: "codex",
+              workspaceId: "room-1"
+            }
+          ]}
+          content={
+            "[@rv4no's Codex](mention://agent-target/shared-agent:rv4no-codex?workspaceId=room-1) [@Build session](mention://agent-session/session-1?agentTargetId=shared-agent%3Arv4no-codex&workspaceId=room-1) [@Missing target](mention://agent-target/shared-agent:missing?workspaceId=room-1)"
+          }
+        />
+      </RichTextMentionServiceProvider>
+    );
+
+    const targetMention = container.querySelector(
+      '[data-agent-mention-kind="agent-target"]'
+    );
+    const sessionMention = container.querySelector(
+      '[data-agent-mention-kind="session"]'
+    );
+    const missingTargetMention = container.querySelector(
+      '[data-agent-mention-href*="shared-agent:missing"]'
+    );
+    expect(targetMention).toHaveTextContent("rv4no's Codex");
+    expect(targetMention?.querySelector("img")).toHaveAttribute(
+      "src",
+      currentIconUrl
+    );
+    expect(sessionMention?.querySelector("img")).toHaveAttribute(
+      "src",
+      currentIconUrl
+    );
+    expect(missingTargetMention).toHaveTextContent("Stale Unified Agent");
+    expect(missingTargetMention?.querySelector("img")).toHaveAttribute(
+      "src",
+      staleUnifiedIconUrl
+    );
   });
 
   it("falls back to a scoped provider icon when the presentation catalog misses", () => {

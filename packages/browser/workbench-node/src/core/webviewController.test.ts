@@ -3,7 +3,11 @@ import test from "node:test";
 import { createBrowserNodeFeature } from "./feature.ts";
 import { browserNodeGuestInteractionHostChannel } from "./guestInteraction.ts";
 import { acquireBrowserNodeWebviewController } from "./webviewController.ts";
-import type { BrowserNodeHostApi } from "./types.ts";
+import type {
+  BrowserNodeHostApi,
+  BrowserNodePrepareSessionInput,
+  BrowserNodeUpdateAutomationTargetInput
+} from "./types.ts";
 import type { BrowserNodeWebviewTag } from "../react/webviewTag.ts";
 
 test("Browser Node webview controller prepares sessions when active", async () => {
@@ -51,6 +55,68 @@ test("Browser Node webview controller prepares sessions when active", async () =
       workspaceId: "workspace-1"
     }
   ]);
+  controller.release();
+});
+
+test("Browser Node webview controller coalesces equivalent host synchronization", async () => {
+  const prepareCalls: BrowserNodePrepareSessionInput[] = [];
+  const automationTargetCalls: BrowserNodeUpdateAutomationTargetInput[] = [];
+  const feature = createBrowserNodeFeature({
+    hostApi: createBrowserNodeHostApi({
+      prepareSession(payload) {
+        prepareCalls.push(payload);
+        return Promise.resolve();
+      },
+      updateAutomationTarget(payload) {
+        automationTargetCalls.push(payload);
+        return Promise.resolve();
+      }
+    })
+  });
+  const createController = (lifecycle: "active" | "cold", selected: boolean) =>
+    acquireBrowserNodeWebviewController({
+      automationTarget: {
+        agentSessionId: "agent-1",
+        focused: false,
+        selected,
+        surfaceId: "surface-1",
+        surfaceRole: "agent",
+        tabId: "tab-1",
+        workspaceId: "workspace-1"
+      },
+      feature,
+      initialUrl: "https://example.com/",
+      lifecycle,
+      navigationPolicy: {
+        mode: "same-origin",
+        originUrl: "https://example.com/"
+      },
+      nodeId: "browser-host-sync",
+      profileId: null,
+      sessionMode: "shared"
+    });
+
+  const controller = createController("active", true);
+  controller.retain();
+  controller.sync();
+  createController("active", true).sync();
+  await Promise.resolve();
+
+  assert.equal(prepareCalls.length, 1);
+  assert.equal(automationTargetCalls.length, 1);
+
+  createController("active", false).sync();
+  await Promise.resolve();
+  assert.equal(prepareCalls.length, 2);
+  assert.equal(automationTargetCalls.length, 2);
+  assert.equal(prepareCalls.at(-1)?.automationTarget?.selected, false);
+  assert.equal(automationTargetCalls.at(-1)?.automationTarget.selected, false);
+
+  createController("cold", false).sync();
+  createController("active", false).sync();
+  await Promise.resolve();
+  assert.equal(prepareCalls.length, 3);
+  assert.equal(automationTargetCalls.length, 2);
   controller.release();
 });
 
@@ -426,6 +492,9 @@ function createBrowserNodeHostApi(
     ...(overrides.openDevTools ? { openDevTools: overrides.openDevTools } : {}),
     ...(overrides.showDevToolsContextMenu
       ? { showDevToolsContextMenu: overrides.showDevToolsContextMenu }
+      : {}),
+    ...(overrides.updateAutomationTarget
+      ? { updateAutomationTarget: overrides.updateAutomationTarget }
       : {})
   };
 }

@@ -19,11 +19,6 @@ import {
   type QueryShutdownOptions
 } from "./queryGeneration.ts";
 import { queryGenerationHooks } from "./queryHooks.ts";
-import {
-  claudeAuthRefreshDiagnosticsEnabled,
-  claudeCredentialSnapshot,
-  debugClaudeAuthRefreshLog
-} from "./authDiagnostics.ts";
 import { errorMessage, errorPayload } from "./errors.ts";
 import { AssistantStreamProjector } from "./assistantStream.ts";
 import {
@@ -62,6 +57,7 @@ import {
   ProviderTurnAcceptanceCoordinator,
   type ProviderTurnPhase
 } from "./providerTurnAcceptance.ts";
+import { ClaudeSessionDiagnostics } from "./sessionDiagnostics.ts";
 import {
   canBypassPermissions,
   effectivePermissionMode,
@@ -145,6 +141,7 @@ export class SessionRuntime {
   private readonly driver?: SidecarTestDriver;
   private readonly goalExecQueue: GoalExecQueue;
   private readonly providerTurnAcceptance: ProviderTurnAcceptanceCoordinator;
+  private readonly diagnostics: ClaudeSessionDiagnostics;
   private readonly emittedProviderCheckpoints = new Set<string>();
 
   get query(): ClaudeQueryRuntime | undefined {
@@ -222,6 +219,12 @@ export class SessionRuntime {
           binding.providerCheckpointMessageId
         ),
       resolutionTimeoutMs: providerTurnIdentityResolutionTimeoutMs
+    });
+    this.diagnostics = new ClaudeSessionDiagnostics({
+      cwd: this.cwd,
+      providerSessionId: () => this.providerSessionId,
+      turns: () => this.turns.queue,
+      phaseForTurn: (turnId) => this.providerTurnAcceptance.phase(turnId)
     });
     this.assistantStream = new AssistantStreamProjector(
       () => this.turns.activeId,
@@ -350,7 +353,7 @@ export class SessionRuntime {
   }
 
   async start(): Promise<void> {
-    this.logAuthRefresh("session_start.begin", {
+    this.diagnostics.logAuthRefresh("session_start.begin", {
       restore: this.restore,
       initialized: this.initialized,
       queryClosed: this.sessionClosed
@@ -384,7 +387,7 @@ export class SessionRuntime {
       // Default never has to be inferred from the advertised catalog label.
       this.consume(generation);
     }
-    this.logAuthRefresh("session_start.succeeded", {
+    this.diagnostics.logAuthRefresh("session_start.succeeded", {
       restore: this.restore,
       initialized: this.initialized,
       queryClosed: this.sessionClosed
@@ -521,13 +524,17 @@ export class SessionRuntime {
             content: outboundContent
           }
         } as SDKUserMessage);
+        this.diagnostics.scheduleProviderTurnIdentityWarning(
+          turn,
+          generation.id
+        );
         this.consume(generation);
       })
       .catch((error) => {
         if (executionEpoch !== this.executionEpoch || turn.settled) {
           return;
         }
-        this.logAuthRefresh("exec.ensure_query_failed", {
+        this.diagnostics.logAuthRefresh("exec.ensure_query_failed", {
           turnId,
           error: errorPayload(error)
         });
@@ -582,7 +589,7 @@ export class SessionRuntime {
         await interrupt.call(generation.query);
       } catch (error) {
         this.pendingGuidanceInterrupt = false;
-        this.logAuthRefresh("guide.interrupt_failed", {
+        this.diagnostics.logAuthRefresh("guide.interrupt_failed", {
           error: errorPayload(error)
         });
         throw new Error(
@@ -625,7 +632,7 @@ export class SessionRuntime {
         throw error;
       }
     } catch (error) {
-      this.logAuthRefresh("guide.failed", {
+      this.diagnostics.logAuthRefresh("guide.failed", {
         error: errorPayload(error)
       });
       throw error;
@@ -867,7 +874,8 @@ export class SessionRuntime {
         if (isAbortError(error) && !this.isQueryGenerationActive(generation)) {
           return;
         }
-        this.logAuthRefresh("query_consume.failed", {
+        this.diagnostics.logQueryFailure(generation.id, error);
+        this.diagnostics.logAuthRefresh("query_consume.failed", {
           activeTurnId: this.turns.activeId,
           queuedTurnIds: this.turns.queue
             .filter((turn) => !turn.settled)
@@ -877,6 +885,7 @@ export class SessionRuntime {
         this.turns.failLiveTurns(errorMessage(error));
       } finally {
         if (this.queryGeneration === generation) {
+          this.diagnostics.logQueryEnd(generation.id);
           this.queryGeneration = undefined;
           generation.revoke();
           generation.closeQuery();
@@ -1003,7 +1012,7 @@ export class SessionRuntime {
           this.activities.handleTaskLifecycleHook(input)
       })
     } as ClaudeQueryOptions;
-    this.logAuthRefresh("query_create.begin", {
+    this.diagnostics.logAuthRefresh("query_create.begin", {
       initialize: startOptions.initialize === true,
       restore: this.resumeQueries,
       permissionMode,
@@ -1020,7 +1029,7 @@ export class SessionRuntime {
         prompt: generation.promptQueue.iterate(),
         options: queryOptions
       }) as ClaudeQueryRuntime;
-      this.logAuthRefresh("query_create.succeeded", {
+      this.diagnostics.logAuthRefresh("query_create.succeeded", {
         initialize: startOptions.initialize === true,
         restore: this.resumeQueries,
         hasInitializationResult:
@@ -1028,7 +1037,7 @@ export class SessionRuntime {
       });
       if (startOptions.initialize || this.resumeQueries) {
         try {
-          this.logAuthRefresh("query_initialization.begin", {
+          this.diagnostics.logAuthRefresh("query_initialization.begin", {
             restore: this.resumeQueries
           });
           const initializationResult =
@@ -1042,12 +1051,12 @@ export class SessionRuntime {
           this.configuration.applyInitializationResult(initializationResult);
           this.initialized = true;
           this.resumeQueries = true;
-          this.logAuthRefresh("query_initialization.succeeded", {
+          this.diagnostics.logAuthRefresh("query_initialization.succeeded", {
             restore: this.resumeQueries,
             resultKeys: Object.keys(recordValue(initializationResult) ?? {})
           });
         } catch (error) {
-          this.logAuthRefresh("query_initialization.failed", {
+          this.diagnostics.logAuthRefresh("query_initialization.failed", {
             restore: this.resumeQueries,
             error: errorPayload(error)
           });
@@ -1156,21 +1165,6 @@ export class SessionRuntime {
     this.resumeQueries = true;
     QueryGeneration.retire(this.queryGeneration, () => {
       this.queryGeneration = undefined;
-    });
-  }
-
-  private logAuthRefresh(
-    stage: string,
-    payload: Record<string, unknown>
-  ): void {
-    if (!claudeAuthRefreshDiagnosticsEnabled()) {
-      return;
-    }
-    debugClaudeAuthRefreshLog(stage, {
-      providerSessionId: this.providerSessionId,
-      cwd: this.cwd,
-      credentials: claudeCredentialSnapshot(),
-      ...payload
     });
   }
 

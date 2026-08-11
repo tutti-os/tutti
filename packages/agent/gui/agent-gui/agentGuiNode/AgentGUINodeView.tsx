@@ -76,6 +76,7 @@ export {
 import { useAgentGUIExternalRequests } from "./view/useAgentGUIExternalRequests";
 export function AgentGUINodeView({
   viewModel,
+  mentionAgentTargets,
   referenceProvenanceFilters = null,
   sessionInputHistoryEnabled = false,
   sessionForkEnabled = false,
@@ -406,7 +407,6 @@ export function AgentGUINodeView({
     selectedAgentTarget: viewModel.rail.selectedAgentTarget
   });
   const openAgentSettings = useCallback(() => {
-    // Provider-scoped config menu -> Agents tab, focusing this provider's row.
     openWorkspaceSettingsPanel({
       section: "agent",
       pane: "agents",
@@ -512,7 +512,8 @@ export function AgentGUINodeView({
   );
   const targetPresentationKey = mentionAgentTargetPresentationKey(
     viewModel.rail.agentTargets,
-    viewModel.composer.handoffAgentTargets
+    viewModel.composer.handoffAgentTargets,
+    mentionAgentTargets
   );
   const agentTargetPresentations = useMemo<
     readonly AgentMessageMarkdownAgentTarget[]
@@ -520,6 +521,7 @@ export function AgentGUINodeView({
     () =>
       projectMentionAgentTargetPresentations({
         handoffTargets: viewModel.composer.handoffAgentTargets,
+        mentionTargets: mentionAgentTargets,
         ownerSeparator: labels.sharedAgentOwnerSeparator,
         railTargets: viewModel.rail.agentTargets,
         workspaceId: viewModel.shell.workspaceId
@@ -634,8 +636,7 @@ export function AgentGUINodeView({
             inert={conversationRailCollapsed ? true : undefined}
           >
             <AgentConversationClockProvider isVisible={isVisible}>
-              {/* Activity is an all-provider rail snapshot. Selecting a row
-                  changes the active provider/target, but must not rebuild it. */}
+              {/* Selecting an Activity row must not rebuild its all-provider snapshot. */}
               <AgentGUIConversationRailController
                 {...conversationRailStoreState}
                 activityContextKey={[

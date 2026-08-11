@@ -104,6 +104,12 @@ function createTransportClient(
     async listWorkspaceAgents() {
       throw new Error("not used");
     },
+    async listWorkspaceManagedWorktrees() {
+      throw new Error("not used");
+    },
+    async deleteWorkspaceManagedWorktree() {
+      throw new Error("not used");
+    },
     async createWorkspaceAgent() {
       throw new Error("not used");
     },

@@ -157,6 +157,7 @@
         "bindingId",
         "workspaceId",
         "agentSessionId",
+        "currentInteractionRootTurnId",
         "attachmentRevision"
       ],
       "pairedOptional": [["canonicalTurnId", "callerTurnId"]],
@@ -167,6 +168,7 @@
         "canonicalTurnId": "string",
         "canonicalTurnIds": "unique-non-empty-string-array-containing-canonical-turn-id-when-present",
         "callerTurnId": "string",
+        "currentInteractionRootTurnId": "authorized-current-interaction-root-or-empty-before-first-turn",
         "attachmentRevision": "positive-integer"
       }
     },
@@ -175,6 +177,7 @@
         "bindingId",
         "workspaceId",
         "agentSessionId",
+        "currentInteractionRootTurnId",
         "attachmentRevision"
       ],
       "pairedOptional": [["canonicalTurnId", "callerTurnId"]],
@@ -185,6 +188,7 @@
         "canonicalTurnId": "string",
         "canonicalTurnIds": "unique-non-empty-string-array-containing-canonical-turn-id-when-present",
         "callerTurnId": "string",
+        "currentInteractionRootTurnId": "authorized-current-interaction-root-or-empty-before-first-turn",
         "attachmentRevision": "positive-integer"
       }
     },

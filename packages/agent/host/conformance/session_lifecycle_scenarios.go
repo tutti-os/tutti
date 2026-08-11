@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	agenthost "github.com/tutti-os/tutti/packages/agent/host"
 	storesqlite "github.com/tutti-os/tutti/packages/agent/store-sqlite"
@@ -573,6 +574,131 @@ func runNewTurnsRequireDurableProviderAcceptance(
 		return errors.New("sent Turn did not require durable provider acceptance")
 	}
 	return nil
+}
+
+func runProviderlessCanonicalTerminalSettlesAndReplaysSubmission(
+	ctx context.Context,
+	driver Driver,
+) error {
+	providerlessDriver, ok := driver.(ProviderlessTerminalDriver)
+	if !ok {
+		return errors.New("conformance driver does not support providerless terminal execution")
+	}
+	if err := providerlessDriver.ResetProviderlessTerminalExec(ctx, nil); err != nil {
+		return err
+	}
+	createInput := agenthost.CreateSessionInput{
+		AgentSessionID: "session-providerless-terminal-create",
+		AgentTargetID:  "target-1",
+		Provider:       "codex",
+		InitialContent: []agenthost.PromptContentBlock{{
+			Type: "text", Text: "fail before provider identity",
+		}},
+		ClientSubmitID: "providerless-terminal-create-1",
+	}
+	_, firstCreateTurnID, err := driver.Create(ctx, "workspace-1", createInput)
+	if err != nil {
+		return fmt.Errorf("create with providerless canonical terminal: %w", err)
+	}
+	if err := requireCanonicalFailedTurn(
+		ctx,
+		driver,
+		agenthost.SessionRef{
+			WorkspaceID: "workspace-1", AgentSessionID: createInput.AgentSessionID,
+		},
+		firstCreateTurnID,
+	); err != nil {
+		return fmt.Errorf("initial providerless terminal: %w", err)
+	}
+	_, replayedCreateTurnID, err := driver.Create(ctx, "workspace-1", createInput)
+	if err != nil {
+		return fmt.Errorf("replay providerless initial submit: %w", err)
+	}
+	if firstCreateTurnID == "" || replayedCreateTurnID != firstCreateTurnID {
+		return fmt.Errorf(
+			"providerless initial replay turns first=%q replay=%q",
+			firstCreateTurnID,
+			replayedCreateTurnID,
+		)
+	}
+	if metrics := driver.Metrics(); metrics.StartCalls != 1 || metrics.ExecCalls != 1 {
+		return fmt.Errorf(
+			"providerless initial replay calls start=%d exec=%d",
+			metrics.StartCalls,
+			metrics.ExecCalls,
+		)
+	}
+
+	sendFixture := liveSessionFixture("session-providerless-terminal-send", "")
+	if err := providerlessDriver.ResetProviderlessTerminalExec(
+		ctx,
+		sendFixture.Session,
+	); err != nil {
+		return err
+	}
+	ref := agenthost.SessionRef{
+		WorkspaceID: "workspace-1", AgentSessionID: "session-providerless-terminal-send",
+	}
+	sendInput := agenthost.SendInput{
+		Content: []agenthost.PromptContentBlock{{
+			Type: "text", Text: "fail before provider identity",
+		}},
+		ClientSubmitID: "providerless-terminal-send-1",
+	}
+	firstSend, err := driver.SendInput(ctx, ref, sendInput)
+	if err != nil {
+		return fmt.Errorf("send with providerless canonical terminal: %w", err)
+	}
+	if err := requireCanonicalFailedTurn(ctx, driver, ref, firstSend.TurnID); err != nil {
+		return fmt.Errorf("ordinary providerless terminal: %w", err)
+	}
+	replayedSend, err := driver.SendInput(ctx, ref, sendInput)
+	if err != nil {
+		return fmt.Errorf("replay providerless ordinary submit: %w", err)
+	}
+	if firstSend.TurnID == "" || replayedSend.TurnID != firstSend.TurnID {
+		return fmt.Errorf(
+			"providerless send replay turns first=%q replay=%q",
+			firstSend.TurnID,
+			replayedSend.TurnID,
+		)
+	}
+	if metrics := driver.Metrics(); metrics.ExecCalls != 1 {
+		return fmt.Errorf("providerless send replay exec calls=%d", metrics.ExecCalls)
+	}
+	return nil
+}
+
+func requireCanonicalFailedTurn(
+	ctx context.Context,
+	driver Driver,
+	ref agenthost.SessionRef,
+	turnID string,
+) error {
+	turnID = strings.TrimSpace(turnID)
+	if turnID == "" {
+		return errors.New("canonical Turn id is empty")
+	}
+	page, err := driver.ListSessionTurns(ctx, ref, agenthost.SessionTurnQuery{Limit: 20})
+	if err != nil {
+		return err
+	}
+	for _, turn := range page.Turns {
+		if strings.TrimSpace(turn.TurnID) != turnID {
+			continue
+		}
+		if strings.TrimSpace(turn.Phase) != "settled" ||
+			strings.TrimSpace(turn.Outcome) != "failed" {
+			return fmt.Errorf(
+				"canonical Turn %q phase=%q outcome=%q, want settled/failed",
+				turnID,
+				turn.Phase,
+				turn.Outcome,
+			)
+		}
+		return nil
+	}
+	return fmt.Errorf("canonical Turn %q not found", turnID)
 }
 
 func runRejectedInitialSubmitDiscardsRuntime(

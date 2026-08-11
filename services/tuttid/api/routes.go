@@ -562,6 +562,22 @@ func RegisterRoutes(mux *http.ServeMux, routes Routes) {
 		wrapper.ResolveWorkspaceAgentSessionWorktreeSupport(w, r)
 	})
 
+	mux.HandleFunc("/v1/workspaces/{workspaceID}/managed-worktrees", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			tuttitypes.WriteMethodNotAllowed(w)
+			return
+		}
+		wrapper.ListWorkspaceManagedWorktrees(w, r)
+	})
+
+	mux.HandleFunc("/v1/workspaces/{workspaceID}/managed-worktrees/{worktreeID}", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodDelete {
+			tuttitypes.WriteMethodNotAllowed(w)
+			return
+		}
+		wrapper.DeleteWorkspaceManagedWorktree(w, r)
+	})
+
 	mux.HandleFunc("/v1/workspaces/{workspaceID}/git-patch", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			tuttitypes.WriteMethodNotAllowed(w)

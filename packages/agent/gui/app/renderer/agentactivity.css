@@ -4217,12 +4217,37 @@ aside.workspace-agents-status-panel
 }
 
 .agent-gui-conversation__user-image-thumbnail {
+  position: relative;
   box-sizing: border-box;
+  height: 80px;
   max-height: 80px;
   min-width: 0;
   overflow: hidden;
   border: 1px solid var(--line-2);
   border-radius: 8px;
+}
+
+.agent-gui-conversation__user-image-thumbnail > .tsh-zoomable-image {
+  width: 100%;
+  height: 100%;
+}
+
+.agent-gui-conversation__user-image-thumbnail > .tsh-zoomable-image > img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.agent-gui-conversation__user-image-thumbnail[data-image-state="loading"]
+  > .tsh-zoomable-image {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.agent-gui-conversation__user-image-thumbnail[data-image-state="loading"]
+  > .tsh-zoomable-image
+  > .tsh-zoomable-image__trigger {
+  visibility: hidden;
 }
 
 .agent-gui-conversation__assistant-message-flow {

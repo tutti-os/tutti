@@ -186,22 +186,15 @@ func (a *ClaudeCodeSDKAdapter) ExecWithProviderAcceptance(
 	var acceptanceErr error
 	accepted := false
 	acceptedProviderTurnID := ""
+	preAcceptanceOutputViolation := false
 	pendingEvents := make([]activityshared.Event, 0, 2)
 	wrappedEmit := func(events []activityshared.Event) {
 		if acceptanceErr != nil {
 			return
 		}
 		observedAcceptance := false
-		explicitRejection := false
 		providerTurnID := ""
 		for _, event := range events {
-			if event.Type == activityshared.EventTurnFailed &&
-				strings.EqualFold(
-					strings.TrimSpace(payloadString(event.Payload.Metadata, "dispatchDisposition")),
-					string(DispatchDispositionRejected),
-				) {
-				explicitRejection = true
-			}
 			if event.Type != activityshared.EventRootProviderTurnStarted ||
 				strings.TrimSpace(event.Payload.TurnID) != strings.TrimSpace(turnID) {
 				continue
@@ -249,12 +242,13 @@ func (a *ClaudeCodeSDKAdapter) ExecWithProviderAcceptance(
 				return
 			}
 		}
-		if !accepted && !observedAcceptance &&
-			(explicitRejection || claudeSDKEventsMayPrecedeProviderAcceptance(events)) {
-			pendingEvents = append(pendingEvents, events...)
-			return
-		}
 		if !accepted && !observedAcceptance {
+			partition := partitionClaudeSDKPreAcceptanceEvents(turnID, events)
+			if partition.safe() {
+				pendingEvents = append(pendingEvents, events...)
+				return
+			}
+			preAcceptanceOutputViolation = true
 			acceptanceErr = errors.New(
 				"claude SDK published provider output before durable acceptance",
 			)
@@ -298,6 +292,28 @@ func (a *ClaudeCodeSDKAdapter) ExecWithProviderAcceptance(
 		emitCommands,
 		reportDispatch,
 	)
+	if !accepted {
+		partition := partitionClaudeSDKPreAcceptanceEvents(turnID, events)
+		if preAcceptanceOutputViolation || !partition.safe() {
+			if !preAcceptanceOutputViolation && reportDispatch != nil {
+				reportDispatch(ProviderDispatchResult{
+					Disposition: DispatchDispositionOutcomeUnknown,
+				})
+			}
+			if acceptanceErr == nil {
+				acceptanceErr = errors.New(
+					"claude SDK returned provider output before durable acceptance",
+				)
+			}
+			// The exact canonical terminal and caller-owned pre-acceptance facts
+			// remain authoritative. Provider-dependent output in the same batch
+			// does not cross the acceptance barrier.
+			if partition.hasDirectCanonicalTerminal {
+				return partition.allowed, acceptanceErr
+			}
+			return nil, acceptanceErr
+		}
+	}
 	if isClaudeSDKProviderRejectedError(err) {
 		if !claudeSDKEventsContainTurnFailed(events) {
 			metadata := map[string]any{
@@ -357,18 +373,45 @@ func stripClaudeSDKHeldEventProviderInputUnits(
 	return stripped
 }
 
-func claudeSDKEventsMayPrecedeProviderAcceptance(
+type claudeSDKPreAcceptanceEventPartition struct {
+	allowed                    []activityshared.Event
+	providerDependent          []activityshared.Event
+	hasDirectCanonicalTerminal bool
+}
+
+func (partition claudeSDKPreAcceptanceEventPartition) safe() bool {
+	return len(partition.providerDependent) == 0
+}
+
+// partitionClaudeSDKPreAcceptanceEvents is the single acceptance-boundary
+// classifier for Claude event batches. Only caller-owned local facts and an
+// exact terminal for the canonical Turn may survive without provider identity;
+// every other event remains provider-dependent even when it shares a batch
+// with that terminal.
+func partitionClaudeSDKPreAcceptanceEvents(
+	turnID string,
 	events []activityshared.Event,
-) bool {
-	if len(events) == 0 {
-		return true
+) claudeSDKPreAcceptanceEventPartition {
+	partition := claudeSDKPreAcceptanceEventPartition{
+		allowed:           make([]activityshared.Event, 0, len(events)),
+		providerDependent: make([]activityshared.Event, 0, len(events)),
 	}
 	for _, event := range events {
-		if !claudeSDKEventMayPrecedeProviderAcceptance(event) {
-			return false
+		if claudeSDKEventMayPrecedeProviderAcceptance(event) {
+			partition.allowed = append(partition.allowed, event)
+			continue
 		}
+		if classifyRootTurnCompletion(
+			turnID,
+			[]activityshared.Event{event},
+		) == rootTurnCompletionDirectCanonical {
+			partition.allowed = append(partition.allowed, event)
+			partition.hasDirectCanonicalTerminal = true
+			continue
+		}
+		partition.providerDependent = append(partition.providerDependent, event)
 	}
-	return true
+	return partition
 }
 
 func claudeSDKEventMayPrecedeProviderAcceptance(event activityshared.Event) bool {

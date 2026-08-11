@@ -35,6 +35,14 @@ uninstall behavior on real machines.
 
 ## Architecture Rules
 
+Windows compatibility is a continuous repository requirement, not a feature
+that is considered only when a task explicitly mentions Windows. Every behavior
+change must assess its Windows impact. Changes involving paths, filesystems,
+temporary storage, executables, commands, shells, environments, processes,
+permissions, symlinks, sockets, packaging, or native dependencies are
+platform-sensitive by default and require Windows and POSIX reasoning and
+focused coverage.
+
 Platform-neutral services depend on capabilities, not operating-system
 implementations:
 
@@ -69,6 +77,19 @@ system:
 6. Derive paths from injected roots and standard platform APIs. Do not hardcode
    drive letters, user directories, installation locations, or executable
    search results.
+7. Treat every path crossing a process, RPC, JSON, environment, or provider
+   boundary as a host path unless the contract explicitly declares a virtual
+   namespace. Construct host paths with the platform path API, preserve the
+   required absolute-path base such as `cwd`, and never send a POSIX-rooted
+   literal such as `/tmp` or `/sandbox-tmp` to a Windows parser.
+8. Resolve executables through the owning adapter. Account for `.exe`, `.cmd`,
+   and `.ps1`, PATHEXT and PATH behavior, spaces and non-ASCII characters in
+   paths, and Windows command-line quoting. Do not assemble shell command
+   strings when an argv-based process API is available.
+9. Tests for a platform-sensitive contract must exercise the receiving parser,
+   process, or filesystem boundary on Windows where practical. A mock that only
+   verifies emitted strings or serialized maps is insufficient evidence of
+   Windows compatibility.
 
 This is dependency inversion at the native boundary, not a requirement to
 create parallel copies of each service.

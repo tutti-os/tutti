@@ -5,6 +5,7 @@ import {
   registerAgentCustomMentionKind,
   resetAgentCustomMentionKindsForTests
 } from "../../../shared/agentCustomMentionKinds";
+import { AgentTargetPresentationProvider } from "../../../shared/AgentTargetPresentationContext";
 import { AgentRichTextEditor } from "./AgentRichTextEditor";
 import type { AgentRichTextEditorHandle } from "./AgentRichTextEditor.types";
 import { isAgentRichTextAbsolutePathPasteCandidate } from "./agentRichTextEditorSupport";
@@ -288,6 +289,41 @@ describe("AgentRichTextEditor file paste", () => {
 
     fireEvent.mouseDown(rendered.getByLabelText("Remove file"));
     await waitFor(() => expect(onChange).toHaveBeenLastCalledWith(""));
+  });
+});
+
+describe("AgentRichTextEditor Agent mention presentation", () => {
+  it("uses the target directory icon for a restored session mention", async () => {
+    const iconUrl = "data:image/png;base64,gemini";
+    const href =
+      "mention://agent-session/session-1?agentTargetId=extension%3Agemini&workspaceId=workspace-1";
+    const { container } = render(
+      <AgentTargetPresentationProvider
+        agentTargets={[
+          {
+            agentTargetId: "extension:gemini",
+            iconUrl,
+            name: "Gemini CLI",
+            provider: "acp:gemini",
+            workspaceId: "workspace-1"
+          }
+        ]}
+      >
+        <AgentRichTextEditor
+          value={`Review [@Gemini session](${href})`}
+          disabled={false}
+          placeholder="Prompt"
+          onChange={vi.fn()}
+          onSubmit={vi.fn()}
+        />
+      </AgentTargetPresentationProvider>
+    );
+
+    await waitFor(() =>
+      expect(
+        container.querySelector('[data-agent-mention-kind="session"] img')
+      ).toHaveAttribute("src", iconUrl)
+    );
   });
 });
 

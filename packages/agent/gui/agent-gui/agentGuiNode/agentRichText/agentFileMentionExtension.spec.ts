@@ -18,7 +18,6 @@ import {
   resetAgentCustomMentionKindsForTests
 } from "../../../shared/agentCustomMentionKinds";
 import { createRichTextMentionHref } from "@tutti-os/ui-rich-text/core";
-import { managedAgentRoundedIconUrl } from "../../../shared/managedAgentIcons";
 import {
   agentComposerFileMentionReferences,
   createAgentComposerFileMentionMarkdown,
@@ -202,19 +201,15 @@ describe("parseAgentMentionMarkdown", () => {
         name: "Session"
       }
     });
-    expect(mentionItemToAttrs(parsed!.item).iconUrl).toBe(
-      managedAgentRoundedIconUrl("claude-code")
-    );
+    expect(mentionItemToAttrs(parsed!.item).iconUrl).toBeUndefined();
   });
 
-  it("derives the Cursor icon for a pasted local session mention", () => {
+  it("does not invent presentation metadata for a pasted session mention", () => {
     const parsed = parseAgentMentionMarkdown(
       "[@Cursor session](mention://agent-session/session-1?agentTargetId=local%3Acursor&workspaceId=workspace-1)"
     );
 
-    expect(mentionItemToAttrs(parsed!.item).iconUrl).toBe(
-      managedAgentRoundedIconUrl("cursor")
-    );
+    expect(mentionItemToAttrs(parsed!.item).iconUrl).toBeUndefined();
   });
 
   it("parses registered custom mention kinds into custom items", () => {

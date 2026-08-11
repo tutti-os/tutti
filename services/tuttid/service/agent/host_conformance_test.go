@@ -386,14 +386,7 @@ func (d *legacyHostConformanceDriver) Reset(_ context.Context, fixture hostconfo
 	}
 	d.historicalState = &conformanceHistoricalStateStore{driver: d}
 	hostStore := serviceHostStore{service: d.service}
-	hostSupport := hostSupportPortsForService(
-		d.service,
-		nil,
-		conformanceWorktreeGarbageCollector{
-			steps: &steps,
-			err:   fixture.WorktreeGCSweepErr,
-		},
-	)
+	hostSupport := hostSupportPortsForService(d.service, nil)
 	d.service.SetApplicationHost(composeApplicationHost(
 		hostSupport,
 		hostStore,
@@ -665,6 +658,40 @@ func (d *legacyHostConformanceDriver) Reset(_ context.Context, fixture hostconfo
 			},
 			LeaseOwner: "dead-worker", LeaseExpiresAtMS: time.UnixMilli(1_000).Add(time.Hour).UnixMilli(),
 		}
+	}
+	return nil
+}
+
+func (d *legacyHostConformanceDriver) ResetProviderlessTerminalExec(
+	ctx context.Context,
+	session *hostconformance.SessionSeed,
+) error {
+	fixture := hostconformance.Fixture{}
+	if session != nil {
+		seed := *session
+		fixture.Session = &seed
+	}
+	if err := d.Reset(ctx, fixture); err != nil {
+		return err
+	}
+	d.runtime.execHook = func(input RuntimeExecInput) (RuntimeExecResult, error) {
+		d.recordSubmittedTurn(input.WorkspaceID, input.AgentSessionID, input.TurnID)
+		d.recordProviderlessFailedTurn(
+			input.WorkspaceID,
+			input.AgentSessionID,
+			input.TurnID,
+		)
+		return RuntimeExecResult{
+			AgentSessionID: input.AgentSessionID,
+			Status:         "started",
+			Accepted:       true,
+			SessionStatus:  "working",
+			TurnID:         input.TurnID,
+			TurnLifecycle:  TurnLifecycle{Phase: "submitted"},
+			ProviderDispatch: agenthost.RuntimeProviderDispatchResult{
+				Disposition: agenthost.RuntimeDispatchDispositionAppliedWithoutProviderTurn,
+			},
+		}, nil
 	}
 	return nil
 }
@@ -1468,25 +1495,43 @@ func (s conformanceStaleTurnSettler) SettleStaleTurnsOnStartup(context.Context) 
 	return nil
 }
 
-type conformanceWorktreeGarbageCollector struct {
-	steps *[]string
-	err   error
-}
-
-func (c conformanceWorktreeGarbageCollector) SweepWorktreeIsolation(context.Context) error {
-	*c.steps = append(*c.steps, "worktree_sweep")
-	return c.err
-}
-
 func (d *legacyHostConformanceDriver) recordSubmittedTurn(workspaceID, sessionID, turnID string) {
 	if turnID == "" {
 		return
 	}
+	key := sessionID + ":" + turnID
+	if existing, ok := d.turns.turns[key]; ok &&
+		existing.Phase == agentactivitybiz.TurnPhaseSettled {
+		// Submit provenance and Host's post-Exec submission record are
+		// idempotent facts. They must never downgrade a terminal event that the
+		// Runtime committed before Exec returned.
+		return
+	}
 	startedAtUnixMS := int64(len(d.turns.turns) + 1)
-	d.turns.turns[sessionID+":"+turnID] = agentactivitybiz.Turn{
+	d.turns.turns[key] = agentactivitybiz.Turn{
 		WorkspaceID: workspaceID, AgentSessionID: sessionID, TurnID: turnID,
 		Phase: agentactivitybiz.TurnPhaseSubmitted, StartedAtUnixMS: startedAtUnixMS,
 	}
+	d.service.TurnStore = d.turns
+}
+
+func (d *legacyHostConformanceDriver) recordProviderlessFailedTurn(
+	workspaceID string,
+	sessionID string,
+	turnID string,
+) {
+	key := sessionID + ":" + turnID
+	turn := d.turns.turns[key]
+	turn.WorkspaceID = workspaceID
+	turn.AgentSessionID = sessionID
+	turn.TurnID = turnID
+	turn.Phase = agentactivitybiz.TurnPhaseSettled
+	turn.Outcome = "failed"
+	if turn.StartedAtUnixMS == 0 {
+		turn.StartedAtUnixMS = int64(len(d.turns.turns) + 1)
+	}
+	turn.SettledAtUnixMS = turn.StartedAtUnixMS + 1
+	d.turns.turns[key] = turn
 	d.service.TurnStore = d.turns
 }
 

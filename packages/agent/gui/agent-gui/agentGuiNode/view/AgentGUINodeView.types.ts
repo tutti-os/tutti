@@ -17,6 +17,7 @@ import type { WorkspaceLinkAction } from "../../../actions/workspaceLinkActions"
 import type {
   AgentGUIProvider,
   AgentGUIProviderRailAllPresentation,
+  AgentGUIAgentTarget,
   AgentGUIAgentTargetInfoRenderer
 } from "../../../types";
 import type { AgentMessageMarkdownWorkspaceAppIcon } from "../../../shared/AgentMessageMarkdown";
@@ -567,6 +568,8 @@ type AgentGUIComposerExternalPromptProps = Pick<
 >;
 export interface AgentGUINodeViewProps extends AgentGUIComposerExternalPromptProps {
   viewModel: AgentGUINodeViewModel;
+  /** Complete presentation-only catalog for exact Agent mention identity. */
+  mentionAgentTargets?: readonly AgentGUIAgentTarget[];
   referenceProvenanceFilters?: AgentComposerReferenceProvenanceFilters | null;
   sessionInputHistoryEnabled?: boolean;
   sessionForkEnabled?: boolean;

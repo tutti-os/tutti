@@ -2,7 +2,6 @@ package agent
 
 import (
 	"context"
-	"sync"
 
 	agenthost "github.com/tutti-os/tutti/packages/agent/host"
 	storesqlite "github.com/tutti-os/tutti/packages/agent/store-sqlite"
@@ -48,32 +47,4 @@ func (p serviceHostRuntimeOperationEventPublisher) PublishRuntimeOperationEvent(
 		return nil
 	}
 	return p.publisher.PublishRuntimeOperationEvent(ctx, event)
-}
-
-type serviceHostWorktreeGC struct {
-	mu                     *sync.RWMutex
-	stateDir               string
-	workspaceIDs           func(context.Context) ([]string, error)
-	sessionReader          SessionReader
-	runtime                RuntimeController
-	agentTargetStore       AgentTargetStore
-	workspaceAgentResolver WorkspaceAgentResolver
-}
-
-func (g serviceHostWorktreeGC) SweepWorktreeIsolation(ctx context.Context) error {
-	resumeFacade := &Service{
-		Runtime:                g.runtime,
-		AgentTargetStore:       g.agentTargetStore,
-		WorkspaceAgentResolver: g.workspaceAgentResolver,
-	}
-	return sweepConfiguredWorktreeIsolation(
-		ctx,
-		g.mu,
-		g.stateDir,
-		g.workspaceIDs,
-		g.sessionReader,
-		func(session PersistedSession) bool {
-			return resumeFacade.persistedSessionCanResume(ctx, session)
-		},
-	)
 }

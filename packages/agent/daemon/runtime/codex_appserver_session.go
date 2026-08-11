@@ -375,7 +375,15 @@ func (*CodexAppServerAdapter) CanResume(session Session) bool {
 
 func (a *CodexAppServerAdapter) HasLiveSession(session Session) bool {
 	appSession := a.getSession(session.AgentSessionID)
-	return appSession != nil && appSession.client != nil
+	if appSession == nil || appSession.client == nil {
+		return false
+	}
+	select {
+	case <-appSession.client.Done():
+		return false
+	default:
+		return true
+	}
 }
 
 func (a *CodexAppServerAdapter) Close(_ context.Context, session Session) error {
