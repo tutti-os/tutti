@@ -676,6 +676,23 @@ function workspaceAppOwnsEvent(event: BrowserNodeEvent): boolean {
   );
 }
 
+function createBrowserStateEvent(
+  nodeId: string,
+  url: string
+): BrowserNodeEvent {
+  return {
+    canGoBack: false,
+    canGoForward: false,
+    isLoading: false,
+    isOccluded: false,
+    lifecycle: "active",
+    nodeId,
+    title: "Browser",
+    type: "state",
+    url
+  };
+}
+
 function createBrowserNodeHostApi(
   overrides: Partial<BrowserNodeHostApi> = {}
 ): BrowserNodeHostApi {

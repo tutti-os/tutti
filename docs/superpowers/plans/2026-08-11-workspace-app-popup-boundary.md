@@ -299,7 +299,7 @@ Run the exact tests, `pnpm check:i18n`, and the Desktop preload typecheck lane.
 Expected: POST produces no Browser event, the private event contains no body,
 and the localized notification appears once.
 
-- [ ] **Step 6: Commit Task 3**
+- [x] **Step 6: Commit Task 3**
 
 ```bash
 git add apps/desktop/src/shared/contracts/ipc.ts apps/desktop/src/preload/types.ts apps/desktop/src/preload/api/browser.ts apps/desktop/src/main/ipc/workspaceAppWindowOpen.ts apps/desktop/src/main/ipc/workspaceAppWindowOpen.test.ts apps/desktop/src/renderer/src/app/windows/workspace/workspaceAppPopupNotifications.ts apps/desktop/src/renderer/src/app/windows/workspace/workspaceAppPopupNotifications.test.ts apps/desktop/src/renderer/src/app/windows/workspace/createWorkspaceWindowContainer.ts apps/desktop/src/shared/i18n/locales/en.ts apps/desktop/src/shared/i18n/locales/zh-CN.ts
@@ -309,7 +309,7 @@ git commit -s -m "fix(desktop): surface unsupported workspace popup posts"
 ### Task 4: Real Electron callback-to-surface cardinality chain
 
 **Files:**
-- Create: `apps/desktop/src/main/ipc/workspaceAppPopup.electron.renderer.tsx`
+- Create: `apps/desktop/test/fixtures/workspaceAppPopupRenderer.electron.fixture.tsx`
 - Modify: `apps/desktop/src/main/ipc/workspaceAppPopup.electron.fixture.ts`
 - Modify: `apps/desktop/src/main/ipc/workspaceAppPopup.electron.test.ts`
 - Modify: `apps/desktop/src/main/ipc/workspaceAppWindowOpen.ts`
@@ -319,7 +319,7 @@ git commit -s -m "fix(desktop): surface unsupported workspace popup posts"
 - Consumes: `createWorkspaceBrowserService`, `registerWorkspaceBrowserLaunchHandler`, `createWorkbenchWorkspaceBrowserPresenter`, and public `WorkbenchHost`.
 - Produces fixture observations: `producerCallbacks`, `browserEvents`, `workbenchLaunches`, `browserSurfaces`, `rejectionNotifications`, and `nativeChildWindows`.
 
-- [ ] **Step 1: Expand fixture assertions and verify RED**
+- [x] **Step 1: Expand fixture assertions and verify RED**
 
 Add `workbenchLaunches`, `browserSurfaces`, and `rejectionNotifications` to
 every case. Add a `double-window-open` case that executes two real
@@ -327,17 +327,18 @@ every case. Add a `double-window-open` case that executes two real
 case expects `1 callback, 0 event, 0 launch, 0 surface, 1 notification, 0 native
 child`.
 
-- [ ] **Step 2: Run the real Electron test and verify RED**
+- [x] **Step 2: Run the real Electron test and verify RED**
 
 Run the exact Electron test outside the filesystem sandbox. Expected: FAIL
 because the fixture does not yet report downstream cardinalities.
 
-- [ ] **Step 3: Build the real renderer chain**
+- [x] **Step 3: Build the real renderer chain**
 
 Create a Vite-built renderer entry that:
 
 - renders public `WorkbenchHost` with an initialized empty snapshot and a real
-  multi-instance Browser node definition;
+  multi-instance Browser node definition plus the production Browser launch
+  handler;
 - wires raw Electron Browser events into the real workspace Browser service;
 - registers the real launch coordinator and presenter against the Workbench
   handle;
@@ -348,7 +349,7 @@ Create a Vite-built renderer entry that:
 - sends cumulative observations to the fixture only after the snapshot reaches
   the expected surface count.
 
-- [ ] **Step 4: Replace timeout observation with condition-based acknowledgments**
+- [x] **Step 4: Replace timeout observation with condition-based acknowledgments**
 
 Build the renderer bundle beside the Workspace App preload, pass its path to
 Electron, and require it from the owner window. Count producer callbacks from a
@@ -356,16 +357,16 @@ new debug log at the first line of the real Workspace App handler. For every
 case, wait for the renderer observation matching the expected event or rejection
 count; do not use a fixed 300 ms POST sleep.
 
-- [ ] **Step 5: Run the real Electron test and verify GREEN**
+- [x] **Step 5: Run the real Electron test and verify GREEN**
 
 Expected cumulative result: one real request maps to one callback/event/launch/
 surface, two real requests map to two of each, POST maps to one callback and one
 visible rejection only, and native child windows stay zero.
 
-- [ ] **Step 6: Commit Task 4**
+- [x] **Step 6: Commit Task 4**
 
 ```bash
-git add apps/desktop/src/main/ipc/workspaceAppPopup.electron.renderer.tsx apps/desktop/src/main/ipc/workspaceAppPopup.electron.fixture.ts apps/desktop/src/main/ipc/workspaceAppPopup.electron.test.ts apps/desktop/src/main/ipc/workspaceAppWindowOpen.ts
+git add apps/desktop/test/fixtures/workspaceAppPopupRenderer.electron.fixture.tsx apps/desktop/src/main/ipc/workspaceAppPopup.electron.fixture.ts apps/desktop/src/main/ipc/workspaceAppPopup.electron.test.ts apps/desktop/src/main/ipc/workspaceAppWindowOpen.ts
 git commit -s -m "test(desktop): trace workspace popups to browser surfaces"
 ```
 
@@ -380,19 +381,19 @@ git commit -s -m "test(desktop): trace workspace popups to browser surfaces"
 - Documents the final public hook split, fail-closed order, private POST UX, and
   `callback -> event -> launch -> surface` diagnostic formula.
 
-- [ ] **Step 1: Update durable docs**
+- [x] **Step 1: Update durable docs**
 
 Record that the stable router is installed before host code, legacy
 `onGuestAttached` remains an override hook, new hosts use
 `resolveGuestAttachment`, unsupported POST attempts are denied with localized
 feedback, and the Electron regression asserts both `1/1/1/1` and `2/2/2/2`.
 
-- [ ] **Step 2: Mark every completed plan checkbox**
+- [x] **Step 2: Mark every completed plan checkbox**
 
 Update this file from `- [ ]` to `- [x]` only for steps backed by command
 output or committed source.
 
-- [ ] **Step 3: Inspect the changed-aware validation plan**
+- [x] **Step 3: Inspect the changed-aware validation plan**
 
 ```bash
 pnpm check:changed -- --base upstream/main --push-ready --dry-run
@@ -401,7 +402,7 @@ pnpm check:changed -- --base upstream/main --push-ready --dry-run
 Confirm it selects Browser Node, Desktop tests/typechecks, Electron runtime
 boundaries, i18n, build, lint, format, and package validation.
 
-- [ ] **Step 4: Run final validation once**
+- [x] **Step 4: Run final validation once**
 
 ```bash
 pnpm check:changed -- --base upstream/main --push-ready
@@ -411,7 +412,13 @@ If the dry-run omits the real Electron test, run that exact test separately
 outside the sandbox. Use `--failed-only` after any code fix rather than rerunning
 already-passing unchanged lanes.
 
-- [ ] **Step 5: Commit documentation and plan evidence**
+The aggregate command was attempted with the repository-pinned package-manager
+version. Its Corepack child lanes could not verify the pnpm registry signature
+without network access, so every selected lane was rerun through its installed
+Node or local binary entry. The real Electron chain was also rerun outside the
+filesystem sandbox.
+
+- [x] **Step 5: Commit documentation and plan evidence**
 
 ```bash
 git add docs/architecture/browser-node-package.md docs/conventions/troubleshooting/toolchain-browser-terminal.md

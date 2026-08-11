@@ -368,7 +368,7 @@ const browserNodeFeature = createBrowserNodeFeature({
     const searchUrl = new URL("https://www.google.com/search");
     searchUrl.searchParams.set("q", query);
     return searchUrl.toString();
-  },
+  }
 });
 ```
 
@@ -380,7 +380,7 @@ import { createBrowserNodeDefinition } from "@tutti-os/browser-node/workbench";
 const browserNode = createBrowserNodeDefinition({
   defaultUrl: "https://www.google.com/",
   feature: browserNodeFeature,
-  typeId: "browser",
+  typeId: "browser"
 });
 ```
 
@@ -395,7 +395,7 @@ registerBrowserNodeElectronMain({
   logger,
   openExternal,
   resolveWebContents,
-  registerHandler,
+  registerHandler
 });
 ```
 
@@ -406,7 +406,7 @@ import { createMacosChromeCookieImportAdapter } from "@tutti-os/browser-node/chr
 
 const chromeCookieImport = createMacosChromeCookieImportAdapter({
   isEnabled: () => preferences.isEnabled("browser.chromeCookieImport"),
-  logger,
+  logger
 });
 
 registerBrowserNodeElectronMain({
@@ -415,7 +415,7 @@ registerBrowserNodeElectronMain({
   getOwnerWindow,
   openExternal,
   registerHandler,
-  resolveWebContents,
+  resolveWebContents
 });
 ```
 
@@ -429,12 +429,22 @@ import { installBrowserWebviewSecurity } from "@tutti-os/browser-node/electron-m
 installBrowserWebviewSecurity({
   contents: ownerWindow.webContents,
   openExternal,
-  resolvePreload: () => browserGuestPreloadPath,
+  resolveGuestAttachment(guestContents, { params }) {
+    return registerHostGuestRoute(guestContents, params.partition);
+  },
+  resolvePreload: () => browserGuestPreloadPath
 });
 ```
 
 The installer clears any guest-supplied preload first and applies the host
-resolver only after Browser Node partition and URL validation succeeds.
+resolver only after Browser Node partition and URL validation succeeds. On
+attachment it first installs a stable deny handler, then applies the guest user
+agent and calls `resolveGuestAttachment`. A returned `windowOpenHandler` updates
+that stable delegate without reinstalling it; if setup throws, the guest stays
+fail closed. The legacy `onGuestAttached(guestContents)` hook remains available
+for published consumers that directly replace Electron's handler. It runs last
+to preserve that override behavior, and an exception restores the package deny
+handler.
 
 Guest preload installation should not hardcode a product namespace:
 
@@ -444,7 +454,7 @@ import { installBrowserNodeGuestBridge } from "@tutti-os/browser-node/electron-p
 installBrowserNodeGuestBridge({
   call,
   methods,
-  namespace: "__tutti",
+  namespace: "__tutti"
 });
 ```
 

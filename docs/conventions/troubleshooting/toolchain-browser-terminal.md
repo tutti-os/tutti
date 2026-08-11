@@ -501,10 +501,13 @@ delimited by ---`, and the composer skill picker may show partial or
   The Electron integration fixture covers `did-attach-webview` followed by
   `registerGuest`, installs the real Workspace App preload, and uses different
   loopback origins for the guest and popup target. It then covers blank links,
-  `window.open`, GET forms, POST rejection, callback counts, Browser event
-  counts, and denied native child windows. The package boundary test also
-  asserts that this lifecycle installs the Electron handler once. Renderer and
-  Workbench tests cover the downstream event/launch and launch/surface seams.
+  `window.open`, GET forms, and POST rejection. Its owner renderer runs the real
+  workspace Browser event service, launch coordinator, presenter, and public
+  Workbench host with the production Browser multi-instance launch handler, so
+  one process asserts callback, Browser event, launch, materialized surface,
+  rejection notification, and denied native-child counts. The package boundary
+  test separately asserts that guest attachment installs one stable Electron
+  handler.
 - References:
   [workspaceAppWindowOpen.ts](../../../apps/desktop/src/main/ipc/workspaceAppWindowOpen.ts)
   [workspaceBrowserService.ts](../../../apps/desktop/src/renderer/src/features/workspace-workbench/services/internal/workspaceBrowserService.ts)
