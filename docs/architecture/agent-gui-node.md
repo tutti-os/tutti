@@ -1479,6 +1479,13 @@ not call back into selection or Rail state. There is no separate messages-only
 Engine reconcile helper.
 
 Timeline projection is pure, deterministic, and provider-neutral. React views render rows/cards and dispatch actions.
+Provider runtime adapters normalize known connection-recovery output into the
+existing `transport_retry` and `transport_fallback` system-notice semantics
+before persistence. The transcript presents retry progress as a concise status;
+a successful transport fallback keeps its raw diagnostic detail behind the
+details disclosure without adding a separate success title. A narrow
+presentation compatibility check may recognize legacy fallback rows that were
+persisted as `warning`, but canonical writes remain semantic.
 Transcript Turn membership and order come only from timeline items in the
 hydrated message window. Session-wide canonical Turn metadata may enrich an
 already projected Turn by exact `turnId`—for example, by adding a view-only

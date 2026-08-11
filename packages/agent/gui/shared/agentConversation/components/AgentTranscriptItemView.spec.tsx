@@ -1117,8 +1117,8 @@ describe("AgentTranscriptItemView render stability", () => {
     }
   );
 
-  it("renders transport fallback notices with the localized label", () => {
-    const { getByRole, getByText } = render(
+  it("renders transport fallback notices as details without a status title", () => {
+    const { getByRole, queryByText } = render(
       <AgentMessageBlock
         workspaceRoot="/workspace/demo"
         basePath="/workspace/demo"
@@ -1141,14 +1141,21 @@ describe("AgentTranscriptItemView render stability", () => {
       />
     );
 
-    expect(getByRole("status")).toBeTruthy();
     expect(
-      getByText("agentHost.agentGui.systemNoticeTransportFallback")
+      queryByText("agentHost.agentGui.systemNoticeTransportFallback")
+    ).toBeNull();
+    expect(
+      queryByText("Falling back from WebSockets to HTTPS transport.")
+    ).toBeNull();
+    expect(
+      getByRole("button", {
+        name: "agentHost.agentGui.visibleErrorDetails"
+      })
     ).toBeTruthy();
   });
 
-  it("renders fallback warning notices with their title", () => {
-    const { getByRole, getByText } = render(
+  it("keeps historical fallback warnings details-only", () => {
+    const { getByRole, queryByText } = render(
       <AgentMessageBlock
         workspaceRoot="/workspace/demo"
         basePath="/workspace/demo"
@@ -1171,9 +1178,13 @@ describe("AgentTranscriptItemView render stability", () => {
       />
     );
 
-    expect(getByRole("status")).toBeTruthy();
     expect(
-      getByText("Falling back from WebSockets to HTTPS transport.")
+      queryByText("Falling back from WebSockets to HTTPS transport.")
+    ).toBeNull();
+    expect(
+      getByRole("button", {
+        name: "agentHost.agentGui.visibleErrorDetails"
+      })
     ).toBeTruthy();
   });
 
