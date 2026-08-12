@@ -335,6 +335,16 @@ func TestApplicationReconcilesInstalledRuntimeAtStartup(t *testing.T) {
 		host.lastReconcile.Generation.Generation != 8 || host.lastReconcile.Generation.BootEpoch == "" {
 		t.Fatalf("startup reconcile = %#v, count=%d", host.lastReconcile, host.reconciles)
 	}
+	operationID := "reconcile/" + application.config.BootEpoch + "/" + connector.Key
+	operation, err := repository.Operation(context.Background(), operationID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if operation.Kind != OperationKindReconcileRuntime || operation.State != OperationStateCompleted ||
+		operation.Stage != OperationStageCompleted || operation.Scope != (OperationScope{}) ||
+		operation.HostGeneration != host.lastReconcile.Generation {
+		t.Fatalf("startup reconcile operation = %#v", operation)
+	}
 }
 
 func TestApplicationStartupReconcileAcceptsDisabledRuntimeWithoutBlockingEnabledRuntime(t *testing.T) {

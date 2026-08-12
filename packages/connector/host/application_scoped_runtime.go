@@ -275,7 +275,7 @@ func (application *Application) reconcileInstalledRuntimesForScope(ctx context.C
 			reconcileFailures.add(connector.Key, "validate runtime receipt", err)
 			continue
 		}
-		if err := application.recordDirectRuntimeGeneration(ctx, connector.Key, installedRelease.ReleaseDigest, operationID, generation); err != nil {
+		if err := application.recordDirectRuntimeGeneration(ctx, scope, connector.Key, installedRelease.ReleaseDigest, operationID, generation); err != nil {
 			if remoteAuthorizedOnly {
 				reconcileFailures.add(connector.Key, "record runtime generation", err)
 				continue
@@ -292,6 +292,7 @@ func (application *Application) reconcileInstalledRuntimesForScope(ctx context.C
 // same-boot fence is then rejected as stale even though desktopd is the owner.
 func (application *Application) recordDirectRuntimeGeneration(
 	ctx context.Context,
+	scope OperationScope,
 	connectorKey, releaseDigest, operationID string,
 	generation uint64,
 ) error {
@@ -313,6 +314,23 @@ func (application *Application) recordDirectRuntimeGeneration(
 		}
 		connector.Revision = revision
 		if err := tx.SaveConnector(connector); err != nil {
+			return err
+		}
+		now := application.config.Now().UTC()
+		if err := tx.SaveOperation(Operation{
+			OperationID:     operationID,
+			ClientRequestID: operationID,
+			ConnectorKey:    connector.Key,
+			Kind:            OperationKindReconcileRuntime,
+			Scope:           scope,
+			State:           OperationStateCompleted,
+			Stage:           OperationStageCompleted,
+			Target:          operationTarget(OperationKindReconcileRuntime, connector),
+			HostGeneration:  HostGeneration{BootEpoch: application.config.BootEpoch, Generation: generation},
+			Attempt:         1,
+			CreatedAt:       now,
+			UpdatedAt:       now,
+		}); err != nil {
 			return err
 		}
 		return tx.EnqueueConnectorMarketChanged(ChangedEvent{
