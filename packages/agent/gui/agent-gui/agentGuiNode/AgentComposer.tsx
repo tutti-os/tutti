@@ -138,6 +138,7 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
     labels,
     onDraftContentChange,
     onSettingsChange,
+    onRetryComposerOptions,
     onTuttiModeChange = () => {},
     onTuttiModeEffectChange = () => {},
     onTuttiModeSpeedChange = () => {},
@@ -352,6 +353,18 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
         skillQueryMatch !== null &&
         filteredSkills.length > 0));
   const showPalette = showFileMentionPalette || showSlashPalette;
+  const refreshedSlashSessionRef = useRef<string | null>(null);
+  useEffect(() => {
+    const refreshKey =
+      slashQuery !== null && agentSessionId ? agentSessionId : null;
+    if (refreshKey === null) {
+      refreshedSlashSessionRef.current = null;
+      return;
+    }
+    if (refreshedSlashSessionRef.current === refreshKey) return;
+    refreshedSlashSessionRef.current = refreshKey;
+    onRetryComposerOptions?.();
+  }, [agentSessionId, onRetryComposerOptions, slashQuery !== null]);
   const showCommandMenuPanel = isSlashStatusPanelOpen || isReviewPickerOpen;
   const showFloatingCommandMenu = showSlashPalette || showCommandMenuPanel;
   const activeHighlight = clampSlashCommandHighlight(

@@ -174,6 +174,7 @@ export interface IWorkspaceAgentActivityService {
     signal?: AbortSignal
   ): Promise<AgentActivitySession>;
   getComposerOptions(input: {
+    agentSessionId?: string | null;
     agentTargetId: string;
     cwd?: string | null;
     force?: boolean;

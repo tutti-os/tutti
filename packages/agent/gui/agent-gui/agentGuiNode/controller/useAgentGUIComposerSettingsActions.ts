@@ -508,7 +508,7 @@ export function useAgentGUIComposerSettingsActions(
   // request non-forced so Activity Core joins an already-running load when a
   // user double-clicks the retry control instead of superseding it.
   const retryComposerOptions = useStableControllerEventCallback(() => {
-    loadDraftComposerOptions();
+    loadDraftComposerOptions({ force: true });
   });
 
   return {

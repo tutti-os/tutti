@@ -146,13 +146,25 @@ description: Generate images.
 description: Internal Tutti CLI.
 ---
 `)
+	writeSkill(t, filepath.Join(codexHome, "skills", "music-lookup", "SKILL.md"), `---
+description: Look up music.
+---
+`)
+	managedSkillDir := filepath.Join(codexHome, "skills", "managed-extra")
+	writeSkill(t, filepath.Join(managedSkillDir, "SKILL.md"), `---
+description: Managed runtime skill.
+---
+`)
+	if err := os.WriteFile(filepath.Join(managedSkillDir, ".tutti-managed-skill"), nil, 0o600); err != nil {
+		t.Fatalf("write managed skill marker: %v", err)
+	}
 
 	options := discoverComposerSkillOptions("codex", cwd, []string{
 		"CODEX_HOME=" + codexHome,
 	})
 
 	triggers := composerSkillOptionTriggers(options)
-	want := []string{"$architecture-review", "$caveman", "$lark-doc", "$imagegen"}
+	want := []string{"$architecture-review", "$caveman", "$lark-doc", "$imagegen", "$music-lookup"}
 	if !equalStringSlices(triggers, want) {
 		t.Fatalf("triggers = %#v, want %#v", triggers, want)
 	}

@@ -11496,6 +11496,11 @@ components:
       type: object
       additionalProperties: false
       properties:
+        agentSessionId:
+          type: string
+          description: >-
+            Active Agent session whose isolated provider home contributes
+            session-created Skills to the composer catalog.
         agentTargetId:
           type: string
           description:

@@ -1909,6 +1909,10 @@ export type AgentProviderComposerConfig = {
 
 export type GetAgentProviderComposerOptionsRequest = {
   /**
+   * Active Agent session whose isolated provider home contributes session-created Skills to the composer catalog.
+   */
+  agentSessionId?: string;
+  /**
    * Agent target whose provider and runtime context the composer options resolve against. Optional; when omitted the provider path parameter is used directly.
    */
   agentTargetId?: string;

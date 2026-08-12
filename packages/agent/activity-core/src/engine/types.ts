@@ -456,6 +456,7 @@ export type AgentSessionEngineListener = (
 export type AgentSessionEngineIntentObserver = (intent: EngineIntent) => void;
 
 export interface AgentSessionLoadComposerOptionsInput {
+  agentSessionId?: string | null;
   cwd?: string | null;
   force?: boolean;
   provider: string;

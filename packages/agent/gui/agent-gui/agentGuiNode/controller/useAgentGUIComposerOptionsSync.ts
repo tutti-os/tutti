@@ -100,6 +100,7 @@ export function useAgentGUIComposerOptionsSync(input: {
         "";
       return Promise.resolve(
         input.agentActivityRuntime.getComposerOptions({
+          agentSessionId: input.activeConversationIdRef.current,
           workspaceId: input.workspaceId,
           cwd,
           force: options?.force || authorityRead.force ? true : undefined,

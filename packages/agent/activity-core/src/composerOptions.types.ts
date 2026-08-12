@@ -161,6 +161,7 @@ export interface AgentActivityLoadComposerOptionsInput {
    * port always supplies a non-empty value.
    */
   agentTargetId?: string | null;
+  agentSessionId?: string | null;
   workspaceId: string;
   provider: string;
   cwd?: string | null;

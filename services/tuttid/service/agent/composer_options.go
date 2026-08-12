@@ -65,6 +65,7 @@ type ComposerConfigOptionValue struct {
 type ComposerSettings = agenthost.ComposerSettings
 
 type ComposerOptionsInput struct {
+	AgentSessionID           string
 	AgentTargetID            string
 	Cwd                      string
 	Locale                   string
@@ -271,7 +272,7 @@ func (s *Service) GetComposerOptions(ctx context.Context, input ComposerOptionsI
 		)
 	}
 	skills := filterWorkspaceAgentComposerSkills(
-		s.discoverComposerSkillOptionsForLaunch(ctx, provider, input.Cwd, nil, input.providerTargetRef),
+		s.discoverComposerSkillOptionsForLaunch(ctx, provider, input.Cwd, s.composerSessionEnv(input, provider), input.providerTargetRef),
 		launchInput.AgentSkills,
 		launchInput.AgentCapabilitiesExplicit,
 	)

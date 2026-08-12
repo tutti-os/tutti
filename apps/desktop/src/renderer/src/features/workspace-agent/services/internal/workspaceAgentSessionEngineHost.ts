@@ -283,6 +283,9 @@ export function createWorkspaceAgentSessionEngineHost(
             ]);
           case "composerOptions/load":
             return adapter.loadComposerOptions({
+              ...(command.agentSessionId !== undefined
+                ? { agentSessionId: command.agentSessionId }
+                : {}),
               agentTargetId: command.targetKey,
               ...(command.cwd !== undefined ? { cwd: command.cwd } : {}),
               provider: command.provider,

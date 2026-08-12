@@ -85,6 +85,7 @@ func (api DaemonAPI) GetAgentProviderComposerOptions(ctx context.Context, reques
 		Provider: string(request.Provider),
 	}
 	if request.Body != nil {
+		input.AgentSessionID = optionalStringValue(request.Body.AgentSessionId)
 		input.AgentTargetID = optionalStringValue(request.Body.AgentTargetId)
 		input.Cwd = optionalStringValue(request.Body.Cwd)
 		input.WorkspaceID = optionalStringValue(request.Body.WorkspaceId)

@@ -70,6 +70,7 @@ function refreshAfterSettings(
     return unchanged(state);
   }
   return requestLoad(state, {
+    agentSessionId: session.agentSessionId,
     commandId: `composer-options:after-settings:${settingsCommandId}`,
     cwd: session.cwd,
     force: true,
@@ -136,6 +137,9 @@ function requestLoad(
     commands: [
       {
         type: "composerOptions/load",
+        ...(intent.agentSessionId !== undefined
+          ? { agentSessionId: intent.agentSessionId }
+          : {}),
         commandId,
         correlationId: targetKey,
         targetKey,
