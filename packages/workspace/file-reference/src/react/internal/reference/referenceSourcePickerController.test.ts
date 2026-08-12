@@ -849,6 +849,60 @@ test("paginated search follows cursors and appends every page", async () => {
   assert.equal(tab?.searchHasMore, false);
 });
 
+test("changing search filters prevents load more from reusing the old cursor", async () => {
+  const searchInputs: SearchInput[] = [];
+  const controller = createReferenceSourcePickerController({
+    aggregator: fakeAggregator({
+      tabs: [
+        {
+          sourceId: "workspace-file",
+          label: "Workspace files",
+          capabilities: {
+            filterable: true,
+            filtersUseSearch: true,
+            paginated: true,
+            previewable: true,
+            searchable: true
+          }
+        }
+      ],
+      children: {},
+      searchImpl: async (input) => {
+        searchInputs.push(input);
+        return {
+          entries: [
+            file(
+              "workspace-file",
+              input.cursor ? "/old-page-2.png" : "/first-page.png"
+            )
+          ],
+          nextCursor: input.cursor ? null : "old-page-2"
+        };
+      }
+    }),
+    scope,
+    searchDebounceMs: 0,
+    searchResultKind: "file"
+  });
+  controller.open();
+  await flush();
+
+  controller.setSearchFilters(["image"]);
+  await flush();
+
+  controller.setSearchFilters(["document"]);
+  controller.loadMoreSearch();
+  await flush();
+
+  assert.deepEqual(
+    searchInputs.slice(1).map((input) => ({
+      cursor: input.cursor ?? null,
+      filters: input.filters
+    })),
+    [{ cursor: null, filters: ["document"] }]
+  );
+});
+
 test("paginated search restarts from the first page after cursor expiry", async () => {
   const searchInputs: SearchInput[] = [];
   let firstPageCount = 0;

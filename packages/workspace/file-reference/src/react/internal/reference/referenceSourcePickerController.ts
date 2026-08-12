@@ -450,6 +450,23 @@ export function createReferenceSourcePickerController(
     searchAbortController = null;
   };
 
+  /**
+   * 查询身份(源、关键词、筛选、来源或范围)变化时，旧分页 continuation
+   * 不能用于新查询；保留已展示 entries，直到新首页返回以避免视图闪烁。
+   */
+  const invalidateSearchIdentity = (sourceId: string | null) => {
+    cancelSearch();
+    if (!sourceId) {
+      return;
+    }
+    updateTab(sourceId, (tab) => ({
+      ...tab,
+      searchNextCursor: null,
+      searchHasMore: false,
+      isSearchLoadingMore: false
+    }));
+  };
+
   const sourceUsesSearchForFilters = (sourceId: string): boolean =>
     snapshot.tabs.find((tab) => tab.sourceId === sourceId)?.capabilities
       .filtersUseSearch === true;
@@ -695,7 +712,7 @@ export function createReferenceSourcePickerController(
         scopeNodeId !== undefined
           ? scopeNodeId
           : (snapshot.bySource[sourceId]?.searchScopeNodeId ?? null);
-      cancelSearch();
+      invalidateSearchIdentity(sourceId);
       setSnapshot({ activeSourceId: sourceId });
       if (!hasSearchInput(sourceId, trimmed, carriedFilters)) {
         // 没有关键词/来源查询时,目标源保持浏览态。文件类型筛选由视图层递归投影
@@ -878,6 +895,7 @@ export function createReferenceSourcePickerController(
       if (!sourceId) {
         return;
       }
+      invalidateSearchIdentity(sourceId);
       const filters = snapshot.bySource[sourceId]?.searchFilters ?? [];
       const trimmed = query.trim();
       // 默认类型筛选不改变浏览/查询模式;声明 filtersUseSearch 的源可让
@@ -912,6 +930,7 @@ export function createReferenceSourcePickerController(
       if (!sourceId) {
         return;
       }
+      invalidateSearchIdentity(sourceId);
       const tab = snapshot.bySource[sourceId];
       const trimmed = tab?.searchQuery.trim() ?? "";
       const scopeId = scopeNodeId ?? tab?.searchScopeNodeId ?? null;
@@ -953,7 +972,7 @@ export function createReferenceSourcePickerController(
       ) {
         return;
       }
-      cancelSearch();
+      invalidateSearchIdentity(sourceId);
       provenanceFilter = filter;
       provenanceFilterKey = nextFilterKey;
       if (!sourceId) return;
@@ -985,6 +1004,7 @@ export function createReferenceSourcePickerController(
       if (!tab || tab.searchScopeNodeId === scopeNodeId) {
         return;
       }
+      invalidateSearchIdentity(sourceId);
       updateTab(sourceId, (current) => ({
         ...current,
         searchScopeNodeId: scopeNodeId
@@ -1005,6 +1025,7 @@ export function createReferenceSourcePickerController(
         !tab ||
         tab.mode !== "search" ||
         !tab.searchHasMore ||
+        tab.isSearchLoading ||
         tab.isSearchLoadingMore
       ) {
         return;
