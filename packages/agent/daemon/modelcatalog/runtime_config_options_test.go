@@ -9,6 +9,7 @@ func TestRuntimeConfigOptionModelRoundTripPreservesCapabilities(t *testing.T) {
 	t.Parallel()
 
 	imageInput := true
+	videoInput := true
 	model := ModelOption{
 		ID:                         "gpt-5.6-sol",
 		DisplayName:                "GPT-5.6-Sol",
@@ -31,6 +32,7 @@ func TestRuntimeConfigOptionModelRoundTripPreservesCapabilities(t *testing.T) {
 			{Value: "fast", Label: "Fast"},
 		},
 		SupportsImageInput: &imageInput,
+		SupportsVideoInput: &videoInput,
 	}
 
 	projected := ProjectRuntimeConfigOptionModel(model)
@@ -63,6 +65,9 @@ func TestRuntimeConfigOptionModelRoundTripPreservesCapabilities(t *testing.T) {
 	}
 	if got.SupportsImageInput == nil || !*got.SupportsImageInput {
 		t.Fatalf("round-trip image input = %#v, want true", got.SupportsImageInput)
+	}
+	if got.SupportsVideoInput == nil || !*got.SupportsVideoInput {
+		t.Fatalf("round-trip video input = %#v, want true", got.SupportsVideoInput)
 	}
 }
 

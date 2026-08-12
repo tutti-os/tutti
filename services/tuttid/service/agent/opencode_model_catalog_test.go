@@ -104,6 +104,23 @@ tutti/glm-5
 	}
 }
 
+func TestParseVerboseOpenCodeModelsOutputKeepsMiniMaxInputCapabilities(t *testing.T) {
+	t.Parallel()
+
+	models := parseOpenCodeModelsOutput([]byte(`opencode-minimax/MiniMax-M3
+{"name":"MiniMax M3","capabilities":{"input":{"text":true,"image":true,"video":true}},"variants":{}}
+`))
+
+	if len(models) != 1 {
+		t.Fatalf("len(models) = %d, want 1: %#v", len(models), models)
+	}
+	if models[0].ID != "opencode-minimax/MiniMax-M3" ||
+		models[0].SupportsImageInput == nil || !*models[0].SupportsImageInput ||
+		models[0].SupportsVideoInput == nil || !*models[0].SupportsVideoInput {
+		t.Fatalf("MiniMax M3 input capabilities = %#v", models[0])
+	}
+}
+
 func TestParseVerboseOpenCodeModelsOutputDistinguishesSameModelAcrossProviders(t *testing.T) {
 	t.Parallel()
 

@@ -11461,6 +11461,8 @@ components:
           type: string
         supportsImageInput:
           type: boolean
+        supportsVideoInput:
+          type: boolean
         requested:
           type: boolean
           description: >-

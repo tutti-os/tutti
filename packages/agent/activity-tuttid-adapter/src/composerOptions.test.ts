@@ -38,6 +38,40 @@ test("maps daemon composer options into the canonical activity contract", () => 
   assert.equal(options.effectiveSettings?.model, "gpt-5");
 });
 
+test("maps video input support into the canonical model option", () => {
+  const options = agentActivityComposerOptionsFromTuttidResult("opencode", {
+    behavior: {},
+    capabilityCatalog: [],
+    commands: [],
+    effectiveSettings: { model: "opencode-minimax/MiniMax-M3" },
+    modelConfig: {
+      configurable: true,
+      options: [
+        {
+          id: "opencode-minimax/MiniMax-M3",
+          label: "MiniMax M3",
+          value: "opencode-minimax/MiniMax-M3",
+          supportsVideoInput: true
+        }
+      ]
+    },
+    permissionConfig: { configurable: false, modes: [] },
+    provider: "opencode",
+    reasoningConfig: { configurable: false, options: [] },
+    reasoningOptionsByModel: {},
+    runtimeContext: {},
+    skills: []
+  } as unknown as AgentProviderComposerOptionsResponse);
+
+  assert.deepEqual(options.models, [
+    {
+      label: "MiniMax M3",
+      value: "opencode-minimax/MiniMax-M3",
+      supportsVideoInput: true
+    }
+  ]);
+});
+
 test("keeps fallback slash commands when effects are absent", () => {
   const response = {
     behavior: {

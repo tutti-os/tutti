@@ -86,5 +86,9 @@ func cloneModelOption(model ModelOption) ModelOption {
 		value := *model.SupportsImageInput
 		model.SupportsImageInput = &value
 	}
+	if model.SupportsVideoInput != nil {
+		value := *model.SupportsVideoInput
+		model.SupportsVideoInput = &value
+	}
 	return model
 }

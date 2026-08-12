@@ -5112,6 +5112,7 @@ type AgentProviderComposerConfigOptionValue struct {
 	// Requested True when the entry mirrors the requested/current selection instead of the provider catalog (warm-catalog append of the requested model, selected-model bootstrap echo). Clients keep such entries selectable but must not treat them as proof the provider can run the model; create validation runs against the raw catalog only.
 	Requested          *bool  `json:"requested,omitempty"`
 	SupportsImageInput *bool  `json:"supportsImageInput,omitempty"`
+	SupportsVideoInput *bool  `json:"supportsVideoInput,omitempty"`
 	Value              string `json:"value"`
 }
 

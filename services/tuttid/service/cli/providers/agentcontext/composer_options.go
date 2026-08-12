@@ -142,6 +142,9 @@ func composerConfigOptionValue(config agentservice.ComposerConfigOption) map[str
 		if option.SupportsImageInput != nil {
 			value["supportsImageInput"] = *option.SupportsImageInput
 		}
+		if option.SupportsVideoInput != nil {
+			value["supportsVideoInput"] = *option.SupportsVideoInput
+		}
 		options = append(options, value)
 	}
 	return map[string]any{

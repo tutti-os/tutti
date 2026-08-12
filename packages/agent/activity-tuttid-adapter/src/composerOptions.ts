@@ -296,11 +296,16 @@ function settingOptionsFromRawOptions(
       typeof record.supportsImageInput === "boolean"
         ? record.supportsImageInput
         : undefined;
+    const supportsVideoInput =
+      typeof record.supportsVideoInput === "boolean"
+        ? record.supportsVideoInput
+        : undefined;
     options.push({
       value: optionValue,
       label,
       ...(description ? { description } : {}),
       ...(supportsImageInput !== undefined ? { supportsImageInput } : {}),
+      ...(supportsVideoInput !== undefined ? { supportsVideoInput } : {}),
       // Daemon provenance: the entry mirrors the requested selection (warm
       // catalog append / bootstrap echo) and is not catalog testimony.
       ...(record.requested === true ? { requested: true } : {})

@@ -728,6 +728,7 @@ func normalizeLiveComposerModelOptions(options []ComposerConfigOptionValue) []Co
 			Value:                      value,
 			Description:                strings.TrimSpace(option.Description),
 			SupportsImageInput:         option.SupportsImageInput,
+			SupportsVideoInput:         option.SupportsVideoInput,
 			SupportsReasoningEffort:    option.SupportsReasoningEffort,
 			ReasoningEffort:            strings.TrimSpace(option.ReasoningEffort),
 			ReasoningEfforts:           append([]AgentModelReasoningEffortOption(nil), option.ReasoningEfforts...),

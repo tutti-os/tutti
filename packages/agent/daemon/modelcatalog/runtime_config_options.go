@@ -88,6 +88,7 @@ func NormalizeRuntimeConfigOptionModel(raw json.RawMessage) (ModelOption, bool) 
 		SpeedsAdvertised:           speedsAdvertised,
 		SupportedSpeeds:            speeds,
 		SupportsImageInput:         runtimeConfigImageInputSupport(object),
+		SupportsVideoInput:         runtimeConfigVideoInputSupport(object),
 	}, true
 }
 
@@ -102,6 +103,9 @@ func ProjectRuntimeConfigOptionModel(model ModelOption) map[string]any {
 	}
 	if model.SupportsImageInput != nil {
 		option["supportsImageInput"] = *model.SupportsImageInput
+	}
+	if model.SupportsVideoInput != nil {
+		option["supportsVideoInput"] = *model.SupportsVideoInput
 	}
 	if model.ReasoningEffortsAdvertised {
 		reasoningOptions := make([]map[string]any, 0, len(model.SupportedReasoningEfforts))
@@ -174,4 +178,11 @@ func runtimeConfigImageInputSupport(object map[string]any) *bool {
 		return &supported
 	}
 	return codexImageInputSupport(object)
+}
+
+func runtimeConfigVideoInputSupport(object map[string]any) *bool {
+	if supported, advertised := object["supportsVideoInput"].(bool); advertised {
+		return &supported
+	}
+	return nil
 }
