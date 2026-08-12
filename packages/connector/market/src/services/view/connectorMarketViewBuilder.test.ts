@@ -221,6 +221,17 @@ test("requires an installed connector to update before authorization when the ac
     view.dialog?.kind === "installation" && view.dialog.updating,
     true
   );
+
+  market.pendingInstallationsByConnectorKey[connector.key] = true;
+  const pendingUpdate = buildConnectorMarketView(market, dialogState);
+  assert.equal(pendingUpdate.cardsByKey[connector.key]?.action, "busy");
+  assert.equal(pendingUpdate.cardsByKey[connector.key]?.status, "updating");
+
+  delete market.pendingInstallationsByConnectorKey[connector.key];
+  connector.installation.state = "updating";
+  const updating = buildConnectorMarketView(market, dialogState);
+  assert.equal(updating.cardsByKey[connector.key]?.action, "busy");
+  assert.equal(updating.cardsByKey[connector.key]?.status, "updating");
 });
 
 test("exposes disconnect directly for an authorized connector", () => {

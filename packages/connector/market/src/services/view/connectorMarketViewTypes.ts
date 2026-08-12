@@ -39,6 +39,7 @@ export interface ConnectorCardView {
     | "installing"
     | "not_installed"
     | "unavailable"
+    | "updating"
     | "update_available";
 }
 

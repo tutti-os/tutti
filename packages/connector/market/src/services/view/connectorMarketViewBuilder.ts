@@ -155,6 +155,9 @@ function buildConnectorCardView(
   const installed = connectorHasInstalledArtifact(connector);
   const currentReleaseInstalled =
     connectorHasCurrentReleaseInstalled(connector);
+  const updating =
+    connector.installation.state === "updating" ||
+    (installed && !currentReleaseInstalled && pendingInstallation);
   const unavailable = connector.compatibility.state !== "supported";
   const connected = connector.authorization.state === "connected";
   const requiresAuthorization = !["connected", "not_required"].includes(
@@ -188,7 +191,9 @@ function buildConnectorCardView(
     status: unavailable
       ? "unavailable"
       : busy
-        ? "installing"
+        ? updating
+          ? "updating"
+          : "installing"
         : !installed
           ? "not_installed"
           : !currentReleaseInstalled
