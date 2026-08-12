@@ -903,6 +903,80 @@ test("changing search filters prevents load more from reusing the old cursor", a
   );
 });
 
+test("switching sources invalidates the previous source while its next page is loading", async () => {
+  const searchInputs: SearchInput[] = [];
+  let resolvePreviousPage: ((result: SearchResult) => void) | null = null;
+  const controller = createReferenceSourcePickerController({
+    aggregator: fakeAggregator({
+      tabs: [
+        {
+          sourceId: "source-a",
+          label: "Source A",
+          capabilities: {
+            paginated: true,
+            previewable: true,
+            searchable: true
+          }
+        },
+        {
+          sourceId: "source-b",
+          label: "Source B",
+          capabilities: {
+            paginated: true,
+            previewable: true,
+            searchable: true
+          }
+        }
+      ],
+      children: {},
+      searchImpl: async (input) => {
+        searchInputs.push(input);
+        if (input.cursor === "a-page-2") {
+          return new Promise<SearchResult>((resolve) => {
+            resolvePreviousPage = resolve;
+          });
+        }
+        return {
+          entries: [file("source-a", "/first-page.md")],
+          nextCursor: "a-page-2"
+        };
+      }
+    }),
+    scope,
+    searchDebounceMs: 0
+  });
+  controller.open();
+  await flush();
+
+  controller.setSearchQuery("report");
+  await flush();
+  controller.loadMoreSearch();
+  controller.setActiveSource("source-b");
+  await flush();
+
+  const previousTab = controller.getSnapshot().bySource["source-a"];
+  assert.deepEqual(
+    previousTab?.searchEntries.map((entry) => entry.ref.nodeId),
+    ["/first-page.md"]
+  );
+  assert.equal(previousTab?.searchNextCursor, null);
+  assert.equal(previousTab?.searchHasMore, false);
+  assert.equal(previousTab?.isSearchLoadingMore, false);
+
+  controller.setActiveSource("source-a");
+  await flush();
+  assert.deepEqual(
+    searchInputs.map((input) => input.cursor ?? null),
+    [null, "a-page-2", null, null]
+  );
+
+  resolvePreviousPage?.({
+    entries: [file("source-a", "/stale-page-2.md")],
+    nextCursor: null
+  });
+  await flush();
+});
+
 test("paginated search restarts from the first page after cursor expiry", async () => {
   const searchInputs: SearchInput[] = [];
   let firstPageCount = 0;
