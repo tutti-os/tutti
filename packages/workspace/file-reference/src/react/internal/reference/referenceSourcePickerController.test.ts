@@ -970,7 +970,12 @@ test("switching sources invalidates the previous source while its next page is l
     [null, "a-page-2", null, null]
   );
 
-  resolvePreviousPage?.({
+  if (!resolvePreviousPage) {
+    throw new Error("expected pending previous-page resolver");
+  }
+  const completePreviousPage: (result: SearchResult) => void =
+    resolvePreviousPage;
+  completePreviousPage({
     entries: [file("source-a", "/stale-page-2.md")],
     nextCursor: null
   });
