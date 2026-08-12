@@ -8,8 +8,8 @@ Tutti 侧已经采用独立的 MCP `2026-07-28` 无状态 HTTP Client，不复�
 Streamable HTTP Client。公共 `ImplementationHost` 通过
 `RemoteMCPClientFactory` 请求一个产品实现的远端 Client，不再持有 Gateway Base URL、
 HTTP Client 或账号授权回调。Tuttid 的 Direct Factory 使用默认
-`https://api.tutti.sh/api/desktop`（可通过 `TUTTI_CONNECTOR_MCP_BASE_URL` 覆盖），并把
-实际地址固定派生为 `POST {baseUrl}/mcp/connectors/{connectorId}`；Connector 无法覆盖
+`https://tutti.sh/api/desktop`（可通过 `TUTTI_CONNECTOR_MCP_BASE_URL` 覆盖），并把
+实际地址固定派生为 `POST {baseUrl}/v1/connectors/{connectorId}/mcp`；Connector 无法覆盖
 该地址。VM-backed 产品可以提供指向 typed desktop relay 的 Factory。
 
 Remote Connector 在建立 Route 时仍会解析本地安装发布物，并把其中合法的 `skills/`
@@ -33,7 +33,7 @@ flowchart LR
     R["Connector Release<br/>产品契约"] -->|"bindingRef + contractVersion"| B["tsh-server MCP Binding<br/>基础设施契约"]
     B --> D["已发布的 Binding 快照"]
     D --> G["Connector MCP Gateway"]
-    T["Tutti 远程 MCP Client"] -->|"POST /mcp/connectors/{connectorId}"| G
+    T["Tutti 远程 MCP Client"] -->|"POST /v1/connectors/{connectorId}/mcp"| G
     G --> U["业务 MCP Server"]
     T --> A["Agent 本地 connector MCP"]
 ```
@@ -92,7 +92,7 @@ Connector 发布方必须在激活 Release 前，根据其引用的已发布 Bin
 Tutti 根据当前环境和 Connector 标识生成 endpoint：
 
 ```text
-POST {tshServerBaseUrl}/mcp/connectors/{connectorId}
+POST {tshServerBaseUrl}/v1/connectors/{connectorId}/mcp
 ```
 
 每个请求还必须通过 `Tutti-Connector-Version` 固定当前已安装的 Connector Release。客户端不会接收或发送 Binding Revision、业务 endpoint、Connection ID 或 Provider 凭据。

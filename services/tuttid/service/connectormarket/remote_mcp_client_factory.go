@@ -63,7 +63,7 @@ func (factory *DirectRemoteMCPClientFactory) NewRemoteMCPClient(
 	if connectorKey == "" || accountID == "" {
 		return nil, errors.New("remote MCP route identity is invalid")
 	}
-	endpoint, err := url.JoinPath(factory.base.String(), "mcp", "connectors", connectorKey)
+	endpoint, err := url.JoinPath(factory.base.String(), "v1", "connectors", connectorKey, "mcp")
 	if err != nil {
 		return nil, errors.New("build remote MCP Gateway endpoint")
 	}

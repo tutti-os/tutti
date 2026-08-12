@@ -15,7 +15,7 @@ import (
 func TestDirectRemoteMCPClientFactoryBuildsFixedGatewayRouteAndAuthorizesAccount(t *testing.T) {
 	var gotAccountID string
 	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
-		if request.URL.Path != "/api/desktop/mcp/connectors/documents" || request.Header.Get("Cookie") != "session_id=session-1" {
+		if request.URL.Path != "/api/desktop/v1/connectors/documents/mcp" || request.Header.Get("Cookie") != "session_id=session-1" {
 			t.Errorf("request path/cookie = %q / %q", request.URL.Path, request.Header.Get("Cookie"))
 		}
 		var message struct {
