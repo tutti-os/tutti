@@ -46,9 +46,11 @@ test("message updates apply inline only for a cached Session with continuity", (
   });
 
   assert.equal(cached.canApplyInlineMessages, true);
+  assert.equal(cached.canPreviewInlineMessages, true);
   assert.equal(cached.intent.inlineApplied, true);
   assert.equal(cached.intent.hasInlineMessages, true);
   assert.equal(uncached.canApplyInlineMessages, true);
+  assert.equal(uncached.canPreviewInlineMessages, false);
   assert.equal(uncached.intent.inlineApplied, false);
 });
 
@@ -68,6 +70,7 @@ test("message updates fail closed when any advertised message is malformed", () 
     [2]
   );
   assert.equal(observation.canApplyInlineMessages, false);
+  assert.equal(observation.canPreviewInlineMessages, false);
   assert.equal(observation.intent.inlineApplied, false);
 });
 
@@ -87,6 +90,7 @@ test("message updates fail closed on envelope, message, or cursor disagreement",
       hasCachedSession: true
     });
     assert.equal(observation.canApplyInlineMessages, false);
+    assert.equal(observation.canPreviewInlineMessages, false);
     assert.equal(observation.intent.inlineApplied, false);
   }
 });
@@ -102,6 +106,20 @@ test("message updates fail closed when acceptedCount disagrees with the payload"
   });
 
   assert.equal(observation.canApplyInlineMessages, false);
+  assert.equal(observation.canPreviewInlineMessages, false);
+  assert.equal(observation.intent.inlineApplied, false);
+});
+
+test("message version gaps remain eligible for cached-Session preview", () => {
+  const observation = analyzeAgentActivityEventObservation({
+    cachedMessages: [message(1)],
+    event: messageUpdateEvent([eventMessage(3)]),
+    hasCachedSession: true
+  });
+
+  assert.equal(observation.inlineContinuity.continuous, false);
+  assert.equal(observation.canApplyInlineMessages, false);
+  assert.equal(observation.canPreviewInlineMessages, true);
   assert.equal(observation.intent.inlineApplied, false);
 });
 

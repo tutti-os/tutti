@@ -260,7 +260,11 @@ export class WorkspaceAgentLiveLane {
 
   private applyEvent(event: AgentActivityLiveEvent): void {
     const result = this.coordinator.ingestEvent(event);
-    if (result.optimisticMessage || result.inlineApplied) {
+    if (
+      result.optimisticMessage ||
+      result.inlineApplied ||
+      result.inlinePreviewed
+    ) {
       this.options.onActivityChanged();
     }
     if (result.accepted && event.eventType !== "message_delta") {

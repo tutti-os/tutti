@@ -26,6 +26,7 @@ export interface AgentActivityWorkspaceEventResult {
   accepted: boolean;
   eventType: AgentActivityUpdatedEvent["eventType"];
   inlineApplied: boolean;
+  inlinePreviewed: boolean;
   inlineGap: {
     cachedVersion: number;
     firstUnseenVersion: number | null;
@@ -435,18 +436,28 @@ export function createAgentActivityWorkspaceEventCoordinator({
           },
           { batch: true }
         );
-        overlay.reconcile(
+        overlay.mergeCanonical(
           { agentSessionId, workspaceId: normalizedWorkspaceId },
-          [...cachedMessages, ...observation.inlineMessages]
+          observation.inlineMessages
         );
+        markChanged();
+      } else if (observation.canPreviewInlineMessages) {
+        overlay.previewCanonical(
+          { agentSessionId, workspaceId: normalizedWorkspaceId },
+          observation.inlineMessages
+        );
+        overlaySessionIds.add(agentSessionId);
         markChanged();
       }
       engine.dispatch(observation.intent);
       return {
         ...eventResult(eventType, true, "applied"),
         inlineApplied: observation.canApplyInlineMessages,
+        inlinePreviewed:
+          !observation.canApplyInlineMessages &&
+          observation.canPreviewInlineMessages,
         inlineGap:
-          observation.inlineMessages.length > 0 &&
+          observation.canPreviewInlineMessages &&
           !observation.canApplyInlineMessages
             ? {
                 cachedVersion: observation.inlineContinuity.cachedVersion,
@@ -499,7 +510,7 @@ export function createAgentActivityWorkspaceEventCoordinator({
       if (disposed) return;
       const normalizedSessionId = agentSessionId.trim();
       if (!normalizedSessionId) return;
-      overlay.reconcile(
+      overlay.mergeCanonical(
         {
           agentSessionId: normalizedSessionId,
           workspaceId: normalizedWorkspaceId
@@ -547,6 +558,7 @@ function eventResult(
     accepted,
     eventType,
     inlineApplied: false,
+    inlinePreviewed: false,
     inlineGap: null,
     inlineMessages: [],
     optimisticMessage: null,

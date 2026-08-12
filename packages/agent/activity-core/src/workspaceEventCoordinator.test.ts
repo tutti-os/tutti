@@ -11,6 +11,7 @@ import { createTestEngineCommandPort } from "./engine/testEngineCommandPort.ts";
 import type { EngineExternalCommand } from "./engine/types.ts";
 import { normalizeAgentActivitySession } from "./sessionNormalization.ts";
 import type {
+  AgentActivityUpdatedEvent,
   AgentActivityTurn,
   AgentActivityTurnUpdatedEvent
 } from "./types.ts";
@@ -322,6 +323,271 @@ test("projects message deltas and clears them on authoritative deletion", () => 
   harness.coordinator.dispose();
   harness.engine.dispose();
 });
+
+test("keeps a reasoning append anchor across an unrelated inline canonical update", () => {
+  const harness = createHarness();
+  harness.engine.dispatch({
+    session: session(turn("running", 1), 1),
+    type: "session/upserted"
+  });
+  harness.engine.dispatch({
+    messages: [message("session-1", "message-1", "canonical")],
+    type: "message/snapshotReceived",
+    workspaceId: "workspace-1"
+  });
+
+  harness.coordinator.ingestEvent({
+    workspaceId: "workspace-1",
+    agentSessionId: "session-1",
+    eventType: "message_delta",
+    data: {
+      workspaceId: "workspace-1",
+      agentSessionId: "session-1",
+      messageId: "reasoning-live",
+      turnId: "turn-1",
+      role: "assistant",
+      kind: "reasoning",
+      occurredAtUnixMs: 2,
+      content: { operation: "set", value: "正在" }
+    }
+  });
+
+  const inline = harness.coordinator.ingestEvent({
+    workspaceId: "workspace-1",
+    agentSessionId: "session-1",
+    eventType: "message_update",
+    data: {
+      workspaceId: "workspace-1",
+      agentSessionId: "session-1",
+      eventType: "message_update",
+      latestVersion: 2,
+      acceptedCount: 1,
+      messages: [
+        {
+          agentSessionId: "session-1",
+          kind: "text",
+          messageId: "message-2",
+          occurredAtUnixMs: 3,
+          payload: { text: "其他消息" },
+          role: "assistant",
+          sequence: 2,
+          turnId: "turn-1",
+          version: 2
+        }
+      ]
+    }
+  });
+  assert.equal(inline.inlineApplied, true);
+
+  const appended = harness.coordinator.ingestEvent({
+    workspaceId: "workspace-1",
+    agentSessionId: "session-1",
+    eventType: "message_delta",
+    data: {
+      workspaceId: "workspace-1",
+      agentSessionId: "session-1",
+      messageId: "reasoning-live",
+      turnId: "turn-1",
+      role: "assistant",
+      kind: "reasoning",
+      occurredAtUnixMs: 4,
+      content: { operation: "append_text", text: "检查" }
+    }
+  });
+
+  assert.equal(appended.accepted, true);
+  assert.equal(appended.reason, "applied");
+  const projected = harness.coordinator.project(harness.readCanonicalSnapshot())
+    .sessionMessagesById["session-1"];
+  assert.equal(
+    projected?.find((item) => item.messageId === "reasoning-live")?.payload
+      .text,
+    "正在检查"
+  );
+  assert.equal(
+    projected?.find((item) => item.messageId === "message-2")?.payload.text,
+    "其他消息"
+  );
+  harness.coordinator.dispose();
+  harness.engine.dispose();
+});
+
+test("previews a gapped tool update without advancing the durable cursor", () => {
+  const harness = createHarness();
+  harness.engine.dispatch({
+    session: session(turn("running", 1), 1),
+    type: "session/upserted"
+  });
+  harness.engine.dispatch({
+    messages: [message("session-1", "message-1", "canonical")],
+    type: "message/snapshotReceived",
+    workspaceId: "workspace-1"
+  });
+
+  const previewed = harness.coordinator.ingestEvent({
+    workspaceId: "workspace-1",
+    agentSessionId: "session-1",
+    eventType: "message_update",
+    data: {
+      workspaceId: "workspace-1",
+      agentSessionId: "session-1",
+      eventType: "message_update",
+      latestVersion: 3,
+      acceptedCount: 1,
+      messages: [
+        {
+          agentSessionId: "session-1",
+          kind: "tool_call",
+          messageId: "tool-1",
+          occurredAtUnixMs: 3,
+          payload: { toolName: "Read", title: "Read" },
+          role: "assistant",
+          sequence: 3,
+          status: "running",
+          turnId: "turn-1",
+          version: 3
+        }
+      ]
+    }
+  });
+
+  assert.equal(previewed.inlineApplied, false);
+  assert.equal(previewed.inlinePreviewed, true);
+  assert.deepEqual(previewed.inlineGap, {
+    cachedVersion: 1,
+    firstUnseenVersion: 3,
+    latestIncomingVersion: 3
+  });
+  assert.equal(
+    harness
+      .readCanonicalSnapshot()
+      .sessionMessagesById["session-1"]?.some(
+        (item) => item.messageId === "tool-1"
+      ),
+    false
+  );
+  assert.equal(
+    harness.coordinator
+      .project(harness.readCanonicalSnapshot())
+      .sessionMessagesById["session-1"]?.find(
+        (item) => item.messageId === "tool-1"
+      )?.status,
+    "running"
+  );
+  assert.ok(
+    harness.commands.some(
+      (command) =>
+        command.type === "session/reconcile" &&
+        command.agentSessionId === "session-1" &&
+        command.scope === "messages"
+    )
+  );
+
+  const output = harness.coordinator.ingestEvent({
+    workspaceId: "workspace-1",
+    agentSessionId: "session-1",
+    eventType: "message_delta",
+    data: {
+      workspaceId: "workspace-1",
+      agentSessionId: "session-1",
+      messageId: "tool-1",
+      turnId: "turn-1",
+      role: "assistant",
+      kind: "tool_call",
+      occurredAtUnixMs: 4,
+      toolOutput: {
+        operation: "append_text",
+        text: "output",
+        offsetBytes: 0
+      }
+    }
+  });
+  assert.equal(output.accepted, true);
+  assert.deepEqual(
+    harness.coordinator
+      .project(harness.readCanonicalSnapshot())
+      .sessionMessagesById["session-1"]?.find(
+        (item) => item.messageId === "tool-1"
+      )?.payload.output,
+    { text: "output" }
+  );
+
+  const completed = {
+    workspaceId: "workspace-1",
+    agentSessionId: "session-1",
+    messageId: "tool-1",
+    version: 4,
+    sequence: 3,
+    turnId: "turn-1",
+    role: "assistant" as const,
+    kind: "tool_call",
+    status: "completed",
+    payload: {
+      toolName: "Read",
+      title: "Read",
+      output: { text: "output" }
+    },
+    occurredAtUnixMs: 5,
+    completedAtUnixMs: 5
+  };
+  harness.coordinator.reconcileAuthoritativeHistory(
+    "session-1",
+    [completed],
+    [turn("settled", 5)]
+  );
+  const finalTools = harness.coordinator
+    .project({
+      ...harness.readCanonicalSnapshot(),
+      sessionMessagesById: { "session-1": [completed] }
+    })
+    .sessionMessagesById["session-1"]?.filter(
+      (item) => item.messageId === "tool-1"
+    );
+  assert.equal(finalTools?.length, 1);
+  assert.equal(finalTools?.[0]?.status, "completed");
+  harness.coordinator.dispose();
+  harness.engine.dispose();
+});
+
+for (const terminalStatus of ["completed", "canceled"] as const) {
+  test(`keeps one visible tool row when a gapped preview becomes ${terminalStatus}`, () => {
+    const harness = createHarness();
+    harness.engine.dispatch({
+      session: session(turn("running", 1), 1),
+      type: "session/upserted"
+    });
+    harness.engine.dispatch({
+      messages: [message("session-1", "message-1", "canonical")],
+      type: "message/snapshotReceived",
+      workspaceId: "workspace-1"
+    });
+
+    harness.coordinator.ingestEvent(toolUpdateEvent(3, "running"));
+    const terminal = harness.coordinator.ingestEvent(
+      toolUpdateEvent(4, terminalStatus)
+    );
+
+    assert.equal(terminal.inlineApplied, false);
+    assert.equal(terminal.inlinePreviewed, true);
+    const projected = harness.coordinator
+      .project(harness.readCanonicalSnapshot())
+      .sessionMessagesById["session-1"]?.filter(
+        (item) => item.messageId === "tool-1"
+      );
+    assert.equal(projected?.length, 1);
+    assert.equal(projected?.[0]?.status, terminalStatus);
+    assert.equal(
+      harness
+        .readCanonicalSnapshot()
+        .sessionMessagesById["session-1"]?.some(
+          (item) => item.messageId === "tool-1"
+        ),
+      false
+    );
+    harness.coordinator.dispose();
+    harness.engine.dispose();
+  });
+}
 
 test("an explicit restore event clears only its tombstone and requests authoritative hydration", () => {
   const harness = createHarness();
@@ -847,6 +1113,40 @@ function message(agentSessionId: string, messageId: string, text: string) {
     kind: "text",
     payload: { text },
     occurredAtUnixMs: 1
+  };
+}
+
+function toolUpdateEvent(
+  version: number,
+  status: "running" | "completed" | "canceled"
+): Extract<AgentActivityUpdatedEvent, { eventType: "message_update" }> {
+  const terminal = status !== "running";
+  return {
+    workspaceId: "workspace-1",
+    agentSessionId: "session-1",
+    eventType: "message_update",
+    data: {
+      workspaceId: "workspace-1",
+      agentSessionId: "session-1",
+      eventType: "message_update",
+      latestVersion: version,
+      acceptedCount: 1,
+      messages: [
+        {
+          agentSessionId: "session-1",
+          kind: "tool_call",
+          messageId: "tool-1",
+          occurredAtUnixMs: version,
+          ...(terminal ? { completedAtUnixMs: version } : {}),
+          payload: { toolName: "Read", title: "Read" },
+          role: "assistant",
+          sequence: 3,
+          status,
+          turnId: "turn-1",
+          version
+        }
+      ]
+    }
   };
 }
 
