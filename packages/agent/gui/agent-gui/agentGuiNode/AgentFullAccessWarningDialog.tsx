@@ -75,6 +75,7 @@ export function AgentFullAccessWarningDialog({
               return;
             }
             event.preventDefault();
+            onOpenChange(false);
             onLinkAction({
               source: "agent-full-access-warning",
               type: "open-url",

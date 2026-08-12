@@ -8,10 +8,6 @@ import {
 } from "./AgentComposerSettingsMenus";
 import type { AgentGUIComposerSettingsVM } from "./model/agentGuiNodeTypes";
 import type { AgentComposerSettingsMenuLabels } from "./model/composerSettingsMenuModel";
-import {
-  CODEX_FULL_ACCESS_WARNING_ACKNOWLEDGEMENT_STORAGE_KEY,
-  isCodexFullAccessWarningAcknowledged
-} from "./view/agentFullAccessWarningPreference";
 
 beforeAll(() => {
   Object.defineProperties(HTMLElement.prototype, {
@@ -253,20 +249,10 @@ describe("AgentPermissionModeDropdown", () => {
       type: "open-url",
       url: "https://deploymentsafety.openai.com/gpt-5-6"
     });
-
-    fireEvent.click(screen.getByRole("button", { name: "Enable full access" }));
-
-    expect(onSettingsChange).toHaveBeenCalledTimes(1);
-    expect(onSettingsChange).toHaveBeenCalledWith({
-      permissionModeId: "full-access",
-      planMode: false
-    });
-    expect(isCodexFullAccessWarningAcknowledged()).toBe(true);
     expect(
-      globalThis.localStorage.getItem(
-        CODEX_FULL_ACCESS_WARNING_ACKNOWLEDGEMENT_STORAGE_KEY
-      )
-    ).toBe("1");
+      screen.queryByRole("dialog", { name: "Enable full access?" })
+    ).not.toBeInTheDocument();
+    expect(onSettingsChange).not.toHaveBeenCalled();
   });
 
   it("keeps full access selected after confirmation", async () => {
