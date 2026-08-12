@@ -24,6 +24,13 @@ catalog or infer product-specific membership itself. Disabled catalog options
 remain available to host logic but are hidden by the controlled filter view by
 default; a host can opt into rendering them with `showDisabledOptions`.
 
+Cursor-paginated search sources declare `capabilities.paginated`. The picker
+passes the returned `nextCursor` into the next fixed-size search request,
+deduplicates and appends that page in source order, and continues until the
+source returns no cursor. A host that receives an expired backend cursor may
+throw `ReferenceSearchCursorExpiredError`; the picker clears the stale result
+set and restarts the same search from its first page.
+
 ## Content error recovery
 
 `ReferenceSourcePicker` accepts `resolveContentErrorAction` when a host can

@@ -227,13 +227,28 @@ be prepended to ranked query results.
 
 Picker purpose constrains result kinds before pagination: the reference picker
 searches files only, while the project-directory picker searches folders only.
-A file-type filter by itself remains in browse mode, filters files in the
-recursively loaded source tree, and keeps only folders with matching descendant
-files. The traversal is cancellable and the picker remains loading until the
-filtered projection is complete. When a keyword is present, the same category
-ids are passed to the source for pre-pagination filtering. Search rows render a
-source-provided `contextLabel` when available and otherwise omit the subtitle;
-opaque `nodeId` values are never presentation copy.
+A file-type filter by itself normally remains in browse mode, filters files in
+the recursively loaded source tree, and keeps only folders with matching
+descendant files. A source may instead declare `filtersUseSearch` when it can
+enforce the categories before pagination. The traversal and search request are
+cancellable. When a keyword is present, the same category ids are passed to the
+source for pre-pagination filtering. Search rows render a source-provided
+`contextLabel` when available and otherwise omit the subtitle; opaque `nodeId`
+values are never presentation copy.
+
+A source with `capabilities.paginated` owns search continuation through its
+opaque `nextCursor`. The controller uses a fixed page size, passes that cursor
+to the next request, and appends the returned page with identity-based
+deduplication while preserving source order. It must use cursor presence—not a
+returned-count heuristic or a growing total limit—to decide whether more data
+exists. This removes any controller-owned total result ceiling. Legacy sources
+that do not declare pagination retain the growing-limit behavior for backward
+compatibility.
+
+If a host reports cursor expiry with `ReferenceSearchCursorExpiredError`, the
+controller clears the stale pages and automatically restarts the unchanged
+search from page one. Other invalid or mismatched cursor errors remain visible
+failures because retrying them would hide a source or request-contract bug.
 
 Local-file queries are field-aware:
 

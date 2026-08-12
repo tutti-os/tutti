@@ -19,6 +19,7 @@ import {
   nodeRefKey,
   sortReferenceNodes
 } from "../../../core/referenceSourceUtils.ts";
+import { isReferenceSearchCursorExpiredError } from "../../../core/referenceSearchErrors.ts";
 import {
   referenceProvenanceFilterCacheKey,
   referenceProvenanceFilterIsActive
@@ -59,13 +60,13 @@ export interface ReferenceSourceTabState {
   searchEntries: ReferenceNode[];
   searchNextCursor: string | null;
   /**
-   * 当前查询使用的结果上限(增长式分页:拉到底部时 +SEARCH_PAGE_SIZE 重查)。
-   * 0 = 尚未发起查询;每次新查询(改关键词/筛选/分组/换源)重置为 SEARCH_PAGE_SIZE。
+   * 已展示结果数量(cursor 分页),或当前查询结果上限(兼容增长式分页)。
+   * 0 = 尚未发起查询;每次新查询(改关键词/筛选/分组/换源)从 SEARCH_PAGE_SIZE 开始。
    */
   searchLimit: number;
-  /** 是否可能还有更多结果(本页返回数 ≥ 请求上限,且未达全局上限)。 */
+  /** cursor 分页以 nextCursor 为准;兼容模式以请求上限和全局上限推断。 */
   searchHasMore: boolean;
-  /** 正在加载下一页(增长 limit 重查在途);用于底部 spinner,不清空已有结果。 */
+  /** 正在加载下一页;用于底部 spinner,不清空已有结果。 */
   isSearchLoadingMore: boolean;
   isSearchLoading: boolean;
   searchError: Error | null;
@@ -453,6 +454,10 @@ export function createReferenceSourcePickerController(
     snapshot.tabs.find((tab) => tab.sourceId === sourceId)?.capabilities
       .filtersUseSearch === true;
 
+  const sourceUsesPaginatedSearch = (sourceId: string): boolean =>
+    snapshot.tabs.find((tab) => tab.sourceId === sourceId)?.capabilities
+      .paginated === true;
+
   const hasSearchInput = (
     sourceId: string,
     query: string,
@@ -477,6 +482,11 @@ export function createReferenceSourcePickerController(
     searchAbortController?.abort();
     const abortController = new AbortController();
     searchAbortController = abortController;
+    const paginated = sourceUsesPaginatedSearch(sourceId);
+    const cursor =
+      loadingMore && paginated
+        ? (snapshot.bySource[sourceId]?.searchNextCursor ?? null)
+        : null;
     // 加载更多:只置底部 spinner、保留旧结果;新查询:置主 loading。
     updateTab(sourceId, (tab) => ({
       ...tab,
@@ -491,6 +501,7 @@ export function createReferenceSourcePickerController(
         limit,
         provenanceFilter,
         signal: abortController.signal,
+        ...(cursor ? { cursor } : {}),
         ...(searchResultKind ? { kinds: [searchResultKind] } : {}),
         ...(filters.length > 0 ? { filters } : {}),
         ...(scopeNodeId == null ? {} : { withinNodeId: scopeNodeId })
@@ -498,21 +509,54 @@ export function createReferenceSourcePickerController(
       if (!retained || sequence !== searchSequence) {
         return;
       }
-      updateTab(sourceId, (tab) => ({
-        ...tab,
-        isSearchLoading: false,
-        isSearchLoadingMore: false,
+      updateTab(sourceId, (tab) => {
         // Search sources own relevance order. Browsing may group folders and
         // sort names, but search must only deduplicate the ranked response.
-        searchEntries: dedupeReferenceNodes(result.entries),
-        searchNextCursor: result.nextCursor ?? null,
-        searchLimit: limit,
-        // 本页返回数达到请求上限、且未触全局上限 → 认为可能还有更多(增长式分页启发式)。
-        searchHasMore:
-          result.entries.length >= limit && limit < SEARCH_MAX_LIMIT,
-        searchError: null
-      }));
+        const entries =
+          loadingMore && paginated
+            ? appendReferencePage(tab.searchEntries, result.entries)
+            : dedupeReferenceNodes(result.entries);
+        return {
+          ...tab,
+          isSearchLoading: false,
+          isSearchLoadingMore: false,
+          searchEntries: entries,
+          searchNextCursor: result.nextCursor ?? null,
+          searchLimit: paginated ? entries.length : limit,
+          // Cursor-paginated sources own continuation. Legacy sources retain
+          // the growing-limit heuristic until they adopt cursor pagination.
+          searchHasMore: paginated
+            ? Boolean(result.nextCursor)
+            : result.entries.length >= limit && limit < SEARCH_MAX_LIMIT,
+          searchError: null
+        };
+      });
     } catch (error) {
+      if (
+        loadingMore &&
+        paginated &&
+        retained &&
+        sequence === searchSequence &&
+        isReferenceSearchCursorExpiredError(error)
+      ) {
+        updateTab(sourceId, (tab) => ({
+          ...tab,
+          isSearchLoadingMore: false,
+          searchEntries: [],
+          searchNextCursor: null,
+          searchHasMore: false,
+          searchError: null
+        }));
+        void runSearch(
+          sourceId,
+          query,
+          filters,
+          scopeNodeId,
+          SEARCH_PAGE_SIZE,
+          false
+        );
+        return;
+      }
       if (isAbortError(error) || !retained || sequence !== searchSequence) {
         return;
       }
@@ -969,11 +1013,17 @@ export function createReferenceSourcePickerController(
       if (!hasSearchInput(sourceId, trimmed, tab.searchFilters)) {
         return;
       }
-      const nextLimit = Math.min(
-        (tab.searchLimit || SEARCH_PAGE_SIZE) + SEARCH_PAGE_SIZE,
-        SEARCH_MAX_LIMIT
-      );
-      if (nextLimit <= tab.searchLimit) {
+      const paginated = sourceUsesPaginatedSearch(sourceId);
+      if (paginated && !tab.searchNextCursor) {
+        return;
+      }
+      const nextLimit = paginated
+        ? SEARCH_PAGE_SIZE
+        : Math.min(
+            (tab.searchLimit || SEARCH_PAGE_SIZE) + SEARCH_PAGE_SIZE,
+            SEARCH_MAX_LIMIT
+          );
+      if (!paginated && nextLimit <= tab.searchLimit) {
         return;
       }
       // 加载更多立即触发(不去抖),清掉在途去抖的新查询定时器以免相互覆盖。

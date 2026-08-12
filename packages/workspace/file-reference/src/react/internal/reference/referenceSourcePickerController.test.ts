@@ -16,6 +16,7 @@ import type {
 } from "../../../core/referenceSourceAggregator.ts";
 import { SOURCE_ROOT_NODE_ID } from "../../../core/referenceSourceAggregator.ts";
 import { nodeRefKey } from "../../../core/referenceSourceUtils.ts";
+import { ReferenceSearchCursorExpiredError } from "../../../core/referenceSearchErrors.ts";
 import {
   ROOT_CHILDREN_KEY,
   SEARCH_PAGE_SIZE,
@@ -776,6 +777,139 @@ test("sources can route file-type-only filters through scoped search", async () 
   assert.deepEqual(searchInputs[0]?.filters, ["webpage"]);
   assert.deepEqual(searchInputs[0]?.kinds, ["file"]);
   assert.equal(searchInputs[0]?.withinNodeId, "host-path-downloads");
+});
+
+test("paginated search follows cursors and appends every page", async () => {
+  const searchInputs: SearchInput[] = [];
+  const totalEntries = 211;
+  const controller = createReferenceSourcePickerController({
+    aggregator: fakeAggregator({
+      tabs: [
+        {
+          sourceId: "workspace-file",
+          label: "Workspace files",
+          capabilities: {
+            filterable: true,
+            filtersUseSearch: true,
+            paginated: true,
+            previewable: true,
+            searchable: true
+          }
+        }
+      ],
+      children: {},
+      searchImpl: async (input) => {
+        searchInputs.push(input);
+        const page = input.cursor
+          ? Number(input.cursor.replace("page-", ""))
+          : 1;
+        const firstIndex = (page - 1) * SEARCH_PAGE_SIZE + 1;
+        const pageLength = Math.min(
+          SEARCH_PAGE_SIZE,
+          totalEntries - firstIndex + 1
+        );
+        return {
+          entries: Array.from({ length: pageLength }, (_, index) =>
+            file("workspace-file", `/photo-${firstIndex + index}.png`)
+          ),
+          nextCursor:
+            firstIndex + pageLength <= totalEntries ? `page-${page + 1}` : null
+        };
+      }
+    }),
+    scope,
+    searchDebounceMs: 0,
+    searchResultKind: "file"
+  });
+  controller.open();
+  await flush();
+
+  controller.setSearchFilters(["image"]);
+  await flush();
+  for (let page = 2; page <= 8; page += 1) {
+    controller.loadMoreSearch();
+    await flush();
+  }
+
+  assert.deepEqual(
+    searchInputs.map((input) => ({
+      cursor: input.cursor ?? null,
+      limit: input.limit
+    })),
+    Array.from({ length: 8 }, (_, index) => ({
+      cursor: index === 0 ? null : `page-${index + 1}`,
+      limit: SEARCH_PAGE_SIZE
+    }))
+  );
+  const tab = controller.getSnapshot().bySource["workspace-file"];
+  assert.equal(tab?.searchEntries.length, totalEntries);
+  assert.equal(tab?.searchEntries[0]?.ref.nodeId, "/photo-1.png");
+  assert.equal(tab?.searchEntries.at(-1)?.ref.nodeId, "/photo-211.png");
+  assert.equal(tab?.searchNextCursor, null);
+  assert.equal(tab?.searchHasMore, false);
+});
+
+test("paginated search restarts from the first page after cursor expiry", async () => {
+  const searchInputs: SearchInput[] = [];
+  let firstPageCount = 0;
+  const controller = createReferenceSourcePickerController({
+    aggregator: fakeAggregator({
+      tabs: [
+        {
+          sourceId: "workspace-file",
+          label: "Workspace files",
+          capabilities: {
+            filterable: true,
+            filtersUseSearch: true,
+            paginated: true,
+            previewable: true,
+            searchable: true
+          }
+        }
+      ],
+      children: {},
+      searchImpl: async (input) => {
+        searchInputs.push(input);
+        if (input.cursor) {
+          throw new ReferenceSearchCursorExpiredError();
+        }
+        firstPageCount += 1;
+        return {
+          entries: [
+            file(
+              "workspace-file",
+              firstPageCount === 1 ? "/old-first.png" : "/fresh-first.png"
+            )
+          ],
+          nextCursor: firstPageCount === 1 ? "expired-page-2" : "fresh-page-2"
+        };
+      }
+    }),
+    scope,
+    searchDebounceMs: 0,
+    searchResultKind: "file"
+  });
+  controller.open();
+  await flush();
+
+  controller.setSearchFilters(["image"]);
+  await flush();
+  controller.loadMoreSearch();
+  await flush();
+  await flush();
+
+  assert.deepEqual(
+    searchInputs.map((input) => input.cursor ?? null),
+    [null, "expired-page-2", null]
+  );
+  const tab = controller.getSnapshot().bySource["workspace-file"];
+  assert.deepEqual(
+    tab?.searchEntries.map((entry) => entry.ref.nodeId),
+    ["/fresh-first.png"]
+  );
+  assert.equal(tab?.searchNextCursor, "fresh-page-2");
+  assert.equal(tab?.searchHasMore, true);
+  assert.equal(tab?.searchError, null);
 });
 
 test("controller-owned state stays cloneable across source service calls", async () => {
