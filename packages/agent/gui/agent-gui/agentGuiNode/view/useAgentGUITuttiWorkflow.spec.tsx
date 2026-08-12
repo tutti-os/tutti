@@ -179,7 +179,6 @@ function renderWorkflow(
 ) {
   let projection = initial;
   const submitPromptPassthrough = vi.fn();
-  const submitGuidancePromptPassthrough = vi.fn();
   const updateDraftContent = vi.fn();
   mocks.useTuttiModePlanPanels.mockImplementation(() => ({
     assignmentCatalog: {
@@ -204,15 +203,13 @@ function renderWorkflow(
         setTuttiModeEffect: vi.fn(),
         setTuttiModeSpeed: vi.fn(),
         updateDraftContent,
-        submitPromptPassthrough,
-        submitGuidancePromptPassthrough
+        submitPromptPassthrough
       }),
     { initialProps: { activeConversationId: "session-a" } }
   );
   return {
     ...rendered,
     submitPromptPassthrough,
-    submitGuidancePromptPassthrough,
     updateDraftContent,
     setProjection(next: PlanPanelsProjection): void {
       projection = next;
@@ -354,41 +351,38 @@ describe("useAgentGUITuttiWorkflow execution composer", () => {
     planIssue: issue("workflow-a", { taskStatus: "running" })
   });
 
-  it("steers an active source Turn when exact guidance is supported", () => {
-    const rendered = renderWorkflow(executionProjection(), {
-      activeTurn: true,
-      activeTurnGuidance: true
-    });
-
-    act(() =>
-      rendered.result.current.composer.submitPromptOrDecidePlan([
-        { type: "text", text: "Adjust the approach" }
-      ])
-    );
-
-    expect(rendered.submitGuidancePromptPassthrough).toHaveBeenCalledTimes(1);
-    expect(rendered.submitPromptPassthrough).not.toHaveBeenCalled();
-  });
-
   it.each([
-    { activeTurn: false, activeTurnGuidance: true, name: "source is idle" },
     {
-      activeTurn: true,
-      activeTurnGuidance: false,
-      name: "guidance is unsupported"
+      content: "Adjust the approach",
+      name: "ordinary text"
+    },
+    {
+      content: "/compact",
+      name: "compact command"
+    },
+    {
+      content: "/goal clear",
+      name: "Goal control command"
     }
-  ])("uses an ordinary submit when $name", (options) => {
-    const rendered = renderWorkflow(executionProjection(), options);
+  ])(
+    "uses an ordinary submit for $name during active execution",
+    ({ content }) => {
+      const rendered = renderWorkflow(executionProjection(), {
+        activeTurn: true,
+        activeTurnGuidance: true
+      });
 
-    act(() =>
-      rendered.result.current.composer.submitPromptOrDecidePlan([
-        { type: "text", text: "Adjust the approach" }
-      ])
-    );
+      act(() =>
+        rendered.result.current.composer.submitPromptOrDecidePlan([
+          { type: "text", text: content }
+        ])
+      );
 
-    expect(rendered.submitPromptPassthrough).toHaveBeenCalledTimes(1);
-    expect(rendered.submitGuidancePromptPassthrough).not.toHaveBeenCalled();
-  });
+      expect(rendered.submitPromptPassthrough).toHaveBeenCalledWith([
+        { type: "text", text: content }
+      ]);
+    }
+  );
 
   it.each([
     ["accept", "Accept"],

@@ -2018,20 +2018,21 @@ source composer. While dispatch is not paused and any task is nonterminal, an
 empty composer shows the normal running Stop control even when the source
 Session has no active Turn; this is presentation state and must not manufacture
 an Agent Turn or change Host submit availability. Typed input replaces that
-aggregate Stop with Send. An exact active source Turn with
-`activeTurnGuidance` receives the input as guidance/steer; an idle source starts
-a normal Turn, and an active source without guidance support keeps the normal
-queue path instead of cancel-then-send. Stop durably pauses Issue dispatch and
-cancels its running task Sessions, and also sends the ordinary source-Session
-stop only when that Session has stoppable work. The two idempotent paths are
-independent because canceling an idle Session merely to trigger the Issue
-cascade could capture a later Turn.
+aggregate Stop with Send. Sending from the ordinary composer always uses the
+normal source-conversation submit path, including while the Issue and source
+Turn are active; canonical busy-session availability therefore keeps the prompt
+in the normal queue. Provider guidance capability only enables an explicit
+guidance action and never changes ordinary Send semantics. Stop durably pauses
+Issue dispatch and cancels its running task Sessions, and also sends the
+ordinary source-Session stop only when that Session has stoppable work. The two
+idempotent paths are independent because canceling an idle Session merely to
+trigger the Issue cascade could capture a later Turn.
 
 Task-level accept and rework controls in that projection prepare localized
 instructions in the exact source Session composer; they preserve any existing
 draft and never send automatically. They do not call generic Issue Task
 mutations or impersonate the source Agent's CLI authority. Once the user sends
-the draft, the normal source-conversation submit/guidance path applies and the
+the draft, the normal source-conversation submit path applies and the
 Agent inspects the canonical Tutti execution before issuing checkpoint- and
 revision-fenced commands. Other plan-panel interactions should use this
 prompt-action pattern only when their intended effect requires source-Agent
