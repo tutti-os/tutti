@@ -309,11 +309,12 @@ session lifecycle lock before provider admission. A mismatch returns a typed
 `NotDispatched` result, makes zero provider calls, and removes a prepared
 submit claim; callers must surface the rejection or retry with a newly captured
 target rather than silently redirecting the guidance.
-Accepted guidance preempts the provider's current response before the guided
-response is admitted. The adapter must close the interrupted response's live
-message/tool projections and publish its provider-turn terminal boundary while
-keeping the canonical Turn active; guidance is not a canonical Turn cancel or
-a second user Turn.
+Accepted guidance follows the provider's native active-turn semantics while
+keeping the canonical Turn active. A soft-steering adapter may insert guidance
+into the current provider response without interrupting it. A preemptive
+adapter must close the interrupted response's live message/tool projections
+and publish its provider-turn terminal boundary before admitting guided output.
+Neither form is a canonical Turn cancel or a second user Turn.
 Accepted runtime Session reports reconcile their Goal snapshot through the
 canonical bottom-up observation path without overwriting a newer desired
 intent. When that changes the public Goal projection, the same transaction

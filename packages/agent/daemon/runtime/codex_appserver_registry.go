@@ -174,19 +174,6 @@ func (a *CodexAppServerAdapter) sessionActiveTurn(agentSessionID string) *codexA
 	return appSession.activeTurn
 }
 
-func (a *CodexAppServerAdapter) sessionActiveTurnSnapshot(agentSessionID string) (*codexAppServerActiveTurn, string) {
-	if a == nil {
-		return nil, ""
-	}
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	appSession := a.sessions[strings.TrimSpace(agentSessionID)]
-	if appSession == nil {
-		return nil, ""
-	}
-	return appSession.activeTurn, strings.TrimSpace(appSession.activeTurnID)
-}
-
 func (a *CodexAppServerAdapter) sessionActiveTurnID(agentSessionID string) string {
 	if a == nil {
 		return ""

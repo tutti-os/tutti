@@ -1479,19 +1479,20 @@ inline data URL instead`. Claude or standard ACP may instead receive no
   Treating every provider as native guidance sends a same-turn request that the
   standard ACP protocol does not define. Treating every provider as
   cancel-then-send discards the same-Turn semantics offered by Codex and the
-  Claude SDK. A native guidance implementation that merely queues provider
-  input is also insufficient: the old response can keep thinking or running a
-  tool before it observes the inserted message.
+  Claude SDK. Native guidance semantics are provider-specific: Codex steering
+  deliberately leaves the current response running, while the Claude SDK must
+  interrupt its active Query before it can reliably enqueue guidance.
 - Fix:
   Keep the prompt queue in the workspace `AgentSessionEngine`. Resolve send-now
   from typed runtime capabilities: use native guidance when
   `activeTurnGuidance` is true, with no canonical Turn cancel. The provider
-  adapter must first terminate the active provider response, close its streaming
-  projections, and only then admit the guided response on the same canonical
-  Turn. Claude uses its SDK interrupt before enqueueing the prompt. Codex/Tutti
-  Agent publishes a provisional provider-turn fence, waits for the exact
-  `turn/interrupt` target to terminate, then starts the continuation through
-  `turn/start`; queued native guidance must not use `turn/steer`. Otherwise use
+  adapter must preserve its native semantics on the same canonical Turn.
+  Claude uses its SDK interrupt before enqueueing the prompt and closes the old
+  response projections. Codex/Tutti Agent sends `turn/steer` with the exact
+  active provider Turn ID and does not interrupt or start a replacement Turn.
+  If no provider response remains but the canonical Turn is still active for
+  child work, Codex may start a provider continuation through `turn/start`.
+  Otherwise use
   exact-turn cancel when `interrupt` is true, retain the prompt in the frontend
   queue, and send it normally only after validated cancellation or authoritative
   turn settlement. Route both the composer shortcut and queued-item action
@@ -1500,10 +1501,10 @@ inline data URL instead`. Claude or standard ACP may instead receive no
   Cover both entry points and both capability combinations. Native guidance must
   emit a guidance send with no cancel. ACP fallback must emit cancel with no
   prompt send, then emit one normal prompt send after cancellation settles. At
-  each native provider boundary, assert that the old response terminal and all
-  old thinking-stream terminals precede the guidance message/provider start;
-  for Codex also assert there is no guidance `turn/steer` and the provisional
-  provider-turn fence prevents the interrupted terminal from settling the root.
+  the Claude provider boundary, assert that the old response terminal and all
+  old thinking-stream terminals precede guided output. For Codex, assert that
+  active-response guidance sends exactly one `turn/steer` with the expected
+  provider Turn ID and sends neither `turn/interrupt` nor another `turn/start`.
 - References:
   [promptQueue.reducer.ts](../../../packages/agent/activity-core/src/engine/promptQueue.reducer.ts)
   [sessionLifecycle.reducer.ts](../../../packages/agent/activity-core/src/engine/sessionLifecycle.reducer.ts)

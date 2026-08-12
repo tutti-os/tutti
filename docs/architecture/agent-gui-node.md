@@ -1175,17 +1175,18 @@ The busy-session prompt queue is ephemeral durable-intent coordination in the wo
 - a normal prompt waits for canonical availability
 - a queued-prompt `Send next` action uses native guidance when the provider
   supports it, even when the provider also supports interruption; guidance
-  preempts the provider's current response but stays on the same canonical Turn
+  stays on the same canonical Turn and follows the provider's native semantics
 - Claude SDK guidance acknowledges delivery only after its SDK interrupt has
   succeeded and the guidance prompt has been enqueued; a failed interrupt is a
   failed guidance request and must not allow the old response to keep running.
   The confirmed interruption settles the old response's streaming projections
   while the canonical Turn remains active for the guidance response
-- Codex/Tutti Agent guidance first installs a provisional provider-turn fence,
-  sends an exact `turn/interrupt`, and waits for the interrupted response to
-  terminate before starting the guided response with `turn/start` on the same
-  canonical Turn. Queued native guidance does not use `turn/steer`, because
-  that RPC can queue input without stopping the response already being sampled
+- Codex/Tutti Agent guidance sends `turn/steer` with the exact active provider
+  Turn identity. Steering inserts the guidance into the current provider Turn;
+  it does not interrupt the response or start a replacement provider Turn. If
+  the provider response has already ended while the canonical Turn remains
+  active for child work, guidance may start a provider continuation with
+  `turn/start` on that same canonical Turn
 - guidance captures the canonical `activeTurnId` at the interaction boundary
   and carries it through the queue, activity adapter, daemon API, Agent Host,
   and runtime Controller; `turnId` is required for every cross-process
