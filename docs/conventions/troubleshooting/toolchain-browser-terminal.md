@@ -323,6 +323,16 @@ deadline exceeded`. The failing test can take several seconds even though its
   [run.go](../../../apps/cli/internal/app/run.go)
   [browser-use skill template](../../../packages/agent/runtimeprep/skill_templates/browser-use.md)
 
+### Codex-created personal skill disappears in later sessions
+
+- Symptom: A Skill created below a Session `CODEX_HOME/skills` works only in
+  that Session.
+- Root cause: Tutti gives each Codex Session an isolated `CODEX_HOME`, while
+  Codex normally assumes that home is persistent.
+- Fix: On later Codex runtime preparation, promote valid non-managed Skills
+  from prior Session homes into `~/.codex/skills`; never overwrite an existing
+  personal Skill.
+
 ### Malformed user skill frontmatter breaks skill discovery
 
 - Symptom:

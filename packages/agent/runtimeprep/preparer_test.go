@@ -392,6 +392,34 @@ func TestDefaultPreparerCodexWritesInstructionsSkillManifestAndEnv(t *testing.T)
 	}
 }
 
+func TestPromoteSessionCreatedCodexSkillsForLaterSessions(t *testing.T) {
+	home := t.TempDir()
+	setTestHome(t, home)
+	runsRoot := filepath.Join(t.TempDir(), "agent", "runs")
+	sourceSkills := filepath.Join(runsRoot, "source-session", "codex-home", "skills")
+	writeSidecarTestFile(t, filepath.Join(sourceSkills, "created-skill", "SKILL.md"), "---\nname: created-skill\ndescription: Created in a prior session.\n---\nBody\n")
+	writeSidecarTestFile(t, filepath.Join(sourceSkills, "created-skill", "references", "notes.md"), "notes\n")
+	writeSidecarTestFile(t, filepath.Join(sourceSkills, "managed-skill", "SKILL.md"), "---\nname: managed-skill\n---\n")
+	writeSidecarTestFile(t, filepath.Join(sourceSkills, "managed-skill", ".tutti-managed-skill"), "managed\n")
+	writeSidecarTestFile(t, filepath.Join(runsRoot, "current-session", "codex-home", "skills", "current-only", "SKILL.md"), "---\nname: current-only\n---\n")
+
+	if err := promoteSessionCreatedCodexSkills(runsRoot, "current-session"); err != nil {
+		t.Fatalf("promoteSessionCreatedCodexSkills() error = %v", err)
+	}
+	promotedRoot := filepath.Join(home, ".codex", "skills", "created-skill")
+	if content, err := os.ReadFile(filepath.Join(promotedRoot, "SKILL.md")); err != nil || !strings.Contains(string(content), "Created in a prior session") {
+		t.Fatalf("promoted SKILL.md content = %q, err = %v", content, err)
+	}
+	if _, err := os.Stat(filepath.Join(promotedRoot, "references", "notes.md")); err != nil {
+		t.Fatalf("promoted skill resource missing: %v", err)
+	}
+	for _, name := range []string{"managed-skill", "current-only"} {
+		if _, err := os.Stat(filepath.Join(home, ".codex", "skills", name)); !os.IsNotExist(err) {
+			t.Fatalf("skill %q should not be promoted, err = %v", name, err)
+		}
+	}
+}
+
 func TestDefaultPreparerReturnsAuthoritativeMCPBindings(t *testing.T) {
 	setTestHome(t, t.TempDir())
 	input := PrepareInput{

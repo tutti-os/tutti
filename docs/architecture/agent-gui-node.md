@@ -1754,6 +1754,12 @@ isolated provider home. Opening slash search explicitly refreshes this catalog
 so newly created Skills appear without restarting the Session; runtime-managed
 Skills remain hidden through their `.tutti-managed-skill` marker.
 
+When a later Codex Session is prepared, runtime preparation promotes valid,
+user-created Skills from prior isolated Codex homes into `~/.codex/skills`.
+Existing personal Skills are never overwritten, and Tutti-managed or malformed
+Skills are not promoted. The existing user-Skill exposure path then makes the
+promoted Skill available in the new Session on Windows and POSIX systems.
+
 App-server-backed skill discovery follows the descriptor boundary. Tutti Agent
 requests only `skills/list` and retains the ordinary Skill projection through
 the shared app-server transport, capability contract, cache, and structured
