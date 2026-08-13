@@ -175,6 +175,7 @@ test("validated settings success refreshes provider-declared target options", ()
 
   assert.deepEqual(refreshed.commands, [
     {
+      agentSessionId: "session-1",
       commandId: "composer-options:after-settings:settings-1",
       correlationId: "target-1",
       cwd: "/workspace",

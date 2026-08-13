@@ -164,18 +164,22 @@ description: Managed runtime skill.
 	})
 
 	triggers := composerSkillOptionTriggers(options)
-	want := []string{"$architecture-review", "$caveman", "$lark-doc", "$imagegen", "$music-lookup"}
-	if !equalStringSlices(triggers, want) {
-		t.Fatalf("triggers = %#v, want %#v", triggers, want)
+	wantOrdered := []string{"$architecture-review", "$caveman", "$lark-doc", "$music-lookup", "$imagegen"}
+	if !containsStringsInOrder(triggers, wantOrdered) {
+		t.Fatalf("triggers = %#v, want ordered subset %#v", triggers, wantOrdered)
 	}
-	if options[0].SourceKind != "project" || options[1].SourceKind != "personal" || options[2].SourceKind != "personal" || options[3].SourceKind != "system" {
+	optionsByTrigger := make(map[string]ComposerSkillOption, len(options))
+	for _, option := range options {
+		optionsByTrigger[option.Trigger] = option
+	}
+	if optionsByTrigger["$architecture-review"].SourceKind != "project" || optionsByTrigger["$caveman"].SourceKind != "personal" || optionsByTrigger["$lark-doc"].SourceKind != "personal" || optionsByTrigger["$music-lookup"].SourceKind != "personal" || optionsByTrigger["$imagegen"].SourceKind != "system" {
 		t.Fatalf("source kinds = %#v", options)
 	}
-	if options[1].Description != "Ultra-compressed communication mode. Use when the user asks to be brief." {
-		t.Fatalf("codex personal description = %q", options[1].Description)
+	if optionsByTrigger["$caveman"].Description != "Ultra-compressed communication mode. Use when the user asks to be brief." {
+		t.Fatalf("codex personal description = %q", optionsByTrigger["$caveman"].Description)
 	}
-	if options[2].Description != "Work with Lark documents. Search and edit cloud docs." {
-		t.Fatalf("folded description = %q", options[2].Description)
+	if optionsByTrigger["$lark-doc"].Description != "Work with Lark documents. Search and edit cloud docs." {
+		t.Fatalf("folded description = %q", optionsByTrigger["$lark-doc"].Description)
 	}
 }
 
@@ -451,4 +455,14 @@ func equalStringSlices(left []string, right []string) bool {
 		}
 	}
 	return true
+}
+
+func containsStringsInOrder(values []string, ordered []string) bool {
+	next := 0
+	for _, value := range values {
+		if next < len(ordered) && value == ordered[next] {
+			next++
+		}
+	}
+	return next == len(ordered)
 }

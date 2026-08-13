@@ -124,7 +124,7 @@ describe("useComposerPaletteCatalog", () => {
           supportsComputerUse: false,
           slashCommandPolicy: {
             fallbackCommands: [],
-            commandEffects: [],
+            commandEffects: [{ command: "status", effect: "showStatus" }],
             commandCatalogAuthoritative: true
           }
         } as unknown as AgentGUIComposerSettingsVM,

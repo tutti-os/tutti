@@ -505,8 +505,9 @@ export function useAgentGUIComposerSettingsActions(
   );
 
   // Recovery entry for the composer-options terminal error state. Leave the
-  // request non-forced so Activity Core joins an already-running load when a
-  // user double-clicks the retry control instead of superseding it.
+  // A retry must bypass a settled cache entry so newly created provider
+  // capabilities become visible immediately. The retry control is disabled
+  // while loading, so it cannot supersede an in-flight request.
   const retryComposerOptions = useStableControllerEventCallback(() => {
     loadDraftComposerOptions({ force: true });
   });

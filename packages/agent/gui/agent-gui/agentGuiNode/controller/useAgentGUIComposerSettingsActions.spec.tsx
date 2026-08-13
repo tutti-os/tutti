@@ -865,7 +865,7 @@ describe("useAgentGUIComposerSettingsActions", () => {
       rendered.result.current.retryComposerOptions();
     });
 
-    expect(loadDraftComposerOptions).toHaveBeenCalledWith();
+    expect(loadDraftComposerOptions).toHaveBeenCalledWith({ force: true });
   });
 });
 

@@ -250,8 +250,8 @@ describe("AgentPermissionModeDropdown", () => {
       url: "https://deploymentsafety.openai.com/gpt-5-6"
     });
     expect(
-      screen.queryByRole("dialog", { name: "Enable full access?" })
-    ).not.toBeInTheDocument();
+      screen.getByRole("dialog", { name: "Enable full access?" })
+    ).toHaveAttribute("data-state", "closed");
     expect(onSettingsChange).not.toHaveBeenCalled();
   });
 
