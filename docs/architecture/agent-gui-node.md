@@ -1211,6 +1211,10 @@ The busy-session prompt queue is ephemeral durable-intent coordination in the wo
   removed so the failed guidance cannot strand the queue or be redirected to a
   newer Turn
 - otherwise send-now performs exact cancel-then-send
+- `/compact` is a thread-level control command, not active-Turn guidance. When
+  entered while a Turn is active it remains queued until canonical availability;
+  its queued row disables `Send next`, then normal queue drain executes it as a
+  standalone control Turn after the active Turn settles
 - user Stop pauses the queue; cancellation must not leak the next prompt
 - a prompt settings precondition is an explicit preparation stage, not a nested
   host effect. It serializes with direct and post-activation settings writes,

@@ -11,11 +11,13 @@ import {
 import type { AgentGUIRuntime } from "../../../agentActivityRuntime";
 import type { AgentComposerDraft } from "../model/agentGuiNodeTypes";
 import {
+  agentPromptContentDisplayText,
   agentComposerDraftImages,
   agentPromptContentToComposerDraft,
   updateAgentComposerDraft
 } from "../model/agentComposerDraft";
 import { resolveAgentComposerDraftScopeKey } from "../model/agentComposerDraftScope";
+import { isCompactSlashCommandInvocation } from "../model/agentSlashCommands";
 import { QueuedPromptImageLoadOwner } from "../queuedPromptImageLoadOwner";
 import { createAgentGUIConversationId } from "./agentGuiController.promptHelpers";
 
@@ -176,6 +178,19 @@ export function useAgentGUIQueueActions({
       const agentSessionId = activeConversationIdRef.current;
       const normalizedQueuedPromptId = queuedPromptId.trim();
       if (!agentSessionId || !normalizedQueuedPromptId) {
+        return;
+      }
+      const queuedPrompt = selectEngineQueuedPrompt(
+        sessionEngine.getSnapshot(),
+        agentSessionId,
+        normalizedQueuedPromptId
+      );
+      if (
+        queuedPrompt &&
+        isCompactSlashCommandInvocation(
+          agentPromptContentDisplayText(queuedPrompt.content)
+        )
+      ) {
         return;
       }
       sessionEngine.dispatch({

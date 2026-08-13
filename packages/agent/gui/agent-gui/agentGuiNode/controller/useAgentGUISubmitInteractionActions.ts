@@ -28,6 +28,7 @@ import type {
   SubmittedDraftSnapshot
 } from "../model/agentGuiNodeTypes";
 import { resolveAgentComposerDraftScopeKey } from "../model/agentComposerDraftScope";
+import { isCompactSlashCommandInvocation } from "../model/agentSlashCommands";
 import type { AgentGUIConversationSummary } from "../model/agentGuiConversationModel";
 import type { AgentComposerSubmitOptions } from "../composer/AgentComposer.types";
 import {
@@ -597,6 +598,22 @@ export function useAgentGUISubmitInteractionActions(
       }
       const displayPromptText =
         displayPrompt && displayPrompt.trim() ? displayPrompt : undefined;
+      if (
+        isCompactSlashCommandInvocation(
+          agentPromptContentDisplayText(normalizedContent)
+        )
+      ) {
+        submitExistingPrompt(
+          agentSessionId,
+          normalizedContent,
+          displayPromptText,
+          {
+            capabilityRefs: options?.capabilityRefs,
+            trackDraft: true
+          }
+        );
+        return;
+      }
       submitExistingPrompt(
         agentSessionId,
         normalizedContent,

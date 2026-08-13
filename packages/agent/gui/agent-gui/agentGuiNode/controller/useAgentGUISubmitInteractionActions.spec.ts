@@ -475,6 +475,31 @@ describe("existing-session prompt submission", () => {
     );
   });
 
+  it("queues compact instead of guiding the active Turn", () => {
+    const goalControl = vi.fn(async () => undefined);
+    const { input, sessionEngine } = createGoalControlInput(
+      goalControl as never
+    );
+    input.activeEngineActiveTurn = { turnId: "turn-target" } as never;
+    const submitPrompt = vi
+      .spyOn(sessionEngine, "submitPrompt")
+      .mockReturnValue({ accepted: true, queued: true });
+    const { result } = renderHook(() =>
+      useAgentGUISubmitInteractionActions(input)
+    );
+
+    act(() =>
+      result.current.submitGuidancePrompt([{ type: "text", text: "/compact" }])
+    );
+
+    expect(submitPrompt).toHaveBeenCalledWith(
+      expect.not.objectContaining({
+        routing: "send_now",
+        targetTurnId: "turn-target"
+      })
+    );
+  });
+
   it("routes submission through the Engine semantic operation", () => {
     const goalControl = vi.fn(async () => undefined);
     const { input, draftByScopeKeyRef, sessionEngine, setDraftByScopeKey } =

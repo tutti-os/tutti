@@ -33,6 +33,7 @@ import {
   agentPromptContentDisplayText,
   agentPromptContentImageBlocks
 } from "./model/agentComposerDraft";
+import { isCompactSlashCommandInvocation } from "./model/agentSlashCommands";
 import { ZoomableImage } from "../../app/renderer/components/ZoomableImage";
 import { CanvasNodeGhostIconButton } from "../shared/CanvasNodeGhostIconButton";
 import {
@@ -495,6 +496,11 @@ export function AgentQueuedPromptPanel({
           const images = queuedPromptImages(queuedPrompt);
           const displayText = queuedPromptDisplayText(queuedPrompt);
           const title = queuedPromptTitle(queuedPrompt);
+          const sendNextDisabled =
+            isDraining ||
+            isCompactSlashCommandInvocation(
+              agentPromptContentDisplayText(queuedPrompt.content)
+            );
           return (
             <div
               key={queuedPrompt.id}
@@ -546,7 +552,7 @@ export function AgentQueuedPromptPanel({
                     <TooltipTrigger asChild>
                       <CanvasNodeGhostIconButton
                         aria-label={labels.sendQueuedPromptNext}
-                        disabled={isDraining}
+                        disabled={sendNextDisabled}
                         onClick={() => onSendQueuedPromptNext(queuedPrompt.id)}
                       >
                         <CanvasNodeGuideLinedIcon aria-hidden="true" />
