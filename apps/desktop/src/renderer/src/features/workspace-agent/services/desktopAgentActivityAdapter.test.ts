@@ -2538,6 +2538,7 @@ function createSession(
     ...canonicalOverrides,
     messageVersion: canonicalOverrides.messageVersion ?? 0,
     forkedFrom: canonicalOverrides.forkedFrom ?? null,
+    goalSyncState: canonicalOverrides.goalSyncState ?? null,
     tuttiModeActivation: canonicalOverrides.tuttiModeActivation ?? null,
     kind: canonicalOverrides.kind ?? "root",
     rootAgentSessionId: canonicalOverrides.rootAgentSessionId ?? null,

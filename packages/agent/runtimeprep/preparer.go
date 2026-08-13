@@ -59,6 +59,7 @@ func (p *DefaultPreparer) RegisterProvider(provider ProviderPreparer) {
 }
 
 func (p *DefaultPreparer) Prepare(ctx context.Context, input PrepareInput) (PreparedRuntime, error) {
+	input = expandConnectorAgentContext(input)
 	workspaceID := strings.TrimSpace(input.WorkspaceID)
 	agentSessionID := strings.TrimSpace(input.AgentSessionID)
 	providerID := strings.TrimSpace(input.Provider)
@@ -166,10 +167,31 @@ func (p *DefaultPreparer) Prepare(ctx context.Context, input PrepareInput) (Prep
 		p.rememberProviderCleanup(workspaceID, agentSessionID, result.Cleanup)
 	}
 	logRuntimePrepareTrace("runtime_prepare.manifest_saved", input, nil)
-	return PreparedRuntime{Cwd: result.Cwd, Env: result.Env}, nil
+	return PreparedRuntime{
+		Cwd:        result.Cwd,
+		Env:        result.Env,
+		MCPServers: cloneMCPServerBindings(input.MCPServers),
+	}, nil
+}
+
+func cloneMCPServerBindings(input []MCPServerBinding) []MCPServerBinding {
+	if len(input) == 0 {
+		return nil
+	}
+	result := make([]MCPServerBinding, 0, len(input))
+	for _, binding := range input {
+		headers := make(map[string]string, len(binding.Headers))
+		for key, value := range binding.Headers {
+			headers[key] = value
+		}
+		binding.Headers = headers
+		result = append(result, binding)
+	}
+	return result
 }
 
 func (p *DefaultPreparer) RenderSkillBundle(ctx context.Context, input PrepareInput) (SkillBundle, error) {
+	input = expandConnectorAgentContext(input)
 	workspaceID := strings.TrimSpace(input.WorkspaceID)
 	agentTargetID := strings.TrimSpace(input.AgentTargetID)
 	providerID := strings.TrimSpace(input.Provider)
@@ -320,7 +342,11 @@ func defaultRuntimeEnv(input PrepareInput, stateDir string) []string {
 		"TUTTI_AGENT_PROVIDER=" + strings.TrimSpace(input.Provider),
 		"TUTTI_AGENT_CWD=" + strings.TrimSpace(input.Cwd),
 	}
-	if pathEnv := runtimePathEnv(stateDir); pathEnv != "" {
+	connectorBinDir := ""
+	if input.Connector != nil {
+		connectorBinDir = input.Connector.CLIBinDir
+	}
+	if pathEnv := runtimePathEnv(stateDir, connectorBinDir); pathEnv != "" {
 		env = append(env, pathEnv)
 	}
 	// Browser use is delivered as a default MCP server to every agent provider,
@@ -334,20 +360,41 @@ func defaultRuntimeEnv(input PrepareInput, stateDir string) []string {
 	return env
 }
 
-func runtimePathEnv(stateDir string) string {
+func runtimePathEnv(stateDir string, connectorBinDir string) string {
 	stateDir = strings.TrimSpace(stateDir)
-	if stateDir == "" {
+	connectorBinDir = strings.TrimSpace(connectorBinDir)
+	if stateDir == "" && connectorBinDir == "" {
 		return ""
 	}
-	binDir := filepath.Join(stateDir, "bin")
+	binDirs := make([]string, 0, 2)
+	if stateDir != "" {
+		binDirs = append(binDirs, filepath.Join(stateDir, "bin"))
+	}
+	if connectorBinDir != "" {
+		binDirs = append(binDirs, connectorBinDir)
+	}
 	currentPath := os.Getenv("PATH")
-	for _, entry := range filepath.SplitList(currentPath) {
-		if filepath.Clean(entry) == filepath.Clean(binDir) {
-			return "PATH=" + currentPath
+	entries := filepath.SplitList(currentPath)
+	for _, binDir := range binDirs {
+		present := false
+		for _, entry := range entries {
+			if filepath.Clean(entry) == filepath.Clean(binDir) {
+				present = true
+				break
+			}
+		}
+		if !present {
+			entries = append([]string{binDir}, entries...)
 		}
 	}
-	if currentPath == "" {
-		return "PATH=" + binDir
+	return "PATH=" + strings.Join(entries, string(os.PathListSeparator))
+}
+
+func expandConnectorAgentContext(input PrepareInput) PrepareInput {
+	if input.Connector == nil {
+		return input
 	}
-	return "PATH=" + binDir + string(os.PathListSeparator) + currentPath
+	input.MCPServers = append(cloneMCPServerBindings(input.MCPServers), cloneMCPServerBindings(input.Connector.MCPServers)...)
+	input.ConnectorRoutingHints = append([]ConnectorRoutingHint(nil), input.Connector.RoutingHints...)
+	return input
 }

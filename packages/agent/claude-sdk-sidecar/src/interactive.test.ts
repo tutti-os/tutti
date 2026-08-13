@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import type { PermissionUpdate } from "@anthropic-ai/claude-agent-sdk";
 import { InteractiveCoordinator } from "./interactive.ts";
 import type { ClaudeSDKSidecarEvent } from "./protocol.ts";
 
@@ -129,6 +130,96 @@ test("interactive coordinator does not publish a canceled request before accepta
   assert.deepEqual(events, []);
 });
 
+test("interactive coordinator reapplies an exact session permission without a second prompt", async () => {
+  const events: Array<Omit<ClaudeSDKSidecarEvent, "version">> = [];
+  const coordinator = createCoordinator(events);
+  const suggestions = [
+    {
+      type: "addRules",
+      rules: [{ toolName: "WebFetch", ruleContent: "domain:example.com" }],
+      behavior: "allow",
+      destination: "session"
+    } satisfies PermissionUpdate
+  ];
+  const firstResult = coordinator.handleToolPermission(
+    "WebFetch",
+    { url: "https://example.com/first" },
+    {
+      signal: new AbortController().signal,
+      toolUseID: "tool-1",
+      suggestions
+    }
+  );
+  await waitForInteraction(events);
+  coordinator.submit(
+    "turn-1",
+    String(events[0]?.payload?.requestId),
+    "approved",
+    "allow_always",
+    {}
+  );
+  assert.deepEqual(await firstResult, {
+    behavior: "allow",
+    updatedInput: { url: "https://example.com/first" },
+    updatedPermissions: suggestions
+  });
+  const eventCount = events.length;
+
+  assert.deepEqual(
+    await coordinator.handleToolPermission(
+      "WebFetch",
+      { url: "https://example.com/second" },
+      {
+        signal: new AbortController().signal,
+        toolUseID: "tool-2",
+        suggestions: structuredClone(suggestions)
+      }
+    ),
+    {
+      behavior: "allow",
+      updatedInput: { url: "https://example.com/second" },
+      updatedPermissions: suggestions
+    }
+  );
+  assert.equal(events.length, eventCount);
+});
+
+test("interactive coordinator does not remember allow-once permissions", async () => {
+  const events: Array<Omit<ClaudeSDKSidecarEvent, "version">> = [];
+  const coordinator = createCoordinator(events);
+  const suggestions = [
+    {
+      type: "addDirectories",
+      directories: ["/repo"],
+      destination: "session"
+    } satisfies PermissionUpdate
+  ];
+  const firstResult = coordinator.handleToolPermission(
+    "Read",
+    { file_path: "/repo/a" },
+    { signal: new AbortController().signal, suggestions }
+  );
+  await waitForInteraction(events);
+  coordinator.submit(
+    "turn-1",
+    String(events[0]?.payload?.requestId),
+    "approved",
+    "allow",
+    {}
+  );
+  await firstResult;
+
+  const secondResult = coordinator.handleToolPermission(
+    "Read",
+    { file_path: "/repo/b" },
+    { signal: new AbortController().signal, suggestions }
+  );
+  await waitForEventCount(events, 3);
+  assert.equal(events[2]?.type, "approval_requested");
+  coordinator.rejectAll(new Error("test complete"));
+  await assert.rejects(secondResult, /test complete/u);
+});
+
 function createCoordinator(
   events: Array<Omit<ClaudeSDKSidecarEvent, "version">>,
   ensureProviderTurnAcceptance: ConstructorParameters<
@@ -157,4 +248,14 @@ async function waitForInteraction(
     await new Promise<void>((resolve) => setImmediate(resolve));
   }
   assert.notEqual(events.length, 0);
+}
+
+async function waitForEventCount(
+  events: Array<Omit<ClaudeSDKSidecarEvent, "version">>,
+  count: number
+): Promise<void> {
+  for (let attempt = 0; attempt < 10 && events.length < count; attempt += 1) {
+    await new Promise<void>((resolve) => setImmediate(resolve));
+  }
+  assert.equal(events.length, count);
 }

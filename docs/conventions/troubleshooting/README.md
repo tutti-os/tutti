@@ -41,9 +41,10 @@ Use the focused runtime index or open one area directly:
   legacy startup wakes, provider-completed submissions reported as delivery
   unknown after canonical message provenance conflicts, completed Claude Code
   Turns that lack a Fork entry because provider identity was not observed from
-  the durable transcript, and Claude Fork operations that fail because an empty
-  query never creates a durable provider child. It also covers a Claude Query
-  that keeps returning connection errors after the machine network recovers.
+  the durable transcript, Claude failures before provider Turn identity that
+  leave AgentGUI thinking, and Claude Fork operations that fail because an
+  empty query never creates a durable provider child. It also covers a Claude
+  Query that keeps returning connection errors after the machine network recovers.
   Also covers inactive Claude Resume timing out the queue send and leaving later
   prompts stuck as 排队中 behind `uncertainDelivery`, and Standard ACP process
   cleanup failures that stop a send before provider dispatch while preserving
@@ -175,6 +176,7 @@ Android app login, native bridge, secure identity, and mobile transport diagnost
 - [Browser login completes but leaves the browser in front](./mobile.md#browser-login-completes-but-leaves-the-browser-in-front)
 - [Browser login returns to the App but remains signed out](./mobile.md#browser-login-returns-to-the-app-but-remains-signed-out)
 - [Android DeviceLink opens a session and then repeatedly restarts](./mobile.md#android-devicelink-opens-a-session-and-then-repeatedly-restarts)
+- [Mobile direct DeviceLink consistently takes about ten seconds](./mobile.md#mobile-direct-devicelink-consistently-takes-about-ten-seconds)
 - [Mobile shows output from a completed Session after foreground resume](./mobile.md#mobile-shows-output-from-a-completed-session-after-foreground-resume)
 - [Mobile stays connected after a long lock-screen interval but sends fail](./mobile.md#mobile-stays-connected-after-a-long-lock-screen-interval-but-sends-fail)
 - [iOS App crashes after loading the JavaScript bundle](./mobile.md#ios-app-crashes-after-loading-the-javascript-bundle)

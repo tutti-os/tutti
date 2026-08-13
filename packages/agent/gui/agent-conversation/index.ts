@@ -32,6 +32,7 @@ export type {
 } from "../shared/workspaceAgentSessionDetailViewModel";
 
 export type { AgentConversationVM } from "../shared/agentConversation/contracts/agentConversationVM";
+export type { AgentMessageMarkdownAgentTarget as AgentConversationAgentTargetPresentation } from "../shared/AgentTargetPresentationContext";
 export type {
   AgentConversationParticipantIdentity,
   AgentConversationParticipantPresentation

@@ -207,6 +207,7 @@ export class WorkspaceFileManagerService implements IWorkspaceFileManagerService
     }
     const locationSections = getCurrentDesktopWorkspaceFileLocationSections({
       homeDirectory: this.dependencies.platformApi.homeDirectory,
+      os: this.dependencies.platformApi.os,
       workspaceUserProjectService: this.dependencies.workspaceUserProjectService
     });
     const defaultLocationId = resolveDesktopWorkspaceFileDefaultLocationId({
@@ -331,6 +332,7 @@ export class WorkspaceFileManagerService implements IWorkspaceFileManagerService
     const locationSections = [
       ...(await loadDesktopWorkspaceFileLocationSections({
         homeDirectory: this.dependencies.platformApi.homeDirectory,
+        os: this.dependencies.platformApi.os,
         workspaceUserProjectService
       })),
       ...(await this.loadReferenceLocationSections(workspaceID))

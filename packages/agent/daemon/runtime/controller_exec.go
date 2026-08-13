@@ -434,9 +434,10 @@ type GoalControlInput struct {
 type GoalControlResult struct {
 	AgentSessionID string
 	// Goal is the fresh goal snapshot after the action (nil after clear).
-	Goal          map[string]any
-	Evidence      map[string]any
-	ProviderPhase string
+	Goal             map[string]any
+	Evidence         map[string]any
+	ProviderPhase    string
+	ExecutionPending bool
 }
 
 // GoalControl performs a direct goal action (banner buttons) as a
@@ -488,9 +489,10 @@ func (c *Controller) GoalControl(ctx context.Context, input GoalControlInput) (G
 		"action", string(input.Action),
 	)
 	return GoalControlResult{
-		AgentSessionID: session.AgentSessionID,
-		Goal:           goalAdapter.NormalizeGoalObservation(adapterResult.Observation),
-		Evidence:       clonePayload(adapterResult.Evidence),
-		ProviderPhase:  adapterResult.ProviderPhase,
+		AgentSessionID:   session.AgentSessionID,
+		Goal:             goalAdapter.NormalizeGoalObservation(adapterResult.Observation),
+		Evidence:         clonePayload(adapterResult.Evidence),
+		ProviderPhase:    adapterResult.ProviderPhase,
+		ExecutionPending: adapterResult.ExecutionPending,
 	}, nil
 }

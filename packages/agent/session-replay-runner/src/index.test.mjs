@@ -236,6 +236,30 @@ test("provider cursor math and activity clock", async () => {
     waits.reduce((total, duration) => total + duration, 0),
     80
   );
+
+  playback = {
+    paused: false,
+    playbackElapsedMs: 0,
+    speed: 1,
+    timingMode: "realtime"
+  };
+  const sharedOriginWaits = [];
+  const sharedOriginClock = createReplayActivityClock({
+    originOccurredAtUnixMs: 900,
+    playbackState: async () => playback,
+    wait: async (durationMs) => {
+      sharedOriginWaits.push(durationMs);
+      playback = {
+        ...playback,
+        playbackElapsedMs: playback.playbackElapsedMs + durationMs
+      };
+    }
+  });
+  await sharedOriginClock.waitUntil(1_000);
+  assert.equal(
+    sharedOriginWaits.reduce((total, duration) => total + duration, 0),
+    100
+  );
 });
 
 test("submit idle gate and managed failure routing", () => {

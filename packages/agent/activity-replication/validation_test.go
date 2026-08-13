@@ -23,6 +23,7 @@ func TestValidateMutationAcceptsEveryProjectionSnapshot(t *testing.T) {
 		}
 	}
 	turnID := "turn-1"
+	identityAnchorTurnID := "plan-turn-1"
 	tests := []struct {
 		name     string
 		mutation activityreplication.Mutation
@@ -56,7 +57,8 @@ func TestValidateMutationAcceptsEveryProjectionSnapshot(t *testing.T) {
 				mutation := base(activityreplication.EntityTurn, activityreplication.EntityKey{AgentSessionID: "session-1", TurnID: turnID})
 				mutation.Turn = &activityreplication.Turn{
 					WorkspaceID: "workspace-1", AgentSessionID: "session-1", TurnID: turnID,
-					Phase: canonical.TurnPhaseRunning, Origin: canonical.TurnOriginUserPrompt,
+					IdentityAnchorTurnID: &identityAnchorTurnID,
+					Phase:                canonical.TurnPhaseRunning, Origin: canonical.TurnOriginUserPrompt,
 					ProviderTurnBindingJSON: json.RawMessage(`{}`),
 				}
 				mutation.SessionScope = sessionScope
@@ -100,6 +102,33 @@ func TestValidateMutationAcceptsEveryProjectionSnapshot(t *testing.T) {
 			t.Parallel()
 			if err := activityreplication.ValidateMutation(test.mutation); err != nil {
 				t.Fatalf("ValidateMutation() error = %v", err)
+			}
+		})
+	}
+}
+
+func TestValidateMutationRejectsInvalidTurnIdentityAnchor(t *testing.T) {
+	t.Parallel()
+	for _, anchor := range []string{" ", "turn-1"} {
+		anchor := anchor
+		t.Run(anchor, func(t *testing.T) {
+			t.Parallel()
+			mutation := activityreplication.Mutation{
+				SchemaVersion: activityreplication.SchemaVersion, MutationID: "mutation-1", TransactionID: "transaction-1",
+				SourceDeviceID: "device-1", WorkspaceID: "workspace-1", EntityType: activityreplication.EntityTurn,
+				Operation: activityreplication.OperationUpsert,
+				Key:       activityreplication.EntityKey{AgentSessionID: "session-1", TurnID: "turn-1"},
+				Turn: &activityreplication.Turn{
+					WorkspaceID: "workspace-1", AgentSessionID: "session-1", TurnID: "turn-1",
+					IdentityAnchorTurnID: &anchor, Phase: canonical.TurnPhaseRunning,
+					Origin: canonical.TurnOriginUserPrompt, ProviderTurnBindingJSON: json.RawMessage(`{}`),
+				},
+				SessionScope: &activityreplication.SessionScope{
+					ExecutorOwnerUserID: "owner-1", SourceDeviceID: "device-1", Visibility: activityreplication.VisibilityMembers,
+				},
+			}
+			if err := activityreplication.ValidateMutation(mutation); err == nil {
+				t.Fatal("ValidateMutation() error = nil")
 			}
 		})
 	}

@@ -5,6 +5,8 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
+	"strings"
 	"testing"
 	"time"
 
@@ -108,7 +110,7 @@ func TestServiceImportExternalSessionsRepairsSelectedNestedProjectRailMembership
 	if err != nil {
 		t.Fatalf("ReportSessionState(legacy parent membership) error = %v", err)
 	}
-	if legacy.Session.RailSectionKey != "project:"+parentProject {
+	if legacy.Session.RailSectionKey != agentactivitybiz.RailSectionKeyForProject(parentProject) {
 		t.Fatalf("legacy railSectionKey = %q, want parent before reimport", legacy.Session.RailSectionKey)
 	}
 
@@ -131,7 +133,7 @@ func TestServiceImportExternalSessionsRepairsSelectedNestedProjectRailMembership
 	if err != nil || !ok {
 		t.Fatalf("GetSession() ok=%v error=%v", ok, err)
 	}
-	wantSectionKey := "project:" + nestedProject
+	wantSectionKey := agentactivitybiz.RailSectionKeyForProject(nestedProject)
 	if persisted.RailSectionKey != wantSectionKey {
 		t.Fatalf("railSectionKey = %q, want selected nested project %q", persisted.RailSectionKey, wantSectionKey)
 	}
@@ -333,6 +335,47 @@ func TestMatchingExternalImportProjectPrefersExactSelection(t *testing.T) {
 	)
 	if !ok || got != child {
 		t.Fatalf("matchingExternalImportProject() = %q, %v; want exact child path %q", got, ok, child)
+	}
+	if runtime.GOOS == "windows" {
+		got, ok = matchingExternalImportProject(
+			externalImportedSession{
+				Provider: "codex",
+				Cwd:      strings.ToLower(child),
+			},
+			[]ExternalImportProjectSelection{
+				{Path: strings.ToUpper(parent), Providers: []string{"codex"}},
+				{Path: strings.ToUpper(child), Providers: []string{"codex"}},
+			},
+		)
+		if !ok || !agentactivitybiz.AreProjectPathsEqual(got, child) {
+			t.Fatalf("Windows identity matching = %q, %v; want child path equivalent to %q", got, ok, child)
+		}
+	}
+}
+
+func TestUpsertExternalImportProjectUsesWindowsPathIdentity(t *testing.T) {
+	t.Parallel()
+
+	if runtime.GOOS != "windows" {
+		t.Skip("Windows filesystem identity is platform-specific")
+	}
+	projectPath := t.TempDir()
+	projects := map[string]*ExternalImportProject{}
+	upsertExternalImportProject(projects, ExternalImportProject{
+		Path:         strings.ToUpper(projectPath),
+		SessionCount: 1,
+	}, "codex")
+	upsertExternalImportProject(projects, ExternalImportProject{
+		Path:         strings.ToLower(projectPath),
+		SessionCount: 1,
+	}, "claude-code")
+	if len(projects) != 1 {
+		t.Fatalf("project identity map has %d entries, want one: %#v", len(projects), projects)
+	}
+	for _, project := range projects {
+		if project.SessionCount != 2 {
+			t.Fatalf("merged project session count = %d, want 2", project.SessionCount)
+		}
 	}
 }
 

@@ -8,6 +8,7 @@ Open only the area that matches the symptom:
 
 Provider discovery, installation, authentication, models, configuration, and runtime reachability.
 
+- [Hermes is ready but a new Windows session reports Agent failed to start](./agent-provider-setup.md#hermes-is-ready-but-a-new-windows-session-reports-agent-failed-to-start)
 - [An extension Agent is installed in the terminal but Tutti cannot detect it](./agent-provider-setup.md#an-extension-agent-is-installed-in-the-terminal-but-tutti-cannot-detect-it)
 - [Codex `/status` shows a 5h limit for a weekly-only account window](./agent-provider-setup.md#codex-status-shows-a-5h-limit-for-a-weekly-only-account-window)
 - [Bun-installed Codex works in a terminal but Tutti cannot use it](./agent-provider-setup.md#bun-installed-codex-works-in-a-terminal-but-tutti-cannot-use-it)

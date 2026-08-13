@@ -379,6 +379,87 @@ describe("projectConversationRailMemberships", () => {
 
     expect(projected[0]?.items.map((item) => item.id)).toEqual(["exact"]);
   });
+
+  it("reorders loaded ordinary rows from current turn sort times", () => {
+    const previouslyRecent = {
+      ...conversation("previously-recent"),
+      sortTimeUnixMs: 100
+    };
+    const continuedHistorical = {
+      ...conversation("continued-historical"),
+      sortTimeUnixMs: 200
+    };
+
+    const projected = projectConversationRailMemberships({
+      conversations: [previouslyRecent, continuedHistorical],
+      labels: railLabels,
+      sections: membership([previouslyRecent, continuedHistorical])
+    });
+
+    expect(projected[0]?.items.map((item) => item.id)).toEqual([
+      "continued-historical",
+      "previously-recent"
+    ]);
+  });
+
+  it("keeps ordinary row order stable when only streaming freshness changes", () => {
+    const first = {
+      ...conversation("first"),
+      sortTimeUnixMs: 200,
+      updatedAtUnixMs: 1
+    };
+    const second = {
+      ...conversation("second"),
+      sortTimeUnixMs: 100,
+      updatedAtUnixMs: 2
+    };
+    const sections = membership([first, second]);
+
+    const projected = projectConversationRailMemberships({
+      conversations: [
+        { ...first, updatedAtUnixMs: 3 },
+        { ...second, updatedAtUnixMs: 4 }
+      ],
+      labels: railLabels,
+      sections
+    });
+
+    expect(projected[0]?.items.map((item) => item.id)).toEqual([
+      "first",
+      "second"
+    ]);
+  });
+
+  it("preserves daemon-owned pinned membership order", () => {
+    const first = {
+      ...conversation("pinned-first", 10),
+      railSectionKey: "conversations",
+      sortTimeUnixMs: 100
+    };
+    const second = {
+      ...conversation("pinned-second", 20),
+      railSectionKey: "conversations",
+      sortTimeUnixMs: 200
+    };
+
+    const projected = projectConversationRailMemberships({
+      conversations: [first, second],
+      labels: railLabels,
+      sections: [
+        {
+          id: "pinned",
+          kind: "pinned",
+          project: null,
+          sessionIds: [first.id, second.id]
+        }
+      ]
+    });
+
+    expect(projected[0]?.items.map((item) => item.id)).toEqual([
+      "pinned-first",
+      "pinned-second"
+    ]);
+  });
 });
 
 describe("projectConversationRailSectionsWithTransientConversations", () => {

@@ -106,6 +106,35 @@ func TestStandardACPAdapterConcurrentStartsLeaveSingleLiveProcess(t *testing.T) 
 	}
 }
 
+func TestStandardACPAdapterHasLiveSessionRejectsClosedClient(t *testing.T) {
+	t.Parallel()
+
+	transport := newStandardACPTransport("Hermes Agent", "hermes-session-1")
+	adapter := newHermesExtensionTestAdapter(transport)
+	session := standardTestSession(hermesExtensionTestProvider)
+	if _, err := adapter.Start(context.Background(), session); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	acpSession := adapter.getSession(session.AgentSessionID)
+	if acpSession == nil || acpSession.client == nil {
+		t.Fatal("started session has no client")
+	}
+	if err := transport.conn.Close(); err != nil {
+		t.Fatal(err)
+	}
+	waitForCondition(t, func() bool {
+		select {
+		case <-acpSession.client.Done():
+			return true
+		default:
+			return false
+		}
+	})
+	if adapter.HasLiveSession(session) {
+		t.Fatal("HasLiveSession = true after ACP client terminated")
+	}
+}
+
 func TestStandardACPAdapterCarriesExecutableIdentityToProcessStart(t *testing.T) {
 	t.Parallel()
 
@@ -278,17 +307,17 @@ func TestStandardACPAdapterCloseSendsProtocolSessionCloseBeforeTransportClose(t 
 func TestStandardACPAdapterReleaseLiveSessionClosesOnlyTransport(t *testing.T) {
 	t.Parallel()
 
-	transport := newStandardACPTransport("Kimi Code", "kimi-session-idle-release")
+	transport := newStandardACPTransport("Hermes Agent", "hermes-session-release")
 	transport.conn.supportsAgentLoadSession = true
 	transport.conn.supportsCloseSession = true
-	adapter := newKimiCodeExtensionTestAdapter(t, transport)
-	session := standardTestSession("acp:kimi-code")
+	adapter := newHermesExtensionTestAdapter(transport)
+	session := standardTestSession(hermesExtensionTestProvider)
 
 	if _, err := adapter.Start(context.Background(), session); err != nil {
 		t.Fatalf("Start: %v", err)
 	}
 	if !adapter.CanReleaseLiveSession(session) {
-		t.Fatal("CanReleaseLiveSession = false, want load-capable Kimi Code session releasable")
+		t.Fatal("CanReleaseLiveSession = false, want load-capable Hermes session releasable")
 	}
 	if err := adapter.ReleaseLiveSession(context.Background(), session); err != nil {
 		t.Fatalf("ReleaseLiveSession: %v", err)

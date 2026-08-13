@@ -72,6 +72,12 @@ Engine rules:
   Cancellation aborts a mutation host effect; once delivery may have started,
   the mutation remains delivery-unknown rather than becoming a confirmed
   failure.
+- The activation request identity is projected as `activationId` on the typed
+  host effect. Pending activation diagnostics keep command settlement separate
+  from the first Session snapshot observation, including bounded outcomes for a
+  missing Session, workspace mismatch, stale new-Session evidence, and a match.
+  This lets hosts report command and snapshot latency without treating repeated
+  snapshots or a late command result as a second lifecycle transition.
 - Reducers are pure and return new state plus command descriptions; the effect
   executor performs commands and feeds every settlement (success, failure,
   timeout) back into the loop as command-result intents.
@@ -341,6 +347,19 @@ for external hosts that use them for goal setup or idempotency. A typed
 new-Session Goal is part of activation: hosts forward `initialGoalControl` and
 empty initial content to their Create transport, and Agent Host creates the
 Session plus durable Goal operation without creating a Turn.
+Hosts that already observe that durable operation may attach the optional,
+read-only `goalSyncState` projection to the Session. The field carries only the
+revision, sync status, pending operation identity, and optional Host-owned
+`executionPending` proof. Omission means the host cannot prove progress;
+consumers must not reinterpret it as idle or successful.
+For loading continuity, `pending`, `applying`, and `unknown` require a non-empty
+pending operation identity. A `synced` mutation keeps the initial-Goal bridge
+only when `executionPending` is explicitly true. The Host clears that proof on
+the first canonical Turn with exact Goal provenance or when the Goal becomes
+terminal, diverged, failed, or otherwise non-executing. Missing proof fails
+closed, including for mixed-version hosts.
+Engine Session merging preserves known state across compatible projections that
+omit the optional field, while an explicit `null` clears it.
 Existing-Session Goal Control is a separate Engine operation. The caller
 proposes a stable client-submit identity; admission returns the effective
 identity actually used by the Engine. The Engine owns command identity,

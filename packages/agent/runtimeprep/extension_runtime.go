@@ -100,10 +100,30 @@ func resolveExtensionRuntimeSourceHome(home ExtensionRuntimeHome) string {
 			return v
 		}
 	}
-	if rel := strings.TrimSpace(home.SourceDefaultRel); rel != "" {
-		if userHome, err := os.UserHomeDir(); err == nil && userHome != "" {
-			return filepath.Join(userHome, filepath.FromSlash(rel))
+	rel := strings.TrimSpace(home.SourceDefaultRel)
+	if rel == "" {
+		return ""
+	}
+
+	candidates := []string{}
+	if platformHome := extensionRuntimePlatformSourceHome(rel); platformHome != "" {
+		candidates = appendUniquePath(candidates, platformHome)
+	}
+	if userHome, err := os.UserHomeDir(); err == nil && userHome != "" {
+		candidates = appendUniquePath(candidates, filepath.Join(userHome, filepath.FromSlash(rel)))
+	}
+	for _, candidate := range candidates {
+		info, err := os.Stat(candidate)
+		if err == nil && info.IsDir() {
+			return candidate
 		}
+		if err != nil && !os.IsNotExist(err) {
+			return candidate
+		}
+	}
+	if len(candidates) > 0 {
+		// Preserve the original default even when it has not been created yet.
+		return candidates[0]
 	}
 	return ""
 }

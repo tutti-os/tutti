@@ -278,6 +278,9 @@ test("activation intent owns the transport command and confirmation deadline", (
   const result = reduce(createInitialPendingIntentsState(), activation());
   const pendingActivation = result.state.activationsByRequestId["activation-1"];
   assert.equal(pendingActivation?.status, "requested");
+  assert.equal(pendingActivation?.commandOutcome, "pending");
+  assert.equal(pendingActivation?.snapshotOutcome, "not_observed");
+  assert.equal(pendingActivation?.lastObservedStage, "requested");
   assert.equal(pendingActivation?.displayPrompt, "/browser");
   assert.equal(pendingActivation?.optimisticTitle, "Review browser flow");
   assert.equal(pendingActivation?.railSectionKey, "project:/workspace");
@@ -452,6 +455,38 @@ test("a realtime session upsert confirms its pending activation", () => {
   assert.equal(
     confirmed.state.activationsByRequestId["activation-1"]?.status,
     "confirmed"
+  );
+});
+
+test("a pre-admitted binding with stale createdAt confirms via updatedAt", () => {
+  const state = reduce(createInitialPendingIntentsState(), activation()).state;
+  const confirmed = reduce(state, {
+    session: {
+      ...session("session-new"),
+      createdAtUnixMs: 0,
+      updatedAtUnixMs: 1
+    },
+    type: "session/upserted"
+  });
+  assert.equal(
+    confirmed.state.activationsByRequestId["activation-1"]?.status,
+    "confirmed"
+  );
+});
+
+test("a stale pre-admitted binding without post-request update stays requested", () => {
+  const state = reduce(createInitialPendingIntentsState(), activation()).state;
+  const stillPending = reduce(state, {
+    session: {
+      ...session("session-new"),
+      createdAtUnixMs: 0,
+      updatedAtUnixMs: 0
+    },
+    type: "session/upserted"
+  });
+  assert.equal(
+    stillPending.state.activationsByRequestId["activation-1"]?.status,
+    "requested"
   );
 });
 
@@ -696,6 +731,45 @@ test("typed activation rejects malformed nested Session entities", () => {
   assert.deepEqual(result.followUpIntents, undefined);
 });
 
+test("typed activation rejects malformed Goal synchronization evidence", () => {
+  for (const goalSyncState of [
+    { pendingOperationId: 42, revision: 1, syncStatus: "applying" },
+    { pendingOperationId: null, revision: -1, syncStatus: "applying" },
+    { pendingOperationId: null, revision: 1, syncStatus: "future" },
+    { revision: 1, syncStatus: "applying" }
+  ]) {
+    const state = reduce(
+      createInitialPendingIntentsState(),
+      activation()
+    ).state;
+    const result = reduce(state, {
+      commandId: "activate:activation-1",
+      commandType: "session/activate",
+      correlationId: "activation-1",
+      outcome: "succeeded",
+      resultContract: "activation-v1",
+      type: "engine/commandResult",
+      value: {
+        activation: { mode: "new", status: "attached" },
+        session: {
+          ...session("session-new"),
+          goalSyncState
+        }
+      }
+    });
+
+    assert.equal(
+      result.state.activationsByRequestId["activation-1"]?.errorCode,
+      "invalid_command_result"
+    );
+    assert.equal(
+      result.state.activationsByRequestId["activation-1"]?.status,
+      "uncertain"
+    );
+    assert.deepEqual(result.followUpIntents, undefined);
+  }
+});
+
 test("confirmed activation may hydrate detail but cannot be failed by a late result", () => {
   let state = reduce(
     createInitialPendingIntentsState(),
@@ -722,7 +796,19 @@ test("confirmed activation may hydrate detail but cannot be failed by a late res
       error: { code: "late_failure", message: "late failure" }
     }
   });
-  assert.equal(failed.state, state);
+  assert.equal(
+    failed.state.activationsByRequestId["activation-existing"]?.status,
+    "confirmed"
+  );
+  assert.equal(
+    failed.state.activationsByRequestId["activation-existing"]?.commandOutcome,
+    "failed"
+  );
+  assert.equal(
+    failed.state.activationsByRequestId["activation-existing"]
+      ?.lastObservedStage,
+    "stale_command_result"
+  );
   assert.deepEqual(failed.followUpIntents, undefined);
 
   const hydrated = reduce(state, {
@@ -744,7 +830,15 @@ test("confirmed activation may hydrate detail but cannot be failed by a late res
       session: session("session-new")
     }
   });
-  assert.equal(hydrated.state, state);
+  assert.equal(
+    hydrated.state.activationsByRequestId["activation-existing"]?.status,
+    "confirmed"
+  );
+  assert.equal(
+    hydrated.state.activationsByRequestId["activation-existing"]
+      ?.commandOutcome,
+    "succeeded"
+  );
   assert.equal(
     hydrated.followUpIntents?.[0]?.type,
     "session/detailSnapshotReceived"
@@ -772,6 +866,144 @@ test("activation confirmation requires an exact workspace-scoped fresh snapshot"
     state.activationsByRequestId["activation-1"]?.status,
     "requested"
   );
+  assert.equal(
+    state.activationsByRequestId["activation-1"]?.snapshotOutcome,
+    "workspace_mismatch"
+  );
+  assert.equal(
+    state.activationsByRequestId["activation-1"]?.lastObservedStage,
+    "snapshot_observed"
+  );
+});
+
+test("activation diagnostics preserve command and snapshot evidence through expiry", () => {
+  let state = reduce(createInitialPendingIntentsState(), activation()).state;
+  state = reduce(state, {
+    commandId: "activate:activation-1",
+    commandType: "session/activate",
+    correlationId: "activation-1",
+    outcome: "timedOut",
+    settledAtUnixMs: 90_001,
+    type: "engine/commandResult"
+  }).state;
+  state = reduce(state, {
+    sessions: [],
+    type: "session/snapshotReceived"
+  }).state;
+  const expired = reduce(state, {
+    dueAtUnixMs: 120_000,
+    expiryId: "activation:activation-1",
+    type: "engine/intentExpired"
+  }).state.activationsByRequestId["activation-1"];
+  assert.equal(expired?.status, "failed");
+  assert.equal(expired?.commandOutcome, "timed_out");
+  assert.equal(expired?.commandSettledAtUnixMs, 90_001);
+  assert.equal(expired?.snapshotOutcome, "session_missing");
+  assert.equal(expired?.lastObservedStage, "expired");
+  assert.equal(expired?.errorCode, "activation_confirmation_expired");
+});
+
+test("repeated identical activation snapshot evidence preserves state identity", () => {
+  let state = reduce(createInitialPendingIntentsState(), activation()).state;
+  state = reduce(state, {
+    observedAtUnixMs: 1_000,
+    sessions: [],
+    type: "session/snapshotReceived"
+  }).state;
+  const repeated = reduce(state, {
+    observedAtUnixMs: 2_000,
+    sessions: [],
+    type: "session/snapshotReceived"
+  });
+
+  assert.equal(repeated.state, state);
+  assert.equal(
+    repeated.state.activationsByRequestId["activation-1"]
+      ?.snapshotObservedAtUnixMs,
+    1_000
+  );
+});
+
+test("repeated snapshot evidence after command settlement preserves first observation time", () => {
+  let state = reduce(createInitialPendingIntentsState(), activation()).state;
+  state = reduce(state, {
+    observedAtUnixMs: 1_000,
+    sessions: [],
+    type: "session/snapshotReceived"
+  }).state;
+  state = reduce(state, {
+    commandId: "activate:activation-1",
+    commandType: "session/activate",
+    correlationId: "activation-1",
+    outcome: "timedOut",
+    settledAtUnixMs: 2_000,
+    type: "engine/commandResult"
+  }).state;
+
+  const repeated = reduce(state, {
+    observedAtUnixMs: 3_000,
+    sessions: [],
+    type: "session/snapshotReceived"
+  }).state.activationsByRequestId["activation-1"];
+
+  assert.equal(repeated?.snapshotOutcome, "session_missing");
+  assert.equal(repeated?.snapshotObservedAtUnixMs, 1_000);
+  assert.equal(repeated?.lastObservedStage, "snapshot_observed");
+});
+
+test("stopping after activation command success preserves the command outcome", () => {
+  let state = reduce(createInitialPendingIntentsState(), activation()).state;
+  state = reduce(state, {
+    commandId: "activate:activation-1",
+    commandType: "session/activate",
+    correlationId: "activation-1",
+    outcome: "succeeded",
+    settledAtUnixMs: 1_000,
+    type: "engine/commandResult",
+    value: {
+      activation: { mode: "new", status: "attached" },
+      session: { ...session("session-new"), createdAtUnixMs: 1 }
+    }
+  }).state;
+  const stopped = reduce(state, {
+    agentSessionId: "session-new",
+    awaitingTurnExpiresAtUnixMs: 31_000,
+    commandId: "stop:1",
+    type: "session/stopRequested",
+    workspaceId: "workspace-1"
+  }).state.activationsByRequestId["activation-1"];
+
+  assert.equal(stopped?.status, "canceled");
+  assert.equal(stopped?.commandOutcome, "succeeded");
+  assert.equal(stopped?.lastObservedStage, "canceled");
+});
+
+test("late command failure cannot downgrade a snapshot-confirmed activation", () => {
+  let state = reduce(createInitialPendingIntentsState(), activation()).state;
+  state = reduce(state, {
+    sessions: [
+      {
+        ...session("session-new"),
+        createdAtUnixMs: 2
+      }
+    ],
+    type: "session/snapshotReceived"
+  }).state;
+  const settled = reduce(state, {
+    commandId: "activate:activation-1",
+    commandType: "session/activate",
+    correlationId: "activation-1",
+    errorCode: "request_timed_out",
+    errorMessage: "late timeout",
+    outcome: "failed",
+    settledAtUnixMs: 30_001,
+    type: "engine/commandResult"
+  }).state.activationsByRequestId["activation-1"];
+  assert.equal(settled?.status, "confirmed");
+  assert.equal(settled?.snapshotOutcome, "matched");
+  assert.equal(settled?.commandOutcome, "failed");
+  assert.equal(settled?.lastObservedStage, "stale_command_result");
+  assert.equal(settled?.errorCode, null);
 });
 
 test("confirmed activation emits its request-scoped pending settings command once", () => {

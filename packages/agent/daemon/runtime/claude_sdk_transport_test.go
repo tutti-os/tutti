@@ -1,8 +1,10 @@
 package agentruntime
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"log/slog"
 	"strings"
 	"testing"
 	"time"
@@ -12,6 +14,30 @@ import (
 	"github.com/tutti-os/tutti/packages/agent/daemon/liveprotocol"
 	sessionreplay "github.com/tutti-os/tutti/packages/agent/session-replay"
 )
+
+func TestClaudeSDKCancellationDiagnosticsAreForwardedAsStructuredLogs(t *testing.T) {
+	var output bytes.Buffer
+	previousLogger := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&output, nil)))
+	t.Cleanup(func() {
+		slog.SetDefault(previousLogger)
+	})
+
+	logClaudeSDKSidecarDebugStderr([]byte(
+		"ignored stderr\n" + claudeSDKCancelLogPrefix + ` {"stage":"interrupt_timed_out","turnId":"turn-1"}` + "\n",
+	))
+
+	logged := output.String()
+	if !strings.Contains(logged, `msg=CLAUDE_CODE_CANCEL_DIAGNOSTIC`) {
+		t.Fatalf("log = %q, want cancellation prefix", logged)
+	}
+	if !strings.Contains(logged, `event=agent_session.claude_sdk.cancel_diagnostic`) {
+		t.Fatalf("log = %q, want cancellation diagnostic event", logged)
+	}
+	if !strings.Contains(logged, `interrupt_timed_out`) || !strings.Contains(logged, `turn-1`) {
+		t.Fatalf("log = %q, want structured payload", logged)
+	}
+}
 
 func TestClaudeCodeSDKAdapterExecWithSidecarTestDriver(t *testing.T) {
 	t.Setenv(claudeSDKSidecarTestDriverEnv, "1")
@@ -578,7 +604,7 @@ func TestClaudeSDKLineReaderTracksNDJSONInputUnitsAtCompletionChunk(t *testing.T
 			RecordingID:  "recording-1",
 			ConnectionID: "connection-1",
 			ChunkSeq:     4,
-			Stdout:       []byte(`{"version":8,"type":"assistant_delta","payload":{"text":"hel`),
+			Stdout:       []byte(`{"version":10,"type":"assistant_delta","payload":{"text":"hel`),
 		},
 		{
 			RecordingID:  "recording-1",
@@ -586,7 +612,7 @@ func TestClaudeSDKLineReaderTracksNDJSONInputUnitsAtCompletionChunk(t *testing.T
 			ChunkSeq:     5,
 			Stdout: []byte(
 				`lo"}}` + "\n" +
-					`{"version":8,"type":"turn_completed","payload":{"turnId":"turn-1"}}` + "\n",
+					`{"version":10,"type":"turn_completed","payload":{"turnId":"turn-1"}}` + "\n",
 			),
 		},
 	}}

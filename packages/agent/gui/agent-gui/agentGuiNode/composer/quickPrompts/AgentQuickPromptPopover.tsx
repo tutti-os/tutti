@@ -109,7 +109,10 @@ export function AgentQuickPromptPopover({
     preserveExternalFocusRef.current = true;
     controller.openCreate(
       { title: template.title, content: template.content },
-      { insertIntoComposerAfterSave: true }
+      {
+        insertIntoComposerAfterSave: true,
+        usagePromptType: "recommended_template"
+      }
     );
   };
   const isTemplateView = activeView === "templates";

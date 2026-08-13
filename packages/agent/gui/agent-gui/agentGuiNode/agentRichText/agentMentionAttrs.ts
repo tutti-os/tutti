@@ -37,9 +37,7 @@ export function mentionItemToAttrs(
   }
   if (item.kind === "session") {
     const iconUrl = resolveAgentSessionMentionIconUrl({
-      agentIconUrl: item.agentIconUrl,
-      agentTargetId: item.agentTargetId,
-      href: item.href
+      agentIconUrl: item.agentIconUrl
     });
     return {
       name: item.name,

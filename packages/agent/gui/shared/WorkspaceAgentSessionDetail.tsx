@@ -1,6 +1,7 @@
 import { useMemo, type JSX } from "react";
 import type { WorkspaceLinkAction } from "../contexts/workspace/presentation/renderer/actions/workspaceLinkActions";
 import { translate } from "../i18n/index";
+import type { AgentMessageMarkdownAgentTarget } from "./AgentTargetPresentationContext";
 import { AgentConversationFlow } from "./agentConversation/components/AgentConversationFlow";
 import type { AgentConversationParticipantPresentation } from "./agentConversation/contracts/agentConversationParticipantPresentation";
 import { useProjectedAgentConversation } from "./agentConversation/projection/useProjectedAgentConversation";
@@ -11,6 +12,7 @@ export interface WorkspaceAgentSessionDetailProps {
   avoidGroupingEdits?: boolean;
   isLoading: boolean;
   timelineItemCount: number;
+  agentTargets?: readonly AgentMessageMarkdownAgentTarget[];
   onLinkAction?: (action: WorkspaceLinkAction) => void;
   toolCallsLabel: (count: number) => string;
   thinkingLabel?: string;
@@ -25,6 +27,7 @@ export function WorkspaceAgentSessionDetail({
   avoidGroupingEdits = false,
   isLoading,
   timelineItemCount,
+  agentTargets,
   onLinkAction,
   toolCallsLabel,
   thinkingLabel = translate("agentHost.workspaceAgentSessionDetailThinking"),
@@ -70,6 +73,7 @@ export function WorkspaceAgentSessionDetail({
     <div className="workspace-agents-status-panel__detail">
       <AgentConversationFlow
         conversation={detail.turns.length > 0 ? conversation : null}
+        agentTargets={agentTargets}
         isLoading={showLoadingSkeleton}
         loadingLabel={loadingLabel}
         empty={emptyState}

@@ -42,9 +42,8 @@ Fallback only when the matching Skill is unavailable:
 {{else if has "references.reference.list"}}- Reference mention: `{{command "references.reference.list" (args "source" "<source>" "id" "<id>")}}`
 {{else}}- Reference mention: unavailable; do not guess a command.
 {{end}}{{if has "workspace-apps.app.open"}}- Explicit app open/show: `{{command "workspace-apps.app.open" (args "app-id" "<appId>")}}`
-{{end}}{{if has "agent-context.agent.wait"}}- Agent-session mention: `{{command "agent-context.agent.wait"}}` for the next stop point.
-{{end}}{{if has "agent-context.agent.session-summary"}}- Agent conversation recovery: `{{command "agent-context.agent.session-summary"}}`.
-{{else if has "agent-context.agent.get"}}- Agent conversation recovery: `{{command "agent-context.agent.get"}}`.
+{{end}}{{if has "agent-context.agent.session-summary"}}- Agent-session mention and conversation recovery: `{{command "agent-context.agent.session-summary"}}`.
+{{else if has "agent-context.agent.get"}}- Agent-session mention and conversation recovery: `{{command "agent-context.agent.get"}}`.
 {{end}}{{if hasAll "agent-context.agent.list" "agent-context.agent.start"}}- Agent-target mention: verify with `{{command "agent-context.agent.list"}}`, then start with `{{command "agent-context.agent.start"}}`.
 {{end}}{{if eq .HostFacts.TargetContinuation.Mode "except-prefixes"}}- Targets whose ids start with {{range .HostFacts.TargetContinuation.UnsupportedTargetIDPrefixes}}`{{.}}` {{end}}are start-only.
 {{end}}

@@ -76,6 +76,19 @@ test("signature changes when the detection outcome changes", () => {
   assert.equal(a, envDetectedSignature(status()), "stable for identical input");
 });
 
+test("configured credentials are present but not remotely authenticated", () => {
+  const configured = status({
+    auth: { status: "configured", accountLabel: null }
+  });
+
+  assert.equal(buildEnvDetectedParams(configured).authenticated, false);
+  assert.equal(buildEnvIssueParams(configured).accountPresent, true);
+  assert.notEqual(
+    envDetectedSignature(configured),
+    envDetectedSignature(status())
+  );
+});
+
 test("issue params add diagnostic detail under consent (paths, proxy) but not email", () => {
   const params = buildEnvIssueParams(status());
   assert.equal(params.consentGiven, true);

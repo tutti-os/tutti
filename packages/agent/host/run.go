@@ -5,8 +5,8 @@ import (
 	"errors"
 )
 
-// Run supervises the runtime-operation, goal-operation, goal-reconcile-inbox,
-// and periodic worktree-GC workers as one lifecycle. Per-item step errors
+// Run supervises the runtime-operation, goal-operation, and goal-reconcile-inbox
+// workers as one lifecycle. Per-item step errors
 // remain retryable inside their worker; an infrastructure-level worker exit
 // cancels its siblings so adapters cannot silently continue with a partially
 // running Host.
@@ -18,7 +18,6 @@ func (h *Host) Run(ctx context.Context) error {
 		h.runRuntimeOperationWorker,
 		h.runGoalOperationWorker,
 		h.runGoalReconcileInboxWorker,
-		h.runWorktreeGarbageCollectionWorker,
 	})
 }
 

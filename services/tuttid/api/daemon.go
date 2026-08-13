@@ -74,6 +74,8 @@ type DaemonAPI struct {
 	AnalyticsReporter             reporterservice.Reporter
 	DesktopUpdateAdmissionService DesktopUpdateAdmissionService
 	ConnectorMarketService        market.Service
+	ConnectorMarketScope          func() market.OperationScope
+	ConnectorAuthorizationReady   func(string) bool
 	// OnListenerReady starts daemon work that may wake an Agent whose next
 	// action calls back into tuttid. Wiring invokes it only after publishing
 	// listener information.

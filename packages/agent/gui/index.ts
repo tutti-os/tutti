@@ -85,7 +85,8 @@ export type {
   AgentGUIComposerFocusMethod,
   AgentGUIEngagementContext,
   AgentGUIEngagementEvent,
-  AgentGUIEngagementEventSink
+  AgentGUIEngagementEventSink,
+  AgentGUIQuickPromptType
 } from "./agent-gui/agentGuiNode/engagement/agentGUIEngagement.types";
 export {
   agentGUIAgentIsReady,
@@ -205,6 +206,21 @@ export type {
   AgentActivityRuntimeUpdateSessionSettingsInput,
   AgentActivityRuntimeUpdateSessionSettingsResult
 } from "./agentActivityRuntime";
+export {
+  agentGUIPerformanceDuration,
+  createAgentGUIPerformanceMonitor,
+  trackAgentGUIComposerOptionsLoad
+} from "./agentGUIPerformanceMonitor";
+export type {
+  AgentGUIComposerOptionsLoadInput,
+  AgentGUIComposerOptionsLoadSource,
+  AgentGUIComposerOptionsPerformanceEvent,
+  AgentGUIComposerOptionsPerformanceTrackerInput,
+  AgentGUIFirstTokenKind,
+  AgentGUIPerformanceDurationBucket,
+  AgentGUIPerformanceEvent,
+  AgentGUIPerformanceMonitor
+} from "./agentGUIPerformanceMonitor";
 export type {
   AgentHostApi,
   AgentHostAgentTargetAuthenticatedAccount,

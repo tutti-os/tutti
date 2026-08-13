@@ -110,6 +110,9 @@ func projectEventData(event Event, context ProjectionContext) ([]byte, error) {
 		if err := json.Unmarshal(event.Data, &value); err != nil {
 			return nil, fmt.Errorf("%w: %v", ErrInvalidLiveEvent, err)
 		}
+		if !canonicalTurnIDAllowed(value.RootTurnID, canonicalTurnIDs) {
+			return nil, fmt.Errorf("%w: interaction snapshot root Turn is not authorized", ErrInvalidLiveEvent)
+		}
 		for _, interaction := range value.Interactions {
 			if !canonicalTurnIDAllowed(interaction.TurnID, canonicalTurnIDs) {
 				return nil, fmt.Errorf("%w: interaction snapshot contains an unauthorized Turn", ErrInvalidLiveEvent)
@@ -117,6 +120,7 @@ func projectEventData(event Event, context ProjectionContext) ([]byte, error) {
 		}
 		value.WorkspaceID = projectedString(value.WorkspaceID, context.OwnerWorkspaceID, context.RecipientWorkspaceID)
 		value.AgentSessionID = projectedString(value.AgentSessionID, context.OwnerAgentSessionID, context.RecipientAgentSessionID)
+		value.RootTurnID = projectedCanonicalString(value.RootTurnID, canonicalTurnIDs, context.CallerTurnID)
 		for index := range value.Interactions {
 			interaction := &value.Interactions[index]
 			interaction.AgentSessionID = projectedString(interaction.AgentSessionID, context.OwnerAgentSessionID, context.RecipientAgentSessionID)

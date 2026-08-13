@@ -4,11 +4,28 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 APP_DIR="${ROOT_DIR}/apps/desktop"
 VARIANT="${1:-unpack}"
+BUILTIN_APPS_PREPARED=false
 DAEMON_BUNDLE_DIR="${APP_DIR}/build/tuttid"
 CLI_BUNDLE_DIR="${APP_DIR}/build/tutti"
 DESKTOP_BUILD_VERSION="${TUTTI_DESKTOP_BUILD_VERSION:-}"
 MAC_ARCH="${TUTTI_DESKTOP_MAC_ARCH:-all}"
 MAC_ARCH_ARGS=()
+
+if [[ "$#" -gt 0 ]]; then
+  shift
+fi
+while [[ "$#" -gt 0 ]]; do
+  case "$1" in
+    --prepared-builtin-apps)
+      BUILTIN_APPS_PREPARED=true
+      ;;
+    *)
+      echo "Unsupported desktop package argument: $1" >&2
+      exit 1
+      ;;
+  esac
+  shift
+done
 
 release_timing_log() {
   echo "[release-timing] $*"
@@ -184,6 +201,15 @@ prepare_packaged_daemon() {
 }
 
 prepare_builtin_apps() {
+  if [[ "${BUILTIN_APPS_PREPARED}" == "true" ]]; then
+    local archives=("${ROOT_DIR}"/services/tuttid/builtin-apps/generated/tutti-onboarding/*.zip)
+    if [[ ! -f "${archives[0]}" ]]; then
+      echo "Prepared builtin apps are missing; run pnpm generate:builtin-apps first." >&2
+      return 1
+    fi
+    release_timing_log "builtin_apps=prepared"
+    return
+  fi
   (
     cd "${ROOT_DIR}"
     pnpm generate:builtin-apps

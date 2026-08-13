@@ -1,3 +1,4 @@
+//revive:disable:file-length-limit // Composition root is intentionally kept as one auditable dependency graph.
 package main
 
 import (
@@ -59,6 +60,7 @@ func buildDaemonAPI(
 	browserService *browsersvc.Service,
 	computerService *computersvc.Service,
 	modelGateway *modelgatewayservice.Gateway,
+	connectorRuntime agentservice.ConnectorRuntime,
 	installTuttiModeWatchdog func(tuttimodeexecutionservice.Worker),
 ) (tuttiapi.DaemonAPI, *workspaceservice.AppCenterService, *agentdaemon.Runtime, *agentservice.ProviderAuthWatcher, error) {
 	workspaceStore, _ := store.(workspacedata.WorkbenchStore)
@@ -102,9 +104,7 @@ func buildDaemonAPI(
 		Publisher:                      preferencesPublisher,
 		AgentComposerDefaultsPublisher: preferencesPublisher,
 	}
-	agentTargets := agenttargetservice.Service{
-		Store: agentTargetStore,
-	}
+	agentTargets := agenttargetservice.Service{Store: agentTargetStore}
 	agentRuntimeDir, err := tuttitypes.DefaultAgentRuntimeDir()
 	if err != nil {
 		return tuttiapi.DaemonAPI{}, nil, nil, nil, fmt.Errorf("resolve agent runtime directory: %w", err)
@@ -123,6 +123,7 @@ func buildDaemonAPI(
 		Installations:     agentextensiondata.NewFileInstallationStore(agentExtensionStateDir),
 		Discovery:         agentSetupDiscovery,
 		Preferences:       preferencesStore,
+		UserPathAdapter:   agentstatusservice.NewUserPathAdapter(),
 	}
 	preferences.RegisterChangeObserver(func(ctx context.Context, previous, current preferencesbiz.DesktopPreferences) {
 		for _, reconcileErr := range agentExtensionManager.ReconcileDesktopPreferencesChange(ctx, previous, current) {
@@ -211,7 +212,9 @@ func buildDaemonAPI(
 		AnalyticsReporter:          analyticsReporter,
 		ManagedRuntime:             managedRuntimeResolver,
 		ClaudeCodeRuntimeDir:       filepath.Join(agentRuntimeDir, "claude-code"),
+		UserCommandBinDir:          agentExtensionBinDir,
 		CodexRuntimeSelectionStore: agentProviderRuntimeSelectionStore,
+		UserPathAdapter:            agentstatusservice.NewUserPathAdapter(),
 	})
 	// Shared so a runtime auth failure (reporter side) surfaces in the status
 	// probe (List side) — see agentRunOutcomeReporter.
@@ -358,6 +361,8 @@ func buildDaemonAPI(
 	agentSessionConfig := agentservice.ServiceConfig{
 		Runtime: agentservice.ServiceRuntimeConfig{
 			Preparer:                 agentRuntimePreparation,
+			Connector:                connectorRuntime,
+			ConnectorCapabilities:    agentRuntimeController,
 			ModelGateway:             modelGateway,
 			BrowserUseAvailable:      browserUseAvailable,
 			ComputerUseAvailable:     computerUseAvailable,
@@ -442,6 +447,7 @@ func buildDaemonAPI(
 		Components:      agentServiceComponents,
 	}
 	agentSessionService := agentservice.NewService(agentRuntimeController, agentSessionConfig)
+	configureUserProjectSessionDeletion(&userProjectService, agentSessionService)
 	agentStatusService.OnProviderStatusInvalidated = agentSessionService.InvalidateProviderAvailabilityCache
 	preferences.AgentComposerDefaultsValidator = agentSessionService
 	modelPlans.NativeSubscriptionProbe = modelPlanNativeSubscriptionProbe{Agents: agentSessionService}

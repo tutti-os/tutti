@@ -28,7 +28,12 @@ The current release flow intentionally excludes:
 - Microsoft Store RC/beta products and package flights
 
 Windows packaging remains available through
-`.github/workflows/windows-desktop-alpha.yml` for smoke validation. The formal
+`.github/workflows/windows-desktop-alpha.yml` for smoke validation. Pull
+requests always run Windows tests and build the Desktop bundles, while only
+packaging-input changes build and smoke-test the unsigned NSIS installer.
+Manual Alpha runs always build the installer. The workflow generates builtin
+apps once and then uses `build:win:prepared`; that command requires
+`pnpm generate:builtin-apps` to have completed first. The formal
 `.github/workflows/desktop-release.yml` workflow always builds Windows. It
 builds an unsigned Windows NSIS
 installer and stages its `.exe`, `.blockmap`, and updater `.yml` beside the

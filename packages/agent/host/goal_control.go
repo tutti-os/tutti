@@ -330,6 +330,17 @@ func (h *Host) goalControlSerialized(
 			"agentSessionId", agentSessionID,
 			"error", err.Error(),
 		)
+		h.observeTerminalFailure(ctx, TerminalFailure{
+			Flow:           "goal_control",
+			FailureStage:   "prepare",
+			WorkspaceID:    workspaceID,
+			AgentSessionID: agentSessionID,
+			OperationID:    operationID,
+			ClientSubmitID: clientSubmitID,
+			ErrorCode:      terminalFailureCode(err),
+			ErrorMessage:   err.Error(),
+			Retryable:      isRetryableRuntimeOperationError(err),
+		})
 		return acceptedGoalControlResult(operationID, persistedState), err
 	}
 	if h.goals != nil {
@@ -438,6 +449,7 @@ func (h *Host) goalControlSerialized(
 				_, state, _, err := h.goals.AcknowledgeGoalControlOperation(actorCtx, storesqlite.GoalControlOperationAcknowledge{
 					WorkspaceID: workspaceID, OperationID: operationID,
 					Evidence: clonePayload(controlResult.Evidence), OccurredAtUnixMS: h.goalOperationNow().UnixMilli(),
+					ExecutionPending: controlResult.ExecutionPending,
 				})
 				persistedState = &state
 				return err
@@ -446,6 +458,7 @@ func (h *Host) goalControlSerialized(
 				WorkspaceID: workspaceID, OperationID: operationID, Succeeded: true,
 				Observed: clonePayload(controlResult.Goal), Evidence: clonePayload(controlResult.Evidence),
 				OccurredAtUnixMS: h.goalOperationNow().UnixMilli(),
+				ExecutionPending: controlResult.ExecutionPending,
 			})
 			persistedState = &state
 			return err
@@ -470,6 +483,17 @@ func (h *Host) goalControlSerialized(
 			"agentSessionId", agentSessionID,
 			"error", err.Error(),
 		)
+		h.observeTerminalFailure(ctx, TerminalFailure{
+			Flow:           "goal_control",
+			FailureStage:   "refresh",
+			WorkspaceID:    workspaceID,
+			AgentSessionID: agentSessionID,
+			OperationID:    operationID,
+			ClientSubmitID: clientSubmitID,
+			ErrorCode:      terminalFailureCode(err),
+			ErrorMessage:   err.Error(),
+			Retryable:      isRetryableRuntimeOperationError(err),
+		})
 		return acceptedGoalControlResult(operationID, persistedState), err
 	}
 	if !found {

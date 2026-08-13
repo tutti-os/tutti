@@ -65,12 +65,32 @@ type ProcessFrame struct {
 	RecordingID  string
 	ConnectionID string
 	ChunkSeq     uint64
+	// Synthetic marks optional-probe / startup-metadata responses invented by
+	// replay. They are not cassette units and must not advance the provider
+	// input barrier (ChunkSeq is unset / zero).
+	Synthetic bool
 }
 
 type ProcessConnection interface {
 	Send([]byte) error
 	Recv() (ProcessFrame, error)
 	Close() error
+}
+
+// RuntimeTransportFailure carries a bounded machine-readable failure code
+// from a host-owned process transport into canonical Agent failure events.
+// Implementations must not encode raw paths, request payloads, or credentials
+// in the code.
+type RuntimeTransportFailure interface {
+	error
+	RuntimeTransportFailureCode() string
+}
+
+// RuntimeTransportGRPCFailure optionally preserves the bounded gRPC status
+// code for transport diagnostics without exposing the raw status message.
+type RuntimeTransportGRPCFailure interface {
+	RuntimeTransportFailure
+	RuntimeTransportGRPCCode() string
 }
 
 // ProcessCassetteCheckpointConnection is implemented by replay connections so
@@ -160,6 +180,17 @@ type Adapter interface {
 	Close(context.Context, Session) error
 	Exec(context.Context, Session, []PromptContentBlock, string, string, EventSink, CommandSnapshotSink) ([]activityshared.Event, error)
 	Cancel(context.Context, Session, string) ([]activityshared.Event, error)
+}
+
+// ConnectorCapabilityAdapter reports whether this exact provider runtime can
+// accept Tutti's session-scoped Connector binding. Implementations must return
+// false unless support is explicit; a missing implementation is unsupported.
+type ConnectorCapabilityAdapter interface {
+	ConnectorCapabilities(context.Context, Session) (ConnectorCapabilities, error)
+}
+
+type ConnectorCapabilities struct {
+	HTTPMCP bool
 }
 
 // SessionForkAdapter is an optional provider-native capability. Providers that
@@ -295,8 +326,10 @@ type RootProviderTurnLifecycleAdapter interface {
 }
 
 type ActiveTurnGuidanceAdapter interface {
-	// GuideActiveTurn appends guidance to the exact controller turn identified
-	// by turnID. The guidance submit does not own a separate turn lifecycle.
+	// GuideActiveTurn applies guidance to the exact controller turn identified
+	// by turnID. It must terminate the provider's current response and close its
+	// streaming projections before admitting the guided response, while keeping
+	// the same canonical turn lifecycle.
 	GuideActiveTurn(context.Context, Session, []PromptContentBlock, string, string, EventSink, CommandSnapshotSink) ([]activityshared.Event, error)
 }
 
@@ -480,6 +513,9 @@ type GoalAdapterResult struct {
 	// ProviderPhase separates transport acceptance from evidence that the
 	// provider actually consumed/applied the command.
 	ProviderPhase string
+	// ExecutionPending is set only when the provider accepted a command that
+	// is expected to start autonomous Goal execution.
+	ExecutionPending bool
 }
 
 // GoalApplyInput carries the durable control identity allocated above the

@@ -57,6 +57,9 @@ type fakeRuntime struct {
 	startErr                error
 	startCalls              []RuntimeStartInput
 	startHook               func(RuntimeStartInput, ProviderRuntimeSession) ProviderRuntimeSession
+	publishInitCalls        []RuntimeSessionInitializationPublishInput
+	publishInitHook         func(RuntimeSessionInitializationPublishInput, ProviderRuntimeSession) error
+	pendingInits            map[string]bool
 	updateSettingsCalls     []RuntimeUpdateSettingsInput
 	closeHook               func(RuntimeCloseInput)
 	validateErr             error
@@ -460,7 +463,8 @@ func (f fakeMessageReader) ListSessionMessages(
 
 func newFakeRuntime() *fakeRuntime {
 	return &fakeRuntime{
-		sessions: make(map[string]ProviderRuntimeSession),
+		sessions:     make(map[string]ProviderRuntimeSession),
+		pendingInits: make(map[string]bool),
 	}
 }
 
@@ -538,7 +542,9 @@ func (f *fakeRuntime) Close(_ context.Context, input RuntimeCloseInput) error {
 	f.closeCalls = append(f.closeCalls, input)
 	err := f.closeErr
 	if err == nil {
-		delete(f.sessions, input.WorkspaceID+":"+input.AgentSessionID)
+		key := input.WorkspaceID + ":" + input.AgentSessionID
+		delete(f.sessions, key)
+		delete(f.pendingInits, key)
 	}
 	// Hooks observe completion, so publish them only after the fake's state is
 	// fully updated. Tests use this callback as the synchronization boundary.
@@ -1109,10 +1115,10 @@ func (f fakeSessionReader) PurgeDeletedSessions(_ context.Context, input agentac
 	return result, nil
 }
 
-func (f *fakeRuntime) Start(_ context.Context, input RuntimeStartInput) (ProviderRuntimeSession, error) {
+func (f *fakeRuntime) Start(_ context.Context, input RuntimeStartInput) (RuntimeStartResult, error) {
 	f.startCalls = append(f.startCalls, input)
 	if f.startErr != nil {
-		return ProviderRuntimeSession{}, f.startErr
+		return RuntimeStartResult{}, f.startErr
 	}
 	f.nextID++
 	now := time.Now().UnixMilli()
@@ -1121,7 +1127,7 @@ func (f *fakeRuntime) Start(_ context.Context, input RuntimeStartInput) (Provide
 		id = "session-" + string(rune('0'+f.nextID))
 	}
 	if existing, ok := f.sessions[input.WorkspaceID+":"+id]; ok {
-		return existing, nil
+		return RuntimeStartResult{Session: existing, Created: false}, nil
 	}
 	session := ProviderRuntimeSession{
 		ID:            id,
@@ -1149,6 +1155,31 @@ func (f *fakeRuntime) Start(_ context.Context, input RuntimeStartInput) (Provide
 		session = f.startHook(input, session)
 	}
 	f.sessions[input.WorkspaceID+":"+session.ID] = session
+	if input.CanonicalInitPending {
+		if f.pendingInits == nil {
+			f.pendingInits = make(map[string]bool)
+		}
+		f.pendingInits[input.WorkspaceID+":"+session.ID] = true
+	}
+	return RuntimeStartResult{Session: session, Created: true}, nil
+}
+
+func (f *fakeRuntime) PublishSessionInitialization(
+	_ context.Context,
+	input RuntimeSessionInitializationPublishInput,
+) (ProviderRuntimeSession, error) {
+	f.publishInitCalls = append(f.publishInitCalls, input)
+	key := input.WorkspaceID + ":" + input.AgentSessionID
+	session, found := f.sessions[key]
+	if !found {
+		return ProviderRuntimeSession{}, ErrSessionNotFound
+	}
+	if f.publishInitHook != nil {
+		if err := f.publishInitHook(input, session); err != nil {
+			return ProviderRuntimeSession{}, err
+		}
+	}
+	delete(f.pendingInits, key)
 	return session, nil
 }
 

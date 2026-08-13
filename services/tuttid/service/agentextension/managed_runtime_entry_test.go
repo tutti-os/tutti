@@ -1,20 +1,42 @@
 package agentextension
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"testing"
 )
 
+type recordingExtensionUserPathAdapter struct{ directory string }
+
+func (a *recordingExtensionUserPathAdapter) Ensure(_ context.Context, directory string) error {
+	a.directory = directory
+	return nil
+}
+
+func TestManagerPublishesRuntimeBinDirectoryToUserPath(t *testing.T) {
+	adapter := &recordingExtensionUserPathAdapter{}
+	binDir := filepath.Join(t.TempDir(), ".local", "bin")
+	manager := Manager{RuntimeBinDir: binDir, UserPathAdapter: adapter}
+	if err := manager.ensureUserCommandPath(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if adapter.directory != binDir {
+		t.Fatalf("published directory = %q, want %q", adapter.directory, binDir)
+	}
+}
+
 func TestPublishManagedRuntimeEntryRepointsStableLink(t *testing.T) {
 	runtimeRoot := filepath.Join(t.TempDir(), "agent-runtimes")
-	stablePath := filepath.Join(runtimeRoot, "generic", "bin", "generic-agent")
-	userPath := filepath.Join(t.TempDir(), ".local", "bin", "generic-agent")
+	userBinDir := filepath.Join(t.TempDir(), ".local", "bin")
 	firstExecutable := writeManagedRuntimeEntryExecutable(t, runtimeRoot, "generic", "1.0.0")
 	secondExecutable := writeManagedRuntimeEntryExecutable(t, runtimeRoot, "generic", "2.0.0")
+	manager := Manager{RuntimeInstallDir: runtimeRoot, RuntimeBinDir: userBinDir}
+	installation := Installation{AgentKey: "generic"}
 
-	first := managedRuntimeEntry{
-		runtimeRoot: runtimeRoot, stablePath: stablePath, userPath: userPath, finalExecutable: firstExecutable,
+	first, err := manager.managedRuntimeEntry(installation, filepath.Dir(filepath.Dir(firstExecutable)), "${installRoot}/bin/generic-agent", "bin/generic-agent")
+	if err != nil {
+		t.Fatal(err)
 	}
 	if err := validateManagedRuntimeEntry(first); err != nil {
 		t.Fatal(err)
@@ -22,32 +44,19 @@ func TestPublishManagedRuntimeEntryRepointsStableLink(t *testing.T) {
 	if err := publishManagedRuntimeEntry(first); err != nil {
 		t.Fatal(err)
 	}
-	userTarget, err := resolvedSymlinkTarget(userPath)
+	if err := verifyManagedRuntimeEntry(first); err != nil {
+		t.Fatal(err)
+	}
+
+	second, err := manager.managedRuntimeEntry(installation, filepath.Dir(filepath.Dir(secondExecutable)), "${installRoot}/bin/generic-agent", "bin/generic-agent")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if userTarget != stablePath {
-		t.Fatalf("user entry target = %q, want stable path %q", userTarget, stablePath)
-	}
-
-	second := first
-	second.finalExecutable = secondExecutable
 	if err := validateManagedRuntimeEntry(second); err != nil {
 		t.Fatal(err)
 	}
 	if err := publishManagedRuntimeEntry(second); err != nil {
 		t.Fatal(err)
-	}
-	resolved, err := filepath.EvalSymlinks(userPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	wantResolved, err := filepath.EvalSymlinks(secondExecutable)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if resolved != wantResolved {
-		t.Fatalf("repointed user entry = %q, want %q", resolved, wantResolved)
 	}
 	if err := verifyManagedRuntimeEntry(second); err != nil {
 		t.Fatal(err)

@@ -30,9 +30,11 @@ describe("AgentModelReasoningDropdown", () => {
     const onSettingsChange = vi.fn();
     render(
       <AgentModelReasoningDropdown
-        composerSettings={composerModelSettings()}
+        composerSettings={{
+          ...composerModelSettings(),
+          modelChoiceHistory: { targetId: "target-1", catalog: null }
+        }}
         labels={modelSettingsLabels}
-        modelHistoryTargetId="target-1"
         onSettingsChange={onSettingsChange}
       />
     );
@@ -65,6 +67,11 @@ describe("AgentModelReasoningDropdown", () => {
         "agent-gui:composer-model-favorites:target-1"
       )
     ).toBe('["gpt-5.4"]');
+    expect(
+      globalThis.localStorage.getItem(
+        "agent-gui:composer-model-favorites:default"
+      )
+    ).toBeNull();
     expect(screen.getByText("Model selection")).toBeInTheDocument();
   });
 
@@ -99,6 +106,29 @@ describe("AgentModelReasoningDropdown", () => {
       )
     ).toBe('["gpt-5.4"]');
     expect(screen.getByText("Model selection")).toBeInTheDocument();
+  });
+
+  it("hides favorite controls when model history has no exact target", async () => {
+    render(
+      <AgentModelReasoningDropdown
+        composerSettings={{
+          ...composerModelSettings(),
+          modelChoiceHistory: { targetId: null, catalog: null }
+        }}
+        labels={modelSettingsLabels}
+        onSettingsChange={vi.fn()}
+      />
+    );
+
+    fireEvent.pointerDown(
+      screen.getByRole("button", { name: "Model / Reasoning" }),
+      { button: 0, ctrlKey: false, pointerType: "mouse" }
+    );
+
+    expect(await screen.findByText("Model selection")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Add to favorites" })
+    ).not.toBeInTheDocument();
   });
 
   it("retries composer options from the compact error state", async () => {

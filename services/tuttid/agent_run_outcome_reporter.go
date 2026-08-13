@@ -11,13 +11,11 @@ import (
 )
 
 // agentRunOutcomeReporter decorates the activity reporter so a runtime
-// authentication failure (e.g. a 401 sending a message) is fed back into the
-// status probe: it flips the provider's cached auth to "needs login", which the
-// stateless marker / `auth status` check would otherwise miss (the local
-// credentials file still says "logged in"). A successfully completed turn clears
-// the flag, so a re-login that works stops being reported as broken. Embedding
-// the required durable reporter promotes its provenance receipt method without
-// a second, manually forwarded optional seam.
+// authentication result is fed back into the status probe. A 401 overrides a
+// stale local "logged in" marker with required; a successfully completed turn
+// promotes locally configured credentials to authenticated. Embedding the
+// required durable reporter promotes its provenance receipt method without a
+// second, manually forwarded optional seam.
 type agentRunOutcomeReporter struct {
 	agentdaemon.DurableActivityReporter
 	store *agentstatusservice.RunOutcomeStore

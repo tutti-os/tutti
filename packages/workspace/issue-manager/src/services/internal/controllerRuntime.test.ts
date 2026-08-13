@@ -73,6 +73,30 @@ test("controllerRuntime loads issue detail without defaulting to a task selectio
   runtime.release();
 });
 
+test("controllerRuntime exposes cloneable controller state", async () => {
+  const runtime = createIssueManagerControllerRuntime({
+    feature: createFeature({
+      async listIssues() {
+        return {
+          issues: [
+            createIssueSummary({
+              issueId: "issue-cloneable",
+              title: "Clone controller state"
+            })
+          ]
+        };
+      }
+    }),
+    workspaceId: "workspace-cloneable"
+  });
+
+  runtime.retain();
+  await flushAsyncWork();
+
+  assert.doesNotThrow(() => structuredClone(runtime.getSnapshot()));
+  runtime.release();
+});
+
 test("controllerRuntime reports issue-manager opened once per session", async () => {
   const analyticsEvents: IssueManagerAnalyticsEvent[] = [];
   const runtime = createIssueManagerControllerRuntime({

@@ -1,6 +1,7 @@
 package agenthost
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
@@ -55,4 +56,30 @@ func railPlacementMatchesSession(placement *RailPlacement, session storesqlite.S
 			storesqlite.NormalizeProjectPath(placement.ProjectPath) &&
 		storesqlite.NormalizeRailSectionKey(session.RailSectionKey) ==
 			storesqlite.NormalizeRailSectionKey(placement.SectionKey)
+}
+
+// GetSessionWithRailPlacement reads one canonical Session only when its
+// immutable rail identity matches the caller's Host-normalized placement.
+// Recovery consumers use this boundary instead of reproducing rail
+// normalization or comparing canonical storage fields outside Agent Host.
+func (h *Host) GetSessionWithRailPlacement(
+	ctx context.Context,
+	ref SessionRef,
+	placement *RailPlacement,
+) (GetSessionResult, error) {
+	normalized, err := normalizeRailPlacement(placement)
+	if err != nil {
+		return GetSessionResult{}, err
+	}
+	if normalized == nil {
+		return GetSessionResult{}, ErrInvalidArgument
+	}
+	result, err := h.GetSession(ctx, ref)
+	if err != nil {
+		return GetSessionResult{}, err
+	}
+	if !railPlacementMatchesSession(normalized, result.Canonical) {
+		return GetSessionResult{}, ErrRailPlacementConflict
+	}
+	return result, nil
 }

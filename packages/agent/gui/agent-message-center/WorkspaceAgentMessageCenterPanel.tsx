@@ -81,6 +81,7 @@ export interface WorkspaceAgentMessageCenterPanelProps {
   model: WorkspaceAgentMessageCenterModel;
   highlightedItemId?: string | null;
   portalContainer?: HTMLElement | null;
+  drawerTopInsetPx?: number;
   presentation?: WorkspaceAgentMessageCenterPanelPresentation;
   onClose: () => void;
   onHighlightedItemSettled?: (itemId: string) => void;
@@ -112,6 +113,7 @@ export const WorkspaceAgentMessageCenterPanel = memo(
     model,
     highlightedItemId = null,
     portalContainer = null,
+    drawerTopInsetPx,
     presentation = "drawer",
     onClose,
     onHighlightedItemSettled,
@@ -132,6 +134,7 @@ export const WorkspaceAgentMessageCenterPanel = memo(
           model={model}
           highlightedItemId={highlightedItemId}
           portalContainer={portalContainer}
+          drawerTopInsetPx={drawerTopInsetPx}
           presentation={presentation}
           onClose={onClose}
           onHighlightedItemSettled={onHighlightedItemSettled}
@@ -151,6 +154,7 @@ function WorkspaceAgentMessageCenterPanelContent({
   model,
   highlightedItemId = null,
   portalContainer = null,
+  drawerTopInsetPx,
   presentation = "drawer",
   onClose,
   onHighlightedItemSettled,
@@ -674,6 +678,9 @@ function WorkspaceAgentMessageCenterPanelContent({
         data-presentation="drawer"
         data-testid="workspace-agent-message-center"
         portalContainer={portalContainer ?? undefined}
+        style={
+          drawerTopInsetPx === undefined ? undefined : { top: drawerTopInsetPx }
+        }
         showOverlay={false}
         aria-label={t("agentHost.workspaceAgentMessageCenterTitle")}
       >

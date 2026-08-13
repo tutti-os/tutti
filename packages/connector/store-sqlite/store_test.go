@@ -164,7 +164,7 @@ func TestStoreKeepsAuthorizationSessionPrivateAndAvailableAfterReopen(t *testing
 	if len(snapshot.Operations) != 1 || snapshot.Operations[0].Execution.AuthorizationSession != nil {
 		t.Fatalf("public snapshot exposed authorization session: %#v", snapshot.Operations)
 	}
-	operations, err := reopened.CompletedAuthorizationOperations(ctx)
+	operations, err := reopened.UnresolvedAuthorizationSessionOperations(ctx, market.OperationScope{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -203,6 +203,101 @@ func TestStorePersistsAuthorizationProjectionByAccount(t *testing.T) {
 	}
 	if loaded != second {
 		t.Fatalf("projection = %#v, want %#v", loaded, second)
+	}
+}
+
+func TestStoreAuthorizationSnapshotIsMonotonicAndDisconnectsMissingConnectors(t *testing.T) {
+	ctx := context.Background()
+	store, err := Open(ctx, filepath.Join(t.TempDir(), "tuttid.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	applied, err := store.ApplyAuthorizationSnapshot(ctx, "account-1", market.AuthorizationSnapshot{Revision: 8, Connectors: []market.AuthorizationProjection{{
+		ConnectorKey: "tencent-docs", ConnectorVersion: "0.2.0", ConnectionID: "connection-1", ConnectionVersion: 3,
+		State: market.AuthorizationStateConnected,
+	}}})
+	if err != nil || len(applied.ChangedConnectorKeys) != 1 || applied.ChangedConnectorKeys[0] != "tencent-docs" {
+		t.Fatalf("initial snapshot applied=%#v error=%v", applied, err)
+	}
+	if err := store.SaveAuthorizationProjection(ctx, market.AuthorizationProjection{
+		AccountID: "account-1", ConnectorKey: "tencent-docs", State: market.AuthorizationStateDisconnected,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	projection, err := store.AuthorizationProjection(ctx, "account-1", "tencent-docs")
+	if err != nil || projection.State != market.AuthorizationStateConnected || projection.ServerRevision != 8 {
+		t.Fatalf("provisional write replaced server snapshot: %#v, %v", projection, err)
+	}
+	applied, err = store.ApplyAuthorizationSnapshot(ctx, "account-1", market.AuthorizationSnapshot{Revision: 7})
+	if err != nil || len(applied.ChangedConnectorKeys) != 0 {
+		t.Fatalf("stale snapshot applied=%#v error=%v", applied, err)
+	}
+	applied, err = store.ApplyAuthorizationSnapshot(ctx, "account-1", market.AuthorizationSnapshot{Revision: 9})
+	if err != nil || len(applied.ChangedConnectorKeys) != 1 || applied.ChangedConnectorKeys[0] != "tencent-docs" {
+		t.Fatalf("removal snapshot applied=%#v error=%v", applied, err)
+	}
+	projection, err = store.AuthorizationProjection(ctx, "account-1", "tencent-docs")
+	if err != nil || projection.State != market.AuthorizationStateDisconnected || projection.ConnectionID != "" || projection.ServerRevision != 9 {
+		t.Fatalf("removed projection = %#v, %v", projection, err)
+	}
+}
+
+func TestStoreAuthorizationSnapshotAtomicallyResolvesOnlyMatchingAccountReceipts(t *testing.T) {
+	ctx := context.Background()
+	store, err := Open(ctx, filepath.Join(t.TempDir(), "tuttid.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	connected := market.AuthorizationSnapshot{Revision: 8, Connectors: []market.AuthorizationProjection{{
+		ConnectorKey: "tencent-docs", ConnectorVersion: "0.2.0", ConnectionID: "connection-1",
+		ConnectionVersion: 3, State: market.AuthorizationStateConnected,
+	}}}
+	if _, err := store.ApplyAuthorizationSnapshot(ctx, "account-1", connected); err != nil {
+		t.Fatal(err)
+	}
+	for _, accountID := range []string{"account-1", "account-2"} {
+		operation := market.Operation{
+			OperationID: "authorization-" + accountID, ClientRequestID: "request-" + accountID,
+			ConnectorKey: "tencent-docs", Kind: market.OperationKindStartAuthorization,
+			Scope: market.OperationScope{AccountID: accountID}, State: market.OperationStateCompleted,
+			Stage: market.OperationStageCompleted, CreatedAt: time.Unix(1, 0).UTC(), UpdatedAt: time.Unix(2, 0).UTC(),
+			Execution: market.OperationExecution{AuthorizationSession: &market.AuthorizationSession{
+				OperationID: "authorization-" + accountID, ConnectorKey: "tencent-docs", SessionID: "session-" + accountID,
+				ActionType: "redirect", State: market.AuthorizationStatePending,
+				Resolution: market.AuthorizationSessionResolutionUnresolved,
+			}},
+		}
+		if err := store.Transaction(ctx, func(tx market.Transaction) error { return tx.SaveOperation(operation) }); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Reapplying the same server revision must still surface a receipt created
+	// after the projection was first stored, without terminalizing it before
+	// the daemon has awaited Runtime Reconcile.
+	applied, err := store.ApplyAuthorizationSnapshot(ctx, "account-1", connected)
+	if err != nil || len(applied.ChangedConnectorKeys) != 0 ||
+		len(applied.PendingReceiptConnectorKeys) != 1 || applied.PendingReceiptConnectorKeys[0] != "tencent-docs" {
+		t.Fatalf("same-revision apply = %#v, error = %v", applied, err)
+	}
+	accountOne, err := store.Operation(ctx, "authorization-account-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if accountOne.Execution.AuthorizationSession == nil ||
+		accountOne.Execution.AuthorizationSession.Resolution != market.AuthorizationSessionResolutionUnresolved {
+		t.Fatalf("account one receipt = %#v", accountOne.Execution.AuthorizationSession)
+	}
+	unresolvedOne, err := store.UnresolvedAuthorizationSessionOperations(ctx, market.OperationScope{AccountID: "account-1"})
+	if err != nil || len(unresolvedOne) != 1 {
+		t.Fatalf("account one unresolved = %#v, error = %v", unresolvedOne, err)
+	}
+	unresolvedTwo, err := store.UnresolvedAuthorizationSessionOperations(ctx, market.OperationScope{AccountID: "account-2"})
+	if err != nil || len(unresolvedTwo) != 1 || unresolvedTwo[0].Execution.AuthorizationSession == nil ||
+		unresolvedTwo[0].Execution.AuthorizationSession.SessionID != "session-account-2" {
+		t.Fatalf("account two unresolved = %#v, error = %v", unresolvedTwo, err)
 	}
 }
 

@@ -27,6 +27,15 @@ export interface ConnectorMarketStoreState {
   connectorKeys: string[];
   pendingInstallationsByConnectorKey: Record<string, true>;
   operationsByConnectorKey: Record<string, ConnectorOperation>;
+  pendingUninstallNotificationsByOperationId: Record<
+    string,
+    {
+      connectorKey: string;
+      displayName: string;
+      operationId: string;
+      state: ConnectorOperation["state"];
+    }
+  >;
   authorizingConnectorKeys: Record<string, boolean>;
   lastError: ConnectorMarketErrorShape | null;
   revision: number;
@@ -62,7 +71,8 @@ export interface IConnectorMarketService {
   refreshCatalog(): Promise<void>;
   loadMore(sectionId: string): Promise<void>;
   install(connectorKey: string): Promise<void>;
-  uninstall(connectorKey: string): Promise<void>;
+  uninstall(connectorKey: string): Promise<ConnectorOperation>;
+  dismissUninstallNotification(operationId: string): void;
   beginAuthorization(connectorKey: string, secret?: string): Promise<void>;
   disconnectAuthorization(connectorKey: string): Promise<void>;
   /** Releases subscriptions and makes the service terminal. */

@@ -82,41 +82,27 @@ func TestServiceSetRejectsMismatchedStateAndUserSourceBeforePersistence(t *testi
 	}
 }
 
-func TestServiceSetAcceptsAgentCommandSourceForBothStates(t *testing.T) {
+func TestServiceSetRejectsLegacyAgentCommandSourceBeforePersistence(t *testing.T) {
 	t.Parallel()
-	now := time.UnixMilli(1_700_000_000_000).UTC()
-	store := newMemoryStore()
-	publisher := &recordingPublisher{}
-	ids := []string{"activation-1", "revision-1", "activation-1", "revision-2"}
-	service := &Service{Store: store, Publisher: publisher, Now: func() time.Time { return now }, NewID: func() string {
-		value := ids[0]
-		ids = ids[1:]
-		return value
-	}}
-
-	activated, err := service.Set(context.Background(), SetInput{
-		WorkspaceID: "workspace-1", AgentSessionID: "session-1",
-		State: activationbiz.StateActive, Source: activationbiz.SourceAgentCommand,
-	})
-	if err != nil || !activated.Changed || activated.Activation == nil ||
-		activated.Activation.CurrentRevision.Source != activationbiz.SourceAgentCommand ||
-		activated.Activation.CurrentRevision.State != activationbiz.StateActive {
-		t.Fatalf("activate by agent command = %#v, err = %v", activated, err)
-	}
-
-	deactivated, err := service.Set(context.Background(), SetInput{
-		WorkspaceID: "workspace-1", AgentSessionID: "session-1",
-		State: activationbiz.StateInactive, Source: activationbiz.SourceAgentCommand,
-	})
-	if err != nil || !deactivated.Changed ||
-		deactivated.Activation.CurrentRevision.State != activationbiz.StateInactive {
-		t.Fatalf("deactivate by agent command = %#v, err = %v", deactivated, err)
-	}
-
-	if len(publisher.updates) != 2 ||
-		publisher.updates[0].ChangeKind != activationbiz.ChangeKindActivated ||
-		publisher.updates[1].ChangeKind != activationbiz.ChangeKindDeactivated {
-		t.Fatalf("agent command publish path = %#v", publisher.updates)
+	for _, state := range []activationbiz.State{
+		activationbiz.StateActive,
+		activationbiz.StateInactive,
+	} {
+		state := state
+		t.Run(string(state), func(t *testing.T) {
+			t.Parallel()
+			store := newMemoryStore()
+			_, err := (&Service{Store: store}).Set(context.Background(), SetInput{
+				WorkspaceID: "workspace-1", AgentSessionID: "session-1",
+				State: state, Source: activationbiz.SourceAgentCommand,
+			})
+			if !errors.Is(err, ErrInvalidInput) {
+				t.Fatalf("Set() error = %v, want ErrInvalidInput", err)
+			}
+			if len(store.activations) != 0 {
+				t.Fatalf("legacy Agent source reached persistence: %#v", store.activations)
+			}
+		})
 	}
 }
 

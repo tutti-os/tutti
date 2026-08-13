@@ -40,6 +40,7 @@ type Controller struct {
 	configOptionsUpdates        map[string]AgentSessionConfigOptionsUpdate
 	pendingConfigOptionsUpdates map[string][]AgentSessionConfigOptionsUpdate
 	provisionalSessions         map[string]bool
+	sessionInitializations      map[string]*controllerSessionInitialization
 	goalGenerationFences        map[string]*controllerGoalGenerationFenceRegistry
 	startupLocks                map[startupLockKey]*controllerLifecycleLock
 	lifecycleLocks              map[string]*controllerLifecycleLock
@@ -90,6 +91,7 @@ type GoalControlAppliedObservation struct {
 	ProviderTurnID   string
 	Observed         map[string]any
 	OccurredAtUnixMS int64
+	ExecutionPending bool
 }
 
 type GoalControlLifecycleObserver interface {
@@ -99,6 +101,17 @@ type GoalControlLifecycleObserver interface {
 type controllerLifecycleLock struct {
 	gate chan struct{}
 	refs int
+}
+
+// controllerSessionInitialization retains every provider observation emitted
+// between Runtime start and Host's canonical initialization commit. The map
+// entry itself is the publication barrier; it remains present while Publish
+// drains events and side-channel snapshots so later observations cannot
+// overtake the initial Session report.
+type controllerSessionInitialization struct {
+	events                  []activityshared.Event
+	initialEventsPublished  bool
+	commandSnapshotResolved bool
 }
 
 // startupLockKey uses agentSessionID for normal Host calls. Provider is set
@@ -194,6 +207,7 @@ func NewControllerWithAdapterResolver(adapters []Adapter, reporter DurableActivi
 		configOptionsUpdates:        make(map[string]AgentSessionConfigOptionsUpdate),
 		pendingConfigOptionsUpdates: make(map[string][]AgentSessionConfigOptionsUpdate),
 		provisionalSessions:         make(map[string]bool),
+		sessionInitializations:      make(map[string]*controllerSessionInitialization),
 		goalGenerationFences:        make(map[string]*controllerGoalGenerationFenceRegistry),
 		startupLocks:                make(map[startupLockKey]*controllerLifecycleLock),
 		lifecycleLocks:              make(map[string]*controllerLifecycleLock),
@@ -210,6 +224,17 @@ func NewControllerWithAdapterResolver(adapters []Adapter, reporter DurableActivi
 		controller.configureAdapter(adapter)
 	}
 	return controller
+}
+
+func (c *Controller) sessionPublicationPendingLocked(key string) bool {
+	if c == nil {
+		return false
+	}
+	if c.provisionalSessions[key] {
+		return true
+	}
+	_, pending := c.sessionInitializations[key]
+	return pending
 }
 
 func (c *Controller) configureAdapter(adapter Adapter) {

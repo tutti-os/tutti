@@ -21,7 +21,8 @@ test("deleted conversations load in update-time order and continue from the curs
               {
                 projectAvailable: false,
                 projectLabel: "Removed project",
-                projectPath: "/projects/removed"
+                projectPath: "/projects/removed",
+                railSectionKey: "project:/projects/removed"
               }
             ],
             sessions: [
@@ -175,7 +176,7 @@ test("restore reloads a project filter started while the operation is pending", 
   >((resolve) => {
     resolveStaleFilterPage = resolve;
   });
-  const listProjectPaths: Array<string | null> = [];
+  const listRailSectionKeys: Array<string | null> = [];
   const store = createWorkspaceSettingsStore();
   store.workspaceID = "workspace-1";
   store.deletedConversations.sessions = [createConversation("session-1", 200)];
@@ -184,8 +185,8 @@ test("restore reloads a project filter started while the operation is pending", 
   const controller = new WorkspaceDeletedConversationsController({
     client: createClient({
       async listWorkspaceDeletedAgentSessions(_workspaceID, input) {
-        listProjectPaths.push(input.projectPath);
-        if (listProjectPaths.length === 1) {
+        listRailSectionKeys.push(input.railSectionKey);
+        if (listRailSectionKeys.length === 1) {
           return await staleFilterPage;
         }
         return deletedConversationPage([createConversation("session-2", 100)]);
@@ -199,7 +200,7 @@ test("restore reloads a project filter started while the operation is pending", 
   const restore = controller.restore("session-1");
   controller.selectProject({
     kind: "project",
-    projectPath: "/projects/filtered"
+    railSectionKey: "project:/projects/filtered"
   });
   finishRestore?.();
   assert.equal(await restore, true);
@@ -209,9 +210,9 @@ test("restore reloads a project filter started while the operation is pending", 
   );
   await new Promise<void>((resolve) => setImmediate(resolve));
 
-  assert.deepEqual(listProjectPaths, [
-    "/projects/filtered",
-    "/projects/filtered"
+  assert.deepEqual(listRailSectionKeys, [
+    "project:/projects/filtered",
+    "project:/projects/filtered"
   ]);
   assert.deepEqual(
     store.deletedConversations.sessions.map(
@@ -221,7 +222,7 @@ test("restore reloads a project filter started while the operation is pending", 
   );
   assert.deepEqual(store.deletedConversations.projectFilter, {
     kind: "project",
-    projectPath: "/projects/filtered"
+    railSectionKey: "project:/projects/filtered"
   });
 });
 
@@ -262,7 +263,7 @@ test("permanent delete reloads a project filter started while the operation is p
   const purge = controller.purgeOne("session-1");
   controller.selectProject({
     kind: "project",
-    projectPath: "/projects/filtered"
+    railSectionKey: "project:/projects/filtered"
   });
   finishPurge?.();
   assert.equal(await purge, true);
@@ -331,7 +332,7 @@ test("delete all ignores filters and resets the empty surface", async () => {
   store.deletedConversations.search = "matching title";
   store.deletedConversations.projectFilter = {
     kind: "project",
-    projectPath: "/projects/one"
+    railSectionKey: "project:/projects/one"
   };
   store.deletedConversations.sessions = [createConversation("session-1", 100)];
   store.deletedConversations.totalCount = 1;
@@ -370,7 +371,7 @@ test("a failed delete all reloads the current filter after fencing an in-flight 
     rejectPurge = reject;
   });
   const listInputs: Array<{
-    projectPath: string | null;
+    railSectionKey: string | null;
     search: string | null;
   }> = [];
   const messages: string[] = [];
@@ -379,7 +380,7 @@ test("a failed delete all reloads the current filter after fencing an in-flight 
   store.deletedConversations.search = "current title";
   store.deletedConversations.projectFilter = {
     kind: "project",
-    projectPath: "/projects/current"
+    railSectionKey: "project:/projects/current"
   };
   store.deletedConversations.sessions = [createConversation("session-1", 100)];
   store.deletedConversations.totalCount = 1;
@@ -388,7 +389,7 @@ test("a failed delete all reloads the current filter after fencing an in-flight 
     client: createClient({
       async listWorkspaceDeletedAgentSessions(_workspaceID, input) {
         listInputs.push({
-          projectPath: input.projectPath,
+          railSectionKey: input.railSectionKey,
           search: input.search
         });
         if (listInputs.length === 1) {
@@ -415,8 +416,14 @@ test("a failed delete all reloads the current filter after fencing an in-flight 
   await staleRefresh;
 
   assert.deepEqual(listInputs, [
-    { projectPath: "/projects/current", search: "current title" },
-    { projectPath: "/projects/current", search: "current title" }
+    {
+      railSectionKey: "project:/projects/current",
+      search: "current title"
+    },
+    {
+      railSectionKey: "project:/projects/current",
+      search: "current title"
+    }
   ]);
   assert.deepEqual(
     store.deletedConversations.sessions.map(
@@ -506,6 +513,7 @@ function createConversation(
     projectAvailable: true,
     projectLabel: "Project",
     projectPath: "/projects/project",
+    railSectionKey: "project:/projects/project",
     restorable: true,
     title: agentSessionId,
     unavailableReason: null,

@@ -25,6 +25,29 @@ func (p *ActivityProjection) SetReplayCommitObserver(
 	}
 }
 
+func (p *ActivityProjection) SetTerminalFailureObserver(
+	observer agenthost.TerminalFailureObserver,
+) {
+	if p != nil {
+		p.terminalFailureObserver = observer
+	}
+}
+
+// observeCommittedOutsideHost publishes a commit that the daemon made without
+// going through Host: direct activity-state, session-message, and stale-turn
+// reports. Host owns terminal-failure extraction for everything it commits, so
+// this is the only place that extracts it for the bypass paths.
+func (p *ActivityProjection) observeCommittedOutsideHost(
+	ctx context.Context,
+	delta agenthost.CommittedDelta,
+) {
+	if p == nil {
+		return
+	}
+	agenthost.ObserveTerminalFailuresFromDelta(ctx, p.terminalFailureObserver, delta)
+	agenthost.NotifyCommitted(ctx, p, delta)
+}
+
 func (p *ActivityProjection) notifyReplayCommitted(
 	ctx context.Context,
 	delta agenthost.CommittedDelta,

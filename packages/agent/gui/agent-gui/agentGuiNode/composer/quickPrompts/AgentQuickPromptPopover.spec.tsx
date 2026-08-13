@@ -553,7 +553,10 @@ describe("AgentQuickPromptPopover", () => {
         title: "Summarize common prompts",
         content: "Summarize my common prompts"
       },
-      { insertIntoComposerAfterSave: true }
+      {
+        insertIntoComposerAfterSave: true,
+        usagePromptType: "recommended_template"
+      }
     );
     expect(subject.openCreate).toHaveBeenCalledOnce();
     expect(subject.saveDraft).not.toHaveBeenCalled();
@@ -601,7 +604,10 @@ describe("AgentQuickPromptPopover", () => {
         title: "Summarize common prompts",
         content: "Summarize my common prompts"
       },
-      { insertIntoComposerAfterSave: true }
+      {
+        insertIntoComposerAfterSave: true,
+        usagePromptType: "recommended_template"
+      }
     );
 
     const createTemplate = screen.getByRole("button", {
@@ -614,7 +620,10 @@ describe("AgentQuickPromptPopover", () => {
         title: "Understand the situation",
         content: "Summarize the situation"
       },
-      { insertIntoComposerAfterSave: true }
+      {
+        insertIntoComposerAfterSave: true,
+        usagePromptType: "recommended_template"
+      }
     );
     expect(subject.openCreate).toHaveBeenCalledTimes(2);
   });

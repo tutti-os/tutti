@@ -43,7 +43,7 @@ type createGoalRestartRuntime struct {
 func (r *createGoalRestartRuntime) Start(
 	_ context.Context,
 	input agenthost.RuntimeStartInput,
-) (agenthost.ProviderRuntimeSession, error) {
+) (agenthost.RuntimeStartResult, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.starts++
@@ -54,7 +54,7 @@ func (r *createGoalRestartRuntime) Start(
 		Cwd:               input.Cwd, Status: "ready", Visible: true,
 		CreatedAtUnixMS: 1, UpdatedAtUnixMS: 1,
 	}
-	return r.session, nil
+	return agenthost.RuntimeStartResult{Session: r.session, Created: true}, nil
 }
 
 func (r *createGoalRestartRuntime) Session(
@@ -65,6 +65,18 @@ func (r *createGoalRestartRuntime) Session(
 	defer r.mu.Unlock()
 	found := workspaceID == r.session.WorkspaceID && agentSessionID == r.session.ID
 	return r.session, found
+}
+
+func (r *createGoalRestartRuntime) PublishSessionInitialization(
+	_ context.Context,
+	input agenthost.RuntimeSessionInitializationPublishInput,
+) (agenthost.ProviderRuntimeSession, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if input.WorkspaceID != r.session.WorkspaceID || input.AgentSessionID != r.session.ID {
+		return agenthost.ProviderRuntimeSession{}, agenthost.ErrSessionNotFound
+	}
+	return r.session, nil
 }
 
 func (r *createGoalRestartRuntime) startCount() int {

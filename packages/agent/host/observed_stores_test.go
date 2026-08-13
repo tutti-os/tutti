@@ -37,11 +37,16 @@ func (s runtimeCompletionStore) CompleteCancelRuntimeOperation(context.Context, 
 
 type canonicalTurnReadStore struct {
 	CanonicalStore
-	turn storesqlite.Turn
+	turn    storesqlite.Turn
+	session storesqlite.Session
 }
 
 func (s canonicalTurnReadStore) GetTurn(context.Context, string, string, string) (storesqlite.Turn, bool, error) {
 	return s.turn, true, nil
+}
+
+func (s canonicalTurnReadStore) GetSession(context.Context, string, string) (storesqlite.Session, bool, error) {
+	return s.session, true, nil
 }
 
 func (r *committedDeltaRecorder) ObserveCommitted(_ context.Context, delta CommittedDelta) error {
@@ -95,7 +100,13 @@ func TestObservedCancelCompletionReportsRootSettlementOnce(t *testing.T) {
 		WorkspaceID: "ws-1", AgentSessionID: "root-session", TurnID: "root-turn",
 		Phase: storesqlite.TurnPhaseSettled, Outcome: storesqlite.TurnOutcomeCanceled,
 	}
-	host := &Host{commitObserver: recorder, store: canonicalTurnReadStore{turn: root}}
+	host := &Host{commitObserver: recorder, store: canonicalTurnReadStore{
+		turn: root,
+		session: storesqlite.Session{
+			ID: "root-session", WorkspaceID: "ws-1", Provider: "codex",
+			Kind: storesqlite.SessionKindChild, ParentToolCallID: "tool-1",
+		},
+	}}
 	completion := storesqlite.RuntimeOperationCompletion{
 		Operation: storesqlite.RuntimeOperation{
 			OperationID: "cancel-1", WorkspaceID: "ws-1", AgentSessionID: "root-session",
@@ -123,5 +134,9 @@ func TestObservedCancelCompletionReportsRootSettlementOnce(t *testing.T) {
 	}
 	if len(recorder.deltas) != 1 || len(recorder.deltas[0].RootTurnsSettled) != 1 || recorder.deltas[0].RootTurnsSettled[0].Turn.TurnID != "root-turn" {
 		t.Fatalf("committed deltas=%#v", recorder.deltas)
+	}
+	settled := recorder.deltas[0].RootTurnsSettled[0]
+	if settled.Provider != "codex" || !settled.IsChildSession {
+		t.Fatalf("root settlement identity=%#v, want canonical provider and child marker", settled)
 	}
 }

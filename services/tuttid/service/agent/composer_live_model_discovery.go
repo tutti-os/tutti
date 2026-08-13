@@ -277,7 +277,7 @@ func (s *Service) discoverLiveComposerModelsUncachedForScope(
 		if prepareErr != nil {
 			return ProviderRuntimeSession{}, prepareErr
 		}
-		runtimeSession, startErr := s.controller().Start(ctx, RuntimeStartInput{
+		startResult, startErr := s.controller().Start(ctx, RuntimeStartInput{
 			WorkspaceID:       scope.workspaceID,
 			AgentSessionID:    startInput.AgentSessionID,
 			AgentTargetID:     scope.agentTargetID,
@@ -301,7 +301,7 @@ func (s *Service) discoverLiveComposerModelsUncachedForScope(
 		if startErr != nil {
 			return ProviderRuntimeSession{}, normalizeRuntimeError(startErr)
 		}
-		return runtimeSession, nil
+		return startResult.Session, nil
 	}()
 	if err != nil {
 		s.invalidateProviderAvailability(scope.provider)
@@ -501,6 +501,7 @@ func (s *Service) mergeLiveComposerModelsForComposerOptions(
 	provider := agentprovider.NormalizeOpen(input.Provider)
 	scope := newComposerLiveModelScopeForInput(input, effectiveSettings)
 	var liveModels []ComposerConfigOptionValue
+	liveModelDiscoveryPending := false
 	modelSource := "claude-static"
 	if strings.TrimSpace(input.WorkspaceID) != "" {
 		now := time.Now().UTC()
@@ -564,6 +565,7 @@ func (s *Service) mergeLiveComposerModelsForComposerOptions(
 				if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 					return ComposerOptions{}, err
 				}
+				liveModelDiscoveryPending = errors.Is(err, errLiveModelDiscoveryPending)
 				if err == nil && len(discovered) > 0 {
 					liveModels = discovered
 					modelSource = runtimeLiveModelCatalogSource
@@ -598,6 +600,10 @@ func (s *Service) mergeLiveComposerModelsForComposerOptions(
 	if !isClaudeSDKLiveModelProvider(provider) {
 		// Without a live list there is nothing trustworthy to offer beyond
 		// the currently selected model; keep the static single-entry select.
+		// Preserve a pending discovery as separate evidence so create validation
+		// does not mistake a slow extension startup for an explicit refusal to
+		// configure models.
+		options.liveModelDiscoveryPending = liveModelDiscoveryPending
 		return options, nil
 	}
 	staticModels := staticClaudeComposerModelOptions(effectiveSettings.Model)

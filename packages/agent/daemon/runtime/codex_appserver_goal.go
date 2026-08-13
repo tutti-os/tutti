@@ -166,8 +166,9 @@ func (a *CodexAppServerAdapter) ApplyGoal(
 	observation := a.sessionGoal(session.AgentSessionID)
 	return GoalAdapterResult{
 		Events: events, Observation: observation,
-		Evidence:      map[string]any{"source": "codex_goal_rpc", "confidence": "authoritative", "repairEpoch": input.RepairEpoch},
-		ProviderPhase: "applied",
+		Evidence:         map[string]any{"source": "codex_goal_rpc", "confidence": "authoritative", "repairEpoch": input.RepairEpoch},
+		ProviderPhase:    "applied",
+		ExecutionPending: action == GoalControlSet,
 	}, nil
 }
 

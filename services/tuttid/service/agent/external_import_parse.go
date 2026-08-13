@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/tutti-os/tutti/packages/agent/daemon/providerregistry"
+	agentactivitybiz "github.com/tutti-os/tutti/packages/agent/store-sqlite"
 	agentproviderbiz "github.com/tutti-os/tutti/services/tuttid/biz/agentprovider"
 )
 
@@ -394,7 +395,7 @@ func isExternalImportNoProjectCwd(provider string, cwd string) bool {
 	}
 	cwd = filepath.Clean(cwd)
 	home = filepath.Clean(home)
-	if cwd == home {
+	if agentactivitybiz.AreProjectPathsEqual(cwd, home) {
 		return true
 	}
 	descriptor, ok := providerregistry.Find(provider)
@@ -416,13 +417,13 @@ func isExternalImportNoProjectCwd(provider string, cwd string) bool {
 // only checks that the path is nested under Documents/Codex rather than
 // pattern-matching a specific segment shape, to stay robust across formats.
 func isExternalImportScratchCwd(home string, cwd string, relativeRoot string) bool {
-	rel, err := filepath.Rel(home, cwd)
-	if err != nil || rel == "." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) || rel == ".." {
+	root := strings.Trim(strings.TrimSpace(filepath.ToSlash(relativeRoot)), "/")
+	if root == "" {
 		return false
 	}
-	rel = filepath.ToSlash(rel)
-	root := strings.Trim(strings.TrimSpace(filepath.ToSlash(relativeRoot)), "/")
-	return root != "" && strings.HasPrefix(rel, root+"/") && strings.TrimPrefix(rel, root+"/") != ""
+	scratchRoot := filepath.Join(home, filepath.FromSlash(root))
+	return agentactivitybiz.IsProjectPathWithin(scratchRoot, cwd) &&
+		!agentactivitybiz.AreProjectPathsEqual(scratchRoot, cwd)
 }
 
 func externalImportedMessageHasContent(message externalImportedMessage) bool {

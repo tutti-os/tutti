@@ -32,18 +32,21 @@ export interface ConnectorCardView {
   implementationTags: string[];
   installationState: ConnectorInstallationState;
   operationStage: ConnectorOperationStage | null;
+  canUninstall: boolean;
   status:
     | "authorization_required"
     | "connected"
     | "installing"
     | "not_installed"
     | "unavailable"
+    | "updating"
     | "update_available";
 }
 
 export interface ConnectorSectionView {
   id: string;
   connectorKeys: string[];
+  error: boolean;
   hasMore: boolean;
   itemCount: number;
   loading: boolean;
@@ -75,6 +78,7 @@ interface ConnectorDialogBaseView {
 }
 
 export interface ConnectorAuthorizationDialogView extends ConnectorDialogBaseView {
+  authorizationInteraction?: unknown;
   authorizationKind: string;
   authorizing: boolean;
   kind: "authorization";
@@ -89,6 +93,7 @@ export interface ConnectorInstallationDialogView extends ConnectorDialogBaseView
 
 export interface ConnectorManagementDialogView extends ConnectorDialogBaseView {
   canAuthorize: boolean;
+  canUninstall: boolean;
   details: ConnectorDetailFieldView[];
   kind: "management";
 }
@@ -98,11 +103,16 @@ export interface ConnectorBlockedDialogView extends ConnectorDialogBaseView {
   reason: string;
 }
 
+export interface ConnectorUninstallConfirmationDialogView extends ConnectorDialogBaseView {
+  kind: "uninstall_confirmation";
+}
+
 export type ConnectorDialogView =
   | ConnectorAuthorizationDialogView
   | ConnectorBlockedDialogView
   | ConnectorInstallationDialogView
-  | ConnectorManagementDialogView;
+  | ConnectorManagementDialogView
+  | ConnectorUninstallConfirmationDialogView;
 
 export interface ConnectorMarketViewState {
   availableCount: number;

@@ -1139,10 +1139,17 @@ test("desktop packaging provides an application icon resource", async () => {
 });
 
 test("desktop windows packaging anchors electron-builder workspace detection to the repo root", async () => {
+  const packageJson = JSON.parse(await readFile(desktopPackagePath, "utf8"));
   const buildScript = await readFile(buildScriptPath, "utf8");
 
   assert.match(buildScript, /npm_package_json="\$\{ROOT_DIR\}\/package\.json"/);
   assert.match(buildScript, /INIT_CWD="\$\{ROOT_DIR\}"/);
+  assert.equal(
+    packageJson.scripts["build:win:prepared"],
+    "bash ../../tools/scripts/build-desktop-package.sh win --prepared-builtin-apps"
+  );
+  assert.match(buildScript, /--prepared-builtin-apps/);
+  assert.match(buildScript, /BUILTIN_APPS_PREPARED/);
 });
 
 test("desktop Windows package and daemon agree on the managed POSIX shell resource", async () => {
@@ -1204,7 +1211,10 @@ test("desktop Windows package and daemon agree on the bundled Mutagen resource",
 test("desktop packages and daemon agree on the bundled uv archive root", async () => {
   const packageJson = JSON.parse(await readFile(desktopPackagePath, "utf8"));
   const defaults = JSON.parse(
-    await readFile(new URL("../../config/tutti.defaults.json", import.meta.url), "utf8")
+    await readFile(
+      new URL("../../config/tutti.defaults.json", import.meta.url),
+      "utf8"
+    )
   );
   const buildScript = await readFile(buildScriptPath, "utf8");
   const tuttidManager = await readFile(tuttidManagerPath, "utf8");

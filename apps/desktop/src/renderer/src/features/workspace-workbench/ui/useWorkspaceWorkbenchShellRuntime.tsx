@@ -440,20 +440,41 @@ export function useWorkspaceWorkbenchShellRuntime({
       return;
     }
 
-    return workbenchHostService.onWindowCloseRequest((payload) => {
-      void shellRuntimeController
-        .requestWindowClose({
-          reason: payload.reason
-        })
-        .then((outcome) => {
-          if (payload.requestId) {
-            workbenchHostService.resolveWindowCloseRequest({
-              outcome,
-              requestId: payload.requestId
-            });
-          }
-        });
+    const disposeCloseRequestListener =
+      workbenchHostService.onWindowCloseRequest((payload) => {
+        void shellRuntimeController
+          .requestWindowClose({
+            reason: payload.reason
+          })
+          .then((outcome) => {
+            if (payload.requestId) {
+              workbenchHostService.resolveWindowCloseRequest({
+                outcome,
+                requestId: payload.requestId
+              });
+            }
+          })
+          .catch(() => {
+            if (payload.requestId) {
+              workbenchHostService.resolveWindowCloseRequest({
+                outcome: "blocked",
+                requestId: payload.requestId
+              });
+            }
+          });
+      });
+
+    void workbenchHostService.setWindowCloseGuardEnabled(true).catch(() => {
+      // Older preload clients do not expose the native close interception
+      // handshake. The renderer-side guard remains usable in that case.
     });
+
+    return () => {
+      disposeCloseRequestListener();
+      void workbenchHostService
+        .setWindowCloseGuardEnabled(false)
+        .catch(() => undefined);
+    };
   }, [enableWindowCloseGuard, shellRuntimeController, workbenchHostService]);
 
   const handleWorkbenchHostReady = useCallback(

@@ -95,6 +95,7 @@ func (c *Controller) CanResume(input ResumeInput) bool {
 		ProviderSessionID: strings.TrimSpace(input.ProviderSessionID),
 		CWD:               strings.TrimSpace(input.CWD),
 		Env:               append([]string(nil), input.Env...),
+		MCPServers:        cloneMCPServerBindings(input.MCPServers),
 		Status:            normalizeSessionStatus(input.Status),
 		Title:             strings.TrimSpace(input.Title),
 		Visible:           sessionVisible(input.Visible),
@@ -130,7 +131,7 @@ func (c *Controller) Sessions(roomID string) []Session {
 		if strings.TrimSpace(session.RoomID) != roomID {
 			continue
 		}
-		if c.provisionalSessions[key] {
+		if c.sessionPublicationPendingLocked(key) {
 			continue
 		}
 		session = c.reconcileSessionStatusLocked(key, session)
@@ -414,7 +415,11 @@ func (c *Controller) publishPendingConfigOptionsUpdates(session Session) {
 		delete(c.pendingConfigOptionsUpdates, key)
 	}
 	c.mu.Unlock()
-	if len(pending) == 0 {
+	c.publishConfigOptionsUpdates(session, pending)
+}
+
+func (c *Controller) publishConfigOptionsUpdates(session Session, pending []AgentSessionConfigOptionsUpdate) {
+	if c == nil || len(pending) == 0 {
 		return
 	}
 	events := make([]StreamEvent, 0, len(pending))
@@ -423,7 +428,7 @@ func (c *Controller) publishPendingConfigOptionsUpdates(session Session) {
 		c.recordConfigOptionsUpdate(session, update)
 		events = append(events, configOptionsUpdateStreamEvent(update))
 	}
-	c.publishStreamEvents(roomID, agentSessionID, events)
+	c.publishStreamEvents(session.RoomID, session.AgentSessionID, events)
 	c.enqueueSessionSnapshotReport(context.Background(), session)
 }
 
@@ -552,16 +557,16 @@ func (c *Controller) applyCommandSnapshotByAgentSessionID(snapshot AgentSessionC
 	c.mu.Lock()
 	var session Session
 	found := false
-	provisional := false
+	publicationPending := false
 	for key, candidate := range c.sessions {
 		if strings.TrimSpace(candidate.AgentSessionID) == agentSessionID {
 			session = candidate
 			found = true
-			provisional = c.provisionalSessions[key]
+			publicationPending = c.sessionPublicationPendingLocked(key)
 			break
 		}
 	}
-	if !found || provisional {
+	if !found || publicationPending {
 		snapshot.AgentSessionID = agentSessionID
 		snapshot.Commands = cloneAgentSessionCommands(snapshot.Commands)
 		c.pendingCommandSnapshots[agentSessionID] = snapshot
@@ -641,9 +646,29 @@ func (c *Controller) applySessionEventsByAgentSessionID(agentSessionID string, e
 		session.UpdatedAtUnixMS = unixMS(now())
 	}
 	c.sessions[foundKey] = session
-	provisional := c.provisionalSessions[foundKey]
+	if initialization := c.sessionInitializations[foundKey]; initialization != nil {
+		initialization.events = append(initialization.events, events...)
+	}
+	publicationPending := c.sessionPublicationPendingLocked(foundKey)
 	c.mu.Unlock()
-	if provisional {
+	if publicationPending {
+		return
+	}
+	// Session-scoped adapter callbacks can carry child terminals after the
+	// owning root Turn emitter has detached. They still cross the same durable
+	// commit-before-publish barrier as terminals emitted by an active Turn.
+	if eventsRequireDurablePublish(events) {
+		if err := c.reportSessionBeforePublish(context.Background(), session, events); err != nil {
+			slog.Error(
+				"agent session sink terminal activity report failed before publish",
+				"event", "agent_session.activity_report.session_sink_terminal_barrier_failed",
+				"room_id", session.RoomID,
+				"agent_session_id", session.AgentSessionID,
+				"error", err,
+			)
+			return
+		}
+		c.publish(session, events)
 		return
 	}
 	c.publish(session, events)
@@ -669,25 +694,25 @@ func (c *Controller) applyConfigOptionsUpdateByAgentSessionID(update AgentSessio
 	c.mu.Lock()
 	var session Session
 	found := false
-	provisional := false
+	publicationPending := false
 	if roomID != "" {
 		key := sessionKey(roomID, agentSessionID)
 		if candidate, ok := c.sessions[key]; ok {
 			session = candidate
 			found = true
-			provisional = c.provisionalSessions[key]
+			publicationPending = c.sessionPublicationPendingLocked(key)
 		}
 	} else {
 		for key, candidate := range c.sessions {
 			if strings.TrimSpace(candidate.AgentSessionID) == agentSessionID {
 				session = candidate
 				found = true
-				provisional = c.provisionalSessions[key]
+				publicationPending = c.sessionPublicationPendingLocked(key)
 				break
 			}
 		}
 	}
-	if !found || provisional {
+	if !found || publicationPending {
 		pendingRoomID := firstNonEmpty(roomID, session.RoomID)
 		if pendingRoomID != "" {
 			key := sessionKey(pendingRoomID, agentSessionID)

@@ -18,6 +18,9 @@ type scriptedSessionState struct {
 	accountReadError             bool
 	accountReadErrorCode         int
 	accountReadErrorMessage      string
+	rateLimitsReadError          bool
+	rateLimitsReadErrorCode      int
+	rateLimitsReadErrorMessage   string
 	childNicknames               map[string]string
 	historyTurns                 []any
 	rollbackHistoryTurns         []any
@@ -162,6 +165,21 @@ func (s *fakeCodexAppServer) handleSessionRPC(message scriptedAppServerMessage) 
 			},
 		})
 	case appServerMethodRateLimitsRead:
+		if s.rateLimitsReadError {
+			errorMessage := s.rateLimitsReadErrorMessage
+			if errorMessage == "" {
+				errorMessage = "rate limits backend unavailable"
+			}
+			errorCode := s.rateLimitsReadErrorCode
+			if errorCode == 0 {
+				errorCode = -32000
+			}
+			s.sendJSON(map[string]any{
+				"id":    message.ID,
+				"error": map[string]any{"code": errorCode, "message": errorMessage},
+			})
+			return true
+		}
 		s.sendJSON(map[string]any{
 			"id": message.ID,
 			"result": map[string]any{

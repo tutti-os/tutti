@@ -1,6 +1,6 @@
 {
   "schemaVersion": "tutti.app.runtime-lock.v1",
-  "runtimeVersion": "2026.07.0",
+  "runtimeVersion": "2026.07.1",
   "uv": {
     "version": "0.11.19"
   },
@@ -10,7 +10,7 @@
     "sourceSha256": "0816c4761c97ecdb3f50a3924de0a93fd78cb63ee8e6c04201ddfaedca500b0b",
     "windows": {
       "archiveUrl": "https://github.com/astral-sh/python-build-standalone/releases/download/20260728/cpython-3.12.13%2B20260728-x86_64-pc-windows-msvc-install_only.tar.gz",
-      "archiveSha256": "86617be5b7f23e36263e1a6b3f27d8a0cd6e0eb2293f06b690de531720d9f59b",
+      "archiveSha256": "8a0e1ded37e11f4c72b9671bf134bb478b1b2d55efe53a3d6e589b166f1bf2e1",
       "archiveRoot": "python"
     }
   },

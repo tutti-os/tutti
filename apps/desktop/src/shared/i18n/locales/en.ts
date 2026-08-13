@@ -1482,13 +1482,14 @@ export const en = {
         manageStatusAuthRequired: "Sign-in required",
         manageStatusAvailable: "Available to connect",
         manageStatusChecking: "Checking",
+        manageStatusConfigured: "Credentials configured",
         manageStatusConnected: "Connected",
         manageStatusSelectionRequired: "Multiple installs — choose one",
+        manageStatusTemporarilyUnsupported: "Not supported yet",
         manageStatusUnknown: "Status unavailable",
-        manageStatusUnsupported: "Updating in background",
+        manageStatusUnsupported: "Unsupported",
         manageTitle: "Manage Agents",
-        manageUnsupportedTooltip:
-          "This agent is temporarily unavailable while local support updates.",
+        manageUnsupportedTooltip: "This local agent runtime is not supported.",
         refresh: "Re-check",
         unknown: "Unable to confirm local CLI status — refresh to re-check"
       },

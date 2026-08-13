@@ -64,18 +64,16 @@ export async function ensureDesktopCliShim(
   }
 
   let pathShimPath: string | null = null;
-  if (platform !== "win32") {
-    const pathEnv = options.pathEnv ?? (await resolveCliInstallPathEnv()) ?? "";
-    pathShimPath = await installPathShimIfPossible({
-      canonicalShimPath: shimPath,
-      commandName: isPackaged ? "tutti" : "tutti-dev",
-      development: !isPackaged,
-      homeDir: options.homeDir ?? homedir(),
-      pathEnv,
-      platform,
-      stateRootDir
-    });
-  }
+  const pathEnv = options.pathEnv ?? (await resolveCliInstallPathEnv()) ?? "";
+  pathShimPath = await installPathShimIfPossible({
+    canonicalShimPath: shimPath,
+    commandName: isPackaged ? "tutti" : "tutti-dev",
+    development: !isPackaged,
+    homeDir: options.homeDir ?? homedir(),
+    pathEnv,
+    platform,
+    stateRootDir
+  });
 
   return {
     installed: true,
@@ -197,7 +195,8 @@ async function installPathShimIfPossible(input: {
 
   const existingCommand = await findExistingPathCommand(
     pathDirs,
-    input.commandName
+    input.commandName,
+    input.platform
   );
   if (existingCommand) {
     if (!(await isOwnedCliShim(existingCommand))) {
@@ -212,7 +211,10 @@ async function installPathShimIfPossible(input: {
     return null;
   }
 
-  const pathShimPath = join(targetDir, input.commandName);
+  const pathShimPath = join(
+    targetDir,
+    pathCommandFileName(input.commandName, input.platform)
+  );
   await writePathShim(pathShimPath, input);
   return pathShimPath;
 }
@@ -245,15 +247,23 @@ async function writePathShim(
 
 async function findExistingPathCommand(
   pathDirs: readonly string[],
-  commandName: string
+  commandName: string,
+  platform: NodeJS.Platform
 ): Promise<string | null> {
   for (const pathDir of pathDirs) {
-    const candidate = join(pathDir, commandName);
+    const candidate = join(pathDir, pathCommandFileName(commandName, platform));
     if (await pathExists(candidate)) {
       return candidate;
     }
   }
   return null;
+}
+
+function pathCommandFileName(
+  commandName: string,
+  platform: NodeJS.Platform
+): string {
+  return platform === "win32" ? `${commandName}.cmd` : commandName;
 }
 
 async function firstWritableUserPathDir(

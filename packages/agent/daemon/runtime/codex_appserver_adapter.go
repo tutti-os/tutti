@@ -47,6 +47,7 @@ const (
 	appServerMethodFileChangeApproval  = "item/fileChange/requestApproval"
 	appServerMethodPermissionsApproval = "item/permissions/requestApproval"
 	appServerMethodRequestUserInput    = "item/tool/requestUserInput"
+	appServerMethodMCPElicitation      = "mcpServer/elicitation/request"
 	appServerMethodExecApprovalV1      = "execCommandApproval"
 	appServerMethodPatchApprovalV1     = "applyPatchApproval"
 
@@ -531,6 +532,13 @@ func clientInfoParamsForVersion(host HostMetadata, name string, version string) 
 
 func (a *CodexAppServerAdapter) Provider() string {
 	return a.config.provider
+}
+
+func (*CodexAppServerAdapter) ConnectorCapabilities(
+	context.Context,
+	Session,
+) (ConnectorCapabilities, error) {
+	return ConnectorCapabilities{HTTPMCP: true}, nil
 }
 
 func (*CodexAppServerAdapter) sessionCWD(session Session) string {

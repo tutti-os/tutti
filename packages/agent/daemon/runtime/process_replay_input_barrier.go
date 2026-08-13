@@ -12,6 +12,10 @@ import (
 
 var ErrReplayProviderOvershot = errors.New("checkpoint_provider_overshot")
 
+// errReplaySyntheticPending tells the ACP read loop to drain pending synthetic
+// optional-probe responses before retrying a checkpoint barrier wait.
+var errReplaySyntheticPending = errors.New("replay synthetic response pending")
+
 type replayProviderInputBarrier struct {
 	mu      sync.Mutex
 	active  bool
@@ -73,6 +77,7 @@ func (b *replayProviderInputBarrier) complete(
 	ctx context.Context,
 	unit ProviderInputUnit,
 	closed <-chan struct{},
+	interrupt <-chan struct{},
 ) error {
 	for {
 		b.mu.Lock()
@@ -116,6 +121,8 @@ func (b *replayProviderInputBarrier) complete(
 		case <-closed:
 			return context.Canceled
 		case <-changed:
+		case <-interrupt:
+			return errReplaySyntheticPending
 		}
 	}
 }
@@ -139,7 +146,7 @@ func (b *replayProviderInputBarrier) waitForProgressDuration(
 		b.mu.Unlock()
 
 		if blocked {
-			if err := waitForReplayPlaybackChange(ctx, closed, changed); err != nil {
+			if err := waitForReplayPlaybackChange(ctx, closed, changed, nil); err != nil {
 				return err
 			}
 			continue

@@ -160,7 +160,7 @@ test("listDesktopWorkspaceAgentProbes maps Codex OAuth usage windows", async () 
   }
 });
 
-test("listDesktopWorkspaceAgentProbes maps Claude Code OAuth usage windows", async () => {
+test("listDesktopWorkspaceAgentProbes lets the server judge Claude OAuth expiry metadata", async () => {
   const previousHome = process.env.HOME;
   const previousClaudeConfigDir = process.env.CLAUDE_CONFIG_DIR;
   const directory = await mkdtemp(join(tmpdir(), "tutti-claude-usage-"));
@@ -173,7 +173,7 @@ test("listDesktopWorkspaceAgentProbes maps Claude Code OAuth usage windows", asy
       JSON.stringify({
         claudeAiOauth: {
           accessToken: "claude-access-token-1",
-          expiresAt: 4102444800000,
+          expiresAt: 1,
           rateLimitTier: "claude_pro",
           subscriptionType: "pro"
         }
@@ -260,6 +260,7 @@ test("listDesktopWorkspaceAgentProbes prefers Claude macOS Keychain credentials"
   if (process.platform !== "darwin") return;
   const previousClaudeConfigDir = process.env.CLAUDE_CONFIG_DIR;
   const directory = await mkdtemp(join(tmpdir(), "tutti-claude-keychain-"));
+  const keychainServices: string[] = [];
   try {
     process.env.CLAUDE_CONFIG_DIR = directory;
     await writeFile(
@@ -271,14 +272,15 @@ test("listDesktopWorkspaceAgentProbes prefers Claude macOS Keychain credentials"
         }
       })
     );
-    setClaudeOAuthKeychainReaderForTesting(async () =>
-      JSON.stringify({
+    setClaudeOAuthKeychainReaderForTesting(async (service) => {
+      keychainServices.push(service);
+      return JSON.stringify({
         claudeAiOauth: {
           accessToken: "fresh-keychain-token",
           expiresAt: 4102444800000
         }
-      })
-    );
+      });
+    });
     setOutboundFetcherForTesting(async (_url, init) => {
       const headers = new Headers(init?.headers);
       assert.equal(headers.get("authorization"), "Bearer fresh-keychain-token");
@@ -297,6 +299,10 @@ test("listDesktopWorkspaceAgentProbes prefers Claude macOS Keychain credentials"
       result.providers[0]?.attempts?.[0]?.strategy,
       "claude-oauth-keychain"
     );
+    assert.match(
+      keychainServices[0] ?? "",
+      /^Claude Code-credentials-[0-9a-f]{8}$/
+    );
   } finally {
     if (previousClaudeConfigDir === undefined) {
       delete process.env.CLAUDE_CONFIG_DIR;
@@ -309,7 +315,7 @@ test("listDesktopWorkspaceAgentProbes prefers Claude macOS Keychain credentials"
   }
 });
 
-test("listDesktopWorkspaceAgentProbes treats Claude custom API settings as available", async () => {
+test("listDesktopWorkspaceAgentProbes treats a Claude settings API credential as available", async () => {
   const previousHome = process.env.HOME;
   const previousClaudeConfigDir = process.env.CLAUDE_CONFIG_DIR;
   const previousAnthropicBaseUrl = process.env.ANTHROPIC_BASE_URL;
@@ -330,7 +336,6 @@ test("listDesktopWorkspaceAgentProbes treats Claude custom API settings as avail
       JSON.stringify({
         env: {
           ANTHROPIC_AUTH_TOKEN: "custom-token-1",
-          ANTHROPIC_BASE_URL: "https://jp.icodeeasy.cc",
           ANTHROPIC_MODEL: "claude-sonnet-4-6"
         }
       })

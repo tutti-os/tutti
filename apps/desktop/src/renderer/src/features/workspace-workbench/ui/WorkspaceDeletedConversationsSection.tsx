@@ -197,8 +197,8 @@ export function WorkspaceDeletedConversationsSection({
               </SelectItem>
               {state.projectOptions.map((project) => (
                 <SelectItem
-                  key={project.projectPath}
-                  value={`project:${project.projectPath}`}
+                  key={project.railSectionKey}
+                  value={`project:${project.railSectionKey}`}
                 >
                   {project.projectAvailable
                     ? project.projectLabel
@@ -475,15 +475,19 @@ function DeletedConversationRow({
 }) {
   const { t } = useTranslation();
   const pending = operation !== undefined;
-  const projectLabel = conversation.projectPath
-    ? conversation.projectAvailable
-      ? conversation.projectLabel || projectBasename(conversation.projectPath)
-      : t("workspace.settings.deletedConversations.removedProject", {
-          project:
-            conversation.projectLabel ||
-            projectBasename(conversation.projectPath)
-        })
-    : t("workspace.settings.deletedConversations.unscoped");
+  const projectDisplayLabel =
+    conversation.projectLabel ||
+    (conversation.projectPath
+      ? projectBasename(conversation.projectPath)
+      : conversation.railSectionKey);
+  const projectLabel =
+    conversation.railSectionKey !== "conversations"
+      ? conversation.projectAvailable
+        ? projectDisplayLabel
+        : t("workspace.settings.deletedConversations.removedProject", {
+            project: projectDisplayLabel
+          })
+      : t("workspace.settings.deletedConversations.unscoped");
   const shortTime = formatConversationTime(
     conversation.updatedAtUnixMs,
     locale,
@@ -666,7 +670,7 @@ function serializeProjectFilter(
   filter: WorkspaceDeletedConversationProjectFilter
 ): string {
   return filter.kind === "project"
-    ? `project:${filter.projectPath}`
+    ? `project:${filter.railSectionKey}`
     : filter.kind;
 }
 
@@ -676,7 +680,7 @@ function deserializeProjectFilter(
   if (value === "all" || value === "unscoped") {
     return { kind: value };
   }
-  return { kind: "project", projectPath: value.slice("project:".length) };
+  return { kind: "project", railSectionKey: value.slice("project:".length) };
 }
 
 function formatConversationTime(

@@ -213,6 +213,7 @@ export function buildAgentEnvWizardViewModel(
     adapterInstalled: status?.adapter.installed ?? false,
     adapterVersionMismatch,
     authenticated: status?.auth.status === "authenticated",
+    credentialsConfigured: status?.auth.status === "configured",
     authRequired: status?.auth.status === "required",
     ready: Boolean(ready),
     activePhase: activeAction?.phase ?? null,

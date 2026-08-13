@@ -67,7 +67,8 @@ type Service struct {
 	WorkspaceIDs                   func(context.Context) ([]string, error)
 	PromptAttachmentStore          PromptAttachmentStore
 	RuntimePreparer                runtimeprep.Preparer
-	ConnectorRoutingHints          func() []runtimeprep.ConnectorRoutingHint
+	ConnectorRuntime               ConnectorRuntime
+	ConnectorCapabilities          ConnectorCapabilityResolver
 	ModelGateway                   ModelGatewayRegistry
 	BrowserUseAvailable            func() bool
 	ComputerUseAvailable           func() bool
@@ -79,6 +80,7 @@ type Service struct {
 	ProviderAvailabilityCacheTTL   time.Duration
 	CapabilityCatalogCacheTTL      time.Duration
 	LiveModelCacheTTL              time.Duration
+	liveModelDiscoveryWaitTimeout  time.Duration
 	GeneratedFilesClock            func() time.Time
 	LiveModelDiscoveryDeleteDelay  time.Duration
 	skillOptionsCache              *composerSkillOptionsCache
@@ -109,6 +111,32 @@ type Service struct {
 	// modelPlanBinding wires the optional workspace model access plan
 	// integration; see ConfigureModelPlanBinding.
 	modelPlanBinding modelPlanBindingRuntime
+}
+
+// ConnectorRuntime is the tuttid-owned projection of the active Connector
+// runtime into Agent session preparation. Bindings isolate one local Agent
+// session; they do not express Connector-level permissions.
+type ConnectorRuntime interface {
+	RoutingHints() []runtimeprep.ConnectorRoutingHint
+	BindSession(string, string) (runtimeprep.ConnectorAgentContext, error)
+	RevokeSession(string, string)
+	RevokeAll()
+}
+
+type ConnectorCapabilityInput struct {
+	WorkspaceID       string
+	AgentSessionID    string
+	AgentTargetID     string
+	Provider          string
+	Cwd               string
+	Env               []string
+	ProviderTargetRef map[string]any
+	PermissionModeID  string
+	Settings          ComposerSettings
+}
+
+type ConnectorCapabilityResolver interface {
+	ConnectorHTTPMCPSupported(context.Context, ConnectorCapabilityInput) (bool, error)
 }
 
 type TuttiModeSourceActivity struct {
@@ -157,12 +185,13 @@ type RuntimeController interface {
 	// cannot make that guarantee, so the service treats guidance errors as
 	// delivery-unknown. Accepted=true is not a durable provenance receipt.
 	Exec(context.Context, RuntimeExecInput) (RuntimeExecResult, error)
+	PublishSessionInitialization(context.Context, RuntimeSessionInitializationPublishInput) (ProviderRuntimeSession, error)
 	Resume(context.Context, RuntimeResumeInput) (ProviderRuntimeSession, error)
 	Session(workspaceID string, agentSessionID string) (ProviderRuntimeSession, bool)
 	SetTitle(context.Context, RuntimeSetTitleInput) (ProviderRuntimeSession, error)
 	SetVisible(context.Context, RuntimeSetVisibleInput) (ProviderRuntimeSession, error)
 	Sessions(workspaceID string) []ProviderRuntimeSession
-	Start(context.Context, RuntimeStartInput) (ProviderRuntimeSession, error)
+	Start(context.Context, RuntimeStartInput) (RuntimeStartResult, error)
 	SubmitInteractive(context.Context, RuntimeSubmitInteractiveInput) (RuntimeSubmitInteractiveResult, error)
 	InteractiveDisposition(workspaceID string, rootAgentSessionID string, agentSessionID string, turnID string, requestID string) RuntimeInteractiveDisposition
 	Subscribe(workspaceID string, agentSessionID string) (<-chan RuntimeStreamEvent, func(), bool)
@@ -283,9 +312,19 @@ type Session struct {
 	LatestTurn             *agentactivitybiz.Turn
 	LatestTurnInteractions []agentactivitybiz.Interaction
 	PendingInteractions    []agentactivitybiz.Interaction
+	GoalSyncState          *SessionGoalSyncState
 	TuttiModeActivation    *tuttimodeactivationbiz.Activation
 	LifecycleCapabilities  SessionLifecycleCapabilities
 	ForkedFrom             *SessionForkLineage
+}
+
+// SessionGoalSyncState is the narrow durable Goal-operation evidence exposed
+// with a Session read. Goal lifecycle and recovery remain Host-owned.
+type SessionGoalSyncState struct {
+	Revision           int64
+	SyncStatus         string
+	PendingOperationID string
+	ExecutionPending   bool
 }
 
 // SessionForkLineage is the durable provenance of a user-initiated root
@@ -307,6 +346,7 @@ type SessionLifecycleCapabilities struct {
 }
 
 type SessionIsolation struct {
+	WorktreeID   string `json:"worktreeId,omitempty"`
 	Mode         string `json:"mode"`
 	WorktreePath string `json:"worktreePath"`
 	Branch       string `json:"branch"`
@@ -358,7 +398,9 @@ type SessionSectionDeletionCandidates struct {
 }
 
 type DeleteSessionsBatchInput struct {
-	SessionIDs []string
+	SessionIDs                 []string
+	RequiredRootRailSectionKey string
+	ExcludePinnedRoots         bool
 }
 
 type DeleteSessionResult struct {
@@ -562,6 +604,8 @@ type SessionTitleUpdater interface {
 // Interaction entities.
 type ProviderRuntimeSession = agenthost.ProviderRuntimeSession
 type RuntimeStartInput = agenthost.RuntimeStartInput
+type RuntimeStartResult = agenthost.RuntimeStartResult
+type RuntimeSessionInitializationPublishInput = agenthost.RuntimeSessionInitializationPublishInput
 type RuntimeResumeInput = agenthost.RuntimeResumeInput
 type RuntimeExecInput = agenthost.RuntimeExecInput
 type RuntimeExecResult = agenthost.RuntimeExecResult

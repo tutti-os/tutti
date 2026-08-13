@@ -47,6 +47,7 @@ export function createDesktopIssueManagerFeature(input: {
   modelPlanOptions?: IssueManagerModelPlanOptionsAdapter;
   agentSessionCreator?: DesktopIssueManagerAgentSessionCreator;
   hostFilesApi: DesktopHostFilesApi;
+  hostOs: NodeJS.Platform;
   i18n: I18nRuntime<string>;
   eventStreamClient?: TuttidEventStreamClient;
   launchAgentGui?: (
@@ -83,6 +84,7 @@ export function createDesktopIssueManagerFeature(input: {
       createWorkspaceFileReferenceSource({
         adapter: workspaceFileReferenceAdapter,
         label: translate("workspace.referenceSources.localSourceLabel"),
+        os: input.hostOs,
         order: 0
       }),
       createAppArtifactReferenceSource({

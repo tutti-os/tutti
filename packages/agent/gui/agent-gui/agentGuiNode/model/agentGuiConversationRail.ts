@@ -470,17 +470,8 @@ export function projectConversationRailMemberships(input: {
       (conversation) => [conversation.id, conversation] as const
     )
   );
-  return input.sections.map((section) => ({
-    id: section.id,
-    kind: section.kind,
-    label:
-      section.kind === "pinned"
-        ? input.labels.sectionPinned
-        : section.kind === "project"
-          ? (section.project?.label ?? section.id)
-          : input.labels.sectionConversations,
-    project: section.project,
-    items: section.sessionIds.flatMap((id) => {
+  return input.sections.map((section) => {
+    const items = section.sessionIds.flatMap((id) => {
       const conversation = conversationsById.get(id);
       if (!conversation) return [];
       const exactSectionId = conversationRailSectionId(conversation);
@@ -490,8 +481,20 @@ export function projectConversationRailMemberships(input: {
           ? { ...conversation, project: section.project }
           : { ...conversation, project: null }
       ];
-    })
-  }));
+    });
+    return {
+      id: section.id,
+      kind: section.kind,
+      label:
+        section.kind === "pinned"
+          ? input.labels.sectionPinned
+          : section.kind === "project"
+            ? (section.project?.label ?? section.id)
+            : input.labels.sectionConversations,
+      project: section.project,
+      items: section.kind === "pinned" ? items : sortConversations(items)
+    };
+  });
 }
 
 export function projectConversationRailSearchSections(input: {

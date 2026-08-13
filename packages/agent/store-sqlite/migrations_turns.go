@@ -43,6 +43,9 @@ CREATE TABLE IF NOT EXISTS workspace_agent_turns (
   workspace_id TEXT NOT NULL,
   agent_session_id TEXT NOT NULL,
   turn_id TEXT NOT NULL CHECK (length(turn_id) > 0),
+  identity_anchor_turn_id TEXT
+    CHECK (identity_anchor_turn_id IS NULL OR
+      (length(trim(identity_anchor_turn_id)) > 0 AND identity_anchor_turn_id != turn_id)),
   phase TEXT NOT NULL CHECK (phase IN ('submitted','running','waiting','settling','settled')),
   outcome TEXT CHECK (outcome IS NULL OR outcome IN ('completed','failed','canceled','interrupted')),
   error_json TEXT,

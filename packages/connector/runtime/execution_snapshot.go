@@ -26,6 +26,41 @@ func NewExecutionSnapshotter(root string) (*ExecutionSnapshotter, error) {
 	return &ExecutionSnapshotter{root: filepath.Clean(root)}, nil
 }
 
+// CleanupOrphans removes execution snapshots left by a previous host process.
+// It must run before runtime routes are restored because active routes own
+// their snapshots in memory and remove them during normal retirement.
+func (snapshotter *ExecutionSnapshotter) CleanupOrphans() error {
+	if snapshotter == nil {
+		return errors.New("connector execution snapshotter is unavailable")
+	}
+	if err := os.MkdirAll(snapshotter.root, 0o700); err != nil {
+		return err
+	}
+	stateRoot, err := filepath.EvalSymlinks(snapshotter.root)
+	if err != nil {
+		return err
+	}
+	parent := filepath.Join(stateRoot, "execution-snapshots")
+	if err := os.MkdirAll(parent, 0o700); err != nil {
+		return err
+	}
+	entries, err := os.ReadDir(parent)
+	if err != nil {
+		return err
+	}
+	var cleanupErrors []error
+	for _, entry := range entries {
+		name := entry.Name()
+		if !strings.HasPrefix(name, ".staging-") && !strings.HasSuffix(name, ".ready") {
+			continue
+		}
+		if err := snapshotter.remove(filepath.Join(parent, name), true); err != nil {
+			cleanupErrors = append(cleanupErrors, err)
+		}
+	}
+	return errors.Join(cleanupErrors...)
+}
+
 func (snapshotter *ExecutionSnapshotter) Create(prepared market.PreparedArtifactReceipt) (string, error) {
 	if snapshotter == nil || strings.TrimSpace(prepared.InventoryDigest) == "" {
 		return "", errors.New("prepared connector inventory digest is missing")

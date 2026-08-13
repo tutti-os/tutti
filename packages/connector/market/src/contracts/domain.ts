@@ -72,6 +72,10 @@ export interface ConnectorManagedCliCommand {
 export interface ConnectorManagedCliInterface {
   entrypoint: string;
   arguments?: string[];
+  readinessProbe?: {
+    arguments: string[];
+    timeoutMs: number;
+  };
   commands: ConnectorManagedCliCommand[];
 }
 
@@ -90,8 +94,10 @@ export interface ConnectorManagedStdioImplementation {
 }
 
 export interface ConnectorRemoteStreamableHttpImplementation {
-  endpoint: string;
-  allowedHosts: string[];
+  protocolVersion: "2026-07-28";
+  bindingRef: string;
+  contractVersion: number;
+  bindingContractHash: string;
 }
 
 export interface ConnectorManifestImplementation {
@@ -125,8 +131,10 @@ export interface ConnectorManifest {
   description?: string;
   agentRouting?: ConnectorAgentRouting;
   permissions: string[];
+  requiredCapabilities?: string[];
   implementation: ConnectorManifestImplementation;
   authorizationKind: string;
+  authorizationInteraction?: unknown;
   compatibility?: ConnectorCompatibilityRequirements;
 }
 

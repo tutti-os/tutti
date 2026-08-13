@@ -16,7 +16,7 @@ import (
 
 type LocalFilesAdapter struct {
 	MaxSearchCandidates int
-	IgnoredDirectories  map[string]struct{}
+	searchProvider      localFileSearchProvider
 }
 
 func (LocalFilesAdapter) ListDirectory(

@@ -6,6 +6,7 @@
   "types": "./src/index.ts",
   "exports": {
     ".": "./src/index.ts",
+    "./authorization": "./src/authorization/index.ts",
     "./contracts": "./src/contracts/index.ts",
     "./core": "./src/services/core/index.ts",
     "./i18n": "./src/i18n/index.ts",
@@ -30,15 +31,18 @@
     "typecheck": "node ../../../tools/scripts/run-tsgo-typecheck.mjs"
   },
   "dependencies": {
+    "@tutti-os/connector-authorization-protocol": "workspace:*",
     "@tutti-os/infra": "0.1.0",
     "@tutti-os/ui-i18n-runtime": "workspace:*",
     "@tutti-os/ui-system": "workspace:*",
+    "qrcode-generator": "2.0.4",
     "valtio": "^2.3.2"
   },
   "devDependencies": {
     "@tutti-os/config-tsconfig": "workspace:*",
     "@types/node": "^24.0.1",
     "@types/react": "^19.1.6",
+    "@types/react-dom": "^19.1.5",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "tsx": "^4.22.3",
@@ -56,6 +60,10 @@
       ".": {
         "types": "./dist/index.d.ts",
         "import": "./dist/index.js"
+      },
+      "./authorization": {
+        "types": "./dist/authorization/index.d.ts",
+        "import": "./dist/authorization/index.js"
       },
       "./contracts": {
         "types": "./dist/contracts/index.d.ts",

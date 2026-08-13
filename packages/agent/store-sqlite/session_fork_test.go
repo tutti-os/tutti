@@ -261,6 +261,31 @@ WHERE workspace_id = 'ws-1' AND agent_session_id = 'target'
 	}
 }
 
+func TestSessionForkRemapsTurnIdentityAnchorWithinFork(t *testing.T) {
+	t.Parallel()
+	store := openTestStore(t, testOptions(&staticProjectPaths{}))
+	ctx := context.Background()
+	seedForkSession(t, store)
+	if _, err := store.db.ExecContext(ctx, `UPDATE workspace_agent_turns
+		SET identity_anchor_turn_id='turn-1'
+		WHERE workspace_id='ws-1' AND agent_session_id='source' AND turn_id='turn-2'`); err != nil {
+		t.Fatal(err)
+	}
+	result := commitFork(t, store, SessionForkPrepare{
+		OperationID: "fork-identity-anchor", WorkspaceID: "ws-1",
+		RequestID: "request-identity-anchor", RequestHash: "hash-identity-anchor",
+		SourceAgentSessionID: "source", TargetAgentSessionID: "target-identity-anchor",
+		SourceTurnID: "turn-2", DriverKind: "codex", DriverVersion: "1",
+		OccurredAtUnixMS: 100,
+	})
+	wantTurnID := deterministicSessionForkCanonicalID(result.Operation, "turn", "turn-2")
+	wantAnchorTurnID := deterministicSessionForkCanonicalID(result.Operation, "turn", "turn-1")
+	turn, found, err := store.GetTurn(ctx, "ws-1", "target-identity-anchor", wantTurnID)
+	if err != nil || !found || turn.IdentityAnchorTurnID != wantAnchorTurnID {
+		t.Fatalf("forked identity Turn=%#v found=%v error=%v wantAnchor=%q", turn, found, err, wantAnchorTurnID)
+	}
+}
+
 func TestHardPurgeForkSourceRemovesSnapshotAndKeepsTargetRestorable(t *testing.T) {
 	t.Parallel()
 	store := openTestStore(t, testOptions(&staticProjectPaths{}))

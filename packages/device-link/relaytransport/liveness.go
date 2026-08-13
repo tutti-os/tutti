@@ -15,6 +15,7 @@ type livenessConfig struct {
 	pongTimeout  time.Duration
 	pingPayload  []byte
 	sessionKey   string
+	generation   uint64
 	observe      OwnerObserver
 }
 
@@ -103,6 +104,7 @@ func observeLiveness(cfg livenessConfig, event OwnerEvent) {
 		return
 	}
 	event.Phase = OwnerPhaseLiveness
+	event.Generation = cfg.generation
 	event.SessionKey = cfg.sessionKey
 	cfg.observe(event)
 }

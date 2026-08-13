@@ -13,26 +13,36 @@ import (
 )
 
 type activationGateDelegate struct {
-	reconciles         int
-	reconcileFailures  int
-	installationChecks int
-	installationState  market.InstallationObservationState
-	deactivations      int
-	failClosed         int
-	lastReconcile      market.RuntimeReconcileRequest
+	reconciles              int
+	reconcileFailures       int
+	installationInspections int
+	installationState       market.ReleaseInstallationObservationState
+	deactivations           int
+	failClosed              int
+	lastReconcile           market.RuntimeReconcileRequest
 }
 
-func (delegate *activationGateDelegate) CheckInstallation(
+func (delegate *activationGateDelegate) InspectReleaseInstallation(
 	_ context.Context,
-	request market.InstallationCheckRequest,
-) (market.InstallationObservation, error) {
-	delegate.installationChecks++
+	request market.InspectReleaseInstallationRequest,
+) (market.ReleaseInstallationObservation, error) {
+	delegate.installationInspections++
 	state := delegate.installationState
 	if state == "" {
-		state = market.InstallationObservationPresent
+		state = market.ReleaseInstallationPresent
 	}
-	return market.InstallationObservation{State: state, ConnectorKey: request.Connector.Key,
-		ReleaseDigest: request.Connector.Release.ReleaseDigest}, nil
+	return market.ReleaseInstallationObservation{State: state, ConnectorKey: request.Release.ConnectorKey,
+		ReleaseDigest: request.Release.ReleaseDigest}, nil
+}
+
+func (*activationGateDelegate) InstallRelease(context.Context, market.InstallReleaseRequest) (market.ReleaseInstallationReceipt, error) {
+	return market.ReleaseInstallationReceipt{}, errors.New("not implemented")
+}
+func (*activationGateDelegate) CommitReleaseInstallation(context.Context, market.CommitReleaseInstallationRequest) error {
+	return nil
+}
+func (*activationGateDelegate) UninstallRelease(context.Context, market.UninstallReleaseRequest) error {
+	return nil
 }
 
 func (delegate *activationGateDelegate) Reconcile(_ context.Context, request market.RuntimeReconcileRequest) (market.RuntimeReceipt, error) {
@@ -43,13 +53,34 @@ func (delegate *activationGateDelegate) Reconcile(_ context.Context, request mar
 		return market.RuntimeReceipt{}, errors.New("simulated runtime reconcile failure")
 	}
 	return market.RuntimeReceipt{OperationID: request.OperationID, ConnectionID: request.ConnectionID,
-		ConnectorKey: request.Connector.Key, ReleaseDigest: request.Connector.Release.ReleaseDigest, Generation: request.Generation}, nil
+		ConnectorKey: request.Connector.Key, ReleaseDigest: request.Connector.Release.ReleaseDigest, Generation: request.Generation,
+		Readiness: market.RuntimeReadiness{State: market.RuntimeReadinessReady,
+			Interfaces: []market.InterfaceReadiness{{Kind: "mcp", State: market.RuntimeReadinessReady}}},
+		Summary: &market.ConnectorSummary{Key: request.Connector.Key, Name: request.Connector.Key,
+			Interfaces: []market.ConnectorInterfaceSummary{{Kind: "mcp", ServerName: "connector", Status: string(market.RuntimeReadinessReady)}}}}, nil
 }
 
 type runtimeBindingResolverFunc func(context.Context, market.RuntimeBindingRequest) (market.RuntimeBinding, error)
 
 func (resolve runtimeBindingResolverFunc) ResolveRuntimeBinding(ctx context.Context, request market.RuntimeBindingRequest) (market.RuntimeBinding, error) {
 	return resolve(ctx, request)
+}
+
+type connectedAuthorizationObserver struct{}
+
+func (connectedAuthorizationObserver) Begin(context.Context, market.AuthorizationStartRequest) (market.AuthorizationSession, error) {
+	return market.AuthorizationSession{}, errors.New("not implemented")
+}
+
+func (connectedAuthorizationObserver) Disconnect(context.Context, market.AuthorizationDisconnectRequest) error {
+	return errors.New("not implemented")
+}
+
+func (connectedAuthorizationObserver) Observe(_ context.Context, request market.AuthorizationObserveRequest) (market.AuthorizationObservation, error) {
+	return market.AuthorizationObservation{
+		AccountID: request.Scope.AccountID, ConnectorKey: request.Connector.Key,
+		ConnectionID: "connection-1", State: market.AuthorizationObservationConnected,
+	}, nil
 }
 func (delegate *activationGateDelegate) DeactivateRuntime(context.Context, market.RuntimeDeactivationRequest) error {
 	delegate.deactivations++
@@ -73,7 +104,7 @@ func TestActivationGateStagesRecoveryUntilInitialCatalogRefresh(t *testing.T) {
 	if delegate.reconciles != 0 || receipt.Generation != request.Generation {
 		t.Fatalf("closed gate delegated recovery: reconciles=%d receipt=%#v", delegate.reconciles, receipt)
 	}
-	gate.setOpen(true)
+	gate.setOpen(market.OperationScope{}, true)
 	if _, err := gate.Reconcile(context.Background(), request); err != nil {
 		t.Fatal(err)
 	}
@@ -90,6 +121,21 @@ func TestActivationGateNeverStagesWorkspaceDeactivation(t *testing.T) {
 	}
 	if delegate.deactivations != 1 {
 		t.Fatalf("deactivations = %d, want 1", delegate.deactivations)
+	}
+}
+
+func TestActivationGateRejectsInactiveAccountScope(t *testing.T) {
+	delegate := &activationGateDelegate{}
+	gate := newActivationGateHost(delegate)
+	activeScope := market.OperationScope{AccountID: "account-new"}
+	gate.setOpen(activeScope, true)
+	request := market.RuntimeReconcileRequest{OperationID: "late-old-account", Scope: market.OperationScope{AccountID: "account-old"},
+		ConnectionID: "connection-old", Enabled: true, Connector: market.Connector{Key: "tencent-docs"}}
+	if _, err := gate.Reconcile(context.Background(), request); err == nil {
+		t.Fatal("inactive account runtime request was accepted")
+	}
+	if delegate.reconciles != 0 {
+		t.Fatalf("inactive account delegated reconciles = %d", delegate.reconciles)
 	}
 }
 
@@ -207,7 +253,7 @@ func TestBootstrapRestoresInstalledRuntimeWithoutRefreshingCatalog(t *testing.T)
 	host, err := NewHost(ctx, HostConfig{
 		Repository:             store,
 		CatalogSource:          source,
-		ReleaseInstallations:   unavailableReleaseInstaller{},
+		ReleaseInstallations:   runtime,
 		ImplementationHost:     runtime,
 		RuntimeBindings:        bindings,
 		Authorization:          unavailableAuthorization{},
@@ -224,11 +270,14 @@ func TestBootstrapRestoresInstalledRuntimeWithoutRefreshingCatalog(t *testing.T)
 	host.refreshWorkerStarted = true
 	t.Cleanup(host.Close)
 
-	if err := host.Bootstrap(ctx); err == nil {
-		t.Fatal("first bootstrap unexpectedly reconciled the runtime")
+	if err := host.Bootstrap(ctx); err != nil {
+		t.Fatalf("partial bootstrap failed: %v", err)
+	}
+	if len(host.runtimeRecoveryPending) != 1 || len(publication.values) == 0 || !publication.values[len(publication.values)-1] {
+		t.Fatalf("partial bootstrap pending=%#v publication=%#v", host.runtimeRecoveryPending, publication.values)
 	}
 	if err := host.Bootstrap(ctx); err != nil {
-		t.Fatalf("second bootstrap failed: %v", err)
+		t.Fatalf("degraded runtime recovery failed: %v", err)
 	}
 	if source.refreshes != 0 || runtime.reconciles != 2 {
 		t.Fatalf("bootstrap refreshes=%d reconciles=%d, want 0 and 2", source.refreshes, runtime.reconciles)
@@ -281,14 +330,14 @@ func TestBootstrapRestoresInstalledRuntimeWithoutRefreshingCatalog(t *testing.T)
 	if runtime.reconciles != 5 || !publication.values[len(publication.values)-1] {
 		t.Fatalf("same-account recovery reconciles=%d publication=%#v", runtime.reconciles, publication.values)
 	}
-	if runtime.installationChecks != 4 {
-		t.Fatalf("installation checks = %d, want one per non-idempotent bootstrap", runtime.installationChecks)
+	if runtime.installationInspections != 3 {
+		t.Fatalf("installation inspections = %d, want one per full bootstrap", runtime.installationInspections)
 	}
 
 	if err := host.FenceForScope(ctx, accountScope); err != nil {
 		t.Fatal(err)
 	}
-	runtime.installationState = market.InstallationObservationAbsent
+	runtime.installationState = market.ReleaseInstallationAbsent
 	if err := host.BootstrapForScope(ctx, accountScope); err != nil {
 		t.Fatalf("bootstrap with explicitly absent installation failed: %v", err)
 	}
@@ -297,8 +346,119 @@ func TestBootstrapRestoresInstalledRuntimeWithoutRefreshingCatalog(t *testing.T)
 		t.Fatal(err)
 	}
 	if calibrated.Installation.State != market.InstallationStateFailed ||
-		calibrated.Installation.FailureCode != market.InstallationFailureCodeProbeAbsent || runtime.reconciles != 5 {
+		calibrated.Installation.FailureCode != market.InstallationFailureCodePhysicallyAbsent || runtime.reconciles != 5 {
 		t.Fatalf("calibrated connector=%#v reconciles=%d", calibrated, runtime.reconciles)
+	}
+}
+
+func TestAuthorizationRecoverySchedulesOneRuntimeBeforeResolvingReceipt(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	store, err := marketdata.Open(ctx, filepath.Join(t.TempDir(), "tuttid.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+
+	release := hostTestRelease()
+	release.Manifest.AuthorizationKind = "oauth2"
+	release.Manifest.RequiredCapabilities = []string{"tools"}
+	release.Manifest.Implementation.ManagedStdio.Runtime.VersionRange = ">=22.0.0 <23.0.0"
+	release.Manifest.Implementation.ManagedStdio.CLI = &market.ManagedCLIInterface{
+		Entrypoint: "bin/github-cli.mjs", TimeoutMS: 120_000,
+	}
+	release.Manifest.Implementation.ManagedStdio.CredentialBroker = &market.ManagedCredentialBroker{
+		Protocol: market.CredentialBrokerProtocolV1, Entrypoint: "authorization/broker.mjs",
+		TimeoutMS: 30_000, AllowedHosts: []string{"api.example.test"},
+	}
+	connector := market.Connector{
+		Key: release.ConnectorKey, Release: release,
+		Installation: market.Installation{
+			State: market.InstallationStateInstalled, InstalledVersion: release.Version,
+			InstalledReleaseID: release.ReleaseID, InstalledReleaseDigest: release.ReleaseDigest,
+		},
+		Authorization: market.Authorization{State: market.AuthorizationStatePending},
+		Compatibility: market.Compatibility{State: market.CompatibilityStateSupported},
+	}
+	authorizationOperation := market.Operation{
+		OperationID: "authorization-1", ClientRequestID: "authorization-request-1", ConnectorKey: connector.Key,
+		Kind: market.OperationKindStartAuthorization, Scope: market.OperationScope{AccountID: "account-1"},
+		State: market.OperationStateCompleted, Stage: market.OperationStageCompleted,
+		Target: &market.OperationTarget{
+			ConnectorKey: release.ConnectorKey, Version: release.Version, ReleaseID: release.ReleaseID,
+			ReleaseDigest: release.ReleaseDigest, Release: &release,
+		},
+		Execution: market.OperationExecution{AuthorizationSession: &market.AuthorizationSession{
+			OperationID: "authorization-1", ConnectorKey: connector.Key, SessionID: "session-1",
+			State: market.AuthorizationStatePending, Resolution: market.AuthorizationSessionResolutionUnresolved,
+		}},
+		CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC(),
+	}
+	if err := store.Transaction(ctx, func(tx market.Transaction) error {
+		connector.Revision = tx.AdvanceRevision()
+		if err := tx.SaveConnector(connector); err != nil {
+			return err
+		}
+		return tx.SaveOperation(authorizationOperation)
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	runtime := &activationGateDelegate{}
+	scope := market.OperationScope{AccountID: "account-1"}
+	scheduler := NewOperationScheduler(ctx)
+	activationGate := newActivationGateHost(runtime)
+	activationGate.setOpen(scope, true)
+	application, err := market.NewApplication(market.ApplicationConfig{
+		Repository: store, CatalogSource: &countingCatalogSource{release: release},
+		ReleaseInstallations: runtime, Host: activationGate,
+		Authorization: connectedAuthorizationObserver{}, AuthorizationProjections: store,
+		RuntimeBindings: runtimeBindingResolverFunc(func(_ context.Context, request market.RuntimeBindingRequest) (market.RuntimeBinding, error) {
+			return market.RuntimeBinding{ConnectionID: "device-" + request.Connector.Key, Enabled: true}, nil
+		}),
+		Compatibility: rejectingCompatibility{}, Scheduler: scheduler,
+		ImplementationRegistry: market.NewImplementationRegistry(nil),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := scheduler.Bind(application); err != nil {
+		t.Fatal(err)
+	}
+	host := &Host{Application: application, scheduler: scheduler, repository: store, activationGate: activationGate}
+
+	host.bootstrapMu.Lock()
+	err = host.reconcileAuthorizationsLocked(ctx, scope)
+	host.bootstrapMu.Unlock()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if runtime.reconciles != 1 {
+		t.Fatalf("runtime reconciles = %d, want 1", runtime.reconciles)
+	}
+	operation, err := store.Operation(ctx, authorizationOperation.OperationID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if operation.Execution.AuthorizationSession == nil ||
+		operation.Execution.AuthorizationSession.Resolution != market.AuthorizationSessionResolutionProviderConnected {
+		t.Fatalf("authorization receipt = %#v", operation.Execution.AuthorizationSession)
+	}
+	if err := host.ObserveAuthorizationForScope(ctx, scope, market.AuthorizationProjection{
+		AccountID: scope.AccountID, ConnectorKey: connector.Key,
+		ConnectionID: "connection-2", State: market.AuthorizationStateConnected,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if runtime.reconciles != 2 {
+		t.Fatalf("runtime reconciles after live observation = %d, want 2", runtime.reconciles)
+	}
+	projection, err := store.AuthorizationProjection(ctx, scope.AccountID, connector.Key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if projection.ConnectionID != "connection-2" || projection.State != market.AuthorizationStateConnected {
+		t.Fatalf("live authorization projection = %#v", projection)
 	}
 }
 
@@ -318,8 +478,7 @@ func hostTestRelease() market.Release {
 			Implementation: market.Implementation{Kind: market.ImplementationKindManagedStdio,
 				ManagedStdio: &market.ManagedStdioImplementation{
 					Runtime: market.RuntimeRequirement{Language: "node", Profile: "connector-node-static", ABI: "node22-darwin-arm64"},
-					MCP: &market.ManagedMCPInterface{Entrypoint: "bin/github.mjs",
-						InstallationProbe: &market.InstallationProbe{Arguments: []string{"--version"}, TimeoutMS: 1_000}},
+					MCP:     &market.ManagedMCPInterface{Entrypoint: "bin/github.mjs"},
 				}},
 		},
 		Artifact: market.Artifact{

@@ -128,6 +128,8 @@ func turnTransitionFromStateInput(
 			CapabilityRefs:          capabilityRefs,
 			Phase:                   phase,
 			Outcome:                 normalizeTurnOutcomeV2(turn.Outcome),
+			ErrorCode:               strings.TrimSpace(turn.ErrorCode),
+			ErrorMessage:            strings.TrimSpace(turn.ErrorMessage),
 			FileChanges:             clonePayload(turn.FileChanges),
 			StartedAtUnixMS:         turn.StartedAtUnixMS,
 			SettledAtUnixMS:         turn.CompletedAtUnixMS,
@@ -143,7 +145,7 @@ func turnTransitionFromStateInput(
 			transition.CompletedCommandStatus = strings.TrimSpace(turn.CompletedCommand.Status)
 		}
 		if phase == agentactivitybiz.TurnPhaseSettled && transition.Outcome == agentactivitybiz.TurnOutcomeFailed {
-			transition.ErrorMessage = strings.TrimSpace(state.LastError)
+			transition.ErrorMessage = firstNonEmptyString(transition.ErrorMessage, state.LastError)
 		}
 		return transition, true
 	}

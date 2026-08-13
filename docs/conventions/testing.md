@@ -152,7 +152,8 @@ The capture runner ships `provider-switch`, `session-switch`,
 `concurrent-agent-streaming`,
 `virtualized-scroll-locator`, `virtualized-session-cycle`,
 `virtualized-oversized-active-turn`, `browser-behind-agent-gui-pixels`,
-`rail-scope-reveal`, `composer-input`, `composer-overflow-resize`, `workbench-window-lifecycle`,
+`rail-scope-reveal`, `composer-input`, `composer-overflow-resize`,
+`workbench-dock-popup-preview`, `workbench-window-lifecycle`,
 `workbench-window-drag`, `workbench-fifty-window-stress`,
 `desktop-window-state`, and
 `provider-status-focus-refresh`. List them with
@@ -160,6 +161,12 @@ The capture runner ships `provider-switch`, `session-switch`,
 `--scenario <id>`. Scenario modules own preparation, completion conditions,
 semantic assertions, milestones, and metadata; runtime startup, trace capture,
 renderer analysis, and report rendering stay scenario-neutral.
+
+`workbench-dock-popup-preview` starts with an empty isolated Desktop preview
+cache, restores fifty non-minimized AgentGUI windows in the established stress
+layout, waits for renderer mutations and idle work to settle, opens the unified
+Agent Dock popup, validates all foreground and background preview PNG pixels,
+saves a screenshot, and enforces a 50 ms renderer-task budget.
 
 `concurrent-agent-streaming` selects two settled root Sessions, restores them
 into two non-overlapping visible AgentGUI windows, and routes each through an

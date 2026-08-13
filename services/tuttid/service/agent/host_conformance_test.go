@@ -249,26 +249,27 @@ func TestHostFindTurnByClientSubmitIDUsesPublicCanonicalPort(t *testing.T) {
 }
 
 type legacyHostConformanceDriver struct {
-	t               *testing.T
-	service         *Service
-	runtime         *fakeRuntime
-	sessions        *fakeSessionReader
-	turns           *legacyHostConformanceTurnStore
-	operations      *runtimeOperationMemoryStore
-	operationPort   *conformanceRuntimeOperationStore
-	goalStore       *conformanceGoalStateStore
-	goalInbox       *conformanceGoalInboxStore
-	commitObserver  *conformanceCommitObserver
-	recoverySteps   *[]string
-	createdTurns    map[string]string
-	directHost      bool
-	goalNowUnixMS   int64
-	deletionHost    *agenthost.Host
-	deletionAdapter *Service
-	deletionStore   *conformanceDeletionStore
-	deletionGuard   *conformanceDeletionGuard
-	deletionEvents  *[]string
-	historicalState *conformanceHistoricalStateStore
+	t                        *testing.T
+	service                  *Service
+	runtime                  *fakeRuntime
+	sessions                 *fakeSessionReader
+	turns                    *legacyHostConformanceTurnStore
+	operations               *runtimeOperationMemoryStore
+	operationPort            *conformanceRuntimeOperationStore
+	goalStore                *conformanceGoalStateStore
+	goalInbox                *conformanceGoalInboxStore
+	commitObserver           *conformanceCommitObserver
+	recoverySteps            *[]string
+	createdTurns             map[string]string
+	directHost               bool
+	goalNowUnixMS            int64
+	deletionHost             *agenthost.Host
+	deletionAdapter          *Service
+	deletionStore            *conformanceDeletionStore
+	deletionGuard            *conformanceDeletionGuard
+	deletionEvents           *[]string
+	historicalState          *conformanceHistoricalStateStore
+	runtimeStartReportWrites int
 }
 
 func (d *legacyHostConformanceDriver) Reset(_ context.Context, fixture hostconformance.Fixture) error {
@@ -278,12 +279,52 @@ func (d *legacyHostConformanceDriver) Reset(_ context.Context, fixture hostconfo
 		sessions: map[string]PersistedSession{}, tombstoned: map[string]bool{}, deletedAt: map[string]int64{},
 		parentByKey: map[string]string{},
 	}
+	d.runtimeStartReportWrites = 0
+	if fixture.RaceRuntimeStartReport {
+		reportRuntimeStart := func(session ProviderRuntimeSession) error {
+			persisted, err := (fakeSessionInitializer{}).InitializeRuntimeSession(
+				context.Background(),
+				session,
+				nil,
+			)
+			if err != nil {
+				return err
+			}
+			key := persisted.WorkspaceID + ":" + persisted.ID
+			if existing, found := d.sessions.sessions[key]; found {
+				persisted.RailSectionKind = existing.RailSectionKind
+				persisted.RailProjectPath = existing.RailProjectPath
+				persisted.RailSectionKey = existing.RailSectionKey
+			}
+			d.sessions.sessions[key] = persisted
+			d.runtimeStartReportWrites++
+			return nil
+		}
+		d.runtime.startHook = func(input RuntimeStartInput, session ProviderRuntimeSession) ProviderRuntimeSession {
+			if input.CanonicalInitPending {
+				return session
+			}
+			if err := reportRuntimeStart(session); err != nil {
+				d.t.Fatalf("prepare raced runtime start report: %v", err)
+			}
+			return session
+		}
+		d.runtime.publishInitHook = func(
+			_ RuntimeSessionInitializationPublishInput,
+			session ProviderRuntimeSession,
+		) error {
+			return reportRuntimeStart(session)
+		}
+	}
 	d.turns = &legacyHostConformanceTurnStore{
 		sessions:     map[string]agentactivitybiz.Session{},
 		turns:        map[string]agentactivitybiz.Turn{},
 		interactions: map[string][]agentactivitybiz.Interaction{},
 	}
-	d.operations = &runtimeOperationMemoryStore{interactionStore: d.turns}
+	d.operations = &runtimeOperationMemoryStore{
+		interactionStore:  d.turns,
+		turnIdentityStore: d.turns,
+	}
 	d.createdTurns = make(map[string]string)
 	steps := make([]string, 0)
 	d.recoverySteps = &steps
@@ -302,6 +343,7 @@ func (d *legacyHostConformanceDriver) Reset(_ context.Context, fixture hostconfo
 	}}
 	d.runtime.provenanceHook = func(input RuntimeSubmitProvenanceInput) error {
 		d.recordSubmittedTurn(input.WorkspaceID, input.AgentSessionID, input.TurnID)
+		d.operations.recordConfirmedTurn(input.ClientSubmitID, input.TurnID)
 		return nil
 	}
 	if fixture.RejectInitialExec {
@@ -323,6 +365,7 @@ func (d *legacyHostConformanceDriver) Reset(_ context.Context, fixture hostconfo
 	d.service.SessionInitializer = legacyHostConformanceSessionInitializer{
 		canonicalStore: canonicalStore,
 		sessions:       d.sessions,
+		fail:           fixture.FailSessionInitialization,
 	}
 	d.service.TurnSummaryReader = d.turns
 	d.service.SubmitClaimStore = canonicalStore
@@ -343,14 +386,7 @@ func (d *legacyHostConformanceDriver) Reset(_ context.Context, fixture hostconfo
 	}
 	d.historicalState = &conformanceHistoricalStateStore{driver: d}
 	hostStore := serviceHostStore{service: d.service}
-	hostSupport := hostSupportPortsForService(
-		d.service,
-		nil,
-		conformanceWorktreeGarbageCollector{
-			steps: &steps,
-			err:   fixture.WorktreeGCSweepErr,
-		},
-	)
+	hostSupport := hostSupportPortsForService(d.service, nil)
 	d.service.SetApplicationHost(composeApplicationHost(
 		hostSupport,
 		hostStore,
@@ -420,6 +456,7 @@ func (d *legacyHostConformanceDriver) Reset(_ context.Context, fixture hostconfo
 		return RuntimeGoalControlResult{
 			AgentSessionID: input.AgentSessionID, Goal: clonePayload(resultGoal),
 			Evidence: evidence, ProviderPhase: providerPhase,
+			ExecutionPending: input.Action == "set" && resultGoal["status"] == "active",
 		}, nil
 	}
 	if fixture.AcceptGoalControlsOnly {
@@ -621,6 +658,40 @@ func (d *legacyHostConformanceDriver) Reset(_ context.Context, fixture hostconfo
 			},
 			LeaseOwner: "dead-worker", LeaseExpiresAtMS: time.UnixMilli(1_000).Add(time.Hour).UnixMilli(),
 		}
+	}
+	return nil
+}
+
+func (d *legacyHostConformanceDriver) ResetProviderlessTerminalExec(
+	ctx context.Context,
+	session *hostconformance.SessionSeed,
+) error {
+	fixture := hostconformance.Fixture{}
+	if session != nil {
+		seed := *session
+		fixture.Session = &seed
+	}
+	if err := d.Reset(ctx, fixture); err != nil {
+		return err
+	}
+	d.runtime.execHook = func(input RuntimeExecInput) (RuntimeExecResult, error) {
+		d.recordSubmittedTurn(input.WorkspaceID, input.AgentSessionID, input.TurnID)
+		d.recordProviderlessFailedTurn(
+			input.WorkspaceID,
+			input.AgentSessionID,
+			input.TurnID,
+		)
+		return RuntimeExecResult{
+			AgentSessionID: input.AgentSessionID,
+			Status:         "started",
+			Accepted:       true,
+			SessionStatus:  "working",
+			TurnID:         input.TurnID,
+			TurnLifecycle:  TurnLifecycle{Phase: "submitted"},
+			ProviderDispatch: agenthost.RuntimeProviderDispatchResult{
+				Disposition: agenthost.RuntimeDispatchDispositionAppliedWithoutProviderTurn,
+			},
+		}, nil
 	}
 	return nil
 }
@@ -869,7 +940,8 @@ func (s *conformanceHistoricalStateStore) RestoreHistoricalSessionGraph(
 				WorkspaceID: workspaceID, AgentSessionID: historical.ID,
 				TurnID: turn.ID, Phase: turn.Phase, Outcome: turn.Outcome,
 				Origin: turn.Origin, RootProviderTurnID: turn.RootProviderTurnID,
-				StartedAtUnixMS: 1, SettledAtUnixMS: 1,
+				IdentityAnchorTurnID: turn.IdentityAnchorTurnID,
+				StartedAtUnixMS:      1, SettledAtUnixMS: 1,
 			}
 		}
 	}
@@ -960,9 +1032,44 @@ func (d *legacyHostConformanceDriver) SubmitPlanDecision(
 	} else {
 		operation, err = d.service.SubmitPlanDecision(ctx, ref.WorkspaceID, ref.AgentSessionID, turnID, requestID, input)
 	}
-	return hostconformance.OperationObservation{
+	observation := hostconformance.OperationObservation{
 		OperationID: operation.OperationID, Status: operation.Status, Result: operation.Result,
-	}, err
+	}
+	if err != nil {
+		return observation, err
+	}
+	deadline := time.Now().Add(time.Second)
+	for {
+		continuation, found, continuationErr := d.service.ApplicationHost().GetPlanDecisionContinuation(ctx, ref, turnID)
+		if continuationErr != nil {
+			return observation, continuationErr
+		}
+		if found {
+			observation.ConfirmedTurnID = continuation.Turn.TurnID
+			observation.IdentityAnchorTurnID = continuation.Turn.IdentityAnchorTurnID
+			return observation, nil
+		}
+		if time.Now().After(deadline) {
+			persisted, persistedFound, persistedErr := d.service.ApplicationHost().GetRuntimeOperation(
+				ctx,
+				ref.WorkspaceID,
+				operation.OperationID,
+			)
+			d.t.Logf(
+				"plan continuation timeout: operation=%#v found=%v err=%v turns=%#v",
+				persisted,
+				persistedFound,
+				persistedErr,
+				d.turns.turns,
+			)
+			return observation, nil
+		}
+		select {
+		case <-ctx.Done():
+			return observation, ctx.Err()
+		case <-time.After(5 * time.Millisecond):
+		}
+	}
 }
 
 func (d *legacyHostConformanceDriver) UpdateTitle(ctx context.Context, input agenthost.UpdateTitleInput) (hostconformance.SessionObservation, error) {
@@ -1103,6 +1210,7 @@ func (d *legacyHostConformanceDriver) GoalControl(ctx context.Context, input age
 		observation.Revision = result.GoalState.Revision
 		observation.PendingOperationID = result.GoalState.PendingOperationID
 		observation.SyncStatus = result.GoalState.SyncStatus
+		observation.ExecutionPending = result.GoalState.ExecutionPending
 	}
 	return observation, err
 }
@@ -1129,7 +1237,8 @@ func (d *legacyHostConformanceDriver) AdoptProviderGoal(ctx context.Context, inp
 	return hostconformance.GoalObservation{
 		Goal: clonePayload(result.Goal), OperationID: result.OperationID,
 		Revision: state.State.Revision, PendingOperationID: state.State.PendingOperationID,
-		SyncStatus: state.State.SyncStatus,
+		SyncStatus:       state.State.SyncStatus,
+		ExecutionPending: state.State.ExecutionPending,
 	}, nil
 }
 
@@ -1175,6 +1284,7 @@ func hostGoalControlObservation(result agenthost.GoalControlResult) hostconforma
 		observation.Revision = result.GoalState.Revision
 		observation.PendingOperationID = result.GoalState.PendingOperationID
 		observation.SyncStatus = result.GoalState.SyncStatus
+		observation.ExecutionPending = result.GoalState.ExecutionPending
 	}
 	return observation
 }
@@ -1183,6 +1293,7 @@ func hostGoalStateObservation(result agenthost.GoalStateResult) hostconformance.
 	return hostconformance.GoalObservation{
 		Goal: clonePayload(result.State.Desired), Revision: result.State.Revision,
 		PendingOperationID: result.State.PendingOperationID, SyncStatus: result.State.SyncStatus,
+		ExecutionPending: result.State.ExecutionPending,
 	}
 }
 
@@ -1194,7 +1305,9 @@ func (d *legacyHostConformanceDriver) Metrics() hostconformance.Metrics {
 		InteractiveCalls:      len(d.runtime.submitInteractiveCalls), UpdateSettingsCalls: len(d.runtime.updateSettingsCalls),
 		CloseCalls:       len(d.runtime.closeCalls),
 		GoalControlCalls: len(d.runtime.goalControlCalls), GoalReconcileCalls: len(d.runtime.goalReconcileCalls),
-		RecoverySteps: append([]string(nil), (*d.recoverySteps)...),
+		RuntimeSessionPublishCalls: len(d.runtime.publishInitCalls),
+		RuntimeStartReportWrites:   d.runtimeStartReportWrites,
+		RecoverySteps:              append([]string(nil), (*d.recoverySteps)...),
 	}
 	if closeCallCount := len(d.runtime.closeCalls); closeCallCount > 0 {
 		metrics.LastClosePreservedCanonicalState = d.runtime.closeCalls[closeCallCount-1].PreserveCanonicalState
@@ -1382,30 +1495,50 @@ func (s conformanceStaleTurnSettler) SettleStaleTurnsOnStartup(context.Context) 
 	return nil
 }
 
-type conformanceWorktreeGarbageCollector struct {
-	steps *[]string
-	err   error
-}
-
-func (c conformanceWorktreeGarbageCollector) SweepWorktreeIsolation(context.Context) error {
-	*c.steps = append(*c.steps, "worktree_sweep")
-	return c.err
-}
-
 func (d *legacyHostConformanceDriver) recordSubmittedTurn(workspaceID, sessionID, turnID string) {
 	if turnID == "" {
 		return
 	}
-	d.turns.turns[sessionID+":"+turnID] = agentactivitybiz.Turn{
-		WorkspaceID: workspaceID, AgentSessionID: sessionID, TurnID: turnID,
-		Phase: agentactivitybiz.TurnPhaseSubmitted,
+	key := sessionID + ":" + turnID
+	if existing, ok := d.turns.turns[key]; ok &&
+		existing.Phase == agentactivitybiz.TurnPhaseSettled {
+		// Submit provenance and Host's post-Exec submission record are
+		// idempotent facts. They must never downgrade a terminal event that the
+		// Runtime committed before Exec returned.
+		return
 	}
+	startedAtUnixMS := int64(len(d.turns.turns) + 1)
+	d.turns.turns[key] = agentactivitybiz.Turn{
+		WorkspaceID: workspaceID, AgentSessionID: sessionID, TurnID: turnID,
+		Phase: agentactivitybiz.TurnPhaseSubmitted, StartedAtUnixMS: startedAtUnixMS,
+	}
+	d.service.TurnStore = d.turns
+}
+
+func (d *legacyHostConformanceDriver) recordProviderlessFailedTurn(
+	workspaceID string,
+	sessionID string,
+	turnID string,
+) {
+	key := sessionID + ":" + turnID
+	turn := d.turns.turns[key]
+	turn.WorkspaceID = workspaceID
+	turn.AgentSessionID = sessionID
+	turn.TurnID = turnID
+	turn.Phase = agentactivitybiz.TurnPhaseSettled
+	turn.Outcome = "failed"
+	if turn.StartedAtUnixMS == 0 {
+		turn.StartedAtUnixMS = int64(len(d.turns.turns) + 1)
+	}
+	turn.SettledAtUnixMS = turn.StartedAtUnixMS + 1
+	d.turns.turns[key] = turn
 	d.service.TurnStore = d.turns
 }
 
 type legacyHostConformanceSessionInitializer struct {
 	canonicalStore *workspacedata.SQLiteStore
 	sessions       *fakeSessionReader
+	fail           bool
 }
 
 func (i legacyHostConformanceSessionInitializer) InitializeRuntimeSession(
@@ -1413,6 +1546,17 @@ func (i legacyHostConformanceSessionInitializer) InitializeRuntimeSession(
 	session ProviderRuntimeSession,
 	railPlacement *agenthost.RailPlacement,
 ) (PersistedSession, error) {
+	if i.fail {
+		return PersistedSession{}, errors.New("injected canonical session initialization failure")
+	}
+	if railPlacement != nil {
+		if existing, found := i.sessions.sessions[session.WorkspaceID+":"+session.ID]; found &&
+			(strings.TrimSpace(existing.RailSectionKind) != strings.TrimSpace(string(railPlacement.Kind)) ||
+				strings.TrimSpace(existing.RailProjectPath) != strings.TrimSpace(railPlacement.ProjectPath) ||
+				strings.TrimSpace(existing.RailSectionKey) != strings.TrimSpace(railPlacement.SectionKey)) {
+			return PersistedSession{}, agenthost.ErrRailPlacementConflict
+		}
+	}
 	persisted, err := (fakeSessionInitializer{}).InitializeRuntimeSession(ctx, session, railPlacement)
 	if err != nil {
 		return PersistedSession{}, err

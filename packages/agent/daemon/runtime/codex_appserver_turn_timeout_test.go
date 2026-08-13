@@ -65,6 +65,77 @@ func TestCodexAppServerAdapterTurnStartAckTimeoutInvalidatesClient(t *testing.T)
 	}
 }
 
+func TestCodexAppServerAdapterTurnStartEOFProjectsVisibleFailureBeforeAcceptance(t *testing.T) {
+	adapter, transport, session := startedAppServerAdapter(t)
+	t.Cleanup(func() { _ = adapter.Close(context.Background(), session) })
+	transport.server.closeOnTurnStart = true
+
+	var dispatch ProviderDispatchResult
+	barrierCalled := false
+	events, err := adapter.ExecWithProviderAcceptance(
+		context.Background(),
+		session,
+		[]PromptContentBlock{{Type: "text", Text: "disconnect before acknowledgement"}},
+		"disconnect before acknowledgement",
+		"turn-eof",
+		nil,
+		nil,
+		func(result ProviderDispatchResult) { dispatch = result },
+		func(ProviderAcceptanceReceipt) error {
+			barrierCalled = true
+			return nil
+		},
+	)
+	if err != nil {
+		t.Fatalf("ExecWithProviderAcceptance: %v", err)
+	}
+	if barrierCalled {
+		t.Fatal("provider acceptance barrier called without a turn/start response")
+	}
+	if dispatch.Disposition != DispatchDispositionOutcomeUnknown {
+		t.Fatalf("dispatch disposition = %q, want outcome_unknown", dispatch.Disposition)
+	}
+	failed := eventsOfType(events, activityshared.EventTurnFailed)
+	if len(failed) != 1 {
+		t.Fatalf("turn.failed events = %d, want 1; events = %#v", len(failed), events)
+	}
+	if got := failed[0].Payload.Metadata["error"]; got != "EOF" {
+		t.Fatalf("turn.failed error = %#v, want EOF", got)
+	}
+	report := reportActivityInput(session, events)
+	visibleFailures := 0
+	for _, update := range report.MessageUpdates {
+		if update.Status == messageStreamStateFailed && update.Payload["kind"] == visibleErrorKind {
+			visibleFailures++
+		}
+	}
+	if visibleFailures != 1 {
+		t.Fatalf("visible failure count = %d, want 1; updates = %#v", visibleFailures, report.MessageUpdates)
+	}
+}
+
+func TestCodexAppServerAdapterHasLiveSessionRejectsClosedClient(t *testing.T) {
+	adapter, transport, session := startedAppServerAdapter(t)
+	appSession := adapter.getSession(session.AgentSessionID)
+	if appSession == nil || appSession.client == nil {
+		t.Fatal("started session has no client")
+	}
+	if err := transport.conn.Close(); err != nil {
+		t.Fatal(err)
+	}
+	waitForCondition(t, func() bool {
+		select {
+		case <-appSession.client.Done():
+			return true
+		default:
+			return false
+		}
+	})
+	if adapter.HasLiveSession(session) {
+		t.Fatal("HasLiveSession = true after app-server client terminated")
+	}
+}
+
 func TestCodexAppServerAdapterTurnStartCancelBeforeAckInvalidatesClient(t *testing.T) {
 	adapter, transport, session := startedAppServerAdapter(t)
 	t.Cleanup(func() { _ = adapter.Close(context.Background(), session) })
@@ -206,14 +277,14 @@ func TestCodexAppServerAdapterTurnSteerTimesOut(t *testing.T) {
 	transport.server.mu.Unlock()
 
 	startedAt := time.Now()
-	_, err := adapter.GuideActiveTurn(context.Background(), session, []PromptContentBlock{{
+	_, err := adapter.Exec(context.Background(), session, []PromptContentBlock{{
 		Type: "text", Text: "new guidance",
 	}}, "", "turn-guidance", nil, nil)
 	if !errors.Is(err, context.DeadlineExceeded) {
-		t.Fatalf("GuideActiveTurn error = %v, want deadline exceeded", err)
+		t.Fatalf("steered Exec error = %v, want deadline exceeded", err)
 	}
 	if elapsed := time.Since(startedAt); elapsed > time.Second {
-		t.Fatalf("GuideActiveTurn elapsed = %s, want bounded turn/steer", elapsed)
+		t.Fatalf("steered Exec elapsed = %s, want bounded turn/steer", elapsed)
 	}
 
 	transport.server.completePendingTurn()

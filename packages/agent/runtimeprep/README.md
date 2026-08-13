@@ -148,7 +148,10 @@ and derives speed's bounded 1-4 parallel planning target. Allocation compares
 joint Agent/model candidates across every plausible target without favoring the
 planning Agent, its current model, or provider defaults.
 A non-desktop deployment should compose its own profile from `CoreSkillsPack`
-and deployment-owned packs instead of copying the desktop-host policy:
+and deployment-owned packs instead of copying the desktop-host policy. Add
+`VerifiedEndpointOutputPack` when the provider should report verified,
+user-reachable local server endpoints as Markdown links without inheriting
+desktop execution, media, or filesystem rules:
 
 ```go
 profile := runtimeprep.DeploymentProfile{
@@ -165,6 +168,7 @@ profile := runtimeprep.DeploymentProfile{
     },
     Packs: []runtimeprep.CapabilityPack{
         runtimeprep.CoreSkillsPack(),
+        runtimeprep.VerifiedEndpointOutputPack(),
         vmEnvironmentPack,
     },
 }

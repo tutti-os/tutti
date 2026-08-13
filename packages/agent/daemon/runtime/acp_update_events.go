@@ -340,6 +340,19 @@ func acpFailureMetadata(err error) map[string]any {
 	payload := map[string]any{
 		"error": err.Error(),
 	}
+	var transportFailure RuntimeTransportFailure
+	if errors.As(err, &transportFailure) {
+		if code := boundedRuntimeTransportFailureCode(transportFailure.RuntimeTransportFailureCode()); code != "" {
+			payload["errorCode"] = code
+			payload["transportReason"] = code
+		}
+		var grpcFailure RuntimeTransportGRPCFailure
+		if errors.As(err, &grpcFailure) {
+			if code := strings.TrimSpace(grpcFailure.RuntimeTransportGRPCCode()); code != "" && len(code) <= 32 {
+				payload["transportGrpcCode"] = code
+			}
+		}
+	}
 	var callErr *acpCallError
 	if !errors.As(err, &callErr) {
 		return payload
@@ -357,6 +370,20 @@ func acpFailureMetadata(err error) map[string]any {
 		payload["codexErrorInfo"] = codexErrorInfo
 	}
 	return payload
+}
+
+func boundedRuntimeTransportFailureCode(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" || len(value) > 80 {
+		return ""
+	}
+	for _, character := range value {
+		if (character < 'a' || character > 'z') &&
+			(character < '0' || character > '9') && character != '_' {
+			return ""
+		}
+	}
+	return value
 }
 
 func acpErrorDataPayload(raw json.RawMessage) map[string]any {

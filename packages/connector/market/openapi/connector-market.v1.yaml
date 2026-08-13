@@ -148,7 +148,11 @@ paths:
     post:
       operationId: uninstallConnectorMarketConnector
       tags: [connector-market]
-      summary: Uninstall one connector
+      summary: Uninstall one connector from this device
+      description: >-
+        Deactivates local runtime routes and removes the installed release and
+        optional CLI. Account authorization is not disconnected and can be
+        reused after reinstalling or from another device.
       requestBody:
         required: true
         content:
@@ -505,6 +509,13 @@ components:
           $ref: "#/components/schemas/ConnectorMarketImplementation"
         authorizationKind:
           type: string
+        authorizationInteraction:
+          type: object
+          description: >-
+            Opaque Connector-owned authorization interaction configuration.
+            Hosts transport this value without interpreting its UI semantics;
+            renderers must validate it against the versioned protocol.
+          additionalProperties: true
         compatibility:
           $ref: "#/components/schemas/ConnectorMarketCompatibilityRequirements"
     ConnectorMarketAgentRouting:

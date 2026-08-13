@@ -247,6 +247,7 @@
             "agentSessionId",
             "eventType",
             "occurredAtUnixMs",
+            "rootTurnId",
             "interactions"
           ],
           "properties": {
@@ -254,6 +255,7 @@
             "agentSessionId": { "type": "string", "minLength": 1 },
             "eventType": { "const": "interaction_snapshot" },
             "occurredAtUnixMs": { "type": "integer", "minimum": 0 },
+            "rootTurnId": { "type": "string", "minLength": 1 },
             "interactions": {
               "type": "array",
               "items": {

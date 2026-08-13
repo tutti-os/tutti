@@ -15,7 +15,6 @@ import (
 	managedmodelscli "github.com/tutti-os/tutti/services/tuttid/service/cli/providers/managedmodels"
 	referencescli "github.com/tutti-os/tutti/services/tuttid/service/cli/providers/references"
 	tuttigoalreviewcli "github.com/tutti-os/tutti/services/tuttid/service/cli/providers/tuttigoalreview"
-	tuttimodeactivationcli "github.com/tutti-os/tutti/services/tuttid/service/cli/providers/tuttimodeactivation"
 	tuttimodeplancli "github.com/tutti-os/tutti/services/tuttid/service/cli/providers/tuttimodeplan"
 	workbenchappscli "github.com/tutti-os/tutti/services/tuttid/service/cli/providers/workbenchapps"
 	computersvc "github.com/tutti-os/tutti/services/tuttid/service/computer"
@@ -85,7 +84,6 @@ func buildDaemonCLIRegistry(
 			input.TuttiModeExecutions,
 			input.AgentSessions,
 		),
-		tuttimodeactivationcli.NewProvider(input.TuttiModeActivations),
 	}
 	if input.Browser != nil {
 		providers = append(

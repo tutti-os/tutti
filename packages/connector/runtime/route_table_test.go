@@ -64,3 +64,27 @@ func TestRouteTableRejectsGenerationAtOrBehindFence(t *testing.T) {
 		}
 	}
 }
+
+func TestRouteTableRemoveMatchingClosesEverySelectedConnection(t *testing.T) {
+	table := NewRouteTable()
+	generation := market.HostGeneration{BootEpoch: "boot-1", Generation: 4}
+	first := &routeTableStub{id: "connection-a\x00github", digest: "release-1", generation: generation}
+	second := &routeTableStub{id: "connection-b\x00github", digest: "release-1", generation: generation}
+	unrelated := &routeTableStub{id: "connection-a\x00notion", digest: "release-2", generation: generation}
+	for _, route := range []*routeTableStub{first, second, unrelated} {
+		if err := table.Commit(route); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := table.RemoveMatching(func(route ManagedRoute) bool {
+		return route.RouteReleaseDigest() == "release-1"
+	}, generation, time.Now().Add(time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	if table.Route(first.id) != nil || table.Route(second.id) != nil || first.closeCalls != 1 || second.closeCalls != 1 {
+		t.Fatalf("matching routes were not closed: first=%d second=%d", first.closeCalls, second.closeCalls)
+	}
+	if table.Route(unrelated.id) != unrelated || unrelated.closeCalls != 0 {
+		t.Fatalf("unrelated route changed: route=%v closes=%d", table.Route(unrelated.id), unrelated.closeCalls)
+	}
+}

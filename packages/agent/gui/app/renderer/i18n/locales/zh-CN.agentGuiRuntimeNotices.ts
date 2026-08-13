@@ -40,6 +40,12 @@ export const zhCNAgentGuiRuntimeNotices = {
   systemNoticePlanImplementationCompleted: "计划实现已开始",
   systemNoticeWarning: "Agent 警告",
   systemNoticeDefault: "Agent 通知",
+  contextCompactionInProgress: "正在压缩上下文",
+  contextCompactionCompleted: "已压缩上下文",
+  contextCompactionInterrupted: "上下文压缩已中断",
+  contextHandoffRequired: "当前对话已达到上下文上限",
+  contextHandoffRequiredDetail:
+    "当前对话无法继续，请新建对话，并在新对话中 @当前对话 以交接上下文",
   sharedDeviceLabel: "共享设备",
   agentSharingRevoked: "{{owner}} 已取消共享该智能体",
   runtimeConnecting: "正在连接 {{device}}…",

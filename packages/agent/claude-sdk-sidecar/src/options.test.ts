@@ -23,7 +23,14 @@ test("sidecarClaudeOptionsFromPayload maps Claude provider meta into query optio
       model: "MiniMax-M2.7",
       verbose: null
     },
-    tools: { type: "preset", preset: "claude_code" }
+    tools: { type: "preset", preset: "claude_code" },
+    mcpServers: {
+      connector: {
+        type: "http",
+        url: "http://127.0.0.1:1234/mcp/connector",
+        headers: { Authorization: "Bearer test-token" }
+      }
+    }
   });
   const overrides = claudeQueryOptionOverrides(options);
 
@@ -50,6 +57,13 @@ test("sidecarClaudeOptionsFromPayload maps Claude provider meta into query optio
     model: "MiniMax-M2.7",
     verbose: null
   });
+  assert.deepEqual(overrides.mcpServers, {
+    connector: {
+      type: "http",
+      url: "http://127.0.0.1:1234/mcp/connector",
+      headers: { Authorization: "Bearer test-token" }
+    }
+  });
 });
 
 test("sidecarClaudeOptionsFromPayload defaults to Claude Code tool preset", () => {
@@ -69,6 +83,7 @@ test("sidecarClaudeOptionsFromPayload defaults to Claude Code tool preset", () =
   assert.equal(overrides.disallowedTools, undefined);
   assert.equal(overrides.plugins, undefined);
   assert.equal(overrides.extraArgs, undefined);
+  assert.equal(overrides.mcpServers, undefined);
 });
 
 test("sidecarClaudeOptionsFromPayload resolves prepared metadata in the sidecar filesystem", (t) => {

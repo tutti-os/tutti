@@ -1,6 +1,16 @@
 package deviceauthority
 
-import "time"
+import (
+	"errors"
+	"time"
+)
+
+// ErrResponseBinding identifies a control-plane response whose authority
+// binding does not match the request. The current lease-renewal wire response
+// exposes authority binding but not a runtime field; adapters must treat this
+// as a non-transient product-state failure rather than retrying the old
+// authority.
+var ErrResponseBinding = errors.New("device authority response binding mismatch")
 
 // EnsureDeviceAuthorityRequest identifies the product owner and local runtime
 // that should own the Device Authority.

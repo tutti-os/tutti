@@ -15,6 +15,433 @@ import {
 } from "./sessionRuntimeTestCommon.ts";
 import { waitForEvent } from "./sessionRuntimeTestQueries.nested.ts";
 
+function cancelTestSession(
+  queryFactory: NonNullable<ConstructorParameters<typeof SessionRuntime>[8]>
+): SessionRuntime {
+  return new SessionRuntime(
+    "provider-session-cancel-test",
+    "/repo",
+    {},
+    false,
+    false,
+    {
+      model: "",
+      permissionModeId: "default",
+      planMode: false,
+      effort: "",
+      speed: ""
+    },
+    sidecarClaudeOptionsFromPayload({}),
+    undefined,
+    queryFactory
+  );
+}
+
+test("exact cancel removes an undispatched turn without retiring the query", async () => {
+  const events: Array<{ type: string; payload?: Record<string, unknown> }> = [];
+  const restoreSink = withSidecarEventSinkForTest((event) =>
+    events.push(event)
+  );
+  const shutdownOrder: string[] = [];
+  try {
+    const session = new SessionRuntime(
+      "provider-session-pre-accept",
+      "/repo",
+      {},
+      false,
+      false,
+      {
+        model: "",
+        permissionModeId: "default",
+        planMode: false,
+        effort: "",
+        speed: ""
+      },
+      sidecarClaudeOptionsFromPayload({}),
+      undefined,
+      ({ prompt }) => ({
+        async *[Symbol.asyncIterator]() {
+          const next = await prompt[Symbol.asyncIterator]().next();
+          if (!next.done) {
+            yield next.value;
+          }
+        },
+        async interrupt() {
+          shutdownOrder.push("interrupt");
+        },
+        close() {
+          shutdownOrder.push("close");
+        }
+      })
+    );
+
+    await session.start();
+    session.exec("turn-pre-accept", "hello");
+    const result = await session.cancel("turn-pre-accept");
+
+    assert.deepEqual(result, {
+      canceled: true,
+      disposition: "pre_accept",
+      turnId: "turn-pre-accept",
+      providerTurnId: "",
+      dispatchPhase: "queued"
+    });
+    assert.deepEqual(shutdownOrder, []);
+    const canceledEvent = events.find(
+      (event) => event.type === "turn_canceled"
+    );
+    assert.equal(canceledEvent?.payload?.turnId, "turn-pre-accept");
+    assert.equal(
+      events.some((event) => event.type === "provider_turn_identity_resolved"),
+      false
+    );
+  } finally {
+    restoreSink();
+  }
+});
+
+test("dispatched pre-accept cancel publishes terminal only after interrupt ack", async () => {
+  const events: Array<{ type: string; payload?: Record<string, unknown> }> = [];
+  const restoreSink = withSidecarEventSinkForTest((event) =>
+    events.push(event)
+  );
+  let markPromptObserved: () => void = () => {};
+  let releaseInterrupt: () => void = () => {};
+  const promptObserved = new Promise<void>((resolve) => {
+    markPromptObserved = resolve;
+  });
+  const interruptAck = new Promise<void>((resolve) => {
+    releaseInterrupt = resolve;
+  });
+  try {
+    const session = cancelTestSession(({ prompt }) => ({
+      async *[Symbol.asyncIterator]() {
+        const next = await prompt[Symbol.asyncIterator]().next();
+        markPromptObserved();
+        await new Promise(() => {});
+        if (!next.done) {
+          yield next.value;
+        }
+      },
+      async interrupt() {
+        await interruptAck;
+      },
+      close() {}
+    }));
+
+    await session.start();
+    session.exec("turn-dispatched", "hello");
+    await promptObserved;
+    const canceling = session.cancel("turn-dispatched");
+    await Promise.resolve();
+
+    assert.equal(
+      events.some((event) => event.type === "turn_canceled"),
+      false
+    );
+    releaseInterrupt();
+    const result = await canceling;
+    assert.equal(result.disposition, "pre_accept");
+    assert.equal(
+      events.some((event) => event.type === "turn_canceled"),
+      true
+    );
+  } finally {
+    restoreSink();
+  }
+});
+
+test("dispatched cancel terminates the Query when interrupt ack never arrives", async () => {
+  const events: Array<{ type: string; payload?: Record<string, unknown> }> = [];
+  const restoreSink = withSidecarEventSinkForTest((event) =>
+    events.push(event)
+  );
+  let markPromptObserved: () => void = () => {};
+  const promptObserved = new Promise<void>((resolve) => {
+    markPromptObserved = resolve;
+  });
+  let closed = false;
+  try {
+    const session = cancelTestSession(({ prompt }) => ({
+      async *[Symbol.asyncIterator]() {
+        await prompt[Symbol.asyncIterator]().next();
+        markPromptObserved();
+        await new Promise(() => {});
+        yield {} as SDKMessage;
+      },
+      async interrupt() {
+        await new Promise(() => {});
+      },
+      close() {
+        closed = true;
+      }
+    }));
+
+    await session.start();
+    session.exec("turn-interrupt-timeout", "hello");
+    await promptObserved;
+    const result = await session.cancel("turn-interrupt-timeout", {
+      interruptTimeoutMs: 10,
+      drainTimeoutMs: 10
+    });
+
+    assert.equal(result.canceled, true);
+    assert.equal(closed, true);
+    assert.equal(
+      events.some(
+        (event) =>
+          event.type === "turn_canceled" &&
+          event.payload?.turnId === "turn-interrupt-timeout"
+      ),
+      true
+    );
+  } finally {
+    restoreSink();
+  }
+});
+
+test("cancel aborting identity resolution cannot publish terminal before interrupt ack", async () => {
+  const events: Array<{ type: string; payload?: Record<string, unknown> }> = [];
+  const restoreSink = withSidecarEventSinkForTest((event) =>
+    events.push(event)
+  );
+  let markResolutionStarted: () => void = () => {};
+  let releaseInterrupt: () => void = () => {};
+  const resolutionStarted = new Promise<void>((resolve) => {
+    markResolutionStarted = resolve;
+  });
+  const interruptAck = new Promise<void>((resolve) => {
+    releaseInterrupt = resolve;
+  });
+  try {
+    const session = new SessionRuntime(
+      "provider-session-resolving-cancel",
+      "/repo",
+      {},
+      false,
+      false,
+      {
+        model: "",
+        permissionModeId: "default",
+        planMode: false,
+        effort: "",
+        speed: ""
+      },
+      sidecarClaudeOptionsFromPayload({}),
+      undefined,
+      ({ prompt }) => ({
+        async *[Symbol.asyncIterator]() {
+          await prompt[Symbol.asyncIterator]().next();
+          yield {
+            type: "assistant",
+            uuid: "assistant-before-identity",
+            parent_tool_use_id: null,
+            session_id: "provider-session-resolving-cancel",
+            message: {
+              role: "assistant",
+              content: [{ type: "text", text: "pending" }]
+            }
+          } as never;
+        },
+        async interrupt() {
+          await interruptAck;
+        },
+        close() {}
+      }),
+      30_000,
+      async () => {
+        markResolutionStarted();
+        return await new Promise<never>(() => {});
+      }
+    );
+
+    await session.start();
+    session.exec("turn-resolving", "hello");
+    await resolutionStarted;
+    const canceling = session.cancel("turn-resolving");
+    await Promise.resolve();
+    await Promise.resolve();
+
+    assert.equal(
+      events.some((event) =>
+        ["turn_canceled", "turn_failed", "turn_completed"].includes(event.type)
+      ),
+      false
+    );
+    releaseInterrupt();
+    const result = await canceling;
+    assert.equal(result.disposition, "pre_accept");
+    assert.equal(
+      events.filter((event) => event.type === "turn_canceled").length,
+      1
+    );
+  } finally {
+    restoreSink();
+  }
+});
+
+test("cancel settles every dispatched prompt retired with the Query generation", async () => {
+  const events: Array<{ type: string; payload?: Record<string, unknown> }> = [];
+  const restoreSink = withSidecarEventSinkForTest((event) =>
+    events.push(event)
+  );
+  let markPromptsObserved: () => void = () => {};
+  const promptsObserved = new Promise<void>((resolve) => {
+    markPromptsObserved = resolve;
+  });
+  try {
+    const session = cancelTestSession(({ prompt }) => ({
+      async *[Symbol.asyncIterator]() {
+        const iterator = prompt[Symbol.asyncIterator]();
+        for (let index = 0; index < 2; index += 1) {
+          const next = await iterator.next();
+          if (next.done) {
+            return;
+          }
+        }
+        markPromptsObserved();
+        await new Promise(() => {});
+        yield {} as SDKMessage;
+      },
+      async interrupt() {},
+      close() {}
+    }));
+
+    await session.start();
+    session.exec("turn-root", "hello");
+    session.exec("turn-goal", "/goal ship it", undefined, "goal_arm", {
+      operationId: "goal-operation",
+      revision: 1,
+      repairEpoch: 0,
+      action: "set"
+    });
+    await promptsObserved;
+
+    const result = await session.cancel("turn-root");
+
+    assert.equal(result.disposition, "pre_accept");
+    assert.deepEqual(
+      events
+        .filter((event) => event.type === "turn_canceled")
+        .map((event) => event.payload?.turnId),
+      ["turn-root"]
+    );
+    assert.deepEqual(
+      events.find((event) => event.type === "goal_command_canceled")?.payload,
+      {
+        turnId: "turn-goal",
+        operationId: "goal-operation",
+        revision: 1,
+        repairEpoch: 0,
+        action: "set",
+        reason: "cancel_requested"
+      }
+    );
+    assert.equal(
+      events.some((event) => event.type === "goal_command_started"),
+      false
+    );
+  } finally {
+    restoreSink();
+  }
+});
+
+test("interrupt failure closes the owned Query and settles cancellation", async () => {
+  const events: Array<{ type: string; payload?: Record<string, unknown> }> = [];
+  const restoreSink = withSidecarEventSinkForTest((event) =>
+    events.push(event)
+  );
+  let markPromptObserved: () => void = () => {};
+  const promptObserved = new Promise<void>((resolve) => {
+    markPromptObserved = resolve;
+  });
+  let closed = false;
+  try {
+    const session = cancelTestSession(({ prompt }) => ({
+      async *[Symbol.asyncIterator]() {
+        const next = await prompt[Symbol.asyncIterator]().next();
+        markPromptObserved();
+        await new Promise(() => {});
+        if (!next.done) {
+          yield next.value;
+        }
+      },
+      async interrupt() {
+        throw new Error("interrupt failed");
+      },
+      close() {
+        closed = true;
+      }
+    }));
+
+    await session.start();
+    session.exec("turn-interrupt-failed", "hello");
+    await promptObserved;
+
+    const result = await session.cancel("turn-interrupt-failed");
+
+    assert.equal(result.canceled, true);
+    assert.equal(closed, true);
+    assert.equal(
+      events.some((event) => event.type === "turn_canceled"),
+      true
+    );
+  } finally {
+    restoreSink();
+  }
+});
+
+test("same-tick exact cancel removes a deferred Goal command", async () => {
+  const events: Array<{ type: string; payload?: Record<string, unknown> }> = [];
+  const restoreSink = withSidecarEventSinkForTest((event) =>
+    events.push(event)
+  );
+  let promptCount = 0;
+  try {
+    const session = cancelTestSession(({ prompt }) => ({
+      async *[Symbol.asyncIterator]() {
+        const next = await prompt[Symbol.asyncIterator]().next();
+        if (!next.done) {
+          promptCount += 1;
+          yield next.value;
+        }
+      },
+      close() {}
+    }));
+
+    await session.start();
+    session.exec("goal-turn", "/goal ship it", undefined, "goal_arm", {
+      operationId: "goal-op",
+      revision: 1,
+      repairEpoch: 2,
+      action: "set"
+    });
+    const result = await session.cancel("goal-turn");
+    await new Promise((resolve) => setImmediate(resolve));
+
+    assert.equal(result.disposition, "pre_accept");
+    assert.equal(result.dispatchPhase, "pending_goal");
+    assert.equal(promptCount, 0);
+    assert.equal(
+      events.some((event) => event.type === "goal_command_started"),
+      false
+    );
+    assert.deepEqual(
+      events.find((event) => event.type === "goal_command_canceled")?.payload,
+      {
+        turnId: "goal-turn",
+        operationId: "goal-op",
+        revision: 1,
+        repairEpoch: 2,
+        action: "set",
+        reason: "cancel_requested"
+      }
+    );
+  } finally {
+    restoreSink();
+  }
+});
+
 for (const permissionModeId of ["default", "bypassPermissions"] as const) {
   test(`cancel retires ${permissionModeId} query before background completion can run another tool`, async () => {
     const events: Array<{ type: string; payload?: Record<string, unknown> }> =
@@ -92,9 +519,11 @@ for (const permissionModeId of ["default", "bypassPermissions"] as const) {
       await session.start();
       session.exec("turn-1", "create a site in the background");
       await firstPromptObserved;
-      await session.cancel();
+      const cancelResult = await session.cancel();
       await waitForEvent(events, "turn_canceled");
 
+      assert.equal(cancelResult.disposition, "provider_active");
+      assert.equal(cancelResult.providerTurnId.length > 0, true);
       assert.equal(closeCount, 1);
       assert.deepEqual(shutdownOrder, [
         "interrupt",

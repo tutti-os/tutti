@@ -87,7 +87,11 @@ describe("useAgentGUIConversationBatchDeletion", () => {
       workspaceId: "workspace-1"
     });
 
-    act(() => result.current.confirmDeleteConversations(sessionIds));
+    await act(async () => {
+      expect(await result.current.confirmDeleteConversations(sessionIds)).toBe(
+        true
+      );
+    });
     await waitFor(() => expect(deleteSessionsBatch).toHaveBeenCalledTimes(1));
     expect(deleteSessionsBatch).toHaveBeenCalledWith({
       sessionIds: ["loaded-session", "unloaded-session"],
@@ -181,9 +185,10 @@ describe("useAgentGUIConversationBatchDeletion", () => {
       };
     });
 
-    act(() => result.current.confirmDeleteConversations(["loaded-session"]));
+    await act(async () => {
+      await result.current.confirmDeleteConversations(["loaded-session"]);
+    });
 
-    expect(result.current.activeConversationId).toBe("loaded-session");
     expect(activeConversationIdObservedByDelete).toBe("loaded-session");
     await waitFor(() =>
       expect(input.deleteAgentSessionView).toHaveBeenCalledTimes(1)
@@ -229,12 +234,14 @@ describe("useAgentGUIConversationBatchDeletion", () => {
       };
     });
 
-    act(() =>
-      result.current.confirmDeleteConversations([
-        "loaded-session",
-        "unloaded-session"
-      ])
-    );
+    await act(async () => {
+      expect(
+        await result.current.confirmDeleteConversations([
+          "loaded-session",
+          "unloaded-session"
+        ])
+      ).toBe(false);
+    });
 
     await waitFor(() =>
       expect(input.setIsDeletingProjectConversations).toHaveBeenLastCalledWith(

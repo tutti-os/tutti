@@ -269,15 +269,6 @@ func artifactURL(artifact *RuntimeBinaryArtifact) string {
 }
 
 func publishesUserCommand(manifest Manifest) bool {
-	// The managed runtime is launched through its explicit path inside Tutti.
-	// On Windows, the optional user-level command entry is a file symlink by
-	// default, which requires SeCreateSymbolicLinkPrivilege (or Developer
-	// Mode) and must not make an otherwise valid installation fail. Keep the
-	// legacy default on other platforms, while requiring an explicit opt-in on
-	// Windows when a manifest really needs a published user command.
-	if runtime.GOOS == "windows" && manifest.Runtime.Launch.PublishUserCommand == nil {
-		return false
-	}
 	return manifest.Runtime.Launch.PublishUserCommand == nil || *manifest.Runtime.Launch.PublishUserCommand
 }
 

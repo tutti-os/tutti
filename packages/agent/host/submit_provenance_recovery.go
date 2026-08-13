@@ -7,6 +7,18 @@ import (
 	"time"
 )
 
+func (h *Host) cleanupRejectedPreparedRuntime(
+	ctx context.Context,
+	ref SessionRef,
+	provider string,
+	cause error,
+) error {
+	if h.preparation == nil {
+		return cause
+	}
+	return h.discardRejectedPreparedRuntime(ctx, cause, ref.WorkspaceID, ref.AgentSessionID, provider)
+}
+
 func (h *Host) discardRejectedPreparedRuntime(
 	ctx context.Context,
 	cause error,

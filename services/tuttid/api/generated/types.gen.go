@@ -262,6 +262,7 @@ func (e AgentProviderActiveActionStepStatus) Valid() bool {
 // Defines values for AgentProviderAuthStatus.
 const (
 	AgentProviderAuthStatusAuthenticated AgentProviderAuthStatus = "authenticated"
+	AgentProviderAuthStatusConfigured    AgentProviderAuthStatus = "configured"
 	AgentProviderAuthStatusRequired      AgentProviderAuthStatus = "required"
 	AgentProviderAuthStatusUnknown       AgentProviderAuthStatus = "unknown"
 )
@@ -270,6 +271,8 @@ const (
 func (e AgentProviderAuthStatus) Valid() bool {
 	switch e {
 	case AgentProviderAuthStatusAuthenticated:
+		return true
+	case AgentProviderAuthStatusConfigured:
 		return true
 	case AgentProviderAuthStatusRequired:
 		return true
@@ -3640,6 +3643,36 @@ func (e WorkspaceAgentSessionGoalStateSyncStatus) Valid() bool {
 	}
 }
 
+// Defines values for WorkspaceAgentSessionGoalSyncStateSyncStatus.
+const (
+	WorkspaceAgentSessionGoalSyncStateSyncStatusApplying WorkspaceAgentSessionGoalSyncStateSyncStatus = "applying"
+	WorkspaceAgentSessionGoalSyncStateSyncStatusDiverged WorkspaceAgentSessionGoalSyncStateSyncStatus = "diverged"
+	WorkspaceAgentSessionGoalSyncStateSyncStatusFailed   WorkspaceAgentSessionGoalSyncStateSyncStatus = "failed"
+	WorkspaceAgentSessionGoalSyncStateSyncStatusPending  WorkspaceAgentSessionGoalSyncStateSyncStatus = "pending"
+	WorkspaceAgentSessionGoalSyncStateSyncStatusSynced   WorkspaceAgentSessionGoalSyncStateSyncStatus = "synced"
+	WorkspaceAgentSessionGoalSyncStateSyncStatusUnknown  WorkspaceAgentSessionGoalSyncStateSyncStatus = "unknown"
+)
+
+// Valid indicates whether the value is a known member of the WorkspaceAgentSessionGoalSyncStateSyncStatus enum.
+func (e WorkspaceAgentSessionGoalSyncStateSyncStatus) Valid() bool {
+	switch e {
+	case WorkspaceAgentSessionGoalSyncStateSyncStatusApplying:
+		return true
+	case WorkspaceAgentSessionGoalSyncStateSyncStatusDiverged:
+		return true
+	case WorkspaceAgentSessionGoalSyncStateSyncStatusFailed:
+		return true
+	case WorkspaceAgentSessionGoalSyncStateSyncStatusPending:
+		return true
+	case WorkspaceAgentSessionGoalSyncStateSyncStatusSynced:
+		return true
+	case WorkspaceAgentSessionGoalSyncStateSyncStatusUnknown:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for WorkspaceAgentSessionIsolationMode.
 const (
 	WorkspaceAgentSessionIsolationModeWorktree WorkspaceAgentSessionIsolationMode = "worktree"
@@ -4500,25 +4533,25 @@ func (e WorkspaceWorkflowOperationKind) Valid() bool {
 
 // Defines values for WorkspaceWorkflowOperationStatus.
 const (
-	Canceled  WorkspaceWorkflowOperationStatus = "canceled"
-	Failed    WorkspaceWorkflowOperationStatus = "failed"
-	Pending   WorkspaceWorkflowOperationStatus = "pending"
-	Running   WorkspaceWorkflowOperationStatus = "running"
-	Succeeded WorkspaceWorkflowOperationStatus = "succeeded"
+	WorkspaceWorkflowOperationStatusCanceled  WorkspaceWorkflowOperationStatus = "canceled"
+	WorkspaceWorkflowOperationStatusFailed    WorkspaceWorkflowOperationStatus = "failed"
+	WorkspaceWorkflowOperationStatusPending   WorkspaceWorkflowOperationStatus = "pending"
+	WorkspaceWorkflowOperationStatusRunning   WorkspaceWorkflowOperationStatus = "running"
+	WorkspaceWorkflowOperationStatusSucceeded WorkspaceWorkflowOperationStatus = "succeeded"
 )
 
 // Valid indicates whether the value is a known member of the WorkspaceWorkflowOperationStatus enum.
 func (e WorkspaceWorkflowOperationStatus) Valid() bool {
 	switch e {
-	case Canceled:
+	case WorkspaceWorkflowOperationStatusCanceled:
 		return true
-	case Failed:
+	case WorkspaceWorkflowOperationStatusFailed:
 		return true
-	case Pending:
+	case WorkspaceWorkflowOperationStatusPending:
 		return true
-	case Running:
+	case WorkspaceWorkflowOperationStatusRunning:
 		return true
-	case Succeeded:
+	case WorkspaceWorkflowOperationStatusSucceeded:
 		return true
 	default:
 		return false
@@ -6206,12 +6239,15 @@ type ConnectorMarketInstallationState string
 
 // ConnectorMarketManifest defines model for ConnectorMarketManifest.
 type ConnectorMarketManifest struct {
-	AgentRouting      *ConnectorMarketAgentRouting              `json:"agentRouting,omitempty"`
-	AuthorizationKind string                                    `json:"authorizationKind"`
-	Compatibility     *ConnectorMarketCompatibilityRequirements `json:"compatibility,omitempty"`
-	Description       *string                                   `json:"description,omitempty"`
-	DisplayName       string                                    `json:"displayName"`
-	IconUrl           string                                    `json:"iconUrl"`
+	AgentRouting *ConnectorMarketAgentRouting `json:"agentRouting,omitempty"`
+
+	// AuthorizationInteraction Opaque Connector-owned authorization interaction configuration. Hosts transport this value without interpreting its UI semantics; renderers must validate it against the versioned protocol.
+	AuthorizationInteraction *map[string]interface{}                   `json:"authorizationInteraction,omitempty"`
+	AuthorizationKind        string                                    `json:"authorizationKind"`
+	Compatibility            *ConnectorMarketCompatibilityRequirements `json:"compatibility,omitempty"`
+	Description              *string                                   `json:"description,omitempty"`
+	DisplayName              string                                    `json:"displayName"`
+	IconUrl                  string                                    `json:"iconUrl"`
 
 	// Implementation Public implementation discriminator; sensitive host configuration is never returned.
 	Implementation ConnectorMarketImplementation        `json:"implementation"`
@@ -6620,6 +6656,11 @@ type DeleteWorkspaceFileEntryRequest struct {
 type DeleteWorkspaceFileEntryResponse struct {
 	Path        string `json:"path"`
 	WorkspaceId string `json:"workspaceId"`
+}
+
+// DeleteWorkspaceManagedWorktreeResponse defines model for DeleteWorkspaceManagedWorktreeResponse.
+type DeleteWorkspaceManagedWorktreeResponse struct {
+	Deleted bool `json:"deleted"`
 }
 
 // DeleteWorkspaceResponse defines model for DeleteWorkspaceResponse.
@@ -8739,7 +8780,10 @@ type WorkspaceAgentSession struct {
 
 	// Goal Protocol v2. Explicit field extracted from runtimeContext.
 	Goal *WorkspaceAgentSessionGoal `json:"goal"`
-	Id   string                     `json:"id"`
+
+	// GoalSyncState Narrow Host-owned evidence for the durable Goal operation. Null means no Goal state exists for this Session; clients must not infer pending execution from the visible Goal alone.
+	GoalSyncState *WorkspaceAgentSessionGoalSyncState `json:"goalSyncState"`
+	Id            string                              `json:"id"`
 
 	// Imported Protocol v2. True when the session was imported from external provider history. Explicit field extracted from runtimeContext.
 	Imported bool `json:"imported"`
@@ -8967,12 +9011,27 @@ type WorkspaceAgentSessionGoalStateResponse struct {
 	State   WorkspaceAgentSessionGoalState `json:"state"`
 }
 
+// WorkspaceAgentSessionGoalSyncState defines model for WorkspaceAgentSessionGoalSyncState.
+type WorkspaceAgentSessionGoalSyncState struct {
+	// ExecutionPending Host-owned proof that an accepted initial Goal is expected to begin autonomous execution and has not produced its first exact Goal Turn yet.
+	ExecutionPending   bool                                         `json:"executionPending"`
+	PendingOperationId *string                                      `json:"pendingOperationId"`
+	Revision           int64                                        `json:"revision"`
+	SyncStatus         WorkspaceAgentSessionGoalSyncStateSyncStatus `json:"syncStatus"`
+}
+
+// WorkspaceAgentSessionGoalSyncStateSyncStatus defines model for WorkspaceAgentSessionGoalSyncState.SyncStatus.
+type WorkspaceAgentSessionGoalSyncStateSyncStatus string
+
 // WorkspaceAgentSessionIsolation defines model for WorkspaceAgentSessionIsolation.
 type WorkspaceAgentSessionIsolation struct {
-	BaseCommit   string                             `json:"baseCommit"`
-	Branch       string                             `json:"branch"`
-	Mode         WorkspaceAgentSessionIsolationMode `json:"mode"`
-	WorktreePath string                             `json:"worktreePath"`
+	BaseCommit string                             `json:"baseCommit"`
+	Branch     string                             `json:"branch"`
+	Mode       WorkspaceAgentSessionIsolationMode `json:"mode"`
+
+	// WorktreeId Independent managed worktree resource identity. Legacy sessions may omit it.
+	WorktreeId   *string `json:"worktreeId,omitempty"`
+	WorktreePath string  `json:"worktreePath"`
 }
 
 // WorkspaceAgentSessionIsolationMode defines model for WorkspaceAgentSessionIsolationMode.
@@ -9427,9 +9486,12 @@ type WorkspaceDeletedAgentSession struct {
 	// DeletedAtUnixMs Tombstone time used by the retention policy.
 	DeletedAtUnixMs int64 `json:"deletedAtUnixMs"`
 
-	// ProjectPath Persisted original project path; null means the conversations section.
+	// ProjectPath Persisted project path retained as presentation metadata. Classification is determined only by railSectionKey.
 	ProjectPath *string `json:"projectPath"`
-	Restorable  bool    `json:"restorable"`
+
+	// RailSectionKey Immutable persisted rail section identity used for classification.
+	RailSectionKey string `json:"railSectionKey"`
+	Restorable     bool   `json:"restorable"`
 
 	// Title Original canonical title. Empty titles remain empty.
 	Title string `json:"title"`
@@ -9465,7 +9527,12 @@ type WorkspaceDeletedAgentSessionProjectOption struct {
 	// ProjectAvailable Whether the original project is still registered in the current project catalog.
 	ProjectAvailable bool   `json:"projectAvailable"`
 	ProjectLabel     string `json:"projectLabel"`
-	ProjectPath      string `json:"projectPath"`
+
+	// ProjectPath Persisted project path retained as presentation metadata; it is not the option identity.
+	ProjectPath *string `json:"projectPath"`
+
+	// RailSectionKey Exact persisted rail section identity represented by this option.
+	RailSectionKey string `json:"railSectionKey"`
 }
 
 // WorkspaceDeletedAgentSessionUnavailableReason defines model for WorkspaceDeletedAgentSessionUnavailableReason.
@@ -9628,6 +9695,22 @@ type WorkspaceGitPatchSupportResponse struct {
 
 // WorkspaceGitPatchTarget defines model for WorkspaceGitPatchTarget.
 type WorkspaceGitPatchTarget string
+
+// WorkspaceManagedWorktree defines model for WorkspaceManagedWorktree.
+type WorkspaceManagedWorktree struct {
+	BaseCommit   string  `json:"baseCommit"`
+	Branch       string  `json:"branch"`
+	RelativeCwd  *string `json:"relativeCwd,omitempty"`
+	RepoRoot     string  `json:"repoRoot"`
+	WorkspaceId  string  `json:"workspaceId"`
+	WorktreeId   string  `json:"worktreeId"`
+	WorktreePath string  `json:"worktreePath"`
+}
+
+// WorkspaceManagedWorktreeListResponse defines model for WorkspaceManagedWorktreeListResponse.
+type WorkspaceManagedWorktreeListResponse struct {
+	Worktrees []WorkspaceManagedWorktree `json:"worktrees"`
+}
 
 // WorkspaceResponse defines model for WorkspaceResponse.
 type WorkspaceResponse struct {
@@ -10296,10 +10379,13 @@ type ListWorkspaceDeletedAgentSessionsParams struct {
 	// SearchQuery Case-insensitive search over the original session title only.
 	SearchQuery *string `form:"searchQuery,omitempty" json:"searchQuery,omitempty"`
 
-	// ProjectScope Select sessions without an original project. Mutually exclusive with projectPath; omit both project filters to list every location.
+	// RailSectionKey Select sessions by their exact persisted rail section key. Mutually exclusive with the deprecated project filters; omit every section filter to list all locations.
+	RailSectionKey *string `form:"railSectionKey,omitempty" json:"railSectionKey,omitempty"`
+
+	// ProjectScope Deprecated explicit conversations-section selector. It is resolved to the fixed conversations rail section key and is mutually exclusive with railSectionKey and projectPath.
 	ProjectScope *ListWorkspaceDeletedAgentSessionsParamsProjectScope `form:"projectScope,omitempty" json:"projectScope,omitempty"`
 
-	// ProjectPath Select sessions by their persisted original project path. Mutually exclusive with projectScope.
+	// ProjectPath Deprecated explicit project selector. The path is resolved to its canonical rail section key before querying and is mutually exclusive with railSectionKey and projectScope.
 	ProjectPath *string `form:"projectPath,omitempty" json:"projectPath,omitempty"`
 
 	// Cursor Opaque cursor returned by the previous page.

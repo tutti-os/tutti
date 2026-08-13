@@ -208,6 +208,30 @@ func TestDeleteSessionsReadmitsChangedClosureBeforeAdditionalRuntimeClose(t *tes
 	}
 }
 
+func TestConditionalDeleteReplansUnderLockBeforeClosingRuntime(t *testing.T) {
+	runtime := &batchRuntime{live: map[string]bool{"root": true}}
+	store := &batchManagementStore{
+		runtime: runtime, plans: [][]string{{"root"}, {}, {}}, useExactPlan: true,
+	}
+	host := New(Config{Runtime: runtime, SessionBatchManagement: store})
+
+	result, err := host.DeleteSessions(t.Context(), DeleteSessionsInput{
+		WorkspaceID:                "workspace-1",
+		SessionIDs:                 []string{"root"},
+		RequiredRootRailSectionKey: "project:/workspace/project",
+		ExcludePinnedRoots:         true,
+	})
+	if err != nil {
+		t.Fatalf("DeleteSessions() error = %v", err)
+	}
+	if len(runtime.closeOrder) != 0 || store.calls != 0 || len(result.RemovedSessionIDs) != 0 {
+		t.Fatalf("conditional deletion side effects: closes=%#v deletes=%d result=%#v", runtime.closeOrder, store.calls, result)
+	}
+	if !runtime.live["root"] {
+		t.Fatal("runtime was closed after root stopped satisfying deletion conditions")
+	}
+}
+
 func TestDeleteSessionIsIdempotentWhenCanonicalSessionIsAlreadyGone(t *testing.T) {
 	runtime := &batchRuntime{live: map[string]bool{}}
 	store := &batchManagementStore{

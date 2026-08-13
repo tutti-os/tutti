@@ -78,6 +78,14 @@ one surface must use the package-owned surface-event predicate so both the
 parent ID and its `:tab:*` child IDs are accepted without admitting events from
 other Browser surfaces.
 
+The final tab is a surface-close action, not a child-guest close. Standalone
+hosts may handle it through the ordinary Browser `onCloseRequest`; the shared
+Workbench adapter binds its dedicated final-tab request to
+`windowActions.close()`. It must not send the parent surface ID to
+`BrowserNodeHostApi.close()`, because that API closes registered child guests
+and does not remove a Workbench node. Once the Workbench node unmounts, the
+tab-surface leases close every remaining child guest.
+
 Ordinary guest `target="_blank"` links and `window.open` calls emit an
 `open-url` event with the exact source child ID. The full workspace Browser host
 uses that identity to create and select a new tab in the same Browser surface.
@@ -97,6 +105,14 @@ route before it can handle another event, and disposing the Workbench session
 releases every Browser route for that workspace. A weak lookup does not replace
 this lifecycle: a route that still strongly owns its lookup key would also keep
 the obsolete feature and tab store alive.
+
+Host-level URL launches reuse Browser pages, not the active page's navigation
+slot. Tutti searches eligible Browser surfaces in recent-use order and selects
+an existing tab when its live URL matches, then uses its requested URL as an
+alias when the page redirected. If no page matches, it creates a tab in the most
+recent initialized Browser surface. If that surface's tab state is not
+available, it launches a new Browser surface instead of replacing the active
+page. Explicit non-reuse requests continue to launch a new surface.
 
 ## Package Entry Points
 

@@ -25,7 +25,8 @@ func (r *DebugReporter) Track(ctx context.Context, events ...Event) {
 	}
 
 	common, _ := r.common.snapshot()
-	normalized := normalizeEvents(events, common)
+	header := r.common.teaHeader()
+	normalized := normalizeEvents(events, common, header)
 	if len(normalized) == 0 {
 		return
 	}
@@ -36,6 +37,9 @@ func (r *DebugReporter) Track(ctx context.Context, events ...Event) {
 			params = map[string]any{}
 		}
 		for key, value := range common {
+			params[key] = value
+		}
+		for key, value := range header.presetParams() {
 			params[key] = value
 		}
 		debugEvents = append(debugEvents, DebugEvent{

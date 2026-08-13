@@ -53,9 +53,13 @@ func (s *Store) ListDeletedSessions(ctx context.Context, input ListDeletedSessio
 )`,
 	}
 	args := []any{workspaceID}
-	if input.ProjectPath != nil {
-		predicates = append(predicates, "s.rail_project_path = ?")
-		args = append(args, strings.TrimSpace(*input.ProjectPath))
+	if input.RailSectionKey != nil {
+		railSectionKey := strings.TrimSpace(*input.RailSectionKey)
+		if railSectionKey == "" {
+			return DeletedSessionPage{}, errors.New("rail section key is required")
+		}
+		predicates = append(predicates, "s.rail_section_key = ?")
+		args = append(args, railSectionKey)
 	}
 	for _, token := range strings.Fields(strings.ToLower(input.SearchQuery)) {
 		predicates = append(predicates, "LOWER(s.title) LIKE ? ESCAPE '\\'")
@@ -80,7 +84,7 @@ WHERE s.workspace_id = ? AND s.deleted_at_unix_ms > 0
 `, workspaceID).Scan(&workspaceTotalCount); err != nil {
 		return DeletedSessionPage{}, fmt.Errorf("count all deleted workspace agent sessions: %w", err)
 	}
-	projectPaths, err := listDeletedSessionProjectPathsTx(ctx, tx, workspaceID)
+	railSections, err := listDeletedSessionRailSectionsTx(ctx, tx, workspaceID)
 	if err != nil {
 		return DeletedSessionPage{}, err
 	}
@@ -94,7 +98,7 @@ WHERE s.workspace_id = ? AND s.deleted_at_unix_ms > 0
 	}
 	pageArgs = append(pageArgs, limit+1)
 	rows, err := tx.QueryContext(ctx, `
-SELECT s.agent_session_id, s.title, s.rail_project_path,
+SELECT s.agent_session_id, s.title, s.rail_section_key, s.rail_project_path,
 	   s.updated_at_unix_ms, s.deleted_at_unix_ms, s.recoverable_delete_version,
 	   s.recoverable_delete_tree_size
 FROM workspace_agent_sessions s
@@ -118,6 +122,7 @@ LIMIT ?
 		if err := rows.Scan(
 			&row.summary.AgentSessionID,
 			&row.summary.Title,
+			&row.summary.RailSectionKey,
 			&row.summary.ProjectPath,
 			&row.summary.UpdatedAtUnixMS,
 			&row.summary.DeletedAtUnixMS,
@@ -125,6 +130,10 @@ LIMIT ?
 			&row.treeSize,
 		); err != nil {
 			return DeletedSessionPage{}, fmt.Errorf("scan deleted workspace agent session: %w", err)
+		}
+		row.summary.RailSectionKey = strings.TrimSpace(row.summary.RailSectionKey)
+		if row.summary.RailSectionKey == "" {
+			return DeletedSessionPage{}, fmt.Errorf("deleted workspace agent session %q has no rail section key", row.summary.AgentSessionID)
 		}
 		pageRows = append(pageRows, row)
 	}
@@ -154,42 +163,47 @@ LIMIT ?
 		nextCursor = strconv.FormatInt(last.UpdatedAtUnixMS, 10) + "|" + strings.TrimSpace(last.AgentSessionID)
 	}
 	return DeletedSessionPage{
-		WorkspaceID: workspaceID, Sessions: summaries, ProjectPaths: projectPaths,
+		WorkspaceID: workspaceID, Sessions: summaries, RailSections: railSections,
 		TotalCount: totalCount, WorkspaceTotalCount: workspaceTotalCount,
 		HasMore: hasMore, NextCursor: nextCursor,
 	}, nil
 }
 
-func listDeletedSessionProjectPathsTx(ctx context.Context, tx *sql.Tx, workspaceID string) ([]string, error) {
+func listDeletedSessionRailSectionsTx(ctx context.Context, tx *sql.Tx, workspaceID string) ([]DeletedSessionRailSection, error) {
 	rows, err := tx.QueryContext(ctx, `
-SELECT DISTINCT s.rail_project_path
+SELECT s.rail_section_key, MIN(NULLIF(s.rail_project_path, ''))
 FROM workspace_agent_sessions s
 WHERE s.workspace_id = ? AND s.deleted_at_unix_ms > 0
-  AND s.rail_project_path <> ''
+  AND TRIM(s.rail_section_key) <> ''
+  AND s.rail_section_key <> ?
   AND NOT EXISTS (
     SELECT 1 FROM workspace_agent_sessions parent
     WHERE parent.workspace_id = s.workspace_id
       AND parent.agent_session_id = s.parent_agent_session_id
       AND parent.deleted_at_unix_ms > 0
   )
-ORDER BY s.rail_project_path ASC
-`, workspaceID)
+GROUP BY s.rail_section_key
+ORDER BY s.rail_section_key ASC
+`, workspaceID, RailSectionKeyConversations)
 	if err != nil {
-		return nil, fmt.Errorf("list deleted workspace agent session project paths: %w", err)
+		return nil, fmt.Errorf("list deleted workspace agent session rail sections: %w", err)
 	}
 	defer rows.Close()
-	paths := make([]string, 0)
+	sections := make([]DeletedSessionRailSection, 0)
 	for rows.Next() {
-		var path string
-		if err := rows.Scan(&path); err != nil {
-			return nil, fmt.Errorf("scan deleted workspace agent session project path: %w", err)
+		var section DeletedSessionRailSection
+		var projectPath sql.NullString
+		if err := rows.Scan(&section.RailSectionKey, &projectPath); err != nil {
+			return nil, fmt.Errorf("scan deleted workspace agent session rail section: %w", err)
 		}
-		paths = append(paths, path)
+		section.RailSectionKey = strings.TrimSpace(section.RailSectionKey)
+		section.ProjectPath = strings.TrimSpace(projectPath.String)
+		sections = append(sections, section)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate deleted workspace agent session project paths: %w", err)
+		return nil, fmt.Errorf("iterate deleted workspace agent session rail sections: %w", err)
 	}
-	return paths, nil
+	return sections, nil
 }
 
 // deletedSessionRestorabilityTx returns the presentation reason and the full

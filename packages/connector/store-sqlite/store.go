@@ -27,6 +27,7 @@ var _ market.Repository = (*Store)(nil)
 var _ market.ChangedEventOutbox = (*Store)(nil)
 var _ market.LifecycleCleanupStore = (*Store)(nil)
 var _ market.AuthorizationProjectionStore = (*Store)(nil)
+var _ market.AuthorizationSnapshotStore = (*Store)(nil)
 
 func Open(ctx context.Context, dbPath string) (*Store, error) {
 	dbPath = strings.TrimSpace(dbPath)
@@ -104,6 +105,10 @@ VALUES (1, 0, 'stale', '') ON CONFLICT(id) DO NOTHING`,
   connector_key TEXT NOT NULL,
   projection_json TEXT NOT NULL,
   PRIMARY KEY (account_id, connector_key)
+)`,
+		`CREATE TABLE IF NOT EXISTS connector_market_authorization_snapshot_revisions (
+  account_id TEXT PRIMARY KEY,
+  revision INTEGER NOT NULL CHECK (revision >= 0)
 )`,
 		`CREATE TABLE IF NOT EXISTS connector_market_operations (
   operation_id TEXT PRIMARY KEY,
@@ -190,39 +195,6 @@ SELECT operation_json FROM connector_market_operations WHERE operation_id = ?`, 
 		return market.Operation{}, mapNotFound(err)
 	}
 	return decodeOperation(payload)
-}
-
-func (store *Store) AuthorizationProjection(
-	ctx context.Context,
-	accountID, connectorKey string,
-) (market.AuthorizationProjection, error) {
-	var payload string
-	if err := store.db.QueryRowContext(ctx, `
-SELECT projection_json FROM connector_market_authorization_projections
-WHERE account_id = ? AND connector_key = ?`, accountID, connectorKey).Scan(&payload); err != nil {
-		return market.AuthorizationProjection{}, mapNotFound(err)
-	}
-	var projection market.AuthorizationProjection
-	if err := json.Unmarshal([]byte(payload), &projection); err != nil {
-		return market.AuthorizationProjection{}, fmt.Errorf("decode connector authorization projection: %w", err)
-	}
-	return projection, nil
-}
-
-func (store *Store) SaveAuthorizationProjection(
-	ctx context.Context,
-	projection market.AuthorizationProjection,
-) error {
-	payload, err := json.Marshal(projection)
-	if err != nil {
-		return fmt.Errorf("encode connector authorization projection: %w", err)
-	}
-	_, err = store.db.ExecContext(ctx, `
-INSERT INTO connector_market_authorization_projections (account_id, connector_key, projection_json)
-VALUES (?, ?, ?)
-ON CONFLICT(account_id, connector_key) DO UPDATE SET projection_json = excluded.projection_json`,
-		projection.AccountID, projection.ConnectorKey, string(payload))
-	return err
 }
 
 func (store *Store) ClaimOperation(
@@ -384,7 +356,10 @@ ORDER BY operation_id`)
 	return operations, rows.Err()
 }
 
-func (store *Store) CompletedAuthorizationOperations(ctx context.Context) ([]market.Operation, error) {
+func (store *Store) UnresolvedAuthorizationSessionOperations(
+	ctx context.Context,
+	scope market.OperationScope,
+) ([]market.Operation, error) {
 	rows, err := store.db.QueryContext(ctx, `
 SELECT operation_json FROM connector_market_operations
 WHERE kind = 'start_authorization' AND state = 'completed'
@@ -403,9 +378,53 @@ ORDER BY operation_id`)
 		if err != nil {
 			return nil, err
 		}
+		if operation.Scope.AccountID != scope.AccountID || operation.Execution.AuthorizationSession == nil ||
+			operation.Execution.AuthorizationSession.IsResolved() {
+			continue
+		}
 		operations = append(operations, operation)
 	}
 	return operations, rows.Err()
+}
+
+func (store *Store) ResolveAuthorizationSession(
+	ctx context.Context,
+	operationID string,
+	resolution market.AuthorizationSessionResolution,
+) error {
+	if !terminalAuthorizationSessionResolution(resolution) {
+		return errors.New("terminal authorization session resolution is required")
+	}
+	tx, err := store.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	operation, err := operationOn(ctx, tx, operationID)
+	if err != nil {
+		return err
+	}
+	if operation.Execution.AuthorizationSession == nil || operation.Execution.AuthorizationSession.IsResolved() {
+		return tx.Commit()
+	}
+	operation.Execution.AuthorizationSession.Resolution = resolution
+	operation.UpdatedAt = time.Now().UTC()
+	if err := saveOperationOn(ctx, tx, operation); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+func terminalAuthorizationSessionResolution(resolution market.AuthorizationSessionResolution) bool {
+	switch resolution {
+	case market.AuthorizationSessionResolutionProviderConnected,
+		market.AuthorizationSessionResolutionProviderFailed,
+		market.AuthorizationSessionResolutionAccountStateConverged,
+		market.AuthorizationSessionResolutionSuperseded:
+		return true
+	default:
+		return false
+	}
 }
 
 func (store *Store) Transaction(ctx context.Context, fn func(market.Transaction) error) error {

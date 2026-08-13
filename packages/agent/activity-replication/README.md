@@ -32,6 +32,16 @@ WebSocket behavior, or GUI-derived state. `runtimeOperation`,
 `runtimeOperationEvent`, and `submitClaim` are retained only as entity names
 for decoding tombstone deletes; new upserts are invalid.
 
+`Turn.identityAnchorTurnId` is an optional, provider-neutral identity relation.
+When present, the Turn inherits the ultimate external identity of another Turn
+in the same canonical Session; absence means the Turn owns its identity. The
+anchor is immutable, non-self-referential, and flattened to one hop by the
+canonical store. It does not change lifecycle, cancellation, interaction,
+provider-Turn binding, or message ownership. Cloud sinks must treat an omitted
+field as “not asserted” and must not clear an anchor already stored by a newer
+owner. This keeps old owners readable while limiting the new behavior to owners
+that actually emit the relation.
+
 The production module depends only on the nested, dependency-free
 `store-sqlite/canonical` module. The SQLite conformance adapter lives in the
 store module's tests, so importing this contract does not add the SQLite driver

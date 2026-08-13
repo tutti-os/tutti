@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
@@ -158,8 +159,8 @@ func TestRunCodexCLILatestInstallerFallsBackToLocalBin(t *testing.T) {
 	}, standalone); err != nil {
 		t.Fatalf("runCodexCLILatestInstaller() error = %v", err)
 	}
-	wantPrefix := filepath.Join(home, ".local")
-	if !strings.Contains(command.Command, "--prefix "+wantPrefix+" ") {
+	wantPrefix := managedNPMInstallPrefixForTest(home)
+	if !strings.Contains(command.Command, wantPrefix) {
 		t.Fatalf("Command = %q, want fresh install at --prefix %s", command.Command, wantPrefix)
 	}
 }
@@ -298,7 +299,7 @@ func TestRunManagedNPMPackageInstallerCleansOnlyOwnStaleStagingDirectories(t *te
 	managedNPM := filepath.Join(runtimeRoot, "node", "bin", npmBinaryNameForTest())
 	managedNode := filepath.Join(runtimeRoot, "node", "bin", nodeBinaryNameForTest())
 	managedNodeBinDir := filepath.Dir(managedNode)
-	installPrefix := filepath.Join(home, ".local")
+	installPrefix := managedNPMInstallPrefixForTest(home)
 	packageDir, ok := managedNPMGlobalPackageDir(installPrefix, "@tutti-os/tutti-agent")
 	if !ok {
 		t.Fatal("managed npm package directory was not resolved")
@@ -358,7 +359,7 @@ func TestRunManagedNPMPackageInstallerCleansStagingAfterInterruptedAttempt(t *te
 	managedNPM := filepath.Join(runtimeRoot, "node", "bin", npmBinaryNameForTest())
 	managedNode := filepath.Join(runtimeRoot, "node", "bin", nodeBinaryNameForTest())
 	managedNodeBinDir := filepath.Dir(managedNode)
-	installPrefix := filepath.Join(home, ".local")
+	installPrefix := managedNPMInstallPrefixForTest(home)
 	packageDir, ok := managedNPMGlobalPackageDir(installPrefix, "@tutti-os/tutti-agent")
 	if !ok {
 		t.Fatal("managed npm package directory was not resolved")
@@ -464,6 +465,81 @@ func TestRunManagedNPMPackageInstallerRepairsManagedBinEEXIST(t *testing.T) {
 
 type staticManagedRuntimeResolver struct {
 	runtime managedruntime.ResolvedRuntime
+}
+
+func TestManagedNPMRepairInstallPrefixFindsWindowsNPMShim(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("Windows npm shims use a different global layout")
+	}
+	home := t.TempDir()
+	prefix := filepath.Join(home, ".local", "bin")
+	packageDir := filepath.Join(prefix, "node_modules", "@openai", "codex")
+	writePackageManifest(t, packageDir, "@openai/codex", MinSupportedCodexVersion)
+	shim := filepath.Join(prefix, "codex.cmd")
+	if err := os.WriteFile(shim, []byte("@echo off\r\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if got, ok := managedNPMRepairInstallPrefix(shim, "@openai/codex"); !ok || got != prefix {
+		t.Fatalf("managedNPMRepairInstallPrefix() = %q, %t; want %q, true", got, ok, prefix)
+	}
+}
+
+func TestRunCodexCLILatestInstallerRepairsLegacyWindowsPrefixInPlace(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("Windows legacy npm prefix behavior")
+	}
+	home := t.TempDir()
+	legacyPrefix := filepath.Join(home, ".local")
+	packageDir := filepath.Join(legacyPrefix, "node_modules", "@openai", "codex")
+	writePackageManifest(t, packageDir, "@openai/codex", MinSupportedCodexVersion)
+	legacyShim := filepath.Join(legacyPrefix, "codex.cmd")
+	writeExecutable(t, legacyShim, "@echo off\r\n")
+
+	runtimeRoot := fakeManagedRuntimeRoot(t)
+	managedNPM := filepath.Join(runtimeRoot, "node", "bin", npmBinaryNameForTest())
+	managedNode := filepath.Join(runtimeRoot, "node", "bin", nodeBinaryNameForTest())
+	service := probeTestService(home)
+	service.HTTPClient = agentNPMRegistryProbeHTTPClient(nil)
+	service.ManagedRuntime = staticManagedRuntimeResolver{runtime: managedruntime.ResolvedRuntime{
+		Root:         runtimeRoot,
+		Node:         managedNode,
+		NPM:          managedNPM,
+		BinDirs:      []string{filepath.Dir(managedNode)},
+		EnvOverrides: []string{"PATH=" + filepath.Dir(managedNode)},
+	}}
+
+	var command InstallCommandInput
+	service.InstallCommand = func(_ context.Context, input InstallCommandInput) (InstallCommandResult, error) {
+		command = input
+		return InstallCommandResult{ExitCode: 0, Stdout: "installed"}, nil
+	}
+	if _, err := service.runCodexCLILatestInstaller(context.Background(), "codex", InstallerSpec{
+		Kind:     InstallerKindCodexCLILatest,
+		CodexCLI: codexCLIInstallerSpec().CodexCLI,
+	}, legacyShim); err != nil {
+		t.Fatalf("runCodexCLILatestInstaller() error = %v", err)
+	}
+	wantPrefix := legacyPrefix
+	if len(command.Args) < 2 || command.Args[0] == "" {
+		t.Fatalf("Command args = %#v, want npm install arguments", command.Args)
+	}
+	gotPrefix := ""
+	for index, arg := range command.Args {
+		if arg == "--prefix" && index+1 < len(command.Args) {
+			gotPrefix = command.Args[index+1]
+			break
+		}
+	}
+	if gotPrefix != wantPrefix {
+		t.Fatalf("Command args = %#v, want legacy Windows prefix repaired in place at %s", command.Args, wantPrefix)
+	}
+}
+
+func managedNPMInstallPrefixForTest(home string) string {
+	if runtime.GOOS == "windows" {
+		return filepath.Join(home, ".local", "bin")
+	}
+	return filepath.Join(home, ".local")
 }
 
 func (r staticManagedRuntimeResolver) Resolve(context.Context) (managedruntime.ResolvedRuntime, error) {

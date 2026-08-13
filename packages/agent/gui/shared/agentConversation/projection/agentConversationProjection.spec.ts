@@ -2138,6 +2138,72 @@ describe("projectAgentConversationVM", () => {
     );
   });
 
+  it("prefers materialized content text over legacy composer-file displayPrompt", () => {
+    const conversation = projectAgentConversationVM(
+      detailViewModel({
+        session: {
+          ...detailViewModel().session,
+          workspaceId: "room-1"
+        },
+        turns: [
+          {
+            id: "turn-1",
+            userMessage: null,
+            userMessages: [
+              {
+                id: "user-1",
+                body: "summarize",
+                sourceTimelineItems: [
+                  {
+                    id: 1,
+                    agentSessionId: "session-1",
+                    eventId: "event-1",
+                    actorType: "user",
+                    actorId: "user",
+                    itemType: "message",
+                    role: "user",
+                    payload: {
+                      displayPrompt:
+                        "summarize [diagnostics.md](mention://composer-file/file-1?status=ready)",
+                      content: [
+                        {
+                          type: "text",
+                          text: "summarize [@diagnostics.md](/runtime/diagnostics.md)"
+                        }
+                      ]
+                    }
+                  }
+                ]
+              }
+            ],
+            agentMessages: [],
+            toolCalls: [],
+            toolCallCount: 0,
+            hasFailedToolCall: false,
+            agentItems: []
+          }
+        ],
+        showProcessingIndicator: false
+      })
+    );
+
+    const userRow = conversation.rows.find(
+      (
+        row
+      ): row is Extract<
+        (typeof conversation.rows)[number],
+        { kind: "message" }
+      > => row.kind === "message" && row.speaker === "user"
+    );
+
+    expect(userRow?.messages[0]?.body).toBe(
+      "summarize [@diagnostics.md](/runtime/diagnostics.md)"
+    );
+    expect(userRow?.messages[0]?.body).not.toContain(
+      "mention://composer-file/"
+    );
+  });
+
   it("does not render a synthetic image-only displayPrompt below the image", () => {
     const conversation = projectAgentConversationVM(
       detailViewModel({

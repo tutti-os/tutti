@@ -24,7 +24,6 @@ interface UseAgentGUIControllerRefsInput {
   homeComposerTargetOverride: AgentGUIAgentTarget | null;
   isComposerHome: boolean;
   isCreatingConversation: boolean;
-  isNoProjectPath: ((input: { path: string }) => boolean) | undefined;
   onDataChange: (
     updater: (current: AgentGUINodeData) => AgentGUINodeData
   ) => void;
@@ -49,7 +48,6 @@ export function useAgentGUIControllerRefs(
   const activeConversationIdRef = useRef(input.activeConversationId);
   const selectedProjectPathRef = useRef(input.selectedProjectPath);
   const userProjectsRef = useRef(input.userProjects);
-  const isNoProjectPathRef = useRef(input.isNoProjectPath);
   const userProjectsLoadSeqRef = useRef(0);
   const conversationsRef = useRef(input.conversations);
   const isMountedRef = useRef(true);
@@ -118,7 +116,6 @@ export function useAgentGUIControllerRefs(
   activeConversationIdRef.current = input.activeConversationId;
   selectedProjectPathRef.current = input.selectedProjectPath;
   userProjectsRef.current = input.userProjects;
-  isNoProjectPathRef.current = input.isNoProjectPath;
   conversationsRef.current = input.conversations;
   dataRef.current = input.data;
   selectedAgentTargetRef.current = input.effectiveSelectedProviderTarget;
@@ -152,7 +149,6 @@ export function useAgentGUIControllerRefs(
     isComposerHomeRef,
     isCreatingConversationRef,
     isMountedRef,
-    isNoProjectPathRef,
     lastRenderStateDiagnosticKeyRef,
     loadDraftComposerOptionsRef,
     onDataChangeRef,

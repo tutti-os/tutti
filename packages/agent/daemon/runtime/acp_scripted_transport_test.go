@@ -52,6 +52,7 @@ func newScriptedACPTransport() *scriptedACPTransport {
 	return &scriptedACPTransport{conn: &scriptedACPConnection{
 		recv:                   make(chan ProcessFrame, 32),
 		supportsSessionRestore: true,
+		supportsHTTPMCP:        true,
 		respondSetMode:         true,
 	}}
 }
@@ -70,6 +71,7 @@ type scriptedACPConnection struct {
 	configOptions              []map[string]any
 	recv                       chan ProcessFrame
 	supportsSessionRestore     bool
+	supportsHTTPMCP            bool
 	respondSetMode             bool
 	authRequiredOnNewSession   bool
 	commandUpdateOnNewSession  bool
@@ -109,10 +111,15 @@ func (c *scriptedACPConnection) Send(data []byte) error {
 					"title": "Codex",
 				},
 			}
-			if c.supportsSessionRestore {
-				result["agentCapabilities"] = map[string]any{
-					"loadSession": true,
+			if c.supportsSessionRestore || c.supportsHTTPMCP {
+				capabilities := map[string]any{}
+				if c.supportsSessionRestore {
+					capabilities["loadSession"] = true
 				}
+				if c.supportsHTTPMCP {
+					capabilities["mcpCapabilities"] = map[string]any{"http": true}
+				}
+				result["agentCapabilities"] = capabilities
 			}
 			c.sendJSON(map[string]any{
 				"jsonrpc": "2.0",

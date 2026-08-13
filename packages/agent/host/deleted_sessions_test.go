@@ -33,14 +33,16 @@ func (s *deletedSessionStoreStub) PurgeDeletedSessionTrees(_ context.Context, in
 }
 
 func TestDeletedSessionHostSurfaceDelegatesWithoutStartingRuntime(t *testing.T) {
-	projectPath := ""
+	railSectionKey := storesqlite.RailSectionKeyConversations
 	store := &deletedSessionStoreStub{
 		page: storesqlite.DeletedSessionPage{
 			WorkspaceID: "workspace-1",
 			Sessions: []storesqlite.DeletedSessionSummary{{
-				AgentSessionID: "root", Restorable: true, UpdatedAtUnixMS: 30,
+				AgentSessionID: "root", RailSectionKey: railSectionKey, Restorable: true, UpdatedAtUnixMS: 30,
 			}},
-			ProjectPaths: []string{"/project"}, TotalCount: 1, WorkspaceTotalCount: 2,
+			RailSections: []storesqlite.DeletedSessionRailSection{{
+				RailSectionKey: "project:/project", ProjectPath: "/project",
+			}}, TotalCount: 1, WorkspaceTotalCount: 2,
 		},
 		restore: storesqlite.RestoreDeletedSessionResult{Restored: true, RestoredSessionIDs: []string{"root", "child"}},
 		purge: storesqlite.PurgeDeletedSessionTreesResult{
@@ -50,13 +52,13 @@ func TestDeletedSessionHostSurfaceDelegatesWithoutStartingRuntime(t *testing.T) 
 	}
 	host := New(Config{DeletedSessions: store})
 	page, err := host.ListDeletedSessions(t.Context(), ListDeletedSessionsInput{
-		WorkspaceID: " workspace-1 ", SearchQuery: "root", ProjectPath: &projectPath,
+		WorkspaceID: " workspace-1 ", SearchQuery: "root", RailSectionKey: &railSectionKey,
 		CursorUpdatedAtUnixMS: 40, CursorAgentSessionID: "cursor", Limit: 10,
 	})
 	if err != nil || len(page.Sessions) != 1 || page.TotalCount != 1 || page.WorkspaceTotalCount != 2 {
 		t.Fatalf("ListDeletedSessions()=%#v err=%v", page, err)
 	}
-	if store.listInput.WorkspaceID != "workspace-1" || store.listInput.ProjectPath == nil || *store.listInput.ProjectPath != "" {
+	if store.listInput.WorkspaceID != "workspace-1" || store.listInput.RailSectionKey == nil || *store.listInput.RailSectionKey != storesqlite.RailSectionKeyConversations {
 		t.Fatalf("list input=%#v", store.listInput)
 	}
 	restored, err := host.RestoreDeletedSession(t.Context(), RestoreDeletedSessionInput{WorkspaceID: "workspace-1", AgentSessionID: "root"})

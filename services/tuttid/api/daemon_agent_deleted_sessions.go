@@ -8,6 +8,7 @@ import (
 	agenthost "github.com/tutti-os/tutti/packages/agent/host"
 	tuttigenerated "github.com/tutti-os/tutti/services/tuttid/api/generated"
 	"github.com/tutti-os/tutti/services/tuttid/apierrors"
+	userprojectbiz "github.com/tutti-os/tutti/services/tuttid/biz/userproject"
 	agentservice "github.com/tutti-os/tutti/services/tuttid/service/agent"
 	agentmaintenance "github.com/tutti-os/tutti/services/tuttid/service/agentmaintenance"
 )
@@ -28,19 +29,34 @@ func (api DaemonAPI) ListWorkspaceDeletedAgentSessions(
 		}, nil
 	}
 	input := agentservice.ListDeletedSessionsInput{}
-	if request.Params.ProjectScope != nil {
-		if !request.Params.ProjectScope.Valid() || request.Params.ProjectPath != nil {
+	sectionFilterCount := 0
+	if request.Params.RailSectionKey != nil {
+		sectionFilterCount++
+		railSectionKey := strings.TrimSpace(*request.Params.RailSectionKey)
+		if railSectionKey == "" {
 			return writeListWorkspaceDeletedAgentSessionsError(agentservice.ErrInvalidArgument), nil
 		}
-		unscoped := ""
-		input.ProjectPath = &unscoped
+		input.RailSectionKey = &railSectionKey
+	}
+	if request.Params.ProjectScope != nil {
+		sectionFilterCount++
+		if !request.Params.ProjectScope.Valid() {
+			return writeListWorkspaceDeletedAgentSessionsError(agentservice.ErrInvalidArgument), nil
+		}
+		conversations := "conversations"
+		input.RailSectionKey = &conversations
 	}
 	if request.Params.ProjectPath != nil {
+		sectionFilterCount++
 		projectPath := strings.TrimSpace(*request.Params.ProjectPath)
 		if projectPath == "" {
 			return writeListWorkspaceDeletedAgentSessionsError(agentservice.ErrInvalidArgument), nil
 		}
-		input.ProjectPath = &projectPath
+		railSectionKey := userprojectbiz.SectionKeyFromPath(projectPath)
+		input.RailSectionKey = &railSectionKey
+	}
+	if sectionFilterCount > 1 {
+		return writeListWorkspaceDeletedAgentSessionsError(agentservice.ErrInvalidArgument), nil
 	}
 	if request.Params.SearchQuery != nil {
 		input.SearchQuery = strings.TrimSpace(*request.Params.SearchQuery)
@@ -76,6 +92,7 @@ func (api DaemonAPI) ListWorkspaceDeletedAgentSessions(
 		sessions = append(sessions, tuttigenerated.WorkspaceDeletedAgentSession{
 			AgentSessionId:    strings.TrimSpace(session.AgentSessionID),
 			Title:             session.Title,
+			RailSectionKey:    strings.TrimSpace(session.RailSectionKey),
 			ProjectPath:       projectPath,
 			UpdatedAtUnixMs:   session.UpdatedAtUnixMS,
 			DeletedAtUnixMs:   session.DeletedAtUnixMS,
@@ -85,8 +102,13 @@ func (api DaemonAPI) ListWorkspaceDeletedAgentSessions(
 	}
 	projectOptions := make([]tuttigenerated.WorkspaceDeletedAgentSessionProjectOption, 0, len(page.ProjectOptions))
 	for _, option := range page.ProjectOptions {
+		var projectPath *string
+		if value := strings.TrimSpace(option.ProjectPath); value != "" {
+			projectPath = &value
+		}
 		projectOptions = append(projectOptions, tuttigenerated.WorkspaceDeletedAgentSessionProjectOption{
-			ProjectPath:      option.ProjectPath,
+			RailSectionKey:   strings.TrimSpace(option.RailSectionKey),
+			ProjectPath:      projectPath,
 			ProjectLabel:     option.ProjectLabel,
 			ProjectAvailable: option.ProjectAvailable,
 		})

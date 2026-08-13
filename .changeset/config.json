@@ -11,6 +11,7 @@
       "@tutti-os/analytics",
       "@tutti-os/analytics-debug",
       "@tutti-os/event-stream-core",
+      "@tutti-os/connector-authorization-protocol",
       "@tutti-os/connector-market",
       "@tutti-os/workspace-file-manager",
       "@tutti-os/workspace-file-reference",

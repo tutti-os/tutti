@@ -322,7 +322,9 @@ function toolOutputSummaryCandidate(
 function toolInputSummaryCandidate(
   payload: Record<string, unknown>
 ): MessageSummaryCandidate | null {
-  const input = recordValue(payload.input);
+  const rootInput = recordValue(payload.input);
+  const nestedInput = recordValue(recordValue(rootInput.toolCall).input);
+  const input = Object.keys(nestedInput).length > 0 ? nestedInput : rootInput;
   const action = recordValue(input.action);
   return summaryCandidate(
     "tool.input",

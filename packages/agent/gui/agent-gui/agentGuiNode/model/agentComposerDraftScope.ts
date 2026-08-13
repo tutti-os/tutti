@@ -1,16 +1,22 @@
+import {
+  areWorkspaceUserProjectPathsEqual,
+  normalizeWorkspaceUserProjectPath
+} from "@tutti-os/workspace-user-project/core";
+
 /** Shared home-composer draft scope. Project selection does not partition this. */
 export const AGENT_COMPOSER_HOME_DRAFT_SCOPE = "home";
 
 export function normalizeAgentComposerDraftProjectPath(
   value: string | null | undefined
 ): string | null {
-  const slashed = value?.trim().replaceAll("\\", "/") ?? "";
-  const normalized = /^\/+$/u.test(slashed)
-    ? "/"
-    : /^[A-Za-z]:\/+$/u.test(slashed)
-      ? `${slashed.slice(0, 2)}/`
-      : slashed.replace(/\/+$/, "");
-  return normalized ? normalized : null;
+  return normalizeWorkspaceUserProjectPath(value) || null;
+}
+
+export function areAgentComposerProjectPathsEqual(
+  left: string | null | undefined,
+  right: string | null | undefined
+): boolean {
+  return areWorkspaceUserProjectPathsEqual(left, right);
 }
 
 export function resolveAgentComposerDraftScopeKey(input: {

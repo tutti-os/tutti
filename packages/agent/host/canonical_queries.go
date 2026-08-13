@@ -18,6 +18,15 @@ type PlanDecisionContinuation struct {
 	Turn    storesqlite.Turn
 }
 
+// GoalActivityTurn is one latest canonical Turn whose immutable provenance is
+// backed by a durable Goal operation. Consumers use this proof to project
+// turnless Goal sessions without treating an arbitrary newer Turn in the same
+// Session as shared Goal activity.
+type GoalActivityTurn struct {
+	Session storesqlite.Session
+	Turn    storesqlite.Turn
+}
+
 // GetTurn exposes canonical turn truth without requiring Host consumers to
 // retain or type-assert the concrete store used by the Host adapter.
 func (h *Host) GetTurn(ctx context.Context, ref SessionRef, turnID string) (storesqlite.Turn, bool, error) {
@@ -108,8 +117,11 @@ func (h *Host) GetPlanDecisionContinuation(
 		operation.TurnID != parentTurnID {
 		return PlanDecisionContinuation{}, false, ErrRuntimeOperationIdentityMismatch
 	}
-	if operation.Status == storesqlite.RuntimeOperationStatusFailed {
+	if operation.Status != storesqlite.RuntimeOperationStatusCompleted {
 		return PlanDecisionContinuation{}, false, nil
+	}
+	if operation.Result != storesqlite.RuntimeOperationResultApplied {
+		return PlanDecisionContinuation{}, false, ErrRuntimeOperationIdentityMismatch
 	}
 	if runtimeOperationPayloadText(operation.Payload, "step") != "send_confirmed" {
 		return PlanDecisionContinuation{}, false, nil
@@ -142,6 +154,13 @@ func (h *Host) GetPlanDecisionContinuation(
 		turn.AgentSessionID != ref.AgentSessionID {
 		return PlanDecisionContinuation{}, false, ErrTurnNotFound
 	}
+	parentIdentityTurnID, err := h.resolveUltimateTurnIdentity(ctx, ref, parentTurnID)
+	if err != nil {
+		return PlanDecisionContinuation{}, false, err
+	}
+	if strings.TrimSpace(turn.IdentityAnchorTurnID) != parentIdentityTurnID {
+		return PlanDecisionContinuation{}, false, ErrRuntimeOperationIdentityMismatch
+	}
 	latest, err := h.store.ListSessionTurnSummaries(ctx, storesqlite.ListSessionTurnSummariesInput{
 		WorkspaceID: ref.WorkspaceID, AgentSessionID: ref.AgentSessionID, Limit: 1,
 	})
@@ -158,6 +177,109 @@ func (h *Host) GetPlanDecisionContinuation(
 		Session: session,
 		Turn:    turn,
 	}, true, nil
+}
+
+// resolveUltimateTurnIdentity returns the one-hop canonical Turn whose
+// external identity the requested Turn represents. Canonical persistence
+// flattens inherited identities, so a nested or dangling anchor is corruption
+// rather than another relation for callers to traverse.
+func (h *Host) resolveUltimateTurnIdentity(
+	ctx context.Context,
+	ref SessionRef,
+	turnID string,
+) (string, error) {
+	turn, found, err := h.store.GetTurn(ctx, ref.WorkspaceID, ref.AgentSessionID, turnID)
+	if err != nil {
+		return "", err
+	}
+	if !found || turn.TurnID != turnID || turn.AgentSessionID != ref.AgentSessionID {
+		return "", ErrTurnNotFound
+	}
+	anchorTurnID := strings.TrimSpace(turn.IdentityAnchorTurnID)
+	if anchorTurnID == "" {
+		return turnID, nil
+	}
+	if anchorTurnID == turnID {
+		return "", ErrRuntimeOperationIdentityMismatch
+	}
+	anchor, found, err := h.store.GetTurn(ctx, ref.WorkspaceID, ref.AgentSessionID, anchorTurnID)
+	if err != nil {
+		return "", err
+	}
+	if !found || anchor.TurnID != anchorTurnID ||
+		anchor.AgentSessionID != ref.AgentSessionID ||
+		strings.TrimSpace(anchor.IdentityAnchorTurnID) != "" {
+		return "", ErrRuntimeOperationIdentityMismatch
+	}
+	return anchorTurnID, nil
+}
+
+// GetGoalActivityTurn proves that candidateTurnID is the Session's latest
+// active Turn and belongs to a durable Goal generation. The Turn's provenance
+// is necessary but not sufficient: Host also validates the referenced Goal
+// operation and its exact revision/repair epoch so consumers never recreate
+// Goal-generation ownership from canonical fields alone.
+func (h *Host) GetGoalActivityTurn(
+	ctx context.Context,
+	ref SessionRef,
+	candidateTurnID string,
+) (GoalActivityTurn, bool, error) {
+	ref = normalizedSessionRef(ref)
+	candidateTurnID = strings.TrimSpace(candidateTurnID)
+	if h == nil || h.store == nil || h.goals == nil ||
+		ref.WorkspaceID == "" || ref.AgentSessionID == "" || candidateTurnID == "" {
+		return GoalActivityTurn{}, false, ErrInvalidArgument
+	}
+	session, turn, found, err := h.GetCanonicalSessionAndTurn(ctx, ref, candidateTurnID)
+	if err != nil || !found {
+		return GoalActivityTurn{}, found, err
+	}
+	if strings.TrimSpace(session.WorkspaceID) != ref.WorkspaceID ||
+		strings.TrimSpace(session.ID) != ref.AgentSessionID ||
+		strings.TrimSpace(session.ActiveTurnID) != candidateTurnID ||
+		strings.TrimSpace(turn.WorkspaceID) != ref.WorkspaceID ||
+		strings.TrimSpace(turn.AgentSessionID) != ref.AgentSessionID ||
+		strings.TrimSpace(turn.TurnID) != candidateTurnID {
+		return GoalActivityTurn{}, false, nil
+	}
+	if turn.Origin != storesqlite.TurnOriginGoalArm &&
+		turn.Origin != storesqlite.TurnOriginGoalContinuation {
+		return GoalActivityTurn{}, false, nil
+	}
+	operationID := strings.TrimSpace(turn.SourceGoalOperationID)
+	if operationID == "" || turn.SourceGoalRevision <= 0 || turn.SourceGoalRepairEpoch < 0 {
+		return GoalActivityTurn{}, false, nil
+	}
+	operation, operationFound, err := h.goals.GetGoalControlOperation(
+		ctx, ref.WorkspaceID, operationID,
+	)
+	if err != nil || !operationFound {
+		return GoalActivityTurn{}, operationFound, err
+	}
+	if strings.TrimSpace(operation.OperationID) != operationID ||
+		strings.TrimSpace(operation.WorkspaceID) != ref.WorkspaceID ||
+		strings.TrimSpace(operation.AgentSessionID) != ref.AgentSessionID ||
+		operation.GoalRevision != turn.SourceGoalRevision ||
+		operation.RepairEpoch != turn.SourceGoalRepairEpoch {
+		return GoalActivityTurn{}, false, storesqlite.ErrGoalOperationConflict
+	}
+	switch operation.Status {
+	case storesqlite.GoalOperationStatusPrepared,
+		storesqlite.GoalOperationStatusDispatched,
+		storesqlite.GoalOperationStatusCompleted:
+	default:
+		return GoalActivityTurn{}, false, nil
+	}
+	latest, err := h.store.ListSessionTurnSummaries(ctx, storesqlite.ListSessionTurnSummariesInput{
+		WorkspaceID: ref.WorkspaceID, AgentSessionID: ref.AgentSessionID, Limit: 1,
+	})
+	if err != nil {
+		return GoalActivityTurn{}, false, err
+	}
+	if len(latest.Turns) != 1 || strings.TrimSpace(latest.Turns[0].TurnID) != candidateTurnID {
+		return GoalActivityTurn{}, false, nil
+	}
+	return GoalActivityTurn{Session: session, Turn: turn}, true, nil
 }
 
 // FindTurnByClientSubmitID exposes the canonical idempotency lookup without

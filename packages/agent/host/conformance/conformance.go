@@ -63,6 +63,14 @@ type Fixture struct {
 	AcceptGoalControlsOnly bool
 	CompleteGoalOnSet      bool
 	EmptyPauseResumeGoal   bool
+	// RaceRuntimeStartReport makes the test Runtime attempt its ordinary
+	// session-start activity report before CreateSession initializes canonical
+	// state. A conforming Host must keep that report behind the canonical
+	// initialization barrier.
+	RaceRuntimeStartReport bool
+	// FailSessionInitialization fails the canonical initialize half after the
+	// Runtime has started, before its report/event barrier may be released.
+	FailSessionInitialization bool
 	// DisconnectGoalFenceDelivery drops the live Runtime Session during the
 	// first fence delivery, modeling a Host restart with accepted durable intent
 	// but no in-memory provider Session.
@@ -73,7 +81,6 @@ type Fixture struct {
 	// explicit TurnID is not the Session.ActiveTurnID. It models the runtime
 	// target race without exposing a runtime/provider API to scenarios.
 	GuidanceTargetMismatch bool
-	WorktreeGCSweepErr     error
 	DeleteAdmissionErr     error
 	DeleteSessionPlans     [][]string
 }
@@ -105,6 +112,7 @@ type GoalObservation struct {
 	Revision           int64
 	PendingOperationID string
 	SyncStatus         string
+	ExecutionPending   bool
 }
 
 type CancelObservation struct {
@@ -115,9 +123,11 @@ type CancelObservation struct {
 }
 
 type OperationObservation struct {
-	OperationID string
-	Status      string
-	Result      string
+	OperationID          string
+	Status               string
+	Result               string
+	ConfirmedTurnID      string
+	IdentityAnchorTurnID string
 }
 
 type InteractiveObservation struct {
@@ -141,6 +151,8 @@ type Metrics struct {
 	CloseCalls                         int
 	GoalControlCalls                   int
 	GoalReconcileCalls                 int
+	RuntimeSessionPublishCalls         int
+	RuntimeStartReportWrites           int
 	RuntimeOperationCommits            int
 	GoalOperationCommits               int
 	RootTurnSettlements                int
@@ -191,9 +203,33 @@ type Driver interface {
 	Metrics() Metrics
 }
 
+// ProviderlessTerminalDriver is the narrow fault-injection capability for a
+// Runtime that durably fails the exact canonical Turn before it acquires a
+// provider identity. It stays separate from Fixture so downstream conformance
+// drivers can adopt this lifecycle scenario before upgrading their pinned
+// Tutti dependency; an extra test-driver method is source-compatible with the
+// previous conformance contract.
+type ProviderlessTerminalDriver interface {
+	ResetProviderlessTerminalExec(context.Context, *SessionSeed) error
+}
+
 type Scenario struct {
 	Name string
 	run  func(context.Context, Driver) error
+}
+
+// RailPlacementRecoveryDriver is separate from Driver so Host consumers adopt
+// the immutable rail recovery proof explicitly instead of reimplementing rail
+// normalization in an application adapter.
+type RailPlacementRecoveryDriver interface {
+	Reset(context.Context, Fixture) error
+	Create(context.Context, string, agenthost.CreateSessionInput) (SessionObservation, string, error)
+	GetSessionWithRailPlacement(context.Context, agenthost.SessionRef, *agenthost.RailPlacement) (SessionObservation, error)
+}
+
+type RailPlacementRecoveryScenario struct {
+	Name string
+	run  func(context.Context, RailPlacementRecoveryDriver) error
 }
 
 // DeletedSessionLifecycleDriver is separate from Driver so adapters adopt the
@@ -260,6 +296,20 @@ func Run(ctx context.Context, driver Driver, scenario Scenario) error {
 	}
 	if scenario.run == nil {
 		return fmt.Errorf("agent host conformance scenario %q has no runner", scenario.Name)
+	}
+	return scenario.run(ctx, driver)
+}
+
+func RunRailPlacementRecovery(
+	ctx context.Context,
+	driver RailPlacementRecoveryDriver,
+	scenario RailPlacementRecoveryScenario,
+) error {
+	if driver == nil {
+		return fmt.Errorf("agent host rail placement recovery conformance driver is required")
+	}
+	if scenario.run == nil {
+		return fmt.Errorf("agent host rail placement recovery conformance scenario %q has no runner", scenario.Name)
 	}
 	return scenario.run(ctx, driver)
 }

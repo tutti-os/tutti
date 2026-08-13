@@ -133,7 +133,10 @@ func (a *CodexAppServerAdapter) GuideActiveTurn(
 		if err != nil {
 			return nil, err
 		}
-		return a.steerActiveTurn(ctx, appSession, session, content, providerContent, explicitDisplayPrompt, visibleText, turnID, activeTurnID, emit)
+		return a.steerActiveTurn(
+			ctx, appSession, session, content, providerContent,
+			explicitDisplayPrompt, visibleText, turnID, activeTurnID, emit,
+		)
 	}
 	// The canonical root turn remains active while child sessions drain even
 	// after the provider's root turn has ended. Guidance in that window starts
@@ -144,42 +147,15 @@ func (a *CodexAppServerAdapter) GuideActiveTurn(
 		// starting another turn would race the existing one.
 		return nil, ErrSessionNoActiveTurn
 	}
-	attemptID := "continuation:" + newID()
-	eventContext, ok := activityEventContext(session, "root-provider-turn-started:"+attemptID, turnID)
-	if !ok {
-		return nil, ErrSessionDisconnected
-	}
-	started := activityshared.NewRootProviderTurnStarted(eventContext, turnID, attemptID)
-	if binding, err := a.WriteProviderTurnBinding(
-		ProviderTurnBindingWriteInput{
-			Kind:           ProviderTurnBindingWriteStarted,
-			ProviderTurnID: attemptID,
-		},
-	); err == nil {
-		started.Payload.ProviderTurnBindingJSON = binding
-	}
-	started.Payload.Metadata = map[string]any{"guidanceContinuation": true}
-	continuation := newCodexGuidanceContinuationAdmission(attemptID)
-	if err := a.execAsync(
-		context.WithoutCancel(ctx),
+	return a.startGuidanceContinuation(
+		ctx,
 		session,
 		content,
 		displayPrompt,
 		turnID,
 		emit,
 		emitCommands,
-		continuation,
-	); err != nil {
-		return nil, err
-	}
-	if err := <-continuation.admitted; err != nil {
-		return nil, err
-	}
-	if emit != nil {
-		emit([]activityshared.Event{started})
-	}
-	close(continuation.provisionalStarted)
-	return []activityshared.Event{started}, nil
+	)
 }
 
 func (appTurn *codexAppServerActiveTurn) markTerminated() {
@@ -437,6 +413,21 @@ func (a *CodexAppServerAdapter) execBlocking(
 			emitProviderLocked(next)
 		}
 	}
+	// A turn/start failure has no provider identity to accept. Publish its
+	// canonical terminal directly so the controller can settle the Turn, while
+	// dropping any provider events that arrived before the failed response.
+	emitProviderlessTerminal := func(next []activityshared.Event) {
+		eventsMu.Lock()
+		defer eventsMu.Unlock()
+		if turnClosed {
+			return
+		}
+		turnClosed = true
+		pendingProviderEvents = nil
+		if len(next) > 0 {
+			emitLocked(next)
+		}
+	}
 	releaseProviderEvents := func() {
 		eventsMu.Lock()
 		defer eventsMu.Unlock()
@@ -602,11 +593,11 @@ func (a *CodexAppServerAdapter) execBlocking(
 			terminalEvents = append(terminalEvents, newTurnActivityEvent(session, EventTurnCanceled, turnID, SessionStatusCanceled, "", "", map[string]any{
 				"error": err.Error(),
 			}))
-			emitTerminal(terminalEvents)
+			emitProviderlessTerminal(terminalEvents)
 		} else {
 			terminalEvents := normalizer.FinishFailed(session, turnID)
 			terminalEvents = append(terminalEvents, newTurnActivityEvent(session, EventTurnFailed, turnID, SessionStatusFailed, "", "", acpFailureMetadata(err)))
-			emitTerminal(terminalEvents)
+			emitProviderlessTerminal(terminalEvents)
 		}
 		if invalidateClient && a.invalidateSessionClient(session.AgentSessionID, appSession.client) {
 			slog.Warn(

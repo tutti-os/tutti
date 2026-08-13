@@ -2,6 +2,7 @@ package host
 
 import (
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"net"
 	"net/url"
@@ -23,6 +24,8 @@ const (
 
 var connectorKeyPattern = regexp.MustCompile(`^[a-z0-9](?:[a-z0-9._-]{0,126}[a-z0-9])?$`)
 var artifactSHA256Pattern = regexp.MustCompile(`^[a-f0-9]{64}$`)
+var remoteBindingRefPattern = regexp.MustCompile(`^[a-z0-9]+(?:[.-][a-z0-9]+)*$`)
+var remoteBindingContractHashPattern = regexp.MustCompile(`^sha256:[a-f0-9]{64}$`)
 var manifestIdentifierPattern = regexp.MustCompile(`^[a-z][a-z0-9._-]{0,127}$`)
 var permissionScopePattern = regexp.MustCompile(`^[a-z0-9](?:[a-z0-9._-]{0,126}[a-z0-9])?$`)
 var nodePackageNamePattern = regexp.MustCompile(`^(?:@[a-z0-9][a-z0-9._-]{0,126}/)?[a-z0-9][a-z0-9._-]{0,126}$`)
@@ -142,6 +145,10 @@ func validateManifestShape(manifest Manifest, validateIcon bool) error {
 	default:
 		return invalidManifest("authorizationKind must be none, oauth2, or api_key", nil)
 	}
+	if len(manifest.AuthorizationInteraction) > 64<<10 ||
+		(len(manifest.AuthorizationInteraction) > 0 && !json.Valid(manifest.AuthorizationInteraction)) {
+		return invalidManifest("authorizationInteraction must be valid bounded JSON", nil)
+	}
 	implementation := manifest.Implementation
 	branches := 0
 	if implementation.Builtin != nil {
@@ -180,6 +187,9 @@ func validateManifestShape(manifest Manifest, validateIcon bool) error {
 		}
 		if err := validateRemoteStreamableHTTP(*remote); err != nil {
 			return err
+		}
+		if len(manifest.RequiredCapabilities) != 1 || manifest.RequiredCapabilities[0] != "tools" {
+			return invalidManifest("remote_streamable_http requiredCapabilities must be exactly [tools]", nil)
 		}
 	default:
 		return invalidManifest("implementation.kind is unsupported", nil)
@@ -250,9 +260,6 @@ func validateManagedStdio(managed ManagedStdioImplementation, authorizationKind 
 		if !safeRelativeEntrypoint(managed.MCP.Entrypoint) {
 			return invalidManifest("managed MCP entrypoint must be a safe relative path", nil)
 		}
-		if err := validateInstallationProbe(managed.MCP.InstallationProbe); err != nil {
-			return err
-		}
 	}
 	if managed.CLI != nil {
 		if managed.Runtime.Language != "node" || managed.Runtime.Profile != "connector-node-static" {
@@ -269,7 +276,7 @@ func validateManagedStdio(managed ManagedStdioImplementation, authorizationKind 
 				return invalidManifest("managed CLI arguments must not contain NUL", nil)
 			}
 		}
-		if err := validateInstallationProbe(managed.CLI.InstallationProbe); err != nil {
+		if err := validateCLIReadinessProbe(managed.CLI.ReadinessProbe); err != nil {
 			return err
 		}
 		if managed.CLI.Install != nil {
@@ -309,18 +316,18 @@ func validateManagedStdio(managed ManagedStdioImplementation, authorizationKind 
 	return nil
 }
 
-func validateInstallationProbe(probe *InstallationProbe) error {
+func validateCLIReadinessProbe(probe *CLIReadinessProbe) error {
 	if probe == nil {
 		return nil
 	}
 	if len(probe.Arguments) == 0 || len(probe.Arguments) > 32 || probe.TimeoutMS < 100 || probe.TimeoutMS > 30_000 {
-		return invalidManifest("installationProbe requires between 1 and 32 arguments and timeoutMs between 100 and 30000", nil)
+		return invalidManifest("readinessProbe requires between 1 and 32 arguments and timeoutMs between 100 and 30000", nil)
 	}
 	totalBytes := 0
 	for _, argument := range probe.Arguments {
 		totalBytes += len(argument)
 		if strings.ContainsRune(argument, '\x00') || totalBytes > 16*1024 {
-			return invalidManifest("installationProbe arguments are invalid", nil)
+			return invalidManifest("readinessProbe arguments are invalid", nil)
 		}
 	}
 	return nil
@@ -410,34 +417,17 @@ func validateCLIInstallation(install CLIInstallation, runtime RuntimeRequirement
 }
 
 func validateRemoteStreamableHTTP(remote RemoteStreamableHTTPImplementation) error {
-	endpoint, err := url.Parse(strings.TrimSpace(remote.Endpoint))
-	if err != nil || endpoint.Scheme != "https" || endpoint.Host == "" || endpoint.User != nil || endpoint.Fragment != "" {
-		return invalidManifest("remote endpoint must be an absolute https URL without userinfo or fragment", nil)
+	if remote.ProtocolVersion != "2026-07-28" {
+		return invalidManifest("remote protocolVersion must be 2026-07-28", nil)
 	}
-	host := strings.ToLower(endpoint.Hostname())
-	if net.ParseIP(host) != nil || len(remote.AllowedHosts) == 0 {
-		return invalidManifest("remote endpoint must use an allowlisted DNS hostname", nil)
+	if !remoteBindingRefPattern.MatchString(remote.BindingRef) {
+		return invalidManifest("remote bindingRef must be a stable lowercase identifier", nil)
 	}
-	found := false
-	for _, allowed := range remote.AllowedHosts {
-		if strings.ToLower(strings.TrimSpace(allowed)) == host {
-			found = true
-		}
-		if net.ParseIP(strings.TrimSpace(allowed)) != nil {
-			return invalidManifest("remote allowedHosts must not contain IP literals", nil)
-		}
+	if remote.ContractVersion != 1 {
+		return invalidManifest("remote contractVersion must be 1", nil)
 	}
-	if !found {
-		return invalidManifest("remote endpoint hostname must appear exactly in allowedHosts", nil)
-	}
-	if remote.Authentication.Type != "none" && remote.Authentication.Type != "host_session" {
-		return invalidManifest("remote authentication type must be none or host_session", nil)
-	}
-	if remote.Limits.TimeoutMS < 100 || remote.Limits.TimeoutMS > 120_000 {
-		return invalidManifest("remote timeoutMs must be between 100 and 120000", nil)
-	}
-	if remote.Limits.MaxResponseBytes < 1 || remote.Limits.MaxResponseBytes > 10*1024*1024 {
-		return invalidManifest("remote maxResponseBytes must be between 1 and 10485760", nil)
+	if !remoteBindingContractHashPattern.MatchString(remote.BindingContractHash) {
+		return invalidManifest("remote bindingContractHash must be a prefixed lowercase SHA-256", nil)
 	}
 	return nil
 }

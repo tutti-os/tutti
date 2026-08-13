@@ -39,9 +39,9 @@ func (c *Controller) DurablyReportSubmitProvenance(ctx context.Context, input Su
 	}
 	key := sessionKey(input.RoomID, input.AgentSessionID)
 	c.mu.Lock()
-	provisional := c.provisionalSessions[key]
+	publicationPending := c.sessionPublicationPendingLocked(key)
 	c.mu.Unlock()
-	if provisional {
+	if publicationPending {
 		// A nonstandard caller may still be inside the provisional window when
 		// this late provenance arrives. Keep it hidden until the submitted-intent
 		// barrier publishes the canonical prompt; normal initial-content creates
@@ -71,7 +71,7 @@ func (c *Controller) DurablyReportSubmitProvenance(ctx context.Context, input Su
 	// without regressing a fast provider that already moved it onward.
 	report := reportActivityInput(session, []activityshared.Event{message})
 	c.enrichReportWithSessionSnapshot(session, &report)
-	if provisional {
+	if publicationPending {
 		hideProvisionalSessionReport(&report)
 	}
 	if len(report.StatePatches) != 1 || len(report.MessageUpdates) != 1 {

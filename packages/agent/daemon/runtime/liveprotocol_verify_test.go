@@ -53,6 +53,7 @@ func TestLiveProtocolResumeServerRequestReissue(t *testing.T) {
 	if pending == nil {
 		t.Logf("notifications so far:\n%s", proc1.notificationDigest())
 		t.Fatalf("no approval server-request arrived; cannot verify re-issue behavior")
+		return
 	}
 	t.Logf("pending approval request: id=%v method=%s params=%s",
 		pending.ID, pending.Method, compactJSON(pending.Params))

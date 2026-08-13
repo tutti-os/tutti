@@ -735,8 +735,7 @@ export function providerItemToAgentMentionItem(input: {
           presentation.agentIconUrl?.trim() ||
           presentation.iconUrl?.trim() ||
           undefined,
-        agentProviderId: presentation.agentProviderId,
-        agentTargetId: scope.agentTargetId
+        agentProviderId: presentation.agentProviderId
       }),
       ...(scope.agentTargetId ? { agentTargetId: scope.agentTargetId } : {}),
       status: presentation.status?.trim() || undefined,

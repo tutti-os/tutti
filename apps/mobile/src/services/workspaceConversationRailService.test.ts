@@ -457,6 +457,7 @@ function createSession(
     endedAtUnixMs: null,
     forkedFrom: null,
     goal: null,
+    goalSyncState: null,
     id,
     imported: false,
     kind: "root",

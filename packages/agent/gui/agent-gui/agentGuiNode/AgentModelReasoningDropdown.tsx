@@ -5,7 +5,6 @@ import { CheckIcon, ChevronDown, Star, ZapIcon } from "lucide-react";
 import {
   Fragment,
   cloneElement,
-  useMemo,
   useState,
   type HTMLAttributes,
   type ReactElement
@@ -34,28 +33,21 @@ import {
   buildComposerModelMenuModel,
   type ComposerMenuOption
 } from "./model/composerSettingsMenuModel";
-import {
-  composerModelFavoritesStorageKey,
-  composerModelRecentsStorageKey,
-  parseComposerModelIdList,
-  recordRecentComposerModel,
-  serializeComposerModelIdList,
-  toggleFavoriteComposerModel
-} from "./model/composerModelChoiceHistory";
+import { useComposerModelChoiceHistory } from "./controller/useComposerModelChoiceHistory";
 
 export function AgentModelReasoningDropdown({
   composerSettings,
   disabled = false,
   labels,
-  modelHistoryTargetId = null,
+  modelHistoryTargetId,
   onSettingsChange
 }: {
   composerSettings: AgentGUIComposerSettingsVM;
   disabled?: boolean;
   labels: AgentComposerSettingsMenuLabels;
   /**
-   * Stable per-target key for the recents/favorites localStorage chrome
-   * state; omit to fall back to one shared "default" bucket.
+   * Optional test/embedding override. Omission uses the controller-projected
+   * exact target; explicit null disables model history.
    */
   modelHistoryTargetId?: string | null;
   onSettingsChange: (patch: {
@@ -67,31 +59,23 @@ export function AgentModelReasoningDropdown({
   "use memo";
   const [menuOpen, setMenuOpen] = useState(false);
   const [modelSearchQuery, setModelSearchQuery] = useState("");
-  // localStorage is not reactive, so history re-derives only when the
-  // target changes or a local write/menu-open bumps the refresh counter.
-  const [historyRefresh, setHistoryRefresh] = useState(0);
-  const favoriteModelIds = useMemo(
-    () =>
-      parseComposerModelIdList(
-        readComposerLocalStorage(
-          composerModelFavoritesStorageKey(modelHistoryTargetId)
-        )
-      ),
-    [modelHistoryTargetId, historyRefresh]
-  );
-  const recentModelIds = useMemo(
-    () =>
-      parseComposerModelIdList(
-        readComposerLocalStorage(
-          composerModelRecentsStorageKey(modelHistoryTargetId)
-        )
-      ),
-    [modelHistoryTargetId, historyRefresh]
-  );
+  const projectedModelHistory = composerSettings.modelChoiceHistory;
+  const modelHistory = useComposerModelChoiceHistory({
+    targetId:
+      modelHistoryTargetId === undefined
+        ? (projectedModelHistory?.targetId ?? null)
+        : modelHistoryTargetId,
+    catalog: projectedModelHistory?.catalog ?? null
+  });
+  const {
+    enabled: modelHistoryEnabled,
+    favoriteModelIds,
+    recentModelIds
+  } = modelHistory;
   const handleMenuOpenChange = (open: boolean): void => {
     if (open) {
       // Pick up writes from other windows and clear the previous filter.
-      setHistoryRefresh((value) => value + 1);
+      modelHistory.refreshFromStorage();
       setModelSearchQuery("");
     }
     setMenuOpen(open);
@@ -117,25 +101,15 @@ export function AgentModelReasoningDropdown({
     setMenuOpen(false);
   };
   const applyModelSelection = (value: string): void => {
-    const nextRecentIds = recordRecentComposerModel(recentModelIds, value);
-    setHistoryRefresh((refresh) => refresh + 1);
-    writeComposerLocalStorage(
-      composerModelRecentsStorageKey(modelHistoryTargetId),
-      serializeComposerModelIdList(nextRecentIds)
-    );
+    modelHistory.recordRecentModel(value);
     applySettingsChange({ model: value });
   };
   const handleToggleFavoriteModel = (value: string): void => {
-    const nextFavoriteIds = toggleFavoriteComposerModel(
-      favoriteModelIds,
-      value
-    );
-    setHistoryRefresh((refresh) => refresh + 1);
-    writeComposerLocalStorage(
-      composerModelFavoritesStorageKey(modelHistoryTargetId),
-      serializeComposerModelIdList(nextFavoriteIds)
-    );
+    modelHistory.toggleFavoriteModel(value);
   };
+  const toggleFavoriteModel = modelHistoryEnabled
+    ? handleToggleFavoriteModel
+    : undefined;
   const favoriteValueSet = new Set(menu.model.favoriteValues);
   const modelDescriptionPresentation = menu.model.optionDescriptionInline
     ? ("inline" as const)
@@ -263,7 +237,7 @@ export function AgentModelReasoningDropdown({
                   descriptionPresentation={modelDescriptionPresentation}
                   tooltipsEnabled
                   favoriteValues={favoriteValueSet}
-                  onToggleFavorite={handleToggleFavoriteModel}
+                  onToggleFavorite={toggleFavoriteModel}
                   onSelect={applyModelSelection}
                 />
               </>
@@ -282,7 +256,7 @@ export function AgentModelReasoningDropdown({
                   descriptionPresentation={modelDescriptionPresentation}
                   tooltipsEnabled
                   favoriteValues={favoriteValueSet}
-                  onToggleFavorite={handleToggleFavoriteModel}
+                  onToggleFavorite={toggleFavoriteModel}
                   onSelect={applyModelSelection}
                 />
               </>
@@ -306,7 +280,7 @@ export function AgentModelReasoningDropdown({
                     descriptionPresentation={modelDescriptionPresentation}
                     tooltipsEnabled
                     favoriteValues={favoriteValueSet}
-                    onToggleFavorite={handleToggleFavoriteModel}
+                    onToggleFavorite={toggleFavoriteModel}
                     onSelect={applyModelSelection}
                   />
                 </Fragment>
@@ -318,7 +292,7 @@ export function AgentModelReasoningDropdown({
                 descriptionPresentation={modelDescriptionPresentation}
                 tooltipsEnabled
                 favoriteValues={favoriteValueSet}
-                onToggleFavorite={handleToggleFavoriteModel}
+                onToggleFavorite={toggleFavoriteModel}
                 onSelect={applyModelSelection}
               />
             )}
@@ -406,29 +380,6 @@ export function AgentModelReasoningDropdown({
       </DropdownMenuContent>
     </DropdownMenu>
   );
-}
-
-function readComposerLocalStorage(key: string): string | null {
-  try {
-    if (typeof window === "undefined" || !window.localStorage) {
-      return null;
-    }
-    return window.localStorage.getItem(key);
-  } catch {
-    return null;
-  }
-}
-
-function writeComposerLocalStorage(key: string, value: string): void {
-  try {
-    if (typeof window === "undefined" || !window.localStorage) {
-      return;
-    }
-    window.localStorage.setItem(key, value);
-  } catch {
-    // Chrome-state persistence is best-effort; never break the menu.
-    return;
-  }
 }
 
 // Renders a list of pick-to-apply menu items. Pointer activation applies

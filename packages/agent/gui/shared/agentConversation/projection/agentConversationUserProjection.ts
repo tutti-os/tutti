@@ -198,6 +198,26 @@ function userPromptContentBlocks(
   )
     ? ""
     : displayPrompt;
+  // Older sessions kept draft-only `mention://composer-file/...` chips in
+  // displayPrompt. Prefer the already-materialized provider text so transcript
+  // clicks resolve through ordinary file locators.
+  const preferMaterializedContentText =
+    Boolean(visibleDisplayPrompt) &&
+    visibleDisplayPrompt.includes("mention://composer-file/") &&
+    content.some((raw) => {
+      const block =
+        raw && typeof raw === "object" && !Array.isArray(raw)
+          ? (raw as Record<string, unknown>)
+          : null;
+      return (
+        block?.type === "text" &&
+        typeof block.text === "string" &&
+        block.text.trim().length > 0
+      );
+    });
+  const effectiveDisplayPrompt = preferMaterializedContentText
+    ? ""
+    : visibleDisplayPrompt;
   const blocks = content.flatMap((raw): UserPromptContentBlock[] => {
     const block =
       raw && typeof raw === "object" && !Array.isArray(raw)
@@ -205,7 +225,7 @@ function userPromptContentBlocks(
         : null;
     if (!block) return [];
     if (block.type === "text" && typeof block.text === "string") {
-      return visibleDisplayPrompt
+      return effectiveDisplayPrompt
         ? []
         : [{ type: "text", text: linkifyPastedTextReferences(block.text) }];
     }
@@ -226,8 +246,8 @@ function userPromptContentBlocks(
       }
     ];
   });
-  return visibleDisplayPrompt
-    ? [{ type: "text", text: visibleDisplayPrompt }, ...blocks]
+  return effectiveDisplayPrompt
+    ? [{ type: "text", text: effectiveDisplayPrompt }, ...blocks]
     : blocks;
 }
 

@@ -157,7 +157,7 @@ func (s *Store) ReportActivityState(
 					index,
 				)
 			}
-			acceptedMessage, messageAccepted, messageErr := s.upsertAgentMessageTx(
+			acceptedMessage, messageAccepted, _, messageErr := s.upsertAgentMessageTx(
 				ctx, tx, workspaceID, agentSessionID, message, now, false, true,
 			)
 			if messageErr != nil {
@@ -354,7 +354,7 @@ func (s *Store) ReportSessionMessages(
 		if message.MessageID == "" {
 			continue
 		}
-		acceptedMessage, accepted, err := s.upsertAgentMessageTx(ctx, tx, workspaceID, agentSessionID, message, now, allowLegacyTurnless, false)
+		acceptedMessage, accepted, statusTransitioned, err := s.upsertAgentMessageTx(ctx, tx, workspaceID, agentSessionID, message, now, allowLegacyTurnless, false)
 		if err != nil {
 			return MessageReportResult{}, err
 		}
@@ -370,6 +370,9 @@ func (s *Store) ReportSessionMessages(
 		result.AcceptedCount++
 		result.LatestVersion = acceptedMessage.Version
 		result.Messages = append(result.Messages, acceptedMessage)
+		if statusTransitioned {
+			result.StatusTransitionedMessageIDs = append(result.StatusTransitionedMessageIDs, acceptedMessage.MessageID)
+		}
 	}
 
 	historicalTurns := []Turn(nil)

@@ -28,6 +28,28 @@ describe("useAgentGUIConversationPresentation", () => {
     );
   });
 
+  it("does not infer fallback conversation project identity from workspacePath", () => {
+    const conversation = createConversation();
+    const input = createInput(conversation);
+    const rendered = renderHook(() =>
+      useAgentGUIConversationPresentation({
+        ...input,
+        conversations: [],
+        userProjects: [
+          {
+            id: "workspace-project",
+            label: "Workspace",
+            path: "/workspace",
+            pinnedAtUnixMs: 0,
+            sectionKey: "project:/workspace"
+          }
+        ]
+      })
+    );
+
+    expect(rendered.result.current.activeConversation?.project).toBeNull();
+  });
+
   it("reuses visible and active conversation references for render-equal input", () => {
     const conversation = createConversation();
     const input = createInput(conversation);

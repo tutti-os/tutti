@@ -8,6 +8,7 @@ import (
 	"io"
 	"log/slog"
 	"strings"
+	"time"
 
 	sessionreplay "github.com/tutti-os/tutti/packages/agent/session-replay"
 )
@@ -15,8 +16,15 @@ import (
 const claudeSDKStderrTailLimit = 8192
 
 func (s *claudeSDKAdapterSession) send(request claudeSDKSidecarRequest) error {
+	return s.sendContext(context.Background(), request)
+}
+
+func (s *claudeSDKAdapterSession) sendContext(ctx context.Context, request claudeSDKSidecarRequest) error {
 	if s == nil || s.conn == nil {
 		return ErrSessionDisconnected
+	}
+	if ctx == nil {
+		ctx = context.Background()
 	}
 	if err := request.normalize(); err != nil {
 		return err
@@ -26,8 +34,21 @@ func (s *claudeSDKAdapterSession) send(request claudeSDKSidecarRequest) error {
 		return err
 	}
 	data = append(data, '\n')
-	s.sendMu.Lock()
+	if !s.sendMu.TryLock() {
+		ticker := time.NewTicker(time.Millisecond)
+		defer ticker.Stop()
+		for !s.sendMu.TryLock() {
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-ticker.C:
+			}
+		}
+	}
 	defer s.sendMu.Unlock()
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	return s.conn.Send(data)
 }
 
@@ -47,13 +68,13 @@ func (a *ClaudeCodeSDKAdapter) roundTripClaudeSDKResponse(ctx context.Context, a
 	readerStarted := adapterSession.readerStarted
 	a.mu.Unlock()
 	if !readerStarted {
-		if err := adapterSession.send(request); err != nil {
+		if err := adapterSession.sendContext(ctx, request); err != nil {
 			return claudeSDKSidecarEvent{}, err
 		}
 		return adapterSession.roundTripDirectResponse(ctx, request)
 	}
 	response := a.registerClaudeSDKResponse(adapterSession, request.ID)
-	if err := adapterSession.send(request); err != nil {
+	if err := adapterSession.sendContext(ctx, request); err != nil {
 		a.unregisterClaudeSDKResponse(adapterSession, request.ID, response)
 		return claudeSDKSidecarEvent{}, err
 	}
@@ -141,16 +162,18 @@ func (r *claudeSDKLineReader) next(ctx context.Context) (claudeSDKSidecarEvent, 
 		}
 		if err != nil {
 			if errors.Is(err, io.EOF) {
+				r.flushStderrDiagnostics()
 				return claudeSDKSidecarEvent{}, ErrSessionDisconnected
 			}
 			return claudeSDKSidecarEvent{}, err
 		}
 		if len(frame.Stderr) > 0 {
-			logClaudeSDKSidecarDebugStderr(frame.Stderr)
+			r.appendStderrDiagnostics(frame.Stderr)
 			r.appendStderrTail(frame.Stderr)
 			continue
 		}
 		if frame.ExitCode != nil {
+			r.flushStderrDiagnostics()
 			return claudeSDKSidecarEvent{}, claudeSDKSidecarExitError(*frame.ExitCode, r.stderrTail)
 		}
 		if len(frame.Stdout) > 0 {
@@ -211,6 +234,28 @@ func nextBufferedLine(buffer *string) (string, bool) {
 	return line, line != ""
 }
 
+func (r *claudeSDKLineReader) appendStderrDiagnostics(content []byte) {
+	if len(content) == 0 {
+		return
+	}
+	r.stderrDiagnosticBuffer += string(content)
+	for {
+		line, ok := nextBufferedLine(&r.stderrDiagnosticBuffer)
+		if !ok {
+			return
+		}
+		logClaudeSDKSidecarDebugStderr([]byte(line))
+	}
+}
+
+func (r *claudeSDKLineReader) flushStderrDiagnostics() {
+	line := strings.TrimSpace(r.stderrDiagnosticBuffer)
+	r.stderrDiagnosticBuffer = ""
+	if line != "" {
+		logClaudeSDKSidecarDebugStderr([]byte(line))
+	}
+}
+
 func (r *claudeSDKLineReader) appendStderrTail(content []byte) {
 	summary := claudeSDKStderrSummary(content)
 	if summary == "" {
@@ -247,16 +292,46 @@ func claudeSDKSidecarExitError(exitCode int, stderrTail []byte) error {
 func logClaudeSDKSidecarDebugStderr(content []byte) {
 	for _, line := range strings.Split(string(content), "\n") {
 		line = strings.TrimSpace(line)
-		if !strings.HasPrefix(line, claudeSDKAuthRefreshLogPrefix) {
-			continue
+		switch {
+		case strings.HasPrefix(line, claudeSDKAuthRefreshLogPrefix):
+			logClaudeSDKStructuredDiagnostic(
+				line,
+				claudeSDKAuthRefreshLogPrefix,
+				"agent_session.claude_sdk.auth_refresh_debug",
+			)
+		case strings.HasPrefix(line, claudeSDKCancelLogPrefix):
+			logClaudeSDKStructuredDiagnostic(
+				line,
+				claudeSDKCancelLogPrefix,
+				"agent_session.claude_sdk.cancel_diagnostic",
+			)
+		case strings.HasPrefix(line, claudeSDKProviderTurnLogPrefix):
+			logClaudeSDKStructuredDiagnostic(
+				line,
+				claudeSDKProviderTurnLogPrefix,
+				"agent_session.claude_sdk.provider_turn_diagnostic",
+			)
 		}
-		payloadJSON := strings.TrimSpace(strings.TrimPrefix(line, claudeSDKAuthRefreshLogPrefix))
-		if payloadJSON == "" {
-			payloadJSON = "{}"
-		}
-		slog.Info(claudeSDKAuthRefreshLogPrefix,
-			"event", "agent_session.claude_sdk.auth_refresh_debug",
+	}
+}
+
+func logClaudeSDKStructuredDiagnostic(line string, prefix string, event string) {
+	payloadJSON := strings.TrimSpace(strings.TrimPrefix(line, prefix))
+	if !json.Valid([]byte(payloadJSON)) {
+		payloadJSON = `{"stage":"invalid_diagnostic_payload"}`
+	}
+	var envelope struct {
+		Severity string `json:"severity"`
+	}
+	if json.Unmarshal([]byte(payloadJSON), &envelope) == nil && envelope.Severity == "warning" {
+		slog.Warn(prefix,
+			"event", event,
 			"payload_json", payloadJSON,
 		)
+		return
 	}
+	slog.Info(prefix,
+		"event", event,
+		"payload_json", payloadJSON,
+	)
 }

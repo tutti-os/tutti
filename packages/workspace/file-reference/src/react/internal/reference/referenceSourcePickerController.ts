@@ -1,4 +1,4 @@
-import { proxy } from "valtio/vanilla";
+import { proxy, snapshot as readProxySnapshot } from "valtio/vanilla";
 import type {
   NodeRef,
   ReferenceHandle,
@@ -263,6 +263,9 @@ export function createReferenceSourcePickerController(
     selection: []
   };
   const store = proxy(snapshot);
+  const readSnapshot = () =>
+    readProxySnapshot(store) as unknown as ReferenceSourcePickerSnapshot;
+  snapshot = readSnapshot();
 
   const setSnapshot = (
     update:
@@ -278,8 +281,8 @@ export function createReferenceSourcePickerController(
     if (next === snapshot) {
       return;
     }
-    snapshot = next;
     Object.assign(store, next);
+    snapshot = readSnapshot();
   };
 
   /** 不可变地更新某 tab 的状态。 */

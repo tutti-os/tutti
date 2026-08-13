@@ -13,6 +13,9 @@ const DefaultReplayPlaybackSpeed = 1
 var (
 	ErrReplayPlaybackUnavailable = errors.New("replay playback control is unavailable")
 	ErrReplayPlaybackSpeed       = errors.New("unsupported replay playback speed")
+	// errReplayRecvInterrupted wakes recvContext so pending synthetic optional-probe
+	// responses can drain while inbound delivery is paused at a checkpoint.
+	errReplayRecvInterrupted = errors.New("replay recv interrupted")
 )
 
 type ReplayPlaybackState struct {
@@ -139,6 +142,7 @@ func (c *replayPlaybackCursor) waitUntil(
 	ctx context.Context,
 	targetElapsedMS int64,
 	closed <-chan struct{},
+	interrupt <-chan struct{},
 ) error {
 	target := float64(targetElapsedMS)
 	for {
@@ -147,7 +151,7 @@ func (c *replayPlaybackCursor) waitUntil(
 		c.advanceToControllerTimeLocked(playbackElapsedMS)
 		if state.Paused && !state.FastForward {
 			c.mu.Unlock()
-			if err := waitForReplayPlaybackChange(ctx, closed, changed); err != nil {
+			if err := waitForReplayPlaybackChange(ctx, closed, changed, interrupt); err != nil {
 				return err
 			}
 			continue
@@ -176,6 +180,9 @@ func (c *replayPlaybackCursor) waitUntil(
 			return context.Canceled
 		case <-changed:
 			stopReplayPlaybackTimer(timer)
+		case <-interrupt:
+			stopReplayPlaybackTimer(timer)
+			return errReplayRecvInterrupted
 		case <-timer.C:
 		}
 	}
@@ -184,6 +191,7 @@ func (c *replayPlaybackCursor) waitUntil(
 func (c *replayPlaybackController) beginInboundRelease(
 	ctx context.Context,
 	closed <-chan struct{},
+	interrupt <-chan struct{},
 ) (func(), error) {
 	for {
 		c.mu.Lock()
@@ -192,7 +200,7 @@ func (c *replayPlaybackController) beginInboundRelease(
 		}
 		changed := c.changed
 		c.mu.Unlock()
-		if err := waitForReplayPlaybackChange(ctx, closed, changed); err != nil {
+		if err := waitForReplayPlaybackChange(ctx, closed, changed, interrupt); err != nil {
 			return nil, err
 		}
 	}
@@ -202,6 +210,7 @@ func waitForReplayPlaybackChange(
 	ctx context.Context,
 	closed <-chan struct{},
 	changed <-chan struct{},
+	interrupt <-chan struct{},
 ) error {
 	select {
 	case <-ctx.Done():
@@ -210,6 +219,8 @@ func waitForReplayPlaybackChange(
 		return context.Canceled
 	case <-changed:
 		return nil
+	case <-interrupt:
+		return errReplayRecvInterrupted
 	}
 }
 

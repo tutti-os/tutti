@@ -152,9 +152,33 @@ The same package exposes narrow helpers for explicit Codex and Claude API
 billing configuration. Credential-file or token presence must not be used as
 proof that an OAuth session is still authenticated.
 
-`providerstatus` returns an observation only. Each host remains responsible for
-runtime coordination, freshness, failure ordering, and projecting the result
-through its own authoritative provider-status registry.
+`providerstatus` also owns the provider-neutral evidence reduction contract.
+Local status commands and credential files produce `configured`; a successful
+provider request produces `authenticated`; an explicit remote auth failure
+produces `required`. Remote evidence outranks stale local files until the host
+crosses an explicit account, credential, or runtime boundary. Transient probe
+failures preserve a settled observation.
+
+`tuttid` consumes this reducer in its provider-status service. It combines the
+local probe with real agent-run outcomes, owns freshness and credential-change
+reset, and projects the same public status to Tutti Desktop and AgentGUI.
+External hosts consume the same reducer only when their runtime cannot use the
+`tuttid` status service. `DesktopIntegrationDescriptor` declares when such a
+host must wait for credential projection before probing; the host maps that
+semantic barrier to its own synchronization mechanism.
+
+`StatusDescriptor.RemoteAuthProbe` owns the provider-backed strategy without
+owning credential storage. Claude Code declares its OAuth usage request to
+`https://api.anthropic.com/api/oauth/usage`; hosts resolve the OAuth access
+token from their own credential authority and never send an API key or
+`ANTHROPIC_AUTH_TOKEN` to that endpoint. Codex declares the provider-usage
+strategy, which invokes `account/rateLimits/read` through the provider runtime
+without publishing credential bytes. A successful request authenticates the
+session, an explicit authentication rejection requires login, and throttling,
+server, or transport failures preserve the local `configured` state. `tuttid`
+expires this remote evidence after 15 minutes; Desktop asks again only while
+its window is visible and focused. OAuth refresh-token rotation remains
+credential-owner policy and is not performed by this status probe.
 
 ## Live Session Recycling
 

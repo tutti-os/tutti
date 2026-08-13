@@ -65,6 +65,12 @@ export interface DesktopUpdateAdmissionControllerOptions<
   ): string;
   listBusinessWindows(): ElectronBrowserWindow[];
   icon?: BrowserWindowConstructorOptions["icon"];
+  foregroundFailureRetryDelayMs?: number;
+}
+
+interface PolicyCheckOutcome<TProduct extends DesktopProduct> {
+  response: MinimumVersionCheckResult<TProduct> | null;
+  retryable: boolean;
 }
 
 function logMinimumVersionCheck(
@@ -88,12 +94,14 @@ export function createDesktopUpdateAdmissionController<
   let forcedFlowStarted = false;
   let installRequested = false;
   let disposed = false;
-  let activeCheck: Promise<MinimumVersionCheckResult<TProduct> | null> | null =
-    null;
+  let activeCheck: Promise<PolicyCheckOutcome<TProduct>> | null = null;
   let activeForcedFlow: Promise<void> | null = null;
+  let foregroundRetryTimer: ReturnType<typeof setTimeout> | null = null;
   let appQuitStarted = false;
   let mandatoryUpdateSession: MandatoryDesktopUpdateSession | null = null;
   const lifecycleAbort = new AbortController();
+  const foregroundFailureRetryDelayMs =
+    options.foregroundFailureRetryDelayMs ?? 5_000;
 
   const handleBeforeQuit = (): void => {
     appQuitStarted = true;
@@ -209,7 +217,7 @@ export function createDesktopUpdateAdmissionController<
 
   const runPolicyCheck = async (
     stage: "startup" | "foreground" | "retry"
-  ): Promise<MinimumVersionCheckResult<TProduct> | null> => {
+  ): Promise<PolicyCheckOutcome<TProduct>> => {
     const request = requestPayload();
     if (!request) {
       logMinimumVersionCheck(options.logger, "info", {
@@ -220,7 +228,7 @@ export function createDesktopUpdateAdmissionController<
         result: "success",
         stage
       });
-      return null;
+      return { response: null, retryable: false };
     }
     const controller = new AbortController();
     const abortForLifecycle = (): void => controller.abort();
@@ -271,7 +279,12 @@ export function createDesktopUpdateAdmissionController<
             status: snapshot.policy.status
           }
         );
-        return null;
+        return {
+          response: null,
+          retryable:
+            snapshot.policy.status === "failedOpen" &&
+            snapshot.policy.failure.kind !== "invalidResponse"
+        };
       }
       const validated = validateMinimumVersionResponse(
         snapshot.policy.response,
@@ -286,14 +299,14 @@ export function createDesktopUpdateAdmissionController<
         result: "success",
         stage
       });
-      return validated;
+      return { response: validated, retryable: false };
     } catch (error) {
       logMinimumVersionCheck(options.logger, "error", {
         error: error instanceof Error ? error.message : String(error),
         result: "failure",
         stage
       });
-      return null;
+      return { response: null, retryable: true };
     } finally {
       lifecycleAbort.signal.removeEventListener("abort", abortForLifecycle);
     }
@@ -301,7 +314,7 @@ export function createDesktopUpdateAdmissionController<
 
   const checkPolicy = async (
     stage: "startup" | "foreground" | "retry"
-  ): Promise<MinimumVersionCheckResult<TProduct> | null> => {
+  ): Promise<PolicyCheckOutcome<TProduct>> => {
     if (activeCheck) {
       return activeCheck;
     }
@@ -484,7 +497,7 @@ export function createDesktopUpdateAdmissionController<
   ipcMain.handle(desktopUpdateAdmissionIpcChannels.retry, async (event) => {
     assertUpgradeWindowSender(event.sender.id);
     await activeForcedFlow;
-    const response = await checkPolicy("retry");
+    const { response } = await checkPolicy("retry");
     if (!response) {
       applyState(
         "error",
@@ -530,12 +543,61 @@ export function createDesktopUpdateAdmissionController<
     app.quit();
   });
 
+  const checkAfterForegroundRestore = async (
+    stage: "foreground" | "retry"
+  ): Promise<void> => {
+    if (
+      !options.runtime.checksEnabled ||
+      disposed ||
+      foregroundPrompted ||
+      (mode === "startup" &&
+        upgradeWindow !== null &&
+        !upgradeWindow.isDestroyed())
+    ) {
+      return;
+    }
+    const outcome = await checkPolicy(stage);
+    const response = outcome.response;
+    if (outcome.retryable && !foregroundRetryTimer) {
+      foregroundRetryTimer = setTimeout(() => {
+        foregroundRetryTimer = null;
+        if (
+          disposed ||
+          foregroundPrompted ||
+          !options
+            .listBusinessWindows()
+            .some(
+              (candidate) => !candidate.isDestroyed() && candidate.isFocused()
+            )
+        ) {
+          return;
+        }
+        void checkAfterForegroundRestore("retry");
+      }, foregroundFailureRetryDelayMs);
+    }
+    if (disposed || !response || response.decision !== "upgradeRequired") {
+      return;
+    }
+    if (foregroundRetryTimer) {
+      clearTimeout(foregroundRetryTimer);
+      foregroundRetryTimer = null;
+    }
+    foregroundPrompted = true;
+    state = {
+      check: response,
+      message: null,
+      phase: "blocked",
+      update: options.updateService.getState()
+    };
+    openUpgradeWindow("foreground");
+  };
+
   return {
     async runStartupCheck() {
       if (!options.runtime.checksEnabled) {
         return false;
       }
-      const response = await checkPolicy("startup");
+      const { response } = await checkPolicy("startup");
       if (!response || response.decision !== "upgradeRequired") {
         return false;
       }
@@ -549,31 +611,14 @@ export function createDesktopUpdateAdmissionController<
       return true;
     },
     async checkAfterForegroundRestore() {
-      if (
-        !options.runtime.checksEnabled ||
-        disposed ||
-        foregroundPrompted ||
-        (mode === "startup" &&
-          upgradeWindow !== null &&
-          !upgradeWindow.isDestroyed())
-      ) {
-        return;
-      }
-      const response = await checkPolicy("foreground");
-      if (disposed || !response || response.decision !== "upgradeRequired") {
-        return;
-      }
-      foregroundPrompted = true;
-      state = {
-        check: response,
-        message: null,
-        phase: "blocked",
-        update: options.updateService.getState()
-      };
-      openUpgradeWindow("foreground");
+      await checkAfterForegroundRestore("foreground");
     },
     dispose() {
       disposed = true;
+      if (foregroundRetryTimer) {
+        clearTimeout(foregroundRetryTimer);
+        foregroundRetryTimer = null;
+      }
       lifecycleAbort.abort();
       void releaseMandatoryUpdater(false);
       app.removeListener("before-quit", handleBeforeQuit);

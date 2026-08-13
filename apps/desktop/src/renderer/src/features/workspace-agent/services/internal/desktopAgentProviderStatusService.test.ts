@@ -1573,7 +1573,7 @@ test("refresh uses the descriptor runtime-probe fallback for unknown status", as
   assert.equal(status?.cli.installed, true);
   assert.equal(status?.adapter.installed, true);
   assert.deepEqual(status?.adapter.command, ["agent", "acp"]);
-  assert.equal(status?.auth.status, "authenticated");
+  assert.equal(status?.auth.status, "configured");
   assert.deepEqual(status?.actions, []);
   assert.deepEqual(probeCalls, ["cursor"]);
 });

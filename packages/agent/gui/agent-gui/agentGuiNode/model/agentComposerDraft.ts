@@ -555,7 +555,13 @@ export function agentComposerDraftSubmittedText(
 export function agentComposerDraftDisplayPrompt(
   draft: AgentComposerDraft
 ): string | undefined {
-  const prompt = agentComposerDraftPrompt(draft).trim();
+  const files = agentComposerDraftFiles(draft);
+  // Composer-file hrefs are draft-only. Persist the same path/URL locators the
+  // provider prompt already materializes so transcript chips stay openable.
+  const prompt = materializeAgentComposerFileMentions(
+    agentComposerDraftPrompt(draft).trim(),
+    files
+  );
   const largeTexts = agentComposerDraftLargeTexts(draft).filter(
     (item) =>
       Boolean(item.path || item.url) && !item.uploading && !item.uploadError
@@ -580,8 +586,12 @@ export function projectAgentComposerDraftSubmission(input: {
   displayPrompt?: string;
 } {
   const content = agentComposerDraftToPromptContent(input);
+  const files = agentComposerDraftFiles(input.draft);
   const explicitDisplayPrompt = agentComposerDraftDisplayPrompt(input.draft);
-  const visibleText = agentComposerDraftSubmittedText(input.draft);
+  const visibleText = materializeAgentComposerFileMentions(
+    agentComposerDraftSubmittedText(input.draft),
+    files
+  );
   const runtimeText = agentPromptContentDisplayText(content);
   const displayPrompt =
     explicitDisplayPrompt ??

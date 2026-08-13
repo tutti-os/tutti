@@ -19,10 +19,44 @@ import (
 	"testing"
 
 	"github.com/klauspost/compress/zstd"
+
+	"github.com/tutti-os/tutti/services/tuttid/service/usercommand"
 )
 
 const testClaudeVersion = "2.1.201"
 const testClaudeNPMVersion = "0.3.201"
+
+func TestActivateClaudeCodeBinaryPublishesStableUserCommand(t *testing.T) {
+	runtimeRoot := filepath.Join(t.TempDir(), "agent-runtimes", "claude-code")
+	userBinDir := filepath.Join(t.TempDir(), ".local", "bin")
+	executable := filepath.Join(runtimeRoot, "versions", testClaudeVersion, testClaudeBinaryName())
+	if err := os.MkdirAll(filepath.Dir(executable), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(executable, []byte("test claude binary"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	adapter := &recordingUserPathAdapter{}
+	service := Service{
+		ClaudeCodeRuntimeDir: runtimeRoot,
+		UserCommandBinDir:    userBinDir,
+		UserPathAdapter:      adapter,
+	}
+	descriptor := claudeSDKRuntimeDescriptor{ClaudeVersion: testClaudeVersion}
+	if err := service.activateClaudeCodeBinary(context.Background(), t.TempDir(), descriptor, executable); err != nil {
+		t.Fatal(err)
+	}
+	if adapter.directory != userBinDir {
+		t.Fatalf("published PATH directory = %q, want %q", adapter.directory, userBinDir)
+	}
+	entry, err := usercommand.NewEntry(runtimeRoot, userBinDir, "claude", executable)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := entry.Verify(); err != nil {
+		t.Fatal(err)
+	}
+}
 
 func testClaudeBinaryName() string {
 	if runtime.GOOS == "windows" {

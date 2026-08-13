@@ -17,6 +17,7 @@ var runtimeConnectionIDPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{
 type AccountRuntimeBindingResolver struct {
 	Projections AuthorizationProjectionStore
 	Credentials CredentialBrokerGrantIssuer
+	Readiness   *AuthorizationReadinessGate
 }
 
 func (resolver AccountRuntimeBindingResolver) ResolveRuntimeBinding(
@@ -30,20 +31,31 @@ func (resolver AccountRuntimeBindingResolver) ResolveRuntimeBinding(
 	if connectorKey == "" {
 		return RuntimeBinding{}, invalidRequest("connectorKey is required for runtime binding")
 	}
+	remote := request.Release.Manifest.Implementation.RemoteStreamableHTTP != nil
 	if request.Release.Manifest.AuthorizationKind == "none" {
-		return RuntimeBinding{ConnectionID: DeviceRuntimeConnectionID(connectorKey), Enabled: true}, nil
+		if remote {
+			accountID := strings.TrimSpace(request.Scope.AccountID)
+			if accountID == "" {
+				return RuntimeBinding{ConnectionID: AccountRuntimeConnectionID("signed-out", connectorKey), Enabled: false, AuthorizationState: AuthorizationStateNotRequired}, nil
+			}
+			return RuntimeBinding{ConnectionID: AccountRuntimeConnectionID(accountID, connectorKey), Enabled: true, AuthorizationState: AuthorizationStateNotRequired}, nil
+		}
+		return RuntimeBinding{ConnectionID: DeviceRuntimeConnectionID(connectorKey), Enabled: true, AuthorizationState: AuthorizationStateNotRequired}, nil
 	}
 	accountID := strings.TrimSpace(request.Scope.AccountID)
 	if accountID == "" {
-		return RuntimeBinding{}, invalidRequest("accountId is required for an authorized connector runtime")
+		return RuntimeBinding{ConnectionID: AccountRuntimeConnectionID("signed-out", connectorKey), Enabled: false, AuthorizationState: AuthorizationStateDisconnected}, nil
 	}
 	connectionID := AccountRuntimeConnectionID(accountID, connectorKey)
+	if remote && resolver.Readiness != nil && !resolver.Readiness.Ready(accountID) {
+		return RuntimeBinding{ConnectionID: connectionID, Enabled: false, AuthorizationState: AuthorizationStateDisconnected}, nil
+	}
 	if resolver.Projections == nil {
-		return RuntimeBinding{ConnectionID: connectionID, Enabled: false}, nil
+		return RuntimeBinding{ConnectionID: connectionID, Enabled: false, AuthorizationState: AuthorizationStateDisconnected}, nil
 	}
 	projection, err := resolver.Projections.AuthorizationProjection(ctx, accountID, connectorKey)
 	if errors.Is(err, ErrNotFound) {
-		return RuntimeBinding{ConnectionID: connectionID, Enabled: false}, nil
+		return RuntimeBinding{ConnectionID: connectionID, Enabled: false, AuthorizationState: AuthorizationStateDisconnected}, nil
 	}
 	if err != nil {
 		return RuntimeBinding{}, fmt.Errorf("load connector authorization projection: %w", err)
@@ -51,24 +63,35 @@ func (resolver AccountRuntimeBindingResolver) ResolveRuntimeBinding(
 	if projection.AccountID != accountID || projection.ConnectorKey != connectorKey {
 		return RuntimeBinding{}, invalidOperationReceipt("authorization projection identity does not match runtime scope")
 	}
-	if projectedConnectionID := strings.TrimSpace(projection.ConnectionID); projectedConnectionID != "" {
+	if remote && !projection.ServerSynchronized {
+		return RuntimeBinding{ConnectionID: connectionID, Enabled: false, AuthorizationState: AuthorizationStateDisconnected}, nil
+	}
+	// Remote routes have a stable account+connector identity. The server's
+	// connectionId is diagnostic authorization state and can change when a
+	// default connection changes; it must not create an orphan local route.
+	if projectedConnectionID := strings.TrimSpace(projection.ConnectionID); !remote && projectedConnectionID != "" {
 		connectionID = projectedConnectionID
 	}
 	if !runtimeConnectionIDPattern.MatchString(connectionID) {
 		return RuntimeBinding{}, invalidOperationReceipt("authorization projection connection id is invalid")
 	}
 	if projection.State != AuthorizationStateConnected {
-		return RuntimeBinding{ConnectionID: connectionID, Enabled: false}, nil
+		return RuntimeBinding{ConnectionID: connectionID, Enabled: false, AuthorizationState: projection.State}, nil
 	}
-	if request.Purpose == RuntimeBindingPurposeDeactivate || request.Purpose == RuntimeBindingPurposeInstallationProbe {
-		return RuntimeBinding{ConnectionID: connectionID, Enabled: true}, nil
+	if request.Purpose == RuntimeBindingPurposeDeactivate {
+		return RuntimeBinding{ConnectionID: connectionID, Enabled: true, AuthorizationState: projection.State}, nil
 	}
 	managed := request.Release.Manifest.Implementation.ManagedStdio
+	if remote {
+		// Remote MCP routes authenticate to tsh-server with the Tutti account
+		// session. Provider credentials never cross the daemon boundary.
+		return RuntimeBinding{ConnectionID: connectionID, Enabled: true, AuthorizationState: projection.State}, nil
+	}
 	if managed != nil && managed.CredentialBroker != nil {
 		// Connector-owned credential brokers persist their own account binding
 		// inside the managed VM user home. They do not consume a Server-issued
 		// credential grant when the active CLI/MCP route is reconciled.
-		return RuntimeBinding{ConnectionID: connectionID, Enabled: true}, nil
+		return RuntimeBinding{ConnectionID: connectionID, Enabled: true, AuthorizationState: projection.State}, nil
 	}
 	if resolver.Credentials == nil {
 		return RuntimeBinding{}, NewDomainError(ErrorCodeUnavailable, "credential broker grant issuer is not registered", true, nil)
@@ -81,7 +104,7 @@ func (resolver AccountRuntimeBindingResolver) ResolveRuntimeBinding(
 	if len(grant) == 0 {
 		return RuntimeBinding{}, invalidOperationReceipt("credential broker grant issuer returned an empty grant")
 	}
-	return RuntimeBinding{ConnectionID: connectionID, Enabled: true, CredentialBrokerGrant: grant}, nil
+	return RuntimeBinding{ConnectionID: connectionID, Enabled: true, AuthorizationState: projection.State, CredentialBrokerGrant: grant}, nil
 }
 
 func DeviceRuntimeConnectionID(connectorKey string) string {

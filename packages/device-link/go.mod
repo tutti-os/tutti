@@ -12,6 +12,7 @@ require (
 	github.com/pion/stun/v3 v3.1.4
 	github.com/pion/transport/v4 v4.0.2
 	github.com/quic-go/quic-go v0.59.0
+	golang.org/x/net v0.50.0
 	golang.org/x/sys v0.41.0
 )
 
@@ -28,7 +29,6 @@ require (
 	golang.org/x/crypto v0.48.0 // indirect
 	golang.org/x/mobile v0.0.0-20251209145715-2553ed8ce294 // indirect
 	golang.org/x/mod v0.33.0 // indirect
-	golang.org/x/net v0.50.0 // indirect
 	golang.org/x/sync v0.19.0 // indirect
 	golang.org/x/time v0.14.0 // indirect
 	golang.org/x/tools v0.42.0 // indirect

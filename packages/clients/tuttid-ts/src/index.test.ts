@@ -19,6 +19,8 @@ import {
   type ListWorkspacesResponse,
   type WorkspaceFilePreviewResponse,
   type WorkspaceAgentSessionWorktreeSupportResponse,
+  type WorkspaceManagedWorktreeListResponse,
+  type DeleteWorkspaceManagedWorktreeResponse,
   type WorkspaceGitPatchSupportResponse,
   type WorkspaceGitPatchResponse
 } from "./index.ts";
@@ -108,6 +110,7 @@ test("shared tuttid client manages workspace deleted Agent sessions", async () =
       {
         agentSessionId: "session-1",
         title: "Deleted session",
+        railSectionKey: "project:/projects/tutti",
         projectPath: "/projects/tutti",
         updatedAtUnixMs: 20,
         deletedAtUnixMs: 30,
@@ -117,6 +120,7 @@ test("shared tuttid client manages workspace deleted Agent sessions", async () =
     ],
     projectOptions: [
       {
+        railSectionKey: "project:/projects/tutti",
         projectPath: "/projects/tutti",
         projectLabel: "tutti",
         projectAvailable: true
@@ -146,7 +150,7 @@ test("shared tuttid client manages workspace deleted Agent sessions", async () =
       {
         cursor: "opaque-cursor",
         limit: 25,
-        projectPath: "/projects/tutti",
+        railSectionKey: "project:/projects/tutti",
         searchQuery: "deleted"
       },
       { signal: controller.signal }
@@ -177,7 +181,7 @@ test("shared tuttid client manages workspace deleted Agent sessions", async () =
     query: {
       cursor: "opaque-cursor",
       limit: "25",
-      projectPath: "/projects/tutti",
+      railSectionKey: "project:/projects/tutti",
       searchQuery: "deleted"
     }
   });
@@ -1800,6 +1804,53 @@ test("shared tuttid client carries the exact Agent target into worktree support"
     method: "GET",
     path: "/v1/workspaces/ws-1/agent-session-worktree-support",
     query: { agentTargetId: "local:codex", cwd: "/workspace" }
+  });
+});
+
+test("shared tuttid client lists independent managed worktrees", async () => {
+  const response = {
+    worktrees: [
+      {
+        baseCommit: "abc",
+        branch: "tutti/worktree/worktree-1",
+        repoRoot: "/repo",
+        workspaceId: "ws-1",
+        worktreeId: "worktree-1",
+        worktreePath: "/state/worktrees/worktree-1"
+      }
+    ]
+  } satisfies WorkspaceManagedWorktreeListResponse;
+  const { client, requests } = captureClient(jsonResponse(response));
+
+  assert.deepEqual(
+    await client.listWorkspaceManagedWorktrees("ws-1"),
+    response
+  );
+  assertRequest(requests[0]!, {
+    authorization: null,
+    body: null,
+    method: "GET",
+    path: "/v1/workspaces/ws-1/managed-worktrees",
+    query: {}
+  });
+});
+
+test("shared tuttid client explicitly deletes a managed worktree", async () => {
+  const response = {
+    deleted: true
+  } satisfies DeleteWorkspaceManagedWorktreeResponse;
+  const { client, requests } = captureClient(jsonResponse(response));
+
+  assert.deepEqual(
+    await client.deleteWorkspaceManagedWorktree("ws-1", "worktree-1"),
+    response
+  );
+  assertRequest(requests[0]!, {
+    authorization: null,
+    body: null,
+    method: "DELETE",
+    path: "/v1/workspaces/ws-1/managed-worktrees/worktree-1",
+    query: {}
   });
 });
 

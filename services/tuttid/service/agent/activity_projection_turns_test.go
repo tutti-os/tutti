@@ -88,6 +88,27 @@ func TestTurnTransitionFromStateInputRequiresExplicitTurnPatch(t *testing.T) {
 	}
 }
 
+func TestTurnTransitionFromStateInputPreservesStructuredFailure(t *testing.T) {
+	t.Parallel()
+
+	transition, ok := turnTransitionFromStateInput(canonical.ReportSessionStateInput{
+		WorkspaceID: "ws-1", AgentSessionID: "session-1",
+		State: canonical.WorkspaceAgentSessionStateUpdate{
+			LastError: "session fallback",
+			Turn: &canonical.WorkspaceAgentTurnStateUpdate{
+				TurnID: "turn-1", Phase: "settled", Outcome: "failed",
+				ErrorCode: "request_timed_out", ErrorMessage: "provider timed out",
+			},
+		},
+	})
+	if !ok {
+		t.Fatal("failed turn transition was rejected")
+	}
+	if transition.ErrorCode != "request_timed_out" || transition.ErrorMessage != "provider timed out" {
+		t.Fatalf("failure transition error = %q/%q", transition.ErrorCode, transition.ErrorMessage)
+	}
+}
+
 // Completeness-guard tests (agent-gui refactor plan rule six): the projection
 // from stored domain records to generated transport types must assign every
 // generated field explicitly. These tests project a fully populated stored

@@ -10,7 +10,6 @@ import type { AgentComposerDraft } from "../model/agentGuiNodeTypes";
 import { resolveAgentComposerDraftScopeKey } from "../model/agentComposerDraftScope";
 import {
   applyAgentGUIConversationProjects,
-  resolveAgentGUIConversationProject,
   type AgentGUIConversationSummary
 } from "../model/agentGuiConversationModel";
 import { isAgentGUIProviderUnresolved } from "../../../shared/agentConversationTitleProjection.ts";
@@ -41,7 +40,6 @@ interface UseAgentGUIConversationPresentationInput {
   draftByScopeKey: Record<string, AgentComposerDraft>;
   hasUnconfirmedSubmit: boolean;
   isCreatingConversation: boolean;
-  isNoProjectPath?: (input: { path: string }) => boolean;
   isSubmitting: boolean;
   normalizedExplicitProviderTargets: readonly AgentGUIAgentTarget[];
   normalizedProviderTargets: readonly AgentGUIAgentTarget[];
@@ -75,9 +73,7 @@ export function useAgentGUIConversationPresentation(
         ? { ...conversation, status: activityBusyStatus }
         : conversation;
     });
-    const next = applyAgentGUIConversationProjects(mapped, input.userProjects, {
-      isNoProjectPath: input.isNoProjectPath
-    });
+    const next = applyAgentGUIConversationProjects(mapped, input.userProjects);
     // Semantic conversations keep hidden entries so an explicitly opened
     // invisible session resolves its real identity; the rail list never
     // renders them.
@@ -90,7 +86,6 @@ export function useAgentGUIConversationPresentation(
   }, [
     input.activityDisplayStatuses,
     input.conversations,
-    input.isNoProjectPath,
     input.transientConversation,
     input.userProjects
   ]);
@@ -183,11 +178,7 @@ export function useAgentGUIConversationPresentation(
       titleFallback: "untitled-conversation",
       status: activityBusyStatus ?? fallbackStatus,
       cwd: input.workspacePath,
-      project: resolveAgentGUIConversationProject(
-        input.workspacePath,
-        input.userProjects,
-        { isNoProjectPath: input.isNoProjectPath }
-      ),
+      project: null,
       sortTimeUnixMs: fallbackUpdatedAtUnixMs,
       updatedAtUnixMs: fallbackUpdatedAtUnixMs
     });
@@ -202,11 +193,9 @@ export function useAgentGUIConversationPresentation(
     input.draftByScopeKey,
     input.hasUnconfirmedSubmit,
     input.isCreatingConversation,
-    input.isNoProjectPath,
     input.isSubmitting,
     input.normalizedProviderTargets,
     input.shouldUseStaticProviderTargets,
-    input.userProjects,
     conversationProjection.semanticConversations,
     input.workspacePath
   ]);

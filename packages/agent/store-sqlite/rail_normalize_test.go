@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 )
 
@@ -94,5 +95,34 @@ func TestClassifyRailSectionUsesCanonicalProjectKey(t *testing.T) {
 	want := RailSectionKeyForProject(root)
 	if section.Key != want {
 		t.Fatalf("ClassifyRailSection key = %q, want %q", section.Key, want)
+	}
+}
+
+func TestRailSectionKeyForProjectUsesWindowsCaseInsensitiveIdentity(t *testing.T) {
+	t.Parallel()
+
+	if runtime.GOOS != "windows" {
+		t.Skip("Windows filesystem identity is platform-specific")
+	}
+	left := `C:\Users\Demo\Repo`
+	right := `c:\users\demo\repo`
+	if RailSectionKeyForProject(left) != RailSectionKeyForProject(right) {
+		t.Fatalf("Windows project keys differ: %q vs %q", RailSectionKeyForProject(left), RailSectionKeyForProject(right))
+	}
+}
+
+func TestIsProjectPathWithinUsesWindowsCaseInsensitiveIdentity(t *testing.T) {
+	t.Parallel()
+
+	if runtime.GOOS != "windows" {
+		t.Skip("Windows filesystem identity is platform-specific")
+	}
+	root := filepath.Join(t.TempDir(), "Project")
+	child := filepath.Join(root, "Packages", "App")
+	if err := os.MkdirAll(child, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if !IsProjectPathWithin(strings.ToUpper(root), strings.ToLower(child)) {
+		t.Fatalf("Windows path identity should recognize %q as within %q", child, root)
 	}
 }

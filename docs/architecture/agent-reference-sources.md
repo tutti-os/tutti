@@ -350,6 +350,8 @@ cache expires; they do not claim exhaustive history.
   filter.
 - Capture the provenance constraint with speculative preload and provider-query
   inputs; do not read mutable controller state after an async boundary.
+- Keep picker snapshots and source-service inputs as plain structured-cloneable
+  data; never pass state-library proxies across host boundaries.
 - Append cursor pages without reordering already loaded entries.
 - Hide unavailable sources before rendering their tabs or sidebar groups.
 - Expose only running workspace apps in the app-artifact sidebar; installed or

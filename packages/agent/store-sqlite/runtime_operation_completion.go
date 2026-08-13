@@ -237,6 +237,12 @@ SELECT EXISTS(
 				if confirmed != 1 {
 					return "", "", nil, ErrRuntimeOperationSubjectState
 				}
+				if _, _, err := bindTurnIdentityAnchorTx(
+					ctx, tx, op.WorkspaceID, op.AgentSessionID,
+					confirmedTurnID, op.TurnID, input.NowUnixMS,
+				); err != nil {
+					return "", "", nil, fmt.Errorf("bind plan implementation turn identity: %w", err)
+				}
 				if err := completePlanDecisionNoticeTx(ctx, tx, op, confirmedTurnID, input.NowUnixMS); err != nil {
 					return "", "", nil, err
 				}
@@ -403,6 +409,18 @@ func runtimeOperationCompletionMutations(ctx context.Context, tx *sql.Tx, op Run
 			)
 		}
 	case RuntimeOperationEventPlanDecisionCompleted:
+		confirmedTurnID := payloadString(event.Payload, "confirmedTurnId")
+		turn, found, err := getAgentTurnTx(ctx, tx, op.WorkspaceID, op.AgentSessionID, confirmedTurnID)
+		if err != nil {
+			return nil, err
+		}
+		if !found {
+			return nil, ErrTurnIdentityAnchorConflict
+		}
+		mutations = append(mutations, transactionMutation(
+			op.WorkspaceID, op.AgentSessionID, MutationEntityTurn,
+			confirmedTurnID, "identity_anchor", turn.UpdatedAtUnixMS,
+		))
 		messageID := planDecisionNoticeMessageID(op.OperationID)
 		message, found, err := getAgentMessageForUpdate(ctx, tx, op.WorkspaceID, op.AgentSessionID, messageID)
 		if err != nil {

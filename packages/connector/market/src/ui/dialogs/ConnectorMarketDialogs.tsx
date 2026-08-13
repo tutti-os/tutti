@@ -1,11 +1,12 @@
 import {
+  ConfirmationDialog,
   Dialog,
   ToastProvider,
   ToastRoot,
   ToastTitle,
   ToastViewport
 } from "@tutti-os/ui-system/components";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useSnapshot } from "valtio";
 
 import { useConnectorMarketServices } from "../ConnectorMarketServicesContext.tsx";
@@ -14,19 +15,111 @@ import { ConnectorBlockedDialog } from "./ConnectorBlockedDialog.tsx";
 import { ConnectorManagementDialog } from "./ConnectorManagementDialog.tsx";
 import { ConnectorInstallationDialog } from "./ConnectorInstallationDialog.tsx";
 
-export function ConnectorMarketDialogs() {
-  const { i18n, market, onError, onTryConnector, uiState, view } =
-    useConnectorMarketServices();
-  const dialog = useSnapshot(view.dataStore).dialog;
-  const [showInstallSuccess, setShowInstallSuccess] = useState(false);
+interface UninstallSuccessToast {
+  displayName: string;
+  operationId: string;
+}
 
-  if (!dialog && !showInstallSuccess) {
+export function ConnectorMarketDialogs() {
+  const {
+    authorizationRenderer,
+    i18n,
+    locale,
+    market,
+    onError,
+    onTryConnector,
+    uiState,
+    view
+  } = useConnectorMarketServices();
+  const dialog = useSnapshot(view.dataStore).dialog;
+  const dialogRequest = useSnapshot(uiState.dataStore).dialog;
+  const marketSnapshot = useSnapshot(market.dataStore);
+  const [showSuccessToast, setShowSuccessToast] = useState<
+    "authorize" | "install" | null
+  >(null);
+  const [uninstallSubmitting, setUninstallSubmitting] = useState(false);
+  const [uninstallSuccess, setUninstallSuccess] =
+    useState<UninstallSuccessToast | null>(null);
+
+  useEffect(() => {
+    for (const tracked of Object.values(
+      marketSnapshot.pendingUninstallNotificationsByOperationId
+    )) {
+      if (tracked.state === "failed") {
+        onError?.(i18n.t("connectorUninstallFailed"));
+        market.dismissUninstallNotification(tracked.operationId);
+        continue;
+      }
+      if (tracked.state === "completed" && !uninstallSuccess) {
+        setUninstallSuccess({
+          displayName: tracked.displayName,
+          operationId: tracked.operationId
+        });
+        return;
+      }
+    }
+  }, [
+    i18n,
+    market,
+    marketSnapshot.pendingUninstallNotificationsByOperationId,
+    onError,
+    uninstallSuccess
+  ]);
+
+  useEffect(() => {
+    if (dialogRequest?.kind === "uninstall_confirmation" && !dialog) {
+      uiState.closeDialog();
+    }
+  }, [dialog, dialogRequest?.kind, uiState]);
+
+  if (!dialog && !showSuccessToast && !uninstallSuccess) {
     return null;
   }
 
+  // Hide management dialog when showing success toast
+  const shouldHideDialog =
+    dialog?.kind === "management" &&
+    Boolean(showSuccessToast || uninstallSuccess);
+
   return (
     <>
-      {dialog ? (
+      {dialog?.kind === "uninstall_confirmation" ? (
+        <ConfirmationDialog
+          cancelLabel={i18n.t("cancel")}
+          confirmBusy={uninstallSubmitting}
+          confirmLabel={
+            uninstallSubmitting
+              ? i18n.t("actionUninstalling")
+              : i18n.t("actionUninstall")
+          }
+          description={i18n.t("dialogUninstallDescription")}
+          open
+          title={i18n.t("dialogUninstallTitle", {
+            name: dialog.displayName
+          })}
+          tone="destructive"
+          onConfirm={() => {
+            if (uninstallSubmitting) {
+              return;
+            }
+            setUninstallSubmitting(true);
+            void market
+              .uninstall(dialog.connectorKey)
+              .then(() => {
+                uiState.closeDialog();
+              })
+              .catch(() => {
+                onError?.(i18n.t("connectorUninstallFailed"));
+              })
+              .finally(() => setUninstallSubmitting(false));
+          }}
+          onOpenChange={(open) => {
+            if (!open && !uninstallSubmitting) {
+              uiState.closeDialog();
+            }
+          }}
+        />
+      ) : dialog && !shouldHideDialog ? (
         <Dialog
           open
           onOpenChange={(open) =>
@@ -39,17 +132,16 @@ export function ConnectorMarketDialogs() {
             <ConnectorInstallationDialog
               description={dialog.description}
               displayName={dialog.displayName}
-              iconUrl={dialog.iconUrl}
               i18n={i18n}
               installing={dialog.installing}
               updating={dialog.updating}
               onClose={() => uiState.closeDialog()}
               onInstall={() => {
-                setShowInstallSuccess(false);
+                setShowSuccessToast(null);
                 void market
                   .install(dialog.connectorKey)
                   .then(() => {
-                    setShowInstallSuccess(true);
+                    setShowSuccessToast("install");
                     uiState.closeDialog();
                   })
                   .catch(() => {
@@ -65,36 +157,48 @@ export function ConnectorMarketDialogs() {
             />
           ) : dialog.kind === "authorization" ? (
             <ConnectorAuthorizationDialog
+              authorizationInteraction={dialog.authorizationInteraction}
               authorizationKind={dialog.authorizationKind}
+              authorizationRenderer={authorizationRenderer}
               authorizing={dialog.authorizing}
               displayName={dialog.displayName}
               iconUrl={dialog.iconUrl}
               i18n={i18n}
+              locale={locale}
               pending={dialog.pending}
-              permissions={dialog.permissions}
-              onAuthorize={(secret) =>
-                market
+              onAuthorize={(secret) => {
+                setShowSuccessToast(null);
+                return market
                   .beginAuthorization(dialog.connectorKey, secret)
+                  .then(() => {
+                    setShowSuccessToast("authorize");
+                    uiState.closeDialog();
+                  })
                   .catch(() => {
                     onError?.(i18n.t("connectorAuthorizationFailed"));
-                  })
-              }
+                  });
+              }}
               onClose={() => uiState.closeDialog()}
             />
           ) : dialog.kind === "management" ? (
             <ConnectorManagementDialog
+              canDisconnectAuthorization={dialog.canAuthorize}
+              canUninstall={dialog.canUninstall}
               description={dialog.description}
               displayName={dialog.displayName}
               iconUrl={dialog.iconUrl}
               i18n={i18n}
               onDisconnect={() => {
-                const disconnect = dialog.canAuthorize
-                  ? market.disconnectAuthorization(dialog.connectorKey)
-                  : market.uninstall(dialog.connectorKey);
-                void disconnect
+                void market
+                  .disconnectAuthorization(dialog.connectorKey)
                   .then(() => uiState.closeDialog())
-                  .catch(() => undefined);
+                  .catch(() => {
+                    onError?.(i18n.t("connectorDisconnectFailed"));
+                  });
               }}
+              onRequestUninstall={() =>
+                uiState.requestUninstall(dialog.connectorKey)
+              }
               onTry={() => {
                 uiState.closeDialog();
                 onTryConnector?.(dialog.connectorKey);
@@ -111,14 +215,43 @@ export function ConnectorMarketDialogs() {
           )}
         </Dialog>
       ) : null}
-      {showInstallSuccess ? (
+      {showSuccessToast ? (
         <ToastProvider>
           <ToastRoot
             open
             variant="success"
-            onOpenChange={setShowInstallSuccess}
+            onOpenChange={(open) => !open && setShowSuccessToast(null)}
           >
-            <ToastTitle>{i18n.t("actionInstallSuccess")}</ToastTitle>
+            <ToastTitle>
+              {i18n.t(
+                showSuccessToast === "install"
+                  ? "actionInstallSuccess"
+                  : "actionAuthorizeSuccess"
+              )}
+            </ToastTitle>
+          </ToastRoot>
+          <ToastViewport />
+        </ToastProvider>
+      ) : null}
+      {uninstallSuccess ? (
+        <ToastProvider>
+          <ToastRoot
+            open
+            variant="success"
+            onOpenChange={(open) => {
+              if (!open) {
+                market.dismissUninstallNotification(
+                  uninstallSuccess.operationId
+                );
+                setUninstallSuccess(null);
+              }
+            }}
+          >
+            <ToastTitle>
+              {i18n.t("connectorUninstallSuccess", {
+                name: uninstallSuccess.displayName
+              })}
+            </ToastTitle>
           </ToastRoot>
           <ToastViewport />
         </ToastProvider>

@@ -274,12 +274,19 @@ func (a serviceHostRuntime) RuntimeSessionLive(workspaceID, agentSessionID strin
 	return found
 }
 
-func (a serviceHostRuntime) Start(ctx context.Context, input RuntimeStartInput) (ProviderRuntimeSession, error) {
-	session, err := a.service.controller().Start(ctx, input)
-	session.Provisional = input.Provisional
+func (a serviceHostRuntime) Start(ctx context.Context, input RuntimeStartInput) (RuntimeStartResult, error) {
+	result, err := a.service.controller().Start(ctx, input)
+	result.Session.Provisional = input.Provisional
 	if err != nil {
 		a.service.invalidateProviderAvailability(input.Provider)
 	}
+	return result, normalizeRuntimeError(err)
+}
+func (a serviceHostRuntime) PublishSessionInitialization(
+	ctx context.Context,
+	input RuntimeSessionInitializationPublishInput,
+) (ProviderRuntimeSession, error) {
+	session, err := a.service.controller().PublishSessionInitialization(ctx, input)
 	return session, normalizeRuntimeError(err)
 }
 func (a serviceHostRuntime) Resume(ctx context.Context, input RuntimeResumeInput) (ProviderRuntimeSession, error) {
@@ -376,20 +383,13 @@ func (a serviceHostGoalRuntime) FenceGoalGeneration(ctx context.Context, input a
 func hostSupportPortsForService(
 	s *Service,
 	_ committedSessionForkReader,
-	worktreeGC ...agenthost.WorktreeGarbageCollector,
 ) HostSupportPorts {
-	var gc agenthost.WorktreeGarbageCollector = s
-	if len(worktreeGC) > 0 {
-		gc = worktreeGC[0]
-	}
 	deletedSessions, _ := any(s.SessionReader).(agenthost.DeletedSessionStore)
 	return HostSupportPorts{
 		DeletedSessions:      deletedSessions,
 		SessionPurge:         s.SessionPurgeStore,
 		SessionDeletionGuard: s.SessionDeletionGuard,
-		SessionForkContext: serviceHostSessionForkContextPolicy{
-			runtimePreparer: s.RuntimePreparer,
-		},
+		SessionForkContext:   serviceHostSessionForkContextPolicy{},
 		SessionForkState: serviceHostSessionForkProviderStateBinder{
 			runtimePreparer: s.RuntimePreparer,
 		},
@@ -409,7 +409,6 @@ func hostSupportPortsForService(
 		OperationEvents:      testServiceHostRuntimeOperationEventPublisher{service: s},
 		OperationOwner:       s.RuntimeOperationOwner,
 		StaleTurnSettler:     s.StaleTurnSettler,
-		WorktreeGC:           gc,
 		GoalStore:            s.GoalStateStore,
 		GoalFences:           s.GoalGenerationFenceStore,
 		GoalInbox:            s.GoalReconcileInboxStore,
@@ -422,9 +421,9 @@ func hostSupportPortsForService(
 	}
 }
 
-func newApplicationHost(s *Service, worktreeGC agenthost.WorktreeGarbageCollector) *agenthost.Host {
+func newApplicationHost(s *Service) *agenthost.Host {
 	store := serviceHostStore{service: s}
-	support := hostSupportPortsForService(s, nil, worktreeGC)
+	support := hostSupportPortsForService(s, nil)
 	return composeApplicationHost(
 		support,
 		store,
@@ -507,7 +506,7 @@ func configureTestApplicationHost(s *Service) {
 	}
 	s.applicationHostProvider = func() *agenthost.Host {
 		once.Do(func() {
-			host = newApplicationHost(s, s)
+			host = newApplicationHost(s)
 		})
 		return host
 	}

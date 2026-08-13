@@ -114,7 +114,7 @@ WHERE workspace_id = ? AND operation_id = ? AND lease_owner = ? AND repair_epoch
 	}
 	if input.Fail && changed {
 		_, err = tx.ExecContext(ctx, `UPDATE workspace_agent_session_goals
-SET sync_status = ?, pending_operation_id = NULL, last_error = ?, updated_at_unix_ms = ?
+SET sync_status = ?, pending_operation_id = NULL, execution_pending = 0, last_error = ?, updated_at_unix_ms = ?
 WHERE workspace_id = ? AND pending_operation_id = ?`, GoalSyncStatusFailed, strings.TrimSpace(input.LastError),
 			input.NowUnixMS, strings.TrimSpace(input.WorkspaceID), strings.TrimSpace(input.OperationID))
 		if err != nil {

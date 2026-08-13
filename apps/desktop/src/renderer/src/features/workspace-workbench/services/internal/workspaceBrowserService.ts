@@ -4,8 +4,15 @@ import type {
   BrowserNodeHostApi,
   BrowserNodeOpenUrlEvent
 } from "@tutti-os/browser-node";
-import { closeBrowserNodeTab } from "@tutti-os/browser-node";
+import {
+  activateBrowserNodePageByUrl,
+  closeBrowserNodeTab
+} from "@tutti-os/browser-node";
 import type { DesktopBrowserApi } from "@preload/types";
+import type {
+  WorkspaceBrowserPageOpenInput,
+  WorkspaceBrowserPageOpenResult
+} from "../workspaceWorkbenchHostService.interface.ts";
 import {
   requestWorkspaceBrowserLaunch,
   requestWorkspaceBrowserSurfaceFocus
@@ -26,6 +33,9 @@ export interface WorkspaceBrowserService {
   ): BrowserNodeHostApi;
   disposeWorkspace(workspaceId: string): void;
   ensureFeatureConnected(feature: BrowserNodeFeature): void;
+  openPage(
+    input: WorkspaceBrowserPageOpenInput
+  ): WorkspaceBrowserPageOpenResult | null;
   setUserAutomationSurface(input: {
     feature: BrowserNodeFeature;
     workspaceId: string;
@@ -214,6 +224,36 @@ export function createWorkspaceBrowserService(
       route.feature = feature;
       route.releaseFeature = releaseFeature;
       replaceActiveRoute(route);
+    },
+    openPage({ surfaceNodeIds, url, workspaceId }) {
+      const feature = activeRoutesByWorkspace
+        .get(workspaceId)
+        ?.get("browser")?.feature;
+      const normalizedUrl = url.trim();
+      if (!feature || !normalizedUrl) {
+        return null;
+      }
+
+      const eligibleSurfaceNodeIds = Array.from(
+        new Set(surfaceNodeIds.map((nodeId) => nodeId.trim()).filter(Boolean))
+      ).filter((nodeId) => feature.tabsStore.getSurfaceState(nodeId));
+      for (const surfaceNodeId of eligibleSurfaceNodeIds) {
+        const page = activateBrowserNodePageByUrl(
+          feature,
+          surfaceNodeId,
+          normalizedUrl
+        );
+        if (page) {
+          return { pageNodeId: page.nodeId, surfaceNodeId };
+        }
+      }
+
+      const surfaceNodeId = eligibleSurfaceNodeIds[0];
+      if (!surfaceNodeId) {
+        return null;
+      }
+      const page = feature.tabsStore.addTab(surfaceNodeId, normalizedUrl);
+      return { pageNodeId: page.nodeId, surfaceNodeId };
     },
     setUserAutomationSurface({ feature, workspaceId }) {
       disconnectUserAutomation?.();

@@ -4,7 +4,10 @@ import type {
   AgentProviderStatus,
   WorkspaceAgentProvider
 } from "@tutti-os/client-tuttid-ts";
-import { projectDesktopAgentProviderManageRow } from "./desktopAgentProviderManageDialogModel.ts";
+import {
+  canConfigureDesktopAgentProvider,
+  projectDesktopAgentProviderManageRow
+} from "./desktopAgentProviderManageDialogModel.ts";
 
 test("projects ready provider as connected without an action", () => {
   assert.deepEqual(
@@ -29,6 +32,24 @@ test("projects ready provider as connected without an action", () => {
       status: "connected"
     }
   );
+});
+
+test("projects ready provider with only local credentials as configured", () => {
+  const row = projectDesktopAgentProviderManageRow({
+    isLoading: false,
+    pendingActions: [],
+    provider: "claude-code",
+    status: createStatus({
+      actions: [],
+      adapterInstalled: true,
+      authStatus: "configured",
+      availability: "ready",
+      provider: "claude-code"
+    })
+  });
+
+  assert.equal(row.status, "configured");
+  assert.equal(row.primaryActionId, null);
 });
 
 test("projects not installed provider to a connect action", () => {
@@ -81,22 +102,42 @@ test("projects auth required provider to a login action", () => {
   );
 });
 
-test("projects unsupported provider as disabled", () => {
+test("projects temporarily unsupported provider without a connect action", () => {
   const row = projectDesktopAgentProviderManageRow({
     isLoading: false,
     pendingActions: [],
     provider: "openclaw",
     status: createStatus({
-      actions: [{ id: "refresh", kind: "refresh" }],
-      adapterInstalled: true,
+      actions: [],
+      adapterInstalled: false,
       availability: "unsupported",
+      availabilityReasonCode: "provider_temporarily_unsupported",
       provider: "openclaw"
     })
   });
 
-  assert.equal(row.status, "unsupported");
+  assert.equal(row.status, "temporarily_unsupported");
   assert.equal(row.primaryActionId, null);
   assert.equal(row.actionDisabled, true);
+  assert.equal(canConfigureDesktopAgentProvider(row.status), false);
+});
+
+test("keeps other unsupported runtimes distinct from unavailable providers", () => {
+  const row = projectDesktopAgentProviderManageRow({
+    isLoading: false,
+    pendingActions: [],
+    provider: "codex",
+    status: createStatus({
+      actions: [{ id: "update", kind: "daemon_action" }],
+      adapterInstalled: true,
+      availability: "unsupported",
+      availabilityReasonCode: "codex_version_unsupported",
+      provider: "codex"
+    })
+  });
+
+  assert.equal(row.status, "unsupported");
+  assert.equal(canConfigureDesktopAgentProvider(row.status), true);
 });
 
 test("projects pending action as disabled", () => {
@@ -160,6 +201,7 @@ test("flags codex runtime selection so the host can offer a choose action", () =
 function createStatus(input: {
   actions: AgentProviderStatus["actions"];
   adapterInstalled: boolean;
+  authStatus?: AgentProviderStatus["auth"]["status"];
   availability: AgentProviderStatus["availability"]["status"];
   availabilityReasonCode?: string | null;
   provider: WorkspaceAgentProvider;
@@ -171,7 +213,9 @@ function createStatus(input: {
       installed: input.adapterInstalled
     },
     auth: {
-      status: input.availability === "auth_required" ? "required" : "unknown"
+      status:
+        input.authStatus ??
+        (input.availability === "auth_required" ? "required" : "unknown")
     },
     availability: {
       status: input.availability,

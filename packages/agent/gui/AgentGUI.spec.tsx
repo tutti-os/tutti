@@ -20,6 +20,11 @@ interface AgentGUINodeProbeProps {
       availability: unknown;
       ref: unknown;
     }[];
+    mentionAgentTargets?: readonly {
+      agentTargetId?: string;
+      disabled?: boolean;
+      iconUrl?: string;
+    }[];
     showHandoffTargetOwnershipLabels?: boolean;
   };
 }
@@ -85,6 +90,9 @@ vi.mock("./agent-gui/agentGuiNode/AgentGUINode", async () => {
                 (target) => target.agentTargetId
               ) ?? []
             )}
+          </div>
+          <div data-testid="agent-gui-mention-targets-probe">
+            {JSON.stringify(props.hostCapabilities.mentionAgentTargets ?? [])}
           </div>
           <Tooltip>
             <TooltipTrigger asChild>
@@ -194,6 +202,53 @@ describe("AgentGUI i18n", () => {
     expect(
       screen.getByTestId("agent-gui-handoff-targets-probe")
     ).toHaveTextContent('["local-codex","shared-agent:claude"]');
+  });
+
+  it("keeps unavailable mention identities outside action directories", () => {
+    render(
+      <AgentGUI
+        {...createAgentGUIProps("en")}
+        agentDirectory={{
+          agents: [agent("local-codex", "codex")],
+          capturedAtUnixMs: null,
+          error: null,
+          status: "ready"
+        }}
+        handoffAgentDirectory={{
+          agents: [agent("local-codex", "codex")],
+          capturedAtUnixMs: null,
+          error: null,
+          status: "ready"
+        }}
+        mentionAgentDirectory={{
+          agents: [
+            {
+              ...agent("shared-agent:offline-codex", "codex"),
+              availability: { status: "unavailable", reason: "owner_offline" }
+            }
+          ],
+          capturedAtUnixMs: null,
+          error: null,
+          status: "ready"
+        }}
+      />
+    );
+
+    expect(
+      screen.getByTestId("agent-gui-directory-targets-probe")
+    ).toHaveTextContent('["local-codex"]');
+    expect(
+      screen.getByTestId("agent-gui-handoff-targets-probe")
+    ).toHaveTextContent('["local-codex"]');
+    expect(
+      screen.getByTestId("agent-gui-mention-targets-probe")
+    ).toHaveTextContent('"agentTargetId":"shared-agent:offline-codex"');
+    expect(
+      screen.getByTestId("agent-gui-mention-targets-probe")
+    ).toHaveTextContent('"disabled":true');
+    expect(
+      screen.getByTestId("agent-gui-mention-targets-probe")
+    ).toHaveTextContent('"iconUrl":"/shared-agent:offline-codex.png"');
   });
 
   it("forwards the host-owned handoff ownership presentation", () => {

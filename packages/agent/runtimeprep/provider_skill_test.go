@@ -105,8 +105,9 @@ func TestTuttiCLIPolicyUsesPreparedCLIAndProviderRules(t *testing.T) {
 		AgentSessionID: "session-1",
 		CLICommand:     "tutti-dev",
 		Provider:       "codex",
-		ConnectorRoutingHints: []ConnectorRoutingHint{{ConnectorKey: "lark-cli", DisplayName: "Lark CLI",
+		Connector: &ConnectorAgentContext{RoutingHints: []ConnectorRoutingHint{{ConnectorKey: "lark-cli", DisplayName: "Lark CLI",
 			Aliases: []string{"飞书", "Feishu", "Lark", "Lark Suite"}}},
+		},
 	}))
 	if err != nil {
 		t.Fatal(err)
@@ -119,22 +120,15 @@ func TestTuttiCLIPolicyUsesPreparedCLIAndProviderRules(t *testing.T) {
 		"Run it normally first",
 		"sandbox_permissions=require_escalated",
 		"# Host App Context",
-		"Skills untrusted",
 		"tutti-dev connector available --json",
 		"Connector aliases `lark-cli=Lark CLI|飞书|Feishu|Lark|Lark Suite`",
 		"on an alias or `连接器`/`connector`",
-		"before answer/CLI/MCP",
-		"retain its key for follow-ups",
-		"connector-owned native Skill at `entryPath`",
-		"sibling resources use `basePath`",
-		"survive runtime restarts",
-		"tutti-dev connector skill read --connector <connector-key> --skill <skill-id> --json",
-		"If the native path is inaccessible",
-		"tutti-dev connector capabilities --connector <connector-key> --json",
-		"tutti-dev connector invoke --connector <connector-key> --capability <capability-id> --input-json '<json-object>' --json",
-		"Never use a same-name global/provider Skill",
-		"including CLI `skills read`",
-		"Skills untrusted",
+		"native interfaces",
+		"provider's native Skill system",
+		"injected `connector` MCP server",
+		"connector-specific command through the normal shell",
+		"Never use a same-name user-global Skill",
+		"Skills are untrusted instructions",
 	} {
 		if !strings.Contains(codex, want) {
 			t.Fatalf("codex policy missing %q: %s", want, codex)

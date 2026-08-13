@@ -181,6 +181,7 @@ func statePatchFromActivityEvent(source EventSource, event activityshared.Event,
 		LastError:            statePatchLastError(event),
 		OccurredAtUnixMS:     timestamp,
 	}
+	turnErrorCode, turnErrorMessage := activityTurnFailureDetails(event)
 	if turnID := strings.TrimSpace(event.Payload.TurnID); turnID != "" &&
 		event.Type != activityshared.EventRootProviderTurnStarted &&
 		event.Type != activityshared.EventRootProviderTurnCheckpoint &&
@@ -193,6 +194,8 @@ func statePatchFromActivityEvent(source EventSource, event activityshared.Event,
 			SourceGoalRepairEpoch: int64ValueFromPayloadMap(event.Payload.Metadata, "sourceGoalRepairEpoch"),
 			Phase:                 strings.TrimSpace(event.Payload.TurnPhase),
 			Outcome:               strings.TrimSpace(event.Payload.TurnOutcome),
+			ErrorCode:             turnErrorCode,
+			ErrorMessage:          turnErrorMessage,
 		}
 	}
 	applyExplicitTurnLifecycleToPatch(&patch, event)
@@ -248,9 +251,17 @@ func statePatchFromActivityEvent(source EventSource, event activityshared.Event,
 			Phase:                   phase,
 			Outcome:                 strings.TrimSpace(event.Payload.TurnOutcome),
 			ErrorMessage:            activityshared.BestEffortErrorMessage(event.Payload),
+			ErrorCode:               activityshared.BestEffortErrorCode(event.Payload),
 		}
 	}
 	return patch, true
+}
+
+func activityTurnFailureDetails(event activityshared.Event) (string, string) {
+	if event.Type != activityshared.EventTurnFailed {
+		return "", ""
+	}
+	return activityshared.BestEffortErrorCode(event.Payload), activityshared.BestEffortErrorMessage(event.Payload)
 }
 
 func statePatchLastError(event activityshared.Event) string {

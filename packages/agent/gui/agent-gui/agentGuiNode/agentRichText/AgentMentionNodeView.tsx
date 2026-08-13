@@ -18,10 +18,14 @@ import {
   resolveAgentMentionFileThumbnailUrl,
   resolveAgentMentionFileVisualKind
 } from "../../shared/mentionFilePresentation";
-import { managedAgentRoundedIconUrl } from "../../../shared/managedAgentIcons";
 import { getAgentCustomMentionKind } from "../../../shared/agentCustomMentionKinds";
+import { managedAgentRoundedIconUrl } from "../../../shared/managedAgentIcons";
+import { useAgentTargetPresentations } from "../../../shared/AgentTargetPresentationContext";
+import {
+  resolveAgentMentionTargetPresentation,
+  type AgentMessageMarkdownAgentTarget
+} from "../../../shared/agentTargetPresentation";
 import { AGENT_RICH_TEXT_CARET_ANCHOR } from "./agentRichTextCaretAnchor";
-import { resolveAgentSessionMentionIconUrl } from "./agentMentionPresentation";
 import { agentExternalPromptFileErrorI18nKey } from "../model/agentExternalPromptFiles";
 
 type AgentMentionNodeViewKind =
@@ -127,7 +131,8 @@ function dirnameFromPath(path: string): string {
 
 function mentionViewModel(
   attrs: Record<string, unknown>,
-  t: (key: string) => string
+  t: (key: string) => string,
+  agentTargets: readonly AgentMessageMarkdownAgentTarget[]
 ): AgentMentionNodeViewModel {
   const kind = normalizeKind(attrString(attrs, "kind"));
   const name = attrString(attrs, "name");
@@ -136,17 +141,19 @@ function mentionViewModel(
   if (kind === "session") {
     const label = attrString(attrs, "title").trim() || name.trim();
     const agentTargetId = attrString(attrs, "agentTargetId").trim();
+    const presentation = resolveAgentMentionTargetPresentation({
+      agentTargetId,
+      agentTargets,
+      fallbackIconUrl: attrString(attrs, "iconUrl"),
+      workspaceId: attrString(attrs, "workspaceId")
+    });
     return {
       ariaLabel:
         `${t("agentHost.agentGui.mentionKindSession")} ${label}`.trim(),
       directoryPath: "",
       entryKind: "",
       href,
-      iconUrl: resolveAgentSessionMentionIconUrl({
-        agentIconUrl: attrString(attrs, "iconUrl"),
-        agentTargetId,
-        href
-      }),
+      iconUrl: presentation.iconUrl,
       kind,
       label
     };
@@ -202,16 +209,25 @@ function mentionViewModel(
 
   if (kind === "agent-target") {
     const agentProviderId = attrString(attrs, "agentProviderId").trim();
+    const presentation = resolveAgentMentionTargetPresentation({
+      agentTargetId: attrString(attrs, "targetId"),
+      agentTargets,
+      fallbackIconUrl:
+        attrString(attrs, "iconUrl").trim() ||
+        managedAgentRoundedIconUrl(agentProviderId || undefined),
+      fallbackName: name,
+      fallbackProvider: agentProviderId,
+      workspaceId: attrString(attrs, "workspaceId")
+    });
     return {
-      ariaLabel: `${t("agentHost.agentGui.mentionKindAgent")} ${name}`.trim(),
+      ariaLabel:
+        `${t("agentHost.agentGui.mentionKindAgent")} ${presentation.name ?? name}`.trim(),
       directoryPath: "",
       entryKind: "",
       href,
-      iconUrl:
-        attrString(attrs, "iconUrl").trim() ||
-        managedAgentRoundedIconUrl(agentProviderId),
+      iconUrl: presentation.iconUrl,
       kind,
-      label: name
+      label: presentation.name ?? name
     };
   }
 
@@ -416,6 +432,7 @@ function AgentMentionLegacyFileView({
 }
 
 function AgentMentionView({
+  agentTargets,
   attrs,
   isEditable,
   onRemove,
@@ -423,6 +440,7 @@ function AgentMentionView({
   selected,
   Wrapper
 }: {
+  agentTargets?: readonly AgentMessageMarkdownAgentTarget[];
   attrs: Record<string, unknown>;
   isEditable: boolean;
   onRemove?: MouseEventHandler<HTMLButtonElement>;
@@ -432,7 +450,12 @@ function AgentMentionView({
 }): JSX.Element {
   const { t } = useTranslation();
   const withTooltipProvider = useContext(AgentMentionTooltipProviderContext);
-  const mention = mentionViewModel(attrs, t);
+  const contextAgentTargets = useAgentTargetPresentations();
+  const mention = mentionViewModel(
+    attrs,
+    t,
+    agentTargets ?? contextAgentTargets
+  );
 
   if (mention.kind === "file") {
     return (
@@ -600,12 +623,15 @@ function AgentMentionView({
 }
 
 export function AgentMentionReadonlyView({
+  agentTargets,
   attrs
 }: {
+  agentTargets?: readonly AgentMessageMarkdownAgentTarget[];
   attrs: Record<string, unknown>;
 }): JSX.Element {
   return (
     <AgentMentionView
+      agentTargets={agentTargets}
       attrs={attrs}
       isEditable={false}
       selected={false}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"time"
 
 	agenthost "github.com/tutti-os/tutti/packages/agent/host"
 	runtimeprep "github.com/tutti-os/tutti/packages/agent/runtimeprep"
@@ -33,6 +34,8 @@ type serviceHostRuntimePreparationSupport interface {
 // cleanup dependencies; it has no Host or Service reference.
 type serviceRuntimePreparation struct {
 	runtimePreparer              runtimeprep.Preparer
+	connectorRuntime             ConnectorRuntime
+	connectorCapabilities        ConnectorCapabilityResolver
 	modelGateway                 ModelGatewayRegistry
 	modelCatalog                 AgentModelCatalog
 	agentTargetStore             AgentTargetStore
@@ -49,6 +52,8 @@ type serviceRuntimePreparation struct {
 func newServiceRuntimePreparation(config ServiceConfig) *serviceRuntimePreparation {
 	return &serviceRuntimePreparation{
 		runtimePreparer:           config.Runtime.Preparer,
+		connectorRuntime:          config.Runtime.Connector,
+		connectorCapabilities:     config.Runtime.ConnectorCapabilities,
 		modelGateway:              config.Runtime.ModelGateway,
 		modelCatalog:              config.Composer.ModelCatalog,
 		agentTargetStore:          config.Composer.AgentTargetStore,
@@ -72,6 +77,8 @@ func (p *serviceRuntimePreparation) facade() *Service {
 	}
 	return &Service{
 		RuntimePreparer:              p.runtimePreparer,
+		ConnectorRuntime:             p.connectorRuntime,
+		ConnectorCapabilities:        p.connectorCapabilities,
 		ModelGateway:                 p.modelGateway,
 		ModelCatalog:                 p.modelCatalog,
 		AgentTargetStore:             p.agentTargetStore,
@@ -154,7 +161,8 @@ func withServicePreparedRuntime(ctx context.Context, service *Service, prepared 
 
 func (a serviceHostPreparation) Prepare(ctx context.Context, input agenthost.RuntimePreparationInput) (agenthost.PreparedRuntime, error) {
 	if override, ok := ctx.Value(servicePreparedRuntimeContextKey{}).(servicePreparedRuntimeContext); ok && override.support == a.support {
-		return agenthost.PreparedRuntime{Cwd: override.prepared.Cwd, Env: append([]string(nil), override.prepared.Env...)}, nil
+		return agenthost.PreparedRuntime{Cwd: override.prepared.Cwd, Env: append([]string(nil), override.prepared.Env...),
+			MCPServers: hostMCPServerBindings(override.prepared.MCPServers)}, nil
 	}
 	settings := input.Settings
 	persisted := PersistedSession{
@@ -169,23 +177,47 @@ func (a serviceHostPreparation) Prepare(ctx context.Context, input agenthost.Run
 	if err != nil {
 		return agenthost.PreparedRuntime{}, err
 	}
+	cleanupPreparationFailure := func(cause error) error {
+		cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
+		defer cancel()
+		return errors.Join(cause, a.support.cleanupSessionResources(
+			cleanupCtx,
+			input.WorkspaceID,
+			input.AgentSessionID,
+		))
+	}
 	if err := a.bindCommittedSessionForkProviderState(ctx, input); err != nil {
-		return agenthost.PreparedRuntime{}, err
+		return agenthost.PreparedRuntime{}, cleanupPreparationFailure(err)
 	}
 	var targetRef map[string]any
 	if strings.TrimSpace(input.AgentTargetID) != "" {
 		resolvedRef, err := a.support.resolveProviderTargetRefForResume(ctx, persisted)
 		if err != nil {
-			return agenthost.PreparedRuntime{}, err
+			return agenthost.PreparedRuntime{}, cleanupPreparationFailure(err)
 		}
 		targetRef = resolvedRef
 	}
 	settings = persisted.Settings
 	return agenthost.PreparedRuntime{
-		Cwd: prepared.Cwd, Env: append([]string(nil), prepared.Env...),
+		Cwd: prepared.Cwd, Env: append([]string(nil), prepared.Env...), MCPServers: hostMCPServerBindings(prepared.MCPServers),
 		ProviderTargetRef: clonePayload(targetRef), Settings: &settings,
 		RuntimeContext: persistedSessionRuntimeContext(persisted),
 	}, nil
+}
+
+func hostMCPServerBindings(input []runtimeprep.MCPServerBinding) []agenthost.MCPServerBinding {
+	if len(input) == 0 {
+		return nil
+	}
+	result := make([]agenthost.MCPServerBinding, 0, len(input))
+	for _, binding := range input {
+		headers := make(map[string]string, len(binding.Headers))
+		for key, value := range binding.Headers {
+			headers[key] = value
+		}
+		result = append(result, agenthost.MCPServerBinding{Name: binding.Name, Type: binding.Type, URL: binding.URL, Headers: headers})
+	}
+	return result
 }
 
 func (a serviceHostPreparation) bindCommittedSessionForkProviderState(

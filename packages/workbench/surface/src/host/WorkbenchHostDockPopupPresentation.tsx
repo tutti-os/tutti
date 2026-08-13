@@ -380,8 +380,8 @@ export const WorkbenchHostDockPopupCard = forwardRef<
         onKeyDown={handleSelectKeyDown}
       >
         <WorkbenchHostDockPopupCardPreview previewState={previewState} />
-        {labelMode === "hover-overlay" && item.title?.trim() ? (
-          <WorkbenchHostDockPopupCardLabel title={item.title} />
+        {labelMode === "hover-overlay" && title.trim() ? (
+          <WorkbenchHostDockPopupCardLabel title={title} />
         ) : null}
       </div>
       <Button

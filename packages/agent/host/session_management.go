@@ -120,6 +120,11 @@ func (h *Host) UpdatePin(ctx context.Context, input UpdatePinInput) (UpdatePinRe
 	if h == nil || h.sessionManagement == nil || h.runtime == nil || ref.WorkspaceID == "" || ref.AgentSessionID == "" {
 		return UpdatePinResult{}, ErrInvalidArgument
 	}
+	release, err := h.acquireSession(ctx, ref)
+	if err != nil {
+		return UpdatePinResult{}, err
+	}
+	defer release()
 	canonical, updated, err := h.sessionManagement.UpdateSessionPinned(ctx, ref.WorkspaceID, ref.AgentSessionID, input.Pinned)
 	if err != nil {
 		return UpdatePinResult{}, err
@@ -168,10 +173,13 @@ func (h *Host) DeleteSessions(ctx context.Context, input DeleteSessionsInput) (D
 	var deleted storesqlite.DeleteSessionsBatchResult
 	var admittedPlan DeleteSessionsPlan
 	for {
-		plan, err := h.sessionBatchManagement.PlanDeleteSessions(ctx, storesqlite.DeleteSessionsBatchInput{
-			WorkspaceID: workspaceID,
-			SessionIDs:  sessionIDs,
-		})
+		storeInput := storesqlite.DeleteSessionsBatchInput{
+			WorkspaceID:                workspaceID,
+			SessionIDs:                 sessionIDs,
+			RequiredRootRailSectionKey: strings.TrimSpace(input.RequiredRootRailSectionKey),
+			ExcludePinnedRoots:         input.ExcludePinnedRoots,
+		}
+		plan, err := h.sessionBatchManagement.PlanDeleteSessions(ctx, storeInput)
 		if err != nil {
 			return DeleteSessionsResult{}, err
 		}
@@ -189,7 +197,11 @@ func (h *Host) DeleteSessions(ctx context.Context, input DeleteSessionsInput) (D
 		// those runtimes inside the same deletion coordinator even when the
 		// canonical plan is empty; the canonical plan remains the exact fence for
 		// rows that do exist.
-		mutationSessionIDs := normalizedUniqueSessionIDs(append(append([]string(nil), plan.SessionIDs...), sessionIDs...))
+		mutationSessionIDs := copySessionIDs(plan.SessionIDs)
+		conditionalDelete := storeInput.RequiredRootRailSectionKey != "" || storeInput.ExcludePinnedRoots
+		if !conditionalDelete {
+			mutationSessionIDs = normalizedUniqueSessionIDs(append(mutationSessionIDs, sessionIDs...))
+		}
 		err = h.withSessionMutationActors(ctx, workspaceID, mutationSessionIDs, func(commandCtx context.Context) error {
 			releases := make([]func(), 0, len(mutationSessionIDs))
 			for _, sessionID := range mutationSessionIDs {
@@ -201,6 +213,19 @@ func (h *Host) DeleteSessions(ctx context.Context, input DeleteSessionsInput) (D
 				releases = append(releases, release)
 			}
 			defer releaseSessionLocks(releases)
+			// Planning is intentionally repeated after acquiring the same session
+			// locks used by pin mutations. This closes the discovery-to-delete race:
+			// a newly pinned or reclassified root changes the plan before any runtime
+			// is closed, and the outer coordinator safely retries.
+			if conditionalDelete {
+				lockedPlan, planErr := h.sessionBatchManagement.PlanDeleteSessions(commandCtx, storeInput)
+				if planErr != nil {
+					return planErr
+				}
+				if !equalSessionIDSets(plan.SessionIDs, lockedPlan.SessionIDs) {
+					return storesqlite.ErrDeleteSessionsPlanChanged
+				}
+			}
 			for _, sessionID := range mutationSessionIDs {
 				if _, live := h.runtime.Session(workspaceID, sessionID); !live {
 					continue
@@ -214,11 +239,8 @@ func (h *Host) DeleteSessions(ctx context.Context, input DeleteSessionsInput) (D
 				return nil
 			}
 			var deleteErr error
-			deleted, deleteErr = h.sessionBatchManagement.DeleteSessionsBatch(commandCtx, storesqlite.DeleteSessionsBatchInput{
-				WorkspaceID:        workspaceID,
-				SessionIDs:         sessionIDs,
-				ExpectedSessionIDs: plan.SessionIDs,
-			})
+			storeInput.ExpectedSessionIDs = plan.SessionIDs
+			deleted, deleteErr = h.sessionBatchManagement.DeleteSessionsBatch(commandCtx, storeInput)
 			return deleteErr
 		})
 		if err != nil && h.sessionDeletionGuard != nil {
@@ -276,6 +298,20 @@ func (h *Host) DeleteSessions(ctx context.Context, input DeleteSessionsInput) (D
 		})
 	}
 	return result, nil
+}
+
+func equalSessionIDSets(left, right []string) bool {
+	left = normalizedUniqueSessionIDs(left)
+	right = normalizedUniqueSessionIDs(right)
+	if len(left) != len(right) {
+		return false
+	}
+	for index := range left {
+		if left[index] != right[index] {
+			return false
+		}
+	}
+	return true
 }
 
 // ClearSessions routes workspace-wide removal through the same runtime-close,

@@ -66,6 +66,21 @@ that classification. Replication and read contracts continue to accept a
 missing value from older stored messages, so compatibility stays at the read
 boundary instead of being inferred by presentation code.
 
+Canonical tool-call persistence also owns the replication-safe payload budget.
+Provider `content` is projected into the formal output fields before MCP
+`structuredContent` is normalized: exact string leaves that duplicate
+`output.text` keep their map key or array position with an explicit duplicate
+marker, while other structured string leaves are deterministically and
+UTF-8-safely shortened with the standard truncation marker. Inputs and
+non-string structured values are never shortened. The final encoded payload
+must fit the 768 KiB canonical budget; if required data alone cannot fit, the
+write returns an error and the transaction does not persist an unsynchronizable
+message. A versioned store migration applies the same projection to retained
+oversized tool calls, including MCP messages, and updates a row only after its
+encoded replacement satisfies the budget. Replication consumers derive a new
+fingerprint and mutation identity from that physical repair, which clears any
+retry schedule tied to the obsolete oversized representation.
+
 ## Responsibilities
 
 ### `packages/agent/host`
@@ -119,6 +134,13 @@ deletion.
 `Host.ListDeletedSessions` exposes topmost deleted Sessions in one Workspace—a
 root or child tombstone whose parent is not tombstoned—with title/project
 filtering and stable `updated_at DESC, session id ASC` cursor paging.
+Deleted-session classification and filtering use the immutable persisted
+`railSectionKey` exclusively. The read contract carries that key on every
+Session and project option; `rail_project_path` remains optional presentation
+metadata for labels and restore context and must not become a join or filter
+identity. Transport adapters may resolve an explicit legacy project-path
+filter to its canonical section key before calling Host, but must never infer a
+deleted Session's section from that path or from `cwd`.
 `Host.RestoreDeletedSession` clears the tombstone for the exact complete
 component in one transaction and deliberately does not start or resume a
 provider runtime. Tombstones created by the older lossy implementation remain
@@ -162,11 +184,9 @@ deletion if any live or tombstoned row still owns it. Multiple Workspace queue
 rows for one ID are handled idempotently. Recoverable tombstones keep both
 resources; Workspace-keyed runtime and Model Gateway cleanup still runs, while
 the global Agent/browser releaser is skipped if another Workspace has a live
-owner with that ID. Worktree isolation is protected while a recoverable
-tombstone exists; after hard deletion, the existing worktree GC policy may
-remove only clean, non-ahead worktrees and continues to preserve dirty or ahead
-work. Migrating those physical paths to a Workspace-scoped layout remains a
-separate future change.
+owner with that ID. Managed worktrees are independent Workspace resources:
+soft deletion, hard deletion, restore, and purge do not retain or remove them.
+They are removed only through the explicit managed-worktree operation.
 
 Automatic maintenance starts ten minutes after daemon readiness, checks at
 30-minute intervals, and records completion at most once per 24 hours. It runs
@@ -293,6 +313,14 @@ It owns:
   window. Stop, Interaction, and
   settings additionally own command identity plus the 30-second delivery
   timeout.
+  The admitted request identity is also projected as the required
+  `activationId` on the typed host effect. Pending activation state records the
+  command settlement outcome and timestamp separately from the first canonical
+  Session observation. Snapshot observations distinguish missing Session,
+  workspace mismatch, stale new-Session evidence, and a matching Session.
+  Consumers can therefore measure command and snapshot latency independently;
+  repeated identical observations do not churn state, and a late command result
+  cannot regress an already confirmed activation.
   Session stop owns the 30-second first-Turn waiting window and duplicate
   admission across Desktop and Mobile. Interaction submission owns canonical
   pending-target admission,
@@ -353,6 +381,17 @@ title from the display prompt, or from a synthesized `/goal` command when the
 display prompt is absent. Non-empty initial content and typed initial Goal are
 mutually exclusive, and product adapters must not reconstruct the command from
 display text.
+The public Session contract optionally carries `goalSyncState` as a narrow
+Host-owned observation: revision, sync status, pending operation identity, and
+optional `executionPending` proof. It does not move Goal saga ownership into
+Activity Core. Missing state means the host cannot prove progress; explicit
+`null` clears prior evidence, and Session merge preserves prior evidence when a
+compatible partial projection merely omits the field. AgentGUI may use an
+identified pending/applying/unknown operation for initial-Goal loading
+continuity without inventing a Turn or a UI timeout. `synced` alone is terminal
+mutation evidence, not proof that a future Turn will exist; only explicit
+Host-owned `executionPending=true` bridges convergence to the first exact Goal
+Turn. Terminal/non-active Goal evidence and that Turn clear the proof.
 Desktop AgentGUI and Mobile call `stopSession` instead of constructing
 `session/stopRequested` protocol fields. The same method stops an active Turn
 or records a bounded request that cancels the first Turn produced by an
@@ -389,6 +428,16 @@ state. An empty pause/resume observation therefore records divergence without
 erasing the visible Goal; only a durable tombstone returns `null`. The daemon
 overlays that Host-owned result onto `session.goal`, and the Engine applies the
 same invariant when a synced typed result reaches its canonical Session state.
+Daemon Session reads apply the same authority rule: unresolved durable state
+projects `desired`; synchronized state projects `observed` progress; a durable
+tombstone clears the Goal. The Goal-state timestamp advances the Session
+envelope. Single-Session reads, batch lists, refreshes, and realtime-driven
+reloads therefore cannot overwrite a newer Goal with an older provider snapshot
+or resurrect a completed Goal as active.
+After Session creation, any later Goal Control operation retires the initial
+activation Goal as a presentation source. The operation result and canonical
+Session projection then own the banner, so the creation-time objective cannot
+shadow a replacement Goal.
 Engine-originated requests always send their caller-stable identity through to
 the existing Agent Host Goal saga.
 Every admitted mutation reaches Host; frontend Goal equality is not a no-op
@@ -631,8 +680,15 @@ backfilled from messages.
 The session service synchronously persists and reads back the initial runtime
 session before returning a successful Create response, so the response never
 races the runtime's asynchronous activity reporter. The store assigns
-`railSectionKey` on that first persistence and preserves it for the lifetime of
-the session, even if later runtime reports change `cwd` or the user-project list.
+`railSectionKey` on that first persistence and preserves it across later runtime
+reports, `cwd` changes, and user-project list refreshes. Removing a project is
+an authoritative daemon operation. It repeatedly sends live unpinned root
+Sessions through Host batch deletion, then uses one compare-and-finalize SQLite
+transaction to rehome retained pinned trees and recoverable tombstones to
+`conversations` and remove the user-project row. A concurrent initial Session
+write validates an explicit project placement against the project rows in its
+own transaction, so a stale placement cannot recreate an orphan section after
+removal.
 Section and pinned-page results include required `totalCount` for the complete
 target-filtered scope before cursor pagination. AgentGUI uses it to subtract a
 transient active-row overlay from remaining unseen rows; hosts must preserve the
@@ -896,6 +952,10 @@ confirmed turn and notice update. These payloads contain semantic IDs only;
 user-visible copy belongs to consumer i18n. Provider-originated exit-plan
 prompts remain ordinary durable interaction responses and use the existing
 `interactive_response` operation rather than this synthetic-plan endpoint.
+Until the user confirms or dismisses the plan, AgentGUI projects that wait
+through one shared awaiting predicate into conversation-rail
+`needsUserAction`, conversation-list awaiting sets, and Message Center
+attention; it must not invent an active-session-only overlay for the same fact.
 
 Provider interaction lifecycle is an explicit entity stream, independent of
 transcript projection and runtime session snapshots:
@@ -1280,12 +1340,31 @@ metadata, image base64, and unknown provider-only result keys are not retained.
 Provider adapters may continue accepting those wire shapes, but shared
 business code consumes only the explicit canonical fields. Each canonical
 `output` or `error` `text`, `stdout`, and `stderr` field, including nested tool
-steps, is bounded to 1 MiB total by retaining a valid UTF-8 prefix and the fixed
-`[Output truncated]` marker. Agent
+steps, first receives a 1 MiB per-field bound by retaining a valid UTF-8 prefix
+and the fixed `[Output truncated]` marker. Durable tool-call payloads then fit
+those formal output streams into a 768 KiB aggregate JSON budget, leaving
+deterministic headroom below the 1 MiB replication request limit for mutation
+identity, scope, and batch framing. Inputs and structured results are never
+discarded merely to satisfy that output budget.
+
+A terminal command snapshot omits `text` only when it is exactly
+reconstructible as `strings.TrimSpace(stdout)` or
+`strings.TrimSpace(stderr)`; the raw stream remains canonical. The Reporter
+recognizes that alias before per-field truncation and emits a tombstone so a
+terminal snapshot also clears any `text` retained from its running snapshot.
+Nested steps use their own lifecycle status, even beneath a running parent.
+Explicit non-command tool identity wins over command-shaped input, so MCP and
+other non-command tools retain `text` as their provider-neutral display
+contract. Running command output retains `text` for ordered live deltas. Agent
 reference/session output uses the same canonical projection rather than
-depending on a retained raw tool result. This is a forward-write rule: existing
-rows are not rewritten, their removed fields are ignored, and normal retention
-eventually ages them out.
+depending on a retained raw tool result.
+
+Canonical compaction is normally a forward-write rule. One bounded migration
+also repairs retained terminal command rows, including deleted/tombstoned rows
+that remain replication inputs, whose payload reaches the 768 KiB safe budget.
+It removes only reconstructible aliases and refits formal output streams without
+changing message versions or timestamps. Rows whose structured data cannot fit
+without semantic loss remain unchanged for explicit handling.
 
 The Go live-protocol adapter owns the complete fast-lane envelope on both sides
 of a device link: schema validation, recipient identity projection,
@@ -1301,11 +1380,15 @@ canonical reconciliation; it is not a compatibility conversion path.
 `StreamReady` is transport-only and must not be interpreted as canonical
 catch-up. `AttachmentChanged` starts a baseline for one positive attachment
 revision; hosts publish their canonical baseline and then
-`AttachmentCaughtUp` with the exact same binding, workspace, Session, Turn,
-caller-Turn, and revision identity. Consumers reject a missing or mismatched
-barrier. The protocol carries this fence but does not choose recovery state:
-the host adapter must reread its canonical store, which remains the lifecycle
-authority after a runtime or host-process restart.
+`AttachmentCaughtUp` with the exact same binding, workspace, Session,
+authorization set, explicit `currentInteractionRootTurnId`, caller-Turn, and
+revision identity. `canonicalTurnIds` is an authorization set, never an ordered
+current-Turn pointer. Every complete `interaction_snapshot` carries its
+required exact `rootTurnId`, including an empty collection. Consumers reject a
+snapshot whose root does not resolve to the controlled root and reject a
+missing or mismatched barrier. The protocol carries this fence but does not
+choose recovery state: the host adapter must reread its canonical store, which
+remains the lifecycle authority after a runtime or host-process restart.
 
 Replay resumes the same epoch, so replayed attachment or caught-up controls may
 precede the replacement RPC's newly emitted `StreamReady`. Consumers persist

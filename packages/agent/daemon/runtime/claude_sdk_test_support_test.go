@@ -147,9 +147,14 @@ func (c *recordingClaudeSDKConnection) sentRequests() []claudeSDKSidecarRequest 
 }
 
 type ackClaudeSDKConnection struct {
-	mu     sync.Mutex
-	sent   []claudeSDKSidecarRequest
-	frames []ProcessFrame
+	mu                   sync.Mutex
+	sent                 []claudeSDKSidecarRequest
+	frames               []ProcessFrame
+	cancelResult         *bool
+	cancelDisposition    string
+	cancelProviderTurnID string
+	cancelTurnID         string
+	cancelDispatchPhase  string
 }
 
 func (c *ackClaudeSDKConnection) Send(data []byte) error {
@@ -157,7 +162,34 @@ func (c *ackClaudeSDKConnection) Send(data []byte) error {
 	if err := json.Unmarshal(data, &request); err != nil {
 		return err
 	}
-	response, err := json.Marshal(claudeSDKSidecarEvent{Version: claudeSDKSidecarProtocolVersion, ID: request.ID, Type: "ok"})
+	payload := map[string]any(nil)
+	if request.Type == "cancel" {
+		canceled := true
+		if c.cancelResult != nil {
+			canceled = *c.cancelResult
+		}
+		disposition := strings.TrimSpace(c.cancelDisposition)
+		if disposition == "" {
+			if canceled {
+				disposition = "pre_accept"
+			} else {
+				disposition = "absent"
+			}
+		}
+		turnID := firstNonEmptyString(c.cancelTurnID, payloadString(request.Payload, "turnId"))
+		dispatchPhase := strings.TrimSpace(c.cancelDispatchPhase)
+		if dispatchPhase == "" {
+			dispatchPhase = "dispatched"
+		}
+		payload = map[string]any{
+			"canceled":       canceled,
+			"disposition":    disposition,
+			"turnId":         turnID,
+			"providerTurnId": strings.TrimSpace(c.cancelProviderTurnID),
+			"dispatchPhase":  dispatchPhase,
+		}
+	}
+	response, err := json.Marshal(claudeSDKSidecarEvent{Version: claudeSDKSidecarProtocolVersion, ID: request.ID, Type: "ok", Payload: payload})
 	if err != nil {
 		return err
 	}

@@ -183,6 +183,26 @@ func TestMapRuntimeErrorMapsMissingSessionAcrossHostBoundary(t *testing.T) {
 	}
 }
 
+func TestMapRuntimeErrorMapsGuidanceTargetVerdictsAcrossHostBoundary(t *testing.T) {
+	for _, testCase := range []struct {
+		runtimeErr error
+		hostErr    error
+	}{
+		{agentruntime.ErrActiveTurnTargetRequired, host.ErrActiveTurnTargetRequired},
+		{agentruntime.ErrActiveTurnTargetMismatch, host.ErrActiveTurnTargetMismatch},
+	} {
+		t.Run(testCase.runtimeErr.Error(), func(t *testing.T) {
+			mapped := mapRuntimeError(fmt.Errorf("guidance dispatch: %w", testCase.runtimeErr))
+			if !errors.Is(mapped, testCase.hostErr) {
+				t.Fatalf("mapped error = %v, want Host sentinel %v", mapped, testCase.hostErr)
+			}
+			if !errors.Is(mapped, testCase.runtimeErr) {
+				t.Fatalf("mapped error = %v, want source runtime sentinel preserved", mapped)
+			}
+		})
+	}
+}
+
 func TestRuntimeControllerProjectsSessionWithoutAliasingMutableInputs(t *testing.T) {
 	runtimeContext := map[string]any{"mode": "plan"}
 	providerTargetRef := map[string]any{"agent": "codex"}

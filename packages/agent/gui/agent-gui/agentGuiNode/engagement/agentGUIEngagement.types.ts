@@ -5,6 +5,8 @@ export type AgentGUIComposerFocusMethod =
 
 export type AgentGUIComposerContentType = "image" | "large_text" | "text";
 
+export type AgentGUIQuickPromptType = "saved" | "recommended_template";
+
 export interface AgentGUIEngagementContext {
   agentSessionId: string | null;
   agentTargetId: string | null;
@@ -29,6 +31,15 @@ export type AgentGUIEngagementEvent =
       type: "composer_content_entered";
       contentType: AgentGUIComposerContentType;
       hadPrefill: boolean;
+    })
+  | (AgentGUIEngagementEventBase & {
+      source: "composer_input";
+      type: "quick_prompt_panel_opened";
+    })
+  | (AgentGUIEngagementEventBase & {
+      promptType: AgentGUIQuickPromptType;
+      source: "composer_input";
+      type: "quick_prompt_used";
     });
 
 export interface AgentGUIComposerEngagement {
@@ -37,6 +48,8 @@ export interface AgentGUIComposerEngagement {
     hadPrefill: boolean;
   }): void;
   focused(focusMethod: AgentGUIComposerFocusMethod): void;
+  quickPromptPanelOpened?(): void;
+  quickPromptUsed?(promptType: AgentGUIQuickPromptType): void;
 }
 
 export type AgentGUIEngagementEventSink = (

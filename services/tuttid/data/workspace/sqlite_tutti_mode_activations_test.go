@@ -390,7 +390,7 @@ func TestSQLiteStoreTuttiModeActivationPreferenceRevisions(t *testing.T) {
 	}
 }
 
-func TestSQLiteStoreTuttiModeActivationAgentCommandSource(t *testing.T) {
+func TestSQLiteStoreTuttiModeActivationLegacyAgentCommandCompatibility(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	store := openTestSQLiteStore(t)
@@ -399,7 +399,7 @@ func TestSQLiteStoreTuttiModeActivationAgentCommandSource(t *testing.T) {
 	}
 	now := time.UnixMilli(1_700_000_000_000).UTC()
 
-	// The Agent-issued source may originate an activation.
+	// The persistence adapter still round-trips a historical active revision.
 	activated, changed, err := store.SetTuttiModeActivation(ctx, SetTuttiModeActivationInput{
 		WorkspaceID: "ws-agent-command", AgentSessionID: "session-1",
 		ActivationID: "activation-1", RevisionID: "revision-1",
@@ -410,7 +410,7 @@ func TestSQLiteStoreTuttiModeActivationAgentCommandSource(t *testing.T) {
 		t.Fatalf("agent_command activate activation=%#v changed=%v err=%v", activated, changed, err)
 	}
 
-	// ... and a deactivation.
+	// Historical inactive revisions remain readable as well.
 	expected := int64(1)
 	deactivated, changed, err := store.SetTuttiModeActivation(ctx, SetTuttiModeActivationInput{
 		WorkspaceID: "ws-agent-command", AgentSessionID: "session-1",
@@ -422,7 +422,7 @@ func TestSQLiteStoreTuttiModeActivationAgentCommandSource(t *testing.T) {
 		t.Fatalf("agent_command deactivate activation=%#v changed=%v err=%v", deactivated, changed, err)
 	}
 
-	// Turn snapshots accept agent_command for both configured states.
+	// Turn snapshots retain both historical state/source pairs.
 	inactiveSnapshot := activationbiz.TurnSnapshot{
 		ActivationID: "activation-1", RevisionID: "revision-2", Revision: 2,
 		State: activationbiz.StateInactive, Source: activationbiz.SourceAgentCommand,
@@ -587,7 +587,8 @@ INSERT INTO tutti_mode_activation_revisions (
 		t.Fatalf("preserved unconfigured snapshot=%#v ok=%v err=%v", unconfigured, ok, err)
 	}
 
-	// The rebuilt schema admits agent_command transitions.
+	// The rebuilt schema admits the historical vocabulary so old records remain
+	// round-trippable below the product service boundary.
 	expected := int64(1)
 	deactivated, changed, err := store.SetTuttiModeActivation(ctx, SetTuttiModeActivationInput{
 		WorkspaceID: "ws-agent-command-upgrade", AgentSessionID: "session-1",

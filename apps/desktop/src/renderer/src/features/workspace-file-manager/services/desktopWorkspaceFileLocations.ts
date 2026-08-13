@@ -14,6 +14,7 @@ export const DESKTOP_WORKSPACE_FILE_HOME_LOCATION_ID = "local:home";
 
 export function buildDesktopWorkspaceFileLocationSections(input: {
   homeDirectory: string;
+  os: NodeJS.Platform;
   projects: readonly WorkspaceUserProject[];
 }): WorkspaceFileLocationSection[] {
   return [
@@ -25,13 +26,14 @@ export function buildDesktopWorkspaceFileLocationSections(input: {
     {
       id: DESKTOP_WORKSPACE_FILE_LOCAL_SECTION_ID,
       label: translate("workspace.referenceSources.localSourceLabel"),
-      locations: buildLocalLocations(input.homeDirectory)
+      locations: buildLocalLocations(input.homeDirectory, input.os)
     }
   ];
 }
 
 export async function loadDesktopWorkspaceFileLocationSections(input: {
   homeDirectory: string;
+  os: NodeJS.Platform;
   workspaceUserProjectService?: Pick<
     IWorkspaceUserProjectService,
     "ensureLoaded" | "getSnapshot"
@@ -40,12 +42,14 @@ export async function loadDesktopWorkspaceFileLocationSections(input: {
   await input.workspaceUserProjectService?.ensureLoaded();
   return buildDesktopWorkspaceFileLocationSections({
     homeDirectory: input.homeDirectory,
+    os: input.os,
     projects: input.workspaceUserProjectService?.getSnapshot().projects ?? []
   });
 }
 
 export function getCurrentDesktopWorkspaceFileLocationSections(input: {
   homeDirectory: string;
+  os: NodeJS.Platform;
   workspaceUserProjectService?: Pick<
     IWorkspaceUserProjectService,
     "getSnapshot"
@@ -53,6 +57,7 @@ export function getCurrentDesktopWorkspaceFileLocationSections(input: {
 }): WorkspaceFileLocationSection[] {
   return buildDesktopWorkspaceFileLocationSections({
     homeDirectory: input.homeDirectory,
+    os: input.os,
     projects: input.workspaceUserProjectService?.getSnapshot().projects ?? []
   });
 }
@@ -125,13 +130,20 @@ function projectToLocation(
   };
 }
 
-function buildLocalLocations(homeDirectory: string): WorkspaceFileLocation[] {
+function buildLocalLocations(
+  homeDirectory: string,
+  os: NodeJS.Platform
+): WorkspaceFileLocation[] {
   return [
-    {
-      id: DESKTOP_WORKSPACE_FILE_RECENT_LOCATION_ID,
-      kind: "recent",
-      label: translate("workspace.referenceSources.sidebarRecent")
-    },
+    ...(os === "win32"
+      ? []
+      : [
+          {
+            id: DESKTOP_WORKSPACE_FILE_RECENT_LOCATION_ID,
+            kind: "recent" as const,
+            label: translate("workspace.referenceSources.sidebarRecent")
+          }
+        ]),
     localDirectoryLocation(
       "local:downloads",
       translate("workspace.referenceSources.sidebarDownloads"),

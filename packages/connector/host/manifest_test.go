@@ -1,6 +1,7 @@
 package host
 
 import (
+	"encoding/json"
 	"errors"
 	"strings"
 	"testing"
@@ -64,6 +65,49 @@ func TestValidateManifestShapeValidatesAgentRoutingAliases(t *testing.T) {
 				t.Fatalf("ValidateManifestShape() error = %v, want agentRouting.aliases rejection", err)
 			}
 		})
+	}
+}
+
+func TestValidateManifestShapeAcceptsBindingOnlyRemoteMCPContract(t *testing.T) {
+	manifest := Manifest{
+		SchemaVersion: "1", DisplayName: "Tencent Docs", IconURL: testConnectorIconURL,
+		AuthorizationKind: "api_key", RequiredCapabilities: []string{"tools"},
+		Implementation: Implementation{
+			Kind: ImplementationKindRemoteStreamableHTTP,
+			RemoteStreamableHTTP: &RemoteStreamableHTTPImplementation{
+				ProtocolVersion: "2026-07-28", BindingRef: "tencent-docs.primary", ContractVersion: 1,
+				BindingContractHash: "sha256:" + strings.Repeat("a", 64),
+			},
+		},
+	}
+	if err := ValidateManifestShape(manifest); err != nil {
+		t.Fatal(err)
+	}
+	manifest.Implementation.RemoteStreamableHTTP.BindingRef = "https://docs.qq.com/openapi/mcp"
+	if err := ValidateManifestShape(manifest); err == nil || !strings.Contains(err.Error(), "bindingRef") {
+		t.Fatalf("endpoint-shaped bindingRef error = %v", err)
+	}
+}
+
+func TestValidateManifestShapeRequiresBoundedAuthorizationInteractionJSON(t *testing.T) {
+	manifest := Manifest{
+		SchemaVersion: "1", DisplayName: "Tencent Docs", IconURL: testConnectorIconURL,
+		AuthorizationKind: "api_key", AuthorizationInteraction: json.RawMessage(`{"protocol":"example"}`),
+		Implementation: Implementation{Kind: ImplementationKindBuiltin,
+			Builtin: &BuiltinImplementation{ProviderID: "tencent-docs", MCP: true}},
+	}
+	if err := ValidateManifestShape(manifest); err != nil {
+		t.Fatal(err)
+	}
+
+	manifest.AuthorizationInteraction = json.RawMessage(`{"protocol":`)
+	if err := ValidateManifestShape(manifest); err == nil || !strings.Contains(err.Error(), "authorizationInteraction") {
+		t.Fatalf("invalid authorization interaction error = %v", err)
+	}
+
+	manifest.AuthorizationInteraction = json.RawMessage(`"` + strings.Repeat("a", 64<<10) + `"`)
+	if err := ValidateManifestShape(manifest); err == nil || !strings.Contains(err.Error(), "authorizationInteraction") {
+		t.Fatalf("oversized authorization interaction error = %v", err)
 	}
 }
 
@@ -172,29 +216,28 @@ func TestManagedCLIAllowsTypedNodePackageWithoutActionMappings(t *testing.T) {
 	}
 }
 
-func TestManagedInterfacesValidateBoundedInstallationProbes(t *testing.T) {
+func TestManagedCLIValidatesBoundedReadinessProbe(t *testing.T) {
 	manifest := Manifest{SchemaVersion: "1", DisplayName: "Probe", IconURL: testConnectorIconURL, AuthorizationKind: "none",
 		Implementation: Implementation{Kind: ImplementationKindManagedStdio, ManagedStdio: &ManagedStdioImplementation{
 			Runtime: RuntimeRequirement{Language: "node", Profile: "connector-node-static", ABI: "node22-darwin-arm64",
 				VersionRange: ">=22.0.0 <23.0.0"},
-			MCP: &ManagedMCPInterface{Entrypoint: "bin/server.mjs",
-				InstallationProbe: &InstallationProbe{Arguments: []string{"--version"}, TimeoutMS: 3_000}},
+			MCP: &ManagedMCPInterface{Entrypoint: "bin/server.mjs"},
 			CLI: &ManagedCLIInterface{Entrypoint: "bin/cli.mjs", TimeoutMS: 30_000,
-				InstallationProbe: &InstallationProbe{Arguments: []string{"doctor", "--quiet"}, TimeoutMS: 5_000},
-				Commands:          []CLICommand{{Name: "run", InputSchema: map[string]any{"type": "object"}, TimeoutMS: 30_000}}},
+				ReadinessProbe: &CLIReadinessProbe{Arguments: []string{"doctor", "--quiet"}, TimeoutMS: 5_000},
+				Commands:       []CLICommand{{Name: "run", InputSchema: map[string]any{"type": "object"}, TimeoutMS: 30_000}}},
 		}}}
 	if err := ValidateManifestShape(manifest); err != nil {
 		t.Fatal(err)
 	}
 
-	manifest.Implementation.ManagedStdio.MCP.InstallationProbe.Arguments = nil
-	if err := ValidateManifestShape(manifest); err == nil || !strings.Contains(err.Error(), "installationProbe") {
-		t.Fatalf("empty installation probe error = %v", err)
+	manifest.Implementation.ManagedStdio.CLI.ReadinessProbe.Arguments = nil
+	if err := ValidateManifestShape(manifest); err == nil || !strings.Contains(err.Error(), "readinessProbe") {
+		t.Fatalf("empty readiness probe error = %v", err)
 	}
-	manifest.Implementation.ManagedStdio.MCP.InstallationProbe.Arguments = []string{"--version"}
-	manifest.Implementation.ManagedStdio.CLI.InstallationProbe.TimeoutMS = 30_001
-	if err := ValidateManifestShape(manifest); err == nil || !strings.Contains(err.Error(), "installationProbe") {
-		t.Fatalf("unbounded installation probe error = %v", err)
+	manifest.Implementation.ManagedStdio.CLI.ReadinessProbe.Arguments = []string{"--version"}
+	manifest.Implementation.ManagedStdio.CLI.ReadinessProbe.TimeoutMS = 30_001
+	if err := ValidateManifestShape(manifest); err == nil || !strings.Contains(err.Error(), "readinessProbe") {
+		t.Fatalf("unbounded readiness probe error = %v", err)
 	}
 }
 

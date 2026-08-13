@@ -95,6 +95,9 @@ func (s Service) runManagedNPMPackageAction(
 		}
 	}
 	installPrefix := runtimecmd.ResolveNPMGlobalLayout(installBinDir).PrefixDir
+	// Windows npm writes command shims directly under PrefixDir. The platform
+	// layout therefore makes installBinDir the prefix, while Unix keeps the
+	// conventional <prefix>/bin split.
 	step := "install"
 	// Repair-in-place: when an existing @openai/codex launcher is already on
 	// PATH but its platform subpackage is missing (or it is outdated), installing
@@ -103,8 +106,8 @@ func (s Service) runManagedNPMPackageAction(
 	// ~/.local/bin is never selected and the wizard loops on "platform package
 	// incomplete". Derive the npm global prefix that owns the existing package and
 	// reinstall there with --include=optional so the missing platform binary is
-	// restored in place. Falls back to the ~/.local install above when no existing
-	// install can be located.
+	// restored in place. Falls back to the selected Tutti install directory above
+	// when no existing install can be located.
 	if repairPrefix, ok := managedNPMRepairInstallPrefix(existingCLIPath, packageName); ok {
 		installPrefix = repairPrefix
 		step = "repair"

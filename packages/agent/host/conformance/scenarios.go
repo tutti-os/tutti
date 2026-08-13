@@ -1,16 +1,29 @@
 package conformance
 
 var (
-	createEmptySessionScenario       = Scenario{Name: "create empty session", run: runCreateEmptySession}
-	createWithInitialContentScenario = Scenario{Name: "create with initial content", run: runCreateWithInitialContent}
-	createWithInitialGoalScenario    = Scenario{Name: "create with typed initial goal", run: runCreateWithInitialGoal}
-	createWithRailPlacementScenario  = Scenario{Name: "create with explicit rail placement", run: runCreateWithRailPlacement}
-	resumePersistedSessionScenario   = Scenario{Name: "resume persisted session", run: runResumePersistedSession}
-	sendInputScenario                = Scenario{Name: "send input", run: runSendInput}
-	sendConnectorOnlyInputScenario   = Scenario{Name: "send connector-only input", run: runSendConnectorOnlyInput}
-	providerAcceptanceScenario       = Scenario{
+	createEmptySessionScenario          = Scenario{Name: "create empty session", run: runCreateEmptySession}
+	createWithInitialContentScenario    = Scenario{Name: "create with initial content", run: runCreateWithInitialContent}
+	createWithInitialGoalScenario       = Scenario{Name: "create with typed initial goal", run: runCreateWithInitialGoal}
+	initialGoalExecutionPendingScenario = Scenario{Name: "initial Goal exposes execution pending", run: runInitialGoalExecutionPending}
+	typedInitialGoalRailBarrierScenario = Scenario{
+		Name: "typed initial goal waits for canonical rail initialization",
+		run:  runTypedInitialGoalWaitsForCanonicalRailInitialization,
+	}
+	failedCanonicalInitializationScenario = Scenario{
+		Name: "failed canonical initialization aborts unpublished runtime",
+		run:  runFailedCanonicalInitializationAbortsUnpublishedRuntime,
+	}
+	createWithRailPlacementScenario = Scenario{Name: "create with explicit rail placement", run: runCreateWithRailPlacement}
+	resumePersistedSessionScenario  = Scenario{Name: "resume persisted session", run: runResumePersistedSession}
+	sendInputScenario               = Scenario{Name: "send input", run: runSendInput}
+	sendConnectorOnlyInputScenario  = Scenario{Name: "send connector-only input", run: runSendConnectorOnlyInput}
+	providerAcceptanceScenario      = Scenario{
 		Name: "new turns require durable provider acceptance",
 		run:  runNewTurnsRequireDurableProviderAcceptance,
+	}
+	providerlessCanonicalTerminalScenario = Scenario{
+		Name: "providerless canonical terminal settles and replays submission",
+		run:  runProviderlessCanonicalTerminalSettlesAndReplaysSubmission,
 	}
 	rejectedInitialSubmitScenario = Scenario{
 		Name: "rejected initial submit discards runtime without completing canonical session",
@@ -56,6 +69,9 @@ func Scenarios() []Scenario {
 		createEmptySessionScenario,
 		createWithInitialContentScenario,
 		createWithInitialGoalScenario,
+		initialGoalExecutionPendingScenario,
+		typedInitialGoalRailBarrierScenario,
+		failedCanonicalInitializationScenario,
 		createWithRailPlacementScenario,
 		resumePersistedSessionScenario,
 		sendInputScenario,
@@ -64,6 +80,7 @@ func Scenarios() []Scenario {
 		guidanceExactTargetScenario,
 		guidanceTargetMismatchScenario,
 		providerAcceptanceScenario,
+		providerlessCanonicalTerminalScenario,
 		rejectedInitialSubmitScenario,
 		duplicateClientSubmitIDScenario,
 		exactTurnCancelScenario,
@@ -103,6 +120,15 @@ func TitlePolicyScenarios() []Scenario {
 	return []Scenario{{Name: "clear canonical title", run: runClearCanonicalTitle}}
 }
 
+// RailPlacementRecoveryScenarios verifies the Host-owned immutable rail proof
+// used by application adapters during idempotent recovery.
+func RailPlacementRecoveryScenarios() []RailPlacementRecoveryScenario {
+	return []RailPlacementRecoveryScenario{{
+		Name: "recover canonical session only on matching rail",
+		run:  runRecoverCanonicalSessionOnlyOnMatchingRail,
+	}}
+}
+
 // DeletionAdmissionScenarios verifies the provider-neutral guard around the
 // exact canonical closure owned and replanned by Host.
 func DeletionAdmissionScenarios() []Scenario {
@@ -122,8 +148,7 @@ func CoordinatorScenarios() []Scenario {
 		interactiveResponseReusedIDScenario,
 		interactiveResponseRaceScenario,
 		planDecisionScenario,
-		{Name: "recover operations before stale turns and worktree sweep", run: runRecoveryOrder},
-		{Name: "worktree sweep failure propagates", run: runWorktreeSweepFailure},
+		{Name: "recover operations before stale turns", run: runRecoveryOrder},
 	}
 }
 
@@ -195,6 +220,9 @@ func ApplicationCoreScenarios() []Scenario {
 		createEmptySessionScenario,
 		createWithInitialContentScenario,
 		createWithInitialGoalScenario,
+		initialGoalExecutionPendingScenario,
+		typedInitialGoalRailBarrierScenario,
+		failedCanonicalInitializationScenario,
 		createWithRailPlacementScenario,
 		resumePersistedSessionScenario,
 		sendInputScenario,
@@ -203,6 +231,7 @@ func ApplicationCoreScenarios() []Scenario {
 		guidanceExactTargetScenario,
 		guidanceTargetMismatchScenario,
 		providerAcceptanceScenario,
+		providerlessCanonicalTerminalScenario,
 		rejectedInitialSubmitScenario,
 		duplicateClientSubmitIDScenario,
 		initialTitleCASScenario,

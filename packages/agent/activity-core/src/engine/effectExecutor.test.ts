@@ -262,6 +262,7 @@ test("projects shared commands onto typed lifecycle effects without host switche
     ]
   );
   assert.deepEqual(calls[0]?.input, {
+    activationId: "submit-create",
     agentSessionId: "session-1",
     agentTargetId: "target-1",
     capabilityRefs: [{ capability: "tutti", source: "slash_command" }],
@@ -416,6 +417,7 @@ function executeAndWait(
 ): Promise<EngineCommandResultIntent> {
   return new Promise((resolve) => {
     createEngineEffectExecutor({
+      clock: { nowUnixMs: () => 1234 },
       commandPort,
       onResult: resolve,
       scheduler: {

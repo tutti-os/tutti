@@ -2,6 +2,34 @@
 
 [Agent runtime index](./agent-runtime.md) · [All troubleshooting](./README.md)
 
+### Claude cancellation reaches `context deadline exceeded`
+
+- **Symptom:** Canceling a Claude Code Turn, closing its Session, or leaving a
+  room waits until the caller deadline and reports `context deadline exceeded`.
+  Repeating the action leaves the same Turn active.
+- **Quick checks:** Filter daemon logs by `CLAUDE_CODE_CANCEL_DIAGNOSTIC`, then
+  group by `requestId`, `agentSessionId`, `turnId`, and `generationId`. Compare
+  `interrupt_started` with `interrupt_succeeded`, `interrupt_timed_out`, or
+  `interrupt_failed`; then require `query_close_succeeded` and either
+  `consumption_settled` or `consumption_timed_out`. The payload deliberately
+  excludes prompts, tool inputs, credentials, and provider output.
+- **Root cause:** The SDK interrupt is a control request whose Promise has no
+  native timeout. A wedged Claude Code process may never return its control
+  response. A caller-side Go deadline only stops the RPC waiter and cannot
+  terminate that Promise or the provider process.
+- **Fix:** Treat cancellation as a Query-lifecycle protocol. Revoke the exact
+  generation, bound cooperative interrupt, close the owned SDK transport when
+  ACK is missing or fails, and separately bound consumer drain before settling
+  canonical Turns. Do not increase only the outer RPC timeout.
+- **Validation:** Cover an interrupt Promise that never settles, immediate
+  interrupt rejection, and a consumer Promise that never drains. The first two
+  must close transport and cancel the Turn; the last must return an explicit
+  bounded failure.
+- **References:**
+  [queryGeneration.ts](../../../packages/agent/claude-sdk-sidecar/src/queryGeneration.ts),
+  [sessionRuntime.ts](../../../packages/agent/claude-sdk-sidecar/src/sessionRuntime.ts),
+  [claude_sdk_execution.go](../../../packages/agent/daemon/runtime/claude_sdk_execution.go)
+
 ### Claude Goal stays active after the model becomes idle
 
 - **Symptom:** Claude has stopped producing output and the Session becomes
@@ -661,6 +689,47 @@ be resent`). The app never opens.
   [report_coalescer.go](../../../packages/agent/daemon/runtime/report_coalescer.go),
   [controller_report_queue_test.go](../../../packages/agent/daemon/runtime/controller_report_queue_test.go)
 
+### Claude fails before provider Turn identity but AgentGUI keeps thinking
+
+- **Symptom:** Claude returns no assistant result and the provider invocation
+  has already failed, but AgentGUI keeps showing the Turn as processing. Later
+  sends may be rejected because the runtime still reports an active Turn.
+- **Quick checks:** Correlate the canonical Turn ID across the submit report,
+  Claude sidecar event, and runtime controller. The characteristic sequence has
+  a durable submitted Turn, `turn_failed` without `providerTurnId`, dispatch
+  disposition `applied_without_provider_turn`, and a canonical failed report,
+  while `HasActiveTurn` remains true. Do not interpret
+  `applied_without_provider_turn` itself as a failure; cancel-before-acceptance
+  legitimately uses the same admission result.
+- **Root cause:** Provider acceptance and canonical completion are independent
+  contracts. The acceptance wrapper treated an exact providerless
+  `turn.failed` as premature provider output, while the blocking controller
+  released its active-Turn fence only for failures carrying explicit rejection
+  metadata. A non-rejection failure could therefore be durable but never close
+  the runtime fence.
+- **Fix:** Hold an exact canonical terminal behind the acceptance barrier and
+  return it to the controller without inventing provider identity. Classify
+  completion from the typed terminal event for the exact Turn, never from the
+  dispatch disposition or error text. Partition every pre-acceptance batch so
+  an exact terminal cannot carry provider-dependent assistant/tool output
+  through the barrier. Release the active-Turn fence only after the terminal
+  crosses the synchronous durable-report barrier. If that commit fails or its
+  acknowledgement is lost, retain the terminal and retry it idempotently until
+  the commit succeeds or daemon reconciliation proves the Turn already settled.
+  Provider-root completion with an identity continues through canonical
+  aggregation.
+- **Validation:** Cover Claude translation of a providerless `turn_failed`,
+  mixed terminal/provider-output batches, controller settlement after a
+  successful terminal report, transient report failure, commit-success/ACK-loss,
+  explicit rejection, cancel-before-acceptance, and outcome-unknown. Run the
+  Host conformance scenario for initial and ordinary idempotent submissions.
+  Retain a root-provider lifecycle test proving provider-root completion does
+  not clear the canonical Turn before daemon reconciliation.
+- **References:**
+  [claude_sdk_execution.go](../../../packages/agent/daemon/runtime/claude_sdk_execution.go),
+  [controller_turn_completion.go](../../../packages/agent/daemon/runtime/controller_turn_completion.go),
+  [controller_turn_exec.go](../../../packages/agent/daemon/runtime/controller_turn_exec.go)
+
 ### Tutti mode is active in the composer but disappears after the first submit
 
 - **Symptom:** The home composer shows Tutti enabled and the submit trace records
@@ -849,7 +918,9 @@ Turn state, loading, cancel, restore, file-change undo, rail projection, event u
   Creating a Session with an initial Goal starts the processing indicator, then
   stops it as soon as the canonical Session appears. The provider continues
   working without an indicator. When the first assistant message and canonical
-  Turn arrive, the indicator starts again until the Turn settles.
+  Turn arrive, the indicator starts again until the Turn settles. The inverse
+  symptom is a completed or failed Turn whose rail status has settled while the
+  Composer action still spins.
 - Quick checks:
   Compare the Claude SDK `session_state_changed` lifecycle log, activity stream
   connection, Engine runtime activity, canonical Session, and canonical latest
@@ -862,17 +933,23 @@ catalog revision mismatch`, fully restart `dev:desktop`; renderer HMR cannot
   Claude emits an exact session-level `running` observation before the first
   provider Turn identity, but the daemon previously logged and discarded it.
   Goal-only creation correctly has `initialTurnExpected = false`, so neither a
-  pending prompt nor a canonical Turn can bridge that interval.
+  pending prompt nor a canonical Turn can bridge that interval. For the inverse
+  symptom, AgentGUI bypassed the Engine's occurrence-time fence and read the
+  stale raw `running` flag directly after a canonical Turn had settled.
 - Fix:
   Normalize the SDK observation to provider-neutral `running`/`idle` runtime
   activity, publish it as an ephemeral activity-stream event, and let the
-  workspace Engine drive AgentGUI and rail busy projection. Clear ephemeral
+  workspace Engine drive AgentGUI and rail busy projection. Once a canonical
+  Session exists, AgentGUI must consume the Engine's fenced display status;
+  use raw runtime activity only before that projection exists. Clear ephemeral
   runtime activity on disconnect. Keep Goal turnless and do not invent
   lifecycle state, provider-specific timers, or synthetic Turn IDs.
 - Validation:
   Cover SDK projection without Turn identity, post-commit event publication,
   activity-stream ingestion before canonical Session hydration, AgentGUI busy
-  projection, `idle`, and disconnect cleanup.
+  projection, `idle`, disconnect cleanup, and both completed and failed Turns
+  remaining settled when an older raw runtime observation still says
+  `running`.
 - References:
   [claude_sdk_events.go](../../../packages/agent/daemon/runtime/claude_sdk_events.go)
   [workspaceEventCoordinator.ts](../../../packages/agent/activity-core/src/workspaceEventCoordinator.ts)
@@ -907,15 +984,16 @@ catalog revision mismatch`, fully restart `dev:desktop`; renderer HMR cannot
   current.
 - Fix:
   Reconcile terminal `AgentActivityTurn.error` in the shared transcript
-  projection by exact `turnId`, but only when that Turn already exists in the
-  hydrated transcript projection. Reuse a structured visible error, upgrade a
+  projection by exact `turnId`. Reuse a structured visible error, upgrade a
   matching plain assistant failure, or add one view-only row with a stable
-  `(agentSessionId, turnId)` identity. If the owning Turn is outside the message
-  window, skip it until an older page supplies an anchor. Do not manufacture an
-  empty transcript Turn, restore session `lastError`, let session-operation
-  selectors fall back to Turn errors, reinterpret a successful attach as
-  activation failure, persist a duplicate message, or add component-local
-  failure state.
+  `(agentSessionId, turnId)` identity. Normally the owning Turn must already
+  exist in the hydrated transcript projection. The exact latest failed Turn is
+  the narrow exception: if it emitted no transcript item, create its view-only
+  error row so the current failure reason remains visible. Historical Turns
+  outside the message window still wait for an older page to supply an anchor.
+  Do not restore session `lastError`, let session-operation selectors fall back
+  to Turn errors, reinterpret a successful attach as activation failure,
+  persist a duplicate message, or add component-local failure state.
 - Validation:
   Cover a failed Turn with no provider error message, a matching plain failure,
   and an existing structured visible error. The first must render one fallback
@@ -923,8 +1001,9 @@ catalog revision mismatch`, fully restart `dev:desktop`; renderer HMR cannot
   a full canonical Turn list and a newest-page-only transcript window, an older
   failed or interrupted Turn must not create a row or change Turn order. After
   prepending the older page, its error must appear exactly once on the owning
-  Turn. Also cover a failed Turn with zero hydrated transcript items and a
-  newer active Turn whose processing ownership remains current.
+  Turn. Also cover the exact latest failed Turn with zero hydrated transcript
+  items producing one error row, plus an older failed Turn with a newer active
+  Turn whose processing ownership remains current.
 - References:
   [workspaceAgentTurnErrorProjection.ts](../../../packages/agent/gui/shared/workspaceAgentTurnErrorProjection.ts)
   [workspaceAgentTurnErrorProjection.spec.ts](../../../packages/agent/gui/shared/workspaceAgentTurnErrorProjection.spec.ts)
@@ -1063,20 +1142,27 @@ catalog revision mismatch`, fully restart `dev:desktop`; renderer HMR cannot
 - Symptom:
   A submitted Codex turn stays working without assistant text, reasoning, or
   tool activity. Stop may return quickly, but the next prompt on the same
-  conversation can stall in the same way.
+  conversation can stall in the same way. This also occurs when a conversation
+  is left offline and its first later submit loses the app-server connection.
 - Quick checks:
   Correlate `agent.submit.trace` records by `client_submit_id`, `turn_id`, and
   `agent_session_id`. A `turn.start.requested` without
   `turn.start.succeeded` means the immediate app-server acknowledgement did
   not arrive. After the bounded failure, confirm
   `agent_session.app_server.turn_start.client_invalidated` appears and the next
-  submit starts a new local process with `thread/resume`.
+  submit starts a new local process with `thread/resume`. An immediate
+  `turn.start.failed` with `error=EOF` is an outcome-unknown transport loss and
+  must still project one visible failed assistant message.
 - Root cause:
   Codex `turn/start` should acknowledge immediately and stream the actual work
   through notifications, but the adapter previously called it with no client
   deadline. A graceful Stop could acknowledge `turn/interrupt` without proving
   that the unacknowledged `turn/start` connection was healthy, so the adapter
-  retained and reused the same bad process.
+  retained and reused the same bad process. The live-session probe also treated
+  a retained client pointer as live after its `Done` channel closed. Finally, a
+  pre-acceptance `turn/start` failure was buffered as provider output even
+  though it had no provider Turn identity, hiding the canonical terminal from
+  the controller and GUI.
 - Fix:
   Bound only the `turn/start` acknowledgement to 30 seconds; do not bound the
   subsequent running turn. Treat deadline, cancellation before acknowledgement,
@@ -1084,12 +1170,17 @@ catalog revision mismatch`, fully restart `dev:desktop`; renderer HMR cannot
   from the live-session registry, and close it. Do not automatically replay the
   prompt because delivery is unknown. The next explicit submit uses the
   existing session recovery path to start a process and resume the provider
-  thread. Bound `turn/steer` acknowledgement separately to 10 seconds.
+  thread. A live-session probe must also reject terminated clients. Publish the
+  exact canonical `turn.failed` directly when `turn/start` fails before provider
+  acceptance, while dropping unaccepted provider-dependent output; this reuses
+  the normal visible-error projection without inventing provider identity.
+  Bound `turn/steer` acknowledgement separately to 10 seconds.
 - Validation:
   Run
-  `go test ./packages/agent/daemon/runtime -run 'TestCodexAppServerAdapter(Turn(StartAckTimeoutInvalidatesClient|StartCancelBeforeAckInvalidatesClient|StartAckTimeoutDoesNotBoundRunningTurn|SteerTimesOut)|CanResumeAfterTurnStartAckTimeout)$'`.
-  Cover timeout, pre-ack cancellation, a long post-ack turn, bounded guidance,
-  and successful `thread/resume` followed by a completed turn.
+  `go test ./packages/agent/daemon/runtime -run 'Test(CodexAppServerAdapter(Turn(StartAckTimeoutInvalidatesClient|StartEOFProjectsVisibleFailureBeforeAcceptance|StartCancelBeforeAckInvalidatesClient|StartAckTimeoutDoesNotBoundRunningTurn|SteerTimesOut)|CanResumeAfterTurnStartAckTimeout|HasLiveSessionRejectsClosedClient)|StandardACPAdapterHasLiveSessionRejectsClosedClient)$'`.
+  Cover timeout, EOF before acceptance, terminated-client liveness, pre-ack
+  cancellation, a long post-ack turn, bounded guidance, and successful
+  `thread/resume` followed by a completed turn.
 - References:
   [codex_appserver_turn.go](../../../packages/agent/daemon/runtime/codex_appserver_turn.go)
   [codex_appserver_registry.go](../../../packages/agent/daemon/runtime/codex_appserver_registry.go)
@@ -1397,21 +1488,33 @@ inline data URL instead`. Claude or standard ACP may instead receive no
   Message insertion is one product intent with two transport realizations.
   Treating every provider as native guidance sends a same-turn request that the
   standard ACP protocol does not define. Treating every provider as
-  cancel-then-send discards
-  Codex `turn/steer` and Claude SDK `guide`, and can couple prompt delivery to a
-  server-owned queue that does not exist.
+  cancel-then-send discards the same-Turn semantics offered by Codex and the
+  Claude SDK. Native guidance semantics are provider-specific: Codex steering
+  deliberately leaves the current response running, while the Claude SDK must
+  interrupt its active Query before it can reliably enqueue guidance.
 - Fix:
   Keep the prompt queue in the workspace `AgentSessionEngine`. Resolve send-now
   from typed runtime capabilities: use native guidance when
-  `activeTurnGuidance` is true; otherwise use exact-turn cancel when `interrupt`
-  is true, retain the prompt in the frontend queue, and send it normally only
-  after validated cancellation or authoritative turn settlement. Route both the
-  composer shortcut and queued-item action through the same atomic engine
-  transition.
+  `activeTurnGuidance` is true, with no canonical Turn cancel. The provider
+  adapter must preserve its native semantics on the same canonical Turn.
+  Claude uses its SDK interrupt before enqueueing the prompt and closes the old
+  response projections. Codex/Tutti Agent sends `turn/steer` with the exact
+  active provider Turn ID and does not interrupt or start a replacement Turn.
+  If no provider response remains but the canonical Turn is still active for
+  child work, Codex may start a provider continuation through `turn/start`.
+  Otherwise use
+  exact-turn cancel when `interrupt` is true, retain the prompt in the frontend
+  queue, and send it normally only after validated cancellation or authoritative
+  turn settlement. Route both the composer shortcut and queued-item action
+  through the same atomic engine transition.
 - Validation:
   Cover both entry points and both capability combinations. Native guidance must
   emit a guidance send with no cancel. ACP fallback must emit cancel with no
-  prompt send, then emit one normal prompt send after cancellation settles.
+  prompt send, then emit one normal prompt send after cancellation settles. At
+  the Claude provider boundary, assert that the old response terminal and all
+  old thinking-stream terminals precede guided output. For Codex, assert that
+  active-response guidance sends exactly one `turn/steer` with the expected
+  provider Turn ID and sends neither `turn/interrupt` nor another `turn/start`.
 - References:
   [promptQueue.reducer.ts](../../../packages/agent/activity-core/src/engine/promptQueue.reducer.ts)
   [sessionLifecycle.reducer.ts](../../../packages/agent/activity-core/src/engine/sessionLifecycle.reducer.ts)
@@ -2555,10 +2658,15 @@ inline data URL instead`. Claude or standard ACP may instead receive no
   Provider display diffs can contain syntax that a viewer tolerates but
   `git apply` rejects. Treating that display payload as executable patch data
   produces corrupt hunks. A separate failure occurs when the patch is valid
-  but later edits changed its context.
+  but later edits changed its context. On Windows, leaving an absolute drive
+  path in either a synthesized patch or an existing unified-diff header also
+  violates Git's cwd-relative patch contract and can report that an untracked
+  created file does not exist in the index.
 - Fix:
   Canonicalize provider file-change metadata at the runtime adapter boundary
   before persistence, and canonicalize historical no-newline markers on read.
+  AgentGUI must make synthesized paths and existing unified-diff headers
+  relative to the patch cwd, using case-insensitive path identity for Windows.
   The daemon must preflight with `git apply --check` using the same execution
   options, return `invalid-patch` for syntax failures and
   `patch-does-not-apply` for state mismatch, and avoid mutating the worktree on
@@ -2566,7 +2674,8 @@ inline data URL instead`. Claude or standard ACP may instead receive no
 - Validation:
   Cover leading-whitespace no-newline markers, historical activity projection,
   corrupt-patch preflight without mutation, worktree divergence, reverse
-  application, and the existing untracked-created-file behavior.
+  application, cwd-relative Windows drive paths for synthesized and complete
+  diffs, and the existing untracked-created-file behavior.
 - References:
   [claude_sdk_activity.go](../../../packages/agent/daemon/runtime/claude_sdk_activity.go)
   [agentPatchMetadata.ts](../../../packages/agent/gui/shared/agentConversation/rules/agentPatchMetadata.ts)
@@ -2923,13 +3032,22 @@ inline data URL instead`. Claude or standard ACP may instead receive no
   settings flag application with turn dispatch and retire the idle generation
   before a live settings mutation. The workspace Engine and composer gate both
   block send while the settings operation is unsettled. For cancel, carry the
-  exact Turn ID to the sidecar and wait for durable provider acceptance before
-  publishing cancel settlement; a pre-acceptance cancellation reports applied
-  without a provider Turn rather than poisoning the delivery claim as unknown.
+  exact Turn ID to the sidecar and dispatch the native cancel before consulting
+  acceptance state. The sidecar returns `pre_accept`, `provider_active`,
+  `absent`, or `mismatch`: locally remove only an undispatched queue item; after
+  dispatch, publish the canceled terminal only after the bounded Query shutdown
+  protocol either receives the SDK interrupt acknowledgment or closes the owned
+  transport and drains its consumer. Wait for the exact Turn's durable
+  provider-acceptance outcome only for `provider_active`. Treat only `absent` as
+  authoritative not-found; mismatch, unknown disposition, drain failure, and
+  acceptance failure stay fail-closed.
 - Validation:
   Cover follow-up resume, settings timeout/retry gating, exact targeted cancel,
-  cancel before acceptance, and cancel followed by a new send. Native guidance
-  must interrupt active tool work before enqueueing the steering prompt.
+  same-tick Goal cancellation, cancel before dispatch, interrupt acknowledgment,
+  missing acknowledgment, interrupt failure, consumer-drain timeout, durable
+  acceptance success and failure, mismatched/absent targets, and cancel followed
+  by a new send. Native guidance must interrupt active tool work before enqueueing
+  the steering prompt.
 - References:
   [sessionRuntime.ts](../../../packages/agent/claude-sdk-sidecar/src/sessionRuntime.ts)
   [claude_sdk_execution.go](../../../packages/agent/daemon/runtime/claude_sdk_execution.go)
@@ -3705,17 +3823,31 @@ inline data URL instead`. Claude or standard ACP may instead receive no
   Emit a running compact notice from the Claude adapter when `/compact` is
   selected, allow compact system notices to precede provider-turn acceptance,
   accept `local_command` / `local_command_output` and camelCase boundary
-  metadata in the sidecar, and map known failure copy to `compact_failed`
-  before a successful result can settle the banner as completed. When the
+  metadata in the sidecar. For the pinned Claude Code 2.1.220 contract, treat
+  `status.compact_result=failed` plus `compact_error` as the canonical compact
+  failure signal; assistant and local-command text are compatibility fallbacks
+  for streams that omit that status. Map the normalized
+  `conversation could not be reduced below the context limit` failure to
+  `compact_failed` before the successful SDK result settles the Turn. When the
   acceptance barrier later flushes held events, strip their
-  `ProviderInputUnit` so they publish transcript/state only.
+  `ProviderInputUnit` so they publish transcript/state only. If the compact
+  failure specifically reports that the hard context limit was exceeded,
+  project a typed `context_handoff_required` error. Do not replace the provider
+  session or automatically dispatch the next message. Tell the user to create
+  a new conversation and add an `agent-session` mention for this conversation,
+  making the handoff explicit while retaining Claude Code's normalized failure
+  detail. For restored Claude sessions, use `rawMaxTokens` as the fallback hard
+  window and log the SDK maximum, raw maximum, native
+  auto-compact threshold, and effective auto-compact flag separately.
 - Validation:
   Add daemon coverage that `/compact` banners stay held until durable
   acceptance, then flush without provider-input units; add sidecar coverage for
   silent `/compact` (result only), local_command failure, and camelCase
-  `compactMetadata`. Re-run L04-CLAUDE recording and confirm the progress
-  divider appears, then becomes `Context compacted.` (or the interrupted
-  divider with the failure detail), and that record+replay both pass.
+  `compactMetadata`. Also cover exact overflow classification, raw hard-window
+  diagnostics, the typed handoff error projection, and localized Desktop and
+  Native guidance. Re-run L04-CLAUDE recording and confirm the progress divider
+  appears, then becomes `Context compacted.` (or the interrupted divider with
+  the failure detail), and that record+replay both pass.
 - References:
   [compaction.ts](../../../packages/agent/claude-sdk-sidecar/src/compaction.ts)
   [claude_sdk_execution.go](../../../packages/agent/daemon/runtime/claude_sdk_execution.go)
@@ -4031,6 +4163,36 @@ convergence deadline`.
 - References:
   [goal_operation_worker.go](../../../packages/agent/host/goal_operation_worker.go)
   [goal_scenarios.go](../../../packages/agent/host/conformance/goal_scenarios.go)
+
+### Replaced Goal banner keeps the previous objective
+
+- Symptom:
+  A second `/goal <objective>` is accepted and runs, but AgentGUI continues to
+  show the first objective. The Goal state table contains the second objective
+  at a newer revision while `workspace_agent_sessions.session_metadata_json`
+  or a runtime Session snapshot still contains the first.
+- Quick checks:
+  Compare `workspace_agent_session_goals.desired_json`, `revision`, and
+  `updated_at_unix_ms` with the Session metadata Goal. Confirm that the second
+  Goal operation completed before attributing the mismatch to React rendering.
+- Root cause:
+  Durable Goal state and provider Session metadata update on different
+  schedules. Session reads previously exposed the provider metadata Goal and
+  attached only `goalSyncState`, so a later Session reload could overwrite the
+  correct Goal Control response with an older objective.
+- Fix:
+  Project Host-owned durable Goal state and its update timestamp onto every
+  single and batch Session read. Use `desired` while convergence is unresolved,
+  use `observed` after synchronization, and honor the durable tombstone.
+- Validation:
+  Read a Session whose metadata contains objective A beside durable Goal
+  revision N+1 containing objective B. Single and batch projections must return
+  B with a Session timestamp at least as new as the Goal state. A durable
+  tombstone must return no Session Goal; a synchronized terminal observation
+  must remain terminal instead of reverting to active `desired` state.
+- References:
+  [service_turns.go](../../../services/tuttid/service/agent/service_turns.go)
+  [goal_state.go](../../../packages/agent/store-sqlite/goal_state.go)
 
 ### Cleared Goal reappears as a newer provider-authored Goal
 
@@ -4751,3 +4913,38 @@ agent target`, although the current model picker does not offer that model.
   [standard_acp_session.go](../../../packages/agent/daemon/runtime/standard_acp_session.go)
   [standard_acp_resource_ownership.go](../../../packages/agent/daemon/runtime/standard_acp_resource_ownership.go)
   [AgentGUIEngineSettlementController.ts](../../../packages/agent/gui/agent-gui/agentGuiNode/controller/AgentGUIEngineSettlementController.ts)
+
+### Codex rejects `turn/start` with `AbsolutePathBuf deserialized without a base path`
+
+- Symptom:
+  Codex initializes and `thread/start` succeeds, but the first `turn/start`
+  fails with JSON-RPC `-32600` and `AbsolutePathBuf deserialized without a base
+path`. On a managed POSIX runtime, another form accepts the Turn but every
+  tool command, including `pwd`, fails with
+  `Failed to create unified exec process: No such file or directory (os error 2)`
+  even though provider-process CWD preflight succeeded.
+- Root cause:
+  Tutti sent the POSIX-only `/sandbox-tmp` writable root as though it were a
+  portable absolute host path. Codex's Windows `AbsolutePathBuf` parser rejects
+  it even when the request also carries `cwd`; the per-turn working-directory
+  override does not make a POSIX-rooted string into a Windows absolute path.
+  Tutti also once omitted the Session `cwd` from the Turn override. Supplying
+  that field from the raw persisted Session value introduced the inverse POSIX
+  failure: a stored `/workspace/<room-id>` mount path escaped the managed
+  Agent's logical `/workspace` view even though `thread/start` and the provider
+  process had already projected it. Request-shape mocks accepted these invalid
+  combinations without exercising the real process or Rust parser boundary.
+- Fix:
+  Send the non-empty provider-visible Session `cwd` on every Codex
+  `turn/start`. Apply the same room-mount-to-logical-workspace projection used
+  by `thread/start` and provider launch while preserving native Windows paths.
+  Omit the POSIX `/sandbox-tmp` projection on Windows, and keep it on POSIX
+  hosts where it represents the logical `/tmp` write target.
+- Validation:
+  Cover a stored room mount root and child path, an already-logical workspace
+  path, and a native Windows path in the emitted `turn/start.cwd`. Cover Windows
+  and POSIX sandbox policy construction, and run the Windows contract test
+  against a real pinned `codex.exe app-server`. The contract test submits the
+  historical payload both without and with `cwd` as negative controls, then
+  verifies that the production payload crosses the same parser without an
+  `AbsolutePathBuf` error.

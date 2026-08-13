@@ -255,6 +255,7 @@ func TestFinishCompletedFailsDanglingToolCall(t *testing.T) {
 	}
 	if callEvent == nil {
 		t.Fatalf("FinishCompleted did not emit any event for the dangling call %q: %+v", startedEvent.EventID, completed)
+		return
 	}
 	if callEvent.Type != EventCallFailed {
 		t.Fatalf("dangling call event type = %q, want %q (a call with no item/completed must never be reported as a successful completion)", callEvent.Type, EventCallFailed)

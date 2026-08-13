@@ -3,6 +3,7 @@ package liveprotocol
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"testing"
 )
 
@@ -144,7 +145,7 @@ func TestRecipientProjectorProjectsCompleteInteractionSnapshot(t *testing.T) {
 	t.Parallel()
 	event, err := NewInteractionSnapshotEvent(InteractionSnapshotData{
 		WorkspaceID: "owner-workspace", AgentSessionID: "owner-session",
-		EventType: EventTypeInteractionSnapshot, OccurredAtUnixMS: 10,
+		EventType: EventTypeInteractionSnapshot, OccurredAtUnixMS: 10, RootTurnID: "owner-turn",
 		Interactions: []EventInteraction{{
 			RequestID: "request-1", AgentSessionID: "owner-session", TurnID: "owner-turn",
 			Kind: "approval", Status: "pending", Input: json.RawMessage(`null`),
@@ -171,7 +172,7 @@ func TestRecipientProjectorProjectsCompleteInteractionSnapshot(t *testing.T) {
 	if err := json.Unmarshal(projected.Data, &data); err != nil {
 		t.Fatal(err)
 	}
-	if data.AgentSessionID != "caller-session" || len(data.Interactions) != 1 ||
+	if data.AgentSessionID != "caller-session" || data.RootTurnID != "caller-turn" || len(data.Interactions) != 1 ||
 		data.Interactions[0].AgentSessionID != "caller-session" ||
 		data.Interactions[0].TurnID != "caller-turn" {
 		t.Fatalf("projected interaction snapshot = %#v", data)
@@ -195,7 +196,7 @@ func TestRecipientProjectorProjectsContinuationInteractionUpdateAndSnapshot(t *t
 	}
 	snapshot, err := NewInteractionSnapshotEvent(InteractionSnapshotData{
 		WorkspaceID: "owner-workspace", AgentSessionID: "owner-session",
-		EventType: EventTypeInteractionSnapshot, OccurredAtUnixMS: 10,
+		EventType: EventTypeInteractionSnapshot, OccurredAtUnixMS: 10, RootTurnID: "parent-turn",
 		Interactions: []EventInteraction{{
 			RequestID: "child-request", AgentSessionID: "owner-session", TurnID: "child-turn",
 			Kind: "approval", Status: "pending", Input: json.RawMessage(`null`),
@@ -234,9 +235,32 @@ func TestRecipientProjectorProjectsContinuationInteractionUpdateAndSnapshot(t *t
 	if err := json.Unmarshal(projectedSnapshot.Data, &snapshotData); err != nil {
 		t.Fatal(err)
 	}
-	if len(snapshotData.Interactions) != 1 || snapshotData.Interactions[0].TurnID != "caller-turn" ||
+	if snapshotData.RootTurnID != "caller-turn" || len(snapshotData.Interactions) != 1 ||
+		snapshotData.Interactions[0].TurnID != "caller-turn" ||
 		snapshotData.Interactions[0].RequestID != "child-request" {
 		t.Fatalf("projected continuation interaction snapshot = %#v", snapshotData.Interactions)
+	}
+}
+
+func TestRecipientProjectorRejectsUnauthorizedInteractionSnapshotRoot(t *testing.T) {
+	t.Parallel()
+	snapshot, err := NewInteractionSnapshotEvent(InteractionSnapshotData{
+		WorkspaceID: "owner-workspace", AgentSessionID: "owner-session",
+		EventType: EventTypeInteractionSnapshot, OccurredAtUnixMS: 10, RootTurnID: "stale-turn",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	projector, err := NewRecipientProjector(ProjectionContext{
+		OwnerWorkspaceID: "owner-workspace", OwnerAgentSessionID: "owner-session",
+		CanonicalTurnIDs:     []string{"goal-turn-1", "goal-turn-2"},
+		RecipientWorkspaceID: "caller-workspace", RecipientAgentSessionID: "caller-session",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := projector.Project(snapshot); !errors.Is(err, ErrInvalidLiveEvent) {
+		t.Fatalf("unauthorized root error = %v, want ErrInvalidLiveEvent", err)
 	}
 }
 
@@ -310,5 +334,38 @@ func TestRecipientProjectorProjectsDurablyAuthorizedContinuationTurns(t *testing
 	}
 	if _, err := projector.Project(unknownEvent); err == nil {
 		t.Fatal("unproven turn was projected")
+	}
+}
+
+func TestRecipientProjectorPreservesHostProvenTurnlessGoalTurn(t *testing.T) {
+	t.Parallel()
+	event, err := NewMessageDeltaEvent(MessageDeltaData{
+		WorkspaceID: "owner-workspace", AgentSessionID: "owner-session",
+		MessageID: "message-1", TurnID: "goal-turn-2", Role: "assistant", Kind: "text",
+		OccurredAtUnixMS: 20,
+		Content:          &MessageContentOperation{Operation: "append_text", Text: "working"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	projector, err := NewRecipientProjector(ProjectionContext{
+		OwnerWorkspaceID: "owner-workspace", OwnerAgentSessionID: "owner-session",
+		CanonicalTurnIDs:     []string{"goal-turn-1", "goal-turn-2"},
+		RecipientWorkspaceID: "caller-workspace", RecipientAgentSessionID: "caller-session",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	projected, err := projector.Project(event)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var data MessageDeltaData
+	if err := json.Unmarshal(projected.Data, &data); err != nil {
+		t.Fatal(err)
+	}
+	if data.WorkspaceID != "caller-workspace" || data.AgentSessionID != "caller-session" ||
+		data.TurnID != "goal-turn-2" {
+		t.Fatalf("projected turnless Goal delta = %#v", data)
 	}
 }

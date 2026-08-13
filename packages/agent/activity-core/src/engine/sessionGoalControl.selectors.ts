@@ -193,6 +193,7 @@ function projectSessionGoalControlPresentation(
     };
   }
   if (
+    !operation &&
     activation?.mode === "new" &&
     activation.initialGoalControl &&
     isPendingActivationViable(activation)
@@ -214,7 +215,7 @@ function projectSessionGoalControlPresentation(
         agentSessionId: id || null,
         goal: canonicalGoal,
         optimistic: false,
-        status: operation?.status ?? "idle"
+        status: "idle"
       };
     }
     return {

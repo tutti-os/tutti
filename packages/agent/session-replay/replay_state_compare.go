@@ -19,7 +19,14 @@ func normalizeReplayStateForComparison(state TuttiReplayState) TuttiReplayState 
 	var value map[string]any
 	_ = json.Unmarshal(raw, &value)
 
+	canonicalizeTerminalCommandOutputAliases(value)
 	canonicalizeGoalControlAuditIdentities(value)
+	// Prompt image locators remint across local record → shared (self-shared)
+	// object-upload replay: attachmentId may be absent on the URL path while
+	// recorded expected-state still carries the Host attachment identity.
+	// Compare mimeType/name/type only; strip transport locators before alpha
+	// registration so a present-vs-missing attachmentId cannot conflict.
+	stripVolatilePromptImageLocators(value)
 	replacements := map[string]string{}
 	registerReplayIDs(replacements, value)
 	replaceReplayIDs(value, replacements)
@@ -30,6 +37,32 @@ func normalizeReplayStateForComparison(state TuttiReplayState) TuttiReplayState 
 	var result TuttiReplayState
 	_ = json.Unmarshal(normalized, &result)
 	return result
+}
+
+// canonicalizeTerminalCommandOutputAliases keeps pre-compaction cassettes
+// comparable with the current alias and aggregate output storage shape. It
+// changes comparison data only; historical restore still receives the
+// cassette's original payload.
+func canonicalizeTerminalCommandOutputAliases(value map[string]any) {
+	agent, _ := value["agent"].(map[string]any)
+	sessions, _ := agent["sessions"].([]any)
+	for _, sessionItem := range sessions {
+		session, _ := sessionItem.(map[string]any)
+		messages, _ := session["messages"].([]any)
+		for _, messageItem := range messages {
+			message, _ := messageItem.(map[string]any)
+			if message == nil || message["kind"] != "tool_call" {
+				continue
+			}
+			status, _ := message["status"].(string)
+			payload, _ := message["payload"].(map[string]any)
+			canonical.CompactTerminalCommandOutputAliases(status, payload)
+			canonical.FitToolCallPayloadOutputBudget(
+				payload,
+				canonical.ToolCallPayloadMaxBytes,
+			)
+		}
+	}
 }
 
 // canonicalizeGoalControlAuditIdentities keeps the identity graph of goal
@@ -125,6 +158,47 @@ func setGoalControlIdentity(payload map[string]any, key, value string) {
 	current, ok := payload[key].(string)
 	if ok && strings.TrimSpace(current) != "" {
 		payload[key] = value
+	}
+}
+
+// stripVolatilePromptImageLocators drops transport / Host-local image identity
+// from message content before final compare. Local record stores attachmentId;
+// shared object-upload replay often keeps only url/assetId (and may omit
+// attachmentId entirely). mimeType + name remain the comparable contract.
+func stripVolatilePromptImageLocators(value map[string]any) {
+	agent, _ := value["agent"].(map[string]any)
+	sessions, _ := agent["sessions"].([]any)
+	for _, item := range sessions {
+		session, _ := item.(map[string]any)
+		messages, _ := session["messages"].([]any)
+		for _, messageItem := range messages {
+			message, _ := messageItem.(map[string]any)
+			payload, _ := message["payload"].(map[string]any)
+			if payload == nil {
+				continue
+			}
+			content, ok := payload["content"].([]any)
+			if !ok {
+				continue
+			}
+			for _, contentItem := range content {
+				block, _ := contentItem.(map[string]any)
+				if block == nil {
+					continue
+				}
+				blockType, _ := block["type"].(string)
+				if blockType != "image" && blockType != "file" {
+					continue
+				}
+				delete(block, "attachmentId")
+				delete(block, "path")
+				delete(block, "url")
+				delete(block, "uri")
+				delete(block, "assetId")
+				delete(block, "uploadStatus")
+				delete(block, "data")
+			}
+		}
 	}
 }
 

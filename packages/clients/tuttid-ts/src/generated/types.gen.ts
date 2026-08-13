@@ -413,7 +413,11 @@ export type WorkspaceDeletedAgentSession = {
    */
   title: string;
   /**
-   * Persisted original project path; null means the conversations section.
+   * Immutable persisted rail section identity used for classification.
+   */
+  railSectionKey: string;
+  /**
+   * Persisted project path retained as presentation metadata. Classification is determined only by railSectionKey.
    */
   projectPath: string | null;
   /**
@@ -432,7 +436,14 @@ export type WorkspaceDeletedAgentSession = {
 };
 
 export type WorkspaceDeletedAgentSessionProjectOption = {
-  projectPath: string;
+  /**
+   * Exact persisted rail section identity represented by this option.
+   */
+  railSectionKey: string;
+  /**
+   * Persisted project path retained as presentation metadata; it is not the option identity.
+   */
+  projectPath: string | null;
   projectLabel: string;
   /**
    * Whether the original project is still registered in the current project catalog.
@@ -2030,7 +2041,11 @@ export type AgentProviderAvailabilityStatus =
   | "unsupported"
   | "unknown";
 
-export type AgentProviderAuthStatus = "authenticated" | "required" | "unknown";
+export type AgentProviderAuthStatus =
+  | "authenticated"
+  | "configured"
+  | "required"
+  | "unknown";
 
 export type AgentProviderActionKind =
   | "daemon_action"
@@ -2555,6 +2570,10 @@ export type WorkspaceAgentSession = {
    * Protocol v2. Explicit field extracted from runtimeContext.
    */
   goal: WorkspaceAgentSessionGoal | null;
+  /**
+   * Narrow Host-owned evidence for the durable Goal operation. Null means no Goal state exists for this Session; clients must not infer pending execution from the visible Goal alone.
+   */
+  goalSyncState: WorkspaceAgentSessionGoalSyncState | null;
   /**
    * Independent, session-scoped Tutti mode activation projection. Null until the first activation revision exists; capability references are audit records and never determine this state.
    */
@@ -3162,6 +3181,22 @@ export type WorkspaceAgentSessionGoalControlResponse = {
   state?: WorkspaceAgentSessionGoalState | null;
 };
 
+export type WorkspaceAgentSessionGoalSyncState = {
+  revision: number;
+  syncStatus:
+    | "pending"
+    | "applying"
+    | "synced"
+    | "diverged"
+    | "unknown"
+    | "failed";
+  pendingOperationId: string | null;
+  /**
+   * Host-owned proof that an accepted initial Goal is expected to begin autonomous execution and has not produced its first exact Goal Turn yet.
+   */
+  executionPending: boolean;
+};
+
 export type WorkspaceAgentSessionGoalState = {
   desired?: WorkspaceAgentSessionGoal | null;
   observed?: WorkspaceAgentSessionGoal | null;
@@ -3508,6 +3543,10 @@ export type WorkspaceGitPatchSupportResponse = {
 export type WorkspaceAgentSessionIsolationMode = "worktree";
 
 export type WorkspaceAgentSessionIsolation = {
+  /**
+   * Independent managed worktree resource identity. Legacy sessions may omit it.
+   */
+  worktreeId?: string;
   mode: WorkspaceAgentSessionIsolationMode;
   worktreePath: string;
   branch: string;
@@ -3524,6 +3563,24 @@ export type WorkspaceAgentSessionWorktreeSupportResponse = {
   supported: boolean;
   root?: string;
   errorCode?: WorkspaceAgentSessionWorktreeSupportErrorCode;
+};
+
+export type WorkspaceManagedWorktree = {
+  worktreeId: string;
+  workspaceId: string;
+  repoRoot: string;
+  worktreePath: string;
+  branch: string;
+  baseCommit: string;
+  relativeCwd?: string;
+};
+
+export type WorkspaceManagedWorktreeListResponse = {
+  worktrees: Array<WorkspaceManagedWorktree>;
+};
+
+export type DeleteWorkspaceManagedWorktreeResponse = {
+  deleted: boolean;
 };
 
 export type WorkspaceGitPatchExecOutput = {
@@ -4780,6 +4837,12 @@ export type ConnectorMarketManifest = {
   permissions: Array<string>;
   implementation: ConnectorMarketImplementation;
   authorizationKind: string;
+  /**
+   * Opaque Connector-owned authorization interaction configuration. Hosts transport this value without interpreting its UI semantics; renderers must validate it against the versioned protocol.
+   */
+  authorizationInteraction?: {
+    [key: string]: unknown;
+  };
   compatibility?: ConnectorMarketCompatibilityRequirements;
 };
 
@@ -10737,11 +10800,19 @@ export type ListWorkspaceDeletedAgentSessionsData = {
      */
     searchQuery?: string;
     /**
-     * Select sessions without an original project. Mutually exclusive with projectPath; omit both project filters to list every location.
+     * Select sessions by their exact persisted rail section key. Mutually exclusive with the deprecated project filters; omit every section filter to list all locations.
+     */
+    railSectionKey?: string;
+    /**
+     * Deprecated explicit conversations-section selector. It is resolved to the fixed conversations rail section key and is mutually exclusive with railSectionKey and projectPath.
+     *
+     * @deprecated
      */
     projectScope?: "unscoped";
     /**
-     * Select sessions by their persisted original project path. Mutually exclusive with projectScope.
+     * Deprecated explicit project selector. The path is resolved to its canonical rail section key before querying and is mutually exclusive with railSectionKey and projectScope.
+     *
+     * @deprecated
      */
     projectPath?: string;
     /**
@@ -12361,6 +12432,105 @@ export type ResolveWorkspaceAgentSessionWorktreeSupportResponses = {
 
 export type ResolveWorkspaceAgentSessionWorktreeSupportResponse =
   ResolveWorkspaceAgentSessionWorktreeSupportResponses[keyof ResolveWorkspaceAgentSessionWorktreeSupportResponses];
+
+export type ListWorkspaceManagedWorktreesData = {
+  body?: never;
+  path: {
+    workspaceID: string;
+  };
+  query?: never;
+  url: "/v1/workspaces/{workspaceID}/managed-worktrees";
+};
+
+export type ListWorkspaceManagedWorktreesErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Workspace operation failed in an upstream adapter or command
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type ListWorkspaceManagedWorktreesError =
+  ListWorkspaceManagedWorktreesErrors[keyof ListWorkspaceManagedWorktreesErrors];
+
+export type ListWorkspaceManagedWorktreesResponses = {
+  /**
+   * Managed worktrees
+   */
+  200: WorkspaceManagedWorktreeListResponse;
+};
+
+export type ListWorkspaceManagedWorktreesResponse =
+  ListWorkspaceManagedWorktreesResponses[keyof ListWorkspaceManagedWorktreesResponses];
+
+export type DeleteWorkspaceManagedWorktreeData = {
+  body?: never;
+  path: {
+    workspaceID: string;
+    worktreeID: string;
+  };
+  query?: never;
+  url: "/v1/workspaces/{workspaceID}/managed-worktrees/{worktreeID}";
+};
+
+export type DeleteWorkspaceManagedWorktreeErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * Managed worktree was not found in this workspace
+   */
+  404: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Managed worktree is dirty, ahead of its base, or changed during deletion
+   */
+  409: ApiErrorResponse;
+  /**
+   * Workspace operation failed in an upstream adapter or command
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type DeleteWorkspaceManagedWorktreeError =
+  DeleteWorkspaceManagedWorktreeErrors[keyof DeleteWorkspaceManagedWorktreeErrors];
+
+export type DeleteWorkspaceManagedWorktreeResponses = {
+  /**
+   * Managed worktree deletion result
+   */
+  200: DeleteWorkspaceManagedWorktreeResponse;
+};
+
+export type DeleteWorkspaceManagedWorktreeResponse2 =
+  DeleteWorkspaceManagedWorktreeResponses[keyof DeleteWorkspaceManagedWorktreeResponses];
 
 export type ApplyWorkspaceGitPatchData = {
   body: WorkspaceGitPatchRequest;

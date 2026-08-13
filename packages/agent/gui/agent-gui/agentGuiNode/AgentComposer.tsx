@@ -614,7 +614,9 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
     disabled: composerControlsHardDisabled || inputDisabled,
     labels: labels.quickPrompts,
     onBeforeOpen: closeQuickPromptCompetingDisclosure,
-    onInsertPrompt: insertQuickPrompt
+    onInsertPrompt: insertQuickPrompt,
+    onQuickPromptPanelOpened: () => engagement?.quickPromptPanelOpened?.(),
+    onQuickPromptUsed: (promptType) => engagement?.quickPromptUsed?.(promptType)
   });
   const restoreComposerCaretAfterProjectMenu = (event: Event): void => {
     event.preventDefault();

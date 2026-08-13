@@ -18,22 +18,30 @@ formal `latest` release path.
 
 Current implementation and evidence:
 
-| Area                     | Shared owner                                            | Windows boundary                                           | Status                                                                                          |
-| ------------------------ | ------------------------------------------------------- | ---------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
-| Desktop daemon lifecycle | Electron main process                                   | packages `tuttid.exe` and injects native resource paths    | Windows Alpha CI packages it                                                                    |
-| Workspace Apps           | daemon app lifecycle, health, state, and events         | `AppShellAdapter` invokes the packaged managed POSIX shell | Onboarding fat package is exercised in Windows Alpha CI                                         |
-| Terminal                 | terminal service and shared terminal contracts          | `TerminalProcessFactory` uses ConPTY                       | focused adapter and daemon WebSocket tests run in Windows daemon-adapter and Alpha CI           |
-| Agent processes          | provider-neutral agent/runtime services                 | build-tagged executable, command, and process handling     | focused Windows tests run in Agent adapter and Alpha CI                                         |
-| Browser                  | browser service contract                                | focused Windows executable/profile path behavior           | focused Windows tests exist; full browser E2E remains a promotion gate                          |
-| Computer use             | computer service contract                               | Cua Driver 0.18.0 doctor/MCP boundary and owned daemon     | focused Windows tests and opt-in MCP smoke exist; screenshot/input E2E remains a promotion gate |
-| Files                    | workspace file APIs and portable Go filesystem behavior | add a narrow adapter only where Windows semantics differ   | full Windows Files E2E remains a promotion gate                                                 |
-| Release                  | desktop release policy                                  | unsigned NSIS plus a separately gated Store AppX artifact  | Store build/submission automation exists; production certification is not yet validated         |
+| Area                     | Shared owner                                            | Windows boundary                                                              | Status                                                                                          |
+| ------------------------ | ------------------------------------------------------- | ----------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| Desktop daemon lifecycle | Electron main process                                   | packages `tuttid.exe` and injects native resource paths                       | Windows Alpha CI packages it                                                                    |
+| Workspace Apps           | daemon app lifecycle, health, state, and events         | `AppShellAdapter` invokes the packaged managed POSIX shell                    | Onboarding fat package is exercised in Windows Alpha CI                                         |
+| Terminal                 | terminal service and shared terminal contracts          | `TerminalProcessFactory` uses ConPTY                                          | focused adapter and daemon WebSocket tests run in Windows daemon-adapter and Alpha CI           |
+| Agent processes          | provider-neutral agent/runtime services                 | build-tagged executable, command, process handling, and user PATH publication | focused Windows tests run in Agent adapter and Alpha CI                                         |
+| Browser                  | browser service contract                                | focused Windows executable/profile path behavior                              | focused Windows tests exist; full browser E2E remains a promotion gate                          |
+| Computer use             | computer service contract                               | Cua Driver 0.18.0 doctor/MCP boundary and owned daemon                        | focused Windows tests and opt-in MCP smoke exist; screenshot/input E2E remains a promotion gate |
+| Files                    | workspace file APIs and portable Go filesystem behavior | add a narrow adapter only where Windows semantics differ                      | full Windows Files E2E remains a promotion gate                                                 |
+| Release                  | desktop release policy                                  | unsigned NSIS plus a separately gated Store AppX artifact                     | Store build/submission automation exists; production certification is not yet validated         |
 
 Passing `windows-latest` CI proves the build and automated paths above. It does
 not by itself prove the supported Windows 10 floor, installer UX, upgrade, or
 uninstall behavior on real machines.
 
 ## Architecture Rules
+
+Windows compatibility is a continuous repository requirement, not a feature
+that is considered only when a task explicitly mentions Windows. Every behavior
+change must assess its Windows impact. Changes involving paths, filesystems,
+temporary storage, executables, commands, shells, environments, processes,
+permissions, symlinks, sockets, packaging, or native dependencies are
+platform-sensitive by default and require Windows and POSIX reasoning and
+focused coverage.
 
 Platform-neutral services depend on capabilities, not operating-system
 implementations:
@@ -69,9 +77,42 @@ system:
 6. Derive paths from injected roots and standard platform APIs. Do not hardcode
    drive letters, user directories, installation locations, or executable
    search results.
+7. Treat every path crossing a process, RPC, JSON, environment, or provider
+   boundary as a host path unless the contract explicitly declares a virtual
+   namespace. Construct host paths with the platform path API, preserve the
+   required absolute-path base such as `cwd`, and never send a POSIX-rooted
+   literal such as `/tmp` or `/sandbox-tmp` to a Windows parser.
+8. Resolve executables through the owning adapter. Account for `.exe`, `.cmd`,
+   and `.ps1`, PATHEXT and PATH behavior, spaces and non-ASCII characters in
+   paths, and Windows command-line quoting. Do not assemble shell command
+   strings when an argv-based process API is available.
+9. Tests for a platform-sensitive contract must exercise the receiving parser,
+   process, or filesystem boundary on Windows where practical. A mock that only
+   verifies emitted strings or serialized maps is insufficient evidence of
+   Windows compatibility.
 
 This is dependency inversion at the native boundary, not a requirement to
 create parallel copies of each service.
+
+### Workspace project identity and imported rail placement
+
+Project paths have one display form and one comparison form; callers must not
+compare raw strings when the path crosses a desktop/daemon boundary. The shared
+user-project core normalizes slash direction and trailing separators, then
+folds case only for Windows-shaped drive or UNC paths. POSIX paths remain
+case-sensitive. The Go rail store keeps the existing canonical filesystem path
+for display and derives a Windows-stable section key for persistence. Project
+registration and deletion resolve an incoming path variant to the existing
+stored row before applying the table's ordinary unique-path write guard, so no
+second identity column is needed.
+
+External session import can persist a session before its selected project is
+registered. The import path therefore registers projects and repairs only
+sessions carrying the durable `imported` marker in the same workspace SQLite
+transaction. Startup migration `workspace_agent_activity_rail_v2` replays the
+same repair for historical rows; ordinary conversations are not moved. This
+uses existing APIs and tables—no new wire fields or database columns are
+required.
 
 ## Workspace App Data Flow
 
@@ -143,8 +184,38 @@ events remain shared daemon behavior.
 
 Agent installation and launch keep provider/product policy shared. Windows
 command resolution, executable verification, npm launcher layout, and process
-creation stay in the runtime command/process boundary. Do not make provider
-installers assemble shell command strings to handle Windows.
+creation stay in the runtime command/process boundary. Managed npm installs use
+the selected user executable directory (normally `%USERPROFILE%\.local\bin`)
+as npm's Windows prefix, because Windows npm writes `.cmd`/`.ps1` launchers
+directly under the prefix. After a successful managed install/update, the
+daemon's narrow Windows user-path adapter idempotently appends that directory
+to `HKCU\Environment\Path` and broadcasts `WM_SETTINGCHANGE`; it never
+writes the machine-wide path or changes Unix/macOS shell profiles. Do not make
+provider installers assemble shell command strings to handle Windows.
+Fresh installs use `%USERPROFILE%\.local\bin`. The resolver also scans the
+older `%USERPROFILE%\.local` npm prefix after the current directory, so an
+existing verified package is reused and updated in place instead of creating a
+second copy. After verification the daemon publishes the directory that owns
+the selected launcher. It does not migrate or delete the legacy package.
+
+Managed Agent Extensions and the provisioned Claude Code runtime publish into
+the same `%USERPROFILE%\.local\bin` contract. Their versioned executables stay
+under `%USERPROFILE%\.local\share\tutti\agent-runtimes`; a stable per-Agent
+`.cmd` launcher and a user-level `.cmd` launcher form two verified hops to the
+active executable. This avoids file-symlink privilege and keeps versioned
+runtime directories out of `PATH`. The daemon refuses to replace an existing
+entry unless it carries the Tutti launcher marker and points inside the
+expected managed runtime root. Successful install actions surface user-PATH
+write failures, while status-time adoption repairs PATH on a best-effort basis.
+Registry changes affect new processes only, so an already-open terminal must be
+restarted before it can resolve a newly published command.
+
+Extension session-home preparation keeps its source declaration portable. An
+explicit source environment variable wins; otherwise the Windows adapter maps a
+leading-dot top-level directory to the native user cache root
+(`%LOCALAPPDATA%`) before the shared resolver considers a migrated literal
+user-home-relative directory. Provider IDs and Windows path literals must not
+leak into extension or Agent lifecycle policy.
 
 System proxy resolution follows the same shared precedence on macOS and
 Windows: session/process environment, then the operating-system static proxy,
@@ -229,8 +300,11 @@ The Alpha workflow is intentionally separate from the formal desktop release:
   `.github/workflows/windows-daemon-adapters.yml` provide focused pull-request
   coverage and maintain reusable caches on matching `main` pushes; they do not
   produce desktop packages;
-- `.github/workflows/windows-desktop-alpha.yml` builds and tests Windows x64;
-- the output is an unsigned NSIS installer uploaded as a workflow artifact;
+- `.github/workflows/windows-desktop-alpha.yml` always tests Windows x64 and
+  builds the Desktop bundles for pull requests;
+- pull requests build, smoke-test, and upload an unsigned NSIS installer only
+  when Desktop packaging inputs change; manual runs always produce the
+  installer;
 - the workflow does not publish a GitHub Release or mutate stable/prerelease
   update metadata;
 - `.github/workflows/desktop-release.yml` currently stages only macOS assets.

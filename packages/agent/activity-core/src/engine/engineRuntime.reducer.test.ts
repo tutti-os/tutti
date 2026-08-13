@@ -839,6 +839,50 @@ test("an invalid send-now request cannot cancel an unrelated active turn", () =>
   );
 });
 
+test("queued send-next uses guidance without canceling the active turn", () => {
+  let state = createInitialAgentSessionEngineState();
+  state = rootEngineReducer(state, {
+    type: "session/snapshotReceived",
+    sessions: [
+      runningSession(
+        capabilities({ activeTurnGuidance: true, interrupt: true })
+      )
+    ]
+  }).state;
+  state = rootEngineReducer(state, {
+    type: "queue/enqueued",
+    agentSessionId: "session-1",
+    prompt: {
+      content: [{ type: "text", text: "next" }],
+      createdAtUnixMs: 1,
+      id: "prompt-next"
+    },
+    workspaceId: "workspace-1"
+  }).state;
+
+  const result = rootEngineReducer(state, {
+    type: "queue/sendNowRequested",
+    agentSessionId: "session-1",
+    awaitingTurnExpiresAtUnixMs: 30_000,
+    cancelCommandId: "cancel-next",
+    promptId: "prompt-next",
+    timeoutMs: 30_000
+  });
+  const send = result.commands.find(
+    (command) => command.type === "queue/sendPrompt"
+  );
+  assert.equal(send?.type, "queue/sendPrompt");
+  assert.equal(send?.type === "queue/sendPrompt" && send.guidance, true);
+  assert.equal(
+    send?.type === "queue/sendPrompt" ? send.targetTurnId : null,
+    "turn-1"
+  );
+  assert.equal(
+    result.commands.some((command) => command.type === "turn/cancel"),
+    false
+  );
+});
+
 test("queue shares canonical submit availability when the active turn entity is absent", () => {
   let state = createInitialAgentSessionEngineState();
   state = rootEngineReducer(state, {

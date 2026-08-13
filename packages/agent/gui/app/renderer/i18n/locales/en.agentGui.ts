@@ -572,9 +572,6 @@ export const enAgentGui = {
   promptImagesUnsupported:
     "This agent does not support image input with the current model.",
   ...enAgentGuiRuntimeNotices,
-  contextCompactionInProgress: "Compacting context",
-  contextCompactionCompleted: "Context compacted.",
-  contextCompactionInterrupted: "Context compaction interrupted.",
   tuttiModeCheckpointWakeTaskSettled: "A task finished — review needed",
   tuttiModeCheckpointWakeTaskFailed: "A task failed — review needed",
   tuttiModeCheckpointWakeTaskCanceled: "A task was canceled — review needed",
@@ -718,6 +715,12 @@ export const enAgentGui = {
   composerFileFolderUnsupported: "Folders cannot be attached here",
   composerFileTooLarge: "File is too large",
   composerFilePreparationFailed: "File preparation failed",
+  composerFileStillPreparing:
+    "This attachment is still being prepared. Open it after preparation finishes.",
+  composerFileOpenFailed:
+    "This attachment failed to prepare. Remove it and add the file again.",
+  composerFileOpenUnavailable:
+    "This attachment has no openable path yet. Remove it and add the file again.",
   mentionPalette: "Reference or Invoke",
   addReference: "Add reference",
   addContent: "Add files and more",

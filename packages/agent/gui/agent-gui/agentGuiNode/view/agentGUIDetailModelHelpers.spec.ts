@@ -242,7 +242,7 @@ describe("Home status presentation", () => {
     ).toBe(inlineNoticeChrome);
   });
 
-  it("keeps Stop visible but disables it while active work is disconnected", () => {
+  it("keeps Stop actionable while submission commands are blocked", () => {
     expect(
       resolveAgentGUIStopControl({
         hasPendingApproval: false,
@@ -253,10 +253,9 @@ describe("Home status presentation", () => {
         isCreatingConversation: false,
         isInterrupting: false,
         isSubmitting: false,
-        isUnavailable: false,
-        runtimeCommandsBlocked: true
+        isUnavailable: false
       })
-    ).toEqual({ disabled: true, visible: true });
+    ).toEqual({ disabled: false, visible: true });
   });
 });
 

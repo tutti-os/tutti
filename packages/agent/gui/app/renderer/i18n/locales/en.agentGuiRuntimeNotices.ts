@@ -48,6 +48,12 @@ export const enAgentGuiRuntimeNotices = {
   systemNoticePlanImplementationCompleted: "Plan implementation started",
   systemNoticeWarning: "Agent warning",
   systemNoticeDefault: "Agent notice",
+  contextCompactionInProgress: "Compacting context",
+  contextCompactionCompleted: "Context compacted.",
+  contextCompactionInterrupted: "Context compaction interrupted.",
+  contextHandoffRequired: "This conversation has reached its context limit",
+  contextHandoffRequiredDetail:
+    "This conversation can't continue. Start a new conversation and @mention this conversation to hand off its context.",
   sharedDeviceLabel: "shared device",
   agentSharingRevoked: "{{owner}} stopped sharing this agent",
   runtimeConnecting: "Connecting to {{device}}…",

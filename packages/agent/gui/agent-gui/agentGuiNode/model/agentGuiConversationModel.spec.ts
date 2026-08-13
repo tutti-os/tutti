@@ -19,141 +19,56 @@ import {
   buildAgentGUITimelineRows,
   mergeAgentGUITimelineRows,
   selectAgentGUIConversationId,
-  resolveAgentGUIConversationProject,
+  resolveAgentGUIConversationProjectBySectionKey,
   type AgentGUIConversationUserProject
 } from "./agentGuiConversationModel";
 
 describe("agentGuiConversationModel", () => {
-  it("resolves a project for an exact cwd match", () => {
+  it("resolves a project only from an exact rail section key", () => {
     expect(
-      resolveAgentGUIConversationProject("/workspace/app", [
+      resolveAgentGUIConversationProjectBySectionKey("project:/workspace/app", [
         userProject("app", "/workspace/app", "App")
       ])
     ).toEqual({
       id: "app",
       path: "/workspace/app",
       label: "App",
+      sectionKey: "project:/workspace/app",
       pinnedAtUnixMs: 0
     });
   });
 
-  it("resolves a project when cwd is inside a project directory", () => {
-    expect(
-      resolveAgentGUIConversationProject("/workspace/app/packages/web", [
-        userProject("app", "/workspace/app", "App")
-      ])
-    ).toEqual({
-      id: "app",
-      path: "/workspace/app",
-      label: "App",
-      pinnedAtUnixMs: 0
-    });
-  });
+  it("fails closed for conversations, missing, and unknown section keys", () => {
+    const projects = [userProject("app", "/workspace/app", "App")];
 
-  it("chooses the longest project path when multiple projects match cwd", () => {
     expect(
-      resolveAgentGUIConversationProject("/workspace/app/packages/web", [
-        userProject("workspace", "/workspace", "Workspace"),
-        userProject("app", "/workspace/app", "App"),
-        userProject("web", "/workspace/app/packages/web", "Web")
-      ])
-    ).toEqual({
-      id: "web",
-      path: "/workspace/app/packages/web",
-      label: "Web",
-      pinnedAtUnixMs: 0
-    });
-  });
-
-  it("returns null when cwd does not match any project path", () => {
-    expect(
-      resolveAgentGUIConversationProject("/workspace/app-archive", [
-        userProject("app", "/workspace/app", "App")
-      ])
-    ).toBeNull();
-  });
-
-  it("does not treat a root project path as a parent project", () => {
-    expect(
-      resolveAgentGUIConversationProject("/workspace/app", [
-        userProject("root", "/", "Root")
-      ])
+      resolveAgentGUIConversationProjectBySectionKey("conversations", projects)
     ).toBeNull();
     expect(
-      resolveAgentGUIConversationProject("/", [
-        userProject("root", "/", "Root")
-      ])
-    ).toEqual({
-      id: "root",
-      path: "/",
-      label: "Root",
-      pinnedAtUnixMs: 0
-    });
-  });
-
-  it("returns null for a no-project cwd before matching parent projects", () => {
-    const noProjectPath =
-      "/Users/local/Documents/tutti/session-44444444-4444-4444-8444-444444444444";
-
+      resolveAgentGUIConversationProjectBySectionKey(undefined, projects)
+    ).toBeNull();
     expect(
-      resolveAgentGUIConversationProject(
-        noProjectPath,
-        [userProject("home", "/Users/local", "Home")],
-        {
-          isNoProjectPath: ({ path }) => path === noProjectPath
-        }
+      resolveAgentGUIConversationProjectBySectionKey(
+        "project:/workspace/missing",
+        projects
       )
     ).toBeNull();
   });
 
-  it("keeps generated-looking cwd values grouped under real parent projects without host no-project context", () => {
-    expect(
-      resolveAgentGUIConversationProject(
-        "/repo/Documents/tutti/session-44444444-4444-4444-8444-444444444444",
-        [userProject("repo", "/repo", "Repo")]
-      )
-    ).toEqual({
-      id: "repo",
-      path: "/repo",
-      label: "Repo",
-      pinnedAtUnixMs: 0
-    });
-  });
-
-  it("keeps an explicit project whose path looks like a generated no-project cwd", () => {
-    expect(
-      resolveAgentGUIConversationProject(
-        "/Users/local/Documents/tutti/session-44444444-4444-4444-8444-444444444444",
-        [
-          userProject("home", "/Users/local", "Home"),
-          userProject(
-            "odd",
-            "/Users/local/Documents/tutti/session-44444444-4444-4444-8444-444444444444",
-            "Odd project"
-          )
-        ]
-      )
-    ).toEqual({
-      id: "odd",
-      path: "/Users/local/Documents/tutti/session-44444444-4444-4444-8444-444444444444",
-      label: "Odd project",
-      pinnedAtUnixMs: 0
-    });
-  });
-
-  it("builds no-project runtime sessions without parent project assignment", () => {
-    const noProjectPath =
-      "/Users/local/Documents/tutti/session-44444444-4444-4444-8444-444444444444";
+  it("uses railSectionKey even when cwd points at a detached worktree", () => {
+    const worktreePath =
+      "/Users/local/.tutti/agent/worktrees/session-44444444-4444-4444-8444-444444444444";
     const snapshot: AgentActivitySnapshot = {
       workspaceId: "workspace-1",
       sessionMessagesById: {},
       presences: [],
       sessions: [
         workspaceAgentSession({
-          agentSessionId: "no-project-session",
-          cwd: noProjectPath,
+          agentSessionId: "worktree-session",
+          cwd: worktreePath,
           provider: "codex",
-          title: "No project",
+          railSectionKey: "project:/workspace/app",
+          title: "Project worktree",
           updatedAtUnixMs: 10
         })
       ]
@@ -161,21 +76,20 @@ describe("agentGuiConversationModel", () => {
 
     expect(
       buildAgentGUIConversationSummaries({
-        isNoProjectPath: ({ path }) => path === noProjectPath,
         snapshot,
         provider: "codex",
-        userProjects: [userProject("home", "/Users/local", "Home")]
+        userProjects: [userProject("app", "/workspace/app", "App")]
       })
     ).toEqual([
       expect.objectContaining({
-        id: "no-project-session",
-        cwd: noProjectPath,
-        project: null
+        id: "worktree-session",
+        cwd: worktreePath,
+        project: expect.objectContaining({ id: "app" })
       })
     ]);
   });
 
-  it("keeps imported home-cwd sessions unassigned when external import marks no project", () => {
+  it("does not infer a project from cwd when the rail key says conversations", () => {
     const snapshot: AgentActivitySnapshot = {
       workspaceId: "workspace-1",
       sessionMessagesById: {},
@@ -188,12 +102,12 @@ describe("agentGuiConversationModel", () => {
             pendingInteractions: []
           },
           workspaceId: "workspace-1",
-          agentSessionId: "imported-home-session",
+          agentSessionId: "conversation-session",
           provider: "codex",
-          providerSessionId: "imported-home-session",
-          cwd: "/Users/local",
-          title: "Imported scratch",
-          imported: true,
+          providerSessionId: "conversation-session",
+          cwd: "/workspace/app",
+          railSectionKey: "conversations",
+          title: "Scratch conversation",
           createdAtUnixMs: 1,
           updatedAtUnixMs: 30
         })
@@ -203,26 +117,50 @@ describe("agentGuiConversationModel", () => {
     const summaries = buildAgentGUIConversationSummaries({
       snapshot,
       provider: "codex",
-      userProjects: [userProject("home", "/Users/local", "Home")]
+      userProjects: [userProject("app", "/workspace/app", "App")]
     });
 
     expect(summaries).toEqual([
       expect.objectContaining({
-        id: "imported-home-session",
-        isImported: true,
-        project: null,
-        projectMode: "none"
+        id: "conversation-session",
+        project: null
       })
     ]);
+  });
+
+  it("trusts a project rail key for imported sessions too", () => {
+    const snapshot: AgentActivitySnapshot = {
+      workspaceId: "workspace-1",
+      sessionMessagesById: {},
+      presences: [],
+      sessions: [
+        normalizeAgentActivitySession({
+          activeTurnId: null,
+          agentSessionId: "imported-project-session",
+          cwd: "/tmp/imported-session",
+          imported: true,
+          latestTurnInteractions: [],
+          pendingInteractions: [],
+          provider: "codex",
+          providerSessionId: "imported-project-session",
+          railSectionKey: "project:/workspace/app",
+          title: "Imported project session",
+          workspaceId: "workspace-1"
+        })
+      ]
+    };
+
     expect(
-      applyAgentGUIConversationProjects(summaries, [
-        userProject("home", "/Users/local", "Home")
-      ])
+      buildAgentGUIConversationSummaries({
+        snapshot,
+        provider: "codex",
+        userProjects: [userProject("app", "/workspace/app", "App")]
+      })
     ).toEqual([
       expect.objectContaining({
-        id: "imported-home-session",
-        project: null,
-        projectMode: "none"
+        id: "imported-project-session",
+        isImported: true,
+        project: expect.objectContaining({ id: "app" })
       })
     ]);
   });
@@ -362,7 +300,7 @@ describe("agentGuiConversationModel", () => {
     });
   });
 
-  it("indexes user project paths once when building conversation batches", () => {
+  it("indexes user project section keys once when building conversation batches", () => {
     const snapshot: AgentActivitySnapshot = {
       workspaceId: "workspace-1",
       sessionMessagesById: {},
@@ -372,6 +310,7 @@ describe("agentGuiConversationModel", () => {
           agentSessionId: "one",
           cwd: "/workspace/app/packages/one",
           provider: "codex",
+          railSectionKey: "project:/workspace/app",
           title: "One",
           updatedAtUnixMs: 10
         }),
@@ -379,17 +318,19 @@ describe("agentGuiConversationModel", () => {
           agentSessionId: "two",
           cwd: "/workspace/app/packages/two",
           provider: "codex",
+          railSectionKey: "project:/workspace/app",
           title: "Two",
           updatedAtUnixMs: 20
         })
       ]
     };
-    let archivePathReads = 0;
+    let archiveSectionKeyReads = 0;
     const archiveProject: AgentGUIConversationUserProject = {
       id: "archive",
-      get path() {
-        archivePathReads += 1;
-        return "/workspace/archive";
+      path: "/workspace/archive",
+      get sectionKey() {
+        archiveSectionKeyReads += 1;
+        return "project:/workspace/archive";
       },
       label: "Archive",
       pinnedAtUnixMs: 0
@@ -408,7 +349,7 @@ describe("agentGuiConversationModel", () => {
       expect.objectContaining({ id: "app" }),
       expect.objectContaining({ id: "app" })
     ]);
-    expect(archivePathReads).toBe(1);
+    expect(archiveSectionKeyReads).toBe(1);
   });
 
   it("applies conversation projects without mutating existing conversations", () => {
@@ -418,6 +359,7 @@ describe("agentGuiConversationModel", () => {
       title: "Session",
       status: "ready" as const,
       cwd: "/workspace/app",
+      railSectionKey: "project:/workspace/app",
       project: null,
       updatedAtUnixMs: 1
     };
@@ -434,6 +376,7 @@ describe("agentGuiConversationModel", () => {
           id: "app",
           path: "/workspace/app",
           label: "App",
+          sectionKey: "project:/workspace/app",
           pinnedAtUnixMs: 0
         }
       })
@@ -1223,6 +1166,42 @@ describe("agentGuiConversationModel", () => {
     ]);
   });
 
+  it("keeps an optimistic prompt after a durable assistant tail during merge", () => {
+    const merged = mergeAgentGUITimelineItems(
+      [
+        timelineItem({
+          id: 8,
+          eventId: "assistant-tail",
+          itemType: "message.assistant",
+          role: "assistant",
+          content: "Assistant tail",
+          occurredAtUnixMs: 200,
+          seq: 8
+        })
+      ],
+      [
+        timelineItem({
+          id: -1,
+          eventId: "client-submit:user:submit-1",
+          itemType: "message.user",
+          role: "user",
+          content: "New ask",
+          payload: {
+            __agentGuiOptimisticPrompt: true
+          },
+          occurredAtUnixMs: 100,
+          createdAtUnixMs: 100,
+          seq: 0
+        })
+      ]
+    );
+
+    expect(merged.map((item) => item.eventId)).toEqual([
+      "assistant-tail",
+      "client-submit:user:submit-1"
+    ]);
+  });
+
   it("keeps distinct user prompts from different turns when event ids are missing but seq matches", () => {
     expect(
       mergeAgentGUITimelineItems(
@@ -1710,6 +1689,7 @@ function userProject(id: string, path: string, label: string) {
     id,
     path,
     label,
+    sectionKey: `project:${path}`,
     pinnedAtUnixMs: 0
   };
 }

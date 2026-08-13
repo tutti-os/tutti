@@ -292,6 +292,7 @@ export const desktopIpcChannels = {
     },
     window: {
       approveClose: "host:window:approveClose",
+      setCloseGuardEnabled: "host:window:setCloseGuardEnabled",
       capturePreview: "host:window:capturePreview",
       capturePreviewImages: "host:window:capturePreviewImages",
       closeRequest: "host:window:closeRequest",
@@ -353,6 +354,10 @@ export interface DesktopHostWindowResizeContentWidthResult {
 export interface DesktopHostWindowCloseRequestPayload {
   requestId?: string;
   reason: "quit" | "window-close";
+}
+
+export interface DesktopHostWindowCloseGuardInput {
+  enabled: boolean;
 }
 
 export interface DesktopHostOpenAgentWindowInput {
@@ -1286,6 +1291,8 @@ export interface DesktopInvokePayloadByChannel {
   [desktopIpcChannels.host.files.copyFilesToClipboard]: string[];
   [desktopIpcChannels.host.window.approveClose]: undefined;
   [desktopIpcChannels.host.window
+    .setCloseGuardEnabled]: DesktopHostWindowCloseGuardInput;
+  [desktopIpcChannels.host.window
     .capturePreview]: DesktopHostWindowCapturePreviewInput;
   [desktopIpcChannels.host.window
     .capturePreviewImages]: DesktopHostWindowCapturePreviewInput;
@@ -1486,6 +1493,7 @@ export interface DesktopInvokeResultByChannel {
   [desktopIpcChannels.host.files.copyImageToClipboard]: void;
   [desktopIpcChannels.host.files.copyFilesToClipboard]: void;
   [desktopIpcChannels.host.window.approveClose]: void;
+  [desktopIpcChannels.host.window.setCloseGuardEnabled]: void;
   [desktopIpcChannels.host.window.capturePreview]: string | null;
   [desktopIpcChannels.host.window
     .capturePreviewImages]: DesktopHostWindowPreviewImages | null;

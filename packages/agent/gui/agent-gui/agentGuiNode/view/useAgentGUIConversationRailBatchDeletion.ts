@@ -26,33 +26,61 @@ export function useAgentGUIConversationRailBatchDeletion({
   setPendingProjectAction: Dispatch<
     SetStateAction<AgentGUIProjectActionDialog | null>
   >;
-}): (section: ConversationSection) => void {
-  return useStableEventCallback((section: ConversationSection) => {
-    if (
-      !batchDeletionAvailable ||
-      isInteractionLocked() ||
-      isDeletingProjectConversations ||
-      isRequestingBatchDeletion
-    ) {
-      return;
+}): {
+  requestProjectRemoval: (
+    section: ConversationSection,
+    path: string,
+    label: string
+  ) => void;
+  requestSectionBatchDeletion: (section: ConversationSection) => void;
+} {
+  const requestSectionBatchDeletion = useStableEventCallback(
+    (section: ConversationSection) => {
+      if (
+        !batchDeletionAvailable ||
+        isInteractionLocked() ||
+        isDeletingProjectConversations ||
+        isRequestingBatchDeletion
+      ) {
+        return;
+      }
+      setIsRequestingBatchDeletion(true);
+      void onConfirmDeleteProjectConversations(
+        section.id,
+        sectionAgentTargetId || undefined
+      )
+        .then((sessionIds) => {
+          if (isInteractionLocked() || sessionIds.length === 0) return;
+          setPendingProjectAction({
+            kind:
+              section.kind === "project"
+                ? "batch-delete"
+                : "batch-delete-conversations",
+            conversationCount: sessionIds.length,
+            label: section.label,
+            sessionIds: [...sessionIds]
+          });
+        })
+        .finally(() => setIsRequestingBatchDeletion(false));
     }
-    setIsRequestingBatchDeletion(true);
-    void onConfirmDeleteProjectConversations(
-      section.id,
-      sectionAgentTargetId || undefined
-    )
-      .then((sessionIds) => {
-        if (isInteractionLocked() || sessionIds.length === 0) return;
-        setPendingProjectAction({
-          kind:
-            section.kind === "project"
-              ? "batch-delete"
-              : "batch-delete-conversations",
-          conversationCount: sessionIds.length,
-          label: section.label,
-          sessionIds: [...sessionIds]
-        });
-      })
-      .finally(() => setIsRequestingBatchDeletion(false));
-  });
+  );
+  const requestProjectRemoval = useStableEventCallback(
+    (section: ConversationSection, path: string, label: string) => {
+      if (
+        !batchDeletionAvailable ||
+        isInteractionLocked() ||
+        isDeletingProjectConversations ||
+        isRequestingBatchDeletion
+      ) {
+        return;
+      }
+      setPendingProjectAction({
+        kind: "remove",
+        label,
+        path,
+        sectionKey: section.id
+      });
+    }
+  );
+  return { requestProjectRemoval, requestSectionBatchDeletion };
 }

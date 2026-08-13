@@ -195,6 +195,9 @@ func (a *CodexAppServerAdapter) appServerApprovalRequested(
 	if method == appServerMethodRequestUserInput {
 		return a.appServerUserInputRequested(session, turnID, requestID, params)
 	}
+	if method == appServerMethodMCPElicitation {
+		return a.appServerMCPElicitationRequested(session, turnID, requestID, params)
+	}
 	toolCall := appServerApprovalToolCall(method, params)
 	options := appServerApprovalOptions(method)
 	title := firstNonEmpty(asString(toolCall["title"]), "Permission requested")
@@ -482,6 +485,8 @@ func appServerApprovalResult(method string, params map[string]any, selection pen
 		return map[string]any{
 			"answers": appServerUserInputAnswers(params, selection),
 		}, nil
+	case appServerMethodMCPElicitation:
+		return appServerMCPElicitationResult(selection), nil
 	default:
 		return map[string]any{}, nil
 	}

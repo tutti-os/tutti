@@ -48,7 +48,8 @@ func runPlanDecision(ctx context.Context, driver Driver) error {
 		return fmt.Errorf("submit plan decision: %w", err)
 	}
 	metrics := driver.Metrics()
-	if operation.OperationID == "" || metrics.UpdateSettingsCalls != 1 || metrics.ExecCalls != 1 {
+	if operation.OperationID == "" || operation.ConfirmedTurnID == "" || operation.IdentityAnchorTurnID != "plan-turn" ||
+		metrics.UpdateSettingsCalls != 1 || metrics.ExecCalls != 1 {
 		return fmt.Errorf("plan operation=%#v metrics=%#v", operation, metrics)
 	}
 	return nil
@@ -81,7 +82,7 @@ func runRecoveryOrder(ctx context.Context, driver Driver) error {
 		)
 	}
 	steps := metrics.RecoverySteps
-	want := []string{"runtime_requeue", "runtime_complete", "goal_requeue", "goal_inbox_requeue", "stale_settle", "worktree_sweep"}
+	want := []string{"runtime_requeue", "runtime_complete", "goal_requeue", "goal_inbox_requeue", "stale_settle"}
 	if len(steps) != len(want) {
 		return fmt.Errorf("recovery steps=%v, want %v", steps, want)
 	}

@@ -62,6 +62,25 @@ func TestSettledTurnFreezesLastPersistedAssistantTextAsFinalMessageAnchor(t *tes
 	}
 }
 
+func TestSettledTurnPersistsStructuredErrorCodeWithoutMessage(t *testing.T) {
+	t.Parallel()
+
+	store := openTestStore(t, testOptions(&staticProjectPaths{}))
+	ctx := context.Background()
+	seedTurnTestSession(t, store, "ws-1", "session-error-code")
+	turn, accepted, err := store.RecordTurnTransition(ctx, TurnTransition{
+		WorkspaceID: "ws-1", AgentSessionID: "session-error-code", TurnID: "turn-1",
+		Phase: TurnPhaseSettled, Outcome: TurnOutcomeFailed,
+		ErrorCode: "provider_max_tokens", OccurredAtUnixMS: 10,
+	})
+	if err != nil || !accepted {
+		t.Fatalf("RecordTurnTransition() accepted=%v error=%v", accepted, err)
+	}
+	if turn.ErrorCode != "provider_max_tokens" || turn.ErrorMessage != "" {
+		t.Fatalf("stored turn error = %q/%q", turn.ErrorCode, turn.ErrorMessage)
+	}
+}
+
 func TestLatestTurnsUseCompositeSessionScopeAndDurableOrdering(t *testing.T) {
 	t.Parallel()
 	store := openTestStore(t, testOptions(&staticProjectPaths{}))
@@ -185,6 +204,10 @@ func TestSettleStaleTurnsClosesSplitRuntimeSuccessStateOnRestart(t *testing.T) {
 	if len(settlements) != 1 {
 		t.Fatalf("settlements = %#v, want one", settlements)
 	}
+	if settlement := settlements[0]; settlement.Provider != "codex" ||
+		settlement.StartedAtUnixMS != 100 || settlement.SettledAtUnixMS <= settlement.StartedAtUnixMS {
+		t.Fatalf("settlement identity and timing = %#v, want provider codex and a valid duration", settlement)
+	}
 	turn, ok, err := store.GetTurn(ctx, "ws-1", "session-1", "turn-1")
 	if err != nil || !ok || turn.Phase != TurnPhaseSettled || turn.Outcome != TurnOutcomeInterrupted {
 		t.Fatalf("turn after restart settlement ok=%v error=%v turn=%#v", ok, err, turn)
@@ -209,6 +232,36 @@ func TestSettleStaleTurnsClosesSplitRuntimeSuccessStateOnRestart(t *testing.T) {
 	if message.MessageID != "system-stale-turn-turn-1" || message.TurnID != "turn-1" || message.Payload["noticeKind"] != "stale_turn_reconciled" {
 		t.Fatalf("startup system message = %#v", message)
 	}
+}
+
+func TestSettleStaleTurnsCarriesChildSessionIdentity(t *testing.T) {
+	t.Parallel()
+	store := openTestStore(t, testOptions(&staticProjectPaths{}))
+	reportSessionWithTurn(t, store, SessionStateReport{
+		WorkspaceID: "ws-1", AgentSessionID: "root", Kind: SessionKindRoot,
+		Provider: "codex", OccurredAtUnixMS: 10,
+	}, "root-turn", 10)
+	reportSessionWithTurn(t, store, SessionStateReport{
+		WorkspaceID: "ws-1", AgentSessionID: "child", Kind: SessionKindChild,
+		RootAgentSessionID: "root", RootTurnID: "root-turn",
+		ParentAgentSessionID: "root", ParentTurnID: "root-turn", ParentToolCallID: "call-1",
+		Provider: "claude-code", OccurredAtUnixMS: 20,
+	}, "child-turn", 20)
+
+	settlements, err := store.SettleStaleTurns(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, settlement := range settlements {
+		if settlement.AgentSessionID == "child" {
+			if !settlement.IsChildSession || settlement.Provider != "claude-code" ||
+				settlement.StartedAtUnixMS != 20 || settlement.SettledAtUnixMS <= 20 {
+				t.Fatalf("child settlement = %#v", settlement)
+			}
+			return
+		}
+	}
+	t.Fatalf("child settlement missing from %#v", settlements)
 }
 
 func TestSettleStaleTurnsPreservesTurnProtectedByDeferredRuntimeOperation(t *testing.T) {

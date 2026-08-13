@@ -334,6 +334,127 @@ describe("useComposerDraftAttachments", () => {
     expect(insertWorkspaceReferences).toHaveBeenCalledWith([reference]);
     expect(prepareExternalPromptFiles).not.toHaveBeenCalled();
   });
+  it("opens a ready composer-file mention from the draft registry", () => {
+    const onLinkAction = vi.fn();
+    const draftFilesRef = {
+      current: [
+        {
+          id: "file-1",
+          name: "archive.zip",
+          path: "/workspace/room-1/archive.zip"
+        }
+      ]
+    };
+    const input = {
+      ...createInput({
+        draft: buildAgentComposerDraft({ prompt: "" }),
+        prepareExternalPromptFiles: vi.fn(async () => [])
+      }),
+      draftFilesRef,
+      onLinkAction
+    };
+    const rendered = renderHook(() => useComposerDraftAttachments(input));
+
+    act(() => {
+      rendered.result.current.handleLinkClick(
+        createAgentComposerFileMentionMarkdown({
+          id: "file-1",
+          name: "archive.zip",
+          status: "ready"
+        }).match(/\(([^)]+)\)/)?.[1] ?? ""
+      );
+    });
+
+    expect(onLinkAction).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "open-workspace-file",
+        path: "/workspace/room-1/archive.zip"
+      })
+    );
+  });
+
+  it("toasts when a composer-file mention is still uploading", () => {
+    const hostToastInfo = vi.fn();
+    const hostToastError = vi.fn();
+    setAgentHostApiForTests({
+      toast: { error: hostToastError, info: hostToastInfo }
+    } as never);
+    const onLinkAction = vi.fn();
+    const draftFilesRef = {
+      current: [
+        {
+          id: "file-1",
+          name: "pending.pdf",
+          path: "/runtime/pending.pdf",
+          uploading: true
+        }
+      ]
+    };
+    const input = {
+      ...createInput({
+        draft: buildAgentComposerDraft({ prompt: "" }),
+        prepareExternalPromptFiles: vi.fn(async () => [])
+      }),
+      draftFilesRef,
+      onLinkAction
+    };
+    const rendered = renderHook(() => useComposerDraftAttachments(input));
+
+    act(() => {
+      rendered.result.current.handleLinkClick(
+        createAgentComposerFileMentionMarkdown({
+          id: "file-1",
+          name: "pending.pdf",
+          status: "uploading"
+        }).match(/\(([^)]+)\)/)?.[1] ?? ""
+      );
+    });
+
+    expect(onLinkAction).not.toHaveBeenCalled();
+    expect(hostToastInfo).toHaveBeenCalledWith(
+      "This attachment is still being prepared. Open it after preparation finishes."
+    );
+    expect(hostToastError).not.toHaveBeenCalled();
+  });
+
+  it("toasts when a composer-file mention failed preparation", () => {
+    const hostToastError = vi.fn();
+    setAgentHostApiForTests({ toast: { error: hostToastError } } as never);
+    const onLinkAction = vi.fn();
+    const draftFilesRef = {
+      current: [
+        {
+          id: "file-1",
+          name: "broken.pdf",
+          uploadError: "file_too_large"
+        }
+      ]
+    };
+    const input = {
+      ...createInput({
+        draft: buildAgentComposerDraft({ prompt: "" }),
+        prepareExternalPromptFiles: vi.fn(async () => [])
+      }),
+      draftFilesRef,
+      onLinkAction
+    };
+    const rendered = renderHook(() => useComposerDraftAttachments(input));
+
+    act(() => {
+      rendered.result.current.handleLinkClick(
+        createAgentComposerFileMentionMarkdown({
+          id: "file-1",
+          name: "broken.pdf",
+          status: "error"
+        }).match(/\(([^)]+)\)/)?.[1] ?? ""
+      );
+    });
+
+    expect(onLinkAction).not.toHaveBeenCalled();
+    expect(hostToastError).toHaveBeenCalledWith(
+      "This attachment failed to prepare. Remove it and add the file again."
+    );
+  });
 });
 
 function createInput(input: {

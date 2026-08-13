@@ -4,9 +4,11 @@ import {
   useCallback,
   useMemo,
   useState,
+  type HTMLAttributes,
   type ReactNode
 } from "react";
 import {
+  activateBrowserNodePageByUrl,
   closeBrowserNodeTab,
   createBrowserNodeFeature,
   isBrowserNodeSurfaceEvent,
@@ -24,6 +26,13 @@ const LazyBrowserNode = lazy(() =>
     default: BrowserNode
   }))
 );
+const LazyBrowserNodeWorkbenchHeader = lazy(() =>
+  import("@tutti-os/browser-node/react").then(
+    ({ BrowserNodeWorkbenchHeader }) => ({
+      default: BrowserNodeWorkbenchHeader
+    })
+  )
+);
 
 export const agentToolBrowserDefaultUrl = "https://www.google.com/";
 
@@ -35,6 +44,8 @@ export interface AgentToolBrowserPanelProps {
   browserApi: BrowserNodeHostApi;
   chromeCookieImportPrompt?: BrowserNodeChromeImportPromptAdapter;
   defaultUrl?: string;
+  defaultActions?: ReactNode;
+  dragHandleProps?: HTMLAttributes<HTMLElement>;
   hidden: boolean;
   i18n: I18nRuntime<string>;
   loadingFallback?: ReactNode;
@@ -48,6 +59,7 @@ export interface AgentToolBrowserPanelProps {
 }
 
 export interface AgentToolBrowserController {
+  activatePageByUrl(url: string): string | null;
   closePage(nodeId: string): "closed" | "last-page" | "not-found";
   createPage(url?: string | null): string;
   ownsPage(nodeId: string): boolean;
@@ -60,6 +72,8 @@ export function AgentToolBrowserPanel({
   browserApi,
   chromeCookieImportPrompt,
   defaultUrl = agentToolBrowserDefaultUrl,
+  defaultActions,
+  dragHandleProps,
   hidden,
   i18n,
   loadingFallback = null,
@@ -91,6 +105,11 @@ export function AgentToolBrowserPanel({
       return state && tab ? { state, tab } : null;
     };
     return {
+      activatePageByUrl(url) {
+        return (
+          activateBrowserNodePageByUrl(feature, nodeId, url)?.nodeId ?? null
+        );
+      },
       closePage(pageNodeId) {
         const page = getPage(pageNodeId);
         if (!page) return "not-found";
@@ -120,28 +139,41 @@ export function AgentToolBrowserPanel({
 
   return (
     <div
-      className="relative h-full min-h-0 overflow-hidden"
+      className="relative flex h-full min-h-0 flex-col overflow-hidden"
       data-agent-tool-browser-surface="true"
       data-agent-tool-browser-surface-id={nodeId}
       ref={bindController}
     >
       <Suspense fallback={loadingFallback}>
-        <LazyBrowserNode
-          automationTarget={
-            automationTarget ? { ...automationTarget, focused: !hidden } : null
-          }
+        <LazyBrowserNodeWorkbenchHeader
           defaultUrl={defaultUrl}
           feature={feature}
-          hidden={hidden}
+          defaultActions={defaultActions}
+          dragHandleProps={dragHandleProps}
           navigationActions={navigationActions}
           nodeId={nodeId}
           onCloseRequest={onCloseRequest}
-          profileId={profileId}
-          sessionMode={sessionMode}
-          sessionPartition={sessionPartition}
-          syncDefaultUrl
-          tabs
         />
+        <div className="min-h-0 flex-1">
+          <LazyBrowserNode
+            automationTarget={
+              automationTarget
+                ? { ...automationTarget, focused: !hidden }
+                : null
+            }
+            defaultUrl={defaultUrl}
+            feature={feature}
+            hidden={hidden}
+            nodeId={nodeId}
+            onCloseRequest={onCloseRequest}
+            profileId={profileId}
+            sessionMode={sessionMode}
+            sessionPartition={sessionPartition}
+            showHeader={false}
+            syncDefaultUrl
+            tabs
+          />
+        </div>
       </Suspense>
     </div>
   );

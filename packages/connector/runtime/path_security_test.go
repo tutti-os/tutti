@@ -34,3 +34,38 @@ func TestExecutionSnapshotterRemoveRejectsPathsOutsideItsNamespace(t *testing.T)
 		t.Fatalf("outside directory was removed: %v", err)
 	}
 }
+
+func TestExecutionSnapshotterCleanupOrphansRemovesOnlyManagedSnapshots(t *testing.T) {
+	stateRoot := t.TempDir()
+	snapshotter, err := NewExecutionSnapshotter(stateRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	parent := filepath.Join(stateRoot, "execution-snapshots")
+	ready := filepath.Join(parent, ".staging-old.ready")
+	staging := filepath.Join(parent, ".staging-interrupted")
+	unmanaged := filepath.Join(parent, "keep")
+	for _, path := range []string{ready, staging, unmanaged} {
+		if err := os.MkdirAll(path, 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(ready, "entrypoint"), []byte("old"), 0o400); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(ready, 0o500); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := snapshotter.CleanupOrphans(); err != nil {
+		t.Fatal(err)
+	}
+	for _, removed := range []string{ready, staging} {
+		if _, err := os.Stat(removed); !os.IsNotExist(err) {
+			t.Fatalf("orphan snapshot %q remains: %v", removed, err)
+		}
+	}
+	if _, err := os.Stat(unmanaged); err != nil {
+		t.Fatalf("unmanaged directory was removed: %v", err)
+	}
+}

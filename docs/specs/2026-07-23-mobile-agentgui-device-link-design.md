@@ -2,7 +2,7 @@
 
 Status: accepted product direction; Personal direct-lane MVP in implementation
 
-## Implementation progress (2026-07-27)
+## Implementation progress (2026-08-11)
 
 The release-enabled `packages/device-link` core now preserves the production ICE,
 QUIC, certificate-pinning, candidate filtering and privacy behavior extracted
@@ -13,6 +13,15 @@ adapters still own room/device identity, rendezvous, Relay credentials and
 fallback policy. Personal Desktop and Android consume the same authenticated
 facade; the direct lane includes paired-device rendezvous, framed Agent HTTP,
 request deadlines, event streaming and foreground/background close behavior.
+The shared `candidateexchange` coordinator now owns immediate ICE credential
+publication, local candidate coalescing and exact-snapshot retries, plus remote
+push-with-poll reconciliation. Personal Desktop consumes it directly; the
+gomobile `ActionPump` facade lets Android and iOS start `Connect` before STUN
+gathering finishes while Go owns publication/refresh workers, retry timers, and
+polling. TypeScript performs signed rendezvous I/O and validates the returned
+authoritative attempt before resolving an action. TSH still consumes the
+lower-level Trickle primitives and remains a post-release adapter migration
+rather than a workspace replacement.
 Android 15 ARM64 emulator build/install/start and authenticated loopback
 integration pass. Mobile's Relay stream race and native consumer integration are
 now implemented; real-account physical-device network transitions and end-to-end
@@ -538,9 +547,13 @@ Wi-Fi/蜂窝切换和 VPN/TUN 失败分类仍待验证。
 当前进度：共享 facade、Desktop owner host、Android caller bridge、真实
 authenticated stream 集成测试，以及代际隔离、连接池、建连去重、连接竞速和探测
 退避的 product-neutral manager 均已完成；Tutti Desktop `mobileremote` owner
-已经作为首个 adapter 接管共享 manager，TSH adapter 切换和真机跨网络验证仍待
-完成。Relay 身份认证、控制面、fallback 产品策略和 TSH 产品诊断继续由消费端
-拥有。
+已经作为首个 adapter 接管共享 manager 和 `candidateexchange`；Android/iOS 通过
+同一 Go coordinator 的 gomobile start、next/resolve action、notify 与 stop/cancel
+边界接入。初始 ICE 凭据允许携带空 candidate 立即发布，双方在 `Connect` 运行期间继续
+增量交换 candidate，不再串行等待两轮 STUN gathering；retry snapshot、500ms poll
+timer 与 worker lifecycle 不再由 TypeScript 维护第二份，服务端返回的权威 attempt
+确认 candidate 已落库后才完成 publication ACK。TSH adapter 切换和真机跨网络验证仍待
+完成。Relay 身份认证、控制面、fallback 产品策略和 TSH 产品诊断继续由消费端拥有。
 
 ### M2 — 设备、配对和控制面
 
@@ -581,8 +594,10 @@ challenge claim/poll，并只展示属于当前 Mobile identity 的配对设备�
 allowlist 和 Android fetch adapter，并直接复用生成的
 `@tutti-os/client-tuttid-ts`；workspace、Agent Target catalog、Session
 list/get/create/send/cancel/Interaction 均沿用现有 HTTP contract。owner host 会在
-caller 获得 response-only STUN endpoints 并二次发布 ICE 后再认领 attempt，避免
-连接旧 fingerprint。
+caller 获得 response-only STUN endpoints、替换临时 Participant 并立即二次发布 ICE
+凭据后再认领 attempt，避免连接旧 fingerprint；该初始快照可以没有 candidate。
+owner 与 caller 随后在 `Connect` 已运行时通过权威 attempt 快照增量补齐 candidate，
+WebSocket 只负责唤醒，丢失时继续使用 500ms HTTP 校准。
 
 Relay Agent lane 已接入同一套应用帧协议：Desktop `mobileremote` 只在用户打开
 移动端连接开关后获取 Relay owner demand，按 Device Authority 完成 identity

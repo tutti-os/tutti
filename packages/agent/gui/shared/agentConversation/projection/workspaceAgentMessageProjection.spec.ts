@@ -412,6 +412,55 @@ describe("projectWorkspaceAgentMessagesToConversationVM", () => {
     ).toEqual(["assistant:I will start the agents.", "tool:Agent"]);
   });
 
+  it("keeps an optimistic prompt after durable messages with later timestamps", () => {
+    const durableAssistant = message({
+      messageId: "assistant-a",
+      occurredAtUnixMs: 300,
+      payload: { text: "Assistant A" },
+      role: "assistant",
+      sequence: 2,
+      turnId: "turn-a",
+      version: 2
+    });
+    const optimisticImagePrompt = message({
+      messageId: "client-submit:user:submit-b",
+      occurredAtUnixMs: 200,
+      payload: {
+        __agentGuiOptimisticPrompt: true,
+        clientSubmitId: "submit-b",
+        content: [
+          {
+            type: "image",
+            data: "aW1hZ2UtYQ==",
+            mimeType: "image/png",
+            name: "image-a.png"
+          }
+        ],
+        text: "[Image]"
+      },
+      role: "user",
+      startedAtUnixMs: 200,
+      turnId: "pending:submit-b",
+      version: 0
+    });
+    const mergedMessages = mergeWorkspaceAgentActivityDurableAndOverlayMessages(
+      {
+        durableMessages: [durableAssistant],
+        localMessages: [optimisticImagePrompt]
+      }
+    );
+
+    expect(mergedMessages.map((item) => item.messageId)).toEqual([
+      "assistant-a",
+      "client-submit:user:submit-b"
+    ]);
+    expect(
+      projectWorkspaceAgentMessagesToTimelineItems(mergedMessages).map(
+        (item) => item.eventId
+      )
+    ).toEqual(["assistant-a", "client-submit:user:submit-b"]);
+  });
+
   it("projects text, reasoning, errors, and unknown kinds conservatively", () => {
     const conversation = projectWorkspaceAgentMessagesToConversationVM({
       activity: activity(),
@@ -1339,6 +1388,42 @@ describe("projectWorkspaceAgentMessagesToConversationVM", () => {
       })
     );
     expect(compactMessage?.presentationKind).toBe("turn-boundary");
+  });
+
+  it("projects context overflow as a typed handoff-required notice", () => {
+    const conversation = projectWorkspaceAgentMessagesToConversationVM({
+      activity: activity(),
+      session: session(),
+      workspaceRoot: "/workspace/demo",
+      messages: [
+        message({
+          messageId: "compact-handoff-required",
+          turnId: "turn-compact",
+          status: "failed",
+          semantics: {
+            noticeCommand: "compact",
+            noticeCommandStatus: "failed"
+          },
+          payload: {
+            kind: "agent_system_notice",
+            noticeKind: "context_handoff_required",
+            severity: "error",
+            title: "Context compaction interrupted.",
+            detail: "Maximum context length exceeded."
+          }
+        })
+      ]
+    });
+
+    const projected = conversation.rows.flatMap((row) =>
+      row.kind === "message" ? row.messages : []
+    )[0];
+    expect(projected?.systemNotice).toEqual(
+      expect.objectContaining({
+        semanticKind: "context-handoff-required",
+        severity: "error"
+      })
+    );
   });
 
   it("prefers canonical message semantics over duplicated notice payload fields", () => {

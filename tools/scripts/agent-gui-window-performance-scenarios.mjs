@@ -577,7 +577,7 @@ async function prepareWorkbenchWindowDrag(
   );
 }
 
-async function waitForWorkbenchRendererQuiet(pageClient) {
+export async function waitForWorkbenchRendererQuiet(pageClient) {
   await evaluate(
     pageClient,
     `new Promise((resolve) => {
@@ -608,7 +608,7 @@ async function waitForWorkbenchRendererQuiet(pageClient) {
   );
 }
 
-async function waitForWorkbenchRendererIdle(pageClient) {
+export async function waitForWorkbenchRendererIdle(pageClient) {
   await evaluate(
     pageClient,
     `new Promise((resolve) => {

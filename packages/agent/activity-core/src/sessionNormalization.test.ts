@@ -61,3 +61,51 @@ test("normalizes a transport session into the complete canonical contract", () =
     workspaceId: "workspace-1"
   });
 });
+
+test("clones an explicitly projected Goal synchronization state", () => {
+  const session = normalizeAgentActivitySession({
+    activeTurnId: null,
+    agentSessionId: "session-goal-sync",
+    cwd: "/workspace",
+    goalSyncState: {
+      executionPending: true,
+      pendingOperationId: " goal-operation-1 ",
+      revision: 3,
+      syncStatus: "applying"
+    },
+    latestTurnInteractions: [],
+    pendingInteractions: [],
+    provider: "codex",
+    title: "Goal session",
+    workspaceId: "workspace-1"
+  });
+
+  assert.deepEqual(session.goalSyncState, {
+    executionPending: true,
+    pendingOperationId: "goal-operation-1",
+    revision: 3,
+    syncStatus: "applying"
+  });
+});
+
+test("preserves an independent managed Worktree identity", () => {
+  const session = normalizeAgentActivitySession({
+    activeTurnId: null,
+    agentSessionId: "session-worktree",
+    cwd: "/state/worktrees/worktree-1",
+    isolation: {
+      baseCommit: "base-1",
+      branch: "tutti/worktree/worktree-1",
+      mode: "worktree",
+      worktreeId: " worktree-1 ",
+      worktreePath: "/state/worktrees/worktree-1"
+    },
+    latestTurnInteractions: [],
+    pendingInteractions: [],
+    provider: "codex",
+    title: "Worktree session",
+    workspaceId: "workspace-1"
+  });
+
+  assert.equal(session.isolation?.worktreeId, "worktree-1");
+});

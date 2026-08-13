@@ -180,6 +180,34 @@ test("factory rejects empty identity parts", () => {
   );
 });
 
+test("identity filtering preserves wrong-workspace activation evidence", () => {
+  const { engine } = createHarness({ workspaceId: "workspace-1" });
+  assert.equal(
+    engine.activateSession({
+      agentSessionId: "session-created",
+      agentTargetId: "target-1",
+      clientSubmitId: "submit-created",
+      mode: "new",
+      requestId: "activation-created"
+    }),
+    true
+  );
+
+  engine.dispatch({
+    sessions: [
+      activitySession("session-created", { workspaceId: "workspace-other" })
+    ],
+    type: "session/snapshotReceived"
+  });
+
+  const activation =
+    engine.getSnapshot().pendingIntents.activationsByRequestId[
+      "activation-created"
+    ];
+  assert.equal(activation?.snapshotOutcome, "workspace_mismatch");
+  assert.equal(activation?.snapshotObservedAtUnixMs, 0);
+});
+
 test("engine drops intents scoped to another workspace", () => {
   const harness = createHarness({ workspaceId: "workspace-a" });
   harness.engine.dispatch({
@@ -824,6 +852,7 @@ test("activation command result settles a new Session inside the Engine", async 
     correlationId: "activation-created",
     outcome: "succeeded",
     resultContract: "activation-v1",
+    settledAtUnixMs: 250,
     type: "engine/commandResult",
     value: {
       activation: { mode: "new", status: "attached" },
@@ -842,6 +871,12 @@ test("activation command result settles a new Session inside the Engine", async 
       "activation-created"
     ]?.status,
     "confirmed"
+  );
+  assert.equal(
+    engine.getSnapshot().pendingIntents.activationsByRequestId[
+      "activation-created"
+    ]?.snapshotObservedAtUnixMs,
+    250
   );
 });
 
@@ -867,6 +902,7 @@ test("activation command result hydrates existing Session detail inside the Engi
     correlationId: "activation-existing",
     outcome: "succeeded",
     resultContract: "activation-v1",
+    settledAtUnixMs: 350,
     type: "engine/commandResult",
     value: {
       activation: { mode: "existing", status: "already_attached" },
@@ -887,6 +923,11 @@ test("activation command result hydrates existing Session detail inside the Engi
     snapshot.pendingIntents.activationsByRequestId["activation-existing"]
       ?.status,
     "confirmed"
+  );
+  assert.equal(
+    snapshot.pendingIntents.activationsByRequestId["activation-existing"]
+      ?.snapshotObservedAtUnixMs,
+    350
   );
   assert.equal(
     Object.values(snapshot.sessionLifecycle.turnsById)[0]?.turnId,

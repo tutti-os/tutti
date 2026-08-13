@@ -1,4 +1,4 @@
-import { proxy } from "valtio/vanilla";
+import { proxy, snapshot as readProxySnapshot } from "valtio/vanilla";
 import {
   createWorkspaceFilePreviewController,
   type WorkspaceFilePreviewControllerState,
@@ -130,6 +130,11 @@ export function createWorkspaceFileReferencePickerController(
     searchQuery: ""
   };
   const store = proxy(snapshot);
+  const readSnapshot = () =>
+    readProxySnapshot(
+      store
+    ) as unknown as WorkspaceFileReferencePickerControllerSnapshot;
+  snapshot = readSnapshot();
 
   const setSnapshot = (
     update:
@@ -145,8 +150,8 @@ export function createWorkspaceFileReferencePickerController(
     if (next === snapshot) {
       return;
     }
-    snapshot = next;
     Object.assign(store, next);
+    snapshot = readSnapshot();
   };
 
   const previewController = createWorkspaceFilePreviewController({

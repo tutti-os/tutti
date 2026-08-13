@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -479,6 +480,75 @@ func TestRunUpdateActionUsesManagedNPMAndReprobes(t *testing.T) {
 	}
 }
 
+func TestRunUpdateActionRepairsAndPublishesLegacyWindowsPrefix(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("Windows legacy managed npm update")
+	}
+	service, binaryPath := updateTestService(t, "1.0.0")
+	home := filepath.Dir(filepath.Dir(filepath.Dir(binaryPath)))
+	newPrefix := filepath.Dir(binaryPath)
+	if err := os.RemoveAll(newPrefix); err != nil {
+		t.Fatalf("remove new-prefix fixture: %v", err)
+	}
+	legacyPrefix := filepath.Join(home, ".local")
+	legacyPackageDir := filepath.Join(legacyPrefix, "node_modules", "@tutti-os", "tutti-agent")
+	if err := os.MkdirAll(legacyPackageDir, 0o755); err != nil {
+		t.Fatalf("mkdir legacy package: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(legacyPackageDir, "package.json"), []byte(`{"name":"@tutti-os/tutti-agent","version":"1.0.0"}`), 0o644); err != nil {
+		t.Fatalf("write legacy package.json: %v", err)
+	}
+	legacyBinary := filepath.Join(legacyPrefix, "tutti-agent.cmd")
+	writeUpdateTestCLI(t, legacyBinary, "1.0.0")
+
+	service.Environ = func() []string {
+		return []string{"PATH=" + legacyPrefix, agentNPMRegistryEnv + "=https://registry.example.test"}
+	}
+	service.LookPath = func(name string) (string, error) {
+		switch name {
+		case "tutti-agent", "tutti-agent.cmd", "tutti-agent.exe":
+			return legacyBinary, nil
+		case "npm", "npm.cmd", "node", "node.exe":
+			return "/usr/bin/true", nil
+		default:
+			return "", errors.New("not found")
+		}
+	}
+	service.IsExecutableFile = isTestExecutableUnderHome(home)
+	service.UpdateCache = NewProviderUpdateCache()
+	service.ProbeReadyAfter = 20 * time.Millisecond
+	service.ProbeTimeout = 200 * time.Millisecond
+	service.HTTPClient = &http.Client{Transport: networkRoundTripFunc(func(*http.Request) (*http.Response, error) {
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body:       io.NopCloser(strings.NewReader(`{"version":"1.1.0"}`)),
+		}, nil
+	})}
+	pathAdapter := &recordingUserPathAdapter{}
+	service.UserPathAdapter = pathAdapter
+	service.InstallCommand = func(_ context.Context, input InstallCommandInput) (InstallCommandResult, error) {
+		if !slices.Contains(input.Args, legacyPrefix) {
+			t.Fatalf("update args = %#v, want legacy Windows prefix %s", input.Args, legacyPrefix)
+		}
+		writeUpdateTestCLI(t, legacyBinary, "1.1.0")
+		if err := os.WriteFile(filepath.Join(legacyPrefix, "node_modules", "@tutti-os", "tutti-agent", "package.json"), []byte(`{"name":"@tutti-os/tutti-agent","version":"1.1.0"}`), 0o644); err != nil {
+			t.Fatalf("write updated package.json: %v", err)
+		}
+		return InstallCommandResult{ExitCode: 0, Stdout: "updated"}, nil
+	}
+
+	result, err := service.RunAction(context.Background(), RunActionInput{Provider: "tutti-agent", ActionID: ActionUpdate})
+	if err != nil {
+		t.Fatalf("RunAction() error = %v", err)
+	}
+	if result.Status != RunActionCompleted || result.Probe == nil || result.Probe.Status != ProbeReady {
+		t.Fatalf("result = %#v, want completed ready update", result)
+	}
+	if pathAdapter.directory != legacyPrefix {
+		t.Fatalf("published PATH directory = %q, want legacy Windows prefix %q", pathAdapter.directory, legacyPrefix)
+	}
+}
+
 func TestRunUpdateActionRejectsOfficialScriptSource(t *testing.T) {
 	service := testService(func(string) (string, error) { return "/usr/bin/true", nil }, map[string]bool{})
 	var commands atomic.Int32
@@ -503,10 +573,17 @@ func updateTestService(t *testing.T, version string) (Service, string) {
 	home := t.TempDir()
 	prefixDir := filepath.Join(home, ".local")
 	binDir := filepath.Join(prefixDir, "bin")
+	if runtime.GOOS == "windows" {
+		prefixDir = binDir
+	}
 	if err := os.MkdirAll(binDir, 0o755); err != nil {
 		t.Fatalf("mkdir bin: %v", err)
 	}
-	packageDir := filepath.Join(prefixDir, "lib", "node_modules", "@tutti-os", "tutti-agent")
+	packageRoot := filepath.Join(prefixDir, "lib")
+	if runtime.GOOS == "windows" {
+		packageRoot = prefixDir
+	}
+	packageDir := filepath.Join(packageRoot, "node_modules", "@tutti-os", "tutti-agent")
 	packageBinDir := filepath.Join(packageDir, "bin")
 	if err := os.MkdirAll(packageBinDir, 0o755); err != nil {
 		t.Fatalf("mkdir package bin: %v", err)
@@ -529,9 +606,9 @@ func updateTestService(t *testing.T, version string) (Service, string) {
 	}
 	service := testService(func(name string) (string, error) {
 		switch name {
-		case "tutti-agent":
+		case "tutti-agent", "tutti-agent.cmd", "tutti-agent.exe":
 			return binaryPath, nil
-		case "npm", "node":
+		case "npm", "npm.cmd", "node", "node.exe":
 			return "/usr/bin/true", nil
 		default:
 			return "", errors.New("not found")
@@ -540,7 +617,7 @@ func updateTestService(t *testing.T, version string) (Service, string) {
 	service.HomeDir = func() (string, error) { return home, nil }
 	service.Environ = func() []string {
 		return []string{
-			"PATH=" + binDir + ":/usr/bin:/bin",
+			"PATH=" + strings.Join([]string{binDir, "/usr/bin", "/bin"}, string(os.PathListSeparator)),
 			agentNPMRegistryEnv + "=https://registry.example.test",
 		}
 	}

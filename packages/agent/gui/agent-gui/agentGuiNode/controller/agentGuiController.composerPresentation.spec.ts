@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { AgentActivityComposerOptions } from "@tutti-os/agent-activity-core";
 import type { AgentGUINodeData } from "../../../types";
 import {
+  composerModelChoiceHistoryTargetId,
   composerTargetDataForConversation,
   effectiveComposerSettingsFromOptions,
   enforceComposerModelBindingForHomeDefaults,
@@ -24,6 +25,27 @@ describe("composer target presentation", () => {
       lastActiveAgentSessionId: null
     }
   };
+
+  it("fails model history closed for unresolved active targets", () => {
+    expect(
+      composerModelChoiceHistoryTargetId({
+        activeConversationId: null,
+        target: { agentTargetId: null, targetId: "local:codex" }
+      })
+    ).toBe("local:codex");
+    expect(
+      composerModelChoiceHistoryTargetId({
+        activeConversationId: "session-1",
+        target: { agentTargetId: null, targetId: "local:codex" }
+      })
+    ).toBeNull();
+    expect(
+      composerModelChoiceHistoryTargetId({
+        activeConversationId: "session-1",
+        target: { agentTargetId: "agent:ccs", targetId: "legacy:ccs" }
+      })
+    ).toBe("agent:ccs");
+  });
 
   it("keeps the submitted target until the host node projection catches up", () => {
     const staleNodeData: AgentGUINodeData = {

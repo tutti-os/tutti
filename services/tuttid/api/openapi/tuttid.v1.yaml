@@ -3724,10 +3724,18 @@ paths:
           description: Case-insensitive search over the original session title only.
           schema:
             type: string
+        - name: railSectionKey
+          in: query
+          required: false
+          description: Select sessions by their exact persisted rail section key. Mutually exclusive with the deprecated project filters; omit every section filter to list all locations.
+          schema:
+            type: string
+            minLength: 1
         - name: projectScope
           in: query
           required: false
-          description: Select sessions without an original project. Mutually exclusive with projectPath; omit both project filters to list every location.
+          deprecated: true
+          description: Deprecated explicit conversations-section selector. It is resolved to the fixed conversations rail section key and is mutually exclusive with railSectionKey and projectPath.
           schema:
             type: string
             enum:
@@ -3735,7 +3743,8 @@ paths:
         - name: projectPath
           in: query
           required: false
-          description: Select sessions by their persisted original project path. Mutually exclusive with projectScope.
+          deprecated: true
+          description: Deprecated explicit project selector. The path is resolved to its canonical rail section key before querying and is mutually exclusive with railSectionKey and projectScope.
           schema:
             type: string
             minLength: 1
@@ -4950,6 +4959,74 @@ paths:
           $ref: "#/components/responses/WorkspaceNotFoundError"
         "405":
           $ref: "#/components/responses/MethodNotAllowedError"
+        "502":
+          $ref: "#/components/responses/WorkspaceOperationError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
+  /v1/workspaces/{workspaceID}/managed-worktrees:
+    parameters:
+      - $ref: "#/components/parameters/WorkspaceID"
+    get:
+      operationId: listWorkspaceManagedWorktrees
+      tags:
+        - workspace
+      summary: List explicitly managed Git worktrees for a workspace
+      responses:
+        "200":
+          description: Managed worktrees
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkspaceManagedWorktreeListResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "502":
+          $ref: "#/components/responses/WorkspaceOperationError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
+  /v1/workspaces/{workspaceID}/managed-worktrees/{worktreeID}:
+    parameters:
+      - $ref: "#/components/parameters/WorkspaceID"
+      - in: path
+        name: worktreeID
+        required: true
+        schema:
+          type: string
+          minLength: 1
+    delete:
+      operationId: deleteWorkspaceManagedWorktree
+      tags:
+        - workspace
+      summary: Explicitly delete one clean managed Git worktree
+      responses:
+        "200":
+          description: Managed worktree deletion result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeleteWorkspaceManagedWorktreeResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
+        "404":
+          description: Managed worktree was not found in this workspace
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "409":
+          description: Managed worktree is dirty, ahead of its base, or changed during deletion
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
         "502":
           $ref: "#/components/responses/WorkspaceOperationError"
         "503":
@@ -7932,6 +8009,7 @@ components:
       required:
         - agentSessionId
         - title
+        - railSectionKey
         - projectPath
         - updatedAtUnixMs
         - deletedAtUnixMs
@@ -7945,10 +8023,14 @@ components:
         title:
           type: string
           description: Original canonical title. Empty titles remain empty.
+        railSectionKey:
+          type: string
+          minLength: 1
+          description: Immutable persisted rail section identity used for classification.
         projectPath:
           type: string
           nullable: true
-          description: Persisted original project path; null means the conversations section.
+          description: Persisted project path retained as presentation metadata. Classification is determined only by railSectionKey.
         updatedAtUnixMs:
           type: integer
           format: int64
@@ -7970,13 +8052,19 @@ components:
       type: object
       additionalProperties: false
       required:
+        - railSectionKey
         - projectPath
         - projectLabel
         - projectAvailable
       properties:
-        projectPath:
+        railSectionKey:
           type: string
           minLength: 1
+          description: Exact persisted rail section identity represented by this option.
+        projectPath:
+          type: string
+          nullable: true
+          description: Persisted project path retained as presentation metadata; it is not the option identity.
         projectLabel:
           type: string
           minLength: 1
@@ -11678,6 +11766,7 @@ components:
       type: string
       enum:
         - authenticated
+        - configured
         - required
         - unknown
     AgentProviderActionKind:
@@ -12665,6 +12754,7 @@ components:
         - forkedFrom
         - usage
         - goal
+        - goalSyncState
         - tuttiModeActivation
         - imported
       properties:
@@ -12813,6 +12903,14 @@ components:
             - $ref: "#/components/schemas/WorkspaceAgentSessionGoal"
           nullable: true
           description: Protocol v2. Explicit field extracted from runtimeContext.
+        goalSyncState:
+          allOf:
+            - $ref: "#/components/schemas/WorkspaceAgentSessionGoalSyncState"
+          nullable: true
+          description: >-
+            Narrow Host-owned evidence for the durable Goal operation. Null
+            means no Goal state exists for this Session; clients must not infer
+            pending execution from the visible Goal alone.
         tuttiModeActivation:
           allOf:
             - $ref: "#/components/schemas/TuttiModeActivation"
@@ -14270,6 +14368,37 @@ components:
           allOf:
             - $ref: "#/components/schemas/WorkspaceAgentSessionGoalState"
           nullable: true
+    WorkspaceAgentSessionGoalSyncState:
+      type: object
+      additionalProperties: false
+      required:
+        - revision
+        - syncStatus
+        - pendingOperationId
+        - executionPending
+      properties:
+        revision:
+          type: integer
+          format: int64
+          minimum: 0
+        syncStatus:
+          type: string
+          enum:
+            - pending
+            - applying
+            - synced
+            - diverged
+            - unknown
+            - failed
+        pendingOperationId:
+          type: string
+          nullable: true
+        executionPending:
+          type: boolean
+          description: >-
+            Host-owned proof that an accepted initial Goal is expected to
+            begin autonomous execution and has not produced its first exact
+            Goal Turn yet.
     WorkspaceAgentSessionGoalState:
       type: object
       additionalProperties: false
@@ -15117,6 +15246,10 @@ components:
         - branch
         - baseCommit
       properties:
+        worktreeId:
+          type: string
+          minLength: 1
+          description: Independent managed worktree resource identity. Legacy sessions may omit it.
         mode:
           $ref: "#/components/schemas/WorkspaceAgentSessionIsolationMode"
         worktreePath:
@@ -15147,6 +15280,55 @@ components:
           type: string
         errorCode:
           $ref: "#/components/schemas/WorkspaceAgentSessionWorktreeSupportErrorCode"
+    WorkspaceManagedWorktree:
+      type: object
+      additionalProperties: false
+      required:
+        - worktreeId
+        - workspaceId
+        - repoRoot
+        - worktreePath
+        - branch
+        - baseCommit
+      properties:
+        worktreeId:
+          type: string
+          minLength: 1
+        workspaceId:
+          type: string
+          minLength: 1
+        repoRoot:
+          type: string
+          minLength: 1
+        worktreePath:
+          type: string
+          minLength: 1
+        branch:
+          type: string
+          minLength: 1
+        baseCommit:
+          type: string
+          minLength: 1
+        relativeCwd:
+          type: string
+    WorkspaceManagedWorktreeListResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - worktrees
+      properties:
+        worktrees:
+          type: array
+          items:
+            $ref: "#/components/schemas/WorkspaceManagedWorktree"
+    DeleteWorkspaceManagedWorktreeResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - deleted
+      properties:
+        deleted:
+          type: boolean
     WorkspaceGitPatchExecOutput:
       type: object
       additionalProperties: false

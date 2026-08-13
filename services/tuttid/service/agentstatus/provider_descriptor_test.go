@@ -273,6 +273,11 @@ func TestAuthStrategiesProjectFromProviderDescriptor(t *testing.T) {
 		if spec.AuthOutputParserKind != descriptor.Status.AuthOutputParserKind || spec.AuthMarkerParserKind != descriptor.Status.AuthMarkerParserKind || spec.AuthCommandRunnerKind != descriptor.Status.AuthCommandRunnerKind || spec.StaticSpecResolverKind != descriptor.Status.StaticSpecResolverKind {
 			t.Fatalf("provider %q auth strategies = %#v, want %#v", provider, spec, descriptor.Status)
 		}
+		if spec.RemoteAuthProbe.Kind != descriptor.Status.RemoteAuthProbe.Kind ||
+			spec.RemoteAuthProbe.CredentialKind != descriptor.Status.RemoteAuthProbe.CredentialKind ||
+			spec.RemoteAuthProbe.Endpoint != descriptor.Status.RemoteAuthProbe.Endpoint {
+			t.Fatalf("provider %q remote auth probe = %#v, want %#v", provider, spec.RemoteAuthProbe, descriptor.Status.RemoteAuthProbe)
+		}
 	}
 }
 

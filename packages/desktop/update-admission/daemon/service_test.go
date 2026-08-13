@@ -229,6 +229,97 @@ func TestForegroundRefreshIsThrottledAndRetryBypassesThrottle(t *testing.T) {
 	}
 }
 
+func TestFailedOpenDoesNotThrottleForegroundRecovery(t *testing.T) {
+	var mu sync.Mutex
+	calls := 0
+	now := time.Date(2026, 8, 13, 1, 0, 0, 0, time.UTC)
+	service, err := New(Config{
+		Identity:           testIdentity(),
+		ChecksEnabled:      true,
+		ForegroundInterval: 30 * time.Minute,
+		Now:                func() time.Time { return now },
+		Checker: checkerFunc(func(context.Context, Identity) ([]byte, error) {
+			mu.Lock()
+			defer mu.Unlock()
+			calls++
+			if calls == 1 {
+				return nil, errors.New("network unavailable after system resume")
+			}
+			return []byte(`{"channel":"stable","minimumVersion":"1.1.0","decision":"upgradeRequired","reason":"belowMinimum","policyRevision":"v2"}`), nil
+		}),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	service.Start(context.Background())
+	initial, err := service.WaitInitial(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if initial.Policy.Status != "failedOpen" || initial.NextForegroundCheckAt != nil {
+		t.Fatalf("initial snapshot = %#v", initial)
+	}
+
+	foreground, err := service.Refresh(context.Background(), RefreshTriggerForeground)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !foreground.Performed || foreground.SkipReason != "" {
+		t.Fatalf("foreground = %#v", foreground)
+	}
+	if foreground.Snapshot.Policy.Status != "resolved" ||
+		foreground.Snapshot.Policy.Response == nil ||
+		foreground.Snapshot.Policy.Response.Decision != "upgradeRequired" ||
+		foreground.Snapshot.NextForegroundCheckAt == nil {
+		t.Fatalf("recovered snapshot = %#v", foreground.Snapshot)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if calls != 2 {
+		t.Fatalf("calls = %d, want startup failure plus foreground recovery", calls)
+	}
+}
+
+func TestInvalidResponseRetainsForegroundThrottle(t *testing.T) {
+	calls := 0
+	now := time.Date(2026, 8, 13, 1, 0, 0, 0, time.UTC)
+	service, err := New(Config{
+		Identity:           testIdentity(),
+		ChecksEnabled:      true,
+		ForegroundInterval: 30 * time.Minute,
+		Now:                func() time.Time { return now },
+		Checker: checkerFunc(func(context.Context, Identity) ([]byte, error) {
+			calls++
+			return []byte(`{"decision":"unexpected"}`), nil
+		}),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	service.Start(context.Background())
+	initial, err := service.WaitInitial(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if initial.Policy.Status != "failedOpen" ||
+		initial.Policy.Failure == nil ||
+		initial.Policy.Failure.Kind != "invalidResponse" ||
+		initial.NextForegroundCheckAt == nil {
+		t.Fatalf("initial snapshot = %#v", initial)
+	}
+
+	foreground, err := service.Refresh(context.Background(), RefreshTriggerForeground)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if foreground.Performed || foreground.SkipReason != "throttled" {
+		t.Fatalf("foreground = %#v", foreground)
+	}
+	if calls != 1 {
+		t.Fatalf("calls = %d, want one invalid request", calls)
+	}
+}
+
 func TestStartupTimeoutFailsOpenWithoutCachingPolicy(t *testing.T) {
 	service, err := New(Config{
 		Identity:       testIdentity(),

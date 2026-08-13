@@ -265,6 +265,12 @@ func (s *SetupService) executeInstall(
 			return fmt.Errorf("%w: derive user executable entry: %w", ErrRuntimeActivateFailed, err)
 		}
 		entry = &value
+		if err := validateManagedRuntimeEntry(value); err != nil {
+			return fmt.Errorf("%w: %w", ErrRuntimeActivateFailed, err)
+		}
+		if err := s.Plans.Manager.ensureUserCommandPath(ctx); err != nil {
+			return fmt.Errorf("%w: publish user command directory: %w", ErrRuntimeActivateFailed, err)
+		}
 	}
 	if err := activateManagedRuntime(installation, workspace, stagingDir, plan, s.Plans.Manager.RuntimeInstallDir, entry, activation); err != nil {
 		return fmt.Errorf("%w: %w", ErrRuntimeActivateFailed, err)

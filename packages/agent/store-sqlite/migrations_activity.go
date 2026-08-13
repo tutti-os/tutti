@@ -299,6 +299,26 @@ CREATE INDEX IF NOT EXISTS idx_workspace_agent_sessions_pinned_target_page
 	return s.recordMigration(ctx, schemaMigrationWorkspaceAgentActivityV10)
 }
 
+// applyWorkspaceAgentActivityV11 supports project removal, whose ownership
+// query starts from a project rail section across all workspaces. Existing
+// workspace-prefixed rail indexes cannot serve that access path.
+func (s *Store) applyWorkspaceAgentActivityV11(ctx context.Context) error {
+	applied, err := s.hasMigration(ctx, schemaMigrationWorkspaceAgentActivityV11)
+	if err != nil {
+		return err
+	}
+	if _, err := s.db.ExecContext(ctx, `
+CREATE INDEX IF NOT EXISTS idx_workspace_agent_sessions_project_removal
+  ON workspace_agent_sessions(rail_section_key, session_kind, deleted_at_unix_ms, pinned_at_unix_ms, workspace_id, agent_session_id);
+`); err != nil {
+		return fmt.Errorf("migrate workspace agent activity to v11 project removal index: %w", err)
+	}
+	if applied {
+		return nil
+	}
+	return s.recordMigration(ctx, schemaMigrationWorkspaceAgentActivityV11)
+}
+
 func (s *Store) backfillSystemAgentTargetIDs(ctx context.Context) error {
 	providers := make([]string, 0, len(s.opts.TargetIDBackfillByProvider))
 	for provider := range s.opts.TargetIDBackfillByProvider {

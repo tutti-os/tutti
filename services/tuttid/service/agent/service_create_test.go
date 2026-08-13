@@ -684,6 +684,7 @@ func TestServiceCreateReportsNodeResults(t *testing.T) {
 		"runtime_prepared",
 		"runtime_started",
 		"session_persisted",
+		"session_published",
 		"prompt_validated",
 		"prompt_prepared",
 		"runtime_exec",

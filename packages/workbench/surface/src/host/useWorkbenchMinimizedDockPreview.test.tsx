@@ -172,7 +172,7 @@ describe("useWorkbenchMinimizedDockPreview", () => {
     hook.unmount();
   });
 
-  it("falls back to the unrevisioned Genie cache identity", async () => {
+  it("falls back to the shared unrevisioned Dock preview identity", async () => {
     const node = createNode("genie-cache-node", 7);
     const capturePreview = vi.fn(async () => "data:image/png;base64,LIVE=");
     const dockPreviewCache = {

@@ -23,7 +23,7 @@ type PurgeDeletedSessionsResult struct {
 type ListDeletedSessionsInput struct {
 	WorkspaceID           string
 	SearchQuery           string
-	ProjectPath           *string
+	RailSectionKey        *string
 	CursorUpdatedAtUnixMS int64
 	CursorAgentSessionID  string
 	Limit                 int
@@ -39,7 +39,7 @@ const (
 type DeletedSessionPage struct {
 	WorkspaceID         string
 	Sessions            []DeletedSessionSummary
-	ProjectPaths        []string
+	RailSections        []storesqlite.DeletedSessionRailSection
 	TotalCount          int
 	WorkspaceTotalCount int
 	HasMore             bool
@@ -76,8 +76,16 @@ func (h *Host) ListDeletedSessions(ctx context.Context, input ListDeletedSession
 	if h == nil || h.deletedSessions == nil || workspaceID == "" {
 		return DeletedSessionPage{}, ErrInvalidArgument
 	}
+	var railSectionKey *string
+	if input.RailSectionKey != nil {
+		value := strings.TrimSpace(*input.RailSectionKey)
+		if value == "" {
+			return DeletedSessionPage{}, ErrInvalidArgument
+		}
+		railSectionKey = &value
+	}
 	page, err := h.deletedSessions.ListDeletedSessions(ctx, storesqlite.ListDeletedSessionsInput{
-		WorkspaceID: workspaceID, SearchQuery: input.SearchQuery, ProjectPath: input.ProjectPath,
+		WorkspaceID: workspaceID, SearchQuery: input.SearchQuery, RailSectionKey: railSectionKey,
 		CursorUpdatedAtUnixMS: input.CursorUpdatedAtUnixMS,
 		CursorAgentSessionID:  input.CursorAgentSessionID, Limit: input.Limit,
 	})
@@ -86,7 +94,7 @@ func (h *Host) ListDeletedSessions(ctx context.Context, input ListDeletedSession
 	}
 	return DeletedSessionPage{
 		WorkspaceID: page.WorkspaceID, Sessions: page.Sessions,
-		ProjectPaths: page.ProjectPaths, TotalCount: page.TotalCount,
+		RailSections: page.RailSections, TotalCount: page.TotalCount,
 		WorkspaceTotalCount: page.WorkspaceTotalCount,
 		HasMore:             page.HasMore, NextCursor: page.NextCursor,
 	}, nil

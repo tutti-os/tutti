@@ -56,6 +56,7 @@ export function envDetectedSignature(status: AgentProviderStatus): string {
     params.adapterInstalled,
     params.adapterVersion,
     params.adapterRequiredVersion,
+    status.auth.status,
     params.authenticated,
     params.networkRegistryReachable,
     params.networkApiStatus,
@@ -82,7 +83,8 @@ export function buildEnvIssueParams(
       status.adapter.binaryPath ?? status.adapter.command.join(" "),
     accountPresent:
       Boolean(status.auth.accountLabel) ||
-      status.auth.status === "authenticated",
+      status.auth.status === "authenticated" ||
+      status.auth.status === "configured",
     registryEndpoint: network?.registry.endpoint ?? "",
     apiEndpoint: network?.providerApi?.endpoint ?? "",
     proxyUrl: network?.proxy?.url ?? ""

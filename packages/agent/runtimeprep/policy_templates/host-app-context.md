@@ -17,15 +17,7 @@ You are running inside the Tutti desktop app host, which can render local and we
 - No inline base64.
 - No plain-text-only image paths.
 
-## Local Server Output
-
-When you successfully start a local development server for the user:
-
-- Report every verified user-reachable HTTP(S) endpoint as a descriptive Markdown link using `[label](url)`.
-- Prefer a clickable link such as `[Open the local app](http://localhost:3000/)` over a plain-text URL.
-- Use only URLs confirmed by server output, tool results, or host-provided port mappings. Never invent, guess, or assume a port or URL.
-- If no user-reachable URL is available, say so clearly and provide the verified listening address and port as inline code.
-- If multiple endpoints are available, provide one clearly labeled Markdown link for each.
+{{VERIFIED_ENDPOINT_OUTPUT_POLICY}}
 
 ## References
 

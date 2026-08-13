@@ -18,14 +18,18 @@ means; that logic never belongs to the flag infrastructure.
 A flag can start as UI-preference and gain daemon enforcement later; keep the
 same key when that happens.
 
-`lab.connectors` is a UI-preference flag whose owning surfaces span renderer
-settings and daemon-projected Composer Options. Off removes the Connectors
-settings entry, connector setup deep links, and connector entries from the
-Agent composer, and the AgentGUI footer uses Tutti Mode as that slot's fallback.
-On replaces the fallback with the Connectors control. The flag deliberately
-leaves installed state, active runtimes, and direct capability validation
-unchanged. Renderer projections must also filter cached connector palette rows
-while the daemon-backed Composer Options reread is in flight.
+`lab.connectors` is a capability flag whose owning surfaces span renderer
+settings, daemon composition, and daemon-projected Composer Options. The daemon
+reads it fail-closed during startup. When it is off, the Connector market,
+runtime, MCP gateway, Agent runtime projection, and `tutti connector` command
+provider are not constructed; consequently Connector policy is not injected
+into Agent system prompts. Existing installed state remains on disk. Changing
+the flag takes effect for daemon-owned Connector capabilities after the daemon
+restarts. Renderer off semantics also remove the Connectors settings entry,
+connector setup deep links, and connector entries from the Agent composer, and
+the AgentGUI footer uses Tutti Mode as that slot's fallback. Renderer
+projections must filter cached connector palette rows while the daemon-backed
+Composer Options reread is in flight.
 
 ## Key contract
 

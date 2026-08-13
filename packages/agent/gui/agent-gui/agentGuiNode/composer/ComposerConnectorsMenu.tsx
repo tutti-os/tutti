@@ -158,17 +158,20 @@ export function ComposerConnectorsMenu({
                 </span>
                 {connected ? (
                   <div
-                    className="ml-auto inline-flex shrink-0 items-center gap-1 pl-3 text-xs text-[var(--text-tertiary)]"
+                    className="ml-auto inline-flex shrink-0 items-center gap-[4px] pl-3 text-xs text-[var(--success)]"
                     data-testid={`agent-gui-composer-connector-${connectorKey}-status`}
                   >
-                    <CheckIcon aria-hidden className="size-3.5" />
+                    <CheckIcon
+                      aria-hidden
+                      className="size-4 text-[var(--success)]"
+                    />
                     {labels.connectorConnected}
                   </div>
                 ) : (
                   <button
                     type="button"
                     aria-label={`${actionLabel} ${connector.name}`}
-                    className="ml-auto inline-flex shrink-0 cursor-pointer items-center gap-1 rounded-sm px-1 py-0.5 text-xs text-[var(--text-secondary)] outline-none transition-colors hover:bg-[var(--transparency-hover)] hover:text-[var(--text-primary)] focus-visible:bg-[var(--transparency-hover)] focus-visible:text-[var(--text-primary)]"
+                    className="ml-auto inline-flex shrink-0 cursor-pointer items-center gap-[4px] rounded-sm px-1 py-0.5 text-xs text-[var(--text-primary)] outline-none transition-colors hover:text-[var(--accent)] focus-visible:text-[var(--accent)]"
                     data-testid={`agent-gui-composer-connector-${connectorKey}-connect`}
                     onClick={(event) => {
                       event.preventDefault();
@@ -186,7 +189,7 @@ export function ComposerConnectorsMenu({
                       requestConnect();
                     }}
                   >
-                    <LinkIcon aria-hidden className="size-3.5" />
+                    <LinkIcon aria-hidden className="size-4" />
                     {actionLabel}
                   </button>
                 )}

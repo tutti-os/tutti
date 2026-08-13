@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/tutti-os/tutti/packages/agent/daemon/providerstatus"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -33,11 +34,13 @@ func (s Service) statusForSpec(
 	var runtimeResolutionDuration time.Duration
 	var adapterProbeDuration time.Duration
 	var authDuration time.Duration
+	var remoteAuthDuration time.Duration
 	var cliVersionDuration time.Duration
 	var postChecksDuration time.Duration
 	adapterProbeRan := false
 	adapterProbeCacheHit := false
 	adapterProbeCacheAge := time.Duration(0)
+	remoteAuthProbeRan := false
 	cliVersionRan := false
 	unsupported := false
 	defer func() {
@@ -54,6 +57,8 @@ func (s Service) statusForSpec(
 			"adapterProbeCacheAgeMs", adapterProbeCacheAge.Milliseconds(),
 			"adapterProbeMs", adapterProbeDuration.Milliseconds(),
 			"authMs", authDuration.Milliseconds(),
+			"remoteAuthProbeRan", remoteAuthProbeRan,
+			"remoteAuthMs", remoteAuthDuration.Milliseconds(),
 			"cliVersionRan", cliVersionRan,
 			"cliVersionMs", cliVersionDuration.Milliseconds(),
 			"postChecksMs", postChecksDuration.Milliseconds(),
@@ -98,12 +103,17 @@ func (s Service) statusForSpec(
 	// the sum. Each goroutine writes distinct variables read only after Wait.
 	var auth AuthInfo
 	authCLIVersion := ""
+	authEvidenceAuthority := providerstatus.AuthEvidenceAuthorityNone
+	var remoteAuthEvidence providerstatus.AuthEvidence
+	remoteAuthEvidencePresent := false
 	cliVersion := ""
 	reuseCursorAboutVersion := installed && isCursorAuthCommandSpec(spec) && s.RunAuthStatusCommand == nil
 	var checks errgroup.Group
 	// adapterProbe captures the full probe result so availability can surface a
 	// probe-classified failure reason, rather than only a boolean result.
 	var adapterProbe ProbeResult
+	hasAPICredential := (isCodexStatusSpec(spec) || isClaudeStatusSpec(spec) || isOpenCodeStatusSpec(spec)) &&
+		s.providerHasAPICredential(spec.Provider)
 	if installed && adapterReady && !options.skipAdapterProbe &&
 		s.shouldProbeAdapterCommandForStatus(spec, runtimeResolution) {
 		probeCacheKey := s.adapterProbeCacheKey(detectionCtx, spec, runtimeResolution)
@@ -127,10 +137,24 @@ func (s Service) statusForSpec(
 	}
 	checks.Go(func() error {
 		authStartedAt := time.Now()
-		auth, authCLIVersion = s.resolveAuthAndCLIVersion(detectionCtx, spec, installed, runtimeResolution.CLIPath)
+		auth, authCLIVersion, authEvidenceAuthority = s.resolveAuthAndCLIVersion(detectionCtx, spec, installed, runtimeResolution.CLIPath)
 		authDuration = time.Since(authStartedAt)
 		return nil
 	})
+	if installed && !hasAPICredential && spec.RemoteAuthProbe.Kind != "" {
+		remoteAuthProbeRan = true
+		checks.Go(func() error {
+			remoteStartedAt := time.Now()
+			remoteAuthEvidence, remoteAuthEvidencePresent = s.resolveRemoteAuthEvidence(
+				detectionCtx,
+				spec,
+				runtimeResolution.CLIPath,
+				runtimeResolution.Env,
+			)
+			remoteAuthDuration = time.Since(remoteStartedAt)
+			return nil
+		})
+	}
 	if installed && !reuseCursorAboutVersion {
 		cliVersionRan = true
 		checks.Go(func() error {
@@ -158,6 +182,23 @@ func (s Service) statusForSpec(
 	}
 	actions := []Action{}
 	cliBelowFloor := installed && !providerCLIVersionMeetsMinimum(spec, cliVersion)
+	// Codex, Claude Code, and OpenCode can run in API Usage Billing mode. Their
+	// auth status commands report stored sessions and may not reflect an API key,
+	// auth token, apiKeyHelper, or OpenCode provider apiKey. Configuration is
+	// launchable, but it is not provider-backed authentication evidence.
+	if hasAPICredential {
+		auth.Status = AuthAuthenticated
+		auth.AccountLabel = "API Usage Billing"
+		auth.AuthMethod = "apiKey"
+	}
+	auth = s.reduceProviderAuthWithRemote(
+		spec,
+		auth,
+		hasAPICredential,
+		authEvidenceAuthority,
+		remoteAuthEvidence,
+		remoteAuthEvidencePresent,
+	)
 
 	if !installed {
 		availability.Status = AvailabilityNotInstalled
@@ -209,28 +250,18 @@ func (s Service) statusForSpec(
 			actions = append(actions, terminalAction(ActionLogin, loginCommandForRuntime(spec, runtimeResolution)))
 		}
 
-		// Codex, Claude Code, and OpenCode can run in API Usage Billing mode. Their auth
-		// status commands report stored login sessions and may not reflect an API
-		// key, auth token, apiKeyHelper, or OpenCode provider apiKey, so explicit API billing credentials
-		// override the command result. A bare custom endpoint is not a credential.
-		if (isCodexStatusSpec(spec) || isClaudeStatusSpec(spec) || isOpenCodeStatusSpec(spec)) &&
-			s.providerHasAPICredential(spec.Provider) {
-			auth.Status = AuthAuthenticated
-			auth.AccountLabel = "API Usage Billing"
-			auth.AuthMethod = "apiKey"
-		} else {
-			switch auth.Status {
-			case AuthAuthenticated:
-				// already ready
-			case AuthRequired:
-				availability.Status = AvailabilityAuthRequired
-				availability.ReasonCode = "auth_required"
-				actions = append(actions, Action{ID: ActionRefresh, Kind: ActionKindRefresh})
-			case AuthUnknown:
-				availability.Status = AvailabilityAuthRequired
-				availability.ReasonCode = "auth_unknown"
-				actions = append(actions, Action{ID: ActionRefresh, Kind: ActionKindRefresh})
-			}
+		switch auth.Status {
+		case AuthAuthenticated, AuthConfigured:
+			// Configured credentials are launchable but remain distinct from a
+			// provider-backed authenticated request.
+		case AuthRequired:
+			availability.Status = AvailabilityAuthRequired
+			availability.ReasonCode = "auth_required"
+			actions = append(actions, Action{ID: ActionRefresh, Kind: ActionKindRefresh})
+		case AuthUnknown:
+			availability.Status = AvailabilityAuthRequired
+			availability.ReasonCode = "auth_unknown"
+			actions = append(actions, Action{ID: ActionRefresh, Kind: ActionKindRefresh})
 		}
 	}
 
@@ -287,7 +318,9 @@ func (s Service) statusForSpec(
 	if isCodexStatusSpec(spec) && status.CLI.Installed && adapterInstalled {
 		assessment := s.assessCodexRuntime(spec, runtimeResolution.CLIPath, adapterProbe, adapterProbeRan, adapterProbeCacheHit)
 		switch {
-		case assessment.RuntimeReady && status.Auth.Status == AuthAuthenticated && !cliBelowFloor:
+		case assessment.RuntimeReady &&
+			(status.Auth.Status == AuthAuthenticated || status.Auth.Status == AuthConfigured) &&
+			!cliBelowFloor:
 			status.Availability = Availability{Status: AvailabilityReady, CheckedAt: &now}
 			status.Actions = []Action{terminalAction(ActionLogin, loginCommandForRuntime(spec, runtimeResolution))}
 		case assessment.RuntimeReady && cliBelowFloor:

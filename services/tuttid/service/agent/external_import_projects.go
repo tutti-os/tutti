@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strings"
 
+	agentactivitybiz "github.com/tutti-os/tutti/packages/agent/store-sqlite"
 	agentproviderbiz "github.com/tutti-os/tutti/services/tuttid/biz/agentprovider"
 )
 
@@ -236,9 +237,10 @@ func externalImportSessionSummary(session externalImportedSession, projectPath s
 }
 
 func upsertExternalImportProject(projects map[string]*ExternalImportProject, next ExternalImportProject, provider string) {
-	project, ok := projects[next.Path]
+	identityKey := agentactivitybiz.RailSectionKeyForProject(next.Path)
+	project, ok := projects[identityKey]
 	if !ok {
-		projects[next.Path] = &next
+		projects[identityKey] = &next
 		return
 	}
 	project.SessionCount += next.SessionCount
@@ -264,11 +266,11 @@ func matchingExternalImportProject(session externalImportedSession, selections [
 			continue
 		}
 		if externalProjectPathContains(selection.Path, session.Cwd) {
-			selectionPath := filepath.Clean(selection.Path)
-			if selectionPath == filepath.Clean(session.Cwd) {
+			selectionPath := agentactivitybiz.NormalizeProjectPath(selection.Path)
+			if agentactivitybiz.AreProjectPathsEqual(selectionPath, session.Cwd) {
 				return selection.Path, true
 			}
-			if bestPath == "" || len(selectionPath) > len(filepath.Clean(bestPath)) {
+			if bestPath == "" || len(selectionPath) > len(agentactivitybiz.NormalizeProjectPath(bestPath)) {
 				bestPath = selection.Path
 			}
 		}
@@ -303,16 +305,7 @@ func externalProviderSelected(provider string, providers []string) bool {
 }
 
 func externalProjectPathContains(parent string, child string) bool {
-	parent = filepath.Clean(parent)
-	child = filepath.Clean(child)
-	if parent == child {
-		return true
-	}
-	rel, err := filepath.Rel(parent, child)
-	if err != nil {
-		return false
-	}
-	return rel != "." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) && rel != ".."
+	return agentactivitybiz.IsProjectPathWithin(parent, child)
 }
 
 func canonicalExistingDir(path string) (string, bool) {

@@ -101,6 +101,7 @@ export const AgentGUINode = memo(function AgentGUINode({
     capabilityControlsReadOnly = false,
     agentTargets,
     agentTargetsLoading = false,
+    mentionAgentTargets,
     handoffAgentTargets,
     handoffAgentTargetsLoading = false,
     showHandoffTargetOwnershipLabels = false,
@@ -476,6 +477,7 @@ export const AgentGUINode = memo(function AgentGUINode({
           return (
             <AgentGUINodeView
               viewModel={viewModel}
+              mentionAgentTargets={mentionAgentTargets}
               renderAgentTargetInfo={renderAgentTargetInfo}
               renderSidebarFooter={renderSidebarFooter}
               renderProviderRailEmpty={renderProviderRailEmpty}

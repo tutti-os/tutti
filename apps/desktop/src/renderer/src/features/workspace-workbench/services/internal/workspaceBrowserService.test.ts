@@ -170,6 +170,119 @@ test("workspace browser service opens Browser popups in tabs and launches app UR
   ]);
 });
 
+test("workspace browser service reuses matching pages and creates tabs for new URLs", () => {
+  const service = createWorkspaceBrowserService({
+    browserApi: createBrowserNodeHostApi()
+  });
+  const feature = createBrowserNodeFeature({
+    hostApi: service.createFeatureHostApi({
+      acceptsEvent: (event) => browserNodeOwnsEvent(event),
+      source: "browser",
+      workspaceId: "workspace-page-reuse"
+    })
+  });
+  const olderSurfaceId = "browser:older";
+  const recentSurfaceId = "browser:recent";
+  const pageA = feature.tabsStore.ensureSurface(
+    olderSurfaceId,
+    "https://example.com/a"
+  ).tabs[0]!;
+  const pageB = feature.tabsStore.addTab(
+    olderSurfaceId,
+    "https://example.com/b"
+  );
+  feature.tabsStore.ensureSurface(
+    recentSurfaceId,
+    "https://example.com/current"
+  );
+  service.ensureFeatureConnected(feature);
+
+  assert.deepEqual(
+    service.openPage({
+      surfaceNodeIds: [recentSurfaceId, olderSurfaceId],
+      url: "https://example.com/a",
+      workspaceId: "workspace-page-reuse"
+    }),
+    {
+      pageNodeId: pageA.nodeId,
+      surfaceNodeId: olderSurfaceId
+    }
+  );
+  assert.equal(
+    feature.tabsStore.getSurfaceState(olderSurfaceId)?.activeTabId,
+    pageA.id
+  );
+  assert.notEqual(pageA.id, pageB.id);
+
+  const opened = service.openPage({
+    surfaceNodeIds: [recentSurfaceId, olderSurfaceId],
+    url: "https://example.com/new",
+    workspaceId: "workspace-page-reuse"
+  });
+  assert.equal(opened?.surfaceNodeId, recentSurfaceId);
+  assert.equal(
+    feature.tabsStore
+      .getSurfaceState(recentSurfaceId)
+      ?.tabs.find((tab) => tab.nodeId === opened?.pageNodeId)?.defaultUrl,
+    "https://example.com/new"
+  );
+  assert.equal(
+    feature.tabsStore.getSurfaceState(olderSurfaceId)?.tabs.length,
+    2
+  );
+  assert.equal(
+    feature.tabsStore.getSurfaceState(recentSurfaceId)?.tabs.length,
+    2
+  );
+});
+
+test("workspace browser service reuses a redirected tab while another tab is selected", () => {
+  const service = createWorkspaceBrowserService({
+    browserApi: createBrowserNodeHostApi()
+  });
+  const feature = createBrowserNodeFeature({
+    hostApi: service.createFeatureHostApi({
+      acceptsEvent: (event) => browserNodeOwnsEvent(event),
+      source: "browser",
+      workspaceId: "workspace-redirected-page-reuse"
+    })
+  });
+  const surfaceNodeId = "browser:redirected-page-reuse";
+  feature.tabsStore.ensureSurface(surfaceNodeId, "https://example.com/");
+  const pageB = feature.tabsStore.addTab(
+    surfaceNodeId,
+    "https://www.openai.com/"
+  );
+  const pageC = feature.tabsStore.addTab(
+    surfaceNodeId,
+    "https://docs.python.org/3/"
+  );
+  feature.runtimeStore.applyEvent(
+    createBrowserStateEvent(pageB.nodeId, "https://openai.com/")
+  );
+  service.ensureFeatureConnected(feature);
+
+  const opened = service.openPage({
+    surfaceNodeIds: [surfaceNodeId],
+    url: "https://www.openai.com/",
+    workspaceId: "workspace-redirected-page-reuse"
+  });
+
+  assert.deepEqual(opened, {
+    pageNodeId: pageB.nodeId,
+    surfaceNodeId
+  });
+  assert.equal(
+    feature.tabsStore.getSurfaceState(surfaceNodeId)?.activeTabId,
+    pageB.id
+  );
+  assert.notEqual(pageB.id, pageC.id);
+  assert.equal(
+    feature.tabsStore.getSurfaceState(surfaceNodeId)?.tabs.length,
+    3
+  );
+});
+
 test("workspace browser service replaces stale feature routes before handling popups", () => {
   let emitDesktopBrowserEvent = (_event: BrowserNodeEvent): void => undefined;
   const service = createWorkspaceBrowserService({
@@ -505,6 +618,23 @@ function workspaceAppOwnsEvent(event: BrowserNodeEvent): boolean {
     nodeId.startsWith("workspace-app-webview:") ||
     nodeId.startsWith("workspace-app:")
   );
+}
+
+function createBrowserStateEvent(
+  nodeId: string,
+  url: string
+): BrowserNodeEvent {
+  return {
+    canGoBack: false,
+    canGoForward: false,
+    isLoading: false,
+    isOccluded: false,
+    lifecycle: "active",
+    nodeId,
+    title: null,
+    type: "state",
+    url
+  };
 }
 
 function createBrowserNodeHostApi(

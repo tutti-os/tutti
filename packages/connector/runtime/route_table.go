@@ -183,6 +183,37 @@ func (table *RouteTable) Remove(key string, generation market.HostGeneration, re
 	return nil
 }
 
+// RemoveMatching fences and closes every route selected from a stable snapshot.
+// Callers that need to exclude concurrent commits must serialize their host
+// lifecycle mutations around this method.
+func (table *RouteTable) RemoveMatching(
+	match func(ManagedRoute) bool,
+	generation market.HostGeneration,
+	deadline time.Time,
+) error {
+	if table == nil || match == nil {
+		return nil
+	}
+	table.mu.RLock()
+	targets := make([]ManagedRoute, 0)
+	seen := make(map[string]struct{})
+	for _, routes := range []map[string]ManagedRoute{table.routes, table.retiring} {
+		for _, route := range routes {
+			if _, exists := seen[route.RouteID()]; exists || !match(route) {
+				continue
+			}
+			seen[route.RouteID()] = struct{}{}
+			targets = append(targets, route)
+		}
+	}
+	table.mu.RUnlock()
+	var errs []error
+	for _, route := range targets {
+		errs = append(errs, table.Remove(route.RouteID(), generation, route.RouteReleaseDigest(), deadline))
+	}
+	return errors.Join(errs...)
+}
+
 func (table *RouteTable) RetireExact(route ManagedRoute, deadline time.Time) error {
 	if table == nil || route == nil {
 		return nil

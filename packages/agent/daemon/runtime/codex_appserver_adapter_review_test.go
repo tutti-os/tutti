@@ -529,6 +529,7 @@ func TestCodexAppServerAdapterCompactionBannerSettlesOnInterrupt(t *testing.T) {
 	}
 	if settled == nil {
 		t.Fatalf("expected interrupted compaction banner in terminal events; got %#v", terminal)
+		return
 	}
 	if got, want := asString(settled.Payload.Metadata["messageId"]), asString(started[0].Payload.Metadata["messageId"]); got != want || got == "" {
 		t.Fatalf("interrupted banner messageId = %q, want %q", got, want)
@@ -574,6 +575,7 @@ func TestCodexAppServerAdapterCompactionBannerSettlesOnFailure(t *testing.T) {
 	}
 	if settled == nil {
 		t.Fatalf("expected failed compaction banner in terminal events; got %#v", terminal)
+		return
 	}
 	if got := asString(settled.Payload.Metadata["noticeCommandStatus"]); got != "failed" {
 		t.Fatalf("failed banner status = %q, want failed", got)

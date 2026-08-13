@@ -3,7 +3,8 @@ import type {
   AgentGUIComposerFocusMethod,
   AgentGUIEngagementContext,
   AgentGUIEngagementEvent,
-  AgentGUIEngagementEventSink
+  AgentGUIEngagementEventSink,
+  AgentGUIQuickPromptType
 } from "./agentGUIEngagement.types";
 
 export const AGENT_GUI_PANEL_EXPOSURE_DWELL_MS = 1_000;
@@ -13,6 +14,14 @@ interface PendingContentEntered {
   contentType: AgentGUIComposerContentType;
   hadPrefill: boolean;
 }
+
+type PendingQuickPromptEvent =
+  | { source: "composer_input"; type: "quick_prompt_panel_opened" }
+  | {
+      promptType: AgentGUIQuickPromptType;
+      source: "composer_input";
+      type: "quick_prompt_used";
+    };
 
 interface AgentGUIPanelEngagementInput {
   context: AgentGUIEngagementContext;
@@ -27,6 +36,7 @@ interface AgentGUIPanelVisit {
   id: string;
   pendingContentEntered: PendingContentEntered | null;
   pendingFocusMethod: AgentGUIComposerFocusMethod | null;
+  pendingQuickPromptEvents: PendingQuickPromptEvent[];
   timeoutId: ReturnType<typeof setTimeout> | null;
 }
 
@@ -100,6 +110,21 @@ export class AgentGUIPanelEngagementController {
     });
   }
 
+  quickPromptPanelOpened(): void {
+    this.reportQuickPromptEvent({
+      source: "composer_input",
+      type: "quick_prompt_panel_opened"
+    });
+  }
+
+  quickPromptUsed(promptType: AgentGUIQuickPromptType): void {
+    this.reportQuickPromptEvent({
+      promptType,
+      source: "composer_input",
+      type: "quick_prompt_used"
+    });
+  }
+
   private readonly updateDocumentState = (): void => {
     this.documentFocused = documentHasFocus();
     this.documentVisible = documentIsVisible();
@@ -128,6 +153,7 @@ export class AgentGUIPanelEngagementController {
       id: createPanelVisitId(),
       pendingContentEntered: null,
       pendingFocusMethod: null,
+      pendingQuickPromptEvents: [],
       timeoutId: null
     };
     this.visit = visit;
@@ -154,6 +180,9 @@ export class AgentGUIPanelEngagementController {
         ...this.eventForVisit(visit, "composer_content_entered"),
         ...visit.pendingContentEntered
       });
+    }
+    for (const event of visit.pendingQuickPromptEvents) {
+      this.report({ ...this.eventForVisit(visit, event.type), ...event });
     }
   }
 
@@ -196,6 +225,17 @@ export class AgentGUIPanelEngagementController {
     } catch (error) {
       reportEngagementFailure(error);
     }
+  }
+
+  private reportQuickPromptEvent(event: PendingQuickPromptEvent): void {
+    this.reconcileVisit();
+    const visit = this.visit;
+    if (!visit) return;
+    if (!visit.exposed) {
+      visit.pendingQuickPromptEvents.push(event);
+      return;
+    }
+    this.report({ ...this.eventForVisit(visit, event.type), ...event });
   }
 }
 

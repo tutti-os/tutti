@@ -230,8 +230,6 @@ export function useAgentGUIDetailModel(input: Input) {
   const composerDisabledReason = isCollaboratorConversation
     ? labels.collaboratorSessionReadOnlyPlaceholder
     : null;
-  const runtimeCommandsBlocked =
-    viewModel.composer.gate.runtime.status === "blocked";
   const stopControl = resolveAgentGUIStopControl({
     hasPendingApproval: viewModel.interaction.pendingApproval !== null,
     hasPendingInteractivePrompt:
@@ -242,8 +240,7 @@ export function useAgentGUIDetailModel(input: Input) {
     isCreatingConversation: viewModel.composer.isCreatingConversation,
     isInterrupting: viewModel.composer.isInterrupting,
     isSubmitting: viewModel.composer.isSubmitting,
-    isUnavailable: viewModel.readiness.activeLiveState === "failed",
-    runtimeCommandsBlocked
+    isUnavailable: viewModel.readiness.activeLiveState === "failed"
   });
   const showStopButton = stopControl.visible;
   const stopDisabled = stopControl.disabled;

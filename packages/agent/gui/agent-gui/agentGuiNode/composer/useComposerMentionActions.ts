@@ -115,10 +115,72 @@ export function useComposerMentionActions(input: Input) {
     paletteContentRef,
     shouldCenterMentionHighlight
   } = input;
+  const replaceActiveFileMentionTrigger = useCallback(
+    (replacement: string): boolean => {
+      if (!fileMentionSuggestion) {
+        return false;
+      }
+      const triggerLength = Math.max(
+        fileMentionSuggestion.range.to - fileMentionSuggestion.range.from,
+        fileMentionSuggestion.text.length
+      );
+      const nextDraft =
+        triggerLength > 0
+          ? editorHandleRef.current?.replaceTextBeforeSelection(
+              triggerLength,
+              replacement
+            )
+          : null;
+      if (nextDraft === null || nextDraft === undefined) {
+        return false;
+      }
+      draftPromptRef.current = nextDraft;
+      setPaletteDraftPrompt(nextDraft);
+      onDraftContentChange(
+        updateAgentComposerDraft(draftContent, { prompt: nextDraft })
+      );
+      return true;
+    },
+    [draftContent, fileMentionSuggestion, onDraftContentChange]
+  );
+
+  const navigateIntoFileMentionItem = useCallback(
+    (item: AgentContextMentionItem): boolean => {
+      if (
+        item.kind === "file" &&
+        item.mentionNavigation === "workspace-folder" &&
+        fileMentionSuggestion?.query
+      ) {
+        if (!replaceActiveFileMentionTrigger("@")) {
+          return false;
+        }
+        mentionControllerRef.current?.updateQuery({
+          workspaceId,
+          currentUserId,
+          query: "",
+          sectionKey: selectedProjectSectionKey || null,
+          sessionCwd: selectedProjectPath || null
+        });
+      }
+      return (
+        mentionControllerRef.current?.selectFileMentionNavigationItem(item) ??
+        false
+      );
+    },
+    [
+      currentUserId,
+      fileMentionSuggestion,
+      replaceActiveFileMentionTrigger,
+      selectedProjectPath,
+      selectedProjectSectionKey,
+      workspaceId
+    ]
+  );
+
   const selectFileMention = useCallback(
     (entry: AgentContextMentionItem): void => {
       if (entry.kind === "file" && entry.mentionNavigation) {
-        mentionControllerRef.current?.selectFileMentionNavigationItem(entry);
+        navigateIntoFileMentionItem(entry);
         return;
       }
       fileMentionSuggestion?.command(entry);
@@ -129,7 +191,7 @@ export function useComposerMentionActions(input: Input) {
       setFileMentionSuggestion(null);
       setIsPaletteOpen(false);
     },
-    [fileMentionSuggestion]
+    [fileMentionSuggestion, navigateIntoFileMentionItem]
   );
 
   const closeFileMentionPalette = useCallback((): void => {
@@ -142,26 +204,8 @@ export function useComposerMentionActions(input: Input) {
   }, [fileMentionSuggestion]);
 
   const clearActiveFileMentionTrigger = useCallback((): void => {
-    if (!fileMentionSuggestion) {
-      return;
-    }
-    const triggerLength = Math.max(
-      fileMentionSuggestion.range.to - fileMentionSuggestion.range.from,
-      fileMentionSuggestion.text.length
-    );
-    const nextDraft =
-      triggerLength > 0
-        ? editorHandleRef.current?.replaceTextBeforeSelection(triggerLength, "")
-        : null;
-    if (nextDraft === null || nextDraft === undefined) {
-      return;
-    }
-    draftPromptRef.current = nextDraft;
-    setPaletteDraftPrompt(nextDraft);
-    onDraftContentChange(
-      updateAgentComposerDraft(draftContent, { prompt: nextDraft })
-    );
-  }, [draftContent, fileMentionSuggestion, onDraftContentChange]);
+    replaceActiveFileMentionTrigger("");
+  }, [replaceActiveFileMentionTrigger]);
   const closeOpenPalette = useCallback((): void => {
     if (showFileMentionPalette) {
       closeFileMentionPalette();
@@ -239,19 +283,9 @@ export function useComposerMentionActions(input: Input) {
       ) {
         return false;
       }
-      return (
-        mentionControllerRef.current?.selectFileMentionNavigationItem(item) ??
-        false
-      );
+      return navigateIntoFileMentionItem(item);
     },
-    [createFileMentionPaletteAdapter]
-  );
-
-  const navigateIntoFileMentionItem = useCallback(
-    (item: AgentContextMentionItem): void => {
-      mentionControllerRef.current?.selectFileMentionNavigationItem(item);
-    },
-    []
+    [createFileMentionPaletteAdapter, navigateIntoFileMentionItem]
   );
 
   const handleFileMentionKeyDown = useCallback(

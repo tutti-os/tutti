@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 	"sync"
 	"time"
 
@@ -16,10 +17,12 @@ type HostConfig struct {
 	Repository               market.Repository
 	CatalogSource            market.CatalogSource
 	ReleaseInstallations     market.ReleaseInstallationManager
-	InstallationChecker      market.InstallationChecker
 	ImplementationHost       market.ImplementationHost
 	Authorization            market.AuthorizationProvider
 	AuthorizationProjections market.AuthorizationProjectionStore
+	AuthorizationSnapshots   market.AuthorizationSnapshotSource
+	AuthorizationEvents      market.AuthorizationEventSource
+	AuthorizationReadiness   *market.AuthorizationReadinessGate
 	RuntimeBindings          market.RuntimeBindingResolver
 	Compatibility            market.CompatibilityEvaluator
 	ImplementationRegistry   market.ImplementationRegistry
@@ -39,93 +42,36 @@ type CapabilityPublicationController interface {
 type Host struct {
 	Application *market.Application
 
-	cancel               context.CancelFunc
-	scheduler            *OperationScheduler
-	outboxDone           chan struct{}
-	lifecycleDone        chan struct{}
-	closeOnce            sync.Once
-	bootstrapMu          sync.Mutex
-	bootstrapped         bool
-	bootstrapScope       market.OperationScope
-	refreshWorkerStarted bool
-	repository           market.Repository
-	implementationHost   market.ImplementationHost
-	activationGate       *activationGateHost
-	publicationGate      capabilityPublicationGate
-	publication          CapabilityPublicationController
+	cancel                     context.CancelFunc
+	scheduler                  *OperationScheduler
+	outboxDone                 chan struct{}
+	lifecycleDone              chan struct{}
+	authorizationSyncDone      chan struct{}
+	authorizationSyncWake      chan struct{}
+	authorizationEventsDone    chan struct{}
+	authorizationScopeWake     chan struct{}
+	runtimeRecoveryDone        chan struct{}
+	runtimeRecoveryWake        chan struct{}
+	closeOnce                  sync.Once
+	bootstrapMu                sync.Mutex
+	bootstrapped               bool
+	bootstrapScope             market.OperationScope
+	refreshWorkerStarted       bool
+	repository                 market.Repository
+	implementationHost         market.ImplementationHost
+	activationGate             *activationGateHost
+	publicationGate            capabilityPublicationGate
+	publication                CapabilityPublicationController
+	authorizationSnapshots     market.AuthorizationSnapshotSource
+	authorizationSnapshotStore market.AuthorizationSnapshotStore
+	authorizationEvents        market.AuthorizationEventSource
+	authorizationReadiness     *market.AuthorizationReadinessGate
+	authorizationDirty         map[string]map[string]struct{}
+	runtimeRecoveryPending     map[string]struct{}
 }
 
 type capabilityPublicationGate interface {
 	SetCapabilityPublication(bool)
-}
-
-type activationGateHost struct {
-	delegate   market.ImplementationHost
-	mu         sync.Mutex
-	open       bool
-	failClosed bool
-	staged     map[string]market.RuntimeReconcileRequest
-}
-
-func newActivationGateHost(delegate market.ImplementationHost) *activationGateHost {
-	return &activationGateHost{delegate: delegate, staged: make(map[string]market.RuntimeReconcileRequest)}
-}
-
-func (gate *activationGateHost) Reconcile(ctx context.Context, request market.RuntimeReconcileRequest) (market.RuntimeReceipt, error) {
-	key := request.ConnectionID + "\x00" + request.Connector.Key
-	gate.mu.Lock()
-	if !request.Enabled {
-		delete(gate.staged, key)
-		gate.mu.Unlock()
-		return gate.delegate.Reconcile(ctx, request)
-	}
-	if gate.open {
-		gate.mu.Unlock()
-		return gate.delegate.Reconcile(ctx, request)
-	}
-	current, exists := gate.staged[key]
-	if !exists || current.Generation.BootEpoch != request.Generation.BootEpoch || request.Generation.Generation >= current.Generation.Generation {
-		gate.staged[key] = request
-	}
-	gate.mu.Unlock()
-	return market.RuntimeReceipt{OperationID: request.OperationID, ConnectionID: request.ConnectionID,
-		ConnectorKey: request.Connector.Key, ReleaseDigest: request.Connector.Release.ReleaseDigest, Generation: request.Generation}, nil
-}
-
-func (gate *activationGateHost) DeactivateRuntime(ctx context.Context, request market.RuntimeDeactivationRequest) error {
-	gate.mu.Lock()
-	delete(gate.staged, request.ConnectionID+"\x00"+request.ConnectorKey)
-	gate.mu.Unlock()
-	return gate.delegate.DeactivateRuntime(ctx, request)
-}
-
-func (gate *activationGateHost) FailClosed(ctx context.Context, deadline time.Time) error {
-	gate.mu.Lock()
-	gate.failClosed = true
-	gate.staged = make(map[string]market.RuntimeReconcileRequest)
-	gate.mu.Unlock()
-	return gate.delegate.FailClosed(ctx, deadline)
-}
-
-func (gate *activationGateHost) requiresRecovery() bool {
-	gate.mu.Lock()
-	defer gate.mu.Unlock()
-	return gate.failClosed
-}
-
-func (gate *activationGateHost) markRecovered() {
-	gate.mu.Lock()
-	gate.failClosed = false
-	gate.mu.Unlock()
-}
-
-func (gate *activationGateHost) setOpen(open bool) {
-	gate.mu.Lock()
-	gate.open = open
-	if !open {
-		gate.staged = make(map[string]market.RuntimeReconcileRequest)
-	}
-	gate.mu.Unlock()
 }
 
 func NewHost(parent context.Context, config HostConfig) (*Host, error) {
@@ -138,18 +84,15 @@ func NewHost(parent context.Context, config HostConfig) (*Host, error) {
 	hostContext, cancel := context.WithCancel(parent)
 	scheduler := NewOperationScheduler(hostContext)
 	activationGate := newActivationGateHost(config.ImplementationHost)
-	installationChecker := config.InstallationChecker
-	if installationChecker == nil {
-		installationChecker, _ = config.ImplementationHost.(market.InstallationChecker)
-	}
 	application, err := market.NewApplication(market.ApplicationConfig{
 		Repository:               config.Repository,
 		CatalogSource:            config.CatalogSource,
 		ReleaseInstallations:     config.ReleaseInstallations,
-		InstallationChecker:      installationChecker,
 		Host:                     activationGate,
 		Authorization:            config.Authorization,
 		AuthorizationProjections: config.AuthorizationProjections,
+		AuthorizationSnapshots:   config.AuthorizationSnapshots,
+		AuthorizationReadiness:   config.AuthorizationReadiness,
 		RuntimeBindings:          config.RuntimeBindings,
 		Compatibility:            config.Compatibility,
 		Scheduler:                scheduler,
@@ -164,15 +107,29 @@ func NewHost(parent context.Context, config HostConfig) (*Host, error) {
 		return nil, err
 	}
 	host := &Host{
-		Application:        application,
-		cancel:             cancel,
-		scheduler:          scheduler,
-		outboxDone:         make(chan struct{}),
-		lifecycleDone:      make(chan struct{}),
-		repository:         config.Repository,
-		implementationHost: config.ImplementationHost,
-		activationGate:     activationGate,
-		publication:        config.Publication,
+		Application:             application,
+		cancel:                  cancel,
+		scheduler:               scheduler,
+		outboxDone:              make(chan struct{}),
+		lifecycleDone:           make(chan struct{}),
+		authorizationSyncDone:   make(chan struct{}),
+		authorizationSyncWake:   make(chan struct{}, 1),
+		authorizationEventsDone: make(chan struct{}),
+		authorizationScopeWake:  make(chan struct{}, 1),
+		runtimeRecoveryDone:     make(chan struct{}),
+		runtimeRecoveryWake:     make(chan struct{}, 1),
+		repository:              config.Repository,
+		implementationHost:      config.ImplementationHost,
+		activationGate:          activationGate,
+		publication:             config.Publication,
+		authorizationSnapshots:  config.AuthorizationSnapshots,
+		authorizationEvents:     config.AuthorizationEvents,
+		authorizationReadiness:  config.AuthorizationReadiness,
+		authorizationDirty:      make(map[string]map[string]struct{}),
+		runtimeRecoveryPending:  make(map[string]struct{}),
+	}
+	if snapshotStore, ok := config.AuthorizationProjections.(market.AuthorizationSnapshotStore); ok {
+		host.authorizationSnapshotStore = snapshotStore
 	}
 	if publicationGate, ok := config.ImplementationHost.(capabilityPublicationGate); ok {
 		host.publicationGate = publicationGate
@@ -185,9 +142,23 @@ func NewHost(parent context.Context, config HostConfig) (*Host, error) {
 		defer close(host.outboxDone)
 		dispatcher.Run(hostContext)
 	}()
+	if host.authorizationSnapshots != nil && host.authorizationSnapshotStore != nil {
+		go host.runAuthorizationSnapshotWorker(hostContext)
+	} else {
+		close(host.authorizationSyncDone)
+	}
+	if host.authorizationEvents != nil {
+		go host.runAuthorizationEventWorker(hostContext)
+	} else {
+		close(host.authorizationEventsDone)
+	}
 	if _, ok := config.Authorization.(market.AuthorizationObserver); ok {
 		go host.runAuthorizationReconcileWorker(hostContext)
 	}
+	go func() {
+		defer close(host.runtimeRecoveryDone)
+		host.runRuntimeRecoveryWorker(hostContext)
+	}()
 	cleanupWorker := LifecycleCleanupWorker{Store: config.Lifecycle, Policy: config.LifecyclePolicy}
 	go func() {
 		defer close(host.lifecycleDone)
@@ -205,7 +176,15 @@ func (host *Host) runAuthorizationReconcileWorker(ctx context.Context) {
 			return
 		case <-ticker.C:
 			reconcileContext, cancel := context.WithTimeout(ctx, 15*time.Second)
-			err := host.Application.ReconcileAuthorizations(reconcileContext)
+			host.bootstrapMu.Lock()
+			bootstrapped, scope := host.bootstrapped, host.bootstrapScope
+			if !bootstrapped || strings.TrimSpace(scope.AccountID) == "" {
+				host.bootstrapMu.Unlock()
+				cancel()
+				continue
+			}
+			err := host.reconcileAuthorizationsLocked(reconcileContext, scope)
+			host.bootstrapMu.Unlock()
 			cancel()
 			if err != nil && !errors.Is(err, context.Canceled) {
 				slog.Warn("connector authorization reconciliation failed", "error", err)
@@ -214,9 +193,38 @@ func (host *Host) runAuthorizationReconcileWorker(ctx context.Context) {
 	}
 }
 
+func (host *Host) reconcileAuthorizationsLocked(ctx context.Context, scope market.OperationScope) error {
+	intents, err := host.Application.ReconcileAuthorizations(ctx, scope)
+	if err != nil || len(intents) == 0 {
+		return err
+	}
+	// ReconcileAuthorizations persists projection intent. Create or join one
+	// scoped runtime operation for every affected Connector before releasing the
+	// lifecycle fence, so logout or account switching cannot be followed by a
+	// late old-account route publication.
+	connectorKeys := make(map[string]struct{}, len(intents))
+	for _, intent := range intents {
+		connectorKeys[intent.ConnectorKey] = struct{}{}
+	}
+	for connectorKey := range connectorKeys {
+		if reconcileErr := host.reconcileRuntimeForScopeLocked(ctx, scope, connectorKey); reconcileErr != nil {
+			err = errors.Join(err, reconcileErr)
+		}
+	}
+	if err != nil {
+		return err
+	}
+	for _, intent := range intents {
+		if resolveErr := host.repository.ResolveAuthorizationSession(ctx, intent.OperationID, intent.Resolution); resolveErr != nil {
+			err = errors.Join(err, resolveErr)
+		}
+	}
+	return err
+}
+
 // Bootstrap restores durable local runtime intent without depending on the
-// remote catalog. Catalog refresh has its own retry loop: a network, auth, or
-// presentation-policy failure must never keep installed MCP/CLI routes fenced.
+// remote catalog. Account-authorized remote routes additionally require a
+// fresh server snapshot before the lifecycle gate opens.
 func (host *Host) Bootstrap(ctx context.Context) error {
 	return host.BootstrapForScope(ctx, market.OperationScope{})
 }
@@ -232,15 +240,20 @@ func (host *Host) BootstrapForScope(ctx context.Context, scope market.OperationS
 	defer host.bootstrapMu.Unlock()
 	sameScope := host.bootstrapScope == scope
 	if host.bootstrapped && sameScope && !host.activationGate.requiresRecovery() {
-		return nil
+		return host.reconcilePendingRuntimesLocked(ctx, scope)
 	}
 	host.bootstrapScope = scope
+	host.runtimeRecoveryPending = make(map[string]struct{})
+	if host.authorizationReadiness != nil && strings.TrimSpace(scope.AccountID) != "" {
+		host.authorizationReadiness.SetReady(scope.AccountID, false)
+	}
+	host.notifyAuthorizationScopeChanged()
 	host.bootstrapped = false
 	if !host.refreshWorkerStarted {
 		host.refreshWorkerStarted = true
 		go host.runCatalogRefreshWorker()
 	}
-	host.activationGate.setOpen(false)
+	host.activationGate.setOpen(scope, false)
 	if err := host.applyCapabilityPublication(ctx, scope, false); err != nil {
 		return err
 	}
@@ -249,7 +262,7 @@ func (host *Host) BootstrapForScope(ctx context.Context, scope market.OperationS
 		if committed {
 			return
 		}
-		host.activationGate.setOpen(false)
+		host.activationGate.setOpen(scope, false)
 		_ = host.applyCapabilityPublication(context.Background(), scope, false)
 		fenceContext, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
@@ -277,9 +290,27 @@ func (host *Host) BootstrapForScope(ctx context.Context, scope market.OperationS
 		// following runtime reconcile remains authoritative and may still recover.
 		slog.Warn("connector installation calibration was indeterminate", "error", err)
 	}
-	host.activationGate.setOpen(true)
-	if err := host.Application.ReconcileInstalledRuntimesForScope(ctx, scope); err != nil {
-		return err
+	if strings.TrimSpace(scope.AccountID) != "" {
+		if _, err := host.syncAuthorizationSnapshot(ctx, scope); err != nil {
+			// Account authorization is fail-closed independently. Device-local
+			// authorization-free connectors can still recover while a later WS or
+			// poll retries the authoritative snapshot.
+			slog.Warn("connector authorization snapshot unavailable during bootstrap", "error", err)
+		} else if host.authorizationReadiness != nil {
+			host.authorizationReadiness.SetReady(scope.AccountID, true)
+		}
+	}
+	host.activationGate.setOpen(scope, true)
+	reconcileErr := host.Application.ReconcileInstalledRuntimesForScope(ctx, scope)
+	var reconcileFailures *market.RuntimeReconcileFailures
+	if reconcileErr != nil && !errors.As(reconcileErr, &reconcileFailures) {
+		return reconcileErr
+	}
+	if reconcileFailures != nil {
+		for _, connectorKey := range reconcileFailures.ConnectorKeys() {
+			host.runtimeRecoveryPending[connectorKey] = struct{}{}
+		}
+		host.notifyRuntimeRecovery()
 	}
 	if err := host.applyCapabilityPublication(ctx, scope, true); err != nil {
 		return err
@@ -287,7 +318,197 @@ func (host *Host) BootstrapForScope(ctx context.Context, scope market.OperationS
 	host.activationGate.markRecovered()
 	host.bootstrapped = true
 	committed = true
+	if reconcileFailures != nil {
+		slog.Warn("connector market bootstrap completed with unavailable connectors", "error", reconcileFailures)
+	}
 	return nil
+}
+
+// NotifyAuthorizationChanged treats realtime events and MCP authorization
+// errors as convergence hints. The account snapshot remains the only truth.
+func (host *Host) NotifyAuthorizationChanged() {
+	if host == nil {
+		return
+	}
+	select {
+	case host.authorizationSyncWake <- struct{}{}:
+	default:
+	}
+}
+
+func (host *Host) notifyAuthorizationScopeChanged() {
+	select {
+	case host.authorizationScopeWake <- struct{}{}:
+	default:
+	}
+}
+
+func (host *Host) runAuthorizationEventWorker(ctx context.Context) {
+	defer close(host.authorizationEventsDone)
+	retry := time.Second
+	for {
+		host.bootstrapMu.Lock()
+		scope := host.bootstrapScope
+		host.bootstrapMu.Unlock()
+		if strings.TrimSpace(scope.AccountID) == "" {
+			select {
+			case <-ctx.Done():
+				return
+			case <-host.authorizationScopeWake:
+				continue
+			}
+		}
+		attemptCtx, cancel := context.WithCancel(ctx)
+		result := make(chan error, 1)
+		go func(accountID string) {
+			result <- host.authorizationEvents.RunAuthorizationEvents(attemptCtx, accountID, host.NotifyAuthorizationChanged)
+		}(scope.AccountID)
+		select {
+		case <-ctx.Done():
+			cancel()
+			<-result
+			return
+		case <-host.authorizationScopeWake:
+			cancel()
+			<-result
+			retry = time.Second
+			continue
+		case err := <-result:
+			cancel()
+			if err != nil && !errors.Is(err, context.Canceled) {
+				slog.Warn("connector authorization realtime listener failed", "error", err)
+			}
+		}
+		timer := time.NewTimer(retry)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return
+		case <-host.authorizationScopeWake:
+			timer.Stop()
+			retry = time.Second
+		case <-timer.C:
+			if retry < time.Minute {
+				retry *= 2
+			}
+		}
+	}
+}
+
+type authorizationSyncResult struct {
+	changed         []string
+	receipts        []string
+	becameReady     bool
+	calibrate       bool
+	snapshotApplied bool
+}
+
+func (host *Host) syncAuthorizationSnapshot(ctx context.Context, scope market.OperationScope) (authorizationSyncResult, error) {
+	if host.authorizationSnapshots == nil || host.authorizationSnapshotStore == nil || strings.TrimSpace(scope.AccountID) == "" {
+		return authorizationSyncResult{}, nil
+	}
+	snapshot, err := host.authorizationSnapshots.AuthorizationSnapshot(ctx, scope.AccountID)
+	if err != nil {
+		return authorizationSyncResult{}, err
+	}
+	applied, err := host.authorizationSnapshotStore.ApplyAuthorizationSnapshot(ctx, scope.AccountID, snapshot)
+	result := authorizationSyncResult{
+		changed:         applied.ChangedConnectorKeys,
+		receipts:        applied.PendingReceiptConnectorKeys,
+		snapshotApplied: err == nil,
+	}
+	return result, err
+}
+
+func (host *Host) runAuthorizationSnapshotWorker(ctx context.Context) {
+	defer close(host.authorizationSyncDone)
+	ticker := time.NewTicker(5 * time.Minute)
+	defer ticker.Stop()
+	for {
+		calibrate := false
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			calibrate = true
+		case <-host.authorizationSyncWake:
+		}
+		host.bootstrapMu.Lock()
+		bootstrapped, scope := host.bootstrapped, host.bootstrapScope
+		host.bootstrapMu.Unlock()
+		if !bootstrapped || strings.TrimSpace(scope.AccountID) == "" {
+			continue
+		}
+		syncContext, cancel := context.WithTimeout(ctx, 30*time.Second)
+		result, err := host.syncAuthorizationSnapshot(syncContext, scope)
+		result.calibrate = calibrate
+		cancel()
+		if err != nil {
+			if !errors.Is(err, context.Canceled) {
+				slog.Warn("connector authorization snapshot sync failed", "error", err)
+			}
+			continue
+		}
+		reconcileContext, cancel := context.WithTimeout(ctx, 2*time.Minute)
+		err = host.reconcileAuthorizationChanges(reconcileContext, scope, result)
+		cancel()
+		if err != nil && !errors.Is(err, context.Canceled) {
+			slog.Warn("connector authorization runtime reconcile failed", "error", err)
+		}
+	}
+}
+
+func (host *Host) reconcileAuthorizationChanges(ctx context.Context, scope market.OperationScope, result authorizationSyncResult) error {
+	host.bootstrapMu.Lock()
+	defer host.bootstrapMu.Unlock()
+	if !host.bootstrapped || host.bootstrapScope != scope || host.activationGate.requiresRecovery() {
+		return nil
+	}
+	if result.snapshotApplied && host.authorizationReadiness != nil {
+		result.becameReady = host.authorizationReadiness.SetReady(scope.AccountID, true)
+	}
+	dirty := host.authorizationDirty[scope.AccountID]
+	if dirty == nil {
+		dirty = make(map[string]struct{})
+		host.authorizationDirty[scope.AccountID] = dirty
+	}
+	connectorKeys, err := host.Application.InstalledRemoteAuthorizedConnectorKeys(ctx)
+	if err != nil {
+		return err
+	}
+	eligible := make(map[string]struct{}, len(connectorKeys))
+	for _, connectorKey := range connectorKeys {
+		eligible[connectorKey] = struct{}{}
+	}
+	for connectorKey := range dirty {
+		if _, ok := eligible[connectorKey]; !ok {
+			delete(dirty, connectorKey)
+		}
+	}
+	for _, connectorKey := range result.changed {
+		if _, ok := eligible[connectorKey]; ok {
+			dirty[connectorKey] = struct{}{}
+		}
+	}
+	for _, connectorKey := range result.receipts {
+		if _, ok := eligible[connectorKey]; ok {
+			dirty[connectorKey] = struct{}{}
+		}
+	}
+	if result.becameReady || result.calibrate {
+		for _, connectorKey := range connectorKeys {
+			dirty[connectorKey] = struct{}{}
+		}
+	}
+	var reconcileErr error
+	for connectorKey := range dirty {
+		if err := host.reconcileRuntimeForScopeLocked(ctx, scope, connectorKey); err != nil {
+			reconcileErr = errors.Join(reconcileErr, fmt.Errorf("%s: %w", connectorKey, err))
+			continue
+		}
+		delete(dirty, connectorKey)
+	}
+	return reconcileErr
 }
 
 // FenceForScope closes publication and runtime authority for an account
@@ -300,9 +521,18 @@ func (host *Host) FenceForScope(ctx context.Context, scope market.OperationScope
 	}
 	host.bootstrapMu.Lock()
 	defer host.bootstrapMu.Unlock()
-	host.activationGate.setOpen(false)
+	host.activationGate.setOpen(scope, false)
+	previousScope := host.bootstrapScope
+	if host.authorizationReadiness != nil && strings.TrimSpace(previousScope.AccountID) != "" {
+		host.authorizationReadiness.SetReady(previousScope.AccountID, false)
+	}
+	if host.authorizationReadiness != nil && strings.TrimSpace(scope.AccountID) != "" {
+		host.authorizationReadiness.SetReady(scope.AccountID, false)
+	}
 	host.bootstrapped = false
 	host.bootstrapScope = scope
+	host.runtimeRecoveryPending = make(map[string]struct{})
+	host.notifyAuthorizationScopeChanged()
 	publicationErr := host.applyCapabilityPublication(ctx, scope, false)
 	fenceErr := host.activationGate.FailClosed(ctx, time.Now().Add(10*time.Second))
 	return errors.Join(publicationErr, fenceErr)
@@ -327,18 +557,40 @@ func (host *Host) ReconcileRuntimeForScope(ctx context.Context, scope market.Ope
 		// a second per-Connector operation here would race its generation fence.
 		return nil
 	}
-	snapshot, err := host.Application.Snapshot(ctx)
-	if err != nil {
-		return err
+	return host.reconcileRuntimeForScopeLocked(ctx, scope, connectorKey)
+}
+
+func (host *Host) reconcileRuntimeForScopeLocked(ctx context.Context, scope market.OperationScope, connectorKey string) error {
+	for {
+		connector, err := host.Application.GetConnector(ctx, connectorKey)
+		if errors.Is(err, market.ErrNotFound) || err == nil && connector.Installation.State != market.InstallationStateInstalled {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		result, err := host.Application.EnsureRuntimeReconcile(ctx, scope, connectorKey)
+		if err != nil {
+			return err
+		}
+		operation, waitErr := host.waitForOperationTerminal(ctx, result.Operation.OperationID)
+		if result.Created {
+			if waitErr != nil {
+				return waitErr
+			}
+			if operation.State == market.OperationStateFailed {
+				return fmt.Errorf("connector market runtime reconcile failed: %s", operation.FailureCode)
+			}
+			return nil
+		}
+		if waitErr != nil {
+			return waitErr
+		}
+		// A joined operation may have resolved its runtime binding before the
+		// current authorization projection was persisted. Ensure once more after
+		// it reaches terminal state so success proves convergence of current
+		// desired state rather than merely completion of older work.
 	}
-	result, err := host.Application.ReconcileRuntime(ctx, market.ConnectorMutation{
-		Mutation:     market.Mutation{ClientRequestID: "daemon-runtime-drift/" + uuid.NewString(), ExpectedRevision: snapshot.Revision},
-		ConnectorKey: connectorKey, AccountID: scope.AccountID,
-	})
-	if err != nil {
-		return err
-	}
-	return host.waitForOperation(ctx, result.Operation.OperationID, "runtime reconcile")
 }
 
 // ObserveAuthorizationForScope commits account authorization and its runtime
@@ -354,18 +606,10 @@ func (host *Host) ObserveAuthorizationForScope(
 	}
 	host.bootstrapMu.Lock()
 	defer host.bootstrapMu.Unlock()
-	snapshot, err := host.Application.Snapshot(ctx)
-	if err != nil {
+	if err := host.Application.ProjectAuthorization(ctx, scope, projection); err != nil {
 		return err
 	}
-	result, err := host.Application.ObserveAuthorization(ctx, market.ConnectorMutation{
-		Mutation:     market.Mutation{ClientRequestID: "daemon-authorization-observation/" + uuid.NewString(), ExpectedRevision: snapshot.Revision},
-		ConnectorKey: projection.ConnectorKey, AccountID: scope.AccountID,
-	}, projection)
-	if err != nil {
-		return err
-	}
-	return host.waitForOperation(ctx, result.Operation.OperationID, "authorization reconcile")
+	return host.reconcileRuntimeForScopeLocked(ctx, scope, projection.ConnectorKey)
 }
 
 func (host *Host) applyCapabilityPublication(ctx context.Context, scope market.OperationScope, enabled bool) error {
@@ -452,23 +696,21 @@ func (host *Host) refreshAndWait(ctx context.Context) error {
 	}
 }
 
-func (host *Host) waitForOperation(ctx context.Context, operationID, label string) error {
+func (host *Host) waitForOperationTerminal(ctx context.Context, operationID string) (market.Operation, error) {
 	ticker := time.NewTicker(25 * time.Millisecond)
 	defer ticker.Stop()
 	for {
 		operation, err := host.Application.GetOperation(ctx, operationID)
 		if err != nil {
-			return err
+			return market.Operation{}, err
 		}
 		switch operation.State {
-		case market.OperationStateCompleted:
-			return nil
-		case market.OperationStateFailed:
-			return fmt.Errorf("connector market %s failed: %s", label, operation.FailureCode)
+		case market.OperationStateCompleted, market.OperationStateFailed:
+			return operation, nil
 		}
 		select {
 		case <-ctx.Done():
-			return ctx.Err()
+			return market.Operation{}, ctx.Err()
 		case <-ticker.C:
 		}
 	}
@@ -537,6 +779,9 @@ func (host *Host) Close() {
 		}
 		<-host.outboxDone
 		<-host.lifecycleDone
+		<-host.authorizationSyncDone
+		<-host.authorizationEventsDone
+		<-host.runtimeRecoveryDone
 		host.scheduler.Wait()
 	})
 }
@@ -559,6 +804,12 @@ type unavailableReleaseInstaller struct{}
 
 func (unavailableReleaseInstaller) InstallRelease(context.Context, market.InstallReleaseRequest) (market.ReleaseInstallationReceipt, error) {
 	return market.ReleaseInstallationReceipt{}, errors.New("connector release installation is not registered")
+}
+
+func (unavailableReleaseInstaller) InspectReleaseInstallation(_ context.Context, request market.InspectReleaseInstallationRequest) (market.ReleaseInstallationObservation, error) {
+	return market.ReleaseInstallationObservation{State: market.ReleaseInstallationIndeterminate,
+		ConnectorKey: request.Release.ConnectorKey, ReleaseDigest: request.Release.ReleaseDigest,
+		ReasonCode: "release_installation_manager_unavailable"}, nil
 }
 
 func (unavailableReleaseInstaller) CommitReleaseInstallation(context.Context, market.CommitReleaseInstallationRequest) error {

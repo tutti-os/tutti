@@ -11,6 +11,7 @@ import type {
 } from "../contracts/index.ts";
 import {
   ConnectorMarketBusyError,
+  ConnectorMarketRequestUnavailableError,
   ConnectorMarketService
 } from "./connectorMarketService.ts";
 
@@ -145,6 +146,111 @@ test("loads server categories and appends cursor pages", async () => {
   assert.equal(service.dataStore.catalogSections[0]?.nextPageToken, undefined);
   assert.deepEqual(pageTokens, [undefined, "page-2"]);
   assert.equal(service.dataStore.revision, 2);
+  service.dispose();
+});
+
+test("keeps healthy catalog sections available and retries a failed section", async () => {
+  let otherFails = true;
+  const diagnostics: unknown[] = [];
+  const service = new ConnectorMarketService({
+    backend: backendWith({
+      getSnapshot: async () => snapshot(1, []),
+      listCategories: async () => [
+        {
+          categoryId: "development",
+          kind: "category",
+          sortOrder: 20,
+          itemCount: 1
+        },
+        {
+          categoryId: "other",
+          kind: "category",
+          sortOrder: 40,
+          itemCount: 1
+        }
+      ],
+      listCatalogPage: async ({ sectionId }) => {
+        if (sectionId === "other" && otherFails) {
+          throw {
+            code: "connector_market_upstream_unavailable",
+            message: "other is unavailable",
+            retryable: true
+          };
+        }
+        const item = connector(sectionId === "other" ? "notion" : "github", 1);
+        return {
+          sectionId,
+          items: [{ categoryId: sectionId, featured: false, connector: item }],
+          revision: 1
+        };
+      }
+    }),
+    reportDiagnostic: (error) => diagnostics.push(error)
+  });
+
+  await service.ensureLoaded();
+
+  assert.equal(service.dataStore.loadState, "ready");
+  assert.deepEqual(
+    service.dataStore.catalogSections.find(
+      (section) => section.categoryId === "development"
+    )?.connectorKeys,
+    ["github"]
+  );
+  assert.equal(
+    service.dataStore.catalogSections.find(
+      (section) => section.categoryId === "other"
+    )?.loadState,
+    "error"
+  );
+  assert.equal(service.dataStore.lastError, null);
+
+  otherFails = false;
+  await service.loadMore("other");
+  assert.deepEqual(
+    service.dataStore.catalogSections.find(
+      (section) => section.categoryId === "other"
+    )?.connectorKeys,
+    ["notion"]
+  );
+
+  otherFails = true;
+  await service.reload();
+  const staleOther = service.dataStore.catalogSections.find(
+    (section) => section.categoryId === "other"
+  );
+  assert.equal(service.dataStore.loadState, "ready");
+  assert.equal(staleOther?.loadState, "error");
+  assert.deepEqual(staleOther?.connectorKeys, ["notion"]);
+  assert.equal(diagnostics.length, 2);
+  service.dispose();
+});
+
+test("uses the global error state when every initial catalog section fails", async () => {
+  const failure = {
+    code: "connector_market_upstream_unavailable",
+    message: "catalog is unavailable",
+    retryable: true
+  };
+  const service = new ConnectorMarketService({
+    backend: backendWith({
+      listCategories: async () => [
+        {
+          categoryId: "other",
+          kind: "category",
+          sortOrder: 40,
+          itemCount: 1
+        }
+      ],
+      listCatalogPage: async () => {
+        throw failure;
+      }
+    })
+  });
+
+  await assert.rejects(service.ensureLoaded());
+  assert.equal(service.dataStore.loadState, "error");
+  assert.deepEqual(service.dataStore.lastError, failure);
   service.dispose();
 });
 
@@ -308,6 +414,137 @@ test("installs one connector with the current catalog revision", async () => {
     clientRequestId: "request-1",
     expectedRevision: 1
   });
+  service.dispose();
+});
+
+test("uninstalls one connector and tracks the durable operation to completion", async () => {
+  const uninstallInputs: Parameters<
+    ConnectorMarketBackend["uninstallConnector"]
+  >[0][] = [];
+  const installed = connector("github", 1);
+  installed.installation = {
+    installedReleaseDigest: installed.release.releaseDigest,
+    state: "installed"
+  };
+  installed.authorization = { state: "connected" };
+  const uninstalling = connector("github", 2);
+  uninstalling.installation = {
+    installedReleaseDigest: installed.release.releaseDigest,
+    state: "uninstalling"
+  };
+  uninstalling.authorization = { state: "connected" };
+  const uninstalled = connector("github", 3);
+  uninstalled.installation = { state: "not_installed" };
+  uninstalled.authorization = { state: "connected" };
+  const service = new ConnectorMarketService({
+    backend: backendWith({
+      getSnapshot: async () => snapshot(1, [installed]),
+      uninstallConnector: async (input) => {
+        uninstallInputs.push(input);
+        return {
+          connector: uninstalling,
+          operation: {
+            operationId: "operation-uninstall-terminal",
+            clientRequestId: input.clientRequestId,
+            connectorKey: "github",
+            kind: "uninstall",
+            state: "accepted",
+            stage: "accepted",
+            attempt: 0,
+            createdAt: "2026-08-11T00:00:00Z",
+            updatedAt: "2026-08-11T00:00:00Z"
+          },
+          revision: 2
+        };
+      },
+      getOperation: async () => ({
+        operationId: "operation-uninstall-terminal",
+        clientRequestId: "request-uninstall-1",
+        connectorKey: "github",
+        kind: "uninstall",
+        state: "completed",
+        stage: "completed",
+        attempt: 1,
+        createdAt: "2026-08-11T00:00:00Z",
+        updatedAt: "2026-08-11T00:00:01Z"
+      }),
+      getConnector: async () => uninstalled
+    }),
+    createRequestId: () => "request-uninstall-1",
+    waitForOperationPoll: async () => undefined
+  });
+
+  await service.ensureLoaded();
+  const accepted = await service.uninstall("github");
+  assert.equal(accepted.operationId, "operation-uninstall-terminal");
+  const pendingNotification =
+    service.dataStore.pendingUninstallNotificationsByOperationId[
+      accepted.operationId
+    ];
+  assert.equal(pendingNotification?.connectorKey, "github");
+  assert.equal(pendingNotification?.displayName, "github");
+  assert.equal(
+    pendingNotification?.operationId,
+    "operation-uninstall-terminal"
+  );
+  await waitFor(
+    () =>
+      service.dataStore.connectorsByKey.github?.installation.state ===
+      "not_installed"
+  );
+
+  assert.deepEqual(uninstallInputs, [
+    {
+      connectorKey: "github",
+      clientRequestId: "request-uninstall-1",
+      expectedRevision: 1
+    }
+  ]);
+  assert.equal(
+    service.dataStore.operationsByConnectorKey.github?.state,
+    "completed"
+  );
+  assert.equal(
+    service.dataStore.pendingUninstallNotificationsByOperationId[
+      accepted.operationId
+    ]?.state,
+    "completed"
+  );
+  assert.equal(
+    service.dataStore.connectorsByKey.github?.authorization.state,
+    "connected"
+  );
+  service.dismissUninstallNotification(accepted.operationId);
+  assert.equal(
+    service.dataStore.pendingUninstallNotificationsByOperationId[
+      accepted.operationId
+    ],
+    undefined
+  );
+  service.dispose();
+});
+
+test("rejects uninstall when host request admission is unavailable", async () => {
+  let uninstallCalls = 0;
+  const service = new ConnectorMarketService({
+    backend: backendWith({
+      uninstallConnector: async () => {
+        uninstallCalls += 1;
+        throw new Error("must not be called");
+      }
+    }),
+    canRequest: () => false
+  });
+
+  await assert.rejects(
+    service.uninstall("github"),
+    ConnectorMarketRequestUnavailableError
+  );
+  assert.equal(uninstallCalls, 0);
+  assert.deepEqual(
+    service.dataStore.pendingUninstallNotificationsByOperationId,
+    {}
+  );
   service.dispose();
 });
 
@@ -651,6 +888,117 @@ test("forwards a user-provided secret only to the authorization mutation", async
 
   assert.equal(receivedSecret, "secret-value");
   assert.equal(service.dataStore.revision, 2);
+  service.dispose();
+});
+
+test("recovers one stale authorization revision without dropping the secret", async () => {
+  const requests: Array<{
+    clientRequestId: string;
+    expectedRevision: number;
+    secret?: string;
+  }> = [];
+  let snapshotReads = 0;
+  const initial = connector("token-mail", 1);
+  initial.installation = {
+    state: "installed",
+    installedReleaseDigest: initial.release.releaseDigest
+  };
+  initial.authorization = { state: "disconnected" };
+  const refreshed = connector("token-mail", 4);
+  refreshed.installation = initial.installation;
+  refreshed.authorization = initial.authorization;
+  const service = new ConnectorMarketService({
+    backend: backendWith({
+      getSnapshot: async () => {
+        snapshotReads += 1;
+        return snapshotReads === 1
+          ? snapshot(1, [initial])
+          : snapshot(4, [refreshed]);
+      },
+      beginAuthorization: async (input) => {
+        requests.push(input);
+        if (requests.length === 1) {
+          throw Object.assign(new Error("stale revision"), {
+            code: "connector_market_revision_conflict",
+            retryable: true
+          });
+        }
+        const connected = connector("token-mail", 5);
+        connected.authorization = { state: "connected" };
+        return {
+          connector: connected,
+          operation: {
+            ...operation("start_authorization", 5),
+            connectorKey: "token-mail",
+            state: "completed"
+          },
+          revision: 5
+        };
+      }
+    }),
+    createRequestId: () => "one-secret-request"
+  });
+  await service.ensureLoaded();
+
+  await service.beginAuthorization("token-mail", "secret-value");
+
+  assert.equal(snapshotReads, 2);
+  assert.deepEqual(requests, [
+    {
+      connectorKey: "token-mail",
+      clientRequestId: "one-secret-request",
+      expectedRevision: 1,
+      secret: "secret-value"
+    },
+    {
+      connectorKey: "token-mail",
+      clientRequestId: "one-secret-request",
+      expectedRevision: 4,
+      secret: "secret-value"
+    }
+  ]);
+  assert.equal(service.dataStore.revision, 5);
+  assert.equal(
+    service.dataStore.connectorsByKey["token-mail"]?.authorization.state,
+    "connected"
+  );
+  service.dispose();
+});
+
+test("does not retry authorization failures other than a stale revision", async () => {
+  let snapshotReads = 0;
+  let authorizationAttempts = 0;
+  const disconnected = connector("token-mail", 1);
+  disconnected.installation = {
+    state: "installed",
+    installedReleaseDigest: disconnected.release.releaseDigest
+  };
+  disconnected.authorization = { state: "disconnected" };
+  const providerError = Object.assign(new Error("provider rejected token"), {
+    code: "connector_authorization_provider_rejected",
+    retryable: false
+  });
+  const service = new ConnectorMarketService({
+    backend: backendWith({
+      getSnapshot: async () => {
+        snapshotReads += 1;
+        return snapshot(1, [disconnected]);
+      },
+      beginAuthorization: async () => {
+        authorizationAttempts += 1;
+        throw providerError;
+      }
+    })
+  });
+  await service.ensureLoaded();
+
+  await assert.rejects(
+    service.beginAuthorization("token-mail", "invalid-secret"),
+    providerError
+  );
+
+  assert.equal(snapshotReads, 1);
+  assert.equal(authorizationAttempts, 1);
   service.dispose();
 });
 

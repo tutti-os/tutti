@@ -30,6 +30,7 @@ CREATE TABLE workspace_agent_session_goals (
   tombstoned INTEGER NOT NULL DEFAULT 0 CHECK (tombstoned IN (0,1)),
   sync_status TEXT NOT NULL CHECK (sync_status IN ('pending','applying','synced','diverged','unknown','failed')),
   pending_operation_id TEXT,
+  execution_pending INTEGER NOT NULL DEFAULT 0 CHECK (execution_pending IN (0,1)),
   last_evidence_json TEXT NOT NULL DEFAULT '{}' CHECK (json_valid(last_evidence_json)),
   last_error TEXT NOT NULL DEFAULT '',
   observed_at_unix_ms INTEGER,

@@ -34,6 +34,30 @@ test("sidecar protocol accepts stop_task requests", () => {
   );
 });
 
+test("sidecar protocol requires bounded cancellation phases", () => {
+  const request = parseClaudeSDKSidecarRequest({
+    version: CLAUDE_SDK_SIDECAR_PROTOCOL_VERSION,
+    type: "cancel",
+    payload: {
+      agentSessionId: "session-1",
+      turnId: "turn-1",
+      interruptTimeoutMs: 10_000,
+      drainTimeoutMs: 8_000
+    }
+  });
+  assert.equal(request.type, "cancel");
+
+  assert.throws(
+    () =>
+      parseClaudeSDKSidecarRequest({
+        version: CLAUDE_SDK_SIDECAR_PROTOCOL_VERSION,
+        type: "cancel",
+        payload: { interruptTimeoutMs: 10_000 }
+      }),
+    /cancel drainTimeoutMs must be a positive integer/
+  );
+});
+
 test("sidecar protocol accepts stateless session fork requests", () => {
   for (const type of [
     "inspect_fork_checkpoints",

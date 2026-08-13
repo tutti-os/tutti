@@ -34,6 +34,7 @@ const expectedAnalyticsEvents = [
   "agent.chat_panel_exposed",
   "agent.chat_input_focused",
   "agent.chat_input_content_entered",
+  "agent.quick_prompt_engagement",
   "agent.node_result",
   "agent.availability_snapshot",
   "agent.env_detected",

@@ -318,6 +318,60 @@ func TestStoreInstalledReleaseEvidenceSurvivesTerminalCleanupAndReopen(t *testin
 	}
 }
 
+func TestStoreCompletedLocalUninstallDeletesReleaseEvidenceButKeepsAuthorizationProjection(t *testing.T) {
+	ctx := context.Background()
+	store, err := Open(ctx, filepath.Join(t.TempDir(), "tuttid.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	release := testConnector().Release
+	connector := testConnector()
+	connector.Installation = market.Installation{State: market.InstallationStateInstalled,
+		InstalledVersion: release.Version, InstalledReleaseID: release.ReleaseID, InstalledReleaseDigest: release.ReleaseDigest}
+	installedAt := time.Date(2026, 8, 5, 12, 0, 0, 0, time.UTC)
+	install := lifecycleTestOperation("install-before-local-uninstall", connector.Key, market.OperationStateCompleted, installedAt)
+	install.Kind = market.OperationKindInstall
+	install.Target = &market.OperationTarget{ConnectorKey: connector.Key, Version: release.Version, ReleaseID: release.ReleaseID,
+		ReleaseDigest: release.ReleaseDigest, ArtifactSHA256: release.Artifact.SHA256, Release: &release}
+	if err := store.Transaction(ctx, func(tx market.Transaction) error {
+		connector.Revision = tx.AdvanceRevision()
+		if err := tx.SaveConnector(connector); err != nil {
+			return err
+		}
+		return tx.SaveOperation(install)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	projection := market.AuthorizationProjection{AccountID: "account-1", ConnectorKey: connector.Key,
+		ConnectionID: "connection-1", State: market.AuthorizationStateConnected, ServerRevision: 8,
+		ServerSynchronized: true, UpdatedAt: installedAt}
+	if err := store.SaveAuthorizationProjection(ctx, projection); err != nil {
+		t.Fatal(err)
+	}
+	uninstall := lifecycleTestOperation("local-uninstall", connector.Key, market.OperationStateCompleted, installedAt.Add(time.Minute))
+	uninstall.Kind = market.OperationKindUninstall
+	uninstall.Target = &market.OperationTarget{ConnectorKey: connector.Key, Version: release.Version,
+		ReleaseID: release.ReleaseID, ReleaseDigest: release.ReleaseDigest}
+	if err := store.Transaction(ctx, func(tx market.Transaction) error {
+		connector.Installation = market.Installation{State: market.InstallationStateNotInstalled}
+		connector.Revision = tx.AdvanceRevision()
+		if err := tx.SaveConnector(connector); err != nil {
+			return err
+		}
+		return tx.SaveOperation(uninstall)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.InstalledRelease(ctx, connector.Key, release.ReleaseDigest); !errors.Is(err, market.ErrNotFound) {
+		t.Fatalf("installed release error = %v, want not found", err)
+	}
+	storedProjection, err := store.AuthorizationProjection(ctx, projection.AccountID, projection.ConnectorKey)
+	if err != nil || storedProjection != projection {
+		t.Fatalf("authorization projection = %#v, error = %v", storedProjection, err)
+	}
+}
+
 func TestStoreMigrationBackfillsLifecycleTimestampAndInstalledReleaseEvidence(t *testing.T) {
 	ctx := context.Background()
 	databasePath := filepath.Join(t.TempDir(), "tuttid.db")

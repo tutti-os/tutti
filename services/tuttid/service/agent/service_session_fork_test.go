@@ -221,25 +221,34 @@ func TestMessageHydrationProjectionDoesNotProbeSessionForkCapabilities(t *testin
 	}
 }
 
-func TestSessionForkContextPolicyRejectsWorktreeIsolation(t *testing.T) {
+func TestSessionForkContextPolicyPreservesWorktreeRuntimeFacts(t *testing.T) {
 	policy := serviceHostSessionForkContextPolicy{}
-	_, err := policy.PrepareSessionForkTargetContext(t.Context(), storesqlite.Session{
+	target, err := policy.PrepareSessionForkTargetContext(t.Context(), storesqlite.Session{
 		Cwd: "/tmp/source-worktree",
 		InternalRuntimeContext: map[string]any{
 			worktreeIsolationContextKey: map[string]any{
-				"mode": "worktree",
+				"mode": "worktree", "worktreeId": "worktree-1",
 			},
 		},
-	}, agenthost.ProviderRuntimeSession{Cwd: "/prepared"})
-	if err != agenthost.ErrSessionForkUnsupported {
-		t.Fatalf("PrepareSessionForkTargetContext() error=%v", err)
+	}, agenthost.ProviderRuntimeSession{
+		Cwd: "/tmp/source-worktree",
+		RuntimeContext: map[string]any{
+			worktreeIsolationContextKey: map[string]any{
+				"mode": "worktree", "worktreeId": "worktree-1",
+			},
+		},
+	})
+	if err != nil || target.Cwd != "/tmp/source-worktree" {
+		t.Fatalf("PrepareSessionForkTargetContext() target=%#v error=%v", target, err)
+	}
+	isolation, ok := target.RuntimeContext[worktreeIsolationContextKey].(map[string]any)
+	if !ok || isolation["worktreeId"] != "worktree-1" {
+		t.Fatalf("target runtime context=%#v", target.RuntimeContext)
 	}
 }
 
 func TestSessionForkContextPolicyPreservesNonOwnedRuntimeFacts(t *testing.T) {
-	policy := serviceHostSessionForkContextPolicy{
-		runtimePreparer: runtimeprep.NewDefaultPreparer(t.TempDir()),
-	}
+	policy := serviceHostSessionForkContextPolicy{}
 	target, err := policy.PrepareSessionForkTargetContext(t.Context(), storesqlite.Session{
 		Provider: "codex",
 		Cwd:      "/project",
@@ -267,16 +276,12 @@ func TestSessionForkContextPolicyPreservesNonOwnedRuntimeFacts(t *testing.T) {
 func TestSessionForkContextPolicyLeavesBindingModeEnforcementToHost(t *testing.T) {
 	source := storesqlite.Session{Provider: "codex"}
 	prepared := agenthost.ProviderRuntimeSession{Cwd: "/prepared-project"}
-	target, err := (serviceHostSessionForkContextPolicy{
-		runtimePreparer: fakeRuntimePreparer{},
-	}).PrepareSessionForkTargetContext(t.Context(), source, prepared)
+	target, err := (serviceHostSessionForkContextPolicy{}).PrepareSessionForkTargetContext(t.Context(), source, prepared)
 	if err != nil || target.Cwd != "/prepared-project" {
 		t.Fatalf("policy without provider state binder target=%#v error=%v", target, err)
 	}
 
-	target, err = (serviceHostSessionForkContextPolicy{
-		runtimePreparer: runtimeprep.NewDefaultPreparer(t.TempDir()),
-	}).PrepareSessionForkTargetContext(t.Context(), source, prepared)
+	target, err = (serviceHostSessionForkContextPolicy{}).PrepareSessionForkTargetContext(t.Context(), source, prepared)
 	if err != nil || target.Cwd != "/prepared-project" {
 		t.Fatalf("policy with provider state binder target=%#v error=%v", target, err)
 	}

@@ -276,6 +276,37 @@ func TestClaudeCodeSDKAdapterMapsCompactLifecycleAsSystemNotice(t *testing.T) {
 	}
 }
 
+func TestClaudeCodeSDKAdapterMapsContextOverflowAsHandoffRequired(t *testing.T) {
+	adapter := NewClaudeCodeSDKAdapter(nil)
+	adapterSession := &claudeSDKAdapterSession{liveState: newClaudeSDKLiveState()}
+	session := standardTestSession(ProviderClaudeCode)
+
+	_, _, err := adapter.sidecarTurnEvents(adapterSession, session, "turn-compact", claudeSDKSidecarEvent{
+		Type:    "compact_started",
+		Payload: map[string]any{"turnId": "turn-compact"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	failed, terminal, err := adapter.sidecarTurnEvents(adapterSession, session, "turn-compact", claudeSDKSidecarEvent{
+		Type: "compact_failed",
+		Payload: map[string]any{
+			"turnId":                 "turn-compact",
+			"reason":                 "Maximum context length exceeded.",
+			"contextHandoffRequired": true,
+		},
+	})
+	if err != nil || terminal || len(failed) != 1 {
+		t.Fatalf("compact_failed events=%#v terminal=%v err=%v", failed, terminal, err)
+	}
+	metadata := failed[0].Payload.Metadata
+	if metadata["noticeKind"] != "context_handoff_required" ||
+		metadata["severity"] != "error" ||
+		metadata["retryable"] != false {
+		t.Fatalf("compact_failed metadata=%#v, want terminal handoff error", metadata)
+	}
+}
+
 func TestClaudeCodeSDKAdapterSettlesActiveCompactWithTurn(t *testing.T) {
 	tests := []struct {
 		name             string

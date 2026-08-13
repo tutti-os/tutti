@@ -360,6 +360,7 @@ export function WorkspaceAppExternalBridge({
         case "agentActivity.activateSession": {
           const activation =
             await workspaceAgentActivityService.activateSession({
+              activationId: request.input.clientSubmitId,
               agentSessionId: request.input.agentSessionId,
               agentTargetId: request.input.agentTargetId,
               clientSubmitId: request.input.clientSubmitId,

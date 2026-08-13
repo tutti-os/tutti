@@ -565,6 +565,35 @@ describe("Agent specialized tool cards", () => {
     expect(screen.getByText("+2")).toBeTruthy();
   });
 
+  it("hides diff stats for failed writes that still carry proposed content", async () => {
+    setAgentGuiI18nTestLocale("en");
+
+    render(
+      <AgentToolCallCard
+        call={projectAgentToolCall(
+          toolCall({
+            toolName: "Write",
+            status: "Failed",
+            statusKind: "failed",
+            payload: {
+              input: {
+                file_path: "/workspace/123.txt",
+                content: "{}"
+              },
+              error: {
+                message:
+                  "<tool_use_error>File has not been read yet. Read it first before writing to it.</tool_use_error>"
+              }
+            }
+          })
+        )}
+      />
+    );
+
+    expect(screen.queryByText("+1")).toBeNull();
+    expect(screen.getByText("failed")).toBeTruthy();
+  });
+
   it("keeps edit cards collapsed by default and expands detail on demand", async () => {
     setAgentGuiI18nTestLocale("en");
 

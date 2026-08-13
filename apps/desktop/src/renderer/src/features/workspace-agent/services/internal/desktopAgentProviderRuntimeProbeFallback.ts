@@ -136,7 +136,7 @@ function mergeReadyProbeStatus(
       status:
         status?.auth.status && status.auth.status !== "unknown"
           ? status.auth.status
-          : "authenticated"
+          : "configured"
     },
     actions: status?.actions.filter((action) => action.id !== "refresh") ?? [],
     activeAction: status?.activeAction,

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -103,6 +104,40 @@ func TestProbeCodexAppServerDoesNotAuthenticateAccountReadFailure(t *testing.T) 
 	}
 	if result.AccountCategory != CodexProbeProtocolFailure {
 		t.Fatalf("account category = %q, want %q", result.AccountCategory, CodexProbeProtocolFailure)
+	}
+	assertScriptedProbeConnectionClosed(t, transport.conn)
+}
+
+func TestProbeCodexAppServerReadsProviderRateLimits(t *testing.T) {
+	t.Parallel()
+	transport := newScriptedAppServerTransport()
+	result := ProbeCodexAppServer(context.Background(), CodexAppServerProbeInput{
+		Command: []string{"codex", "app-server"}, Transport: transport,
+		HandshakeTimeout: time.Second, ReadRateLimits: true,
+	})
+	if !result.ProtocolReady || !result.RateLimitsRead || result.Category != "" {
+		t.Fatalf("probe = %#v, want successful rate limits read", result)
+	}
+	if got := len(appServerRequestParamsList(t, transport.conn, appServerMethodRateLimitsRead)); got != 1 {
+		t.Fatalf("account/rateLimits/read calls = %d, want 1", got)
+	}
+	assertScriptedProbeConnectionClosed(t, transport.conn)
+}
+
+func TestProbeCodexAppServerReturnsRateLimitsAuthenticationFailure(t *testing.T) {
+	t.Parallel()
+	transport := newScriptedAppServerTransport()
+	transport.server.rateLimitsReadError = true
+	transport.server.rateLimitsReadErrorCode = -32001
+	transport.server.rateLimitsReadErrorMessage = "401 Unauthorized: refresh token was revoked"
+	result := ProbeCodexAppServer(context.Background(), CodexAppServerProbeInput{
+		Command: []string{"codex", "app-server"}, Transport: transport,
+		HandshakeTimeout: time.Second, ReadRateLimits: true,
+	})
+	if !result.ProtocolReady || result.RateLimitsRead ||
+		result.RateLimitsCategory != CodexProbeProtocolFailure ||
+		!strings.Contains(result.Message, "refresh token was revoked") {
+		t.Fatalf("probe = %#v, want rate limits authentication failure", result)
 	}
 	assertScriptedProbeConnectionClosed(t, transport.conn)
 }

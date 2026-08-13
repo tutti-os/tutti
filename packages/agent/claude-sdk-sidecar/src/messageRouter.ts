@@ -32,6 +32,13 @@ type ObservableProviderTurnPhase = Extract<
   "streaming" | "running_tool"
 >;
 
+const NON_DURABLE_SYSTEM_CHECKPOINT_SUBTYPES = new Set([
+  "session_state_changed",
+  "hook_started",
+  "hook_progress",
+  "hook_response"
+]);
+
 export class SDKMessageRouter {
   private readonly getProviderSessionId: () => string;
   private readonly setProviderSessionId: (value: string) => void;
@@ -219,7 +226,11 @@ export class SDKMessageRouter {
       // a UUID, but Claude does not persist it in the transcript accepted by
       // forkSession(upToMessageId). Persisting that UUID would overwrite the
       // preceding durable assistant checkpoint with an unforkable boundary.
-      if (systemSubtype !== "session_state_changed") {
+      // Hook lifecycle notifications are also UUID-stamped system messages,
+      // but includeHookEvents exposes these exact subtypes only for live
+      // progress. They are not durable transcript boundaries and must not
+      // become fork cursors. Other system boundaries remain durable.
+      if (!NON_DURABLE_SYSTEM_CHECKPOINT_SUBTYPES.has(systemSubtype)) {
         this.emitProviderCheckpoint(message, parentToolUseID);
       }
       return;

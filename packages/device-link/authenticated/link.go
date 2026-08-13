@@ -443,6 +443,6 @@ func descriptionFromParams(fingerprint string, params icequic.LocalParams) Descr
 		Fingerprint: fingerprint,
 		Ufrag:       params.Ufrag,
 		Pwd:         params.Pwd,
-		Candidates:  append([]string(nil), params.Candidates...),
+		Candidates:  append([]string{}, params.Candidates...),
 	}
 }

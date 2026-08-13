@@ -12,6 +12,7 @@ func cloneDescriptor(value ProviderDescriptor) ProviderDescriptor {
 	value.Status.BinaryNames = append([]string(nil), value.Status.BinaryNames...)
 	value.Status.AdapterBinaryNames = append([]string(nil), value.Status.AdapterBinaryNames...)
 	value.Status.AuthStatusCommand = append([]string(nil), value.Status.AuthStatusCommand...)
+	value.Status.RemoteAuthProbe.Headers = cloneStringMap(value.Status.RemoteAuthProbe.Headers)
 	value.Status.AuthMarkerPaths = append([]string(nil), value.Status.AuthMarkerPaths...)
 	value.Status.APIEndpoints = append([]string(nil), value.Status.APIEndpoints...)
 	value.Status.CustomConfigEnvVars = append([]string(nil), value.Status.CustomConfigEnvVars...)
@@ -29,6 +30,17 @@ func cloneDescriptor(value ProviderDescriptor) ProviderDescriptor {
 	value.ExternalImport.ScanDirectories = append([]string(nil), value.ExternalImport.ScanDirectories...)
 	value.ExternalImport.SkipDirectoryPrefixes = append([]string(nil), value.ExternalImport.SkipDirectoryPrefixes...)
 	return value
+}
+
+func cloneStringMap(values map[string]string) map[string]string {
+	if values == nil {
+		return nil
+	}
+	result := make(map[string]string, len(values))
+	for key, value := range values {
+		result[key] = value
+	}
+	return result
 }
 
 func cloneStringSliceMap(values map[string][]string) map[string][]string {

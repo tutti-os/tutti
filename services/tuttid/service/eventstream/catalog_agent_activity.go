@@ -80,20 +80,31 @@ type agentActivityMessageUpdateData struct {
 }
 
 type agentActivityMessageData struct {
-	AgentSessionID string         `json:"agentSessionId"`
-	Kind           string         `json:"kind"`
-	MessageID      string         `json:"messageId"`
-	Payload        map[string]any `json:"payload"`
-	Role           string         `json:"role"`
-	Sequence       *uint64        `json:"sequence"`
-	Version        *uint64        `json:"version"`
-	TurnID         *string        `json:"turnId"`
-	Status         string         `json:"status,omitempty"`
-	OccurredAtMS   *int64         `json:"occurredAtUnixMs"`
-	StartedAtMS    *int64         `json:"startedAtUnixMs,omitempty"`
-	CompletedAtMS  *int64         `json:"completedAtUnixMs,omitempty"`
-	CreatedAtMS    *int64         `json:"createdAtUnixMs,omitempty"`
-	UpdatedAtMS    *int64         `json:"updatedAtUnixMs,omitempty"`
+	AgentSessionID string                         `json:"agentSessionId"`
+	Kind           string                         `json:"kind"`
+	MessageID      string                         `json:"messageId"`
+	Payload        map[string]any                 `json:"payload"`
+	Role           string                         `json:"role"`
+	Sequence       *uint64                        `json:"sequence"`
+	Version        *uint64                        `json:"version"`
+	TurnID         *string                        `json:"turnId"`
+	Status         string                         `json:"status,omitempty"`
+	Semantics      *agentActivityMessageSemantics `json:"semantics,omitempty"`
+	OccurredAtMS   *int64                         `json:"occurredAtUnixMs"`
+	StartedAtMS    *int64                         `json:"startedAtUnixMs,omitempty"`
+	CompletedAtMS  *int64                         `json:"completedAtUnixMs,omitempty"`
+	CreatedAtMS    *int64                         `json:"createdAtUnixMs,omitempty"`
+	UpdatedAtMS    *int64                         `json:"updatedAtUnixMs,omitempty"`
+}
+
+// agentActivityMessageSemantics mirrors the canonical message semantics
+// payload. Keep this DTO local to the eventstream catalog so strict decoding
+// remains independent of the storage package.
+type agentActivityMessageSemantics struct {
+	UserVisibleAssistantResponse bool   `json:"userVisibleAssistantResponse"`
+	TurnSettling                 bool   `json:"turnSettling,omitempty"`
+	NoticeCommand                string `json:"noticeCommand,omitempty"`
+	NoticeCommandStatus          string `json:"noticeCommandStatus,omitempty"`
 }
 
 type agentActivitySessionAuditData struct {

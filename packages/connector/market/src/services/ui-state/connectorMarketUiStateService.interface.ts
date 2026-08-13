@@ -6,6 +6,7 @@ export type ConnectorMarketScope = Readonly<Record<string, never>>;
 
 export interface ConnectorMarketDialogRequest {
   connectorKey: string;
+  kind: "connector" | "uninstall_confirmation";
 }
 
 export interface ConnectorMarketUiState {
@@ -24,6 +25,7 @@ export interface IConnectorMarketUiStateService {
   setQuery(query: string): void;
   selectSegment(segment: ConnectorMarketSegment): void;
   openConnector(connectorKey: string): void;
+  requestUninstall(connectorKey: string): void;
   closeDialog(): void;
   dispose(): void;
 }

@@ -284,7 +284,11 @@ func TestHostCreateWithSuccessfulTypedGoalPreservesSessionWhenResponseReadFails(
 	projection := NewActivityProjection(store)
 	goalStore := &recordingGoalStateStore{}
 	service := newTestService(runtime)
-	service.SessionReader = &failAfterSessionReads{delegate: projection, allowedReads: 2}
+	// Canonical initialization now performs one durable preflight read while
+	// holding the Host session lock. Allow that additional internal read so this
+	// test still fails at the response projection boundary after GoalControl has
+	// durably succeeded.
+	service.SessionReader = &failAfterSessionReads{delegate: projection, allowedReads: 3}
 	service.SessionInitializer = projection
 	service.GoalStateStore = goalStore
 

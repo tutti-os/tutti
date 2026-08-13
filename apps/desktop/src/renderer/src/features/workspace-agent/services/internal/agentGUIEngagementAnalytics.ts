@@ -5,6 +5,7 @@ import type {
 import { AgentChatInputContentEnteredReporter } from "../../../analytics/reporters/agent-chat-input-content-entered/agentChatInputContentEnteredReporter.ts";
 import { AgentChatInputFocusedReporter } from "../../../analytics/reporters/agent-chat-input-focused/agentChatInputFocusedReporter.ts";
 import { AgentChatPanelExposedReporter } from "../../../analytics/reporters/agent-chat-panel-exposed/agentChatPanelExposedReporter.ts";
+import { AgentQuickPromptEngagementReporter } from "../../../analytics/reporters/agent-quick-prompt-engagement/agentQuickPromptEngagementReporter.ts";
 import type { IReporterService } from "../../../analytics/services/reporterService.interface.ts";
 import { createOptionalReporterService } from "./agentMessageSentAnalytics.ts";
 
@@ -40,6 +41,27 @@ export function createAgentGUIEngagementEventSink(input: {
             ...baseParams,
             contentType: event.contentType,
             hadPrefill: event.hadPrefill
+          },
+          dependencies
+        ).report();
+        return;
+      case "quick_prompt_panel_opened":
+        await new AgentQuickPromptEngagementReporter(
+          {
+            ...baseParams,
+            action: "panel_opened",
+            source: event.source
+          },
+          dependencies
+        ).report();
+        return;
+      case "quick_prompt_used":
+        await new AgentQuickPromptEngagementReporter(
+          {
+            ...baseParams,
+            action: "prompt_used",
+            promptType: event.promptType,
+            source: event.source
           },
           dependencies
         ).report();

@@ -4,6 +4,41 @@
 
 Provider discovery, installation, authentication, models, configuration, and runtime reachability.
 
+### Hermes is ready but a new Windows session reports Agent failed to start
+
+- Symptom:
+  Hermes passes setup detection, but the new-conversation model picker is empty
+  and sending the first message reports `Agent failed to start`.
+- Quick checks:
+  In the daemon log, compare setup-probe configuration with the session-scoped
+  `HERMES_HOME`. The failing session typically reports no `.env` in its
+  `.tutti*/agent/runs/<session>/hermes` directory, followed by ACP `session/new`
+  returning `No LLM provider configured`. Check whether the working user config
+  is under `%LOCALAPPDATA%\hermes` while `%USERPROFILE%\.hermes` is absent.
+- Root cause:
+  The signed extension profile uses the portable default `.hermes`, but the
+  shared runtime preparer previously resolved it only relative to the Windows
+  user profile. Hermes itself uses the native Windows user cache location, so
+  discovery could see credentials while the isolated session home copied none.
+- Fix:
+  Keep an explicit `HERMES_HOME` as the highest-priority source. Otherwise,
+  preserve an existing `%USERPROFILE%\.hermes`; when it is absent, resolve the
+  resolve the portable leading-dot directory through the Windows user cache
+  root first, then fall back to a migrated `%USERPROFILE%\.hermes` only when the
+  native directory is absent. Copy only the files declared by the signed
+  runtime-preparation profile. Keep this behavior in the platform adapter rather
+  than branching on `acp:hermes`.
+- Validation:
+  With no user-level `HERMES_HOME`, place credentials in
+  `%LOCALAPPDATA%\hermes`, create a new session, and verify the model picker is
+  populated and the first message starts successfully. Confirm an explicit
+  source environment variable still takes precedence, and that a migrated
+  `%USERPROFILE%\.hermes` is used only when the native directory is absent.
+- References:
+  [agent-runtime-preparation.md](../../architecture/agent-runtime-preparation.md)
+  [windows-platform-support.md](../../architecture/windows-platform-support.md)
+  [extension_runtime.go](../../../packages/agent/runtimeprep/extension_runtime.go)
+
 ### Focusing a workspace repeatedly starts provider CLIs and raises CPU usage
 
 - Symptom:

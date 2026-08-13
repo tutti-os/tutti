@@ -25,6 +25,7 @@ import {
   desktopIpcChannels,
   type DesktopHostWindowCloseRequestPayload
 } from "../../shared/contracts/ipc";
+import { randomUUID } from "node:crypto";
 import { installWorkspaceWindowDevelopmentReloadShortcut } from "./workspaceWindowReload.ts";
 import { resolvePackagedWorkspaceRendererIndexPath } from "./workspaceWindowPaths.ts";
 import { createPrimaryWindowAnalyticsClaim } from "./primaryWindowAnalyticsClaim.ts";
@@ -35,6 +36,7 @@ import {
 } from "./standaloneAgentWindowBounds.ts";
 import { WorkspaceWindowRegistry } from "./workspaceWindowRegistry.ts";
 import { resolveWorkspaceWindowChromeOptions } from "./workspaceWindowChrome.ts";
+import { supportsWorkspaceWindowCloseGuard } from "./workspaceWindowCloseGuard.ts";
 
 export const workspaceAppBrowserPartitionPrefix = "persist:tutti-app:";
 
@@ -54,6 +56,11 @@ export interface CreateWorkspaceWindowOptions {
 }
 
 const workspaceWindows = new WorkspaceWindowRegistry<BrowserWindow>();
+const workspaceWindowCloseGuardEnabled = new WeakSet<BrowserWindow>();
+const pendingWorkspaceWindowCloseRequests = new WeakMap<
+  BrowserWindow,
+  string
+>();
 // DAU/PV belongs to the first workspace renderer for the lifetime of this main
 // process. Do not derive this from current registry membership: closing the
 // owner must not let a later window report another process-level open/pageview.
@@ -239,7 +246,29 @@ export function createWorkspaceWindow(
     kind: windowKind,
     workspaceID: options.workspaceID
   });
+  workspaceWindow.on("close", (event) => {
+    if (
+      !supportsWorkspaceWindowCloseGuard(process.platform) ||
+      !workspaceWindowCloseGuardEnabled.has(workspaceWindow)
+    ) {
+      return;
+    }
+
+    event.preventDefault();
+    if (pendingWorkspaceWindowCloseRequests.has(workspaceWindow)) {
+      return;
+    }
+
+    const requestId = randomUUID();
+    pendingWorkspaceWindowCloseRequests.set(workspaceWindow, requestId);
+    sendWorkspaceWindowCloseRequest(workspaceWindow, {
+      reason: "window-close",
+      requestId
+    });
+  });
   workspaceWindow.once("closed", () => {
+    workspaceWindowCloseGuardEnabled.delete(workspaceWindow);
+    pendingWorkspaceWindowCloseRequests.delete(workspaceWindow);
     workspaceWindows.unregister(workspaceWindow);
   });
 
@@ -307,6 +336,35 @@ export function createWorkspaceWindow(
   }
 
   return workspaceWindow;
+}
+
+export function setWorkspaceWindowCloseGuardEnabled(
+  workspaceWindow: BrowserWindow,
+  enabled: boolean
+): void {
+  if (enabled) {
+    workspaceWindowCloseGuardEnabled.add(workspaceWindow);
+    return;
+  }
+
+  workspaceWindowCloseGuardEnabled.delete(workspaceWindow);
+  pendingWorkspaceWindowCloseRequests.delete(workspaceWindow);
+}
+
+export function resolveWorkspaceWindowCloseRequest(
+  workspaceWindow: BrowserWindow,
+  input: { outcome: "approved" | "blocked"; requestId: string }
+): void {
+  if (
+    pendingWorkspaceWindowCloseRequests.get(workspaceWindow) !== input.requestId
+  ) {
+    return;
+  }
+
+  pendingWorkspaceWindowCloseRequests.delete(workspaceWindow);
+  if (input.outcome === "approved" && !workspaceWindow.isDestroyed()) {
+    workspaceWindow.destroy();
+  }
 }
 
 export function getWorkspaceWindowKind(

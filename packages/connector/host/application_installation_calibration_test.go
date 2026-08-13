@@ -2,21 +2,18 @@ package host
 
 import (
 	"context"
-	"errors"
 	"testing"
 )
 
 func TestApplicationCalibrationMarksExplicitlyMissingInstallationAndRestoresIt(t *testing.T) {
 	connector := testConnector("github")
-	connector.Release.Manifest.Implementation.ManagedStdio.MCP.InstallationProbe =
-		&InstallationProbe{Arguments: []string{"--version"}, TimeoutMS: 1_000}
 	connector.Installation = Installation{State: InstallationStateInstalled,
 		InstalledVersion: connector.Release.Version, InstalledReleaseID: connector.Release.ReleaseID,
 		InstalledReleaseDigest: connector.Release.ReleaseDigest}
 	connector.Revision = 4
 	repository := newMemoryRepository(connector)
 	repository.revision = connector.Revision
-	runtime := &memoryInstallRuntime{installationResult: InstallationObservation{State: InstallationObservationAbsent}}
+	runtime := &memoryInstallRuntime{installationResult: ReleaseInstallationObservation{State: ReleaseInstallationAbsent}}
 	application := newTestApplication(t, repository, &memoryScheduler{}, runtime, CatalogSnapshot{})
 
 	if err := application.CalibrateInstalledConnectorsForScope(context.Background(), OperationScope{}); err != nil {
@@ -24,16 +21,16 @@ func TestApplicationCalibrationMarksExplicitlyMissingInstallationAndRestoresIt(t
 	}
 	missing := repository.connectors[connector.Key]
 	if missing.Installation.State != InstallationStateFailed ||
-		missing.Installation.FailureCode != InstallationFailureCodeProbeAbsent ||
+		missing.Installation.FailureCode != InstallationFailureCodePhysicallyAbsent ||
 		missing.Installation.InstalledReleaseDigest != connector.Release.ReleaseDigest || missing.Revision != 5 {
 		t.Fatalf("missing calibration = %#v", missing)
 	}
-	if runtime.installationChecks != 1 || len(repository.events) != 1 ||
-		repository.events[0].OperationID != "calibrate/operation-2/github" {
-		t.Fatalf("checks=%d events=%#v", runtime.installationChecks, repository.events)
+	if runtime.installationInspections != 1 || len(repository.events) != 1 ||
+		repository.events[0].OperationID != "inspect/operation-2/github" {
+		t.Fatalf("inspections=%d events=%#v", runtime.installationInspections, repository.events)
 	}
 
-	runtime.installationResult.State = InstallationObservationPresent
+	runtime.installationResult.State = ReleaseInstallationPresent
 	if err := application.CalibrateInstalledConnectorsForScope(context.Background(), OperationScope{}); err != nil {
 		t.Fatal(err)
 	}
@@ -43,31 +40,41 @@ func TestApplicationCalibrationMarksExplicitlyMissingInstallationAndRestoresIt(t
 	}
 }
 
-func TestApplicationCalibrationPreservesStateForIndeterminateOrUndeclaredProbe(t *testing.T) {
+func TestApplicationCalibrationPreservesStateForIndeterminateInspection(t *testing.T) {
 	connector := testConnector("github")
 	connector.Installation = Installation{State: InstallationStateInstalled,
 		InstalledVersion: connector.Release.Version, InstalledReleaseID: connector.Release.ReleaseID,
 		InstalledReleaseDigest: connector.Release.ReleaseDigest}
 	repository := newMemoryRepository(connector)
-	runtime := &memoryInstallRuntime{installationCheckErr: errors.New("probe timed out")}
+	runtime := &memoryInstallRuntime{installationResult: ReleaseInstallationObservation{State: ReleaseInstallationIndeterminate}}
 	application := newTestApplication(t, repository, &memoryScheduler{}, runtime, CatalogSnapshot{})
 
 	if err := application.CalibrateInstalledConnectorsForScope(context.Background(), OperationScope{}); err != nil {
-		t.Fatalf("legacy connector without probe returned error: %v", err)
+		t.Fatalf("indeterminate inspection returned error: %v", err)
 	}
-	if runtime.installationChecks != 0 {
-		t.Fatalf("undeclared probe checks = %d", runtime.installationChecks)
-	}
-
-	connector = repository.connectors[connector.Key]
-	connector.Release.Manifest.Implementation.ManagedStdio.MCP.InstallationProbe =
-		&InstallationProbe{Arguments: []string{"--version"}, TimeoutMS: 1_000}
-	repository.connectors[connector.Key] = connector
-	if err := application.CalibrateInstalledConnectorsForScope(context.Background(), OperationScope{}); err == nil {
-		t.Fatal("indeterminate probe error was discarded")
+	if runtime.installationInspections != 1 {
+		t.Fatalf("inspection count = %d", runtime.installationInspections)
 	}
 	preserved := repository.connectors[connector.Key]
 	if preserved.Installation.State != InstallationStateInstalled || preserved.Installation.FailureCode != "" || len(repository.events) != 0 {
-		t.Fatalf("indeterminate probe changed projection: %#v events=%#v", preserved, repository.events)
+		t.Fatalf("indeterminate inspection changed projection: %#v events=%#v", preserved, repository.events)
+	}
+}
+
+func TestApplicationCalibrationMarksInvalidInstallation(t *testing.T) {
+	connector := testConnector("github")
+	connector.Installation = Installation{State: InstallationStateInstalled,
+		InstalledVersion: connector.Release.Version, InstalledReleaseID: connector.Release.ReleaseID,
+		InstalledReleaseDigest: connector.Release.ReleaseDigest}
+	repository := newMemoryRepository(connector)
+	runtime := &memoryInstallRuntime{installationResult: ReleaseInstallationObservation{State: ReleaseInstallationInvalid}}
+	application := newTestApplication(t, repository, &memoryScheduler{}, runtime, CatalogSnapshot{})
+
+	if err := application.CalibrateInstalledConnectorsForScope(context.Background(), OperationScope{}); err != nil {
+		t.Fatal(err)
+	}
+	invalid := repository.connectors[connector.Key]
+	if invalid.Installation.State != InstallationStateFailed || invalid.Installation.FailureCode != InstallationFailureCodePhysicallyInvalid {
+		t.Fatalf("invalid calibration = %#v", invalid)
 	}
 }

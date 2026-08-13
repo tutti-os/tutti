@@ -17,6 +17,7 @@ import type { WorkspaceLinkAction } from "../../../actions/workspaceLinkActions"
 import type {
   AgentGUIProvider,
   AgentGUIProviderRailAllPresentation,
+  AgentGUIAgentTarget,
   AgentGUIAgentTargetInfoRenderer
 } from "../../../types";
 import type { AgentMessageMarkdownWorkspaceAppIcon } from "../../../shared/AgentMessageMarkdown";
@@ -567,6 +568,8 @@ type AgentGUIComposerExternalPromptProps = Pick<
 >;
 export interface AgentGUINodeViewProps extends AgentGUIComposerExternalPromptProps {
   viewModel: AgentGUINodeViewModel;
+  /** Complete presentation-only catalog for exact Agent mention identity. */
+  mentionAgentTargets?: readonly AgentGUIAgentTarget[];
   referenceProvenanceFilters?: AgentComposerReferenceProvenanceFilters | null;
   sessionInputHistoryEnabled?: boolean;
   sessionForkEnabled?: boolean;
@@ -701,7 +704,7 @@ export interface AgentGUINodeViewProps extends AgentGUIComposerExternalPromptPro
       turnId: string
     ) => Promise<void>;
     openForkSourceConversation: (agentSessionId: string) => Promise<void>;
-    removeProject: (path: string) => void;
+    removeProject: (path: string) => Promise<boolean>;
     moveProject: (
       projectId: string,
       beforeProjectId: string | null
@@ -711,7 +714,7 @@ export interface AgentGUINodeViewProps extends AgentGUIComposerExternalPromptPro
       sectionKey?: string,
       agentTargetId?: string | null
     ) => Promise<string[]>;
-    confirmDeleteConversations: (agentSessionIds: string[]) => void;
+    confirmDeleteConversations: (agentSessionIds: string[]) => Promise<boolean>;
     requestDeleteConversation: (agentSessionId: string) => void;
     cancelDeleteConversation: () => void;
     confirmDeleteConversation: () => void;

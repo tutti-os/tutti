@@ -1,6 +1,9 @@
 package host
 
-import "time"
+import (
+	"encoding/json"
+	"time"
+)
 
 type InstallationState string
 
@@ -100,15 +103,17 @@ type Release struct {
 }
 
 type Manifest struct {
-	SchemaVersion     string                    `json:"schemaVersion"`
-	DisplayName       string                    `json:"displayName"`
-	IconURL           string                    `json:"iconUrl"`
-	Description       string                    `json:"description,omitempty"`
-	AgentRouting      *AgentRouting             `json:"agentRouting,omitempty"`
-	Permissions       []string                  `json:"permissions"`
-	Implementation    Implementation            `json:"implementation"`
-	AuthorizationKind string                    `json:"authorizationKind"`
-	Compatibility     CompatibilityRequirements `json:"compatibility,omitempty"`
+	SchemaVersion            string                    `json:"schemaVersion"`
+	DisplayName              string                    `json:"displayName"`
+	IconURL                  string                    `json:"iconUrl"`
+	Description              string                    `json:"description,omitempty"`
+	AgentRouting             *AgentRouting             `json:"agentRouting,omitempty"`
+	Permissions              []string                  `json:"permissions"`
+	RequiredCapabilities     []string                  `json:"requiredCapabilities,omitempty"`
+	Implementation           Implementation            `json:"implementation"`
+	AuthorizationKind        string                    `json:"authorizationKind"`
+	AuthorizationInteraction json.RawMessage           `json:"authorizationInteraction,omitempty"`
+	Compatibility            CompatibilityRequirements `json:"compatibility,omitempty"`
 }
 
 // AgentRouting carries connector-owned brand and product aliases used only to
@@ -170,24 +175,24 @@ type ManagedCredentialBroker struct {
 }
 
 type ManagedMCPInterface struct {
-	Entrypoint        string             `json:"entrypoint"`
-	Arguments         []string           `json:"arguments,omitempty"`
-	InstallationProbe *InstallationProbe `json:"installationProbe,omitempty"`
+	Entrypoint string   `json:"entrypoint"`
+	Arguments  []string `json:"arguments,omitempty"`
 }
 
 type ManagedCLIInterface struct {
-	Entrypoint        string             `json:"entrypoint"`
-	Arguments         []string           `json:"arguments,omitempty"`
-	TimeoutMS         int                `json:"timeoutMs,omitempty"`
-	InstallationProbe *InstallationProbe `json:"installationProbe,omitempty"`
-	Install           *CLIInstallation   `json:"install,omitempty"`
-	Commands          []CLICommand       `json:"commands,omitempty"`
+	Entrypoint     string             `json:"entrypoint"`
+	Arguments      []string           `json:"arguments,omitempty"`
+	TimeoutMS      int                `json:"timeoutMs,omitempty"`
+	ReadinessProbe *CLIReadinessProbe `json:"readinessProbe,omitempty"`
+	Install        *CLIInstallation   `json:"install,omitempty"`
+	Commands       []CLICommand       `json:"commands,omitempty"`
 }
 
-// InstallationProbe is a bounded, direct-argv check executed through the
-// interface's already verified entrypoint. Exit code 0 reports present and
-// exit code 1 reports absent; every other outcome is indeterminate.
-type InstallationProbe struct {
+// CLIReadinessProbe is an optional bounded health check for an already
+// installed and resolved CLI interface. It is never used to decide whether a
+// release is physically installed. Exit code 0 reports ready; every other
+// outcome reports an interface-level readiness failure.
+type CLIReadinessProbe struct {
 	Arguments []string `json:"arguments"`
 	TimeoutMS int      `json:"timeoutMs"`
 }
@@ -231,19 +236,10 @@ type CLICommand struct {
 }
 
 type RemoteStreamableHTTPImplementation struct {
-	Endpoint       string                        `json:"endpoint"`
-	AllowedHosts   []string                      `json:"allowedHosts"`
-	Authentication RemoteTransportAuthentication `json:"authentication"`
-	Limits         RemoteTransportLimits         `json:"limits"`
-}
-
-type RemoteTransportAuthentication struct {
-	Type string `json:"type"`
-}
-
-type RemoteTransportLimits struct {
-	TimeoutMS        int `json:"timeoutMs"`
-	MaxResponseBytes int `json:"maxResponseBytes"`
+	ProtocolVersion     string `json:"protocolVersion"`
+	BindingRef          string `json:"bindingRef"`
+	ContractVersion     int    `json:"contractVersion"`
+	BindingContractHash string `json:"bindingContractHash"`
 }
 
 type Installation struct {
@@ -387,35 +383,134 @@ type HostGeneration struct {
 }
 
 type RuntimeReceipt struct {
-	OperationID   string         `json:"operationId"`
-	ConnectionID  string         `json:"connectionId"`
-	ConnectorKey  string         `json:"connectorKey"`
-	ReleaseDigest string         `json:"releaseDigest"`
-	Generation    HostGeneration `json:"generation"`
-	RouteIDs      []string       `json:"routeIds,omitempty"`
+	OperationID   string           `json:"operationId"`
+	ConnectionID  string           `json:"connectionId"`
+	ConnectorKey  string           `json:"connectorKey"`
+	ReleaseDigest string           `json:"releaseDigest"`
+	Generation    HostGeneration   `json:"generation"`
+	Readiness     RuntimeReadiness `json:"readiness"`
+	// Summary is the immutable, verified discovery projection committed by this
+	// exact reconcile. It is independent of capability publication so lifecycle
+	// observers can establish ready state while Agent-facing routes are fenced.
+	Summary *ConnectorSummary `json:"summary,omitempty"`
+}
+
+// ConnectorSummary contains bounded, non-secret metadata for one committed
+// runtime route. RuntimeReceipt owns the route identity; this projection must
+// never contain credentials, filesystem paths, or Skill bodies.
+type ConnectorSummary struct {
+	Key         string                      `json:"key"`
+	Name        string                      `json:"name"`
+	Description string                      `json:"description"`
+	Skills      []ConnectorSkillSummary     `json:"skills"`
+	Interfaces  []ConnectorInterfaceSummary `json:"interfaces"`
+}
+
+type ConnectorSkillSummary struct {
+	Name        string `json:"name"`
+	Title       string `json:"title"`
+	Description string `json:"description"`
+}
+
+type ConnectorInterfaceSummary struct {
+	Kind       string `json:"kind"`
+	ServerName string `json:"serverName,omitempty"`
+	ToolPrefix string `json:"toolPrefix,omitempty"`
+	Command    string `json:"command,omitempty"`
+	Status     string `json:"status"`
+}
+
+type RuntimeReadinessState string
+
+const (
+	RuntimeReadinessReady   RuntimeReadinessState = "ready"
+	RuntimeReadinessBlocked RuntimeReadinessState = "blocked"
+	RuntimeReadinessFailed  RuntimeReadinessState = "failed"
+)
+
+// RuntimeReadinessReasonRuntimeDisabled confirms that a disabled reconcile
+// removed capability publication instead of attempting to start a runtime.
+const RuntimeReadinessReasonRuntimeDisabled = "runtime_disabled"
+
+type InterfaceReadiness struct {
+	Kind       string                `json:"kind"`
+	State      RuntimeReadinessState `json:"state"`
+	ReasonCode string                `json:"reasonCode,omitempty"`
+	RouteIDs   []string              `json:"routeIds,omitempty"`
+}
+
+// RuntimeReadiness describes the usable interfaces committed by one
+// reconcile. A CLI-only Connector can therefore be ready without MCP routes.
+type RuntimeReadiness struct {
+	State      RuntimeReadinessState `json:"state"`
+	ReasonCode string                `json:"reasonCode,omitempty"`
+	Interfaces []InterfaceReadiness  `json:"interfaces,omitempty"`
 }
 
 type AuthorizationSession struct {
-	OperationID      string             `json:"operationId"`
-	ConnectorKey     string             `json:"connectorKey"`
-	ConnectionID     string             `json:"-"`
-	SessionID        string             `json:"sessionId"`
-	ActionType       string             `json:"actionType"`
-	AuthorizationURL string             `json:"-"`
-	State            AuthorizationState `json:"-"`
+	OperationID      string                         `json:"operationId"`
+	ConnectorKey     string                         `json:"connectorKey"`
+	ConnectionID     string                         `json:"-"`
+	SessionID        string                         `json:"sessionId"`
+	ActionType       string                         `json:"actionType"`
+	AuthorizationURL string                         `json:"-"`
+	State            AuthorizationState             `json:"-"`
+	Resolution       AuthorizationSessionResolution `json:"resolution"`
+}
+
+// AuthorizationSessionResolution records why a private, durable start receipt
+// no longer needs provider polling. The empty value is treated as unresolved
+// for receipts written by older daemon versions.
+type AuthorizationSessionResolution string
+
+const (
+	AuthorizationSessionResolutionUnresolved            AuthorizationSessionResolution = "unresolved"
+	AuthorizationSessionResolutionProviderConnected     AuthorizationSessionResolution = "provider_connected"
+	AuthorizationSessionResolutionProviderFailed        AuthorizationSessionResolution = "provider_failed"
+	AuthorizationSessionResolutionAccountStateConverged AuthorizationSessionResolution = "account_state_converged"
+	AuthorizationSessionResolutionSuperseded            AuthorizationSessionResolution = "superseded"
+)
+
+// AuthorizationReconcileIntent is a private receipt transition that becomes
+// terminal only after the daemon has awaited the corresponding runtime
+// reconcile under its account lifecycle fence.
+type AuthorizationReconcileIntent struct {
+	OperationID  string
+	ConnectorKey string
+	Resolution   AuthorizationSessionResolution
+}
+
+func (session AuthorizationSession) IsResolved() bool {
+	return session.Resolution != "" && session.Resolution != AuthorizationSessionResolutionUnresolved
 }
 
 type AuthorizationObservationState string
 
 const (
-	AuthorizationObservationPending   AuthorizationObservationState = "pending"
-	AuthorizationObservationConnected AuthorizationObservationState = "connected"
-	AuthorizationObservationFailed    AuthorizationObservationState = "failed"
+	AuthorizationObservationPending      AuthorizationObservationState = "pending"
+	AuthorizationObservationConnected    AuthorizationObservationState = "connected"
+	AuthorizationObservationDisconnected AuthorizationObservationState = "disconnected"
+	AuthorizationObservationExpired      AuthorizationObservationState = "expired"
+	AuthorizationObservationFailed       AuthorizationObservationState = "failed"
 )
 
 type AuthorizationObservation struct {
-	State       AuthorizationObservationState
-	FailureCode string
+	AccountID               string                        `json:"accountId,omitempty"`
+	AccountGeneration       uint64                        `json:"accountGeneration,omitempty"`
+	VMAssignmentID          string                        `json:"vmAssignmentId,omitempty"`
+	ConnectorKey            string                        `json:"connectorKey,omitempty"`
+	ConnectionID            string                        `json:"connectionId,omitempty"`
+	ReleaseDigest           string                        `json:"releaseDigest,omitempty"`
+	AuthorizationSessionID  string                        `json:"authorizationSessionId,omitempty"`
+	AuthorizationGeneration uint64                        `json:"authorizationGeneration,omitempty"`
+	DesktopBootEpoch        string                        `json:"desktopBootEpoch,omitempty"`
+	GuestBootID             string                        `json:"guestBootId,omitempty"`
+	RuntimeEpoch            string                        `json:"runtimeEpoch,omitempty"`
+	StateRevision           uint64                        `json:"stateRevision,omitempty"`
+	State                   AuthorizationObservationState `json:"state"`
+	Reason                  string                        `json:"reason,omitempty"`
+	FailureCode             string                        `json:"failureCode,omitempty"`
+	ObservedAt              time.Time                     `json:"observedAt,omitempty"`
 }
 
 type Snapshot struct {
@@ -437,16 +532,40 @@ type ConnectorMutation struct {
 	AccountID    string `json:"accountId,omitempty"`
 }
 
+// EnsureRuntimeReconcileResult reports whether a level-triggered repair
+// created work from the caller's current desired state or joined older work
+// that must be followed by another ensure after it reaches a terminal state.
+type EnsureRuntimeReconcileResult struct {
+	MutationResult
+	Created bool
+}
+
 // AuthorizationProjection is account-scoped runtime intent. Installation is
 // still device-scoped on Connector; switching accounts changes only this
 // projection and the runtime binding derived from it.
 type AuthorizationProjection struct {
-	AccountID    string             `json:"accountId"`
-	ConnectorKey string             `json:"connectorKey"`
-	ConnectionID string             `json:"connectionId,omitempty"`
-	State        AuthorizationState `json:"state"`
-	FailureCode  string             `json:"failureCode,omitempty"`
-	UpdatedAt    time.Time          `json:"updatedAt"`
+	AccountID         string `json:"accountId"`
+	ConnectorKey      string `json:"connectorKey"`
+	ConnectorVersion  string `json:"connectorVersion,omitempty"`
+	ConnectionID      string `json:"connectionId,omitempty"`
+	ConnectionVersion uint64 `json:"connectionVersion,omitempty"`
+	ServerRevision    uint64 `json:"serverRevision,omitempty"`
+	// ServerSynchronized distinguishes an authoritative revision 0 snapshot
+	// from device-local authorization state that has never been synchronized.
+	ServerSynchronized bool               `json:"serverSynchronized,omitempty"`
+	State              AuthorizationState `json:"state"`
+	FailureCode        string             `json:"failureCode,omitempty"`
+	UpdatedAt          time.Time          `json:"updatedAt"`
+}
+
+type AuthorizationSnapshot struct {
+	Revision   uint64
+	Connectors []AuthorizationProjection
+}
+
+type AuthorizationSnapshotApplyResult struct {
+	ChangedConnectorKeys        []string
+	PendingReceiptConnectorKeys []string
 }
 
 type MutationResult struct {

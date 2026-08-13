@@ -202,6 +202,22 @@ WHERE workspace_id = ? AND agent_session_id = ? AND deleted_at_unix_ms = 0
 			return Turn{}, false, fmt.Errorf("set workspace agent session active turn: %w", err)
 		}
 	}
+	if acceptedGoalExecutionTurn(merged) {
+		if _, err := tx.ExecContext(ctx, `
+UPDATE workspace_agent_session_goals
+SET execution_pending = 0, updated_at_unix_ms = MAX(updated_at_unix_ms, ?)
+WHERE workspace_id = ? AND agent_session_id = ? AND revision = ? AND execution_pending = 1
+  AND EXISTS (
+    SELECT 1 FROM workspace_agent_goal_control_operations operation
+    WHERE operation.workspace_id = workspace_agent_session_goals.workspace_id
+      AND operation.agent_session_id = workspace_agent_session_goals.agent_session_id
+      AND operation.operation_id = ? AND operation.goal_revision = ? AND operation.repair_epoch = ?
+  )
+`, occurred, workspaceID, agentSessionID, merged.SourceGoalRevision,
+			merged.SourceGoalOperationID, merged.SourceGoalRevision, merged.SourceGoalRepairEpoch); err != nil {
+			return Turn{}, false, fmt.Errorf("clear Goal execution-pending state: %w", err)
+		}
+	}
 
 	stored, ok, err := getAgentTurnTx(ctx, tx, workspaceID, agentSessionID, turnID)
 	if err != nil {
@@ -211,6 +227,14 @@ WHERE workspace_id = ? AND agent_session_id = ? AND deleted_at_unix_ms = 0
 		return Turn{}, false, fmt.Errorf("read recorded workspace agent turn: %w", sql.ErrNoRows)
 	}
 	return stored, true, nil
+}
+
+func acceptedGoalExecutionTurn(turn Turn) bool {
+	if turn.Origin != TurnOriginGoalArm && turn.Origin != TurnOriginGoalContinuation {
+		return false
+	}
+	return strings.TrimSpace(turn.SourceGoalOperationID) != "" &&
+		turn.SourceGoalRevision > 0 && turn.SourceGoalRepairEpoch >= 0
 }
 
 // validateLiveTurnSlotTx enforces the session-to-live-turn cardinality at the
@@ -288,7 +312,7 @@ func mergeTurnTransition(existing Turn, hasExisting bool, transition TurnTransit
 	))
 	merged.Backfilled = false
 	merged.UpdatedAtUnixMS = occurred
-	if transition.ErrorMessage != "" {
+	if transition.ErrorMessage != "" || transition.ErrorCode != "" {
 		merged.ErrorMessage = strings.TrimSpace(transition.ErrorMessage)
 		merged.ErrorCode = strings.TrimSpace(transition.ErrorCode)
 	}
@@ -423,8 +447,13 @@ func (s *Store) SettleStaleTurns(ctx context.Context) ([]StaleTurnSettlement, er
 	}()
 
 	rows, err := tx.QueryContext(ctx, `
-SELECT t.workspace_id, t.agent_session_id, t.turn_id
+SELECT t.workspace_id, t.agent_session_id, t.turn_id,
+       COALESCE(s.provider, ''), s.session_kind, COALESCE(s.parent_tool_call_id, ''),
+       t.started_at_unix_ms
 FROM workspace_agent_turns AS t
+JOIN workspace_agent_sessions AS s
+  ON s.workspace_id = t.workspace_id
+ AND s.agent_session_id = t.agent_session_id
 WHERE t.phase != ?
   AND NOT EXISTS (
     SELECT 1 FROM workspace_agent_runtime_operations AS op
@@ -439,7 +468,7 @@ WHERE t.phase != ?
       )
       AND op.status IN (?, ?)
   )
-ORDER BY workspace_id ASC, agent_session_id ASC, turn_id ASC
+ORDER BY t.workspace_id ASC, t.agent_session_id ASC, t.turn_id ASC
 `, TurnPhaseSettled, RuntimeOperationKindEditRetry,
 		RuntimeOperationStatusPrepared, RuntimeOperationStatusLeased)
 	if err != nil {
@@ -448,10 +477,21 @@ ORDER BY workspace_id ASC, agent_session_id ASC, turn_id ASC
 	settlements := make([]StaleTurnSettlement, 0)
 	for rows.Next() {
 		var settlement StaleTurnSettlement
-		if err := rows.Scan(&settlement.WorkspaceID, &settlement.AgentSessionID, &settlement.TurnID); err != nil {
+		var sessionKind, parentToolCallID string
+		if err := rows.Scan(
+			&settlement.WorkspaceID,
+			&settlement.AgentSessionID,
+			&settlement.TurnID,
+			&settlement.Provider,
+			&sessionKind,
+			&parentToolCallID,
+			&settlement.StartedAtUnixMS,
+		); err != nil {
 			rows.Close()
 			return nil, fmt.Errorf("scan stale workspace agent turn: %w", err)
 		}
+		settlement.IsChildSession = strings.EqualFold(strings.TrimSpace(sessionKind), SessionKindChild) ||
+			strings.TrimSpace(parentToolCallID) != ""
 		settlements = append(settlements, settlement)
 	}
 	if err := rows.Err(); err != nil {
@@ -469,6 +509,9 @@ ORDER BY workspace_id ASC, agent_session_id ASC, turn_id ASC
 	}
 
 	now := unixMs(time.Now().UTC())
+	for index := range settlements {
+		settlements[index].SettledAtUnixMS = now
+	}
 	if _, err := tx.ExecContext(ctx, `
 UPDATE workspace_agent_turns AS t
 SET phase = ?, outcome = ?, settled_at_unix_ms = ?, updated_at_unix_ms = ?

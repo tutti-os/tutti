@@ -8,6 +8,8 @@ The package owns the TypeScript and renderer side of the shared boundary:
 - `openapi/connector-market.v1.yaml`: the HTTP fragment composed by each host
   daemon's aggregate OpenAPI document
 - `contracts`: host-neutral backend, event, domain, and error contracts
+- `authorization`: the declarative authorization adapter and replaceable
+  View/Event renderer boundary
 - `core`: the renderer module lifecycle and stable Root boundary
 - `services`: a module-scoped Root, Runtime, lifecycle, StartupJobs, Valtio
   domain services, and host adapter contracts
@@ -20,6 +22,22 @@ The package does not construct an HTTP client, read Electron globals, choose a
 catalog endpoint, persist credentials, select install directories, or own a
 host database. Those responsibilities remain in the consuming daemon and
 renderer adapters.
+
+## Declarative authorization UI
+
+Connector manifests may carry a versioned `authorizationInteraction` value.
+The daemon transports this value without interpreting its presentation
+semantics. `@tutti-os/connector-authorization-protocol` validates it at the
+renderer boundary, and Connector Market's declarative adapter maps the selected
+secret field to the existing authorization backend input. Runtime header,
+endpoint, environment, and credential-storage bindings never enter the UI
+protocol.
+
+Hosts may inject an `authorizationRenderer` into `ConnectorMarketPanel` or
+`ConnectorMarketDialogHost`. Without an override, Connector Market renders the
+same protocol with its UI System-based default renderer. A missing interaction
+on a legacy `api_key` Connector uses the centralized one-secret compatibility
+adapter; an explicitly invalid interaction fails closed.
 
 ## Renderer usage
 
@@ -72,6 +90,12 @@ from the immutable connector release manifest. A browsed page is cached by the
 daemon so a newly observed connector is immediately installable, while the
 scheduled authoritative refresh still traverses every primary category for
 runtime reconciliation.
+Initial section reads settle independently. Successful sections remain usable
+when another section fails, and the failed section exposes its own retry without
+moving the whole catalog into the global error state. A global error is reserved
+for category discovery failure or an initial load where every non-empty section
+fails. Background failures retain the last known good connectors and cursor for
+the affected section.
 Activation creates a child service container and executes the complete startup
 flow before the host renders the module:
 

@@ -347,6 +347,12 @@ func TestControllerAnonymousStartsRemainProviderScopedAndIdempotent(t *testing.T
 	if replayed.Session.AgentSessionID != first.Session.AgentSessionID {
 		t.Fatalf("replayed session = %q, want %q", replayed.Session.AgentSessionID, first.Session.AgentSessionID)
 	}
+	if !first.Created {
+		t.Fatal("first anonymous start Created = false, want true")
+	}
+	if replayed.Created {
+		t.Fatal("replayed anonymous start Created = true, want false")
+	}
 	if calls := adapter.startCalls.Load(); calls != 1 {
 		t.Fatalf("adapter start calls = %d, want 1", calls)
 	}
@@ -663,6 +669,12 @@ func TestControllerStartReusesTargetSessionWithSameProviderTargetRef(t *testing.
 
 	if second.Session.AgentSessionID != first.Session.AgentSessionID {
 		t.Fatalf("second start session = %q, want reused %q", second.Session.AgentSessionID, first.Session.AgentSessionID)
+	}
+	if !first.Created {
+		t.Fatal("first start Created = false, want true")
+	}
+	if second.Created {
+		t.Fatal("reused start Created = true, want false")
 	}
 }
 

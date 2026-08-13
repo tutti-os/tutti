@@ -1,5 +1,5 @@
 import type { SetStateAction } from "react";
-import { proxy } from "valtio/vanilla";
+import { proxy, snapshot as readProxySnapshot } from "valtio/vanilla";
 import type {
   IssueManagerIssueDetail,
   IssueManagerIssueSummary,
@@ -147,6 +147,9 @@ export function createIssueManagerControllerRuntime(
     })
   };
   const store = proxy(snapshot);
+  const readSnapshot = () =>
+    readProxySnapshot(store) as unknown as IssueManagerControllerSnapshot;
+  snapshot = readSnapshot();
 
   const notify = () => {
     for (const listener of listeners) {
@@ -171,8 +174,8 @@ export function createIssueManagerControllerRuntime(
     if (next === snapshot) {
       return;
     }
-    snapshot = next;
     Object.assign(store, next);
+    snapshot = readSnapshot();
     notify();
   };
 

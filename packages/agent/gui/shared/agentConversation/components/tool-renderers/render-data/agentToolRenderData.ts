@@ -354,6 +354,38 @@ export function getToolFallbackText(
   };
 }
 
+export function isFailedToolCall(call: AgentToolCallVM): boolean {
+  if (call.statusKind === "failed") {
+    return true;
+  }
+  const normalized = (call.status ?? "").trim().toLowerCase();
+  return normalized === "failed" || normalized === "error";
+}
+
+/** Human-readable failure detail for collapsed/expanded tool rows. */
+export function getToolCallFailureText(call: AgentToolCallVM): string | null {
+  const fallback = getToolFallbackText(call);
+  const raw = firstString(
+    fallback.error,
+    isFailedToolCall(call) ? fallback.output : null
+  );
+  return unwrapToolUseErrorText(raw);
+}
+
+function unwrapToolUseErrorText(value: string | null): string | null {
+  if (!value) {
+    return null;
+  }
+  const match = value.match(
+    /<tool_use_error>\s*([\s\S]*?)\s*<\/tool_use_error>/i
+  );
+  const unwrapped = match?.[1]?.trim();
+  if (unwrapped) {
+    return unwrapped;
+  }
+  return value.trim() || null;
+}
+
 function normalizeTaskStepsFromCall(call: AgentToolCallVM): AgentTaskStepVM[] {
   const steps =
     arrayValue(call.metadata?.steps) ??

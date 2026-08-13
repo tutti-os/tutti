@@ -292,10 +292,12 @@ export function resolveAgentGUIStopControl(input: {
   isInterrupting: boolean;
   isSubmitting: boolean;
   isUnavailable: boolean;
-  runtimeCommandsBlocked: boolean;
 }): { disabled: boolean; visible: boolean } {
   return {
-    disabled: input.runtimeCommandsBlocked,
+    // Stop is a daemon/session control, not a composer command. The runtime
+    // gate may block new submissions while the daemon can still cancel the
+    // active turn, so do not inherit the composer gate here.
+    disabled: false,
     visible: shouldShowAgentGUIStopButton(input)
   };
 }

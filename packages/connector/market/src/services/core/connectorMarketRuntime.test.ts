@@ -167,11 +167,15 @@ test("one dialog host projects authorization and management as mutually exclusiv
   });
 
   await module.activate(new InstantiationService());
+  const dialogKind = () => module.root.view.dataStore.dialog?.kind;
   module.root.uiState.openConnector("github");
-  assert.equal(module.root.view.dataStore.dialog?.kind, "authorization");
+  assert.equal(dialogKind(), "authorization");
 
   module.root.uiState.openConnector("notion");
-  assert.equal(module.root.view.dataStore.dialog?.kind, "management");
+  assert.equal(dialogKind(), "management");
+
+  module.root.uiState.requestUninstall("github");
+  assert.equal(dialogKind(), "uninstall_confirmation");
 
   module.root.uiState.closeDialog();
   assert.equal(module.root.view.dataStore.dialog, null);

@@ -709,6 +709,7 @@ func TestRootProviderTurnFailurePersistsVisibleErrorCode(t *testing.T) {
 	completed := report.StatePatches[0].RootProviderTurn
 	if completed == nil {
 		t.Fatal("root provider turn transition is nil")
+		return
 	}
 	if completed.ErrorMessage != errorMessage {
 		t.Fatalf("root provider turn error message = %q, want %q", completed.ErrorMessage, errorMessage)

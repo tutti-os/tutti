@@ -33,8 +33,20 @@ func claudeCodeDescriptor() ProviderDescriptor {
 			BinaryNames:                     []string{"claude"},
 			AuthStatusCommand:               []string{"auth", "status"},
 			AuthStatusCommandTimeoutSeconds: 600,
-			AuthMarkerPaths:                 []string{"~/.claude.json", "~/.claude/auth.json"},
-			APIEndpoints:                    []string{"https://api.anthropic.com/v1/messages"},
+			RemoteAuthProbe: RemoteAuthProbeDescriptor{
+				Kind:           RemoteAuthProbeKindHTTPBearer,
+				CredentialKind: RemoteAuthCredentialKindClaudeOAuth,
+				Endpoint:       "https://api.anthropic.com/api/oauth/usage",
+				Method:         "GET",
+				Headers: map[string]string{
+					"Accept":         "application/json",
+					"anthropic-beta": "oauth-2025-04-20",
+					"User-Agent":     "claude-code/2.1.0",
+				},
+				TimeoutSeconds: 10,
+			},
+			AuthMarkerPaths: []string{"~/.claude.json", "~/.claude/auth.json"},
+			APIEndpoints:    []string{"https://api.anthropic.com/v1/messages"},
 			CustomConfigEnvVars: []string{
 				"ANTHROPIC_API_KEY",
 				"ANTHROPIC_AUTH_TOKEN",
@@ -147,7 +159,7 @@ func claudeCodeDescriptor() ProviderDescriptor {
 			TurnLifecycleProjection: TurnLifecycleProjectionExplicit,
 		},
 		Sidecar: SidecarDescriptor{MentionRouting: SidecarMentionRoutingClaudeNamespaced, ExecutionEnvironment: SidecarExecutionEnvironmentClaudeIPC},
-		Desktop: DesktopIntegrationDescriptor{Managed: true, ManagedOrder: 1, StatusProbePriority: 2, UsageProbeKind: DesktopUsageProbeClaudeCode, DeveloperLogs: true, DefaultProviderEligible: true, DefaultProviderPriority: 3},
+		Desktop: DesktopIntegrationDescriptor{Managed: true, ManagedOrder: 1, StatusProbePriority: 2, UsageProbeKind: DesktopUsageProbeClaudeCode, AuthProbeAfterCredentialSync: true, DeveloperLogs: true, DefaultProviderEligible: true, DefaultProviderPriority: 3},
 		ExternalImport: ExternalImportDescriptor{
 			Enabled:               true,
 			RootEnvVar:            "CLAUDE_CONFIG_DIR",

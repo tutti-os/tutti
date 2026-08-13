@@ -378,6 +378,47 @@ sh.tutti.mobile` and inspect a narrow logcat window for the Go fatal message.
 - **References:** `packages/device-link/mobile/link.go`,
   `apps/mobile/android/app/src/main/java/sh/tutti/mobile/DeviceLinkModule.kt`
 
+## Mobile direct DeviceLink consistently takes about ten seconds
+
+- **Symptom:** A paired computer is online and often on the same LAN, but the
+  direct path regularly needs roughly ten seconds before it becomes usable.
+  Relay may appear much faster even though P2P eventually succeeds.
+- **Quick checks:** Inspect sanitized `device_link.stage` events for
+  `direct_credentials_ready`, `direct_attempt_created`,
+  `direct_first_candidate_published`, `direct_attempt_ready`,
+  `direct_remote_candidate_received`, and `direct_connected`. If credentials
+  or attempt creation appear only after a five-second boundary, inspect the
+  native prepare bridge for a blocking full ICE description. If ready is early
+  but connected is late, isolate candidate exchange from authenticated
+  ICE/QUIC instead of changing Relay delay.
+- **Root cause:** The caller previously waited for a complete host-only ICE
+  description, created the attempt to discover server STUN endpoints, replaced
+  the Participant, and then waited for a second complete description. The
+  Desktop owner also waited for its full description before publishing. Two
+  configured five-second gathering windows therefore sat on the critical path,
+  while TSH's lower-level implementation already published credentials and
+  trickled candidates during `Connect`.
+- **Fix:** Use `candidateexchange.Start` and publish valid ICE credentials
+  immediately, allowing an empty candidate list. Run `PublishLocal` and
+  `FeedRemote` beside `Participant.Connect`; keep signed attempt reads/writes,
+  push hints, account authorization, and pairing state in the product adapter.
+  Mobile must drain the gomobile `ActionPump` next/resolve protocol rather than
+  use the legacy blocking `LocalDescription` bridge or own a second TypeScript
+  retry/poll scheduler. Resolve a publication successfully only after the
+  returned authoritative attempt contains its candidate snapshot. Android must
+  keep enough native operation workers for `Connect`, candidate actions, and
+  Relay work to progress concurrently.
+- **Validation:** Cover an initial zero-candidate snapshot, a later local
+  candidate update, a ready peer with zero candidates, a later authoritative
+  remote snapshot, missed-push polling fallback, exact-snapshot publish retry,
+  and a successful stream probe. Compare stage deltas on LAN and external NAT;
+  do not log candidates, addresses, ICE credentials, fingerprints, tokens, or
+  payloads.
+- **References:** `packages/device-link/candidateexchange`,
+  `packages/device-link/mobile/link.go`,
+  `apps/mobile/src/services/deviceLinkCandidateExchange.ts`,
+  `services/tuttid/service/mobileremote/candidate_exchange.go`
+
 ## Mobile shows output from a completed Session after foreground resume
 
 - **Symptom:** After the App enters the background and is reopened, transcript

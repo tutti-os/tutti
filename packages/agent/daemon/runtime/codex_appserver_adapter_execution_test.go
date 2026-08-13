@@ -3,11 +3,13 @@ package agentruntime
 import (
 	"context"
 	"fmt"
-	activityshared "github.com/tutti-os/tutti/packages/agent/daemon/activity/events"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
 	"time"
+
+	activityshared "github.com/tutti-os/tutti/packages/agent/daemon/activity/events"
 )
 
 func TestCodexAppServerAdapterExecStreamsTurn(t *testing.T) {
@@ -25,6 +27,9 @@ func TestCodexAppServerAdapterExecStreamsTurn(t *testing.T) {
 	turnStart := appServerRequestParams(t, transport.conn, appServerMethodTurnStart)
 	if asString(turnStart["threadId"]) != "codex-thread-1" {
 		t.Fatalf("turn/start threadId = %q", turnStart["threadId"])
+	}
+	if asString(turnStart["cwd"]) != "/workspace" {
+		t.Fatalf("turn/start cwd = %q, want provider workspace root", turnStart["cwd"])
 	}
 	input, _ := turnStart["input"].([]any)
 	if len(input) != 1 || asString(payloadObject(input[0])["text"]) != "inspect the repo" {
@@ -64,6 +69,7 @@ func TestCodexAppServerAdapterExecStreamsTurn(t *testing.T) {
 	}
 	if bashCall == nil {
 		t.Fatalf("missing completed Bash tool call: %#v", callsCompleted)
+		return
 	}
 	output := payloadMap(bashCall.Payload.Metadata, "output")
 	if stdout, _ := output["stdout"].(string); stdout != "README.md\n" {
@@ -129,6 +135,40 @@ func TestCodexAppServerTurnStartKeepsLargePromptInInputOnly(t *testing.T) {
 	input, ok := params["input"].([]map[string]any)
 	if !ok || len(input) != 1 || asString(input[0]["text"]) != longPrompt {
 		t.Fatalf("turn/start input did not preserve the full prompt")
+	}
+}
+
+func TestCodexAppServerTurnStartProjectsProviderWorkspaceCWD(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		roomID string
+		cwd    string
+		want   string
+	}{
+		{name: "room mount root", roomID: "room-1", cwd: "/workspace/room-1", want: "/workspace"},
+		{name: "room mount child", roomID: "room-1", cwd: "/workspace/room-1/src", want: "/workspace/src"},
+		{name: "logical workspace child", roomID: "room-1", cwd: "/workspace/src", want: "/workspace/src"},
+		{name: "native Windows path", roomID: "room-1", cwd: `C:\Users\alice\repo`, want: `C:\Users\alice\repo`},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			params := appServerTurnStartParams(
+				Session{RoomID: test.roomID, CWD: test.cwd},
+				"codex-thread-1",
+				nil,
+				nil,
+				nil,
+				"",
+				"",
+				false,
+			)
+			if got := asString(params["cwd"]); got != test.want {
+				t.Fatalf("turn/start cwd = %q, want %q", got, test.want)
+			}
+		})
 	}
 }
 
@@ -291,8 +331,33 @@ func TestCodexAppServerAdapterExecAutoPermissionUsesAutoReviewer(t *testing.T) {
 	if asString(sandboxPolicy["type"]) != "workspaceWrite" {
 		t.Fatalf("turn/start sandboxPolicy = %#v", turnStart["sandboxPolicy"])
 	}
+	if runtime.GOOS == "windows" {
+		if _, ok := sandboxPolicy["writableRoots"]; ok {
+			t.Fatalf("turn/start sandboxPolicy writableRoots = %#v, want omitted on Windows", sandboxPolicy["writableRoots"])
+		}
+	} else {
+		writableRoots, ok := sandboxPolicy["writableRoots"].([]any)
+		if !ok || len(writableRoots) != 1 || asString(writableRoots[0]) != "/sandbox-tmp" {
+			t.Fatalf("turn/start sandboxPolicy writableRoots = %#v, want [/sandbox-tmp]", sandboxPolicy["writableRoots"])
+		}
+	}
 	if asString(turnStart["approvalsReviewer"]) != "auto_review" {
 		t.Fatalf("turn/start approvalsReviewer = %q, want auto_review", turnStart["approvalsReviewer"])
+	}
+}
+
+func TestCodexAppServerSandboxPolicyKeepsHostPathSemantics(t *testing.T) {
+	t.Parallel()
+
+	windowsPolicy := codexAppServerSandboxPolicyForPlatform("auto", false, "windows")
+	if _, ok := windowsPolicy["writableRoots"]; ok {
+		t.Fatalf("Windows writableRoots = %#v, want omitted", windowsPolicy["writableRoots"])
+	}
+
+	posixPolicy := codexAppServerSandboxPolicyForPlatform("auto", false, "darwin")
+	writableRoots, ok := posixPolicy["writableRoots"].([]string)
+	if !ok || len(writableRoots) != 1 || writableRoots[0] != "/sandbox-tmp" {
+		t.Fatalf("POSIX writableRoots = %#v, want [/sandbox-tmp]", posixPolicy["writableRoots"])
 	}
 }
 

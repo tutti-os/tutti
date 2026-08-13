@@ -260,6 +260,10 @@ func ensureTuttiAgentSessionConfig(configPath string, input PrepareInput) error 
 		next = planNext
 		changed = true
 	}
+	if mcpNext, mcpChanged := codexConfigWithConnectorMCP(next, input.MCPServers); mcpChanged {
+		next = mcpNext
+		changed = true
+	}
 	// Tutti Agent uses the same Codex-derived app-server sandbox runtime as
 	// Codex, but it is launched by Tutti's non-elevated desktop daemon. Keep
 	// the Windows implementation aligned with Codex session homes so an

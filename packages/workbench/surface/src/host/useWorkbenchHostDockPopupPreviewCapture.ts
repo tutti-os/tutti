@@ -1,5 +1,9 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { writeCachedWorkbenchNodePreviewImage } from "../react/useWorkbenchGenieAnimation.tsx";
+import {
+  captureWorkbenchNodePreviewImage,
+  readCachedWorkbenchNodePreviewImage,
+  writeCachedWorkbenchNodePreviewImage
+} from "../react/useWorkbenchGenieAnimation.tsx";
 import type {
   WorkbenchDockPreviewCache,
   WorkbenchDockPreviewCacheKey,
@@ -270,11 +274,12 @@ export function useWorkbenchHostDockPopupPreviewCapture(input: {
               writeCachedWorkbenchNodePreviewImage(item.node.id, preview.src);
             }
             writeDockPopupPreviewImage(previewMemoryKey, preview, revision);
-            if (cacheKey && preview.kind === "image") {
-              dockPreviewCacheRef.current?.write({
-                key: cacheKey,
-                previewImageUrl: preview.src
-              });
+            if (cacheKey && preview.kind === "image" && !item.isMinimized) {
+              writeLatestPersistedDockPreview(
+                dockPreviewCacheRef.current,
+                cacheKey,
+                preview.src
+              );
             }
             setCapturedPreviewByMemoryKey((current) => ({
               ...current,
@@ -283,34 +288,83 @@ export function useWorkbenchHostDockPopupPreviewCapture(input: {
             continue;
           }
 
-          const fallbackPersistedPreview =
-            !item.isMinimized && cacheKey
-              ? await readPersistedDockPreview(
-                  dockPreviewCacheRef.current,
-                  cacheKey
-                )
-              : null;
+          const fallbackMemoryPreview = !item.isMinimized
+            ? readCachedWorkbenchNodePreviewImage(item.node.id)
+            : null;
+          const [
+            fallbackLatestPersistedPreview,
+            fallbackExactPersistedPreview
+          ] =
+            !item.isMinimized && !fallbackMemoryPreview && cacheKey
+              ? await Promise.all([
+                  readPersistedDockPreview(
+                    dockPreviewCacheRef.current,
+                    resolveLatestDockPreviewCacheKey(cacheKey)
+                  ),
+                  readPersistedDockPreview(
+                    dockPreviewCacheRef.current,
+                    cacheKey
+                  )
+                ])
+              : [null, null];
           if (!captureItemStateIsCurrent(itemStateKey)) {
             continue;
           }
-          if (fallbackPersistedPreview) {
-            writeCachedWorkbenchNodePreviewImage(
+          let fallbackDomPreview: string | null = null;
+          if (
+            !item.isMinimized &&
+            !fallbackMemoryPreview &&
+            !fallbackLatestPersistedPreview &&
+            !fallbackExactPersistedPreview
+          ) {
+            await yieldDockPopupPreviewCaptureTask();
+            if (!captureItemStateIsCurrent(itemStateKey)) {
+              continue;
+            }
+            fallbackDomPreview = await captureWorkbenchNodePreviewImage(
               item.node.id,
-              fallbackPersistedPreview
-            );
+              { bypassCache: true }
+            ).catch(() => null);
+          }
+          if (!captureItemStateIsCurrent(itemStateKey)) {
+            continue;
+          }
+          const fallbackPreviewImageUrl =
+            fallbackMemoryPreview ??
+            fallbackLatestPersistedPreview ??
+            fallbackExactPersistedPreview ??
+            fallbackDomPreview;
+          if (fallbackPreviewImageUrl) {
+            if (
+              fallbackMemoryPreview ||
+              fallbackLatestPersistedPreview ||
+              fallbackExactPersistedPreview
+            ) {
+              writeCachedWorkbenchNodePreviewImage(
+                item.node.id,
+                fallbackPreviewImageUrl
+              );
+            }
             const fallbackPreview: WorkbenchDockPreviewContent = {
               kind: "image",
-              src: fallbackPersistedPreview
+              src: fallbackPreviewImageUrl
             };
             writeDockPopupPreviewImage(
               previewMemoryKey,
               fallbackPreview,
               revision
             );
+            if (cacheKey && !fallbackLatestPersistedPreview) {
+              writeLatestPersistedDockPreview(
+                dockPreviewCacheRef.current,
+                cacheKey,
+                fallbackPreviewImageUrl
+              );
+            }
           }
           const fallbackPreview: WorkbenchDockPreviewContent | null =
-            fallbackPersistedPreview
-              ? { kind: "image", src: fallbackPersistedPreview }
+            fallbackPreviewImageUrl
+              ? { kind: "image", src: fallbackPreviewImageUrl }
               : null;
           setCapturedPreviewByMemoryKey((current) => ({
             ...current,
@@ -444,6 +498,27 @@ function readPersistedDockPreview(
   return (
     dockPreviewCache?.read(cacheKey).catch(() => null) ?? Promise.resolve(null)
   );
+}
+
+function writeLatestPersistedDockPreview(
+  dockPreviewCache: WorkbenchDockPreviewCache | undefined,
+  cacheKey: WorkbenchDockPreviewCacheKey,
+  previewImageUrl: string
+): void {
+  dockPreviewCache?.write({
+    key: resolveLatestDockPreviewCacheKey(cacheKey),
+    previewImageUrl
+  });
+}
+
+function resolveLatestDockPreviewCacheKey(
+  cacheKey: WorkbenchDockPreviewCacheKey
+): WorkbenchDockPreviewCacheKey {
+  return { ...cacheKey, revision: undefined };
+}
+
+function yieldDockPopupPreviewCaptureTask(): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, 0));
 }
 
 function resolveDockPopupPreviewCacheKey(

@@ -50,6 +50,7 @@ export function pickQuickComposerSettings(
 }
 
 export interface QuickComposerSettingsProjectionInput {
+  agentTargetId: string | null;
   loading: boolean;
   options: AgentActivityComposerOptions | null;
   projectLocked: boolean;
@@ -131,6 +132,24 @@ export function projectQuickComposerSettings(
     isModelOptionsLoading:
       input.loading || input.options?.modelOptionsLoading === true,
     isSettingsLoading: input.loading,
+    modelChoiceHistory: {
+      targetId: input.agentTargetId,
+      catalog: input.options
+        ? {
+            authoritative:
+              input.options.behavior.modelOptionsAuthoritative === true,
+            loading:
+              input.loading || input.options.modelOptionsLoading === true,
+            effectiveModel: normalizeOptionalText(
+              input.options.effectiveSettings?.model
+            ),
+            models: input.options.models.map((option) => ({
+              value: option.value,
+              ...(option.requested === true ? { requested: true } : {})
+            }))
+          }
+        : null
+    },
     modelPlan: input.options?.modelPlan ?? null,
     modelUnavailable: false,
     permissionConfig,

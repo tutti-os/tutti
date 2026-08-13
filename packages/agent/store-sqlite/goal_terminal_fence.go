@@ -42,7 +42,7 @@ last_source_id=excluded.last_source_id,updated_at_unix_ms=excluded.updated_at_un
 		return err
 	}
 	_, err := tx.ExecContext(ctx, `UPDATE workspace_agent_session_goals
-SET sync_status=?,last_error=?,pending_operation_id=NULL,updated_at_unix_ms=?
+SET sync_status=?,last_error=?,pending_operation_id=NULL,execution_pending=0,updated_at_unix_ms=?
 WHERE workspace_id=? AND agent_session_id=? AND revision=?`, GoalSyncStatusUnknown, lastError, occurredAt,
 		state.WorkspaceID, state.AgentSessionID, state.Revision)
 	return err

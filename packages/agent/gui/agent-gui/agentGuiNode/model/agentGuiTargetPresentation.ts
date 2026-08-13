@@ -19,10 +19,8 @@ export function agentTargetPresentationKey(
 }
 
 /**
- * Transcript mentions are markdown links that only carry target id + workspace.
- * Icon lookup therefore needs every Agent the host can already hand off to, not
- * only the current directory rail. Local conversations that @ a shared Agent
- * otherwise miss the target and fall back to the colorful "all agents" glyph.
+ * Legacy hosts only expose action catalogs. Keep their transcript identity
+ * lookup broad enough to cover both rail and handoff targets.
  */
 export function mergeAgentTargetsForMentionPresentations(
   railTargets: readonly AgentGUIAgentTarget[],
@@ -48,26 +46,43 @@ export function mergeAgentTargetsForMentionPresentations(
   return byId.size === railTargets.length ? railTargets : [...byId.values()];
 }
 
+export function resolveMentionAgentTargetsForPresentations(input: {
+  handoffTargets?: readonly AgentGUIAgentTarget[];
+  mentionTargets?: readonly AgentGUIAgentTarget[];
+  railTargets: readonly AgentGUIAgentTarget[];
+}): readonly AgentGUIAgentTarget[] {
+  return (
+    input.mentionTargets ??
+    mergeAgentTargetsForMentionPresentations(
+      input.railTargets,
+      input.handoffTargets
+    )
+  );
+}
+
 export function mentionAgentTargetPresentationKey(
   railTargets: readonly AgentGUIAgentTarget[],
-  handoffTargets: readonly AgentGUIAgentTarget[] = []
+  handoffTargets: readonly AgentGUIAgentTarget[] = [],
+  mentionTargets?: readonly AgentGUIAgentTarget[]
 ): string {
   return agentTargetPresentationKey(
-    mergeAgentTargetsForMentionPresentations(railTargets, handoffTargets)
+    resolveMentionAgentTargetsForPresentations({
+      handoffTargets,
+      mentionTargets,
+      railTargets
+    })
   );
 }
 
 export function projectMentionAgentTargetPresentations(input: {
   handoffTargets?: readonly AgentGUIAgentTarget[];
+  mentionTargets?: readonly AgentGUIAgentTarget[];
   ownerSeparator: string;
   railTargets: readonly AgentGUIAgentTarget[];
   workspaceId: string;
 }): readonly AgentMessageMarkdownAgentTarget[] {
   return projectAgentTargetPresentations({
-    agentTargets: mergeAgentTargetsForMentionPresentations(
-      input.railTargets,
-      input.handoffTargets
-    ),
+    agentTargets: resolveMentionAgentTargetsForPresentations(input),
     ownerSeparator: input.ownerSeparator,
     workspaceId: input.workspaceId
   });

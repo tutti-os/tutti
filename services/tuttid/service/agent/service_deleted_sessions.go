@@ -11,15 +11,16 @@ import (
 const maximumDeletedSessionPageLimit = 100
 
 type ListDeletedSessionsInput struct {
-	SearchQuery string
-	ProjectPath *string
-	Cursor      string
-	Limit       int
+	SearchQuery    string
+	RailSectionKey *string
+	Cursor         string
+	Limit          int
 }
 
 type DeletedSessionSummary struct {
 	AgentSessionID    string
 	Title             string
+	RailSectionKey    string
 	ProjectPath       string
 	UpdatedAtUnixMS   int64
 	DeletedAtUnixMS   int64
@@ -28,6 +29,7 @@ type DeletedSessionSummary struct {
 }
 
 type DeletedSessionProjectOption struct {
+	RailSectionKey   string
 	ProjectPath      string
 	ProjectLabel     string
 	ProjectAvailable bool
@@ -65,15 +67,18 @@ func (s *Service) ListDeletedSessions(
 		cursor = parsed
 	}
 
-	var projectPath *string
-	if input.ProjectPath != nil {
-		value := strings.TrimSpace(*input.ProjectPath)
-		projectPath = &value
+	var railSectionKey *string
+	if input.RailSectionKey != nil {
+		value := strings.TrimSpace(*input.RailSectionKey)
+		if value == "" {
+			return DeletedSessionPage{}, ErrInvalidArgument
+		}
+		railSectionKey = &value
 	}
 	page, err := s.ApplicationHost().ListDeletedSessions(ctx, agenthost.ListDeletedSessionsInput{
 		WorkspaceID:           workspaceID,
 		SearchQuery:           strings.TrimSpace(input.SearchQuery),
-		ProjectPath:           projectPath,
+		RailSectionKey:        railSectionKey,
 		CursorUpdatedAtUnixMS: cursor.SortTimeUnixMS,
 		CursorAgentSessionID:  cursor.ID,
 		Limit:                 input.Limit,
@@ -89,31 +94,33 @@ func (s *Service) ListDeletedSessions(
 			return DeletedSessionPage{}, err
 		}
 		for _, project := range projects {
-			sectionKey := userprojectbiz.SectionKeyFromPath(project.Path)
+			sectionKey := strings.TrimSpace(project.SectionKey)
 			if sectionKey != "" {
 				projectsBySectionKey[sectionKey] = project
 			}
 		}
 	}
 
-	projectOptions := make([]DeletedSessionProjectOption, 0, len(page.ProjectPaths))
-	for _, originalPath := range page.ProjectPaths {
-		originalPath = strings.TrimSpace(originalPath)
-		if originalPath == "" {
+	projectOptions := make([]DeletedSessionProjectOption, 0, len(page.RailSections))
+	for _, originalSection := range page.RailSections {
+		sectionKey := strings.TrimSpace(originalSection.RailSectionKey)
+		if sectionKey == "" || sectionKey == "conversations" {
 			continue
 		}
+		originalPath := strings.TrimSpace(originalSection.ProjectPath)
 		label := userprojectbiz.LabelFromPath(originalPath)
 		available := false
-		if project, found := projectsBySectionKey[userprojectbiz.SectionKeyFromPath(originalPath)]; found {
+		if project, found := projectsBySectionKey[sectionKey]; found {
 			available = true
 			if currentLabel := strings.TrimSpace(project.Label); currentLabel != "" {
 				label = currentLabel
 			}
 		}
 		if label == "" {
-			label = originalPath
+			label = sectionKey
 		}
 		projectOptions = append(projectOptions, DeletedSessionProjectOption{
+			RailSectionKey:   sectionKey,
 			ProjectPath:      originalPath,
 			ProjectLabel:     label,
 			ProjectAvailable: available,
@@ -125,6 +132,7 @@ func (s *Service) ListDeletedSessions(
 		sessions = append(sessions, DeletedSessionSummary{
 			AgentSessionID:    session.AgentSessionID,
 			Title:             session.Title,
+			RailSectionKey:    session.RailSectionKey,
 			ProjectPath:       session.ProjectPath,
 			UpdatedAtUnixMS:   session.UpdatedAtUnixMS,
 			DeletedAtUnixMS:   session.DeletedAtUnixMS,

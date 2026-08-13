@@ -187,6 +187,12 @@ export function createHostDesktopApi(): DesktopHostApi {
       approveClose(): Promise<void> {
         return invokeDesktopApi(desktopIpcChannels.host.window.approveClose);
       },
+      setCloseGuardEnabled(enabled: boolean): Promise<void> {
+        return invokeDesktopApi(
+          desktopIpcChannels.host.window.setCloseGuardEnabled,
+          { enabled }
+        );
+      },
       capturePreview(input): Promise<string | null> {
         return invokeDesktopApi(
           desktopIpcChannels.host.window.capturePreview,

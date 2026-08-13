@@ -7,6 +7,10 @@ import { projectPublicAgentSessionEngineState } from "./engineState.publicProjec
 import { createEngineEffectExecutor } from "./effectExecutor.ts";
 import { createEngineExpiryClock } from "./expiryClock.ts";
 import {
+  intentForEngineIdentity,
+  withEngineObservationTime
+} from "./engineIntent.normalization.ts";
+import {
   selectEngineActiveTurn,
   selectEngineInteractionResponse,
   selectEngineInteractionsForSession,
@@ -135,6 +139,7 @@ export function createAgentSessionEngine({
   });
 
   const effectExecutor = createEngineEffectExecutor({
+    clock,
     commandPort,
     onResult: (intent) => {
       dispatch(intent);
@@ -232,7 +237,10 @@ export function createAgentSessionEngine({
       });
       return;
     }
-    const scopedIntent = intentForEngineIdentity(intent, engineIdentity);
+    const scopedIntent = intentForEngineIdentity(
+      withEngineObservationTime(intent, clock),
+      engineIdentity
+    );
     if (!scopedIntent) {
       diagnosticSink?.({
         intentType: intent.type,
@@ -765,27 +773,4 @@ export function createAgentSessionEngine({
 
 function composerOptionsAbortReason(signal?: AbortSignal): unknown {
   return signal?.reason ?? new Error("composer_options_load_aborted");
-}
-
-function intentForEngineIdentity(
-  intent: EngineIntent,
-  identity: AgentSessionEngineIdentity
-): EngineIntent | null {
-  if ("workspaceId" in intent && intent.workspaceId !== undefined) {
-    if (intent.workspaceId.trim() !== identity.workspaceId) {
-      return null;
-    }
-  }
-  if (intent.type === "session/upserted") {
-    return intent.session.workspaceId === identity.workspaceId ? intent : null;
-  }
-  if (intent.type === "session/snapshotReceived") {
-    const sessions = intent.sessions.filter(
-      (session) => session.workspaceId === identity.workspaceId
-    );
-    return sessions.length === intent.sessions.length
-      ? intent
-      : { ...intent, sessions };
-  }
-  return intent;
 }

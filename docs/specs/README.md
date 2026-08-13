@@ -9,7 +9,7 @@ Specs are not the source of truth for behavior that has already landed. When a
 spec completes, update the current document that owns the result and delete the
 dated plan.
 
-There are currently nine active specs:
+There are currently ten active specs:
 
 - [Agent Provider Status Read/Detect Split](./2026-06-28-agent-status-read-detect-split-design.md): pending review.
 - [Agent Extension Package Design](./2026-07-14-agent-extension-package-design.md): pending architecture and implementation approval.
@@ -20,3 +20,4 @@ There are currently nine active specs:
 - [Tutti Agent `skills/list` Integration](./2026-07-30-tutti-agent-skills-list-integration.md): implemented; local Desktop end-to-end validation passed, pending cross-platform artifact validation.
 - [Connector Market Shared Domain](./2026-08-03-connector-market-shared-domain.md): signed shared core, Tutti daemon implementation host, and renderer service implemented; credential-backed connectors remain outside the initial compatibility boundary.
 - [Agent Conversation Activity View PRD](./2026-08-05-agent-conversation-activity-view-prd.md): implemented, pending code review.
+- [Connector Authorization UI Protocol](./2026-08-12-connector-authorization-interaction.md): accepted configuration-first protocol; protocol, declarative adapter, and replaceable renderer implementation in progress.

@@ -41,6 +41,13 @@ func goalStateConverged(desired, observed map[string]any, tombstoned bool) bool 
 	return false
 }
 
+func goalExecutionPendingAfterObservation(current bool, observed map[string]any, syncStatus string) bool {
+	if !current || (syncStatus != GoalSyncStatusApplying && syncStatus != GoalSyncStatusSynced) {
+		return false
+	}
+	return strings.TrimSpace(asJSONMapString(observed, "status")) == "active"
+}
+
 // normalizeObservedGoalTiming keeps one durable clock for each Goal
 // generation. Provider observations often omit timing, so preserve the
 // canonical desired/observed start for the same objective and stamp only a

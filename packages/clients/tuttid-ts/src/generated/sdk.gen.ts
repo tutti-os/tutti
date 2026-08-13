@@ -189,6 +189,9 @@ import type {
   DeleteWorkspaceIssueTopicData,
   DeleteWorkspaceIssueTopicErrors,
   DeleteWorkspaceIssueTopicResponses,
+  DeleteWorkspaceManagedWorktreeData,
+  DeleteWorkspaceManagedWorktreeErrors,
+  DeleteWorkspaceManagedWorktreeResponses,
   DeleteWorkspaceResponses,
   DetectModelPlanData,
   DetectModelPlanErrors,
@@ -487,6 +490,9 @@ import type {
   ListWorkspaceIssueTopicsData,
   ListWorkspaceIssueTopicsErrors,
   ListWorkspaceIssueTopicsResponses,
+  ListWorkspaceManagedWorktreesData,
+  ListWorkspaceManagedWorktreesErrors,
+  ListWorkspaceManagedWorktreesResponses,
   ListWorkspaceRecentFilesData,
   ListWorkspaceRecentFilesErrors,
   ListWorkspaceRecentFilesResponses,
@@ -3775,6 +3781,42 @@ export const resolveWorkspaceAgentSessionWorktreeSupport = <
   });
 
 /**
+ * List explicitly managed Git worktrees for a workspace
+ */
+export const listWorkspaceManagedWorktrees = <
+  ThrowOnError extends boolean = false
+>(
+  options: Options<ListWorkspaceManagedWorktreesData, ThrowOnError>
+) =>
+  (options.client ?? client).get<
+    ListWorkspaceManagedWorktreesResponses,
+    ListWorkspaceManagedWorktreesErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/managed-worktrees",
+    ...options
+  });
+
+/**
+ * Explicitly delete one clean managed Git worktree
+ */
+export const deleteWorkspaceManagedWorktree = <
+  ThrowOnError extends boolean = false
+>(
+  options: Options<DeleteWorkspaceManagedWorktreeData, ThrowOnError>
+) =>
+  (options.client ?? client).delete<
+    DeleteWorkspaceManagedWorktreeResponses,
+    DeleteWorkspaceManagedWorktreeErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/managed-worktrees/{worktreeID}",
+    ...options
+  });
+
+/**
  * Apply or reverse-apply a git patch in a workspace working directory
  */
 export const applyWorkspaceGitPatch = <ThrowOnError extends boolean = false>(
@@ -5506,7 +5548,9 @@ export const installConnectorMarketConnector = <
   });
 
 /**
- * Uninstall one connector
+ * Uninstall one connector from this device
+ *
+ * Deactivates local runtime routes and removes the installed release and optional CLI. Account authorization is not disconnected and can be reused after reinstalling or from another device.
  */
 export const uninstallConnectorMarketConnector = <
   ThrowOnError extends boolean = false

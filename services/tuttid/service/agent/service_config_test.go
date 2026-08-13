@@ -18,7 +18,11 @@ func TestConfiguredServiceReturnsPrecomposedApplicationHost(t *testing.T) {
 		serviceHostGoalRuntime: serviceHostGoalRuntime{service: storeService},
 	}
 	deletedSessions := &deletedSessionAdapterStoreStub{}
-	config := ServiceConfig{Sessions: ServiceSessionConfig{DeletedSessions: deletedSessions}}
+	connector := &testConnectorRuntime{}
+	config := ServiceConfig{
+		Runtime:  ServiceRuntimeConfig{Connector: connector},
+		Sessions: ServiceSessionConfig{DeletedSessions: deletedSessions},
+	}
 	components := NewServiceComponents(runtime, config, canonical)
 	host := NewApplicationHostWithPorts(
 		components.HostSupportPorts(),
@@ -67,6 +71,9 @@ func TestConfiguredServiceReturnsPrecomposedApplicationHost(t *testing.T) {
 		service.sessionSettingsState != components.sessionSettings ||
 		service.worktreeIsolationLock != components.worktreeIsolationLock {
 		t.Fatal("configured Service did not retain the precomposed narrow components")
+	}
+	if service.ConnectorRuntime != connector || components.runtimePreparation.connectorRuntime != connector {
+		t.Fatal("configured Service and Host preparation did not retain the stable Connector runtime")
 	}
 }
 

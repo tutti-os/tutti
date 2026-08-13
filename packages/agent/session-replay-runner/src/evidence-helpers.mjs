@@ -100,11 +100,13 @@ export function checkpointAllowsOptionalScreenshotSettle(checkpoint) {
   const kind = String(checkpoint.kind ?? "");
   const tags = Array.isArray(checkpoint.tags) ? checkpoint.tags : [];
   // Queue cases soft-wait for the composer blue bar on busy-queue submits.
+  // Plan-waiting settle lets scenarios switch away for rail-waiting evidence
+  // (I15) without hard-blocking settlers that ignore this kind.
   // Do not fold this into checkpointNeedsScreenshotSettle: tool-evidence
   // settlers (I10/L06/R*) would hang for the full timeout when no tool chrome
-  // exists yet at submission.accepted.
+  // exists yet at submission.accepted / plan.waiting.
   return [kind, ...tags].some((token) =>
-    /(?:^|[.])submission\.accepted$/u.test(String(token))
+    /(?:^|[.])(?:submission\.accepted|plan\.waiting)$/u.test(String(token))
   );
 }
 

@@ -48,6 +48,7 @@ func IsUserCancelled(err error) bool {
 
 type Config struct {
 	AccountBaseURL   string
+	AccountHeaders   http.Header
 	AppCallbackURL   string
 	AppID            string
 	AuthJSONPath     string
@@ -661,6 +662,9 @@ func (c *Client) postAccount(ctx context.Context, path string, cookie string, bo
 	if err != nil {
 		return err
 	}
+	if len(c.config.AccountHeaders) != 0 {
+		req.Header = c.config.AccountHeaders.Clone()
+	}
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("Content-Type", "application/json")
 	if cookie != "" {
@@ -710,6 +714,7 @@ func (c *Client) writeAuthJSON(session Session) error {
 var errUnauthorized = errors.New("unauthorized")
 
 func normalizeConfig(config Config) Config {
+	config.AccountHeaders = config.AccountHeaders.Clone()
 	config.AppID = firstNonEmpty(config.AppID, DefaultAppID)
 	config.AccountBaseURL = firstNonEmpty(config.AccountBaseURL, DefaultAccountBaseURL)
 	config.AuthLoginURL = firstNonEmpty(config.AuthLoginURL, DefaultAuthLoginURL)
