@@ -232,12 +232,13 @@ VALUES (?, ?)
 	return nil
 }
 
-// applyTuttiModeAgentCommandSourceV5 relaxes the activation source vocabulary
-// so the Agent-issued 'agent_command' source may originate both activation
-// states, mirroring activationbiz.IsStateSource. The v1 rules live in
-// table-level CHECK constraints that SQLite cannot ALTER, so both tables are
-// rebuilt with their full post-v4 column set and the relaxed CHECKs, following
-// the applyWorkspaceWorkflowRevisionPathReuseV3 rebuild pattern.
+// applyTuttiModeAgentCommandSourceV5 preserves the historical 'agent_command'
+// source for activation revisions written while Agent self-service activation
+// existed. Product mutation paths no longer emit this source, but the schema
+// must continue to admit it so existing revisions and turn snapshots remain
+// readable. The v1 rules live in table-level CHECK constraints that SQLite
+// cannot ALTER, so both tables are rebuilt with their full post-v4 column set,
+// following the applyWorkspaceWorkflowRevisionPathReuseV3 rebuild pattern.
 func (s *SQLiteStore) applyTuttiModeAgentCommandSourceV5(ctx context.Context) (returnErr error) {
 	applied, err := s.hasMigration(ctx, schemaMigrationTuttiModeAgentCommandSourceV5)
 	if err != nil {

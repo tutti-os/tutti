@@ -29,6 +29,7 @@ import {
   speedSelectionFromComposerOptions
 } from "./agentGuiController.composerHelpers";
 import {
+  composerModelChoiceHistoryTargetId,
   enforceComposerModelBindingForHomeDefaults,
   isForegroundModelOptionsLoading,
   resolveComposerSettingsPresentation,
@@ -57,6 +58,7 @@ interface UseAgentGUIComposerPresentationInput {
   defaultReasoningEffort: AgentSessionReasoningEffort | null;
   draftSettingsBySessionId: Record<string, AgentSessionComposerSettings>;
   providerComposerOptions: AgentActivityComposerOptions | null;
+  composerTargetData: AgentGUIComposerTargetData;
   selectedComposerTargetData: AgentGUIComposerTargetData;
   selectedProjectPath: string | null;
   shouldApplyPreparedProjectSelection: boolean;
@@ -257,6 +259,28 @@ export function useAgentGUIComposerPresentation(
         selection: activeSessionModelSelection,
         supportsModel: input.composerSupport.model
       }),
+      modelChoiceHistory: {
+        targetId: composerModelChoiceHistoryTargetId({
+          activeConversationId: input.activeConversationId,
+          target: input.composerTargetData
+        }),
+        catalog: input.providerComposerOptions
+          ? {
+              authoritative:
+                input.providerComposerOptions.behavior
+                  .modelOptionsAuthoritative === true,
+              loading:
+                input.providerComposerOptions.modelOptionsLoading === true,
+              effectiveModel: normalizeOptionalText(
+                input.providerComposerOptions.effectiveSettings?.model
+              ),
+              models: input.providerComposerOptions.models.map((option) => ({
+                value: option.value,
+                ...(option.requested === true ? { requested: true } : {})
+              }))
+            }
+          : null
+      },
       modelUnavailable:
         input.activeConversationId !== null &&
         sessionSettings === null &&
@@ -344,6 +368,7 @@ export function useAgentGUIComposerPresentation(
     input.composerSupport,
     input.composerOptionsLoadStatus,
     input.composerOptionsLoading,
+    input.composerTargetData,
     input.composerTargetProvider,
     input.providerComposerOptions,
     input.selectedComposerTargetData.agentTargetId,

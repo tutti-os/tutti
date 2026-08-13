@@ -495,7 +495,7 @@ func (application *Application) ReconcileAuthorizations(ctx context.Context, sco
 		if observation.State == AuthorizationObservationFailed {
 			projectionState = AuthorizationStateFailed
 		}
-		if err := application.projectAuthorizationAndScheduleRuntime(ctx, operation.Scope, connector.Key,
+		if _, err := application.projectAuthorization(ctx, operation.Scope, connector.Key,
 			observation.ConnectionID, projectionState, observation.FailureCode); err != nil {
 			reconcileErr = errors.Join(reconcileErr, err)
 			continue

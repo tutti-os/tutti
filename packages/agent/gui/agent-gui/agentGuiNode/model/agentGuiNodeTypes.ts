@@ -108,6 +108,27 @@ export interface AgentGUIComposerSettingOption {
   effect?: "new_session" | "next_call";
 }
 
+export interface AgentGUIComposerModelCatalogTestimonyVM {
+  /** Only an authoritative catalog may retire a remembered recent model. */
+  authoritative: boolean;
+  /** Provider-native model discovery is still in flight. */
+  loading: boolean;
+  /** Effective selected model used to recognize selected-only bootstrap echoes. */
+  effectiveModel: string | null;
+  /** Narrow catalog provenance needed by local recent-model reconciliation. */
+  models: readonly {
+    value: string;
+    requested?: boolean;
+  }[];
+}
+
+export interface AgentGUIComposerModelChoiceHistoryVM {
+  /** Exact Agent Target identity; null fails closed and disables persistence. */
+  targetId: string | null;
+  /** Null until the composer has any provider-native catalog testimony. */
+  catalog: AgentGUIComposerModelCatalogTestimonyVM | null;
+}
+
 export interface AgentGUIProviderSkillOption {
   name: string;
   trigger: string;
@@ -318,6 +339,8 @@ export interface AgentGUIComposerSettingsVM {
   /** Initial slash command and capability catalog request is in flight. */
   isCapabilityOptionsLoading?: boolean;
   isModelOptionsLoading?: boolean;
+  /** Device-local model recents/favorites identity and catalog testimony. */
+  modelChoiceHistory?: AgentGUIComposerModelChoiceHistoryVM;
   modelUnavailable: boolean;
   reasoningUnavailable: boolean;
   speedUnavailable: boolean;

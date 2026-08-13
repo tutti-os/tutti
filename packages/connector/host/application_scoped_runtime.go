@@ -12,12 +12,109 @@ import (
 // explicit account scope. It does not mutate installation state.
 func (application *Application) ReconcileRuntime(ctx context.Context, mutation ConnectorMutation) (MutationResult, error) {
 	return application.acceptConnectorOperation(ctx, mutation, OperationKindReconcileRuntime, func(connector Connector) (Connector, error) {
-		if connector.Installation.State != InstallationStateInstalled ||
-			strings.TrimSpace(connector.Installation.InstalledReleaseDigest) == "" {
-			return Connector{}, invalidTransition("runtime", string(connector.Installation.State), string(InstallationStateInstalled))
-		}
-		return connector, nil
+		return validateRuntimeReconcileConnector(connector)
 	})
+}
+
+// EnsureRuntimeReconcile is the level-triggered, host-internal runtime repair
+// command. Unlike ReconcileRuntime, it does not accept an externally observed
+// market revision: it atomically creates a reconcile from current durable
+// state, or joins the active reconcile for the same Connector and account.
+func (application *Application) EnsureRuntimeReconcile(
+	ctx context.Context,
+	scope OperationScope,
+	connectorKey string,
+) (EnsureRuntimeReconcileResult, error) {
+	connectorKey = strings.TrimSpace(connectorKey)
+	scope.AccountID = strings.TrimSpace(scope.AccountID)
+	if connectorKey == "" {
+		return EnsureRuntimeReconcileResult{}, invalidRequest("connectorKey is required")
+	}
+	var result MutationResult
+	created := false
+	err := application.config.Repository.Transaction(ctx, func(tx Transaction) error {
+		active, err := tx.ActiveOperation(connectorKey)
+		if err != nil {
+			return err
+		}
+		if active != nil {
+			if active.Kind != OperationKindReconcileRuntime || active.Scope != scope {
+				return NewDomainError(
+					ErrorCodeOperationInProgress,
+					fmt.Sprintf("operation %s is already in progress", active.OperationID),
+					true,
+					nil,
+				)
+			}
+			connector, err := tx.Connector(connectorKey)
+			if err != nil {
+				return err
+			}
+			result = MutationResult{Connector: &connector, Operation: *active, Revision: tx.Revision()}
+			return nil
+		}
+		connector, err := tx.Connector(connectorKey)
+		if err != nil {
+			return err
+		}
+		connector, err = validateRuntimeReconcileConnector(connector)
+		if err != nil {
+			return err
+		}
+		now := application.config.Now().UTC()
+		operationID, err := application.config.NewID()
+		if err != nil {
+			return NewDomainError(ErrorCodeUnavailable, "connector operation id could not be generated", true, err)
+		}
+		revision := tx.AdvanceRevision()
+		connector.Revision = revision
+		operation := Operation{
+			OperationID:     operationID,
+			ClientRequestID: "ensure-runtime-reconcile/" + operationID,
+			ConnectorKey:    connectorKey,
+			Kind:            OperationKindReconcileRuntime,
+			Scope:           scope,
+			State:           OperationStateAccepted,
+			Stage:           OperationStageAccepted,
+			Target:          operationTarget(OperationKindReconcileRuntime, connector),
+			HostGeneration:  HostGeneration{BootEpoch: application.config.BootEpoch, Generation: revision},
+			CreatedAt:       now,
+			UpdatedAt:       now,
+		}
+		if err := tx.SaveConnector(connector); err != nil {
+			return err
+		}
+		if err := tx.SaveOperation(operation); err != nil {
+			return err
+		}
+		if err := tx.EnqueueConnectorMarketChanged(ChangedEvent{
+			ConnectorKey: connectorKey,
+			OperationID:  operationID,
+			Revision:     revision,
+		}); err != nil {
+			return err
+		}
+		result = MutationResult{Connector: &connector, Operation: operation, Revision: revision}
+		created = true
+		return nil
+	})
+	if err != nil {
+		return EnsureRuntimeReconcileResult{}, err
+	}
+	if created || result.Operation.State == OperationStateAccepted {
+		if err := application.config.Scheduler.Schedule(ctx, result.Operation.OperationID); err != nil {
+			return EnsureRuntimeReconcileResult{}, NewDomainError(ErrorCodeUnavailable, "connector operation could not be scheduled", true, err)
+		}
+	}
+	return EnsureRuntimeReconcileResult{MutationResult: result, Created: created}, nil
+}
+
+func validateRuntimeReconcileConnector(connector Connector) (Connector, error) {
+	if connector.Installation.State != InstallationStateInstalled ||
+		strings.TrimSpace(connector.Installation.InstalledReleaseDigest) == "" {
+		return Connector{}, invalidTransition("runtime", string(connector.Installation.State), string(InstallationStateInstalled))
+	}
+	return connector, nil
 }
 
 func (application *Application) GetAuthorizationProjection(
@@ -44,6 +141,20 @@ func (application *Application) ObserveAuthorization(
 		return MutationResult{}, err
 	}
 	return application.ReconcileRuntime(ctx, mutation)
+}
+
+// ProjectAuthorization persists server-observed account authorization without
+// scheduling runtime work. Daemon hosts pair it with EnsureRuntimeReconcile
+// while holding their account lifecycle fence.
+func (application *Application) ProjectAuthorization(
+	ctx context.Context,
+	scope OperationScope,
+	projection AuthorizationProjection,
+) error {
+	return application.saveAuthorizationProjection(ctx, ConnectorMutation{
+		ConnectorKey: projection.ConnectorKey,
+		AccountID:    scope.AccountID,
+	}, projection)
 }
 
 func (application *Application) saveAuthorizationProjection(
@@ -84,66 +195,11 @@ func (application *Application) projectAuthorizationAndScheduleRuntime(
 	state AuthorizationState,
 	failureCode string,
 ) error {
-	if application.config.AuthorizationProjections == nil || strings.TrimSpace(scope.AccountID) == "" {
-		return nil
-	}
-	connectionID = strings.TrimSpace(connectionID)
-	if state == AuthorizationStateConnected && connectionID == "" {
-		return invalidOperationReceipt("connected authorization did not provide a connection id")
-	}
-	connector, err := application.config.Repository.Connector(ctx, strings.TrimSpace(connectorKey))
-	if err != nil {
+	remote, err := application.projectAuthorization(ctx, scope, connectorKey, connectionID, state, failureCode)
+	if err != nil || application.config.AuthorizationProjections == nil || strings.TrimSpace(scope.AccountID) == "" {
 		return err
 	}
-	release, err := application.installedReleaseEvidence(ctx, connector)
-	if err != nil {
-		return err
-	}
-	if release.Manifest.Implementation.RemoteStreamableHTTP != nil {
-		snapshotStore, ok := application.config.AuthorizationProjections.(AuthorizationSnapshotStore)
-		if !ok || application.config.AuthorizationSnapshots == nil {
-			return NewDomainError(ErrorCodeUnavailable, "remote connector authorization snapshot is unavailable", true, nil)
-		}
-		authoritative, snapshotErr := application.config.AuthorizationSnapshots.AuthorizationSnapshot(ctx, scope.AccountID)
-		if snapshotErr != nil {
-			return fmt.Errorf("refresh remote connector authorization snapshot: %w", snapshotErr)
-		}
-		if _, applyErr := snapshotStore.ApplyAuthorizationSnapshot(ctx, scope.AccountID, authoritative); applyErr != nil {
-			return fmt.Errorf("apply remote connector authorization snapshot: %w", applyErr)
-		}
-		if application.config.AuthorizationReadiness != nil {
-			application.config.AuthorizationReadiness.SetReady(scope.AccountID, true)
-		}
-	} else {
-		mutation := ConnectorMutation{
-			ConnectorKey: strings.TrimSpace(connectorKey),
-			AccountID:    strings.TrimSpace(scope.AccountID),
-		}
-		projection := AuthorizationProjection{
-			AccountID: strings.TrimSpace(scope.AccountID), ConnectorKey: strings.TrimSpace(connectorKey),
-			ConnectionID: connectionID, State: state, FailureCode: strings.TrimSpace(failureCode), UpdatedAt: application.config.Now().UTC(),
-		}
-		// Pending authorization has no runtime effect. Persisting the projection
-		// without scheduling a reconcile also leaves the accepted authorization
-		// operation available for the provider's next continuation step.
-		if state == AuthorizationStatePending {
-			return application.saveAuthorizationProjection(ctx, mutation, projection)
-		}
-		deviceSnapshot, snapshotErr := application.Snapshot(ctx)
-		if snapshotErr != nil {
-			return snapshotErr
-		}
-		requestID, idErr := application.config.NewID()
-		if idErr != nil {
-			return idErr
-		}
-		mutation.Mutation = Mutation{
-			ClientRequestID:  "authorization-projection/" + requestID,
-			ExpectedRevision: deviceSnapshot.Revision,
-		}
-		if _, err := application.ObserveAuthorization(ctx, mutation, projection); err != nil {
-			return err
-		}
+	if state == AuthorizationStatePending {
 		return nil
 	}
 	deviceSnapshot, err := application.Snapshot(ctx)
@@ -154,15 +210,73 @@ func (application *Application) projectAuthorizationAndScheduleRuntime(
 	if err != nil {
 		return err
 	}
+	requestPrefix := "authorization-projection/"
+	if remote {
+		requestPrefix = "authorization-snapshot/"
+	}
 	_, err = application.ReconcileRuntime(ctx, ConnectorMutation{
 		Mutation: Mutation{
-			ClientRequestID:  "authorization-snapshot/" + requestID,
+			ClientRequestID:  requestPrefix + requestID,
 			ExpectedRevision: deviceSnapshot.Revision,
 		},
 		ConnectorKey: strings.TrimSpace(connectorKey),
 		AccountID:    strings.TrimSpace(scope.AccountID),
 	})
 	return err
+}
+
+// projectAuthorization persists authorization truth without creating runtime
+// work. Recovery callers use it before the daemon creates and awaits exactly
+// one reconcile under the account lifecycle fence.
+func (application *Application) projectAuthorization(
+	ctx context.Context,
+	scope OperationScope,
+	connectorKey, connectionID string,
+	state AuthorizationState,
+	failureCode string,
+) (bool, error) {
+	if application.config.AuthorizationProjections == nil || strings.TrimSpace(scope.AccountID) == "" {
+		return false, nil
+	}
+	connectionID = strings.TrimSpace(connectionID)
+	if state == AuthorizationStateConnected && connectionID == "" {
+		return false, invalidOperationReceipt("connected authorization did not provide a connection id")
+	}
+	connector, err := application.config.Repository.Connector(ctx, strings.TrimSpace(connectorKey))
+	if err != nil {
+		return false, err
+	}
+	release, err := application.installedReleaseEvidence(ctx, connector)
+	if err != nil {
+		return false, err
+	}
+	remote := release.Manifest.Implementation.RemoteStreamableHTTP != nil
+	if remote {
+		snapshotStore, ok := application.config.AuthorizationProjections.(AuthorizationSnapshotStore)
+		if !ok || application.config.AuthorizationSnapshots == nil {
+			return false, NewDomainError(ErrorCodeUnavailable, "remote connector authorization snapshot is unavailable", true, nil)
+		}
+		authoritative, snapshotErr := application.config.AuthorizationSnapshots.AuthorizationSnapshot(ctx, scope.AccountID)
+		if snapshotErr != nil {
+			return false, fmt.Errorf("refresh remote connector authorization snapshot: %w", snapshotErr)
+		}
+		if _, applyErr := snapshotStore.ApplyAuthorizationSnapshot(ctx, scope.AccountID, authoritative); applyErr != nil {
+			return false, fmt.Errorf("apply remote connector authorization snapshot: %w", applyErr)
+		}
+		if application.config.AuthorizationReadiness != nil {
+			application.config.AuthorizationReadiness.SetReady(scope.AccountID, true)
+		}
+		return true, nil
+	}
+	mutation := ConnectorMutation{
+		ConnectorKey: strings.TrimSpace(connectorKey),
+		AccountID:    strings.TrimSpace(scope.AccountID),
+	}
+	projection := AuthorizationProjection{
+		AccountID: strings.TrimSpace(scope.AccountID), ConnectorKey: strings.TrimSpace(connectorKey),
+		ConnectionID: connectionID, State: state, FailureCode: strings.TrimSpace(failureCode), UpdatedAt: application.config.Now().UTC(),
+	}
+	return false, application.saveAuthorizationProjection(ctx, mutation, projection)
 }
 
 func (application *Application) ReconcileInstalledRuntimes(ctx context.Context) error {

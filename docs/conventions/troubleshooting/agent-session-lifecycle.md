@@ -3823,17 +3823,31 @@ inline data URL instead`. Claude or standard ACP may instead receive no
   Emit a running compact notice from the Claude adapter when `/compact` is
   selected, allow compact system notices to precede provider-turn acceptance,
   accept `local_command` / `local_command_output` and camelCase boundary
-  metadata in the sidecar, and map known failure copy to `compact_failed`
-  before a successful result can settle the banner as completed. When the
+  metadata in the sidecar. For the pinned Claude Code 2.1.220 contract, treat
+  `status.compact_result=failed` plus `compact_error` as the canonical compact
+  failure signal; assistant and local-command text are compatibility fallbacks
+  for streams that omit that status. Map the normalized
+  `conversation could not be reduced below the context limit` failure to
+  `compact_failed` before the successful SDK result settles the Turn. When the
   acceptance barrier later flushes held events, strip their
-  `ProviderInputUnit` so they publish transcript/state only.
+  `ProviderInputUnit` so they publish transcript/state only. If the compact
+  failure specifically reports that the hard context limit was exceeded,
+  project a typed `context_handoff_required` error. Do not replace the provider
+  session or automatically dispatch the next message. Tell the user to create
+  a new conversation and add an `agent-session` mention for this conversation,
+  making the handoff explicit while retaining Claude Code's normalized failure
+  detail. For restored Claude sessions, use `rawMaxTokens` as the fallback hard
+  window and log the SDK maximum, raw maximum, native
+  auto-compact threshold, and effective auto-compact flag separately.
 - Validation:
   Add daemon coverage that `/compact` banners stay held until durable
   acceptance, then flush without provider-input units; add sidecar coverage for
   silent `/compact` (result only), local_command failure, and camelCase
-  `compactMetadata`. Re-run L04-CLAUDE recording and confirm the progress
-  divider appears, then becomes `Context compacted.` (or the interrupted
-  divider with the failure detail), and that record+replay both pass.
+  `compactMetadata`. Also cover exact overflow classification, raw hard-window
+  diagnostics, the typed handoff error projection, and localized Desktop and
+  Native guidance. Re-run L04-CLAUDE recording and confirm the progress divider
+  appears, then becomes `Context compacted.` (or the interrupted divider with
+  the failure detail), and that record+replay both pass.
 - References:
   [compaction.ts](../../../packages/agent/claude-sdk-sidecar/src/compaction.ts)
   [claude_sdk_execution.go](../../../packages/agent/daemon/runtime/claude_sdk_execution.go)

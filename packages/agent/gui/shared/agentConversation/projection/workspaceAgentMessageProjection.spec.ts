@@ -1390,6 +1390,42 @@ describe("projectWorkspaceAgentMessagesToConversationVM", () => {
     expect(compactMessage?.presentationKind).toBe("turn-boundary");
   });
 
+  it("projects context overflow as a typed handoff-required notice", () => {
+    const conversation = projectWorkspaceAgentMessagesToConversationVM({
+      activity: activity(),
+      session: session(),
+      workspaceRoot: "/workspace/demo",
+      messages: [
+        message({
+          messageId: "compact-handoff-required",
+          turnId: "turn-compact",
+          status: "failed",
+          semantics: {
+            noticeCommand: "compact",
+            noticeCommandStatus: "failed"
+          },
+          payload: {
+            kind: "agent_system_notice",
+            noticeKind: "context_handoff_required",
+            severity: "error",
+            title: "Context compaction interrupted.",
+            detail: "Maximum context length exceeded."
+          }
+        })
+      ]
+    });
+
+    const projected = conversation.rows.flatMap((row) =>
+      row.kind === "message" ? row.messages : []
+    )[0];
+    expect(projected?.systemNotice).toEqual(
+      expect.objectContaining({
+        semanticKind: "context-handoff-required",
+        severity: "error"
+      })
+    );
+  });
+
   it("prefers canonical message semantics over duplicated notice payload fields", () => {
     const conversation = projectWorkspaceAgentMessagesToConversationVM({
       activity: activity(),

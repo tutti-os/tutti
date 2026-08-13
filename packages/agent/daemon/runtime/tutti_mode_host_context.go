@@ -120,7 +120,8 @@ func renderTuttiModeHostContextForCLI(snapshot *TuttiModeTurnSnapshot, cliName s
 	}
 	activationRule := "The JSON `state` field is authoritative for whether Tutti Mode is active for this turn. " +
 		"Determine and report Tutti Mode status only from that field. " +
-		"Provider collaboration mode and Tutti workflow existence are independent facts and must not override the activation state. "
+		"Provider collaboration mode and Tutti workflow existence are independent facts and must not override the activation state. " +
+		"Tutti Mode activation is controlled by the user; never try to change it with Tutti CLI or other tools. "
 	stateSentence := "Tutti mode is inactive for this turn. " + activationRule
 	workflowGuide := ""
 	if normalized.State == TuttiModeStateActive {

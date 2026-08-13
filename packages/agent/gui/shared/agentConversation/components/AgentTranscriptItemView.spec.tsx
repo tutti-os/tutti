@@ -1292,6 +1292,47 @@ describe("AgentTranscriptItemView render stability", () => {
     expect(detail.className).not.toContain("whitespace-nowrap");
   });
 
+  it("renders context overflow as an error with new-conversation handoff guidance", () => {
+    const { getByRole } = render(
+      <AgentMessageBlock
+        workspaceRoot="/workspace/demo"
+        basePath="/workspace/demo"
+        row={assistantMessageRow({
+          kind: "message-content",
+          id: "assistant-notice-context-handoff",
+          turnId: "turn-1",
+          body: "Context compaction interrupted.",
+          occurredAtUnixMs: 1,
+          systemNotice: {
+            noticeKind: "context_handoff_required",
+            semanticKind: "context-handoff-required",
+            severity: "error",
+            command: "compact",
+            commandStatus: "failed",
+            title: "Provider compact failure",
+            detail: "Maximum context length exceeded.",
+            retryable: false
+          }
+        })}
+        thinkingLabel="Thought process"
+      />
+    );
+
+    const notice = getByRole("alert");
+    expect(notice.textContent).toContain(
+      "agentHost.agentGui.contextHandoffRequired"
+    );
+    expect(notice.textContent).toContain(
+      "agentHost.agentGui.contextHandoffRequiredDetail"
+    );
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "agentHost.agentGui.visibleErrorDetails"
+      })
+    );
+    expect(screen.getByText("Maximum context length exceeded.")).toBeTruthy();
+  });
+
   it("does not let a legacy title override canonical compact status", () => {
     const { getByText, queryByText } = render(
       <AgentMessageBlock

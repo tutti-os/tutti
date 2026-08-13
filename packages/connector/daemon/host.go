@@ -183,30 +183,7 @@ func (host *Host) runAuthorizationReconcileWorker(ctx context.Context) {
 				cancel()
 				continue
 			}
-			intents, err := host.Application.ReconcileAuthorizations(reconcileContext, scope)
-			if err == nil && len(intents) > 0 {
-				// ReconcileAuthorizations persists projection intent and enqueues
-				// runtime operations. Drain a scoped operation for every affected
-				// remote Connector before releasing the lifecycle fence, so logout
-				// or account switching cannot be followed by a late old-account
-				// route publication.
-				connectorKeys := make(map[string]struct{}, len(intents))
-				for _, intent := range intents {
-					connectorKeys[intent.ConnectorKey] = struct{}{}
-				}
-				for connectorKey := range connectorKeys {
-					if reconcileErr := host.reconcileRuntimeForScopeLocked(reconcileContext, scope, connectorKey); reconcileErr != nil {
-						err = errors.Join(err, reconcileErr)
-					}
-				}
-				if err == nil {
-					for _, intent := range intents {
-						if resolveErr := host.repository.ResolveAuthorizationSession(reconcileContext, intent.OperationID, intent.Resolution); resolveErr != nil {
-							err = errors.Join(err, resolveErr)
-						}
-					}
-				}
-			}
+			err := host.reconcileAuthorizationsLocked(reconcileContext, scope)
 			host.bootstrapMu.Unlock()
 			cancel()
 			if err != nil && !errors.Is(err, context.Canceled) {
@@ -214,6 +191,35 @@ func (host *Host) runAuthorizationReconcileWorker(ctx context.Context) {
 			}
 		}
 	}
+}
+
+func (host *Host) reconcileAuthorizationsLocked(ctx context.Context, scope market.OperationScope) error {
+	intents, err := host.Application.ReconcileAuthorizations(ctx, scope)
+	if err != nil || len(intents) == 0 {
+		return err
+	}
+	// ReconcileAuthorizations persists projection intent. Create or join one
+	// scoped runtime operation for every affected Connector before releasing the
+	// lifecycle fence, so logout or account switching cannot be followed by a
+	// late old-account route publication.
+	connectorKeys := make(map[string]struct{}, len(intents))
+	for _, intent := range intents {
+		connectorKeys[intent.ConnectorKey] = struct{}{}
+	}
+	for connectorKey := range connectorKeys {
+		if reconcileErr := host.reconcileRuntimeForScopeLocked(ctx, scope, connectorKey); reconcileErr != nil {
+			err = errors.Join(err, reconcileErr)
+		}
+	}
+	if err != nil {
+		return err
+	}
+	for _, intent := range intents {
+		if resolveErr := host.repository.ResolveAuthorizationSession(ctx, intent.OperationID, intent.Resolution); resolveErr != nil {
+			err = errors.Join(err, resolveErr)
+		}
+	}
+	return err
 }
 
 // Bootstrap restores durable local runtime intent without depending on the
@@ -555,25 +561,36 @@ func (host *Host) ReconcileRuntimeForScope(ctx context.Context, scope market.Ope
 }
 
 func (host *Host) reconcileRuntimeForScopeLocked(ctx context.Context, scope market.OperationScope, connectorKey string) error {
-	connector, err := host.Application.GetConnector(ctx, connectorKey)
-	if errors.Is(err, market.ErrNotFound) || err == nil && connector.Installation.State != market.InstallationStateInstalled {
-		return nil
+	for {
+		connector, err := host.Application.GetConnector(ctx, connectorKey)
+		if errors.Is(err, market.ErrNotFound) || err == nil && connector.Installation.State != market.InstallationStateInstalled {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		result, err := host.Application.EnsureRuntimeReconcile(ctx, scope, connectorKey)
+		if err != nil {
+			return err
+		}
+		operation, waitErr := host.waitForOperationTerminal(ctx, result.Operation.OperationID)
+		if result.Created {
+			if waitErr != nil {
+				return waitErr
+			}
+			if operation.State == market.OperationStateFailed {
+				return fmt.Errorf("connector market runtime reconcile failed: %s", operation.FailureCode)
+			}
+			return nil
+		}
+		if waitErr != nil {
+			return waitErr
+		}
+		// A joined operation may have resolved its runtime binding before the
+		// current authorization projection was persisted. Ensure once more after
+		// it reaches terminal state so success proves convergence of current
+		// desired state rather than merely completion of older work.
 	}
-	if err != nil {
-		return err
-	}
-	snapshot, err := host.Application.Snapshot(ctx)
-	if err != nil {
-		return err
-	}
-	result, err := host.Application.ReconcileRuntime(ctx, market.ConnectorMutation{
-		Mutation:     market.Mutation{ClientRequestID: "daemon-runtime-drift/" + uuid.NewString(), ExpectedRevision: snapshot.Revision},
-		ConnectorKey: connectorKey, AccountID: scope.AccountID,
-	})
-	if err != nil {
-		return err
-	}
-	return host.waitForOperation(ctx, result.Operation.OperationID, "runtime reconcile")
 }
 
 // ObserveAuthorizationForScope commits account authorization and its runtime
@@ -589,18 +606,10 @@ func (host *Host) ObserveAuthorizationForScope(
 	}
 	host.bootstrapMu.Lock()
 	defer host.bootstrapMu.Unlock()
-	snapshot, err := host.Application.Snapshot(ctx)
-	if err != nil {
+	if err := host.Application.ProjectAuthorization(ctx, scope, projection); err != nil {
 		return err
 	}
-	result, err := host.Application.ObserveAuthorization(ctx, market.ConnectorMutation{
-		Mutation:     market.Mutation{ClientRequestID: "daemon-authorization-observation/" + uuid.NewString(), ExpectedRevision: snapshot.Revision},
-		ConnectorKey: projection.ConnectorKey, AccountID: scope.AccountID,
-	}, projection)
-	if err != nil {
-		return err
-	}
-	return host.waitForOperation(ctx, result.Operation.OperationID, "authorization reconcile")
+	return host.reconcileRuntimeForScopeLocked(ctx, scope, projection.ConnectorKey)
 }
 
 func (host *Host) applyCapabilityPublication(ctx context.Context, scope market.OperationScope, enabled bool) error {
@@ -687,23 +696,21 @@ func (host *Host) refreshAndWait(ctx context.Context) error {
 	}
 }
 
-func (host *Host) waitForOperation(ctx context.Context, operationID, label string) error {
+func (host *Host) waitForOperationTerminal(ctx context.Context, operationID string) (market.Operation, error) {
 	ticker := time.NewTicker(25 * time.Millisecond)
 	defer ticker.Stop()
 	for {
 		operation, err := host.Application.GetOperation(ctx, operationID)
 		if err != nil {
-			return err
+			return market.Operation{}, err
 		}
 		switch operation.State {
-		case market.OperationStateCompleted:
-			return nil
-		case market.OperationStateFailed:
-			return fmt.Errorf("connector market %s failed: %s", label, operation.FailureCode)
+		case market.OperationStateCompleted, market.OperationStateFailed:
+			return operation, nil
 		}
 		select {
 		case <-ctx.Done():
-			return ctx.Err()
+			return market.Operation{}, ctx.Err()
 		case <-ticker.C:
 		}
 	}

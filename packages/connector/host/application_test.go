@@ -1226,6 +1226,82 @@ func TestApplicationRejectsConcurrentConnectorOperation(t *testing.T) {
 	}
 }
 
+func TestApplicationEnsureRuntimeReconcileCreatesOrJoinsCurrentScope(t *testing.T) {
+	connector := testConnector("github")
+	connector.Installation = Installation{
+		State:                  InstallationStateInstalled,
+		InstalledVersion:       connector.Release.Version,
+		InstalledReleaseID:     connector.Release.ReleaseID,
+		InstalledReleaseDigest: connector.Release.ReleaseDigest,
+	}
+	repository := newMemoryRepository(connector)
+	repository.revision = 7
+	scheduler := &memoryScheduler{}
+	application := newTestApplication(t, repository, scheduler, &memoryInstallRuntime{}, CatalogSnapshot{})
+	scope := OperationScope{AccountID: "account-1"}
+
+	created, err := application.EnsureRuntimeReconcile(context.Background(), scope, connector.Key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	running := repository.operations[created.Operation.OperationID]
+	running.State = OperationStateRunning
+	repository.operations[running.OperationID] = running
+	joined, err := application.EnsureRuntimeReconcile(context.Background(), scope, connector.Key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if joined.Operation.OperationID != created.Operation.OperationID {
+		t.Fatalf("joined operation = %q, want %q", joined.Operation.OperationID, created.Operation.OperationID)
+	}
+	if !created.Created || joined.Created {
+		t.Fatalf("created=%t joined=%t", created.Created, joined.Created)
+	}
+	if repository.revision != 8 || len(repository.operations) != 1 {
+		t.Fatalf("revision=%d operations=%#v", repository.revision, repository.operations)
+	}
+	if len(scheduler.operationIDs) != 1 || scheduler.operationIDs[0] != created.Operation.OperationID {
+		t.Fatalf("scheduled operations = %#v", scheduler.operationIDs)
+	}
+	completed := repository.operations[created.Operation.OperationID]
+	completed.State = OperationStateCompleted
+	completed.Stage = OperationStageCompleted
+	repository.operations[completed.OperationID] = completed
+	followup, err := application.EnsureRuntimeReconcile(context.Background(), scope, connector.Key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !followup.Created || followup.Operation.OperationID == created.Operation.OperationID || repository.revision != 9 {
+		t.Fatalf("followup=%#v revision=%d", followup, repository.revision)
+	}
+}
+
+func TestApplicationEnsureRuntimeReconcileDoesNotJoinDifferentScope(t *testing.T) {
+	connector := testConnector("github")
+	connector.Installation = Installation{
+		State:                  InstallationStateInstalled,
+		InstalledVersion:       connector.Release.Version,
+		InstalledReleaseID:     connector.Release.ReleaseID,
+		InstalledReleaseDigest: connector.Release.ReleaseDigest,
+	}
+	repository := newMemoryRepository(connector)
+	repository.operations["old-account-reconcile"] = Operation{
+		OperationID: "old-account-reconcile", ConnectorKey: connector.Key,
+		Kind: OperationKindReconcileRuntime, Scope: OperationScope{AccountID: "account-old"},
+		State: OperationStateRunning, Stage: OperationStageAccepted,
+	}
+	application := newTestApplication(t, repository, &memoryScheduler{}, &memoryInstallRuntime{}, CatalogSnapshot{})
+
+	_, err := application.EnsureRuntimeReconcile(context.Background(), OperationScope{AccountID: "account-new"}, connector.Key)
+	var domainError *DomainError
+	if !errors.As(err, &domainError) || domainError.Code != ErrorCodeOperationInProgress {
+		t.Fatalf("error = %#v, want operation in progress", err)
+	}
+	if len(repository.operations) != 1 {
+		t.Fatalf("operations = %#v", repository.operations)
+	}
+}
+
 func TestApplicationRefreshRejectsUnknownImplementation(t *testing.T) {
 	repository := newMemoryRepository()
 	scheduler := &memoryScheduler{}
@@ -1393,6 +1469,44 @@ func TestApplicationReconcilesCompletedAuthorizationSession(t *testing.T) {
 	}
 	if updated.Authorization.State != AuthorizationStateConnected || len(repository.events) != 1 {
 		t.Fatalf("connector=%#v events=%#v", updated, repository.events)
+	}
+}
+
+func TestApplicationAuthorizationRecoveryProjectsWithoutSchedulingRuntime(t *testing.T) {
+	connector := testManagedAuthorizedConnector("gmail")
+	connector.Authorization = Authorization{State: AuthorizationStatePending}
+	repository := newMemoryRepository(connector)
+	repository.operations["authorization-1"] = Operation{
+		OperationID: "authorization-1", ConnectorKey: connector.Key,
+		Kind: OperationKindStartAuthorization, Scope: OperationScope{AccountID: "account-1"},
+		State: OperationStateCompleted, Stage: OperationStageCompleted,
+		Target: operationTarget(OperationKindStartAuthorization, connector),
+		Execution: OperationExecution{AuthorizationSession: &AuthorizationSession{
+			OperationID: "authorization-1", ConnectorKey: connector.Key,
+			SessionID: "session-1", State: AuthorizationStatePending,
+			Resolution: AuthorizationSessionResolutionUnresolved,
+		}},
+	}
+	scheduler := &memoryScheduler{}
+	projections := &recordingAuthorizationProjectionStore{}
+	application := newTestApplication(t, repository, scheduler, &memoryInstallRuntime{}, CatalogSnapshot{})
+	application.config.Authorization = observingAuthorizationProvider{observation: AuthorizationObservation{
+		State: AuthorizationObservationConnected, ConnectionID: "connection-1",
+	}}
+	application.config.AuthorizationProjections = projections
+
+	intents, err := application.ReconcileAuthorizations(context.Background(), OperationScope{AccountID: "account-1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(intents) != 1 || intents[0].OperationID != "authorization-1" {
+		t.Fatalf("intents = %#v", intents)
+	}
+	if len(scheduler.operationIDs) != 0 {
+		t.Fatalf("recovery scheduled runtime operations = %#v", scheduler.operationIDs)
+	}
+	if projections.projection.State != AuthorizationStateConnected || projections.projection.ConnectionID != "connection-1" {
+		t.Fatalf("projection = %#v", projections.projection)
 	}
 }
 

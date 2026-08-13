@@ -35,8 +35,12 @@ normal uninstall/reconcile concern.
 
 The active account scope also bounds authorization receipt polling. Snapshot
 sync atomically converges the account Projection and surfaces matching private
-receipts, but does not terminalize them. The daemon holds the lifecycle fence,
-awaits Runtime Reconcile, and only then resolves those receipts.
+receipts, but does not terminalize them or enqueue runtime work. The daemon is
+the single scheduler for this recovery path: while holding the lifecycle fence
+it atomically creates or joins one scoped Runtime Reconcile, awaits it, and only
+then resolves those receipts. Joining existing work is not treated as proof of
+current convergence: after that operation completes, the daemon ensures and
+awaits a reconcile created from the latest Projection.
 WebSocket events are only refresh hints; a five-minute level-triggered pass
 reconciles every installed remote authorized Connector so a lost event or an
 interrupted earlier pass cannot leave route state stale.

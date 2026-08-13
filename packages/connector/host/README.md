@@ -28,3 +28,12 @@ reconcile also carries the bounded `ConnectorSummary` committed by that exact
 route generation. Lifecycle observers consume this receipt projection even
 while Agent publication is fenced; they must not perform a later key-only
 lookup against the mutable published registry.
+
+External Connector mutations retain snapshot-revision CAS semantics.
+Level-triggered daemon repair uses `EnsureRuntimeReconcile` instead: the Host
+atomically creates a reconcile from current durable state or joins the active
+reconcile for the same Connector and account scope. This keeps internal repair
+independent from unrelated Connector revision changes without weakening the
+public mutation contract. A caller that joins older work waits for it and then
+ensures again, because the older operation may already have resolved its
+runtime binding before the caller persisted newer desired state.

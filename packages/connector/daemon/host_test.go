@@ -65,6 +65,23 @@ type runtimeBindingResolverFunc func(context.Context, market.RuntimeBindingReque
 func (resolve runtimeBindingResolverFunc) ResolveRuntimeBinding(ctx context.Context, request market.RuntimeBindingRequest) (market.RuntimeBinding, error) {
 	return resolve(ctx, request)
 }
+
+type connectedAuthorizationObserver struct{}
+
+func (connectedAuthorizationObserver) Begin(context.Context, market.AuthorizationStartRequest) (market.AuthorizationSession, error) {
+	return market.AuthorizationSession{}, errors.New("not implemented")
+}
+
+func (connectedAuthorizationObserver) Disconnect(context.Context, market.AuthorizationDisconnectRequest) error {
+	return errors.New("not implemented")
+}
+
+func (connectedAuthorizationObserver) Observe(_ context.Context, request market.AuthorizationObserveRequest) (market.AuthorizationObservation, error) {
+	return market.AuthorizationObservation{
+		AccountID: request.Scope.AccountID, ConnectorKey: request.Connector.Key,
+		ConnectionID: "connection-1", State: market.AuthorizationObservationConnected,
+	}, nil
+}
 func (delegate *activationGateDelegate) DeactivateRuntime(context.Context, market.RuntimeDeactivationRequest) error {
 	delegate.deactivations++
 	return nil
@@ -331,6 +348,117 @@ func TestBootstrapRestoresInstalledRuntimeWithoutRefreshingCatalog(t *testing.T)
 	if calibrated.Installation.State != market.InstallationStateFailed ||
 		calibrated.Installation.FailureCode != market.InstallationFailureCodePhysicallyAbsent || runtime.reconciles != 5 {
 		t.Fatalf("calibrated connector=%#v reconciles=%d", calibrated, runtime.reconciles)
+	}
+}
+
+func TestAuthorizationRecoverySchedulesOneRuntimeBeforeResolvingReceipt(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	store, err := marketdata.Open(ctx, filepath.Join(t.TempDir(), "tuttid.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+
+	release := hostTestRelease()
+	release.Manifest.AuthorizationKind = "oauth2"
+	release.Manifest.RequiredCapabilities = []string{"tools"}
+	release.Manifest.Implementation.ManagedStdio.Runtime.VersionRange = ">=22.0.0 <23.0.0"
+	release.Manifest.Implementation.ManagedStdio.CLI = &market.ManagedCLIInterface{
+		Entrypoint: "bin/github-cli.mjs", TimeoutMS: 120_000,
+	}
+	release.Manifest.Implementation.ManagedStdio.CredentialBroker = &market.ManagedCredentialBroker{
+		Protocol: market.CredentialBrokerProtocolV1, Entrypoint: "authorization/broker.mjs",
+		TimeoutMS: 30_000, AllowedHosts: []string{"api.example.test"},
+	}
+	connector := market.Connector{
+		Key: release.ConnectorKey, Release: release,
+		Installation: market.Installation{
+			State: market.InstallationStateInstalled, InstalledVersion: release.Version,
+			InstalledReleaseID: release.ReleaseID, InstalledReleaseDigest: release.ReleaseDigest,
+		},
+		Authorization: market.Authorization{State: market.AuthorizationStatePending},
+		Compatibility: market.Compatibility{State: market.CompatibilityStateSupported},
+	}
+	authorizationOperation := market.Operation{
+		OperationID: "authorization-1", ClientRequestID: "authorization-request-1", ConnectorKey: connector.Key,
+		Kind: market.OperationKindStartAuthorization, Scope: market.OperationScope{AccountID: "account-1"},
+		State: market.OperationStateCompleted, Stage: market.OperationStageCompleted,
+		Target: &market.OperationTarget{
+			ConnectorKey: release.ConnectorKey, Version: release.Version, ReleaseID: release.ReleaseID,
+			ReleaseDigest: release.ReleaseDigest, Release: &release,
+		},
+		Execution: market.OperationExecution{AuthorizationSession: &market.AuthorizationSession{
+			OperationID: "authorization-1", ConnectorKey: connector.Key, SessionID: "session-1",
+			State: market.AuthorizationStatePending, Resolution: market.AuthorizationSessionResolutionUnresolved,
+		}},
+		CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC(),
+	}
+	if err := store.Transaction(ctx, func(tx market.Transaction) error {
+		connector.Revision = tx.AdvanceRevision()
+		if err := tx.SaveConnector(connector); err != nil {
+			return err
+		}
+		return tx.SaveOperation(authorizationOperation)
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	runtime := &activationGateDelegate{}
+	scope := market.OperationScope{AccountID: "account-1"}
+	scheduler := NewOperationScheduler(ctx)
+	activationGate := newActivationGateHost(runtime)
+	activationGate.setOpen(scope, true)
+	application, err := market.NewApplication(market.ApplicationConfig{
+		Repository: store, CatalogSource: &countingCatalogSource{release: release},
+		ReleaseInstallations: runtime, Host: activationGate,
+		Authorization: connectedAuthorizationObserver{}, AuthorizationProjections: store,
+		RuntimeBindings: runtimeBindingResolverFunc(func(_ context.Context, request market.RuntimeBindingRequest) (market.RuntimeBinding, error) {
+			return market.RuntimeBinding{ConnectionID: "device-" + request.Connector.Key, Enabled: true}, nil
+		}),
+		Compatibility: rejectingCompatibility{}, Scheduler: scheduler,
+		ImplementationRegistry: market.NewImplementationRegistry(nil),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := scheduler.Bind(application); err != nil {
+		t.Fatal(err)
+	}
+	host := &Host{Application: application, scheduler: scheduler, repository: store, activationGate: activationGate}
+
+	host.bootstrapMu.Lock()
+	err = host.reconcileAuthorizationsLocked(ctx, scope)
+	host.bootstrapMu.Unlock()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if runtime.reconciles != 1 {
+		t.Fatalf("runtime reconciles = %d, want 1", runtime.reconciles)
+	}
+	operation, err := store.Operation(ctx, authorizationOperation.OperationID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if operation.Execution.AuthorizationSession == nil ||
+		operation.Execution.AuthorizationSession.Resolution != market.AuthorizationSessionResolutionProviderConnected {
+		t.Fatalf("authorization receipt = %#v", operation.Execution.AuthorizationSession)
+	}
+	if err := host.ObserveAuthorizationForScope(ctx, scope, market.AuthorizationProjection{
+		AccountID: scope.AccountID, ConnectorKey: connector.Key,
+		ConnectionID: "connection-2", State: market.AuthorizationStateConnected,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if runtime.reconciles != 2 {
+		t.Fatalf("runtime reconciles after live observation = %d, want 2", runtime.reconciles)
+	}
+	projection, err := store.AuthorizationProjection(ctx, scope.AccountID, connector.Key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if projection.ConnectionID != "connection-2" || projection.State != market.AuthorizationStateConnected {
+		t.Fatalf("live authorization projection = %#v", projection)
 	}
 }
 

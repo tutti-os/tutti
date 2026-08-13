@@ -35,6 +35,7 @@ describe("useAgentGUIComposerPresentation", () => {
         composerOptionsLoading: false,
         composerSupport: composerSettingsSupportFromOptions(null, null),
         composerTargetProvider: "opencode",
+        composerTargetData: target,
         data,
         defaultReasoningEffort: null,
         draftSettingsBySessionId: {},
@@ -127,6 +128,7 @@ describe("useAgentGUIComposerPresentation", () => {
           composerOptionsLoading: false,
           composerTargetProvider: "opencode",
           codexSaverModeEntryEnabled: entryEnabled,
+          composerTargetData: target,
           data,
           defaultReasoningEffort: null,
           draftSettingsBySessionId: drafts,
@@ -157,6 +159,14 @@ describe("useAgentGUIComposerPresentation", () => {
     });
     expect(result.current.stableComposerSettings).toMatchObject({
       selectedModelValue: "opencode/new-model",
+      modelChoiceHistory: {
+        targetId: "local:opencode",
+        catalog: {
+          authoritative: false,
+          effectiveModel: "opencode/old-model",
+          loading: false
+        }
+      },
       selectedPermissionModeValue: "full-access",
       selectedReasoningEffortValue: "high",
       selectedSpeedValue: "fast"
@@ -296,6 +306,7 @@ describe("useAgentGUIComposerPresentation", () => {
           composerSupport: composerSettingsSupportFromOptions(options, null),
           composerOptionsLoading: false,
           composerTargetProvider: "opencode",
+          composerTargetData: target,
           data,
           defaultReasoningEffort: "high",
           draftSettingsBySessionId,

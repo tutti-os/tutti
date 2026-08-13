@@ -160,6 +160,7 @@ function AgentGUIQuickComposerInner({
     agentTargets.find(
       (target) => target.agentTargetId === selectedAgentTargetId
     ) ?? null;
+  const resolvedAgentTargetId = selectedAgentTarget?.agentTargetId ?? null;
   const selectedTargetCapabilities = selectedAgentTarget
     ? (capabilitiesByAgentTargetId[selectedAgentTarget.agentTargetId] ?? null)
     : null;
@@ -211,6 +212,7 @@ function AgentGUIQuickComposerInner({
   const composerSettings = useMemo<AgentGUIComposerSettingsVM>(
     () =>
       projectQuickComposerSettings({
+        agentTargetId: resolvedAgentTargetId,
         loading: composerOptionsLoading,
         options: composerOptions,
         projectLocked: disabled,
@@ -223,6 +225,7 @@ function AgentGUIQuickComposerInner({
       composerOptionsLoading,
       disabled,
       provider,
+      resolvedAgentTargetId,
       selectedProjectPath,
       settings
     ]

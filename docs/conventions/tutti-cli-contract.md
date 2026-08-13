@@ -380,10 +380,18 @@ wins; for example, a runtime `superseded` result must not be rewritten to
 ## Tutti Mode Plan Commands
 
 `tutti plan` is the Agent-callable observation and proposal surface for the
-Tutti-owned workspace workflow. It is available independently of the current
-Tutti Mode activation badge and independently of a provider's Default or Plan
-collaboration mode. The badge is host preference state; it is not CLI
-authorization and it is not evidence that a workflow exists.
+Tutti-owned workspace workflow. Its capabilities are discoverable independently
+of the current Tutti Mode activation badge and independently of a provider's
+Default or Plan collaboration mode. The badge is host preference state and is
+not evidence that a workflow exists. Plan and execution mutations nevertheless
+require the caller Session's current user-controlled activation to be active.
+
+Activation itself is not Agent-callable. The builtin registry exposes no
+`tutti mode set` command, and the activation service rejects the legacy
+`agent_command` source for new writes. When a gated mutation finds Tutti Mode
+inactive, it tells the Agent to ask the user to turn it on manually; the Agent
+must not attempt to change the toggle through another CLI or tool path. Stored
+legacy `agent_command` revisions remain readable for upgrade compatibility.
 
 The flow is single-shot: one `propose` submits the complete plan and opens the
 single user review checkpoint. There is no separate configuration phase and no

@@ -65,6 +65,18 @@ function upgradeRequiredSnapshot(): DesktopUpdateAdmissionSnapshot<"tutti-deskto
   };
 }
 
+function failedOpenSnapshot(): DesktopUpdateAdmissionSnapshot<"tutti-desktop"> {
+  const snapshot = upgradeRequiredSnapshot();
+  return {
+    ...snapshot,
+    nextForegroundCheckAt: null,
+    policy: {
+      failure: { kind: "timeout" },
+      status: "failedOpen"
+    }
+  };
+}
+
 function updateService(): MinimumVersionAppUpdateService {
   return {
     async acquireMandatorySession() {
@@ -255,5 +267,96 @@ test("startup admission opens a modal upgrade window over the visible business w
   assert.equal(upgradeWindowCreated, true);
   assert.equal(upgradeWindowOptions[0]?.modal, true);
   assert.equal(upgradeWindowOptions[0]?.parent, businessWindow);
+  controller.dispose();
+});
+
+test("foreground admission retries a failed-open check after network recovery", async () => {
+  const app = new EventEmitter();
+  const failedSnapshot = failedOpenSnapshot();
+  const recoveredSnapshot = upgradeRequiredSnapshot();
+  const calls: string[] = [];
+  let resolveUpgradeWindowCreated: (() => void) | undefined;
+  const upgradeWindowCreated = new Promise<void>((resolve) => {
+    resolveUpgradeWindowCreated = resolve;
+  });
+  const businessWindow = {
+    isDestroyed: () => false,
+    isFocused: () => true,
+    isVisible: () => true
+  };
+  class UpgradeWindow {
+    public readonly webContents = {
+      id: 1,
+      send() {},
+      setWindowOpenHandler() {},
+      on() {}
+    };
+
+    public constructor() {
+      resolveUpgradeWindowCreated?.();
+    }
+
+    public destroy() {}
+    public focus() {}
+    public isDestroyed() {
+      return false;
+    }
+    public loadFile() {
+      return Promise.resolve();
+    }
+    public loadURL() {
+      return Promise.resolve();
+    }
+    public on() {}
+    public once() {}
+    public show() {}
+  }
+  const controller = createDesktopUpdateAdmissionController({
+    backend: {
+      async getStartupSnapshot() {
+        return failedSnapshot;
+      },
+      async refresh(trigger) {
+        calls.push(trigger);
+        return {
+          performed: true,
+          snapshot: calls.length === 1 ? failedSnapshot : recoveredSnapshot
+        };
+      }
+    },
+    electron: {
+      app: app as never,
+      BrowserWindow: UpgradeWindow as never,
+      ipcMain: {
+        handle() {},
+        removeHandler() {}
+      } as never,
+      shell: { openExternal: async () => undefined } as never
+    },
+    foregroundFailureRetryDelayMs: 1,
+    listBusinessWindows: () => [businessWindow as never],
+    logger: { error() {}, info() {} },
+    manualDownloadUrl: () => "https://tutti.sh/desktop/download",
+    onPolicyReleased() {},
+    preloadPath: "/preload.cjs",
+    product: "tutti-desktop",
+    rendererFilePath: "/minimum-version.html",
+    runtime: {
+      checksEnabled: true,
+      currentVersion: "0.9.0",
+      development: true
+    },
+    updateService: updateService()
+  });
+
+  await controller.checkAfterForegroundRestore();
+  await Promise.race([
+    upgradeWindowCreated,
+    new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error("upgrade window was not created")), 500)
+    )
+  ]);
+
+  assert.deepEqual(calls, ["foreground", "retry"]);
   controller.dispose();
 });

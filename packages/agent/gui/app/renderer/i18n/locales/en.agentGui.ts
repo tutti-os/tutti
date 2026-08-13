@@ -572,9 +572,6 @@ export const enAgentGui = {
   promptImagesUnsupported:
     "This agent does not support image input with the current model.",
   ...enAgentGuiRuntimeNotices,
-  contextCompactionInProgress: "Compacting context",
-  contextCompactionCompleted: "Context compacted.",
-  contextCompactionInterrupted: "Context compaction interrupted.",
   tuttiModeCheckpointWakeTaskSettled: "A task finished — review needed",
   tuttiModeCheckpointWakeTaskFailed: "A task failed — review needed",
   tuttiModeCheckpointWakeTaskCanceled: "A task was canceled — review needed",

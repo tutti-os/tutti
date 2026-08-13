@@ -190,7 +190,9 @@ func (service *Service) Close() {
 
 func (service *Service) refresh(ctx context.Context, trigger string) (RefreshResult, error) {
 	service.mu.Lock()
-	if trigger == string(RefreshTriggerForeground) && service.snapshot.LastAttemptAt != nil {
+	if trigger == string(RefreshTriggerForeground) &&
+		policyUsesForegroundThrottle(service.snapshot.Policy) &&
+		service.snapshot.LastAttemptAt != nil {
 		next := service.snapshot.LastAttemptAt.Add(service.config.ForegroundInterval)
 		if service.config.Now().Before(next) {
 			snapshot := cloneSnapshot(service.snapshot)
@@ -238,9 +240,8 @@ func (service *Service) refresh(ctx context.Context, trigger string) (RefreshRes
 
 	service.mu.Lock()
 	service.snapshot.LastAttemptAt = pointerTime(completedAt)
-	nextForeground := completedAt.Add(service.config.ForegroundInterval)
-	service.snapshot.NextForegroundCheckAt = pointerTime(nextForeground)
 	if err != nil {
+		service.snapshot.NextForegroundCheckAt = nil
 		failureKind := "transport"
 		if errors.Is(err, context.DeadlineExceeded) || errors.Is(checkCtx.Err(), context.DeadlineExceeded) {
 			failureKind = "timeout"
@@ -262,6 +263,8 @@ func (service *Service) refresh(ctx context.Context, trigger string) (RefreshRes
 
 	parsed, parseErr := ParseRemoteResponse(raw)
 	if parseErr != nil {
+		nextForeground := completedAt.Add(service.config.ForegroundInterval)
+		service.snapshot.NextForegroundCheckAt = pointerTime(nextForeground)
 		service.snapshot.Policy = PolicySnapshot{
 			Status:  "failedOpen",
 			Failure: &PolicyFailure{Kind: "invalidResponse"},
@@ -278,6 +281,8 @@ func (service *Service) refresh(ctx context.Context, trigger string) (RefreshRes
 	}
 
 	policy := parsed.Policy
+	nextForeground := completedAt.Add(service.config.ForegroundInterval)
+	service.snapshot.NextForegroundCheckAt = pointerTime(nextForeground)
 	service.snapshot.Policy = PolicySnapshot{
 		Status:   "resolved",
 		Response: &policy,
@@ -324,6 +329,13 @@ func (service *Service) refresh(ctx context.Context, trigger string) (RefreshRes
 		"stage":          trigger,
 	})
 	return RefreshResult{Performed: true, Snapshot: snapshot}, nil
+}
+
+func policyUsesForegroundThrottle(policy PolicySnapshot) bool {
+	return policy.Status == "resolved" ||
+		(policy.Status == "failedOpen" &&
+			policy.Failure != nil &&
+			policy.Failure.Kind == "invalidResponse")
 }
 
 func (service *Service) markInitialDone() {

@@ -46,8 +46,11 @@ planning behavior, while `/tutti` creates or advances a Tutti-owned
 `TuttiModeActivation`. The badges are compatible, and removing either badge
 only disables that modifier. The Tutti badge creates durable activation state,
 not a workflow; a workflow begins only when the Agent invokes the Tutti CLI.
-The CLI remains available when the activation is inactive, and an autonomous
-Agent invocation never fabricates a slash-command activation.
+Workflow CLI capabilities remain discoverable when activation is inactive, but
+their mutation paths require the user-controlled activation to be active. The
+Agent has no CLI or service mutation that can change this state; it must ask the
+user to turn Tutti Mode on manually. The persisted `agent_command` source is
+retained only so revisions written by older builds remain readable.
 
 ## Durable And Derived Entities
 

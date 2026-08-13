@@ -532,6 +532,14 @@ type ConnectorMutation struct {
 	AccountID    string `json:"accountId,omitempty"`
 }
 
+// EnsureRuntimeReconcileResult reports whether a level-triggered repair
+// created work from the caller's current desired state or joined older work
+// that must be followed by another ensure after it reaches a terminal state.
+type EnsureRuntimeReconcileResult struct {
+	MutationResult
+	Created bool
+}
+
 // AuthorizationProjection is account-scoped runtime intent. Installation is
 // still device-scoped on Connector; switching accounts changes only this
 // projection and the runtime binding derived from it.
