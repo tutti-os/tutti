@@ -16,6 +16,7 @@ const COMPACT_FAILURE_PATTERN = /not enough|fail|error/iu;
 const COMPACT_SUCCESS_PATTERN = /^compacted\b/iu;
 const CONTEXT_OVERFLOW_FAILURE_PATTERNS = [
   /maximum context length/iu,
+  /conversation could not be reduced below the context limit/iu,
   /context (?:length|window).*(?:exceed|overflow|too (?:large|long))/iu,
   /prompt is too long/iu,
   /too many tokens/iu
@@ -85,11 +86,9 @@ export class CompactionTracker {
   }
 
   /**
-   * Claude 2.1.x may surface compact failures as assistant-style text (or as
-   * a result fallback) instead of status/compact_result. When a slash
-   * /compact turn is live, treat known failure copy as compact_failed so the
-   * daemon does not settle the progress banner as "completed" on a successful
-   * result subtype.
+   * Assistant-style failure text is a compatibility fallback for streams that
+   * omit status/compact_result. Pinned Claude Code 2.1.220 reports manual
+   * /compact failures canonically through compact_result/compact_error.
    */
   noteAssistantText(content: string): void {
     const text = collapseRepeatedText(content);

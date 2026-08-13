@@ -37,17 +37,34 @@ test("compaction failure collapses a duplicated provider reason", () => {
   );
 });
 
-test("context overflow compact failure requires a new-conversation handoff", () => {
+test("pinned CLI compact_result overflow failure requires a new-conversation handoff", () => {
   const events: ClaudeSDKSidecarEvent[] = [];
   const tracker = createTracker(events);
+  const compactError =
+    "Compaction failed · conversation could not be reduced below the context limit";
 
   tracker.selectCommand("turn-1", true);
-  tracker.noteAssistantText(
-    "API Error: 400 This model's maximum context length is 1048576 tokens. However, you requested 1053604 tokens."
+  assert.equal(
+    tracker.handleSystemMessage("status", { status: "compacting" }),
+    true
   );
+  assert.equal(
+    tracker.handleSystemMessage("status", {
+      compact_result: "failed",
+      compact_error: compactError
+    }),
+    true
+  );
+  tracker.noteAssistantText(compactError);
 
-  const failure = events.find((event) => event.type === "compact_failed");
-  assert.equal(failure?.payload?.contextHandoffRequired, true);
+  const failures = events.filter((event) => event.type === "compact_failed");
+  assert.equal(failures.length, 1);
+  assert.deepEqual(failures[0]?.payload, {
+    turnId: "turn-1",
+    reason: compactError,
+    contextHandoffRequired: true,
+    content: `Compacting failed: ${compactError}`
+  });
 });
 
 test("non-overflow compact failure does not require a handoff", () => {
