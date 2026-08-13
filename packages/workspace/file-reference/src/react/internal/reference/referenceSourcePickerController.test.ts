@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { ref as valtioRef } from "valtio/vanilla";
+import {
+  ref as valtioRef,
+  unstable_replaceInternalFunction
+} from "valtio/vanilla";
 
 import type {
   ListChildrenResult,
@@ -17,15 +20,27 @@ import type {
 } from "../../../core/referenceSourceAggregator.ts";
 import { SOURCE_ROOT_NODE_ID } from "../../../core/referenceSourceAggregator.ts";
 import { nodeRefKey } from "../../../core/referenceSourceUtils.ts";
-import { ReferenceSearchCursorExpiredError } from "../../../core/referenceSearchErrors.ts";
+import {
+  REFERENCE_SEARCH_CURSOR_LOOP_ERROR_CODE,
+  ReferenceSearchCursorExpiredError
+} from "../../../core/referenceSearchErrors.ts";
 import {
   ROOT_CHILDREN_KEY,
   SEARCH_PAGE_SIZE,
-  createReferenceSourcePickerController
+  createReferenceSourcePickerController,
+  type ReferenceSourcePickerController
 } from "./referenceSourcePickerController.ts";
 
 const scope = { workspaceId: "ws-1" };
 const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
+const tabSearchEntries = (
+  tab:
+    | ReturnType<
+        ReferenceSourcePickerController["getSnapshot"]
+      >["bySource"][string]
+    | undefined
+): ReferenceNode[] =>
+  (tab?.searchEntryPages ?? []).flatMap((page) => [...page]);
 
 function folder(
   sourceId: string,
@@ -634,7 +649,7 @@ test("search 在当前 tab 生效", async () => {
   const tab = controller.getSnapshot().bySource["workspace-file"];
   assert.equal(tab?.mode, "search");
   assert.deepEqual(
-    tab?.searchEntries.map((n) => n.ref.nodeId),
+    tabSearchEntries(tab).map((n) => n.ref.nodeId),
     ["/report.md"]
   );
   // 清空回 browse
@@ -828,7 +843,7 @@ test("browse pagination does not opt legacy search into cursor pagination", asyn
     ]
   );
   assert.equal(
-    controller.getSnapshot().bySource["app-artifact"]?.searchEntries.length,
+    tabSearchEntries(controller.getSnapshot().bySource["app-artifact"]).length,
     SEARCH_PAGE_SIZE * 2
   );
 });
@@ -883,7 +898,8 @@ test("a search result can override cursor capability with legacy pagination", as
     ]
   );
   assert.equal(
-    controller.getSnapshot().bySource["workspace-file"]?.searchEntries.length,
+    tabSearchEntries(controller.getSnapshot().bySource["workspace-file"])
+      .length,
     SEARCH_PAGE_SIZE * 2
   );
 });
@@ -952,72 +968,153 @@ test("paginated search follows cursors and appends every page", async () => {
     }))
   );
   const tab = controller.getSnapshot().bySource["workspace-file"];
-  assert.equal(tab?.searchEntries.length, totalEntries);
-  assert.equal(tab?.searchEntries[0]?.ref.nodeId, "/photo-1.png");
-  assert.equal(tab?.searchEntries.at(-1)?.ref.nodeId, "/photo-211.png");
+  const entries = tabSearchEntries(tab);
+  assert.equal(entries.length, totalEntries);
+  assert.equal(entries[0]?.ref.nodeId, "/photo-1.png");
+  assert.equal(entries.at(-1)?.ref.nodeId, "/photo-211.png");
   assert.equal(tab?.searchNextCursor, null);
   assert.equal(tab?.searchHasMore, false);
 });
 
 test("cursor append does not revisit a large existing result set", async () => {
-  let oldReferenceReads = 0;
-  const firstPage = Array.from({ length: 5_000 }, (_, index) => {
-    const node = file("workspace-file", `/existing-${index}.md`);
-    node.ref = new Proxy(node.ref, {
-      get(target, property, receiver) {
-        if (property === "sourceId" || property === "nodeId") {
-          oldReferenceReads += 1;
-        }
-        return Reflect.get(target, property, receiver);
+  let historicalArraySnapshots = 0;
+  let originalCreateSnapshot: (target: object, version: number) => object = (
+    target
+  ) => target;
+  unstable_replaceInternalFunction("createSnapshot", (previous) => {
+    originalCreateSnapshot = previous;
+    return (target, version) => {
+      if (Array.isArray(target) && target.length >= 5_000) {
+        historicalArraySnapshots += 1;
       }
-    });
-    return valtioRef(node);
+      return previous(target, version);
+    };
   });
-  const controller = createReferenceSourcePickerController({
-    aggregator: fakeAggregator({
-      tabs: [
-        {
-          sourceId: "workspace-file",
-          label: "Workspace files",
-          capabilities: {
-            paginated: true,
-            previewable: true,
-            searchable: true,
-            searchPagination: "cursor"
-          }
-        }
-      ],
-      children: {},
-      searchImpl: async (input) =>
-        input.cursor
-          ? {
-              entries: [
-                file("workspace-file", "/existing-2500.md"),
-                file("workspace-file", "/new-page.md"),
-                file("workspace-file", "/new-page.md")
-              ],
-              nextCursor: null
+  try {
+    const firstPage = Array.from({ length: 5_000 }, (_, index) =>
+      valtioRef(file("workspace-file", `/existing-${index}.md`))
+    );
+    const controller = createReferenceSourcePickerController({
+      aggregator: fakeAggregator({
+        tabs: [
+          {
+            sourceId: "workspace-file",
+            label: "Workspace files",
+            capabilities: {
+              paginated: true,
+              previewable: true,
+              searchable: true,
+              searchPagination: "cursor"
             }
-          : { entries: firstPage, nextCursor: "page-2" }
-    }),
-    scope,
-    searchDebounceMs: 0
-  });
-  controller.open();
-  await flush();
+          }
+        ],
+        children: {},
+        searchImpl: async (input) =>
+          input.cursor
+            ? {
+                entries: [
+                  file("workspace-file", "/existing-2500.md"),
+                  file("workspace-file", "/new-page.md"),
+                  file("workspace-file", "/new-page.md")
+                ],
+                nextCursor: null
+              }
+            : { entries: firstPage, nextCursor: "page-2" }
+      }),
+      scope,
+      searchDebounceMs: 0
+    });
+    controller.open();
+    await flush();
 
-  controller.setSearchQuery("report");
-  await flush();
-  oldReferenceReads = 0;
-  controller.loadMoreSearch();
-  await flush();
+    controller.setSearchQuery("report");
+    await flush();
+    historicalArraySnapshots = 0;
+    controller.loadMoreSearch();
+    await flush();
 
-  assert.equal(oldReferenceReads, 0);
-  assert.equal(
-    controller.getSnapshot().bySource["workspace-file"]?.searchEntries.length,
-    5_001
-  );
+    assert.equal(historicalArraySnapshots, 0);
+    assert.equal(
+      tabSearchEntries(controller.getSnapshot().bySource["workspace-file"])
+        .length,
+      5_001
+    );
+  } finally {
+    unstable_replaceInternalFunction(
+      "createSnapshot",
+      () => originalCreateSnapshot as never
+    );
+  }
 });
+
+for (const testCase of [
+  {
+    name: "same cursor",
+    cursors: ["page-a", "page-a"]
+  },
+  {
+    name: "cursor cycle",
+    cursors: ["page-a", "page-b", "page-a"]
+  },
+  {
+    name: "empty page with repeated cursor",
+    cursors: ["page-a", "page-a"],
+    emptyContinuation: true
+  }
+] as const) {
+  test(`cursor search stops a ${testCase.name}`, async () => {
+    const searchInputs: SearchInput[] = [];
+    let responseIndex = 0;
+    const controller = createReferenceSourcePickerController({
+      aggregator: fakeAggregator({
+        tabs: [
+          {
+            sourceId: "workspace-file",
+            label: "Workspace files",
+            capabilities: {
+              paginated: true,
+              previewable: true,
+              searchable: true,
+              searchPagination: "cursor"
+            }
+          }
+        ],
+        children: {},
+        searchImpl: async (input) => {
+          searchInputs.push(input);
+          const nextCursor = testCase.cursors[responseIndex] ?? null;
+          const entries =
+            responseIndex > 0 && testCase.emptyContinuation
+              ? []
+              : [file("workspace-file", `/page-${responseIndex}.md`)];
+          responseIndex += 1;
+          return { entries, nextCursor };
+        }
+      }),
+      scope,
+      searchDebounceMs: 0
+    });
+    controller.open();
+    await flush();
+    controller.setSearchQuery("report");
+    await flush();
+
+    for (let index = 1; index < testCase.cursors.length; index += 1) {
+      controller.loadMoreSearch();
+      await flush();
+    }
+    controller.loadMoreSearch();
+    await flush();
+
+    const tab = controller.getSnapshot().bySource["workspace-file"];
+    assert.equal(searchInputs.length, testCase.cursors.length);
+    assert.equal(tab?.searchHasMore, false);
+    assert.equal(
+      (tab?.searchError as Error & { code?: string })?.code,
+      REFERENCE_SEARCH_CURSOR_LOOP_ERROR_CODE
+    );
+  });
+}
 
 test("changing search filters prevents load more from reusing the old cursor", async () => {
   const searchInputs: SearchInput[] = [];
@@ -1129,7 +1226,7 @@ test("switching sources invalidates the previous source while its next page is l
 
   const previousTab = controller.getSnapshot().bySource["source-a"];
   assert.deepEqual(
-    previousTab?.searchEntries.map((entry) => entry.ref.nodeId),
+    tabSearchEntries(previousTab).map((entry) => entry.ref.nodeId),
     ["/first-page.md"]
   );
   assert.equal(previousTab?.searchNextCursor, null);
@@ -1211,7 +1308,7 @@ test("paginated search restarts from the first page after cursor expiry", async 
   );
   const tab = controller.getSnapshot().bySource["workspace-file"];
   assert.deepEqual(
-    tab?.searchEntries.map((entry) => entry.ref.nodeId),
+    tabSearchEntries(tab).map((entry) => entry.ref.nodeId),
     ["/fresh-first.png"]
   );
   assert.equal(tab?.searchNextCursor, "fresh-page-2");
@@ -1269,8 +1366,9 @@ test("controller-owned state stays cloneable across source service calls", async
   assert.doesNotThrow(() => structuredClone(searchInputs[1]?.filters));
   assert.doesNotThrow(() => structuredClone(controller.getSnapshot()));
 
-  const selected =
-    controller.getSnapshot().bySource["host-local-file"]?.searchEntries[0];
+  const selected = tabSearchEntries(
+    controller.getSnapshot().bySource["host-local-file"]
+  )[0];
   assert.ok(selected);
   controller.toggleSelection(selected);
   await controller.confirm();
@@ -1354,9 +1452,9 @@ test("changing provenance filters aborts the stale request before debounce", asy
     memberIds: null
   });
   assert.deepEqual(
-    controller
-      .getSnapshot()
-      .bySource["workspace-file"]?.searchEntries.map((node) => node.ref.nodeId),
+    tabSearchEntries(controller.getSnapshot().bySource["workspace-file"]).map(
+      (node) => node.ref.nodeId
+    ),
     []
   );
 });
@@ -1395,9 +1493,9 @@ test("search 保留 source 返回的相关性顺序", async () => {
   await flush();
 
   assert.deepEqual(
-    controller
-      .getSnapshot()
-      .bySource["workspace-file"]?.searchEntries.map((node) => node.ref.nodeId),
+    tabSearchEntries(controller.getSnapshot().bySource["workspace-file"]).map(
+      (node) => node.ref.nodeId
+    ),
     ["/Movies/load_log", "/Music/downloaded_catalog_data"]
   );
 });
@@ -1516,7 +1614,7 @@ test("搜索中切源 → 把当前查询带到目标源并在其下重搜", asy
   assert.equal(tabB?.mode, "search");
   assert.equal(tabB?.searchQuery, "report");
   assert.deepEqual(
-    tabB?.searchEntries.map((n) => n.ref.nodeId),
+    tabSearchEntries(tabB).map((n) => n.ref.nodeId),
     ["b:report"]
   );
 

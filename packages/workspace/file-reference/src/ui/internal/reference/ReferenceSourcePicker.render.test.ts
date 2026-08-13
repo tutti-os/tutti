@@ -517,7 +517,8 @@ test("reference source picker renders shared folder icons and content errors", a
       currentEntries: [],
       isQuery: true,
       searchQuery: "111",
-      searchResults: [file(opaqueNodeId, "111.md")]
+      searchResultCount: 1,
+      searchResultPages: [[file(opaqueNodeId, "111.md")]]
     };
     await act(async () => {
       root?.render(
@@ -1004,7 +1005,8 @@ function createFolderOnlyView(node: ReferenceNode) {
     previewState: { status: "empty" },
     revealNode: async () => {},
     searchQuery: "",
-    searchResults: [],
+    searchResultCount: 0,
+    searchResultPages: [],
     selectTarget: async () => false,
     selectGroup: () => {},
     selectedGroupKey: "workspace:root",

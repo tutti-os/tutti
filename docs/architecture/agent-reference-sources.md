@@ -248,8 +248,11 @@ query through a legacy backend.
 For cursor search, the controller uses cursor presence—not a returned-count
 heuristic or a growing total limit—to decide whether more data exists. It keeps
 an incremental identity set and inspects only the incoming page before
-appending unique nodes in source order, so page processing does not rescan all
-previous results. This removes any controller-owned total result ceiling.
+appending unique nodes as stable page blocks in source order. The view consumes
+those blocks directly, so neither Valtio snapshots nor rendering adapters
+rematerialize the complete historical result array after every page. Repeated
+or cyclic `nextCursor` values stop continuation with a stable visible error.
+This removes any controller-owned total result ceiling.
 Legacy search retains the growing-limit behavior and compatibility ceiling.
 
 If a host reports cursor expiry with `ReferenceSearchCursorExpiredError`, the

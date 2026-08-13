@@ -33,7 +33,10 @@ example when a source routes provenance search through a legacy backend.
 
 For cursor search, the picker passes the returned `nextCursor` into the next
 fixed-size request and incrementally deduplicates only the incoming page before
-appending it in source order. A host that receives an expired backend cursor
+appending it as a stable page block in source order, avoiding repeated
+materialization of historical results. Repeated or cyclic cursors stop
+continuation with `ReferenceSearchCursorLoopError` instead of requesting the
+same page forever. A host that receives an expired backend cursor
 may throw `ReferenceSearchCursorExpiredError`; the picker clears the stale
 result set and restarts the same search from its first page.
 

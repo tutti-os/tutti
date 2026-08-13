@@ -415,12 +415,10 @@ export function useReferenceSourcePickerView({
     () => sortNodes(currentChildren?.entries ?? []),
     [currentChildren?.entries, sortNodes]
   );
-  const searchResults = useMemo(
-    // Browse arrangement is a presentation preference. Search results keep the
-    // source-owned relevance order regardless of that preference.
-    () => [...(activeTabState?.searchEntries ?? [])] as ReferenceNode[],
-    [activeTabState?.searchEntries]
-  );
+  // Cursor 页面保持稳定分块；调用方逐块渲染，不在每次续页重新物化历史扁平数组。
+  const searchResultPages = (activeTabState?.searchEntryPages ??
+    []) as readonly (readonly ReferenceNode[])[];
+  const searchResultCount = activeTabState?.searchLimit ?? 0;
 
   // 每个源的左栏二级分组(左栏可多源同时展开,故按源全量计算):
   //  - 源自带分组(listSidebarGroups,如本地源的 最近访问/下载/文稿/桌面/个人)优先;
@@ -903,7 +901,8 @@ export function useReferenceSourcePickerView({
     // 内容区递归就地树:当前选中二级节点的子条目(本地根时为源根子条目)。
     currentEntries,
     // 搜索态:扁平搜索结果。
-    searchResults,
+    searchResultPages,
+    searchResultCount,
     contentError,
     expandedKeys: activeTabState?.expandedKeys ?? {},
     childrenByKey,
@@ -932,8 +931,7 @@ export function useReferenceSourcePickerView({
     // 搜索态:仅在「还没有任何结果」时显示 spinner;细化关键词(已有结果)时
     // 保留旧结果直到新结果就绪,避免内容区在 spinner/结果间反复切换造成闪烁。
     isLoading: isQuery
-      ? (activeTabState?.isSearchLoading ?? false) &&
-        (activeTabState?.searchEntries.length ?? 0) === 0
+      ? (activeTabState?.isSearchLoading ?? false) && searchResultCount === 0
       : recursiveFilterActive
         ? filteredTreeState.key !== recursiveFilterKey ||
           filteredTreeState.loading
