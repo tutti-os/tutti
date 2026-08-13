@@ -52,6 +52,20 @@ func TestPublishedWorkspaceRuntimeDisconnectScenarioCatalogHasUniqueNames(t *tes
 	}
 }
 
+func TestPublishedWorkspaceRuntimeAdmissionScenarioCatalogHasUniqueNames(t *testing.T) {
+	scenarios := WorkspaceRuntimeAdmissionScenarios()
+	seen := make(map[string]struct{}, len(scenarios))
+	for _, scenario := range scenarios {
+		if scenario.Name == "" {
+			t.Fatal("workspace runtime admission scenario has empty name")
+		}
+		if _, duplicate := seen[scenario.Name]; duplicate {
+			t.Fatalf("duplicate workspace runtime admission scenario name %q", scenario.Name)
+		}
+		seen[scenario.Name] = struct{}{}
+	}
+}
+
 func TestPublishedInteractionTreeScenarioCatalogHasUniqueNames(t *testing.T) {
 	t.Parallel()
 	scenarios := InteractionTreeScenarios()

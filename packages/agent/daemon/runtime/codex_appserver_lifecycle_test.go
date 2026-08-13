@@ -3,9 +3,11 @@ package agentruntime
 import (
 	"context"
 	"errors"
+	"io"
 	"reflect"
 	"sync"
 	"testing"
+	"time"
 )
 
 // --- per-process app-server transport ---
@@ -424,5 +426,142 @@ func TestCodexAppServerClientCloseIsIdempotent(t *testing.T) {
 	conn.mu.Unlock()
 	if closeCount != 1 {
 		t.Fatalf("underlying connection Close calls = %d, want 1 (client Close must be idempotent)", closeCount)
+	}
+}
+
+func TestAppServerCloseFailureRetainsUnusableHandleAndBackpressuresReplacement(t *testing.T) {
+	for _, provider := range []string{ProviderCodex, ProviderTuttiAgent} {
+		provider := provider
+		t.Run(provider, func(t *testing.T) {
+			transport := &multiProcAppServerTransport{}
+			var adapter *CodexAppServerAdapter
+			if provider == ProviderTuttiAgent {
+				adapter = NewTuttiAgentAppServerAdapterWithHostMetadata(transport, LegacyHostMetadata())
+			} else {
+				adapter = NewCodexAppServerAdapter(transport)
+			}
+			session := testAppServerSession()
+			session.Provider = provider
+			session.ProviderSessionID = "codex-thread-1"
+			if _, err := adapter.Start(t.Context(), session); err != nil {
+				t.Fatalf("Start: %v", err)
+			}
+			oldConnection := transport.conn(0)
+			oldConnection.mu.Lock()
+			oldConnection.closeFailures = 4
+			oldConnection.mu.Unlock()
+
+			if err := adapter.ReleaseLiveSession(t.Context(), session); err == nil {
+				t.Fatal("ReleaseLiveSession error=nil, want close failure")
+			}
+			if adapter.HasLiveSession(session) {
+				t.Fatal("close-failed client remained usable")
+			}
+			if err := adapter.Resume(t.Context(), session); err != nil {
+				t.Fatalf("first replacement Resume: %v", err)
+			}
+			if !adapter.HasLiveSession(session) {
+				t.Fatal("replacement client is not usable")
+			}
+			if err := adapter.ReleaseLiveSession(t.Context(), session); err != nil {
+				t.Fatalf("release replacement: %v", err)
+			}
+			spawnedBefore, _ := transport.snapshot()
+			err := adapter.Resume(t.Context(), session)
+			if AppErrorCode(err) != AppErrorProcessCleanupPending {
+				t.Fatalf("second Resume error code=%q err=%v", AppErrorCode(err), err)
+			}
+			spawnedAfter, _ := transport.snapshot()
+			if spawnedAfter != spawnedBefore {
+				t.Fatalf("spawned processes changed behind cleanup backpressure: %d -> %d", spawnedBefore, spawnedAfter)
+			}
+			cleanupAdapter, ok := any(adapter).(LiveSessionResourceCleanupAdapter)
+			if !ok {
+				t.Fatal("app-server adapter does not own detached resource cleanup")
+			}
+			cleanup := cleanupAdapter.CleanupLiveSessionResources(t.Context(), 1)
+			if cleanup.Attempted != 1 || cleanup.Failed != 1 {
+				t.Fatalf("failed cleanup=%#v", cleanup)
+			}
+			oldConnection.mu.Lock()
+			oldConnection.closeFailures = 0
+			oldConnection.mu.Unlock()
+			cleanup = cleanupAdapter.CleanupLiveSessionResources(t.Context(), 1)
+			if cleanup.Attempted != 1 || cleanup.Cleaned != 1 || cleanup.Failed != 0 {
+				t.Fatalf("successful cleanup=%#v", cleanup)
+			}
+		})
+	}
+}
+
+type doneClosedCloseFailConnection struct {
+	ProcessConnection
+	mu         sync.Mutex
+	done       chan struct{}
+	closeCalls int
+}
+
+func newDoneClosedCloseFailConnection(connection ProcessConnection) *doneClosedCloseFailConnection {
+	done := make(chan struct{})
+	close(done)
+	return &doneClosedCloseFailConnection{ProcessConnection: connection, done: done}
+}
+
+func (*doneClosedCloseFailConnection) Recv() (ProcessFrame, error) {
+	return ProcessFrame{}, io.EOF
+}
+
+func (c *doneClosedCloseFailConnection) Close() error {
+	c.mu.Lock()
+	c.closeCalls++
+	c.mu.Unlock()
+	return errors.New("injected persistent close failure after process exit")
+}
+
+func (c *doneClosedCloseFailConnection) Done() <-chan struct{} { return c.done }
+
+func TestAppServerExitedConnectionWithPersistentCloseFailureRemainsOwned(t *testing.T) {
+	base, _ := newScriptedAppServerHarness()
+	connection := newDoneClosedCloseFailConnection(base)
+	client := newCodexAppServerClient(connection)
+	transport := &multiProcAppServerTransport{}
+	adapter := NewCodexAppServerAdapter(transport)
+	session := testAppServerSession()
+	session.ProviderSessionID = "codex-thread-1"
+	appSession := &codexAppServerSession{client: client, pendingRequests: make(map[string]*pendingInteractiveRequest)}
+	adapter.storeSession(session.AgentSessionID, appSession)
+	select {
+	case <-client.Done():
+	case <-time.After(time.Second):
+		t.Fatal("app-server client did not observe the closed process connection")
+	}
+
+	if adapter.HasLiveSession(session) {
+		t.Fatal("Done-closed app-server client reported usable")
+	}
+	if err := adapter.DisconnectLiveSession(t.Context(), session); err == nil {
+		t.Fatal("DisconnectLiveSession error=nil, want persistent Close failure")
+	}
+	if adapter.getSession(session.AgentSessionID) != appSession {
+		t.Fatal("Done-closed close-failed handle lost current ownership")
+	}
+	if err := adapter.Resume(t.Context(), session); err != nil {
+		t.Fatalf("Resume after exited close failure: %v", err)
+	}
+	if !adapter.HasLiveSession(session) {
+		t.Fatal("replacement app-server session is not usable")
+	}
+	if adapter.getSession(session.AgentSessionID) == appSession {
+		t.Fatal("exited close-failed handle remained current after replacement")
+	}
+	cleanup := adapter.CleanupLiveSessionResources(t.Context(), 1)
+	if cleanup.Attempted != 1 || cleanup.Failed != 1 || cleanup.Cleaned != 0 {
+		t.Fatalf("cleanup=%#v, want one retained failure", cleanup)
+	}
+	connection.mu.Lock()
+	closeCalls := connection.closeCalls
+	connection.mu.Unlock()
+	if closeCalls != 3 {
+		t.Fatalf("Close calls=%d, want disconnect + replacement retirement + bounded cleanup", closeCalls)
 	}
 }

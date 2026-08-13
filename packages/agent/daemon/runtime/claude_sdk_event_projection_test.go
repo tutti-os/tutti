@@ -211,6 +211,7 @@ func TestClaudeCodeSDKAdapterCompletesCanonicalTurnByProviderIdentity(t *testing
 		session:   session,
 		liveState: newClaudeSDKLiveState(),
 	}
+	adapter.storeSession(session.AgentSessionID, adapterSession)
 	adapter.beginClaudeSDKRootTurn(
 		adapterSession,
 		"canonical-turn-1",

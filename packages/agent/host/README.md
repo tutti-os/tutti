@@ -140,6 +140,13 @@ resumes a provider or replays a prompt. Provider adapters terminalize active
 work and pending interactions before dropping the transport, and transport-only
 disconnect must not invoke a destructive provider `session/close`. A later
 user command follows the ordinary just-in-time Resume path.
+Host consumers that perform a provisional runtime mutation use
+`WithWorkspaceRuntimeOperation`; its callback receives the reentrant admitted
+context and must own startup through cleanup. Attachment observers first call
+`AcquireWorkspaceRuntimeDisconnectFence`, which closes admission immediately,
+then retry `Wait` until already-admitted mutations drain. Canceling one Wait
+does not reopen admission; every joined owner must call `Release`, and one
+owner cannot reopen the Workspace while another disconnect remains active.
 `CreateSessionInput.RailPlacement` optionally carries the caller-selected,
 versioned canonical rail identity. Host validates it before provider startup
 and persists its opaque `SectionKey` exactly on first creation. An idempotent

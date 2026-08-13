@@ -141,6 +141,22 @@ func (h *Host) prepareCancelRuntimeOperation(
 }
 
 func (h *Host) processRuntimeOperation(ctx context.Context, operation storesqlite.RuntimeOperation, recovering bool) (storesqlite.RuntimeOperation, error) {
+	if operation.Kind == storesqlite.RuntimeOperationKindPlanDecision {
+		var result storesqlite.RuntimeOperation
+		var processErr error
+		err := h.withWorkspaceRuntimeOperation(ctx, operation.WorkspaceID, func(operationCtx context.Context) error {
+			result, processErr = h.processRuntimeOperationAdmitted(operationCtx, operation, recovering)
+			return processErr
+		})
+		if err != nil {
+			return result, err
+		}
+		return result, processErr
+	}
+	return h.processRuntimeOperationAdmitted(ctx, operation, recovering)
+}
+
+func (h *Host) processRuntimeOperationAdmitted(ctx context.Context, operation storesqlite.RuntimeOperation, recovering bool) (storesqlite.RuntimeOperation, error) {
 	if operation.Status == storesqlite.RuntimeOperationStatusCompleted {
 		return operation, nil
 	}

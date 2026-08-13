@@ -15,6 +15,9 @@ import (
 func (a *CodexAppServerAdapter) Start(ctx context.Context, session Session) (events []activityshared.Event, err error) {
 	unlockLifecycle := a.lockSessionLifecycle(session.AgentSessionID)
 	defer unlockLifecycle()
+	if err := a.admitCodexReplacementLocked(session.AgentSessionID); err != nil {
+		return nil, err
+	}
 	trace := newCodexAppServerStartupTrace(session)
 	defer func() {
 		trace.Finish(err)
@@ -40,9 +43,13 @@ func (a *CodexAppServerAdapter) Start(ctx context.Context, session Session) (eve
 	}
 	started := false
 	keepSession := false
+	startedSession := &codexAppServerSession{
+		client:          client,
+		pendingRequests: make(map[string]*pendingInteractiveRequest),
+	}
 	defer func() {
 		if !started {
-			_ = client.Close()
+			a.closeOrRetainCodexSession(session.AgentSessionID, startedSession)
 		}
 		if !keepSession {
 			a.removeSession(session.AgentSessionID)
@@ -183,6 +190,9 @@ func (a *CodexAppServerAdapter) Resume(ctx context.Context, session Session) (er
 	}
 	unlockLifecycle := a.lockSessionLifecycle(session.AgentSessionID)
 	defer unlockLifecycle()
+	if err := a.admitCodexReplacementLocked(session.AgentSessionID); err != nil {
+		return err
+	}
 	// Resume may run over a session that still holds a live client. Unlike
 	// Start, the old client is kept alive until the replacement has resumed
 	// successfully (storeSession closes it on replace): if the new spawn or
@@ -209,9 +219,13 @@ func (a *CodexAppServerAdapter) Resume(ctx context.Context, session Session) (er
 	started := false
 	keepSession := false
 	previousSession := a.getSession(session.AgentSessionID)
+	startedSession := &codexAppServerSession{
+		client:          client,
+		pendingRequests: make(map[string]*pendingInteractiveRequest),
+	}
 	defer func() {
 		if !started {
-			_ = client.Close()
+			a.closeOrRetainCodexSession(session.AgentSessionID, startedSession)
 		}
 		if !keepSession {
 			if previousSession != nil {
@@ -374,12 +388,16 @@ func (*CodexAppServerAdapter) CanResume(session Session) bool {
 }
 
 func (a *CodexAppServerAdapter) HasLiveSession(session Session) bool {
-	appSession := a.getSession(session.AgentSessionID)
-	if appSession == nil || appSession.client == nil {
+	a.mu.Lock()
+	appSession := a.sessions[strings.TrimSpace(session.AgentSessionID)]
+	if appSession == nil || appSession.client == nil || appSession.releasing || appSession.releaseFailed {
+		a.mu.Unlock()
 		return false
 	}
+	client := appSession.client
+	a.mu.Unlock()
 	select {
-	case <-appSession.client.Done():
+	case <-client.Done():
 		return false
 	default:
 		return true
@@ -427,9 +445,19 @@ func (a *CodexAppServerAdapter) DisconnectLiveSession(_ context.Context, session
 func (a *CodexAppServerAdapter) closeLiveSession(agentSessionID string) error {
 	a.mu.Lock()
 	appSession := a.sessions[agentSessionID]
+	if appSession != nil && appSession.client != nil {
+		appSession.releasing = true
+		appSession.client.SetMessageHandler(nil)
+	}
 	a.mu.Unlock()
 	if appSession != nil && appSession.client != nil {
 		if err := appSession.client.Close(); err != nil {
+			a.mu.Lock()
+			if a.sessions[agentSessionID] == appSession {
+				appSession.releasing = false
+				appSession.releaseFailed = true
+			}
+			a.mu.Unlock()
 			return err
 		}
 		a.mu.Lock()
@@ -594,7 +622,10 @@ func (a *CodexAppServerAdapter) startClientPrepared(
 	started := false
 	defer func() {
 		if !started {
-			_ = client.Close()
+			a.closeOrRetainCodexSession(session.AgentSessionID, &codexAppServerSession{
+				client:          client,
+				pendingRequests: make(map[string]*pendingInteractiveRequest),
+			})
 		}
 	}()
 	captureOrigin := processCassetteCaptureOrigin(conn)

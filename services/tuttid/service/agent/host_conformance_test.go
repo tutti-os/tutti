@@ -66,6 +66,23 @@ func TestHostWorkspaceRuntimeDisconnectConformance(t *testing.T) {
 	}
 }
 
+func TestHostWorkspaceRuntimeAdmissionConformance(t *testing.T) {
+	for _, scenario := range hostconformance.WorkspaceRuntimeAdmissionScenarios() {
+		scenario := scenario
+		t.Run(scenario.Name, func(t *testing.T) {
+			driver := &legacyHostConformanceDriver{t: t, directHost: true}
+			if err := driver.Reset(context.Background(), hostconformance.Fixture{}); err != nil {
+				t.Fatal(err)
+			}
+			if err := hostconformance.RunWorkspaceRuntimeAdmission(
+				context.Background(), driver, scenario,
+			); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}
+
 func TestHostHistoricalStateConformance(t *testing.T) {
 	for _, scenario := range hostconformance.HistoricalStateScenarios() {
 		scenario := scenario
@@ -725,6 +742,21 @@ func (d *legacyHostConformanceDriver) DisconnectWorkspaceRuntime(
 	workspaceID string,
 ) (agenthost.DisconnectWorkspaceRuntimeResult, error) {
 	return d.service.ApplicationHost().DisconnectWorkspaceRuntime(ctx, workspaceID)
+}
+
+func (d *legacyHostConformanceDriver) WithWorkspaceRuntimeOperation(
+	ctx context.Context,
+	workspaceID string,
+	fn func(context.Context) error,
+) error {
+	return d.service.ApplicationHost().WithWorkspaceRuntimeOperation(ctx, workspaceID, fn)
+}
+
+func (d *legacyHostConformanceDriver) AcquireWorkspaceRuntimeDisconnectFence(
+	ctx context.Context,
+	workspaceID string,
+) (hostconformance.WorkspaceRuntimeDisconnectFenceDriver, error) {
+	return d.service.ApplicationHost().AcquireWorkspaceRuntimeDisconnectFence(ctx, workspaceID)
 }
 
 func (d *legacyHostConformanceDriver) Create(

@@ -129,6 +129,31 @@ func TestWorkspaceRuntimeDisconnectFencesResumeBeforeSessionActor(t *testing.T) 
 	}
 }
 
+func TestDurableWorkspaceRuntimeDisconnectFenceRunsSweepWithExclusiveContext(t *testing.T) {
+	t.Parallel()
+	runtime := &workspaceDisconnectRuntime{
+		sessions:     []ProviderRuntimeSession{{ID: "session-1", WorkspaceID: "workspace-1"}},
+		disconnected: make(map[string]bool),
+	}
+	host := New(Config{Runtime: runtime})
+	fence, err := host.AcquireWorkspaceRuntimeDisconnectFence(t.Context(), "workspace-1")
+	if err != nil {
+		t.Fatalf("AcquireWorkspaceRuntimeDisconnectFence: %v", err)
+	}
+	defer fence.Release()
+	disconnectCtx, err := fence.Wait(t.Context())
+	if err != nil {
+		t.Fatalf("Wait: %v", err)
+	}
+	result, err := host.DisconnectWorkspaceRuntime(disconnectCtx, "workspace-1")
+	if err != nil {
+		t.Fatalf("DisconnectWorkspaceRuntime: %v", err)
+	}
+	if result.Scanned != 1 || result.Disconnected != 1 || !runtime.disconnected["session-1"] {
+		t.Fatalf("disconnect result/state = %#v/%v", result, runtime.disconnected)
+	}
+}
+
 func TestReentrantAttachmentCleanupDoesNotDisconnectNewConnectionAfterOperationLeaves(t *testing.T) {
 	t.Parallel()
 	runtime := &workspaceDisconnectRuntime{
@@ -158,6 +183,44 @@ func TestReentrantAttachmentCleanupDoesNotDisconnectNewConnectionAfterOperationL
 	}
 	if len(runtime.targetCalls) != 1 || len(runtime.calls) != 0 || runtime.disconnected["session-1"] {
 		t.Fatalf("deferred target/broad calls/state = %v/%v/%v", runtime.targetCalls, runtime.calls, runtime.disconnected)
+	}
+}
+
+func TestReentrantDeferredDisconnectPanicDoesNotStrandWorkspaceAdmission(t *testing.T) {
+	t.Parallel()
+	host := New(Config{Runtime: &workspaceDisconnectRuntime{
+		sessions:     []ProviderRuntimeSession{{ID: "session-1", WorkspaceID: "workspace-1"}},
+		disconnected: make(map[string]bool),
+	}})
+	secondRan := false
+	func() {
+		defer func() {
+			if recovered := recover(); recovered == nil {
+				t.Fatal("deferred disconnect panic was swallowed")
+			}
+		}()
+		_ = host.withWorkspaceRuntimeOperation(t.Context(), "workspace-1", func(_ context.Context) error {
+			host.workspaceRuntimeAdmission.deferDisconnect("workspace-1", func(context.Context) {
+				panic("injected deferred disconnect panic")
+			})
+			host.workspaceRuntimeAdmission.deferDisconnect("workspace-1", func(context.Context) {
+				secondRan = true
+			})
+			return nil
+		})
+	}()
+	if secondRan {
+		t.Fatal("deferred callback after panic ran without its predecessor completing")
+	}
+	entered := false
+	if err := host.withWorkspaceRuntimeOperation(t.Context(), "workspace-1", func(context.Context) error {
+		entered = true
+		return nil
+	}); err != nil {
+		t.Fatalf("runtime operation after recovered panic: %v", err)
+	}
+	if !entered {
+		t.Fatal("runtime operation did not enter after recovered panic")
 	}
 }
 

@@ -8,6 +8,7 @@ import (
 )
 
 var errWorkspaceRuntimeDisconnectReentrant = errors.New("workspace runtime disconnect requested by an admitted operation")
+var errWorkspaceRuntimeDisconnectFenceReleased = errors.New("workspace runtime disconnect fence is released")
 
 type workspaceRuntimeAdmission struct {
 	mu     sync.Mutex
@@ -18,8 +19,24 @@ type workspaceRuntimeAdmissionState struct {
 	changed       chan struct{}
 	operations    int
 	disconnecting bool
+	disconnectors int
+	exclusive     bool
 	refs          int
 	deferred      []func(context.Context)
+}
+
+// WorkspaceRuntimeDisconnectFence closes Workspace runtime admission as soon
+// as it is acquired. Wait may be retried with a new context without reopening
+// admission; Release is idempotent and reopens admission only after every
+// joined owner has released its fence.
+type WorkspaceRuntimeDisconnectFence struct {
+	gate        *workspaceRuntimeAdmission
+	workspaceID string
+	state       *workspaceRuntimeAdmissionState
+
+	mu        sync.Mutex
+	released  bool
+	exclusive bool
 }
 
 type workspaceRuntimeAdmissionContext struct {
@@ -42,6 +59,9 @@ func (g *workspaceRuntimeAdmission) enterOperation(
 	workspaceID = strings.TrimSpace(workspaceID)
 	if g == nil || workspaceID == "" {
 		return ctx, func() {}, ErrInvalidArgument
+	}
+	if err := ctx.Err(); err != nil {
+		return ctx, func() {}, err
 	}
 	if admission, ok := ctx.Value(workspaceRuntimeAdmissionContextKey{}).(workspaceRuntimeAdmissionContext); ok &&
 		admission.gate == g && admission.workspaceID == workspaceID {
@@ -88,55 +108,119 @@ func (g *workspaceRuntimeAdmission) beginDisconnect(
 		}
 		return ctx, func() {}, errWorkspaceRuntimeDisconnectReentrant
 	}
+	fence, err := g.acquireDisconnectFence(ctx, workspaceID)
+	if err != nil {
+		return ctx, func() {}, err
+	}
+	disconnectCtx, err := fence.Wait(ctx)
+	if err != nil {
+		fence.Release()
+		return ctx, func() {}, err
+	}
+	return disconnectCtx, fence.Release, nil
+}
+
+func (g *workspaceRuntimeAdmission) acquireDisconnectFence(
+	ctx context.Context,
+	workspaceID string,
+) (*WorkspaceRuntimeDisconnectFence, error) {
+	workspaceID = strings.TrimSpace(workspaceID)
+	if g == nil || workspaceID == "" {
+		return nil, ErrInvalidArgument
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if admission, ok := ctx.Value(workspaceRuntimeAdmissionContextKey{}).(workspaceRuntimeAdmissionContext); ok &&
+		admission.gate == g && admission.workspaceID == workspaceID {
+		return nil, errWorkspaceRuntimeDisconnectReentrant
+	}
+	g.mu.Lock()
+	state := g.stateLocked(workspaceID)
+	state.disconnectors++
+	if !state.disconnecting {
+		state.disconnecting = true
+		g.notifyLocked(state)
+	}
+	g.mu.Unlock()
+	return &WorkspaceRuntimeDisconnectFence{gate: g, workspaceID: workspaceID, state: state}, nil
+}
+
+// Wait drains already-admitted operations and grants one exclusive disconnect
+// scope. A canceled wait leaves the fence and admission closure intact so the
+// owner can retry without admitting a runtime mutation in between.
+func (f *WorkspaceRuntimeDisconnectFence) Wait(ctx context.Context) (context.Context, error) {
+	if f == nil || f.gate == nil || f.state == nil {
+		return ctx, ErrInvalidArgument
+	}
+	if err := ctx.Err(); err != nil {
+		return ctx, err
+	}
+	f.mu.Lock()
+	if f.released {
+		f.mu.Unlock()
+		return ctx, errWorkspaceRuntimeDisconnectFenceReleased
+	}
+	if f.exclusive {
+		f.mu.Unlock()
+		return context.WithValue(ctx, workspaceRuntimeAdmissionContextKey{}, workspaceRuntimeAdmissionContext{
+			gate: f.gate, workspaceID: f.workspaceID, exclusive: true,
+		}), nil
+	}
+	f.mu.Unlock()
 	for {
-		g.mu.Lock()
-		state := g.stateLocked(workspaceID)
-		if !state.disconnecting {
-			state.disconnecting = true
-			g.notifyLocked(state)
-			g.mu.Unlock()
-			if err := g.waitForOperations(ctx, workspaceID, state); err != nil {
-				g.endDisconnect(workspaceID, state)
-				return ctx, func() {}, err
+		f.gate.mu.Lock()
+		if f.state.operations == 0 && !f.state.exclusive {
+			f.mu.Lock()
+			if f.released {
+				f.mu.Unlock()
+				f.gate.mu.Unlock()
+				return ctx, errWorkspaceRuntimeDisconnectFenceReleased
 			}
-			disconnectCtx := context.WithValue(ctx, workspaceRuntimeAdmissionContextKey{}, workspaceRuntimeAdmissionContext{
-				gate: g, workspaceID: workspaceID, exclusive: true,
-			})
-			var once sync.Once
-			return disconnectCtx, func() {
-				once.Do(func() { g.endDisconnect(workspaceID, state) })
-			}, nil
+			f.state.exclusive = true
+			f.exclusive = true
+			f.mu.Unlock()
+			f.gate.mu.Unlock()
+			return context.WithValue(ctx, workspaceRuntimeAdmissionContextKey{}, workspaceRuntimeAdmissionContext{
+				gate: f.gate, workspaceID: f.workspaceID, exclusive: true,
+			}), nil
 		}
-		changed := state.changed
-		g.mu.Unlock()
+		changed := f.state.changed
+		f.gate.mu.Unlock()
 		select {
 		case <-ctx.Done():
-			g.releaseReference(workspaceID, state)
-			return ctx, func() {}, ctx.Err()
+			return ctx, ctx.Err()
 		case <-changed:
-			g.releaseReference(workspaceID, state)
 		}
 	}
 }
 
-func (g *workspaceRuntimeAdmission) waitForOperations(ctx context.Context, workspaceID string, state *workspaceRuntimeAdmissionState) error {
-	for {
-		g.mu.Lock()
-		if state.operations == 0 {
-			g.mu.Unlock()
-			return nil
-		}
-		changed := state.changed
-		state.refs++
-		g.mu.Unlock()
-		select {
-		case <-ctx.Done():
-			g.releaseReference(workspaceID, state)
-			return ctx.Err()
-		case <-changed:
-			g.releaseReference(workspaceID, state)
-		}
+// Release relinquishes this caller's fence ownership. Admission remains closed
+// while another joined owner exists.
+func (f *WorkspaceRuntimeDisconnectFence) Release() {
+	if f == nil || f.gate == nil || f.state == nil {
+		return
 	}
+	f.gate.mu.Lock()
+	f.mu.Lock()
+	if f.released {
+		f.mu.Unlock()
+		f.gate.mu.Unlock()
+		return
+	}
+	f.released = true
+	if f.exclusive {
+		f.state.exclusive = false
+		f.exclusive = false
+	}
+	f.state.disconnectors--
+	if f.state.disconnectors == 0 && len(f.state.deferred) == 0 {
+		f.state.disconnecting = false
+	}
+	f.gate.notifyLocked(f.state)
+	f.gate.releaseReferenceLocked(f.workspaceID, f.state)
+	f.mu.Unlock()
+	f.gate.mu.Unlock()
 }
 
 func (g *workspaceRuntimeAdmission) stateLocked(workspaceID string) *workspaceRuntimeAdmissionState {
@@ -157,6 +241,7 @@ func (g *workspaceRuntimeAdmission) leaveOperation(workspaceID string, state *wo
 	if state.operations == 0 && len(state.deferred) > 0 {
 		deferred = append(deferred, state.deferred...)
 		state.deferred = nil
+		state.exclusive = true
 	}
 	if len(deferred) == 0 {
 		g.releaseReferenceLocked(workspaceID, state)
@@ -168,10 +253,13 @@ func (g *workspaceRuntimeAdmission) leaveOperation(workspaceID string, state *wo
 	disconnectCtx := context.WithValue(context.Background(), workspaceRuntimeAdmissionContextKey{}, workspaceRuntimeAdmissionContext{
 		gate: g, workspaceID: workspaceID, exclusive: true,
 	})
+	// The deferred sweep is best-effort and ordered. If a callback panics,
+	// propagate the panic but always reopen admission; callbacks after the
+	// panicking callback are not run because their ordering may depend on it.
+	defer g.finishDeferredDisconnect(workspaceID, state)
 	for _, disconnect := range deferred {
 		disconnect(disconnectCtx)
 	}
-	g.endDisconnect(workspaceID, state)
 }
 
 func (g *workspaceRuntimeAdmission) deferDisconnect(
@@ -190,9 +278,12 @@ func (g *workspaceRuntimeAdmission) deferDisconnect(
 	g.mu.Unlock()
 }
 
-func (g *workspaceRuntimeAdmission) endDisconnect(workspaceID string, state *workspaceRuntimeAdmissionState) {
+func (g *workspaceRuntimeAdmission) finishDeferredDisconnect(workspaceID string, state *workspaceRuntimeAdmissionState) {
 	g.mu.Lock()
-	state.disconnecting = false
+	state.exclusive = false
+	if state.disconnectors == 0 {
+		state.disconnecting = false
+	}
 	g.notifyLocked(state)
 	g.releaseReferenceLocked(workspaceID, state)
 	g.mu.Unlock()
@@ -230,6 +321,31 @@ func (h *Host) withWorkspaceRuntimeOperation(
 	}
 	defer release()
 	return fn(operationCtx)
+}
+
+// WithWorkspaceRuntimeOperation runs one caller-owned runtime mutation under
+// Host's Workspace admission. The admitted context is reentrant for Host
+// lifecycle calls in the callback and must cover the complete mutation,
+// including its cleanup.
+func (h *Host) WithWorkspaceRuntimeOperation(
+	ctx context.Context,
+	workspaceID string,
+	fn func(context.Context) error,
+) error {
+	return h.withWorkspaceRuntimeOperation(ctx, workspaceID, fn)
+}
+
+// AcquireWorkspaceRuntimeDisconnectFence synchronously prevents new runtime
+// mutations in one Workspace. Its Wait may be retried after cancellation; the
+// caller must always Release the returned fence.
+func (h *Host) AcquireWorkspaceRuntimeDisconnectFence(
+	ctx context.Context,
+	workspaceID string,
+) (*WorkspaceRuntimeDisconnectFence, error) {
+	if h == nil || h.workspaceRuntimeAdmission == nil {
+		return nil, ErrInvalidArgument
+	}
+	return h.workspaceRuntimeAdmission.acquireDisconnectFence(ctx, workspaceID)
 }
 
 // BeginWorkspaceRuntimeDisconnect prevents new runtime mutations in one

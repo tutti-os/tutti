@@ -4877,11 +4877,11 @@ agent target`, although the current model picker does not offer that model.
   unsupported explicit selection separately with generic extension fixtures.
   Inject a `session/set_model` rejection into the standard ACP transport test.
 
-### Standard ACP send is stopped while an earlier process is still exiting
+### Agent send is stopped while an earlier provider process is still exiting
 
 - Symptom:
-  After an idle Standard ACP session is released, the next message may reconnect
-  once, but a later Start/Resume returns
+  After an idle Standard ACP, Codex, Tutti Agent, or Claude session is released,
+  the next message may reconnect once, but a later Start/Resume returns
   `workspace_operation_failed` with reason
   `agent.process_cleanup_pending`. The message does not reach the provider; in
   AgentGUI the submitted draft is restored and a localized retry message is
@@ -4897,8 +4897,11 @@ agent target`, although the current model picker does not offer that model.
   allowing its late inbound handler to remain active can also attribute old
   output or approval requests to the replacement Turn.
 - Fix:
-  Keep failed and replaced clients under adapter ownership, quarantine their
-  message handlers, and retry at most one failed Close budget per adapter sweep.
+  Keep failed and replaced clients under their adapter's ownership, quarantine
+  their message handlers, and retry at most one failed Close budget per adapter
+  sweep. Codex and Tutti Agent mark a close-failed current client unusable;
+  Claude also rejects every late event whose physical connection is no longer
+  the current Session generation.
   Once a failed handle is retired, Start/Resume performs one bounded cleanup
   attempt and refuses to spawn another process while cleanup remains pending.
   Preserve the stable reason through the Host/API boundary so AgentGUI can
@@ -4912,6 +4915,8 @@ agent target`, although the current model picker does not offer that model.
 - References:
   [standard_acp_session.go](../../../packages/agent/daemon/runtime/standard_acp_session.go)
   [standard_acp_resource_ownership.go](../../../packages/agent/daemon/runtime/standard_acp_resource_ownership.go)
+  [codex_appserver_resource_ownership.go](../../../packages/agent/daemon/runtime/codex_appserver_resource_ownership.go)
+  [claude_sdk_resource_ownership.go](../../../packages/agent/daemon/runtime/claude_sdk_resource_ownership.go)
   [AgentGUIEngineSettlementController.ts](../../../packages/agent/gui/agent-gui/agentGuiNode/controller/AgentGUIEngineSettlementController.ts)
 
 ### Codex rejects `turn/start` with `AbsolutePathBuf deserialized without a base path`

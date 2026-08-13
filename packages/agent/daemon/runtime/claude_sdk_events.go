@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"log/slog"
-	"sort"
 	"strings"
 
 	activityshared "github.com/tutti-os/tutti/packages/agent/daemon/activity/events"
@@ -705,8 +704,14 @@ func (a *ClaudeCodeSDKAdapter) failClaudeSDKReaderWithOwnership(
 	if a == nil || adapterSession == nil {
 		return
 	}
-	a.markSessionInvalid(adapterSession)
+	// Reader failure and replacement share the exact-session commit axis.
+	// Whichever owns dispatchMu first fully commits; the other observes that
+	// generation boundary instead of publishing a mixed old/new timeline.
+	adapterSession.dispatchMu.Lock()
+	defer adapterSession.dispatchMu.Unlock()
 	a.mu.Lock()
+	ownsCurrentSession := a.sessions[agentSessionID] == adapterSession
+	adapterSession.invalid = true
 	turns := make([]*claudeSDKTurnWaiter, 0, len(adapterSession.turns))
 	for turnID, waiter := range adapterSession.turns {
 		turns = append(turns, waiter)
@@ -727,25 +732,34 @@ func (a *ClaudeCodeSDKAdapter) failClaudeSDKReaderWithOwnership(
 	// also be resolved explicitly. Otherwise the pending approval bookkeeping
 	// is discarded silently with the session and the GUI is left without a
 	// terminal explanation.
-	session := a.claudeSDKSessionSnapshot(adapterSession)
-	if strings.TrimSpace(session.AgentSessionID) == "" {
-		session.AgentSessionID = agentSessionID
+	var pendingFailureEvents []activityshared.Event
+	if ownsCurrentSession {
+		session := a.claudeSDKSessionSnapshot(adapterSession)
+		if strings.TrimSpace(session.AgentSessionID) == "" {
+			session.AgentSessionID = agentSessionID
+		}
+		pendingFailureEvents = a.claudeSDKPendingRequestFailureEvents(adapterSession, session, "", err)
+		pendingFailureEvents = append(pendingFailureEvents, a.finishAllClaudeSDKTurnLifecycles(
+			adapterSession,
+			session,
+			claudeSDKTurnFinishFailed,
+			err.Error(),
+		)...)
+		pendingFailureEvents = append(
+			pendingFailureEvents,
+			a.failAllClaudeSDKRootProviderTurns(adapterSession, session, err)...,
+		)
 	}
-	pendingFailureEvents := a.claudeSDKPendingRequestFailureEvents(adapterSession, session, "", err)
-	pendingFailureEvents = append(pendingFailureEvents, a.finishAllClaudeSDKTurnLifecycles(
-		adapterSession,
-		session,
-		claudeSDKTurnFinishFailed,
-		err.Error(),
-	)...)
-	pendingFailureEvents = append(
-		pendingFailureEvents,
-		a.failAllClaudeSDKRootProviderTurns(adapterSession, session, err)...,
-	)
 	if !retainSession {
-		a.removeSession(agentSessionID, adapterSession)
+		a.mu.Lock()
+		if a.sessions[agentSessionID] == adapterSession {
+			delete(a.sessions, agentSessionID)
+		}
+		a.mu.Unlock()
 	}
-	a.emitClaudeSDKSessionEvents(agentSessionID, pendingFailureEvents)
+	if ownsCurrentSession {
+		a.emitClaudeSDKSessionEvents(agentSessionID, pendingFailureEvents)
+	}
 	for _, waiter := range turns {
 		waiter.mu.Lock()
 		if waiter.completed {
@@ -763,44 +777,4 @@ func (a *ClaudeCodeSDKAdapter) failClaudeSDKReaderWithOwnership(
 	for _, response := range responses {
 		response <- claudeSDKSidecarEvent{Type: "error", Payload: map[string]any{"error": err.Error(), "transport": true}}
 	}
-}
-
-func (a *ClaudeCodeSDKAdapter) failAllClaudeSDKRootProviderTurns(
-	adapterSession *claudeSDKAdapterSession,
-	session Session,
-	err error,
-) []activityshared.Event {
-	if a == nil || adapterSession == nil {
-		return nil
-	}
-	a.mu.Lock()
-	rootTurnID := strings.TrimSpace(adapterSession.rootTurnID)
-	providerTurnIDs := make([]string, 0, len(adapterSession.rootProviderTurns))
-	for providerTurnID := range adapterSession.rootProviderTurns {
-		providerTurnID = strings.TrimSpace(providerTurnID)
-		if providerTurnID != "" {
-			providerTurnIDs = append(providerTurnIDs, providerTurnID)
-		}
-	}
-	adapterSession.rootProviderTurns = make(map[string]struct{})
-	a.mu.Unlock()
-	if rootTurnID == "" || len(providerTurnIDs) == 0 {
-		return nil
-	}
-	sort.Strings(providerTurnIDs)
-	metadata := map[string]any{"adapter": claudeSDKSidecarAdapterName}
-	if err != nil {
-		metadata["error"] = err.Error()
-	}
-	events := make([]activityshared.Event, 0, len(providerTurnIDs))
-	for _, providerTurnID := range providerTurnIDs {
-		events = append(events, claudeSDKRootProviderTurnCompletedEvent(
-			session,
-			rootTurnID,
-			providerTurnID,
-			activityshared.TurnOutcomeFailed,
-			metadata,
-		))
-	}
-	return events
 }
