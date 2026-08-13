@@ -38,6 +38,8 @@ const labels = {
   submitAnswers: "Submit answers",
   answerPlaceholder: "Add details for the agent...",
   waitingForAnswer: "Waiting for your answer...",
+  returnToConversation: "Back to conversation",
+  continueAnswering: "Continue answering",
   planImplementationLead: "Implement this plan?",
   planImplementationConfirm: "Implement plan",
   planImplementationFeedbackPlaceholder: "Adjust the plan instead...",
@@ -1377,6 +1379,111 @@ describe("AgentInteractivePromptSurface", () => {
     ).toBeTruthy();
   });
 
+  it("returns to the conversation without submitting and restores the selected answer", () => {
+    const onSubmit = vi.fn();
+    render(
+      <AgentInteractivePromptSurface
+        prompt={{
+          kind: "ask-user",
+          requestId: "request-return-to-conversation",
+          title: "One question",
+          questions: [
+            {
+              id: "scope",
+              header: "Scope",
+              question: "Which scope should we use?",
+              options: [
+                {
+                  id: "small",
+                  label: "Small",
+                  description: "Minimal change"
+                }
+              ],
+              multiSelect: true
+            }
+          ]
+        }}
+        isSubmitting={false}
+        onSubmit={onSubmit}
+        labels={labels}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /Small/ }));
+    expect(screen.queryByPlaceholderText(labels.answerPlaceholder)).toBeNull();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: labels.returnToConversation })
+    );
+
+    expect(onSubmit).not.toHaveBeenCalled();
+    expect(
+      screen.getByTestId(
+        "agent-question-request-return-to-conversation-collapsed"
+      )
+    ).toBeTruthy();
+    expect(screen.queryByPlaceholderText(labels.answerPlaceholder)).toBeNull();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: labels.continueAnswering })
+    );
+
+    expect(screen.getByRole("button", { name: /Small/ })).toHaveAttribute(
+      "aria-pressed",
+      "true"
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: labels.submitAnswers }));
+    expect(onSubmit).toHaveBeenCalledWith({
+      requestId: "request-return-to-conversation",
+      action: "submit",
+      payload: {
+        answers: ["Small"],
+        answersByQuestionId: {
+          scope: ["Small"]
+        }
+      }
+    });
+  });
+
+  it("can return to the conversation when provider interaction controls are disabled", () => {
+    const onSubmit = vi.fn();
+    render(
+      <AgentInteractivePromptSurface
+        prompt={{
+          kind: "ask-user",
+          requestId: "request-disabled-return",
+          title: "One question",
+          questions: [
+            {
+              id: "scope",
+              header: "Scope",
+              question: "Which scope should we use?",
+              options: [{ id: "small", label: "Small", description: "" }],
+              multiSelect: false
+            }
+          ]
+        }}
+        isSubmitting={false}
+        isInteractionDisabled
+        interactionDisabledReason="Provider connection is unavailable"
+        onSubmit={onSubmit}
+        labels={labels}
+      />
+    );
+
+    const returnToConversation = screen.getByRole("button", {
+      name: labels.returnToConversation
+    });
+    expect(returnToConversation).toBeEnabled();
+    fireEvent.click(returnToConversation);
+
+    expect(onSubmit).not.toHaveBeenCalled();
+    expect(
+      screen.getByTestId("agent-question-request-disabled-return-collapsed")
+    ).toBeTruthy();
+  });
+
   it("collects answers for ask-user prompts before submission", () => {
     const onSubmit = vi.fn();
     render(
@@ -1555,6 +1662,9 @@ describe("AgentInteractivePromptSurface", () => {
     expect(screen.queryByPlaceholderText(labels.answerPlaceholder)).toBeNull();
     expect(
       screen.queryByRole("button", { name: labels.submitAnswers })
+    ).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: labels.returnToConversation })
     ).toBeNull();
   });
 

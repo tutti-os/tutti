@@ -2,8 +2,11 @@
 
 import type {
   AgentActivityComposerOptions,
+  AgentActivityGoalControlAction,
   AgentActivitySlashCommandPolicy
 } from "@tutti-os/agent-activity-core";
+import { parseAgentActivityGoalControlText } from "@tutti-os/agent-activity-core";
+import type { AgentPromptContentBlock } from "../../../shared/contracts/dto";
 import type {
   AgentSessionComposerSettings,
   AgentSessionPermissionConfig,
@@ -22,6 +25,17 @@ import { normalizeOptionalText } from "./agentGuiController.promptHelpers";
 
 export function normalizeConfigOptionValue(value: unknown): string | null {
   return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+export function typedGoalControlFromComposer(
+  content: AgentPromptContentBlock[],
+  _displayPrompt?: string
+): { action: AgentActivityGoalControlAction; objective?: string } | null {
+  if (content.length !== 1 || content[0]?.type !== "text") {
+    return null;
+  }
+  // Presentation-only displayPrompt must not hide or manufacture a control.
+  return parseAgentActivityGoalControlText(content[0].text ?? "");
 }
 
 export function composerSettingOptionsFromActivity(

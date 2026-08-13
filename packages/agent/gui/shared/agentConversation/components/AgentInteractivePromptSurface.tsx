@@ -49,6 +49,8 @@ export interface AgentInteractivePromptSurfaceProps {
     submitAnswers: string;
     answerPlaceholder: string;
     waitingForAnswer: string;
+    returnToConversation: string;
+    continueAnswering: string;
     planImplementationLead: string;
     planImplementationConfirm: string;
     planImplementationFeedbackPlaceholder: string;

@@ -1,4 +1,4 @@
-import type { JSX } from "react";
+import { useState, type JSX } from "react";
 import { Button } from "@tutti-os/ui-system";
 import { MessageSquareMoreIcon } from "../../../app/renderer/components/icons/MessageSquareMoreIcon";
 import styles from "../../../agent-gui/agentGuiNode/AgentGUIConversation.styles";
@@ -57,6 +57,7 @@ export function AgentAskUserPromptSurface({
       key={prompt.requestId}
       {...props}
       prompt={prompt}
+      allowReturnToConversation={variant === "full"}
     />
   );
 }
@@ -138,14 +139,18 @@ function CompactQuickAnswerSurface({
 
 function AskUserAnswerFlowSurface({
   prompt,
+  allowReturnToConversation,
   embedded = false,
   edgeGlow = false,
   isSubmitting,
   isInteractionDisabled = false,
   onSubmit,
   labels
-}: SharedAskUserSurfaceProps): JSX.Element {
+}: SharedAskUserSurfaceProps & {
+  allowReturnToConversation: boolean;
+}): JSX.Element {
   "use memo";
+  const [collapsed, setCollapsed] = useState(false);
   const flow = useAskUserAnswerFlow({
     isSubmitting: isSubmitting || isInteractionDisabled,
     questions: prompt.questions
@@ -167,6 +172,34 @@ function AskUserAnswerFlowSurface({
             />
             {stripPromptTitlePunctuation(labels.waitingForAnswer)}
           </div>
+        </div>
+      </section>
+    );
+  }
+
+  if (collapsed) {
+    return (
+      <section
+        className={interactivePromptClassName(embedded)}
+        data-agent-interaction-id={prompt.requestId}
+        data-agent-interaction-kind="ask-user"
+        data-testid={`agent-question-${prompt.requestId}-collapsed`}
+      >
+        <div
+          className={`${interactivePromptCardClassName(edgeGlow)} ${styles.interactivePromptCollapsed}`}
+        >
+          <span className={styles.interactivePromptLead} role="status">
+            {stripPromptTitlePunctuation(labels.waitingForAnswer)}
+          </span>
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            disabled={isSubmitting}
+            onClick={() => setCollapsed(false)}
+          >
+            {labels.continueAnswering}
+          </Button>
         </div>
       </section>
     );
@@ -231,7 +264,8 @@ function AskUserAnswerFlowSurface({
             })}
           </div>
         ) : null}
-        {question.allowFreeText !== false ? (
+        {question.allowFreeText !== false &&
+        (!allowReturnToConversation || question.options.length === 0) ? (
           <textarea
             value={flow.freeText}
             placeholder={labels.answerPlaceholder}
@@ -242,6 +276,17 @@ function AskUserAnswerFlowSurface({
           />
         ) : null}
         <div className={styles.interactivePromptActions}>
+          {allowReturnToConversation ? (
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              disabled={isSubmitting}
+              onClick={() => setCollapsed(true)}
+            >
+              {labels.returnToConversation}
+            </Button>
+          ) : null}
           {prompt.questions.length > 1 ? (
             <Button
               type="button"

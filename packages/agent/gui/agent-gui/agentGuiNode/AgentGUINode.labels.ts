@@ -527,6 +527,8 @@ export function useAgentGUIViewLabels(input: {
       submitAnswers: t("agentHost.agentGui.submitAnswers"),
       answerPlaceholder: t("agentHost.agentGui.answerPlaceholder"),
       waitingForAnswer: t("agentHost.agentGui.waitingForAnswer"),
+      returnToConversation: t("agentHost.agentGui.returnToConversation"),
+      continueAnswering: t("agentHost.agentGui.continueAnswering"),
       thinkingLabel: t("agentHost.workspaceAgentSessionDetailThinking"),
       toolCallsLabel: (count: number) =>
         t("agentHost.workspaceAgentSessionDetailToolCalls", { count }),

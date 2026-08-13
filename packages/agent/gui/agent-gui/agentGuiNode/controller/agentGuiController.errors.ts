@@ -1,3 +1,7 @@
+import type {
+  PendingSubmitIntentRecord,
+  SessionGoalControlSettlement
+} from "@tutti-os/agent-activity-core";
 import { translate } from "../../../i18n/index";
 import type { AppErrorCode } from "../../../shared/contracts/dto";
 import { getAppErrorCode } from "../../../shared/errors/appError";
@@ -21,6 +25,35 @@ export const AGENT_PROVIDER_SESSION_NOT_FOUND_FALLBACK_MESSAGE =
 export const AGENT_RESUME_SESSION_NOT_LOCAL_FALLBACK_MESSAGE =
   "The previous agent session is not available on this machine.";
 export const AGENT_GUI_CAUGHT_ERROR_STACK_LIMIT = 4000;
+
+export function goalControlSettlementError(
+  settlement: SessionGoalControlSettlement
+): Error {
+  const error = new Error(settlement.errorMessage ?? "") as Error & {
+    code?: string;
+    reason?: string;
+  };
+  if (settlement.errorCode) error.code = settlement.errorCode;
+  if (settlement.errorReason) error.reason = settlement.errorReason;
+  return error;
+}
+
+export function agentGUISubmitSettlementError(
+  submit: Pick<
+    PendingSubmitIntentRecord,
+    "errorCode" | "errorMessage" | "errorReason"
+  >
+): Error {
+  return Object.assign(
+    new Error(
+      submit.errorMessage?.trim() || translate("agentHost.agentGui.sendFailed")
+    ),
+    {
+      ...(submit.errorCode ? { code: submit.errorCode } : {}),
+      ...(submit.errorReason ? { reason: submit.errorReason } : {})
+    }
+  );
+}
 
 export function normalizeAgentGUIDiagnosticError(
   error: unknown

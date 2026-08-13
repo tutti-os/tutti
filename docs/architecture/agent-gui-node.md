@@ -2800,6 +2800,21 @@ canonical Interaction(pending)
 
 Every surface shares the exact interaction identity
 `(workspaceId, agentSessionId, turnId, requestId)` and submitting state.
+Collapsing an ask-user surface back into the conversation is presentation-only:
+the canonical Interaction remains `pending`, no response or cancellation is
+dispatched, and the mounted answer flow retains its in-memory draft for that
+surface. The collapsed surface keeps a visible resume affordance. In the full
+conversation surface, a question with structured options does not add a second
+free-text answer field; users give a new direction through the ordinary
+composer instead. When the active root Turn is waiting on exactly one pending
+question whose normalized fields all accept free text, a text-only ordinary
+composer submit is converted to the canonical answer payload and sent through
+the existing Engine Interaction response operation for that exact Turn and
+request. This resolves the provider's pending request so the same Turn can
+continue; it does not cancel the Turn, enqueue a second prompt, or branch on
+provider names. The composer draft clears only after Engine admits the response
+and is restored if the response later fails. Fixed-choice questions and
+non-text composer content remain on their existing paths.
 Provider request ids remain unchanged and may repeat across Turns; no adapter
 may recover a missing Turn by scanning for a session-wide request-id match.
 An optional Host interaction-readiness capability may block an owner-dependent

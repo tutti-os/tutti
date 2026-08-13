@@ -334,6 +334,8 @@ export function AgentComposerView(input: Props): React.JSX.Element {
               submitAnswers: labels.submitAnswers,
               answerPlaceholder: labels.answerPlaceholder,
               waitingForAnswer: labels.waitingForAnswer,
+              returnToConversation: labels.returnToConversation,
+              continueAnswering: labels.continueAnswering,
               planImplementationLead: labels.planImplementationLead,
               planImplementationConfirm: labels.planImplementationConfirm,
               planImplementationFeedbackPlaceholder:

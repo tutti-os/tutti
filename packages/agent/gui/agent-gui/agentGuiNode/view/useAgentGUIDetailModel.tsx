@@ -347,6 +347,8 @@ export function useAgentGUIDetailModel(input: Input) {
       submitAnswers: labels.submitAnswers,
       answerPlaceholder: labels.answerPlaceholder,
       waitingForAnswer: labels.waitingForAnswer,
+      returnToConversation: labels.returnToConversation,
+      continueAnswering: labels.continueAnswering,
       planImplementationLead: labels.planImplementationLead,
       planImplementationConfirm: labels.planImplementationConfirm,
       planImplementationFeedbackPlaceholder:
@@ -357,12 +359,14 @@ export function useAgentGUIDetailModel(input: Input) {
     [
       labels.answerPlaceholder,
       labels.approvalRequired,
+      labels.continueAnswering,
       labels.fileChangeApprovalRequired,
       labels.feedbackPlaceholder,
       labels.nextQuestion,
       labels.planLead,
       labels.planModes,
       labels.previousQuestion,
+      labels.returnToConversation,
       labels.sendFeedback,
       labels.stayInPlan,
       labels.submitAnswers,

@@ -294,6 +294,8 @@ export interface AgentGUIViewLabels extends AgentGUIProviderReadinessLabels {
   submitAnswers: string;
   answerPlaceholder: string;
   waitingForAnswer: string;
+  returnToConversation: string;
+  continueAnswering: string;
   thinkingLabel: string;
   toolCallsLabel: (count: number) => string;
   openConversationWindow: string;
@@ -473,6 +475,8 @@ export type InteractivePromptLabels = {
   submitAnswers: string;
   answerPlaceholder: string;
   waitingForAnswer: string;
+  returnToConversation: string;
+  continueAnswering: string;
   planImplementationLead: string;
   planImplementationConfirm: string;
   planImplementationFeedbackPlaceholder: string;
