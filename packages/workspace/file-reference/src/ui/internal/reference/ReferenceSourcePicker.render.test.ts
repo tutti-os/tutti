@@ -536,6 +536,63 @@ test("reference source picker renders shared folder icons and content errors", a
     const searchBodyText = dom.window.document.body.textContent ?? "";
     assert.match(searchBodyText, /111\.md/);
     assert.doesNotMatch(searchBodyText, new RegExp(opaqueNodeId));
+
+    const stableSearchView = createFolderOnlyView(folderNode);
+    const firstSearchPage = [file("page-1", "page-1.md")];
+    const secondSearchPage = [file("page-2", "page-2.md")];
+    (
+      globalThis as { __referenceSourcePickerView?: unknown }
+    ).__referenceSourcePickerView = {
+      ...stableSearchView,
+      currentEntries: [],
+      isQuery: true,
+      searchQuery: "page",
+      searchResultCount: 1,
+      searchResultPages: [firstSearchPage]
+    };
+    await act(async () => {
+      root?.render(
+        createElement(ReferenceSourcePicker, {
+          aggregator: {},
+          copy: createCopy(),
+          onClose() {},
+          onConfirm() {},
+          open: true,
+          workspaceId: "workspace-reference-stable-pages-test"
+        } as unknown as ReferenceSourcePickerProps)
+      );
+    });
+    (
+      globalThis as { __workspaceFileEntryIconRenderCount?: number }
+    ).__workspaceFileEntryIconRenderCount = 0;
+    (
+      globalThis as { __referenceSourcePickerView?: unknown }
+    ).__referenceSourcePickerView = {
+      ...stableSearchView,
+      currentEntries: [],
+      isQuery: true,
+      searchQuery: "page",
+      searchResultCount: 2,
+      searchResultPages: [firstSearchPage, secondSearchPage]
+    };
+    await act(async () => {
+      root?.render(
+        createElement(ReferenceSourcePicker, {
+          aggregator: {},
+          copy: createCopy(),
+          onClose() {},
+          onConfirm() {},
+          open: true,
+          workspaceId: "workspace-reference-stable-pages-test"
+        } as unknown as ReferenceSourcePickerProps)
+      );
+    });
+    assert.equal(
+      (globalThis as { __workspaceFileEntryIconRenderCount?: number })
+        .__workspaceFileEntryIconRenderCount,
+      1,
+      "appending a page must not render historical search rows again"
+    );
   } finally {
     if (root) {
       await act(async () => {
@@ -694,6 +751,8 @@ function buildReferenceSourcePickerRenderModule(tempDir: string): string {
     `
       import { createElement } from "react";
       export function WorkspaceFileEntryIcon({ entry, frameClassName }) {
+        globalThis.__workspaceFileEntryIconRenderCount =
+          (globalThis.__workspaceFileEntryIconRenderCount ?? 0) + 1;
         if (entry.kind === "directory") {
           return createElement(
             "span",

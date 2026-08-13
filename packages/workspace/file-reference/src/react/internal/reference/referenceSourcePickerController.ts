@@ -67,13 +67,12 @@ export interface ReferenceSourceTabState {
   searchScopeNodeId: string | null;
   /** Cursor 页面按块保留，避免每次续页让 Valtio 重建整条历史数组。 */
   searchEntryPages: ReferenceNode[][];
+  /** 去重后实际展示的搜索结果数量。 */
+  searchResultCount: number;
   searchNextCursor: string | null;
   /** 当前查询实际采用的分页协议；结果可覆盖 source 的默认 capability。 */
   searchPagination: ReferenceSearchPagination;
-  /**
-   * 已展示结果数量(cursor 分页),或当前查询结果上限(兼容增长式分页)。
-   * 0 = 尚未发起查询;每次新查询(改关键词/筛选/分组/换源)从 SEARCH_PAGE_SIZE 开始。
-   */
+  /** 当前搜索请求的 limit；legacy 分页据此按 SEARCH_PAGE_SIZE 递增。 */
   searchLimit: number;
   /** cursor 分页以 nextCursor 为准;兼容模式以请求上限和全局上限推断。 */
   searchHasMore: boolean;
@@ -221,6 +220,7 @@ function emptyTabState(sourceId: string): ReferenceSourceTabState {
     searchFilters: [],
     searchScopeNodeId: null,
     searchEntryPages: [],
+    searchResultCount: 0,
     searchNextCursor: null,
     searchPagination: "legacy",
     searchLimit: 0,
@@ -594,6 +594,7 @@ export function createReferenceSourcePickerController(
         if (!tab) {
           return;
         }
+        tab.searchResultCount += appendedCount;
         const nextCursor = result.nextCursor ?? null;
         const requestedCursors = searchRequestedCursorsBySource.get(sourceId);
         if (nextCursor && requestedCursors?.has(nextCursor)) {
@@ -609,7 +610,6 @@ export function createReferenceSourcePickerController(
         tab.isSearchLoadingMore = false;
         tab.searchNextCursor = nextCursor;
         tab.searchPagination = resultPagination;
-        tab.searchLimit += appendedCount;
         tab.searchHasMore = Boolean(nextCursor);
         tab.searchError = null;
         snapshot = readSnapshot();
@@ -625,9 +625,10 @@ export function createReferenceSourcePickerController(
           isSearchLoading: false,
           isSearchLoadingMore: false,
           searchEntryPages: entries.length > 0 ? [valtioRef(entries)] : [],
+          searchResultCount: entries.length,
           searchNextCursor: result.nextCursor ?? null,
           searchPagination: resultPagination,
-          searchLimit: resultPagination === "cursor" ? entries.length : limit,
+          searchLimit: limit,
           // Cursor-paginated sources own continuation. Legacy sources retain
           // the growing-limit heuristic until they adopt cursor pagination.
           searchHasMore:
@@ -649,6 +650,7 @@ export function createReferenceSourcePickerController(
           ...tab,
           isSearchLoadingMore: false,
           searchEntryPages: [],
+          searchResultCount: 0,
           searchNextCursor: null,
           searchPagination: "legacy",
           searchHasMore: false,
@@ -672,7 +674,13 @@ export function createReferenceSourcePickerController(
         isSearchLoading: false,
         isSearchLoadingMore: false,
         // 加载更多失败时保留已有结果,仅新查询失败才清空。
-        ...(loadingMore ? {} : { searchEntryPages: [], searchHasMore: false }),
+        ...(loadingMore
+          ? {}
+          : {
+              searchEntryPages: [],
+              searchResultCount: 0,
+              searchHasMore: false
+            }),
         searchError: normalizeError(error, "reference search failed")
       }));
     } finally {
@@ -825,6 +833,7 @@ export function createReferenceSourcePickerController(
                 searchFilters: carriedFilters,
                 searchScopeNodeId: nextScopeNodeId,
                 searchEntryPages: [],
+                searchResultCount: 0,
                 searchHasMore: false,
                 isSearchLoading: false,
                 isSearchLoadingMore: false,
@@ -1012,6 +1021,7 @@ export function createReferenceSourcePickerController(
           ? {
               isSearchLoading: false,
               searchEntryPages: [],
+              searchResultCount: 0,
               searchError: null
             }
           : { isSearchLoading: true, searchError: null })
@@ -1048,6 +1058,7 @@ export function createReferenceSourcePickerController(
           ? {
               isSearchLoading: false,
               searchEntryPages: [],
+              searchResultCount: 0,
               searchError: null
             }
           : { isSearchLoading: true, searchError: null })
@@ -1090,6 +1101,7 @@ export function createReferenceSourcePickerController(
           : {
               isSearchLoading: false,
               searchEntryPages: [],
+              searchResultCount: 0,
               searchError: null
             })
       }));

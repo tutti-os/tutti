@@ -848,6 +848,51 @@ test("browse pagination does not opt legacy search into cursor pagination", asyn
   );
 });
 
+test("legacy search tracks the deduplicated result count instead of the request limit", async () => {
+  let responseEntries: ReferenceNode[] = [];
+  const controller = createReferenceSourcePickerController({
+    aggregator: fakeAggregator({
+      tabs: [
+        {
+          sourceId: "app-artifact",
+          label: "App artifacts",
+          capabilities: {
+            paginated: true,
+            previewable: true,
+            searchable: true
+          }
+        }
+      ],
+      children: {},
+      searchImpl: async () => ({
+        entries: responseEntries,
+        nextCursor: null
+      })
+    }),
+    scope,
+    searchDebounceMs: 0
+  });
+  controller.open();
+  await flush();
+
+  controller.setSearchQuery("missing");
+  await flush();
+  let tab = controller.getSnapshot().bySource["app-artifact"];
+  assert.equal(tab?.searchLimit, SEARCH_PAGE_SIZE);
+  assert.equal(tab?.searchResultCount, 0);
+
+  responseEntries = [
+    file("app-artifact", "/same.md"),
+    file("app-artifact", "/same.md"),
+    file("app-artifact", "/other.md")
+  ];
+  controller.setSearchQuery("present");
+  await flush();
+  tab = controller.getSnapshot().bySource["app-artifact"];
+  assert.equal(tab?.searchLimit, SEARCH_PAGE_SIZE);
+  assert.equal(tab?.searchResultCount, 2);
+});
+
 test("a search result can override cursor capability with legacy pagination", async () => {
   const searchInputs: SearchInput[] = [];
   const controller = createReferenceSourcePickerController({

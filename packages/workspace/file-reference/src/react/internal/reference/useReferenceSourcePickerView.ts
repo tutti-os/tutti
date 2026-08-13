@@ -418,7 +418,7 @@ export function useReferenceSourcePickerView({
   // Cursor 页面保持稳定分块；调用方逐块渲染，不在每次续页重新物化历史扁平数组。
   const searchResultPages = (activeTabState?.searchEntryPages ??
     []) as readonly (readonly ReferenceNode[])[];
-  const searchResultCount = activeTabState?.searchLimit ?? 0;
+  const searchResultCount = activeTabState?.searchResultCount ?? 0;
 
   // 每个源的左栏二级分组(左栏可多源同时展开,故按源全量计算):
   //  - 源自带分组(listSidebarGroups,如本地源的 最近访问/下载/文稿/桌面/个人)优先;

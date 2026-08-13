@@ -1,4 +1,5 @@
 import {
+  memo,
   useCallback,
   useEffect,
   useId,
@@ -423,7 +424,6 @@ export function ReferenceSourcePicker({
         currentEntries: view.currentEntries,
         expandedKeys: view.expandedKeys,
         focusedNode: view.focusedNode,
-        searchResultPages: view.searchResultPages,
         selection: view.selection,
         sidebarGroupsBySource: view.sidebarGroupsBySource
       }),
@@ -432,7 +432,6 @@ export function ReferenceSourcePicker({
       view.currentEntries,
       view.expandedKeys,
       view.focusedNode,
-      view.searchResultPages,
       view.selection,
       view.sidebarGroupsBySource
     ]
@@ -591,6 +590,15 @@ export function ReferenceSourcePicker({
       x: event.clientX,
       y: event.clientY
     });
+  };
+  const searchResultActionsRef = useRef<SearchResultPageActions | null>(null);
+  searchResultActionsRef.current = {
+    isSelectable: view.isSelectable,
+    onContextMenu: openReferenceContextMenu,
+    onFocus: view.setFocusedNode,
+    onOpen: view.openNode,
+    onSingleSelect: view.toggleSingleSelectionAndExpand,
+    onToggle: view.toggleSelection
   };
 
   if (!open) {
@@ -811,11 +819,11 @@ export function ReferenceSourcePicker({
                           view.searchResultPages.map((page, pageIndex) => (
                             <SearchResultPage
                               key={`${view.activeSourceId ?? "source"}:${pageIndex}`}
+                              actionsRef={searchResultActionsRef}
                               focusedNode={view.focusedNode}
-                              iconUrls={iconUrls}
                               page={page}
-                              view={view}
-                              onContextMenu={openReferenceContextMenu}
+                              resolveEntryIconUrl={resolveEntryIconUrl}
+                              selection={view.selection}
                             />
                           ))
                         )
@@ -1078,7 +1086,6 @@ export function ReferenceSourceContentPane({
         currentEntries: view.currentEntries,
         expandedKeys: view.expandedKeys,
         focusedNode: view.focusedNode,
-        searchResultPages: view.searchResultPages,
         selection: view.selection,
         sidebarGroupsBySource: view.sidebarGroupsBySource
       }),
@@ -1087,7 +1094,6 @@ export function ReferenceSourceContentPane({
       view.currentEntries,
       view.expandedKeys,
       view.focusedNode,
-      view.searchResultPages,
       view.selection,
       view.sidebarGroupsBySource
     ]
@@ -1230,6 +1236,15 @@ export function ReferenceSourceContentPane({
       y: event.clientY
     });
   };
+  const searchResultActionsRef = useRef<SearchResultPageActions | null>(null);
+  searchResultActionsRef.current = {
+    isSelectable: view.isSelectable,
+    onContextMenu: openReferenceContextMenu,
+    onFocus: view.setFocusedNode,
+    onOpen: view.openNode,
+    onSingleSelect: view.toggleSingleSelectionAndExpand,
+    onToggle: view.toggleSelection
+  };
   const hasSelectedGroup = view.selectedGroupKey != null;
 
   return (
@@ -1300,11 +1315,11 @@ export function ReferenceSourceContentPane({
                 view.searchResultPages.map((page, pageIndex) => (
                   <SearchResultPage
                     key={`${view.activeSourceId ?? "source"}:${pageIndex}`}
+                    actionsRef={searchResultActionsRef}
                     focusedNode={view.focusedNode}
-                    iconUrls={iconUrls}
                     page={page}
-                    view={view}
-                    onContextMenu={openReferenceContextMenu}
+                    resolveEntryIconUrl={resolveEntryIconUrl}
+                    selection={view.selection}
                   />
                 ))
               )
@@ -1655,39 +1670,69 @@ function SearchResultRow({
   );
 }
 
-function SearchResultPage({
-  focusedNode,
-  iconUrls,
-  page,
-  view,
-  onContextMenu
-}: {
-  focusedNode: ReferenceNode | null;
-  iconUrls: ReferenceNodeIconUrlState;
-  page: readonly ReferenceNode[];
-  view: PickerView;
+interface SearchResultPageActions {
+  isSelectable: PickerView["isSelectable"];
   onContextMenu: (event: MouseEvent<HTMLElement>, node: ReferenceNode) => void;
+  onFocus: PickerView["setFocusedNode"];
+  onOpen: PickerView["openNode"];
+  onSingleSelect: PickerView["toggleSingleSelectionAndExpand"];
+  onToggle: PickerView["toggleSelection"];
+}
+
+const SearchResultPage = memo(function SearchResultPage({
+  actionsRef,
+  focusedNode,
+  page,
+  resolveEntryIconUrl,
+  selection
+}: {
+  actionsRef: RefObject<SearchResultPageActions | null>;
+  focusedNode: ReferenceNode | null;
+  page: readonly ReferenceNode[];
+  resolveEntryIconUrl?: ReferenceSourcePickerProps["resolveEntryIconUrl"];
+  selection: readonly ReferenceNode[];
 }): JSX.Element {
+  const selectedKeys = useMemo(
+    () => new Set(selection.map((node) => nodeRefKey(node.ref))),
+    [selection]
+  );
+  const retainedEntries = useMemo(
+    () => page.map(referenceNodeToWorkspaceFileEntry),
+    [page]
+  );
+  const iconUrls = useWorkspaceFileEntryIconUrls({
+    entries: retainedEntries,
+    includeImageThumbnails: resolveEntryIconUrl !== undefined,
+    resolveEntryIconUrl
+  });
   return (
     <>
-      {page.map((node) => (
-        <SearchResultRow
-          key={nodeRefKey(node.ref)}
-          focused={isFocused(focusedNode, node)}
-          iconUrls={iconUrls}
-          node={node}
-          selected={view.isSelected(node)}
-          onFocus={view.setFocusedNode}
-          onContextMenu={onContextMenu}
-          onOpen={view.openNode}
-          selectable={view.isSelectable(node)}
-          onSingleSelect={view.toggleSingleSelectionAndExpand}
-          onToggle={view.toggleSelection}
-        />
-      ))}
+      {page.map((node) => {
+        return (
+          <SearchResultRow
+            key={nodeRefKey(node.ref)}
+            focused={isFocused(focusedNode, node)}
+            iconUrls={iconUrls}
+            node={node}
+            selected={selectedKeys.has(nodeRefKey(node.ref))}
+            onFocus={(target) => actionsRef.current?.onFocus(target)}
+            onContextMenu={(event, target) =>
+              actionsRef.current?.onContextMenu(event, target)
+            }
+            onOpen={(target) =>
+              actionsRef.current?.onOpen(target) ?? Promise.resolve()
+            }
+            selectable={actionsRef.current?.isSelectable(node) ?? false}
+            onSingleSelect={(target) =>
+              actionsRef.current?.onSingleSelect(target)
+            }
+            onToggle={(target) => actionsRef.current?.onToggle(target)}
+          />
+        );
+      })}
     </>
   );
-}
+});
 
 /**
  * 把 hook 的 node-keyed 预览态映射成共享预览组件的 surface state,补上本地化文案。
@@ -2520,7 +2565,6 @@ function collectReferenceNodeIconEntries(input: {
   currentEntries: readonly ReferenceNode[];
   expandedKeys: PickerView["expandedKeys"];
   focusedNode: ReferenceNode | null;
-  searchResultPages: readonly (readonly ReferenceNode[])[];
   selection: readonly ReferenceNode[];
   sidebarGroupsBySource: PickerView["sidebarGroupsBySource"];
 }): WorkspaceFileEntry[] {
@@ -2540,7 +2584,6 @@ function collectReferenceNodeIconEntries(input: {
   };
 
   input.currentEntries.forEach(retainTree);
-  input.searchResultPages.forEach((page) => page.forEach(retain));
   input.selection.forEach(retain);
   if (input.focusedNode) {
     retain(input.focusedNode);
