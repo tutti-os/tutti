@@ -24,12 +24,18 @@ catalog or infer product-specific membership itself. Disabled catalog options
 remain available to host logic but are hidden by the controlled filter view by
 default; a host can opt into rendering them with `showDisabledOptions`.
 
-Cursor-paginated search sources declare `capabilities.paginated`. The picker
-passes the returned `nextCursor` into the next fixed-size search request,
-deduplicates and appends that page in source order, and continues until the
-source returns no cursor. A host that receives an expired backend cursor may
-throw `ReferenceSearchCursorExpiredError`; the picker clears the stale result
-set and restarts the same search from its first page.
+Browse pagination and search pagination are separate contracts. Existing
+sources keep using the legacy growing-limit search protocol even when
+`capabilities.paginated` enables browse cursors. A cursor-paginated search
+source must explicitly declare `capabilities.searchPagination: "cursor"`.
+`SearchResult.searchPagination` may override that default for one query, for
+example when a source routes provenance search through a legacy backend.
+
+For cursor search, the picker passes the returned `nextCursor` into the next
+fixed-size request and incrementally deduplicates only the incoming page before
+appending it in source order. A host that receives an expired backend cursor
+may throw `ReferenceSearchCursorExpiredError`; the picker clears the stale
+result set and restarts the same search from its first page.
 
 ## Content error recovery
 

@@ -236,14 +236,21 @@ source for pre-pagination filtering. Search rows render a source-provided
 `contextLabel` when available and otherwise omit the subtitle; opaque `nodeId`
 values are never presentation copy.
 
-A source with `capabilities.paginated` owns search continuation through its
-opaque `nextCursor`. The controller uses a fixed page size, passes that cursor
-to the next request, and appends the returned page with identity-based
-deduplication while preserving source order. It must use cursor presence—not a
-returned-count heuristic or a growing total limit—to decide whether more data
-exists. This removes any controller-owned total result ceiling. Legacy sources
-that do not declare pagination retain the growing-limit behavior for backward
-compatibility.
+A source opts into search continuation independently from browse pagination.
+`capabilities.paginated` only describes `listChildren()` cursors; existing
+sources continue using the growing-limit search protocol by default. A source
+must declare `capabilities.searchPagination: "cursor"` before the controller
+passes an opaque `nextCursor` to fixed-size search requests. A
+`SearchResult.searchPagination` value may override that default for one query,
+which lets a source keep ordinary cursor search while routing a provenance
+query through a legacy backend.
+
+For cursor search, the controller uses cursor presence—not a returned-count
+heuristic or a growing total limit—to decide whether more data exists. It keeps
+an incremental identity set and inspects only the incoming page before
+appending unique nodes in source order, so page processing does not rescan all
+previous results. This removes any controller-owned total result ceiling.
+Legacy search retains the growing-limit behavior and compatibility ceiling.
 
 If a host reports cursor expiry with `ReferenceSearchCursorExpiredError`, the
 controller clears the stale pages and automatically restarts the unchanged

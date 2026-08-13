@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { ref as valtioRef } from "valtio/vanilla";
 
 import type {
   ListChildrenResult,
@@ -779,6 +780,114 @@ test("sources can route file-type-only filters through scoped search", async () 
   assert.equal(searchInputs[0]?.withinNodeId, "host-path-downloads");
 });
 
+test("browse pagination does not opt legacy search into cursor pagination", async () => {
+  const searchInputs: SearchInput[] = [];
+  const controller = createReferenceSourcePickerController({
+    aggregator: fakeAggregator({
+      tabs: [
+        {
+          sourceId: "app-artifact",
+          label: "App artifacts",
+          capabilities: {
+            paginated: true,
+            previewable: true,
+            searchable: true
+          }
+        }
+      ],
+      children: {},
+      searchImpl: async (input) => {
+        searchInputs.push(input);
+        return {
+          entries: Array.from({ length: input.limit ?? 0 }, (_, index) =>
+            file("app-artifact", `/artifact-${index}.md`)
+          ),
+          nextCursor: null
+        };
+      }
+    }),
+    scope,
+    searchDebounceMs: 0
+  });
+  controller.open();
+  await flush();
+
+  controller.setSearchQuery("artifact");
+  await flush();
+  controller.loadMoreSearch();
+  await flush();
+
+  assert.deepEqual(
+    searchInputs.map((input) => ({
+      cursor: input.cursor ?? null,
+      limit: input.limit
+    })),
+    [
+      { cursor: null, limit: SEARCH_PAGE_SIZE },
+      { cursor: null, limit: SEARCH_PAGE_SIZE * 2 }
+    ]
+  );
+  assert.equal(
+    controller.getSnapshot().bySource["app-artifact"]?.searchEntries.length,
+    SEARCH_PAGE_SIZE * 2
+  );
+});
+
+test("a search result can override cursor capability with legacy pagination", async () => {
+  const searchInputs: SearchInput[] = [];
+  const controller = createReferenceSourcePickerController({
+    aggregator: fakeAggregator({
+      tabs: [
+        {
+          sourceId: "workspace-file",
+          label: "Workspace files",
+          capabilities: {
+            paginated: true,
+            previewable: true,
+            searchable: true,
+            searchPagination: "cursor"
+          }
+        }
+      ],
+      children: {},
+      searchImpl: async (input) => {
+        searchInputs.push(input);
+        return {
+          entries: Array.from({ length: input.limit ?? 0 }, (_, index) =>
+            file("workspace-file", `/generated-${index}.md`)
+          ),
+          nextCursor: null,
+          searchPagination: "legacy"
+        };
+      }
+    }),
+    scope,
+    searchDebounceMs: 0
+  });
+  controller.open();
+  await flush();
+
+  controller.setSearchQuery("generated");
+  await flush();
+  controller.loadMoreSearch();
+  await flush();
+
+  assert.deepEqual(
+    searchInputs.map((input) => ({
+      cursor: input.cursor ?? null,
+      limit: input.limit
+    })),
+    [
+      { cursor: null, limit: SEARCH_PAGE_SIZE },
+      { cursor: null, limit: SEARCH_PAGE_SIZE * 2 }
+    ]
+  );
+  assert.equal(
+    controller.getSnapshot().bySource["workspace-file"]?.searchEntries.length,
+    SEARCH_PAGE_SIZE * 2
+  );
+});
+
 test("paginated search follows cursors and appends every page", async () => {
   const searchInputs: SearchInput[] = [];
   const totalEntries = 211;
@@ -793,7 +902,8 @@ test("paginated search follows cursors and appends every page", async () => {
             filtersUseSearch: true,
             paginated: true,
             previewable: true,
-            searchable: true
+            searchable: true,
+            searchPagination: "cursor"
           }
         }
       ],
@@ -849,6 +959,66 @@ test("paginated search follows cursors and appends every page", async () => {
   assert.equal(tab?.searchHasMore, false);
 });
 
+test("cursor append does not revisit a large existing result set", async () => {
+  let oldReferenceReads = 0;
+  const firstPage = Array.from({ length: 5_000 }, (_, index) => {
+    const node = file("workspace-file", `/existing-${index}.md`);
+    node.ref = new Proxy(node.ref, {
+      get(target, property, receiver) {
+        if (property === "sourceId" || property === "nodeId") {
+          oldReferenceReads += 1;
+        }
+        return Reflect.get(target, property, receiver);
+      }
+    });
+    return valtioRef(node);
+  });
+  const controller = createReferenceSourcePickerController({
+    aggregator: fakeAggregator({
+      tabs: [
+        {
+          sourceId: "workspace-file",
+          label: "Workspace files",
+          capabilities: {
+            paginated: true,
+            previewable: true,
+            searchable: true,
+            searchPagination: "cursor"
+          }
+        }
+      ],
+      children: {},
+      searchImpl: async (input) =>
+        input.cursor
+          ? {
+              entries: [
+                file("workspace-file", "/existing-2500.md"),
+                file("workspace-file", "/new-page.md"),
+                file("workspace-file", "/new-page.md")
+              ],
+              nextCursor: null
+            }
+          : { entries: firstPage, nextCursor: "page-2" }
+    }),
+    scope,
+    searchDebounceMs: 0
+  });
+  controller.open();
+  await flush();
+
+  controller.setSearchQuery("report");
+  await flush();
+  oldReferenceReads = 0;
+  controller.loadMoreSearch();
+  await flush();
+
+  assert.equal(oldReferenceReads, 0);
+  assert.equal(
+    controller.getSnapshot().bySource["workspace-file"]?.searchEntries.length,
+    5_001
+  );
+});
+
 test("changing search filters prevents load more from reusing the old cursor", async () => {
   const searchInputs: SearchInput[] = [];
   const controller = createReferenceSourcePickerController({
@@ -862,7 +1032,8 @@ test("changing search filters prevents load more from reusing the old cursor", a
             filtersUseSearch: true,
             paginated: true,
             previewable: true,
-            searchable: true
+            searchable: true,
+            searchPagination: "cursor"
           }
         }
       ],
@@ -915,7 +1086,8 @@ test("switching sources invalidates the previous source while its next page is l
           capabilities: {
             paginated: true,
             previewable: true,
-            searchable: true
+            searchable: true,
+            searchPagination: "cursor"
           }
         },
         {
@@ -924,7 +1096,8 @@ test("switching sources invalidates the previous source while its next page is l
           capabilities: {
             paginated: true,
             previewable: true,
-            searchable: true
+            searchable: true,
+            searchPagination: "cursor"
           }
         }
       ],
@@ -996,7 +1169,8 @@ test("paginated search restarts from the first page after cursor expiry", async 
             filtersUseSearch: true,
             paginated: true,
             previewable: true,
-            searchable: true
+            searchable: true,
+            searchPagination: "cursor"
           }
         }
       ],

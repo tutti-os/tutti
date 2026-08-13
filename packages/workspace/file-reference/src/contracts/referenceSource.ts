@@ -100,9 +100,18 @@ export interface SearchInput {
   withinNodeId?: string | null;
 }
 
+/**
+ * Search continuation semantics are independent from browse pagination.
+ * Legacy sources grow `limit` and return the complete prefix; cursor sources
+ * return only the requested page and a continuation cursor.
+ */
+export type ReferenceSearchPagination = "cursor" | "legacy";
+
 export interface SearchResult {
   entries: ReferenceNode[];
   nextCursor?: string | null;
+  /** Overrides the source capability for this search result/query. */
+  searchPagination?: ReferenceSearchPagination;
 }
 
 /** 预览内容(复用 workspace 预览结构)。 */
@@ -163,7 +172,13 @@ export interface ReferenceSourceMetadata {
 export interface ReferenceSourceCapabilities {
   searchable: boolean;
   previewable: boolean;
+  /** Whether listChildren() supports browse cursors. */
   paginated: boolean;
+  /**
+   * Search pagination semantics. Omitted sources use the legacy growing-limit
+   * protocol even when browse pagination (`paginated`) is enabled.
+   */
+  searchPagination?: "cursor";
   /** 是否展示左侧分组导航(master-detail)。本地源 false;应用/任务源 true。 */
   navigable?: boolean;
   /**

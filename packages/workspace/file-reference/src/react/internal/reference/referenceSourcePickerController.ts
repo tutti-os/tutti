@@ -4,6 +4,7 @@ import type {
   ReferenceHandle,
   ReferenceLocateTarget,
   ReferenceNode,
+  ReferenceSearchPagination,
   ReferenceScope,
   SelectedReference
 } from "../../../contracts/referenceSource.ts";
@@ -59,6 +60,8 @@ export interface ReferenceSourceTabState {
   searchScopeNodeId: string | null;
   searchEntries: ReferenceNode[];
   searchNextCursor: string | null;
+  /** 当前查询实际采用的分页协议；结果可覆盖 source 的默认 capability。 */
+  searchPagination: ReferenceSearchPagination;
   /**
    * 已展示结果数量(cursor 分页),或当前查询结果上限(兼容增长式分页)。
    * 0 = 尚未发起查询;每次新查询(改关键词/筛选/分组/换源)从 SEARCH_PAGE_SIZE 开始。
@@ -148,8 +151,8 @@ export interface ReferenceSourcePickerController {
   /** 搜索进行中切换左栏分组时更新限定范围并以现有关键词/筛选重搜。 */
   setSearchScope(scopeNodeId: string | null): void;
   /**
-   * 加载更多查询结果(增长式分页):以同一关键词/筛选、更大的 limit 立即重查,
-   * 结果整体替换(保留旧结果直到新结果就绪)。无更多 / 在途 / 非查询态时 no-op。
+   * 加载更多查询结果:cursor source 拉取固定大小的下一页并增量 append；legacy source
+   * 以同一关键词/筛选、更大的 limit 重查并整体替换。无更多 / 在途 / 非查询态时 no-op。
    */
   loadMoreSearch(): void;
   createDirectory(
@@ -193,11 +196,10 @@ export const ROOT_CHILDREN_KEY = nodeRefKey({
 
 const defaultSearchDebounceMs = 180;
 
-/** 查询(搜索/筛选)结果的初始/每页步长。拉到底部 +一页 重查(增长式分页)。 */
+/** 查询结果的首屏大小、cursor 页大小及 legacy limit 增长步长。 */
 export const SEARCH_PAGE_SIZE = 30;
 /**
- * 查询结果的全局上限。增长式分页对每个源都用「同一关键词/筛选 + 更大 limit 重查」实现,
- * 由各源 daemon 自行夹取(本地 200、应用硬校验 ≤200、议题 ≤200),故统一封顶 200。
+ * Legacy 增长式分页的兼容上限。Cursor search 不受 controller 总量上限约束。
  */
 export const SEARCH_MAX_LIMIT = 200;
 
@@ -212,6 +214,7 @@ function emptyTabState(sourceId: string): ReferenceSourceTabState {
     searchScopeNodeId: null,
     searchEntries: [],
     searchNextCursor: null,
+    searchPagination: "legacy",
     searchLimit: 0,
     searchHasMore: false,
     isSearchLoadingMore: false,
@@ -254,6 +257,10 @@ export function createReferenceSourcePickerController(
   let searchSequence = 0;
   let searchAbortController: AbortController | null = null;
   let searchTimer: ReturnType<typeof setTimeout> | null = null;
+  // Cursor search pages only inspect the incoming page. The Set is controller
+  // state rather than Valtio state because Set is not part of the public,
+  // cloneable picker snapshot contract.
+  const searchSeenKeysBySource = new Map<string, Set<string>>();
 
   let snapshot: ReferenceSourcePickerSnapshot = {
     isLoadingTabs: false,
@@ -463,9 +470,11 @@ export function createReferenceSourcePickerController(
       updateTab(sourceId, (tab) => ({
         ...tab,
         searchNextCursor: null,
+        searchPagination: "legacy",
         searchHasMore: false,
         isSearchLoadingMore: false
       }));
+      searchSeenKeysBySource.delete(sourceId);
     }
   };
 
@@ -473,9 +482,34 @@ export function createReferenceSourcePickerController(
     snapshot.tabs.find((tab) => tab.sourceId === sourceId)?.capabilities
       .filtersUseSearch === true;
 
-  const sourceUsesPaginatedSearch = (sourceId: string): boolean =>
+  const sourceSearchPagination = (
+    sourceId: string
+  ): ReferenceSearchPagination =>
     snapshot.tabs.find((tab) => tab.sourceId === sourceId)?.capabilities
-      .paginated === true;
+      .searchPagination === "cursor"
+      ? "cursor"
+      : "legacy";
+
+  const appendCursorSearchPage = (
+    sourceId: string,
+    nextEntries: readonly ReferenceNode[]
+  ): ReferenceNode[] => {
+    const tab = store.bySource[sourceId];
+    const seen = searchSeenKeysBySource.get(sourceId);
+    if (!tab || !seen) {
+      throw new Error("cursor search accumulator is not initialized");
+    }
+    for (const node of nextEntries) {
+      const key = nodeRefKey(node.ref);
+      if (seen.has(key)) {
+        continue;
+      }
+      seen.add(key);
+      tab.searchEntries.push(node);
+    }
+    snapshot = readSnapshot();
+    return snapshot.bySource[sourceId]?.searchEntries ?? [];
+  };
 
   const hasSearchInput = (
     sourceId: string,
@@ -501,9 +535,11 @@ export function createReferenceSourcePickerController(
     searchAbortController?.abort();
     const abortController = new AbortController();
     searchAbortController = abortController;
-    const paginated = sourceUsesPaginatedSearch(sourceId);
+    const requestPagination = loadingMore
+      ? (snapshot.bySource[sourceId]?.searchPagination ?? "legacy")
+      : sourceSearchPagination(sourceId);
     const cursor =
-      loadingMore && paginated
+      loadingMore && requestPagination === "cursor"
         ? (snapshot.bySource[sourceId]?.searchNextCursor ?? null)
         : null;
     // 加载更多:只置底部 spinner、保留旧结果;新查询:置主 loading。
@@ -528,32 +564,50 @@ export function createReferenceSourcePickerController(
       if (!retained || sequence !== searchSequence) {
         return;
       }
-      updateTab(sourceId, (tab) => {
-        // Search sources own relevance order. Browsing may group folders and
-        // sort names, but search must only deduplicate the ranked response.
-        const entries =
-          loadingMore && paginated
-            ? appendReferencePage(tab.searchEntries, result.entries)
-            : dedupeReferenceNodes(result.entries);
-        return {
+      const resultPagination = result.searchPagination ?? requestPagination;
+      // Search sources own relevance order. Browsing may group folders and
+      // sort names, but search must only deduplicate the ranked response.
+      if (loadingMore && resultPagination === "cursor") {
+        const entries = appendCursorSearchPage(sourceId, result.entries);
+        const tab = store.bySource[sourceId];
+        if (!tab) {
+          return;
+        }
+        tab.isSearchLoading = false;
+        tab.isSearchLoadingMore = false;
+        tab.searchNextCursor = result.nextCursor ?? null;
+        tab.searchPagination = resultPagination;
+        tab.searchLimit = entries.length;
+        tab.searchHasMore = Boolean(result.nextCursor);
+        tab.searchError = null;
+        snapshot = readSnapshot();
+      } else {
+        const entries = dedupeReferenceNodes(result.entries);
+        searchSeenKeysBySource.set(
+          sourceId,
+          new Set(entries.map((entry) => nodeRefKey(entry.ref)))
+        );
+        updateTab(sourceId, (tab) => ({
           ...tab,
           isSearchLoading: false,
           isSearchLoadingMore: false,
           searchEntries: entries,
           searchNextCursor: result.nextCursor ?? null,
-          searchLimit: paginated ? entries.length : limit,
+          searchPagination: resultPagination,
+          searchLimit: resultPagination === "cursor" ? entries.length : limit,
           // Cursor-paginated sources own continuation. Legacy sources retain
           // the growing-limit heuristic until they adopt cursor pagination.
-          searchHasMore: paginated
-            ? Boolean(result.nextCursor)
-            : result.entries.length >= limit && limit < SEARCH_MAX_LIMIT,
+          searchHasMore:
+            resultPagination === "cursor"
+              ? Boolean(result.nextCursor)
+              : result.entries.length >= limit && limit < SEARCH_MAX_LIMIT,
           searchError: null
-        };
-      });
+        }));
+      }
     } catch (error) {
       if (
         loadingMore &&
-        paginated &&
+        requestPagination === "cursor" &&
         retained &&
         sequence === searchSequence &&
         isReferenceSearchCursorExpiredError(error)
@@ -563,6 +617,7 @@ export function createReferenceSourcePickerController(
           isSearchLoadingMore: false,
           searchEntries: [],
           searchNextCursor: null,
+          searchPagination: "legacy",
           searchHasMore: false,
           searchError: null
         }));
@@ -680,12 +735,14 @@ export function createReferenceSourcePickerController(
     close() {
       retained = false;
       cancelSearch();
+      searchSeenKeysBySource.clear();
       // 清空 ticket 表:在途取数 resolve 时其 key 已无最新 ticket(get→undefined),被丢弃。
       latestBrowseSeqByKey.clear();
       tabsSequence += 1;
     },
     reset() {
       cancelSearch();
+      searchSeenKeysBySource.clear();
       latestBrowseSeqByKey.clear();
       tabsSequence += 1;
       setSnapshot({
@@ -1036,7 +1093,7 @@ export function createReferenceSourcePickerController(
       if (!hasSearchInput(sourceId, trimmed, tab.searchFilters)) {
         return;
       }
-      const paginated = sourceUsesPaginatedSearch(sourceId);
+      const paginated = tab.searchPagination === "cursor";
       if (paginated && !tab.searchNextCursor) {
         return;
       }
