@@ -67,6 +67,29 @@ func (s *Store) resolveAgentSessionRailSectionTx(
 	if err != nil {
 		return RailSection{}, err
 	}
+	if !existingRail.Found && hasExplicitRail && explicitRail.Kind == RailSectionKindProject {
+		projectPaths, err := s.listRailProjectPaths(ctx, tx)
+		if err != nil {
+			return RailSection{}, err
+		}
+		registered := false
+		for _, projectPath := range projectPaths {
+			if AreProjectPathsEqual(projectPath, explicitRail.ProjectPath) {
+				registered = true
+				break
+			}
+		}
+		// Placement is selected before the canonical session transaction. If
+		// that project was removed in between, Chats is the only valid durable
+		// owner; accepting the stale explicit placement would recreate an
+		// orphan project rail after deletion committed.
+		if !registered {
+			explicitRail = RailSection{
+				Kind: RailSectionKindConversations,
+				Key:  RailSectionKeyConversations,
+			}
+		}
+	}
 	importRail, hasImportRail := importedAgentSessionRailSection(
 		finalCWD,
 		runtimeContext,

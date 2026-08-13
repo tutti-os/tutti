@@ -1,6 +1,7 @@
 package host
 
 import (
+	"encoding/json"
 	"errors"
 	"strings"
 	"testing"
@@ -85,6 +86,28 @@ func TestValidateManifestShapeAcceptsBindingOnlyRemoteMCPContract(t *testing.T) 
 	manifest.Implementation.RemoteStreamableHTTP.BindingRef = "https://docs.qq.com/openapi/mcp"
 	if err := ValidateManifestShape(manifest); err == nil || !strings.Contains(err.Error(), "bindingRef") {
 		t.Fatalf("endpoint-shaped bindingRef error = %v", err)
+	}
+}
+
+func TestValidateManifestShapeRequiresBoundedAuthorizationInteractionJSON(t *testing.T) {
+	manifest := Manifest{
+		SchemaVersion: "1", DisplayName: "Tencent Docs", IconURL: testConnectorIconURL,
+		AuthorizationKind: "api_key", AuthorizationInteraction: json.RawMessage(`{"protocol":"example"}`),
+		Implementation: Implementation{Kind: ImplementationKindBuiltin,
+			Builtin: &BuiltinImplementation{ProviderID: "tencent-docs", MCP: true}},
+	}
+	if err := ValidateManifestShape(manifest); err != nil {
+		t.Fatal(err)
+	}
+
+	manifest.AuthorizationInteraction = json.RawMessage(`{"protocol":`)
+	if err := ValidateManifestShape(manifest); err == nil || !strings.Contains(err.Error(), "authorizationInteraction") {
+		t.Fatalf("invalid authorization interaction error = %v", err)
+	}
+
+	manifest.AuthorizationInteraction = json.RawMessage(`"` + strings.Repeat("a", 64<<10) + `"`)
+	if err := ValidateManifestShape(manifest); err == nil || !strings.Contains(err.Error(), "authorizationInteraction") {
+		t.Fatalf("oversized authorization interaction error = %v", err)
 	}
 }
 

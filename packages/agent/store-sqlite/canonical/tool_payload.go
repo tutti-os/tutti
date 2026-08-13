@@ -1,9 +1,30 @@
 package canonical
 
 import (
+	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 )
+
+var ErrToolCallPayloadTooLarge = errors.New("canonical tool call payload exceeds byte budget")
+
+// ToolCallPayloadBudgetError reports a canonical payload that cannot fit even
+// after every truncatable output string has been reduced to its marker.
+type ToolCallPayloadBudgetError struct {
+	EncodedBytes int
+	MaxBytes     int
+}
+
+func (e *ToolCallPayloadBudgetError) Error() string {
+	return fmt.Sprintf("%v: encoded bytes=%d max bytes=%d", ErrToolCallPayloadTooLarge, e.EncodedBytes, e.MaxBytes)
+}
+
+func (*ToolCallPayloadBudgetError) Unwrap() error { return ErrToolCallPayloadTooLarge }
+
+func IsToolCallPayloadTooLarge(err error) bool {
+	return errors.Is(err, ErrToolCallPayloadTooLarge)
+}
 
 var canonicalToolPayloadKeys = map[string]struct{}{
 	"activityKind":    {},
@@ -121,10 +142,19 @@ var canonicalToolMetadataKeys = map[string]struct{}{
 }
 
 // CompactToolCallPayload turns provider-shaped tool data into the canonical
-// stored business projection; accepted provider envelopes are never retained.
+// stored business projection. Callers that persist its result must use
+// CompactToolCallPayloadChecked so an impossible budget is not ignored.
 func CompactToolCallPayload(status string, payload map[string]any) map[string]any {
+	result, _ := CompactToolCallPayloadChecked(status, payload)
+	return result
+}
+
+// CompactToolCallPayloadChecked returns an error instead of allowing a
+// replication-unsafe payload to be persisted when required non-truncatable
+// data alone exceeds the byte budget.
+func CompactToolCallPayloadChecked(status string, payload map[string]any) (map[string]any, error) {
 	if len(payload) == 0 {
-		return payload
+		return payload, nil
 	}
 
 	result := cloneToolMap(payload)
@@ -198,6 +228,11 @@ func CompactToolCallPayload(status string, payload map[string]any) map[string]an
 		compactTerminalCommandBodyAlias(output)
 		compactTerminalCommandBodyAlias(toolError)
 	}
+	CompactToolStructuredContentAliases(map[string]any{
+		"output": output,
+		"error":  toolError,
+		"steps":  steps,
+	})
 	if output != nil {
 		delete(output, "content")
 		output = TruncateToolOutputBody(selectToolKeys(output, canonicalToolBodyKeys))
@@ -231,8 +266,19 @@ func CompactToolCallPayload(status string, payload map[string]any) map[string]an
 
 	result = selectToolKeys(result, canonicalToolPayloadKeys)
 	CompactTerminalCommandOutputAliases(status, result)
-	FitToolCallPayloadOutputBudget(result, ToolCallPayloadMaxBytes)
-	return result
+	CompactToolStructuredContentAliases(result)
+	_, fits := FitToolCallPayloadOutputBudget(result, ToolCallPayloadMaxBytes)
+	encoded, err := json.Marshal(result)
+	if err != nil {
+		return nil, fmt.Errorf("encode canonical tool call payload: %w", err)
+	}
+	if !fits || len(encoded) > ToolCallPayloadMaxBytes {
+		return nil, &ToolCallPayloadBudgetError{
+			EncodedBytes: len(encoded),
+			MaxBytes:     ToolCallPayloadMaxBytes,
+		}
+	}
+	return result, nil
 }
 
 func compactToolSteps(value any) []any {

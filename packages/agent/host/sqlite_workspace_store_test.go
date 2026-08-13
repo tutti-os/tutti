@@ -17,6 +17,12 @@ type workspaceStoreClock struct{ value time.Time }
 
 func (c workspaceStoreClock) Now() time.Time { return c.value }
 
+type workspaceStoreProjectPaths []string
+
+func (paths workspaceStoreProjectPaths) ProjectPaths(context.Context, storesqlite.Querier) ([]string, error) {
+	return append([]string(nil), paths...), nil
+}
+
 type workspaceStoreObserver struct{ deltas []agenthost.CommittedDelta }
 
 func (o *workspaceStoreObserver) ObserveCommitted(_ context.Context, delta agenthost.CommittedDelta) error {
@@ -84,7 +90,9 @@ func TestSQLiteWorkspaceStoreInitializesCanonicalRuntimeSession(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = db.Close() })
 	db.SetMaxOpenConns(1)
-	canonical := storesqlite.New(db, storesqlite.Options{})
+	canonical := storesqlite.New(db, storesqlite.Options{
+		ProjectPaths: workspaceStoreProjectPaths{"/workspace/app"},
+	})
 	if err := canonical.Migrate(t.Context()); err != nil {
 		t.Fatalf("migrate SQLite: %v", err)
 	}

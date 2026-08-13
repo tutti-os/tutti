@@ -65,9 +65,11 @@ func appServerTurnStartParams(
 		"threadId": threadID,
 		"input":    userInput,
 	}
-	if cwd := strings.TrimSpace(session.CWD); cwd != "" {
-		// Keep the turn's working directory explicit even when it matches the
-		// thread cwd so provider state cannot drift across resumed turns.
+	if cwd := projectCodexWorkspaceCWD(strings.TrimSpace(session.CWD), session.RoomID); cwd != "" {
+		// Keep the provider-visible working directory explicit even when it
+		// matches the thread cwd so provider state cannot drift across resumed
+		// turns. A persisted room-scoped mount path must use the same logical
+		// workspace projection as thread/start and the provider process.
 		params["cwd"] = cwd
 	}
 	if collaborationMode := appServerCollaborationMode(settings, planModeMask, defaultModeMask, defaultModel, tuttiModeHostContext); collaborationMode != nil {

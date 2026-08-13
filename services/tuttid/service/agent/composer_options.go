@@ -140,6 +140,10 @@ type ComposerOptions struct {
 	CapabilityCatalog       []ComposerCapabilityOption
 	Behavior                providerregistry.ComposerBehaviorDescriptor
 	SlashCommandPolicy      *providerregistry.SlashCommandPolicyDescriptor
+	// liveModelDiscoveryPending distinguishes a temporarily unavailable live
+	// catalog from an agent target that explicitly does not expose model
+	// selection. It is daemon-internal and must not be serialized.
+	liveModelDiscoveryPending bool
 }
 
 func (s *Service) GetComposerOptions(ctx context.Context, input ComposerOptionsInput) (ComposerOptions, error) {

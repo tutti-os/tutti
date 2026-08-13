@@ -374,9 +374,10 @@ MCP。`DefaultPreparer` 的最终输出以其 `PreparedRuntime.MCPServers` 为�
 }
 ```
 
-发送 `session/new` 或 `session/load` 前，必须先检查 initialize 响应中的
-`agentCapabilities.mcpCapabilities.http == true`。Provider 未声明标准 HTTP MCP
-能力时启动失败并返回明确错误，不能静默创建一个看不到 Connector 工具的 Session。
+创建 Connector Session Binding 前，必须先检查 initialize 响应中的
+`agentCapabilities.mcpCapabilities.http == true`。只有明确声明支持的 Provider 才注入
+Connector MCP、routing hints、Skill 和 Connector 提示；字段缺失、值为 false、能力探测
+失败或 Connector 自身失败时，整体降级为不含 Connector 的普通 Session，不得阻断启动。
 
 ### 7.3 Codex
 
@@ -683,7 +684,9 @@ Provider 注入或动态刷新问题。
 ### 15.3 Provider 测试
 
 - ACP `session/new` 和 `session/load` 收到非空 `mcpServers`；
-- ACP 未声明 HTTP MCP capability 时明确拒绝启动；
+- ACP 明确声明 HTTP MCP capability 时注入完整 Connector 上下文；
+- ACP 未声明、声明 false 或能力探测失败时不绑定 Connector，普通 Session 正常启动；
+- 未实现 Connector capability contract 的未来 Provider 默认按不支持降级；
 - Codex Session 配置包含 `[mcp_servers.connector]`；
 - Claude SDK Session options 包含 `connector` binding；
 - Tutti Agent Session 配置包含 `[mcp_servers.connector]`；

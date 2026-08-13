@@ -12,8 +12,8 @@ const (
 	ALPN = "tutti-device-link/1"
 
 	defaultHandshakeTimeout = 3 * time.Second
-	defaultKeepAlive        = 20 * time.Second
-	defaultIdleTimeout      = 2 * time.Minute
+	defaultKeepAlive        = 5 * time.Second
+	defaultIdleTimeout      = 15 * time.Second
 )
 
 type CandidateType string

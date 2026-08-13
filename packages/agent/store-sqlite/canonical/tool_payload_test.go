@@ -5,6 +5,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"unicode/utf8"
 )
 
 func TestCompactToolCallPayloadKeepsBusinessProjectionWithoutProviderEnvelopes(t *testing.T) {
@@ -601,7 +602,7 @@ func TestProjectMessageUpdateCompactsToolPayloadBeforePersistence(t *testing.T) 
 		},
 	}, 1, 100)
 	if !ok {
-		t.Fatal("ProjectMessageUpdate() rejected tool message")
+		t.Fatal("(ProjectMessageUpdate()) rejected tool message")
 	}
 	if _, exists := message.Payload["content"]; exists {
 		t.Fatalf("payload.content retained: %#v", message.Payload)
@@ -612,5 +613,95 @@ func TestProjectMessageUpdateCompactsToolPayloadBeforePersistence(t *testing.T) 
 	}
 	if _, exists := output["toolResponse"]; exists {
 		t.Fatalf("output.toolResponse retained: %#v", output)
+	}
+}
+
+func TestCompactToolCallPayloadDeduplicatesMCPStructuredContentAndFitsBudget(t *testing.T) {
+	large := strings.Repeat("node-repl-output-", 1<<16)
+	payload := map[string]any{
+		"toolName": "node_repl.js",
+		"input":    map[string]any{"code": "return value"},
+		"content":  []any{map[string]any{"type": "text", "text": large}},
+		"output": map[string]any{
+			"structuredContent": map[string]any{
+				"result": large,
+				"meta":   map[string]any{"count": json.Number("9007199254740993")},
+			},
+		},
+	}
+
+	got, err := CompactToolCallPayloadChecked("completed", payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	encoded, err := json.Marshal(got)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(encoded) > ToolCallPayloadMaxBytes {
+		t.Fatalf("canonical payload has %d bytes, want at most %d", len(encoded), ToolCallPayloadMaxBytes)
+	}
+	output := got["output"].(map[string]any)
+	if output["structuredContent"].(map[string]any)["result"] != ToolStructuredContentDuplicateTextMarker {
+		t.Fatalf("structured content did not retain duplicate marker: %#v", output)
+	}
+	if !strings.HasSuffix(output["text"].(string), ToolOutputTruncationMarker) {
+		t.Fatalf("projected text did not retain truncation marker: %#v", output["text"])
+	}
+	if payload["output"].(map[string]any)["structuredContent"].(map[string]any)["result"] != large {
+		t.Fatal("input payload was mutated")
+	}
+}
+
+func TestCompactToolCallPayloadFairlyTruncatesNestedStructuredStringsUTF8(t *testing.T) {
+	large := strings.Repeat("界", ToolCallPayloadMaxBytes/2)
+	got, err := CompactToolCallPayloadChecked("completed", map[string]any{
+		"toolName": "node_repl.js",
+		"input":    map[string]any{"code": "preserve me"},
+		"output": map[string]any{
+			"structuredContent": map[string]any{
+				"first": large,
+				"nested": map[string]any{
+					"second": large,
+					"items":  []any{large, map[string]any{"third": large}},
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	encoded, err := json.Marshal(got)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !utf8.Valid(encoded) || len(encoded) > ToolCallPayloadMaxBytes {
+		t.Fatalf("encoded payload valid=%t bytes=%d", utf8.Valid(encoded), len(encoded))
+	}
+	structured := got["output"].(map[string]any)["structuredContent"].(map[string]any)
+	values := []string{
+		structured["first"].(string),
+		structured["nested"].(map[string]any)["second"].(string),
+		structured["nested"].(map[string]any)["items"].([]any)[0].(string),
+		structured["nested"].(map[string]any)["items"].([]any)[1].(map[string]any)["third"].(string),
+	}
+	for _, value := range values {
+		if !utf8.ValidString(value) || !strings.HasSuffix(value, ToolOutputTruncationMarker) {
+			t.Fatalf("structured string is not UTF-8 safe with marker: %q", value[len(value)-64:])
+		}
+	}
+	if got["input"].(map[string]any)["code"] != "preserve me" {
+		t.Fatal("tool input changed")
+	}
+}
+
+func TestCompactToolCallPayloadRejectsRequiredDataOverBudget(t *testing.T) {
+	_, err := CompactToolCallPayloadChecked("completed", map[string]any{
+		"toolName": "node_repl.js",
+		"input":    map[string]any{"code": strings.Repeat("x", ToolCallPayloadMaxBytes)},
+		"output":   map[string]any{"structuredContent": map[string]any{"count": 1}},
+	})
+	if !IsToolCallPayloadTooLarge(err) {
+		t.Fatalf("error = %v, want tool payload budget error", err)
 	}
 }

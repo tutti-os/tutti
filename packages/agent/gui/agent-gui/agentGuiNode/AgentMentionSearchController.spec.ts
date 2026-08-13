@@ -2936,6 +2936,92 @@ describe("AgentMentionSearchController", () => {
     setAgentGuiI18nTestLocale("en");
   });
 
+  it("keeps an entered workspace folder when the cleared editor query repeats", async () => {
+    const queryFiles = vi.fn(
+      async ({ directoryPath }: { directoryPath?: string }) => ({
+        entries: directoryPath
+          ? [
+              {
+                path: `${directoryPath}/Button.tsx`,
+                name: "Button.tsx",
+                kind: "file"
+              }
+            ]
+          : [
+              {
+                path: "/workspace/src",
+                name: "src",
+                kind: "directory",
+                childCount: 1
+              }
+            ]
+      })
+    );
+    const controller = new AgentMentionSearchController({
+      queryFiles,
+      debounceMs: 0
+    });
+    const states: AgentMentionSearchState[] = [];
+    controller.subscribe((state) => states.push(state));
+
+    controller.setFilter("file");
+    controller.updateQuery({ workspaceId: "room-1", query: "src" });
+
+    await waitForFast(() =>
+      expect(states.at(-1)).toMatchObject({
+        mode: "results",
+        groups: [
+          expect.objectContaining({
+            items: [
+              expect.objectContaining({
+                mentionNavigation: "workspace-folder",
+                path: "/workspace/src"
+              })
+            ]
+          })
+        ]
+      })
+    );
+    const folder = states.at(-1)?.groups[0]?.items[0];
+    expect(folder).toBeDefined();
+    controller.updateQuery({ workspaceId: "room-1", query: "" });
+    expect(controller.selectFileMentionNavigationItem(folder!)).toBe(true);
+    controller.updateQuery({ workspaceId: "room-1", query: "" });
+
+    await waitForFast(() => {
+      expect(states.at(-1)).toMatchObject({
+        status: "ready",
+        mode: "browse",
+        filter: "file"
+      });
+      expect(
+        states.at(-1)?.groups.find((group) => group.id === "opened_files")
+          ?.items
+      ).toEqual([
+        expect.objectContaining({
+          mentionNavigation: "workspace-folder-back"
+        }),
+        expect.objectContaining({
+          path: "/workspace/src/Button.tsx"
+        })
+      ]);
+    });
+    expect(queryFiles).toHaveBeenCalledWith(
+      expect.objectContaining({ directoryPath: "/workspace/src" })
+    );
+
+    controller.setProvenanceFilters({
+      session: null,
+      file: { agentTargetIds: ["agent-1"], memberIds: null },
+      issue: null,
+      agent: null,
+      app: null
+    });
+    expect(controller.exitFileMentionBrowse()).toBe(false);
+
+    controller.dispose();
+  });
+
   it("keeps a directory request alive beyond the provider search timeout", async () => {
     let resolveDirectory:
       | ((value: {

@@ -3,7 +3,6 @@ import type { UiLanguage } from "../../../contexts/settings/domain/agentSettings
 import type { WorkspaceLinkAction } from "../../../actions/workspaceLinkActions";
 import type { ConversationSection } from "../agentGuiNodeViewConversation";
 import type { AgentGUIConversationRailLabels } from "./agentGUIConversationRailLabels";
-import type { AgentGUIProjectActionDialog } from "./agentGUIConversationRailTypes";
 import { AgentGUIConversationRailItem } from "./AgentGUIConversationRailItem";
 import { AgentGUIConversationRailSectionHeader } from "./AgentGUIConversationRailSectionHeader";
 import { insertConversationRailSectionOverlay } from "../model/agentGuiConversationRail";
@@ -44,7 +43,11 @@ interface AgentGUIConversationRailSectionProps {
   onToggleProjectSectionCollapsed: (sectionId: string) => void;
   onVisibleItemLimitChange: (sectionId: string, limit: number) => void;
   onRequestSectionBatchDeletion: (section: ConversationSection) => void;
-  setPendingProjectAction: (action: AgentGUIProjectActionDialog | null) => void;
+  onRequestProjectRemoval: (
+    section: ConversationSection,
+    path: string,
+    label: string
+  ) => void;
   onSelectConversation: (agentSessionId: string) => void;
   onLoadMoreConversations: (section: ConversationSection) => void;
   onToggleConversationPinned: (agentSessionId: string, pinned: boolean) => void;
@@ -101,7 +104,7 @@ export const AgentGUIConversationRailSection = memo(
     onSelectConversation,
     onLoadMoreConversations,
     onRequestSectionBatchDeletion,
-    setPendingProjectAction,
+    onRequestProjectRemoval,
     onToggleConversationPinned,
     onToggleProjectPinned,
     onMarkConversationUnread,
@@ -275,11 +278,11 @@ export const AgentGUIConversationRailSection = memo(
     });
     const handleRemoveProject = useStableEventCallback(() => {
       if (isProjectActionLocked()) return;
-      setPendingProjectAction({
-        kind: "remove",
-        label: projectLabel || projectPath,
-        path: projectPath
-      });
+      onRequestProjectRemoval(
+        section,
+        projectPath,
+        projectLabel || projectPath
+      );
     });
     return (
       <section

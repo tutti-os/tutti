@@ -936,7 +936,12 @@ the associated state report wins canonical ordering. Desktop and Mobile Live
 consume the same event variant. The workspace Engine uses its occurrence time
 to reject reordering and prevents an older `running` observation from
 overriding a settled Turn. A disconnect clears the ephemeral observation,
-while canonical Turn state remains authoritative once it exists.
+while canonical Turn state remains authoritative once it exists. AgentGUI
+consumes the Engine's fenced Session display status after the canonical
+Session exists; it must not recompute Composer busy state from the raw runtime
+activity flag, because that would let an older `running` observation outlive a
+completed or failed latest Turn. Raw runtime activity may bridge presentation
+only before that canonical Session projection exists.
 
 ### 4.1 Read/write rules
 
@@ -1175,17 +1180,18 @@ The busy-session prompt queue is ephemeral durable-intent coordination in the wo
 - a normal prompt waits for canonical availability
 - a queued-prompt `Send next` action uses native guidance when the provider
   supports it, even when the provider also supports interruption; guidance
-  preempts the provider's current response but stays on the same canonical Turn
+  stays on the same canonical Turn and follows the provider's native semantics
 - Claude SDK guidance acknowledges delivery only after its SDK interrupt has
   succeeded and the guidance prompt has been enqueued; a failed interrupt is a
   failed guidance request and must not allow the old response to keep running.
   The confirmed interruption settles the old response's streaming projections
   while the canonical Turn remains active for the guidance response
-- Codex/Tutti Agent guidance first installs a provisional provider-turn fence,
-  sends an exact `turn/interrupt`, and waits for the interrupted response to
-  terminate before starting the guided response with `turn/start` on the same
-  canonical Turn. Queued native guidance does not use `turn/steer`, because
-  that RPC can queue input without stopping the response already being sampled
+- Codex/Tutti Agent guidance sends `turn/steer` with the exact active provider
+  Turn identity. Steering inserts the guidance into the current provider Turn;
+  it does not interrupt the response or start a replacement provider Turn. If
+  the provider response has already ended while the canonical Turn remains
+  active for child work, guidance may start a provider continuation with
+  `turn/start` on that same canonical Turn
 - guidance captures the canonical `activeTurnId` at the interaction boundary
   and carries it through the queue, activity adapter, daemon API, Agent Host,
   and runtime Controller; `turnId` is required for every cross-process
@@ -1290,19 +1296,33 @@ their renderer and interaction layout; they must not import Desktop or Web
 components, infer project membership from `cwd`, or create a second Session
 lifecycle store.
 
-AgentGUI's existing-Session project projection uses the immutable
+AgentGUI's existing-Session project projection uses the authoritative
 `railSectionKey` as its only join key: it matches that value exactly against a
-registered user project's `sectionKey`. The `conversations` key, a missing key,
-or an unknown key fails closed to no project label even when the Session `cwd`
-equals or sits below a registered project path. Conversely, a recognized
-project key keeps its project identity when the runtime `cwd` is an isolated
-worktree or another detached execution directory. Path matching is reserved
-for resolving the user's explicit project selection before a new activation;
-it is not an existing-Session compatibility fallback.
+registered user project's `sectionKey`. The key is immutable under runtime
+reports, `cwd` changes, and user-project list updates. The `conversations` key,
+a missing key, or an unknown key fails closed to no project
+label even when the Session `cwd` equals or sits below a registered project
+path. Conversely, a recognized project key keeps its project identity when the
+runtime `cwd` is an isolated worktree or another detached execution directory.
+Path matching is reserved for resolving the user's explicit project selection
+before a new activation; it is not an existing-Session compatibility fallback.
+The Remove project action delegates one awaited operation to the daemon. The
+daemon deletes every unpinned root through the canonical Host batch path, keeps
+pinned Session trees, atomically rehomes retained rows to Chats, and only then
+removes the user-project row. Failure keeps the project visible for retry; the
+renderer does not compose candidate-query, Session-delete, and metadata-delete
+requests itself.
 Native Mobile applies the same rule to Activity labels and Rail placement.
-Section `sessionIds` remain query ordering and hydration data; if their section
-disagrees with a Session's canonical `railSectionKey`, Mobile rehomes the row by
-the Session key instead of accepting the stale membership.
+Section `sessionIds` remain query membership, page-boundary, initial-order, and
+hydration data. After joining those memberships to current Engine entities,
+hosts sort loaded ordinary sections by the canonical conversation sort key:
+the latest Turn start time, falling back to Session creation time. Streaming
+freshness, status, and completion updates do not change that key, so parallel
+running Turns do not churn Rail positions. Pinned sections preserve the query's
+pinned order. If a section disagrees with a Session's canonical
+`railSectionKey`, the host rehomes the row by the Session key instead of
+accepting the stale membership; presentation reordering must not mutate cached
+memberships or pagination cursors.
 
 Cross-platform hosts may also reuse the DOM-free canonical transcript
 projection from `@tutti-os/agent-gui/conversation-projection`. It accepts the
@@ -2011,20 +2031,21 @@ source composer. While dispatch is not paused and any task is nonterminal, an
 empty composer shows the normal running Stop control even when the source
 Session has no active Turn; this is presentation state and must not manufacture
 an Agent Turn or change Host submit availability. Typed input replaces that
-aggregate Stop with Send. An exact active source Turn with
-`activeTurnGuidance` receives the input as guidance/steer; an idle source starts
-a normal Turn, and an active source without guidance support keeps the normal
-queue path instead of cancel-then-send. Stop durably pauses Issue dispatch and
-cancels its running task Sessions, and also sends the ordinary source-Session
-stop only when that Session has stoppable work. The two idempotent paths are
-independent because canceling an idle Session merely to trigger the Issue
-cascade could capture a later Turn.
+aggregate Stop with Send. Sending from the ordinary composer always uses the
+normal source-conversation submit path, including while the Issue and source
+Turn are active; canonical busy-session availability therefore keeps the prompt
+in the normal queue. Provider guidance capability only enables an explicit
+guidance action and never changes ordinary Send semantics. Stop durably pauses
+Issue dispatch and cancels its running task Sessions, and also sends the
+ordinary source-Session stop only when that Session has stoppable work. The two
+idempotent paths are independent because canceling an idle Session merely to
+trigger the Issue cascade could capture a later Turn.
 
 Task-level accept and rework controls in that projection prepare localized
 instructions in the exact source Session composer; they preserve any existing
 draft and never send automatically. They do not call generic Issue Task
 mutations or impersonate the source Agent's CLI authority. Once the user sends
-the draft, the normal source-conversation submit/guidance path applies and the
+the draft, the normal source-conversation submit path applies and the
 Agent inspects the canonical Tutti execution before issuing checkpoint- and
 revision-fenced commands. Other plan-panel interactions should use this
 prompt-action pattern only when their intended effect requires source-Agent

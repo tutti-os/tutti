@@ -187,6 +187,7 @@ export function createDesktopAgentGUIWorkbenchHostInput({
   const getLocationSections = () =>
     getCurrentDesktopWorkspaceFileLocationSections({
       homeDirectory: platformApi.homeDirectory,
+      os: platformApi.os,
       workspaceUserProjectService
     });
   const agentGeneratedFileMentionProvider =

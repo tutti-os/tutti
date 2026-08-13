@@ -709,6 +709,9 @@ async function runReplayWorkspaceOrchestration(
       )
     ])
   );
+  const activityClockOriginUnixMs = replayWorkspaceActivityClockOrigin(
+    bootstrap.cassettes
+  );
   const catalogLaunch = await reconcileEventStreamCatalogForLaunch({
     daemonPath: bootstrap.runtime.daemonPath,
     managed: Boolean(options.managed),
@@ -805,6 +808,7 @@ async function runReplayWorkspaceOrchestration(
           cassette.action,
           options.timeoutMs,
           {
+            activityClockOriginUnixMs,
             checkpoints: cassette.checkpoints,
             controlPath,
             initialTargetCheckpoint:
@@ -950,6 +954,17 @@ async function runReplayWorkspaceOrchestration(
     client?.close();
     await stopProcessTree(desktop);
   }
+}
+
+export function replayWorkspaceActivityClockOrigin(cassettes) {
+  const firstActivityTimes = cassettes.flatMap((cassette) => {
+    const occurredAtUnixMs =
+      cassette.action?.activityEvents?.[0]?.occurredAtUnixMs;
+    return Number.isSafeInteger(occurredAtUnixMs) && occurredAtUnixMs > 0
+      ? [occurredAtUnixMs]
+      : [];
+  });
+  return firstActivityTimes.length > 0 ? Math.min(...firstActivityTimes) : null;
 }
 
 export function createReplayWorkspaceSurfaceReadyQueue(activate) {
@@ -3233,7 +3248,13 @@ export async function maybeSettleForScreenshot(
   if (
     checkpoint &&
     !checkpointNeedsScreenshotSettle(checkpoint) &&
-    !checkpointAllowsOptionalScreenshotSettle(checkpoint)
+    !checkpointAllowsOptionalScreenshotSettle(checkpoint) &&
+    !(
+      scenario.settleForWorkingScreenshot === true &&
+      [checkpoint.kind, ...(checkpoint.tags ?? [])].some(
+        (token) => String(token) === "turn.working"
+      )
+    )
   ) {
     return;
   }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"log/slog"
 	"strings"
+	"time"
 
 	agenthost "github.com/tutti-os/tutti/packages/agent/host"
 	agentactivitybiz "github.com/tutti-os/tutti/packages/agent/store-sqlite"
@@ -256,7 +257,7 @@ func (s *Service) withProtocolV2TurnStateProjectionOptions(
 		if err != nil {
 			return Session{}, err
 		}
-		return s.withSessionGoalSyncState(ctx, workspaceID, session)
+		return s.withSessionGoalState(ctx, workspaceID, session)
 	}
 	latestTurn, ok, err := s.TurnStore.GetLatestTurn(ctx, workspaceID, session.ID)
 	if err != nil {
@@ -297,7 +298,7 @@ func (s *Service) withProtocolV2TurnStateProjectionOptions(
 	if err != nil {
 		return Session{}, err
 	}
-	return s.withSessionGoalSyncState(ctx, workspaceID, session)
+	return s.withSessionGoalState(ctx, workspaceID, session)
 }
 
 func (s *Service) withProtocolV2TurnStateProjection(ctx context.Context, workspaceID string, session Session, latestTurn *agentactivitybiz.Turn, latestTurnInteractions []agentactivitybiz.Interaction) (Session, error) {
@@ -341,7 +342,7 @@ func (s *Service) withProtocolV2TurnStates(ctx context.Context, workspaceID stri
 		if err != nil {
 			return nil, err
 		}
-		return s.withSessionGoalSyncStates(ctx, workspaceID, result)
+		return s.withSessionGoalStates(ctx, workspaceID, result)
 	}
 	ids := make([]string, 0, len(sessions))
 	activeTurnIDBySessionID := make(map[string]string)
@@ -391,10 +392,10 @@ func (s *Service) withProtocolV2TurnStates(ctx context.Context, workspaceID stri
 	if err != nil {
 		return nil, err
 	}
-	return s.withSessionGoalSyncStates(ctx, workspaceID, result)
+	return s.withSessionGoalStates(ctx, workspaceID, result)
 }
 
-func (s *Service) withSessionGoalSyncState(
+func (s *Service) withSessionGoalState(
 	ctx context.Context,
 	workspaceID string,
 	session Session,
@@ -412,12 +413,12 @@ func (s *Service) withSessionGoalSyncState(
 		return Session{}, err
 	}
 	if found {
-		session.GoalSyncState = projectedSessionGoalSyncState(state)
+		return projectSessionGoalState(session, state)
 	}
 	return session, nil
 }
 
-func (s *Service) withSessionGoalSyncStates(
+func (s *Service) withSessionGoalStates(
 	ctx context.Context,
 	workspaceID string,
 	sessions []Session,
@@ -465,11 +466,60 @@ func (s *Service) withSessionGoalSyncStates(
 	}
 	for i, session := range result {
 		if state, ok := states[strings.TrimSpace(session.ID)]; ok {
-			session.GoalSyncState = projectedSessionGoalSyncState(state)
+			projected, err := projectSessionGoalState(session, state)
+			if err != nil {
+				return nil, err
+			}
+			session = projected
 		}
 		result[i] = session
 	}
 	return result, nil
+}
+
+// projectSessionGoalState makes Host-owned durable Goal state the Session read
+// authority. Desired state remains visible while convergence is unresolved;
+// once synced (or definitively failed), observed state owns provider progress.
+func projectSessionGoalState(
+	session Session,
+	state agentactivitybiz.SessionGoalState,
+) (Session, error) {
+	var rawGoal any
+	if !state.Tombstoned && len(state.Desired) > 0 {
+		rawGoal = state.Desired
+	}
+	if !state.Tombstoned &&
+		(state.SyncStatus == agentactivitybiz.GoalSyncStatusSynced ||
+			state.SyncStatus == agentactivitybiz.GoalSyncStatusFailed) &&
+		len(state.Observed) > 0 {
+		rawGoal = state.Observed
+	}
+	goal, err := decodeProjectedSessionGoal(rawGoal)
+	if err != nil {
+		return Session{}, err
+	}
+	session.Metadata.Goal = goal
+	session.GoalSyncState = projectedSessionGoalSyncState(state)
+	if state.UpdatedAtUnixMS > 0 &&
+		(session.UpdatedAt == nil || state.UpdatedAtUnixMS > session.UpdatedAt.UnixMilli()) {
+		updatedAt := time.UnixMilli(state.UpdatedAtUnixMS)
+		session.UpdatedAt = &updatedAt
+	}
+	return session, nil
+}
+
+func decodeProjectedSessionGoal(rawGoal any) (*agentactivitybiz.SessionGoal, error) {
+	raw, ok := rawGoal.(map[string]any)
+	status, _ := raw["status"].(string)
+	if !ok || strings.TrimSpace(status) != "completed" {
+		return agentactivitybiz.DecodeSessionGoal(rawGoal)
+	}
+	normalized := make(map[string]any, len(raw))
+	for key, value := range raw {
+		normalized[key] = value
+	}
+	normalized["status"] = "complete"
+	return agentactivitybiz.DecodeSessionGoal(normalized)
 }
 
 func projectedSessionGoalSyncState(state agentactivitybiz.SessionGoalState) *SessionGoalSyncState {

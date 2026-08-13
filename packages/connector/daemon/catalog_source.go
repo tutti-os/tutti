@@ -253,6 +253,10 @@ func (source *CatalogSource) mapItem(item wireMarketItem) (market.Release, error
 	if err != nil {
 		return market.Release{}, err
 	}
+	authorizationInteraction, err := connectorManifest.Payload.Authorization.interaction()
+	if err != nil {
+		return market.Release{}, err
+	}
 	releaseDigest := sha256.Sum256([]byte(item.ItemKey + "\x00" + item.Version + "\x00" + item.Artifact.SHA256))
 	iconURL := connectorManifest.Display.IconURL
 	if strings.TrimSpace(iconURL) == "" {
@@ -266,7 +270,8 @@ func (source *CatalogSource) mapItem(item wireMarketItem) (market.Release, error
 		Permissions:          connectorManifest.Payload.Permissions,
 		RequiredCapabilities: connectorManifest.Payload.RequiredCapabilities,
 		Implementation:       implementation, AuthorizationKind: connectorManifest.Payload.Authorization.Kind,
-		Compatibility: connectorManifest.Payload.Compatibility}
+		AuthorizationInteraction: authorizationInteraction,
+		Compatibility:            connectorManifest.Payload.Compatibility}
 	release := market.Release{SchemaVersion: "1", ReleaseID: item.ItemKey + "@" + item.Version,
 		ConnectorKey: item.ItemKey, Version: item.Version,
 		ReleaseDigest: hex.EncodeToString(releaseDigest[:]), ManifestDigest: connectorManifest.Payload.PackageManifestSHA256,
@@ -377,7 +382,26 @@ type wireConnectorManifestPayload struct {
 }
 
 type wireConnectorAuthorization struct {
-	Kind string `json:"kind"`
+	Kind    string                             `json:"kind"`
+	Methods []wireConnectorAuthorizationMethod `json:"methods,omitempty"`
+}
+
+type wireConnectorAuthorizationMethod struct {
+	Interaction json.RawMessage `json:"interaction,omitempty"`
+}
+
+func (authorization wireConnectorAuthorization) interaction() (json.RawMessage, error) {
+	var selected json.RawMessage
+	for _, method := range authorization.Methods {
+		if len(method.Interaction) == 0 || string(method.Interaction) == "null" {
+			continue
+		}
+		if len(selected) != 0 {
+			return nil, errors.New("connector authorization must declare at most one interaction")
+		}
+		selected = append(json.RawMessage(nil), method.Interaction...)
+	}
+	return selected, nil
 }
 
 const legacyConnectorIconURL = "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2NCA2NCI+PHJlY3Qgd2lkdGg9IjY0IiBoZWlnaHQ9IjY0IiByeD0iMTQiIGZpbGw9IiM2YjcyODAiLz48cGF0aCBkPSJNMTggMjBoMjh2MjRIMTh6IiBmaWxsPSJub25lIiBzdHJva2U9IndoaXRlIiBzdHJva2Utd2lkdGg9IjQiLz48L3N2Zz4="

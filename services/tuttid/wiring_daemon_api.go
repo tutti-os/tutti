@@ -1,3 +1,4 @@
+//revive:disable:file-length-limit // Composition root is intentionally kept as one auditable dependency graph.
 package main
 
 import (
@@ -361,6 +362,7 @@ func buildDaemonAPI(
 		Runtime: agentservice.ServiceRuntimeConfig{
 			Preparer:                 agentRuntimePreparation,
 			Connector:                connectorRuntime,
+			ConnectorCapabilities:    agentRuntimeController,
 			ModelGateway:             modelGateway,
 			BrowserUseAvailable:      browserUseAvailable,
 			ComputerUseAvailable:     computerUseAvailable,
@@ -445,6 +447,7 @@ func buildDaemonAPI(
 		Components:      agentServiceComponents,
 	}
 	agentSessionService := agentservice.NewService(agentRuntimeController, agentSessionConfig)
+	configureUserProjectSessionDeletion(&userProjectService, agentSessionService)
 	agentStatusService.OnProviderStatusInvalidated = agentSessionService.InvalidateProviderAvailabilityCache
 	preferences.AgentComposerDefaultsValidator = agentSessionService
 	modelPlans.NativeSubscriptionProbe = modelPlanNativeSubscriptionProbe{Agents: agentSessionService}

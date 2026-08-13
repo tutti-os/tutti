@@ -18,6 +18,8 @@ type testConnectorRuntime struct {
 	hints      []runtimeprep.ConnectorRoutingHint
 	context    runtimeprep.ConnectorAgentContext
 	bind       func(string, string)
+	bindErr    error
+	bindCalls  int
 	revoked    []string
 	revokeAlls int
 }
@@ -27,6 +29,7 @@ func (runtime *testConnectorRuntime) RoutingHints() []runtimeprep.ConnectorRouti
 }
 
 func (runtime *testConnectorRuntime) BindSession(workspaceID, sessionID string) (runtimeprep.ConnectorAgentContext, error) {
+	runtime.bindCalls++
 	if runtime.bind != nil {
 		runtime.bind(workspaceID, sessionID)
 	}
@@ -34,7 +37,21 @@ func (runtime *testConnectorRuntime) BindSession(workspaceID, sessionID string) 
 	if len(context.RoutingHints) == 0 {
 		context.RoutingHints = runtime.hints
 	}
-	return context, nil
+	return context, runtime.bindErr
+}
+
+type testConnectorCapabilityResolver struct {
+	supported bool
+	err       error
+	calls     int
+}
+
+func (resolver *testConnectorCapabilityResolver) ConnectorHTTPMCPSupported(
+	_ context.Context,
+	_ ConnectorCapabilityInput,
+) (bool, error) {
+	resolver.calls++
+	return resolver.supported, resolver.err
 }
 
 func (runtime *testConnectorRuntime) RevokeSession(workspaceID, sessionID string) {
@@ -71,6 +88,7 @@ func TestServiceCreateUsesRuntimePreparerResult(t *testing.T) {
 			}
 		},
 	}
+	service.ConnectorCapabilities = &testConnectorCapabilityResolver{supported: true}
 	cwd := "/user/workdir"
 
 	session, err := service.Create(context.Background(), "ws-1", CreateSessionInput{
@@ -120,21 +138,98 @@ func TestServiceCreateUsesRuntimePreparerResult(t *testing.T) {
 func TestPrepareRuntimeRevokesConnectorBindingWhenProviderPreparationFails(t *testing.T) {
 	service := newTestService(newFakeRuntime())
 	prepareErr := errors.New("prepare failed")
-	service.RuntimePreparer = fakeRuntimePreparer{err: prepareErr}
+	preparer := &sequenceRuntimePreparer{results: []runtimeprep.PreparedRuntime{{Cwd: t.TempDir()}}, errors: []error{nil, prepareErr, nil}}
+	service.RuntimePreparer = preparer
 	connector := &testConnectorRuntime{context: runtimeprep.ConnectorAgentContext{MCPServers: []runtimeprep.MCPServerBinding{{
 		Name: "connector", Type: "http", URL: "http://127.0.0.1:1234/mcp/connector",
 	}}}}
 	service.ConnectorRuntime = connector
+	service.ConnectorCapabilities = &testConnectorCapabilityResolver{supported: true}
 
 	_, err := service.prepareRuntimeWithModelEndpoint(t.Context(), "ws-1", t.TempDir(), CreateSessionInput{
 		AgentSessionID: "11111111-1111-4111-8111-111111111111",
 		Provider:       "codex",
 	}, nil)
-	if !errors.Is(err, prepareErr) {
-		t.Fatalf("prepareRuntimeWithModelEndpoint() error = %v, want %v", err, prepareErr)
+	if err != nil {
+		t.Fatalf("prepareRuntimeWithModelEndpoint() error = %v, want ordinary runtime fallback", err)
 	}
 	if !slices.Equal(connector.revoked, []string{"ws-1/11111111-1111-4111-8111-111111111111"}) {
 		t.Fatalf("revoked bindings = %#v", connector.revoked)
+	}
+}
+
+type sequenceRuntimePreparer struct {
+	results []runtimeprep.PreparedRuntime
+	errors  []error
+	inputs  []runtimeprep.PrepareInput
+}
+
+func (preparer *sequenceRuntimePreparer) Prepare(_ context.Context, input runtimeprep.PrepareInput) (runtimeprep.PreparedRuntime, error) {
+	preparer.inputs = append(preparer.inputs, input)
+	index := len(preparer.inputs) - 1
+	var result runtimeprep.PreparedRuntime
+	if index < len(preparer.results) {
+		result = preparer.results[index]
+	}
+	if index < len(preparer.errors) {
+		return result, preparer.errors[index]
+	}
+	return result, nil
+}
+
+func (*sequenceRuntimePreparer) Cleanup(context.Context, runtimeprep.CleanupInput) error { return nil }
+
+func TestPrepareRuntimeSkipsConnectorWhenAgentDoesNotDeclareHTTPMCP(t *testing.T) {
+	service := newTestService(newFakeRuntime())
+	var prepareInput runtimeprep.PrepareInput
+	service.RuntimePreparer = fakeRuntimePreparer{result: runtimeprep.PreparedRuntime{Cwd: t.TempDir()}, input: &prepareInput}
+	connector := &testConnectorRuntime{}
+	service.ConnectorRuntime = connector
+	service.ConnectorCapabilities = &testConnectorCapabilityResolver{supported: false}
+
+	prepared, err := service.prepareRuntimeWithModelEndpoint(t.Context(), "ws-1", t.TempDir(), CreateSessionInput{
+		AgentSessionID: "11111111-1111-4111-8111-111111111111", Provider: "acp:future-agent",
+	}, nil)
+	if err != nil {
+		t.Fatalf("prepareRuntimeWithModelEndpoint() error = %v", err)
+	}
+	if connector.bindCalls != 0 || prepareInput.Connector != nil || len(prepared.MCPServers) != 0 {
+		t.Fatalf("unsupported Agent received Connector: binds=%d input=%#v MCP=%#v", connector.bindCalls, prepareInput.Connector, prepared.MCPServers)
+	}
+}
+
+func TestPrepareRuntimeContinuesWithoutConnectorWhenProbeFails(t *testing.T) {
+	service := newTestService(newFakeRuntime())
+	service.RuntimePreparer = fakeRuntimePreparer{result: runtimeprep.PreparedRuntime{Cwd: t.TempDir()}}
+	connector := &testConnectorRuntime{}
+	service.ConnectorRuntime = connector
+	service.ConnectorCapabilities = &testConnectorCapabilityResolver{err: errors.New("probe failed")}
+
+	if _, err := service.prepareRuntimeWithModelEndpoint(t.Context(), "ws-1", t.TempDir(), CreateSessionInput{
+		AgentSessionID: "11111111-1111-4111-8111-111111111111", Provider: "acp:future-agent",
+	}, nil); err != nil {
+		t.Fatalf("prepareRuntimeWithModelEndpoint() error = %v", err)
+	}
+	if connector.bindCalls != 0 {
+		t.Fatalf("Connector BindSession calls = %d, want 0", connector.bindCalls)
+	}
+}
+
+func TestPrepareRuntimeContinuesWithoutConnectorWhenBindingFails(t *testing.T) {
+	service := newTestService(newFakeRuntime())
+	service.RuntimePreparer = fakeRuntimePreparer{result: runtimeprep.PreparedRuntime{Cwd: t.TempDir()}}
+	connector := &testConnectorRuntime{bindErr: errors.New("binding failed")}
+	service.ConnectorRuntime = connector
+	service.ConnectorCapabilities = &testConnectorCapabilityResolver{supported: true}
+
+	prepared, err := service.prepareRuntimeWithModelEndpoint(t.Context(), "ws-1", t.TempDir(), CreateSessionInput{
+		AgentSessionID: "11111111-1111-4111-8111-111111111111", Provider: "acp:future-agent",
+	}, nil)
+	if err != nil {
+		t.Fatalf("prepareRuntimeWithModelEndpoint() error = %v", err)
+	}
+	if connector.bindCalls != 1 || len(prepared.MCPServers) != 0 {
+		t.Fatalf("binding fallback = calls %d MCP %#v", connector.bindCalls, prepared.MCPServers)
 	}
 }
 

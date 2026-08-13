@@ -30,6 +30,7 @@ const schemaMigrationWorkspaceAgentActivityV7 = "workspace_agent_activity_v7"
 const schemaMigrationWorkspaceAgentActivityV8 = "workspace_agent_activity_v8"
 const schemaMigrationWorkspaceAgentActivityV9 = "workspace_agent_activity_v9"
 const schemaMigrationWorkspaceAgentActivityV10 = "workspace_agent_activity_v10"
+const schemaMigrationWorkspaceAgentActivityV11 = "workspace_agent_activity_v11"
 const schemaMigrationWorkspaceAgentActivityRailV1 = "workspace_agent_activity_rail_v1"
 const schemaMigrationWorkspaceAgentActivityRailV2 = "workspace_agent_activity_rail_v2"
 const schemaMigrationWorkspaceAgentActivityTurnsV1 = "workspace_agent_activity_turns_v1"
@@ -88,6 +89,7 @@ const schemaMigrationWorkspaceAgentProviderTurnBindingJSONV1 = "workspace_agent_
 const schemaMigrationWorkspaceAgentRecoverableDeletionV1 = "workspace_agent_recoverable_deletion_v1"
 const schemaMigrationWorkspaceAgentTurnIdentityAnchorV1 = "workspace_agent_turn_identity_anchor_v1"
 const schemaMigrationWorkspaceAgentCommandOutputAliasesV1 = "workspace_agent_command_output_aliases_v1"
+const schemaMigrationWorkspaceAgentToolPayloadBudgetV1 = "workspace_agent_tool_payload_budget_v1"
 
 // claimableMigrationIDs are the migration IDs that may already be recorded
 // in the legacy tuttid ledger; the claim copies exactly these.
@@ -231,6 +233,9 @@ CREATE TABLE IF NOT EXISTS `+schemaMigrationsTable+` (
 	if err := s.applyWorkspaceAgentChildSessionsV1(ctx); err != nil {
 		return err
 	}
+	if err := s.applyWorkspaceAgentActivityV11(ctx); err != nil {
+		return err
+	}
 	if err := s.applyWorkspaceAgentRootTurnCompletionV1(ctx); err != nil {
 		return err
 	}
@@ -322,6 +327,9 @@ CREATE TABLE IF NOT EXISTS `+schemaMigrationsTable+` (
 		return err
 	}
 	if err := s.applyWorkspaceAgentCommandOutputAliasesV1(ctx); err != nil {
+		return err
+	}
+	if err := s.applyWorkspaceAgentToolPayloadBudgetV1(ctx); err != nil {
 		return err
 	}
 	return s.applyWorkspaceAgentActivityRailV2(ctx)

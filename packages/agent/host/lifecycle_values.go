@@ -36,6 +36,26 @@ func resumePreparationInput(session storesqlite.Session, settings ComposerSettin
 	}
 }
 
+func overlayRuntimeContext(base map[string]any, overlay map[string]any) map[string]any {
+	result := cloneMap(base)
+	if len(overlay) == 0 {
+		return result
+	}
+	if result == nil {
+		result = make(map[string]any, len(overlay))
+	}
+	for key, value := range cloneMap(overlay) {
+		baseMap, baseIsMap := result[key].(map[string]any)
+		overlayMap, overlayIsMap := value.(map[string]any)
+		if baseIsMap && overlayIsMap {
+			result[key] = overlayRuntimeContext(baseMap, overlayMap)
+			continue
+		}
+		result[key] = value
+	}
+	return result
+}
+
 func composerSettingsFromMap(values map[string]any) ComposerSettings {
 	result := ComposerSettings{}
 	result.CodexSaverMode, _ = values["codexSaverMode"].(bool)

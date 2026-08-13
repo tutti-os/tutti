@@ -7,6 +7,7 @@ import {
 } from "@tutti-os/client-tuttid-ts";
 import {
   createWorkspaceFileManagerI18nRuntime,
+  resolveWorkspaceFileLocationDefaultId,
   type WorkspaceFileManagerPersistedState,
   workspaceFileManagerI18nResources
 } from "@tutti-os/workspace-file-manager/services";
@@ -644,6 +645,7 @@ test("workspace file manager service includes hidden entries for direct reveal i
 test("desktop workspace file locations include projects and local entries", () => {
   const sections = buildDesktopWorkspaceFileLocationSections({
     homeDirectory: "/Users/local",
+    os: "darwin",
     projects: [
       {
         id: "project-1",
@@ -670,6 +672,40 @@ test("desktop workspace file locations include projects and local entries", () =
       "local:desktop",
       DESKTOP_WORKSPACE_FILE_HOME_LOCATION_ID
     ]
+  );
+  assert.equal(
+    resolveWorkspaceFileLocationDefaultId({
+      defaultLocationId: DESKTOP_WORKSPACE_FILE_HOME_LOCATION_ID,
+      persistedLocationId: DESKTOP_WORKSPACE_FILE_RECENT_LOCATION_ID,
+      sections
+    }),
+    DESKTOP_WORKSPACE_FILE_RECENT_LOCATION_ID
+  );
+});
+
+test("Windows desktop locations hide recent and persisted recent falls back to home", () => {
+  const sections = buildDesktopWorkspaceFileLocationSections({
+    homeDirectory: "C:\\Users\\demo",
+    os: "win32",
+    projects: []
+  });
+
+  assert.deepEqual(
+    sections[1]?.locations.map((location) => location.id),
+    [
+      "local:downloads",
+      "local:documents",
+      "local:desktop",
+      DESKTOP_WORKSPACE_FILE_HOME_LOCATION_ID
+    ]
+  );
+  assert.equal(
+    resolveWorkspaceFileLocationDefaultId({
+      defaultLocationId: DESKTOP_WORKSPACE_FILE_HOME_LOCATION_ID,
+      persistedLocationId: DESKTOP_WORKSPACE_FILE_RECENT_LOCATION_ID,
+      sections
+    }),
+    DESKTOP_WORKSPACE_FILE_HOME_LOCATION_ID
   );
 });
 

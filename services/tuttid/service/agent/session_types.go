@@ -68,6 +68,7 @@ type Service struct {
 	PromptAttachmentStore          PromptAttachmentStore
 	RuntimePreparer                runtimeprep.Preparer
 	ConnectorRuntime               ConnectorRuntime
+	ConnectorCapabilities          ConnectorCapabilityResolver
 	ModelGateway                   ModelGatewayRegistry
 	BrowserUseAvailable            func() bool
 	ComputerUseAvailable           func() bool
@@ -79,6 +80,7 @@ type Service struct {
 	ProviderAvailabilityCacheTTL   time.Duration
 	CapabilityCatalogCacheTTL      time.Duration
 	LiveModelCacheTTL              time.Duration
+	liveModelDiscoveryWaitTimeout  time.Duration
 	GeneratedFilesClock            func() time.Time
 	LiveModelDiscoveryDeleteDelay  time.Duration
 	skillOptionsCache              *composerSkillOptionsCache
@@ -119,6 +121,22 @@ type ConnectorRuntime interface {
 	BindSession(string, string) (runtimeprep.ConnectorAgentContext, error)
 	RevokeSession(string, string)
 	RevokeAll()
+}
+
+type ConnectorCapabilityInput struct {
+	WorkspaceID       string
+	AgentSessionID    string
+	AgentTargetID     string
+	Provider          string
+	Cwd               string
+	Env               []string
+	ProviderTargetRef map[string]any
+	PermissionModeID  string
+	Settings          ComposerSettings
+}
+
+type ConnectorCapabilityResolver interface {
+	ConnectorHTTPMCPSupported(context.Context, ConnectorCapabilityInput) (bool, error)
 }
 
 type TuttiModeSourceActivity struct {
@@ -380,7 +398,9 @@ type SessionSectionDeletionCandidates struct {
 }
 
 type DeleteSessionsBatchInput struct {
-	SessionIDs []string
+	SessionIDs                 []string
+	RequiredRootRailSectionKey string
+	ExcludePinnedRoots         bool
 }
 
 type DeleteSessionResult struct {

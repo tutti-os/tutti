@@ -124,11 +124,15 @@ export interface SessionLifecycleState {
 export interface SessionSnapshotReceivedIntent {
   type: "session/snapshotReceived";
   sessions: readonly AgentActivitySessionInput[];
+  observedAtUnixMs?: number;
+  /** Session ids filtered at the Engine identity boundary for wrong scope. */
+  workspaceMismatchSessionIds?: readonly string[];
 }
 
 export interface SessionUpsertedIntent {
   type: "session/upserted";
   session: AgentActivitySessionInput;
+  observedAtUnixMs?: number;
 }
 
 export type CanonicalSessionMetadataPatch = Partial<

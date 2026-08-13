@@ -134,6 +134,7 @@ export interface ConnectorManifest {
   requiredCapabilities?: string[];
   implementation: ConnectorManifestImplementation;
   authorizationKind: string;
+  authorizationInteraction?: unknown;
   compatibility?: ConnectorCompatibilityRequirements;
 }
 

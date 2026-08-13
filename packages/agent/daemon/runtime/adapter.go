@@ -182,6 +182,17 @@ type Adapter interface {
 	Cancel(context.Context, Session, string) ([]activityshared.Event, error)
 }
 
+// ConnectorCapabilityAdapter reports whether this exact provider runtime can
+// accept Tutti's session-scoped Connector binding. Implementations must return
+// false unless support is explicit; a missing implementation is unsupported.
+type ConnectorCapabilityAdapter interface {
+	ConnectorCapabilities(context.Context, Session) (ConnectorCapabilities, error)
+}
+
+type ConnectorCapabilities struct {
+	HTTPMCP bool
+}
+
 // SessionForkAdapter is an optional provider-native capability. Providers that
 // cannot prove an exact fork boundary do not implement it.
 type SessionForkAdapter interface {

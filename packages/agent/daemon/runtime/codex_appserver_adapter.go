@@ -534,6 +534,13 @@ func (a *CodexAppServerAdapter) Provider() string {
 	return a.config.provider
 }
 
+func (*CodexAppServerAdapter) ConnectorCapabilities(
+	context.Context,
+	Session,
+) (ConnectorCapabilities, error) {
+	return ConnectorCapabilities{HTTPMCP: true}, nil
+}
+
 func (*CodexAppServerAdapter) sessionCWD(session Session) string {
 	return projectCodexWorkspaceCWD(strings.TrimSpace(session.CWD), session.RoomID)
 }

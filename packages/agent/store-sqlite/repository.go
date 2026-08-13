@@ -330,9 +330,11 @@ type SessionSectionDeletionCandidates struct {
 }
 
 type DeleteSessionsBatchInput struct {
-	WorkspaceID        string
-	SessionIDs         []string
-	ExpectedSessionIDs []string
+	WorkspaceID                string
+	SessionIDs                 []string
+	ExpectedSessionIDs         []string
+	RequiredRootRailSectionKey string
+	ExcludePinnedRoots         bool
 }
 
 type DeleteSessionsPlan struct {

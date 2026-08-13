@@ -4837,6 +4837,12 @@ export type ConnectorMarketManifest = {
   permissions: Array<string>;
   implementation: ConnectorMarketImplementation;
   authorizationKind: string;
+  /**
+   * Opaque Connector-owned authorization interaction configuration. Hosts transport this value without interpreting its UI semantics; renderers must validate it against the versioned protocol.
+   */
+  authorizationInteraction?: {
+    [key: string]: unknown;
+  };
   compatibility?: ConnectorMarketCompatibilityRequirements;
 };
 

@@ -25,6 +25,12 @@ type canonicalInitializationIntegrationStore struct {
 	enterOnce         sync.Once
 }
 
+type canonicalInitializationProjectPaths []string
+
+func (paths canonicalInitializationProjectPaths) ProjectPaths(context.Context, storesqlite.Querier) ([]string, error) {
+	return append([]string(nil), paths...), nil
+}
+
 func (s *canonicalInitializationIntegrationStore) InitializeRuntimeSession(
 	ctx context.Context,
 	input agenthost.RuntimeSessionInitialization,
@@ -212,7 +218,10 @@ func TestCreateSessionCanonicalInitializationBarrierWithRealControllerAndSQLite(
 	}
 	t.Cleanup(func() { _ = db.Close() })
 	db.SetMaxOpenConns(1)
-	canonical := storesqlite.New(db, storesqlite.Options{})
+	cwd := "/workspace/selected-project"
+	canonical := storesqlite.New(db, storesqlite.Options{
+		ProjectPaths: canonicalInitializationProjectPaths{cwd},
+	})
 	if err := canonical.Migrate(ctx); err != nil {
 		t.Fatalf("migrate SQLite: %v", err)
 	}
@@ -247,7 +256,6 @@ func TestCreateSessionCanonicalInitializationBarrierWithRealControllerAndSQLite(
 		GoalRuntime:    bridge,
 	})
 
-	cwd := "/workspace/selected-project"
 	input := agenthost.CreateSessionInput{
 		AgentSessionID:       agentSessionID,
 		AgentTargetID:        "local:codex",
@@ -314,14 +322,15 @@ func TestCreateSessionCanonicalInitializationBarrierWithRealControllerAndSQLite(
 		t.Fatalf("canonical session after create found=%v error=%v", found, err)
 	}
 	wantRailKey := storesqlite.RailSectionKeyForProject(cwd)
+	wantProjectPath := storesqlite.NormalizeProjectPath(cwd)
 	if persisted.RailSectionKind != string(agenthost.RailPlacementKindProject) ||
-		persisted.RailProjectPath != cwd || persisted.RailSectionKey != wantRailKey {
+		persisted.RailProjectPath != wantProjectPath || persisted.RailSectionKey != wantRailKey {
 		t.Fatalf(
 			"canonical rail = %q/%q/%q, want project/%q/%q",
 			persisted.RailSectionKind,
 			persisted.RailProjectPath,
 			persisted.RailSectionKey,
-			cwd,
+			wantProjectPath,
 			wantRailKey,
 		)
 	}

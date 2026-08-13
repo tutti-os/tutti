@@ -119,20 +119,23 @@ func (a *CodexAppServerAdapter) GuideActiveTurn(
 	if appSession == nil || appSession.client == nil {
 		return nil, ErrSessionDisconnected
 	}
+	activeTurnID := a.sessionActiveTurnID(session.AgentSessionID)
 	session.ProviderSessionID = appSession.threadID
-	activeTurn, activeTurnID := a.sessionActiveTurnSnapshot(session.AgentSessionID)
-	if activeTurn != nil && activeTurnID != "" {
-		return a.preemptActiveTurnAndStartGuidance(
-			ctx,
-			appSession,
-			activeTurn,
-			activeTurnID,
-			session,
-			content,
-			displayPrompt,
-			turnID,
-			emit,
-			emitCommands,
+	explicitDisplayPrompt, visibleText := explicitAndVisiblePromptText(content, displayPrompt)
+	mentionRoutingApplied, mentionRoutingSkills := tuttiMentionRoutingSkills(visibleText)
+	if activeTurnID != "" {
+		providerContent := content
+		if mentionRoutingApplied {
+			providerContent = appendTuttiMentionRoutingContent(providerContent, mentionRoutingSkills)
+		}
+		var err error
+		providerContent, err = materializeProviderPromptImagesAtBoundary(ctx, providerContent, a.promptImageMaterializer)
+		if err != nil {
+			return nil, err
+		}
+		return a.steerActiveTurn(
+			ctx, appSession, session, content, providerContent,
+			explicitDisplayPrompt, visibleText, turnID, activeTurnID, emit,
 		)
 	}
 	// The canonical root turn remains active while child sessions drain even

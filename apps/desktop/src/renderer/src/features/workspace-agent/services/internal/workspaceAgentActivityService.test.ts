@@ -297,6 +297,7 @@ test("WorkspaceAgentActivityService.activateSession creates target-backed sessio
   });
 
   await service.activateSession({
+    activationId: "submit-activate-codex",
     agentSessionId: "11111111-1111-4111-8111-111111111111",
     agentTargetId: "local:codex",
     capabilityRefs: [{ capability: "tutti", source: "slash_command" }],
@@ -976,6 +977,7 @@ test("WorkspaceAgentActivityService reads existing session settings from the dae
   });
 
   const activation = await service.activateSession({
+    activationId: "submit-activate-claude",
     agentSessionId: "session-1",
     agentTargetId: "local:claude-code",
     clientSubmitId: "submit-activate-claude",
@@ -1023,6 +1025,7 @@ test("WorkspaceAgentActivityService does not reinterpret a failed Turn as activa
   });
 
   const created = await service.activateSession({
+    activationId: "submit-create-failed-turn",
     agentSessionId: "session-1",
     agentTargetId: "local:codex",
     clientSubmitId: "submit-create-failed-turn",
@@ -1032,6 +1035,7 @@ test("WorkspaceAgentActivityService does not reinterpret a failed Turn as activa
     workspaceId: "ws-1"
   });
   const reopened = await service.activateSession({
+    activationId: "activation-reopen-failed-turn",
     agentSessionId: "session-1",
     mode: "existing",
     signal: controller.signal,

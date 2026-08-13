@@ -97,6 +97,7 @@ type ResolvedBundle struct {
 // Resolve composes a deployment profile without materializing provider files.
 // DefaultPreparer uses the same resolver before provider preparation.
 func Resolve(ctx context.Context, input PrepareInput, profile DeploymentProfile, sources ...SkillSource) (ResolvedBundle, error) {
+	input = expandConnectorAgentContext(input)
 	resolved, err := resolveCapabilities(ctx, input, profile, sources)
 	if err != nil {
 		return ResolvedBundle{}, err
@@ -125,12 +126,11 @@ func StandardProfile() DeploymentProfile {
 	}
 }
 
-// ConnectorDiscoveryPack teaches an Agent the stable two-level Broker flow.
-// Connector-owned Skills remain lazy and untrusted; they are never injected
-// into the initial provider context.
+// ConnectorDiscoveryPack teaches an explicitly Connector-enabled Agent the
+// stable two-level Broker flow. Connector-owned Skills remain untrusted.
 func ConnectorDiscoveryPack() CapabilityPack {
 	return CapabilityPack{Name: "connector-discovery", Resolve: func(_ context.Context, input PrepareInput) (CapabilityContribution, error) {
-		if input.commandCapabilities == nil || !input.commandCapabilities.HasAll(
+		if input.Connector == nil || input.commandCapabilities == nil || !input.commandCapabilities.HasAll(
 			"connector.available",
 		) {
 			return CapabilityContribution{Enabled: false}, nil

@@ -302,6 +302,31 @@ func TestStandardACPAdapterCloseSendsProtocolSessionCloseBeforeTransportClose(t 
 	}
 }
 
+func TestStandardACPAdapterReleaseLiveSessionClosesOnlyTransport(t *testing.T) {
+	t.Parallel()
+
+	transport := newStandardACPTransport("Hermes Agent", "hermes-session-release")
+	transport.conn.supportsCloseSession = true
+	adapter := newHermesExtensionTestAdapter(transport)
+	session := standardTestSession(hermesExtensionTestProvider)
+
+	if _, err := adapter.Start(context.Background(), session); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	if err := adapter.ReleaseLiveSession(context.Background(), session); err != nil {
+		t.Fatalf("ReleaseLiveSession: %v", err)
+	}
+	if params := transport.conn.closeSessionParams(); len(params) != 0 {
+		t.Fatalf("ReleaseLiveSession sent destructive session/close params %#v", params)
+	}
+	if !transport.conn.closed() {
+		t.Fatal("ReleaseLiveSession did not close ACP transport")
+	}
+	if adapter.HasLiveSession(session) {
+		t.Fatal("HasLiveSession = true after release")
+	}
+}
+
 func TestStandardACPAdapterCloseFallsBackWhenProtocolSessionCloseFails(t *testing.T) {
 	t.Parallel()
 

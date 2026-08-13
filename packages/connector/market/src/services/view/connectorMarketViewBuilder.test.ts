@@ -138,6 +138,52 @@ test("keeps connector details open through installation and advances to authoriz
   );
 });
 
+test("preserves the connector authorization interaction for the dialog", () => {
+  const market = createConnectorMarketStoreState();
+  const connector = connectorFixture();
+  const interaction = {
+    protocol: "tutti.connector.authorization.declarative.v1",
+    initialView: {
+      defaultLocale: "en-US",
+      locales: {
+        "en-US": {
+          type: "form",
+          fields: [
+            {
+              type: "secret",
+              name: "personal_token",
+              label: "Personal token",
+              required: true
+            }
+          ]
+        }
+      }
+    },
+    submission: { kind: "native_secret", secretField: "personal_token" }
+  };
+  connector.installation = {
+    installedReleaseDigest: connector.release.releaseDigest,
+    state: "installed"
+  };
+  connector.release.manifest.authorizationKind = "api_key";
+  connector.release.manifest.authorizationInteraction = interaction;
+  market.connectorKeys = [connector.key];
+  market.connectorsByKey[connector.key] = connector;
+
+  const dialog = buildConnectorMarketView(market, {
+    ...uiState,
+    dialog: { connectorKey: connector.key, kind: "connector" }
+  }).dialog;
+
+  assert.equal(dialog?.kind, "authorization");
+  assert.deepEqual(
+    dialog?.kind === "authorization"
+      ? dialog.authorizationInteraction
+      : undefined,
+    interaction
+  );
+});
+
 test("keeps a physical repair in the available segment until installation completes", () => {
   const market = createConnectorMarketStoreState();
   const connector = connectorFixture();

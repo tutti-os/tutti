@@ -35,6 +35,7 @@ type serviceHostRuntimePreparationSupport interface {
 type serviceRuntimePreparation struct {
 	runtimePreparer              runtimeprep.Preparer
 	connectorRuntime             ConnectorRuntime
+	connectorCapabilities        ConnectorCapabilityResolver
 	modelGateway                 ModelGatewayRegistry
 	modelCatalog                 AgentModelCatalog
 	agentTargetStore             AgentTargetStore
@@ -52,6 +53,7 @@ func newServiceRuntimePreparation(config ServiceConfig) *serviceRuntimePreparati
 	return &serviceRuntimePreparation{
 		runtimePreparer:           config.Runtime.Preparer,
 		connectorRuntime:          config.Runtime.Connector,
+		connectorCapabilities:     config.Runtime.ConnectorCapabilities,
 		modelGateway:              config.Runtime.ModelGateway,
 		modelCatalog:              config.Composer.ModelCatalog,
 		agentTargetStore:          config.Composer.AgentTargetStore,
@@ -76,6 +78,7 @@ func (p *serviceRuntimePreparation) facade() *Service {
 	return &Service{
 		RuntimePreparer:              p.runtimePreparer,
 		ConnectorRuntime:             p.connectorRuntime,
+		ConnectorCapabilities:        p.connectorCapabilities,
 		ModelGateway:                 p.modelGateway,
 		ModelCatalog:                 p.modelCatalog,
 		AgentTargetStore:             p.agentTargetStore,

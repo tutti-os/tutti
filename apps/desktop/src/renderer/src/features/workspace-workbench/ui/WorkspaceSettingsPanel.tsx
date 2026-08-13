@@ -514,6 +514,7 @@ export function WorkspaceSettingsPanel({
                   connectorsVisible ? (
                   <ConnectorMarketPanel
                     i18n={connectorMarketI18n}
+                    locale={desktopPreferencesState.locale}
                     onError={handleConnectorMarketError}
                     onTryConnector={() => settingsService.closePanel()}
                     root={connectorMarketModule.root}

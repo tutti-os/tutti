@@ -315,10 +315,11 @@ export function useAgentGUISessionPresentation(
   );
   const activeConversationBusy =
     activeHasPendingSubmittedTurn ||
-    input.activeEngineRuntimeActivity === "running" ||
     (input.activeEngineSession
-      ? input.activeEngineAvailability === "blocked"
-      : agentActivityDisplayStatusBusy(input.activityDisplayStatus) ||
+      ? agentActivityDisplayStatusBusy(input.activityDisplayStatus) ||
+        input.activeEngineAvailability === "blocked"
+      : input.activeEngineRuntimeActivity === "running" ||
+        agentActivityDisplayStatusBusy(input.activityDisplayStatus) ||
         conversationBusyStatus(input.activeConversation?.status ?? null) ||
         activeSubmitBlocked);
   const activeSessionResumable =

@@ -114,7 +114,13 @@ function receiveDetailSnapshot(
   intent: Extract<EngineIntent, { type: "session/detailSnapshotReceived" }>
 ): EngineReducerResult<SessionReconcileState> {
   const followUpIntents: EngineIntent[] = [
-    { session: intent.session, type: "session/upserted" }
+    {
+      session: intent.session,
+      ...(intent.observedAtUnixMs === undefined
+        ? {}
+        : { observedAtUnixMs: intent.observedAtUnixMs }),
+      type: "session/upserted"
+    }
   ];
   if (intent.editRetry) {
     followUpIntents.push({

@@ -38,7 +38,8 @@ export type ActivationCommandSettlement =
 export function validateActivationCommandResult(
   value: unknown,
   record: PendingActivationIntentRecord,
-  resultContract: EngineCommandResultContract | undefined
+  resultContract: EngineCommandResultContract | undefined,
+  observedAtUnixMs?: number
 ): ActivationCommandSettlement {
   if (!value || typeof value !== "object") return invalid();
   const result = value as {
@@ -71,8 +72,8 @@ export function validateActivationCommandResult(
   }
   const projectionIntent =
     record.mode === "new"
-      ? newSessionProjection(result, record)
-      : existingSessionProjection(result, record);
+      ? newSessionProjection(result, record, observedAtUnixMs)
+      : existingSessionProjection(result, record, observedAtUnixMs);
   if (projectionIntent === false) return invalid();
   return {
     errorCode: null,
@@ -87,13 +88,15 @@ function newSessionProjection(
     activation?: { mode?: unknown; status?: unknown };
     session?: unknown;
   },
-  record: PendingActivationIntentRecord
+  record: PendingActivationIntentRecord,
+  observedAtUnixMs?: number
 ): EngineIntent | null | false {
   if (result.activation?.status !== "attached") return false;
   const session = decodeSessionProjection(result.session, record);
   if (!session) return false;
   return {
     session,
+    ...(observedAtUnixMs === undefined ? {} : { observedAtUnixMs }),
     type: "session/upserted"
   };
 }
@@ -104,7 +107,8 @@ function existingSessionProjection(
     detail?: unknown;
     session?: unknown;
   },
-  record: PendingActivationIntentRecord
+  record: PendingActivationIntentRecord,
+  observedAtUnixMs?: number
 ): EngineIntent | null | false {
   if (result.activation?.status !== "already_attached") return false;
   if (!decodeSessionProjection(result.session, record)) return false;
@@ -137,6 +141,7 @@ function existingSessionProjection(
     session,
     turns: entities.turns,
     type: "session/detailSnapshotReceived",
+    ...(observedAtUnixMs === undefined ? {} : { observedAtUnixMs }),
     workspaceId: record.workspaceId
   };
 }

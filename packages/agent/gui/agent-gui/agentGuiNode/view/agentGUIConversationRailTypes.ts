@@ -26,4 +26,5 @@ export type AgentGUIProjectActionDialog =
       kind: "remove";
       label: string;
       path: string;
+      sectionKey: string;
     };

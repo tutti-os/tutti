@@ -5,6 +5,7 @@ export default defineConfig({
   dts: true,
   entry: {
     index: "src/index.ts",
+    "authorization/index": "src/authorization/index.ts",
     "contracts/index": "src/contracts/index.ts",
     "core/index": "src/services/core/index.ts",
     "i18n/index": "src/i18n/index.ts",
@@ -13,6 +14,8 @@ export default defineConfig({
     "ui/index": "src/ui/index.ts"
   },
   external: [
+    "@tutti-os/connector-authorization-protocol",
+    "@tutti-os/connector-authorization-protocol/v1",
     "@tutti-os/ui-i18n-runtime",
     "@tutti-os/ui-system",
     "@tutti-os/ui-system/components",

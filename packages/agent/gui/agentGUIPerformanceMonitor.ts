@@ -7,96 +7,23 @@ import {
   type AgentSessionEngine,
   type AgentSessionEngineState
 } from "@tutti-os/agent-activity-core";
+import type {
+  AgentGUIComposerOptionsLoadSource,
+  AgentGUIComposerOptionsPerformanceEvent,
+  AgentGUIFirstTokenKind,
+  AgentGUIPerformanceDurationBucket,
+  AgentGUIPerformanceEvent
+} from "./agentGUIPerformanceEvents.ts";
+
+export type {
+  AgentGUIComposerOptionsLoadSource,
+  AgentGUIComposerOptionsPerformanceEvent,
+  AgentGUIFirstTokenKind,
+  AgentGUIPerformanceDurationBucket,
+  AgentGUIPerformanceEvent
+} from "./agentGUIPerformanceEvents.ts";
 
 const MAX_RETAINED_PERFORMANCE_RECORDS = 512;
-
-export type AgentGUIPerformanceDurationBucket =
-  | "lt_1s"
-  | "1s_to_3s"
-  | "3s_to_10s"
-  | "10s_to_30s"
-  | "30s_to_60s"
-  | "gte_60s";
-
-export type AgentGUIFirstTokenKind = "other" | "plan" | "reasoning" | "text";
-
-export type AgentGUIComposerOptionsLoadSource = "runtime" | "session-engine";
-
-interface AgentGUIPerformanceEventBase {
-  agentSessionId: string;
-  durationBucket: AgentGUIPerformanceDurationBucket;
-  durationMs: number;
-  observedAtUnixMs: number;
-  operationId: string;
-  provider: string;
-  startedAtUnixMs: number;
-  workspaceId: string;
-}
-
-export type AgentGUIPerformanceEvent =
-  | (AgentGUIPerformanceEventBase & {
-      errorCategory?: string;
-      hasInitialPrompt: boolean;
-      mode: "existing" | "new";
-      outcome: "confirmed" | "failed";
-      type: "session_activation_settled";
-    })
-  | (AgentGUIPerformanceEventBase & {
-      errorCategory?: string;
-      outcome: "accepted" | "failed";
-      queued: boolean;
-      source: "activation" | "submit";
-      turnId: string | null;
-      type: "prompt_admission_settled";
-    })
-  | (AgentGUIPerformanceEventBase & {
-      firstTokenKind: AgentGUIFirstTokenKind;
-      queued: boolean;
-      source: "activation" | "submit";
-      turnId: string;
-      type: "prompt_first_token_received";
-    })
-  | (AgentGUIPerformanceEventBase & {
-      errorCategory?: string;
-      outcome: "canceled" | "completed" | "failed" | "interrupted";
-      source: "activation" | "submit";
-      turnId: string;
-      type: "turn_settled";
-    })
-  | {
-      agentTargetId: string;
-      force: boolean;
-      hasDirectory: boolean;
-      observedAtUnixMs: number;
-      operationId: string;
-      provider: string;
-      source: AgentGUIComposerOptionsLoadSource;
-      startedAtUnixMs: number;
-      type: "composer_options_load_started";
-      workspaceId: string;
-    }
-  | {
-      agentTargetId: string;
-      durationBucket: AgentGUIPerformanceDurationBucket;
-      durationMs: number;
-      errorCategory?: string;
-      force: boolean;
-      hasDirectory: boolean;
-      modelCount?: number;
-      observedAtUnixMs: number;
-      operationId: string;
-      outcome: "completed" | "failed";
-      provider: string;
-      source: AgentGUIComposerOptionsLoadSource;
-      startedAtUnixMs: number;
-      type: "composer_options_load_settled";
-      workspaceId: string;
-    };
-
-export type AgentGUIComposerOptionsPerformanceEvent = Extract<
-  AgentGUIPerformanceEvent,
-  { type: "composer_options_load_settled" | "composer_options_load_started" }
->;
 
 export interface AgentGUIComposerOptionsLoadInput {
   agentTargetId: string;
@@ -318,20 +245,46 @@ export function createAgentGUIPerformanceMonitor(input: {
       const duration = agentGUIPerformanceDuration(
         observedAtUnixMs - startedAtUnixMs
       );
-      if (!reportedActivationSettlements.has(activation.requestId)) {
+      const activationSettlementReady =
+        activation.status === "failed" ||
+        activation.commandOutcome !== "pending";
+      if (
+        activationSettlementReady &&
+        !reportedActivationSettlements.has(activation.requestId)
+      ) {
         remember(reportedActivationSettlements, activation.requestId);
+        const commandDurationMs =
+          activation.commandSettledAtUnixMs === null
+            ? null
+            : Math.max(
+                0,
+                activation.commandSettledAtUnixMs - activation.requestedAtUnixMs
+              );
+        const snapshotDurationMs =
+          activation.snapshotObservedAtUnixMs === null
+            ? null
+            : Math.max(
+                0,
+                activation.snapshotObservedAtUnixMs -
+                  activation.requestedAtUnixMs
+              );
         emit({
           agentSessionId: activation.agentSessionId,
           ...duration,
+          ...(commandDurationMs === null ? {} : { commandDurationMs }),
+          commandOutcome: activation.commandOutcome,
           ...(activation.status === "failed"
             ? { errorCategory: activation.errorCode ?? "runtime" }
             : {}),
           hasInitialPrompt,
+          lastObservedStage: activation.lastObservedStage,
           mode: activation.mode,
           observedAtUnixMs,
           operationId: activation.requestId,
           outcome: activation.status,
           provider: providerFor(state, activation.agentSessionId),
+          ...(snapshotDurationMs === null ? {} : { snapshotDurationMs }),
+          snapshotOutcome: activation.snapshotOutcome,
           startedAtUnixMs,
           type: "session_activation_settled",
           workspaceId

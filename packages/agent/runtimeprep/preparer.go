@@ -191,6 +191,7 @@ func cloneMCPServerBindings(input []MCPServerBinding) []MCPServerBinding {
 }
 
 func (p *DefaultPreparer) RenderSkillBundle(ctx context.Context, input PrepareInput) (SkillBundle, error) {
+	input = expandConnectorAgentContext(input)
 	workspaceID := strings.TrimSpace(input.WorkspaceID)
 	agentTargetID := strings.TrimSpace(input.AgentTargetID)
 	providerID := strings.TrimSpace(input.Provider)

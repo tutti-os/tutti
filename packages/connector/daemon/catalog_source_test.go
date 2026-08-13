@@ -135,7 +135,24 @@ func TestCatalogSourcePreservesRemoteRequiredCapabilities(t *testing.T) {
     "permissions": [],
     "requiredCapabilities": ["tools"],
     "packageManifestSha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
-    "authorization": {"kind": "api_key"},
+    "authorization": {
+      "kind": "api_key",
+      "methods": [{
+        "interaction": {
+          "protocol": "tutti.connector.authorization.declarative.v1",
+          "initialView": {
+            "type": "form",
+            "fields": [{
+              "type": "secret",
+              "name": "personal_token",
+              "label": "Personal token",
+              "required": true
+            }]
+          },
+          "submission": {"kind": "native_secret", "secretField": "personal_token"}
+        }
+      }]
+    },
     "compatibility": {},
     "implementation": {
       "kind": "remote_streamable_http",
@@ -162,6 +179,9 @@ func TestCatalogSourcePreservesRemoteRequiredCapabilities(t *testing.T) {
 	}
 	if len(release.Manifest.RequiredCapabilities) != 1 || release.Manifest.RequiredCapabilities[0] != "tools" {
 		t.Fatalf("requiredCapabilities = %#v, want [tools]", release.Manifest.RequiredCapabilities)
+	}
+	if !strings.Contains(string(release.Manifest.AuthorizationInteraction), `"secretField":"personal_token"`) {
+		t.Fatalf("authorizationInteraction = %s", release.Manifest.AuthorizationInteraction)
 	}
 }
 

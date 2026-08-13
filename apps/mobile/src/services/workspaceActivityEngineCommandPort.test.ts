@@ -260,6 +260,7 @@ describe("createWorkspaceActivityEffectPort", () => {
       }
     } as unknown as TuttidClient;
     const input: AgentSessionActivateEffectInput = {
+      activationId: "activation-1",
       agentSessionId: "session-1",
       agentTargetId: "target-1",
       capabilityRefs: [{ capability: "tutti", source: "slash_command" }],
@@ -349,6 +350,7 @@ describe("createWorkspaceActivityEffectPort", () => {
         async reconcileWorkspace() {}
       })).activateSession(
         {
+          activationId: "activation-1",
           agentSessionId: "session-1",
           agentTargetId: "target-1",
           clientSubmitId: "goal-submit-1",
@@ -393,6 +395,7 @@ describe("createWorkspaceActivityEffectPort", () => {
         async reconcileWorkspace() {}
       })).activateSession(
         {
+          activationId: "activation-1",
           agentSessionId: "session-1",
           mode: "existing",
           visible: true,
@@ -435,6 +438,7 @@ describe("createWorkspaceActivityEffectPort", () => {
       async reconcileWorkspace() {}
     })).activateSession(
       {
+        activationId: "activation-1",
         agentSessionId: "session-1",
         mode: "existing",
         workspaceId: "workspace-1"

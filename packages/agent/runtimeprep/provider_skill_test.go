@@ -105,8 +105,9 @@ func TestTuttiCLIPolicyUsesPreparedCLIAndProviderRules(t *testing.T) {
 		AgentSessionID: "session-1",
 		CLICommand:     "tutti-dev",
 		Provider:       "codex",
-		ConnectorRoutingHints: []ConnectorRoutingHint{{ConnectorKey: "lark-cli", DisplayName: "Lark CLI",
+		Connector: &ConnectorAgentContext{RoutingHints: []ConnectorRoutingHint{{ConnectorKey: "lark-cli", DisplayName: "Lark CLI",
 			Aliases: []string{"飞书", "Feishu", "Lark", "Lark Suite"}}},
+		},
 	}))
 	if err != nil {
 		t.Fatal(err)

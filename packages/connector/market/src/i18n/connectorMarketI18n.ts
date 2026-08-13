@@ -36,6 +36,7 @@ const connectorMarketEn = {
   actionManage: "Manage",
   actionMore: "More actions",
   actionRefresh: "Refresh",
+  authorizationQrCodeAlt: "Authorization QR code",
   actionRetry: "Retry",
   actionTry: "Try it",
   actionUninstall: "Uninstall",
@@ -68,6 +69,8 @@ const connectorMarketEn = {
   connectedStatus: "Connected",
   connectorAuthorizationFailed:
     "Authorization could not be started. Try again.",
+  connectorAuthorizationConfigurationInvalid:
+    "This connector has an invalid authorization configuration",
   connectorDisconnectFailed:
     "Authorization could not be disconnected. Try again.",
   connectorInstallFailed: "Installation failed. Try again.",
@@ -130,6 +133,8 @@ const connectorMarketEn = {
     "The token is sent directly to Tutti for validation and encrypted storage. It is not saved by the desktop app",
   secretInputPlaceholder: "Paste token",
   secretInputTitle: "Access token",
+  unsupportedAuthorizationField:
+    "This field requires a host capability that is not available",
   statusAuthorizationRequired: "Authorization required",
   statusInstalled: "Installed",
   statusNotInstalled: "Not installed",
@@ -156,6 +161,7 @@ const connectorMarketZhCN = {
   actionManage: "管理",
   actionMore: "更多操作",
   actionRefresh: "刷新",
+  authorizationQrCodeAlt: "授权二维码",
   actionRetry: "重试",
   actionTry: "去试试",
   actionUninstall: "卸载",
@@ -184,6 +190,7 @@ const connectorMarketZhCN = {
   close: "关闭",
   connectedStatus: "已连接",
   connectorAuthorizationFailed: "无法启动授权，请重试",
+  connectorAuthorizationConfigurationInvalid: "连接器授权配置无效",
   connectorDisconnectFailed: "无法解除授权，请重试",
   connectorInstallFailed: "安装失败，请重试",
   connectorUninstallFailed: "卸载失败，请重试",
@@ -238,6 +245,7 @@ const connectorMarketZhCN = {
     "Token 会直接发送给 Tutti 完成校验和加密存储，桌面端不会保存明文",
   secretInputPlaceholder: "粘贴 Token",
   secretInputTitle: "访问令牌",
+  unsupportedAuthorizationField: "当前宿主不支持这个授权字段",
   statusAuthorizationRequired: "需要授权",
   statusInstalled: "已安装",
   statusNotInstalled: "未安装",

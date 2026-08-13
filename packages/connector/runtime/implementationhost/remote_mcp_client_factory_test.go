@@ -76,8 +76,10 @@ func TestBuildRemoteRouteUsesProductClientFactoryWithLifecycleIdentity(t *testin
 	if !reflect.DeepEqual(factory.request, want) {
 		t.Fatalf("factory request = %#v, want %#v", factory.request, want)
 	}
-	if route.remoteMCP != client || !reflect.DeepEqual(client.calls, []string{"server/discover", "tools/list"}) ||
+	if route.connectorKey != "documents" || route.connectorVersion != "1.2.3" || route.remoteMCP != client ||
+		!reflect.DeepEqual(client.calls, []string{"server/discover", "tools/list"}) ||
 		!reflect.DeepEqual(client.registered, []string{"search"}) {
-		t.Fatalf("remote client bootstrap = route:%v calls:%#v registered:%#v", route.remoteMCP == client, client.calls, client.registered)
+		t.Fatalf("remote client bootstrap = provenance:%s@%s route:%v calls:%#v registered:%#v",
+			route.connectorKey, route.connectorVersion, route.remoteMCP == client, client.calls, client.registered)
 	}
 }

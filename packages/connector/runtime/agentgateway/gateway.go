@@ -27,13 +27,20 @@ type Backend interface {
 	RevokeAll()
 }
 
+// ScopedBackend accepts the trusted Invocation identity associated with a
+// shared-Agent binding. Backend implementations that only implement Backend
+// remain compatible for ordinary non-shared Agent Sessions.
+type ScopedBackend interface {
+	Bind(connectormcpserver.BindingScope) (connectormcpserver.Binding, error)
+}
+
 type Config struct {
 	Address string
 }
 
 type sessionAuthority struct {
-	workspaceID string
-	sessionID   string
+	token string
+	scope connectormcpserver.BindingScope
 }
 
 type cachedBackendBinding struct {
@@ -118,11 +125,17 @@ func (gateway *Gateway) ClearBackend(epoch string) {
 }
 
 func (gateway *Gateway) Binding(workspaceID, agentSessionID string) (connectormcpserver.Binding, error) {
+	return gateway.Bind(connectormcpserver.BindingScope{WorkspaceID: workspaceID, AgentSessionID: agentSessionID})
+}
+
+// Bind creates a new Agent-facing bearer for an exact Session or Invocation
+// scope. Binding remains the compatibility entry point for ordinary Sessions.
+func (gateway *Gateway) Bind(scope connectormcpserver.BindingScope) (connectormcpserver.Binding, error) {
 	if gateway == nil || gateway.listener == nil {
 		return connectormcpserver.Binding{}, errors.New("connector Agent gateway is unavailable")
 	}
-	workspaceID, agentSessionID = strings.TrimSpace(workspaceID), strings.TrimSpace(agentSessionID)
-	if workspaceID == "" || agentSessionID == "" {
+	scope = normalizeBindingScope(scope)
+	if !validBindingScope(scope) {
 		return connectormcpserver.Binding{}, errors.New("connector Agent gateway binding identity is required")
 	}
 	token, err := randomToken(32)
@@ -130,11 +143,65 @@ func (gateway *Gateway) Binding(workspaceID, agentSessionID string) (connectormc
 		return connectormcpserver.Binding{}, err
 	}
 	gateway.mu.Lock()
-	gateway.revokeLocked(workspaceID, agentSessionID)
-	gateway.authorizations[token] = sessionAuthority{workspaceID: workspaceID, sessionID: agentSessionID}
+	gateway.revokeLocked(scope.WorkspaceID, scope.AgentSessionID)
+	gateway.authorizations[token] = sessionAuthority{token: token, scope: scope}
 	gateway.mu.Unlock()
 	return connectormcpserver.Binding{Name: "connector", Type: "http", URL: gateway.baseURL,
 		Headers: map[string]string{"Authorization": "Bearer " + token}}, nil
+}
+
+// Rebind refreshes the backend binding for the same trusted Invocation scope
+// while retaining the Agent-facing bearer. It must never move a bearer across
+// Invocation scopes: a delayed request carrying that bearer would otherwise
+// be reinterpreted as belonging to a newer Invocation.
+func (gateway *Gateway) Rebind(scope connectormcpserver.BindingScope) error {
+	if gateway == nil {
+		return errors.New("connector Agent gateway is unavailable")
+	}
+	scope = normalizeBindingScope(scope)
+	if !validBindingScope(scope) {
+		return errors.New("connector Agent gateway binding identity is required")
+	}
+	gateway.mu.Lock()
+	token := ""
+	for candidateToken, authority := range gateway.authorizations {
+		if authority.scope.WorkspaceID == scope.WorkspaceID && authority.scope.AgentSessionID == scope.AgentSessionID {
+			if authority.scope != scope {
+				gateway.mu.Unlock()
+				return errors.New("connector Agent gateway Rebind cannot change Invocation scope")
+			}
+			token = candidateToken
+		}
+	}
+	backend := gateway.backend
+	gateway.mu.Unlock()
+	if token == "" {
+		return errors.New("connector Agent gateway binding was not found")
+	}
+	if backend != nil {
+		backend.Revoke(scope.WorkspaceID, scope.AgentSessionID)
+	}
+	gateway.mu.Lock()
+	current, exists := gateway.authorizations[token]
+	if !exists || current.scope != scope || gateway.backend != backend {
+		gateway.mu.Unlock()
+		return errors.New("connector Agent gateway binding changed while rebinding")
+	}
+	gateway.deleteBackendBindingsLocked(scope.WorkspaceID, scope.AgentSessionID)
+	gateway.mu.Unlock()
+	return nil
+}
+
+// RotateBinding issues a new Agent-facing bearer and revokes the previous
+// bearer for the Session. Cross-Invocation transitions must use this API and
+// reprepare the provider-visible MCP configuration before execution proceeds.
+func (gateway *Gateway) RotateBinding(scope connectormcpserver.BindingScope) (connectormcpserver.Binding, error) {
+	scope = normalizeBindingScope(scope)
+	if !validBindingScope(scope) {
+		return connectormcpserver.Binding{}, errors.New("connector Agent gateway binding identity is required")
+	}
+	gateway.Revoke(scope.WorkspaceID, scope.AgentSessionID)
+	return gateway.Bind(scope)
 }
 
 func (gateway *Gateway) Revoke(workspaceID, agentSessionID string) {
@@ -216,7 +283,7 @@ func (gateway *Gateway) ServeHTTP(writer http.ResponseWriter, request *http.Requ
 }
 
 func (gateway *Gateway) backendBinding(authority sessionAuthority) (connectormcpserver.Binding, error) {
-	key := authority.workspaceID + "\x00" + authority.sessionID
+	key := bindingScopeKey(authority.scope)
 	gateway.mu.RLock()
 	backend, generation := gateway.backend, gateway.generation
 	if cached, ok := gateway.backendBindings[key]; ok && cached.generation == generation {
@@ -227,14 +294,23 @@ func (gateway *Gateway) backendBinding(authority sessionAuthority) (connectormcp
 	if backend == nil {
 		return connectormcpserver.Binding{}, errors.New("connector MCP backend is starting")
 	}
-	binding, err := backend.Binding(authority.workspaceID, authority.sessionID)
+	var binding connectormcpserver.Binding
+	var err error
+	if scoped, ok := backend.(ScopedBackend); ok {
+		binding, err = scoped.Bind(authority.scope)
+	} else if authority.scope.InvocationID == "" && authority.scope.InvocationGeneration == 0 {
+		binding, err = backend.Binding(authority.scope.WorkspaceID, authority.scope.AgentSessionID)
+	} else {
+		return connectormcpserver.Binding{}, errors.New("connector MCP backend does not support Invocation scope")
+	}
 	if err != nil {
 		return connectormcpserver.Binding{}, err
 	}
 	gateway.mu.Lock()
-	if gateway.backend != backend || gateway.generation != generation {
+	current, currentExists := gateway.authorizations[authority.token]
+	if gateway.backend != backend || gateway.generation != generation || !currentExists || current.scope != authority.scope {
 		gateway.mu.Unlock()
-		backend.Revoke(authority.workspaceID, authority.sessionID)
+		backend.Revoke(authority.scope.WorkspaceID, authority.scope.AgentSessionID)
 		return connectormcpserver.Binding{}, errors.New("connector MCP backend changed while binding")
 	}
 	gateway.backendBindings[key] = cachedBackendBinding{generation: generation, binding: binding}
@@ -255,11 +331,39 @@ func (gateway *Gateway) authorize(header string) (sessionAuthority, bool) {
 
 func (gateway *Gateway) revokeLocked(workspaceID, agentSessionID string) {
 	for token, authority := range gateway.authorizations {
-		if authority.workspaceID == workspaceID && authority.sessionID == agentSessionID {
+		if authority.scope.WorkspaceID == workspaceID && authority.scope.AgentSessionID == agentSessionID {
 			delete(gateway.authorizations, token)
 		}
 	}
-	delete(gateway.backendBindings, workspaceID+"\x00"+agentSessionID)
+	gateway.deleteBackendBindingsLocked(workspaceID, agentSessionID)
+}
+
+func (gateway *Gateway) deleteBackendBindingsLocked(workspaceID, agentSessionID string) {
+	prefix := strings.TrimSpace(workspaceID) + "\x00" + strings.TrimSpace(agentSessionID) + "\x00"
+	for key := range gateway.backendBindings {
+		if strings.HasPrefix(key, prefix) {
+			delete(gateway.backendBindings, key)
+		}
+	}
+}
+
+func normalizeBindingScope(scope connectormcpserver.BindingScope) connectormcpserver.BindingScope {
+	scope.WorkspaceID = strings.TrimSpace(scope.WorkspaceID)
+	scope.AgentSessionID = strings.TrimSpace(scope.AgentSessionID)
+	scope.InvocationID = strings.TrimSpace(scope.InvocationID)
+	return scope
+}
+
+func validBindingScope(scope connectormcpserver.BindingScope) bool {
+	if scope.WorkspaceID == "" || scope.AgentSessionID == "" ||
+		strings.ContainsAny(scope.WorkspaceID+scope.AgentSessionID+scope.InvocationID, "\x00\r\n") {
+		return false
+	}
+	return (scope.InvocationID == "") == (scope.InvocationGeneration == 0)
+}
+
+func bindingScopeKey(scope connectormcpserver.BindingScope) string {
+	return scope.WorkspaceID + "\x00" + scope.AgentSessionID + "\x00" + scope.InvocationID + "\x00" + fmt.Sprint(scope.InvocationGeneration)
 }
 
 func loopbackHost(value string) bool {

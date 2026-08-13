@@ -817,8 +817,30 @@ importers:
 
   packages/configs/tsconfig: {}
 
+  packages/connector/authorization-protocol:
+    dependencies:
+      valibot:
+        specifier: ^1.1.0
+        version: 1.4.2(typescript@5.9.3)
+    devDependencies:
+      "@tutti-os/config-tsconfig":
+        specifier: workspace:*
+        version: link:../../configs/tsconfig
+      "@types/node":
+        specifier: ^24.0.1
+        version: 24.12.4
+      tsx:
+        specifier: ^4.22.3
+        version: 4.22.3
+      typescript:
+        specifier: ^5.8.3
+        version: 5.9.3
+
   packages/connector/market:
     dependencies:
+      "@tutti-os/connector-authorization-protocol":
+        specifier: workspace:*
+        version: link:../authorization-protocol
       "@tutti-os/infra":
         specifier: 0.1.0
         version: 0.1.0(lodash-es@4.18.1)(react@19.2.6)
@@ -828,6 +850,9 @@ importers:
       "@tutti-os/ui-system":
         specifier: workspace:*
         version: link:../../ui/system
+      qrcode-generator:
+        specifier: 2.0.4
+        version: 2.0.4
       valtio:
         specifier: ^2.3.2
         version: 2.3.2(@types/react@19.2.15)(react@19.2.6)
@@ -841,6 +866,9 @@ importers:
       "@types/react":
         specifier: ^19.1.6
         version: 19.2.15
+      "@types/react-dom":
+        specifier: ^19.1.5
+        version: 19.2.3(@types/react@19.2.15)
       react:
         specifier: ^19.1.0
         version: 19.2.6
@@ -16225,6 +16253,17 @@ packages:
       }
     engines: { node: ^20.17.0 || >=22.9.0 }
 
+  valibot@1.4.2:
+    resolution:
+      {
+        integrity: sha512-gjdCvJ6d3RyHAneqxMYMW9QMCwYMb3jpOO0IyHZV1bnRHFBHrX3VkIILt5XYR0WhwHiH7Mty8ovuPZ/O3gamrg==
+      }
+    peerDependencies:
+      typescript: ">=5"
+    peerDependenciesMeta:
+      typescript:
+        optional: true
+
   valtio@2.3.2:
     resolution:
       {
@@ -27097,6 +27136,10 @@ snapshots:
       convert-source-map: 2.0.0
 
   validate-npm-package-name@7.0.2: {}
+
+  valibot@1.4.2(typescript@5.9.3):
+    optionalDependencies:
+      typescript: 5.9.3
 
   valtio@2.3.2(@types/react@19.2.15)(react@19.2.6):
     dependencies:

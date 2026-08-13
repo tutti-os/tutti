@@ -73,7 +73,11 @@ func (s *Service) discoverLiveComposerModels(
 		s.setLiveComposerModelOptionsForScope(scope, time.Now().UTC(), discovered)
 		return discovered, nil
 	})
-	waitTimer := time.NewTimer(liveModelDiscoveryTimeout)
+	waitTimeout := liveModelDiscoveryTimeout
+	if s != nil && s.liveModelDiscoveryWaitTimeout > 0 {
+		waitTimeout = s.liveModelDiscoveryWaitTimeout
+	}
+	waitTimer := time.NewTimer(waitTimeout)
 	defer waitTimer.Stop()
 	select {
 	case <-ctx.Done():

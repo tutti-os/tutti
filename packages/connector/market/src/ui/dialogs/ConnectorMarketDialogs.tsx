@@ -21,8 +21,16 @@ interface UninstallSuccessToast {
 }
 
 export function ConnectorMarketDialogs() {
-  const { i18n, market, onError, onTryConnector, uiState, view } =
-    useConnectorMarketServices();
+  const {
+    authorizationRenderer,
+    i18n,
+    locale,
+    market,
+    onError,
+    onTryConnector,
+    uiState,
+    view
+  } = useConnectorMarketServices();
   const dialog = useSnapshot(view.dataStore).dialog;
   const dialogRequest = useSnapshot(uiState.dataStore).dialog;
   const marketSnapshot = useSnapshot(market.dataStore);
@@ -149,13 +157,15 @@ export function ConnectorMarketDialogs() {
             />
           ) : dialog.kind === "authorization" ? (
             <ConnectorAuthorizationDialog
+              authorizationInteraction={dialog.authorizationInteraction}
               authorizationKind={dialog.authorizationKind}
+              authorizationRenderer={authorizationRenderer}
               authorizing={dialog.authorizing}
               displayName={dialog.displayName}
               iconUrl={dialog.iconUrl}
               i18n={i18n}
+              locale={locale}
               pending={dialog.pending}
-              permissions={dialog.permissions}
               onAuthorize={(secret) => {
                 setShowSuccessToast(null);
                 return market

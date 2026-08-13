@@ -316,6 +316,9 @@ export type {
 export type {
   ActivityMessagesReceivedIntent,
   PendingActivationIntentRecord,
+  PendingActivationCommandOutcome,
+  PendingActivationLastObservedStage,
+  PendingActivationSnapshotOutcome,
   PendingActivationStatus,
   PendingIntentsIntent,
   PendingIntentsState,

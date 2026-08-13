@@ -3,11 +3,12 @@ package workspace
 import (
 	"context"
 	"errors"
-	"io/fs"
+	"fmt"
 	"log/slog"
 	"os"
 	"path"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -16,40 +17,65 @@ import (
 
 const defaultMaxSearchCandidates = 5000
 
-var defaultSearchIgnoredDirectories = map[string]struct{}{
-	".git":         {},
-	".next":        {},
-	".turbo":       {},
-	"applications": {},
-	"bin":          {},
-	"build":        {},
-	"cores":        {},
-	"dev":          {},
-	"dist":         {},
-	"etc":          {},
-	"library":      {},
-	"network":      {},
-	"node_modules": {},
-	"opt":          {},
-	"private":      {},
-	"sbin":         {},
-	"system":       {},
-	"tmp":          {},
-	"usr":          {},
-	"var":          {},
-	"volumes":      {},
+// defaultSearchIgnoredDirectoryNames preserves the search scope of the former
+// filesystem walker. Native index providers use the same list to discard
+// predictable noise before applying their candidate limit, while
+// localFileSearchCandidates applies it again as a provider-independent guard.
+var defaultSearchIgnoredDirectoryNames = []string{
+	".git",
+	".next",
+	".turbo",
+	"applications",
+	"bin",
+	"build",
+	"cores",
+	"dev",
+	"dist",
+	"etc",
+	"library",
+	"network",
+	"node_modules",
+	"opt",
+	"private",
+	"sbin",
+	"system",
+	"tmp",
+	"usr",
+	"var",
+	"volumes",
 }
 
-type searchWalkStats struct {
-	candidateCapReached      bool
-	deadlineExceeded         bool
-	ignoredDirectoryCount    int
-	scannedEntryCount        int
-	skippedHiddenFileCount   int
-	skippedUnsupportedCount  int
-	skippedUnrequestedCount  int
-	skippedUnreadableCount   int
-	skippedSymlinkEntryCount int
+var defaultSearchIgnoredDirectories = func() map[string]struct{} {
+	directories := make(map[string]struct{}, len(defaultSearchIgnoredDirectoryNames))
+	for _, name := range defaultSearchIgnoredDirectoryNames {
+		directories[name] = struct{}{}
+	}
+	return directories
+}()
+
+type localFileSearchRequest struct {
+	CandidateLimit int
+	Filters        []string
+	IncludeHidden  bool
+	IncludeKinds   []workspacefiles.EntryKind
+	Query          string
+	SearchRootPath string
+}
+
+type localFileSearchProvider interface {
+	Name() string
+	Search(context.Context, localFileSearchRequest) ([]string, error)
+}
+
+type localFileSearchStats struct {
+	candidateCount          int
+	indexedPathCount        int
+	skippedHiddenCount      int
+	skippedIgnoredCount     int
+	skippedOutsideRootCount int
+	skippedSymlinkCount     int
+	skippedUnavailableCount int
+	skippedUnrequestedCount int
 }
 
 func (a LocalFilesAdapter) Search(
@@ -62,80 +88,191 @@ func (a LocalFilesAdapter) Search(
 	if err != nil {
 		return workspacefiles.SearchResult{}, err
 	}
-
-	// 搜索范围限定:Within 非空时把遍历起点收敛到工作区根下的该子目录(左栏选中的「位置」,
-	// 如 文稿/下载/桌面),而候选项的相对路径仍以工作区根为基准计算,使结果逻辑路径保持可定位。
-	// 空 = 跨整根搜索(searchRootPath == rootPath,行为与既有一致)。
-	searchRootPath := rootPath
-	if within := strings.TrimSpace(input.Within); within != "" {
-		withinLogical, err := workspacefiles.NormalizeLogicalPathWithinRoot(within, root.LogicalRoot)
-		if err != nil {
-			return workspacefiles.SearchResult{}, err
-		}
-		searchRootPath, err = existingPhysicalPath(root, withinLogical)
-		if err != nil {
-			return workspacefiles.SearchResult{}, err
-		}
+	searchRootPath, err := resolveLocalFileSearchRoot(root, rootPath, input.Within)
+	if err != nil {
+		return workspacefiles.SearchResult{}, err
 	}
 
-	includeKinds := map[workspacefiles.EntryKind]bool{}
-	for _, kind := range input.IncludeKinds {
-		includeKinds[kind] = true
+	provider := a.searchProvider
+	if provider == nil {
+		provider = newPlatformLocalFileSearchProvider()
+	}
+	if provider == nil {
+		err := fmt.Errorf("%w: no platform adapter", workspacefiles.ErrSearchUnavailable)
+		logWorkspaceFileSearch(start, root, input, "none", localFileSearchStats{}, 0, 0, err)
+		return workspacefiles.SearchResult{}, err
 	}
 
-	maxCandidates := a.maxSearchCandidates()
-	ignoredDirectories := a.ignoredDirectories()
-	allowHiddenFiles := input.IncludeHidden
-	allowHiddenAndNoiseDirectories := input.IncludeHidden
-	candidates, stats, walkErr := walkSearchCandidates(ctx, rootPath, searchRootPath, input, searchWalkOptions{
-		allowHiddenAndNoiseDirectories: allowHiddenAndNoiseDirectories,
-		allowHiddenFiles:               allowHiddenFiles,
-		ignoredDirectories:             ignoredDirectories,
-		includeKinds:                   includeKinds,
-		maxCandidates:                  maxCandidates,
+	searchCtx := ctx
+	cancel := func() {}
+	if !input.Deadline.IsZero() {
+		searchCtx, cancel = context.WithDeadline(ctx, input.Deadline)
+	}
+	defer cancel()
+
+	paths, err := provider.Search(searchCtx, localFileSearchRequest{
+		CandidateLimit: a.maxSearchCandidates(),
+		Filters:        input.Filters,
+		IncludeHidden:  input.IncludeHidden,
+		IncludeKinds:   input.IncludeKinds,
+		Query:          strings.TrimSpace(input.Query),
+		SearchRootPath: searchRootPath,
 	})
-	if walkErr != nil &&
-		!errors.Is(walkErr, fs.SkipAll) &&
-		(!stats.deadlineExceeded || !errors.Is(walkErr, context.DeadlineExceeded)) {
-		logWorkspaceFileSearch(
-			start,
-			root,
-			input,
-			candidates,
-			stats,
-			0,
-			walkErr,
-		)
-		return workspacefiles.SearchResult{}, walkErr
+	if err != nil {
+		if !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
+			err = fmt.Errorf("%w: %s: %v", workspacefiles.ErrSearchUnavailable, provider.Name(), err)
+		}
+		logWorkspaceFileSearch(start, root, input, provider.Name(), localFileSearchStats{}, len(paths), 0, err)
+		return workspacefiles.SearchResult{}, err
 	}
 
+	candidates, stats := localFileSearchCandidates(rootPath, searchRootPath, paths, input)
 	logicalRoot := workspacefiles.NormalizeLogicalRoot(root.LogicalRoot)
 	var entries []workspacefiles.SearchEntry
 	if strings.TrimSpace(input.Query) != "" {
-		scoreQuery := normalizePhysicalSearchQuery(root, input.Query)
 		entries = workspacefiles.ScoreSearchCandidates(
 			logicalRoot,
-			scoreQuery,
+			normalizePhysicalSearchQuery(root, input.Query),
 			candidates,
 			input.Limit,
 		)
 	} else {
-		// 仅按类型筛选(无关键词):直接枚举命中的文件(不含目录,避免目录噪声),按名排序。
-		fileCandidates := make([]workspacefiles.SearchCandidate, 0, len(candidates))
-		for _, candidate := range candidates {
-			if candidate.Kind == workspacefiles.EntryKindFile {
-				fileCandidates = append(fileCandidates, candidate)
-			}
-		}
-		entries = workspacefiles.BuildListingEntries(logicalRoot, fileCandidates, input.Limit)
+		entries = workspacefiles.BuildListingEntries(logicalRoot, candidates, input.Limit)
 	}
-	logWorkspaceFileSearch(start, root, input, candidates, stats, len(entries), nil)
-
+	logWorkspaceFileSearch(start, root, input, provider.Name(), stats, len(paths), len(entries), nil)
 	return workspacefiles.SearchResult{
 		WorkspaceID: root.WorkspaceID,
-		Root:        workspacefiles.NormalizeLogicalRoot(root.LogicalRoot),
+		Root:        logicalRoot,
 		Entries:     entries,
 	}, nil
+}
+
+func resolveLocalFileSearchRoot(
+	root workspacefiles.WorkspaceRoot,
+	rootPath string,
+	within string,
+) (string, error) {
+	if strings.TrimSpace(within) == "" {
+		return rootPath, nil
+	}
+	logicalPath, err := workspacefiles.NormalizeLogicalPathWithinRoot(within, root.LogicalRoot)
+	if err != nil {
+		return "", err
+	}
+	return existingPhysicalPath(root, logicalPath)
+}
+
+func localFileSearchCandidates(
+	rootPath string,
+	searchRootPath string,
+	paths []string,
+	input workspacefiles.SearchInput,
+) ([]workspacefiles.SearchCandidate, localFileSearchStats) {
+	includeKinds := make(map[workspacefiles.EntryKind]bool, len(input.IncludeKinds))
+	for _, kind := range input.IncludeKinds {
+		includeKinds[kind] = true
+	}
+	candidates := make([]workspacefiles.SearchCandidate, 0, min(len(paths), input.Limit))
+	stats := localFileSearchStats{indexedPathCount: len(paths)}
+	seen := make(map[string]struct{}, len(paths))
+	for _, rawPath := range paths {
+		physicalPath := filepath.Clean(strings.TrimSpace(rawPath))
+		if physicalPath == "" {
+			stats.skippedUnavailableCount++
+			continue
+		}
+		relativeToSearchRoot, ok := relativePathWithin(searchRootPath, physicalPath)
+		if !ok || relativeToSearchRoot == "." {
+			stats.skippedOutsideRootCount++
+			continue
+		}
+		relativeToRoot, ok := relativePathWithin(rootPath, physicalPath)
+		if !ok || relativeToRoot == "." {
+			stats.skippedOutsideRootCount++
+			continue
+		}
+		relativeToRoot = filepath.ToSlash(relativeToRoot)
+		key := relativeToRoot
+		if runtime.GOOS == "windows" {
+			key = strings.ToLower(key)
+		}
+		if _, exists := seen[key]; exists {
+			continue
+		}
+		seen[key] = struct{}{}
+
+		info, err := os.Lstat(physicalPath)
+		if err != nil {
+			stats.skippedUnavailableCount++
+			continue
+		}
+		if info.Mode()&os.ModeSymlink != 0 {
+			stats.skippedSymlinkCount++
+			continue
+		}
+		kind := entryKind(info.Mode())
+		if kind != workspacefiles.EntryKindFile && kind != workspacefiles.EntryKindDirectory {
+			stats.skippedUnavailableCount++
+			continue
+		}
+		if !input.IncludeHidden {
+			if localSearchPathIsHidden(relativeToRoot) {
+				stats.skippedHiddenCount++
+				continue
+			}
+			if localSearchPathIsNoise(relativeToRoot) {
+				stats.skippedIgnoredCount++
+				continue
+			}
+		}
+		if len(includeKinds) > 0 && !includeKinds[kind] {
+			stats.skippedUnrequestedCount++
+			continue
+		}
+		if len(input.Filters) > 0 {
+			if kind == workspacefiles.EntryKindDirectory ||
+				!matchesReferenceFilterCategories(info.Name(), false, input.Filters) {
+				stats.skippedUnrequestedCount++
+				continue
+			}
+		}
+		candidates = append(candidates, workspacefiles.SearchCandidate{
+			Kind:         kind,
+			RelativePath: relativeToRoot,
+		})
+	}
+	stats.candidateCount = len(candidates)
+	return candidates, stats
+}
+
+func relativePathWithin(rootPath string, candidatePath string) (string, bool) {
+	relative, err := filepath.Rel(rootPath, candidatePath)
+	if err != nil || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
+		return "", false
+	}
+	return relative, true
+}
+
+func localSearchPathIsIgnored(relativePath string) bool {
+	return localSearchPathIsHidden(relativePath) || localSearchPathIsNoise(relativePath)
+}
+
+func localSearchPathIsHidden(relativePath string) bool {
+	for _, segment := range strings.Split(filepath.ToSlash(relativePath), "/") {
+		if strings.HasPrefix(segment, ".") {
+			return true
+		}
+	}
+	return false
+}
+
+func localSearchPathIsNoise(relativePath string) bool {
+	for _, segment := range strings.Split(filepath.ToSlash(relativePath), "/") {
+		if _, ignored := defaultSearchIgnoredDirectories[strings.ToLower(segment)]; ignored {
+			return true
+		}
+	}
+	return false
 }
 
 func normalizePhysicalSearchQuery(root workspacefiles.WorkspaceRoot, query string) string {
@@ -143,7 +280,6 @@ func normalizePhysicalSearchQuery(root workspacefiles.WorkspaceRoot, query strin
 	if trimmed == "" || !filepath.IsAbs(trimmed) {
 		return query
 	}
-
 	physicalRootValue := strings.TrimSpace(root.PhysicalRoot)
 	if physicalRootValue == "" {
 		return query
@@ -155,8 +291,6 @@ func normalizePhysicalSearchQuery(root workspacefiles.WorkspaceRoot, query strin
 	physicalQuery := filepath.Clean(trimmed)
 	relative, err := filepath.Rel(physicalRoot, physicalQuery)
 	if err != nil || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
-		// ScoreSearchCandidates still handles logical absolute paths and rejects
-		// absolute paths outside that root.
 		return query
 	}
 	if relative == "." {
@@ -172,111 +306,6 @@ func normalizePhysicalSearchQuery(root workspacefiles.WorkspaceRoot, query strin
 	return normalized
 }
 
-type searchWalkOptions struct {
-	allowHiddenAndNoiseDirectories bool
-	allowHiddenFiles               bool
-	ignoredDirectories             map[string]struct{}
-	includeKinds                   map[workspacefiles.EntryKind]bool
-	maxCandidates                  int
-}
-
-func walkSearchCandidates(
-	ctx context.Context,
-	rootPath string,
-	searchRootPath string,
-	input workspacefiles.SearchInput,
-	options searchWalkOptions,
-) ([]workspacefiles.SearchCandidate, searchWalkStats, error) {
-	candidates := make([]workspacefiles.SearchCandidate, 0, input.Limit)
-	stats := searchWalkStats{scannedEntryCount: 1}
-	queue := []string{searchRootPath}
-
-	for len(queue) > 0 {
-		directoryPath := queue[0]
-		queue = queue[1:]
-
-		dirEntries, err := os.ReadDir(directoryPath)
-		if err != nil {
-			stats.skippedUnreadableCount++
-			continue
-		}
-
-		for _, entry := range dirEntries {
-			physicalPath := filepath.Join(directoryPath, entry.Name())
-			stats.scannedEntryCount++
-			if err := ctx.Err(); err != nil {
-				return candidates, stats, err
-			}
-			if !input.Deadline.IsZero() && time.Now().After(input.Deadline) {
-				stats.deadlineExceeded = true
-				return candidates, stats, context.DeadlineExceeded
-			}
-			if entry.Type()&os.ModeSymlink != 0 {
-				stats.skippedSymlinkEntryCount++
-				continue
-			}
-
-			kind := entryKind(entry.Type())
-			if kind != workspacefiles.EntryKindFile && kind != workspacefiles.EntryKindDirectory {
-				stats.skippedUnsupportedCount++
-				continue
-			}
-			if entry.IsDir() {
-				if !options.allowHiddenAndNoiseDirectories && shouldIgnoreSearchEntryName(entry.Name(), options.ignoredDirectories) {
-					stats.ignoredDirectoryCount++
-					continue
-				}
-				queue = append(queue, physicalPath)
-			}
-			if !options.allowHiddenFiles && shouldIgnoreHiddenSearchFile(entry) {
-				stats.skippedHiddenFileCount++
-				continue
-			}
-			// 文件类型筛选:筛选生效时,搜索结果须是「关键词 ∩ 类型」的交集。目录不属于任何文件
-			// 类型,故不作为结果候选(但仍递归进入以发现匹配类型的文件);文件按其分类过滤。
-			if len(input.Filters) > 0 {
-				if kind == workspacefiles.EntryKindDirectory {
-					continue
-				}
-				if !matchesReferenceFilterCategories(entry.Name(), false, input.Filters) {
-					stats.skippedUnrequestedCount++
-					continue
-				}
-			}
-			appendSearchCandidate(rootPath, physicalPath, kind, options.includeKinds, &candidates, &stats)
-			if len(candidates) >= options.maxCandidates {
-				stats.candidateCapReached = true
-				return candidates, stats, fs.SkipAll
-			}
-		}
-	}
-
-	return candidates, stats, nil
-}
-
-func appendSearchCandidate(
-	rootPath string,
-	physicalPath string,
-	kind workspacefiles.EntryKind,
-	includeKinds map[workspacefiles.EntryKind]bool,
-	candidates *[]workspacefiles.SearchCandidate,
-	stats *searchWalkStats,
-) {
-	if len(includeKinds) > 0 && !includeKinds[kind] {
-		stats.skippedUnrequestedCount++
-		return
-	}
-
-	relativePath, err := filepath.Rel(rootPath, physicalPath)
-	if err != nil || strings.HasPrefix(relativePath, "..") {
-		return
-	}
-	*candidates = append(*candidates, workspacefiles.SearchCandidate{
-		Kind:         kind,
-		RelativePath: filepath.ToSlash(relativePath),
-	})
-}
-
 func (a LocalFilesAdapter) maxSearchCandidates() int {
 	if a.MaxSearchCandidates <= 0 {
 		return defaultMaxSearchCandidates
@@ -284,33 +313,13 @@ func (a LocalFilesAdapter) maxSearchCandidates() int {
 	return a.MaxSearchCandidates
 }
 
-func (a LocalFilesAdapter) ignoredDirectories() map[string]struct{} {
-	if a.IgnoredDirectories == nil {
-		return defaultSearchIgnoredDirectories
-	}
-	return a.IgnoredDirectories
-}
-
-func shouldIgnoreSearchEntryName(name string, ignoredDirectories map[string]struct{}) bool {
-	if _, ignored := ignoredDirectories[name]; ignored {
-		return true
-	}
-	if _, ignored := ignoredDirectories[strings.ToLower(name)]; ignored {
-		return true
-	}
-	return strings.HasPrefix(name, ".")
-}
-
-func shouldIgnoreHiddenSearchFile(entry fs.DirEntry) bool {
-	return !entry.IsDir() && strings.HasPrefix(entry.Name(), ".")
-}
-
 func logWorkspaceFileSearch(
 	start time.Time,
 	root workspacefiles.WorkspaceRoot,
 	input workspacefiles.SearchInput,
-	candidates []workspacefiles.SearchCandidate,
-	stats searchWalkStats,
+	provider string,
+	stats localFileSearchStats,
+	indexedPathCount int,
 	resultCount int,
 	err error,
 ) {
@@ -318,26 +327,22 @@ func logWorkspaceFileSearch(
 		"event", "workspace_files.search",
 		"workspaceId", root.WorkspaceID,
 		"root", workspacefiles.NormalizeLogicalRoot(root.LogicalRoot).String(),
+		"provider", provider,
+		"platform", runtime.GOOS,
 		"query_length", len([]rune(input.Query)),
 		"limit", input.Limit,
 		"include_hidden", input.IncludeHidden,
 		"include_kinds", input.IncludeKinds,
 		"duration_ms", time.Since(start).Milliseconds(),
-		"scanned_entry_count", stats.scannedEntryCount,
-		"candidate_count", len(candidates),
+		"indexed_path_count", indexedPathCount,
+		"candidate_count", stats.candidateCount,
 		"result_count", resultCount,
-		"candidate_cap_reached", stats.candidateCapReached,
-		"deadline_exceeded", stats.deadlineExceeded,
-		"partial", stats.deadlineExceeded,
-		"ignored_directory_count", stats.ignoredDirectoryCount,
-		"skipped_hidden_file_count", stats.skippedHiddenFileCount,
-		"skipped_symlink_entry_count", stats.skippedSymlinkEntryCount,
-		"skipped_unsupported_count", stats.skippedUnsupportedCount,
+		"skipped_hidden_count", stats.skippedHiddenCount,
+		"skipped_ignored_count", stats.skippedIgnoredCount,
+		"skipped_outside_root_count", stats.skippedOutsideRootCount,
+		"skipped_symlink_count", stats.skippedSymlinkCount,
+		"skipped_unavailable_count", stats.skippedUnavailableCount,
 		"skipped_unrequested_count", stats.skippedUnrequestedCount,
-		"skipped_unreadable_count", stats.skippedUnreadableCount,
-	}
-	if !input.Deadline.IsZero() {
-		attrs = append(attrs, "deadline_remaining_ms", time.Until(input.Deadline).Milliseconds())
 	}
 	if err != nil {
 		attrs = append(attrs, "error", err)

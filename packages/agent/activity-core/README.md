@@ -72,6 +72,12 @@ Engine rules:
   Cancellation aborts a mutation host effect; once delivery may have started,
   the mutation remains delivery-unknown rather than becoming a confirmed
   failure.
+- The activation request identity is projected as `activationId` on the typed
+  host effect. Pending activation diagnostics keep command settlement separate
+  from the first Session snapshot observation, including bounded outcomes for a
+  missing Session, workspace mismatch, stale new-Session evidence, and a match.
+  This lets hosts report command and snapshot latency without treating repeated
+  snapshots or a late command result as a second lifecycle transition.
 - Reducers are pure and return new state plus command descriptions; the effect
   executor performs commands and feeds every settlement (success, failure,
   timeout) back into the loop as command-result intents.

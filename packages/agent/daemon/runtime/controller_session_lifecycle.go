@@ -2,6 +2,7 @@ package agentruntime
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -259,51 +260,7 @@ func (c *Controller) Resume(ctx context.Context, input ResumeInput) (Session, er
 	if adapter == nil {
 		return Session{}, fmt.Errorf("unsupported agent session provider %q", provider)
 	}
-	timestamp := unixMS(now())
-	createdAtUnixMS := input.CreatedAtUnixMS
-	if createdAtUnixMS <= 0 {
-		createdAtUnixMS = timestamp
-	}
-	updatedAtUnixMS := input.UpdatedAtUnixMS
-	if updatedAtUnixMS <= 0 {
-		updatedAtUnixMS = timestamp
-	}
-	initialTitleEstablished := initialTitleEstablishedFromRuntimeContext(
-		input.RuntimeContext,
-		input.Title,
-	)
-	session := Session{
-		RoomID:                  roomID,
-		AgentSessionID:          agentSessionID,
-		RootAgentSessionID:      agentSessionID,
-		AgentTargetID:           strings.TrimSpace(input.AgentTargetID),
-		Provider:                provider,
-		ProviderSessionID:       providerSessionID,
-		Resumable:               input.Resumable,
-		CWD:                     strings.TrimSpace(input.CWD),
-		Env:                     append([]string(nil), input.Env...),
-		MCPServers:              cloneMCPServerBindings(input.MCPServers),
-		Status:                  firstNonEmpty(normalizeSessionStatus(input.Status), SessionStatusReady),
-		Title:                   strings.TrimSpace(input.Title),
-		InitialTitleEstablished: initialTitleEstablished,
-		// UserTitleSet fails closed on resume: the persisted title (or a legacy
-		// fail-closed marker) is treated as user-established so a late provider
-		// title cannot clobber a title the user set before restart.
-		UserTitleSet: initialTitleEstablished,
-		Visible:      sessionVisible(input.Visible),
-		RuntimeContext: runtimeContextWithInitialTitleEstablished(
-			input.RuntimeContext,
-			initialTitleEstablished,
-		),
-		ProviderTargetRef: clonePayload(input.ProviderTargetRef),
-		PermissionModeID:  normalizePermissionModeIDWithFallback(provider, input.PermissionModeID, defaultPermissionModeIDForProvider(provider)),
-		Settings:          normalizeOptionalSessionSettings(input.Settings, provider, firstNonEmpty(input.PermissionModeID, defaultPermissionModeIDForProvider(provider))),
-		CreatedAtUnixMS:   createdAtUnixMS,
-		UpdatedAtUnixMS:   updatedAtUnixMS,
-	}
-	if session.Settings != nil {
-		session.PermissionModeID = session.Settings.PermissionModeID
-	}
+	session := resumedSession(input, unixMS(now()))
 	normalizedFences := make([]GoalGenerationFenceInput, 0, len(input.GoalGenerationFences))
 	for _, inputFence := range input.GoalGenerationFences {
 		fence, fenceErr := normalizeRetainedGoalGenerationFenceInput(inputFence)
@@ -316,7 +273,8 @@ func (c *Controller) Resume(ctx context.Context, input ResumeInput) (Session, er
 		c.retainGoalGenerationFence(session, fence)
 	}
 	c.invalidateAppliedGoalGenerationFences(session)
-	if err := adapter.Resume(ctx, session); err != nil {
+	launchCtx := withProviderLaunchRuntimeContext(ctx, input.ProviderLaunchRuntimeContext)
+	if err := adapter.Resume(launchCtx, session); err != nil {
 		if !input.RecreateIfMissing || !isResumeRecreatableError(err) {
 			return Session{}, err
 		}
@@ -325,7 +283,7 @@ func (c *Controller) Resume(ctx context.Context, input ResumeInput) (Session, er
 		// start a fresh provider session bound to the same agent session. This is
 		// what keeps imported conversations continuable instead of forcing the
 		// user into a brand new conversation.
-		if err := c.recreateAdapterSession(ctx, session, adapter); err != nil {
+		if err := c.recreateAdapterSession(launchCtx, session, adapter); err != nil {
 			return Session{}, err
 		}
 		if refreshed, ok := c.get(session.RoomID, session.AgentSessionID); ok {
@@ -343,6 +301,118 @@ func (c *Controller) Resume(ctx context.Context, input ResumeInput) (Session, er
 		c.publishAdapterCommandSnapshot(session, adapter)
 	}
 	return session, nil
+}
+
+// Reprepare replaces one idle Session's provider connection using updated
+// launch and MCP bindings. It preserves both canonical and provider session
+// identity and never emits a canonical lifecycle report.
+func (c *Controller) Reprepare(ctx context.Context, input ResumeInput) (Session, error) {
+	roomID := strings.TrimSpace(input.RoomID)
+	agentSessionID := strings.TrimSpace(input.AgentSessionID)
+	provider := strings.TrimSpace(input.Provider)
+	providerSessionID := strings.TrimSpace(input.ProviderSessionID)
+	if roomID == "" || agentSessionID == "" || provider == "" || providerSessionID == "" {
+		return Session{}, fmt.Errorf("room, agent session, provider, and provider session ids are required")
+	}
+	releaseStartupLock, err := c.acquireStartupLockContext(ctx, roomID, agentSessionID, provider)
+	if err != nil {
+		return Session{}, err
+	}
+	defer releaseStartupLock()
+	releaseLifecycleLock, err := c.acquireLifecycleLockContext(ctx, roomID, agentSessionID)
+	if err != nil {
+		return Session{}, err
+	}
+	defer releaseLifecycleLock()
+
+	current, adapter, err := c.sessionAndAdapter(roomID, agentSessionID)
+	if err != nil {
+		return Session{}, err
+	}
+	if current.Provider != provider ||
+		strings.TrimSpace(current.ProviderSessionID) != providerSessionID ||
+		strings.TrimSpace(current.AgentTargetID) != strings.TrimSpace(input.AgentTargetID) ||
+		strings.TrimSpace(current.CWD) != strings.TrimSpace(input.CWD) ||
+		!providerTargetRefsEqual(current.ProviderTargetRef, input.ProviderTargetRef) {
+		return Session{}, errors.New("agent session reprepare identity mismatch")
+	}
+	key := sessionKey(roomID, agentSessionID)
+	c.mu.Lock()
+	turn, active := c.turns[key]
+	activeTurnID := strings.TrimSpace(turn.turnID)
+	c.mu.Unlock()
+	if (active && activeTurnID != "") ||
+		(current.TurnLifecycle != nil && current.TurnLifecycle.ActiveTurnID != nil && strings.TrimSpace(*current.TurnLifecycle.ActiveTurnID) != "") {
+		return Session{}, ErrSessionActiveTurn
+	}
+	probe, probeOK := adapter.(LiveSessionProbeAdapter)
+	releaser, releaseOK := adapter.(LiveSessionReleaseAdapter)
+	if !probeOK || !releaseOK {
+		return Session{}, errors.New("agent provider does not support live session reprepare")
+	}
+
+	replacement := resumedSession(input, unixMS(now()))
+	normalizedFences := make([]GoalGenerationFenceInput, 0, len(input.GoalGenerationFences))
+	for _, inputFence := range input.GoalGenerationFences {
+		fence, fenceErr := normalizeRetainedGoalGenerationFenceInput(inputFence)
+		if fenceErr != nil {
+			return Session{}, fenceErr
+		}
+		normalizedFences = append(normalizedFences, fence)
+	}
+	for _, fence := range normalizedFences {
+		c.retainGoalGenerationFence(replacement, fence)
+	}
+	if probe.HasLiveSession(current) {
+		if err := releaser.ReleaseLiveSession(ctx, current); err != nil {
+			return Session{}, err
+		}
+	}
+	c.invalidateAppliedGoalGenerationFences(replacement)
+	if err := adapter.Resume(withProviderLaunchRuntimeContext(ctx, input.ProviderLaunchRuntimeContext), replacement); err != nil {
+		return Session{}, err
+	}
+	if err := c.applyRetainedGoalGenerationFences(ctx, replacement, adapter); err != nil {
+		_ = releaser.ReleaseLiveSession(context.WithoutCancel(ctx), replacement)
+		return Session{}, err
+	}
+	replacement.Status = SessionStatusReady
+	c.store(replacement)
+	c.publishPendingConfigOptionsUpdates(replacement)
+	if !c.publishPendingCommandSnapshot(replacement) {
+		c.publishAdapterCommandSnapshot(replacement, adapter)
+	}
+	return replacement, nil
+}
+
+func resumedSession(input ResumeInput, timestamp int64) Session {
+	createdAtUnixMS := input.CreatedAtUnixMS
+	if createdAtUnixMS <= 0 {
+		createdAtUnixMS = timestamp
+	}
+	updatedAtUnixMS := input.UpdatedAtUnixMS
+	if updatedAtUnixMS <= 0 {
+		updatedAtUnixMS = timestamp
+	}
+	provider := strings.TrimSpace(input.Provider)
+	initialTitleEstablished := initialTitleEstablishedFromRuntimeContext(input.RuntimeContext, input.Title)
+	session := Session{
+		RoomID: strings.TrimSpace(input.RoomID), AgentSessionID: strings.TrimSpace(input.AgentSessionID),
+		RootAgentSessionID: strings.TrimSpace(input.AgentSessionID), AgentTargetID: strings.TrimSpace(input.AgentTargetID),
+		Provider: provider, ProviderSessionID: strings.TrimSpace(input.ProviderSessionID), Resumable: input.Resumable,
+		CWD: strings.TrimSpace(input.CWD), Env: append([]string(nil), input.Env...), MCPServers: cloneMCPServerBindings(input.MCPServers),
+		Status: firstNonEmpty(normalizeSessionStatus(input.Status), SessionStatusReady), Title: strings.TrimSpace(input.Title),
+		InitialTitleEstablished: initialTitleEstablished, UserTitleSet: initialTitleEstablished,
+		Visible: sessionVisible(input.Visible), RuntimeContext: runtimeContextWithInitialTitleEstablished(input.RuntimeContext, initialTitleEstablished),
+		ProviderTargetRef: clonePayload(input.ProviderTargetRef),
+		PermissionModeID:  normalizePermissionModeIDWithFallback(provider, input.PermissionModeID, defaultPermissionModeIDForProvider(provider)),
+		Settings:          normalizeOptionalSessionSettings(input.Settings, provider, firstNonEmpty(input.PermissionModeID, defaultPermissionModeIDForProvider(provider))),
+		CreatedAtUnixMS:   createdAtUnixMS, UpdatedAtUnixMS: updatedAtUnixMS,
+	}
+	if session.Settings != nil {
+		session.PermissionModeID = session.Settings.PermissionModeID
+	}
+	return session
 }
 
 func (c *Controller) Close(ctx context.Context, input CloseInput) (CloseResult, error) {

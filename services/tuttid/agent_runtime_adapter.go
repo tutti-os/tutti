@@ -30,6 +30,24 @@ func newAgentRuntimeAdapter(controller *agentruntime.Controller) agentRuntimeAda
 	return agentRuntimeAdapter{controller: controller}
 }
 
+func (a agentRuntimeAdapter) ConnectorHTTPMCPSupported(
+	ctx context.Context,
+	input agentservice.ConnectorCapabilityInput,
+) (bool, error) {
+	capabilities, err := a.controller.ConnectorCapabilities(ctx, agentruntime.ConnectorCapabilityInput{
+		RoomID:            input.WorkspaceID,
+		AgentSessionID:    input.AgentSessionID,
+		AgentTargetID:     input.AgentTargetID,
+		Provider:          input.Provider,
+		CWD:               input.Cwd,
+		Env:               append([]string(nil), input.Env...),
+		ProviderTargetRef: cloneRuntimeContext(input.ProviderTargetRef),
+		PermissionModeID:  input.PermissionModeID,
+		Settings:          agentRuntimeSessionSettings(input.Settings),
+	})
+	return capabilities.HTTPMCP, err
+}
+
 func (a agentRuntimeAdapter) Cancel(ctx context.Context, input agentservice.RuntimeCancelInput) (agentservice.RuntimeCancelResult, error) {
 	targets := make([]agentruntime.CancelTarget, 0, len(input.Targets))
 	for _, target := range input.Targets {

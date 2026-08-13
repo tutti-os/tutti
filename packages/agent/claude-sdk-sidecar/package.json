@@ -35,6 +35,7 @@
     "src/sessionConfiguration.ts",
     "src/sessionDiagnostics.ts",
     "src/sessionFork.ts",
+    "src/sessionPermissionLedger.ts",
     "src/settingsEnv.ts",
     "src/taskNotification.ts",
     "src/taskPlan.ts",

@@ -5,6 +5,7 @@ import { join } from "node:path";
 import test from "node:test";
 import type {
   Options as ClaudeQueryOptions,
+  PermissionUpdate,
   SDKMessage
 } from "@anthropic-ai/claude-agent-sdk";
 import { withSidecarEventSinkForTest } from "./eventSink.ts";
@@ -2222,6 +2223,110 @@ test("follow-up after settled turn resumes a fresh Claude query", async () => {
     assert.equal(queryCount, 2);
     assert.equal(resumedOptions?.resume, "provider-session-1");
     assert.equal(Object.hasOwn(resumedOptions ?? {}, "sessionId"), false);
+  } finally {
+    restoreSink();
+  }
+});
+
+test("allow for session survives the fresh Claude query used by a follow-up turn", async () => {
+  const events: Array<{ type: string; payload?: Record<string, unknown> }> = [];
+  const restoreSink = withSidecarEventSinkForTest((event) =>
+    events.push(event)
+  );
+  const permissionResults: unknown[] = [];
+  const suggestions = [
+    {
+      type: "addRules",
+      rules: [{ toolName: "WebFetch", ruleContent: "domain:example.com" }],
+      behavior: "allow",
+      destination: "session"
+    } satisfies PermissionUpdate
+  ];
+  let queryCount = 0;
+  try {
+    const session = new SessionRuntime(
+      "provider-session-permission-ledger",
+      "/repo",
+      {},
+      false,
+      false,
+      {
+        model: "",
+        permissionModeId: "default",
+        planMode: false,
+        effort: "",
+        speed: ""
+      },
+      sidecarClaudeOptionsFromPayload({}),
+      undefined,
+      ({ prompt, options }) => {
+        queryCount += 1;
+        const currentQuery = queryCount;
+        return fakePermissionCheckQuery(prompt, options, async (queryOptions) => {
+          permissionResults.push(
+            await queryOptions.canUseTool?.(
+              "WebFetch",
+              { url: `https://example.com/${currentQuery}` },
+              {
+                ...testCanUseToolOptions({
+                  requestId: `request-web-fetch-${currentQuery}`,
+                  toolUseID: `tool-web-fetch-${currentQuery}`
+                }),
+                suggestions
+              }
+            )
+          );
+        });
+      }
+    );
+
+    await session.start();
+    session.exec("turn-1", "fetch once");
+    await waitForEvent(events, "approval_requested");
+    const request = events.find((event) => event.type === "approval_requested");
+    session.submitInteractive(
+      "turn-1",
+      String(request?.payload?.requestId ?? ""),
+      "approved",
+      "allow_always",
+      {}
+    );
+    await waitForCondition(
+      () =>
+        events.some(
+          (event) =>
+            event.type === "turn_completed" && event.payload?.turnId === "turn-1"
+        ),
+      "first permission turn completion"
+    );
+
+    session.exec("turn-2", "fetch again");
+    await waitForCondition(
+      () =>
+        events.some(
+          (event) =>
+            event.type === "turn_completed" && event.payload?.turnId === "turn-2"
+        ),
+      "follow-up permission turn completion"
+    );
+
+    assert.equal(queryCount, 2);
+    assert.equal(
+      events.filter((event) => event.type === "approval_requested").length,
+      1
+    );
+    assert.deepEqual(permissionResults, [
+      {
+        behavior: "allow",
+        updatedInput: { url: "https://example.com/1" },
+        updatedPermissions: suggestions
+      },
+      {
+        behavior: "allow",
+        updatedInput: { url: "https://example.com/2" },
+        updatedPermissions: suggestions
+      }
+    ]);
   } finally {
     restoreSink();
   }

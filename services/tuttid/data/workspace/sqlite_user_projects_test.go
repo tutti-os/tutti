@@ -55,6 +55,108 @@ func TestSQLiteStorePutUserProjectRepairsImportedSessionRail(t *testing.T) {
 	}
 }
 
+func TestSQLiteStoreFinalizeProjectRemovalKeepsPinnedSessionAndRehomesTombstones(t *testing.T) {
+	ctx := context.Background()
+	store := openTestSQLiteStore(t)
+	const workspaceID = "ws-remove-project"
+	if err := store.Create(ctx, workspacebiz.Summary{ID: workspaceID, Name: "Remove project"}); err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+	projectPath := filepath.Join(t.TempDir(), "project")
+	if err := os.MkdirAll(projectPath, 0o755); err != nil {
+		t.Fatalf("MkdirAll() error = %v", err)
+	}
+	if _, err := store.PutUserProject(ctx, userprojectbiz.Project{ID: "remove-project", Path: projectPath, Label: "project"}); err != nil {
+		t.Fatalf("PutUserProject() error = %v", err)
+	}
+	for index, sessionID := range []string{"unpinned", "pinned"} {
+		if _, err := store.ReportSessionState(ctx, agentactivitybiz.SessionStateReport{
+			WorkspaceID: workspaceID, AgentSessionID: sessionID, Kind: "root",
+			Origin: "runtime", Provider: "codex", Cwd: projectPath,
+			Title: sessionID, OccurredAtUnixMS: int64(100 + index),
+		}); err != nil {
+			t.Fatalf("ReportSessionState(%s) error = %v", sessionID, err)
+		}
+	}
+	if _, ok, err := store.UpdateSessionPinned(ctx, workspaceID, "pinned", true); err != nil || !ok {
+		t.Fatalf("UpdateSessionPinned() ok=%v error=%v", ok, err)
+	}
+	var pinnedAt, createdAt, updatedAt int64
+	if err := store.writeDB.QueryRowContext(ctx, `
+SELECT pinned_at_unix_ms, created_at_unix_ms, updated_at_unix_ms
+FROM workspace_agent_sessions WHERE workspace_id = ? AND agent_session_id = 'pinned'
+`, workspaceID).Scan(&pinnedAt, &createdAt, &updatedAt); err != nil {
+		t.Fatalf("read pinned session before removal: %v", err)
+	}
+
+	plan, err := store.TryFinalizeUserProjectRemovalByPath(ctx, projectPath)
+	if err != nil {
+		t.Fatalf("TryFinalizeUserProjectRemovalByPath(plan) error = %v", err)
+	}
+	if plan.Finalized || len(plan.SessionIDsByWorkspace[workspaceID]) != 1 || plan.SessionIDsByWorkspace[workspaceID][0] != "unpinned" {
+		t.Fatalf("removal plan = %#v, want only unpinned session", plan)
+	}
+	if _, err := store.DeleteSessionsBatch(ctx, agentactivitybiz.DeleteSessionsBatchInput{
+		WorkspaceID: workspaceID, SessionIDs: []string{"unpinned"},
+	}); err != nil {
+		t.Fatalf("DeleteSessionsBatch() error = %v", err)
+	}
+	finalized, err := store.TryFinalizeUserProjectRemovalByPath(ctx, projectPath)
+	if err != nil || !finalized.Finalized {
+		t.Fatalf("TryFinalizeUserProjectRemovalByPath(finalize) = %#v, error=%v", finalized, err)
+	}
+	projects, err := store.ListUserProjects(ctx)
+	if err != nil || len(projects) != 0 {
+		t.Fatalf("ListUserProjects() = %#v, error=%v, want empty", projects, err)
+	}
+
+	var sectionKind, railPath, sectionKey string
+	var finalPinnedAt, finalCreatedAt, finalUpdatedAt, deletedAt int64
+	if err := store.writeDB.QueryRowContext(ctx, `
+SELECT rail_section_kind, rail_project_path, rail_section_key,
+       pinned_at_unix_ms, created_at_unix_ms, updated_at_unix_ms, deleted_at_unix_ms
+FROM workspace_agent_sessions WHERE workspace_id = ? AND agent_session_id = 'pinned'
+`, workspaceID).Scan(&sectionKind, &railPath, &sectionKey, &finalPinnedAt, &finalCreatedAt, &finalUpdatedAt, &deletedAt); err != nil {
+		t.Fatalf("read pinned session after removal: %v", err)
+	}
+	if sectionKind != agentactivitybiz.RailSectionKindConversations || railPath != "" || sectionKey != agentactivitybiz.RailSectionKeyConversations || deletedAt != 0 {
+		t.Fatalf("pinned session rail = kind=%q path=%q key=%q deleted=%d", sectionKind, railPath, sectionKey, deletedAt)
+	}
+	if finalPinnedAt != pinnedAt || finalCreatedAt != createdAt || finalUpdatedAt != updatedAt {
+		t.Fatalf("pinned session metadata changed: before=(%d,%d,%d) after=(%d,%d,%d)", pinnedAt, createdAt, updatedAt, finalPinnedAt, finalCreatedAt, finalUpdatedAt)
+	}
+
+	if err := store.writeDB.QueryRowContext(ctx, `
+SELECT rail_section_key, deleted_at_unix_ms
+FROM workspace_agent_sessions WHERE workspace_id = ? AND agent_session_id = 'unpinned'
+`, workspaceID).Scan(&sectionKey, &deletedAt); err != nil {
+		t.Fatalf("read deleted unpinned session after removal: %v", err)
+	}
+	if sectionKey != agentactivitybiz.RailSectionKeyConversations || deletedAt == 0 {
+		t.Fatalf("deleted unpinned session key=%q deleted=%d, want Chats tombstone", sectionKey, deletedAt)
+	}
+
+	// A create request may have selected its placement immediately before the
+	// removal transaction committed. The canonical write must reject that
+	// stale project owner instead of recreating an orphan rail section.
+	if _, err := store.ReportSessionState(ctx, agentactivitybiz.SessionStateReport{
+		WorkspaceID: workspaceID, AgentSessionID: "late-session", Kind: "root",
+		Origin: "runtime", Provider: "codex", Cwd: projectPath,
+		RailPlacement: &agentactivitybiz.RailSection{
+			Kind:        agentactivitybiz.RailSectionKindProject,
+			ProjectPath: projectPath,
+			Key:         agentactivitybiz.RailSectionKeyForProject(projectPath),
+		},
+		OccurredAtUnixMS: 200,
+	}); err != nil {
+		t.Fatalf("ReportSessionState(late stale placement) error = %v", err)
+	}
+	lateRail := getTestAgentSessionRailSection(t, store, workspaceID, "late-session")
+	if lateRail.Kind != agentactivitybiz.RailSectionKindConversations || lateRail.Key != agentactivitybiz.RailSectionKeyConversations {
+		t.Fatalf("late session rail = %#v, want Chats", lateRail)
+	}
+}
+
 func TestSQLiteStoreUserProjectPathIdentityTreatsWindowsVariantsAsOneProject(t *testing.T) {
 	if runtime.GOOS != "windows" {
 		t.Skip("Windows filesystem identity is platform-specific")

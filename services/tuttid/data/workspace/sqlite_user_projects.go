@@ -119,6 +119,92 @@ WHERE path = ?
 	return nil
 }
 
+// TryFinalizeUserProjectRemovalByPath atomically checks whether any live,
+// unpinned root sessions still belong to the project and, only when none do,
+// rehomes every remaining project session row to Chats before deleting the
+// project metadata. Remaining rows are pinned live trees or recoverable
+// tombstones; rehoming tombstones also makes a later restore land in Chats.
+//
+// The check and mutation share the writer transaction. Session creation also
+// classifies rail membership through this database, so callers can delete the
+// returned roots through Agent Host and retry without a check/delete race.
+func (s *SQLiteStore) TryFinalizeUserProjectRemovalByPath(ctx context.Context, path string) (UserProjectRemovalPlan, error) {
+	if s == nil || s.writeDB == nil {
+		return UserProjectRemovalPlan{}, errors.New("workspace database is not initialized")
+	}
+	tx, err := s.writeDB.BeginTx(ctx, nil)
+	if err != nil {
+		return UserProjectRemovalPlan{}, fmt.Errorf("begin finalize user project removal: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	storedPath, found, err := findUserProjectPathTx(ctx, tx, path)
+	if err != nil {
+		return UserProjectRemovalPlan{}, fmt.Errorf("find user project before finalize removal: %w", err)
+	}
+	if !found {
+		return UserProjectRemovalPlan{Finalized: true}, nil
+	}
+	sectionKey := agentactivitybiz.RailSectionKeyForProject(storedPath)
+	rows, err := tx.QueryContext(ctx, `
+SELECT workspace_id, agent_session_id
+FROM workspace_agent_sessions
+WHERE session_kind = 'root'
+  AND rail_section_key = ?
+  AND pinned_at_unix_ms = 0
+  AND deleted_at_unix_ms = 0
+ORDER BY workspace_id ASC, agent_session_id ASC
+`, sectionKey)
+	if err != nil {
+		return UserProjectRemovalPlan{}, fmt.Errorf("list unpinned project sessions before removal: %w", err)
+	}
+	pending := make(map[string][]string)
+	for rows.Next() {
+		var workspaceID, sessionID string
+		if err := rows.Scan(&workspaceID, &sessionID); err != nil {
+			_ = rows.Close()
+			return UserProjectRemovalPlan{}, fmt.Errorf("scan unpinned project session before removal: %w", err)
+		}
+		workspaceID = strings.TrimSpace(workspaceID)
+		sessionID = strings.TrimSpace(sessionID)
+		if workspaceID != "" && sessionID != "" {
+			pending[workspaceID] = append(pending[workspaceID], sessionID)
+		}
+	}
+	if err := rows.Close(); err != nil {
+		return UserProjectRemovalPlan{}, fmt.Errorf("close unpinned project sessions before removal: %w", err)
+	}
+	if err := rows.Err(); err != nil {
+		return UserProjectRemovalPlan{}, fmt.Errorf("iterate unpinned project sessions before removal: %w", err)
+	}
+	if len(pending) > 0 {
+		return UserProjectRemovalPlan{SessionIDsByWorkspace: pending}, nil
+	}
+
+	rehomed, err := tx.ExecContext(ctx, `
+UPDATE workspace_agent_sessions
+SET rail_section_kind = ?, rail_project_path = '', rail_section_key = ?
+WHERE rail_section_key = ?
+`, agentactivitybiz.RailSectionKindConversations, agentactivitybiz.RailSectionKeyConversations, sectionKey)
+	if err != nil {
+		return UserProjectRemovalPlan{}, fmt.Errorf("rehome retained project sessions to Chats: %w", err)
+	}
+	rehomedCount, err := rehomed.RowsAffected()
+	if err != nil {
+		return UserProjectRemovalPlan{}, fmt.Errorf("count rehomed project sessions: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM user_projects WHERE path = ?`, storedPath); err != nil {
+		return UserProjectRemovalPlan{}, fmt.Errorf("delete finalized user project by path: %w", err)
+	}
+	if err := compactUserProjectOrder(ctx, tx); err != nil {
+		return UserProjectRemovalPlan{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return UserProjectRemovalPlan{}, fmt.Errorf("commit finalized user project removal: %w", err)
+	}
+	return UserProjectRemovalPlan{Finalized: true, RehomedSessions: int(rehomedCount)}, nil
+}
+
 func (s *SQLiteStore) PutUserProject(ctx context.Context, project userprojectbiz.Project) (userprojectbiz.Project, error) {
 	if s == nil || s.writeDB == nil {
 		return userprojectbiz.Project{}, errors.New("workspace database is not initialized")

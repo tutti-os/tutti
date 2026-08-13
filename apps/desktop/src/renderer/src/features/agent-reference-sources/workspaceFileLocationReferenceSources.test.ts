@@ -21,6 +21,10 @@ test("location reference sources expose project and local sidebar groups", async
     [USER_PROJECT_REFERENCE_SOURCE_ID, WORKSPACE_FILE_SOURCE_ID]
   );
   assert.deepEqual(
+    sources.map((source) => source.capabilities.filtersUseSearch),
+    [true, true]
+  );
+  assert.deepEqual(
     sources[0]
       ?.listSidebarGroups?.({ workspaceId: "workspace-1" })
       .map((node) => [node.ref.sourceId, node.ref.nodeId, node.displayName]),

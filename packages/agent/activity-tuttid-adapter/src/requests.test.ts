@@ -21,6 +21,7 @@ test("create and send projections share one prompt allowlist", () => {
   });
   const activationCreate =
     tuttiCreateWorkspaceAgentSessionRequestFromActivation({
+      activationId: "activation-1",
       agentSessionId: "session-1",
       agentTargetId: "target-1",
       clientSubmitId: "submit-1",

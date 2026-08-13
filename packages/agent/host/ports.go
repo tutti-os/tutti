@@ -273,6 +273,14 @@ type RuntimeSessionInitializationPublisher interface {
 	PublishSessionInitialization(context.Context, RuntimeSessionInitializationPublishInput) (ProviderRuntimeSession, error)
 }
 
+// RuntimeSessionRepreparer replaces an idle Session's live provider
+// connection without changing its canonical or provider session identity.
+// Implementations must serialize against Turn admission and fail when a Turn
+// is active.
+type RuntimeSessionRepreparer interface {
+	Reprepare(context.Context, RuntimeResumeInput) (ProviderRuntimeSession, error)
+}
+
 // RuntimeSessionLiveness distinguishes a registered runtime Session from a
 // live provider connection. It is required when Goal generation fencing is
 // configured: background recovery must never guess liveness and reconnect an

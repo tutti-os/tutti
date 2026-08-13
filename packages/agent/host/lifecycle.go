@@ -16,10 +16,11 @@ import (
 // command. Cleanup after a primary failure stays diagnostic.
 func (h *Host) CreateSession(ctx context.Context, workspaceID string, input CreateSessionInput) (CreateSessionResult, error) {
 	clientSubmitID := firstNonEmptyTrimmed(input.ClientSubmitID, legacyClientSubmitID(input.Metadata))
-	operationID := firstNonEmptyTrimmed(clientSubmitID, input.AgentSessionID)
+	activationID := strings.TrimSpace(input.ActivationID)
+	operationID := firstNonEmptyTrimmed(activationID, clientSubmitID, input.AgentSessionID)
 	ctx, command := h.beginCommand(ctx, commandTerminalFailureInput{
 		flow: "session_create", workspaceID: workspaceID, agentSessionID: input.AgentSessionID,
-		operationID: operationID, clientSubmitID: clientSubmitID, turnID: input.TurnID,
+		operationID: operationID, requestID: activationID, clientSubmitID: clientSubmitID, turnID: input.TurnID,
 	})
 	result, err := h.createSession(ctx, workspaceID, input)
 	command.finish(ctx, h, err)

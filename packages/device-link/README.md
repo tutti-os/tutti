@@ -21,6 +21,11 @@ required by Go's dependency direction; it does not own account, pairing,
 rendezvous, or Agent behavior. Product bridges must not expose raw
 `QUICEndpoint.Listen` or `Dial`.
 
+Every direct QUIC session uses a 5-second keepalive period and a 15-second
+maximum idle timeout. These defaults apply uniformly to Desktop, mobile, and
+TSH consumers so a peer whose network path disappears is retired promptly
+without product-specific liveness timers.
+
 ## Managed connection lifecycle
 
 The `linkmanager` package owns the reusable lifecycle mechanics that sit above

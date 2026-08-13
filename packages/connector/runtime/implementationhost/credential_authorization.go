@@ -414,13 +414,11 @@ func (host *Host) buildAuthorizationRoute(ctx context.Context, connectionID stri
 		_ = host.snapshots.Remove(executionRoot)
 		return nil, err
 	}
-	route := &connectorRoute{
-		id: connectorRouteKey(connectionID, connector.Key), connectionID: connectionID,
-		connectorKey: connector.Key, releaseDigest: connector.Release.ReleaseDigest,
-		generation: runtimeRequest.Generation, mcpTools: make(map[string]registeredMCPTool),
-		processes: connectorruntime.NewProcessGroup(), userHome: plan.UserHome,
-		executionRoot: executionRoot, installedRoot: installedRoot, snapshots: host.snapshots,
-	}
+	route := newConnectorRoute(runtimeRequest)
+	route.userHome = plan.UserHome
+	route.executionRoot = executionRoot
+	route.installedRoot = installedRoot
+	route.snapshots = host.snapshots
 	if plan.Managed.CLI == nil || plan.Managed.CredentialBroker == nil {
 		_ = route.Close(time.Now().Add(3 * time.Second))
 		return nil, errors.New("managed connector authorization requires a CLI credential broker")

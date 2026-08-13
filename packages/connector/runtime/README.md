@@ -31,10 +31,23 @@ connection path and request authorization. A desktop host may connect directly
 to its Gateway; a VM-backed host may return a client for a typed desktop relay
 without hiding target rewrites inside a generic HTTP transport.
 
-`mcpserver.Start` projects one `implementationhost.MCPRegistry` through the
-stateless Connector Streamable HTTP protocol on an ephemeral loopback port.
-Hosts issue one bearer binding per Workspace/Agent Session and must revoke that
-binding when the Session ends. Bindings carry transport authority only: they
+`mcpserver.Start` projects one `implementationhost.MCPRegistry`, or a
+product-supplied `mcpserver.SessionRouter`, through the stateless Connector
+Streamable HTTP protocol on an ephemeral loopback port. A Session router
+receives the Workspace, Agent Session, and optional Invocation identity derived
+from the server-issued bearer; MCP arguments and request headers cannot replace
+that scope. `MCPRegistry.CallProjectedValidated` lets a router select an
+authority-specific validation schema while retaining the exact live downstream
+binding. Its in-process Tool contract carries non-serialized Connector key and
+release version provenance so hosts can enforce exact allowlists without
+parsing namespaced Tool names. This lets products compose session-specific tool
+catalogs without weakening the loopback transport boundary. The default
+registry adapter preserves the original process-wide projection.
+Hosts issue one bearer binding per Workspace/Agent Session or exact Invocation
+and must revoke that binding when its scope ends. A backend may be rebound under
+the same Invocation bearer after restart, but crossing an Invocation boundary
+requires a new bearer and provider reprepare so delayed requests cannot inherit
+new authority. Bindings carry transport authority only: they
 never contain Connector credentials and must not be rendered into prompts or
 logs. The server remains running when the registry is empty and relays
 `tools/list_changed` notifications as routes are reconciled.

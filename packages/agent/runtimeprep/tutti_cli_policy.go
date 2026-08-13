@@ -6,6 +6,7 @@ import (
 )
 
 func tuttiCLIPolicy(input PrepareInput) (string, error) {
+	input = expandConnectorAgentContext(input)
 	if input.resolved == nil {
 		if resolved, err := resolveCapabilities(context.Background(), input, StandardProfile(), nil); err == nil {
 			input.resolved = resolved

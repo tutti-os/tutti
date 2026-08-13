@@ -24,6 +24,7 @@ type commandTerminalFailure struct {
 	workspaceID    string
 	agentSessionID string
 	operationID    string
+	requestID      string
 	clientSubmitID string
 	turnID         string
 	provider       string
@@ -37,6 +38,7 @@ type commandTerminalFailureInput struct {
 	workspaceID    string
 	agentSessionID string
 	operationID    string
+	requestID      string
 	clientSubmitID string
 	turnID         string
 }
@@ -54,6 +56,7 @@ func (h *Host) beginCommand(
 		workspaceID:    strings.TrimSpace(input.workspaceID),
 		agentSessionID: strings.TrimSpace(input.agentSessionID),
 		operationID:    strings.TrimSpace(input.operationID),
+		requestID:      strings.TrimSpace(input.requestID),
 		clientSubmitID: strings.TrimSpace(input.clientSubmitID),
 		turnID:         strings.TrimSpace(input.turnID),
 	}
@@ -118,6 +121,7 @@ func (c *commandTerminalFailure) finish(ctx context.Context, h *Host, err error)
 		WorkspaceID:    c.workspaceID,
 		AgentSessionID: c.agentSessionID,
 		OperationID:    c.operationID,
+		RequestID:      c.requestID,
 		ClientSubmitID: c.clientSubmitID,
 		TurnID:         c.turnID,
 		Provider:       c.provider,

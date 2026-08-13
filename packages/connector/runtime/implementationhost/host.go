@@ -106,6 +106,7 @@ type connectorRoute struct {
 	id                     string
 	connectionID           string
 	connectorKey           string
+	connectorVersion       string
 	releaseDigest          string
 	generation             market.HostGeneration
 	mcpTools               map[string]registeredMCPTool
@@ -320,8 +321,9 @@ func (*Host) validateAuthorization(request market.RuntimeReconcileRequest) error
 
 func newConnectorRoute(request market.RuntimeReconcileRequest) *connectorRoute {
 	return &connectorRoute{id: connectorRouteKey(request.ConnectionID, request.Connector.Key), connectionID: request.ConnectionID,
-		connectorKey: request.Connector.Key, releaseDigest: request.Connector.Release.ReleaseDigest,
-		generation: request.Generation, mcpTools: make(map[string]registeredMCPTool),
+		connectorKey: request.Connector.Key, connectorVersion: request.Connector.Release.Version,
+		releaseDigest: request.Connector.Release.ReleaseDigest,
+		generation:    request.Generation, mcpTools: make(map[string]registeredMCPTool),
 		processes: connectorruntime.NewProcessGroup()}
 }
 

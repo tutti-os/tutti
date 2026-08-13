@@ -1,6 +1,7 @@
 import { createContext, useContext, useMemo, type ReactNode } from "react";
 
 import type { ConnectorMarketI18nRuntime } from "../i18n/connectorMarketI18n.ts";
+import type { AuthorizationViewRenderer } from "../authorization/AuthorizationViewRenderer.tsx";
 import type { IConnectorMarketRoot } from "../services/core/connectorMarketRoot.interface.ts";
 
 export interface ConnectorMarketServices extends Omit<
@@ -8,13 +9,17 @@ export interface ConnectorMarketServices extends Omit<
   "_serviceBrand"
 > {
   i18n: ConnectorMarketI18nRuntime;
+  locale: string;
+  authorizationRenderer?: AuthorizationViewRenderer;
   onError?: (message: string) => void;
   onTryConnector?: (connectorKey: string) => void;
 }
 
 export interface ConnectorMarketRootProviderProps {
   children: ReactNode;
+  authorizationRenderer?: AuthorizationViewRenderer;
   i18n: ConnectorMarketI18nRuntime;
+  locale?: string;
   onError?: (message: string) => void;
   onTryConnector?: (connectorKey: string) => void;
   root: IConnectorMarketRoot;
@@ -38,22 +43,26 @@ export function ConnectorMarketServicesProvider({
 }
 
 export function ConnectorMarketRootProvider({
+  authorizationRenderer,
   children,
   i18n,
+  locale = "en-US",
   onError,
   onTryConnector,
   root
 }: ConnectorMarketRootProviderProps) {
   const services = useMemo(
     () => ({
+      authorizationRenderer,
       i18n,
+      locale,
       market: root.market,
       onError,
       onTryConnector,
       uiState: root.uiState,
       view: root.view
     }),
-    [i18n, onError, onTryConnector, root]
+    [authorizationRenderer, i18n, locale, onError, onTryConnector, root]
   );
 
   return (

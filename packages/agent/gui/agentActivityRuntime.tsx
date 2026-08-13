@@ -157,6 +157,7 @@ export interface AgentActivityRuntimeDiagnosticInput {
 }
 
 interface AgentActivityRuntimeActivateSessionInputBase {
+  activationId: string;
   agentSessionId: string;
   capabilityRefs?: AgentActivityCreateSessionInput["capabilityRefs"];
   cwd?: string;

@@ -59,7 +59,7 @@ func (*Store) upsertAgentMessageTx(
 	if err != nil {
 		return Message{}, false, false, fmt.Errorf("normalize workspace agent message payload: %w", err)
 	}
-	message, accepted := agentactivityprojection.ProjectMessageUpdate(
+	message, accepted, err := agentactivityprojection.ProjectMessageUpdateChecked(
 		messageProjectionSnapshot(existing),
 		ok,
 		agentactivityprojection.MessageUpdate{
@@ -77,6 +77,9 @@ func (*Store) upsertAgentMessageTx(
 		0,
 		now,
 	)
+	if err != nil {
+		return Message{}, false, false, fmt.Errorf("project workspace agent message: %w", err)
+	}
 	if !accepted {
 		return Message{}, false, false, nil
 	}

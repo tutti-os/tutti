@@ -28,8 +28,8 @@ func TestCodexAppServerAdapterExecStreamsTurn(t *testing.T) {
 	if asString(turnStart["threadId"]) != "codex-thread-1" {
 		t.Fatalf("turn/start threadId = %q", turnStart["threadId"])
 	}
-	if asString(turnStart["cwd"]) != session.CWD {
-		t.Fatalf("turn/start cwd = %q, want %q", turnStart["cwd"], session.CWD)
+	if asString(turnStart["cwd"]) != "/workspace" {
+		t.Fatalf("turn/start cwd = %q, want provider workspace root", turnStart["cwd"])
 	}
 	input, _ := turnStart["input"].([]any)
 	if len(input) != 1 || asString(payloadObject(input[0])["text"]) != "inspect the repo" {
@@ -135,6 +135,40 @@ func TestCodexAppServerTurnStartKeepsLargePromptInInputOnly(t *testing.T) {
 	input, ok := params["input"].([]map[string]any)
 	if !ok || len(input) != 1 || asString(input[0]["text"]) != longPrompt {
 		t.Fatalf("turn/start input did not preserve the full prompt")
+	}
+}
+
+func TestCodexAppServerTurnStartProjectsProviderWorkspaceCWD(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		roomID string
+		cwd    string
+		want   string
+	}{
+		{name: "room mount root", roomID: "room-1", cwd: "/workspace/room-1", want: "/workspace"},
+		{name: "room mount child", roomID: "room-1", cwd: "/workspace/room-1/src", want: "/workspace/src"},
+		{name: "logical workspace child", roomID: "room-1", cwd: "/workspace/src", want: "/workspace/src"},
+		{name: "native Windows path", roomID: "room-1", cwd: `C:\Users\alice\repo`, want: `C:\Users\alice\repo`},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			params := appServerTurnStartParams(
+				Session{RoomID: test.roomID, CWD: test.cwd},
+				"codex-thread-1",
+				nil,
+				nil,
+				nil,
+				"",
+				"",
+				false,
+			)
+			if got := asString(params["cwd"]); got != test.want {
+				t.Fatalf("turn/start cwd = %q, want %q", got, test.want)
+			}
+		})
 	}
 }
 

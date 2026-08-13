@@ -6,6 +6,23 @@ import (
 	"sync"
 )
 
+type providerLaunchRuntimeContextKey struct{}
+
+func withProviderLaunchRuntimeContext(ctx context.Context, runtimeContext map[string]any) context.Context {
+	if len(runtimeContext) == 0 {
+		return ctx
+	}
+	return context.WithValue(ctx, providerLaunchRuntimeContextKey{}, clonePayload(runtimeContext))
+}
+
+func providerLaunchRuntimeContext(ctx context.Context) map[string]any {
+	if ctx == nil {
+		return nil
+	}
+	runtimeContext, _ := ctx.Value(providerLaunchRuntimeContextKey{}).(map[string]any)
+	return clonePayload(runtimeContext)
+}
+
 type ProviderLaunchPrepareInput struct {
 	Provider    string
 	Session     Session
@@ -55,9 +72,13 @@ func prepareProviderLaunch(
 	if preparer == nil {
 		return spec, nil, nil
 	}
+	launchSession := cloneProviderLaunchSession(session)
+	if runtimeContext := providerLaunchRuntimeContext(ctx); runtimeContext != nil {
+		launchSession.RuntimeContext = runtimeContext
+	}
 	result, err := preparer(ctx, ProviderLaunchPrepareInput{
 		Provider:    spec.Provider,
-		Session:     cloneProviderLaunchSession(session),
+		Session:     launchSession,
 		Command:     append([]string(nil), spec.Command...),
 		Env:         append([]string(nil), spec.Env...),
 		CWD:         spec.CWD,

@@ -37,6 +37,12 @@ Replay have all passed. If the scenario script itself is missing or wrong,
 stop and use the case repository `write-replay-case` skill — do not invent
 Cases inside Tutti.
 
+Qualification is assertion-specific, not command-specific. A `replay passed`
+exit proves transport and semantic playback, but does not prove that every
+Case action ran during Replay. Build a four-column matrix for each core
+assertion: `Record proof | Cassette proof | Replay proof | Evidence`. Stop and
+repair the scenario when any required Replay cell is empty.
+
 ## Start the QA console (case repository)
 
 Browsing Cases, Test Plans, and one-click Record/Replay (which run the same
@@ -163,6 +169,27 @@ scenario:
 - asserts a terminal state with no enabled stale controls;
 - declares `expectedRecordingMode` when continuing an existing Session.
 
+Know the runner hook boundary before accepting the scenario:
+
+- Record calls `prepare`, `drive`, `assert(phase="terminal")`, and
+  `assert(phase="recorded")`.
+- Fresh Replay does **not** call `scenario.assert`; it replays Cassette traffic
+  and calls `settleForScreenshot` at eligible checkpoints.
+- `captureEvidence` proves a Record state only. `captureFrame` inside
+  `settleForScreenshot` proves a Replay checkpoint state.
+
+For each action under test, require one Replay mechanism:
+
+1. **Cassette-native**: the action appears in `activity-events.jsonl` as the
+   expected intent/effect or direct stimulus and is consumed by a checkpoint.
+2. **Replay driver**: when the action is not recorded (for example a local UI
+   action after Turn completion), `settleForScreenshot` performs it through
+   the real product UI/API at one exact checkpoint, asserts before/after state,
+   and captures transient evidence.
+
+If neither exists, classify the assertion as Record-only. Do not call the Case
+Replay-qualified or infer coverage from the final UI looking correct.
+
 For question cards, the script must trigger the Provider's real user-input
 request. For plan Cases, wait for the completed plan and implementation
 decision before driving the real action.
@@ -221,14 +248,22 @@ Require:
   `packages/agent/session-replay/activity-contract.json`;
 - expected interactions, plan decisions, tools, exits, terminal Turns, and
   final response state match `case.json` and the scenario assertions.
+- every Case-critical action expected to replay is present in
+  `activity-events.jsonl` / `checkpoint-plan.json`, or is explicitly owned by
+  a checkpoint Replay driver.
 
 The bundled audit proves structural invariants and emits a semantic summary.
 It does not replace Case-specific assertions or a fresh Replay.
 
+Before Replay, compare the audit output and raw checkpoint plan with the Case's
+coverage matrix. Counts alone are insufficient: for example, an Activity
+stream containing only `activation/requested` + `session/activate` cannot prove
+a later Undo/Reapply click.
+
 ## Run a fresh Replay
 
-Replay from a fresh isolated Tutti runtime and pass the scenario so screenshot
-settling and terminal assertions run:
+Replay from a fresh isolated Tutti runtime and pass the scenario so checkpoint
+screenshot settling runs. Remember that `scenario.assert` does not run here:
 
 ```bash
 pnpm e2e:agent-gui -- \
@@ -245,6 +280,21 @@ Require the runner's `replay passed` result, all planned checkpoints, the
 expected AgentGUI terminal state, and a fully drained Provider transport.
 Provider transport remains fail-closed; only repository-declared observer-only
 probes may yield to causal traffic.
+
+Then prove each target assertion through its selected Replay mechanism:
+
+- Cassette-native: show the matching Activity/direct stimulus and resulting
+  checkpoint state.
+- Replay driver: show its before/after assertions completed and inspect the
+  named `captureFrame` screenshots, including transient states rather than
+  only the final stable UI.
+- External filesystem/process side effects: prove how the fresh Replay project
+  receives the minimal deterministic pre-action state. Cassette semantic state
+  does not by itself recreate arbitrary Provider filesystem mutations.
+
+Never report “Record & Replay cover the behavior” when only Record executed
+the Case action. Report transport/semantic Replay separately from
+assertion-level behavior coverage.
 
 When one Case owns multiple scenarios, Record and audit every resulting
 Cassette, then qualify them together through one Replay Workspace. Let the
@@ -285,6 +335,7 @@ Report:
 - Case and Cassette names;
 - Record, audit, and fresh Replay results;
 - Provider-frame, Activity, interaction, tool, Turn, and final-state summaries;
+- the assertion coverage matrix and exact Replay mechanism for each core action;
 - Tutti implementation changes and case repository artifact changes;
 - changed-line distribution by functional area, excluding pre-existing work;
 - documentation impact;

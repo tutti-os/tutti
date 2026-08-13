@@ -95,11 +95,14 @@ type ResumeInput struct {
 	Status            string
 	Visible           *bool
 	RuntimeContext    map[string]any
-	ProviderTargetRef map[string]any
-	PermissionModeID  string
-	Settings          *SessionSettings
-	CreatedAtUnixMS   int64
-	UpdatedAtUnixMS   int64
+	// ProviderLaunchRuntimeContext is an ephemeral overlay visible only to
+	// ProviderLaunchPreparer while establishing this live connection.
+	ProviderLaunchRuntimeContext map[string]any
+	ProviderTargetRef            map[string]any
+	PermissionModeID             string
+	Settings                     *SessionSettings
+	CreatedAtUnixMS              int64
+	UpdatedAtUnixMS              int64
 	// GoalGenerationFences must be retained before this Session becomes
 	// available for Goal or Turn submission. Adapter installation follows
 	// Resume connection establishment and precedes Controller publication.

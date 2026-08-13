@@ -704,7 +704,7 @@ export interface AgentGUINodeViewProps extends AgentGUIComposerExternalPromptPro
       turnId: string
     ) => Promise<void>;
     openForkSourceConversation: (agentSessionId: string) => Promise<void>;
-    removeProject: (path: string) => void;
+    removeProject: (path: string) => Promise<boolean>;
     moveProject: (
       projectId: string,
       beforeProjectId: string | null
@@ -714,7 +714,7 @@ export interface AgentGUINodeViewProps extends AgentGUIComposerExternalPromptPro
       sectionKey?: string,
       agentTargetId?: string | null
     ) => Promise<string[]>;
-    confirmDeleteConversations: (agentSessionIds: string[]) => void;
+    confirmDeleteConversations: (agentSessionIds: string[]) => Promise<boolean>;
     requestDeleteConversation: (agentSessionId: string) => void;
     cancelDeleteConversation: () => void;
     confirmDeleteConversation: () => void;

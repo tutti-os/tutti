@@ -267,8 +267,7 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
     setTuttiModeEffect: actions.setTuttiModeEffect,
     setTuttiModeSpeed: actions.setTuttiModeSpeed,
     updateDraftContent: actions.updateDraftContent,
-    submitPromptPassthrough: submitPromptAndScrollToBottom,
-    submitGuidancePromptPassthrough: submitGuidancePromptAndScrollToBottom
+    submitPromptPassthrough: submitPromptAndScrollToBottom
   });
   const tuttiWorkflowComposer = tuttiWorkflow.composer;
   const tuttiWorkflowDock = tuttiWorkflow.workflowDock;

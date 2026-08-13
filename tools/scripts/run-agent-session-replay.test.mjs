@@ -65,6 +65,7 @@ import {
   replayTurnIdentityPlan,
   replayWorkspaceTransportRegistrations,
   readReplayTotalDurationMs,
+  replayWorkspaceActivityClockOrigin,
   replayWorkspaceInitialTargetCheckpoint,
   managedReplayFailure,
   loadRecordScenario,
@@ -335,6 +336,27 @@ test("maybeSettleForScreenshot pins and clears settle agent session id", async (
       expression.includes("delete globalThis.__tuttiSettleAgentSessionId")
     )
   );
+});
+
+test("working checkpoint settle is scenario opt-in", async () => {
+  const client = {
+    async send() {
+      return { result: { value: true } };
+    }
+  };
+  let settles = 0;
+  const scenario = {
+    async settleForScreenshot() {
+      settles += 1;
+    }
+  };
+  const checkpoint = { kind: "turn.working", tags: ["turn.working"] };
+
+  await maybeSettleForScreenshot(scenario, client, 1_000, checkpoint);
+  scenario.settleForWorkingScreenshot = true;
+  await maybeSettleForScreenshot(scenario, client, 1_000, checkpoint);
+
+  assert.equal(settles, 1);
 });
 
 test("replayObservedTurnId prefers Protocol v2 turnId after settle", () => {
@@ -2708,6 +2730,20 @@ test("manual Replay Workspace starts at its first inspectable checkpoint", () =>
       },
       "automatic"
     ),
+    null
+  );
+});
+
+test("Replay Workspace shares the earliest recorded Activity clock origin", () => {
+  assert.equal(
+    replayWorkspaceActivityClockOrigin([
+      { action: { activityEvents: [{ occurredAtUnixMs: 2_000 }] } },
+      { action: { activityEvents: [{ occurredAtUnixMs: 1_000 }] } }
+    ]),
+    1_000
+  );
+  assert.equal(
+    replayWorkspaceActivityClockOrigin([{ action: { activityEvents: [] } }]),
     null
   );
 });

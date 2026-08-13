@@ -297,10 +297,15 @@ describe("createAgentGUIPerformanceMonitor", () => {
 
     expect(onEvent).toHaveBeenCalledWith(
       expect.objectContaining({
+        commandDurationMs: 1_100,
+        commandOutcome: "succeeded",
         durationBucket: "1s_to_3s",
         durationMs: 1_200,
+        lastObservedStage: "confirmed",
         mode: "new",
         outcome: "confirmed",
+        snapshotDurationMs: 1_200,
+        snapshotOutcome: "matched",
         type: "session_activation_settled"
       })
     );
@@ -369,6 +374,73 @@ describe("createAgentGUIPerformanceMonitor", () => {
       })
     );
 
+    monitor.dispose();
+  });
+
+  it("waits for a late activation command result after snapshot confirmation", () => {
+    let nowUnixMs = 11_200;
+    const harness = createEngineHarness(
+      engineState({
+        activations: {
+          "activation-1": pendingActivation({
+            commandOutcome: "pending",
+            commandSettledAtUnixMs: null,
+            snapshotObservedAtUnixMs: 11_200,
+            status: "confirmed"
+          })
+        }
+      })
+    );
+    const onEvent = vi.fn();
+    const monitor = createAgentGUIPerformanceMonitor({
+      engine: harness.engine,
+      nowUnixMs: () => nowUnixMs,
+      onEvent,
+      subscribeSessionEvents: harness.subscribeSessionEvents
+    });
+
+    expect(
+      onEvent.mock.calls.filter(
+        ([event]) => event.type === "session_activation_settled"
+      )
+    ).toHaveLength(0);
+    expect(onEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        operationId: "submit-new",
+        outcome: "accepted",
+        type: "prompt_admission_settled"
+      })
+    );
+
+    nowUnixMs = 11_500;
+    harness.setState(
+      engineState({
+        activations: {
+          "activation-1": pendingActivation({
+            commandOutcome: "succeeded",
+            commandSettledAtUnixMs: 11_500,
+            snapshotObservedAtUnixMs: 11_200,
+            status: "confirmed"
+          })
+        }
+      })
+    );
+
+    expect(onEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        commandDurationMs: 1_500,
+        commandOutcome: "succeeded",
+        durationMs: 1_500,
+        snapshotDurationMs: 1_200,
+        snapshotOutcome: "matched",
+        type: "session_activation_settled"
+      })
+    );
+    expect(
+      onEvent.mock.calls.filter(
+        ([event]) => event.type === "prompt_admission_settled"
+      )
+    ).toHaveLength(1);
     monitor.dispose();
   });
 });
@@ -451,11 +523,22 @@ function pendingSubmit(input: {
   };
 }
 
-function pendingActivation(input: { status: "confirmed" | "requested" }) {
+function pendingActivation(input: {
+  commandOutcome?: "pending" | "succeeded";
+  commandSettledAtUnixMs?: number | null;
+  snapshotObservedAtUnixMs?: number | null;
+  status: "confirmed" | "requested";
+}) {
   return {
     agentSessionId: "session-1",
     agentTargetId: "codex",
     clientSubmitId: "submit-new",
+    commandOutcome:
+      input.commandOutcome ??
+      (input.status === "confirmed" ? "succeeded" : "pending"),
+    commandSettledAtUnixMs:
+      input.commandSettledAtUnixMs ??
+      (input.status === "confirmed" ? 11_100 : null),
     content: [{ text: "prompt", type: "text" as const }],
     cwd: "/workspace",
     errorCode: null,
@@ -463,10 +546,21 @@ function pendingActivation(input: { status: "confirmed" | "requested" }) {
     expiresAtUnixMs: 130_000,
     initialPromptRetracted: false,
     initialTurnExpected: true,
+    lastObservedStage:
+      input.status === "confirmed"
+        ? ("confirmed" as const)
+        : ("requested" as const),
     mode: "new" as const,
     requestId: "activation-1",
     requestedAtUnixMs: 10_000,
     status: input.status,
+    snapshotObservedAtUnixMs:
+      input.snapshotObservedAtUnixMs ??
+      (input.status === "confirmed" ? 11_200 : null),
+    snapshotOutcome:
+      input.status === "confirmed"
+        ? ("matched" as const)
+        : ("not_observed" as const),
     submitDiagnostics: {
       queued: false,
       source: "agent-gui",

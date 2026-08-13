@@ -189,11 +189,7 @@ func (s *Service) validateExtensionComposerSettingsForCreate(
 			input.ReasoningEffort = stringPointer(resolved)
 		}
 	}
-	if err := validateExtensionComposerOption(
-		preferencesbiz.AgentComposerDefaultsFieldModel,
-		settings.Model,
-		options.ModelConfig,
-	); err != nil {
+	if err := validateExtensionComposerModelForCreate(settings.Model, options); err != nil {
 		return err
 	}
 	if permissionModeExplicit && settings.PermissionModeID != "" &&
@@ -222,6 +218,31 @@ func (s *Service) validateExtensionComposerSettingsForCreate(
 		settings.Speed,
 		options.SpeedConfig,
 	)
+}
+
+func validateExtensionComposerModelForCreate(selected string, options ComposerOptions) error {
+	// A live extension model catalog can still be loading after the bounded
+	// Composer wait. In that case the target has not said model selection is
+	// unsupported; allow the already requested model through to the runtime.
+	// Once any authoritative options are available, keep the ordinary strict
+	// membership validation.
+	if options.liveModelDiscoveryPending && !composerConfigHasAdvertisedOptions(options.ModelConfig) {
+		return nil
+	}
+	return validateExtensionComposerOption(
+		preferencesbiz.AgentComposerDefaultsFieldModel,
+		selected,
+		options.ModelConfig,
+	)
+}
+
+func composerConfigHasAdvertisedOptions(config ComposerConfigOption) bool {
+	for _, option := range config.Options {
+		if !option.Requested && strings.TrimSpace(option.Value) != "" {
+			return true
+		}
+	}
+	return false
 }
 
 func composerReasoningConfigForSelectedModel(options ComposerOptions) ComposerConfigOption {

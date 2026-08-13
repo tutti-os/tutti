@@ -86,6 +86,7 @@ export interface EngineCommandResultIntent {
   commandType: EngineExternalCommand["type"];
   correlationId?: string;
   outcome: EngineCommandOutcome;
+  settledAtUnixMs?: number;
   resultContract?: EngineCommandResultContract;
   value?: unknown;
   errorCode?: string;
@@ -326,6 +327,7 @@ export interface EngineEffectOptions {
 }
 
 interface AgentSessionActivateEffectInputBase {
+  activationId: string;
   agentSessionId: string;
   capabilityRefs?: readonly AgentActivityCapabilityReference[];
   cwd?: string;

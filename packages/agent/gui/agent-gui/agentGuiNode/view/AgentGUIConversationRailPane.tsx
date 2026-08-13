@@ -93,7 +93,7 @@ export interface AgentGUIConversationRailControllerProps {
   onOpenProjectFiles?: ((action: WorkspaceLinkAction) => void) | null;
   onOpenConversationWindow?: (agentSessionId: string) => void;
   selectProjectDirectory?: () => Promise<{ path: string } | null>;
-  onRemoveProject: (path: string) => void;
+  onRemoveProject: (path: string) => Promise<boolean>;
   onMoveProject: (
     projectId: string,
     beforeProjectId: string | null
@@ -103,7 +103,7 @@ export interface AgentGUIConversationRailControllerProps {
     sectionKey?: string,
     agentTargetId?: string | null
   ) => Promise<string[]>;
-  onConfirmDeleteConversations: (agentSessionIds: string[]) => void;
+  onConfirmDeleteConversations: (agentSessionIds: string[]) => Promise<boolean>;
   onRequestDeleteConversation: (agentSessionId: string) => void;
   onRequestRenameConversation: (
     conversation: AgentGUINodeViewModel["rail"]["conversations"][number]
@@ -422,7 +422,7 @@ export const AgentGUIConversationRailPane = memo(
       conversationFilter.kind === "agentTarget"
         ? conversationFilter.agentTargetId.trim()
         : "";
-    const requestSectionBatchDeletion =
+    const { requestProjectRemoval, requestSectionBatchDeletion } =
       useAgentGUIConversationRailBatchDeletion({
         batchDeletionAvailable,
         isDeletingProjectConversations,
@@ -743,7 +743,7 @@ export const AgentGUIConversationRailPane = memo(
                           onRequestSectionBatchDeletion={
                             requestSectionBatchDeletion
                           }
-                          setPendingProjectAction={setPendingProjectAction}
+                          onRequestProjectRemoval={requestProjectRemoval}
                           onToggleConversationPinned={
                             onToggleConversationPinned
                           }

@@ -305,13 +305,13 @@ function renderPane({
         workspaceUserProjectI18n={PROJECT_I18N}
         onCancelDeleteConversation={() => {}}
         onConfirmDeleteConversation={() => {}}
-        onConfirmDeleteConversations={() => {}}
+        onConfirmDeleteConversations={async () => true}
         onConfirmDeleteProjectConversations={async () => []}
         onConversationQueryChange={setConversationQuery}
         onCreateConversation={() => {}}
         onMarkConversationUnread={() => {}}
         onMoveProject={async () => {}}
-        onRemoveProject={() => {}}
+        onRemoveProject={async () => true}
         onRequestDeleteConversation={() => {}}
         onRequestRenameConversation={() => {}}
         onSelectConversation={() => {}}

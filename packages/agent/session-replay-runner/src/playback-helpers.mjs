@@ -54,7 +54,17 @@ export function providerConnectionsReached(checkpoint, state) {
 export function createReplayActivityClock(input) {
   const wait = input.wait ?? defaultDelay;
   const pollIntervalMs = input.pollIntervalMs ?? 50;
-  let originOccurredAtUnixMs = null;
+  const configuredOriginOccurredAtUnixMs = input.originOccurredAtUnixMs ?? null;
+  if (
+    configuredOriginOccurredAtUnixMs !== null &&
+    (!Number.isSafeInteger(configuredOriginOccurredAtUnixMs) ||
+      configuredOriginOccurredAtUnixMs <= 0)
+  ) {
+    throw new Error(
+      `replay activity clock origin is invalid: ${configuredOriginOccurredAtUnixMs}`
+    );
+  }
+  let originOccurredAtUnixMs = configuredOriginOccurredAtUnixMs;
   let originPlaybackElapsedMs = null;
   let lastTargetOccurredAtUnixMs = null;
   let skippedElapsedMs = 0;
@@ -74,12 +84,16 @@ export function createReplayActivityClock(input) {
       }
       if (originOccurredAtUnixMs === null) {
         originOccurredAtUnixMs = occurredAtUnixMs;
-        lastTargetOccurredAtUnixMs = occurredAtUnixMs;
-        const playback = await synchronize();
-        originPlaybackElapsedMs = playback.playbackElapsedMs;
-        return;
       }
       lastTargetOccurredAtUnixMs = occurredAtUnixMs;
+      if (occurredAtUnixMs < originOccurredAtUnixMs) {
+        throw new Error(`replay activity time is invalid: ${occurredAtUnixMs}`);
+      }
+      if (originPlaybackElapsedMs === null) {
+        const playback = await synchronize();
+        originPlaybackElapsedMs = playback.playbackElapsedMs;
+        if (configuredOriginOccurredAtUnixMs === null) return;
+      }
       const targetElapsedMs = occurredAtUnixMs - originOccurredAtUnixMs;
       while (true) {
         const playback = await synchronize();

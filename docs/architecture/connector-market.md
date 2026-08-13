@@ -511,6 +511,16 @@ are issued by `packages/connector/runtime/agentgateway`, whose listener and
 bearer authority can outlive replacement of the bundle-owned backend.
 `packages/connector/runtime/mcpserver` remains the replaceable MCP protocol
 backend; product daemons own both lifecycles.
+Before creating a Connector binding, the Agent runtime resolves the exact
+provider adapter. Standard ACP adapters enable Connector only when the
+`initialize` response explicitly declares
+`agentCapabilities.mcpCapabilities.http == true`; a missing or false field,
+capability-probe failure, or Connector binding/preparation failure falls back
+to the ordinary Connector-free session. Unknown future adapters are also
+Connector-free until they explicitly implement this capability contract.
+The fallback omits the session binding, MCP configuration, routing hints,
+Connector policy, Skill roots, and Connector CLI path together.
+
 Tool names are
 namespaced as `<connector-key>_<upstream-tool-name>`. Each Agent session receives
 a short-lived bearer binding through its provider-native MCP configuration;

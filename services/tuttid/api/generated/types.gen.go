@@ -6239,12 +6239,15 @@ type ConnectorMarketInstallationState string
 
 // ConnectorMarketManifest defines model for ConnectorMarketManifest.
 type ConnectorMarketManifest struct {
-	AgentRouting      *ConnectorMarketAgentRouting              `json:"agentRouting,omitempty"`
-	AuthorizationKind string                                    `json:"authorizationKind"`
-	Compatibility     *ConnectorMarketCompatibilityRequirements `json:"compatibility,omitempty"`
-	Description       *string                                   `json:"description,omitempty"`
-	DisplayName       string                                    `json:"displayName"`
-	IconUrl           string                                    `json:"iconUrl"`
+	AgentRouting *ConnectorMarketAgentRouting `json:"agentRouting,omitempty"`
+
+	// AuthorizationInteraction Opaque Connector-owned authorization interaction configuration. Hosts transport this value without interpreting its UI semantics; renderers must validate it against the versioned protocol.
+	AuthorizationInteraction *map[string]interface{}                   `json:"authorizationInteraction,omitempty"`
+	AuthorizationKind        string                                    `json:"authorizationKind"`
+	Compatibility            *ConnectorMarketCompatibilityRequirements `json:"compatibility,omitempty"`
+	Description              *string                                   `json:"description,omitempty"`
+	DisplayName              string                                    `json:"displayName"`
+	IconUrl                  string                                    `json:"iconUrl"`
 
 	// Implementation Public implementation discriminator; sensitive host configuration is never returned.
 	Implementation ConnectorMarketImplementation        `json:"implementation"`

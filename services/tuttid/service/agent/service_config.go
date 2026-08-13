@@ -33,6 +33,7 @@ type ServiceHostConfig struct {
 type ServiceRuntimeConfig struct {
 	Preparer                      runtimeprep.Preparer
 	Connector                     ConnectorRuntime
+	ConnectorCapabilities         ConnectorCapabilityResolver
 	ModelGateway                  ModelGatewayRegistry
 	BrowserUseAvailable           func() bool
 	ComputerUseAvailable          func() bool
@@ -152,6 +153,7 @@ func (s *Service) applyConfig(config ServiceConfig) {
 	s.PromptAttachmentStore = config.Resources.PromptAttachmentStore
 	s.RuntimePreparer = config.Runtime.Preparer
 	s.ConnectorRuntime = config.Runtime.Connector
+	s.ConnectorCapabilities = config.Runtime.ConnectorCapabilities
 	s.ModelGateway = config.Runtime.ModelGateway
 	s.BrowserUseAvailable = config.Runtime.BrowserUseAvailable
 	s.ComputerUseAvailable = config.Runtime.ComputerUseAvailable

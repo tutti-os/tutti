@@ -1,6 +1,7 @@
 package agentruntime
 
 import (
+	"context"
 	"sync"
 	"time"
 
@@ -222,6 +223,13 @@ func NewClaudeCodeSDKAdapter(transport ProcessTransport) *ClaudeCodeSDKAdapter {
 
 func (*ClaudeCodeSDKAdapter) Provider() string {
 	return ProviderClaudeCode
+}
+
+func (*ClaudeCodeSDKAdapter) ConnectorCapabilities(
+	context.Context,
+	Session,
+) (ConnectorCapabilities, error) {
+	return ConnectorCapabilities{HTTPMCP: true}, nil
 }
 
 func (*ClaudeCodeSDKAdapter) UsesRootProviderTurnLifecycle() bool {

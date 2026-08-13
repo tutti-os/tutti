@@ -64,8 +64,9 @@ func TestDefaultPreparerCodexWritesInstructionsSkillManifestAndEnv(t *testing.T)
 		AgentTargetID:  "local:codex",
 		Provider:       "codex",
 		Cwd:            cwd,
-		ConnectorRoutingHints: []ConnectorRoutingHint{{ConnectorKey: "lark-cli", DisplayName: "Lark CLI",
+		Connector: &ConnectorAgentContext{RoutingHints: []ConnectorRoutingHint{{ConnectorKey: "lark-cli", DisplayName: "Lark CLI",
 			Aliases: []string{"飞书", "Feishu", "Lark", "Lark Suite"}}},
+		},
 		ExtraSkills: []ProviderSkillBundle{
 			{
 				Name: "app-factory",

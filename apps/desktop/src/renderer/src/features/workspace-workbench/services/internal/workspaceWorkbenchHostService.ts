@@ -321,6 +321,7 @@ export class WorkspaceWorkbenchHostService implements IWorkspaceWorkbenchHostSer
           getLocationSections: () =>
             loadDesktopWorkspaceFileLocationSections({
               homeDirectory: this.dependencies.platformApi.homeDirectory,
+              os: this.dependencies.platformApi.os,
               workspaceUserProjectService:
                 this.dependencies.workspaceUserProjectService
             }),

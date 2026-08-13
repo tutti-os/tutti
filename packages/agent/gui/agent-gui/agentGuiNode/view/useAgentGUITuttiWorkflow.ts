@@ -87,9 +87,6 @@ export function useAgentGUITuttiWorkflow(input: {
   submitPromptPassthrough: (
     ...args: Parameters<AgentGUINodeViewProps["actions"]["submitPrompt"]>
   ) => void;
-  submitGuidancePromptPassthrough: (
-    ...args: Parameters<AgentGUINodeViewProps["actions"]["submitPrompt"]>
-  ) => void;
 }): AgentGUITuttiWorkflowController {
   const {
     viewModel,
@@ -99,8 +96,7 @@ export function useAgentGUITuttiWorkflow(input: {
     setTuttiModeEffect,
     setTuttiModeSpeed,
     updateDraftContent,
-    submitPromptPassthrough,
-    submitGuidancePromptPassthrough
+    submitPromptPassthrough
   } = input;
   const tuttiModePlanPanels = useTuttiModePlanPanels({
     enabled: true,
@@ -252,17 +248,6 @@ export function useAgentGUITuttiWorkflow(input: {
           );
           return;
         }
-      }
-      const sourceSession = viewModel.detail.conversationDetail?.session;
-      const activeTurn = sourceSession?.activeTurn;
-      if (
-        tuttiPlanIssueExecutionIsActive(tuttiModePlanPanels.planIssue) &&
-        activeTurn &&
-        activeTurn.phase !== "settled" &&
-        sourceSession.capabilities?.activeTurnGuidance === true
-      ) {
-        submitGuidancePromptPassthrough(...args);
-        return;
       }
       submitPromptPassthrough(...args);
     }

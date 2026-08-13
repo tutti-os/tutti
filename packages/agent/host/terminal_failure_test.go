@@ -38,6 +38,7 @@ func TestCommandBoundaryCarriesStableIdentityAndDuration(t *testing.T) {
 	})
 
 	_, _ = host.CreateSession(context.Background(), "workspace-1", CreateSessionInput{
+		ActivationID:   "activation-1",
 		AgentSessionID: "session-1",
 		ClientSubmitID: "create-submit-1",
 		TurnID:         "turn-initial",
@@ -52,13 +53,14 @@ func TestCommandBoundaryCarriesStableIdentityAndDuration(t *testing.T) {
 		t.Fatalf("terminal failures = %#v, want 2", observer.failures)
 	}
 	for index, want := range []struct {
-		flow, operationID, clientSubmitID, turnID string
+		flow, operationID, requestID, clientSubmitID, turnID string
 	}{
-		{flow: "session_create", operationID: "create-submit-1", clientSubmitID: "create-submit-1", turnID: "turn-initial"},
+		{flow: "session_create", operationID: "activation-1", requestID: "activation-1", clientSubmitID: "create-submit-1", turnID: "turn-initial"},
 		{flow: "message_send", operationID: "send-submit-1", clientSubmitID: "send-submit-1", turnID: "turn-2"},
 	} {
 		got := observer.failures[index]
 		if got.Flow != want.flow || got.OperationID != want.operationID ||
+			got.RequestID != want.requestID ||
 			got.ClientSubmitID != want.clientSubmitID || got.TurnID != want.turnID ||
 			got.DurationMS != 250 {
 			t.Fatalf("terminal failure %d = %#v, want identity %#v and duration 250", index, got, want)

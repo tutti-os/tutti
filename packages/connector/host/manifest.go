@@ -2,6 +2,7 @@ package host
 
 import (
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"net"
 	"net/url"
@@ -143,6 +144,10 @@ func validateManifestShape(manifest Manifest, validateIcon bool) error {
 	case "none", "oauth2", "api_key":
 	default:
 		return invalidManifest("authorizationKind must be none, oauth2, or api_key", nil)
+	}
+	if len(manifest.AuthorizationInteraction) > 64<<10 ||
+		(len(manifest.AuthorizationInteraction) > 0 && !json.Valid(manifest.AuthorizationInteraction)) {
+		return invalidManifest("authorizationInteraction must be valid bounded JSON", nil)
 	}
 	implementation := manifest.Implementation
 	branches := 0

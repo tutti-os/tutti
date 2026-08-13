@@ -444,6 +444,7 @@ export function createReplayPlaybackController(input) {
   };
 
   const activityClock = createReplayActivityClock({
+    originOccurredAtUnixMs: input.activityClockOriginUnixMs,
     playbackState: async () => {
       await applyControl();
       return readTransportPlayback();

@@ -3,6 +3,7 @@ package userproject
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -207,6 +208,95 @@ func TestServiceDeleteRejectsInvalidPath(t *testing.T) {
 	}
 }
 
+func TestServiceDeleteCoordinatesSessionDeletionUntilProjectFinalizes(t *testing.T) {
+	projectDir := filepath.Join(t.TempDir(), "tutti")
+	if err := os.MkdirAll(projectDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll() error = %v", err)
+	}
+	store := &coordinatedRemovalUserProjectStore{
+		recordingUserProjectStore: recordingUserProjectStore{},
+		plans: []workspacedata.UserProjectRemovalPlan{
+			{SessionIDsByWorkspace: map[string][]string{
+				"workspace-b": {"session-b"},
+				"workspace-a": {"session-a-1", "session-a-2"},
+			}},
+			{Finalized: true, RehomedSessions: 1},
+		},
+	}
+	var calls []string
+	service := Service{
+		Store: store,
+		DeleteProjectSessions: func(_ context.Context, workspaceID string, _ string, sessionIDs []string) (int, error) {
+			calls = append(calls, workspaceID+":"+strings.Join(sessionIDs, ","))
+			return len(sessionIDs), nil
+		},
+	}
+	if err := service.Delete(context.Background(), DeleteInput{Path: projectDir}); err != nil {
+		t.Fatalf("Delete() error = %v", err)
+	}
+	if strings.Join(calls, "|") != "workspace-a:session-a-1,session-a-2|workspace-b:session-b" {
+		t.Fatalf("session deletion calls = %#v", calls)
+	}
+	if store.tryFinalizeCalls != 2 {
+		t.Fatalf("TryFinalize calls = %d, want 2", store.tryFinalizeCalls)
+	}
+}
+
+func TestServiceDeleteFailsClosedWhenSessionDeletionMakesNoProgress(t *testing.T) {
+	projectDir := filepath.Join(t.TempDir(), "tutti")
+	if err := os.MkdirAll(projectDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll() error = %v", err)
+	}
+	plan := workspacedata.UserProjectRemovalPlan{
+		SessionIDsByWorkspace: map[string][]string{"workspace-a": {"session-a"}},
+	}
+	store := &coordinatedRemovalUserProjectStore{
+		recordingUserProjectStore: recordingUserProjectStore{},
+		plans:                     []workspacedata.UserProjectRemovalPlan{plan, plan},
+	}
+	service := Service{
+		Store: store,
+		DeleteProjectSessions: func(context.Context, string, string, []string) (int, error) {
+			return 0, nil
+		},
+	}
+
+	err := service.Delete(context.Background(), DeleteInput{Path: projectDir})
+	if err == nil || !strings.Contains(err.Error(), "made no progress") {
+		t.Fatalf("Delete() error = %v, want no-progress error", err)
+	}
+	if store.tryFinalizeCalls != 2 {
+		t.Fatalf("TryFinalize calls = %d, want 2", store.tryFinalizeCalls)
+	}
+}
+
+func TestServiceDeleteBoundsContinuouslyChangingRemovalPlans(t *testing.T) {
+	projectDir := filepath.Join(t.TempDir(), "tutti")
+	if err := os.MkdirAll(projectDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	plans := make([]workspacedata.UserProjectRemovalPlan, maxProjectRemovalPasses+1)
+	for index := range plans {
+		plans[index] = workspacedata.UserProjectRemovalPlan{
+			SessionIDsByWorkspace: map[string][]string{"workspace-a": {fmt.Sprintf("session-%d", index)}},
+		}
+	}
+	store := &coordinatedRemovalUserProjectStore{plans: plans}
+	service := Service{
+		Store: store,
+		DeleteProjectSessions: func(context.Context, string, string, []string) (int, error) {
+			return 1, nil
+		},
+	}
+	err := service.Delete(context.Background(), DeleteInput{Path: projectDir})
+	if err == nil || !strings.Contains(err.Error(), "did not converge") {
+		t.Fatalf("Delete() error = %v, want convergence error", err)
+	}
+	if store.tryFinalizeCalls != maxProjectRemovalPasses {
+		t.Fatalf("TryFinalize calls = %d, want %d", store.tryFinalizeCalls, maxProjectRemovalPasses)
+	}
+}
+
 func TestServiceMovePublishesOrderedSnapshotAndIgnoresPublishFailure(t *testing.T) {
 	before := "alpha"
 	projects := []userprojectbiz.Project{{ID: "beta"}, {ID: "alpha"}}
@@ -362,6 +452,22 @@ type recordingUserProjectStore struct {
 	pinChanged  bool
 	pinInput    PinInput
 	putProjects []userprojectbiz.Project
+}
+
+type coordinatedRemovalUserProjectStore struct {
+	recordingUserProjectStore
+	plans            []workspacedata.UserProjectRemovalPlan
+	tryFinalizeCalls int
+}
+
+func (s *coordinatedRemovalUserProjectStore) TryFinalizeUserProjectRemovalByPath(_ context.Context, _ string) (workspacedata.UserProjectRemovalPlan, error) {
+	s.tryFinalizeCalls++
+	if len(s.plans) == 0 {
+		return workspacedata.UserProjectRemovalPlan{}, errors.New("unexpected removal retry")
+	}
+	plan := s.plans[0]
+	s.plans = s.plans[1:]
+	return plan, nil
 }
 
 func (s *recordingUserProjectStore) DeleteUserProject(_ context.Context, id string) error {

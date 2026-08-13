@@ -21,7 +21,18 @@ type MCPTool struct {
 	Name        string         `json:"name"`
 	Description string         `json:"description,omitempty"`
 	InputSchema map[string]any `json:"inputSchema"`
+	// ConnectorKey and ConnectorVersion are trusted in-process route provenance.
+	// They are never exposed through the MCP tools/list JSON contract or accepted
+	// from Agent input.
+	ConnectorKey     string `json:"-"`
+	ConnectorVersion string `json:"-"`
 }
+
+// MCPToolProjection derives the exact transport-validation contract for a
+// resolved live Tool. A Session router can use this to inject an
+// authority-specific discriminator after it has selected Owner or Caller,
+// without asking the transport validator to interpret a presentation oneOf.
+type MCPToolProjection func(MCPTool) (MCPTool, error)
 
 type registeredMCPTool struct {
 	routeID      string
@@ -108,7 +119,8 @@ func (registry *MCPRegistry) Tools(ctx context.Context) ([]MCPTool, error) {
 			}
 			seen[localName] = struct{}{}
 			result = append(result, MCPTool{Name: localName, Description: tool.Description,
-				InputSchema: cloneJSONMap(tool.InputSchema)})
+				InputSchema: cloneJSONMap(tool.InputSchema), ConnectorKey: listed.route.connectorKey,
+				ConnectorVersion: listed.route.connectorVersion})
 		}
 	}
 	if len(routes) > 0 && succeeded == 0 {
@@ -129,6 +141,20 @@ func (registry *MCPRegistry) Call(ctx context.Context, name string, arguments ma
 // transport validate request-integrity headers against that exact live schema,
 // and then calls the same binding.
 func (registry *MCPRegistry) CallValidated(ctx context.Context, name string, arguments map[string]any, validate func(MCPTool) error) (json.RawMessage, error) {
+	return registry.CallProjectedValidated(ctx, name, arguments, nil, validate)
+}
+
+// CallProjectedValidated resolves the current downstream Tool once, projects
+// an authority-specific validation schema, validates that projected contract,
+// and calls the same immutable live binding. Projection cannot rename a Tool,
+// change its Connector provenance, or remove its input schema.
+func (registry *MCPRegistry) CallProjectedValidated(
+	ctx context.Context,
+	name string,
+	arguments map[string]any,
+	project MCPToolProjection,
+	validate func(MCPTool) error,
+) (json.RawMessage, error) {
 	name = strings.TrimSpace(name)
 	if name == "" {
 		return nil, errors.New("connector MCP tool was not found")
@@ -171,7 +197,8 @@ func (registry *MCPRegistry) CallValidated(ctx context.Context, name string, arg
 			}
 			bindings = append(bindings, resolvedBinding{
 				binding: registeredMCPTool{localName: localName, upstreamName: tool.Name, client: routeMCPCaller(listed.route)}, owner: listed.route,
-				tool: MCPTool{Name: localName, Description: tool.Description, InputSchema: cloneJSONMap(tool.InputSchema)},
+				tool: MCPTool{Name: localName, Description: tool.Description, InputSchema: cloneJSONMap(tool.InputSchema),
+					ConnectorKey: listed.route.connectorKey, ConnectorVersion: listed.route.connectorVersion},
 			})
 		}
 	}
@@ -185,8 +212,21 @@ func (registry *MCPRegistry) CallValidated(ctx context.Context, name string, arg
 		return nil, errors.New("connector MCP tool binding is ambiguous")
 	}
 	resolved := bindings[0]
+	validationTool := resolved.tool
+	if project != nil {
+		projected, err := project(validationTool)
+		if err != nil {
+			return nil, err
+		}
+		if strings.TrimSpace(projected.Name) != validationTool.Name || projected.InputSchema == nil ||
+			strings.TrimSpace(projected.ConnectorKey) != validationTool.ConnectorKey ||
+			strings.TrimSpace(projected.ConnectorVersion) != validationTool.ConnectorVersion {
+			return nil, errors.New("connector MCP projected tool contract is invalid")
+		}
+		validationTool = projected
+	}
 	if validate != nil {
-		if err := validate(resolved.tool); err != nil {
+		if err := validate(validationTool); err != nil {
 			return nil, err
 		}
 	}
