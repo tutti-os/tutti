@@ -550,6 +550,26 @@ describe("attrsToMentionItem", () => {
       iconUrl: "tutti://agent/claude-code.svg"
     });
   });
+
+  it("round-trips workspace issue icon presentation without serializing it", () => {
+    const item = {
+      kind: "workspace-issue" as const,
+      href: "mention://workspace-issue/issue-1?workspaceId=ws-1",
+      workspaceId: "ws-1",
+      targetId: "issue-1",
+      name: "Task Center",
+      title: "Task Center",
+      iconUrl: "https://icons.example/task-center.png"
+    };
+
+    expect(attrsToMentionItem(mentionItemToAttrs(item))).toMatchObject({
+      kind: "workspace-issue",
+      iconUrl: "https://icons.example/task-center.png"
+    });
+    expect(formatAgentMentionMarkdown(item)).toBe(
+      "[@Task Center](mention://workspace-issue/issue-1?workspaceId=ws-1)"
+    );
+  });
 });
 
 describe("agent session mention links", () => {

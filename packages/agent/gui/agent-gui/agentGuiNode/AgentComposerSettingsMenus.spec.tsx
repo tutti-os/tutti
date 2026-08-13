@@ -1,5 +1,5 @@
 import "@testing-library/jest-dom/vitest";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { useState } from "react";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -253,7 +253,14 @@ describe("AgentPermissionModeDropdown", () => {
       type: "open-url",
       url: "https://deploymentsafety.openai.com/gpt-5-6"
     });
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("dialog", { name: "Enable full access?" })
+      ).not.toBeInTheDocument();
+    });
+    expect(onSettingsChange).not.toHaveBeenCalled();
 
+    await selectPermissionOption("Full access");
     fireEvent.click(screen.getByRole("button", { name: "Enable full access" }));
 
     expect(onSettingsChange).toHaveBeenCalledTimes(1);

@@ -183,6 +183,7 @@ describe("agentRichTextDocument", () => {
                 name: "修复 room status 批量接口",
                 title: "修复 room status 批量接口",
                 creatorName: "",
+                iconUrl: "",
                 status: "",
                 contentPreview: ""
               }
@@ -238,7 +239,7 @@ describe("agentRichTextDocument", () => {
     });
   });
 
-  it("does not export workspace app icon URLs into prompt text", () => {
+  it("does not export hydrated mention presentation into prompt text", () => {
     expect(
       agentRichTextDocToPromptText({
         type: "doc",
@@ -257,12 +258,41 @@ describe("agentRichTextDocument", () => {
                   name: "Weather",
                   iconUrl: "data:image/png;base64,abc"
                 }
+              },
+              { type: "text", text: " " },
+              {
+                type: "agentFileMention",
+                attrs: {
+                  kind: "agent-target",
+                  href: "mention://agent-target/shared-agent:1?workspaceId=room-1",
+                  workspaceId: "room-1",
+                  targetId: "shared-agent:1",
+                  name: "Review Agent",
+                  agentProviderId: "codex",
+                  iconUrl: "data:image/png;base64,agent"
+                }
+              },
+              { type: "text", text: " " },
+              {
+                type: "agentFileMention",
+                attrs: {
+                  kind: "workspace-issue",
+                  href: "mention://workspace-issue/issue-1?workspaceId=room-1",
+                  workspaceId: "room-1",
+                  targetId: "issue-1",
+                  name: "Task Center",
+                  iconUrl: "data:image/png;base64,issue"
+                }
               }
             ]
           }
         ]
       })
-    ).toBe("[@Weather](mention://workspace-app/weather?workspaceId=room-1)");
+    ).toBe(
+      "[@Weather](mention://workspace-app/weather?workspaceId=room-1) " +
+        "[@Review Agent](mention://agent-target/shared-agent:1?workspaceId=room-1) " +
+        "[@Task Center](mention://workspace-issue/issue-1?workspaceId=room-1)"
+    );
   });
 
   it("hydrates known skill triggers into skill token nodes", () => {

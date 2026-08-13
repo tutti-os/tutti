@@ -128,6 +128,7 @@ export function mentionItemToAttrs(
     topicId: item.topicId ?? "",
     title: item.title,
     creatorName: item.creatorName ?? "",
+    iconUrl: item.iconUrl ?? "",
     status: item.status ?? "",
     contentPreview: item.contentPreview ?? ""
   };
@@ -231,6 +232,10 @@ export function attrsToMentionItem(
           : name,
       creatorName:
         typeof attrs.creatorName === "string" ? attrs.creatorName : undefined,
+      iconUrl:
+        typeof attrs.iconUrl === "string" && attrs.iconUrl.trim()
+          ? attrs.iconUrl.trim()
+          : undefined,
       status: typeof attrs.status === "string" ? attrs.status : undefined,
       contentPreview:
         typeof attrs.contentPreview === "string"

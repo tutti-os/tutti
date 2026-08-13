@@ -1,14 +1,31 @@
-import { act, renderHook, waitFor } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  render,
+  renderHook,
+  screen,
+  waitFor
+} from "@testing-library/react";
 import {
   createAgentSessionEngine,
   selectEngineQueuedPrompt
 } from "@tutti-os/agent-activity-core";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { describe, expect, it, vi } from "vitest";
+import { RichTextMentionServiceProvider } from "@tutti-os/ui-rich-text/editor";
+import { createRichTextMentionService } from "@tutti-os/ui-rich-text/service";
+import type { RichTextTriggerProvider } from "@tutti-os/ui-rich-text/types";
 import type { AgentGUIRuntime } from "../../../agentActivityRuntime";
 import { createTestEngineCommandPort } from "../../../shared/testing/createTestAgentSessionEngine";
 import type { AgentComposerDraft } from "../model/agentGuiNodeTypes";
-import { agentComposerDraftImages } from "../model/agentComposerDraft";
+import {
+  agentComposerDraftImages,
+  agentComposerDraftPrompt,
+  agentComposerDraftToPromptContent,
+  updateAgentComposerDraft
+} from "../model/agentComposerDraft";
+import { AgentQueuedPromptPanel } from "../AgentQueuedPromptPanel";
+import { AgentRichTextEditor } from "../agentRichText/AgentRichTextEditor";
 import { useAgentGUIQueueActions } from "./useAgentGUIQueueActions";
 
 describe("useAgentGUIQueueActions", () => {
@@ -103,4 +120,220 @@ describe("useAgentGUIQueueActions", () => {
       ).toBe("data:image/png;base64,cmVzdG9yZWQ=")
     );
   });
+
+  it("hydrates mention icons after a queued prompt is edited into the Composer", async () => {
+    const prompt = [
+      "Ask",
+      "[@Old Agent](mention://agent-target/shared-agent:agent-1?workspaceId=workspace-1)",
+      "then",
+      "[@Old App](mention://workspace-app/app-1?workspaceId=workspace-1)",
+      "and",
+      "[@Old Issue](mention://workspace-issue/issue-1?workspaceId=workspace-1)"
+    ].join(" ");
+    const resolvedPresentations: Record<
+      string,
+      {
+        entityId: string;
+        iconUrl: string;
+        label: string;
+        presentation?: { agentProviderId: string };
+      }
+    > = {
+      "agent-target": {
+        entityId: "shared-agent:agent-1",
+        iconUrl: "https://icons.example/shared-agent.png",
+        label: "Lin · Review Agent",
+        presentation: { agentProviderId: "codex" }
+      },
+      "workspace-app": {
+        entityId: "app-1",
+        iconUrl: "https://icons.example/group-chat.png",
+        label: "Project Group"
+      },
+      "workspace-issue": {
+        entityId: "issue-1",
+        iconUrl: "https://icons.example/task-center.png",
+        label: "Task Center"
+      }
+    };
+    const providers = Object.entries(resolvedPresentations).map(
+      ([providerId, resolved]): RichTextTriggerProvider<string> => ({
+        id: providerId,
+        trigger: "@",
+        query: () => [],
+        getItemKey: (item) => item,
+        getItemLabel: (item) => item,
+        toInsertResult: (item) => ({ kind: "text", text: item }),
+        resolveMention: async (identity) =>
+          identity.entityId === resolved.entityId
+            ? {
+                label: resolved.label,
+                presentation: {
+                  iconUrl: resolved.iconUrl,
+                  ...(resolved.presentation ?? {})
+                }
+              }
+            : null
+      })
+    );
+    const mentionService = createRichTextMentionService({ providers });
+    const sessionEngine = createQueueTestEngine();
+    sessionEngine.dispatch({
+      agentSessionId: "session-1",
+      prompt: {
+        id: "queued-mentions",
+        content: [{ type: "text", text: prompt }],
+        createdAtUnixMs: 1
+      },
+      type: "queue/enqueued",
+      workspaceId: "workspace-1"
+    });
+    const onEditorChange = vi.fn();
+    const rendered = render(
+      <RichTextMentionServiceProvider service={mentionService}>
+        <QueuedMentionEditHarness
+          onEditorChange={onEditorChange}
+          prompt={prompt}
+          sessionEngine={sessionEngine}
+        />
+      </RichTextMentionServiceProvider>
+    );
+
+    const moreButton = screen.getByRole("button", { name: "More" });
+    fireEvent.pointerDown(moreButton, { button: 0, ctrlKey: false });
+    fireEvent.click(moreButton);
+    const editItem = await screen.findByRole("menuitem", { name: "Edit" });
+    fireEvent.pointerDown(editItem, { button: 0, ctrlKey: false });
+    fireEvent.click(editItem);
+
+    for (const [kind, presentation] of Object.entries(resolvedPresentations)) {
+      const mentionImage = await waitFor(() => {
+        const image = rendered.container.querySelector<HTMLImageElement>(
+          `[data-agent-mention-kind="${kind}"] img`
+        );
+        expect(image).not.toBeNull();
+        return image!;
+      });
+      expect(mentionImage).toHaveAttribute("src", presentation.iconUrl);
+      expect(
+        rendered.container.querySelector(`[data-agent-mention-kind="${kind}"]`)
+      ).toHaveTextContent(presentation.label);
+      const hrefElement = rendered.container.querySelector<HTMLElement>(
+        `[data-agent-mention-href^="mention://${kind}/"]`
+      );
+      expect(hrefElement?.dataset.agentMentionHref).not.toContain("icon");
+      expect(hrefElement?.dataset.agentMentionHref).not.toContain("data:");
+    }
+
+    expect(screen.getByTestId("restored-draft-prompt")).toHaveTextContent(
+      prompt
+    );
+    expect(screen.getByTestId("provider-prompt")).toHaveTextContent(prompt);
+    expect(screen.getByTestId("provider-prompt").textContent).not.toContain(
+      "icons.example"
+    );
+    expect(onEditorChange).not.toHaveBeenCalled();
+    expect(
+      selectEngineQueuedPrompt(
+        sessionEngine.getSnapshot(),
+        "session-1",
+        "queued-mentions"
+      )
+    ).toBeNull();
+
+    rendered.unmount();
+    mentionService.dispose();
+  });
 });
+
+const queueLabels = {
+  queuedLabel: "Queued",
+  queuePausedByUserLabel: "Queue paused",
+  sendQueuedPromptNext: "Send next",
+  editQueuedPrompt: "Edit",
+  deleteQueuedPrompt: "Delete",
+  queuedPromptMoreActions: "More"
+};
+
+function createQueueTestEngine() {
+  return createAgentSessionEngine({
+    clock: { nowUnixMs: () => 1 },
+    commandPort: createTestEngineCommandPort({
+      execute: async () => undefined
+    }),
+    identity: { origin: "test", workspaceId: "workspace-1" },
+    scheduler: { schedule: () => ({ cancel() {} }) }
+  });
+}
+
+function QueuedMentionEditHarness({
+  onEditorChange,
+  prompt,
+  sessionEngine
+}: {
+  onEditorChange: (value: string) => void;
+  prompt: string;
+  sessionEngine: ReturnType<typeof createQueueTestEngine>;
+}): React.JSX.Element {
+  const draftScopeKey = "session:session-1";
+  const activeConversationIdRef = useRef<string | null>("session-1");
+  const [drafts, setDrafts] = useState<Record<string, AgentComposerDraft>>({});
+  const actions = useAgentGUIQueueActions({
+    activeConversationIdRef,
+    agentActivityRuntime: {} as AgentGUIRuntime,
+    sessionEngine,
+    setDraftByScopeKey: setDrafts,
+    workspaceId: "workspace-1"
+  });
+  const draft = drafts[draftScopeKey];
+  const updatePrompt = (nextPrompt: string): void => {
+    onEditorChange(nextPrompt);
+    setDrafts((current) => {
+      const currentDraft = current[draftScopeKey];
+      return currentDraft
+        ? {
+            ...current,
+            [draftScopeKey]: updateAgentComposerDraft(currentDraft, {
+              prompt: nextPrompt
+            })
+          }
+        : current;
+    });
+  };
+  const providerPrompt = draft
+    ? (agentComposerDraftToPromptContent({ draft, skills: [] }).find(
+        (block) => block.type === "text"
+      )?.text ?? "")
+    : "";
+
+  return (
+    <>
+      <AgentQueuedPromptPanel
+        queuedPrompts={[
+          {
+            id: "queued-mentions",
+            content: [{ type: "text", text: prompt }],
+            createdAtUnixMs: 1
+          }
+        ]}
+        drainingQueuedPromptId={null}
+        labels={queueLabels}
+        onEditQueuedPrompt={actions.editQueuedPrompt}
+        onRemoveQueuedPrompt={actions.removeQueuedPrompt}
+        onSendQueuedPromptNext={actions.sendQueuedPromptNext}
+      />
+      <AgentRichTextEditor
+        contentScopeKey={draftScopeKey}
+        disabled={false}
+        onChange={updatePrompt}
+        onSubmit={vi.fn()}
+        placeholder="Prompt"
+        value={draft ? agentComposerDraftPrompt(draft) : ""}
+      />
+      <output data-testid="restored-draft-prompt">
+        {draft ? agentComposerDraftPrompt(draft) : ""}
+      </output>
+      <output data-testid="provider-prompt">{providerPrompt}</output>
+    </>
+  );
+}
