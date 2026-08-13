@@ -660,6 +660,34 @@ describe("AgentMessageMarkdown", () => {
     ).toBe("C:/Users/local user/project/image.png");
   });
 
+  it("preserves dots after Windows path separators in markdown media", async () => {
+    const readFile = vi.fn().mockResolvedValue({
+      bytes: new Uint8Array([137, 80, 78, 71])
+    });
+    window.agentHostApi = {
+      ...(window.agentHostApi ?? {}),
+      workspace: {
+        ...(window.agentHostApi?.workspace ?? {}),
+        readFile
+      }
+    } as typeof window.agentHostApi;
+    Object.defineProperty(URL, "createObjectURL", {
+      configurable: true,
+      value: vi.fn(() => "blob:tutti-state-image")
+    });
+
+    render(
+      <AgentMessageMarkdown
+        content={String.raw`![generated](C:\Users\moche\.tutti-dev\apps\image.png)`}
+      />
+    );
+
+    await screen.findByRole("img", { name: "generated" });
+    expect(readFile).toHaveBeenCalledWith({
+      path: "C:/Users/moche/.tutti-dev/apps/image.png"
+    });
+  });
+
   it("does not pass unknown one-letter media protocols to the DOM", () => {
     const { container } = render(
       <AgentMessageMarkdown content={"![unsafe](x://example.com/image.png)"} />
