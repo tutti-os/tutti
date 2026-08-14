@@ -673,9 +673,15 @@ test("reference source picker renders shared folder icons and content errors", a
     });
     assert.equal(
       loadMoreCount,
-      2,
-      "capped scroll geometry should continue pagination without another scroll event"
+      1,
+      "appending a capped page must not drain the remaining cursor automatically"
     );
+    assert.ok(searchViewport.scrollTop < 8_000_000 - 580);
+    searchViewport.scrollTop = 8_000_000 - 580;
+    await act(async () => {
+      searchViewport.dispatchEvent(new dom.window.Event("scroll"));
+    });
+    assert.equal(loadMoreCount, 2);
     const finalNode = referenceSearchResultNodeAt(
       largeResultIndex,
       largeResultCount + 29

@@ -1,5 +1,7 @@
 import {
+  useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -32,6 +34,7 @@ import {
 import { referenceNodeToWorkspaceFileEntry } from "./referenceNodeIconEntry.ts";
 import {
   REFERENCE_SEARCH_ROW_HEIGHT_PX,
+  referenceSearchEffectiveScrollTopForLogicalPosition,
   referenceSearchVirtualRowTop,
   resolveReferenceSearchVirtualWindow
 } from "./referenceSearchVirtualWindow.ts";
@@ -76,11 +79,44 @@ export function ReferenceSearchResultList({
     scrollElement,
     resultIdentity
   );
+  const previousVirtualGeometryRef = useRef<{
+    logicalScrollTop: number;
+    resultCount: number;
+    resultIdentity: number;
+  } | null>(null);
+  const previousVirtualGeometry = previousVirtualGeometryRef.current;
+  const appendedScrollTop =
+    previousVirtualGeometry &&
+    previousVirtualGeometry.resultIdentity === resultIdentity &&
+    previousVirtualGeometry.resultCount < resultCount &&
+    metrics.viewportHeight > 0
+      ? referenceSearchEffectiveScrollTopForLogicalPosition({
+          itemCount: resultCount,
+          logicalScrollTop: previousVirtualGeometry.logicalScrollTop,
+          viewportHeight: metrics.viewportHeight
+        })
+      : null;
   const virtualWindow = resolveReferenceSearchVirtualWindow({
     itemCount: resultCount,
-    scrollTop: metrics.scrollTop,
+    scrollTop: appendedScrollTop ?? metrics.scrollTop,
     viewportHeight: metrics.viewportHeight
   });
+  useLayoutEffect(() => {
+    previousVirtualGeometryRef.current = {
+      logicalScrollTop: virtualWindow.logicalScrollTop,
+      resultCount,
+      resultIdentity
+    };
+    if (appendedScrollTop !== null) {
+      metrics.setScrollTop(appendedScrollTop);
+    }
+  }, [
+    appendedScrollTop,
+    metrics.setScrollTop,
+    resultCount,
+    resultIdentity,
+    virtualWindow.logicalScrollTop
+  ]);
   const lastEndReachedKeyRef = useRef<string | null>(null);
   useEffect(() => {
     if (
@@ -174,11 +210,34 @@ export function ReferenceSearchResultList({
 function useReferenceSearchViewportMetrics(
   scrollElement: HTMLDivElement | null,
   resultIdentity: number
-): { scrollTop: number; viewportHeight: number } {
+): {
+  scrollTop: number;
+  setScrollTop(scrollTop: number): void;
+  viewportHeight: number;
+} {
   const [metrics, setMetrics] = useState({
     scrollTop: 0,
     viewportHeight: 0
   });
+  const setScrollTop = useCallback(
+    (scrollTop: number) => {
+      if (!scrollElement) {
+        return;
+      }
+      scrollElement.scrollTop = scrollTop;
+      const next = {
+        scrollTop: scrollElement.scrollTop,
+        viewportHeight: scrollElement.clientHeight
+      };
+      setMetrics((current) =>
+        current.scrollTop === next.scrollTop &&
+        current.viewportHeight === next.viewportHeight
+          ? current
+          : next
+      );
+    },
+    [scrollElement]
+  );
 
   useEffect(() => {
     if (!scrollElement) {
@@ -222,7 +281,7 @@ function useReferenceSearchViewportMetrics(
     };
   }, [scrollElement]);
 
-  return metrics;
+  return { ...metrics, setScrollTop };
 }
 
 type ReferenceNodeIconUrlState = ReturnType<

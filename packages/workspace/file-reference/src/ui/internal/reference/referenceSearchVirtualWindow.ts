@@ -48,6 +48,30 @@ export function resolveReferenceSearchVirtualWindow(input: {
   };
 }
 
+export function referenceSearchEffectiveScrollTopForLogicalPosition(input: {
+  itemCount: number;
+  logicalScrollTop: number;
+  viewportHeight: number;
+}): number {
+  const itemCount = Math.max(0, Math.floor(input.itemCount));
+  const viewportHeight = Math.max(0, input.viewportHeight);
+  const logicalHeight = itemCount * REFERENCE_SEARCH_ROW_HEIGHT_PX;
+  const spacerHeight = Math.min(
+    logicalHeight,
+    REFERENCE_SEARCH_MAX_SCROLL_HEIGHT_PX
+  );
+  const maxEffectiveScrollTop = Math.max(0, spacerHeight - viewportHeight);
+  const maxLogicalScrollTop = Math.max(0, logicalHeight - viewportHeight);
+  if (maxLogicalScrollTop === 0) {
+    return 0;
+  }
+  return (
+    (clamp(input.logicalScrollTop, 0, maxLogicalScrollTop) /
+      maxLogicalScrollTop) *
+    maxEffectiveScrollTop
+  );
+}
+
 export function referenceSearchVirtualRowTop(
   window: ReferenceSearchVirtualWindow,
   index: number

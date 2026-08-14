@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   REFERENCE_SEARCH_MAX_SCROLL_HEIGHT_PX,
   REFERENCE_SEARCH_ROW_HEIGHT_PX,
+  referenceSearchEffectiveScrollTopForLogicalPosition,
   referenceSearchVirtualRowTop,
   resolveReferenceSearchVirtualWindow
 } from "./referenceSearchVirtualWindow.ts";
@@ -37,4 +38,34 @@ test("one million results compress scroll geometry while keeping the final row r
     referenceSearchVirtualRowTop(window, 999_999),
     REFERENCE_SEARCH_MAX_SCROLL_HEIGHT_PX - REFERENCE_SEARCH_ROW_HEIGHT_PX
   );
+});
+
+test("appending capped results preserves the logical scroll position", () => {
+  const viewportHeight = 580;
+  const previousWindow = resolveReferenceSearchVirtualWindow({
+    itemCount: 140_000,
+    scrollTop: REFERENCE_SEARCH_MAX_SCROLL_HEIGHT_PX - viewportHeight,
+    viewportHeight
+  });
+  const appendedScrollTop = referenceSearchEffectiveScrollTopForLogicalPosition(
+    {
+      itemCount: 140_030,
+      logicalScrollTop: previousWindow.logicalScrollTop,
+      viewportHeight
+    }
+  );
+  const appendedWindow = resolveReferenceSearchVirtualWindow({
+    itemCount: 140_030,
+    scrollTop: appendedScrollTop,
+    viewportHeight
+  });
+
+  assert.ok(
+    appendedScrollTop < REFERENCE_SEARCH_MAX_SCROLL_HEIGHT_PX - viewportHeight
+  );
+  assert.equal(
+    appendedWindow.logicalScrollTop,
+    previousWindow.logicalScrollTop
+  );
+  assert.ok(appendedWindow.endIndex < 140_030);
 });
