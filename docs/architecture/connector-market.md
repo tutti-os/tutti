@@ -351,7 +351,12 @@ Remote Connector authorization uses that account projection for Start,
 observation, presentation, and route publication; the device Connector's
 authorization field is not remote authorization truth. A completed Start
 operation may retain a private authorization-session receipt while provider
-work is pending. Each receipt has a terminal resolution, and only unresolved
+work is pending. The Start response preserves the current session's `pending`
+state when the durable account projection is still missing, disconnected,
+expired, or failed; this ephemeral response state lets the caller continue the
+same idempotent session and does not replace the projection as durable truth.
+An already connected projection wins a race with a stale pending session. Each
+receipt has a terminal resolution, and only unresolved
 receipts for the daemon's current account are polled. Applying an authoritative
 connected Snapshot atomically writes its monotonic Projection and surfaces all
 matching account-and-Connector receipts. The daemon holds the account lifecycle

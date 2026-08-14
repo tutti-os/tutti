@@ -289,6 +289,28 @@ type RuntimeSessionLiveness interface {
 	RuntimeSessionLive(workspaceID, agentSessionID string) bool
 }
 
+// RuntimeWorkspaceDisconnector exposes registered runtime sessions and
+// releases only their live provider connection. It must preserve the runtime
+// session record and provider resume identity, and must not invoke a
+// provider-history session close operation.
+type RuntimeWorkspaceDisconnector interface {
+	WorkspaceRuntimeSessions(context.Context, string) ([]ProviderRuntimeSession, error)
+	DisconnectRuntimeSession(context.Context, SessionRef) (bool, error)
+}
+
+// RuntimeWorkspaceDisconnectTargeter supports a reentrant detach that must
+// defer semantic cleanup without targeting a later provider connection.
+type RuntimeWorkspaceDisconnectTargeter interface {
+	SnapshotWorkspaceRuntimeDisconnectTargets(string) []RuntimeDisconnectTarget
+	DisconnectRuntimeSessionTarget(context.Context, RuntimeDisconnectTarget) (bool, error)
+}
+
+// RuntimeRetainedSettingsUpdater refreshes the settings snapshot kept by a
+// disconnected runtime Session without starting its provider connection.
+type RuntimeRetainedSettingsUpdater interface {
+	UpdateRetainedSettings(context.Context, RuntimeUpdateSettingsInput) error
+}
+
 // RuntimeHistoryController is an optional semantic capability. Host lifecycle
 // code never invokes provider-specific history methods directly.
 type RuntimeHistoryController interface {

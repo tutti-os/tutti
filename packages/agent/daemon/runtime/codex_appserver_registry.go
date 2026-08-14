@@ -43,15 +43,17 @@ func (a *CodexAppServerAdapter) storeSession(agentSessionID string, session *cod
 	// Replacing a stored session must never orphan its app-server process:
 	// when the new entry does not carry the existing client forward, that
 	// client (and its OS process) would otherwise leak without an owner.
-	var replacedClient *codexAppServerClient
+	var replaced *codexAppServerSession
 	if existing := a.sessions[key]; existing != nil && existing != session && existing.client != nil &&
 		(session == nil || existing.client != session.client) {
-		replacedClient = existing.client
+		existing.releasing = true
+		existing.client.SetMessageHandler(nil)
+		replaced = existing
 	}
 	a.sessions[key] = session
 	a.mu.Unlock()
-	if replacedClient != nil {
-		_ = replacedClient.Close()
+	if replaced != nil {
+		a.closeOrRetainCodexSession(key, replaced)
 	}
 }
 
@@ -103,7 +105,9 @@ func (a *CodexAppServerAdapter) invalidateSessionClient(
 	for _, request := range pending {
 		request.supersede(errPermissionRequestCanceled)
 	}
-	_ = expectedClient.Close()
+	if err := expectedClient.Close(); err != nil {
+		a.retainRetiredCodexSession(key, appSession)
+	}
 	return true
 }
 

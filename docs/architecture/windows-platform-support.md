@@ -289,6 +289,11 @@ performed while the current desktop process is running is visible without a
 restart. The native UI Automation, capture, and input implementation remains
 inside Cua Driver rather than becoming a Tutti platform library.
 
+Daemon startup readiness is bounded but tolerant of transient status failures.
+If the service still owns a live `serve` process, a later readiness check polls
+again instead of failing immediately. A process exit before readiness and a
+readiness timeout remain distinct, sanitized diagnostic errors.
+
 The desktop does not currently vendor `cua-driver.exe` into the Windows
 package. Users or deployment tooling must install the pinned driver (or set
 `TUTTI_COMPUTER_MCP_ENTRY_PATH`); packaging a signed helper is a separate

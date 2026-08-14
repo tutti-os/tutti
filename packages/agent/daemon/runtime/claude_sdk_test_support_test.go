@@ -272,11 +272,13 @@ func (c *scriptedClaudeSDKConnection) sentRequests() []claudeSDKSidecarRequest {
 }
 
 type blockingClaudeSDKConnection struct {
-	mu     sync.Mutex
-	sent   []claudeSDKSidecarRequest
-	frames chan ProcessFrame
-	closed chan struct{}
-	once   sync.Once
+	mu            sync.Mutex
+	sent          []claudeSDKSidecarRequest
+	frames        chan ProcessFrame
+	closed        chan struct{}
+	once          sync.Once
+	closeFailures int
+	closeCalls    int
 }
 
 func newBlockingClaudeSDKConnection() *blockingClaudeSDKConnection {
@@ -307,6 +309,14 @@ func (c *blockingClaudeSDKConnection) Recv() (ProcessFrame, error) {
 }
 
 func (c *blockingClaudeSDKConnection) Close() error {
+	c.mu.Lock()
+	c.closeCalls++
+	if c.closeFailures > 0 {
+		c.closeFailures--
+		c.mu.Unlock()
+		return errors.New("injected Claude sidecar close failure")
+	}
+	c.mu.Unlock()
 	c.once.Do(func() {
 		close(c.closed)
 	})

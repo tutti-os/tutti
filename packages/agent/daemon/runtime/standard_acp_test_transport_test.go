@@ -128,6 +128,9 @@ type standardACPConnection struct {
 	lastPromptParamsSnapshot      map[string]any
 	promptParamsSnapshots         []map[string]any
 	promptCallCount               int
+	// promptFinalContent attaches final assistant content blocks to the
+	// session/prompt result so tests can exercise final snapshot projection.
+	promptFinalContent []map[string]any
 	// retriableErrorPrompts makes the first N session/prompt calls emulate
 	// cursor-agent's transient-failure shape: an "Error: RetriableError: ..."
 	// text chunk followed by a normal end_turn result.

@@ -723,7 +723,7 @@ func acpResolvedToolCallStatus(update map[string]any, fallback string) string {
 		return status
 	}
 	rawOutput := acpToolCallRawOutput(update)
-	if inferred := acpInferTerminalToolStatus(rawOutput); inferred != "" {
+	if inferred := acpInferTerminalToolStatus(update, rawOutput); inferred != "" {
 		return inferred
 	}
 	if inferred := acpInferImageGenerationTerminalStatus(update, rawOutput); inferred != "" {
@@ -732,7 +732,7 @@ func acpResolvedToolCallStatus(update map[string]any, fallback string) string {
 	return status
 }
 
-func acpInferTerminalToolStatus(rawOutput any) string {
+func acpInferTerminalToolStatus(update map[string]any, rawOutput any) string {
 	body := acpMapFromValue(rawOutput, "output")
 	if len(body) == 0 {
 		return ""
@@ -744,19 +744,19 @@ func acpInferTerminalToolStatus(rawOutput any) string {
 		return status
 	}
 	if exitCode, ok := acpIntFromValue(body["exitCode"]); ok {
-		if exitCode == 0 {
+		if acpTerminalExitCodeIsSuccessful(update, exitCode) {
 			return messageStreamStateCompleted
 		}
 		return messageStreamStateFailed
 	}
 	if exitCode, ok := acpIntFromValue(body["exit_code"]); ok {
-		if exitCode == 0 {
+		if acpTerminalExitCodeIsSuccessful(update, exitCode) {
 			return messageStreamStateCompleted
 		}
 		return messageStreamStateFailed
 	}
 	if exitCode, ok := acpExitCodeFromText(body["output"]); ok {
-		if exitCode == 0 {
+		if acpTerminalExitCodeIsSuccessful(update, exitCode) {
 			return messageStreamStateCompleted
 		}
 		return messageStreamStateFailed

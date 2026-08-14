@@ -49,6 +49,40 @@ func TestDirectHostApplicationCoreConformance(t *testing.T) {
 	}
 }
 
+func TestHostWorkspaceRuntimeDisconnectConformance(t *testing.T) {
+	for _, scenario := range hostconformance.WorkspaceRuntimeDisconnectScenarios() {
+		scenario := scenario
+		for _, directHost := range []bool{false, true} {
+			directHost := directHost
+			t.Run(fmt.Sprintf("direct=%v/%s", directHost, scenario.Name), func(t *testing.T) {
+				driver := &legacyHostConformanceDriver{t: t, directHost: directHost}
+				if err := hostconformance.RunWorkspaceRuntimeDisconnect(
+					context.Background(), driver, scenario,
+				); err != nil {
+					t.Fatal(err)
+				}
+			})
+		}
+	}
+}
+
+func TestHostWorkspaceRuntimeAdmissionConformance(t *testing.T) {
+	for _, scenario := range hostconformance.WorkspaceRuntimeAdmissionScenarios() {
+		scenario := scenario
+		t.Run(scenario.Name, func(t *testing.T) {
+			driver := &legacyHostConformanceDriver{t: t, directHost: true}
+			if err := driver.Reset(context.Background(), hostconformance.Fixture{}); err != nil {
+				t.Fatal(err)
+			}
+			if err := hostconformance.RunWorkspaceRuntimeAdmission(
+				context.Background(), driver, scenario,
+			); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}
+
 func TestHostHistoricalStateConformance(t *testing.T) {
 	for _, scenario := range hostconformance.HistoricalStateScenarios() {
 		scenario := scenario
@@ -550,7 +584,7 @@ func (d *legacyHostConformanceDriver) Reset(_ context.Context, fixture hostconfo
 		additionalKey := additional.WorkspaceID + ":" + additional.AgentSessionID
 		d.sessions.sessions[additionalKey] = PersistedSession{
 			ID: additional.AgentSessionID, WorkspaceID: additional.WorkspaceID, Kind: additionalKind,
-			Provider: additional.Provider, Cwd: additional.Cwd,
+			Provider: additional.Provider, ProviderSessionID: additional.ProviderSessionID, Cwd: additional.Cwd,
 			RailSectionKind: "conversations",
 			RailSectionKey:  "conversations",
 			Metadata:        agentactivitybiz.SessionMetadata{Visible: true},
@@ -701,6 +735,28 @@ func (d *legacyHostConformanceDriver) DisconnectRuntimeSession(ctx context.Conte
 		WorkspaceID: ref.WorkspaceID, AgentSessionID: ref.AgentSessionID,
 		PreserveCanonicalState: true,
 	})
+}
+
+func (d *legacyHostConformanceDriver) DisconnectWorkspaceRuntime(
+	ctx context.Context,
+	workspaceID string,
+) (agenthost.DisconnectWorkspaceRuntimeResult, error) {
+	return d.service.ApplicationHost().DisconnectWorkspaceRuntime(ctx, workspaceID)
+}
+
+func (d *legacyHostConformanceDriver) WithWorkspaceRuntimeOperation(
+	ctx context.Context,
+	workspaceID string,
+	fn func(context.Context) error,
+) error {
+	return d.service.ApplicationHost().WithWorkspaceRuntimeOperation(ctx, workspaceID, fn)
+}
+
+func (d *legacyHostConformanceDriver) AcquireWorkspaceRuntimeDisconnectFence(
+	ctx context.Context,
+	workspaceID string,
+) (hostconformance.WorkspaceRuntimeDisconnectFenceDriver, error) {
+	return d.service.ApplicationHost().AcquireWorkspaceRuntimeDisconnectFence(ctx, workspaceID)
 }
 
 func (d *legacyHostConformanceDriver) Create(
@@ -1098,7 +1154,7 @@ func (d *legacyHostConformanceDriver) GetSession(ctx context.Context, ref agenth
 		return legacyHostSessionObservationWithLive(session, result.Live), err
 	}
 	session, err := d.service.Get(ctx, ref.WorkspaceID, ref.AgentSessionID)
-	_, live := d.runtime.Session(ref.WorkspaceID, ref.AgentSessionID)
+	live := d.runtime.RuntimeSessionLive(ref.WorkspaceID, ref.AgentSessionID)
 	return legacyHostSessionObservationWithLive(session, live), err
 }
 

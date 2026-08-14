@@ -34,6 +34,78 @@ type closeRuntimeBackend struct {
 	input agentruntime.CloseInput
 }
 
+type workspaceDisconnectBackend struct {
+	RuntimeBackend
+	sessions  []agentruntime.Session
+	roomID    string
+	sessionID string
+	target    agentruntime.RuntimeDisconnectTarget
+}
+
+func (*workspaceDisconnectBackend) SnapshotRuntimeDisconnectTargets(string) []agentruntime.RuntimeDisconnectTarget {
+	return []agentruntime.RuntimeDisconnectTarget{{
+		RoomID: "workspace-1", AgentSessionID: "session-1", ConnectionGeneration: 7,
+	}}
+}
+
+func (b *workspaceDisconnectBackend) DisconnectRuntimeSessionTarget(
+	_ context.Context,
+	target agentruntime.RuntimeDisconnectTarget,
+) (agentruntime.DisconnectRuntimeSessionResult, error) {
+	b.target = target
+	return agentruntime.DisconnectRuntimeSessionResult{Disconnected: true}, nil
+}
+
+func (b *workspaceDisconnectBackend) RuntimeSessions(context.Context, string) ([]agentruntime.Session, error) {
+	return append([]agentruntime.Session(nil), b.sessions...), nil
+}
+
+func (*workspaceDisconnectBackend) State(_, _ string) (agentruntime.SessionStateSnapshot, error) {
+	return agentruntime.SessionStateSnapshot{}, nil
+}
+
+func (b *workspaceDisconnectBackend) DisconnectRuntimeSession(
+	_ context.Context,
+	roomID string,
+	sessionID string,
+) (agentruntime.DisconnectRuntimeSessionResult, error) {
+	b.roomID = roomID
+	b.sessionID = sessionID
+	return agentruntime.DisconnectRuntimeSessionResult{Disconnected: true}, nil
+}
+
+func TestRuntimeControllerBridgesWorkspaceRuntimeDisconnect(t *testing.T) {
+	t.Parallel()
+	backend := &workspaceDisconnectBackend{sessions: []agentruntime.Session{{
+		RoomID: "workspace-1", AgentSessionID: "session-1", ProviderSessionID: "provider-1",
+	}}}
+	controller := &RuntimeController{Backend: backend}
+	sessions, err := controller.WorkspaceRuntimeSessions(t.Context(), " workspace-1 ")
+	if err != nil {
+		t.Fatalf("WorkspaceRuntimeSessions: %v", err)
+	}
+	if len(sessions) != 1 || sessions[0].ID != "session-1" || sessions[0].ProviderSessionID != "provider-1" {
+		t.Fatalf("sessions=%#v", sessions)
+	}
+	disconnected, err := controller.DisconnectRuntimeSession(t.Context(), host.SessionRef{
+		WorkspaceID: " workspace-1 ", AgentSessionID: " session-1 ",
+	})
+	if err != nil || !disconnected {
+		t.Fatalf("disconnected=%v err=%v", disconnected, err)
+	}
+	if backend.roomID != "workspace-1" || backend.sessionID != "session-1" {
+		t.Fatalf("backend ref=%q/%q", backend.roomID, backend.sessionID)
+	}
+	targets := controller.SnapshotWorkspaceRuntimeDisconnectTargets("workspace-1")
+	if len(targets) != 1 || targets[0].ConnectionGeneration != 7 {
+		t.Fatalf("targets=%#v", targets)
+	}
+	disconnected, err = controller.DisconnectRuntimeSessionTarget(t.Context(), targets[0])
+	if err != nil || !disconnected || backend.target.ConnectionGeneration != 7 {
+		t.Fatalf("target disconnect=%v err=%v backend=%#v", disconnected, err, backend.target)
+	}
+}
+
 func (b *closeRuntimeBackend) Close(_ context.Context, input agentruntime.CloseInput) (agentruntime.CloseResult, error) {
 	b.input = input
 	return agentruntime.CloseResult{AgentSessionID: input.AgentSessionID, Disconnected: true}, nil

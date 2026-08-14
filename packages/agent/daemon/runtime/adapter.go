@@ -358,6 +358,14 @@ type LiveSessionReleaseAdapter interface {
 	ReleaseLiveSession(context.Context, Session) error
 }
 
+// LiveSessionDisconnectAdapter force-releases a live provider transport when
+// its owning Workspace runtime becomes unavailable. Unlike Adapter.Close it
+// must not send a destructive provider session-close operation; unlike the
+// idle reaper it must settle active work and pending interactions.
+type LiveSessionDisconnectAdapter interface {
+	DisconnectLiveSession(context.Context, Session) error
+}
+
 // LiveSessionReleaseCapabilityAdapter narrows live-session release for
 // adapters whose ability to resume is learned from the current provider
 // handshake rather than known statically by adapter type.

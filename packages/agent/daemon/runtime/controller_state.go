@@ -74,6 +74,46 @@ func (c *Controller) UpdateSettings(ctx context.Context, input UpdateSettingsInp
 	}, nil
 }
 
+// UpdateRetainedSettings changes only the Controller Session snapshot. It is
+// used while the provider connection is absent so the next just-in-time Resume
+// receives current canonical settings without reconnecting early.
+func (c *Controller) UpdateRetainedSettings(_ context.Context, input UpdateSettingsInput) (UpdateSettingsResult, error) {
+	session, ok := c.get(strings.TrimSpace(input.RoomID), strings.TrimSpace(input.AgentSessionID))
+	if !ok {
+		return UpdateSettingsResult{}, ErrSessionNotFound
+	}
+	settings := normalizeSessionSettings(session.Settings, session.Provider, session.PermissionModeID)
+	if input.Settings.Model != nil {
+		settings.Model = strings.TrimSpace(*input.Settings.Model)
+	}
+	if input.Settings.ReasoningEffort != nil {
+		settings.ReasoningEffort = strings.TrimSpace(*input.Settings.ReasoningEffort)
+	}
+	if input.Settings.Speed != nil {
+		settings.Speed = strings.TrimSpace(*input.Settings.Speed)
+	}
+	if input.Settings.PlanMode != nil {
+		settings.PlanMode = *input.Settings.PlanMode
+	}
+	if input.Settings.BrowserUse != nil {
+		value := *input.Settings.BrowserUse
+		settings.BrowserUse = &value
+	}
+	if input.Settings.ComputerUse != nil {
+		value := *input.Settings.ComputerUse
+		settings.ComputerUse = &value
+	}
+	if input.Settings.PermissionModeID != nil {
+		settings.PermissionModeID = normalizePermissionModeIDWithFallback(
+			session.Provider, strings.TrimSpace(*input.Settings.PermissionModeID), session.PermissionModeID,
+		)
+		session.PermissionModeID = settings.PermissionModeID
+	}
+	session.Settings = cloneSessionSettings(settings)
+	c.store(session)
+	return UpdateSettingsResult{AgentSessionID: session.AgentSessionID, Settings: settings}, nil
+}
+
 func shouldAdvanceSessionUpdatedAtFromEvents(events []activityshared.Event) bool {
 	for _, event := range events {
 		switch event.Type {

@@ -37,20 +37,17 @@ export function ConnectorMarketPanel({
     >
       <section
         className={cn(
-          "flex min-h-0 flex-1 flex-col gap-5 pb-[22px]",
+          "flex min-h-0 flex-1 flex-col gap-5 pb-5",
           className
         )}
         data-testid="connector-market-panel"
       >
         <header className="shrink-0">
-          <h2 className="m-0 text-[18px] font-semibold leading-[1.35] text-[var(--text-primary)]">
-            {i18n.t("title")}
-          </h2>
           <p className="mb-0 mt-1 text-[12px] leading-[1.5] text-[var(--text-secondary)]">
             {i18n.t("description")}
           </p>
         </header>
-        <ConnectorMarketToolbar />
+        <div className="sticky top-0 z-10 bg-[var(--background-panel)]"><ConnectorMarketToolbar /></div>
         <ConnectorCatalog />
       </section>
     </ConnectorMarketRootProvider>

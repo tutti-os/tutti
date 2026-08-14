@@ -151,6 +151,7 @@ type CodexAppServerAdapter struct {
 	commandResolver            ProviderCommandResolver
 	mu                         sync.Mutex
 	sessions                   map[string]*codexAppServerSession
+	retiredSessions            map[string][]*codexAppServerSession
 	terminalInteractions       terminalInteractiveDispositionStore
 	interactiveDispositionSink InteractiveDispositionSink
 	commandSink                CommandSnapshotSink
@@ -207,9 +208,14 @@ type codexAppServerSessionLock struct {
 }
 
 type codexAppServerSession struct {
-	client     *codexAppServerClient
-	threadID   string
-	serverInfo map[string]any
+	client *codexAppServerClient
+	// releaseFailed preserves ownership after a physical Close error while
+	// making the client unavailable to Exec. A successful replacement moves
+	// this handle to retiredSessions until bounded cleanup confirms closure.
+	releasing     bool
+	releaseFailed bool
+	threadID      string
+	serverInfo    map[string]any
 	// resumeRuntimeContext preserves the historical adapter projection only
 	// when replay attaches at an already-initialized connection checkpoint.
 	resumeRuntimeContext map[string]any
@@ -475,6 +481,7 @@ func newAppServerAdapter(
 		config:              config,
 		commandResolver:     commandResolver,
 		sessions:            make(map[string]*codexAppServerSession),
+		retiredSessions:     make(map[string][]*codexAppServerSession),
 		lifecycleLocks:      make(map[string]*codexAppServerSessionLock),
 		cancelGraceWindow:   defaultCodexAppServerCancelGraceWindow,
 		turnStartAckTimeout: defaultCodexAppServerTurnStartAckTimeout,

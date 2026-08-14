@@ -494,6 +494,8 @@ export interface AgentComposerCapabilityMenuState {
   computerUse?: {
     authorization?: AgentComposerComputerUseAuthorizationState | null;
     installed?: boolean | null;
+    /** Host can present the computer-use setup surface. Fail closed. */
+    presentationSupported?: boolean | null;
   };
   /**
    * Host-owned connector visibility override. Missing preserves the existing

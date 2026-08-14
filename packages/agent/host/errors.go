@@ -22,6 +22,7 @@ var (
 	ErrRuntimeSessionActive               = errors.New("agent runtime session has an active turn")
 	ErrRuntimeSessionReprepareUnavailable = errors.New("agent runtime session reprepare is unavailable")
 	ErrRuntimeSessionPublishUnavailable   = errors.New("agent runtime session initialization publication is unavailable")
+	ErrWorkspaceDisconnectUnavailable     = errors.New("agent workspace runtime disconnect is unavailable")
 	ErrInteractionNotFound                = errors.New("agent interaction was not found")
 	ErrRuntimeOperationInProgress         = errors.New("agent runtime operation is already in progress")
 	ErrRuntimeOperationFailed             = errors.New("agent runtime operation failed")

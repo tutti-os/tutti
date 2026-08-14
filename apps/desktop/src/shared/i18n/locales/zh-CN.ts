@@ -269,6 +269,7 @@ export const zhCN = {
       settings: "设置",
       free: "Free",
       signIn: "登录",
+      signInFailed: "无法发起登录",
       signOut: "退出登录",
       copyUserId: "复制用户 ID",
       copyUserIdSuccess: "已复制用户 ID",

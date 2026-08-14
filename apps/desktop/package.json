@@ -105,6 +105,10 @@
         }
       ]
     },
+    "nsis": {
+      "include": "build/installer.nsh",
+      "deleteAppDataOnUninstall": false
+    },
     "appx": {
       "applicationId": "Tutti",
       "artifactName": "${productName}-${version}-store-${arch}.${ext}",

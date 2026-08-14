@@ -135,6 +135,12 @@ App Center, workspace-app lifecycle, App Factory, file references, and File Mana
 - [FileManager home-relative paths break only the list pane](./workspace-apps-files.md#filemanager-home-relative-paths-break-only-the-list-pane)
 - [Windows FileManager paths exist but fail validation or selection](./workspace-apps-files.md#windows-filemanager-paths-exist-but-fail-validation-or-selection)
 
+## [Connector Market](./connector-market.md)
+
+Connector catalog, installation, account authorization, and runtime convergence.
+
+- [OAuth opens once, then the desktop stays disconnected or a second attempt supersedes the first](./connector-market.md#oauth-opens-once-then-the-desktop-stays-disconnected-or-a-second-attempt-supersedes-the-first)
+
 ## [Toolchain, Browser, And Terminal](./toolchain-browser-terminal.md)
 
 CLI behavior, CI, package assets, skills, Browser Node, and terminal input.

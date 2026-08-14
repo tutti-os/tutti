@@ -26,6 +26,7 @@ func (c *Controller) ensureLiveAdapterSession(ctx context.Context, session Sessi
 	if err := adapter.Resume(ctx, session); err != nil {
 		return err
 	}
+	c.advanceLiveConnectionGeneration(session.RoomID, session.AgentSessionID)
 	if err := c.applyRetainedGoalGenerationFencesOrClose(ctx, session, adapter); err != nil {
 		return err
 	}
@@ -177,6 +178,117 @@ func liveSessionReleaseAdapter(adapter Adapter, session Session) (LiveSessionRel
 		return releaseAdapter, probe, false
 	}
 	return releaseAdapter, probe, true
+}
+
+// DisconnectRuntimeSession force-releases one Workspace-scoped provider
+// transport while preserving the Controller session and its provider resume
+// identity. It serializes with admission for the same Session and never calls
+// Adapter.Close, whose provider protocol semantics may be destructive.
+func (c *Controller) DisconnectRuntimeSession(
+	ctx context.Context,
+	roomID string,
+	agentSessionID string,
+) (DisconnectRuntimeSessionResult, error) {
+	roomID = strings.TrimSpace(roomID)
+	agentSessionID = strings.TrimSpace(agentSessionID)
+	if c == nil || roomID == "" || agentSessionID == "" {
+		return DisconnectRuntimeSessionResult{}, errors.New("room id and agent session id are required")
+	}
+	releaseLifecycleLock, err := c.acquireLifecycleLockContext(ctx, roomID, agentSessionID)
+	if err != nil {
+		return DisconnectRuntimeSessionResult{}, err
+	}
+	defer releaseLifecycleLock()
+	return c.disconnectRuntimeSessionLocked(ctx, roomID, agentSessionID)
+}
+
+// SnapshotRuntimeDisconnectTargets captures exact provider-connection
+// incarnations without waiting for startup publication. It is used only by a
+// reentrant attachment cleanup that cannot wait for its own Host operation.
+func (c *Controller) SnapshotRuntimeDisconnectTargets(roomID string) []RuntimeDisconnectTarget {
+	if c == nil {
+		return nil
+	}
+	roomID = strings.TrimSpace(roomID)
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	targets := make([]RuntimeDisconnectTarget, 0)
+	for key, session := range c.sessions {
+		if strings.TrimSpace(session.RoomID) != roomID {
+			continue
+		}
+		generation := c.liveConnectionGenerations[key]
+		if generation == 0 {
+			c.nextLiveConnectionGeneration++
+			generation = c.nextLiveConnectionGeneration
+			c.liveConnectionGenerations[key] = generation
+		}
+		targets = append(targets, RuntimeDisconnectTarget{
+			RoomID: roomID, AgentSessionID: session.AgentSessionID,
+			ConnectionGeneration: generation,
+		})
+	}
+	return targets
+}
+
+// DisconnectRuntimeSessionTarget releases a provider connection only when the
+// captured incarnation is still current.
+func (c *Controller) DisconnectRuntimeSessionTarget(
+	ctx context.Context,
+	target RuntimeDisconnectTarget,
+) (DisconnectRuntimeSessionResult, error) {
+	roomID := strings.TrimSpace(target.RoomID)
+	agentSessionID := strings.TrimSpace(target.AgentSessionID)
+	if c == nil || roomID == "" || agentSessionID == "" || target.ConnectionGeneration == 0 {
+		return DisconnectRuntimeSessionResult{}, errors.New("runtime disconnect target is invalid")
+	}
+	releaseLifecycleLock, err := c.acquireLifecycleLockContext(ctx, roomID, agentSessionID)
+	if err != nil {
+		return DisconnectRuntimeSessionResult{}, err
+	}
+	defer releaseLifecycleLock()
+	c.mu.Lock()
+	current := c.liveConnectionGenerations[sessionKey(roomID, agentSessionID)]
+	c.mu.Unlock()
+	if current != target.ConnectionGeneration {
+		return DisconnectRuntimeSessionResult{}, nil
+	}
+	return c.disconnectRuntimeSessionLocked(ctx, roomID, agentSessionID)
+}
+
+func (c *Controller) disconnectRuntimeSessionLocked(
+	ctx context.Context,
+	roomID string,
+	agentSessionID string,
+) (DisconnectRuntimeSessionResult, error) {
+
+	session, adapter, err := c.sessionAndAdapter(roomID, agentSessionID)
+	if errors.Is(err, ErrSessionNotFound) {
+		return DisconnectRuntimeSessionResult{}, nil
+	}
+	if err != nil {
+		return DisconnectRuntimeSessionResult{}, err
+	}
+	probe, probeOK := adapter.(LiveSessionProbeAdapter)
+	disconnector, disconnectOK := adapter.(LiveSessionDisconnectAdapter)
+	if !probeOK || !disconnectOK {
+		return DisconnectRuntimeSessionResult{}, fmt.Errorf(
+			"agent provider %q does not support workspace runtime disconnect",
+			session.Provider,
+		)
+	}
+	wasLive := probe.HasLiveSession(session)
+	if wasLive {
+		c.cancelActiveTurn(roomID, agentSessionID)
+	}
+	// Always invoke the idempotent adapter cleanup, even when its liveness probe
+	// is false. A raw transport death can make the probe false while the adapter
+	// still owns pending interactions or a close-failed physical handle.
+	if err := disconnector.DisconnectLiveSession(ctx, session); err != nil {
+		return DisconnectRuntimeSessionResult{}, err
+	}
+	c.invalidateAppliedGoalGenerationFences(session)
+	return DisconnectRuntimeSessionResult{Disconnected: wasLive}, nil
 }
 
 func (c *Controller) cleanupDetachedLiveSessionResources(ctx context.Context, failedProviders map[string]bool) LiveSessionResourceCleanupResult {
@@ -337,6 +449,7 @@ func (c *Controller) recreateAdapterSession(ctx context.Context, session Session
 	if err != nil {
 		return err
 	}
+	c.advanceLiveConnectionGeneration(fresh.RoomID, fresh.AgentSessionID)
 	fresh = applySessionEvents(fresh, events)
 	c.invalidateAppliedGoalGenerationFences(fresh)
 	if err := c.applyRetainedGoalGenerationFencesOrClose(ctx, fresh, adapter); err != nil {

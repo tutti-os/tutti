@@ -264,6 +264,46 @@ func (a serviceHostStore) DeleteSubmitClaim(ctx context.Context, workspaceID, se
 
 type serviceHostRuntime struct{ service *Service }
 
+func (a serviceHostRuntime) WorkspaceRuntimeSessions(_ context.Context, workspaceID string) ([]ProviderRuntimeSession, error) {
+	return a.service.controller().Sessions(workspaceID), nil
+}
+
+func (a serviceHostRuntime) DisconnectRuntimeSession(
+	ctx context.Context,
+	ref agenthost.SessionRef,
+) (bool, error) {
+	disconnector, ok := a.service.controller().(interface {
+		DisconnectRuntimeSession(context.Context, string, string) (bool, error)
+	})
+	if !ok {
+		return false, agenthost.ErrWorkspaceDisconnectUnavailable
+	}
+	return disconnector.DisconnectRuntimeSession(ctx, ref.WorkspaceID, ref.AgentSessionID)
+}
+
+func (a serviceHostRuntime) SnapshotWorkspaceRuntimeDisconnectTargets(workspaceID string) []agenthost.RuntimeDisconnectTarget {
+	targeter, ok := a.service.controller().(interface {
+		SnapshotWorkspaceRuntimeDisconnectTargets(string) []agenthost.RuntimeDisconnectTarget
+	})
+	if !ok {
+		return nil
+	}
+	return targeter.SnapshotWorkspaceRuntimeDisconnectTargets(workspaceID)
+}
+
+func (a serviceHostRuntime) DisconnectRuntimeSessionTarget(
+	ctx context.Context,
+	target agenthost.RuntimeDisconnectTarget,
+) (bool, error) {
+	targeter, ok := a.service.controller().(interface {
+		DisconnectRuntimeSessionTarget(context.Context, agenthost.RuntimeDisconnectTarget) (bool, error)
+	})
+	if !ok {
+		return false, agenthost.ErrWorkspaceDisconnectUnavailable
+	}
+	return targeter.DisconnectRuntimeSessionTarget(ctx, target)
+}
+
 func (a serviceHostRuntime) RuntimeSessionLive(workspaceID, agentSessionID string) bool {
 	if liveness, ok := a.service.controller().(interface {
 		RuntimeSessionLive(string, string) bool
@@ -336,6 +376,9 @@ func (a serviceHostRuntime) InteractiveDisposition(workspaceID, rootAgentSession
 	return a.service.controller().InteractiveDisposition(workspaceID, rootAgentSessionID, agentSessionID, turnID, requestID)
 }
 func (a serviceHostRuntime) UpdateSettings(ctx context.Context, input RuntimeUpdateSettingsInput) error {
+	return normalizeRuntimeError(a.service.controller().UpdateSettings(ctx, input))
+}
+func (a serviceHostRuntime) UpdateRetainedSettings(ctx context.Context, input RuntimeUpdateSettingsInput) error {
 	return normalizeRuntimeError(a.service.controller().UpdateSettings(ctx, input))
 }
 func (a serviceHostRuntime) SetTitle(ctx context.Context, input RuntimeSetTitleInput) (ProviderRuntimeSession, error) {

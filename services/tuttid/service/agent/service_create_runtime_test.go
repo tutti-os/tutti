@@ -414,6 +414,32 @@ func TestServiceCreateClampsLegacyMaxToSelectedModelCapability(t *testing.T) {
 	}
 }
 
+func TestClampReasoningEffortForKnownProviderBehindAgentExtension(t *testing.T) {
+	service := newTestService(newFakeRuntime())
+	service.ModelCatalog = fakeModelCatalog{result: AgentModelCatalogResult{
+		Provider: "opencode",
+		Models: []AgentModelOption{{
+			ID:                         "openai/gpt-5.3-codex-spark",
+			DefaultReasoningEffort:     "xhigh",
+			ReasoningEffortsAdvertised: true,
+			SupportedReasoningEfforts: []AgentModelReasoningEffortOption{
+				{Value: "low"}, {Value: "medium"}, {Value: "high"}, {Value: "xhigh"},
+			},
+		}},
+	}}
+	selected := "none"
+	got := service.clampReasoningEffortPointerForLaunch(
+		context.Background(),
+		"opencode",
+		map[string]any{"kind": "agent_extension"},
+		"openai/gpt-5.3-codex-spark",
+		&selected,
+	)
+	if got == nil || *got != "xhigh" {
+		t.Fatalf("reasoning effort = %#v, want xhigh", got)
+	}
+}
+
 func TestServiceCreatePreservesAdvertisedReasoningEffort(t *testing.T) {
 	for _, effort := range []string{"minimal", "none"} {
 		t.Run(effort, func(t *testing.T) {

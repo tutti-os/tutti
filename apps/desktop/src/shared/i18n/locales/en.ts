@@ -274,6 +274,7 @@ export const en = {
       settings: "Settings",
       free: "Free",
       signIn: "Sign in",
+      signInFailed: "Unable to start sign-in",
       signOut: "Sign out",
       copyUserId: "Copy user ID",
       copyUserIdSuccess: "User ID copied",

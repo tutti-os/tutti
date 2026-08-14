@@ -3,11 +3,11 @@ import {
   normalizeAgentActivitySession,
   type AgentActivityMessage,
   type AgentActivitySession,
-  type AgentActivityTurn
+  type AgentActivityTurn,
 } from "@tutti-os/agent-activity-core";
 import {
   buildChildSessionLanesByParentToolCallId,
-  deriveSubAgentNameFromTask
+  deriveSubAgentNameFromTask,
 } from "./childSessionLanes";
 import type { WorkspaceAgentActivityTimelineItem } from "../../workspaceAgentTimelineTypes";
 
@@ -18,17 +18,17 @@ describe("buildChildSessionLanesByParentToolCallId", () => {
       parentSessionId: "root-1",
       parentToolCallId: "spawn-1",
       title: "API reviewer",
-      turn: turn("child-1", "running", null)
+      turn: turn("child-1", "running", null),
     });
     const lanes = buildChildSessionLanesByParentToolCallId({
       rootSession: rootSession(),
       rootTimelineItems: [
-        spawnCall("root-1", "spawn-1", "You are API reviewer.")
+        spawnCall("root-1", "spawn-1", "You are API reviewer."),
       ],
       childSessions: [child],
       messagesBySessionId: {
-        "child-1": [message("child-1", "Checking request validation", 20)]
-      }
+        "child-1": [message("child-1", "Checking request validation", 20)],
+      },
     });
 
     expect(lanes.get("spawn-1")?.[0]).toMatchObject({
@@ -37,7 +37,7 @@ describe("buildChildSessionLanesByParentToolCallId", () => {
       status: "running",
       name: "API reviewer",
       task: "You are API reviewer.",
-      latestActivity: "Checking request validation"
+      latestActivity: "Checking request validation",
     });
   });
 
@@ -46,21 +46,21 @@ describe("buildChildSessionLanesByParentToolCallId", () => {
       id: "child-1",
       parentSessionId: "root-1",
       parentToolCallId: "spawn-1",
-      turn: turn("child-1", "settled", "completed")
+      turn: turn("child-1", "settled", "completed"),
     });
     const nested = childSession({
       id: "child-2",
       parentSessionId: "child-1",
       parentToolCallId: "task-2",
-      turn: turn("child-2", "settled", "failed", "nested failed")
+      turn: turn("child-2", "settled", "failed", "nested failed"),
     });
     const lanes = buildChildSessionLanesByParentToolCallId({
       rootSession: rootSession(),
       rootTimelineItems: [spawnCall("root-1", "spawn-1", "Review the API")],
       childSessions: [parent, nested],
       messagesBySessionId: {
-        "child-1": [toolCallMessage("child-1", "task-2", 30)]
-      }
+        "child-1": [toolCallMessage("child-1", "task-2", 30)],
+      },
     });
 
     expect(lanes.get("spawn-1")?.[0]).toMatchObject({
@@ -71,10 +71,29 @@ describe("buildChildSessionLanesByParentToolCallId", () => {
           childSessionId: "child-2",
           parentToolCallId: "task-2",
           status: "failed",
-          failureDetail: "nested failed"
-        }
-      ]
+          failureDetail: "nested failed",
+        },
+      ],
     });
+  });
+
+  it("preserves a completed child result as full Markdown", () => {
+    const markdown = `## Result\n\n[report](/workspace/report.pdf)\n\n${"detail ".repeat(40)}`;
+    const child = childSession({
+      id: "child-1",
+      parentSessionId: "root-1",
+      parentToolCallId: "spawn-1",
+      turn: turn("child-1", "settled", "completed"),
+    });
+    const lane = buildChildSessionLanesByParentToolCallId({
+      rootSession: rootSession(),
+      rootTimelineItems: [spawnCall("root-1", "spawn-1", "Prepare report")],
+      childSessions: [child],
+      messagesBySessionId: { "child-1": [message("child-1", markdown, 30)] },
+    }).get("spawn-1")?.[0];
+
+    expect(lane?.resultMarkdown).toBe(markdown.trim());
+    expect(lane?.latestActivity).not.toBe(markdown);
   });
 
   it("does not reconstruct legacy owner fields without a child session", () => {
@@ -90,14 +109,14 @@ describe("buildChildSessionLanesByParentToolCallId", () => {
       payload: {
         text: "legacy child output",
         ownerThreadId: "legacy-child",
-        ownerCallId: "spawn-1"
-      }
+        ownerCallId: "spawn-1",
+      },
     };
     const lanes = buildChildSessionLanesByParentToolCallId({
       rootSession: rootSession(),
       rootTimelineItems: [spawnCall("root-1", "spawn-1", "Review"), legacyItem],
       childSessions: [],
-      messagesBySessionId: {}
+      messagesBySessionId: {},
     });
 
     expect(lanes.size).toBe(0);
@@ -107,7 +126,7 @@ describe("buildChildSessionLanesByParentToolCallId", () => {
 describe("deriveSubAgentNameFromTask", () => {
   it("uses only an explicit self-addressed opening", () => {
     expect(
-      deriveSubAgentNameFromTask("You are API reviewer. Check routes")
+      deriveSubAgentNameFromTask("You are API reviewer. Check routes"),
     ).toBe("API reviewer");
     expect(deriveSubAgentNameFromTask("Check the API routes")).toBeNull();
   });
@@ -125,7 +144,7 @@ function rootSession(): AgentActivitySession {
     activeTurn: turn("root-1", "running", null, null, "root-turn-1"),
     latestTurn: turn("root-1", "running", null, null, "root-turn-1"),
     latestTurnInteractions: [],
-    pendingInteractions: []
+    pendingInteractions: [],
   });
 }
 
@@ -155,7 +174,7 @@ function childSession(input: {
     latestTurnInteractions: [],
     pendingInteractions: [],
     createdAtUnixMs: 10,
-    updatedAtUnixMs: input.turn.updatedAtUnixMs
+    updatedAtUnixMs: input.turn.updatedAtUnixMs,
   });
 }
 
@@ -164,7 +183,7 @@ function turn(
   phase: AgentActivityTurn["phase"],
   outcome: AgentActivityTurn["outcome"],
   errorMessage: string | null = null,
-  turnId = agentSessionId === "child-2" ? "child-turn-2" : "child-turn-1"
+  turnId = agentSessionId === "child-2" ? "child-turn-2" : "child-turn-1",
 ): AgentActivityTurn {
   return {
     agentSessionId,
@@ -175,14 +194,14 @@ function turn(
     error: errorMessage ? { message: errorMessage } : null,
     startedAtUnixMs: 10,
     updatedAtUnixMs: 40,
-    settledAtUnixMs: phase === "settled" ? 40 : null
+    settledAtUnixMs: phase === "settled" ? 40 : null,
   };
 }
 
 function message(
   agentSessionId: string,
   text: string,
-  occurredAtUnixMs: number
+  occurredAtUnixMs: number,
 ): AgentActivityMessage {
   return {
     workspaceId: "workspace-1",
@@ -193,14 +212,14 @@ function message(
     role: "assistant",
     kind: "text",
     payload: { text },
-    occurredAtUnixMs
+    occurredAtUnixMs,
   };
 }
 
 function toolCallMessage(
   agentSessionId: string,
   callId: string,
-  occurredAtUnixMs: number
+  occurredAtUnixMs: number,
 ): AgentActivityMessage {
   return {
     workspaceId: "workspace-1",
@@ -214,16 +233,16 @@ function toolCallMessage(
     payload: {
       callId,
       toolName: "Task",
-      input: { task: "Inspect nested behavior" }
+      input: { task: "Inspect nested behavior" },
     },
-    occurredAtUnixMs
+    occurredAtUnixMs,
   };
 }
 
 function spawnCall(
   agentSessionId: string,
   callId: string,
-  task: string
+  task: string,
 ): WorkspaceAgentActivityTimelineItem {
   return {
     id: 1,
@@ -239,6 +258,6 @@ function spawnCall(
     name: "Task",
     status: "running",
     payload: { callId, toolName: "Task", input: { task } },
-    occurredAtUnixMs: 10
+    occurredAtUnixMs: 10,
   };
 }

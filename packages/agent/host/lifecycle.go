@@ -22,7 +22,12 @@ func (h *Host) CreateSession(ctx context.Context, workspaceID string, input Crea
 		flow: "session_create", workspaceID: workspaceID, agentSessionID: input.AgentSessionID,
 		operationID: operationID, requestID: activationID, clientSubmitID: clientSubmitID, turnID: input.TurnID,
 	})
-	result, err := h.createSession(ctx, workspaceID, input)
+	var result CreateSessionResult
+	err := h.withWorkspaceRuntimeOperation(ctx, workspaceID, func(operationCtx context.Context) error {
+		var createErr error
+		result, createErr = h.createSession(operationCtx, workspaceID, input)
+		return createErr
+	})
 	command.finish(ctx, h, err)
 	return result, err
 }
@@ -353,6 +358,16 @@ func (h *Host) EnsureRuntimeSession(ctx context.Context, ref SessionRef) (Provid
 	if h == nil || h.runtime == nil || h.store == nil || ref.WorkspaceID == "" || ref.AgentSessionID == "" {
 		return ProviderRuntimeSession{}, ErrSessionNotFound
 	}
+	var result ProviderRuntimeSession
+	err := h.withWorkspaceRuntimeOperation(ctx, ref.WorkspaceID, func(operationCtx context.Context) error {
+		var ensureErr error
+		result, ensureErr = h.ensureRuntimeSession(operationCtx, ref)
+		return ensureErr
+	})
+	return result, err
+}
+
+func (h *Host) ensureRuntimeSession(ctx context.Context, ref SessionRef) (ProviderRuntimeSession, error) {
 	release, err := h.acquireSession(ctx, ref)
 	if err != nil {
 		return ProviderRuntimeSession{}, err

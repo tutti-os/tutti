@@ -173,6 +173,44 @@ func (a agentRuntimeAdapter) Close(ctx context.Context, input agentservice.Runti
 	return nil
 }
 
+func (a agentRuntimeAdapter) DisconnectRuntimeSession(
+	ctx context.Context,
+	workspaceID string,
+	agentSessionID string,
+) (bool, error) {
+	result, err := a.controller.DisconnectRuntimeSession(ctx, workspaceID, agentSessionID)
+	if err != nil {
+		return false, mapAgentRuntimeError(err)
+	}
+	return result.Disconnected, nil
+}
+
+func (a agentRuntimeAdapter) SnapshotWorkspaceRuntimeDisconnectTargets(workspaceID string) []agenthost.RuntimeDisconnectTarget {
+	targets := a.controller.SnapshotRuntimeDisconnectTargets(workspaceID)
+	result := make([]agenthost.RuntimeDisconnectTarget, 0, len(targets))
+	for _, target := range targets {
+		result = append(result, agenthost.RuntimeDisconnectTarget{
+			WorkspaceID: target.RoomID, AgentSessionID: target.AgentSessionID,
+			ConnectionGeneration: target.ConnectionGeneration,
+		})
+	}
+	return result
+}
+
+func (a agentRuntimeAdapter) DisconnectRuntimeSessionTarget(
+	ctx context.Context,
+	target agenthost.RuntimeDisconnectTarget,
+) (bool, error) {
+	result, err := a.controller.DisconnectRuntimeSessionTarget(ctx, agentruntime.RuntimeDisconnectTarget{
+		RoomID: target.WorkspaceID, AgentSessionID: target.AgentSessionID,
+		ConnectionGeneration: target.ConnectionGeneration,
+	})
+	if err != nil {
+		return false, mapAgentRuntimeError(err)
+	}
+	return result.Disconnected, nil
+}
+
 func (a agentRuntimeAdapter) Exec(ctx context.Context, input agentservice.RuntimeExecInput) (agentservice.RuntimeExecResult, error) {
 	if !input.Guidance && strings.TrimSpace(input.TurnID) == "" {
 		return agentservice.RuntimeExecResult{}, fmt.Errorf(

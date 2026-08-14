@@ -719,7 +719,7 @@ func TestApplicationLocalUninstallKeepsRemoteProjectionAndReusesItAfterReinstall
 	}
 }
 
-func TestApplicationRemoteAuthorizationStartUsesAccountProjectionInsteadOfDeviceState(t *testing.T) {
+func TestApplicationRemoteAuthorizationStartPreservesPendingBeforeProjectionConverges(t *testing.T) {
 	connector := testConnector("tencent-docs")
 	connector.Release.Manifest.AuthorizationKind = "oauth2"
 	connector.Release.Manifest.RequiredCapabilities = []string{"tools"}
@@ -746,7 +746,8 @@ func TestApplicationRemoteAuthorizationStartUsesAccountProjectionInsteadOfDevice
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.AuthorizationURL == "" || repository.connectors[connector.Key].Authorization.State != AuthorizationStateConnected {
+	if result.AuthorizationURL == "" || result.Connector.Authorization.State != AuthorizationStatePending ||
+		repository.connectors[connector.Key].Authorization.State != AuthorizationStateConnected {
 		t.Fatalf("result=%#v device authorization=%#v", result, repository.connectors[connector.Key].Authorization)
 	}
 	receipt := repository.operations[result.Operation.OperationID].Execution.AuthorizationSession

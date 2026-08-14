@@ -269,7 +269,7 @@ func TestRenderSkillBundleIncludesGuideAndOptionalSkills(t *testing.T) {
 	for _, want := range []string{
 		"tutti-dev computer screenshot --json",
 		"tutti-dev computer tool describe --name <tool> --json",
-		`{"capture_scope":"desktop"}`,
+		"--arguments-json -",
 		"element_token",
 	} {
 		if !strings.Contains(computer, want) {

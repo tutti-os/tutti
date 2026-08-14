@@ -1,4 +1,8 @@
-import { formatErrorMessage } from "../shared/errors/desktopErrors.ts";
+import {
+  classifyDesktopErrorCode,
+  desktopErrorCodes,
+  formatErrorMessage,
+} from "../shared/errors/desktopErrors.ts";
 
 export const desktopStartupFailurePrefix = "[tutti-desktop-startup-failed] ";
 
@@ -7,6 +11,7 @@ export interface DesktopStartupFailure {
     code: string;
     message: string;
   };
+  code: string;
   message: string;
 }
 
@@ -14,12 +19,24 @@ export function desktopStartupFailure(error: unknown): DesktopStartupFailure {
   const cause = structuredCause(error instanceof Error ? error.cause : null);
   return {
     ...(cause ? { cause } : {}),
-    message: formatErrorMessage(error)
+    code: classifyDesktopErrorCode(error),
+    message: formatErrorMessage(error),
   };
 }
 
+export function isDaemonStartupFailure(
+  failure: DesktopStartupFailure,
+): boolean {
+  return (
+    failure.code === desktopErrorCodes.daemonUnavailable ||
+    failure.code === desktopErrorCodes.managedProcessError ||
+    failure.code === desktopErrorCodes.managedProcessExited ||
+    failure.cause?.code === desktopErrorCodes.managedProcessStderr
+  );
+}
+
 function structuredCause(
-  value: unknown
+  value: unknown,
 ): { code: string; message: string } | null {
   const cause = value as { code?: unknown; message?: unknown };
   if (
@@ -34,6 +51,6 @@ function structuredCause(
   }
   return {
     code: cause.code.trim(),
-    message: cause.message.trim()
+    message: cause.message.trim(),
   };
 }

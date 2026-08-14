@@ -229,11 +229,25 @@ func parseToolResult(raw json.RawMessage) (ToolResult, error) {
 }
 
 func toolResultError(result ToolResult) error {
+	return errors.New(ToolResultDiagnostic(result))
+}
+
+// ToolResultDiagnostic preserves the native result envelope while giving
+// stable aliases and raw native CLI callers the same actionable explanation.
+func ToolResultDiagnostic(result ToolResult) string {
 	message := strings.TrimSpace(result.Text)
 	if message == "" {
 		message = "computer tool reported an error"
 	}
-	return errors.New(message)
+	lowerMessage := strings.ToLower(message)
+	if strings.Contains(lowerMessage, "0x00000000") || strings.Contains(message, "操作成功完成") {
+		return fmt.Sprintf("computer driver returned an inconsistent result (isError=true with an OS success status): %s", message)
+	}
+	if strings.Contains(lowerMessage, "authorization process") &&
+		(strings.Contains(lowerMessage, "own") || strings.Contains(lowerMessage, "self")) {
+		return fmt.Sprintf("computer driver rejected its protected authorization UI as an automation target: %s", message)
+	}
+	return message
 }
 
 type mcpToolCatalog struct {

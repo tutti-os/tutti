@@ -453,7 +453,7 @@ func normalizePermissionModeIDForLaunch(provider string, providerTargetRef map[s
 }
 
 func normalizeReasoningEffortForLaunch(provider string, providerTargetRef map[string]any, value string) string {
-	if providerTargetRefKind(providerTargetRef) == "agent_extension" {
+	if providerTargetRefKind(providerTargetRef) == "agent_extension" && agentprovider.Normalize(provider) == "" {
 		return strings.TrimSpace(value)
 	}
 	return normalizeReasoningEffortForProvider(provider, value)

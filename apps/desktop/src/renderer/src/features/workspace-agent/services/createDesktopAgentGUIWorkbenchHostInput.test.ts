@@ -100,8 +100,7 @@ test("desktop agent GUI workbench host input reuses an injected agent host api",
         "workspace-issue",
         "agent-session",
         "workspace-app",
-        "agent-target",
-        "workspace-model"
+        "agent-target"
       ],
       surface: "composer",
       target: "agent-gui",

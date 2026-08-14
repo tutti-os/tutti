@@ -199,6 +199,33 @@ describe("AgentSubAgentCard", () => {
     ).toBeInTheDocument();
     expect(screen.queryByText("Starting…")).not.toBeInTheDocument();
   });
+
+  it("renders a completed Markdown result without duplicating its progress summary", async () => {
+    setAgentGuiI18nTestLocale("en");
+    const onLinkClick = vi.fn();
+
+    render(
+      <AgentSubAgentCard
+        onLinkClick={onLinkClick}
+        subAgent={subAgent({
+          status: "completed",
+          latestActivity: "Full result",
+          resultMarkdown: "## Full result\n\n[report](https://example.com/report.pdf)",
+          terminalAtUnixMs: 2_000,
+        })}
+      />,
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: /Sub-agent Repo smell analyst Completed/,
+      }),
+    );
+    expect(await screen.findByRole("heading", { name: "Full result" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("link", { name: "report" }));
+    expect(onLinkClick).toHaveBeenCalledWith("https://example.com/report.pdf");
+    expect(screen.queryByText("Full result", { selector: "div" })).not.toBeInTheDocument();
+  });
 });
 
 function subAgent(

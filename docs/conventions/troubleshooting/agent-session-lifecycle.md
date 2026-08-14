@@ -4540,6 +4540,28 @@ permanently ambiguous`. Provider status may already be `active` while the
   [codex_appserver_session.go](../../../packages/agent/daemon/runtime/codex_appserver_session.go)
   [standard_acp_session.go](../../../packages/agent/daemon/runtime/standard_acp_session.go)
 
+### Final ACP Markdown loses spacing between blocks
+
+- Symptom:
+  A completed ACP answer reaches the transcript, but headings, lists, or fenced
+  code blocks run together even though the provider's `session/prompt` result
+  contains the expected newlines.
+- Root cause:
+  The final-result extractor trimmed each nested content block before joining
+  them. Whitespace that separated adjacent Markdown blocks was therefore
+  removed before the turn normalizer and GUI received the answer.
+- Fix:
+  Use trimming only to decide whether a content block is empty. Preserve the
+  original non-empty block text while recursively extracting and joining the
+  final assistant content.
+- Validation:
+  Exercise a complete standard-ACP turn whose final result contains a heading,
+  list, and fenced code block. Require the projected assistant snapshot to keep
+  all internal Markdown newlines.
+- References:
+  [acp_update_events.go](../../../packages/agent/daemon/runtime/acp_update_events.go)
+  [standard_acp_turn_test.go](../../../packages/agent/daemon/runtime/standard_acp_turn_test.go)
+
 ### Cassette replay reports a false final Session state mismatch
 
 - Symptom:
@@ -4877,11 +4899,11 @@ agent target`, although the current model picker does not offer that model.
   unsupported explicit selection separately with generic extension fixtures.
   Inject a `session/set_model` rejection into the standard ACP transport test.
 
-### Standard ACP send is stopped while an earlier process is still exiting
+### Agent send is stopped while an earlier provider process is still exiting
 
 - Symptom:
-  After an idle Standard ACP session is released, the next message may reconnect
-  once, but a later Start/Resume returns
+  After an idle Standard ACP, Codex, Tutti Agent, or Claude session is released,
+  the next message may reconnect once, but a later Start/Resume returns
   `workspace_operation_failed` with reason
   `agent.process_cleanup_pending`. The message does not reach the provider; in
   AgentGUI the submitted draft is restored and a localized retry message is
@@ -4897,8 +4919,11 @@ agent target`, although the current model picker does not offer that model.
   allowing its late inbound handler to remain active can also attribute old
   output or approval requests to the replacement Turn.
 - Fix:
-  Keep failed and replaced clients under adapter ownership, quarantine their
-  message handlers, and retry at most one failed Close budget per adapter sweep.
+  Keep failed and replaced clients under their adapter's ownership, quarantine
+  their message handlers, and retry at most one failed Close budget per adapter
+  sweep. Codex and Tutti Agent mark a close-failed current client unusable;
+  Claude also rejects every late event whose physical connection is no longer
+  the current Session generation.
   Once a failed handle is retired, Start/Resume performs one bounded cleanup
   attempt and refuses to spawn another process while cleanup remains pending.
   Preserve the stable reason through the Host/API boundary so AgentGUI can
@@ -4912,6 +4937,8 @@ agent target`, although the current model picker does not offer that model.
 - References:
   [standard_acp_session.go](../../../packages/agent/daemon/runtime/standard_acp_session.go)
   [standard_acp_resource_ownership.go](../../../packages/agent/daemon/runtime/standard_acp_resource_ownership.go)
+  [codex_appserver_resource_ownership.go](../../../packages/agent/daemon/runtime/codex_appserver_resource_ownership.go)
+  [claude_sdk_resource_ownership.go](../../../packages/agent/daemon/runtime/claude_sdk_resource_ownership.go)
   [AgentGUIEngineSettlementController.ts](../../../packages/agent/gui/agent-gui/agentGuiNode/controller/AgentGUIEngineSettlementController.ts)
 
 ### Codex rejects `turn/start` with `AbsolutePathBuf deserialized without a base path`
@@ -4948,3 +4975,25 @@ path`. On a managed POSIX runtime, another form accepts the Turn but every
   historical payload both without and with `cwd` as negative controls, then
   verifies that the production payload crosses the same parser without an
   `AbsolutePathBuf` error.
+
+### A Windows Codex session disappears while auth projection is starting
+
+- Symptom:
+  session creation stalls until its request is canceled, and no runnable
+  session remains visible. The log ends in Mutagen `context canceled` during
+  auth projection.
+- Root cause:
+  Mutagen setup inherited the transport request context. Closing or timing out
+  that request killed a partially-created external sync session before runtime
+  publication.
+- Fix:
+  treat auth projection as Host-owned startup work: detach it from request
+  cancellation, bound each Mutagen command to 20 seconds, and serialize setup
+  for the same stable auth source. A guarded copy fallback is allowed only when
+  Mutagen is unavailable or a failed session was successfully terminated; if
+  cleanup cannot be confirmed, fail without starting a second projection.
+- Validation:
+  cancel the caller context before projection and verify that the injected
+  resolver and runner receive a live bounded context. Cover create and flush
+  timeout, cleanup failure, copy reconciliation, and concurrent projections
+  sharing one auth source.

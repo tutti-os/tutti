@@ -51,6 +51,7 @@ type fakeRuntime struct {
 	goalGenerationFenceHook func(context.Context, RuntimeGoalGenerationFenceInput) error
 	resumeCalls             []RuntimeResumeInput
 	sessions                map[string]ProviderRuntimeSession
+	disconnectedSessions    map[string]bool
 	submitInteractiveCalls  []RuntimeSubmitInteractiveInput
 	submitInteractiveErr    error
 	interactiveDisposition  RuntimeInteractiveDisposition
@@ -463,8 +464,9 @@ func (f fakeMessageReader) ListSessionMessages(
 
 func newFakeRuntime() *fakeRuntime {
 	return &fakeRuntime{
-		sessions:     make(map[string]ProviderRuntimeSession),
-		pendingInits: make(map[string]bool),
+		sessions:             make(map[string]ProviderRuntimeSession),
+		disconnectedSessions: make(map[string]bool),
+		pendingInits:         make(map[string]bool),
 	}
 }
 
@@ -554,6 +556,21 @@ func (f *fakeRuntime) Close(_ context.Context, input RuntimeCloseInput) error {
 	return err
 }
 
+func (f *fakeRuntime) DisconnectRuntimeSession(
+	_ context.Context,
+	workspaceID string,
+	agentSessionID string,
+) (bool, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	key := strings.TrimSpace(workspaceID) + ":" + strings.TrimSpace(agentSessionID)
+	if _, ok := f.sessions[key]; !ok || f.disconnectedSessions[key] {
+		return false, nil
+	}
+	f.disconnectedSessions[key] = true
+	return true, nil
+}
+
 func (f *fakeRuntime) CanResume(input RuntimeResumeInput) bool {
 	f.canResumeCalls = append(f.canResumeCalls, input)
 	if f.canResumeHook != nil {
@@ -563,6 +580,15 @@ func (f *fakeRuntime) CanResume(input RuntimeResumeInput) bool {
 }
 
 func (f *fakeRuntime) Exec(_ context.Context, input RuntimeExecInput) (RuntimeExecResult, error) {
+	f.mu.Lock()
+	key := input.WorkspaceID + ":" + input.AgentSessionID
+	if f.disconnectedSessions[key] {
+		f.resumeCalls = append(f.resumeCalls, RuntimeResumeInput{
+			WorkspaceID: input.WorkspaceID, AgentSessionID: input.AgentSessionID,
+		})
+		delete(f.disconnectedSessions, key)
+	}
+	f.mu.Unlock()
 	f.execCalls = append(f.execCalls, input)
 	if input.Guidance && f.guidanceTargetMismatch && strings.TrimSpace(input.TurnID) != strings.TrimSpace(f.guidanceTarget) {
 		return RuntimeExecResult{
@@ -582,7 +608,6 @@ func (f *fakeRuntime) Exec(_ context.Context, input RuntimeExecInput) (RuntimeEx
 	if f.execErr != nil {
 		return RuntimeExecResult{}, f.execErr
 	}
-	key := input.WorkspaceID + ":" + input.AgentSessionID
 	if session, ok := f.sessions[key]; ok {
 		session.Status = "working"
 		session.Resumable = true
@@ -691,12 +716,22 @@ func (f *fakeRuntime) Resume(_ context.Context, input RuntimeResumeInput) (Provi
 		UpdatedAtUnixMS: input.UpdatedAtUnixMS,
 	}
 	f.sessions[input.WorkspaceID+":"+input.AgentSessionID] = session
+	delete(f.disconnectedSessions, input.WorkspaceID+":"+input.AgentSessionID)
 	return session, nil
 }
 
 func (f *fakeRuntime) Session(workspaceID string, agentSessionID string) (ProviderRuntimeSession, bool) {
-	session, ok := f.sessions[workspaceID+":"+agentSessionID]
+	key := workspaceID + ":" + agentSessionID
+	session, ok := f.sessions[key]
 	return session, ok
+}
+
+func (f *fakeRuntime) RuntimeSessionLive(workspaceID, agentSessionID string) bool {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	key := workspaceID + ":" + agentSessionID
+	_, registered := f.sessions[key]
+	return registered && !f.disconnectedSessions[key]
 }
 
 func (f *fakeRuntime) SetVisible(_ context.Context, input RuntimeSetVisibleInput) (ProviderRuntimeSession, error) {

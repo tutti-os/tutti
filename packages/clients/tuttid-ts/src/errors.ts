@@ -3,6 +3,21 @@ import type { ApiErrorDetails, ApiErrorResponse } from "./generated/index.ts";
 export type TuttidProtocolErrorCode = ApiErrorDetails["code"];
 export type TuttidProtocolErrorParams = NonNullable<ApiErrorDetails["params"]>;
 
+export class TuttidTransportError extends Error {
+  readonly code = "tuttid_transport_error";
+
+  constructor(message: string, cause: Error) {
+    super(message, { cause });
+    this.name = "TuttidTransportError";
+  }
+}
+
+export function isTuttidTransportError(
+  error: unknown,
+): error is TuttidTransportError {
+  return error instanceof TuttidTransportError;
+}
+
 const tuttidProtocolErrorCodes = new Set<TuttidProtocolErrorCode>([
   "invalid_request",
   "method_not_allowed",
@@ -24,7 +39,7 @@ const tuttidProtocolErrorCodes = new Set<TuttidProtocolErrorCode>([
   "workspace_agent_not_found",
 
   "workspace_operation_failed",
-  "preferences_operation_failed"
+  "preferences_operation_failed",
 ]);
 
 export interface TuttidProtocolErrorOptions {
@@ -49,7 +64,7 @@ export class TuttidProtocolError extends Error {
   constructor(options: TuttidProtocolErrorOptions) {
     super(
       options.developerMessage ??
-        `tuttid request failed with protocol code ${options.code}`
+        `tuttid request failed with protocol code ${options.code}`,
     );
     this.name = "TuttidProtocolError";
     this.code = options.code;
@@ -63,7 +78,7 @@ export class TuttidProtocolError extends Error {
 }
 
 export function isTuttidProtocolError(
-  error: unknown
+  error: unknown,
 ): error is TuttidProtocolError {
   return error instanceof TuttidProtocolError;
 }
@@ -75,7 +90,7 @@ export function getTuttidProtocolErrorCode(error: unknown): string | null {
 
 export function normalizeTuttidError(
   error: unknown,
-  statusCode = 0
+  statusCode = 0,
 ): TuttidProtocolError | null {
   if (error instanceof TuttidProtocolError) {
     return error;
@@ -93,7 +108,7 @@ export function normalizeTuttidError(
     params: details.params,
     reason: details.reason,
     retryable: details.retryable,
-    statusCode
+    statusCode,
   });
 }
 

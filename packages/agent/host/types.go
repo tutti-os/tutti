@@ -14,6 +14,22 @@ type SessionRef struct {
 	AgentSessionID string
 }
 
+// DisconnectWorkspaceRuntimeResult reports provider runtime connections
+// released without deleting their canonical or resumable session identity.
+type DisconnectWorkspaceRuntimeResult struct {
+	Scanned      int
+	Disconnected int
+	Failed       int
+}
+
+// RuntimeDisconnectTarget identifies an exact provider-connection incarnation
+// for deferred attachment cleanup.
+type RuntimeDisconnectTarget struct {
+	WorkspaceID          string
+	AgentSessionID       string
+	ConnectionGeneration uint64
+}
+
 // InteractionRef identifies one canonical interaction. Provider request IDs
 // are transport-local correlation values and are only unique within the Turn
 // that owns them.

@@ -74,7 +74,7 @@ func (s *Service) clampReasoningEffortPointerForLaunch(
 	if selected == nil {
 		return nil
 	}
-	if providerTargetRefKind(providerTargetRef) == "agent_extension" {
+	if providerTargetRefKind(providerTargetRef) == "agent_extension" && agentprovider.Normalize(provider) == "" {
 		value := strings.TrimSpace(*selected)
 		return &value
 	}

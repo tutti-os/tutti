@@ -26,32 +26,34 @@ const interactiveDenyFollowUpPollInterval = 25 * time.Millisecond
 type execMetadataContextKey struct{}
 
 type Controller struct {
-	mu                          sync.Mutex
-	streamObserverMu            sync.RWMutex
-	providerObservationMu       sync.RWMutex
-	goalControlObserverMu       sync.RWMutex
-	sessions                    map[string]Session
-	sessionAvailabilityWaiters  map[string]*sessionAvailabilityWaiter
-	adapters                    map[string]Adapter
-	adapterResolver             AdapterResolver
-	turns                       map[string]activeTurn
-	commands                    map[string]AgentSessionCommandSnapshot
-	pendingCommandSnapshots     map[string]AgentSessionCommandSnapshot
-	configOptionsUpdates        map[string]AgentSessionConfigOptionsUpdate
-	pendingConfigOptionsUpdates map[string][]AgentSessionConfigOptionsUpdate
-	provisionalSessions         map[string]bool
-	sessionInitializations      map[string]*controllerSessionInitialization
-	goalGenerationFences        map[string]*controllerGoalGenerationFenceRegistry
-	startupLocks                map[startupLockKey]*controllerLifecycleLock
-	lifecycleLocks              map[string]*controllerLifecycleLock
-	hub                         *EventHub
-	reporter                    DurableActivityReporter
-	reportQueue                 *reportRequestQueue
-	providerGoalAdoptionSink    ProviderGoalAdoptionSink
-	terminalInteractions        terminalInteractiveDispositionStore
-	streamObserver              RuntimeStreamEventObserver
-	providerObservationObserver ProviderObservationObserver
-	goalControlObserver         GoalControlLifecycleObserver
+	mu                           sync.Mutex
+	streamObserverMu             sync.RWMutex
+	providerObservationMu        sync.RWMutex
+	goalControlObserverMu        sync.RWMutex
+	sessions                     map[string]Session
+	liveConnectionGenerations    map[string]uint64
+	nextLiveConnectionGeneration uint64
+	sessionAvailabilityWaiters   map[string]*sessionAvailabilityWaiter
+	adapters                     map[string]Adapter
+	adapterResolver              AdapterResolver
+	turns                        map[string]activeTurn
+	commands                     map[string]AgentSessionCommandSnapshot
+	pendingCommandSnapshots      map[string]AgentSessionCommandSnapshot
+	configOptionsUpdates         map[string]AgentSessionConfigOptionsUpdate
+	pendingConfigOptionsUpdates  map[string][]AgentSessionConfigOptionsUpdate
+	provisionalSessions          map[string]bool
+	sessionInitializations       map[string]*controllerSessionInitialization
+	goalGenerationFences         map[string]*controllerGoalGenerationFenceRegistry
+	startupLocks                 map[startupLockKey]*controllerLifecycleLock
+	lifecycleLocks               map[string]*controllerLifecycleLock
+	hub                          *EventHub
+	reporter                     DurableActivityReporter
+	reportQueue                  *reportRequestQueue
+	providerGoalAdoptionSink     ProviderGoalAdoptionSink
+	terminalInteractions         terminalInteractiveDispositionStore
+	streamObserver               RuntimeStreamEventObserver
+	providerObservationObserver  ProviderObservationObserver
+	goalControlObserver          GoalControlLifecycleObserver
 }
 
 // RuntimeStreamEventObserver receives the ordered precommit stream projection
@@ -99,8 +101,9 @@ type GoalControlLifecycleObserver interface {
 }
 
 type controllerLifecycleLock struct {
-	gate chan struct{}
-	refs int
+	gate              chan struct{}
+	refs              int
+	startupOperations map[chan struct{}]struct{}
 }
 
 // controllerSessionInitialization retains every provider observation emitted
@@ -176,6 +179,20 @@ type CloseAllLiveSessionsResult struct {
 	ResourceCleanupFailed    int
 }
 
+// DisconnectRuntimeSessionResult reports whether a live provider connection
+// was released. The Controller session record and provider session id remain.
+type DisconnectRuntimeSessionResult struct {
+	Disconnected bool
+}
+
+// RuntimeDisconnectTarget identifies one exact live-connection incarnation.
+// A stale target must never disconnect a later Resume for the same Session.
+type RuntimeDisconnectTarget struct {
+	RoomID               string
+	AgentSessionID       string
+	ConnectionGeneration uint64
+}
+
 type asyncActivityReporter interface {
 	DurableActivityReporter
 	AsyncActivityReporter()
@@ -198,6 +215,7 @@ func NewControllerWithAdapterResolver(adapters []Adapter, reporter DurableActivi
 	}
 	controller := &Controller{
 		sessions:                    make(map[string]Session),
+		liveConnectionGenerations:   make(map[string]uint64),
 		sessionAvailabilityWaiters:  make(map[string]*sessionAvailabilityWaiter),
 		adapters:                    byProvider,
 		adapterResolver:             resolver,

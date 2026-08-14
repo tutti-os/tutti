@@ -416,6 +416,14 @@ func (application *Application) BeginAuthorization(
 		} else {
 			connector.Authorization = Authorization{State: projection.State, FailureCode: projection.FailureCode}
 		}
+		// The account projection remains the durable authorization truth, but a
+		// redirect session can be pending before the control plane publishes its
+		// first changed projection. Preserve that in-flight state in this command
+		// result so callers keep following the same idempotent session instead of
+		// treating the initial disconnected projection as terminal.
+		if session.State == AuthorizationStatePending && connector.Authorization.State != AuthorizationStateConnected {
+			connector.Authorization = Authorization{State: AuthorizationStatePending}
+		}
 	}
 	return AuthorizationResult{
 		Connector:        connector,

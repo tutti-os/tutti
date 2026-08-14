@@ -13,6 +13,7 @@ import {
 import { cn } from "../../../app/renderer/lib/utils";
 import styles from "../AgentGUINode.styles";
 import type { AgentGUIProviderSkillOption } from "../model/agentGuiNodeTypes";
+import connectorLinedIconUrl from "../../../app/renderer/assets/icons/connector-lined.svg";
 
 const QUICK_CONNECTOR_LIMIT = 10;
 const CONNECTOR_PREVIEW_LIMIT = 3;
@@ -89,7 +90,7 @@ export function ComposerConnectorsMenu({
                   return (
                     <ConnectorMenuIcon
                       key={connectorKey}
-                      className="size-[18px]"
+                      className="size-4"
                       iconUrl={connector.iconUrl}
                       label={connector.name}
                       testId={`agent-gui-composer-connector-preview-${connectorKey}`}
@@ -110,7 +111,7 @@ export function ComposerConnectorsMenu({
             </>
           ) : (
             <>
-              <LinkIcon aria-hidden className="size-4" />
+              <span aria-hidden className="inline-block size-4 bg-current transition-colors" style={{ WebkitMaskImage: `url("${connectorLinedIconUrl}")`, WebkitMaskPosition: "center", WebkitMaskRepeat: "no-repeat", WebkitMaskSize: "contain", maskImage: `url("${connectorLinedIconUrl}")`, maskPosition: "center", maskRepeat: "no-repeat", maskSize: "contain" }} />
               <span>{labels.connectors}</span>
             </>
           )}
@@ -149,7 +150,7 @@ export function ComposerConnectorsMenu({
                 }}
               >
                 <ConnectorMenuIcon
-                  className="size-5"
+                  className="size-4"
                   iconUrl={connector.iconUrl}
                   label={connector.name}
                 />

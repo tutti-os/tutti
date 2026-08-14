@@ -1,11 +1,11 @@
 import type {
   AgentActivityMessage,
-  AgentActivitySession
+  AgentActivitySession,
 } from "@tutti-os/agent-activity-core";
 import type {
   AgentTaskSubAgentActivityVM,
   AgentTaskSubAgentStatus,
-  AgentTaskSubAgentVM
+  AgentTaskSubAgentVM,
 } from "../contracts/agentTaskItemVM";
 import type { AgentConversationVM } from "../contracts/agentConversationVM";
 import type { AgentToolCallVM } from "../contracts/agentToolCallVM";
@@ -14,7 +14,7 @@ import { projectWorkspaceAgentMessagesToTimelineItems } from "./workspaceAgentMe
 import type { WorkspaceAgentActivityTimelineItem } from "../../workspaceAgentTimelineTypes";
 import {
   isWorkspaceAgentToolCallItem,
-  resolveWorkspaceAgentToolName
+  resolveWorkspaceAgentToolName,
 } from "../../workspaceAgentToolCallDisplay";
 
 export interface BuildChildSessionLanesInput {
@@ -27,7 +27,7 @@ export interface BuildChildSessionLanesInput {
 }
 
 export function buildChildSessionLanesByParentToolCallId(
-  input: BuildChildSessionLanesInput
+  input: BuildChildSessionLanesInput,
 ): ReadonlyMap<string, AgentTaskSubAgentVM[]> {
   const rootSessionId = input.rootSession.agentSessionId.trim();
   const childrenByParentSessionId = new Map<string, AgentActivitySession[]>();
@@ -62,8 +62,8 @@ export function buildChildSessionLanesByParentToolCallId(
         childrenByParentSessionId,
         messagesBySessionId: input.messagesBySessionId,
         parentTimelineItems: input.rootTimelineItems,
-        visited
-      })
+        visited,
+      }),
     );
     lanesByParentToolCallId.set(parentToolCallId, lanes);
   }
@@ -75,7 +75,7 @@ export function buildChildSessionLanesByParentToolCallId(
 
 export function attachChildSessionLanesToConversationVM(
   conversation: AgentConversationVM | null,
-  lanesByParentToolCallId: ReadonlyMap<string, AgentTaskSubAgentVM[]>
+  lanesByParentToolCallId: ReadonlyMap<string, AgentTaskSubAgentVM[]>,
 ): AgentConversationVM | null {
   if (!conversation || lanesByParentToolCallId.size === 0) {
     return conversation;
@@ -124,7 +124,7 @@ function buildChildSessionLane(input: {
   const parentToolCallId = input.childSession.parentToolCallId?.trim() ?? "";
   const parentCall = parentToolCall(
     input.parentTimelineItems,
-    parentToolCallId
+    parentToolCallId,
   );
   const task = parentCall?.task ?? null;
   const childSessions = (
@@ -135,8 +135,8 @@ function buildChildSessionLane(input: {
       childrenByParentSessionId: input.childrenByParentSessionId,
       messagesBySessionId: input.messagesBySessionId,
       parentTimelineItems: childTimelineItems,
-      visited: input.visited
-    })
+      visited: input.visited,
+    }),
   );
   assignSiblingLanePositions(childSessions);
   input.visited.delete(childSessionId);
@@ -145,10 +145,14 @@ function buildChildSessionLane(input: {
   const latestActivity = activity.entries.at(-1) ?? null;
   const latestMessageAtUnixMs = childMessages.reduce(
     (latest, message) => Math.max(latest, message.occurredAtUnixMs),
-    0
+    0,
   );
   const latestTurn = input.childSession.latestTurn;
   const status = childSessionStatus(input.childSession);
+  const resultMarkdown =
+    status === "completed"
+      ? latestAssistantResultMarkdown(childTimelineItems)
+      : null;
   const terminalAtUnixMs =
     status === "running"
       ? null
@@ -165,6 +169,7 @@ function buildChildSessionLane(input: {
     laneCount: 1,
     latestActivity: latestActivity?.text ?? null,
     latestActivityKind: latestActivity?.kind ?? null,
+    resultMarkdown,
     activityLog: activity.entries,
     activityOmittedCount: activity.omittedCount,
     queued: input.childSession.activeTurn?.phase === "submitted",
@@ -177,11 +182,30 @@ function buildChildSessionLane(input: {
     latestActivityAtUnixMs: Math.max(
       latestMessageAtUnixMs,
       latestTurn?.updatedAtUnixMs ?? 0,
-      input.childSession.updatedAtUnixMs
+      input.childSession.updatedAtUnixMs,
     ),
     terminalAtUnixMs,
-    childSessions
+    childSessions,
   };
+}
+
+function latestAssistantResultMarkdown(
+  timelineItems: readonly WorkspaceAgentActivityTimelineItem[],
+): string | null {
+  for (let index = timelineItems.length - 1; index >= 0; index -= 1) {
+    const item = timelineItems[index];
+    if (!item) continue;
+    const itemType = item.itemType?.trim().toLowerCase() ?? "";
+    const role = item.role?.trim().toLowerCase() ?? "";
+    if (itemType !== "message.assistant" && role !== "assistant") continue;
+    const text =
+      stringValue(item.payload?.text) ??
+      stringValue(item.payload?.content) ??
+      stringValue(item.content) ??
+      "";
+    if (text.trim()) return text.trim();
+  }
+  return null;
 }
 
 function emptyCycleLane(session: AgentActivitySession): AgentTaskSubAgentVM {
@@ -202,12 +226,12 @@ function emptyCycleLane(session: AgentActivitySession): AgentTaskSubAgentVM {
     latestActivityAtUnixMs: session.updatedAtUnixMs,
     terminalAtUnixMs:
       session.latestTurn?.settledAtUnixMs ?? session.endedAtUnixMs,
-    childSessions: []
+    childSessions: [],
   };
 }
 
 function childSessionStatus(
-  session: AgentActivitySession
+  session: AgentActivitySession,
 ): AgentTaskSubAgentStatus {
   const activeTurn = session.activeTurn;
   if (activeTurn && activeTurn.phase !== "settled") return "running";
@@ -227,7 +251,7 @@ function childSessionStatus(
 
 function parentToolCall(
   timelineItems: readonly WorkspaceAgentActivityTimelineItem[],
-  parentToolCallId: string
+  parentToolCallId: string,
 ): { task: string | null } | null {
   if (!parentToolCallId) return null;
   for (const item of timelineItems) {
@@ -239,8 +263,8 @@ function parentToolCall(
       task: firstString(
         stringValue(input?.task),
         stringValue(input?.prompt),
-        stringValue(input?.description)
-      )
+        stringValue(input?.description),
+      ),
     };
   }
   return null;
@@ -248,7 +272,7 @@ function parentToolCall(
 
 function toolGroupRowWithChildSessions(
   row: AgentToolGroupRowVM,
-  lanesByParentToolCallId: ReadonlyMap<string, AgentTaskSubAgentVM[]>
+  lanesByParentToolCallId: ReadonlyMap<string, AgentTaskSubAgentVM[]>,
 ): AgentToolGroupRowVM {
   let changed = false;
   const callsById = new Map<string, AgentToolCallVM>();
@@ -260,7 +284,7 @@ function toolGroupRowWithChildSessions(
     changed = true;
     const nextCall: AgentToolCallVM = {
       ...call,
-      task: { ...call.task, subAgents: lanes }
+      task: { ...call.task, subAgents: lanes },
     };
     callsById.set(nextCall.id, nextCall);
     return nextCall;
@@ -281,7 +305,7 @@ function toolCallRawId(id: string): string {
 const CHILD_ACTIVITY_LOG_CAP = 20;
 
 function childSessionActivityLog(
-  timelineItems: readonly WorkspaceAgentActivityTimelineItem[]
+  timelineItems: readonly WorkspaceAgentActivityTimelineItem[],
 ): { entries: AgentTaskSubAgentActivityVM[]; omittedCount: number } {
   const entries = timelineItems
     .map(displayableActivityEntry)
@@ -291,14 +315,14 @@ function childSessionActivityLog(
 }
 
 function displayableActivityEntry(
-  item: WorkspaceAgentActivityTimelineItem
+  item: WorkspaceAgentActivityTimelineItem,
 ): AgentTaskSubAgentActivityVM | null {
   const atUnixMs = timelineItemTime(item) || null;
   if (isWorkspaceAgentToolCallItem(item)) {
     const name = firstString(
       resolveWorkspaceAgentToolName(item),
       item.name,
-      stringValue(item.payload?.name)
+      stringValue(item.payload?.name),
     );
     return name ? { kind: "tool", text: name, atUnixMs } : null;
   }
@@ -350,7 +374,7 @@ function assignLanePositions(lanes: AgentTaskSubAgentVM[]): void {
 
 function compareChildSessions(
   left: AgentActivitySession,
-  right: AgentActivitySession
+  right: AgentActivitySession,
 ): number {
   return (
     left.createdAtUnixMs - right.createdAtUnixMs ||
@@ -359,7 +383,7 @@ function compareChildSessions(
 }
 
 function timelineItemTime(
-  item: WorkspaceAgentActivityTimelineItem | undefined
+  item: WorkspaceAgentActivityTimelineItem | undefined,
 ): number {
   return item?.occurredAtUnixMs ?? item?.createdAtUnixMs ?? 0;
 }

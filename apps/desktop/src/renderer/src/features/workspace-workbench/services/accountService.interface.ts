@@ -22,7 +22,7 @@ export interface IAccountService {
   refreshUserInfo(): Promise<void>;
   refreshProductSummary(options?: { force?: boolean }): Promise<void>;
   dismissRegistrationCreditsReward(rewardID: string): Promise<void>;
-  startLogin(): Promise<void>;
+  startLogin(): Promise<{ error: string | null }>;
   logout(): Promise<void>;
 }
 

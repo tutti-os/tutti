@@ -5,11 +5,14 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -36,6 +39,98 @@ func TestCliInvokeContextFromEnvIncludesAgentSessionID(t *testing.T) {
 		context.AgentSessionID != "session-1" {
 		t.Fatalf("context = %#v", context)
 	}
+}
+
+func TestHydrateDynamicStdinInputForwardsRawJSON(t *testing.T) {
+	previous := dynamicInputReader
+	dynamicInputReader = func() io.Reader {
+		return strings.NewReader(`{"scope":"desktop","path":"C:\\Temp\\示例.png"}`)
+	}
+	t.Cleanup(func() { dynamicInputReader = previous })
+	command := daemon.Capability{InputSchema: map[string]any{
+		"properties": map[string]any{
+			"arguments-json": map[string]any{"type": "string"},
+		},
+	}}
+	input, err := hydrateDynamicStdinInput(command, map[string]any{
+		"name": "click", "arguments-json": "-",
+	})
+	if err != nil {
+		t.Fatalf("hydrate stdin: %v", err)
+	}
+	if input["arguments-json"] != `{"scope":"desktop","path":"C:\\Temp\\示例.png"}` {
+		t.Fatalf("input = %#v", input)
+	}
+}
+
+func TestRunDynamicComputerToolCallReadsArgumentsFromStdin(t *testing.T) {
+	previous := dynamicInputReader
+	dynamicInputReader = func() io.Reader {
+		return strings.NewReader(`{"scope":"desktop","path":"C:\\Temp\\示例.png"}`)
+	}
+	t.Cleanup(func() { dynamicInputReader = previous })
+
+	var invoked daemon.InvokeRequest
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/v1/cli/capabilities":
+			_, _ = w.Write([]byte(`{"commands":[{"id":"computer.tool.call","path":["computer","tool","call"],"summary":"Call tool","inputSchema":{"type":"object","properties":{"name":{"type":"string"},"arguments-json":{"type":"string"}},"required":["name"]},"output":{"defaultMode":"json","json":true}}]}`))
+		case "/v1/cli/commands/computer.tool.call/invoke":
+			if err := json.NewDecoder(r.Body).Decode(&invoked); err != nil {
+				t.Fatalf("decode invoke: %v", err)
+			}
+			_, _ = w.Write([]byte(`{"ok":true,"output":{"kind":"json","value":{"ok":true}}}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+	writeEndpoint(t, server.URL, "token-1")
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	code := runDefaultProgram(t, []string{
+		"computer", "tool", "call", "--name", "click", "--arguments-json", "-", "--json",
+	}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("code = %d, stderr = %s", code, stderr.String())
+	}
+	if invoked.Input["arguments-json"] != `{"scope":"desktop","path":"C:\\Temp\\示例.png"}` {
+		t.Fatalf("invoke input = %#v", invoked.Input)
+	}
+}
+
+func TestWindowsPowerShellUTF8PipelinePreservesDynamicInput(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("Windows PowerShell encoding contract")
+	}
+	powershell, err := exec.LookPath("powershell.exe")
+	if err != nil {
+		t.Skip("Windows PowerShell is unavailable")
+	}
+	executable := strings.ReplaceAll(os.Args[0], "'", "''")
+	script := "$utf8 = [Text.UTF8Encoding]::new($false); " +
+		"$OutputEncoding = $utf8; [Console]::OutputEncoding = $utf8; " +
+		`'{"path":"C:\\Temp\\示例.png"}' | & '` + executable + `' '-test.run=^TestDynamicStdinUTF8Helper$'`
+	command := exec.Command(powershell, "-NoProfile", "-NonInteractive", "-Command", script)
+	command.Env = append(os.Environ(), "TUTTI_TEST_STDIN_UTF8_HELPER=1")
+	output, err := command.CombinedOutput()
+	if err != nil {
+		t.Fatalf("PowerShell pipeline: %v: %s", err, output)
+	}
+	got := strings.TrimPrefix(strings.TrimSpace(string(output)), "\ufeff")
+	if want := `{"path":"C:\\Temp\\示例.png"}`; got != want {
+		t.Fatalf("stdin = %q, want %q", got, want)
+	}
+}
+
+func TestDynamicStdinUTF8Helper(_ *testing.T) {
+	if os.Getenv("TUTTI_TEST_STDIN_UTF8_HELPER") != "1" {
+		return
+	}
+	_, _ = io.Copy(os.Stdout, os.Stdin)
+	os.Exit(0)
 }
 
 func TestWriteDynamicJSONKeepsCommandWarningsOutOfAppValue(t *testing.T) {

@@ -32,6 +32,9 @@ export interface AgentTaskSubAgentVM {
   laneCount: number;
   latestActivity: string | null;
   latestActivityKind: AgentTaskSubAgentActivityKind | null;
+  // Full terminal assistant result. Unlike latestActivity this is never
+  // flattened or truncated, so Markdown links and deliverables remain usable.
+  resultMarkdown?: string | null;
   // Chronological recent activity (markers excluded), capped; older entries
   // are summarized by activityOmittedCount.
   activityLog: readonly AgentTaskSubAgentActivityVM[];

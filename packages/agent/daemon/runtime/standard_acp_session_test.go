@@ -333,6 +333,80 @@ func TestStandardACPAdapterReleaseLiveSessionClosesOnlyTransport(t *testing.T) {
 	}
 }
 
+func TestStandardACPAdapterDisconnectLiveSessionClosesOnlyTransport(t *testing.T) {
+	t.Parallel()
+
+	transport := newStandardACPTransport("Hermes Agent", "hermes-session-disconnect")
+	transport.conn.supportsCloseSession = true
+	adapter := newHermesExtensionTestAdapter(transport)
+	session := standardTestSession(hermesExtensionTestProvider)
+	if _, err := adapter.Start(context.Background(), session); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	if err := adapter.DisconnectLiveSession(context.Background(), session); err != nil {
+		t.Fatalf("DisconnectLiveSession: %v", err)
+	}
+	if params := transport.conn.closeSessionParams(); params != nil {
+		t.Fatalf("DisconnectLiveSession sent destructive session/close params %#v", params)
+	}
+	if !transport.conn.closed() || adapter.HasLiveSession(session) {
+		t.Fatal("DisconnectLiveSession did not drop the ACP transport")
+	}
+}
+
+func TestStandardACPAdapterDisconnectLiveSessionRetriesCloseFailedHandle(t *testing.T) {
+	t.Parallel()
+
+	transport := newStandardACPTransport("Kimi Code", "kimi-session-disconnect-retry")
+	transport.conn.closeFailures = 1
+	adapter := newKimiCodeExtensionTestAdapter(t, transport)
+	session := standardTestSession("acp:kimi-code")
+	if _, err := adapter.Start(context.Background(), session); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	if err := adapter.DisconnectLiveSession(context.Background(), session); err == nil {
+		t.Fatal("first DisconnectLiveSession error=nil, want close failure")
+	}
+	if !adapter.hasTrackedLiveSession(session) {
+		t.Fatal("close-failed ACP handle lost ownership")
+	}
+	if err := adapter.DisconnectLiveSession(context.Background(), session); err != nil {
+		t.Fatalf("retry DisconnectLiveSession: %v", err)
+	}
+	if adapter.hasTrackedLiveSession(session) {
+		t.Fatal("ACP handle remained after successful retry")
+	}
+	transport.conn.mu.Lock()
+	closeCalls := transport.conn.closeCalls
+	transport.conn.mu.Unlock()
+	if closeCalls != 2 {
+		t.Fatalf("transport close calls=%d, want 2", closeCalls)
+	}
+}
+
+func TestStandardACPAdapterDisconnectLiveSessionRejectsPendingApproval(t *testing.T) {
+	t.Parallel()
+
+	transport := newStandardACPTransport("Kimi Code", "kimi-session-disconnect-pending")
+	adapter := newKimiCodeExtensionTestAdapter(t, transport)
+	session := standardTestSession("acp:kimi-code")
+	if _, err := adapter.Start(context.Background(), session); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	pending := &pendingACPApproval{
+		agentSessionID: session.AgentSessionID,
+		requestID:      "approval-disconnect",
+		response:       make(chan pendingInteractiveResponse, 1),
+	}
+	adapter.storePendingApproval(pending)
+	if err := adapter.DisconnectLiveSession(context.Background(), session); err != nil {
+		t.Fatalf("DisconnectLiveSession: %v", err)
+	}
+	if state := pending.disposition(); state != pendingInteractiveRequestStateInterrupted {
+		t.Fatalf("pending approval state=%q, want interrupted", state)
+	}
+}
+
 func TestStandardACPAdapterResumeContinuesLifecycleSequenceAfterRelease(t *testing.T) {
 	t.Parallel()
 

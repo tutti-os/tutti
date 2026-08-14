@@ -20,7 +20,7 @@ export const zhCNAgentGui = {
   initialPlaceholder: "输入 @ 引用会话、文件、任务和应用",
   followupPlaceholder: "要求 {{provider}} 继续后续变更",
   installRequiredPlaceholder: "请先连接 {{provider}}，然后再发送消息",
-  installRequiredAction: "连接",
+  installRequiredAction: "安装",
   providerGateCheckingTitle: "正在检查 Agent",
   providerGateCheckingDescription:
     "稍等一下，我们正在确认 {{provider}} 是否已经可用。",
@@ -29,7 +29,7 @@ export const zhCNAgentGui = {
   providerGateInstallTitle: "先连接 {{provider}}",
   providerGateInstallDescription:
     "需要先连接 {{provider}}，才能在这里开始新的对话。",
-  providerGateInstallAction: "连接",
+  providerGateInstallAction: "安装",
   providerGateLoginTitle: "登录 {{provider}}",
   providerGateLoginDescription: "使用账号登录后即可开始使用 {{provider}} 对话",
   providerGateLoginAction: "登录",

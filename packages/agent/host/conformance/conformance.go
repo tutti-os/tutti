@@ -203,6 +203,64 @@ type Driver interface {
 	Metrics() Metrics
 }
 
+// WorkspaceRuntimeDisconnectDriver is a narrow opt-in lifecycle contract so a
+// new Host capability does not source-break existing external conformance
+// drivers that implement the stable Driver interface.
+type WorkspaceRuntimeDisconnectDriver interface {
+	Driver
+	DisconnectWorkspaceRuntime(context.Context, string) (agenthost.DisconnectWorkspaceRuntimeResult, error)
+}
+
+type WorkspaceRuntimeDisconnectScenario struct {
+	Name string
+	run  func(context.Context, WorkspaceRuntimeDisconnectDriver) error
+}
+
+// WorkspaceRuntimeAdmissionDriver exposes only the Host-owned coordination
+// seam needed to verify admission and durable disconnect fencing.
+type WorkspaceRuntimeAdmissionDriver interface {
+	WithWorkspaceRuntimeOperation(context.Context, string, func(context.Context) error) error
+	AcquireWorkspaceRuntimeDisconnectFence(context.Context, string) (WorkspaceRuntimeDisconnectFenceDriver, error)
+}
+
+type WorkspaceRuntimeDisconnectFenceDriver interface {
+	Wait(context.Context) (context.Context, error)
+	Release()
+}
+
+type WorkspaceRuntimeAdmissionScenario struct {
+	Name string
+	run  func(context.Context, WorkspaceRuntimeAdmissionDriver) error
+}
+
+func RunWorkspaceRuntimeAdmission(
+	ctx context.Context,
+	driver WorkspaceRuntimeAdmissionDriver,
+	scenario WorkspaceRuntimeAdmissionScenario,
+) error {
+	if driver == nil {
+		return fmt.Errorf("workspace runtime admission conformance driver is required")
+	}
+	if scenario.run == nil {
+		return fmt.Errorf("workspace runtime admission scenario %q has no runner", scenario.Name)
+	}
+	return scenario.run(ctx, driver)
+}
+
+func RunWorkspaceRuntimeDisconnect(
+	ctx context.Context,
+	driver WorkspaceRuntimeDisconnectDriver,
+	scenario WorkspaceRuntimeDisconnectScenario,
+) error {
+	if driver == nil {
+		return fmt.Errorf("workspace runtime disconnect conformance driver is required")
+	}
+	if scenario.run == nil {
+		return fmt.Errorf("workspace runtime disconnect scenario %q has no runner", scenario.Name)
+	}
+	return scenario.run(ctx, driver)
+}
+
 // ProviderlessTerminalDriver is the narrow fault-injection capability for a
 // Runtime that durably fails the exact canonical Turn before it acquires a
 // provider identity. It stays separate from Fixture so downstream conformance

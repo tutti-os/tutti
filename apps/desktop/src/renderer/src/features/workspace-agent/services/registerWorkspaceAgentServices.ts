@@ -42,7 +42,7 @@ import {
 } from "./agentQuickPromptService.interface.ts";
 
 export interface WorkspaceAgentServiceRegistrationInput {
-  accountLogin: { startLogin(): Promise<void> };
+  accountLogin: { startLogin(): Promise<unknown> };
   clipboard: { writeText(text: string): Promise<void> };
   desktopPreferencesService: IDesktopPreferencesService;
   eventStreamClient?: TuttidEventStreamClient;

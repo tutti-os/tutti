@@ -28,9 +28,13 @@ func (h *Host) GetSession(ctx context.Context, ref SessionRef) (GetSessionResult
 	if err != nil {
 		return GetSessionResult{}, err
 	}
-	live, liveFound := h.runtime.Session(ref.WorkspaceID, ref.AgentSessionID)
+	live, runtimeFound := h.runtime.Session(ref.WorkspaceID, ref.AgentSessionID)
+	liveFound := runtimeFound
+	if liveness, ok := h.runtime.(RuntimeSessionLiveness); ok {
+		liveFound = runtimeFound && liveness.RuntimeSessionLive(ref.WorkspaceID, ref.AgentSessionID)
+	}
 	if !found {
-		if liveFound {
+		if runtimeFound {
 			return GetSessionResult{}, fmt.Errorf("live workspace agent session has no persisted session")
 		}
 		return GetSessionResult{}, ErrSessionNotFound
@@ -43,6 +47,16 @@ func (h *Host) GetSession(ctx context.Context, ref SessionRef) (GetSessionResult
 // runtime first and then persist the resulting settings. The same per-session
 // lock used by resume protects both paths.
 func (h *Host) UpdateSettings(ctx context.Context, input UpdateSettingsInput) (UpdateSettingsResult, error) {
+	var result UpdateSettingsResult
+	err := h.withWorkspaceRuntimeOperation(ctx, input.WorkspaceID, func(operationCtx context.Context) error {
+		var updateErr error
+		result, updateErr = h.updateSettings(operationCtx, input)
+		return updateErr
+	})
+	return result, err
+}
+
+func (h *Host) updateSettings(ctx context.Context, input UpdateSettingsInput) (UpdateSettingsResult, error) {
 	ref := normalizedSessionRef(SessionRef{WorkspaceID: input.WorkspaceID, AgentSessionID: input.AgentSessionID})
 	if h == nil || h.store == nil || h.sessionManagement == nil || h.runtime == nil || ref.WorkspaceID == "" || ref.AgentSessionID == "" {
 		return UpdateSettingsResult{}, ErrInvalidArgument
@@ -53,7 +67,12 @@ func (h *Host) UpdateSettings(ctx context.Context, input UpdateSettingsInput) (U
 	}
 	defer release()
 
-	if _, live := h.runtime.Session(ref.WorkspaceID, ref.AgentSessionID); live {
+	_, runtimeFound := h.runtime.Session(ref.WorkspaceID, ref.AgentSessionID)
+	runtimeLive := runtimeFound
+	if liveness, ok := h.runtime.(RuntimeSessionLiveness); ok {
+		runtimeLive = runtimeFound && liveness.RuntimeSessionLive(ref.WorkspaceID, ref.AgentSessionID)
+	}
+	if runtimeLive {
 		session, err := h.ensureRuntimeSessionLocked(ctx, ref)
 		if err != nil {
 			return UpdateSettingsResult{}, err
@@ -105,6 +124,20 @@ func (h *Host) UpdateSettings(ctx context.Context, input UpdateSettingsInput) (U
 	if h.settingsPolicy != nil {
 		settings = h.settingsPolicy.NormalizePersistedSettings(ctx, canonical, settings, input.Settings)
 	}
+	if updater, ok := h.runtime.(RuntimeRetainedSettingsUpdater); ok && runtimeFound {
+		patch := ComposerSettingsPatch{
+			CodexSaverMode: boolPointer(settings.CodexSaverMode),
+			Model:          stringPointer(settings.Model), PermissionModeID: stringPointer(settings.PermissionModeID),
+			PlanMode: boolPointer(settings.PlanMode), BrowserUse: cloneBoolPointer(settings.BrowserUse),
+			ComputerUse: cloneBoolPointer(settings.ComputerUse), ReasoningEffort: stringPointer(settings.ReasoningEffort),
+			Speed: stringPointer(settings.Speed),
+		}
+		if err := updater.UpdateRetainedSettings(ctx, RuntimeUpdateSettingsInput{
+			WorkspaceID: ref.WorkspaceID, AgentSessionID: ref.AgentSessionID, Settings: patch,
+		}); err != nil {
+			return UpdateSettingsResult{}, err
+		}
+	}
 	canonical, updated, err := h.sessionManagement.UpdateSessionSettings(ctx, ref.WorkspaceID, ref.AgentSessionID, settings)
 	if err != nil {
 		return UpdateSettingsResult{}, err
@@ -113,6 +146,16 @@ func (h *Host) UpdateSettings(ctx context.Context, input UpdateSettingsInput) (U
 		return UpdateSettingsResult{}, ErrSessionNotFound
 	}
 	return UpdateSettingsResult{Canonical: canonical}, nil
+}
+
+func stringPointer(value string) *string { return &value }
+
+func cloneBoolPointer(value *bool) *bool {
+	if value == nil {
+		return nil
+	}
+	copy := *value
+	return &copy
 }
 
 func (h *Host) UpdatePin(ctx context.Context, input UpdatePinInput) (UpdatePinResult, error) {
@@ -132,8 +175,12 @@ func (h *Host) UpdatePin(ctx context.Context, input UpdatePinInput) (UpdatePinRe
 	if !updated {
 		return UpdatePinResult{}, ErrSessionNotFound
 	}
-	live, ok := h.runtime.Session(ref.WorkspaceID, ref.AgentSessionID)
-	return UpdatePinResult{Session: live, Canonical: canonical, Live: ok}, nil
+	live, runtimeFound := h.runtime.Session(ref.WorkspaceID, ref.AgentSessionID)
+	liveFound := runtimeFound
+	if liveness, ok := h.runtime.(RuntimeSessionLiveness); ok {
+		liveFound = runtimeFound && liveness.RuntimeSessionLive(ref.WorkspaceID, ref.AgentSessionID)
+	}
+	return UpdatePinResult{Session: live, Canonical: canonical, Live: liveFound}, nil
 }
 
 // DeleteSession and DeleteSessions share one deletion coordinator so child

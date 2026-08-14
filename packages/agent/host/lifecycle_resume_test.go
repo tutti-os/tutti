@@ -3,6 +3,7 @@ package agenthost
 import (
 	"context"
 	"errors"
+	"runtime"
 	"testing"
 	"time"
 
@@ -185,6 +186,66 @@ func TestEnsureRuntimeSessionCleansPreparedResourcesWhenResumeFails(t *testing.T
 		preparation.cleanupInput.AgentSessionID != "session-1" ||
 		preparation.cleanupInput.Provider != "codex" {
 		t.Fatalf("cleanup input = %#v", preparation.cleanupInput)
+	}
+}
+
+func TestEnsureRuntimeSessionWaitsForWorkspaceRuntimeDisconnectAdmission(t *testing.T) {
+	t.Parallel()
+	store := liveResumeCanonicalStore{
+		session: storesqlite.Session{
+			ID: "session-1", WorkspaceID: "workspace-1", Kind: storesqlite.SessionKindRoot,
+			Provider: "codex", ProviderSessionID: "provider-session-1",
+		},
+		evidence: storesqlite.ProviderSessionResumeEvidence{Established: true},
+	}
+	runtimeBackend := &disconnectedReprepareRuntime{}
+	host := New(Config{CanonicalStore: store, Runtime: runtimeBackend})
+	_, releaseDisconnect, err := host.BeginWorkspaceRuntimeDisconnect(context.Background(), "workspace-1")
+	if err != nil {
+		t.Fatalf("BeginWorkspaceRuntimeDisconnect: %v", err)
+	}
+
+	ensureStarted := make(chan struct{})
+	ensureDone := make(chan error, 1)
+	go func() {
+		close(ensureStarted)
+		_, ensureErr := host.EnsureRuntimeSession(context.Background(), SessionRef{
+			WorkspaceID: "workspace-1", AgentSessionID: "session-1",
+		})
+		ensureDone <- ensureErr
+	}()
+	<-ensureStarted
+	for {
+		host.workspaceRuntimeAdmission.mu.Lock()
+		state := host.workspaceRuntimeAdmission.states["workspace-1"]
+		waiting := state != nil && state.refs >= 2
+		host.workspaceRuntimeAdmission.mu.Unlock()
+		if waiting {
+			break
+		}
+		select {
+		case ensureErr := <-ensureDone:
+			releaseDisconnect()
+			t.Fatalf("EnsureRuntimeSession bypassed disconnect admission: %v", ensureErr)
+		default:
+		}
+		runtime.Gosched()
+	}
+	if runtimeBackend.resumeCalls != 0 {
+		t.Fatalf("Resume calls while disconnect admission held = %d, want 0", runtimeBackend.resumeCalls)
+	}
+	select {
+	case ensureErr := <-ensureDone:
+		t.Fatalf("EnsureRuntimeSession returned while disconnect admission held: %v", ensureErr)
+	default:
+	}
+
+	releaseDisconnect()
+	if ensureErr := <-ensureDone; ensureErr != nil {
+		t.Fatalf("EnsureRuntimeSession after admission release: %v", ensureErr)
+	}
+	if runtimeBackend.resumeCalls != 1 {
+		t.Fatalf("Resume calls after admission release = %d, want 1", runtimeBackend.resumeCalls)
 	}
 }
 

@@ -33,7 +33,9 @@ Pixel clicks are posted as background CGEvents and are never driver-verified: a 
 
 1. Prefer element actions over pixel coordinates. Structured screenshot content can list interactive elements with an `element_token`; click through the native tool with that token:
 
-   `{{command "computer.tool.call" (args "name" "click" "arguments-json" "'{\"pid\":<pid>,\"element_token\":\"<token>\"}'")}}`
+   Send the JSON object through standard input so the shell never reparses it as a native-command argument. After defining the PowerShell helper below:
+
+   `Invoke-TuttiComputerTool -Name "click" -Arguments @{ pid = 9092; element_token = "example" }`
 
 2. Verify every click with a fresh `screenshot` of the target window. The blue agent cursor is a visual overlay on a separate channel — after a display-configuration change it can render at a fixed offset from the true event point, so its on-screen position is not evidence of where a click landed.
 
@@ -45,7 +47,24 @@ The native tool surface is the complete entry point for authorized cua-driver ca
 
 1. Run `{{command "computer.tool.list"}}`.
 2. Run `{{command "computer.tool.describe" (args "name" "<tool>")}}` and follow its returned `inputSchema`.
-3. Run `{{command "computer.tool.call" (args "name" "<tool>" "arguments-json" "'<object>'")}}`.
+3. Serialize the argument object as JSON and pipe it to `{{command "computer.tool.call" (args "name" "<tool>")}} --arguments-json -`. The legacy `--arguments-json` form remains available for simple existing scripts.
+
+On PowerShell, use this helper instead of launching a nested `powershell.exe -Command` process. Windows PowerShell 5.1 defaults native-command pipelines to ASCII, so the helper sets `$OutputEncoding` to UTF-8 for each call and restores it afterwards:
+
+```powershell
+function Invoke-TuttiComputerTool {
+  param([Parameter(Mandatory)][string]$Name, [Parameter(Mandatory)][object]$Arguments)
+  $previousOutputEncoding = $OutputEncoding
+  try {
+    $OutputEncoding = [Text.UTF8Encoding]::new($false)
+    $Arguments | ConvertTo-Json -Compress -Depth 20 | {{command "computer.tool.call"}} --name $Name --arguments-json -
+  } finally {
+    $OutputEncoding = $previousOutputEncoding
+  }
+}
+
+Invoke-TuttiComputerTool -Name "click" -Arguments @{ pid = 9092; element_token = "example" }
+```
 
 ### Desktop workflow
 
@@ -55,13 +74,13 @@ Desktop capture and input are not one uniform scope:
 
    `{{command "computer.tool.describe" (args "name" "get_config")}}`
 
-   `{{command "computer.tool.call" (args "name" "get_config" "arguments-json" "'{}'")}}`
+   `Invoke-TuttiComputerTool -Name "get_config" -Arguments @{}`
 
 2. `get_desktop_state` works only when the host-global persisted `capture_scope` is `desktop`. If it is not enabled, describe the allowed `set_config` tool and change it through the managed native surface:
 
    `{{command "computer.tool.describe" (args "name" "set_config")}}`
 
-   `{{command "computer.tool.call" (args "name" "set_config" "arguments-json" "'{\"capture_scope\":\"desktop\"}'")}}`
+   `Invoke-TuttiComputerTool -Name "set_config" -Arguments @{ capture_scope = "desktop" }`
 
    This setting persists globally in cua-driver. Do not hide the mutation inside a set/call/restore sequence, and do not restore it automatically after capture. Re-read `get_config` if the result does not clearly confirm the new value.
 
@@ -69,13 +88,13 @@ Desktop capture and input are not one uniform scope:
 
    `{{command "computer.tool.describe" (args "name" "get_desktop_state")}}`
 
-   `{{command "computer.tool.call" (args "name" "get_desktop_state" "arguments-json" "'{\"screenshot_out_file\":\"/tmp/desktop.png\"}'")}}`
+   Pass the live-schema object to `Invoke-TuttiComputerTool -Name "get_desktop_state" -Arguments $arguments`.
 
 4. The native `click` tool has its own per-call desktop contract. Confirm its live schema, then call it directly:
 
    `{{command "computer.tool.describe" (args "name" "click")}}`
 
-   `{{command "computer.tool.call" (args "name" "click" "arguments-json" "'{\"scope\":\"desktop\",\"x\":1200,\"y\":700}'")}}`
+   `Invoke-TuttiComputerTool -Name "click" -Arguments @{ scope = "desktop"; x = 1200; y = 700 }`
 
    Do not infer that contract for other tools.
 

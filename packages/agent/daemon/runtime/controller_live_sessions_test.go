@@ -445,6 +445,253 @@ func TestControllerDetachedCleanupGivesEveryAdapterOneBoundedAttempt(t *testing.
 	}
 }
 
+func TestControllerRuntimeSessionsWaitsForWorkspaceStartBeforeEnumerating(t *testing.T) {
+	t.Parallel()
+
+	adapter := newReleasableAdapter()
+	adapter.startEntered = make(chan struct{})
+	adapter.startRelease = make(chan struct{})
+	controller := NewController([]Adapter{adapter}, nil)
+
+	startDone := make(chan error, 1)
+	go func() {
+		_, err := controller.Start(context.Background(), StartInput{
+			RoomID: "room-starting", AgentSessionID: "session-starting",
+			Provider: ProviderCodex, CWD: "/workspace",
+		})
+		startDone <- err
+	}()
+	select {
+	case <-adapter.startEntered:
+	case <-time.After(time.Second):
+		t.Fatal("adapter Start did not enter")
+	}
+
+	sessionsDone := make(chan []Session, 1)
+	errDone := make(chan error, 1)
+	go func() {
+		sessions, err := controller.RuntimeSessions(context.Background(), "room-starting")
+		sessionsDone <- sessions
+		errDone <- err
+	}()
+	select {
+	case sessions := <-sessionsDone:
+		t.Fatalf("RuntimeSessions returned before Start stored its Session: %#v", sessions)
+	case <-time.After(50 * time.Millisecond):
+	}
+
+	close(adapter.startRelease)
+	if err := <-startDone; err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	sessions := <-sessionsDone
+	if err := <-errDone; err != nil {
+		t.Fatalf("RuntimeSessions: %v", err)
+	}
+	if len(sessions) != 1 || sessions[0].AgentSessionID != "session-starting" {
+		t.Fatalf("RuntimeSessions=%#v, want completed startup Session", sessions)
+	}
+	result, err := controller.DisconnectRuntimeSession(
+		context.Background(), "room-starting", "session-starting",
+	)
+	if err != nil || !result.Disconnected {
+		t.Fatalf("DisconnectRuntimeSession result=%#v err=%v", result, err)
+	}
+	if adapter.hasLiveSession("session-starting") {
+		t.Fatal("startup provider handle remained live after disconnect")
+	}
+}
+
+func TestControllerDisconnectRuntimeSessionPreservesSessionAndResumesOnce(t *testing.T) {
+	t.Parallel()
+
+	adapter := newReleasableAdapter()
+	controller := NewController([]Adapter{adapter}, nil)
+	started := startReleasableSession(t, controller, "agent-session-disconnect")
+	result, err := controller.DisconnectRuntimeSession(
+		context.Background(), started.Session.RoomID, started.Session.AgentSessionID,
+	)
+	if err != nil || !result.Disconnected {
+		t.Fatalf("DisconnectRuntimeSession result=%#v err=%v", result, err)
+	}
+	stored, ok := controller.Session(started.Session.RoomID, started.Session.AgentSessionID)
+	if !ok || stored.ProviderSessionID != started.Session.ProviderSessionID {
+		t.Fatalf("stored session=%#v found=%v, want preserved provider identity", stored, ok)
+	}
+	if calls := adapter.closeCallCount(started.Session.AgentSessionID); calls != 0 {
+		t.Fatalf("destructive Close calls=%d, want 0", calls)
+	}
+	if _, err := controller.Exec(context.Background(), ExecInput{
+		RoomID: started.Session.RoomID, AgentSessionID: started.Session.AgentSessionID,
+		Content: textPrompt("resume after disconnect"),
+	}); err != nil {
+		t.Fatalf("Exec after disconnect: %v", err)
+	}
+	if adapter.resumeCalls != 1 {
+		t.Fatalf("resume calls=%d, want 1", adapter.resumeCalls)
+	}
+	adapter.releaseNext()
+}
+
+func TestControllerDeferredDisconnectTargetDoesNotCloseNewlyResumedConnection(t *testing.T) {
+	t.Parallel()
+
+	adapter := newReleasableAdapter()
+	controller := NewController([]Adapter{adapter}, nil)
+	started := startReleasableSession(t, controller, "agent-session-generation-cas")
+	targets := controller.SnapshotRuntimeDisconnectTargets(started.Session.RoomID)
+	if len(targets) != 1 || targets[0].ConnectionGeneration == 0 {
+		t.Fatalf("disconnect targets=%#v, want one versioned target", targets)
+	}
+
+	// Raw attachment fencing closes the old physical process before the
+	// semantic cleanup deferred by the reentrant Host operation can run.
+	adapter.dropLiveSession(started.Session.AgentSessionID)
+	if _, err := controller.Exec(context.Background(), ExecInput{
+		RoomID: started.Session.RoomID, AgentSessionID: started.Session.AgentSessionID,
+		Content: textPrompt("resume on the new attachment"),
+	}); err != nil {
+		t.Fatalf("Exec after raw old-attachment close: %v", err)
+	}
+	if adapter.resumeCalls != 1 || !adapter.hasLiveSession(started.Session.AgentSessionID) {
+		t.Fatalf("new provider connection resume/live = %d/%v", adapter.resumeCalls, adapter.hasLiveSession(started.Session.AgentSessionID))
+	}
+
+	result, err := controller.DisconnectRuntimeSessionTarget(context.Background(), targets[0])
+	if err != nil {
+		t.Fatalf("DisconnectRuntimeSessionTarget: %v", err)
+	}
+	if result.Disconnected {
+		t.Fatalf("stale target disconnected the new provider connection: %#v", result)
+	}
+	if !adapter.hasLiveSession(started.Session.AgentSessionID) {
+		t.Fatal("new provider connection was closed by old attachment cleanup")
+	}
+	adapter.releaseNext()
+}
+
+func TestControllerDisconnectRuntimeSessionCleansRegisteredDeadAdapterHandle(t *testing.T) {
+	t.Parallel()
+
+	adapter := newReleasableAdapter()
+	controller := NewController([]Adapter{adapter}, nil)
+	started := startReleasableSession(t, controller, "agent-session-dead-handle")
+	adapter.dropLiveSession(started.Session.AgentSessionID)
+	result, err := controller.DisconnectRuntimeSession(
+		context.Background(), started.Session.RoomID, started.Session.AgentSessionID,
+	)
+	if err != nil || result.Disconnected {
+		t.Fatalf("DisconnectRuntimeSession result=%#v err=%v, want cleanup-only no-op result", result, err)
+	}
+	if adapter.disconnectCalls != 1 {
+		t.Fatalf("DisconnectLiveSession calls=%d, want stale-handle cleanup", adapter.disconnectCalls)
+	}
+}
+
+func TestControllerDisconnectRuntimeSessionSettlesActiveTurnAndIsWorkspaceScoped(t *testing.T) {
+	t.Parallel()
+
+	adapter := newReleasableAdapter()
+	controller := NewController([]Adapter{adapter}, nil)
+	active := startReleasableSession(t, controller, "active-disconnect-session")
+	other, err := controller.Start(context.Background(), StartInput{
+		RoomID: "room-2", AgentSessionID: "other-session", Provider: ProviderCodex, CWD: "/workspace",
+	})
+	if err != nil {
+		t.Fatalf("Start other workspace: %v", err)
+	}
+	if _, err := controller.Exec(context.Background(), ExecInput{
+		RoomID: active.Session.RoomID, AgentSessionID: active.Session.AgentSessionID,
+		Content: textPrompt("in flight disconnect"),
+	}); err != nil {
+		t.Fatalf("Exec active: %v", err)
+	}
+	adapter.waitForExec(t, "in flight disconnect")
+	result, err := controller.DisconnectRuntimeSession(
+		context.Background(), active.Session.RoomID, active.Session.AgentSessionID,
+	)
+	if err != nil || !result.Disconnected {
+		t.Fatalf("DisconnectRuntimeSession result=%#v err=%v", result, err)
+	}
+	waitForSessionStatus(t, controller, active.Session.RoomID, active.Session.AgentSessionID, SessionStatusCanceled)
+	if !adapter.hasLiveSession(other.Session.AgentSessionID) {
+		t.Fatal("other workspace provider was disconnected")
+	}
+	replay, err := controller.DisconnectRuntimeSession(
+		context.Background(), active.Session.RoomID, active.Session.AgentSessionID,
+	)
+	if err != nil || replay.Disconnected {
+		t.Fatalf("idempotent disconnect result=%#v err=%v", replay, err)
+	}
+}
+
+func TestControllerRuntimeSessionsIncludesCanonicalPublicationPendingSession(t *testing.T) {
+	t.Parallel()
+
+	adapter := newReleasableAdapter()
+	controller := NewController([]Adapter{adapter}, nil)
+	started, err := controller.Start(context.Background(), StartInput{
+		RoomID: "room-1", AgentSessionID: "pending-session", Provider: ProviderCodex,
+		CWD: "/workspace", CanonicalInitPending: true,
+	})
+	if err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	if sessions := controller.Sessions("room-1"); len(sessions) != 0 {
+		t.Fatalf("public Sessions=%#v, want pending session hidden", sessions)
+	}
+	runtimeSessions, err := controller.RuntimeSessions(context.Background(), "room-1")
+	if err != nil {
+		t.Fatalf("RuntimeSessions: %v", err)
+	}
+	if len(runtimeSessions) != 1 || runtimeSessions[0].AgentSessionID != started.Session.AgentSessionID {
+		t.Fatalf("RuntimeSessions=%#v, want pending live session", runtimeSessions)
+	}
+}
+
+func TestControllerDisconnectRuntimeSessionSerializesWithExecAdmission(t *testing.T) {
+	t.Parallel()
+
+	adapter := newReleasableAdapter()
+	adapter.validateEntered = make(chan struct{})
+	adapter.validateRelease = make(chan struct{})
+	controller := NewController([]Adapter{adapter}, nil)
+	started := startReleasableSession(t, controller, "agent-session-serialized-disconnect")
+	execDone := make(chan error, 1)
+	go func() {
+		_, err := controller.Exec(context.Background(), ExecInput{
+			RoomID: started.Session.RoomID, AgentSessionID: started.Session.AgentSessionID,
+			Content: textPrompt("racing exec"),
+		})
+		execDone <- err
+	}()
+	select {
+	case <-adapter.validateEntered:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for Exec admission")
+	}
+	disconnectDone := make(chan DisconnectRuntimeSessionResult, 1)
+	go func() {
+		result, _ := controller.DisconnectRuntimeSession(
+			context.Background(), started.Session.RoomID, started.Session.AgentSessionID,
+		)
+		disconnectDone <- result
+	}()
+	select {
+	case result := <-disconnectDone:
+		t.Fatalf("disconnect bypassed Exec lifecycle lock: %#v", result)
+	case <-time.After(50 * time.Millisecond):
+	}
+	close(adapter.validateRelease)
+	if err := <-execDone; err != nil {
+		t.Fatalf("Exec: %v", err)
+	}
+	if result := <-disconnectDone; !result.Disconnected {
+		t.Fatalf("disconnect result=%#v", result)
+	}
+	waitForSessionStatus(t, controller, started.Session.RoomID, started.Session.AgentSessionID, SessionStatusCanceled)
+}
+
 func TestControllerReleaseIdleLiveSessionsBoundsFailedCloseBudgetPerAdapter(t *testing.T) {
 	t.Parallel()
 
@@ -501,6 +748,7 @@ type releasableAdapter struct {
 	live                       map[string]bool
 	resumeCalls                int
 	releaseCalls               int
+	disconnectCalls            int
 	releaseErrByAgentSessionID map[string]error
 	closeCalls                 map[string]int
 	closeErrByAgentSessionID   map[string]error
@@ -510,6 +758,8 @@ type releasableAdapter struct {
 	validateRelease            chan struct{}
 	execStarted                chan string
 	execRelease                chan struct{}
+	startEntered               chan struct{}
+	startRelease               chan struct{}
 }
 
 func newReleasableAdapter() *releasableAdapter {
@@ -530,6 +780,16 @@ func (a *releasableAdapter) Start(_ context.Context, session Session) ([]activit
 	a.mu.Lock()
 	a.live[session.AgentSessionID] = true
 	a.mu.Unlock()
+	if a.startEntered != nil {
+		select {
+		case <-a.startEntered:
+		default:
+			close(a.startEntered)
+		}
+	}
+	if a.startRelease != nil {
+		<-a.startRelease
+	}
 	return []activityshared.Event{
 		newSessionActivityEvent(session, EventSessionStarted, SessionStatusReady, nil),
 	}, nil
@@ -588,10 +848,18 @@ func (a *releasableAdapter) ValidatePromptContent(Session, []PromptContentBlock)
 	return nil
 }
 
-func (a *releasableAdapter) Exec(_ context.Context, session Session, content []PromptContentBlock, _ string, turnID string, _ EventSink, _ CommandSnapshotSink) ([]activityshared.Event, error) {
+func (a *releasableAdapter) Exec(ctx context.Context, session Session, content []PromptContentBlock, _ string, turnID string, _ EventSink, _ CommandSnapshotSink) ([]activityshared.Event, error) {
+	return a.exec(ctx, session, content, turnID)
+}
+
+func (a *releasableAdapter) exec(ctx context.Context, session Session, content []PromptContentBlock, turnID string) ([]activityshared.Event, error) {
 	prompt := promptDisplayText(content)
 	a.execStarted <- prompt
-	<-a.execRelease
+	select {
+	case <-a.execRelease:
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
 	return []activityshared.Event{
 		newTurnActivityEvent(session, EventTurnCompleted, turnID, SessionStatusReady, "", "", nil),
 	}, nil
@@ -615,6 +883,17 @@ func (a *releasableAdapter) ReleaseLiveSession(_ context.Context, session Sessio
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	a.releaseCalls++
+	if err := a.releaseErrByAgentSessionID[session.AgentSessionID]; err != nil {
+		return err
+	}
+	a.live[session.AgentSessionID] = false
+	return nil
+}
+
+func (a *releasableAdapter) DisconnectLiveSession(_ context.Context, session Session) error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.disconnectCalls++
 	if err := a.releaseErrByAgentSessionID[session.AgentSessionID]; err != nil {
 		return err
 	}

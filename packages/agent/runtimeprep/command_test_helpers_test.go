@@ -124,7 +124,7 @@ func testCommandCapabilities() []CommandCapability {
 		command("computer.move-cursor", []string{"computer", "move-cursor"}, []string{"x", "y"}, nil),
 		command("computer.tool.list", []string{"computer", "tool", "list"}, nil, nil),
 		command("computer.tool.describe", []string{"computer", "tool", "describe"}, []string{"name"}, nil),
-		command("computer.tool.call", []string{"computer", "tool", "call"}, []string{"name", "arguments-json"}, nil),
+		command("computer.tool.call", []string{"computer", "tool", "call"}, []string{"name"}, []string{"arguments-json"}),
 	}
 	for index := range commands {
 		if commands[index].ID == "agent-context.agent.wait" {

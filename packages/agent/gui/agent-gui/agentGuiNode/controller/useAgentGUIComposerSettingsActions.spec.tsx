@@ -3,7 +3,7 @@ import {
   createAgentSessionEngine,
   normalizeAgentActivitySession,
   selectEngineSessionSettingsUpdate,
-  type AgentActivityComposerOptions
+  type AgentActivityComposerOptions,
 } from "@tutti-os/agent-activity-core";
 import { describe, expect, it, vi } from "vitest";
 import type { AgentGUIRuntime } from "../../../agentActivityRuntime";
@@ -21,26 +21,26 @@ describe("useAgentGUIComposerSettingsActions", () => {
       clock: { nowUnixMs: () => 1 },
       commandPort: createTestEngineCommandPort({ execute: vi.fn() }),
       identity: { origin: "test", workspaceId: "workspace-1" },
-      scheduler: { schedule: () => ({ cancel() {} }) }
+      scheduler: { schedule: () => ({ cancel() {} }) },
     });
     const data: AgentGUINodeData = {
       agentTargetId: "local:codex",
       lastActiveAgentSessionId: null,
-      provider: "codex"
+      provider: "codex",
     };
     const target = {
       agentTargetId: "local:codex",
       data,
       provider: "codex" as const,
-      targetId: "local:codex"
+      targetId: "local:codex",
     };
     const draftKey = "__agent_gui_node_defaults__:target:local:codex";
     const draftSettingsBySessionIdRef: {
       current: Record<string, AgentSessionComposerSettings>;
     } = {
       current: {
-        [draftKey]: { model: "gpt-5.6-sol" }
-      }
+        [draftKey]: { model: "gpt-5.6-sol" },
+      },
     };
     const onComposerDefaultsAuthorityReloadedRef =
       createComposerDefaultsAuthorityReconcilerRef();
@@ -48,19 +48,19 @@ describe("useAgentGUIComposerSettingsActions", () => {
     const onDataChange = vi.fn(
       (updater: (current: AgentGUINodeData) => AgentGUINodeData) => {
         persistedData = updater(persistedData);
-      }
+      },
     );
     const setDraftSettingsBySessionId = vi.fn();
     renderHook(() =>
       useAgentGUIComposerSettingsActions({
         activation: {
-          stateFor: vi.fn(() => "inactive" as const)
+          stateFor: vi.fn(() => "inactive" as const),
         } as unknown as ReturnType<typeof useAgentGUIActivation>,
         activeCanonicalComposerSettings: {},
         activeConversationIdRef: { current: null },
         activeEngineActiveTurn: null,
         agentActivityRuntime: {
-          getSnapshot: () => ({})
+          getSnapshot: () => ({}),
         } as unknown as AgentGUIRuntime,
         composerSupportPermissionModeChangeDeferred: false,
         dataRef: { current: data },
@@ -77,8 +77,8 @@ describe("useAgentGUIComposerSettingsActions", () => {
         sessionEngine,
         setDraftSettingsBySessionId,
         updateComposerSettingsRef: { current: vi.fn() },
-        workspaceId: "workspace-1"
-      })
+        workspaceId: "workspace-1",
+      }),
     );
     const options: AgentActivityComposerOptions = {
       provider: "codex",
@@ -88,8 +88,8 @@ describe("useAgentGUIComposerSettingsActions", () => {
         {
           value: "gpt-5.6-sol",
           label: "GPT-5.6-Sol",
-          requested: true
-        }
+          requested: true,
+        },
       ],
       reasoningEfforts: [],
       speeds: [],
@@ -101,23 +101,23 @@ describe("useAgentGUIComposerSettingsActions", () => {
         modelOptionsAuthoritative: true,
         refreshModelOptionsAfterSettings: false,
         prewarmDraftSession: false,
-        planModeExclusiveWithPermissionMode: false
+        planModeExclusiveWithPermissionMode: false,
       },
       loadedAtUnixMs: 1,
-      effectiveSettings: { model: "glm-5" }
+      effectiveSettings: { model: "glm-5" },
     };
 
     act(() => {
       onComposerDefaultsAuthorityReloadedRef.current.reconcileHomeDefaults(
         target,
-        options
+        options,
       );
     });
 
     expect(draftSettingsBySessionIdRef.current[draftKey]?.model).toBeNull();
     expect(setDraftSettingsBySessionId).toHaveBeenCalledOnce();
     expect(
-      persistedData.composerOverridesByAgentTargetId?.["local:codex"]?.model
+      persistedData.composerOverridesByAgentTargetId?.["local:codex"]?.model,
     ).toBeNull();
     expect(onDataChange).toHaveBeenCalledOnce();
   });
@@ -127,17 +127,18 @@ describe("useAgentGUIComposerSettingsActions", () => {
       clock: { nowUnixMs: () => 1 },
       commandPort: createTestEngineCommandPort({ execute: vi.fn() }),
       identity: { origin: "test", workspaceId: "workspace-1" },
-      scheduler: { schedule: () => ({ cancel() {} }) }
+      scheduler: { schedule: () => ({ cancel() {} }) },
     });
     const data: AgentGUINodeData = {
       agentTargetId: "local:codex",
       lastActiveAgentSessionId: null,
       provider: "codex",
       composerOverridesByAgentTargetId: {
-        "local:codex": { permissionModeId: "auto" }
-      }
+        "local:codex": { permissionModeId: "auto" },
+      },
     };
     const onDataChange = vi.fn();
+    const setDetailError = vi.fn();
     const onRememberComposerDefaults = vi.fn();
     const draftSettingsBySessionIdRef: {
       current: Record<string, AgentSessionComposerSettings>;
@@ -146,12 +147,12 @@ describe("useAgentGUIComposerSettingsActions", () => {
       agentTargetId: "local:codex",
       data,
       provider: "codex" as const,
-      targetId: "local:codex"
+      targetId: "local:codex",
     };
     const rendered = renderHook(() =>
       useAgentGUIComposerSettingsActions({
         activation: {
-          stateFor: vi.fn(() => "inactive" as const)
+          stateFor: vi.fn(() => "inactive" as const),
         } as unknown as ReturnType<typeof useAgentGUIActivation>,
         activeCanonicalComposerSettings: {},
         activeConversationIdRef: { current: null },
@@ -165,15 +166,15 @@ describe("useAgentGUIComposerSettingsActions", () => {
                 permissionConfig: {
                   configurable: true,
                   defaultValue: "auto",
-                  modes: [{ id: "auto", label: "Approve for me" }]
+                  modes: [{ id: "auto", label: "Approve for me" }],
                 },
                 reasoningConfigurable: false,
                 reasoningEfforts: [],
-                speeds: []
-              }
-            }
+                speeds: [],
+              },
+            },
           }),
-          trackDraftComposerSettingsChange: vi.fn()
+          trackDraftComposerSettingsChange: vi.fn(),
         } as unknown as AgentGUIRuntime,
         composerSupportPermissionModeChangeDeferred: false,
         dataRef: { current: data },
@@ -185,16 +186,17 @@ describe("useAgentGUIComposerSettingsActions", () => {
           createComposerDefaultsAuthorityReconcilerRef(),
         onDataChangeRef: { current: onDataChange },
         onRememberComposerDefaultsRef: {
-          current: onRememberComposerDefaults
+          current: onRememberComposerDefaults,
         },
         onShowMessageRef: { current: vi.fn() },
         reloadComposerOptionsForTarget: vi.fn(async () => {}),
         selectedComposerTargetDataRef: { current: target },
         sessionEngine,
         setDraftSettingsBySessionId: vi.fn(),
+        setDetailError,
         updateComposerSettingsRef: { current: vi.fn() },
-        workspaceId: "workspace-1"
-      })
+        workspaceId: "workspace-1",
+      }),
     );
 
     act(() => {
@@ -202,19 +204,19 @@ describe("useAgentGUIComposerSettingsActions", () => {
         model: "gpt-5-codex",
         permissionModeId: "full-access",
         reasoningEffort: "high",
-        speed: "fast"
+        speed: "fast",
       });
     });
 
     expect(
       draftSettingsBySessionIdRef.current[
         "__agent_gui_node_defaults__:target:local:codex"
-      ]
+      ],
     ).toMatchObject({
       model: "gpt-5-codex",
       permissionModeId: "full-access",
       reasoningEffort: "high",
-      speed: "fast"
+      speed: "fast",
     });
     expect(onRememberComposerDefaults).toHaveBeenCalledWith({
       agentTargetId: "local:codex",
@@ -223,17 +225,18 @@ describe("useAgentGUIComposerSettingsActions", () => {
         model: "gpt-5-codex",
         permissionModeId: "full-access",
         reasoningEffort: "high",
-        speed: "fast"
-      }
+        speed: "fast",
+      },
     });
     expect(onDataChange).not.toHaveBeenCalled();
+    expect(setDetailError).toHaveBeenCalledWith(null);
 
     act(() => {
       rendered.result.current.updateComposerSettings({
         model: null,
         permissionModeId: null,
         reasoningEffort: null,
-        speed: null
+        speed: null,
       });
     });
 
@@ -244,12 +247,12 @@ describe("useAgentGUIComposerSettingsActions", () => {
     expect(
       draftSettingsBySessionIdRef.current[
         "__agent_gui_node_defaults__:target:local:codex"
-      ]
+      ],
     ).toMatchObject({
       model: "gpt-5-codex",
       permissionModeId: "full-access",
       reasoningEffort: "high",
-      speed: "fast"
+      speed: "fast",
     });
     expect(onRememberComposerDefaults).toHaveBeenCalledTimes(1);
   });
@@ -260,7 +263,7 @@ describe("useAgentGUIComposerSettingsActions", () => {
       clock: { nowUnixMs: () => 1 },
       commandPort: createTestEngineCommandPort({ execute }),
       identity: { origin: "test", workspaceId: "workspace-1" },
-      scheduler: { schedule: () => ({ cancel() {} }) }
+      scheduler: { schedule: () => ({ cancel() {} }) },
     });
     sessionEngine.dispatch({
       type: "session/snapshotReceived",
@@ -275,35 +278,35 @@ describe("useAgentGUIComposerSettingsActions", () => {
           provider: "claude-code",
           settings: { permissionModeId: "dontAsk", planMode: false },
           title: "Historical session",
-          workspaceId: "workspace-1"
-        })
-      ]
+          workspaceId: "workspace-1",
+        }),
+      ],
     });
     sessionEngine.dispatch({
       agentSessionId: "session-1",
       commandId: "settings-1",
       settings: { permissionModeId: "acceptEdits" },
       type: "session/settingsUpdateRequested",
-      workspaceId: "workspace-1"
+      workspaceId: "workspace-1",
     });
     sessionEngine.dispatch({
       commandId: "settings-1",
       commandType: "session/updateSettings",
       correlationId: "session-1",
       outcome: "timedOut",
-      type: "engine/commandResult"
+      type: "engine/commandResult",
     });
     expect(
       selectEngineSessionSettingsUpdate(
         sessionEngine.getSnapshot(),
-        "session-1"
-      )?.status
+        "session-1",
+      )?.status,
     ).toBe("unknown");
 
     const data: AgentGUINodeData = {
       agentTargetId: "local:claude-code",
       lastActiveAgentSessionId: null,
-      provider: "claude-code"
+      provider: "claude-code",
     };
     const onDataChange = vi.fn();
     const onRememberComposerDefaults = vi.fn();
@@ -313,16 +316,16 @@ describe("useAgentGUIComposerSettingsActions", () => {
     } = { current: {} };
     const updateSessionSettings = vi.spyOn(
       sessionEngine,
-      "updateSessionSettings"
+      "updateSessionSettings",
     );
     const activeSettings: AgentSessionComposerSettings = {
       browserUse: true,
       computerUse: true,
       permissionModeId: "dontAsk",
-      planMode: false
+      planMode: false,
     };
     const activation = {
-      stateFor: vi.fn(() => "inactive" as const)
+      stateFor: vi.fn(() => "inactive" as const),
     } as unknown as ReturnType<typeof useAgentGUIActivation>;
     const rendered = renderHook(() =>
       useAgentGUIComposerSettingsActions({
@@ -331,7 +334,7 @@ describe("useAgentGUIComposerSettingsActions", () => {
         activeConversationIdRef: { current: "session-1" },
         activeEngineActiveTurn: null,
         agentActivityRuntime: {
-          getSnapshot: () => ({})
+          getSnapshot: () => ({}),
         } as unknown as AgentGUIRuntime,
         composerSupportPermissionModeChangeDeferred: false,
         dataRef: { current: data },
@@ -343,7 +346,7 @@ describe("useAgentGUIComposerSettingsActions", () => {
           createComposerDefaultsAuthorityReconcilerRef(),
         onDataChangeRef: { current: onDataChange },
         onRememberComposerDefaultsRef: {
-          current: onRememberComposerDefaults
+          current: onRememberComposerDefaults,
         },
         onShowMessageRef: { current: vi.fn() },
         reloadComposerOptionsForTarget: vi.fn(async () => {}),
@@ -352,31 +355,31 @@ describe("useAgentGUIComposerSettingsActions", () => {
             agentTargetId: "local:claude-code",
             data,
             provider: "claude-code",
-            targetId: "local:claude-code"
-          }
+            targetId: "local:claude-code",
+          },
         },
         sessionEngine,
         setDraftSettingsBySessionId,
         updateComposerSettingsRef: { current: vi.fn() },
-        workspaceId: "workspace-1"
-      })
+        workspaceId: "workspace-1",
+      }),
     );
 
     act(() => {
       rendered.result.current.updateComposerSettings({
-        permissionModeId: "acceptEdits"
+        permissionModeId: "acceptEdits",
       });
     });
 
     expect(updateSessionSettings).toHaveBeenCalledWith({
       agentSessionId: "session-1",
-      settings: { permissionModeId: "acceptEdits" }
+      settings: { permissionModeId: "acceptEdits" },
     });
     expect(execute).toHaveBeenCalledTimes(2);
     expect(onRememberComposerDefaults).toHaveBeenCalledWith({
       agentTargetId: "local:claude-code",
       provider: "claude-code",
-      defaults: { permissionModeId: "acceptEdits" }
+      defaults: { permissionModeId: "acceptEdits" },
     });
     expect(draftSettingsBySessionIdRef.current).toEqual({});
     expect(setDraftSettingsBySessionId).not.toHaveBeenCalled();
@@ -388,18 +391,18 @@ describe("useAgentGUIComposerSettingsActions", () => {
       clock: { nowUnixMs: () => 1 },
       commandPort: createTestEngineCommandPort({ execute: vi.fn() }),
       identity: { origin: "test", workspaceId: "workspace-1" },
-      scheduler: { schedule: () => ({ cancel() {} }) }
+      scheduler: { schedule: () => ({ cancel() {} }) },
     });
     const data: AgentGUINodeData = {
       agentTargetId: "local:opencode",
       lastActiveAgentSessionId: null,
-      provider: "opencode"
+      provider: "opencode",
     };
     const target = {
       agentTargetId: "local:opencode",
       data,
       provider: "opencode" as const,
-      targetId: "local:opencode"
+      targetId: "local:opencode",
     };
     const first = deferred<AgentGUIRememberComposerDefaultsResult>();
     const second = deferred<AgentGUIRememberComposerDefaultsResult>();
@@ -423,26 +426,26 @@ describe("useAgentGUIComposerSettingsActions", () => {
         const authorityRead =
           onComposerDefaultsAuthorityReloadedRef.current.prepareRead(
             reloadInput.target,
-            reloadInput.settings
+            reloadInput.settings,
           );
         onComposerDefaultsAuthorityReloadedRef.current.reloaded(
           authorityRead.receipt,
           {
-            effectiveSettings: reloadInput.settings
-          } as AgentActivityComposerOptions
+            effectiveSettings: reloadInput.settings,
+          } as AgentActivityComposerOptions,
         );
-      }
+      },
     );
     const rendered = renderHook(() =>
       useAgentGUIComposerSettingsActions({
         activation: {
-          stateFor: vi.fn(() => "inactive" as const)
+          stateFor: vi.fn(() => "inactive" as const),
         } as unknown as ReturnType<typeof useAgentGUIActivation>,
         activeCanonicalComposerSettings: {},
         activeConversationIdRef: { current: null },
         activeEngineActiveTurn: null,
         agentActivityRuntime: {
-          getSnapshot: () => ({})
+          getSnapshot: () => ({}),
         } as unknown as AgentGUIRuntime,
         composerSupportPermissionModeChangeDeferred: false,
         dataRef: { current: data },
@@ -453,7 +456,7 @@ describe("useAgentGUIComposerSettingsActions", () => {
         onComposerDefaultsAuthorityReloadedRef,
         onDataChangeRef: { current: vi.fn() },
         onRememberComposerDefaultsRef: {
-          current: onRememberComposerDefaults
+          current: onRememberComposerDefaults,
         },
         onShowMessageRef: { current: vi.fn() },
         reloadComposerOptionsForTarget,
@@ -461,29 +464,29 @@ describe("useAgentGUIComposerSettingsActions", () => {
         sessionEngine,
         setDraftSettingsBySessionId,
         updateComposerSettingsRef: { current: vi.fn() },
-        workspaceId: "workspace-1"
-      })
+        workspaceId: "workspace-1",
+      }),
     );
 
     act(() => {
       rendered.result.current.updateComposerSettings({
-        permissionModeId: "ask"
+        permissionModeId: "ask",
       });
       rendered.result.current.updateComposerSettings({
         model: "opencode/new-model",
         permissionModeId: "full-access",
         reasoningEffort: "high",
-        speed: "fast"
+        speed: "fast",
       });
       rendered.result.current.updateComposerSettings({
-        permissionModeId: "ask"
+        permissionModeId: "ask",
       });
     });
 
     await act(async () => {
       first.resolve({
         acknowledgedFields: [],
-        supersededFields: ["permissionModeId"]
+        supersededFields: ["permissionModeId"],
       });
       await first.promise;
     });
@@ -491,14 +494,14 @@ describe("useAgentGUIComposerSettingsActions", () => {
     expect(
       draftSettingsBySessionIdRef.current[
         "__agent_gui_node_defaults__:target:local:opencode"
-      ]?.permissionModeId
+      ]?.permissionModeId,
     ).toBe("ask");
     setDraftSettingsBySessionId.mockClear();
 
     await act(async () => {
       second.resolve({
         acknowledgedFields: ["model", "reasoningEffort", "speed"],
-        supersededFields: ["permissionModeId"]
+        supersededFields: ["permissionModeId"],
       });
       await second.promise;
     });
@@ -507,14 +510,14 @@ describe("useAgentGUIComposerSettingsActions", () => {
         model: "opencode/new-model",
         permissionModeId: "ask",
         reasoningEffort: "high",
-        speed: "fast"
+        speed: "fast",
       },
-      target
+      target,
     });
     expect(
       draftSettingsBySessionIdRef.current[
         "__agent_gui_node_defaults__:target:local:opencode"
-      ]
+      ],
     ).toEqual({ permissionModeId: "ask" });
 
     reloadComposerOptionsForTarget.mockClear();
@@ -522,13 +525,13 @@ describe("useAgentGUIComposerSettingsActions", () => {
     await act(async () => {
       third.resolve({
         acknowledgedFields: ["permissionModeId"],
-        supersededFields: []
+        supersededFields: [],
       });
       await third.promise;
     });
     expect(reloadComposerOptionsForTarget).toHaveBeenCalledWith({
       settings: { permissionModeId: "ask" },
-      target
+      target,
     });
     expect(draftSettingsBySessionIdRef.current).toEqual({});
     expect(setDraftSettingsBySessionId).toHaveBeenCalledTimes(1);
@@ -539,18 +542,18 @@ describe("useAgentGUIComposerSettingsActions", () => {
       clock: { nowUnixMs: () => 1 },
       commandPort: createTestEngineCommandPort({ execute: vi.fn() }),
       identity: { origin: "test", workspaceId: "workspace-1" },
-      scheduler: { schedule: () => ({ cancel() {} }) }
+      scheduler: { schedule: () => ({ cancel() {} }) },
     });
     const data: AgentGUINodeData = {
       agentTargetId: "local:opencode",
       lastActiveAgentSessionId: null,
-      provider: "opencode"
+      provider: "opencode",
     };
     const target = {
       agentTargetId: "local:opencode",
       data,
       provider: "opencode" as const,
-      targetId: "local:opencode"
+      targetId: "local:opencode",
     };
     const acknowledgement = deferred<AgentGUIRememberComposerDefaultsResult>();
     const draftSettingsBySessionIdRef: {
@@ -565,13 +568,13 @@ describe("useAgentGUIComposerSettingsActions", () => {
     const rendered = renderHook(() =>
       useAgentGUIComposerSettingsActions({
         activation: {
-          stateFor: vi.fn(() => "inactive" as const)
+          stateFor: vi.fn(() => "inactive" as const),
         } as unknown as ReturnType<typeof useAgentGUIActivation>,
         activeCanonicalComposerSettings: {},
         activeConversationIdRef: { current: null },
         activeEngineActiveTurn: null,
         agentActivityRuntime: {
-          getSnapshot: () => ({})
+          getSnapshot: () => ({}),
         } as unknown as AgentGUIRuntime,
         composerSupportPermissionModeChangeDeferred: false,
         dataRef: { current: data },
@@ -582,7 +585,7 @@ describe("useAgentGUIComposerSettingsActions", () => {
         onComposerDefaultsAuthorityReloadedRef,
         onDataChangeRef: { current: vi.fn() },
         onRememberComposerDefaultsRef: {
-          current: vi.fn(() => acknowledgement.promise)
+          current: vi.fn(() => acknowledgement.promise),
         },
         onShowMessageRef: { current: onShowMessage },
         reloadComposerOptionsForTarget,
@@ -590,13 +593,13 @@ describe("useAgentGUIComposerSettingsActions", () => {
         sessionEngine,
         setDraftSettingsBySessionId: vi.fn(),
         updateComposerSettingsRef: { current: vi.fn() },
-        workspaceId: "workspace-1"
-      })
+        workspaceId: "workspace-1",
+      }),
     );
 
     act(() => {
       rendered.result.current.updateComposerSettings({
-        permissionModeId: "full-access"
+        permissionModeId: "full-access",
       });
     });
     const preAckRead =
@@ -604,7 +607,7 @@ describe("useAgentGUIComposerSettingsActions", () => {
         target,
         draftSettingsBySessionIdRef.current[
           "__agent_gui_node_defaults__:target:local:opencode"
-        ] ?? {}
+        ] ?? {},
       );
     expect(preAckRead.receipt).toBeNull();
     act(() => {
@@ -612,19 +615,19 @@ describe("useAgentGUIComposerSettingsActions", () => {
       onComposerDefaultsAuthorityReloadedRef.current.reloaded(
         preAckRead.receipt,
         {
-          effectiveSettings: { permissionModeId: "full-access" }
-        } as AgentActivityComposerOptions
+          effectiveSettings: { permissionModeId: "full-access" },
+        } as AgentActivityComposerOptions,
       );
     });
     expect(
       draftSettingsBySessionIdRef.current[
         "__agent_gui_node_defaults__:target:local:opencode"
-      ]
+      ],
     ).toEqual({ permissionModeId: "full-access" });
     await act(async () => {
       acknowledgement.resolve({
         acknowledgedFields: ["permissionModeId"],
-        supersededFields: []
+        supersededFields: [],
       });
       await acknowledgement.promise;
     });
@@ -632,7 +635,7 @@ describe("useAgentGUIComposerSettingsActions", () => {
     expect(
       draftSettingsBySessionIdRef.current[
         "__agent_gui_node_defaults__:target:local:opencode"
-      ]
+      ],
     ).toEqual({ permissionModeId: "full-access" });
     expect(onShowMessage).not.toHaveBeenCalled();
 
@@ -641,40 +644,40 @@ describe("useAgentGUIComposerSettingsActions", () => {
         target,
         draftSettingsBySessionIdRef.current[
           "__agent_gui_node_defaults__:target:local:opencode"
-        ] ?? {}
+        ] ?? {},
       );
     expect(authorityRead).toMatchObject({
       force: true,
       receipt: {
         draftKey: "__agent_gui_node_defaults__:target:local:opencode",
         fields: {
-          permissionModeId: { value: "full-access" }
-        }
+          permissionModeId: { value: "full-access" },
+        },
       },
-      settings: {}
+      settings: {},
     });
     act(() => {
       onComposerDefaultsAuthorityReloadedRef.current.reloaded(
         authorityRead.receipt,
-        {} as AgentActivityComposerOptions
+        {} as AgentActivityComposerOptions,
       );
     });
     expect(
       draftSettingsBySessionIdRef.current[
         "__agent_gui_node_defaults__:target:local:opencode"
-      ]
+      ],
     ).toEqual({ permissionModeId: "full-access" });
     expect(
       onComposerDefaultsAuthorityReloadedRef.current.prepareRead(
         target,
         draftSettingsBySessionIdRef.current[
           "__agent_gui_node_defaults__:target:local:opencode"
-        ] ?? {}
-      )
+        ] ?? {},
+      ),
     ).toEqual({
       force: false,
       receipt: null,
-      settings: { permissionModeId: "full-access" }
+      settings: { permissionModeId: "full-access" },
     });
   });
 
@@ -683,18 +686,18 @@ describe("useAgentGUIComposerSettingsActions", () => {
       clock: { nowUnixMs: () => 1 },
       commandPort: createTestEngineCommandPort({ execute: vi.fn() }),
       identity: { origin: "test", workspaceId: "workspace-1" },
-      scheduler: { schedule: () => ({ cancel() {} }) }
+      scheduler: { schedule: () => ({ cancel() {} }) },
     });
     const data: AgentGUINodeData = {
       agentTargetId: "local:opencode",
       lastActiveAgentSessionId: null,
-      provider: "opencode"
+      provider: "opencode",
     };
     const target = {
       agentTargetId: "local:opencode",
       data,
       provider: "opencode" as const,
-      targetId: "local:opencode"
+      targetId: "local:opencode",
     };
     const draftKey = "__agent_gui_node_defaults__:target:local:opencode";
     const draftSettingsBySessionIdRef: {
@@ -710,7 +713,7 @@ describe("useAgentGUIComposerSettingsActions", () => {
         modelOptionsAuthoritative: true,
         refreshModelOptionsAfterSettings: false,
         prewarmDraftSession: false,
-        planModeExclusiveWithPermissionMode: false
+        planModeExclusiveWithPermissionMode: false,
       },
       capabilities: null,
       effectiveSettings: { model: "opencode/model-a" },
@@ -721,7 +724,7 @@ describe("useAgentGUIComposerSettingsActions", () => {
       reasoningConfigurable: false,
       reasoningEfforts: [],
       skills: [],
-      speeds: []
+      speeds: [],
     } satisfies AgentActivityComposerOptions;
     const reloadComposerOptionsForTarget = vi.fn(
       async (reloadInput: {
@@ -731,30 +734,30 @@ describe("useAgentGUIComposerSettingsActions", () => {
         const authorityRead =
           onComposerDefaultsAuthorityReloadedRef.current.prepareRead(
             reloadInput.target,
-            reloadInput.settings
+            reloadInput.settings,
           );
         // Match the production ordering: generic option sanitization runs
         // before the authority receipt is settled.
         onComposerDefaultsAuthorityReloadedRef.current.reconcileHomeDefaults(
           reloadInput.target,
-          staleOptions
+          staleOptions,
         );
         onComposerDefaultsAuthorityReloadedRef.current.reloaded(
           authorityRead.receipt,
-          staleOptions
+          staleOptions,
         );
-      }
+      },
     );
     const rendered = renderHook(() =>
       useAgentGUIComposerSettingsActions({
         activation: {
-          stateFor: vi.fn(() => "inactive" as const)
+          stateFor: vi.fn(() => "inactive" as const),
         } as unknown as ReturnType<typeof useAgentGUIActivation>,
         activeCanonicalComposerSettings: {},
         activeConversationIdRef: { current: null },
         activeEngineActiveTurn: null,
         agentActivityRuntime: {
-          getSnapshot: () => ({})
+          getSnapshot: () => ({}),
         } as unknown as AgentGUIRuntime,
         composerSupportPermissionModeChangeDeferred: false,
         dataRef: { current: data },
@@ -765,7 +768,7 @@ describe("useAgentGUIComposerSettingsActions", () => {
         onComposerDefaultsAuthorityReloadedRef,
         onDataChangeRef: { current: onDataChange },
         onRememberComposerDefaultsRef: {
-          current: vi.fn(() => acknowledgement.promise)
+          current: vi.fn(() => acknowledgement.promise),
         },
         onShowMessageRef: { current: vi.fn() },
         reloadComposerOptionsForTarget,
@@ -773,41 +776,41 @@ describe("useAgentGUIComposerSettingsActions", () => {
         sessionEngine,
         setDraftSettingsBySessionId: vi.fn(),
         updateComposerSettingsRef: { current: vi.fn() },
-        workspaceId: "workspace-1"
-      })
+        workspaceId: "workspace-1",
+      }),
     );
 
     act(() => {
       rendered.result.current.updateComposerSettings({
-        model: "opencode/model-b"
+        model: "opencode/model-b",
       });
     });
     await act(async () => {
       acknowledgement.resolve({
         acknowledgedFields: ["model"],
-        supersededFields: []
+        supersededFields: [],
       });
       await acknowledgement.promise;
     });
 
     expect(reloadComposerOptionsForTarget).toHaveBeenCalledOnce();
     expect(draftSettingsBySessionIdRef.current[draftKey]?.model).toBe(
-      "opencode/model-b"
+      "opencode/model-b",
     );
     expect(onDataChange).not.toHaveBeenCalled();
     expect(
       onComposerDefaultsAuthorityReloadedRef.current.prepareRead(
         target,
-        draftSettingsBySessionIdRef.current[draftKey] ?? {}
-      )
+        draftSettingsBySessionIdRef.current[draftKey] ?? {},
+      ),
     ).toMatchObject({
       force: true,
       receipt: {
         fields: {
-          model: { value: "opencode/model-b" }
-        }
+          model: { value: "opencode/model-b" },
+        },
       },
-      settings: {}
+      settings: {},
     });
   });
 
@@ -816,30 +819,30 @@ describe("useAgentGUIComposerSettingsActions", () => {
       clock: { nowUnixMs: () => 1 },
       commandPort: createTestEngineCommandPort({ execute: vi.fn() }),
       identity: { origin: "test", workspaceId: "workspace-1" },
-      scheduler: { schedule: () => ({ cancel() {} }) }
+      scheduler: { schedule: () => ({ cancel() {} }) },
     });
     const data: AgentGUINodeData = {
       agentTargetId: "local:codex",
       lastActiveAgentSessionId: null,
-      provider: "codex"
+      provider: "codex",
     };
     const target = {
       agentTargetId: "local:codex",
       data,
       provider: "codex" as const,
-      targetId: "local:codex"
+      targetId: "local:codex",
     };
     const loadDraftComposerOptions = vi.fn();
     const rendered = renderHook(() =>
       useAgentGUIComposerSettingsActions({
         activation: {
-          stateFor: vi.fn(() => "inactive" as const)
+          stateFor: vi.fn(() => "inactive" as const),
         } as unknown as ReturnType<typeof useAgentGUIActivation>,
         activeCanonicalComposerSettings: {},
         activeConversationIdRef: { current: null },
         activeEngineActiveTurn: null,
         agentActivityRuntime: {
-          getSnapshot: () => ({})
+          getSnapshot: () => ({}),
         } as unknown as AgentGUIRuntime,
         composerSupportPermissionModeChangeDeferred: false,
         dataRef: { current: data },
@@ -857,8 +860,8 @@ describe("useAgentGUIComposerSettingsActions", () => {
         sessionEngine,
         setDraftSettingsBySessionId: vi.fn(),
         updateComposerSettingsRef: { current: vi.fn() },
-        workspaceId: "workspace-1"
-      })
+        workspaceId: "workspace-1",
+      }),
     );
 
     act(() => {
@@ -877,11 +880,11 @@ function createComposerDefaultsAuthorityReconcilerRef(): {
       prepareRead: vi.fn((_target, settings) => ({
         force: false,
         receipt: null,
-        settings
+        settings,
       })),
       reconcileHomeDefaults: vi.fn(),
-      reloaded: vi.fn()
-    }
+      reloaded: vi.fn(),
+    },
   };
 }
 

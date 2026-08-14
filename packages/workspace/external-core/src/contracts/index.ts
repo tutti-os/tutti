@@ -24,8 +24,7 @@ export const TUTTI_EXTERNAL_AT_PROVIDER_IDS = {
   agentTarget: "agent-target",
   file: "file",
   workspaceApp: "workspace-app",
-  workspaceIssue: "workspace-issue",
-  workspaceModel: "workspace-model"
+  workspaceIssue: "workspace-issue"
 } as const;
 
 export type TuttiExternalAtProviderId =
@@ -37,7 +36,6 @@ export const tuttiExternalAtProviderIds = [
   TUTTI_EXTERNAL_AT_PROVIDER_IDS.workspaceApp,
   TUTTI_EXTERNAL_AT_PROVIDER_IDS.agentTarget,
   TUTTI_EXTERNAL_AT_PROVIDER_IDS.agentSession,
-  TUTTI_EXTERNAL_AT_PROVIDER_IDS.workspaceModel,
   TUTTI_EXTERNAL_AT_PROVIDER_IDS.agentGeneratedFile
 ] as const satisfies readonly TuttiExternalAtProviderId[];
 

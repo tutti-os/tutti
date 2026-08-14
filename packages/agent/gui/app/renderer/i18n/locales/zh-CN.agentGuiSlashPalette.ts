@@ -8,7 +8,7 @@ export const zhCNAgentGuiSlashPalette = {
   slashPalettePluginsGroup: "插件",
   slashPaletteConnectorsGroup: "连接器",
   slashPaletteConnectorConnected: "已连接",
-  slashPaletteConnectorNotConnected: "连接",
+  slashPaletteConnectorNotConnected: "安装",
   slashPaletteConnectorUnsupported: "不支持",
   slashPaletteMcpGroup: "MCP"
 } as const;

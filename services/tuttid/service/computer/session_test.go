@@ -3,6 +3,7 @@ package computer
 import (
 	"encoding/json"
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -34,6 +35,20 @@ func TestParseToolResultPreservesStructuredContent(t *testing.T) {
 	}
 	if !reflect.DeepEqual(result.StructuredContent, want) {
 		t.Fatalf("structured content = %#v, want %#v", result.StructuredContent, want)
+	}
+}
+
+func TestToolResultErrorNormalizesContradictoryWindowsSuccessStatus(t *testing.T) {
+	err := toolResultError(ToolResult{IsError: true, Text: "操作成功完成。 (0x00000000)"})
+	if err == nil || !strings.Contains(err.Error(), "inconsistent result") {
+		t.Fatalf("error = %v", err)
+	}
+}
+
+func TestToolResultErrorExplainsProtectedAuthorizationTarget(t *testing.T) {
+	err := toolResultError(ToolResult{IsError: true, Text: "Driver refuses to automate its own authorization process"})
+	if err == nil || !strings.Contains(err.Error(), "protected authorization UI") {
+		t.Fatalf("error = %v", err)
 	}
 }
 

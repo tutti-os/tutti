@@ -170,6 +170,55 @@ func (a *standardACPAdapter) ReleaseLiveSession(_ context.Context, session Sessi
 	return nil
 }
 
+// DisconnectLiveSession settles pending interactions and releases every
+// physical handle owned by one runtime Session without sending session/close.
+// Failed transport closes remain owned and are retried by the next idempotent
+// disconnect instead of being forgotten.
+func (a *standardACPAdapter) DisconnectLiveSession(_ context.Context, session Session) error {
+	if a == nil || a.transport == nil {
+		return nil
+	}
+	agentSessionID := strings.TrimSpace(session.AgentSessionID)
+	unlockLifecycle := a.lockSessionLifecycle(agentSessionID)
+	defer unlockLifecycle()
+	a.rejectPendingApprovals(agentSessionID, ErrSessionDisconnected)
+
+	a.mu.Lock()
+	current := a.sessions[agentSessionID]
+	if current != nil && current.client != nil {
+		current.releasing = true
+		current.client.SetMessageHandler(nil)
+	}
+	a.mu.Unlock()
+	if current != nil && current.client != nil {
+		if err := current.client.Close(); err != nil {
+			a.mu.Lock()
+			if a.sessions[agentSessionID] == current {
+				current.releasing = false
+				current.releaseFailed = true
+			}
+			a.mu.Unlock()
+			a.logACPCloseDiagnostics("workspace_disconnect.transport_close.failed", session, current, err)
+			return err
+		}
+		a.mu.Lock()
+		if a.sessions[agentSessionID] == current {
+			delete(a.sessions, agentSessionID)
+		}
+		a.mu.Unlock()
+		a.logACPCloseDiagnostics("workspace_disconnect.succeeded", session, current, nil)
+	}
+	for {
+		attempted, err := a.retryOneTrackedSessionLocked(agentSessionID)
+		if err != nil {
+			return err
+		}
+		if !attempted {
+			return nil
+		}
+	}
+}
+
 func (a *standardACPAdapter) Close(ctx context.Context, session Session) error {
 	if a == nil || a.transport == nil {
 		return nil
