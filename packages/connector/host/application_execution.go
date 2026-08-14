@@ -1,3 +1,5 @@
+//revive:disable:file-length-limit
+
 package host
 
 import (
@@ -9,13 +11,40 @@ import (
 	"time"
 )
 
-func (application *Application) executeRefresh(ctx context.Context, operation Operation) error {
-	if _, err := application.updateOperationStage(ctx, operation.OperationID, OperationStageRefreshing, nil); err != nil {
-		return err
+// SyncCatalog replaces the complete local Last-Known-Good snapshot without
+// entering the connector operation/claim subsystem. Catalog has its own
+// revision and serialization boundary; a failed pull leaves the previous
+// snapshot and connector projection intact.
+func (application *Application) SyncCatalog(ctx context.Context) error {
+	application.catalogMu.Lock()
+	if current := application.catalogSync; current != nil {
+		application.catalogMu.Unlock()
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-current.done:
+			return current.err
+		}
 	}
+	execution := &catalogSyncExecution{done: make(chan struct{})}
+	application.catalogSync = execution
+	application.catalogMu.Unlock()
+
+	execution.err = application.syncCatalogOnce(ctx)
+	application.catalogMu.Lock()
+	application.catalogSync = nil
+	close(execution.done)
+	application.catalogMu.Unlock()
+	return execution.err
+}
+
+func (application *Application) syncCatalogOnce(ctx context.Context) error {
 	catalog, err := application.config.CatalogSource.Refresh(ctx)
 	if err != nil {
 		return preserveCatalogSourceError("connector catalog refresh failed", err)
+	}
+	if err := validateCatalogSnapshot(catalog); err != nil {
+		return err
 	}
 	for _, release := range catalog.Releases {
 		if err := ValidateReleaseShape(release); err != nil {
@@ -25,11 +54,15 @@ func (application *Application) executeRefresh(ctx context.Context, operation Op
 			return invalidManifest("active catalog releases must have available status", nil)
 		}
 	}
-	err = application.config.Repository.Transaction(ctx, func(tx Transaction) error {
-		storedOperation, err := tx.Operation(operation.OperationID)
-		if err != nil {
-			return err
-		}
+	current, currentErr := application.config.Repository.CatalogSnapshot(ctx)
+	if currentErr == nil && current.CatalogRevision == catalog.CatalogRevision &&
+		current.SnapshotDigest == catalog.SnapshotDigest && current.SourceRevision == catalog.SourceRevision {
+		return nil
+	}
+	if currentErr != nil && !errors.Is(currentErr, ErrNotFound) {
+		return currentErr
+	}
+	return application.config.Repository.Transaction(ctx, func(tx Transaction) error {
 		existing, err := tx.Connectors()
 		if err != nil {
 			return err
@@ -48,12 +81,12 @@ func (application *Application) executeRefresh(ctx context.Context, operation Op
 			}
 			connector.Authorization = authorizationForManifest(connector.Authorization, release.Manifest.AuthorizationKind)
 			connector.Release = release
-			compatibility, err := application.compatibilityFor(release.Manifest)
-			if err != nil {
-				return err
+			connector.Security = securityForInstallation(catalog, connector.Installation)
+			compatibility, compatibilityErr := application.compatibilityFor(release.Manifest)
+			if compatibilityErr != nil {
+				return compatibilityErr
 			}
 			connector.Compatibility = compatibility
-			connector.Revision = revision
 			if err := tx.SaveConnector(connector); err != nil {
 				return err
 			}
@@ -68,34 +101,70 @@ func (application *Application) executeRefresh(ctx context.Context, operation Op
 				}
 				continue
 			}
-			connector.Compatibility = Compatibility{
-				State:  CompatibilityStateUnsupportedVersion,
-				Reason: "removed_from_catalog",
-			}
-			connector.Revision = revision
+			connector.Compatibility = Compatibility{State: CompatibilityStateUnsupportedVersion, Reason: "removed_from_catalog"}
+			connector.Security = securityForInstallation(catalog, connector.Installation)
 			if err := tx.SaveConnector(connector); err != nil {
 				return err
 			}
 		}
-		storedOperation.State = OperationStateCompleted
-		storedOperation.Stage = OperationStageCompleted
-		storedOperation.UpdatedAt = application.config.Now().UTC()
-		if err := tx.SaveOperation(storedOperation); err != nil {
+		if err := tx.SaveCatalogRevision(catalog.SourceRevision); err != nil {
 			return err
 		}
-		if err := tx.SaveCatalogRevision(catalog.SourceRevision); err != nil {
+		if err := tx.SaveCatalogSnapshot(catalog); err != nil {
 			return err
 		}
 		if err := tx.SetCatalogState(CatalogStateReady); err != nil {
 			return err
 		}
-		return tx.EnqueueConnectorMarketChanged(ChangedEvent{
-			OperationID: storedOperation.OperationID,
-			Revision:    revision,
-		})
+		return tx.EnqueueConnectorMarketChanged(ChangedEvent{Revision: revision})
 	})
-	if err != nil {
-		return err
+}
+
+func validateCatalogSnapshot(catalog CatalogSnapshot) error {
+	if catalog.CatalogRevision == 0 || !remoteBindingContractHashPattern.MatchString(catalog.SnapshotDigest) ||
+		strings.TrimSpace(catalog.SourceRevision) == "" {
+		return invalidManifest("connector catalog snapshot identity is invalid", nil)
+	}
+	categories := make(map[string]struct{}, len(catalog.Categories))
+	for _, category := range catalog.Categories {
+		if strings.TrimSpace(category.CategoryID) == "" ||
+			(category.Kind != "category" && category.Kind != "featured") || category.ItemCount < 0 {
+			return invalidManifest("connector catalog snapshot category is invalid", nil)
+		}
+		if _, duplicate := categories[category.CategoryID]; duplicate {
+			return invalidManifest("connector catalog snapshot contains duplicate categories", nil)
+		}
+		categories[category.CategoryID] = struct{}{}
+	}
+	releases := make(map[string]Release, len(catalog.Releases))
+	for _, release := range catalog.Releases {
+		if err := ValidateReleaseShape(release); err != nil {
+			return err
+		}
+		if _, duplicate := releases[release.ConnectorKey]; duplicate {
+			return invalidManifest("connector catalog snapshot contains conflicting active releases", nil)
+		}
+		releases[release.ConnectorKey] = release
+	}
+	for _, entry := range catalog.Entries {
+		if _, exists := categories[entry.CategoryID]; !exists {
+			return invalidManifest("connector catalog snapshot entry category is unknown", nil)
+		}
+		if release, exists := releases[entry.Release.ConnectorKey]; !exists || release.ReleaseDigest != entry.Release.ReleaseDigest {
+			return invalidManifest("connector catalog snapshot entry release is unknown", nil)
+		}
+	}
+	revocations := make(map[string]struct{}, len(catalog.Revocations))
+	for _, revocation := range catalog.Revocations {
+		if !remoteBindingContractHashPattern.MatchString(revocation.ArtifactDigest) ||
+			strings.TrimSpace(revocation.RevocationID) == "" || strings.TrimSpace(revocation.ReasonCode) == "" ||
+			revocation.EffectiveAt.IsZero() {
+			return invalidManifest("connector catalog snapshot revocation is invalid", nil)
+		}
+		if _, duplicate := revocations[revocation.RevocationID]; duplicate {
+			return invalidManifest("connector catalog snapshot contains duplicate revocations", nil)
+		}
+		revocations[revocation.RevocationID] = struct{}{}
 	}
 	return nil
 }
@@ -105,6 +174,9 @@ func (application *Application) executeInstall(ctx context.Context, operation Op
 	if err != nil {
 		return err
 	}
+	if err := application.rejectRevokedRelease(ctx, release); err != nil {
+		return err
+	}
 	if err := application.config.ImplementationRegistry.Validate(release.Manifest); err != nil {
 		return err
 	}
@@ -112,7 +184,7 @@ func (application *Application) executeInstall(ctx context.Context, operation Op
 	if err != nil {
 		return err
 	}
-	installed, installErr := application.config.ReleaseInstallations.InstallRelease(ctx, InstallReleaseRequest{
+	installed, installErr := application.config.ReleaseInstallations.PrepareReleaseInstallation(ctx, PrepareReleaseInstallationRequest{
 		OperationID: operation.OperationID,
 		Scope:       operation.Scope,
 		Generation:  operation.HostGeneration,
@@ -124,6 +196,9 @@ func (application *Application) executeInstall(ctx context.Context, operation Op
 	if err := validateReleaseInstallationReceipt(operation, release, installed); err != nil {
 		return err
 	}
+	if err := application.rejectRevokedRelease(ctx, release); err != nil {
+		return err
+	}
 	operation, err = application.updateOperationStage(
 		ctx,
 		operation.OperationID,
@@ -133,26 +208,48 @@ func (application *Application) executeInstall(ctx context.Context, operation Op
 	if err != nil {
 		return err
 	}
-	// The physical owner must publish the verified installation before the
-	// repository projects installed. If desktopd crashes after this commit but
-	// before the transaction below, bootstrap calibration sees an extra physical
-	// installation and the user can safely retry. The inverse ordering can leave
-	// durable installed truth pointing at an uncommitted VM candidate.
-	if err := application.config.ReleaseInstallations.CommitReleaseInstallation(ctx, CommitReleaseInstallationRequest{
+	// Activate switches execution to the candidate but must retain the previous
+	// active release as a rollback slot. The operation claim remains held until
+	// repository projection and Finalize both succeed.
+	transition := ReleaseInstallationTransitionRequest{
 		OperationID: operation.OperationID, Scope: operation.Scope, Generation: operation.HostGeneration,
 		Release: release, Receipt: installed,
-	}); err != nil {
-		return NewDomainError(ErrorCodeInstallFailed, "connector release installation commit failed", true, err)
 	}
-	if err := application.completeConnectorOperation(ctx, operation.OperationID, func(connector Connector) Connector {
+	if err := application.config.ReleaseInstallations.ActivateReleaseInstallation(ctx, transition); err != nil {
+		return NewDomainError(ErrorCodeInstallFailed, "connector release installation activation failed", true, err)
+	}
+	if _, err := application.updateOperationStage(ctx, operation.OperationID, OperationStageActivated, nil); err != nil {
+		return err
+	}
+	if err := application.projectConnectorOperation(ctx, operation.OperationID, func(connector Connector) Connector {
 		connector.Installation = Installation{
-			State:                  InstallationStateInstalled,
-			InstalledVersion:       release.Version,
-			InstalledReleaseID:     release.ReleaseID,
-			InstalledReleaseDigest: release.ReleaseDigest,
+			State:                   InstallationStateInstalled,
+			InstalledVersion:        release.Version,
+			InstalledReleaseID:      release.ReleaseID,
+			InstalledReleaseDigest:  release.ReleaseDigest,
+			InstalledArtifactSHA256: release.Artifact.SHA256,
 		}
+		connector.Security = Security{State: SecurityStateAllowed}
 		return connector
 	}); err != nil {
+		projected, inspectErr := application.installationProjectionMatches(ctx, operation.ConnectorKey, release.ReleaseDigest)
+		if inspectErr != nil {
+			return OutcomeUnknown(errors.Join(err, inspectErr))
+		}
+		if !projected {
+			if abortErr := application.config.ReleaseInstallations.AbortReleaseInstallation(context.WithoutCancel(ctx), transition); abortErr != nil {
+				return OutcomeUnknown(errors.Join(err, abortErr))
+			}
+			return err
+		}
+	}
+	if _, err := application.updateOperationStage(ctx, operation.OperationID, OperationStageFinalizing, nil); err != nil {
+		return err
+	}
+	if err := application.config.ReleaseInstallations.FinalizeReleaseInstallation(ctx, transition); err != nil {
+		return NewDomainError(ErrorCodeInstallFailed, "connector release installation finalization failed", true, err)
+	}
+	if err := application.completeProjectedConnectorOperation(ctx, operation.OperationID); err != nil {
 		return err
 	}
 	// Runtime publication is a distinct durable operation. Failure to enqueue it
@@ -162,16 +259,102 @@ func (application *Application) executeInstall(ctx context.Context, operation Op
 	return nil
 }
 
-func (application *Application) schedulePostInstallRuntimeReconcile(ctx context.Context, operation Operation) error {
-	connector, err := application.config.Repository.Connector(ctx, operation.ConnectorKey)
+func (application *Application) rejectRevokedRelease(ctx context.Context, release Release) error {
+	snapshot, err := application.config.Repository.CatalogSnapshot(ctx)
+	if err != nil {
+		return NewDomainError(ErrorCodeUnavailable, "connector catalog snapshot is unavailable", true, err)
+	}
+	if catalogRevokesRelease(snapshot, release) {
+		return NewDomainError(ErrorCodeReleaseRevoked, "connector release is revoked", false, nil)
+	}
+	return nil
+}
+
+func catalogRevokesRelease(snapshot CatalogSnapshot, release Release) bool {
+	digest := "sha256:" + strings.ToLower(strings.TrimSpace(release.Artifact.SHA256))
+	for _, revocation := range snapshot.Revocations {
+		if strings.EqualFold(strings.TrimSpace(revocation.ArtifactDigest), digest) {
+			return true
+		}
+	}
+	return false
+}
+
+func securityForInstallation(snapshot CatalogSnapshot, installation Installation) Security {
+	artifactSHA := strings.ToLower(strings.TrimSpace(installation.InstalledArtifactSHA256))
+	if artifactSHA == "" {
+		return Security{State: SecurityStateAllowed}
+	}
+	for _, revocation := range snapshot.Revocations {
+		if strings.EqualFold(strings.TrimSpace(revocation.ArtifactDigest), "sha256:"+artifactSHA) {
+			return Security{State: SecurityStateRevoked, RevocationID: revocation.RevocationID, ReasonCode: revocation.ReasonCode}
+		}
+	}
+	return Security{State: SecurityStateAllowed}
+}
+
+func (application *Application) recoverInstallOutcome(ctx context.Context, operation Operation) error {
+	release, err := frozenRelease(operation)
 	if err != nil {
 		return err
 	}
-	_, err = application.ReconcileRuntime(ctx, ConnectorMutation{
-		Mutation:     Mutation{ClientRequestID: operation.ClientRequestID + "/runtime", ExpectedRevision: connector.Revision},
-		ConnectorKey: operation.ConnectorKey,
-		AccountID:    operation.Scope.AccountID,
+	observation, err := application.config.ReleaseInstallations.InspectReleaseInstallation(ctx, InspectReleaseInstallationRequest{
+		OperationID: operation.OperationID, Scope: operation.Scope, Generation: operation.HostGeneration, Release: release,
 	})
+	if err != nil {
+		return OutcomeUnknown(err)
+	}
+	if observation.ConnectorKey != release.ConnectorKey || observation.ReleaseDigest != release.ReleaseDigest {
+		return invalidOperationReceipt("installation inspection returned a mismatched release")
+	}
+	switch observation.State {
+	case ReleaseInstallationPresent:
+		if err := application.rejectRevokedRelease(ctx, release); err != nil {
+			return err
+		}
+		if observation.Receipt == nil {
+			return invalidOperationReceipt("installation inspection returned no receipt")
+		}
+		if err := validateReleaseInstallationReceipt(operation, release, *observation.Receipt); err != nil {
+			return err
+		}
+		if _, err := application.updateOperationStage(ctx, operation.OperationID, OperationStageInstalled, func(current *Operation) {
+			current.Execution.ReleaseInstallation = observation.Receipt
+		}); err != nil {
+			return err
+		}
+		transition := ReleaseInstallationTransitionRequest{
+			OperationID: operation.OperationID, Scope: operation.Scope, Generation: operation.HostGeneration,
+			Release: release, Receipt: *observation.Receipt,
+		}
+		if err := application.config.ReleaseInstallations.ActivateReleaseInstallation(ctx, transition); err != nil {
+			return OutcomeUnknown(err)
+		}
+		if err := application.projectConnectorOperation(ctx, operation.OperationID, func(connector Connector) Connector {
+			connector.Installation = Installation{State: InstallationStateInstalled, InstalledVersion: release.Version, InstalledReleaseID: release.ReleaseID,
+				InstalledReleaseDigest: release.ReleaseDigest, InstalledArtifactSHA256: release.Artifact.SHA256}
+			connector.Security = Security{State: SecurityStateAllowed}
+			return connector
+		}); err != nil {
+			return OutcomeUnknown(err)
+		}
+		if err := application.config.ReleaseInstallations.FinalizeReleaseInstallation(ctx, transition); err != nil {
+			return OutcomeUnknown(err)
+		}
+		return application.completeProjectedConnectorOperation(ctx, operation.OperationID)
+	case ReleaseInstallationAbsent:
+		return application.executeInstall(ctx, operation)
+	case ReleaseInstallationIndeterminate:
+		return OutcomeUnknown(errors.New(observation.ReasonCode))
+	case ReleaseInstallationInvalid:
+		return NewDomainError(ErrorCodeInstallFailed, "connector release installation is invalid", false, errors.New(observation.ReasonCode))
+	default:
+		return invalidOperationReceipt("installation inspection returned an invalid state")
+	}
+}
+
+func (application *Application) schedulePostInstallRuntimeReconcile(ctx context.Context, operation Operation) error {
+	_, err := application.EnsureRuntimeReconcile(ctx, operation.Scope, operation.ConnectorKey)
 	return err
 }
 
@@ -226,6 +409,34 @@ func (application *Application) executeUninstall(ctx context.Context, operation 
 	return application.completeUninstall(ctx, operation.OperationID)
 }
 
+func (application *Application) recoverUninstallOutcome(ctx context.Context, operation Operation) error {
+	release, err := frozenRelease(operation)
+	if err != nil {
+		return err
+	}
+	observation, err := application.config.ReleaseInstallations.InspectReleaseInstallation(ctx, InspectReleaseInstallationRequest{
+		OperationID: operation.OperationID, Scope: operation.Scope, Generation: operation.HostGeneration, Release: release,
+	})
+	if err != nil {
+		return OutcomeUnknown(err)
+	}
+	if observation.ConnectorKey != release.ConnectorKey || observation.ReleaseDigest != release.ReleaseDigest {
+		return invalidOperationReceipt("uninstall inspection returned a mismatched release")
+	}
+	switch observation.State {
+	case ReleaseInstallationAbsent:
+		return application.completeUninstall(ctx, operation.OperationID)
+	case ReleaseInstallationPresent:
+		return application.executeUninstall(ctx, operation)
+	case ReleaseInstallationIndeterminate:
+		return OutcomeUnknown(errors.New(observation.ReasonCode))
+	case ReleaseInstallationInvalid:
+		return NewDomainError(ErrorCodeInstallFailed, "connector release installation is invalid", false, errors.New(observation.ReasonCode))
+	default:
+		return invalidOperationReceipt("uninstall inspection returned an invalid state")
+	}
+}
+
 func (application *Application) completeUninstall(ctx context.Context, operationID string) error {
 	return application.config.Repository.Transaction(ctx, func(tx Transaction) error {
 		operation, err := tx.Operation(operationID)
@@ -245,9 +456,13 @@ func (application *Application) completeUninstall(ctx context.Context, operation
 		// a separate lifecycle: remote authorization is projected from the account
 		// snapshot, while local providers are disconnected only through the explicit
 		// DisconnectAuthorization operation.
-		connector.Revision = revision
+		connector.Revision++
+		now := application.config.Now().UTC()
 		operation.State, operation.Stage, operation.FailureCode = OperationStateCompleted, OperationStageCompleted, ""
-		operation.UpdatedAt = application.config.Now().UTC()
+		operation.NextAttemptAt = nil
+		operation.FinishedAt = &now
+		operation.TerminalAt = &now
+		operation.UpdatedAt = now
 		if err := tx.SaveConnector(connector); err != nil {
 			return err
 		}
@@ -456,9 +671,14 @@ func (application *Application) markOperationRunning(ctx context.Context, operat
 			return nil
 		}
 		revision := tx.AdvanceRevision()
+		now := application.config.Now().UTC()
 		operation.State = OperationStateRunning
 		operation.Attempt++
-		operation.UpdatedAt = application.config.Now().UTC()
+		operation.NextAttemptAt = nil
+		if operation.StartedAt == nil {
+			operation.StartedAt = &now
+		}
+		operation.UpdatedAt = now
 		if err := tx.SaveOperation(operation); err != nil {
 			return err
 		}
@@ -533,9 +753,54 @@ func (application *Application) completeConnectorOperation(
 		}
 		revision := tx.AdvanceRevision()
 		connector = update(connector)
-		connector.Revision = revision
+		connector.Revision++
+		now := application.config.Now().UTC()
 		operation.State = OperationStateCompleted
 		operation.Stage = OperationStageCompleted
+		operation.FailureCode = ""
+		operation.NextAttemptAt = nil
+		operation.FinishedAt = &now
+		operation.TerminalAt = &now
+		operation.UpdatedAt = now
+		if err := tx.SaveConnector(connector); err != nil {
+			return err
+		}
+		if err := tx.SaveOperation(operation); err != nil {
+			return err
+		}
+		return tx.EnqueueConnectorMarketChanged(ChangedEvent{
+			ConnectorKey: connector.Key,
+			OperationID:  operation.OperationID,
+			Revision:     revision,
+		})
+	})
+}
+
+// projectConnectorOperation commits business truth while deliberately keeping
+// the physical execution claim. The caller must Finalize the physical
+// transition before completing the operation and releasing that claim.
+func (application *Application) projectConnectorOperation(
+	ctx context.Context,
+	operationID string,
+	update func(Connector) Connector,
+) error {
+	return application.config.Repository.Transaction(ctx, func(tx Transaction) error {
+		operation, err := tx.Operation(operationID)
+		if err != nil {
+			return err
+		}
+		if operation.State == OperationStateCompleted {
+			return nil
+		}
+		connector, err := tx.Connector(operation.ConnectorKey)
+		if err != nil {
+			return err
+		}
+		revision := tx.AdvanceRevision()
+		connector = update(connector)
+		connector.Revision++
+		operation.State = OperationStateRunning
+		operation.Stage = OperationStageActivated
 		operation.FailureCode = ""
 		operation.UpdatedAt = application.config.Now().UTC()
 		if err := tx.SaveConnector(connector); err != nil {
@@ -546,6 +811,47 @@ func (application *Application) completeConnectorOperation(
 		}
 		return tx.EnqueueConnectorMarketChanged(ChangedEvent{
 			ConnectorKey: connector.Key,
+			OperationID:  operation.OperationID,
+			Revision:     revision,
+		})
+	})
+}
+
+func (application *Application) installationProjectionMatches(
+	ctx context.Context,
+	connectorKey, releaseDigest string,
+) (bool, error) {
+	connector, err := application.config.Repository.Connector(ctx, connectorKey)
+	if err != nil {
+		return false, err
+	}
+	return connector.Installation.State == InstallationStateInstalled &&
+		connector.Installation.InstalledReleaseDigest == releaseDigest, nil
+}
+
+func (application *Application) completeProjectedConnectorOperation(ctx context.Context, operationID string) error {
+	return application.config.Repository.Transaction(ctx, func(tx Transaction) error {
+		operation, err := tx.Operation(operationID)
+		if err != nil {
+			return err
+		}
+		if operation.State == OperationStateCompleted {
+			return nil
+		}
+		revision := tx.AdvanceRevision()
+		now := application.config.Now().UTC()
+		operation.State = OperationStateCompleted
+		operation.Stage = OperationStageCompleted
+		operation.FailureCode = ""
+		operation.NextAttemptAt = nil
+		operation.FinishedAt = &now
+		operation.TerminalAt = &now
+		operation.UpdatedAt = now
+		if err := tx.SaveOperation(operation); err != nil {
+			return err
+		}
+		return tx.EnqueueConnectorMarketChanged(ChangedEvent{
+			ConnectorKey: operation.ConnectorKey,
 			OperationID:  operation.OperationID,
 			Revision:     revision,
 		})
@@ -578,10 +884,16 @@ func (application *Application) completeAuthorizationStart(
 		if projectDeviceState {
 			connector.Authorization = Authorization{State: session.State}
 		}
-		connector.Revision = revision
+		if projectDeviceState {
+			connector.Revision++
+		}
 		if operation.State != OperationStateCompleted {
+			now := application.config.Now().UTC()
 			operation.State = OperationStateCompleted
 			operation.Stage = OperationStageCompleted
+			operation.NextAttemptAt = nil
+			operation.FinishedAt = &now
+			operation.TerminalAt = &now
 		}
 		operation.Execution.AuthorizationSession = &session
 		operation.UpdatedAt = application.config.Now().UTC()
@@ -626,7 +938,7 @@ func (application *Application) completeAuthorizationObservation(
 		}
 		revision := tx.AdvanceRevision()
 		connector.Authorization = Authorization{State: target, FailureCode: failureCode}
-		connector.Revision = revision
+		connector.Revision++
 		if err := tx.SaveConnector(connector); err != nil {
 			return err
 		}
@@ -644,16 +956,15 @@ func (application *Application) failOperation(ctx context.Context, operationID s
 			return nil
 		}
 		revision := tx.AdvanceRevision()
+		now := application.config.Now().UTC()
 		operation.State = OperationStateFailed
 		operation.Stage = OperationStageFailed
 		operation.FailureCode = string(code)
-		operation.UpdatedAt = application.config.Now().UTC()
-		if operation.Kind == OperationKindRefreshCatalog {
-			// Preserve the last-known-good connector projection on refresh failure.
-			if err := tx.SetCatalogState(CatalogStateStale); err != nil {
-				return err
-			}
-		} else if operation.ConnectorKey != "" {
+		operation.NextAttemptAt = nil
+		operation.FinishedAt = &now
+		operation.TerminalAt = &now
+		operation.UpdatedAt = now
+		if operation.ConnectorKey != "" {
 			connector, err := tx.Connector(operation.ConnectorKey)
 			if err != nil && !errors.Is(err, ErrNotFound) {
 				return err
@@ -675,7 +986,7 @@ func (application *Application) failOperation(ctx context.Context, operationID s
 					connector.Authorization.State = AuthorizationStateFailed
 					connector.Authorization.FailureCode = string(code)
 				}
-				connector.Revision = revision
+				connector.Revision++
 				if err := tx.SaveConnector(connector); err != nil {
 					return err
 				}
@@ -723,6 +1034,7 @@ func newCatalogConnector(release Release) Connector {
 		Installation:  Installation{State: InstallationStateNotInstalled},
 		Authorization: initialAuthorization(release.Manifest.AuthorizationKind),
 		Compatibility: Compatibility{State: CompatibilityStateSupported},
+		Security:      Security{State: SecurityStateAllowed},
 	}
 }
 

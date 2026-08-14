@@ -5,7 +5,7 @@ shared by Tutti and other approved desktop daemon hosts such as TSH.
 
 The package owns the TypeScript and renderer side of the shared boundary:
 
-- `openapi/connector-market.v1.yaml`: the HTTP fragment composed by each host
+- `openapi/connector-market.v2.yaml`: the breaking v2 HTTP fragment composed by each host
   daemon's aggregate OpenAPI document
 - `contracts`: host-neutral backend, event, domain, and error contracts
 - `authorization`: the declarative authorization adapter and replaceable
@@ -119,7 +119,7 @@ Inside this repository, the aggregate document may use a repository path:
 
 ```yaml
 x-tutti-openapi-fragments:
-  - packages/connector/market/openapi/connector-market.v1.yaml
+  - packages/connector/market/openapi/connector-market.v2.yaml
 ```
 
 External hosts install an exact released package version and resolve the
@@ -128,7 +128,7 @@ exported fragment through package exports:
 ```yaml
 x-tutti-openapi-fragments:
   - package: "@tutti-os/connector-market"
-    path: "openapi/connector-market.v1.yaml"
+    path: "openapi/connector-market.v2.yaml"
 ```
 
 Do not copy the fragment into another repository or reference a Tutti worktree.

@@ -13,6 +13,7 @@ import (
 type stubConnectorMarketService struct {
 	market.Service
 	snapshotFn   func(context.Context) (market.Snapshot, error)
+	refreshFn    func(context.Context) (market.Snapshot, error)
 	categoriesFn func(context.Context) ([]market.CatalogCategory, error)
 	pageFn       func(context.Context, market.CatalogPageQuery) (market.CatalogPage, error)
 	installFn    func(context.Context, market.ConnectorMutation) (market.MutationResult, error)
@@ -29,6 +30,10 @@ func (service stubConnectorMarketService) GetAuthorizationProjection(ctx context
 
 func (service stubConnectorMarketService) Snapshot(ctx context.Context) (market.Snapshot, error) {
 	return service.snapshotFn(ctx)
+}
+
+func (service stubConnectorMarketService) RefreshCatalog(ctx context.Context) (market.Snapshot, error) {
+	return service.refreshFn(ctx)
 }
 
 func (service stubConnectorMarketService) Install(ctx context.Context, mutation market.ConnectorMutation) (market.MutationResult, error) {
@@ -51,6 +56,7 @@ func TestDaemonAPIConnectorMarketSnapshotHidesImplementationConfig(t *testing.T)
 	service := stubConnectorMarketService{
 		snapshotFn: func(_ context.Context) (market.Snapshot, error) {
 			return market.Snapshot{
+				ContractCohort: market.ConnectorControlPlaneContractCohort,
 				CatalogState:   market.CatalogStateReady,
 				Connectors:     []market.Connector{connectorMarketTestConnector()},
 				Operations:     []market.Operation{},
@@ -62,7 +68,7 @@ func TestDaemonAPIConnectorMarketSnapshotHidesImplementationConfig(t *testing.T)
 	mux := http.NewServeMux()
 	RegisterRoutes(mux, NewRoutes(DaemonAPI{ConnectorMarketService: service}))
 
-	recorder := performGeneratedRouteRequest(t, mux, http.MethodGet, "/v1/connector-market", nil)
+	recorder := performGeneratedRouteRequest(t, mux, http.MethodGet, "/v2/connector-market", nil)
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("status = %d, want %d; body: %s", recorder.Code, http.StatusOK, recorder.Body.String())
 	}
@@ -90,7 +96,7 @@ func TestDaemonAPIConnectorMarketSnapshotHidesImplementationConfig(t *testing.T)
 func TestDaemonAPIConnectorMarketOverlaysAccountAuthorizationProjection(t *testing.T) {
 	service := stubConnectorMarketService{
 		snapshotFn: func(context.Context) (market.Snapshot, error) {
-			return market.Snapshot{Connectors: []market.Connector{connectorMarketTestConnector()}}, nil
+			return market.Snapshot{ContractCohort: market.ConnectorControlPlaneContractCohort, Connectors: []market.Connector{connectorMarketTestConnector()}}, nil
 		},
 		projectionFn: func(_ context.Context, accountID, connectorKey string) (market.AuthorizationProjection, error) {
 			if accountID != "account-1" || connectorKey != "notion" {
@@ -103,7 +109,7 @@ func TestDaemonAPIConnectorMarketOverlaysAccountAuthorizationProjection(t *testi
 	RegisterRoutes(mux, NewRoutes(DaemonAPI{ConnectorMarketService: service, ConnectorMarketScope: func() market.OperationScope {
 		return market.OperationScope{AccountID: "account-1"}
 	}}))
-	recorder := performGeneratedRouteRequest(t, mux, http.MethodGet, "/v1/connector-market", nil)
+	recorder := performGeneratedRouteRequest(t, mux, http.MethodGet, "/v2/connector-market", nil)
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("status = %d body=%s", recorder.Code, recorder.Body.String())
 	}
@@ -157,7 +163,7 @@ func TestDaemonAPIConnectorMarketInstallMapsUnsupportedImplementation(t *testing
 	mux := http.NewServeMux()
 	RegisterRoutes(mux, NewRoutes(DaemonAPI{ConnectorMarketService: service}))
 
-	recorder := performGeneratedRouteRequest(t, mux, http.MethodPost, "/v1/connector-market/connectors/notion:install", map[string]any{
+	recorder := performGeneratedRouteRequest(t, mux, http.MethodPost, "/v2/connector-market/connectors/notion:install", map[string]any{
 		"clientRequestId":  "request-1",
 		"expectedRevision": 7,
 	})
@@ -198,7 +204,7 @@ func TestDaemonAPIConnectorMarketUninstallPreservesMutationScope(t *testing.T) {
 		},
 	}))
 
-	recorder := performGeneratedRouteRequest(t, mux, http.MethodPost, "/v1/connector-market/connectors/notion:uninstall", map[string]any{
+	recorder := performGeneratedRouteRequest(t, mux, http.MethodPost, "/v2/connector-market/connectors/notion:uninstall", map[string]any{
 		"clientRequestId":  "request-uninstall-1",
 		"expectedRevision": 7,
 	})
@@ -212,16 +218,28 @@ func TestDaemonAPIConnectorMarketUninstallPreservesMutationScope(t *testing.T) {
 	}
 }
 
-func TestDaemonAPIConnectorMarketRefreshRejectsNegativeRevision(t *testing.T) {
+func TestDaemonAPIConnectorMarketRefreshReturnsSynchronizedSnapshot(t *testing.T) {
+	service := stubConnectorMarketService{refreshFn: func(context.Context) (market.Snapshot, error) {
+		return market.Snapshot{
+			ContractCohort: market.ConnectorControlPlaneContractCohort,
+			CatalogState:   market.CatalogStateReady,
+			Connectors:     []market.Connector{},
+			Operations:     []market.Operation{},
+			Revision:       8,
+			SourceRevision: "catalog-2",
+		}, nil
+	}}
 	mux := http.NewServeMux()
-	RegisterRoutes(mux, NewRoutes(DaemonAPI{ConnectorMarketService: stubConnectorMarketService{}}))
+	RegisterRoutes(mux, NewRoutes(DaemonAPI{ConnectorMarketService: service}))
 
-	recorder := performGeneratedRouteRequest(t, mux, http.MethodPost, "/v1/connector-market:refresh", map[string]any{
-		"clientRequestId":  "request-1",
-		"expectedRevision": -1,
-	})
-	if recorder.Code != http.StatusBadRequest {
-		t.Fatalf("status = %d, want %d; body: %s", recorder.Code, http.StatusBadRequest, recorder.Body.String())
+	recorder := performGeneratedRouteRequest(t, mux, http.MethodPost, "/v2/connector-market:refresh", nil)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body: %s", recorder.Code, http.StatusOK, recorder.Body.String())
+	}
+	var response tuttigenerated.ConnectorMarketSnapshot
+	decodeGeneratedRouteResponse(t, recorder, &response)
+	if response.ContractCohort != market.ConnectorControlPlaneContractCohort || response.Revision != 8 {
+		t.Fatalf("response = %#v", response)
 	}
 }
 
@@ -245,11 +263,11 @@ func TestDaemonAPIConnectorMarketServesCategoriesAndCursorPage(t *testing.T) {
 	mux := http.NewServeMux()
 	RegisterRoutes(mux, NewRoutes(DaemonAPI{ConnectorMarketService: service}))
 
-	categories := performGeneratedRouteRequest(t, mux, http.MethodGet, "/v1/connector-market/categories", nil)
+	categories := performGeneratedRouteRequest(t, mux, http.MethodGet, "/v2/connector-market/categories", nil)
 	if categories.Code != http.StatusOK {
 		t.Fatalf("categories status = %d; body: %s", categories.Code, categories.Body.String())
 	}
-	page := performGeneratedRouteRequest(t, mux, http.MethodGet, "/v1/connector-market/catalog?sectionId=development&pageSize=20&pageToken=cursor-1", nil)
+	page := performGeneratedRouteRequest(t, mux, http.MethodGet, "/v2/connector-market/catalog?sectionId=development&pageSize=20&pageToken=cursor-1", nil)
 	if page.Code != http.StatusOK {
 		t.Fatalf("page status = %d; body: %s", page.Code, page.Body.String())
 	}
@@ -300,6 +318,7 @@ func connectorMarketTestConnector() market.Connector {
 		Installation:  market.Installation{State: market.InstallationStateNotInstalled},
 		Authorization: market.Authorization{State: market.AuthorizationStateDisconnected},
 		Compatibility: market.Compatibility{State: market.CompatibilityStateSupported},
+		Security:      market.Security{State: market.SecurityStateAllowed},
 		Revision:      7,
 	}
 }

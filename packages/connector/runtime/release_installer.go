@@ -30,9 +30,9 @@ func NewReleaseInstaller(
 	return &ReleaseInstaller{artifacts: artifacts, cli: cli}, nil
 }
 
-func (installer *ReleaseInstaller) InstallRelease(
+func (installer *ReleaseInstaller) PrepareReleaseInstallation(
 	ctx context.Context,
-	request market.InstallReleaseRequest,
+	request market.PrepareReleaseInstallationRequest,
 ) (market.ReleaseInstallationReceipt, error) {
 	if installer == nil || installer.artifacts == nil {
 		return market.ReleaseInstallationReceipt{}, errors.New("connector release installer is unavailable")
@@ -176,12 +176,16 @@ func (installer *ReleaseInstaller) UninstallRelease(
 	return errors.Join(cleanupErrors...)
 }
 
-func (*ReleaseInstaller) CommitReleaseInstallation(
-	context.Context,
-	market.CommitReleaseInstallationRequest,
-) error {
-	// Same-machine preparation already atomically published its latest verified
-	// archive. Remote adapters defer candidate promotion until this callback.
+func (*ReleaseInstaller) ActivateReleaseInstallation(context.Context, market.ReleaseInstallationTransitionRequest) error {
+	// Same-machine preparation already atomically publishes verified bytes.
+	return nil
+}
+
+func (*ReleaseInstaller) FinalizeReleaseInstallation(context.Context, market.ReleaseInstallationTransitionRequest) error {
+	return nil
+}
+
+func (*ReleaseInstaller) AbortReleaseInstallation(context.Context, market.ReleaseInstallationTransitionRequest) error {
 	return nil
 }
 

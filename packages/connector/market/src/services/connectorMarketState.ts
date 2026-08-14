@@ -13,7 +13,6 @@ export function createConnectorMarketStoreState(): ConnectorMarketStoreState {
   return {
     loadState: "idle",
     catalogState: "stale",
-    catalogOperation: null,
     catalogSections: [],
     connectorsByKey: {},
     connectorKeys: [],
@@ -32,7 +31,6 @@ export function clearConnectorMarketStoreState(
   const initial = createConnectorMarketStoreState();
   state.loadState = initial.loadState;
   state.catalogState = initial.catalogState;
-  state.catalogOperation = initial.catalogOperation;
   state.catalogSections = initial.catalogSections;
   state.connectorsByKey = initial.connectorsByKey;
   state.connectorKeys = initial.connectorKeys;
@@ -111,6 +109,9 @@ export function applyConnectorMarketSnapshot(
   state: ConnectorMarketStoreState,
   next: ConnectorMarketSnapshot
 ): void {
+  if (next.contractCohort !== "connector-control-plane-v2") {
+    throw new Error("unsupported connector control-plane contract cohort");
+  }
   if (next.revision < state.revision) {
     return;
   }
@@ -119,19 +120,12 @@ export function applyConnectorMarketSnapshot(
   );
   state.connectorKeys = next.connectors.map((connector) => connector.key);
   state.operationsByConnectorKey = {};
-  state.catalogOperation = null;
   for (const operation of next.operations) {
     if (operation.connectorKey) {
       const current = state.operationsByConnectorKey[operation.connectorKey];
       if (!current || isNewerConnectorOperation(operation, current)) {
         state.operationsByConnectorKey[operation.connectorKey] = operation;
       }
-    } else if (
-      operation.kind === "refresh_catalog" &&
-      (!state.catalogOperation ||
-        isNewerConnectorOperation(operation, state.catalogOperation))
-    ) {
-      state.catalogOperation = operation;
     }
   }
   state.catalogState = next.catalogState;
@@ -153,8 +147,6 @@ export function applyConnectorMutationResult(
   if (result.operation.connectorKey) {
     state.operationsByConnectorKey[result.operation.connectorKey] =
       result.operation;
-  } else if (result.operation.kind === "refresh_catalog") {
-    state.catalogOperation = result.operation;
   }
   state.revision = result.revision;
   state.lastError = null;

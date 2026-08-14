@@ -51,6 +51,7 @@ function connector(key: string, revision: number): Connector {
     installation: { state: "not_installed" },
     authorization: { state: "not_required" },
     compatibility: { state: "supported" },
+    security: { state: "allowed" },
     revision
   };
 }
@@ -60,6 +61,7 @@ function snapshot(
   connectors: Connector[]
 ): ConnectorMarketSnapshot {
   return {
+    contractCohort: "connector-control-plane-v2",
     catalogState: "ready",
     connectors,
     operations: [],
@@ -286,29 +288,17 @@ test("coalesces concurrent catalog refreshes", async () => {
         calls += 1;
         return refresh.promise;
       }
-    }),
-    createRequestId: () => "request-1"
+    })
   });
 
   const first = service.refreshCatalog();
   const second = service.refreshCatalog();
   assert.equal(calls, 1);
-  refresh.resolve({
-    operation: {
-      operationId: "operation-1",
-      clientRequestId: "request-1",
-      kind: "refresh_catalog",
-      state: "accepted",
-      attempt: 0,
-      createdAt: "2026-08-03T00:00:00Z",
-      updatedAt: "2026-08-03T00:00:00Z"
-    },
-    revision: 1
-  });
+  refresh.resolve(snapshot(1, []));
   await Promise.all([first, second]);
 
   assert.equal(service.dataStore.revision, 1);
-  assert.equal(service.dataStore.catalogOperation?.operationId, "operation-1");
+  assert.equal(service.dataStore.catalogState, "ready");
   service.dispose();
 });
 
@@ -334,6 +324,7 @@ test("rejects overlapping mutations for one connector", async () => {
       kind: "install",
       state: "accepted",
       attempt: 0,
+      operationVersion: 1,
       createdAt: "2026-08-03T00:00:00Z",
       updatedAt: "2026-08-03T00:00:00Z"
     },
@@ -396,6 +387,7 @@ test("installs one connector with the current catalog revision", async () => {
             kind: "install",
             state: "accepted",
             attempt: 0,
+            operationVersion: 1,
             createdAt: "2026-08-03T00:00:00Z",
             updatedAt: "2026-08-03T00:00:00Z"
           },
@@ -451,6 +443,7 @@ test("uninstalls one connector and tracks the durable operation to completion", 
             state: "accepted",
             stage: "accepted",
             attempt: 0,
+            operationVersion: 1,
             createdAt: "2026-08-11T00:00:00Z",
             updatedAt: "2026-08-11T00:00:00Z"
           },
@@ -465,6 +458,7 @@ test("uninstalls one connector and tracks the durable operation to completion", 
         state: "completed",
         stage: "completed",
         attempt: 1,
+        operationVersion: 1,
         createdAt: "2026-08-11T00:00:00Z",
         updatedAt: "2026-08-11T00:00:01Z"
       }),
@@ -570,6 +564,7 @@ test("polls an accepted connector operation to terminal state when its event is 
           state: "accepted",
           stage: "accepted",
           attempt: 0,
+          operationVersion: 1,
           createdAt: "2026-08-03T00:00:00Z",
           updatedAt: "2026-08-03T00:00:00Z"
         },
@@ -585,6 +580,7 @@ test("polls an accepted connector operation to terminal state when its event is 
           state: operationReads === 1 ? "running" : "completed",
           stage: operationReads === 1 ? "installing" : "completed",
           attempt: 1,
+          operationVersion: 1,
           createdAt: "2026-08-03T00:00:00Z",
           updatedAt: `2026-08-03T00:00:0${operationReads}Z`
         };
@@ -644,6 +640,7 @@ test("stops operation polling after a permanent read error and reconciles once",
           state: "accepted",
           stage: "accepted",
           attempt: 0,
+          operationVersion: 1,
           createdAt: "2026-08-03T00:00:00Z",
           updatedAt: "2026-08-03T00:00:00Z"
         },
@@ -685,126 +682,51 @@ test("stops operation polling after a permanent read error and reconciles once",
   service.dispose();
 });
 
-test("reconciles refresh completion from the local snapshot without reloading remote categories", async () => {
+test("applies synchronous refresh and reloads catalog sections", async () => {
   let categoryCalls = 0;
   let snapshotCalls = 0;
-  const completedRefreshOperation: ConnectorOperation = {
-    operationId: "operation-refresh-terminal",
-    clientRequestId: "request-refresh-terminal",
-    kind: "refresh_catalog",
-    state: "completed",
-    stage: "completed",
-    attempt: 1,
-    createdAt: "2026-08-03T00:00:00Z",
-    updatedAt: "2026-08-03T00:00:01Z"
-  };
   const service = new ConnectorMarketService({
     backend: backendWith({
-      refreshCatalog: async () => ({
-        operation: {
-          operationId: "operation-refresh-terminal",
-          clientRequestId: "request-refresh-terminal",
-          kind: "refresh_catalog",
-          state: "accepted",
-          stage: "accepted",
-          attempt: 0,
-          createdAt: "2026-08-03T00:00:00Z",
-          updatedAt: "2026-08-03T00:00:00Z"
-        },
-        revision: 1
-      }),
-      getOperation: async () => completedRefreshOperation,
+      refreshCatalog: async () => snapshot(2, [connector("github", 2)]),
       getSnapshot: async () => {
         snapshotCalls += 1;
-        if (snapshotCalls === 1) {
-          throw {
-            code: "connector_market_unavailable",
-            message: "local snapshot temporarily unavailable",
-            retryable: true
-          };
-        }
-        return {
-          ...snapshot(2, [connector("github", 2)]),
-          operations: [completedRefreshOperation]
-        };
+        return snapshot(2, [connector("github", 2)]);
       },
       listCategories: async () => {
         categoryCalls += 1;
-        throw new Error("remote categories unavailable");
+        return [];
       }
-    }),
-    waitForOperationPoll: async () => undefined
+    })
   });
 
   await service.refreshCatalog();
-  await waitFor(() => service.dataStore.catalogState === "ready");
 
-  assert.equal(categoryCalls, 0);
-  assert.equal(snapshotCalls, 2);
-  assert.equal(service.dataStore.catalogOperation?.state, "completed");
+  assert.equal(categoryCalls, 1);
+  assert.equal(snapshotCalls, 1);
   assert.equal(service.dataStore.revision, 2);
   service.dispose();
 });
 
-test("keeps the authoritative refresh operation after a permanent read error", async () => {
-  const completedRefreshOperation: ConnectorOperation = {
-    operationId: "operation-refresh-forbidden",
-    clientRequestId: "request-refresh-forbidden",
-    kind: "refresh_catalog",
-    state: "completed",
-    stage: "completed",
-    attempt: 1,
-    createdAt: "2026-08-03T00:00:00Z",
-    updatedAt: "2026-08-03T00:00:01Z"
-  };
-  let operationReads = 0;
-  let snapshotReads = 0;
-  let pollWaits = 0;
+test("reports synchronous refresh failures without creating operation state", async () => {
   const service = new ConnectorMarketService({
     backend: backendWith({
-      refreshCatalog: async () => ({
-        operation: {
-          ...completedRefreshOperation,
-          state: "accepted",
-          stage: "accepted",
-          attempt: 0,
-          updatedAt: "2026-08-03T00:00:00Z"
-        },
-        revision: 1
-      }),
-      getOperation: async () => {
-        operationReads += 1;
+      refreshCatalog: async () => {
         throw {
-          code: "connector_market_forbidden",
-          message: "refresh operation read forbidden",
-          retryable: false
-        };
-      },
-      getSnapshot: async () => {
-        snapshotReads += 1;
-        return {
-          ...snapshot(2, [connector("github", 2)]),
-          operations: [completedRefreshOperation]
+          code: "connector_market_upstream_unavailable",
+          message: "catalog unavailable",
+          retryable: true
         };
       }
-    }),
-    waitForOperationPoll: async () => {
-      pollWaits += 1;
-    }
+    })
   });
 
-  await service.refreshCatalog();
-  await waitFor(
-    () => service.dataStore.catalogOperation?.state === "completed"
-  );
+  await assert.rejects(service.refreshCatalog());
 
-  assert.equal(operationReads, 1);
-  assert.equal(snapshotReads, 1);
-  assert.equal(pollWaits, 0);
+  assert.equal(service.dataStore.catalogState, "failed");
   assert.deepEqual(service.dataStore.lastError, {
-    code: "connector_market_forbidden",
-    message: "refresh operation read forbidden",
-    retryable: false
+    code: "connector_market_upstream_unavailable",
+    message: "catalog unavailable",
+    retryable: true
   });
   service.dispose();
 });
@@ -1317,6 +1239,7 @@ test("reconciles connector-scoped events without reloading the catalog", async (
     state: "running",
     stage: "installing",
     attempt: 1,
+    operationVersion: 1,
     createdAt: "2026-08-03T00:00:00Z",
     updatedAt: "2026-08-03T00:00:01Z"
   };
@@ -1581,6 +1504,7 @@ function operation(kind: "start_authorization", revision: number) {
     kind,
     state: "accepted" as const,
     attempt: 0,
+    operationVersion: 1,
     createdAt: "2026-08-03T00:00:00Z",
     updatedAt: "2026-08-03T00:00:00Z"
   };

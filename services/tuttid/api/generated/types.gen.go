@@ -1460,6 +1460,7 @@ const (
 	ConnectorMarketUpstreamUnavailable ConnectorMarketErrorCode = "connector_market_upstream_unavailable"
 	ConnectorNotFound                  ConnectorMarketErrorCode = "connector_not_found"
 	ConnectorOperationInProgress       ConnectorMarketErrorCode = "connector_operation_in_progress"
+	ReleaseRevoked                     ConnectorMarketErrorCode = "release_revoked"
 )
 
 // Valid indicates whether the value is a known member of the ConnectorMarketErrorCode enum.
@@ -1486,6 +1487,8 @@ func (e ConnectorMarketErrorCode) Valid() bool {
 	case ConnectorNotFound:
 		return true
 	case ConnectorOperationInProgress:
+		return true
+	case ReleaseRevoked:
 		return true
 	default:
 		return false
@@ -1562,7 +1565,7 @@ func (e ConnectorMarketManifestSchemaVersion) Valid() bool {
 const (
 	DisconnectAuthorization ConnectorMarketOperationKind = "disconnect_authorization"
 	Install                 ConnectorMarketOperationKind = "install"
-	RefreshCatalog          ConnectorMarketOperationKind = "refresh_catalog"
+	ReconcileRuntime        ConnectorMarketOperationKind = "reconcile_runtime"
 	StartAuthorization      ConnectorMarketOperationKind = "start_authorization"
 	Uninstall               ConnectorMarketOperationKind = "uninstall"
 )
@@ -1574,7 +1577,7 @@ func (e ConnectorMarketOperationKind) Valid() bool {
 		return true
 	case Install:
 		return true
-	case RefreshCatalog:
+	case ReconcileRuntime:
 		return true
 	case StartAuthorization:
 		return true
@@ -1588,20 +1591,23 @@ func (e ConnectorMarketOperationKind) Valid() bool {
 // Defines values for ConnectorMarketOperationStage.
 const (
 	ConnectorMarketOperationStageAccepted      ConnectorMarketOperationStage = "accepted"
+	ConnectorMarketOperationStageActivated     ConnectorMarketOperationStage = "activated"
 	ConnectorMarketOperationStageAuthorizing   ConnectorMarketOperationStage = "authorizing"
 	ConnectorMarketOperationStageCompleted     ConnectorMarketOperationStage = "completed"
 	ConnectorMarketOperationStageDeactivating  ConnectorMarketOperationStage = "deactivating"
 	ConnectorMarketOperationStageDisconnecting ConnectorMarketOperationStage = "disconnecting"
 	ConnectorMarketOperationStageFailed        ConnectorMarketOperationStage = "failed"
+	ConnectorMarketOperationStageFinalizing    ConnectorMarketOperationStage = "finalizing"
 	ConnectorMarketOperationStageInstalled     ConnectorMarketOperationStage = "installed"
 	ConnectorMarketOperationStageInstalling    ConnectorMarketOperationStage = "installing"
-	ConnectorMarketOperationStageRefreshing    ConnectorMarketOperationStage = "refreshing"
 )
 
 // Valid indicates whether the value is a known member of the ConnectorMarketOperationStage enum.
 func (e ConnectorMarketOperationStage) Valid() bool {
 	switch e {
 	case ConnectorMarketOperationStageAccepted:
+		return true
+	case ConnectorMarketOperationStageActivated:
 		return true
 	case ConnectorMarketOperationStageAuthorizing:
 		return true
@@ -1613,11 +1619,11 @@ func (e ConnectorMarketOperationStage) Valid() bool {
 		return true
 	case ConnectorMarketOperationStageFailed:
 		return true
+	case ConnectorMarketOperationStageFinalizing:
+		return true
 	case ConnectorMarketOperationStageInstalled:
 		return true
 	case ConnectorMarketOperationStageInstalling:
-		return true
-	case ConnectorMarketOperationStageRefreshing:
 		return true
 	default:
 		return false
@@ -1626,10 +1632,12 @@ func (e ConnectorMarketOperationStage) Valid() bool {
 
 // Defines values for ConnectorMarketOperationState.
 const (
-	ConnectorMarketOperationStateAccepted  ConnectorMarketOperationState = "accepted"
-	ConnectorMarketOperationStateCompleted ConnectorMarketOperationState = "completed"
-	ConnectorMarketOperationStateFailed    ConnectorMarketOperationState = "failed"
-	ConnectorMarketOperationStateRunning   ConnectorMarketOperationState = "running"
+	ConnectorMarketOperationStateAccepted       ConnectorMarketOperationState = "accepted"
+	ConnectorMarketOperationStateCancelled      ConnectorMarketOperationState = "cancelled"
+	ConnectorMarketOperationStateCompleted      ConnectorMarketOperationState = "completed"
+	ConnectorMarketOperationStateFailed         ConnectorMarketOperationState = "failed"
+	ConnectorMarketOperationStateOutcomeUnknown ConnectorMarketOperationState = "outcome_unknown"
+	ConnectorMarketOperationStateRunning        ConnectorMarketOperationState = "running"
 )
 
 // Valid indicates whether the value is a known member of the ConnectorMarketOperationState enum.
@@ -1637,9 +1645,13 @@ func (e ConnectorMarketOperationState) Valid() bool {
 	switch e {
 	case ConnectorMarketOperationStateAccepted:
 		return true
+	case ConnectorMarketOperationStateCancelled:
+		return true
 	case ConnectorMarketOperationStateCompleted:
 		return true
 	case ConnectorMarketOperationStateFailed:
+		return true
+	case ConnectorMarketOperationStateOutcomeUnknown:
 		return true
 	case ConnectorMarketOperationStateRunning:
 		return true
@@ -1675,6 +1687,39 @@ func (e ConnectorMarketReleaseStatus) Valid() bool {
 	case ConnectorMarketReleaseStatusAvailable:
 		return true
 	case ConnectorMarketReleaseStatusSuperseded:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ConnectorMarketSecurityState.
+const (
+	Allowed ConnectorMarketSecurityState = "allowed"
+	Revoked ConnectorMarketSecurityState = "revoked"
+)
+
+// Valid indicates whether the value is a known member of the ConnectorMarketSecurityState enum.
+func (e ConnectorMarketSecurityState) Valid() bool {
+	switch e {
+	case Allowed:
+		return true
+	case Revoked:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ConnectorMarketSnapshotContractCohort.
+const (
+	ConnectorControlPlaneV2 ConnectorMarketSnapshotContractCohort = "connector-control-plane-v2"
+)
+
+// Valid indicates whether the value is a known member of the ConnectorMarketSnapshotContractCohort enum.
+func (e ConnectorMarketSnapshotContractCohort) Valid() bool {
+	switch e {
+	case ConnectorControlPlaneV2:
 		return true
 	default:
 		return false
@@ -6197,6 +6242,7 @@ type ConnectorMarketConnector struct {
 	Key           string                       `json:"key"`
 	Release       ConnectorMarketRelease       `json:"release"`
 	Revision      int64                        `json:"revision"`
+	Security      ConnectorMarketSecurity      `json:"security"`
 }
 
 // ConnectorMarketConnectorResponse defines model for ConnectorMarketConnectorResponse.
@@ -6227,11 +6273,12 @@ type ConnectorMarketImplementationKind string
 
 // ConnectorMarketInstallation defines model for ConnectorMarketInstallation.
 type ConnectorMarketInstallation struct {
-	FailureCode            *string                          `json:"failureCode,omitempty"`
-	InstalledReleaseDigest *string                          `json:"installedReleaseDigest,omitempty"`
-	InstalledReleaseId     *string                          `json:"installedReleaseId,omitempty"`
-	InstalledVersion       *string                          `json:"installedVersion,omitempty"`
-	State                  ConnectorMarketInstallationState `json:"state"`
+	FailureCode             *string                          `json:"failureCode,omitempty"`
+	InstalledArtifactSha256 *string                          `json:"installedArtifactSha256,omitempty"`
+	InstalledReleaseDigest  *string                          `json:"installedReleaseDigest,omitempty"`
+	InstalledReleaseId      *string                          `json:"installedReleaseId,omitempty"`
+	InstalledVersion        *string                          `json:"installedVersion,omitempty"`
+	State                   ConnectorMarketInstallationState `json:"state"`
 }
 
 // ConnectorMarketInstallationState defines model for ConnectorMarketInstallationState.
@@ -6273,17 +6320,22 @@ type ConnectorMarketMutationResponse struct {
 
 // ConnectorMarketOperation defines model for ConnectorMarketOperation.
 type ConnectorMarketOperation struct {
-	Attempt         int32                           `json:"attempt"`
-	ClientRequestId string                          `json:"clientRequestId"`
-	ConnectorKey    *string                         `json:"connectorKey,omitempty"`
-	CreatedAt       time.Time                       `json:"createdAt"`
-	FailureCode     *string                         `json:"failureCode,omitempty"`
-	Kind            ConnectorMarketOperationKind    `json:"kind"`
-	OperationId     string                          `json:"operationId"`
-	Stage           *ConnectorMarketOperationStage  `json:"stage,omitempty"`
-	State           ConnectorMarketOperationState   `json:"state"`
-	Target          *ConnectorMarketOperationTarget `json:"target,omitempty"`
-	UpdatedAt       time.Time                       `json:"updatedAt"`
+	Attempt          int32                           `json:"attempt"`
+	ClientRequestId  string                          `json:"clientRequestId"`
+	ConnectorKey     *string                         `json:"connectorKey,omitempty"`
+	CreatedAt        time.Time                       `json:"createdAt"`
+	FailureCode      *string                         `json:"failureCode,omitempty"`
+	FinishedAt       *time.Time                      `json:"finishedAt,omitempty"`
+	Kind             ConnectorMarketOperationKind    `json:"kind"`
+	NextAttemptAt    *time.Time                      `json:"nextAttemptAt,omitempty"`
+	OperationId      string                          `json:"operationId"`
+	OperationVersion int64                           `json:"operationVersion"`
+	Stage            *ConnectorMarketOperationStage  `json:"stage,omitempty"`
+	StartedAt        *time.Time                      `json:"startedAt,omitempty"`
+	State            ConnectorMarketOperationState   `json:"state"`
+	Target           *ConnectorMarketOperationTarget `json:"target,omitempty"`
+	TerminalAt       *time.Time                      `json:"terminalAt,omitempty"`
+	UpdatedAt        time.Time                       `json:"updatedAt"`
 }
 
 // ConnectorMarketOperationKind defines model for ConnectorMarketOperationKind.
@@ -6324,14 +6376,28 @@ type ConnectorMarketReleaseSchemaVersion string
 // ConnectorMarketReleaseStatus defines model for ConnectorMarketRelease.Status.
 type ConnectorMarketReleaseStatus string
 
+// ConnectorMarketSecurity defines model for ConnectorMarketSecurity.
+type ConnectorMarketSecurity struct {
+	ReasonCode   *string                      `json:"reasonCode,omitempty"`
+	RevocationId *string                      `json:"revocationId,omitempty"`
+	State        ConnectorMarketSecurityState `json:"state"`
+}
+
+// ConnectorMarketSecurityState defines model for ConnectorMarketSecurity.State.
+type ConnectorMarketSecurityState string
+
 // ConnectorMarketSnapshot defines model for ConnectorMarketSnapshot.
 type ConnectorMarketSnapshot struct {
-	CatalogState   ConnectorMarketCatalogState `json:"catalogState"`
-	Connectors     []ConnectorMarketConnector  `json:"connectors"`
-	Operations     []ConnectorMarketOperation  `json:"operations"`
-	Revision       int64                       `json:"revision"`
-	SourceRevision *string                     `json:"sourceRevision,omitempty"`
+	CatalogState   ConnectorMarketCatalogState           `json:"catalogState"`
+	Connectors     []ConnectorMarketConnector            `json:"connectors"`
+	ContractCohort ConnectorMarketSnapshotContractCohort `json:"contractCohort"`
+	Operations     []ConnectorMarketOperation            `json:"operations"`
+	Revision       int64                                 `json:"revision"`
+	SourceRevision *string                               `json:"sourceRevision,omitempty"`
 }
+
+// ConnectorMarketSnapshotContractCohort defines model for ConnectorMarketSnapshot.ContractCohort.
+type ConnectorMarketSnapshotContractCohort string
 
 // CopyWorkspaceFileEntryRequest defines model for CopyWorkspaceFileEntryRequest.
 type CopyWorkspaceFileEntryRequest struct {
@@ -10199,13 +10265,6 @@ type ListCliCapabilitiesParams struct {
 	IncludeIntegration *bool `form:"includeIntegration,omitempty" json:"includeIntegration,omitempty"`
 }
 
-// ListConnectorMarketCatalogParams defines parameters for ListConnectorMarketCatalog.
-type ListConnectorMarketCatalogParams struct {
-	SectionId ConnectorMarketSectionID  `form:"sectionId" json:"sectionId"`
-	PageSize  *ConnectorMarketPageSize  `form:"pageSize,omitempty" json:"pageSize,omitempty"`
-	PageToken *ConnectorMarketPageToken `form:"pageToken,omitempty" json:"pageToken,omitempty"`
-}
-
 // ListWorkspaceAgentGeneratedFilesParams defines parameters for ListWorkspaceAgentGeneratedFiles.
 type ListWorkspaceAgentGeneratedFilesParams struct {
 	Query *string `form:"query,omitempty" json:"query,omitempty"`
@@ -10489,6 +10548,13 @@ type ListWorkspaceWorkflowsParams struct {
 // ListWorkspaceWorkflowsParamsCheckpointStatus defines parameters for ListWorkspaceWorkflows.
 type ListWorkspaceWorkflowsParamsCheckpointStatus string
 
+// ListConnectorMarketCatalogParams defines parameters for ListConnectorMarketCatalog.
+type ListConnectorMarketCatalogParams struct {
+	SectionId ConnectorMarketSectionID  `form:"sectionId" json:"sectionId"`
+	PageSize  *ConnectorMarketPageSize  `form:"pageSize,omitempty" json:"pageSize,omitempty"`
+	PageToken *ConnectorMarketPageToken `form:"pageToken,omitempty" json:"pageToken,omitempty"`
+}
+
 // DismissAccountRegistrationCreditsRewardJSONRequestBody defines body for DismissAccountRegistrationCreditsReward for application/json ContentType.
 type DismissAccountRegistrationCreditsRewardJSONRequestBody = DismissAccountRegistrationCreditsRewardRequest
 
@@ -10518,21 +10584,6 @@ type SetSystemAgentTargetEnabledJSONRequestBody = SetSystemAgentTargetEnabledReq
 
 // InvokeCliCommandJSONRequestBody defines body for InvokeCliCommand for application/json ContentType.
 type InvokeCliCommandJSONRequestBody = CliInvokeRequest
-
-// DisconnectConnectorMarketAuthorizationJSONRequestBody defines body for DisconnectConnectorMarketAuthorization for application/json ContentType.
-type DisconnectConnectorMarketAuthorizationJSONRequestBody = ConnectorMarketMutationRequest
-
-// StartConnectorMarketAuthorizationJSONRequestBody defines body for StartConnectorMarketAuthorization for application/json ContentType.
-type StartConnectorMarketAuthorizationJSONRequestBody = ConnectorMarketAuthorizationRequest
-
-// InstallConnectorMarketConnectorJSONRequestBody defines body for InstallConnectorMarketConnector for application/json ContentType.
-type InstallConnectorMarketConnectorJSONRequestBody = ConnectorMarketMutationRequest
-
-// UninstallConnectorMarketConnectorJSONRequestBody defines body for UninstallConnectorMarketConnector for application/json ContentType.
-type UninstallConnectorMarketConnectorJSONRequestBody = ConnectorMarketMutationRequest
-
-// RefreshConnectorMarketJSONRequestBody defines body for RefreshConnectorMarket for application/json ContentType.
-type RefreshConnectorMarketJSONRequestBody = ConnectorMarketMutationRequest
 
 // RefreshDesktopUpdateAdmissionJSONRequestBody defines body for RefreshDesktopUpdateAdmission for application/json ContentType.
 type RefreshDesktopUpdateAdmissionJSONRequestBody = DesktopUpdateAdmissionRefreshRequest
@@ -10821,6 +10872,18 @@ type PutWorkspaceWorkbenchJSONRequestBody = PutWorkspaceWorkbenchRequest
 
 // DecideWorkspaceWorkflowCheckpointJSONRequestBody defines body for DecideWorkspaceWorkflowCheckpoint for application/json ContentType.
 type DecideWorkspaceWorkflowCheckpointJSONRequestBody = DecideWorkspaceWorkflowCheckpointRequest
+
+// DisconnectConnectorMarketAuthorizationJSONRequestBody defines body for DisconnectConnectorMarketAuthorization for application/json ContentType.
+type DisconnectConnectorMarketAuthorizationJSONRequestBody = ConnectorMarketMutationRequest
+
+// StartConnectorMarketAuthorizationJSONRequestBody defines body for StartConnectorMarketAuthorization for application/json ContentType.
+type StartConnectorMarketAuthorizationJSONRequestBody = ConnectorMarketAuthorizationRequest
+
+// InstallConnectorMarketConnectorJSONRequestBody defines body for InstallConnectorMarketConnector for application/json ContentType.
+type InstallConnectorMarketConnectorJSONRequestBody = ConnectorMarketMutationRequest
+
+// UninstallConnectorMarketConnectorJSONRequestBody defines body for UninstallConnectorMarketConnector for application/json ContentType.
+type UninstallConnectorMarketConnectorJSONRequestBody = ConnectorMarketMutationRequest
 
 // AsAgentTargetBuiltinLocalLaunchRef returns the union data inside the AgentTargetLaunchRef as a AgentTargetBuiltinLocalLaunchRef
 func (t AgentTargetLaunchRef) AsAgentTargetBuiltinLocalLaunchRef() (AgentTargetBuiltinLocalLaunchRef, error) {

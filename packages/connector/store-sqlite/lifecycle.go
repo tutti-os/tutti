@@ -6,167 +6,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"strings"
 
 	market "github.com/tutti-os/tutti/packages/connector/host"
 )
 
 const maxLifecycleCleanupBatchSize = 500
-
-func (store *Store) migrateLifecycle(ctx context.Context) error {
-	if _, err := store.db.ExecContext(ctx, `ALTER TABLE connector_market_operations ADD COLUMN updated_at_unix_ms INTEGER NOT NULL DEFAULT 0`); err != nil &&
-		!isDuplicateColumnError(err) {
-		return fmt.Errorf("migrate connector market operation update timestamp: %w", err)
-	}
-	if err := store.backfillLifecycleColumns(ctx); err != nil {
-		return err
-	}
-	statements := []string{
-		`CREATE INDEX IF NOT EXISTS connector_market_operations_terminal_cleanup
-ON connector_market_operations(updated_at_unix_ms, operation_id)
-WHERE state IN ('completed', 'failed')`,
-		`CREATE INDEX IF NOT EXISTS connector_market_outbox_published_cleanup
-ON connector_market_outbox(published_at_unix_ms, sequence)
-WHERE published_at_unix_ms IS NOT NULL`,
-	}
-	for _, statement := range statements {
-		if _, err := store.db.ExecContext(ctx, statement); err != nil {
-			return fmt.Errorf("migrate connector market lifecycle index: %w", err)
-		}
-	}
-	return nil
-}
-
-func isDuplicateColumnError(err error) bool {
-	return err != nil && strings.Contains(strings.ToLower(err.Error()), "duplicate column")
-}
-
-func (store *Store) backfillLifecycleColumns(ctx context.Context) error {
-	tx, err := store.db.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = tx.Rollback() }()
-	rows, err := tx.QueryContext(ctx, `
-SELECT operation_id, operation_json FROM connector_market_operations
-WHERE updated_at_unix_ms = 0`)
-	if err != nil {
-		return err
-	}
-	type timestampBackfill struct {
-		operationID string
-		updatedAtMS int64
-	}
-	var updates []timestampBackfill
-	for rows.Next() {
-		var operationID, payload string
-		if err := rows.Scan(&operationID, &payload); err != nil {
-			_ = rows.Close()
-			return err
-		}
-		operation, err := decodeOperation(payload)
-		if err != nil {
-			_ = rows.Close()
-			return err
-		}
-		updates = append(updates, timestampBackfill{operationID: operationID, updatedAtMS: operation.UpdatedAt.UTC().UnixMilli()})
-	}
-	if err := rows.Close(); err != nil {
-		return err
-	}
-	if err := rows.Err(); err != nil {
-		return err
-	}
-	for _, update := range updates {
-		if _, err := tx.ExecContext(ctx, `UPDATE connector_market_operations SET updated_at_unix_ms = ? WHERE operation_id = ? AND updated_at_unix_ms = 0`,
-			update.updatedAtMS, update.operationID); err != nil {
-			return err
-		}
-	}
-	if err := backfillInstalledReleaseEvidence(ctx, tx); err != nil {
-		return err
-	}
-	return tx.Commit()
-}
-
-func backfillInstalledReleaseEvidence(ctx context.Context, tx *sql.Tx) error {
-	rows, err := tx.QueryContext(ctx, `SELECT connector_json FROM connector_market_connectors`)
-	if err != nil {
-		return err
-	}
-	var connectors []market.Connector
-	for rows.Next() {
-		var payload string
-		if err := rows.Scan(&payload); err != nil {
-			_ = rows.Close()
-			return err
-		}
-		connector, err := decodeConnector(payload)
-		if err != nil {
-			_ = rows.Close()
-			return err
-		}
-		connectors = append(connectors, connector)
-	}
-	if err := rows.Close(); err != nil {
-		return err
-	}
-	if err := rows.Err(); err != nil {
-		return err
-	}
-	for _, connector := range connectors {
-		digest := connector.Installation.InstalledReleaseDigest
-		if digest == "" {
-			continue
-		}
-		var storedDigest string
-		err := tx.QueryRowContext(ctx, `SELECT release_digest FROM connector_market_installed_releases WHERE connector_key = ?`, connector.Key).Scan(&storedDigest)
-		if err == nil && storedDigest == digest {
-			continue
-		}
-		if err != nil && !errors.Is(err, sql.ErrNoRows) {
-			return err
-		}
-		release, found, err := legacyInstalledReleaseEvidence(ctx, tx, connector, digest)
-		if err != nil {
-			return err
-		}
-		if !found {
-			return fmt.Errorf("backfill installed connector release %q for %q: %w", digest, connector.Key, market.ErrNotFound)
-		}
-		if err := saveInstalledReleaseOn(ctx, tx, release); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func legacyInstalledReleaseEvidence(ctx context.Context, tx *sql.Tx, connector market.Connector, digest string) (market.Release, bool, error) {
-	if connector.Release.ReleaseDigest == digest {
-		return connector.Release, true, nil
-	}
-	rows, err := tx.QueryContext(ctx, `SELECT operation_json FROM connector_market_operations
-WHERE connector_key = ? AND kind = ? AND state = ? ORDER BY updated_at_unix_ms DESC`,
-		connector.Key, market.OperationKindInstall, market.OperationStateCompleted)
-	if err != nil {
-		return market.Release{}, false, err
-	}
-	defer rows.Close()
-	for rows.Next() {
-		var payload string
-		if err := rows.Scan(&payload); err != nil {
-			return market.Release{}, false, err
-		}
-		operation, err := decodeOperation(payload)
-		if err != nil {
-			return market.Release{}, false, err
-		}
-		if operation.Target != nil && operation.Target.Release != nil && operation.Target.ReleaseDigest == digest {
-			return *operation.Target.Release, true, nil
-		}
-	}
-	return market.Release{}, false, rows.Err()
-}
 
 func saveInstalledReleaseEvidenceOn(ctx context.Context, tx *sql.Tx, operation market.Operation) error {
 	if operation.State != market.OperationStateCompleted {
@@ -216,10 +60,10 @@ func (store *Store) CleanupLifecycle(ctx context.Context, request market.Lifecyc
 DELETE FROM connector_market_operations
 WHERE operation_id IN (
   SELECT operation_id FROM connector_market_operations
-  WHERE state IN ('completed', 'failed') AND updated_at_unix_ms <= ?
+  WHERE state IN ('completed', 'failed', 'cancelled') AND updated_at_unix_ms <= ?
   ORDER BY updated_at_unix_ms, operation_id LIMIT ?
 )
-AND state IN ('completed', 'failed') AND updated_at_unix_ms <= ?`,
+AND state IN ('completed', 'failed', 'cancelled') AND updated_at_unix_ms <= ?`,
 		request.TerminalOperationsUpdatedThrough.UTC().UnixMilli(), request.BatchSize,
 		request.TerminalOperationsUpdatedThrough.UTC().UnixMilli())
 	if err != nil {

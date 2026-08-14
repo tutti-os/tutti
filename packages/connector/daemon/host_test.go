@@ -18,6 +18,8 @@ type activationGateDelegate struct {
 	installationInspections int
 	installationState       market.ReleaseInstallationObservationState
 	deactivations           int
+	uninstalls              int
+	uninstallFailures       int
 	failClosed              int
 	lastReconcile           market.RuntimeReconcileRequest
 }
@@ -35,13 +37,25 @@ func (delegate *activationGateDelegate) InspectReleaseInstallation(
 		ReleaseDigest: request.Release.ReleaseDigest}, nil
 }
 
-func (*activationGateDelegate) InstallRelease(context.Context, market.InstallReleaseRequest) (market.ReleaseInstallationReceipt, error) {
+func (*activationGateDelegate) PrepareReleaseInstallation(context.Context, market.PrepareReleaseInstallationRequest) (market.ReleaseInstallationReceipt, error) {
 	return market.ReleaseInstallationReceipt{}, errors.New("not implemented")
 }
-func (*activationGateDelegate) CommitReleaseInstallation(context.Context, market.CommitReleaseInstallationRequest) error {
+func (*activationGateDelegate) ActivateReleaseInstallation(context.Context, market.ReleaseInstallationTransitionRequest) error {
 	return nil
 }
-func (*activationGateDelegate) UninstallRelease(context.Context, market.UninstallReleaseRequest) error {
+func (*activationGateDelegate) FinalizeReleaseInstallation(context.Context, market.ReleaseInstallationTransitionRequest) error {
+	return nil
+}
+func (*activationGateDelegate) AbortReleaseInstallation(context.Context, market.ReleaseInstallationTransitionRequest) error {
+	return nil
+}
+
+func (delegate *activationGateDelegate) UninstallRelease(context.Context, market.UninstallReleaseRequest) error {
+	delegate.uninstalls++
+	if delegate.uninstallFailures > 0 {
+		delegate.uninstallFailures--
+		return errors.New("simulated uninstall failure")
+	}
 	return nil
 }
 
@@ -145,6 +159,20 @@ type countingCatalogSource struct {
 	refreshErr error
 }
 
+type catalogSourceFunc func(context.Context) (market.CatalogSnapshot, error)
+
+func (source catalogSourceFunc) Refresh(ctx context.Context) (market.CatalogSnapshot, error) {
+	return source(ctx)
+}
+
+func (catalogSourceFunc) ListCategories(context.Context) ([]market.CatalogCategory, error) {
+	return nil, nil
+}
+
+func (catalogSourceFunc) ListPage(context.Context, market.CatalogSourcePageQuery) (market.CatalogSourcePage, error) {
+	return market.CatalogSourcePage{}, nil
+}
+
 func (*countingCatalogSource) ListCategories(context.Context) ([]market.CatalogCategory, error) {
 	return nil, nil
 }
@@ -159,6 +187,188 @@ func (source *countingCatalogSource) Refresh(context.Context) (market.CatalogSna
 		return market.CatalogSnapshot{}, source.refreshErr
 	}
 	return market.CatalogSnapshot{SourceRevision: "source-1", Releases: []market.Release{source.release}}, nil
+}
+
+func TestBootstrapTriggersImmediateFirstCatalogPull(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	store, err := marketdata.Open(ctx, filepath.Join(t.TempDir(), "tuttid.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	refreshed := make(chan struct{}, 1)
+	runtime := &activationGateDelegate{}
+	host, err := NewHost(ctx, HostConfig{
+		Repository: store,
+		CatalogSource: catalogSourceFunc(func(context.Context) (market.CatalogSnapshot, error) {
+			select {
+			case refreshed <- struct{}{}:
+			default:
+			}
+			return market.CatalogSnapshot{
+				CatalogRevision: 1,
+				SnapshotDigest:  "sha256:" + strings.Repeat("e", 64),
+				SourceRevision:  "catalog-1",
+			}, nil
+		}),
+		ReleaseInstallations:   runtime,
+		ImplementationHost:     runtime,
+		Authorization:          unavailableAuthorization{},
+		Compatibility:          rejectingCompatibility{},
+		ImplementationRegistry: market.NewImplementationRegistry(nil),
+		Outbox:                 store,
+		Lifecycle:              store,
+		Publisher:              discardChangedEventPublisher{},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(host.Close)
+	if err := host.Bootstrap(ctx); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-refreshed:
+	case <-ctx.Done():
+		t.Fatal("catalog was not pulled immediately after bootstrap")
+	}
+	ticker := time.NewTicker(5 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		snapshot, snapshotErr := store.CatalogSnapshot(ctx)
+		if snapshotErr == nil && snapshot.CatalogRevision == 1 {
+			break
+		}
+		select {
+		case <-ticker.C:
+		case <-ctx.Done():
+			t.Fatalf("catalog snapshot = %#v, error = %v", snapshot, snapshotErr)
+		}
+	}
+}
+
+func TestCatalogRefreshAutomaticallyUninstallsRevokedRelease(t *testing.T) {
+	ctx := context.Background()
+	store, err := marketdata.Open(ctx, filepath.Join(t.TempDir(), "tuttid.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+
+	release := hostTestRelease()
+	connector := market.Connector{
+		Key:     release.ConnectorKey,
+		Release: release,
+		Installation: market.Installation{
+			State:                   market.InstallationStateInstalled,
+			InstalledVersion:        release.Version,
+			InstalledReleaseID:      release.ReleaseID,
+			InstalledReleaseDigest:  release.ReleaseDigest,
+			InstalledArtifactSHA256: release.Artifact.SHA256,
+		},
+		Authorization: market.Authorization{State: market.AuthorizationStateNotRequired},
+		Compatibility: market.Compatibility{State: market.CompatibilityStateSupported},
+		Security:      market.Security{State: market.SecurityStateAllowed},
+	}
+	if err := store.Transaction(ctx, func(tx market.Transaction) error {
+		return tx.SaveConnector(connector)
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	source := &countingCatalogSource{release: release}
+	runtime := &activationGateDelegate{uninstallFailures: 1}
+	host, err := NewHost(ctx, HostConfig{
+		Repository: store,
+		CatalogSource: catalogSourceFunc(func(context.Context) (market.CatalogSnapshot, error) {
+			snapshot, sourceErr := source.Refresh(ctx)
+			snapshot.CatalogRevision = 2
+			snapshot.SnapshotDigest = "sha256:" + strings.Repeat("d", 64)
+			snapshot.Revocations = []market.CatalogRevocation{{
+				ArtifactDigest: "sha256:" + release.Artifact.SHA256,
+				RevocationID:   "security-incident-1",
+				ConnectorKey:   release.ConnectorKey,
+				Version:        release.Version,
+				ReasonCode:     "security_incident",
+				EffectiveAt:    time.Now().UTC(),
+			}}
+			return snapshot, sourceErr
+		}),
+		ReleaseInstallations:   runtime,
+		ImplementationHost:     runtime,
+		Authorization:          unavailableAuthorization{},
+		Compatibility:          rejectingCompatibility{},
+		ImplementationRegistry: market.NewImplementationRegistry(nil),
+		Outbox:                 store,
+		Lifecycle:              store,
+		Publisher:              discardChangedEventPublisher{},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	host.refreshWorkerStarted = true
+	host.bootstrapMu.Lock()
+	host.bootstrapped = true
+	host.bootstrapMu.Unlock()
+	t.Cleanup(host.Close)
+
+	// Hold the gate until the accepted operation exposes its frozen scope. This
+	// keeps the test independent of the randomly generated daemon boot epoch.
+	host.activationGate.mu.Lock()
+	if err := host.refreshAndWait(ctx); err != nil {
+		host.activationGate.mu.Unlock()
+		t.Fatal(err)
+	}
+	accepted, err := store.Snapshot(ctx)
+	if err != nil {
+		host.activationGate.mu.Unlock()
+		t.Fatal(err)
+	}
+	if len(accepted.Operations) != 1 {
+		host.activationGate.mu.Unlock()
+		t.Fatalf("accepted revocation operations = %#v", accepted.Operations)
+	}
+	host.activationGate.scope = accepted.Operations[0].Scope
+	host.activationGate.open = true
+	host.activationGate.mu.Unlock()
+	host.scheduler.Wait()
+	failed, err := host.Application.GetConnector(ctx, connector.Key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if failed.Installation.State != market.InstallationStateFailed {
+		t.Fatalf("first uninstall state = %q, want failed", failed.Installation.State)
+	}
+	if err := host.refreshAndWait(ctx); err != nil {
+		t.Fatal(err)
+	}
+	host.scheduler.Wait()
+
+	updated, err := host.Application.GetConnector(ctx, connector.Key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if updated.Installation.State != market.InstallationStateNotInstalled {
+		t.Fatalf("installation state = %q, want not_installed", updated.Installation.State)
+	}
+	operations, err := store.Snapshot(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	operationsByRequestID := make(map[string]market.Operation, len(operations.Operations))
+	for _, operation := range operations.Operations {
+		operationsByRequestID[operation.ClientRequestID] = operation
+	}
+	failedRevocation, hasFailedRevocation := operationsByRequestID["revocation:security-incident-1:github:0"]
+	completedRevocation, hasCompletedRevocation := operationsByRequestID["revocation:security-incident-1:github:2"]
+	if len(operations.Operations) != 2 || !hasFailedRevocation || !hasCompletedRevocation ||
+		failedRevocation.Kind != market.OperationKindUninstall || completedRevocation.Kind != market.OperationKindUninstall {
+		t.Fatalf("revocation operations = %#v", operations.Operations)
+	}
+	if runtime.deactivations != 2 || runtime.uninstalls != 2 {
+		t.Fatalf("runtime deactivations = %d, uninstalls = %d, want 2 and 2", runtime.deactivations, runtime.uninstalls)
+	}
 }
 
 type discardChangedEventPublisher struct{}

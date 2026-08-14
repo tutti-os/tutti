@@ -4799,6 +4799,7 @@ export type ConnectorMarketCatalogPage = {
 };
 
 export type ConnectorMarketSnapshot = {
+  contractCohort: "connector-control-plane-v2";
   catalogState: ConnectorMarketCatalogState;
   connectors: Array<ConnectorMarketConnector>;
   operations: Array<ConnectorMarketOperation>;
@@ -4812,6 +4813,7 @@ export type ConnectorMarketConnector = {
   installation: ConnectorMarketInstallation;
   authorization: ConnectorMarketAuthorization;
   compatibility: ConnectorMarketCompatibility;
+  security: ConnectorMarketSecurity;
   revision: number;
 };
 
@@ -4875,6 +4877,7 @@ export type ConnectorMarketInstallation = {
   installedVersion?: string;
   installedReleaseId?: string;
   installedReleaseDigest?: string;
+  installedArtifactSha256?: string;
   failureCode?: string;
 };
 
@@ -4888,6 +4891,12 @@ export type ConnectorMarketCompatibility = {
   reason?: string;
 };
 
+export type ConnectorMarketSecurity = {
+  state: "allowed" | "revoked";
+  revocationId?: string;
+  reasonCode?: string;
+};
+
 export type ConnectorMarketOperation = {
   operationId: string;
   clientRequestId: string;
@@ -4897,8 +4906,13 @@ export type ConnectorMarketOperation = {
   stage?: ConnectorMarketOperationStage;
   target?: ConnectorMarketOperationTarget;
   attempt: number;
+  operationVersion: number;
   failureCode?: string;
+  nextAttemptAt?: string;
   createdAt: string;
+  startedAt?: string;
+  finishedAt?: string;
+  terminalAt?: string;
   updatedAt: string;
 };
 
@@ -4976,23 +4990,26 @@ export type ConnectorMarketCompatibilityState =
   | "unsupported_implementation";
 
 export type ConnectorMarketOperationKind =
-  | "refresh_catalog"
   | "install"
   | "uninstall"
+  | "reconcile_runtime"
   | "start_authorization"
   | "disconnect_authorization";
 
 export type ConnectorMarketOperationState =
   | "accepted"
   | "running"
+  | "outcome_unknown"
   | "completed"
-  | "failed";
+  | "failed"
+  | "cancelled";
 
 export type ConnectorMarketOperationStage =
   | "accepted"
-  | "refreshing"
   | "installing"
   | "installed"
+  | "activated"
+  | "finalizing"
   | "deactivating"
   | "authorizing"
   | "disconnecting"
@@ -5009,6 +5026,7 @@ export type ConnectorMarketErrorCode =
   | "connector_implementation_unsupported"
   | "connector_market_upstream_unavailable"
   | "connector_install_failed"
+  | "release_revoked"
   | "connector_authorization_failed"
   | "connector_market_unavailable";
 
@@ -16837,7 +16855,7 @@ export type GetConnectorMarketData = {
   body?: never;
   path?: never;
   query?: never;
-  url: "/v1/connector-market";
+  url: "/v2/connector-market";
 };
 
 export type GetConnectorMarketErrors = {
@@ -16872,7 +16890,7 @@ export type ListConnectorMarketCategoriesData = {
   body?: never;
   path?: never;
   query?: never;
-  url: "/v1/connector-market/categories";
+  url: "/v2/connector-market/categories";
 };
 
 export type ListConnectorMarketCategoriesErrors = {
@@ -16907,7 +16925,7 @@ export type ListConnectorMarketCatalogData = {
     pageSize?: number;
     pageToken?: string;
   };
-  url: "/v1/connector-market/catalog";
+  url: "/v2/connector-market/catalog";
 };
 
 export type ListConnectorMarketCatalogErrors = {
@@ -16944,7 +16962,7 @@ export type GetConnectorMarketConnectorData = {
     connectorKey: string;
   };
   query?: never;
-  url: "/v1/connector-market/connectors/{connectorKey}";
+  url: "/v2/connector-market/connectors/{connectorKey}";
 };
 
 export type GetConnectorMarketConnectorErrors = {
@@ -16980,25 +16998,17 @@ export type GetConnectorMarketConnectorResponse =
   GetConnectorMarketConnectorResponses[keyof GetConnectorMarketConnectorResponses];
 
 export type RefreshConnectorMarketData = {
-  body: ConnectorMarketMutationRequest;
+  body?: never;
   path?: never;
   query?: never;
-  url: "/v1/connector-market:refresh";
+  url: "/v2/connector-market:refresh";
 };
 
 export type RefreshConnectorMarketErrors = {
   /**
-   * Invalid connector-market request
-   */
-  400: ConnectorMarketError;
-  /**
    * Daemon authorization is required
    */
   401: ConnectorMarketError;
-  /**
-   * Revision conflict or operation already in progress
-   */
-  409: ConnectorMarketError;
   /**
    * Connector-market capability is temporarily unavailable
    */
@@ -17010,9 +17020,9 @@ export type RefreshConnectorMarketError =
 
 export type RefreshConnectorMarketResponses = {
   /**
-   * Refresh operation accepted
+   * Refreshed connector market snapshot
    */
-  202: ConnectorMarketMutationResponse;
+  200: ConnectorMarketSnapshot;
 };
 
 export type RefreshConnectorMarketResponse =
@@ -17024,7 +17034,7 @@ export type InstallConnectorMarketConnectorData = {
     connectorKey: string;
   };
   query?: never;
-  url: "/v1/connector-market/connectors/{connectorKey}:install";
+  url: "/v2/connector-market/connectors/{connectorKey}:install";
 };
 
 export type InstallConnectorMarketConnectorErrors = {
@@ -17073,7 +17083,7 @@ export type UninstallConnectorMarketConnectorData = {
     connectorKey: string;
   };
   query?: never;
-  url: "/v1/connector-market/connectors/{connectorKey}:uninstall";
+  url: "/v2/connector-market/connectors/{connectorKey}:uninstall";
 };
 
 export type UninstallConnectorMarketConnectorErrors = {
@@ -17118,7 +17128,7 @@ export type StartConnectorMarketAuthorizationData = {
     connectorKey: string;
   };
   query?: never;
-  url: "/v1/connector-market/connectors/{connectorKey}/authorization:start";
+  url: "/v2/connector-market/connectors/{connectorKey}/authorization:start";
 };
 
 export type StartConnectorMarketAuthorizationErrors = {
@@ -17163,7 +17173,7 @@ export type DisconnectConnectorMarketAuthorizationData = {
     connectorKey: string;
   };
   query?: never;
-  url: "/v1/connector-market/connectors/{connectorKey}/authorization:disconnect";
+  url: "/v2/connector-market/connectors/{connectorKey}/authorization:disconnect";
 };
 
 export type DisconnectConnectorMarketAuthorizationErrors = {
@@ -17208,7 +17218,7 @@ export type GetConnectorMarketOperationData = {
     operationID: string;
   };
   query?: never;
-  url: "/v1/connector-market/operations/{operationID}";
+  url: "/v2/connector-market/operations/{operationID}";
 };
 
 export type GetConnectorMarketOperationErrors = {

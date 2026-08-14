@@ -366,7 +366,7 @@ The stable package entrypoints are:
 @tutti-os/connector-market/authorization
 @tutti-os/connector-market/core
 @tutti-os/connector-market/i18n
-@tutti-os/connector-market/openapi/connector-market.v1.yaml
+@tutti-os/connector-market/openapi/connector-market.v2.yaml
 @tutti-os/connector-market/services
 @tutti-os/connector-market/ui
 @tutti-os/workspace-app-center

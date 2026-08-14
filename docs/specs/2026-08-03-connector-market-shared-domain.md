@@ -59,7 +59,7 @@ local daemon OpenAPI fragment.
 
 ### Local Daemon API
 
-`packages/connector/market/openapi/connector-market.v1.yaml` is the shared
+`packages/connector/market/openapi/connector-market.v2.yaml` is the shared
 local daemon fragment. It exposes accepted catalog state, local installation,
 authorization, compatibility, revisions, and durable operations to renderers.
 An installed connector is daemon-global and available to every Agent and the
@@ -70,9 +70,10 @@ its own server and client, and provides transport mapping. The local daemon is
 the authoritative source for renderer state.
 
 Market placement is not part of the immutable release manifest. ZK owns each
-listing's primary category, ranks, and optional featured placement; TSH exposes
-the selected deployment market through category and cursor-paginated item
-endpoints. Tutti forwards that model through daemon-owned category/page APIs.
+listing's primary category, ranks, and optional featured placement; tsh-server
+exposes the selected connector market as one versioned full snapshot. Local
+daemons persist that snapshot and expose daemon-owned category/page projections
+to renderers without making further remote pagination requests.
 The shared Valtio service maintains independent page state for every section,
 and the renderer does not infer category membership from connector keys or
 manifest JSON. `featured` is an overlapping collection, while authoritative

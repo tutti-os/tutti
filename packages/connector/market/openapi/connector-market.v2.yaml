@@ -1,12 +1,12 @@
 openapi: 3.0.3
 info:
   title: Connector Market API Fragment
-  version: 1.0.0
+  version: 2.0.0
   description: Host-neutral connector catalog, installation, authorization, and global Agent-access contract.
 tags:
   - name: connector-market
 paths:
-  /v1/connector-market:
+  /v2/connector-market:
     get:
       operationId: getConnectorMarket
       tags: [connector-market]
@@ -24,7 +24,7 @@ paths:
           $ref: "#/components/responses/ConnectorMarketUnauthorizedError"
         "503":
           $ref: "#/components/responses/ConnectorMarketUnavailableError"
-  /v1/connector-market/categories:
+  /v2/connector-market/categories:
     get:
       operationId: listConnectorMarketCategories
       tags: [connector-market]
@@ -40,7 +40,7 @@ paths:
           $ref: "#/components/responses/ConnectorMarketUnauthorizedError"
         "503":
           $ref: "#/components/responses/ConnectorMarketUnavailableError"
-  /v1/connector-market/catalog:
+  /v2/connector-market/catalog:
     get:
       operationId: listConnectorMarketCatalog
       tags: [connector-market]
@@ -62,7 +62,7 @@ paths:
           $ref: "#/components/responses/ConnectorMarketUnauthorizedError"
         "503":
           $ref: "#/components/responses/ConnectorMarketUnavailableError"
-  /v1/connector-market/connectors/{connectorKey}:
+  /v2/connector-market/connectors/{connectorKey}:
     parameters:
       - $ref: "#/components/parameters/ConnectorMarketConnectorKey"
     get:
@@ -84,33 +84,23 @@ paths:
           $ref: "#/components/responses/ConnectorMarketNotFoundError"
         "503":
           $ref: "#/components/responses/ConnectorMarketUnavailableError"
-  /v1/connector-market:refresh:
+  /v2/connector-market:refresh:
     post:
       operationId: refreshConnectorMarket
       tags: [connector-market]
-      summary: Refresh and accept the upstream connector catalog
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/ConnectorMarketMutationRequest"
+      summary: Synchronize the complete upstream connector catalog snapshot
       responses:
-        "202":
-          description: Refresh operation accepted
+        "200":
+          description: Refreshed connector market snapshot
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ConnectorMarketMutationResponse"
-        "400":
-          $ref: "#/components/responses/ConnectorMarketInvalidRequestError"
+                $ref: "#/components/schemas/ConnectorMarketSnapshot"
         "401":
           $ref: "#/components/responses/ConnectorMarketUnauthorizedError"
-        "409":
-          $ref: "#/components/responses/ConnectorMarketConflictError"
         "503":
           $ref: "#/components/responses/ConnectorMarketUnavailableError"
-  /v1/connector-market/connectors/{connectorKey}:install:
+  /v2/connector-market/connectors/{connectorKey}:install:
     parameters:
       - $ref: "#/components/parameters/ConnectorMarketConnectorKey"
     post:
@@ -142,7 +132,7 @@ paths:
           $ref: "#/components/responses/ConnectorMarketUnprocessableError"
         "503":
           $ref: "#/components/responses/ConnectorMarketUnavailableError"
-  /v1/connector-market/connectors/{connectorKey}:uninstall:
+  /v2/connector-market/connectors/{connectorKey}:uninstall:
     parameters:
       - $ref: "#/components/parameters/ConnectorMarketConnectorKey"
     post:
@@ -176,7 +166,7 @@ paths:
           $ref: "#/components/responses/ConnectorMarketConflictError"
         "503":
           $ref: "#/components/responses/ConnectorMarketUnavailableError"
-  /v1/connector-market/connectors/{connectorKey}/authorization:start:
+  /v2/connector-market/connectors/{connectorKey}/authorization:start:
     parameters:
       - $ref: "#/components/parameters/ConnectorMarketConnectorKey"
     post:
@@ -206,7 +196,7 @@ paths:
           $ref: "#/components/responses/ConnectorMarketConflictError"
         "503":
           $ref: "#/components/responses/ConnectorMarketUnavailableError"
-  /v1/connector-market/connectors/{connectorKey}/authorization:disconnect:
+  /v2/connector-market/connectors/{connectorKey}/authorization:disconnect:
     parameters:
       - $ref: "#/components/parameters/ConnectorMarketConnectorKey"
     post:
@@ -236,7 +226,7 @@ paths:
           $ref: "#/components/responses/ConnectorMarketConflictError"
         "503":
           $ref: "#/components/responses/ConnectorMarketUnavailableError"
-  /v1/connector-market/operations/{operationID}:
+  /v2/connector-market/operations/{operationID}:
     parameters:
       - $ref: "#/components/parameters/ConnectorMarketOperationID"
     get:
@@ -395,8 +385,11 @@ components:
     ConnectorMarketSnapshot:
       type: object
       additionalProperties: false
-      required: [catalogState, connectors, operations, revision]
+      required: [contractCohort, catalogState, connectors, operations, revision]
       properties:
+        contractCohort:
+          type: string
+          enum: [connector-control-plane-v2]
         catalogState:
           $ref: "#/components/schemas/ConnectorMarketCatalogState"
         connectors:
@@ -417,7 +410,15 @@ components:
       type: object
       additionalProperties: false
       required:
-        [key, release, installation, authorization, compatibility, revision]
+        [
+          key,
+          release,
+          installation,
+          authorization,
+          compatibility,
+          security,
+          revision
+        ]
       properties:
         key:
           type: string
@@ -429,6 +430,8 @@ components:
           $ref: "#/components/schemas/ConnectorMarketAuthorization"
         compatibility:
           $ref: "#/components/schemas/ConnectorMarketCompatibility"
+        security:
+          $ref: "#/components/schemas/ConnectorMarketSecurity"
         revision:
           type: integer
           format: int64
@@ -587,6 +590,9 @@ components:
         installedReleaseDigest:
           type: string
           pattern: "^[a-f0-9]{64}$"
+        installedArtifactSha256:
+          type: string
+          pattern: "^[a-f0-9]{64}$"
         failureCode:
           type: string
     ConnectorMarketAuthorization:
@@ -607,6 +613,18 @@ components:
           $ref: "#/components/schemas/ConnectorMarketCompatibilityState"
         reason:
           type: string
+    ConnectorMarketSecurity:
+      type: object
+      additionalProperties: false
+      required: [state]
+      properties:
+        state:
+          type: string
+          enum: [allowed, revoked]
+        revocationId:
+          type: string
+        reasonCode:
+          type: string
     ConnectorMarketOperation:
       type: object
       additionalProperties: false
@@ -617,6 +635,7 @@ components:
           kind,
           state,
           attempt,
+          operationVersion,
           createdAt,
           updatedAt
         ]
@@ -639,9 +658,25 @@ components:
           type: integer
           format: int32
           minimum: 0
+        operationVersion:
+          type: integer
+          format: int64
+          minimum: 0
         failureCode:
           type: string
+        nextAttemptAt:
+          type: string
+          format: date-time
         createdAt:
+          type: string
+          format: date-time
+        startedAt:
+          type: string
+          format: date-time
+        finishedAt:
+          type: string
+          format: date-time
+        terminalAt:
           type: string
           format: date-time
         updatedAt:
@@ -773,21 +808,22 @@ components:
     ConnectorMarketOperationKind:
       type: string
       enum:
-        - refresh_catalog
         - install
         - uninstall
+        - reconcile_runtime
         - start_authorization
         - disconnect_authorization
     ConnectorMarketOperationState:
       type: string
-      enum: [accepted, running, completed, failed]
+      enum: [accepted, running, outcome_unknown, completed, failed, cancelled]
     ConnectorMarketOperationStage:
       type: string
       enum:
         - accepted
-        - refreshing
         - installing
         - installed
+        - activated
+        - finalizing
         - deactivating
         - authorizing
         - disconnecting
@@ -805,5 +841,6 @@ components:
         - connector_implementation_unsupported
         - connector_market_upstream_unavailable
         - connector_install_failed
+        - release_revoked
         - connector_authorization_failed
         - connector_market_unavailable

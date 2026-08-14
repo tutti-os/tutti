@@ -575,6 +575,7 @@ export type {
   ConnectorMarketPageToken,
   ConnectorMarketRelease,
   ConnectorMarketSectionId,
+  ConnectorMarketSecurity,
   ConnectorMarketSnapshot,
   CopyWorkspaceFileEntryData,
   CopyWorkspaceFileEntryError,

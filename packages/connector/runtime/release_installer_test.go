@@ -59,7 +59,7 @@ func TestReleaseInstallerDoesNotActivateRuntime(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	receipt, err := installer.InstallRelease(context.Background(), market.InstallReleaseRequest{
+	receipt, err := installer.PrepareReleaseInstallation(context.Background(), market.PrepareReleaseInstallationRequest{
 		OperationID: "install-1", Release: release,
 	})
 	if err != nil {
@@ -130,13 +130,13 @@ func TestReleaseInstallerUninstallRemovesEveryConnectorRelease(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	firstReceipt, err := installer.InstallRelease(context.Background(), market.InstallReleaseRequest{
+	firstReceipt, err := installer.PrepareReleaseInstallation(context.Background(), market.PrepareReleaseInstallationRequest{
 		OperationID: "install-v1", Release: first,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	secondReceipt, err := installer.InstallRelease(context.Background(), market.InstallReleaseRequest{
+	secondReceipt, err := installer.PrepareReleaseInstallation(context.Background(), market.PrepareReleaseInstallationRequest{
 		OperationID: "install-v2", Release: second,
 	})
 	if err != nil {

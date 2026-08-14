@@ -69,9 +69,7 @@ export interface ConnectorMarketClient {
   getConnectorMarketOperation(
     operationId: string
   ): Promise<ConnectorMarketOperation>;
-  refreshConnectorMarket(
-    request: ConnectorMarketMutationRequest
-  ): Promise<ConnectorMarketMutationResponse>;
+  refreshConnectorMarket(): Promise<ConnectorMarketSnapshot>;
   installConnectorMarketConnector(
     connectorKey: string,
     request: ConnectorMarketMutationRequest
@@ -130,9 +128,9 @@ export function createConnectorMarketClient(
         "Get connector market operation request failed."
       );
     },
-    async refreshConnectorMarket(request) {
+    async refreshConnectorMarket() {
       return unwrapConnectorMarketData(
-        await refreshConnectorMarket({ client, body: request }),
+        await refreshConnectorMarket({ client }),
         "Refresh connector market request failed."
       );
     },

@@ -29,6 +29,61 @@ func TestOperationSchedulerDeduplicatesActiveOperation(t *testing.T) {
 	}
 }
 
+func TestOperationSchedulerWaitsForPersistedUnknownOutcomeRetry(t *testing.T) {
+	executor := &unknownOutcomeExecutor{retryAt: time.Now().Add(30 * time.Millisecond), completed: make(chan struct{})}
+	scheduler := NewOperationScheduler(context.Background())
+	if err := scheduler.Bind(executor); err != nil {
+		t.Fatal(err)
+	}
+	if err := scheduler.Schedule(context.Background(), "operation-unknown"); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-executor.completed:
+	case <-time.After(time.Second):
+		t.Fatal("unknown outcome was not retried")
+	}
+	scheduler.Wait()
+	executor.mu.Lock()
+	defer executor.mu.Unlock()
+	if executor.calls != 2 {
+		t.Fatalf("executor calls = %d, want 2", executor.calls)
+	}
+	if executor.secondAttempt.Before(executor.retryAt) {
+		t.Fatalf("second attempt at %s, before persisted retry time %s", executor.secondAttempt, executor.retryAt)
+	}
+}
+
+type unknownOutcomeExecutor struct {
+	mu            sync.Mutex
+	calls         int
+	retryAt       time.Time
+	secondAttempt time.Time
+	completed     chan struct{}
+}
+
+func (executor *unknownOutcomeExecutor) GetOperation(context.Context, string) (market.Operation, error) {
+	executor.mu.Lock()
+	defer executor.mu.Unlock()
+	if executor.calls == 0 {
+		return market.Operation{State: market.OperationStateAccepted}, nil
+	}
+	retryAt := executor.retryAt
+	return market.Operation{State: market.OperationStateOutcomeUnknown, NextAttemptAt: &retryAt}, nil
+}
+
+func (executor *unknownOutcomeExecutor) ExecuteOperation(context.Context, string) error {
+	executor.mu.Lock()
+	defer executor.mu.Unlock()
+	executor.calls++
+	if executor.calls == 1 {
+		return market.ErrOperationOutcomeUnknown
+	}
+	executor.secondAttempt = time.Now()
+	close(executor.completed)
+	return nil
+}
+
 type blockingExecutor struct {
 	mu      sync.Mutex
 	calls   int
@@ -43,6 +98,10 @@ func (executor *blockingExecutor) ExecuteOperation(context.Context, string) erro
 	close(executor.started)
 	<-executor.release
 	return nil
+}
+
+func (*blockingExecutor) GetOperation(context.Context, string) (market.Operation, error) {
+	return market.Operation{State: market.OperationStateAccepted}, nil
 }
 
 func TestOutboxDispatcherMarksOnlyPublishedEvents(t *testing.T) {

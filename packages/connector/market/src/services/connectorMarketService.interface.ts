@@ -21,7 +21,6 @@ export interface ConnectorMarketSectionState extends ConnectorMarketCategory {
 export interface ConnectorMarketStoreState {
   loadState: ConnectorMarketLoadState;
   catalogState: ConnectorCatalogState;
-  catalogOperation: ConnectorOperation | null;
   catalogSections: ConnectorMarketSectionState[];
   connectorsByKey: Record<string, Connector>;
   connectorKeys: string[];

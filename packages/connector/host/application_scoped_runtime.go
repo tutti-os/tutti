@@ -27,13 +27,20 @@ func (application *Application) EnsureRuntimeReconcile(
 ) (EnsureRuntimeReconcileResult, error) {
 	connectorKey = strings.TrimSpace(connectorKey)
 	scope.AccountID = strings.TrimSpace(scope.AccountID)
+	if application.config.OperationScopes != nil && (scope.VMAssignmentID == "" || scope.GuestBootID == "" || scope.RuntimeEpoch == "") {
+		resolved, err := application.resolveOperationScope(ctx, scope.AccountID)
+		if err != nil {
+			return EnsureRuntimeReconcileResult{}, err
+		}
+		scope = resolved
+	}
 	if connectorKey == "" {
 		return EnsureRuntimeReconcileResult{}, invalidRequest("connectorKey is required")
 	}
 	var result MutationResult
 	created := false
 	err := application.config.Repository.Transaction(ctx, func(tx Transaction) error {
-		active, err := tx.ActiveOperation(connectorKey)
+		active, err := tx.ActiveOperation(OperationKindReconcileRuntime, scope, connectorKey)
 		if err != nil {
 			return err
 		}
@@ -67,17 +74,19 @@ func (application *Application) EnsureRuntimeReconcile(
 			return NewDomainError(ErrorCodeUnavailable, "connector operation id could not be generated", true, err)
 		}
 		revision := tx.AdvanceRevision()
-		connector.Revision = revision
+		connector.Revision++
 		operation := Operation{
 			OperationID:     operationID,
 			ClientRequestID: "ensure-runtime-reconcile/" + operationID,
 			ConnectorKey:    connectorKey,
 			Kind:            OperationKindReconcileRuntime,
 			Scope:           scope,
+			LockClaims:      OperationLockClaims(OperationKindReconcileRuntime, scope, connectorKey),
+			RequestDigest:   OperationRequestDigest(OperationKindReconcileRuntime, scope, connectorKey, nil),
 			State:           OperationStateAccepted,
 			Stage:           OperationStageAccepted,
 			Target:          operationTarget(OperationKindReconcileRuntime, connector),
-			HostGeneration:  HostGeneration{BootEpoch: application.config.BootEpoch, Generation: revision},
+			HostGeneration:  HostGeneration{BootEpoch: application.config.BootEpoch, Generation: connector.Revision},
 			CreatedAt:       now,
 			UpdatedAt:       now,
 		}
@@ -195,33 +204,14 @@ func (application *Application) projectAuthorizationAndScheduleRuntime(
 	state AuthorizationState,
 	failureCode string,
 ) error {
-	remote, err := application.projectAuthorization(ctx, scope, connectorKey, connectionID, state, failureCode)
+	_, err := application.projectAuthorization(ctx, scope, connectorKey, connectionID, state, failureCode)
 	if err != nil || application.config.AuthorizationProjections == nil || strings.TrimSpace(scope.AccountID) == "" {
 		return err
 	}
 	if state == AuthorizationStatePending {
 		return nil
 	}
-	deviceSnapshot, err := application.Snapshot(ctx)
-	if err != nil {
-		return err
-	}
-	requestID, err := application.config.NewID()
-	if err != nil {
-		return err
-	}
-	requestPrefix := "authorization-projection/"
-	if remote {
-		requestPrefix = "authorization-snapshot/"
-	}
-	_, err = application.ReconcileRuntime(ctx, ConnectorMutation{
-		Mutation: Mutation{
-			ClientRequestID:  requestPrefix + requestID,
-			ExpectedRevision: deviceSnapshot.Revision,
-		},
-		ConnectorKey: strings.TrimSpace(connectorKey),
-		AccountID:    strings.TrimSpace(scope.AccountID),
-	})
+	_, err = application.EnsureRuntimeReconcile(ctx, scope, strings.TrimSpace(connectorKey))
 	return err
 }
 
@@ -442,11 +432,8 @@ func (application *Application) recordDirectRuntimeGeneration(
 		if connector.Revision >= generation {
 			return nil
 		}
-		revision := tx.Revision()
-		for revision < generation {
-			revision = tx.AdvanceRevision()
-		}
-		connector.Revision = revision
+		revision := tx.AdvanceRevision()
+		connector.Revision = generation
 		if err := tx.SaveConnector(connector); err != nil {
 			return err
 		}
@@ -457,6 +444,7 @@ func (application *Application) recordDirectRuntimeGeneration(
 			ConnectorKey:    connector.Key,
 			Kind:            OperationKindReconcileRuntime,
 			Scope:           scope,
+			RequestDigest:   OperationRequestDigest(OperationKindReconcileRuntime, scope, connector.Key, nil),
 			State:           OperationStateCompleted,
 			Stage:           OperationStageCompleted,
 			Target:          operationTarget(OperationKindReconcileRuntime, connector),

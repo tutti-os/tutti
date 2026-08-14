@@ -253,7 +253,8 @@ func (w *tuttiWiring) buildWorkspaceModule(ctx context.Context) error {
 		return err
 	}
 	if connectorsEnabled {
-		connectorMarketStore, err := connectormarketdata.Open(ctx, workspacedata.DefaultDBPath())
+		connectorControlPlanePath := filepath.Join(filepath.Dir(workspacedata.DefaultDBPath()), "connector-control-plane-v2.db")
+		connectorMarketStore, err := connectormarketdata.Open(ctx, connectorControlPlanePath)
 		if err != nil {
 			agentRuntime.Close()
 			providerAuthWatcher.Close()

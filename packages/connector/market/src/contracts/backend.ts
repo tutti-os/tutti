@@ -4,7 +4,6 @@ import type {
   ConnectorAuthorizationResult,
   ConnectorMarketCatalogPage,
   ConnectorMarketCategory,
-  ConnectorMarketMutationInput,
   ConnectorMarketSnapshot,
   ConnectorMutationInput,
   ConnectorMutationResult,
@@ -21,9 +20,7 @@ export interface ConnectorMarketBackend {
   }): Promise<ConnectorMarketCatalogPage>;
   getConnector(input: { connectorKey: string }): Promise<Connector>;
   getOperation(input: { operationId: string }): Promise<ConnectorOperation>;
-  refreshCatalog(
-    input: ConnectorMarketMutationInput
-  ): Promise<ConnectorMutationResult>;
+  refreshCatalog(): Promise<ConnectorMarketSnapshot>;
   installConnector(
     input: ConnectorMutationInput
   ): Promise<ConnectorMutationResult>;

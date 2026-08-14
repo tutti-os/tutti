@@ -2,6 +2,7 @@ package host
 
 import (
 	"encoding/json"
+	"strings"
 	"time"
 )
 
@@ -56,7 +57,6 @@ const (
 type OperationKind string
 
 const (
-	OperationKindRefreshCatalog          OperationKind = "refresh_catalog"
 	OperationKindInstall                 OperationKind = "install"
 	OperationKindUninstall               OperationKind = "uninstall"
 	OperationKindReconcileRuntime        OperationKind = "reconcile_runtime"
@@ -67,19 +67,26 @@ const (
 type OperationState string
 
 const (
-	OperationStateAccepted  OperationState = "accepted"
-	OperationStateRunning   OperationState = "running"
-	OperationStateCompleted OperationState = "completed"
-	OperationStateFailed    OperationState = "failed"
+	OperationStateAccepted       OperationState = "accepted"
+	OperationStateRunning        OperationState = "running"
+	OperationStateOutcomeUnknown OperationState = "outcome_unknown"
+	OperationStateCompleted      OperationState = "completed"
+	OperationStateFailed         OperationState = "failed"
+	OperationStateCancelled      OperationState = "cancelled"
 )
+
+func (state OperationState) IsTerminal() bool {
+	return state == OperationStateCompleted || state == OperationStateFailed || state == OperationStateCancelled
+}
 
 type OperationStage string
 
 const (
 	OperationStageAccepted      OperationStage = "accepted"
-	OperationStageRefreshing    OperationStage = "refreshing"
 	OperationStageInstalling    OperationStage = "installing"
 	OperationStageInstalled     OperationStage = "installed"
+	OperationStageActivated     OperationStage = "activated"
+	OperationStageFinalizing    OperationStage = "finalizing"
 	OperationStageDeactivating  OperationStage = "deactivating"
 	OperationStageAuthorizing   OperationStage = "authorizing"
 	OperationStageDisconnecting OperationStage = "disconnecting"
@@ -244,11 +251,25 @@ type RemoteStreamableHTTPImplementation struct {
 }
 
 type Installation struct {
-	State                  InstallationState `json:"state"`
-	InstalledVersion       string            `json:"installedVersion,omitempty"`
-	InstalledReleaseID     string            `json:"installedReleaseId,omitempty"`
-	InstalledReleaseDigest string            `json:"installedReleaseDigest,omitempty"`
-	FailureCode            string            `json:"failureCode,omitempty"`
+	State                   InstallationState `json:"state"`
+	InstalledVersion        string            `json:"installedVersion,omitempty"`
+	InstalledReleaseID      string            `json:"installedReleaseId,omitempty"`
+	InstalledReleaseDigest  string            `json:"installedReleaseDigest,omitempty"`
+	InstalledArtifactSHA256 string            `json:"installedArtifactSha256,omitempty"`
+	FailureCode             string            `json:"failureCode,omitempty"`
+}
+
+type SecurityState string
+
+const (
+	SecurityStateAllowed SecurityState = "allowed"
+	SecurityStateRevoked SecurityState = "revoked"
+)
+
+type Security struct {
+	State        SecurityState `json:"state"`
+	RevocationID string        `json:"revocationId,omitempty"`
+	ReasonCode   string        `json:"reasonCode,omitempty"`
 }
 
 type Authorization struct {
@@ -267,35 +288,75 @@ type Connector struct {
 	Installation  Installation  `json:"installation"`
 	Authorization Authorization `json:"authorization"`
 	Compatibility Compatibility `json:"compatibility"`
+	Security      Security      `json:"security"`
 	Revision      uint64        `json:"revision"`
 }
 
 type Operation struct {
-	OperationID     string             `json:"operationId"`
-	ClientRequestID string             `json:"clientRequestId"`
-	ConnectorKey    string             `json:"connectorKey,omitempty"`
-	Kind            OperationKind      `json:"kind"`
-	Scope           OperationScope     `json:"scope,omitempty"`
-	State           OperationState     `json:"state"`
-	Stage           OperationStage     `json:"stage,omitempty"`
-	Target          *OperationTarget   `json:"target,omitempty"`
-	HostGeneration  HostGeneration     `json:"hostGeneration,omitempty"`
-	Execution       OperationExecution `json:"execution,omitempty"`
-	Attempt         uint32             `json:"attempt"`
-	LeaseOwner      string             `json:"leaseOwner,omitempty"`
-	LeaseToken      uint64             `json:"leaseToken,omitempty"`
-	LeaseExpiresAt  *time.Time         `json:"leaseExpiresAt,omitempty"`
-	FailureCode     string             `json:"failureCode,omitempty"`
-	CreatedAt       time.Time          `json:"createdAt"`
-	UpdatedAt       time.Time          `json:"updatedAt"`
+	OperationID      string             `json:"operationId"`
+	ClientRequestID  string             `json:"clientRequestId"`
+	ConnectorKey     string             `json:"connectorKey,omitempty"`
+	Kind             OperationKind      `json:"kind"`
+	Scope            OperationScope     `json:"scope,omitempty"`
+	RequestDigest    string             `json:"requestDigest"`
+	LockClaims       []string           `json:"lockClaims,omitempty"`
+	State            OperationState     `json:"state"`
+	Stage            OperationStage     `json:"stage,omitempty"`
+	Target           *OperationTarget   `json:"target,omitempty"`
+	HostGeneration   HostGeneration     `json:"hostGeneration,omitempty"`
+	Execution        OperationExecution `json:"execution,omitempty"`
+	Attempt          uint32             `json:"attempt"`
+	OperationVersion uint64             `json:"operationVersion"`
+	LeaseOwner       string             `json:"leaseOwner,omitempty"`
+	LeaseToken       uint64             `json:"leaseToken,omitempty"`
+	LeaseExpiresAt   *time.Time         `json:"leaseExpiresAt,omitempty"`
+	FailureCode      string             `json:"failureCode,omitempty"`
+	NextAttemptAt    *time.Time         `json:"nextAttemptAt,omitempty"`
+	CreatedAt        time.Time          `json:"createdAt"`
+	StartedAt        *time.Time         `json:"startedAt,omitempty"`
+	FinishedAt       *time.Time         `json:"finishedAt,omitempty"`
+	TerminalAt       *time.Time         `json:"terminalAt,omitempty"`
+	UpdatedAt        time.Time          `json:"updatedAt"`
 }
 
-// OperationScope freezes the external authority under which a durable
-// operation was accepted. AccountID is intentionally the only persisted
-// authority fact: short-lived artifact and credential grants belong to ports
-// and must never be serialized into an operation.
+// OperationScope freezes the durable authority/incarnation facts under which
+// an operation was accepted. Short-lived artifact and credential grants still
+// belong to ports and must never be serialized into an operation.
 type OperationScope struct {
-	AccountID string `json:"accountId,omitempty"`
+	AccountID         string `json:"accountId,omitempty"`
+	DeviceID          string `json:"deviceId,omitempty"`
+	VMAssignmentID    string `json:"vmAssignmentId,omitempty"`
+	AccountGeneration uint64 `json:"accountGeneration,omitempty"`
+	DesktopBootEpoch  string `json:"desktopBootEpoch,omitempty"`
+	GuestBootID       string `json:"guestBootId,omitempty"`
+	RuntimeEpoch      string `json:"runtimeEpoch,omitempty"`
+}
+
+const (
+	ConnectorExecutionClaimPrefix     = "connector_execution:"
+	ConnectorAuthorizationClaimPrefix = "connector_authorization:"
+)
+
+func OperationLockClaims(kind OperationKind, scope OperationScope, connectorKey string) []string {
+	connectorKey = strings.TrimSpace(connectorKey)
+	if connectorKey == "" {
+		return nil
+	}
+	switch kind {
+	case OperationKindStartAuthorization, OperationKindDisconnectAuthorization:
+		return []string{ConnectorAuthorizationClaimPrefix + strings.TrimSpace(scope.AccountID) + ":" + connectorKey}
+	case OperationKindInstall, OperationKindUninstall, OperationKindReconcileRuntime:
+		authority := strings.TrimSpace(scope.VMAssignmentID)
+		if authority == "" {
+			authority = strings.TrimSpace(scope.DeviceID)
+		}
+		if authority == "" {
+			authority = "local"
+		}
+		return []string{ConnectorExecutionClaimPrefix + authority + ":" + connectorKey}
+	default:
+		return nil
+	}
 }
 
 // OperationTarget freezes the exact release identity at command acceptance so
@@ -516,12 +577,15 @@ type AuthorizationObservation struct {
 }
 
 type Snapshot struct {
+	ContractCohort string       `json:"contractCohort"`
 	CatalogState   CatalogState `json:"catalogState"`
 	Connectors     []Connector  `json:"connectors"`
 	Operations     []Operation  `json:"operations"`
 	Revision       uint64       `json:"revision"`
 	SourceRevision string       `json:"sourceRevision,omitempty"`
 }
+
+const ConnectorControlPlaneContractCohort = "connector-control-plane-v2"
 
 type Mutation struct {
 	ClientRequestID  string `json:"clientRequestId"`

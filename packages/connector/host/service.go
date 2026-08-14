@@ -17,7 +17,7 @@ type Service interface {
 	ListCatalogPage(ctx context.Context, query CatalogPageQuery) (CatalogPage, error)
 	GetConnector(ctx context.Context, connectorKey string) (Connector, error)
 	GetOperation(ctx context.Context, operationID string) (Operation, error)
-	RefreshCatalog(ctx context.Context, mutation Mutation) (MutationResult, error)
+	RefreshCatalog(ctx context.Context) (Snapshot, error)
 	Install(ctx context.Context, mutation ConnectorMutation) (MutationResult, error)
 	Uninstall(ctx context.Context, mutation ConnectorMutation) (MutationResult, error)
 	ReconcileRuntime(ctx context.Context, mutation ConnectorMutation) (MutationResult, error)

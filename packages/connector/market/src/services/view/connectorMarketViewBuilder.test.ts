@@ -207,6 +207,7 @@ test("keeps a physical repair in the available segment until installation comple
   ];
   market.operationsByConnectorKey[connector.key] = {
     attempt: 1,
+    operationVersion: 1,
     clientRequestId: "repair-github",
     connectorKey: connector.key,
     createdAt: "2026-08-11T00:00:00Z",
@@ -292,6 +293,7 @@ test("exposes disconnect directly for an authorized connector", () => {
   market.connectorsByKey[connector.key] = connector;
   market.operationsByConnectorKey[connector.key] = {
     attempt: 1,
+    operationVersion: 1,
     clientRequestId: "authorize",
     connectorKey: connector.key,
     createdAt: "2026-08-06T00:00:00Z",
@@ -369,6 +371,7 @@ test("disables uninstall controls while one connector mutation is active", () =>
   market.connectorsByKey[connector.key] = connector;
   market.operationsByConnectorKey[connector.key] = {
     attempt: 1,
+    operationVersion: 1,
     clientRequestId: "update-github",
     connectorKey: connector.key,
     createdAt: "2026-08-11T00:00:00Z",
@@ -461,6 +464,7 @@ function connectorFixture(): Connector {
   return {
     authorization: { state: "disconnected" },
     compatibility: { state: "supported" },
+    security: { state: "allowed" },
     installation: { state: "not_installed" },
     key: "github",
     release: {

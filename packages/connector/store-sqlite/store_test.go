@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -40,7 +41,7 @@ func TestConnectorMarketSQLiteDSNUsesWindowsFileURI(t *testing.T) {
 	}
 }
 
-func TestStoreMigrationDropsLegacyTrustTables(t *testing.T) {
+func TestStoreRejectsLegacyConnectorTables(t *testing.T) {
 	ctx := context.Background()
 	databasePath := filepath.Join(t.TempDir(), "tuttid.db")
 	legacy, err := sql.Open("sqlite", databasePath)
@@ -60,19 +61,8 @@ func TestStoreMigrationDropsLegacyTrustTables(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	store, err := Open(ctx, databasePath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer store.Close()
-	for _, table := range []string{"connector_market_catalog_trust", "connector_market_security_revocations"} {
-		var count int
-		if err := store.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = ?`, table).Scan(&count); err != nil {
-			t.Fatal(err)
-		}
-		if count != 0 {
-			t.Fatalf("legacy table %q still exists", table)
-		}
+	if _, err := Open(ctx, databasePath); err == nil || !strings.Contains(err.Error(), "legacy connector market SQLite is unsupported") {
+		t.Fatalf("Open(legacy) error = %v", err)
 	}
 }
 
@@ -118,6 +108,101 @@ func TestStorePersistsRevisionOperationBindingAndOutboxAtomically(t *testing.T) 
 	}
 	if len(entries) != 1 || entries[0].Event.Revision != 1 {
 		t.Fatalf("outbox = %#v", entries)
+	}
+}
+
+func TestStoreAtomicallyReplacesFullCatalogSnapshot(t *testing.T) {
+	ctx := context.Background()
+	store, err := Open(ctx, filepath.Join(t.TempDir(), "connector-control-plane-v2.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	release := testConnector().Release
+	snapshot := market.CatalogSnapshot{
+		CatalogRevision: 9, SnapshotDigest: "sha256:" + strings.Repeat("d", 64), SourceRevision: "9:sha256:" + strings.Repeat("d", 64),
+		Categories: []market.CatalogCategory{{CategoryID: "development", Kind: "category", ItemCount: 1}},
+		Entries:    []market.CatalogEntry{{CategoryID: "development", Release: release}},
+		Releases:   []market.Release{release},
+		Revocations: []market.CatalogRevocation{{ArtifactDigest: "sha256:" + strings.Repeat("e", 64), RevocationID: "revoke-1",
+			ConnectorKey: "old", Version: "0.9.0", ReasonCode: "malware", EffectiveAt: time.Unix(2, 0).UTC()}},
+	}
+	if err := store.Transaction(ctx, func(tx market.Transaction) error {
+		if err := tx.SaveCatalogSnapshot(snapshot); err != nil {
+			return err
+		}
+		return tx.SaveCatalogRevision(snapshot.SourceRevision)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	stored, err := store.CatalogSnapshot(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stored.CatalogRevision != 9 || stored.SnapshotDigest != snapshot.SnapshotDigest || len(stored.Entries) != 1 || len(stored.Revocations) != 1 {
+		t.Fatalf("catalog snapshot = %#v", stored)
+	}
+}
+
+func TestStoreResourceClaimsSerializeOnlyConflictingPhysicalWork(t *testing.T) {
+	ctx := context.Background()
+	store, err := Open(ctx, filepath.Join(t.TempDir(), "connector-control-plane-v2.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	now := time.Date(2026, 8, 14, 10, 0, 0, 0, time.UTC)
+	connectorKey := "github"
+	executionScope := market.OperationScope{DeviceID: "device-1", AccountID: "account-1"}
+	install := market.Operation{
+		OperationID: "install-1", ClientRequestID: "request-install-1", ConnectorKey: connectorKey,
+		Kind: market.OperationKindInstall, Scope: executionScope, State: market.OperationStateAccepted,
+		Stage: market.OperationStageAccepted, CreatedAt: now, UpdatedAt: now,
+	}
+	if err := store.Transaction(ctx, func(tx market.Transaction) error { return tx.SaveOperation(install) }); err != nil {
+		t.Fatalf("save install claim: %v", err)
+	}
+	authorization := market.Operation{
+		OperationID: "authorize-1", ClientRequestID: "request-authorize-1", ConnectorKey: connectorKey,
+		Kind: market.OperationKindStartAuthorization, Scope: executionScope, State: market.OperationStateAccepted,
+		Stage: market.OperationStageAccepted, CreatedAt: now, UpdatedAt: now,
+	}
+	if err := store.Transaction(ctx, func(tx market.Transaction) error { return tx.SaveOperation(authorization) }); err != nil {
+		t.Fatalf("authorization should not conflict with execution: %v", err)
+	}
+	runtimeReconcile := market.Operation{
+		OperationID: "runtime-1", ClientRequestID: "request-runtime-1", ConnectorKey: connectorKey,
+		Kind: market.OperationKindReconcileRuntime, Scope: executionScope, State: market.OperationStateAccepted,
+		Stage: market.OperationStageAccepted, CreatedAt: now, UpdatedAt: now,
+	}
+	if err := store.Transaction(ctx, func(tx market.Transaction) error { return tx.SaveOperation(runtimeReconcile) }); err == nil {
+		t.Fatal("runtime reconcile acquired the execution claim while install was active")
+	}
+	install.State = market.OperationStateOutcomeUnknown
+	install.UpdatedAt = now.Add(time.Second)
+	if err := store.Transaction(ctx, func(tx market.Transaction) error { return tx.SaveOperation(install) }); err != nil {
+		t.Fatalf("persist outcome_unknown: %v", err)
+	}
+	if err := store.Transaction(ctx, func(tx market.Transaction) error {
+		active, err := tx.ActiveOperation(market.OperationKindReconcileRuntime, executionScope, connectorKey)
+		if err != nil {
+			return err
+		}
+		if active == nil || active.OperationID != install.OperationID {
+			return fmt.Errorf("execution claim owner = %#v", active)
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	install.State = market.OperationStateFailed
+	install.Stage = market.OperationStageFailed
+	install.UpdatedAt = now.Add(2 * time.Second)
+	if err := store.Transaction(ctx, func(tx market.Transaction) error { return tx.SaveOperation(install) }); err != nil {
+		t.Fatalf("finish install: %v", err)
+	}
+	if err := store.Transaction(ctx, func(tx market.Transaction) error { return tx.SaveOperation(runtimeReconcile) }); err != nil {
+		t.Fatalf("runtime reconcile did not acquire released execution claim: %v", err)
 	}
 }
 

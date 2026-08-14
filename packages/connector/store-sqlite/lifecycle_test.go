@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -372,7 +373,7 @@ func TestStoreCompletedLocalUninstallDeletesReleaseEvidenceButKeepsAuthorization
 	}
 }
 
-func TestStoreMigrationBackfillsLifecycleTimestampAndInstalledReleaseEvidence(t *testing.T) {
+func TestStoreRejectsLegacyLifecycleDatabase(t *testing.T) {
 	ctx := context.Background()
 	databasePath := filepath.Join(t.TempDir(), "tuttid.db")
 	legacy, err := sql.Open("sqlite", databasePath)
@@ -441,28 +442,15 @@ operation_id, client_request_id, connector_key, kind, state, lease_owner, lease_
 		t.Fatal(err)
 	}
 
-	store, err := Open(ctx, databasePath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer store.Close()
-	var updatedAtMS int64
-	if err := store.db.QueryRowContext(ctx, `SELECT updated_at_unix_ms FROM connector_market_operations WHERE operation_id = ?`, operation.OperationID).Scan(&updatedAtMS); err != nil {
-		t.Fatal(err)
-	}
-	if updatedAtMS != operation.UpdatedAt.UnixMilli() {
-		t.Fatalf("migrated updated timestamp = %d, want %d", updatedAtMS, operation.UpdatedAt.UnixMilli())
-	}
-	release, err := store.InstalledRelease(ctx, connector.Key, installedRelease.ReleaseDigest)
-	if err != nil || release.ReleaseDigest != installedRelease.ReleaseDigest {
-		t.Fatalf("migrated installed release = %#v, error = %v", release, err)
+	if _, err := Open(ctx, databasePath); err == nil || !strings.Contains(err.Error(), "legacy connector market SQLite is unsupported") {
+		t.Fatalf("Open(legacy) error = %v", err)
 	}
 }
 
 func lifecycleTestOperation(operationID, connectorKey string, state market.OperationState, updatedAt time.Time) market.Operation {
 	return market.Operation{
 		OperationID: operationID, ClientRequestID: "request-" + operationID, ConnectorKey: connectorKey,
-		Kind: market.OperationKindRefreshCatalog, State: state, Stage: market.OperationStageCompleted,
+		Kind: market.OperationKindReconcileRuntime, State: state, Stage: market.OperationStageCompleted,
 		CreatedAt: updatedAt.Add(-time.Minute), UpdatedAt: updatedAt,
 	}
 }

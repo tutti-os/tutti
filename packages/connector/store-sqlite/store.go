@@ -1,3 +1,5 @@
+//revive:disable:file-length-limit
+
 package storesqlite
 
 import (
@@ -80,9 +82,23 @@ func (store *Store) Close() error {
 }
 
 func (store *Store) migrate(ctx context.Context) error {
+	var schemaMarkerCount, legacyTableCount int
+	if err := store.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'connector_control_plane_schema'`).Scan(&schemaMarkerCount); err != nil {
+		return fmt.Errorf("inspect connector control-plane schema marker: %w", err)
+	}
+	if err := store.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name LIKE 'connector_market_%'`).Scan(&legacyTableCount); err != nil {
+		return fmt.Errorf("inspect legacy connector tables: %w", err)
+	}
+	if schemaMarkerCount == 0 && legacyTableCount > 0 {
+		return errors.New("legacy connector market SQLite is unsupported; open a fresh connector-control-plane-v2 database")
+	}
 	statements := []string{
-		`DROP TABLE IF EXISTS connector_market_catalog_trust`,
-		`DROP TABLE IF EXISTS connector_market_security_revocations`,
+		`CREATE TABLE IF NOT EXISTS connector_control_plane_schema (
+  schema_version INTEGER PRIMARY KEY CHECK (schema_version = 2),
+  contract_cohort TEXT NOT NULL CHECK (contract_cohort = 'connector-control-plane-v2')
+)`,
+		`INSERT INTO connector_control_plane_schema (schema_version, contract_cohort)
+VALUES (2, 'connector-control-plane-v2') ON CONFLICT(schema_version) DO NOTHING`,
 		`CREATE TABLE IF NOT EXISTS connector_market_metadata (
   id INTEGER PRIMARY KEY CHECK (id = 1),
   revision INTEGER NOT NULL,
@@ -94,6 +110,12 @@ VALUES (1, 0, 'stale', '') ON CONFLICT(id) DO NOTHING`,
 		`CREATE TABLE IF NOT EXISTS connector_market_connectors (
   connector_key TEXT PRIMARY KEY,
   connector_json TEXT NOT NULL
+)`,
+		`CREATE TABLE IF NOT EXISTS connector_market_catalog_snapshot (
+  id INTEGER PRIMARY KEY CHECK (id = 1),
+  catalog_revision INTEGER NOT NULL CHECK (catalog_revision > 0),
+  snapshot_digest TEXT NOT NULL,
+  snapshot_json TEXT NOT NULL
 )`,
 		`CREATE TABLE IF NOT EXISTS connector_market_installed_releases (
   connector_key TEXT PRIMARY KEY,
@@ -115,16 +137,25 @@ VALUES (1, 0, 'stale', '') ON CONFLICT(id) DO NOTHING`,
   client_request_id TEXT NOT NULL UNIQUE,
   connector_key TEXT NOT NULL,
   kind TEXT NOT NULL,
-  state TEXT NOT NULL,
+  state TEXT NOT NULL CHECK (state IN ('accepted', 'running', 'outcome_unknown', 'completed', 'failed', 'cancelled')),
+  request_digest TEXT NOT NULL,
+  operation_version INTEGER NOT NULL CHECK (operation_version >= 0),
   lease_owner TEXT NOT NULL,
-	lease_token INTEGER NOT NULL DEFAULT 0,
+  lease_token INTEGER NOT NULL DEFAULT 0,
   lease_expires_at_unix_ms INTEGER,
-	updated_at_unix_ms INTEGER NOT NULL DEFAULT 0,
+  next_attempt_at_unix_ms INTEGER,
+  updated_at_unix_ms INTEGER NOT NULL,
   operation_json TEXT NOT NULL
 )`,
-		`CREATE UNIQUE INDEX IF NOT EXISTS connector_market_one_active_operation
-ON connector_market_operations(connector_key)
-WHERE state IN ('accepted', 'running')`,
+		`CREATE INDEX IF NOT EXISTS connector_market_operations_dispatch
+ON connector_market_operations(state, next_attempt_at_unix_ms, lease_expires_at_unix_ms, operation_id)
+WHERE state IN ('accepted', 'running', 'outcome_unknown')`,
+		`CREATE TABLE IF NOT EXISTS connector_market_resource_claims (
+  resource_key TEXT PRIMARY KEY,
+  operation_id TEXT NOT NULL UNIQUE,
+  acquired_at_unix_ms INTEGER NOT NULL,
+  FOREIGN KEY (operation_id) REFERENCES connector_market_operations(operation_id) ON DELETE CASCADE
+)`,
 		`CREATE TABLE IF NOT EXISTS connector_market_outbox (
   sequence INTEGER PRIMARY KEY AUTOINCREMENT,
   revision INTEGER NOT NULL,
@@ -133,17 +164,27 @@ WHERE state IN ('accepted', 'running')`,
 )`,
 		`CREATE INDEX IF NOT EXISTS connector_market_outbox_pending
 ON connector_market_outbox(published_at_unix_ms, sequence)`,
+		`CREATE INDEX IF NOT EXISTS connector_market_operations_terminal_cleanup
+ON connector_market_operations(updated_at_unix_ms, operation_id)
+WHERE state IN ('completed', 'failed', 'cancelled')`,
+		`CREATE INDEX IF NOT EXISTS connector_market_outbox_published_cleanup
+ON connector_market_outbox(published_at_unix_ms, sequence)
+WHERE published_at_unix_ms IS NOT NULL`,
 	}
 	for _, statement := range statements {
 		if _, err := store.db.ExecContext(ctx, statement); err != nil {
 			return fmt.Errorf("migrate connector market store: %w", err)
 		}
 	}
-	if _, err := store.db.ExecContext(ctx, `ALTER TABLE connector_market_operations ADD COLUMN lease_token INTEGER NOT NULL DEFAULT 0`); err != nil &&
-		!strings.Contains(strings.ToLower(err.Error()), "duplicate column") {
-		return fmt.Errorf("migrate connector market operation lease token: %w", err)
+	var version int
+	var cohort string
+	if err := store.db.QueryRowContext(ctx, `SELECT schema_version, contract_cohort FROM connector_control_plane_schema`).Scan(&version, &cohort); err != nil {
+		return fmt.Errorf("read connector control-plane schema identity: %w", err)
 	}
-	return store.migrateLifecycle(ctx)
+	if version != 2 || cohort != "connector-control-plane-v2" {
+		return fmt.Errorf("unsupported connector control-plane schema identity: version=%d cohort=%q", version, cohort)
+	}
+	return nil
 }
 
 func (store *Store) Snapshot(ctx context.Context) (market.Snapshot, error) {
@@ -153,6 +194,7 @@ func (store *Store) Snapshot(ctx context.Context) (market.Snapshot, error) {
 	}
 	defer func() { _ = tx.Rollback() }()
 	var result market.Snapshot
+	result.ContractCohort = market.ConnectorControlPlaneContractCohort
 	if err := tx.QueryRowContext(ctx, `
 SELECT revision, catalog_state, source_revision
 FROM connector_market_metadata WHERE id = ?`, metadataID).
@@ -213,7 +255,7 @@ func (store *Store) ClaimOperation(
 UPDATE connector_market_operations
 SET lease_owner = ?, lease_token = lease_token + 1, lease_expires_at_unix_ms = ?
 WHERE operation_id = ?
-  AND state IN ('accepted', 'running')
+  AND state IN ('accepted', 'running', 'outcome_unknown')
   AND (
     lease_owner = '' OR lease_expires_at_unix_ms IS NULL OR
     lease_expires_at_unix_ms <= ? OR lease_owner = ?
@@ -332,10 +374,22 @@ WHERE connector_key = ? AND release_digest = ?`, connectorKey, releaseDigest).Sc
 	return release, nil
 }
 
+func (store *Store) CatalogSnapshot(ctx context.Context) (market.CatalogSnapshot, error) {
+	var payload string
+	if err := store.db.QueryRowContext(ctx, `SELECT snapshot_json FROM connector_market_catalog_snapshot WHERE id = 1`).Scan(&payload); err != nil {
+		return market.CatalogSnapshot{}, mapNotFound(err)
+	}
+	var snapshot market.CatalogSnapshot
+	if err := json.Unmarshal([]byte(payload), &snapshot); err != nil {
+		return market.CatalogSnapshot{}, fmt.Errorf("decode connector catalog snapshot: %w", err)
+	}
+	return snapshot, nil
+}
+
 func (store *Store) RecoverableOperations(ctx context.Context) ([]market.Operation, error) {
 	rows, err := store.db.QueryContext(ctx, `
 SELECT operation_json FROM connector_market_operations
-WHERE state IN ('accepted', 'running')
+WHERE state IN ('accepted', 'running', 'outcome_unknown')
 ORDER BY operation_id`)
 	if err != nil {
 		return nil, err
@@ -551,17 +605,19 @@ SELECT operation_json FROM connector_market_operations WHERE client_request_id =
 	return &operation, err
 }
 
-func (transaction *transaction) ActiveOperation(connectorKey string) (*market.Operation, error) {
-	var payload string
-	query := `
-SELECT operation_json FROM connector_market_operations
-WHERE connector_key IN ('', ?) AND state IN ('accepted', 'running') LIMIT 1`
-	arguments := []any{connectorKey}
-	if strings.TrimSpace(connectorKey) == "" {
-		query = `SELECT operation_json FROM connector_market_operations WHERE state IN ('accepted', 'running') LIMIT 1`
-		arguments = nil
+func (transaction *transaction) ActiveOperation(kind market.OperationKind, scope market.OperationScope, connectorKey string) (*market.Operation, error) {
+	claims := market.OperationLockClaims(kind, scope, connectorKey)
+	if len(claims) == 0 {
+		return nil, nil
 	}
-	if err := transaction.tx.QueryRowContext(transaction.ctx, query, arguments...).Scan(&payload); err != nil {
+	var payload string
+	if err := transaction.tx.QueryRowContext(transaction.ctx, `
+SELECT operation.operation_json
+FROM connector_market_resource_claims claim
+JOIN connector_market_operations operation ON operation.operation_id = claim.operation_id
+WHERE claim.resource_key = ?
+  AND operation.state IN ('accepted', 'running', 'outcome_unknown')
+LIMIT 1`, claims[0]).Scan(&payload); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil
 		}
@@ -574,6 +630,21 @@ WHERE connector_key IN ('', ?) AND state IN ('accepted', 'running') LIMIT 1`
 func (transaction *transaction) SaveCatalogRevision(sourceRevision string) error {
 	_, err := transaction.tx.ExecContext(transaction.ctx, `
 UPDATE connector_market_metadata SET source_revision = ? WHERE id = ?`, sourceRevision, metadataID)
+	return err
+}
+
+func (transaction *transaction) SaveCatalogSnapshot(snapshot market.CatalogSnapshot) error {
+	payload, err := json.Marshal(snapshot)
+	if err != nil {
+		return err
+	}
+	_, err = transaction.tx.ExecContext(transaction.ctx, `
+INSERT INTO connector_market_catalog_snapshot (id, catalog_revision, snapshot_digest, snapshot_json)
+VALUES (1, ?, ?, ?)
+ON CONFLICT(id) DO UPDATE SET
+  catalog_revision = excluded.catalog_revision,
+  snapshot_digest = excluded.snapshot_digest,
+  snapshot_json = excluded.snapshot_json`, snapshot.CatalogRevision, snapshot.SnapshotDigest, string(payload))
 	return err
 }
 
@@ -682,6 +753,18 @@ SELECT operation_json FROM connector_market_operations WHERE operation_id = ?`, 
 }
 
 func saveOperationOn(ctx context.Context, tx *sql.Tx, operation market.Operation) error {
+	var currentVersion uint64
+	err := tx.QueryRowContext(ctx, `SELECT operation_version FROM connector_market_operations WHERE operation_id = ?`, operation.OperationID).Scan(&currentVersion)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return err
+	}
+	operation.OperationVersion = currentVersion + 1
+	if operation.RequestDigest == "" {
+		operation.RequestDigest = market.OperationRequestDigest(operation.Kind, operation.Scope, operation.ConnectorKey, nil)
+	}
+	if len(operation.LockClaims) == 0 {
+		operation.LockClaims = market.OperationLockClaims(operation.Kind, operation.Scope, operation.ConnectorKey)
+	}
 	payload, err := json.Marshal(operation)
 	if err != nil {
 		return err
@@ -690,16 +773,23 @@ func saveOperationOn(ctx context.Context, tx *sql.Tx, operation market.Operation
 	if operation.LeaseExpiresAt != nil {
 		leaseExpiresAt = operation.LeaseExpiresAt.UTC().UnixMilli()
 	}
+	var nextAttemptAt any
+	if operation.NextAttemptAt != nil {
+		nextAttemptAt = operation.NextAttemptAt.UTC().UnixMilli()
+	}
 	result, err := tx.ExecContext(ctx, `
 INSERT INTO connector_market_operations (
-  operation_id, client_request_id, connector_key, kind, state,
-  lease_owner, lease_token, lease_expires_at_unix_ms, updated_at_unix_ms, operation_json
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  operation_id, client_request_id, connector_key, kind, state, request_digest, operation_version,
+  lease_owner, lease_token, lease_expires_at_unix_ms, next_attempt_at_unix_ms, updated_at_unix_ms, operation_json
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(operation_id) DO UPDATE SET
   state = excluded.state,
+  request_digest = excluded.request_digest,
+  operation_version = excluded.operation_version,
   lease_owner = excluded.lease_owner,
 	lease_token = excluded.lease_token,
   lease_expires_at_unix_ms = excluded.lease_expires_at_unix_ms,
+	next_attempt_at_unix_ms = excluded.next_attempt_at_unix_ms,
 	updated_at_unix_ms = excluded.updated_at_unix_ms,
 	operation_json = excluded.operation_json
 WHERE excluded.lease_token = 0 OR (
@@ -707,7 +797,8 @@ WHERE excluded.lease_token = 0 OR (
   connector_market_operations.lease_token = excluded.lease_token
 )`,
 		operation.OperationID, operation.ClientRequestID, operation.ConnectorKey,
-		operation.Kind, operation.State, operation.LeaseOwner, operation.LeaseToken, leaseExpiresAt,
+		operation.Kind, operation.State, operation.RequestDigest, operation.OperationVersion,
+		operation.LeaseOwner, operation.LeaseToken, leaseExpiresAt, nextAttemptAt,
 		operation.UpdatedAt.UTC().UnixMilli(), string(payload))
 	if err != nil {
 		return err
@@ -718,6 +809,28 @@ WHERE excluded.lease_token = 0 OR (
 	}
 	if operation.LeaseToken > 0 && changed != 1 {
 		return market.ErrOperationLeaseLost
+	}
+	if operation.State.IsTerminal() {
+		if _, err := tx.ExecContext(ctx, `DELETE FROM connector_market_resource_claims WHERE operation_id = ?`, operation.OperationID); err != nil {
+			return err
+		}
+	} else {
+		for _, resourceKey := range operation.LockClaims {
+			if _, err := tx.ExecContext(ctx, `
+INSERT INTO connector_market_resource_claims (resource_key, operation_id, acquired_at_unix_ms)
+VALUES (?, ?, ?)
+ON CONFLICT(resource_key) DO UPDATE SET operation_id = excluded.operation_id
+WHERE connector_market_resource_claims.operation_id = excluded.operation_id`, resourceKey, operation.OperationID, operation.CreatedAt.UTC().UnixMilli()); err != nil {
+				return err
+			}
+			var owner string
+			if err := tx.QueryRowContext(ctx, `SELECT operation_id FROM connector_market_resource_claims WHERE resource_key = ?`, resourceKey).Scan(&owner); err != nil {
+				return err
+			}
+			if owner != operation.OperationID {
+				return fmt.Errorf("connector resource %q is claimed by operation %q", resourceKey, owner)
+			}
+		}
 	}
 	return saveInstalledReleaseEvidenceOn(ctx, tx, operation)
 }

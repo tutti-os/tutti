@@ -128,31 +128,25 @@ func (api DaemonAPI) GetConnectorMarketConnector(
 
 func (api DaemonAPI) RefreshConnectorMarket(
 	ctx context.Context,
-	request tuttigenerated.RefreshConnectorMarketRequestObject,
+	_ tuttigenerated.RefreshConnectorMarketRequestObject,
 ) (tuttigenerated.RefreshConnectorMarketResponseObject, error) {
 	if api.ConnectorMarketService == nil {
 		return tuttigenerated.RefreshConnectorMarket503JSONResponse{ConnectorMarketUnavailableErrorJSONResponse: connectorMarketUnavailableError()}, nil
 	}
-	mutation, err := connectorMarketMutation(request.Body)
+	snapshot, err := api.ConnectorMarketService.RefreshCatalog(ctx)
 	if err != nil {
-		return tuttigenerated.RefreshConnectorMarket400JSONResponse{ConnectorMarketInvalidRequestErrorJSONResponse: invalidConnectorMarketResponse(connectorMarketErrorPayload(err))}, nil
-	}
-	result, err := api.ConnectorMarketService.RefreshCatalog(ctx, mutation)
-	if err != nil {
-		payload, status := connectorMarketError(err)
-		if status == 409 {
-			return tuttigenerated.RefreshConnectorMarket409JSONResponse{ConnectorMarketConflictErrorJSONResponse: conflictConnectorMarketResponse(payload)}, nil
-		}
-		if status == 400 {
-			return tuttigenerated.RefreshConnectorMarket400JSONResponse{ConnectorMarketInvalidRequestErrorJSONResponse: invalidConnectorMarketResponse(payload)}, nil
-		}
+		payload, _ := connectorMarketError(err)
 		return tuttigenerated.RefreshConnectorMarket503JSONResponse{ConnectorMarketUnavailableErrorJSONResponse: unavailableConnectorMarketResponse(payload)}, nil
 	}
-	projected, err := projectConnectorMarket[tuttigenerated.ConnectorMarketMutationResponse](result)
+	if err := api.overlayConnectorAuthorizationProjections(ctx, snapshot.Connectors); err != nil {
+		payload, _ := connectorMarketError(err)
+		return tuttigenerated.RefreshConnectorMarket503JSONResponse{ConnectorMarketUnavailableErrorJSONResponse: unavailableConnectorMarketResponse(payload)}, nil
+	}
+	projected, err := projectConnectorMarket[tuttigenerated.ConnectorMarketSnapshot](snapshot)
 	if err != nil {
 		return nil, err
 	}
-	return tuttigenerated.RefreshConnectorMarket202JSONResponse(projected), nil
+	return tuttigenerated.RefreshConnectorMarket200JSONResponse(projected), nil
 }
 
 func (api DaemonAPI) InstallConnectorMarketConnector(
@@ -433,7 +427,8 @@ func connectorMarketError(err error) (tuttigenerated.ConnectorMarketError, int) 
 		return payload, 404
 	case market.ErrorCodeRevisionConflict, market.ErrorCodeOperationInProgress:
 		return payload, 409
-	case market.ErrorCodeIncompatible, market.ErrorCodeInvalidManifest, market.ErrorCodeUnsupportedImplementation:
+	case market.ErrorCodeIncompatible, market.ErrorCodeInvalidManifest, market.ErrorCodeUnsupportedImplementation,
+		market.ErrorCodeReleaseRevoked:
 		return payload, 422
 	default:
 		return payload, 503

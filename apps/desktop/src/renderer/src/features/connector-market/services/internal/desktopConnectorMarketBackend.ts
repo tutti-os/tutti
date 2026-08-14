@@ -20,8 +20,8 @@ export function createDesktopConnectorMarketBackend(
     getOperation({ operationId }) {
       return client.getConnectorMarketOperation(operationId);
     },
-    refreshCatalog(input) {
-      return client.refreshConnectorMarket(input);
+    refreshCatalog() {
+      return client.refreshConnectorMarket();
     },
     installConnector({ connectorKey, ...request }) {
       return client.installConnectorMarketConnector(connectorKey, request);

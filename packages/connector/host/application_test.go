@@ -142,7 +142,7 @@ func TestApplicationClientRequestIDIsReusableOnlyAfterTerminalRetention(t *testi
 	// A caller reusing that key after the documented window starts a new
 	// operation and must provide the current revision like any fresh command.
 	delete(repository.operations, accepted.Operation.OperationID)
-	command.ExpectedRevision = repository.revision
+	command.ExpectedRevision = repository.connectors[command.ConnectorKey].Revision
 	afterRetention, err := application.Install(context.Background(), command)
 	if err != nil {
 		t.Fatal(err)
@@ -187,7 +187,7 @@ func TestApplicationExecutesAcceptedInstall(t *testing.T) {
 func TestApplicationDoesNotProjectInstalledBeforePhysicalCommit(t *testing.T) {
 	repository := newMemoryRepository(testConnector("github"))
 	scheduler := &memoryScheduler{}
-	physicalCommitErr := errors.New("physical commit unavailable")
+	physicalCommitErr := OutcomeUnknown(errors.New("physical commit transport unavailable"))
 	installationHost := &memoryInstallRuntime{installationCommitErr: physicalCommitErr}
 	application := newTestApplication(t, repository, scheduler, installationHost, CatalogSnapshot{})
 	accepted, err := application.Install(context.Background(), ConnectorMutation{
@@ -196,8 +196,8 @@ func TestApplicationDoesNotProjectInstalledBeforePhysicalCommit(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := application.ExecuteOperation(context.Background(), accepted.Operation.OperationID); err == nil {
-		t.Fatal("physical commit failure was accepted")
+	if err := application.ExecuteOperation(context.Background(), accepted.Operation.OperationID); !errors.Is(err, ErrOperationOutcomeUnknown) {
+		t.Fatalf("physical commit error = %v, want unknown outcome", err)
 	}
 	connector, err := repository.Connector(context.Background(), "github")
 	if err != nil {
@@ -205,6 +205,13 @@ func TestApplicationDoesNotProjectInstalledBeforePhysicalCommit(t *testing.T) {
 	}
 	if connector.Installation.State == InstallationStateInstalled {
 		t.Fatalf("installation projected before physical commit: %#v", connector.Installation)
+	}
+	operation, err := repository.Operation(context.Background(), accepted.Operation.OperationID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if operation.State != OperationStateOutcomeUnknown || operation.NextAttemptAt == nil {
+		t.Fatalf("operation after ambiguous physical commit = %#v", operation)
 	}
 }
 
@@ -560,7 +567,7 @@ func TestApplicationAuthorizationObservationReconcilesWithoutChangingInstallatio
 	expired := connected
 	expired.State = AuthorizationStateExpired
 	accepted, err = application.ObserveAuthorization(context.Background(), ConnectorMutation{
-		Mutation:     Mutation{ClientRequestID: "authorization-expired", ExpectedRevision: repository.revision},
+		Mutation:     Mutation{ClientRequestID: "authorization-expired", ExpectedRevision: repository.connectors["github"].Revision},
 		ConnectorKey: "github", AccountID: "account-1",
 	}, expired)
 	if err != nil {
@@ -696,12 +703,8 @@ func TestApplicationLocalUninstallKeepsRemoteProjectionAndReusesItAfterReinstall
 		t.Fatalf("uninstalled connector reconciles = %d, want 0", runtime.reconciles)
 	}
 
-	snapshot, err := application.Snapshot(context.Background())
-	if err != nil {
-		t.Fatal(err)
-	}
 	install, err := application.Install(context.Background(), ConnectorMutation{
-		Mutation:     Mutation{ClientRequestID: "reinstall-tencent-docs", ExpectedRevision: snapshot.Revision},
+		Mutation:     Mutation{ClientRequestID: "reinstall-tencent-docs", ExpectedRevision: repository.connectors[connector.Key].Revision},
 		ConnectorKey: connector.Key, AccountID: "account-1",
 	})
 	if err != nil {
@@ -1346,18 +1349,11 @@ func TestApplicationRefreshRejectsUnknownImplementation(t *testing.T) {
 	repository := newMemoryRepository()
 	scheduler := &memoryScheduler{}
 	application := newTestApplication(t, repository, scheduler, &memoryInstallRuntime{}, CatalogSnapshot{
-		SourceRevision: "catalog-2",
-		Releases:       []Release{testReleaseWithImplementation("future-connector", "2.0.0", "future_runtime")},
+		CatalogRevision: 2, SnapshotDigest: "sha256:" + strings.Repeat("b", 64), SourceRevision: "catalog-2",
+		Releases: []Release{testReleaseWithImplementation("future-connector", "2.0.0", "future_runtime")},
 	})
-	accepted, err := application.RefreshCatalog(context.Background(), Mutation{
-		ClientRequestID:  "refresh-1",
-		ExpectedRevision: 0,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := application.ExecuteOperation(context.Background(), accepted.Operation.OperationID); err == nil {
-		t.Fatal("ExecuteOperation() expected strict manifest rejection")
+	if _, err := application.RefreshCatalog(context.Background()); err == nil {
+		t.Fatal("RefreshCatalog() expected strict manifest rejection")
 	}
 }
 
@@ -1378,14 +1374,60 @@ func TestApplicationRejectsStaleRevisionBeforeMutation(t *testing.T) {
 	}
 }
 
-func TestApplicationCatalogPageCachesNewConnectorForImmediateInstall(t *testing.T) {
-	repository := newMemoryRepository()
-	release := testReleaseWithImplementation("github", "1.0.0", ImplementationKindManagedStdio)
-	source := catalogSourceStub{page: CatalogSourcePage{
-		SectionID:     "development",
-		Entries:       []CatalogEntry{{CategoryID: "development", Release: release}},
-		NextPageToken: "next-page",
+func TestApplicationRejectsRevokedReleaseBeforeInstallAdmission(t *testing.T) {
+	connector := testConnector("github")
+	repository := newMemoryRepository(connector)
+	repository.catalogSnapshot.Revocations = []CatalogRevocation{{
+		ArtifactDigest: "sha256:" + connector.Release.Artifact.SHA256,
+		RevocationID:   "revoke-github-1", ConnectorKey: connector.Key, Version: connector.Release.Version,
+		ReasonCode: "security_incident", EffectiveAt: time.Now().UTC(),
 	}}
+	application := newTestApplication(t, repository, &memoryScheduler{}, &memoryInstallRuntime{}, CatalogSnapshot{})
+	_, err := application.Install(context.Background(), ConnectorMutation{
+		Mutation: Mutation{ClientRequestID: "install-revoked", ExpectedRevision: connector.Revision}, ConnectorKey: connector.Key,
+	})
+	var domainError *DomainError
+	if !errors.As(err, &domainError) || domainError.Code != ErrorCodeReleaseRevoked || domainError.Retryable {
+		t.Fatalf("error = %#v, want non-retryable release_revoked", err)
+	}
+	if len(repository.operations) != 0 {
+		t.Fatalf("revoked install created operation: %#v", repository.operations)
+	}
+}
+
+func TestCatalogRefreshDoesNotInvalidateConnectorMutationRevision(t *testing.T) {
+	connector := testConnector("github")
+	repository := newMemoryRepository(connector)
+	updatedRelease := testReleaseWithImplementation("github", "2.0.0", ImplementationKindManagedStdio)
+	scheduler := &memoryScheduler{}
+	application := newTestApplicationWithCatalogSource(t, repository, scheduler, &memoryInstallRuntime{}, catalogSourceStub{
+		snapshot: CatalogSnapshot{CatalogRevision: 2, SnapshotDigest: "sha256:" + strings.Repeat("b", 64), SourceRevision: "catalog-2", Releases: []Release{updatedRelease}},
+	})
+
+	if _, err := application.RefreshCatalog(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if got := repository.connectors[connector.Key].Revision; got != 0 {
+		t.Fatalf("catalog refresh changed connector mutation revision to %d", got)
+	}
+	accepted, err := application.Install(context.Background(), ConnectorMutation{
+		Mutation: Mutation{ClientRequestID: "install-after-refresh", ExpectedRevision: 0}, ConnectorKey: connector.Key,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if accepted.Operation.Target == nil || accepted.Operation.Target.ReleaseDigest != updatedRelease.ReleaseDigest {
+		t.Fatalf("install target = %#v", accepted.Operation.Target)
+	}
+}
+
+func TestApplicationCatalogPageReadsOnlyPersistedSnapshot(t *testing.T) {
+	release := testReleaseWithImplementation("github", "1.0.0", ImplementationKindManagedStdio)
+	repository := newMemoryRepository(newCatalogConnector(release))
+	repository.revision = 1
+	repository.catalogSnapshot.Categories = []CatalogCategory{{CategoryID: "development", Kind: "category", ItemCount: 1}}
+	repository.catalogSnapshot.Entries = []CatalogEntry{{CategoryID: "development", Release: release}}
+	source := failingCatalogSource{pageError: errors.New("remote source must not be called while browsing")}
 	application := newTestApplicationWithCatalogSource(t, repository, &memoryScheduler{}, &memoryInstallRuntime{}, source)
 
 	page, err := application.ListCatalogPage(context.Background(), CatalogPageQuery{
@@ -1394,11 +1436,8 @@ func TestApplicationCatalogPageCachesNewConnectorForImmediateInstall(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
-	if page.Revision != 1 || page.NextPageToken != "next-page" || len(page.Items) != 1 || page.Items[0].Connector.Key != "github" {
+	if page.Revision != 1 || page.NextPageToken != "" || len(page.Items) != 1 || page.Items[0].Connector.Key != "github" {
 		t.Fatalf("page = %#v", page)
-	}
-	if _, err := repository.Connector(context.Background(), "github"); err != nil {
-		t.Fatalf("cached connector: %v", err)
 	}
 
 	repeated, err := application.ListCatalogPage(context.Background(), CatalogPageQuery{SectionID: "development", PageSize: 20})
@@ -1410,15 +1449,15 @@ func TestApplicationCatalogPageCachesNewConnectorForImmediateInstall(t *testing.
 	}
 }
 
-func TestApplicationCatalogPagePreservesManifestErrors(t *testing.T) {
+func TestApplicationCatalogPageReportsMissingLocalSnapshot(t *testing.T) {
 	repository := newMemoryRepository()
-	sourceError := invalidManifest("permission scope is invalid", nil)
+	repository.catalogSnapshotErr = ErrNotFound
 	application := newTestApplicationWithCatalogSource(
 		t,
 		repository,
 		&memoryScheduler{},
 		&memoryInstallRuntime{},
-		failingCatalogSource{pageError: sourceError},
+		failingCatalogSource{},
 	)
 
 	_, err := application.ListCatalogPage(context.Background(), CatalogPageQuery{
@@ -1428,29 +1467,7 @@ func TestApplicationCatalogPagePreservesManifestErrors(t *testing.T) {
 	if !errors.As(err, &domainError) {
 		t.Fatalf("error = %v, want DomainError", err)
 	}
-	if domainError.Code != ErrorCodeInvalidManifest || domainError.Retryable {
-		t.Fatalf("domain error = %#v", domainError)
-	}
-}
-
-func TestApplicationCatalogPageClassifiesTransportErrorsAsRetryable(t *testing.T) {
-	repository := newMemoryRepository()
-	application := newTestApplicationWithCatalogSource(
-		t,
-		repository,
-		&memoryScheduler{},
-		&memoryInstallRuntime{},
-		failingCatalogSource{pageError: errors.New("request timeout")},
-	)
-
-	_, err := application.ListCatalogPage(context.Background(), CatalogPageQuery{
-		SectionID: "development", PageSize: 20,
-	})
-	var domainError *DomainError
-	if !errors.As(err, &domainError) {
-		t.Fatalf("error = %v, want DomainError", err)
-	}
-	if domainError.Code != ErrorCodeUpstreamUnavailable || !domainError.Retryable {
+	if domainError.Code != ErrorCodeUnavailable || !domainError.Retryable {
 		t.Fatalf("domain error = %#v", domainError)
 	}
 }
@@ -1464,23 +1481,13 @@ func TestApplicationRefreshPreservesManifestFailureCode(t *testing.T) {
 		&memoryInstallRuntime{},
 		failingCatalogSource{refreshError: invalidManifest("permission scope is invalid", nil)},
 	)
-	accepted, err := application.RefreshCatalog(context.Background(), Mutation{
-		ClientRequestID: "refresh-invalid-manifest", ExpectedRevision: 0,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	err = application.ExecuteOperation(context.Background(), accepted.Operation.OperationID)
+	_, err := application.RefreshCatalog(context.Background())
 	var domainError *DomainError
 	if !errors.As(err, &domainError) || domainError.Code != ErrorCodeInvalidManifest {
 		t.Fatalf("error = %#v, want invalid manifest", err)
 	}
-	operation, err := application.GetOperation(context.Background(), accepted.Operation.OperationID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if operation.State != OperationStateFailed || operation.FailureCode != string(ErrorCodeInvalidManifest) {
-		t.Fatalf("operation = %#v", operation)
+	if len(repository.operations) != 0 {
+		t.Fatalf("catalog refresh created operations: %#v", repository.operations)
 	}
 }
 
@@ -1805,9 +1812,9 @@ func (host *memoryInstallRuntime) Prepare(_ context.Context, request PrepareArti
 	}, nil
 }
 
-func (host *memoryInstallRuntime) InstallRelease(
+func (host *memoryInstallRuntime) PrepareReleaseInstallation(
 	ctx context.Context,
-	request InstallReleaseRequest,
+	request PrepareReleaseInstallationRequest,
 ) (ReleaseInstallationReceipt, error) {
 	prepared, err := host.Prepare(ctx, PrepareArtifactRequest(request))
 	if err != nil {
@@ -1839,8 +1846,16 @@ func (host *memoryInstallRuntime) UninstallRelease(ctx context.Context, request 
 		ReleaseDigest: request.Release.ReleaseDigest})
 }
 
-func (host *memoryInstallRuntime) CommitReleaseInstallation(context.Context, CommitReleaseInstallationRequest) error {
+func (host *memoryInstallRuntime) ActivateReleaseInstallation(context.Context, ReleaseInstallationTransitionRequest) error {
 	return host.installationCommitErr
+}
+
+func (*memoryInstallRuntime) FinalizeReleaseInstallation(context.Context, ReleaseInstallationTransitionRequest) error {
+	return nil
+}
+
+func (*memoryInstallRuntime) AbortReleaseInstallation(context.Context, ReleaseInstallationTransitionRequest) error {
+	return nil
 }
 
 type runtimeBindingResolverStub struct {
@@ -1922,7 +1937,7 @@ func newBlockingInstallerWithError(err error) *blockingInstaller {
 	}
 }
 
-func (installer *blockingInstaller) InstallRelease(ctx context.Context, request InstallReleaseRequest) (ReleaseInstallationReceipt, error) {
+func (installer *blockingInstaller) PrepareReleaseInstallation(ctx context.Context, request PrepareReleaseInstallationRequest) (ReleaseInstallationReceipt, error) {
 	installer.installs.Add(1)
 	installer.once.Do(func() { close(installer.started) })
 	select {
@@ -2039,6 +2054,8 @@ type memoryRepository struct {
 	revision                         uint64
 	catalogState                     CatalogState
 	sourceRevision                   string
+	catalogSnapshot                  CatalogSnapshot
+	catalogSnapshotErr               error
 	connectors                       map[string]Connector
 	operations                       map[string]Operation
 	events                           []ChangedEvent
@@ -2053,8 +2070,10 @@ type memoryRepository struct {
 func newMemoryRepository(connectors ...Connector) *memoryRepository {
 	repository := &memoryRepository{
 		catalogState: CatalogStateStale,
-		connectors:   map[string]Connector{},
-		operations:   map[string]Operation{},
+		catalogSnapshot: CatalogSnapshot{CatalogRevision: 1, SnapshotDigest: "sha256:" + strings.Repeat("a", 64),
+			SourceRevision: "1:sha256:" + strings.Repeat("a", 64)},
+		connectors: map[string]Connector{},
+		operations: map[string]Operation{},
 	}
 	for _, connector := range connectors {
 		repository.connectors[connector.Key] = connector
@@ -2074,6 +2093,7 @@ func (repository *memoryRepository) Snapshot(_ context.Context) (Snapshot, error
 		operations = append(operations, operation)
 	}
 	return Snapshot{
+		ContractCohort: ConnectorControlPlaneContractCohort,
 		CatalogState:   repository.catalogState,
 		Connectors:     connectors,
 		Operations:     operations,
@@ -2196,6 +2216,13 @@ func (repository *memoryRepository) InstalledRelease(_ context.Context, connecto
 	return Release{}, ErrNotFound
 }
 
+func (repository *memoryRepository) CatalogSnapshot(context.Context) (CatalogSnapshot, error) {
+	if repository.catalogSnapshotErr != nil {
+		return CatalogSnapshot{}, repository.catalogSnapshotErr
+	}
+	return repository.catalogSnapshot, nil
+}
+
 func (repository *memoryRepository) Transaction(ctx context.Context, fn func(Transaction) error) error {
 	if repository.rejectCanceledTransactionContext && ctx.Err() != nil {
 		return ctx.Err()
@@ -2213,12 +2240,13 @@ func (repository *memoryRepository) Transaction(ctx context.Context, fn func(Tra
 		return err
 	}
 	transaction := &memoryTransaction{
-		revision:       repository.revision,
-		catalogState:   repository.catalogState,
-		sourceRevision: repository.sourceRevision,
-		connectors:     cloneConnectors(repository.connectors),
-		operations:     cloneOperations(repository.operations),
-		events:         append([]ChangedEvent(nil), repository.events...),
+		revision:        repository.revision,
+		catalogState:    repository.catalogState,
+		sourceRevision:  repository.sourceRevision,
+		catalogSnapshot: repository.catalogSnapshot,
+		connectors:      cloneConnectors(repository.connectors),
+		operations:      cloneOperations(repository.operations),
+		events:          append([]ChangedEvent(nil), repository.events...),
 	}
 	if err := fn(transaction); err != nil {
 		return err
@@ -2226,6 +2254,7 @@ func (repository *memoryRepository) Transaction(ctx context.Context, fn func(Tra
 	repository.revision = transaction.revision
 	repository.catalogState = transaction.catalogState
 	repository.sourceRevision = transaction.sourceRevision
+	repository.catalogSnapshot = transaction.catalogSnapshot
 	repository.connectors = transaction.connectors
 	repository.operations = transaction.operations
 	repository.events = transaction.events
@@ -2235,7 +2264,7 @@ func (repository *memoryRepository) Transaction(ctx context.Context, fn func(Tra
 func (repository *memoryRepository) RecoverableOperations(context.Context) ([]Operation, error) {
 	var operations []Operation
 	for _, operation := range repository.operations {
-		if operation.State == OperationStateAccepted || operation.State == OperationStateRunning {
+		if !operation.State.IsTerminal() {
 			operations = append(operations, operation)
 		}
 	}
@@ -2243,12 +2272,13 @@ func (repository *memoryRepository) RecoverableOperations(context.Context) ([]Op
 }
 
 type memoryTransaction struct {
-	revision       uint64
-	catalogState   CatalogState
-	sourceRevision string
-	connectors     map[string]Connector
-	operations     map[string]Operation
-	events         []ChangedEvent
+	revision        uint64
+	catalogState    CatalogState
+	sourceRevision  string
+	catalogSnapshot CatalogSnapshot
+	connectors      map[string]Connector
+	operations      map[string]Operation
+	events          []ChangedEvent
 }
 
 func (transaction *memoryTransaction) Revision() uint64 { return transaction.revision }
@@ -2292,10 +2322,14 @@ func (transaction *memoryTransaction) OperationByClientRequestID(clientRequestID
 	return nil, nil
 }
 
-func (transaction *memoryTransaction) ActiveOperation(connectorKey string) (*Operation, error) {
+func (transaction *memoryTransaction) ActiveOperation(kind OperationKind, scope OperationScope, connectorKey string) (*Operation, error) {
+	wanted := OperationLockClaims(kind, scope, connectorKey)
 	for _, operation := range transaction.operations {
-		if (connectorKey == "" || operation.ConnectorKey == "" || operation.ConnectorKey == connectorKey) &&
-			(operation.State == OperationStateAccepted || operation.State == OperationStateRunning) {
+		claims := operation.LockClaims
+		if len(claims) == 0 {
+			claims = OperationLockClaims(operation.Kind, operation.Scope, operation.ConnectorKey)
+		}
+		if claimsOverlap(wanted, claims) && !operation.State.IsTerminal() {
 			copy := operation
 			return &copy, nil
 		}
@@ -2303,8 +2337,24 @@ func (transaction *memoryTransaction) ActiveOperation(connectorKey string) (*Ope
 	return nil, nil
 }
 
+func claimsOverlap(left, right []string) bool {
+	for _, leftClaim := range left {
+		for _, rightClaim := range right {
+			if leftClaim == rightClaim {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 func (transaction *memoryTransaction) SaveCatalogRevision(sourceRevision string) error {
 	transaction.sourceRevision = sourceRevision
+	return nil
+}
+
+func (transaction *memoryTransaction) SaveCatalogSnapshot(snapshot CatalogSnapshot) error {
+	transaction.catalogSnapshot = snapshot
 	return nil
 }
 

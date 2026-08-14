@@ -12,6 +12,7 @@ import (
 
 type OperationExecutor interface {
 	ExecuteOperation(context.Context, string) error
+	GetOperation(context.Context, string) (market.Operation, error)
 }
 
 type OperationScheduler struct {
@@ -66,8 +67,35 @@ func (scheduler *OperationScheduler) Schedule(_ context.Context, operationID str
 			delete(scheduler.active, operationID)
 			scheduler.mu.Unlock()
 		}()
-		if err := executor.ExecuteOperation(scheduler.ctx, operationID); err != nil {
-			slog.Warn("connector market operation failed", "operationId", operationID, "error", err)
+		for {
+			operation, err := executor.GetOperation(scheduler.ctx, operationID)
+			if err != nil {
+				slog.Warn("connector market operation could not be loaded", "operationId", operationID, "error", err)
+				return
+			}
+			if operation.State.IsTerminal() {
+				return
+			}
+			if operation.NextAttemptAt != nil {
+				delay := time.Until(operation.NextAttemptAt.UTC())
+				if delay > 0 {
+					timer := time.NewTimer(delay)
+					select {
+					case <-scheduler.ctx.Done():
+						timer.Stop()
+						return
+					case <-timer.C:
+					}
+				}
+			}
+			err = executor.ExecuteOperation(scheduler.ctx, operationID)
+			if errors.Is(err, market.ErrOperationOutcomeUnknown) {
+				continue
+			}
+			if err != nil {
+				slog.Warn("connector market operation failed", "operationId", operationID, "error", err)
+			}
+			return
 		}
 	}()
 	return nil

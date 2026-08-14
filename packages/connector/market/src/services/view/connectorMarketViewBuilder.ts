@@ -158,7 +158,9 @@ function buildConnectorCardView(
   const updating =
     connector.installation.state === "updating" ||
     (installed && !currentReleaseInstalled && pendingInstallation);
-  const unavailable = connector.compatibility.state !== "supported";
+  const unavailable =
+    connector.compatibility.state !== "supported" ||
+    connector.security.state === "revoked";
   const connected = connector.authorization.state === "connected";
   const requiresAuthorization = !["connected", "not_required"].includes(
     connector.authorization.state
@@ -232,6 +234,13 @@ function buildConnectorDialogView(
   const canUninstall = connectorCanUninstall(connector, mutationBusy);
   if (requestKind === "uninstall_confirmation") {
     return canUninstall ? { ...base, kind: "uninstall_confirmation" } : null;
+  }
+  if (connector.security.state === "revoked") {
+    return {
+      ...base,
+      kind: "blocked",
+      reason: connector.security.reasonCode ?? "release_revoked"
+    };
   }
   if (connector.compatibility.state !== "supported") {
     return {

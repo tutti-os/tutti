@@ -148,14 +148,12 @@ export class ConnectorMarketService implements IConnectorMarketService {
     const generation = this.dataGeneration;
     this.dataStore.catalogState = "refreshing";
     const promise = this.dependencies.backend
-      .refreshCatalog({
-        clientRequestId: this.createRequestId(),
-        expectedRevision: this.dataStore.revision
-      })
-      .then((result) => {
+      .refreshCatalog()
+      .then(async (snapshot) => {
         if (this.isCurrent(generation)) {
-          applyConnectorMutationResult(this.dataStore, result);
-          this.trackOperation(result.operation);
+          applyConnectorMarketSnapshot(this.dataStore, snapshot);
+          this.reconcileUninstallNotificationStates(snapshot.operations);
+          await this.load(false);
         }
       })
       .catch((error) => {
@@ -213,7 +211,7 @@ export class ConnectorMarketService implements IConnectorMarketService {
         this.dependencies.backend.installConnector({
           connectorKey,
           clientRequestId: this.createRequestId(),
-          expectedRevision: this.dataStore.revision
+          expectedRevision: this.connectorRevision(connectorKey)
         }),
       true
     );
@@ -227,7 +225,7 @@ export class ConnectorMarketService implements IConnectorMarketService {
       this.dependencies.backend.uninstallConnector({
         connectorKey,
         clientRequestId: this.createRequestId(),
-        expectedRevision: this.dataStore.revision
+        expectedRevision: this.connectorRevision(connectorKey)
       })
     );
     if (!result) {
@@ -291,7 +289,7 @@ export class ConnectorMarketService implements IConnectorMarketService {
       clientRequestId: this.createRequestId(),
       ...(secret ? { secret } : {})
     };
-    let expectedRevision = this.dataStore.revision;
+    let expectedRevision = this.connectorRevision(connectorKey);
     const openedAuthorizationUrls = new Set<string>();
     let recoveredRevisionConflict = false;
     try {
@@ -331,7 +329,7 @@ export class ConnectorMarketService implements IConnectorMarketService {
           }
           applyConnectorMarketSnapshot(this.dataStore, next);
           this.reconcileUninstallNotificationStates(next.operations);
-          expectedRevision = this.dataStore.revision;
+          expectedRevision = this.connectorRevision(connectorKey);
           if (this.authorizationState(connectorKey) === "connected") {
             await this.waitForAuthorizationOperation(connectorKey);
             return;
@@ -388,9 +386,13 @@ export class ConnectorMarketService implements IConnectorMarketService {
       this.dependencies.backend.disconnectAuthorization({
         connectorKey,
         clientRequestId: this.createRequestId(),
-        expectedRevision: this.dataStore.revision
+        expectedRevision: this.connectorRevision(connectorKey)
       })
     );
+  }
+
+  private connectorRevision(connectorKey: string): number {
+    return this.dataStore.connectorsByKey[connectorKey]?.revision ?? 0;
   }
 
   dispose(): void {
@@ -858,8 +860,6 @@ export class ConnectorMarketService implements IConnectorMarketService {
     if (operation.connectorKey) {
       this.dataStore.operationsByConnectorKey[operation.connectorKey] =
         operation;
-    } else if (operation.kind === "refresh_catalog") {
-      this.dataStore.catalogOperation = operation;
     }
     const notification =
       this.dataStore.pendingUninstallNotificationsByOperationId[

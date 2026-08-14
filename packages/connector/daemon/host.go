@@ -1,3 +1,5 @@
+//revive:disable:file-length-limit
+
 package daemon
 
 import (
@@ -9,7 +11,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/google/uuid"
 	market "github.com/tutti-os/tutti/packages/connector/host"
 )
 
@@ -24,6 +25,7 @@ type HostConfig struct {
 	AuthorizationEvents      market.AuthorizationEventSource
 	AuthorizationReadiness   *market.AuthorizationReadinessGate
 	RuntimeBindings          market.RuntimeBindingResolver
+	OperationScopes          market.OperationScopeResolver
 	Compatibility            market.CompatibilityEvaluator
 	ImplementationRegistry   market.ImplementationRegistry
 	Outbox                   market.ChangedEventOutbox
@@ -52,12 +54,15 @@ type Host struct {
 	authorizationScopeWake     chan struct{}
 	runtimeRecoveryDone        chan struct{}
 	runtimeRecoveryWake        chan struct{}
+	catalogRefreshWake         chan struct{}
+	catalogChangeDone          chan struct{}
 	closeOnce                  sync.Once
 	bootstrapMu                sync.Mutex
 	bootstrapped               bool
 	bootstrapScope             market.OperationScope
 	refreshWorkerStarted       bool
 	repository                 market.Repository
+	catalogSource              market.CatalogSource
 	implementationHost         market.ImplementationHost
 	activationGate             *activationGateHost
 	publicationGate            capabilityPublicationGate
@@ -94,6 +99,7 @@ func NewHost(parent context.Context, config HostConfig) (*Host, error) {
 		AuthorizationSnapshots:   config.AuthorizationSnapshots,
 		AuthorizationReadiness:   config.AuthorizationReadiness,
 		RuntimeBindings:          config.RuntimeBindings,
+		OperationScopes:          config.OperationScopes,
 		Compatibility:            config.Compatibility,
 		Scheduler:                scheduler,
 		ImplementationRegistry:   config.ImplementationRegistry,
@@ -118,7 +124,10 @@ func NewHost(parent context.Context, config HostConfig) (*Host, error) {
 		authorizationScopeWake:  make(chan struct{}, 1),
 		runtimeRecoveryDone:     make(chan struct{}),
 		runtimeRecoveryWake:     make(chan struct{}, 1),
+		catalogRefreshWake:      make(chan struct{}, 1),
+		catalogChangeDone:       make(chan struct{}),
 		repository:              config.Repository,
+		catalogSource:           config.CatalogSource,
 		implementationHost:      config.ImplementationHost,
 		activationGate:          activationGate,
 		publication:             config.Publication,
@@ -128,6 +137,7 @@ func NewHost(parent context.Context, config HostConfig) (*Host, error) {
 		authorizationDirty:      make(map[string]map[string]struct{}),
 		runtimeRecoveryPending:  make(map[string]struct{}),
 	}
+	go host.runCatalogChangeWorker(hostContext)
 	if snapshotStore, ok := config.AuthorizationProjections.(market.AuthorizationSnapshotStore); ok {
 		host.authorizationSnapshotStore = snapshotStore
 	}
@@ -318,6 +328,13 @@ func (host *Host) BootstrapForScope(ctx context.Context, scope market.OperationS
 	host.activationGate.markRecovered()
 	host.bootstrapped = true
 	committed = true
+	if err := host.convergeRevokedInstallations(ctx, scope); err != nil {
+		// Bootstrap is already safe: revoked runtime bindings are fail-closed.
+		// Keep catalog convergence level-triggered until the lifecycle claim is
+		// available and the deterministic uninstall can be accepted.
+		slog.Warn("revoked connector uninstall convergence deferred", "error", err)
+		host.NotifyCatalogDirty()
+	}
 	if reconcileFailures != nil {
 		slog.Warn("connector market bootstrap completed with unavailable connectors", "error", reconcileFailures)
 	}
@@ -665,35 +682,48 @@ func (host *Host) recoverAndWait(ctx context.Context) error {
 }
 
 func (host *Host) refreshAndWait(ctx context.Context) error {
+	if err := host.Application.SyncCatalog(ctx); err != nil {
+		return err
+	}
+	host.bootstrapMu.Lock()
+	bootstrapped, scope := host.bootstrapped, host.bootstrapScope
+	host.bootstrapMu.Unlock()
+	if !bootstrapped {
+		return nil
+	}
+	return host.convergeRevokedInstallations(ctx, scope)
+}
+
+func (host *Host) convergeRevokedInstallations(ctx context.Context, scope market.OperationScope) error {
 	snapshot, err := host.Application.Snapshot(ctx)
 	if err != nil {
 		return err
 	}
-	result, err := host.Application.RefreshCatalog(ctx, market.Mutation{
-		ClientRequestID: "daemon-refresh-" + uuid.NewString(), ExpectedRevision: snapshot.Revision,
-	})
-	if err != nil {
-		return err
-	}
-	ticker := time.NewTicker(25 * time.Millisecond)
-	defer ticker.Stop()
-	for {
-		operation, err := host.Application.GetOperation(ctx, result.Operation.OperationID)
+	var convergenceErr error
+	for _, connector := range snapshot.Connectors {
+		if connector.Security.State != market.SecurityStateRevoked ||
+			connector.Installation.InstalledReleaseDigest == "" ||
+			connector.Installation.State == market.InstallationStateUninstalling {
+			continue
+		}
+		_, err := host.Application.Uninstall(ctx, market.ConnectorMutation{
+			Mutation: market.Mutation{
+				ClientRequestID: fmt.Sprintf(
+					"revocation:%s:%s:%d",
+					connector.Security.RevocationID,
+					connector.Key,
+					connector.Revision,
+				),
+				ExpectedRevision: connector.Revision,
+			},
+			ConnectorKey: connector.Key,
+			AccountID:    scope.AccountID,
+		})
 		if err != nil {
-			return err
-		}
-		switch operation.State {
-		case market.OperationStateCompleted:
-			return nil
-		case market.OperationStateFailed:
-			return fmt.Errorf("connector market refresh failed: %s", operation.FailureCode)
-		}
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-ticker.C:
+			convergenceErr = errors.Join(convergenceErr, fmt.Errorf("uninstall revoked connector %s: %w", connector.Key, err))
 		}
 	}
+	return convergenceErr
 }
 
 func (host *Host) waitForOperationTerminal(ctx context.Context, operationID string) (market.Operation, error) {
@@ -718,6 +748,8 @@ func (host *Host) waitForOperationTerminal(ctx context.Context, operationID stri
 
 func (host *Host) runCatalogRefreshWorker() {
 	bootstrapRetry := time.Second
+	// A fresh v2 database has no revision for the long-poll worker to observe.
+	// Pull immediately after bootstrap, then use the normal fallback interval.
 	catalogRetry := time.Duration(0)
 	for {
 		host.bootstrapMu.Lock()
@@ -750,6 +782,8 @@ func (host *Host) runCatalogRefreshWorker() {
 		case <-host.scheduler.ctx.Done():
 			timer.Stop()
 			return
+		case <-host.catalogRefreshWake:
+			timer.Stop()
 		case <-timer.C:
 		}
 		refreshContext, cancel := context.WithTimeout(host.scheduler.ctx, 45*time.Second)
@@ -757,14 +791,58 @@ func (host *Host) runCatalogRefreshWorker() {
 		cancel()
 		if err != nil && !errors.Is(err, context.Canceled) {
 			slog.Warn("connector market scheduled refresh failed", "error", err)
-			if catalogRetry < time.Minute {
-				catalogRetry = time.Minute
-			} else if catalogRetry < 5*time.Minute {
-				catalogRetry *= 2
+			if catalogRetry <= 0 || catalogRetry > 30*time.Second {
+				catalogRetry = time.Second
+			} else {
+				catalogRetry = min(catalogRetry*2, 30*time.Second)
 			}
 			continue
 		}
-		catalogRetry = time.Minute
+		catalogRetry = 10 * time.Minute
+	}
+}
+
+// NotifyCatalogDirty coalesces server dirty notifications into the single
+// refresh controller. The full snapshot remains authoritative; notifications
+// carry no catalog business data and may be delivered more than once.
+func (host *Host) NotifyCatalogDirty() {
+	if host == nil {
+		return
+	}
+	select {
+	case host.catalogRefreshWake <- struct{}{}:
+	default:
+	}
+}
+
+func (host *Host) runCatalogChangeWorker(ctx context.Context) {
+	defer close(host.catalogChangeDone)
+	source, ok := host.catalogSource.(market.CatalogChangeSource)
+	if !ok {
+		return
+	}
+	backoff := time.Second
+	for {
+		snapshot, err := host.repository.CatalogSnapshot(ctx)
+		if err == nil {
+			err = source.WaitForCatalogChange(ctx, snapshot.CatalogRevision)
+		}
+		if err == nil {
+			host.NotifyCatalogDirty()
+			backoff = time.Second
+			continue
+		}
+		if errors.Is(err, context.Canceled) {
+			return
+		}
+		timer := time.NewTimer(backoff)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return
+		case <-timer.C:
+		}
+		backoff = min(backoff*2, 30*time.Second)
 	}
 }
 
@@ -782,6 +860,7 @@ func (host *Host) Close() {
 		<-host.authorizationSyncDone
 		<-host.authorizationEventsDone
 		<-host.runtimeRecoveryDone
+		<-host.catalogChangeDone
 		host.scheduler.Wait()
 	})
 }
@@ -802,7 +881,7 @@ func CatalogOnlyPorts() (
 
 type unavailableReleaseInstaller struct{}
 
-func (unavailableReleaseInstaller) InstallRelease(context.Context, market.InstallReleaseRequest) (market.ReleaseInstallationReceipt, error) {
+func (unavailableReleaseInstaller) PrepareReleaseInstallation(context.Context, market.PrepareReleaseInstallationRequest) (market.ReleaseInstallationReceipt, error) {
 	return market.ReleaseInstallationReceipt{}, errors.New("connector release installation is not registered")
 }
 
@@ -812,7 +891,15 @@ func (unavailableReleaseInstaller) InspectReleaseInstallation(_ context.Context,
 		ReasonCode: "release_installation_manager_unavailable"}, nil
 }
 
-func (unavailableReleaseInstaller) CommitReleaseInstallation(context.Context, market.CommitReleaseInstallationRequest) error {
+func (unavailableReleaseInstaller) ActivateReleaseInstallation(context.Context, market.ReleaseInstallationTransitionRequest) error {
+	return errors.New("connector release installation is not registered")
+}
+
+func (unavailableReleaseInstaller) FinalizeReleaseInstallation(context.Context, market.ReleaseInstallationTransitionRequest) error {
+	return errors.New("connector release installation is not registered")
+}
+
+func (unavailableReleaseInstaller) AbortReleaseInstallation(context.Context, market.ReleaseInstallationTransitionRequest) error {
 	return errors.New("connector release installation is not registered")
 }
 

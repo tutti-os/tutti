@@ -6,9 +6,17 @@ import (
 )
 
 var (
-	ErrNotFound           = errors.New("connector market resource not found")
-	ErrOperationLeaseLost = errors.New("connector market operation lease lost")
+	ErrNotFound                = errors.New("connector market resource not found")
+	ErrOperationLeaseLost      = errors.New("connector market operation lease lost")
+	ErrOperationOutcomeUnknown = errors.New("connector operation outcome is unknown")
 )
+
+func OutcomeUnknown(cause error) error {
+	if cause == nil {
+		return ErrOperationOutcomeUnknown
+	}
+	return fmt.Errorf("%w: %v", ErrOperationOutcomeUnknown, cause)
+}
 
 type ErrorCode string
 
@@ -22,6 +30,7 @@ const (
 	ErrorCodeUnsupportedImplementation ErrorCode = "connector_implementation_unsupported"
 	ErrorCodeUpstreamUnavailable       ErrorCode = "connector_market_upstream_unavailable"
 	ErrorCodeInstallFailed             ErrorCode = "connector_install_failed"
+	ErrorCodeReleaseRevoked            ErrorCode = "release_revoked"
 	ErrorCodeAuthorizationFailed       ErrorCode = "connector_authorization_failed"
 	ErrorCodeUnavailable               ErrorCode = "connector_market_unavailable"
 )

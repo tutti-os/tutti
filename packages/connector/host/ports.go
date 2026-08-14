@@ -17,6 +17,13 @@ type CatalogSource interface {
 	Refresh(context.Context) (CatalogSnapshot, error)
 }
 
+// CatalogChangeSource is an optional low-bandwidth invalidation channel. It
+// returns only after the server catalog advances beyond afterRevision; callers
+// must still pull and validate the complete snapshot.
+type CatalogChangeSource interface {
+	WaitForCatalogChange(ctx context.Context, afterRevision uint64) error
+}
+
 type CatalogSourcePageQuery struct {
 	SectionID string
 	PageSize  int
@@ -62,8 +69,22 @@ type CatalogPage struct {
 }
 
 type CatalogSnapshot struct {
-	SourceRevision string
-	Releases       []Release
+	CatalogRevision uint64              `json:"catalogRevision"`
+	SnapshotDigest  string              `json:"snapshotDigest"`
+	SourceRevision  string              `json:"sourceRevision"`
+	Categories      []CatalogCategory   `json:"categories"`
+	Entries         []CatalogEntry      `json:"entries"`
+	Releases        []Release           `json:"releases"`
+	Revocations     []CatalogRevocation `json:"revocations"`
+}
+
+type CatalogRevocation struct {
+	ArtifactDigest string    `json:"artifactDigest"`
+	RevocationID   string    `json:"revocationId"`
+	ConnectorKey   string    `json:"connectorKey"`
+	Version        string    `json:"version"`
+	ReasonCode     string    `json:"reasonCode"`
+	EffectiveAt    time.Time `json:"effectiveAt"`
 }
 
 type Repository interface {
@@ -81,6 +102,7 @@ type Repository interface {
 	Transaction(ctx context.Context, fn func(Transaction) error) error
 	RecoverableOperations(ctx context.Context) ([]Operation, error)
 	InstalledRelease(ctx context.Context, connectorKey, releaseDigest string) (Release, error)
+	CatalogSnapshot(ctx context.Context) (CatalogSnapshot, error)
 }
 
 type Transaction interface {
@@ -90,8 +112,9 @@ type Transaction interface {
 	Connector(connectorKey string) (Connector, error)
 	Operation(operationID string) (Operation, error)
 	OperationByClientRequestID(clientRequestID string) (*Operation, error)
-	ActiveOperation(connectorKey string) (*Operation, error)
+	ActiveOperation(kind OperationKind, scope OperationScope, connectorKey string) (*Operation, error)
 	SaveCatalogRevision(sourceRevision string) error
+	SaveCatalogSnapshot(CatalogSnapshot) error
 	SetCatalogState(state CatalogState) error
 	SaveConnector(Connector) error
 	DeleteConnector(connectorKey string) error
@@ -108,13 +131,15 @@ type Transaction interface {
 // Installation never implies capability publication. Runtime activation is a
 // separate ImplementationHost reconcile driven by authorization state.
 type ReleaseInstallationManager interface {
-	InstallRelease(ctx context.Context, request InstallReleaseRequest) (ReleaseInstallationReceipt, error)
+	PrepareReleaseInstallation(ctx context.Context, request PrepareReleaseInstallationRequest) (ReleaseInstallationReceipt, error)
 	InspectReleaseInstallation(ctx context.Context, request InspectReleaseInstallationRequest) (ReleaseInstallationObservation, error)
-	CommitReleaseInstallation(ctx context.Context, request CommitReleaseInstallationRequest) error
+	ActivateReleaseInstallation(ctx context.Context, request ReleaseInstallationTransitionRequest) error
+	FinalizeReleaseInstallation(ctx context.Context, request ReleaseInstallationTransitionRequest) error
+	AbortReleaseInstallation(ctx context.Context, request ReleaseInstallationTransitionRequest) error
 	UninstallRelease(ctx context.Context, request UninstallReleaseRequest) error
 }
 
-type InstallReleaseRequest struct {
+type PrepareReleaseInstallationRequest struct {
 	OperationID string
 	Scope       OperationScope
 	Generation  HostGeneration
@@ -152,10 +177,12 @@ type ReleaseInstallationObservation struct {
 	Receipt       *ReleaseInstallationReceipt         `json:"receipt,omitempty"`
 }
 
-// CommitReleaseInstallation is invoked only after installed truth is durable
-// in the business repository. Cross-machine hosts use it to promote a cached
-// candidate to current; same-machine installers may implement it as a no-op.
-type CommitReleaseInstallationRequest struct {
+// ReleaseInstallationTransitionRequest identifies one frozen, idempotent
+// Prepare -> Activate -> Finalize transition. Activate must retain the previous
+// active release as a rollback slot. Finalize may retire that slot only after
+// the Host repository has durably projected the new installed truth. Abort
+// restores the slot when projection fails before Finalize.
+type ReleaseInstallationTransitionRequest struct {
 	OperationID string
 	Scope       OperationScope
 	Generation  HostGeneration
@@ -386,6 +413,13 @@ type CompatibilityEvaluator interface {
 
 type OperationScheduler interface {
 	Schedule(ctx context.Context, operationID string) error
+}
+
+// OperationScopeResolver freezes external execution authority at admission.
+// Cross-machine hosts must return the exact VM/account/runtime incarnation
+// that every retry of the durable operation is required to use.
+type OperationScopeResolver interface {
+	ResolveOperationScope(ctx context.Context, accountID string) (OperationScope, error)
 }
 
 type ChangedEvent struct {

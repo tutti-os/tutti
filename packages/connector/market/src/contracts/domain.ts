@@ -24,23 +24,26 @@ export type ConnectorCompatibilityState =
 export type ConnectorCatalogState = "ready" | "refreshing" | "stale" | "failed";
 
 export type ConnectorOperationKind =
-  | "refresh_catalog"
   | "install"
   | "uninstall"
+  | "reconcile_runtime"
   | "start_authorization"
   | "disconnect_authorization";
 
 export type ConnectorOperationState =
   | "accepted"
   | "running"
+  | "outcome_unknown"
   | "completed"
-  | "failed";
+  | "failed"
+  | "cancelled";
 
 export type ConnectorOperationStage =
   | "accepted"
-  | "refreshing"
   | "installing"
   | "installed"
+  | "activated"
+  | "finalizing"
   | "deactivating"
   | "authorizing"
   | "disconnecting"
@@ -156,7 +159,14 @@ export interface ConnectorInstallation {
   installedVersion?: string;
   installedReleaseId?: string;
   installedReleaseDigest?: string;
+  installedArtifactSha256?: string;
   failureCode?: string;
+}
+
+export interface ConnectorSecurity {
+  state: "allowed" | "revoked";
+  revocationId?: string;
+  reasonCode?: string;
 }
 
 export interface ConnectorAuthorization {
@@ -175,6 +185,7 @@ export interface Connector {
   installation: ConnectorInstallation;
   authorization: ConnectorAuthorization;
   compatibility: ConnectorCompatibility;
+  security: ConnectorSecurity;
   revision: number;
 }
 
@@ -187,8 +198,13 @@ export interface ConnectorOperation {
   stage?: ConnectorOperationStage;
   target?: ConnectorOperationTarget;
   attempt: number;
+  operationVersion: number;
   failureCode?: string;
+  nextAttemptAt?: string;
   createdAt: string;
+  startedAt?: string;
+  finishedAt?: string;
+  terminalAt?: string;
   updatedAt: string;
 }
 
@@ -201,6 +217,7 @@ export interface ConnectorOperationTarget {
 }
 
 export interface ConnectorMarketSnapshot {
+  contractCohort: "connector-control-plane-v2";
   catalogState: ConnectorCatalogState;
   connectors: Connector[];
   operations: ConnectorOperation[];

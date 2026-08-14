@@ -54,6 +54,10 @@ func (application *Application) resolveRuntimeBinding(
 		clear(binding.CredentialBrokerGrant)
 		return RuntimeBinding{}, invalidOperationReceipt("runtime binding resolver returned invalid intent")
 	}
+	if connector.Security.State == SecurityStateRevoked {
+		binding.Enabled = false
+		clear(binding.CredentialBrokerGrant)
+	}
 	return binding, nil
 }
 

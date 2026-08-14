@@ -21,28 +21,26 @@ func TestCatalogSourceMapsPublishedConnectorItemsWithAdditiveFields(t *testing.T
 			t.Fatalf("request path=%q query=%q", request.URL.Path, request.URL.RawQuery)
 		}
 		writer.Header().Set("Content-Type", "application/json")
-		if request.URL.Path == connectorCategoriesPath {
-			_, _ = writer.Write([]byte(`{
-  "marketType": "overseas",
-  "categories": [
-    {"categoryId": "featured", "kind": "featured", "sortOrder": 10, "itemCount": "1"},
-    {"categoryId": "development", "kind": "category", "sortOrder": 20, "itemCount": "1"}
-  ]
-}`))
-			return
-		}
 		itemCalls++
-		if request.URL.Path != connectorCatalogPath || request.URL.Query().Get("sectionId") != "development" || request.URL.Query().Get("pageSize") != "100" {
+		if request.URL.Path != connectorCatalogPath {
 			t.Fatalf("request path=%q query=%q", request.URL.Path, request.URL.RawQuery)
 		}
 		_, _ = writer.Write([]byte(`{
-  "marketType": "overseas",
-  "requestId": "request-1",
+	"schemaVersion": "2",
+	"scope": {"marketType": "overseas", "itemType": "connector"},
+	"catalogRevision": 7,
+	"snapshotDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+	"generatedAt": "2026-08-14T00:00:00Z",
+	"categories": [
+	  {"categoryId": "featured", "kind": "featured", "sortOrder": 10, "itemCount": "1"},
+	  {"categoryId": "development", "kind": "category", "sortOrder": 20, "itemCount": "1"}
+	],
   "items": [{
     "itemType": "connector",
     "itemKey": "github",
     "version": "1.0.0",
     "commitSha": "0123456789abcdef",
+	"artifactDigest": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
     "publisher": {"name": "Tutti"},
     "artifact": {
       "key": "connectors/github/1.0.0.zip",
@@ -74,11 +72,11 @@ func TestCatalogSourceMapsPublishedConnectorItemsWithAdditiveFields(t *testing.T
         }
       }
     },
-    "publishedAtMs": "1785801600000",
+	"publishedAt": "2026-08-04T00:00:00Z",
     "categoryId": "development",
     "featured": true
   }],
-  "nextPageToken": ""
+	"revocations": []
 }`))
 	}))
 	defer server.Close()
@@ -115,8 +113,8 @@ func TestCatalogSourceMapsPublishedConnectorItemsWithAdditiveFields(t *testing.T
 		page.Entries[0].Release.Version != "1.0.0" || page.Entries[0].Release.Artifact.SHA256 != strings.Repeat("c", 64) {
 		t.Fatalf("page=%#v error=%v", page, err)
 	}
-	if itemCalls != 2 {
-		t.Fatalf("market item requests = %d, want 2", itemCalls)
+	if itemCalls != 1 {
+		t.Fatalf("market catalog requests = %d, want 1", itemCalls)
 	}
 }
 
@@ -269,11 +267,11 @@ func TestCatalogSourceRejectsInvalidConfiguration(t *testing.T) {
 
 func TestCatalogSourcePreservesGatewayBasePath(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		if request.URL.Path != "/api/desktop/v1/market/categories" {
+		if request.URL.Path != "/api/desktop/v1/market/catalog" {
 			t.Fatalf("request path = %q", request.URL.Path)
 		}
 		writer.Header().Set("Content-Type", "application/json")
-		_, _ = writer.Write([]byte(`{"marketType":"overseas","categories":[]}`))
+		_, _ = writer.Write([]byte(`{"schemaVersion":"2","scope":{"marketType":"overseas","itemType":"connector"},"catalogRevision":1,"snapshotDigest":"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","generatedAt":"2026-08-14T00:00:00Z","categories":[],"items":[],"revocations":[]}`))
 	}))
 	defer server.Close()
 

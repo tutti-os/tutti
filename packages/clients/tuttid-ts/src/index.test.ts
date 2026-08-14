@@ -210,6 +210,7 @@ test("shared tuttid client manages workspace deleted Agent sessions", async () =
 
 test("shared tuttid client reads and refreshes daemon-owned desktop admission", async () => {
   const snapshot = {
+    contractCohort: "connector-control-plane-v2" as const,
     featureAvailability: {
       fetchedAt: null,
       keys: ["workspace.example"],
@@ -2484,6 +2485,7 @@ test("shared tuttid client preserves connector market read and install routes", 
       kind: "install" as const,
       state: "accepted" as const,
       attempt: 0,
+      operationVersion: 1,
       createdAt: "2026-08-03T00:00:00Z",
       updatedAt: "2026-08-03T00:00:00Z"
     },
@@ -2508,7 +2510,7 @@ test("shared tuttid client preserves connector market read and install routes", 
     authorization: null,
     body: null,
     method: "GET",
-    path: "/v1/connector-market",
+    path: "/v2/connector-market",
     query: {}
   });
   assertRequest(requests[1]!, {
@@ -2518,7 +2520,7 @@ test("shared tuttid client preserves connector market read and install routes", 
       expectedRevision: 7
     },
     method: "POST",
-    path: "/v1/connector-market/connectors/notion:install",
+    path: "/v2/connector-market/connectors/notion:install",
     query: {}
   });
 });
@@ -2583,14 +2585,14 @@ test("shared tuttid connector client preserves category and cursor pagination", 
     authorization: null,
     body: null,
     method: "GET",
-    path: "/v1/connector-market/categories",
+    path: "/v2/connector-market/categories",
     query: {}
   });
   assertRequest(requests[1]!, {
     authorization: null,
     body: null,
     method: "GET",
-    path: "/v1/connector-market/catalog",
+    path: "/v2/connector-market/catalog",
     query: {
       pageSize: "20",
       pageToken: "cursor-1",

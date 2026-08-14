@@ -5447,7 +5447,7 @@ export const getConnectorMarket = <ThrowOnError extends boolean = false>(
     ThrowOnError
   >({
     security: [{ scheme: "bearer", type: "http" }],
-    url: "/v1/connector-market",
+    url: "/v2/connector-market",
     ...options
   });
 
@@ -5465,7 +5465,7 @@ export const listConnectorMarketCategories = <
     ThrowOnError
   >({
     security: [{ scheme: "bearer", type: "http" }],
-    url: "/v1/connector-market/categories",
+    url: "/v2/connector-market/categories",
     ...options
   });
 
@@ -5483,7 +5483,7 @@ export const listConnectorMarketCatalog = <
     ThrowOnError
   >({
     security: [{ scheme: "bearer", type: "http" }],
-    url: "/v1/connector-market/catalog",
+    url: "/v2/connector-market/catalog",
     ...options
   });
 
@@ -5501,28 +5501,24 @@ export const getConnectorMarketConnector = <
     ThrowOnError
   >({
     security: [{ scheme: "bearer", type: "http" }],
-    url: "/v1/connector-market/connectors/{connectorKey}",
+    url: "/v2/connector-market/connectors/{connectorKey}",
     ...options
   });
 
 /**
- * Refresh and accept the upstream connector catalog
+ * Synchronize the complete upstream connector catalog snapshot
  */
 export const refreshConnectorMarket = <ThrowOnError extends boolean = false>(
-  options: Options<RefreshConnectorMarketData, ThrowOnError>
+  options?: Options<RefreshConnectorMarketData, ThrowOnError>
 ) =>
-  (options.client ?? client).post<
+  (options?.client ?? client).post<
     RefreshConnectorMarketResponses,
     RefreshConnectorMarketErrors,
     ThrowOnError
   >({
     security: [{ scheme: "bearer", type: "http" }],
-    url: "/v1/connector-market:refresh",
-    ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...options.headers
-    }
+    url: "/v2/connector-market:refresh",
+    ...options
   });
 
 /**
@@ -5539,7 +5535,7 @@ export const installConnectorMarketConnector = <
     ThrowOnError
   >({
     security: [{ scheme: "bearer", type: "http" }],
-    url: "/v1/connector-market/connectors/{connectorKey}:install",
+    url: "/v2/connector-market/connectors/{connectorKey}:install",
     ...options,
     headers: {
       "Content-Type": "application/json",
@@ -5563,7 +5559,7 @@ export const uninstallConnectorMarketConnector = <
     ThrowOnError
   >({
     security: [{ scheme: "bearer", type: "http" }],
-    url: "/v1/connector-market/connectors/{connectorKey}:uninstall",
+    url: "/v2/connector-market/connectors/{connectorKey}:uninstall",
     ...options,
     headers: {
       "Content-Type": "application/json",
@@ -5585,7 +5581,7 @@ export const startConnectorMarketAuthorization = <
     ThrowOnError
   >({
     security: [{ scheme: "bearer", type: "http" }],
-    url: "/v1/connector-market/connectors/{connectorKey}/authorization:start",
+    url: "/v2/connector-market/connectors/{connectorKey}/authorization:start",
     ...options,
     headers: {
       "Content-Type": "application/json",
@@ -5607,7 +5603,7 @@ export const disconnectConnectorMarketAuthorization = <
     ThrowOnError
   >({
     security: [{ scheme: "bearer", type: "http" }],
-    url: "/v1/connector-market/connectors/{connectorKey}/authorization:disconnect",
+    url: "/v2/connector-market/connectors/{connectorKey}/authorization:disconnect",
     ...options,
     headers: {
       "Content-Type": "application/json",
@@ -5629,7 +5625,7 @@ export const getConnectorMarketOperation = <
     ThrowOnError
   >({
     security: [{ scheme: "bearer", type: "http" }],
-    url: "/v1/connector-market/operations/{operationID}",
+    url: "/v2/connector-market/operations/{operationID}",
     ...options
   });
 

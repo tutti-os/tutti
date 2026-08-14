@@ -214,6 +214,7 @@ function connector(key: string, overrides: Partial<Connector> = {}): Connector {
   const value: Connector = {
     authorization: { state: "not_required" },
     compatibility: { state: "supported" },
+    security: { state: "allowed" },
     installation: { state: "not_installed" },
     key,
     release: {
@@ -255,7 +256,13 @@ function snapshot(
   revision: number,
   connectors: Connector[]
 ): ConnectorMarketSnapshot {
-  return { catalogState: "ready", connectors, operations: [], revision };
+  return {
+    contractCohort: "connector-control-plane-v2",
+    catalogState: "ready",
+    connectors,
+    operations: [],
+    revision
+  };
 }
 
 function backendWith(

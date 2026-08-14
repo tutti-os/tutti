@@ -119,7 +119,7 @@ func (application *Application) applyInstallationObservation(
 		}
 		revision := tx.AdvanceRevision()
 		connector.Installation = next
-		connector.Revision = revision
+		connector.Revision++
 		if err := tx.SaveConnector(connector); err != nil {
 			return err
 		}

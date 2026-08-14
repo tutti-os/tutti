@@ -72,7 +72,7 @@ The shared Connector modules own:
   replacement, size and digest verification, no-network import, safe
   extraction, release-to-package verification, atomic promotion, and cleanup
 - `connector/market`: the reusable local daemon OpenAPI fragment under
-  `openapi/connector-market.v1.yaml`
+  `openapi/connector-market.v2.yaml`
 - the renderer `ConnectorMarketBackend` contract, module Root/Runtime,
   lifecycle and StartupJobs, Valtio-backed domain services, reusable renderer,
   and connector-market i18n bundle
