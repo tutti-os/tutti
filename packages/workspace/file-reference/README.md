@@ -38,7 +38,10 @@ index copies at most one small tail block per page, so deep pagination neither
 rescans all historical entries nor mutates a snapshot already observed by a
 consumer. The picker renders a virtual search window over that index; the DOM,
 icon subscriptions, focus updates, and selection updates therefore stay
-bounded even when every backend result remains reachable by scrolling.
+bounded even when every backend result remains reachable by scrolling. Once
+the browser scroll range is compressed, reaching the virtual window's logical
+end drives cursor continuation directly, so appending a page does not depend
+on the browser emitting another native scroll event.
 Repeated or cyclic cursors stop
 continuation with `ReferenceSearchCursorLoopError` instead of requesting the
 same page forever. A host that receives an expired backend cursor

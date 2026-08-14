@@ -547,12 +547,15 @@ test("reference source picker renders shared folder icons and content errors", a
 
     const stableSearchView = createFolderOnlyView(folderNode);
     let largeResultIndex = createReferenceSearchResultIndex();
-    for (let page = 0; page < 3_334; page += 1) {
+    const largeResultCount = 140_000;
+    for (let page = 0; page < Math.ceil(largeResultCount / 30); page += 1) {
       const first = page * 30;
       largeResultIndex = appendReferenceSearchResultPage(
         largeResultIndex,
-        Array.from({ length: Math.min(30, 100_000 - first) }, (_, offset) =>
-          file(`large-${first + offset}`, `large-${first + offset}.md`)
+        Array.from(
+          { length: Math.min(30, largeResultCount - first) },
+          (_, offset) =>
+            file(`large-${first + offset}`, `large-${first + offset}.md`)
         )
       );
     }
@@ -568,7 +571,7 @@ test("reference source picker renders shared folder icons and content errors", a
         loadMoreCount += 1;
       },
       searchQuery: "large",
-      searchResultCount: 100_000,
+      searchResultCount: largeResultCount,
       searchResultIdentity: 2,
       searchResultIndex: largeResultIndex
     };
@@ -598,7 +601,7 @@ test("reference source picker renders shared folder icons and content errors", a
     });
     Object.defineProperty(searchViewport, "scrollHeight", {
       configurable: true,
-      value: 5_800_000
+      value: 8_000_000
     });
     searchViewport.scrollTop = 2_900_000;
     await act(async () => {
@@ -616,7 +619,7 @@ test("reference source picker renders shared folder icons and content errors", a
       )
     );
     assert.equal(loadMoreCount, 0);
-    searchViewport.scrollTop = 5_800_000 - 580;
+    searchViewport.scrollTop = 8_000_000 - 580;
     await act(async () => {
       searchViewport.dispatchEvent(new dom.window.Event("scroll"));
     });
@@ -628,11 +631,55 @@ test("reference source picker renders shared folder icons and content errors", a
     assert.ok(finalRows.length <= 32);
     assert.ok(
       finalRows.some(
-        (row) => Number(row.dataset.referenceSearchIndex) === 99_999
+        (row) => Number(row.dataset.referenceSearchIndex) === 139_999
       )
     );
     assert.equal(loadMoreCount, 1);
-    const finalNode = referenceSearchResultNodeAt(largeResultIndex, 99_999);
+    largeResultIndex = appendReferenceSearchResultPage(
+      largeResultIndex,
+      Array.from({ length: 30 }, (_, offset) =>
+        file(
+          `large-${largeResultCount + offset}`,
+          `large-${largeResultCount + offset}.md`
+        )
+      )
+    );
+    (
+      globalThis as { __referenceSourcePickerView?: unknown }
+    ).__referenceSourcePickerView = {
+      ...stableSearchView,
+      currentEntries: [],
+      hasMore: true,
+      isQuery: true,
+      loadMore() {
+        loadMoreCount += 1;
+      },
+      searchQuery: "large",
+      searchResultCount: largeResultCount + 30,
+      searchResultIdentity: 2,
+      searchResultIndex: largeResultIndex
+    };
+    await act(async () => {
+      root?.render(
+        createElement(ReferenceSourcePicker, {
+          aggregator: {},
+          copy: createCopy(),
+          onClose() {},
+          onConfirm() {},
+          open: true,
+          workspaceId: "workspace-reference-virtual-results-test"
+        } as unknown as ReferenceSourcePickerProps)
+      );
+    });
+    assert.equal(
+      loadMoreCount,
+      2,
+      "capped scroll geometry should continue pagination without another scroll event"
+    );
+    const finalNode = referenceSearchResultNodeAt(
+      largeResultIndex,
+      largeResultCount + 29
+    );
     assert.ok(finalNode);
     (
       globalThis as { __workspaceFileEntryIconRenderCount?: number }
@@ -645,7 +692,7 @@ test("reference source picker renders shared folder icons and content errors", a
       focusedNode: finalNode,
       isQuery: true,
       searchQuery: "large",
-      searchResultCount: 100_000,
+      searchResultCount: largeResultCount + 30,
       searchResultIdentity: 2,
       searchResultIndex: largeResultIndex,
       selection: [finalNode],
@@ -663,7 +710,7 @@ test("reference source picker renders shared folder icons and content errors", a
         } as unknown as ReferenceSourcePickerProps)
       );
     });
-    assert.equal(searchViewport.scrollTop, 5_800_000 - 580);
+    assert.equal(searchViewport.scrollTop, 8_000_000 - 580);
     const iconRenderCount = (
       globalThis as { __workspaceFileEntryIconRenderCount?: number }
     ).__workspaceFileEntryIconRenderCount;

@@ -1,6 +1,7 @@
 import {
   useEffect,
   useMemo,
+  useRef,
   useState,
   type JSX,
   type MouseEvent,
@@ -47,6 +48,9 @@ export interface ReferenceSearchResultActions {
 export function ReferenceSearchResultList({
   actionsRef,
   focusedNode,
+  hasMore,
+  isLoadingMore,
+  onEndReached,
   resolveEntryIconUrl,
   resultCount,
   resultIdentity,
@@ -56,6 +60,9 @@ export function ReferenceSearchResultList({
 }: {
   actionsRef: RefObject<ReferenceSearchResultActions | null>;
   focusedNode: ReferenceNode | null;
+  hasMore: boolean;
+  isLoadingMore: boolean;
+  onEndReached(): void;
   resolveEntryIconUrl?: (
     entry: WorkspaceFileEntry
   ) => Promise<string | null | undefined>;
@@ -74,6 +81,31 @@ export function ReferenceSearchResultList({
     scrollTop: metrics.scrollTop,
     viewportHeight: metrics.viewportHeight
   });
+  const lastEndReachedKeyRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (
+      !hasMore ||
+      isLoadingMore ||
+      metrics.viewportHeight <= 0 ||
+      virtualWindow.endIndex < resultCount
+    ) {
+      return;
+    }
+    const key = `${resultIdentity}:${resultCount}`;
+    if (lastEndReachedKeyRef.current === key) {
+      return;
+    }
+    lastEndReachedKeyRef.current = key;
+    onEndReached();
+  }, [
+    hasMore,
+    isLoadingMore,
+    metrics.viewportHeight,
+    onEndReached,
+    resultCount,
+    resultIdentity,
+    virtualWindow.endIndex
+  ]);
   const visibleRows = useMemo(() => {
     const rows: Array<{ index: number; node: ReferenceNode }> = [];
     for (

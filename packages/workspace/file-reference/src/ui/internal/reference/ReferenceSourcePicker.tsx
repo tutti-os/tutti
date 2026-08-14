@@ -784,11 +784,12 @@ export function ReferenceSourcePicker({
                     className="min-h-0 flex-1"
                     viewportRef={setSearchViewportElement}
                     viewportProps={{
-                      // 拉到底部(距底 <120px)自动加载更多 —— 查询态走增长式分页,
-                      // 浏览态走 cursor 续页。已在加载/无更多时由 loadMore 内部 no-op。
+                      // 浏览态拉到底部(距底 <120px)续页。查询态由虚拟列表按逻辑末端续页，
+                      // 避免压缩滚动高度后追加结果不再触发原生 scroll 事件。
                       onScroll: (event) => {
                         const el = event.currentTarget;
                         if (
+                          !view.isQuery &&
                           view.hasMore &&
                           !view.isLoading &&
                           !view.isLoadingMore &&
@@ -827,6 +828,9 @@ export function ReferenceSourcePicker({
                           <ReferenceSearchResultList
                             actionsRef={searchResultActionsRef}
                             focusedNode={view.focusedNode}
+                            hasMore={view.hasMore}
+                            isLoadingMore={view.isLoading || view.isLoadingMore}
+                            onEndReached={view.loadMore}
                             resolveEntryIconUrl={resolveEntryIconUrl}
                             resultCount={view.searchResultCount}
                             resultIdentity={view.searchResultIdentity}
@@ -1304,6 +1308,7 @@ export function ReferenceSourceContentPane({
             onScroll: (event) => {
               const el = event.currentTarget;
               if (
+                !view.isQuery &&
                 view.hasMore &&
                 !view.isLoading &&
                 !view.isLoadingMore &&
@@ -1328,6 +1333,9 @@ export function ReferenceSourceContentPane({
                 <ReferenceSearchResultList
                   actionsRef={searchResultActionsRef}
                   focusedNode={view.focusedNode}
+                  hasMore={view.hasMore}
+                  isLoadingMore={view.isLoading || view.isLoadingMore}
+                  onEndReached={view.loadMore}
                   resolveEntryIconUrl={resolveEntryIconUrl}
                   resultCount={view.searchResultCount}
                   resultIdentity={view.searchResultIdentity}

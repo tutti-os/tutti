@@ -383,6 +383,8 @@ cache expires; they do not claim exhaustive history.
 - Keep picker snapshots and source-service inputs as plain structured-cloneable
   data; never pass state-library proxies across host boundaries.
 - Append cursor pages without reordering already loaded entries.
+- Drive deep-search continuation from the virtual window's logical end rather
+  than assuming an appended page will produce another native scroll event.
 - Hide unavailable sources before rendering their tabs or sidebar groups.
 - Expose only running workspace apps in the app-artifact sidebar; installed or
   enabled apps that are not running are not valid reference sources.
