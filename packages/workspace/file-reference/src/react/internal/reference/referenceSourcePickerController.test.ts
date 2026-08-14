@@ -30,6 +30,7 @@ import {
   createReferenceSourcePickerController,
   type ReferenceSourcePickerController
 } from "./referenceSourcePickerController.ts";
+import { referenceSearchResultNodes } from "./referenceSearchResultIndex.ts";
 
 const scope = { workspaceId: "ws-1" };
 const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
@@ -40,7 +41,7 @@ const tabSearchEntries = (
       >["bySource"][string]
     | undefined
 ): ReferenceNode[] =>
-  (tab?.searchEntryPages ?? []).flatMap((page) => [...page]);
+  tab ? referenceSearchResultNodes(tab.searchResultIndex) : [];
 
 function folder(
   sourceId: string,
@@ -893,6 +894,64 @@ test("legacy search tracks the deduplicated result count instead of the request 
   assert.equal(tab?.searchResultCount, 2);
 });
 
+test("retrySearch repeats a failed query from the first page", async () => {
+  let attempts = 0;
+  const controller = createReferenceSourcePickerController({
+    aggregator: fakeAggregator({
+      tabs: [
+        {
+          sourceId: "workspace-file",
+          label: "Workspace files",
+          capabilities: {
+            paginated: true,
+            previewable: true,
+            searchable: true,
+            searchPagination: "cursor"
+          }
+        }
+      ],
+      children: {},
+      searchImpl: async () => {
+        attempts += 1;
+        if (attempts === 1) {
+          throw new Error("temporary search failure");
+        }
+        return {
+          entries: [file("workspace-file", "/recovered.md", "recovered.md")],
+          nextCursor: null
+        };
+      }
+    }),
+    scope,
+    searchDebounceMs: 0
+  });
+  controller.open();
+  await flush();
+
+  controller.setSearchQuery("recover");
+  await flush();
+  assert.equal(attempts, 1);
+  assert.match(
+    controller.getSnapshot().bySource["workspace-file"]?.searchError?.message ??
+      "",
+    /temporary search failure/
+  );
+
+  controller.retrySearch();
+  await flush();
+
+  assert.equal(attempts, 2);
+  assert.equal(
+    tabSearchEntries(controller.getSnapshot().bySource["workspace-file"])[0]
+      ?.displayName,
+    "recovered.md"
+  );
+  assert.equal(
+    controller.getSnapshot().bySource["workspace-file"]?.searchError,
+    null
+  );
+});
+
 test("a search result can override cursor capability with legacy pagination", async () => {
   const searchInputs: SearchInput[] = [];
   const controller = createReferenceSourcePickerController({
@@ -1019,6 +1078,61 @@ test("paginated search follows cursors and appends every page", async () => {
   assert.equal(entries.at(-1)?.ref.nodeId, "/photo-211.png");
   assert.equal(tab?.searchNextCursor, null);
   assert.equal(tab?.searchHasMore, false);
+});
+
+test("a captured picker snapshot stays unchanged after a cursor page appends", async () => {
+  const controller = createReferenceSourcePickerController({
+    aggregator: fakeAggregator({
+      tabs: [
+        {
+          sourceId: "workspace-file",
+          label: "Workspace files",
+          capabilities: {
+            paginated: true,
+            previewable: true,
+            searchable: true,
+            searchPagination: "cursor"
+          }
+        }
+      ],
+      children: {},
+      searchImpl: async (input) =>
+        input.cursor
+          ? {
+              entries: [file("workspace-file", "/second.md", "second.md")],
+              nextCursor: null
+            }
+          : {
+              entries: [file("workspace-file", "/first.md", "first.md")],
+              nextCursor: "page-2"
+            }
+    }),
+    scope,
+    searchDebounceMs: 0
+  });
+  controller.open();
+  await flush();
+  controller.setSearchQuery("md");
+  await flush();
+
+  const firstSnapshot = controller.getSnapshot();
+  const savedFirstSnapshot = structuredClone(firstSnapshot);
+  controller.loadMoreSearch();
+  await flush();
+
+  assert.deepEqual(firstSnapshot, savedFirstSnapshot);
+  assert.deepEqual(
+    tabSearchEntries(firstSnapshot.bySource["workspace-file"]).map(
+      (entry) => entry.displayName
+    ),
+    ["first.md"]
+  );
+  assert.deepEqual(
+    tabSearchEntries(controller.getSnapshot().bySource["workspace-file"]).map(
+      (entry) => entry.displayName
+    ),
+    ["first.md", "second.md"]
+  );
 });
 
 test("cursor append does not revisit a large existing result set", async () => {

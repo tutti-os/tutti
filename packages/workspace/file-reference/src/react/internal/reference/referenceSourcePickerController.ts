@@ -32,6 +32,11 @@ import {
   referenceProvenanceFilterCacheKey,
   referenceProvenanceFilterIsActive
 } from "../../../core/referenceProvenance.ts";
+import {
+  appendReferenceSearchResultPage,
+  createReferenceSearchResultIndex,
+  type ReferenceSearchResultIndex
+} from "./referenceSearchResultIndex.ts";
 
 /**
  * node-keyed 多源 picker 的逻辑层 controller(顶部分源 tab)。
@@ -65,8 +70,10 @@ export interface ReferenceSourceTabState {
   searchFilters: string[];
   /** 当前搜索限定的二级分组节点 nodeId(左栏选中分组);null = 跨整源搜索。 */
   searchScopeNodeId: string | null;
-  /** Cursor 页面按块保留，避免每次续页让 Valtio 重建整条历史数组。 */
-  searchEntryPages: ReferenceNode[][];
+  /** Immutable bounded-block index for random access by the virtualized view. */
+  searchResultIndex: ReferenceSearchResultIndex;
+  /** Changes only when a first page replaces the current result identity. */
+  searchResultIdentity: number;
   /** 去重后实际展示的搜索结果数量。 */
   searchResultCount: number;
   searchNextCursor: string | null;
@@ -157,6 +164,8 @@ export interface ReferenceSourcePickerController {
   ): void;
   /** 搜索进行中切换左栏分组时更新限定范围并以现有关键词/筛选重搜。 */
   setSearchScope(scopeNodeId: string | null): void;
+  /** Retry the current query from page one without changing its identity inputs. */
+  retrySearch(): void;
   /**
    * 加载更多查询结果:cursor source 拉取固定大小的下一页并增量 append；legacy source
    * 以同一关键词/筛选、更大的 limit 重查并整体替换。无更多 / 在途 / 非查询态时 no-op。
@@ -219,7 +228,8 @@ function emptyTabState(sourceId: string): ReferenceSourceTabState {
     searchQuery: "",
     searchFilters: [],
     searchScopeNodeId: null,
-    searchEntryPages: [],
+    searchResultIndex: valtioRef(createReferenceSearchResultIndex()),
+    searchResultIdentity: 0,
     searchResultCount: 0,
     searchNextCursor: null,
     searchPagination: "legacy",
@@ -501,13 +511,12 @@ export function createReferenceSourcePickerController(
       ? "cursor"
       : "legacy";
 
-  const appendCursorSearchPage = (
+  const uniqueCursorSearchEntries = (
     sourceId: string,
     nextEntries: readonly ReferenceNode[]
-  ): number => {
-    const tab = store.bySource[sourceId];
+  ): ReferenceNode[] => {
     const seen = searchSeenKeysBySource.get(sourceId);
-    if (!tab || !seen) {
+    if (!snapshot.bySource[sourceId] || !seen) {
       throw new Error("cursor search accumulator is not initialized");
     }
     const entries: ReferenceNode[] = [];
@@ -519,11 +528,7 @@ export function createReferenceSourcePickerController(
       seen.add(key);
       entries.push(node);
     }
-    if (entries.length > 0) {
-      tab.searchEntryPages.push(valtioRef(entries));
-      snapshot = readSnapshot();
-    }
-    return entries.length;
+    return entries;
   };
 
   const hasSearchInput = (
@@ -589,32 +594,34 @@ export function createReferenceSourcePickerController(
       // Search sources own relevance order. Browsing may group folders and
       // sort names, but search must only deduplicate the ranked response.
       if (loadingMore && resultPagination === "cursor") {
-        const appendedCount = appendCursorSearchPage(sourceId, result.entries);
-        const tab = store.bySource[sourceId];
-        if (!tab) {
+        const currentTab = snapshot.bySource[sourceId];
+        if (!currentTab) {
           return;
         }
-        tab.searchResultCount += appendedCount;
+        const entries = uniqueCursorSearchEntries(sourceId, result.entries);
+        const resultIndex = appendReferenceSearchResultPage(
+          currentTab.searchResultIndex,
+          entries
+        );
         const nextCursor = result.nextCursor ?? null;
         const requestedCursors = searchRequestedCursorsBySource.get(sourceId);
-        if (nextCursor && requestedCursors?.has(nextCursor)) {
-          tab.isSearchLoading = false;
-          tab.isSearchLoadingMore = false;
-          tab.searchNextCursor = null;
-          tab.searchHasMore = false;
-          tab.searchError = new ReferenceSearchCursorLoopError();
-          snapshot = readSnapshot();
-          return;
-        }
-        tab.isSearchLoading = false;
-        tab.isSearchLoadingMore = false;
-        tab.searchNextCursor = nextCursor;
-        tab.searchPagination = resultPagination;
-        tab.searchHasMore = Boolean(nextCursor);
-        tab.searchError = null;
-        snapshot = readSnapshot();
+        const cursorLoop = Boolean(
+          nextCursor && requestedCursors?.has(nextCursor)
+        );
+        updateTab(sourceId, (tab) => ({
+          ...tab,
+          isSearchLoading: false,
+          isSearchLoadingMore: false,
+          searchResultIndex: valtioRef(resultIndex),
+          searchResultCount: resultIndex.entryCount,
+          searchNextCursor: cursorLoop ? null : nextCursor,
+          searchPagination: resultPagination,
+          searchHasMore: cursorLoop ? false : Boolean(nextCursor),
+          searchError: cursorLoop ? new ReferenceSearchCursorLoopError() : null
+        }));
       } else {
         const entries = dedupeReferenceNodes(result.entries);
+        const resultIndex = createReferenceSearchResultIndex(entries);
         searchSeenKeysBySource.set(
           sourceId,
           new Set(entries.map((entry) => nodeRefKey(entry.ref)))
@@ -624,8 +631,9 @@ export function createReferenceSourcePickerController(
           ...tab,
           isSearchLoading: false,
           isSearchLoadingMore: false,
-          searchEntryPages: entries.length > 0 ? [valtioRef(entries)] : [],
-          searchResultCount: entries.length,
+          searchResultIndex: valtioRef(resultIndex),
+          searchResultIdentity: tab.searchResultIdentity + 1,
+          searchResultCount: resultIndex.entryCount,
           searchNextCursor: result.nextCursor ?? null,
           searchPagination: resultPagination,
           searchLimit: limit,
@@ -649,7 +657,8 @@ export function createReferenceSourcePickerController(
         updateTab(sourceId, (tab) => ({
           ...tab,
           isSearchLoadingMore: false,
-          searchEntryPages: [],
+          searchResultIndex: valtioRef(createReferenceSearchResultIndex()),
+          searchResultIdentity: tab.searchResultIdentity + 1,
           searchResultCount: 0,
           searchNextCursor: null,
           searchPagination: "legacy",
@@ -677,7 +686,8 @@ export function createReferenceSourcePickerController(
         ...(loadingMore
           ? {}
           : {
-              searchEntryPages: [],
+              searchResultIndex: valtioRef(createReferenceSearchResultIndex()),
+              searchResultIdentity: tab.searchResultIdentity + 1,
               searchResultCount: 0,
               searchHasMore: false
             }),
@@ -832,7 +842,10 @@ export function createReferenceSourcePickerController(
                 searchQuery: "",
                 searchFilters: carriedFilters,
                 searchScopeNodeId: nextScopeNodeId,
-                searchEntryPages: [],
+                searchResultIndex: valtioRef(
+                  createReferenceSearchResultIndex()
+                ),
+                searchResultIdentity: tab.searchResultIdentity + 1,
                 searchResultCount: 0,
                 searchHasMore: false,
                 isSearchLoading: false,
@@ -1020,7 +1033,8 @@ export function createReferenceSourcePickerController(
         ...(nextMode === "browse"
           ? {
               isSearchLoading: false,
-              searchEntryPages: [],
+              searchResultIndex: valtioRef(createReferenceSearchResultIndex()),
+              searchResultIdentity: tab.searchResultIdentity + 1,
               searchResultCount: 0,
               searchError: null
             }
@@ -1057,7 +1071,8 @@ export function createReferenceSourcePickerController(
         ...(nextMode === "browse"
           ? {
               isSearchLoading: false,
-              searchEntryPages: [],
+              searchResultIndex: valtioRef(createReferenceSearchResultIndex()),
+              searchResultIdentity: current.searchResultIdentity + 1,
               searchResultCount: 0,
               searchError: null
             }
@@ -1100,7 +1115,8 @@ export function createReferenceSourcePickerController(
           ? { isSearchLoading: true, searchError: null }
           : {
               isSearchLoading: false,
-              searchEntryPages: [],
+              searchResultIndex: valtioRef(createReferenceSearchResultIndex()),
+              searchResultIdentity: current.searchResultIdentity + 1,
               searchResultCount: 0,
               searchError: null
             })
@@ -1132,6 +1148,32 @@ export function createReferenceSourcePickerController(
       if (tab.mode === "search" && hasSearchInput(sourceId, trimmed, filters)) {
         scheduleSearch(sourceId, trimmed, filters, scopeNodeId);
       }
+    },
+    retrySearch() {
+      const sourceId = snapshot.activeSourceId;
+      const tab = sourceId ? snapshot.bySource[sourceId] : undefined;
+      if (!sourceId || !tab || tab.mode !== "search") {
+        return;
+      }
+      const query = tab.searchQuery.trim();
+      if (!hasSearchInput(sourceId, query, tab.searchFilters)) {
+        return;
+      }
+      invalidateSearchIdentities(sourceId);
+      updateTab(sourceId, (current) => ({
+        ...current,
+        isSearchLoading: true,
+        isSearchLoadingMore: false,
+        searchError: null
+      }));
+      void runSearch(
+        sourceId,
+        query,
+        tab.searchFilters,
+        tab.searchScopeNodeId,
+        SEARCH_PAGE_SIZE,
+        false
+      );
     },
     loadMoreSearch() {
       const sourceId = snapshot.activeSourceId;

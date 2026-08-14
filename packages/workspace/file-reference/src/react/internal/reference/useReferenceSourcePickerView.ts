@@ -34,11 +34,14 @@ import {
   type ReferencePickerSelectionMode,
   type ReferenceSourceNodeChildrenState
 } from "./referenceSourcePickerController.ts";
+import { createReferenceSearchResultIndex } from "./referenceSearchResultIndex.ts";
 import { buildReferenceSourcePickerFilteredTree } from "./referenceSourcePickerFilterTree.ts";
 
 export type { WorkspaceFileManagerArrangeMode };
 
 export { WORKSPACE_ROOT_GROUP_NODE_ID } from "../../../core/index.ts";
+
+const EMPTY_REFERENCE_SEARCH_RESULT_INDEX = createReferenceSearchResultIndex();
 
 function referenceNodeToOpenWithCacheEntry(
   node: ReferenceNode
@@ -415,10 +418,10 @@ export function useReferenceSourcePickerView({
     () => sortNodes(currentChildren?.entries ?? []),
     [currentChildren?.entries, sortNodes]
   );
-  // Cursor 页面保持稳定分块；调用方逐块渲染，不在每次续页重新物化历史扁平数组。
-  const searchResultPages = (activeTabState?.searchEntryPages ??
-    []) as readonly (readonly ReferenceNode[])[];
+  const searchResultIndex =
+    activeTabState?.searchResultIndex ?? EMPTY_REFERENCE_SEARCH_RESULT_INDEX;
   const searchResultCount = activeTabState?.searchResultCount ?? 0;
+  const searchResultIdentity = activeTabState?.searchResultIdentity ?? 0;
 
   // 每个源的左栏二级分组(左栏可多源同时展开,故按源全量计算):
   //  - 源自带分组(listSidebarGroups,如本地源的 最近访问/下载/文稿/桌面/个人)优先;
@@ -901,8 +904,9 @@ export function useReferenceSourcePickerView({
     // 内容区递归就地树:当前选中二级节点的子条目(本地根时为源根子条目)。
     currentEntries,
     // 搜索态:扁平搜索结果。
-    searchResultPages,
+    searchResultIndex,
     searchResultCount,
+    searchResultIdentity,
     contentError,
     expandedKeys: activeTabState?.expandedKeys ?? {},
     childrenByKey,
@@ -986,10 +990,7 @@ export function useReferenceSourcePickerView({
       isQuery ? controller.loadMoreSearch() : controller.loadMore(currentNode),
     retryContent: () => {
       if (isQuery) {
-        controller.setSearchQuery(
-          activeTabState?.searchQuery ?? "",
-          searchScopeNodeId
-        );
+        controller.retrySearch();
         return;
       }
       if (recursiveFilterActive) {

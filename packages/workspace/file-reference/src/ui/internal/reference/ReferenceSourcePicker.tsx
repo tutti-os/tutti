@@ -1,5 +1,4 @@
 import {
-  memo,
   useCallback,
   useEffect,
   useId,
@@ -65,7 +64,6 @@ import type {
 } from "../../../contracts/index.ts";
 import type { ReferenceSourceAggregator } from "../../../core/referenceSourceAggregator.ts";
 import {
-  base64UrlDecode,
   nodeRefKey,
   SOURCE_ROOT_NODE_ID,
   type ReferenceFilterCategory
@@ -82,6 +80,11 @@ import {
   resolveReferencePreviewTimestampMs,
   resolveReferencePreviewSizeBytes
 } from "./referenceSourcePickerPresentation.ts";
+import {
+  ReferenceSearchResultList,
+  type ReferenceSearchResultActions
+} from "./ReferenceSearchResultList.tsx";
+import { referenceNodeToWorkspaceFileEntry } from "./referenceNodeIconEntry.ts";
 
 export interface ReferenceSourcePickerProps {
   aggregator: ReferenceSourceAggregator;
@@ -591,7 +594,11 @@ export function ReferenceSourcePicker({
       y: event.clientY
     });
   };
-  const searchResultActionsRef = useRef<SearchResultPageActions | null>(null);
+  const [searchViewportElement, setSearchViewportElement] =
+    useState<HTMLDivElement | null>(null);
+  const searchResultActionsRef = useRef<ReferenceSearchResultActions | null>(
+    null
+  );
   searchResultActionsRef.current = {
     isSelectable: view.isSelectable,
     onContextMenu: openReferenceContextMenu,
@@ -775,6 +782,7 @@ export function ReferenceSourcePicker({
                   </div>
                   <ScrollArea
                     className="min-h-0 flex-1"
+                    viewportRef={setSearchViewportElement}
                     viewportProps={{
                       // 拉到底部(距底 <120px)自动加载更多 —— 查询态走增长式分页,
                       // 浏览态走 cursor 续页。已在加载/无更多时由 loadMore 内部 no-op。
@@ -816,16 +824,16 @@ export function ReferenceSourcePicker({
                             )}
                           </Feedback>
                         ) : (
-                          view.searchResultPages.map((page, pageIndex) => (
-                            <SearchResultPage
-                              key={`${view.activeSourceId ?? "source"}:${pageIndex}`}
-                              actionsRef={searchResultActionsRef}
-                              focusedNode={view.focusedNode}
-                              page={page}
-                              resolveEntryIconUrl={resolveEntryIconUrl}
-                              selection={view.selection}
-                            />
-                          ))
+                          <ReferenceSearchResultList
+                            actionsRef={searchResultActionsRef}
+                            focusedNode={view.focusedNode}
+                            resolveEntryIconUrl={resolveEntryIconUrl}
+                            resultCount={view.searchResultCount}
+                            resultIdentity={view.searchResultIdentity}
+                            resultIndex={view.searchResultIndex}
+                            scrollElement={searchViewportElement}
+                            selection={view.selection}
+                          />
                         )
                       ) : view.currentEntries.length === 0 ? (
                         <Feedback>
@@ -1236,7 +1244,11 @@ export function ReferenceSourceContentPane({
       y: event.clientY
     });
   };
-  const searchResultActionsRef = useRef<SearchResultPageActions | null>(null);
+  const [searchViewportElement, setSearchViewportElement] =
+    useState<HTMLDivElement | null>(null);
+  const searchResultActionsRef = useRef<ReferenceSearchResultActions | null>(
+    null
+  );
   searchResultActionsRef.current = {
     isSelectable: view.isSelectable,
     onContextMenu: openReferenceContextMenu,
@@ -1287,6 +1299,7 @@ export function ReferenceSourceContentPane({
         </div>
         <ScrollArea
           className="min-h-0 flex-1"
+          viewportRef={setSearchViewportElement}
           viewportProps={{
             onScroll: (event) => {
               const el = event.currentTarget;
@@ -1312,16 +1325,16 @@ export function ReferenceSourceContentPane({
               view.searchResultCount === 0 ? (
                 <Feedback>{copy.t("referencePicker.emptySearch")}</Feedback>
               ) : (
-                view.searchResultPages.map((page, pageIndex) => (
-                  <SearchResultPage
-                    key={`${view.activeSourceId ?? "source"}:${pageIndex}`}
-                    actionsRef={searchResultActionsRef}
-                    focusedNode={view.focusedNode}
-                    page={page}
-                    resolveEntryIconUrl={resolveEntryIconUrl}
-                    selection={view.selection}
-                  />
-                ))
+                <ReferenceSearchResultList
+                  actionsRef={searchResultActionsRef}
+                  focusedNode={view.focusedNode}
+                  resolveEntryIconUrl={resolveEntryIconUrl}
+                  resultCount={view.searchResultCount}
+                  resultIdentity={view.searchResultIdentity}
+                  resultIndex={view.searchResultIndex}
+                  scrollElement={searchViewportElement}
+                  selection={view.selection}
+                />
               )
             ) : view.currentEntries.length === 0 ? (
               <Feedback>
@@ -1573,166 +1586,6 @@ function SourceSidebar({
     </ScrollArea>
   );
 }
-
-function SearchResultRow({
-  node,
-  focused,
-  iconUrls,
-  selected,
-  selectable,
-  onFocus,
-  onContextMenu,
-  onSingleSelect,
-  onOpen,
-  onToggle
-}: {
-  node: ReferenceNode;
-  focused: boolean;
-  iconUrls: ReferenceNodeIconUrlState;
-  selected: boolean;
-  selectable: boolean;
-  onFocus: (node: ReferenceNode) => void;
-  onContextMenu: (event: MouseEvent<HTMLElement>, node: ReferenceNode) => void;
-  onOpen: (node: ReferenceNode) => Promise<void>;
-  onSingleSelect: (node: ReferenceNode) => void;
-  onToggle: (node: ReferenceNode) => void;
-}): JSX.Element {
-  const contextLabel = node.contextLabel?.trim() || null;
-  const active = selected || (focused && selectable);
-  return (
-    <div
-      className={cn(
-        "grid cursor-pointer grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-[6px] border py-2.5 pr-1 pl-3 transition-colors",
-        active
-          ? "border-border bg-transparency-block"
-          : "border-transparent bg-transparent hover:border-border/70 hover:bg-transparency-block"
-      )}
-      onClick={() => {
-        onFocus(node);
-        onSingleSelect(node);
-      }}
-      onContextMenu={(event) => onContextMenu(event, node)}
-      onDoubleClick={(event) => {
-        if (node.kind !== "file") {
-          return;
-        }
-        event.stopPropagation();
-        onFocus(node);
-        void onOpen(node);
-      }}
-    >
-      <div className="flex min-w-0 items-center gap-3 text-left">
-        <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-[var(--transparency-block)] text-[var(--text-tertiary)]">
-          <ReferenceNodeIcon
-            frameClassName="size-7"
-            iconClassName="size-6"
-            iconUrls={iconUrls}
-            node={node}
-          />
-        </span>
-        <span className="min-w-0">
-          <FullTextTooltip content={node.displayName}>
-            <span className="block truncate text-[13px] font-medium text-[var(--text-primary)]">
-              {node.displayName}
-            </span>
-          </FullTextTooltip>
-          {contextLabel ? (
-            <FullTextTooltip content={contextLabel}>
-              <span className="block truncate text-[11px] text-[var(--text-secondary)]">
-                {contextLabel}
-              </span>
-            </FullTextTooltip>
-          ) : null}
-        </span>
-      </div>
-      {selectable ? (
-        <Button
-          aria-label={node.displayName}
-          aria-pressed={selected}
-          size="icon-sm"
-          type="button"
-          variant="ghost"
-          onClick={(event) => {
-            event.stopPropagation();
-            onFocus(node);
-            onToggle(node);
-          }}
-          onDoubleClick={(event) => event.stopPropagation()}
-        >
-          {selected ? (
-            <CheckIcon size={14} />
-          ) : (
-            <AddLinedIcon className="text-[var(--text-secondary)]" size={16} />
-          )}
-        </Button>
-      ) : null}
-    </div>
-  );
-}
-
-interface SearchResultPageActions {
-  isSelectable: PickerView["isSelectable"];
-  onContextMenu: (event: MouseEvent<HTMLElement>, node: ReferenceNode) => void;
-  onFocus: PickerView["setFocusedNode"];
-  onOpen: PickerView["openNode"];
-  onSingleSelect: PickerView["toggleSingleSelectionAndExpand"];
-  onToggle: PickerView["toggleSelection"];
-}
-
-const SearchResultPage = memo(function SearchResultPage({
-  actionsRef,
-  focusedNode,
-  page,
-  resolveEntryIconUrl,
-  selection
-}: {
-  actionsRef: RefObject<SearchResultPageActions | null>;
-  focusedNode: ReferenceNode | null;
-  page: readonly ReferenceNode[];
-  resolveEntryIconUrl?: ReferenceSourcePickerProps["resolveEntryIconUrl"];
-  selection: readonly ReferenceNode[];
-}): JSX.Element {
-  const selectedKeys = useMemo(
-    () => new Set(selection.map((node) => nodeRefKey(node.ref))),
-    [selection]
-  );
-  const retainedEntries = useMemo(
-    () => page.map(referenceNodeToWorkspaceFileEntry),
-    [page]
-  );
-  const iconUrls = useWorkspaceFileEntryIconUrls({
-    entries: retainedEntries,
-    includeImageThumbnails: resolveEntryIconUrl !== undefined,
-    resolveEntryIconUrl
-  });
-  return (
-    <>
-      {page.map((node) => {
-        return (
-          <SearchResultRow
-            key={nodeRefKey(node.ref)}
-            focused={isFocused(focusedNode, node)}
-            iconUrls={iconUrls}
-            node={node}
-            selected={selectedKeys.has(nodeRefKey(node.ref))}
-            onFocus={(target) => actionsRef.current?.onFocus(target)}
-            onContextMenu={(event, target) =>
-              actionsRef.current?.onContextMenu(event, target)
-            }
-            onOpen={(target) =>
-              actionsRef.current?.onOpen(target) ?? Promise.resolve()
-            }
-            selectable={actionsRef.current?.isSelectable(node) ?? false}
-            onSingleSelect={(target) =>
-              actionsRef.current?.onSingleSelect(target)
-            }
-            onToggle={(target) => actionsRef.current?.onToggle(target)}
-          />
-        );
-      })}
-    </>
-  );
-});
 
 /**
  * 把 hook 的 node-keyed 预览态映射成共享预览组件的 surface state,补上本地化文案。
@@ -2593,30 +2446,6 @@ function collectReferenceNodeIconEntries(input: {
   }
 
   return [...byKey.values()].map(referenceNodeToWorkspaceFileEntry);
-}
-
-function referenceNodeToWorkspaceFileEntry(
-  node: ReferenceNode
-): WorkspaceFileEntry {
-  return {
-    hasChildren: node.kind === "folder",
-    kind: node.kind === "folder" ? "directory" : "file",
-    mtimeMs: node.mtimeMs ?? null,
-    name: node.displayName,
-    path: resolveReferenceNodeIconPath(node),
-    sizeBytes: node.sizeBytes ?? null
-  };
-}
-
-function resolveReferenceNodeIconPath(node: ReferenceNode): string {
-  if (node.kind === "file" && node.ref.nodeId.startsWith("f:")) {
-    try {
-      return base64UrlDecode(node.ref.nodeId.slice(2));
-    } catch {
-      return node.ref.nodeId;
-    }
-  }
-  return node.ref.nodeId;
 }
 
 function noopVoid(): void {}

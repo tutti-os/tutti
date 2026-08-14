@@ -248,9 +248,12 @@ query through a legacy backend.
 For cursor search, the controller uses cursor presence—not a returned-count
 heuristic or a growing total limit—to decide whether more data exists. It keeps
 an incremental identity set and inspects only the incoming page before
-appending unique nodes as stable page blocks in source order. The view consumes
-those blocks directly, so neither Valtio snapshots nor rendering adapters
-rematerialize the complete historical result array after every page. Repeated
+appending unique nodes to an immutable, bounded-block index in source order.
+Appending copies only the bounded tail block, and previously observed picker
+snapshots remain unchanged. The view performs random access through that index
+and renders only an overscanned virtual window. Historical entries remain
+reachable by scrolling without retaining one DOM row, icon subscription, or
+focus/selection render dependency per result. Repeated
 or cyclic `nextCursor` values stop continuation with a stable visible error.
 This removes any controller-owned total result ceiling.
 Legacy search retains the growing-limit behavior and compatibility ceiling.
@@ -259,6 +262,8 @@ If a host reports cursor expiry with `ReferenceSearchCursorExpiredError`, the
 controller clears the stale pages and automatically restarts the unchanged
 search from page one. Other invalid or mismatched cursor errors remain visible
 failures because retrying them would hide a source or request-contract bug.
+An explicit retry of a visible search error also starts at page one after
+discarding stale continuation state.
 
 Local-file queries are field-aware:
 
