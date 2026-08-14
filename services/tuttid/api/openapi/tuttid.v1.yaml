@@ -834,6 +834,42 @@ paths:
           $ref: "#/components/responses/PreferencesOperationError"
         "503":
           $ref: "#/components/responses/ServiceUnavailableError"
+  /v1/agent-targets/{agentTargetID}/account-usage:
+    post:
+      operationId: probeAgentTargetAccountUsage
+      tags:
+        - agent-target
+      summary: Probe provider-owned account usage for one Agent Target
+      description: >
+        Executes only a versioned account-usage capability declared by the
+        exact verified Agent Extension installation. The daemon validates the
+        companion executable under the Target-scoped managed runtime and
+        returns a provider-neutral result containing stable error codes only.
+        Account-usage availability never changes Agent runtime readiness.
+      parameters:
+        - name: agentTargetID
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+      responses:
+        "200":
+          description: Provider-owned account usage result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentTargetAccountUsageProbeResult"
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "404":
+          $ref: "#/components/responses/AgentTargetNotFoundError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
   /v1/workspaces/{workspaceID}/agent-targets/{agentTargetID}/setup:
     parameters:
       - $ref: "#/components/parameters/WorkspaceID"
@@ -8305,6 +8341,157 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/AgentTarget"
+    AgentTargetAccountUsageProbeResult:
+      oneOf:
+        - $ref: "#/components/schemas/AgentTargetAccountUsageAvailableResult"
+        - $ref: "#/components/schemas/AgentTargetAccountUsageUnsupportedResult"
+        - $ref: "#/components/schemas/AgentTargetAccountUsageErrorResult"
+      discriminator:
+        propertyName: outcome
+        mapping:
+          available: "#/components/schemas/AgentTargetAccountUsageAvailableResult"
+          unsupported: "#/components/schemas/AgentTargetAccountUsageUnsupportedResult"
+          error: "#/components/schemas/AgentTargetAccountUsageErrorResult"
+    AgentTargetAccountUsageAvailableResult:
+      type: object
+      additionalProperties: false
+      required:
+        - schemaVersion
+        - agentTargetId
+        - provider
+        - outcome
+        - capturedAtUnixMs
+        - billingMode
+        - quotas
+      properties:
+        schemaVersion:
+          type: string
+          enum:
+            - tutti.agent.account-usage.v1
+        agentTargetId:
+          type: string
+          minLength: 1
+        provider:
+          $ref: "#/components/schemas/AgentTargetProvider"
+        outcome:
+          type: string
+          enum:
+            - available
+        capturedAtUnixMs:
+          type: integer
+          format: int64
+          minimum: 0
+        billingMode:
+          $ref: "#/components/schemas/AgentTargetAccountUsageBillingMode"
+        quotas:
+          type: array
+          maxItems: 64
+          items:
+            $ref: "#/components/schemas/AgentTargetAccountUsageQuota"
+    AgentTargetAccountUsageUnsupportedResult:
+      type: object
+      additionalProperties: false
+      required:
+        - schemaVersion
+        - agentTargetId
+        - provider
+        - outcome
+        - capturedAtUnixMs
+      properties:
+        schemaVersion:
+          type: string
+          enum:
+            - tutti.agent.account-usage.v1
+        agentTargetId:
+          type: string
+          minLength: 1
+        provider:
+          $ref: "#/components/schemas/AgentTargetProvider"
+        outcome:
+          type: string
+          enum:
+            - unsupported
+        capturedAtUnixMs:
+          type: integer
+          format: int64
+          minimum: 0
+    AgentTargetAccountUsageErrorResult:
+      type: object
+      additionalProperties: false
+      required:
+        - schemaVersion
+        - agentTargetId
+        - provider
+        - outcome
+        - capturedAtUnixMs
+        - errorCode
+      properties:
+        schemaVersion:
+          type: string
+          enum:
+            - tutti.agent.account-usage.v1
+        agentTargetId:
+          type: string
+          minLength: 1
+        provider:
+          $ref: "#/components/schemas/AgentTargetProvider"
+        outcome:
+          type: string
+          enum:
+            - error
+        capturedAtUnixMs:
+          type: integer
+          format: int64
+          minimum: 0
+        errorCode:
+          $ref: "#/components/schemas/AgentTargetAccountUsageErrorCode"
+    AgentTargetAccountUsageBillingMode:
+      type: string
+      enum:
+        - subscription
+        - api
+    AgentTargetAccountUsageErrorCode:
+      type: string
+      enum:
+        - auth_required
+        - config_invalid
+        - execution_failed
+        - no_data
+        - parse_failed
+        - rate_limited
+        - runtime_unavailable
+        - session_expired
+        - timeout
+    AgentTargetAccountUsageQuotaType:
+      type: string
+      enum:
+        - session
+        - daily
+        - weekly
+        - monthly
+        - model
+        - cost
+    AgentTargetAccountUsageQuota:
+      type: object
+      additionalProperties: false
+      required:
+        - quotaType
+        - percentRemaining
+      properties:
+        quotaType:
+          $ref: "#/components/schemas/AgentTargetAccountUsageQuotaType"
+        percentRemaining:
+          type: number
+          minimum: 0
+          maximum: 100
+        resetsAtUnixMs:
+          type: integer
+          format: int64
+          minimum: 0
+        modelName:
+          type: string
+          minLength: 1
+          maxLength: 128
     SetSystemAgentTargetEnabledRequest:
       type: object
       additionalProperties: false

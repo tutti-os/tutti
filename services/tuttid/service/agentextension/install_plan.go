@@ -59,9 +59,17 @@ type InstallPlan struct {
 	Executable               string                 `json:"executable"`
 	LaunchArgs               []string               `json:"launchArgs"`
 	Artifact                 *RuntimeBinaryArtifact `json:"artifact,omitempty"`
+	AccountUsage             *AccountUsageInstall   `json:"accountUsage,omitempty"`
 	PublishUserCommand       bool                   `json:"-"`
 	PublishUserCommandOption *bool                  `json:"publishUserCommand,omitempty"`
 	PlanDigest               string                 `json:"planDigest,omitempty"`
+}
+
+type AccountUsageInstall struct {
+	Package    string   `json:"package"`
+	Executable string   `json:"executable"`
+	Args       []string `json:"args"`
+	TimeoutMS  int      `json:"timeoutMs"`
 }
 
 type RuntimeBinaryArtifact = agentextensionbiz.RuntimeBinaryArtifact
@@ -131,9 +139,16 @@ func buildInstallPlan(targetID, runtimeInstallDir string, installation Installat
 	}
 	installCommand := []string{"download", artifactURL(artifact)}
 	if artifact == nil {
-		installArgs := make([]string, len(manifest.Runtime.Install.Args))
-		for index, argument := range manifest.Runtime.Install.Args {
-			installArgs[index] = resolve(argument)
+		accountUsage, err := loadAccountUsageProfile(installation)
+		if err != nil {
+			return InstallPlan{}, err
+		}
+		installArgs := make([]string, 0, len(manifest.Runtime.Install.Args)+1)
+		for _, argument := range manifest.Runtime.Install.Args {
+			installArgs = append(installArgs, resolve(argument))
+		}
+		if accountUsage != nil {
+			installArgs = append(installArgs, accountUsage.Runtime.Package)
 		}
 		installCommand = append([]string{manifest.Runtime.Install.Runner}, installArgs...)
 	}
@@ -161,6 +176,20 @@ func buildInstallPlan(targetID, runtimeInstallDir string, installation Installat
 		Artifact: artifact, PublishUserCommand: publishesUserCommand(manifest),
 		PublishUserCommandOption: manifest.Runtime.Launch.PublishUserCommand,
 	}
+	accountUsage, err := loadAccountUsageProfile(installation)
+	if err != nil {
+		return InstallPlan{}, err
+	}
+	if accountUsage != nil {
+		accountUsageExecutable := filepath.Clean(resolve(accountUsage.Runtime.Executable))
+		if !pathWithin(accountUsageExecutable, installRoot) {
+			return InstallPlan{}, errors.New("account usage companion executable escapes install root")
+		}
+		plan.AccountUsage = &AccountUsageInstall{
+			Package: accountUsage.Runtime.Package, Executable: accountUsageExecutable,
+			Args: append([]string(nil), accountUsage.Runtime.Args...), TimeoutMS: accountUsage.Runtime.TimeoutMS,
+		}
+	}
 	encoded, err := json.Marshal(plan)
 	if err != nil {
 		return InstallPlan{}, fmt.Errorf("encode agent target install plan: %w", err)
@@ -177,6 +206,10 @@ func managedRuntimeIdentity(
 	packageVersion string,
 	platform string,
 ) (string, error) {
+	accountUsage, err := loadAccountUsageProfile(installation)
+	if err != nil {
+		return "", err
+	}
 	value := struct {
 		SchemaVersion      string                 `json:"schemaVersion"`
 		AgentKey           string                 `json:"agentKey"`
@@ -190,6 +223,7 @@ func managedRuntimeIdentity(
 		Launch             runtimeLaunchKey       `json:"launch"`
 		PublishUserCommand *bool                  `json:"publishUserCommand,omitempty"`
 		Discovery          DiscoveryProfile       `json:"discovery"`
+		AccountUsage       *AccountUsageProfile   `json:"accountUsage,omitempty"`
 	}{
 		SchemaVersion: "tutti.agent.managed-runtime-identity.v1",
 		AgentKey:      installation.AgentKey, RuntimeKind: installation.Manifest.Runtime.Kind,
@@ -204,6 +238,7 @@ func managedRuntimeIdentity(
 		},
 		PublishUserCommand: installation.Manifest.Runtime.Launch.PublishUserCommand,
 		Discovery:          profile,
+		AccountUsage:       accountUsage,
 	}
 	encoded, err := json.Marshal(value)
 	if err != nil {

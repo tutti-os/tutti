@@ -80,6 +80,9 @@ function createTransportClient(
     async listAgentTargets() {
       throw new Error("not used");
     },
+    async probeAgentTargetAccountUsage() {
+      throw new Error("not used");
+    },
     async listAutomationRules() {
       throw new Error("not used");
     },

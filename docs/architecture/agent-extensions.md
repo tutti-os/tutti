@@ -5,8 +5,8 @@ Status: current implemented architecture
 Agent Extensions let independently released ACP agents integrate with Tutti
 without adding provider-specific executable code to this repository. An
 extension is declarative data: a manifest,
-discovery/tool/capability/composer/authentication profiles, locale resources,
-and static assets.
+discovery/tool/capability/composer/authentication/account-usage profiles, locale
+resources, and static assets.
 
 ## Trust And Distribution
 
@@ -127,6 +127,40 @@ prompt-free composer discovery session runs in the normalized selected project
 scope. When no project is selected, it uses the daemon-owned discovery directory
 under `<state>/agent/discovery/<provider>`, because standard ACP session creation
 requires a concrete working directory.
+
+### Provider-owned account usage
+
+An Extension may declare the optional `accountUsage` profile with schema
+`tutti.agent.account-usage-probe.v1`. The profile pins one exact npm or pnpm
+companion package, an executable path below `${installRoot}`, fixed argv, and a
+bounded timeout. The Extension ZIP remains data-only: the companion is a
+separately published Provider-owned artifact, installed together with the
+primary ACP package into the same Target-scoped managed runtime. Its resolved
+regular file identity and fingerprint are recorded at activation and verified
+again before every probe. A local discovered ACP runtime may coexist, but the
+probe still executes only the separately verified managed companion; if that
+companion was never installed, the declared capability reports
+`runtime_unavailable` and never downloads code during a status read.
+
+Local Extension development may replace that managed companion with one
+explicit executable through
+`TUTTI_AGENT_EXTENSION_<KEY>_ACCOUNT_USAGE_EXECUTABLE`. This is accepted only
+for a development-mode installation with local-package provenance; the path
+must be absolute, ordinary, executable, non-symlinked, and fingerprint-stable.
+Production ignores the override and continues to require the exact companion
+package pinned by the signed profile.
+
+The companion owns all Provider-private behavior, including config and
+credential lookup, OAuth issuer-to-usage-origin binding, endpoint paths,
+refresh timing, and response conversion. It prints only one bounded versioned
+JSON result to stdout; stderr is discarded at the process boundary. `tuttid`
+strictly decodes a closed `available | unsupported | error` result, attaches
+the exact Agent Target and provider identity, and exposes only stable error
+codes and normalized quota fields. Unknown fields, schemas, enums, malformed
+numbers, empty subscription success, and trailing output fail closed. Desktop
+and AgentGUI never select this capability by provider name and never receive
+tokens, configured endpoints, paths, raw response bodies, or Provider error
+text.
 
 ### Spawn Settings And ACP Workflow Modes
 

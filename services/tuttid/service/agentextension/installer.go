@@ -203,6 +203,10 @@ func (s *SetupService) executeInstall(
 	if err := verifyRuntimeExecutableUnchanged(realExecutable, verifiedFingerprint); err != nil {
 		return fmt.Errorf("%w: %w", ErrRuntimeVerifyFailed, err)
 	}
+	accountUsageActivation, err := stagedAccountUsageActivation(plan, staging, realStaging)
+	if err != nil {
+		return fmt.Errorf("%w: %w", ErrRuntimeVerifyFailed, err)
+	}
 	var profile DiscoveryProfile
 	if err := readJSON(filepath.Join(installation.PackageDir, installation.Manifest.Profiles.Discovery), &profile); err != nil {
 		return fmt.Errorf("%w: %w", ErrRuntimeVerifyFailed, err)
@@ -238,6 +242,12 @@ func (s *SetupService) executeInstall(
 	if err := verifyRuntimeExecutableUnchanged(realExecutable, verifiedFingerprint); err != nil {
 		return fmt.Errorf("%w: %w", ErrRuntimeProbeFailed, err)
 	}
+	if accountUsageActivation != nil {
+		companionExecutable := filepath.Join(realStaging, filepath.FromSlash(accountUsageActivation.ExecutableRelativePath))
+		if err := verifyRuntimeExecutableUnchanged(companionExecutable, accountUsageActivation.ExecutableFingerprint); err != nil {
+			return fmt.Errorf("%w: account usage companion changed during runtime probe: %w", ErrRuntimeProbeFailed, err)
+		}
+	}
 
 	if err := update(SetupPhaseActivating); err != nil {
 		return err
@@ -255,6 +265,7 @@ func (s *SetupService) executeInstall(
 		ExecutableRelativePath: filepath.ToSlash(relativeExecutable), InstalledAt: time.Now().UTC(),
 	}
 	activation.ExecutableFingerprint = verifiedFingerprint
+	activation.AccountUsage = accountUsageActivation
 	if err := stagingDir.writeJSONAtomic("activation.json", activation); err != nil {
 		return fmt.Errorf("%w: write activation: %w", ErrRuntimeActivateFailed, err)
 	}
@@ -273,15 +284,7 @@ func (s *SetupService) executeInstall(
 }
 
 func stagedRuntimeExecutable(plan InstallPlan, staging string) (string, error) {
-	relative, err := filepath.Rel(filepath.Clean(plan.InstallRoot), filepath.Clean(plan.Executable))
-	if err != nil || relative == "." || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
-		return "", errors.New("runtime executable escapes install root")
-	}
-	result := filepath.Join(staging, relative)
-	if !pathWithin(result, staging) {
-		return "", errors.New("staged runtime executable escapes staging root")
-	}
-	return result, nil
+	return stagedRuntimePath(plan.InstallRoot, plan.Executable, staging)
 }
 
 func verifiedPlanBinaryArtifact(installation Installation, plan InstallPlan) (RuntimeBinaryArtifact, error) {
@@ -488,6 +491,17 @@ func activateManagedRuntimeWithCrashInjection(
 			_ = workspace.rename(backupName, plan.RuntimeIdentity)
 		}
 		return err
+	}
+	if activation.AccountUsage != nil {
+		companionExecutable := filepath.Join(finalRoot, filepath.FromSlash(activation.AccountUsage.ExecutableRelativePath))
+		if err := verifyRuntimeExecutableUnchanged(companionExecutable, activation.AccountUsage.ExecutableFingerprint); err != nil {
+			_ = staging.Close()
+			_ = workspace.remove(plan.RuntimeIdentity)
+			if hadPrevious {
+				_ = workspace.rename(backupName, plan.RuntimeIdentity)
+			}
+			return err
+		}
 	}
 	if entry != nil {
 		if err := publishManagedRuntimeEntry(*entry); err != nil {

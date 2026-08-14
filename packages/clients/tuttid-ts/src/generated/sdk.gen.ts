@@ -532,6 +532,9 @@ import type {
   ProbeAgentProviderData,
   ProbeAgentProviderErrors,
   ProbeAgentProviderResponses,
+  ProbeAgentTargetAccountUsageData,
+  ProbeAgentTargetAccountUsageErrors,
+  ProbeAgentTargetAccountUsageResponses,
   PublishWorkspaceAppFactoryJobData,
   PublishWorkspaceAppFactoryJobErrors,
   PublishWorkspaceAppFactoryJobResponses,
@@ -1347,6 +1350,27 @@ export const setSystemAgentTargetEnabled = <
       "Content-Type": "application/json",
       ...options.headers
     }
+  });
+
+/**
+ * Probe provider-owned account usage for one Agent Target
+ *
+ * Executes only a versioned account-usage capability declared by the exact verified Agent Extension installation. The daemon validates the companion executable under the Target-scoped managed runtime and returns a provider-neutral result containing stable error codes only. Account-usage availability never changes Agent runtime readiness.
+ *
+ */
+export const probeAgentTargetAccountUsage = <
+  ThrowOnError extends boolean = false
+>(
+  options: Options<ProbeAgentTargetAccountUsageData, ThrowOnError>
+) =>
+  (options.client ?? client).post<
+    ProbeAgentTargetAccountUsageResponses,
+    ProbeAgentTargetAccountUsageErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/agent-targets/{agentTargetID}/account-usage",
+    ...options
   });
 
 /**

@@ -63,13 +63,14 @@ type generatedAgentExtensionSourceDefaults struct {
 }
 
 type AgentExtensionSource struct {
-	Key                      string
-	ReleaseIndexURL          string
-	FallbackReleaseIndexURLs []string
-	SigningKeyID             string
-	SigningPublicKey         string
-	LocalPackageDir          string
-	Enabled                  bool
+	Key                         string
+	ReleaseIndexURL             string
+	FallbackReleaseIndexURLs    []string
+	SigningKeyID                string
+	SigningPublicKey            string
+	LocalPackageDir             string
+	LocalAccountUsageExecutable string
+	Enabled                     bool
 }
 
 type generatedAgentRuntimeToolDefaults struct {
@@ -203,17 +204,20 @@ func ResolveAgentExtensionSources() []AgentExtensionSource {
 	for _, source := range generatedDefaults.AgentExtensions.Sources {
 		envPrefix := "TUTTI_AGENT_EXTENSION_" + strings.ToUpper(strings.ReplaceAll(source.Key, "-", "_"))
 		localPackageDir := ""
+		localAccountUsageExecutable := ""
 		if development {
 			localPackageDir = strings.TrimSpace(os.Getenv(envPrefix + "_PACKAGE_DIR"))
+			localAccountUsageExecutable = strings.TrimSpace(os.Getenv(envPrefix + "_ACCOUNT_USAGE_EXECUTABLE"))
 		}
 		result = append(result, AgentExtensionSource{
-			Key:                      source.Key,
-			ReleaseIndexURL:          source.ReleaseIndexURL,
-			FallbackReleaseIndexURLs: append([]string(nil), source.FallbackReleaseIndexURLs...),
-			SigningKeyID:             source.SigningKeyID,
-			SigningPublicKey:         source.SigningPublicKey,
-			LocalPackageDir:          localPackageDir,
-			Enabled:                  source.Enabled,
+			Key:                         source.Key,
+			ReleaseIndexURL:             source.ReleaseIndexURL,
+			FallbackReleaseIndexURLs:    append([]string(nil), source.FallbackReleaseIndexURLs...),
+			SigningKeyID:                source.SigningKeyID,
+			SigningPublicKey:            source.SigningPublicKey,
+			LocalPackageDir:             localPackageDir,
+			LocalAccountUsageExecutable: localAccountUsageExecutable,
+			Enabled:                     source.Enabled,
 		})
 	}
 	return result

@@ -41,6 +41,7 @@ type DaemonAPI struct {
 	AgentQuickPromptService       AgentQuickPromptService
 	AgentTargetService            AgentTargetService
 	AgentTargetSetupService       AgentTargetSetupService
+	AgentTargetAccountUsage       AgentTargetAccountUsageService
 	PreferencesService            preferencesapi.Service
 	AgentMaintenanceService       AgentMaintenanceService
 	ManagedCredentialsService     *managedcredentialsservice.Service

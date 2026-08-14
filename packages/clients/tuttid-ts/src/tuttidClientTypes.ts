@@ -24,6 +24,7 @@ import type {
   AgentQuickPrompt,
   AgentQuickPromptListResponse,
   AgentTargetSetupSnapshot,
+  AgentTargetAccountUsageProbeResult,
   AuthenticateAgentTargetRuntimeRequest,
   InstallAgentTargetRuntimeRequest,
   WorkspaceAgentTurnCancelResponse,
@@ -241,6 +242,9 @@ export interface TuttidClient
     request: MoveAgentQuickPromptRequest
   ): Promise<AgentQuickPromptListResponse>;
   listAgentTargets(): Promise<ListAgentTargetsResponse>;
+  probeAgentTargetAccountUsage(
+    agentTargetID: string
+  ): Promise<AgentTargetAccountUsageProbeResult>;
   setSystemAgentTargetEnabled(
     agentTargetID: string,
     enabled: boolean

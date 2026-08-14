@@ -89,6 +89,9 @@ type ServerInterface interface {
 	// List daemon-owned Agent Targets
 	// (GET /v1/agent-targets)
 	ListAgentTargets(w http.ResponseWriter, r *http.Request)
+	// Probe provider-owned account usage for one Agent Target
+	// (POST /v1/agent-targets/{agentTargetID}/account-usage)
+	ProbeAgentTargetAccountUsage(w http.ResponseWriter, r *http.Request, agentTargetID string)
 	// Enable or disable one daemon-owned system Agent Target
 	// (PATCH /v1/agent-targets/{agentTargetID}/enabled)
 	SetSystemAgentTargetEnabled(w http.ResponseWriter, r *http.Request, agentTargetID string)
@@ -1460,6 +1463,38 @@ func (siw *ServerInterfaceWrapper) ListAgentTargets(w http.ResponseWriter, r *ht
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ListAgentTargets(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ProbeAgentTargetAccountUsage operation middleware
+func (siw *ServerInterfaceWrapper) ProbeAgentTargetAccountUsage(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "agentTargetID" -------------
+	var agentTargetID string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "agentTargetID", r.PathValue("agentTargetID"), &agentTargetID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "agentTargetID", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ProbeAgentTargetAccountUsage(w, r, agentTargetID)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -10882,6 +10917,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/agent-session-replay/cassettes/{cassetteID}/transport/playback", wrapper.UpdateAgentSessionReplayTransportPlayback)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/agent-session-replay/cassettes/{cassetteID}/transport/verify", wrapper.VerifyAgentSessionReplayTransport)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/agent-targets", wrapper.ListAgentTargets)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/agent-targets/{agentTargetID}/account-usage", wrapper.ProbeAgentTargetAccountUsage)
 	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/v1/agent-targets/{agentTargetID}/enabled", wrapper.SetSystemAgentTargetEnabled)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/cli/capabilities", wrapper.ListCliCapabilities)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/cli/commands/{commandID}/invoke", wrapper.InvokeCliCommand)
@@ -13104,6 +13140,114 @@ type ListAgentTargets503JSONResponse struct {
 }
 
 func (response ListAgentTargets503JSONResponse) VisitListAgentTargetsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ProbeAgentTargetAccountUsageRequestObject struct {
+	AgentTargetID string `json:"agentTargetID"`
+}
+
+type ProbeAgentTargetAccountUsageResponseObject interface {
+	VisitProbeAgentTargetAccountUsageResponse(w http.ResponseWriter) error
+}
+
+type ProbeAgentTargetAccountUsage200JSONResponse AgentTargetAccountUsageProbeResult
+
+func (t ProbeAgentTargetAccountUsage200JSONResponse) MarshalJSON() ([]byte, error) {
+	return AgentTargetAccountUsageProbeResult(t).MarshalJSON()
+}
+
+func (t *ProbeAgentTargetAccountUsage200JSONResponse) UnmarshalJSON(b []byte) error {
+	return (*AgentTargetAccountUsageProbeResult)(t).UnmarshalJSON(b)
+}
+
+func (response ProbeAgentTargetAccountUsage200JSONResponse) VisitProbeAgentTargetAccountUsageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ProbeAgentTargetAccountUsage400JSONResponse struct {
+	InvalidRequestErrorJSONResponse
+}
+
+func (response ProbeAgentTargetAccountUsage400JSONResponse) VisitProbeAgentTargetAccountUsageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ProbeAgentTargetAccountUsage401JSONResponse struct{ UnauthorizedErrorJSONResponse }
+
+func (response ProbeAgentTargetAccountUsage401JSONResponse) VisitProbeAgentTargetAccountUsageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ProbeAgentTargetAccountUsage404JSONResponse struct {
+	AgentTargetNotFoundErrorJSONResponse
+}
+
+func (response ProbeAgentTargetAccountUsage404JSONResponse) VisitProbeAgentTargetAccountUsageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ProbeAgentTargetAccountUsage405JSONResponse struct {
+	MethodNotAllowedErrorJSONResponse
+}
+
+func (response ProbeAgentTargetAccountUsage405JSONResponse) VisitProbeAgentTargetAccountUsageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(405)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ProbeAgentTargetAccountUsage503JSONResponse struct {
+	ServiceUnavailableErrorJSONResponse
+}
+
+func (response ProbeAgentTargetAccountUsage503JSONResponse) VisitProbeAgentTargetAccountUsageResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -37891,6 +38035,9 @@ type StrictServerInterface interface {
 	// List daemon-owned Agent Targets
 	// (GET /v1/agent-targets)
 	ListAgentTargets(ctx context.Context, request ListAgentTargetsRequestObject) (ListAgentTargetsResponseObject, error)
+	// Probe provider-owned account usage for one Agent Target
+	// (POST /v1/agent-targets/{agentTargetID}/account-usage)
+	ProbeAgentTargetAccountUsage(ctx context.Context, request ProbeAgentTargetAccountUsageRequestObject) (ProbeAgentTargetAccountUsageResponseObject, error)
 	// Enable or disable one daemon-owned system Agent Target
 	// (PATCH /v1/agent-targets/{agentTargetID}/enabled)
 	SetSystemAgentTargetEnabled(ctx context.Context, request SetSystemAgentTargetEnabledRequestObject) (SetSystemAgentTargetEnabledResponseObject, error)
@@ -39239,6 +39386,32 @@ func (sh *strictHandler) ListAgentTargets(w http.ResponseWriter, r *http.Request
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(ListAgentTargetsResponseObject); ok {
 		if err := validResponse.VisitListAgentTargetsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ProbeAgentTargetAccountUsage operation middleware
+func (sh *strictHandler) ProbeAgentTargetAccountUsage(w http.ResponseWriter, r *http.Request, agentTargetID string) {
+	var request ProbeAgentTargetAccountUsageRequestObject
+
+	request.AgentTargetID = agentTargetID
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ProbeAgentTargetAccountUsage(ctx, request.(ProbeAgentTargetAccountUsageRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ProbeAgentTargetAccountUsage")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ProbeAgentTargetAccountUsageResponseObject); ok {
+		if err := validResponse.VisitProbeAgentTargetAccountUsageResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

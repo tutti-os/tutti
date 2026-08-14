@@ -627,6 +627,72 @@ export type ListAgentTargetsResponse = {
   targets: Array<AgentTarget>;
 };
 
+export type AgentTargetAccountUsageProbeResult =
+  | ({
+      outcome: "available";
+    } & AgentTargetAccountUsageAvailableResult)
+  | ({
+      outcome: "unsupported";
+    } & AgentTargetAccountUsageUnsupportedResult)
+  | ({
+      outcome: "error";
+    } & AgentTargetAccountUsageErrorResult);
+
+export type AgentTargetAccountUsageAvailableResult = {
+  schemaVersion: "tutti.agent.account-usage.v1";
+  agentTargetId: string;
+  provider: AgentTargetProvider;
+  outcome: "available";
+  capturedAtUnixMs: number;
+  billingMode: AgentTargetAccountUsageBillingMode;
+  quotas: Array<AgentTargetAccountUsageQuota>;
+};
+
+export type AgentTargetAccountUsageUnsupportedResult = {
+  schemaVersion: "tutti.agent.account-usage.v1";
+  agentTargetId: string;
+  provider: AgentTargetProvider;
+  outcome: "unsupported";
+  capturedAtUnixMs: number;
+};
+
+export type AgentTargetAccountUsageErrorResult = {
+  schemaVersion: "tutti.agent.account-usage.v1";
+  agentTargetId: string;
+  provider: AgentTargetProvider;
+  outcome: "error";
+  capturedAtUnixMs: number;
+  errorCode: AgentTargetAccountUsageErrorCode;
+};
+
+export type AgentTargetAccountUsageBillingMode = "subscription" | "api";
+
+export type AgentTargetAccountUsageErrorCode =
+  | "auth_required"
+  | "config_invalid"
+  | "execution_failed"
+  | "no_data"
+  | "parse_failed"
+  | "rate_limited"
+  | "runtime_unavailable"
+  | "session_expired"
+  | "timeout";
+
+export type AgentTargetAccountUsageQuotaType =
+  | "session"
+  | "daily"
+  | "weekly"
+  | "monthly"
+  | "model"
+  | "cost";
+
+export type AgentTargetAccountUsageQuota = {
+  quotaType: AgentTargetAccountUsageQuotaType;
+  percentRemaining: number;
+  resetsAtUnixMs?: number;
+  modelName?: string;
+};
+
 export type SetSystemAgentTargetEnabledRequest = {
   enabled: boolean;
 };
@@ -6226,6 +6292,51 @@ export type SetSystemAgentTargetEnabledResponses = {
 
 export type SetSystemAgentTargetEnabledResponse =
   SetSystemAgentTargetEnabledResponses[keyof SetSystemAgentTargetEnabledResponses];
+
+export type ProbeAgentTargetAccountUsageData = {
+  body?: never;
+  path: {
+    agentTargetID: string;
+  };
+  query?: never;
+  url: "/v1/agent-targets/{agentTargetID}/account-usage";
+};
+
+export type ProbeAgentTargetAccountUsageErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * Agent target was not found
+   */
+  404: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type ProbeAgentTargetAccountUsageError =
+  ProbeAgentTargetAccountUsageErrors[keyof ProbeAgentTargetAccountUsageErrors];
+
+export type ProbeAgentTargetAccountUsageResponses = {
+  /**
+   * Provider-owned account usage result
+   */
+  200: AgentTargetAccountUsageProbeResult;
+};
+
+export type ProbeAgentTargetAccountUsageResponse =
+  ProbeAgentTargetAccountUsageResponses[keyof ProbeAgentTargetAccountUsageResponses];
 
 export type GetAgentTargetSetupData = {
   body?: never;

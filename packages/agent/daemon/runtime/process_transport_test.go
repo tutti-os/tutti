@@ -19,6 +19,15 @@ func TestVerifiedProcessExecutableFixture(_ *testing.T) {
 	if os.Getenv("TUTTI_TEST_VERIFIED_PROCESS_EXECUTABLE") == "1" {
 		fmt.Print("verified-original")
 	}
+	if os.Getenv("TUTTI_TEST_BOUNDED_PROCESS_EXECUTABLE") == "ok" {
+		fmt.Print("ok")
+		_, _ = fmt.Fprint(os.Stderr, "secret-stderr")
+		os.Exit(0)
+	}
+	if os.Getenv("TUTTI_TEST_BOUNDED_PROCESS_EXECUTABLE") == "overflow" {
+		fmt.Print("too-large")
+		os.Exit(0)
+	}
 }
 
 func TestPrepareProcessExecutableExecutesVerifiedDescriptorAfterPathReplacement(t *testing.T) {
@@ -60,6 +69,28 @@ func TestRunVerifiedExecutableUsesVerifiedIdentity(t *testing.T) {
 	if _, err := RunVerifiedExecutable(context.Background(), path, nil, identity); err == nil ||
 		!strings.Contains(err.Error(), "expected identity") {
 		t.Fatalf("changed verified execution error = %v", err)
+	}
+}
+
+func TestRunVerifiedExecutableBoundedCapturesOnlyBoundedStdout(t *testing.T) {
+	path, identity := copyCurrentExecutableWithIdentity(t)
+	t.Setenv("TUTTI_TEST_BOUNDED_PROCESS_EXECUTABLE", "ok")
+
+	output, err := RunVerifiedExecutableBounded(
+		context.Background(), path, []string{"-test.run=TestVerifiedProcessExecutableFixture"}, identity, 8,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(output) != "ok" {
+		t.Fatalf("output = %q", output)
+	}
+
+	t.Setenv("TUTTI_TEST_BOUNDED_PROCESS_EXECUTABLE", "overflow")
+	if _, err := RunVerifiedExecutableBounded(
+		context.Background(), path, []string{"-test.run=TestVerifiedProcessExecutableFixture"}, identity, 3,
+	); err == nil {
+		t.Fatal("RunVerifiedExecutableBounded() overflow error = nil")
 	}
 }
 

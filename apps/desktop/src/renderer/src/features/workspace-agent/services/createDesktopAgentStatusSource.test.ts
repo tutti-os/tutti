@@ -27,6 +27,7 @@ test("desktop status combines an exact canonical session with one host probe rea
       capturedAtUnixMs: 500,
       providers: [
         {
+          agentTargetId: "local:codex",
           provider: "codex",
           availability: { status: "available", detailsVisible: false },
           usage: {
@@ -69,6 +70,7 @@ test("desktop status combines an exact canonical session with one host probe rea
 
   assert.deepEqual(listCalls, [
     {
+      agentTargetIds: ["local:codex"],
       includeUsage: true,
       providers: ["codex"],
       refresh: true,
@@ -111,6 +113,7 @@ test("desktop status treats an unsupported extension usage probe as unavailable"
         capturedAtUnixMs: 500,
         providers: [
           {
+            agentTargetId: "extension:example",
             provider: "acp:example",
             availability: { status: "unknown", detailsVisible: false },
             lastError: { code: "unsupported" }
@@ -147,26 +150,27 @@ test("desktop status treats an unsupported extension usage probe as unavailable"
   assert.deepEqual(observed.errors, []);
 });
 
-test("desktop status labels Kimi API-key billing without quota rows", async () => {
-  const kimiAgent = {
-    agentTargetId: "extension:kimi-code",
-    name: "Kimi Code",
-    iconUrl: "kimi-code.svg",
+test("desktop status labels extension API billing without quota rows", async () => {
+  const extensionAgent = {
+    agentTargetId: "extension:usage-fixture",
+    name: "Usage Fixture",
+    iconUrl: "usage-fixture.svg",
     availability: { status: "ready" },
-    provider: "acp:kimi-code"
+    provider: "acp:usage-fixture"
   } as const;
   const observed = createObserver();
   const source = createDesktopAgentStatusSource({
     agentActivityRuntime: runtimeWithSessions([]),
-    agents: [kimiAgent] as never,
+    agents: [extensionAgent] as never,
     workspaceAgentProbes: {
       list: async () => ({
         workspaceId: "workspace-1",
         capturedAtUnixMs: 500,
         providers: [
           {
-            provider: "acp:kimi-code",
-            availability: { status: "available", detailsVisible: false },
+            agentTargetId: "extension:usage-fixture",
+            provider: "acp:usage-fixture",
+            availability: { status: "unknown", detailsVisible: false },
             usage: {
               billingMode: "api",
               capturedAtUnixMs: 450,
@@ -180,7 +184,7 @@ test("desktop status labels Kimi API-key billing without quota rows", async () =
   });
 
   source.open(
-    { scopeKey: "extension:kimi-code", reason: "agent-info" },
+    { scopeKey: "extension:usage-fixture", reason: "agent-info" },
     observed.observer
   );
   await observed.completed;
@@ -202,6 +206,7 @@ test("desktop status preserves structured usage probe failures", async () => {
         capturedAtUnixMs: 500,
         providers: [
           {
+            agentTargetId: "local:codex",
             provider: "codex",
             availability: { status: "unavailable", detailsVisible: false },
             lastError: { code: "auth_required" }
@@ -237,6 +242,7 @@ test("desktop status preserves exhausted usage together with its error code", as
         capturedAtUnixMs: 500,
         providers: [
           {
+            agentTargetId: "local:codex",
             provider: "codex",
             availability: { status: "available", detailsVisible: false },
             lastError: { code: "quota_exhausted" },
@@ -302,7 +308,7 @@ test("desktop status fails closed before probing a cross-target session", () => 
   assert.equal(listCalled, false);
 });
 
-test("workspace status shares Provider refreshes while keeping per-session controller state", async () => {
+test("workspace status shares exact-target refreshes while keeping per-session controller state", async () => {
   let currentTime = 1_000;
   const firstProbe = deferred<ReturnType<typeof probeSnapshot>>();
   const secondProbe = deferred<ReturnType<typeof probeSnapshot>>();
@@ -462,6 +468,7 @@ function probeSnapshot(capturedAtUnixMs: number) {
     capturedAtUnixMs,
     providers: [
       {
+        agentTargetId: "local:codex",
         availability: { detailsVisible: false, status: "available" as const },
         provider: "codex",
         usage: {

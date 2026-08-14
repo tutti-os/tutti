@@ -99,6 +99,46 @@ func TestInstallPlanServiceBuildsDeterministicTargetScopedPlan(t *testing.T) {
 	}
 }
 
+func TestBuildInstallPlanPinsAccountUsageCompanionToManagedRuntime(t *testing.T) {
+	manifest := testManifest()
+	manifest.Profiles.AccountUsage = "profiles/account-usage.json"
+	manager := &Manager{
+		Installations:     agentextensiondata.NewFileInstallationStore(t.TempDir()),
+		RuntimeInstallDir: filepath.Join(testResolvedTempDir(t), "agent-runtimes"),
+	}
+	installation, err := installTestPackage(
+		t,
+		manager,
+		Release{AgentKey: manifest.AgentKey, Version: manifest.Version},
+		testPackageZIPFor(
+			t,
+			manifest,
+			`{"schemaVersion":"tutti.agent.discovery.v1","candidates":[{"binaryNames":["gemini"],"version":{"args":["--version"],"constraint":">=0.50.0 <1.0.0"},"launchArgs":["--acp"],"probe":{"kind":"acp-initialize","timeoutMs":5000}}]}`,
+		),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan, err := buildInstallPlan(
+		"extension:gemini",
+		manager.RuntimeInstallDir,
+		installation,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantPackage := "@example/gemini-account-usage@1.0.0"
+	if plan.AccountUsage == nil || plan.AccountUsage.Package != wantPackage {
+		t.Fatalf("account usage install = %#v", plan.AccountUsage)
+	}
+	if got := plan.InstallCommand[len(plan.InstallCommand)-1]; got != wantPackage {
+		t.Fatalf("install command companion = %q, want %q: %#v", got, wantPackage, plan.InstallCommand)
+	}
+	if !pathWithin(plan.AccountUsage.Executable, plan.InstallRoot) || plan.AccountUsage.TimeoutMS != 10_000 {
+		t.Fatalf("account usage executable/timeout = %#v", plan.AccountUsage)
+	}
+}
+
 func TestValidateManagedRuntimeRootRejectsSymlinkedAncestor(t *testing.T) {
 	base := testResolvedTempDir(t)
 	foreign := testResolvedTempDir(t)

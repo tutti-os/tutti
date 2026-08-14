@@ -129,6 +129,9 @@ func buildDaemonAPI(
 	agentTargetInstallPlans := agentextensionservice.InstallPlanService{
 		Manager: agentExtensionManager, Workspaces: store, Targets: agentTargetStore,
 	}
+	agentTargetAccountUsage := agentextensionservice.AccountUsageService{
+		Manager: agentExtensionManager, Targets: agentTargetStore,
+	}
 	agentTargets.AvailabilityResolver = agentExtensionManager
 	refreshAgentExtensionsInBackground := restoreAgentExtensionsForStartup(ctx, agentExtensionManager)
 	managedCredentials := &managedcredentialsservice.Service{
@@ -786,6 +789,7 @@ func buildDaemonAPI(
 		AgentQuickPromptService:   agentQuickPromptService,
 		AgentTargetService:        agentTargets,
 		AgentTargetSetupService:   agentTargetSetup,
+		AgentTargetAccountUsage:   agentTargetAccountUsage,
 		PreferencesService:        preferences,
 		AgentMaintenanceService:   agentMaintenance,
 		ManagedCredentialsService: managedCredentials,

@@ -40,6 +40,7 @@ export interface IpcRegistrationDependencies {
     | "getAgentSessionReplayTransportPlayback"
     | "importAgentSessionCassettes"
     | "prepareAgentSessionReplayWorkspace"
+    | "probeAgentTargetAccountUsage"
     | "updateAgentSessionReplayTransportPlayback"
   >;
   openWorkspaceAppFolder?: (

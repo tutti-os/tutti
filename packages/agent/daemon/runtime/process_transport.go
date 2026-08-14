@@ -37,6 +37,58 @@ func RunVerifiedExecutable(ctx context.Context, path string, args []string, iden
 	return cmd.CombinedOutput()
 }
 
+// RunVerifiedExecutableBounded captures only stdout from a verified short-lived
+// executable and rejects output beyond maxBytes. Stderr is intentionally not
+// returned so provider diagnostics cannot cross a host contract by accident.
+func RunVerifiedExecutableBounded(ctx context.Context, path string, args []string, identity *ExecutableIdentity, maxBytes int) ([]byte, error) {
+	if identity == nil {
+		return nil, errors.New("verified process executable identity is required")
+	}
+	if maxBytes <= 0 {
+		return nil, errors.New("verified process output limit is required")
+	}
+	preparedExecutable, err := prepareProcessExecutable(path, identity)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = preparedExecutable.Close() }()
+	cmd := newManagedProcessCommand(ctx, preparedExecutable.path, args...)
+	if preparedExecutable.file != nil {
+		cmd.ExtraFiles = []*os.File{preparedExecutable.file}
+	}
+	output := boundedProcessOutput{limit: maxBytes}
+	cmd.Stdout = &output
+	cmd.Stderr = io.Discard
+	if err := cmd.Run(); err != nil {
+		return nil, err
+	}
+	if output.overflow {
+		return nil, errors.New("verified process output exceeded limit")
+	}
+	return output.bytes, nil
+}
+
+type boundedProcessOutput struct {
+	bytes    []byte
+	limit    int
+	overflow bool
+}
+
+func (output *boundedProcessOutput) Write(value []byte) (int, error) {
+	remaining := output.limit - len(output.bytes)
+	if remaining > 0 {
+		count := len(value)
+		if count > remaining {
+			count = remaining
+		}
+		output.bytes = append(output.bytes, value[:count]...)
+	}
+	if len(value) > remaining {
+		output.overflow = true
+	}
+	return len(value), nil
+}
+
 type localProcessConnection struct {
 	cancel             context.CancelFunc
 	cmd                *exec.Cmd
