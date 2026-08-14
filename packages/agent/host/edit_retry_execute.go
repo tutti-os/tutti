@@ -160,12 +160,6 @@ func (h *Host) dispatchEditRetryRollback(
 	if err != nil {
 		return h.releaseEditRetry(ctx, operation, owner, storesqlite.EditRetryReasonProviderOutcomeUnknown, err)
 	}
-	beforeIDs, err := editRetryProviderTurnIDs(effectiveTurns, operation.TurnID)
-	if err != nil {
-		return h.failEditRetryBeforeRollback(
-			ctx, operation, owner, storesqlite.EditRetryReasonTurnNotLatest, err,
-		)
-	}
 	runtimeInput := RuntimeHistoryInput{
 		WorkspaceID: ref.WorkspaceID, AgentSessionID: ref.AgentSessionID, Provider: session.Provider,
 	}
@@ -173,11 +167,16 @@ func (h *Host) dispatchEditRetryRollback(
 	if err != nil {
 		return h.releaseEditRetry(ctx, operation, owner, storesqlite.EditRetryReasonProviderOutcomeUnknown, err)
 	}
-	if strings.TrimSpace(current.ProviderSessionID) != strings.TrimSpace(session.ProviderSessionID) ||
-		!equalEditRetryIDs(runtimeHistoryTurnIDs(current), beforeIDs) {
+	if strings.TrimSpace(current.ProviderSessionID) != strings.TrimSpace(session.ProviderSessionID) {
 		return h.failEditRetryBeforeRollback(
 			ctx, operation, owner, storesqlite.EditRetryReasonOperationConflict,
 			editRetryInvariant("provider history does not match canonical history before rollback"),
+		)
+	}
+	beforeIDs, err := editRetryProviderHistoryBoundary(effectiveTurns, operation.TurnID, current)
+	if err != nil {
+		return h.failEditRetryBeforeRollback(
+			ctx, operation, owner, storesqlite.EditRetryReasonOperationConflict, err,
 		)
 	}
 	payload, _ := storesqlite.DecodeEditRetryOperationPayload(operation.Payload)
