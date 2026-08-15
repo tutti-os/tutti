@@ -136,6 +136,7 @@ test("keeps connector details open through installation and advances to authoriz
     authorizing?.kind === "authorization" && authorizing.pending,
     true
   );
+
   connector.authorization = { state: "disconnected" };
   market.connectorsByKey[connector.key] = connector;
   market.pendingAuthorizationsByConnectorKey[connector.key] = true;
@@ -145,21 +146,23 @@ test("keeps connector details open through installation and advances to authoriz
     true
   );
   market.authorizationViewsByConnectorKey[connector.key] = {
-    protocol: "tutti.connector.authorization.view.v2",
+    protocol: "tutti.connector.authorization.view.v1",
     viewId: "wecom-authorization-1",
     view: {
-      type: "embedded_page",
-      flowId: "wecom-authorization-flow-1",
-      url: "https://work.weixin.qq.com/ai/qc/gen?scode=opaque"
+      type: "qr_code",
+      source: {
+        type: "payload",
+        value: "https://work.weixin.qq.com/ai/qc/c?s=opaque"
+      }
     }
   };
-  const embedded = buildConnectorMarketView(market, dialogState).dialog;
+  const qrDialog = buildConnectorMarketView(market, dialogState).dialog;
   assert.equal(
-    embedded?.kind === "authorization" &&
-      embedded.authorizationView?.view.type === "embedded_page"
-      ? embedded.authorizationView.view.url
+    qrDialog?.kind === "authorization" &&
+      qrDialog.authorizationView?.view.type === "qr_code"
+      ? qrDialog.authorizationView.view.source.value
       : undefined,
-    "https://work.weixin.qq.com/ai/qc/gen?scode=opaque"
+    "https://work.weixin.qq.com/ai/qc/c?s=opaque"
   );
 });
 

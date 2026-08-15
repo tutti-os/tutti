@@ -5,8 +5,7 @@ export default defineConfig({
   dts: true,
   entry: {
     index: "src/index.ts",
-    "v1/index": "src/v1/index.ts",
-    "v2/index": "src/v2/index.ts"
+    "v1/index": "src/v1/index.ts"
   },
   external: ["valibot"],
   format: ["esm"],

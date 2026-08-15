@@ -1,9 +1,9 @@
 import { proxy } from "valtio/vanilla";
 import {
-  AUTHORIZATION_VIEW_PROTOCOL_V2,
-  parseAuthorizationViewV2,
-  type AuthorizationViewEnvelopeV2
-} from "@tutti-os/connector-authorization-protocol/v2";
+  AUTHORIZATION_VIEW_PROTOCOL_V1,
+  parseAuthorizationViewV1,
+  type AuthorizationViewEnvelopeV1
+} from "@tutti-os/connector-authorization-protocol/v1";
 
 import type {
   ConnectorAuthorizationResult,
@@ -123,7 +123,7 @@ function legacyAuthorizationViewId(operationId: string, url: string): string {
 
 function resolveAuthorizationView(
   result: ConnectorAuthorizationResult
-): AuthorizationViewEnvelopeV2 | null {
+): AuthorizationViewEnvelopeV1 | null {
   if (result.connector.authorization.state !== "pending") {
     return null;
   }
@@ -131,7 +131,7 @@ function resolveAuthorizationView(
     result.authorizationView ??
     (result.authorizationUrl
       ? {
-          protocol: AUTHORIZATION_VIEW_PROTOCOL_V2,
+          protocol: AUTHORIZATION_VIEW_PROTOCOL_V1,
           viewId: legacyAuthorizationViewId(
             result.operation.operationId,
             result.authorizationUrl
@@ -148,7 +148,7 @@ function resolveAuthorizationView(
   if (candidate === null) {
     return null;
   }
-  const parsed = parseAuthorizationViewV2(candidate);
+  const parsed = parseAuthorizationViewV1(candidate);
   if (!parsed.ok) {
     throw new ConnectorAuthorizationViewInvalidError();
   }
@@ -383,6 +383,7 @@ export class ConnectorMarketService implements IConnectorMarketService {
       attempt.canceled = true;
     }
     delete this.dataStore.pendingAuthorizationsByConnectorKey[connectorKey];
+    delete this.dataStore.authorizationViewsByConnectorKey[connectorKey];
     try {
       await this.dependencies.backend.cancelAuthorization({ connectorKey });
     } finally {

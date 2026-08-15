@@ -1,16 +1,14 @@
 import {
+  AUTHORIZATION_EVENT_PROTOCOL_V1,
+  AUTHORIZATION_VIEW_PROTOCOL_V1,
   parseDeclarativeAuthorizationInteractionV1,
   resolveDeclarativeAuthorizationInitialViewV1,
+  validateAuthorizationEventForViewV1,
+  type AuthorizationEventEnvelopeV1,
   type AuthorizationValueV1,
+  type AuthorizationViewEnvelopeV1,
   type DeclarativeAuthorizationInteractionV1
 } from "@tutti-os/connector-authorization-protocol/v1";
-import {
-  AUTHORIZATION_EVENT_PROTOCOL_V2,
-  AUTHORIZATION_VIEW_PROTOCOL_V2,
-  validateAuthorizationEventForViewV2,
-  type AuthorizationEventEnvelopeV2,
-  type AuthorizationViewEnvelopeV2
-} from "@tutti-os/connector-authorization-protocol/v2";
 
 export interface LegacySecretInteractionLabels {
   description: string;
@@ -22,7 +20,7 @@ export type ResolvedAuthorizationInteraction =
   | {
       kind: "form";
       interaction: DeclarativeAuthorizationInteractionV1;
-      view: AuthorizationViewEnvelopeV2;
+      view: AuthorizationViewEnvelopeV1;
     }
   | { kind: "none" }
   | { kind: "invalid" };
@@ -63,7 +61,7 @@ function createLegacySecretInteraction(
 
 export function resolveAuthorizationInteraction(input: {
   authorizationKind: string;
-  enableLegacySecretFallback: boolean;
+  enableLegacySecretFallback?: boolean;
   interaction: unknown;
   legacyLabels: LegacySecretInteractionLabels;
   locale: string;
@@ -71,7 +69,7 @@ export function resolveAuthorizationInteraction(input: {
   const parsed = parseDeclarativeAuthorizationInteractionV1(input.interaction);
   const interaction = parsed.ok
     ? parsed.value
-    : input.enableLegacySecretFallback &&
+    : input.enableLegacySecretFallback !== false &&
         input.interaction === undefined &&
         input.authorizationKind === "api_key"
       ? createLegacySecretInteraction(input.legacyLabels)
@@ -87,7 +85,7 @@ export function resolveAuthorizationInteraction(input: {
     kind: "form",
     interaction,
     view: {
-      protocol: AUTHORIZATION_VIEW_PROTOCOL_V2,
+      protocol: AUTHORIZATION_VIEW_PROTOCOL_V1,
       viewId: "authorization-form",
       view: resolveDeclarativeAuthorizationInitialViewV1(
         interaction,
@@ -100,9 +98,9 @@ export function resolveAuthorizationInteraction(input: {
 export function createAuthorizationSubmitEvent(
   viewId: string,
   values: Record<string, AuthorizationValueV1>
-): AuthorizationEventEnvelopeV2 {
+): AuthorizationEventEnvelopeV1 {
   return {
-    protocol: AUTHORIZATION_EVENT_PROTOCOL_V2,
+    protocol: AUTHORIZATION_EVENT_PROTOCOL_V1,
     viewId,
     event: { type: "submit", values }
   };
@@ -112,7 +110,7 @@ export function resolveDeclarativeAuthorizationSubmission(
   resolved: Extract<ResolvedAuthorizationInteraction, { kind: "form" }>,
   event: unknown
 ): DeclarativeAuthorizationSubmissionResult {
-  const validation = validateAuthorizationEventForViewV2(resolved.view, event, {
+  const validation = validateAuthorizationEventForViewV1(resolved.view, event, {
     isCurrentLocalFileHandle: () => false
   });
   if (!validation.ok || validation.value.event.type !== "submit") {

@@ -1037,7 +1037,6 @@ func TestApplicationManagedAuthorizationStartCanChallengeAnotherAccount(t *testi
 
 func TestApplicationManagedAuthorizationContinuationReplaysBeforeProjectionTransitionValidation(t *testing.T) {
 	connector := testManagedAuthorizedConnector("lark-cli")
-	connector.Release.Manifest.Implementation.ManagedStdio.CredentialBroker.Presentation = CredentialBrokerPresentationEmbeddedPage
 	connector.Authorization = Authorization{State: AuthorizationStateDisconnected}
 	repository := newMemoryRepository(connector)
 	projections := &recordingAuthorizationProjectionStore{}
@@ -1056,9 +1055,7 @@ func TestApplicationManagedAuthorizationContinuationReplaysBeforeProjectionTrans
 	if err != nil {
 		t.Fatal(err)
 	}
-	if first.AuthorizationURL != "https://open.feishu.cn/page/cli" || first.AuthorizationView == nil ||
-		first.AuthorizationView.View.Type != AuthorizationViewTypeEmbeddedPage ||
-		first.AuthorizationView.View.URL != first.AuthorizationURL ||
+	if first.AuthorizationURL != "https://open.feishu.cn/page/cli" ||
 		projections.projection.State != AuthorizationStatePending {
 		t.Fatalf("first result=%#v projection=%#v", first, projections.projection)
 	}

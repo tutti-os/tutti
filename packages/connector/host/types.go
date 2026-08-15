@@ -633,7 +633,7 @@ type AuthorizationResult struct {
 	Connector              Connector                  `json:"connector"`
 	Operation              Operation                  `json:"operation"`
 	AuthorizationURL       string                     `json:"authorizationUrl,omitempty"`
-	AuthorizationExpiresAt time.Time                  `json:"authorizationExpiresAt"`
 	AuthorizationView      *AuthorizationViewEnvelope `json:"authorizationView,omitempty"`
+	AuthorizationExpiresAt time.Time                  `json:"authorizationExpiresAt"`
 	Revision               uint64                     `json:"revision"`
 }

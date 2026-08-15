@@ -36,9 +36,7 @@ func (provider *inspectOnlyAuthorizationProvider) InspectAuthorization(
 }
 
 func TestImplementationAuthorizationRouterKeepsDisconnectedManagedSessionPending(t *testing.T) {
-	managed := &inspectOnlyAuthorizationProvider{observation: AuthorizationObservation{
-		State: AuthorizationObservationDisconnected,
-	}}
+	managed := &inspectOnlyAuthorizationProvider{observation: AuthorizationObservation{State: AuthorizationObservationDisconnected}}
 	router := NewImplementationAuthorizationRouter(managed, &routedAuthorizationProvider{})
 	release := Release{Manifest: Manifest{Implementation: Implementation{Kind: ImplementationKindManagedStdio}}}
 
@@ -55,9 +53,7 @@ func TestImplementationAuthorizationRouterKeepsDisconnectedManagedSessionPending
 }
 
 func TestImplementationAuthorizationRouterFailsExpiredManagedSession(t *testing.T) {
-	managed := &inspectOnlyAuthorizationProvider{observation: AuthorizationObservation{
-		State: AuthorizationObservationExpired,
-	}}
+	managed := &inspectOnlyAuthorizationProvider{observation: AuthorizationObservation{State: AuthorizationObservationExpired}}
 	router := NewImplementationAuthorizationRouter(managed, &routedAuthorizationProvider{})
 	release := Release{Manifest: Manifest{Implementation: Implementation{Kind: ImplementationKindManagedStdio}}}
 

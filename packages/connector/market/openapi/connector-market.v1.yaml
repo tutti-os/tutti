@@ -540,9 +540,8 @@ components:
           type: string
           enum: [managed]
           description: >-
-            Public host capability hint. managed means the host owns the
-            authorization interaction lifecycle; clients start authorization
-            without collecting a secret and render the returned authorizationView.
+            Public host projection indicating that authorization is owned by a
+            managed credential broker and must start without a local secret.
         compatibility:
           $ref: "#/components/schemas/ConnectorMarketCompatibilityRequirements"
     ConnectorMarketAgentRouting:
@@ -753,97 +752,19 @@ components:
         authorizationUrl:
           type: string
           format: uri
+        authorizationView:
+          type: object
+          description: >-
+            Opaque runtime Authorization View V1 envelope. Clients must validate
+            it with the shared authorization protocol before rendering.
+          additionalProperties: true
         authorizationExpiresAt:
           type: string
           format: date-time
-        authorizationView:
-          $ref: "#/components/schemas/ConnectorMarketAuthorizationViewEnvelope"
         revision:
           type: integer
           format: int64
           minimum: 0
-    ConnectorMarketAuthorizationViewEnvelope:
-      type: object
-      additionalProperties: false
-      required: [protocol, viewId, view]
-      properties:
-        protocol:
-          type: string
-          enum: [tutti.connector.authorization.view.v2]
-        viewId:
-          type: string
-          pattern: "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
-        view:
-          $ref: "#/components/schemas/ConnectorMarketAuthorizationRuntimeView"
-    ConnectorMarketAuthorizationRuntimeView:
-      oneOf:
-        - $ref: "#/components/schemas/ConnectorMarketAuthorizationExternalLinkView"
-        - $ref: "#/components/schemas/ConnectorMarketAuthorizationEmbeddedPageView"
-        - $ref: "#/components/schemas/ConnectorMarketAuthorizationQRCodeView"
-      discriminator:
-        propertyName: type
-        mapping:
-          external_link: "#/components/schemas/ConnectorMarketAuthorizationExternalLinkView"
-          embedded_page: "#/components/schemas/ConnectorMarketAuthorizationEmbeddedPageView"
-          qr_code: "#/components/schemas/ConnectorMarketAuthorizationQRCodeView"
-    ConnectorMarketAuthorizationExternalLinkView:
-      type: object
-      additionalProperties: false
-      required: [type, url]
-      properties:
-        type:
-          type: string
-          enum: [external_link]
-        url:
-          type: string
-          format: uri
-          pattern: "^https://"
-        expiresAt:
-          type: string
-          format: date-time
-    ConnectorMarketAuthorizationEmbeddedPageView:
-      type: object
-      additionalProperties: false
-      required: [type, flowId, url]
-      properties:
-        type:
-          type: string
-          enum: [embedded_page]
-        flowId:
-          type: string
-          pattern: "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
-        url:
-          type: string
-          format: uri
-          pattern: "^https://"
-        expiresAt:
-          type: string
-          format: date-time
-    ConnectorMarketAuthorizationQRCodeView:
-      type: object
-      additionalProperties: false
-      required: [type, source]
-      properties:
-        type:
-          type: string
-          enum: [qr_code]
-        source:
-          $ref: "#/components/schemas/ConnectorMarketAuthorizationQRCodePayloadSource"
-        expiresAt:
-          type: string
-          format: date-time
-    ConnectorMarketAuthorizationQRCodePayloadSource:
-      type: object
-      additionalProperties: false
-      required: [type, value]
-      properties:
-        type:
-          type: string
-          enum: [payload]
-        value:
-          type: string
-          minLength: 1
-          maxLength: 4096
     ConnectorMarketConnectorResponse:
       type: object
       additionalProperties: false

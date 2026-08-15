@@ -98,6 +98,31 @@ func TestDaemonAPIConnectorMarketSnapshotHidesImplementationConfig(t *testing.T)
 	}
 }
 
+func TestProjectConnectorMarketPreservesRuntimeAuthorizationView(t *testing.T) {
+	projected, err := projectConnectorMarket[tuttigenerated.ConnectorMarketAuthorizationResponse](market.AuthorizationResult{
+		AuthorizationView: &market.AuthorizationViewEnvelope{
+			Protocol: market.AuthorizationViewProtocolV1,
+			ViewID:   "authorization-session-1",
+			View: market.AuthorizationView{
+				Type: market.AuthorizationViewTypeQRCode,
+				Source: &market.AuthorizationQRCodeSource{
+					Type: market.AuthorizationQRCodeSourcePayload, Value: "opaque-payload",
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if projected.AuthorizationView == nil {
+		t.Fatal("runtime authorization view was dropped")
+	}
+	view, ok := (*projected.AuthorizationView)["view"].(map[string]any)
+	if !ok || view["type"] != market.AuthorizationViewTypeQRCode {
+		t.Fatalf("projected authorization view = %#v", projected.AuthorizationView)
+	}
+}
+
 func TestDaemonAPICancelsConnectorAuthorizationForActiveAccount(t *testing.T) {
 	var gotScope market.OperationScope
 	var gotConnectorKey string

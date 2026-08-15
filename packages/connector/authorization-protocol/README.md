@@ -21,19 +21,3 @@ V1 includes:
 The declarative interaction is configuration, not executable Connector code.
 The host adapter owns runtime `viewId` generation and calls the existing trusted
 authorization backend after validation.
-
-V2 is the renderer-facing convergence contract:
-
-- it retains the V1 form, external-link, device-code, QR-code, progress, and
-  result views;
-- it adds `embedded_page` as a schema view with a credential-free HTTPS URL
-  and a stable `flowId` for browser-session continuity across view steps;
-- it lets the host normalize a validated runtime broker URL into either
-  `external_link` or `embedded_page` before the UI sees it;
-- it keeps one View/Event validation and rendering path for declarative and
-  runtime authorization.
-
-Credential brokers may continue emitting the transport-level
-`authorization_url` event. That event is provider output, not a UI contract:
-the host applies URL policy, creates an `AuthorizationViewEnvelopeV2`, and
-retains the legacy URL response only for older clients.

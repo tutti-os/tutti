@@ -87,9 +87,8 @@ func (router *ImplementationAuthorizationRouter) Observe(
 				return AuthorizationObservation{}, inspectErr
 			}
 			// Inspect reports durable credential state, while Observe reconciles an
-			// unresolved authorization attempt. A still-disconnected credential is
-			// therefore pending until the session deadline; an expired credential is
-			// the terminal failure for that attempt.
+			// unresolved authorization attempt. A disconnected credential is still
+			// pending until that attempt expires.
 			switch observation.State {
 			case AuthorizationObservationDisconnected:
 				observation.State = AuthorizationObservationPending

@@ -1348,66 +1348,6 @@ func (e CollaborationRunTriggerSource) Valid() bool {
 	}
 }
 
-// Defines values for ConnectorMarketAuthorizationEmbeddedPageViewType.
-const (
-	EmbeddedPage ConnectorMarketAuthorizationEmbeddedPageViewType = "embedded_page"
-)
-
-// Valid indicates whether the value is a known member of the ConnectorMarketAuthorizationEmbeddedPageViewType enum.
-func (e ConnectorMarketAuthorizationEmbeddedPageViewType) Valid() bool {
-	switch e {
-	case EmbeddedPage:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for ConnectorMarketAuthorizationExternalLinkViewType.
-const (
-	ExternalLink ConnectorMarketAuthorizationExternalLinkViewType = "external_link"
-)
-
-// Valid indicates whether the value is a known member of the ConnectorMarketAuthorizationExternalLinkViewType enum.
-func (e ConnectorMarketAuthorizationExternalLinkViewType) Valid() bool {
-	switch e {
-	case ExternalLink:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for ConnectorMarketAuthorizationQRCodePayloadSourceType.
-const (
-	Payload ConnectorMarketAuthorizationQRCodePayloadSourceType = "payload"
-)
-
-// Valid indicates whether the value is a known member of the ConnectorMarketAuthorizationQRCodePayloadSourceType enum.
-func (e ConnectorMarketAuthorizationQRCodePayloadSourceType) Valid() bool {
-	switch e {
-	case Payload:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for ConnectorMarketAuthorizationQRCodeViewType.
-const (
-	QrCode ConnectorMarketAuthorizationQRCodeViewType = "qr_code"
-)
-
-// Valid indicates whether the value is a known member of the ConnectorMarketAuthorizationQRCodeViewType enum.
-func (e ConnectorMarketAuthorizationQRCodeViewType) Valid() bool {
-	switch e {
-	case QrCode:
-		return true
-	default:
-		return false
-	}
-}
-
 // Defines values for ConnectorMarketAuthorizationState.
 const (
 	ConnectorMarketAuthorizationStateConnected    ConnectorMarketAuthorizationState = "connected"
@@ -1432,21 +1372,6 @@ func (e ConnectorMarketAuthorizationState) Valid() bool {
 	case ConnectorMarketAuthorizationStateNotRequired:
 		return true
 	case ConnectorMarketAuthorizationStatePending:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for ConnectorMarketAuthorizationViewEnvelopeProtocol.
-const (
-	TuttiConnectorAuthorizationViewV2 ConnectorMarketAuthorizationViewEnvelopeProtocol = "tutti.connector.authorization.view.v2"
-)
-
-// Valid indicates whether the value is a known member of the ConnectorMarketAuthorizationViewEnvelopeProtocol enum.
-func (e ConnectorMarketAuthorizationViewEnvelopeProtocol) Valid() bool {
-	switch e {
-	case TuttiConnectorAuthorizationViewV2:
 		return true
 	default:
 		return false
@@ -6265,46 +6190,6 @@ type ConnectorMarketAuthorization struct {
 	State       ConnectorMarketAuthorizationState `json:"state"`
 }
 
-// ConnectorMarketAuthorizationEmbeddedPageView defines model for ConnectorMarketAuthorizationEmbeddedPageView.
-type ConnectorMarketAuthorizationEmbeddedPageView struct {
-	ExpiresAt *time.Time                                       `json:"expiresAt,omitempty"`
-	FlowId    string                                           `json:"flowId"`
-	Type      ConnectorMarketAuthorizationEmbeddedPageViewType `json:"type"`
-	Url       string                                           `json:"url"`
-}
-
-// ConnectorMarketAuthorizationEmbeddedPageViewType defines model for ConnectorMarketAuthorizationEmbeddedPageView.Type.
-type ConnectorMarketAuthorizationEmbeddedPageViewType string
-
-// ConnectorMarketAuthorizationExternalLinkView defines model for ConnectorMarketAuthorizationExternalLinkView.
-type ConnectorMarketAuthorizationExternalLinkView struct {
-	ExpiresAt *time.Time                                       `json:"expiresAt,omitempty"`
-	Type      ConnectorMarketAuthorizationExternalLinkViewType `json:"type"`
-	Url       string                                           `json:"url"`
-}
-
-// ConnectorMarketAuthorizationExternalLinkViewType defines model for ConnectorMarketAuthorizationExternalLinkView.Type.
-type ConnectorMarketAuthorizationExternalLinkViewType string
-
-// ConnectorMarketAuthorizationQRCodePayloadSource defines model for ConnectorMarketAuthorizationQRCodePayloadSource.
-type ConnectorMarketAuthorizationQRCodePayloadSource struct {
-	Type  ConnectorMarketAuthorizationQRCodePayloadSourceType `json:"type"`
-	Value string                                              `json:"value"`
-}
-
-// ConnectorMarketAuthorizationQRCodePayloadSourceType defines model for ConnectorMarketAuthorizationQRCodePayloadSource.Type.
-type ConnectorMarketAuthorizationQRCodePayloadSourceType string
-
-// ConnectorMarketAuthorizationQRCodeView defines model for ConnectorMarketAuthorizationQRCodeView.
-type ConnectorMarketAuthorizationQRCodeView struct {
-	ExpiresAt *time.Time                                      `json:"expiresAt,omitempty"`
-	Source    ConnectorMarketAuthorizationQRCodePayloadSource `json:"source"`
-	Type      ConnectorMarketAuthorizationQRCodeViewType      `json:"type"`
-}
-
-// ConnectorMarketAuthorizationQRCodeViewType defines model for ConnectorMarketAuthorizationQRCodeView.Type.
-type ConnectorMarketAuthorizationQRCodeViewType string
-
 // ConnectorMarketAuthorizationRequest defines model for ConnectorMarketAuthorizationRequest.
 type ConnectorMarketAuthorizationRequest struct {
 	ClientRequestId           string  `json:"clientRequestId"`
@@ -6315,31 +6200,18 @@ type ConnectorMarketAuthorizationRequest struct {
 
 // ConnectorMarketAuthorizationResponse defines model for ConnectorMarketAuthorizationResponse.
 type ConnectorMarketAuthorizationResponse struct {
-	AuthorizationExpiresAt time.Time                                 `json:"authorizationExpiresAt"`
-	AuthorizationUrl       *string                                   `json:"authorizationUrl,omitempty"`
-	AuthorizationView      *ConnectorMarketAuthorizationViewEnvelope `json:"authorizationView,omitempty"`
-	Connector              ConnectorMarketConnector                  `json:"connector"`
-	Operation              ConnectorMarketOperation                  `json:"operation"`
-	Revision               int64                                     `json:"revision"`
-}
+	AuthorizationExpiresAt time.Time `json:"authorizationExpiresAt"`
+	AuthorizationUrl       *string   `json:"authorizationUrl,omitempty"`
 
-// ConnectorMarketAuthorizationRuntimeView defines model for ConnectorMarketAuthorizationRuntimeView.
-type ConnectorMarketAuthorizationRuntimeView struct {
-	union json.RawMessage
+	// AuthorizationView Opaque runtime Authorization View V1 envelope. Clients must validate it with the shared authorization protocol before rendering.
+	AuthorizationView *map[string]interface{}  `json:"authorizationView,omitempty"`
+	Connector         ConnectorMarketConnector `json:"connector"`
+	Operation         ConnectorMarketOperation `json:"operation"`
+	Revision          int64                    `json:"revision"`
 }
 
 // ConnectorMarketAuthorizationState defines model for ConnectorMarketAuthorizationState.
 type ConnectorMarketAuthorizationState string
-
-// ConnectorMarketAuthorizationViewEnvelope defines model for ConnectorMarketAuthorizationViewEnvelope.
-type ConnectorMarketAuthorizationViewEnvelope struct {
-	Protocol ConnectorMarketAuthorizationViewEnvelopeProtocol `json:"protocol"`
-	View     ConnectorMarketAuthorizationRuntimeView          `json:"view"`
-	ViewId   string                                           `json:"viewId"`
-}
-
-// ConnectorMarketAuthorizationViewEnvelopeProtocol defines model for ConnectorMarketAuthorizationViewEnvelope.Protocol.
-type ConnectorMarketAuthorizationViewEnvelopeProtocol string
 
 // ConnectorMarketCatalogItem defines model for ConnectorMarketCatalogItem.
 type ConnectorMarketCatalogItem struct {
@@ -6446,7 +6318,7 @@ type ConnectorMarketManifest struct {
 	// AuthorizationInteraction Opaque Connector-owned authorization interaction configuration. Hosts transport this value without interpreting its UI semantics; renderers must validate it against the versioned protocol.
 	AuthorizationInteraction *map[string]interface{} `json:"authorizationInteraction,omitempty"`
 
-	// AuthorizationInteractionMode Public host capability hint. managed means the host owns the authorization interaction lifecycle; clients start authorization without collecting a secret and render the returned authorizationView.
+	// AuthorizationInteractionMode Public host projection indicating that authorization is owned by a managed credential broker and must start without a local secret.
 	AuthorizationInteractionMode *ConnectorMarketManifestAuthorizationInteractionMode `json:"authorizationInteractionMode,omitempty"`
 	AuthorizationKind            string                                               `json:"authorizationKind"`
 	Compatibility                *ConnectorMarketCompatibilityRequirements            `json:"compatibility,omitempty"`
@@ -6460,7 +6332,7 @@ type ConnectorMarketManifest struct {
 	SchemaVersion  ConnectorMarketManifestSchemaVersion `json:"schemaVersion"`
 }
 
-// ConnectorMarketManifestAuthorizationInteractionMode Public host capability hint. managed means the host owns the authorization interaction lifecycle; clients start authorization without collecting a secret and render the returned authorizationView.
+// ConnectorMarketManifestAuthorizationInteractionMode Public host projection indicating that authorization is owned by a managed credential broker and must start without a local secret.
 type ConnectorMarketManifestAuthorizationInteractionMode string
 
 // ConnectorMarketManifestSchemaVersion defines model for ConnectorMarketManifest.SchemaVersion.
@@ -11280,125 +11152,6 @@ func (t AppReferenceListItem) MarshalJSON() ([]byte, error) {
 }
 
 func (t *AppReferenceListItem) UnmarshalJSON(b []byte) error {
-	err := t.union.UnmarshalJSON(b)
-	return err
-}
-
-// AsConnectorMarketAuthorizationExternalLinkView returns the union data inside the ConnectorMarketAuthorizationRuntimeView as a ConnectorMarketAuthorizationExternalLinkView
-func (t ConnectorMarketAuthorizationRuntimeView) AsConnectorMarketAuthorizationExternalLinkView() (ConnectorMarketAuthorizationExternalLinkView, error) {
-	var body ConnectorMarketAuthorizationExternalLinkView
-	err := json.Unmarshal(t.union, &body)
-	return body, err
-}
-
-// FromConnectorMarketAuthorizationExternalLinkView overwrites any union data inside the ConnectorMarketAuthorizationRuntimeView as the provided ConnectorMarketAuthorizationExternalLinkView
-func (t *ConnectorMarketAuthorizationRuntimeView) FromConnectorMarketAuthorizationExternalLinkView(v ConnectorMarketAuthorizationExternalLinkView) error {
-	v.Type = "external_link"
-	b, err := json.Marshal(v)
-	t.union = b
-	return err
-}
-
-// MergeConnectorMarketAuthorizationExternalLinkView performs a merge with any union data inside the ConnectorMarketAuthorizationRuntimeView, using the provided ConnectorMarketAuthorizationExternalLinkView
-func (t *ConnectorMarketAuthorizationRuntimeView) MergeConnectorMarketAuthorizationExternalLinkView(v ConnectorMarketAuthorizationExternalLinkView) error {
-	v.Type = "external_link"
-	b, err := json.Marshal(v)
-	if err != nil {
-		return err
-	}
-
-	merged, err := runtime.JSONMerge(t.union, b)
-	t.union = merged
-	return err
-}
-
-// AsConnectorMarketAuthorizationEmbeddedPageView returns the union data inside the ConnectorMarketAuthorizationRuntimeView as a ConnectorMarketAuthorizationEmbeddedPageView
-func (t ConnectorMarketAuthorizationRuntimeView) AsConnectorMarketAuthorizationEmbeddedPageView() (ConnectorMarketAuthorizationEmbeddedPageView, error) {
-	var body ConnectorMarketAuthorizationEmbeddedPageView
-	err := json.Unmarshal(t.union, &body)
-	return body, err
-}
-
-// FromConnectorMarketAuthorizationEmbeddedPageView overwrites any union data inside the ConnectorMarketAuthorizationRuntimeView as the provided ConnectorMarketAuthorizationEmbeddedPageView
-func (t *ConnectorMarketAuthorizationRuntimeView) FromConnectorMarketAuthorizationEmbeddedPageView(v ConnectorMarketAuthorizationEmbeddedPageView) error {
-	v.Type = "embedded_page"
-	b, err := json.Marshal(v)
-	t.union = b
-	return err
-}
-
-// MergeConnectorMarketAuthorizationEmbeddedPageView performs a merge with any union data inside the ConnectorMarketAuthorizationRuntimeView, using the provided ConnectorMarketAuthorizationEmbeddedPageView
-func (t *ConnectorMarketAuthorizationRuntimeView) MergeConnectorMarketAuthorizationEmbeddedPageView(v ConnectorMarketAuthorizationEmbeddedPageView) error {
-	v.Type = "embedded_page"
-	b, err := json.Marshal(v)
-	if err != nil {
-		return err
-	}
-
-	merged, err := runtime.JSONMerge(t.union, b)
-	t.union = merged
-	return err
-}
-
-// AsConnectorMarketAuthorizationQRCodeView returns the union data inside the ConnectorMarketAuthorizationRuntimeView as a ConnectorMarketAuthorizationQRCodeView
-func (t ConnectorMarketAuthorizationRuntimeView) AsConnectorMarketAuthorizationQRCodeView() (ConnectorMarketAuthorizationQRCodeView, error) {
-	var body ConnectorMarketAuthorizationQRCodeView
-	err := json.Unmarshal(t.union, &body)
-	return body, err
-}
-
-// FromConnectorMarketAuthorizationQRCodeView overwrites any union data inside the ConnectorMarketAuthorizationRuntimeView as the provided ConnectorMarketAuthorizationQRCodeView
-func (t *ConnectorMarketAuthorizationRuntimeView) FromConnectorMarketAuthorizationQRCodeView(v ConnectorMarketAuthorizationQRCodeView) error {
-	v.Type = "qr_code"
-	b, err := json.Marshal(v)
-	t.union = b
-	return err
-}
-
-// MergeConnectorMarketAuthorizationQRCodeView performs a merge with any union data inside the ConnectorMarketAuthorizationRuntimeView, using the provided ConnectorMarketAuthorizationQRCodeView
-func (t *ConnectorMarketAuthorizationRuntimeView) MergeConnectorMarketAuthorizationQRCodeView(v ConnectorMarketAuthorizationQRCodeView) error {
-	v.Type = "qr_code"
-	b, err := json.Marshal(v)
-	if err != nil {
-		return err
-	}
-
-	merged, err := runtime.JSONMerge(t.union, b)
-	t.union = merged
-	return err
-}
-
-func (t ConnectorMarketAuthorizationRuntimeView) Discriminator() (string, error) {
-	var discriminator struct {
-		Discriminator string `json:"type"`
-	}
-	err := json.Unmarshal(t.union, &discriminator)
-	return discriminator.Discriminator, err
-}
-
-func (t ConnectorMarketAuthorizationRuntimeView) ValueByDiscriminator() (interface{}, error) {
-	discriminator, err := t.Discriminator()
-	if err != nil {
-		return nil, err
-	}
-	switch discriminator {
-	case "embedded_page":
-		return t.AsConnectorMarketAuthorizationEmbeddedPageView()
-	case "external_link":
-		return t.AsConnectorMarketAuthorizationExternalLinkView()
-	case "qr_code":
-		return t.AsConnectorMarketAuthorizationQRCodeView()
-	default:
-		return nil, errors.New("unknown discriminator value: " + discriminator)
-	}
-}
-
-func (t ConnectorMarketAuthorizationRuntimeView) MarshalJSON() ([]byte, error) {
-	b, err := t.union.MarshalJSON()
-	return b, err
-}
-
-func (t *ConnectorMarketAuthorizationRuntimeView) UnmarshalJSON(b []byte) error {
 	err := t.union.UnmarshalJSON(b)
 	return err
 }

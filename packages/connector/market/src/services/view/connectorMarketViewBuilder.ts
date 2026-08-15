@@ -1,5 +1,5 @@
 import type { Connector } from "../../contracts/index.ts";
-import type { AuthorizationViewEnvelopeV2 } from "@tutti-os/connector-authorization-protocol/v2";
+import type { AuthorizationViewEnvelopeV1 } from "@tutti-os/connector-authorization-protocol/v1";
 import type { ConnectorMarketStoreState } from "../connectorMarketService.interface.ts";
 import type { ConnectorMarketUiState } from "../ui-state/connectorMarketUiStateService.interface.ts";
 import type {
@@ -220,7 +220,7 @@ function buildConnectorDialogView(
   pendingAuthorization: boolean,
   pendingInstallation: boolean,
   operationStage: ConnectorCardView["operationStage"],
-  authorizationView?: AuthorizationViewEnvelopeV2
+  authorizationView?: AuthorizationViewEnvelopeV1
 ): ConnectorDialogView | null {
   if (!connector) {
     return null;

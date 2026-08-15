@@ -349,6 +349,8 @@ func validateManagedCredentialBroker(broker *ManagedCredentialBroker, hasCLI boo
 	if broker.TimeoutMS < 1_000 || broker.TimeoutMS > 10*60*1_000 {
 		return invalidManifest("credential broker timeoutMs must be between 1000 and 600000", nil)
 	}
+	// embedded_page remains accepted only so already-installed 0.1.4 releases
+	// can be upgraded. Hosts deliberately project it as an external link.
 	if broker.Presentation != "" &&
 		broker.Presentation != CredentialBrokerPresentationEmbeddedPage &&
 		broker.Presentation != CredentialBrokerPresentationQRCode {

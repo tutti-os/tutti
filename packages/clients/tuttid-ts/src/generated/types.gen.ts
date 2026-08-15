@@ -4865,7 +4865,7 @@ export type ConnectorMarketManifest = {
     [key: string]: unknown;
   };
   /**
-   * Public host capability hint. managed means the host owns the authorization interaction lifecycle; clients start authorization without collecting a secret and render the returned authorizationView.
+   * Public host projection indicating that authorization is owned by a managed credential broker and must start without a local secret.
    */
   authorizationInteractionMode?: "managed";
   compatibility?: ConnectorMarketCompatibilityRequirements;
@@ -4957,50 +4957,14 @@ export type ConnectorMarketAuthorizationResponse = {
   connector: ConnectorMarketConnector;
   operation: ConnectorMarketOperation;
   authorizationUrl?: string;
+  /**
+   * Opaque runtime Authorization View V1 envelope. Clients must validate it with the shared authorization protocol before rendering.
+   */
+  authorizationView?: {
+    [key: string]: unknown;
+  };
   authorizationExpiresAt: string;
-  authorizationView?: ConnectorMarketAuthorizationViewEnvelope;
   revision: number;
-};
-
-export type ConnectorMarketAuthorizationViewEnvelope = {
-  protocol: "tutti.connector.authorization.view.v2";
-  viewId: string;
-  view: ConnectorMarketAuthorizationRuntimeView;
-};
-
-export type ConnectorMarketAuthorizationRuntimeView =
-  | ({
-      type: "external_link";
-    } & ConnectorMarketAuthorizationExternalLinkView)
-  | ({
-      type: "embedded_page";
-    } & ConnectorMarketAuthorizationEmbeddedPageView)
-  | ({
-      type: "qr_code";
-    } & ConnectorMarketAuthorizationQrCodeView);
-
-export type ConnectorMarketAuthorizationExternalLinkView = {
-  type: "external_link";
-  url: string;
-  expiresAt?: string;
-};
-
-export type ConnectorMarketAuthorizationEmbeddedPageView = {
-  type: "embedded_page";
-  flowId: string;
-  url: string;
-  expiresAt?: string;
-};
-
-export type ConnectorMarketAuthorizationQrCodeView = {
-  type: "qr_code";
-  source: ConnectorMarketAuthorizationQrCodePayloadSource;
-  expiresAt?: string;
-};
-
-export type ConnectorMarketAuthorizationQrCodePayloadSource = {
-  type: "payload";
-  value: string;
 };
 
 export type ConnectorMarketConnectorResponse = {

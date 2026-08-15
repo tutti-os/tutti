@@ -27,7 +27,6 @@ import {
 } from "../../shared/contracts/ipc";
 import { randomUUID } from "node:crypto";
 import { installWorkspaceWindowDevelopmentReloadShortcut } from "./workspaceWindowReload.ts";
-import { installAuthorizationWebviewSecurity } from "./authorizationWebviewSecurity.ts";
 import { resolvePackagedWorkspaceRendererIndexPath } from "./workspaceWindowPaths.ts";
 import { createPrimaryWindowAnalyticsClaim } from "./primaryWindowAnalyticsClaim.ts";
 import {
@@ -186,11 +185,6 @@ export function createWorkspaceWindow(
   );
 
   const pendingWorkspaceAppGuestPartitions: (string | null | undefined)[] = [];
-  installAuthorizationWebviewSecurity({
-    contents: workspaceWindow.webContents,
-    openExternal: (url) => shell.openExternal(url),
-    resolveSession: (partition) => session.fromPartition(partition)
-  });
   installBrowserWebviewSecurity({
     allowedSessionPartitions: {
       additionalAllowedPrefixes: [workspaceAppBrowserPartitionPrefix]

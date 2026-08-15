@@ -8,7 +8,7 @@ import {
 } from "@tutti-os/ui-system/components";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useSnapshot } from "valtio";
-import type { AuthorizationViewEnvelopeV2 } from "@tutti-os/connector-authorization-protocol/v2";
+import type { AuthorizationViewEnvelopeV1 } from "@tutti-os/connector-authorization-protocol/v1";
 
 import { useConnectorMarketServices } from "../ConnectorMarketServicesContext.tsx";
 import { ConnectorAuthorizationDialog } from "./ConnectorAuthorizationDialog.tsx";
@@ -234,7 +234,7 @@ export function ConnectorMarketDialogs() {
               authorizationRenderer={authorizationRenderer}
               authorizationView={
                 dialog.authorizationView as
-                  | AuthorizationViewEnvelopeV2
+                  | AuthorizationViewEnvelopeV1
                   | undefined
               }
               authorizing={dialog.authorizing}

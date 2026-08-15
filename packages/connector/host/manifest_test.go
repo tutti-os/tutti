@@ -124,11 +124,11 @@ func TestManagedCredentialBrokerRequiresConnectorOwnedEntrypointAndAllowedHosts(
 	if err := ValidateManifestShape(manifest); err != nil {
 		t.Fatal(err)
 	}
-	manifest.Implementation.ManagedStdio.CredentialBroker.Presentation = CredentialBrokerPresentationEmbeddedPage
+	manifest.Implementation.ManagedStdio.CredentialBroker.Presentation = CredentialBrokerPresentationQRCode
 	if err := ValidateManifestShape(manifest); err != nil {
 		t.Fatal(err)
 	}
-	manifest.Implementation.ManagedStdio.CredentialBroker.Presentation = CredentialBrokerPresentationQRCode
+	manifest.Implementation.ManagedStdio.CredentialBroker.Presentation = CredentialBrokerPresentationEmbeddedPage
 	if err := ValidateManifestShape(manifest); err != nil {
 		t.Fatal(err)
 	}

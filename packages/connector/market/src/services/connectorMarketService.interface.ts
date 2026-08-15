@@ -1,5 +1,5 @@
 import { createDecorator } from "@tutti-os/infra/di";
-import type { AuthorizationViewEnvelopeV2 } from "@tutti-os/connector-authorization-protocol/v2";
+import type { AuthorizationViewEnvelopeV1 } from "@tutti-os/connector-authorization-protocol/v1";
 
 import type {
   Connector,
@@ -39,7 +39,7 @@ export interface ConnectorMarketStoreState {
     }
   >;
   authorizingConnectorKeys: Record<string, boolean>;
-  authorizationViewsByConnectorKey: Record<string, AuthorizationViewEnvelopeV2>;
+  authorizationViewsByConnectorKey: Record<string, AuthorizationViewEnvelopeV1>;
   lastError: ConnectorMarketErrorShape | null;
   revision: number;
   snapshotRevision: number;
