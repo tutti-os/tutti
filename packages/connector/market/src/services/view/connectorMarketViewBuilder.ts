@@ -272,6 +272,8 @@ function buildConnectorDialogView(
       authorizationKind: connector.release.manifest.authorizationKind,
       authorizationView,
       authorizing,
+      brokeredAuthorization:
+        connector.release.manifest.authorizationInteractionMode === "managed",
       kind: "authorization",
       pending:
         pendingAuthorization || connector.authorization.state === "pending"

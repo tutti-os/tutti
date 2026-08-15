@@ -4864,6 +4864,10 @@ export type ConnectorMarketManifest = {
   authorizationInteraction?: {
     [key: string]: unknown;
   };
+  /**
+   * Public host capability hint. managed means the host owns the authorization interaction lifecycle; clients start authorization without collecting a secret and render the returned authorizationView.
+   */
+  authorizationInteractionMode?: "managed";
   compatibility?: ConnectorMarketCompatibilityRequirements;
 };
 
@@ -4970,7 +4974,10 @@ export type ConnectorMarketAuthorizationRuntimeView =
     } & ConnectorMarketAuthorizationExternalLinkView)
   | ({
       type: "embedded_page";
-    } & ConnectorMarketAuthorizationEmbeddedPageView);
+    } & ConnectorMarketAuthorizationEmbeddedPageView)
+  | ({
+      type: "qr_code";
+    } & ConnectorMarketAuthorizationQrCodeView);
 
 export type ConnectorMarketAuthorizationExternalLinkView = {
   type: "external_link";
@@ -4983,6 +4990,17 @@ export type ConnectorMarketAuthorizationEmbeddedPageView = {
   flowId: string;
   url: string;
   expiresAt?: string;
+};
+
+export type ConnectorMarketAuthorizationQrCodeView = {
+  type: "qr_code";
+  source: ConnectorMarketAuthorizationQrCodePayloadSource;
+  expiresAt?: string;
+};
+
+export type ConnectorMarketAuthorizationQrCodePayloadSource = {
+  type: "payload";
+  value: string;
 };
 
 export type ConnectorMarketConnectorResponse = {

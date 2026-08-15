@@ -32,6 +32,7 @@ export interface ConnectorAuthorizationDialogProps {
   authorizationRenderer?: AuthorizationViewRenderer;
   authorizationView?: AuthorizationViewEnvelopeV2;
   authorizing: boolean;
+  brokeredAuthorization: boolean;
   displayName: string;
   iconUrl: string;
   i18n: ConnectorMarketI18nRuntime;
@@ -50,6 +51,7 @@ export function ConnectorAuthorizationDialog({
     AuthorizationRenderer = DefaultAuthorizationViewRenderer,
   authorizationView,
   authorizing,
+  brokeredAuthorization,
   displayName,
   iconUrl,
   i18n,
@@ -62,6 +64,7 @@ export function ConnectorAuthorizationDialog({
 }: ConnectorAuthorizationDialogProps) {
   const resolved = resolveAuthorizationInteraction({
     authorizationKind,
+    enableLegacySecretFallback: !brokeredAuthorization,
     interaction: authorizationInteraction,
     legacyLabels: {
       description: i18n.t("secretInputDescription"),

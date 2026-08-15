@@ -65,6 +65,27 @@ func TestAuthorizationViewForSessionDefaultsToExternalLink(t *testing.T) {
 	}
 }
 
+func TestAuthorizationViewForSessionRendersQRCodePayload(t *testing.T) {
+	release := testReleaseWithImplementation("wecom-cli", "1.0.0", ImplementationKindManagedStdio)
+	release.Manifest.Implementation.ManagedStdio.CredentialBroker = &ManagedCredentialBroker{
+		Presentation: CredentialBrokerPresentationQRCode,
+	}
+	session := AuthorizationSession{
+		SessionID:        "session-1",
+		AuthorizationURL: "https://work.weixin.qq.com/ai/qc/c?s=opaque",
+		State:            AuthorizationStatePending,
+	}
+
+	view := authorizationViewForSession(release, session)
+	if view == nil || view.View.Type != AuthorizationViewTypeQRCode || view.View.URL != "" {
+		t.Fatalf("view = %#v", view)
+	}
+	if view.View.Source == nil || view.View.Source.Type != AuthorizationQRCodeSourcePayload ||
+		view.View.Source.Value != session.AuthorizationURL {
+		t.Fatalf("QR source = %#v", view.View.Source)
+	}
+}
+
 func TestAuthorizationViewForSessionChangesIdentityWithProviderStep(t *testing.T) {
 	release := testReleaseWithImplementation("wecom-cli", "1.0.0", ImplementationKindManagedStdio)
 	session := AuthorizationSession{

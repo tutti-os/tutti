@@ -19,6 +19,8 @@ const (
 	ImplementationKindRemoteStreamableHTTP   = "remote_streamable_http"
 	CredentialBrokerProtocolV1               = "tutti.connector.credentials.v1"
 	CredentialBrokerPresentationEmbeddedPage = "embedded_page"
+	CredentialBrokerPresentationQRCode       = "qr_code"
+	AuthorizationInteractionModeManaged      = "managed"
 	maxAgentRoutingAliases                   = 12
 	maxAgentRoutingAliasRunes                = 48
 )
@@ -347,7 +349,9 @@ func validateManagedCredentialBroker(broker *ManagedCredentialBroker, hasCLI boo
 	if broker.TimeoutMS < 1_000 || broker.TimeoutMS > 10*60*1_000 {
 		return invalidManifest("credential broker timeoutMs must be between 1000 and 600000", nil)
 	}
-	if broker.Presentation != "" && broker.Presentation != CredentialBrokerPresentationEmbeddedPage {
+	if broker.Presentation != "" &&
+		broker.Presentation != CredentialBrokerPresentationEmbeddedPage &&
+		broker.Presentation != CredentialBrokerPresentationQRCode {
 		return invalidManifest("credential broker presentation is unsupported", nil)
 	}
 	if len(broker.AllowedHosts) == 0 {

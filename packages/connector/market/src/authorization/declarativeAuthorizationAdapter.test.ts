@@ -16,6 +16,7 @@ const legacyLabels = {
 test("creates a legacy secret form only when interaction is absent", () => {
   const resolved = resolveAuthorizationInteraction({
     authorizationKind: "api_key",
+    enableLegacySecretFallback: true,
     interaction: undefined,
     legacyLabels,
     locale: "en-US"
@@ -26,9 +27,21 @@ test("creates a legacy secret form only when interaction is absent", () => {
   }
 });
 
+test("does not synthesize a secret form for brokered API-key authorization", () => {
+  const resolved = resolveAuthorizationInteraction({
+    authorizationKind: "api_key",
+    enableLegacySecretFallback: false,
+    interaction: undefined,
+    legacyLabels,
+    locale: "en-US"
+  });
+  assert.deepEqual(resolved, { kind: "none" });
+});
+
 test("fails closed for an explicitly invalid interaction", () => {
   const resolved = resolveAuthorizationInteraction({
     authorizationKind: "api_key",
+    enableLegacySecretFallback: true,
     interaction: { protocol: "unknown" },
     legacyLabels,
     locale: "en-US"
@@ -39,6 +52,7 @@ test("fails closed for an explicitly invalid interaction", () => {
 test("maps a declared field to the existing native-secret input", () => {
   const resolved = resolveAuthorizationInteraction({
     authorizationKind: "api_key",
+    enableLegacySecretFallback: true,
     interaction: {
       protocol: "tutti.connector.authorization.declarative.v1",
       initialView: {
@@ -80,6 +94,7 @@ test("maps a declared field to the existing native-secret input", () => {
 test("selects the localized presentation without changing submission binding", () => {
   const resolved = resolveAuthorizationInteraction({
     authorizationKind: "api_key",
+    enableLegacySecretFallback: true,
     interaction: {
       protocol: "tutti.connector.authorization.declarative.v1",
       initialView: {

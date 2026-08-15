@@ -63,6 +63,7 @@ function createLegacySecretInteraction(
 
 export function resolveAuthorizationInteraction(input: {
   authorizationKind: string;
+  enableLegacySecretFallback: boolean;
   interaction: unknown;
   legacyLabels: LegacySecretInteractionLabels;
   locale: string;
@@ -70,7 +71,9 @@ export function resolveAuthorizationInteraction(input: {
   const parsed = parseDeclarativeAuthorizationInteractionV1(input.interaction);
   const interaction = parsed.ok
     ? parsed.value
-    : input.interaction === undefined && input.authorizationKind === "api_key"
+    : input.enableLegacySecretFallback &&
+        input.interaction === undefined &&
+        input.authorizationKind === "api_key"
       ? createLegacySecretInteraction(input.legacyLabels)
       : null;
 

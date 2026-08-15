@@ -79,10 +79,27 @@ func (router *ImplementationAuthorizationRouter) Observe(
 			}
 			connector := request.Connector
 			connector.Release = request.Release
-			return inspector.InspectAuthorization(ctx, AuthorizationInspectRequest{
+			observation, inspectErr := inspector.InspectAuthorization(ctx, AuthorizationInspectRequest{
 				Scope: request.Scope, Connector: connector,
 				AuthorizationSessionID: request.Session.SessionID,
 			})
+			if inspectErr != nil {
+				return AuthorizationObservation{}, inspectErr
+			}
+			// Inspect reports durable credential state, while Observe reconciles an
+			// unresolved authorization attempt. A still-disconnected credential is
+			// therefore pending until the session deadline; an expired credential is
+			// the terminal failure for that attempt.
+			switch observation.State {
+			case AuthorizationObservationDisconnected:
+				observation.State = AuthorizationObservationPending
+			case AuthorizationObservationExpired:
+				observation.State = AuthorizationObservationFailed
+				if observation.FailureCode == "" {
+					observation.FailureCode = "connector_authorization_expired"
+				}
+			}
+			return observation, nil
 		}
 		return AuthorizationObservation{}, errors.New("connector authorization observer is unavailable")
 	}

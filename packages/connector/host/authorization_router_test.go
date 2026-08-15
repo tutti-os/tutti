@@ -13,6 +13,7 @@ type routedAuthorizationProvider struct {
 
 type inspectOnlyAuthorizationProvider struct {
 	inspectCount int
+	observation  AuthorizationObservation
 }
 
 func (*inspectOnlyAuthorizationProvider) Begin(context.Context, AuthorizationStartRequest) (AuthorizationSession, error) {
@@ -28,7 +29,48 @@ func (provider *inspectOnlyAuthorizationProvider) InspectAuthorization(
 	AuthorizationInspectRequest,
 ) (AuthorizationObservation, error) {
 	provider.inspectCount++
-	return AuthorizationObservation{State: AuthorizationObservationConnected}, nil
+	if provider.observation.State == "" {
+		return AuthorizationObservation{State: AuthorizationObservationConnected}, nil
+	}
+	return provider.observation, nil
+}
+
+func TestImplementationAuthorizationRouterKeepsDisconnectedManagedSessionPending(t *testing.T) {
+	managed := &inspectOnlyAuthorizationProvider{observation: AuthorizationObservation{
+		State: AuthorizationObservationDisconnected,
+	}}
+	router := NewImplementationAuthorizationRouter(managed, &routedAuthorizationProvider{})
+	release := Release{Manifest: Manifest{Implementation: Implementation{Kind: ImplementationKindManagedStdio}}}
+
+	observation, err := router.Observe(context.Background(), AuthorizationObserveRequest{
+		Connector: Connector{Key: "wecom", Release: release}, Release: release,
+		Session: AuthorizationSession{SessionID: "session-1"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if observation.State != AuthorizationObservationPending {
+		t.Fatalf("observation state = %q, want pending", observation.State)
+	}
+}
+
+func TestImplementationAuthorizationRouterFailsExpiredManagedSession(t *testing.T) {
+	managed := &inspectOnlyAuthorizationProvider{observation: AuthorizationObservation{
+		State: AuthorizationObservationExpired,
+	}}
+	router := NewImplementationAuthorizationRouter(managed, &routedAuthorizationProvider{})
+	release := Release{Manifest: Manifest{Implementation: Implementation{Kind: ImplementationKindManagedStdio}}}
+
+	observation, err := router.Observe(context.Background(), AuthorizationObserveRequest{
+		Connector: Connector{Key: "wecom", Release: release}, Release: release,
+		Session: AuthorizationSession{SessionID: "session-1"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if observation.State != AuthorizationObservationFailed || observation.FailureCode != "connector_authorization_expired" {
+		t.Fatalf("observation = %#v, want terminal expiry", observation)
+	}
 }
 
 func (provider *routedAuthorizationProvider) Begin(_ context.Context, request AuthorizationStartRequest) (AuthorizationSession, error) {

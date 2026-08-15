@@ -550,6 +550,8 @@ export type {
   ConnectorMarketAuthorization,
   ConnectorMarketAuthorizationEmbeddedPageView,
   ConnectorMarketAuthorizationExternalLinkView,
+  ConnectorMarketAuthorizationQrCodePayloadSource,
+  ConnectorMarketAuthorizationQrCodeView,
   ConnectorMarketAuthorizationRequest,
   ConnectorMarketAuthorizationRequestWritable,
   ConnectorMarketAuthorizationResponse,

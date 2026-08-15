@@ -128,6 +128,10 @@ func TestManagedCredentialBrokerRequiresConnectorOwnedEntrypointAndAllowedHosts(
 	if err := ValidateManifestShape(manifest); err != nil {
 		t.Fatal(err)
 	}
+	manifest.Implementation.ManagedStdio.CredentialBroker.Presentation = CredentialBrokerPresentationQRCode
+	if err := ValidateManifestShape(manifest); err != nil {
+		t.Fatal(err)
+	}
 	manifest.Implementation.ManagedStdio.CredentialBroker.Presentation = "inline"
 	if err := ValidateManifestShape(manifest); err == nil || !strings.Contains(err.Error(), "presentation") {
 		t.Fatalf("unsupported credential broker presentation error = %v", err)

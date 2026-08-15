@@ -1378,6 +1378,36 @@ func (e ConnectorMarketAuthorizationExternalLinkViewType) Valid() bool {
 	}
 }
 
+// Defines values for ConnectorMarketAuthorizationQRCodePayloadSourceType.
+const (
+	Payload ConnectorMarketAuthorizationQRCodePayloadSourceType = "payload"
+)
+
+// Valid indicates whether the value is a known member of the ConnectorMarketAuthorizationQRCodePayloadSourceType enum.
+func (e ConnectorMarketAuthorizationQRCodePayloadSourceType) Valid() bool {
+	switch e {
+	case Payload:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ConnectorMarketAuthorizationQRCodeViewType.
+const (
+	QrCode ConnectorMarketAuthorizationQRCodeViewType = "qr_code"
+)
+
+// Valid indicates whether the value is a known member of the ConnectorMarketAuthorizationQRCodeViewType enum.
+func (e ConnectorMarketAuthorizationQRCodeViewType) Valid() bool {
+	switch e {
+	case QrCode:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ConnectorMarketAuthorizationState.
 const (
 	ConnectorMarketAuthorizationStateConnected    ConnectorMarketAuthorizationState = "connected"
@@ -1582,6 +1612,21 @@ func (e ConnectorMarketInstallationState) Valid() bool {
 	case ConnectorMarketInstallationStateUninstalling:
 		return true
 	case ConnectorMarketInstallationStateUpdating:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ConnectorMarketManifestAuthorizationInteractionMode.
+const (
+	Managed ConnectorMarketManifestAuthorizationInteractionMode = "managed"
+)
+
+// Valid indicates whether the value is a known member of the ConnectorMarketManifestAuthorizationInteractionMode enum.
+func (e ConnectorMarketManifestAuthorizationInteractionMode) Valid() bool {
+	switch e {
+	case Managed:
 		return true
 	default:
 		return false
@@ -6241,6 +6286,25 @@ type ConnectorMarketAuthorizationExternalLinkView struct {
 // ConnectorMarketAuthorizationExternalLinkViewType defines model for ConnectorMarketAuthorizationExternalLinkView.Type.
 type ConnectorMarketAuthorizationExternalLinkViewType string
 
+// ConnectorMarketAuthorizationQRCodePayloadSource defines model for ConnectorMarketAuthorizationQRCodePayloadSource.
+type ConnectorMarketAuthorizationQRCodePayloadSource struct {
+	Type  ConnectorMarketAuthorizationQRCodePayloadSourceType `json:"type"`
+	Value string                                              `json:"value"`
+}
+
+// ConnectorMarketAuthorizationQRCodePayloadSourceType defines model for ConnectorMarketAuthorizationQRCodePayloadSource.Type.
+type ConnectorMarketAuthorizationQRCodePayloadSourceType string
+
+// ConnectorMarketAuthorizationQRCodeView defines model for ConnectorMarketAuthorizationQRCodeView.
+type ConnectorMarketAuthorizationQRCodeView struct {
+	ExpiresAt *time.Time                                      `json:"expiresAt,omitempty"`
+	Source    ConnectorMarketAuthorizationQRCodePayloadSource `json:"source"`
+	Type      ConnectorMarketAuthorizationQRCodeViewType      `json:"type"`
+}
+
+// ConnectorMarketAuthorizationQRCodeViewType defines model for ConnectorMarketAuthorizationQRCodeView.Type.
+type ConnectorMarketAuthorizationQRCodeViewType string
+
 // ConnectorMarketAuthorizationRequest defines model for ConnectorMarketAuthorizationRequest.
 type ConnectorMarketAuthorizationRequest struct {
 	ClientRequestId           string  `json:"clientRequestId"`
@@ -6380,18 +6444,24 @@ type ConnectorMarketManifest struct {
 	AgentRouting *ConnectorMarketAgentRouting `json:"agentRouting,omitempty"`
 
 	// AuthorizationInteraction Opaque Connector-owned authorization interaction configuration. Hosts transport this value without interpreting its UI semantics; renderers must validate it against the versioned protocol.
-	AuthorizationInteraction *map[string]interface{}                   `json:"authorizationInteraction,omitempty"`
-	AuthorizationKind        string                                    `json:"authorizationKind"`
-	Compatibility            *ConnectorMarketCompatibilityRequirements `json:"compatibility,omitempty"`
-	Description              *string                                   `json:"description,omitempty"`
-	DisplayName              string                                    `json:"displayName"`
-	IconUrl                  string                                    `json:"iconUrl"`
+	AuthorizationInteraction *map[string]interface{} `json:"authorizationInteraction,omitempty"`
+
+	// AuthorizationInteractionMode Public host capability hint. managed means the host owns the authorization interaction lifecycle; clients start authorization without collecting a secret and render the returned authorizationView.
+	AuthorizationInteractionMode *ConnectorMarketManifestAuthorizationInteractionMode `json:"authorizationInteractionMode,omitempty"`
+	AuthorizationKind            string                                               `json:"authorizationKind"`
+	Compatibility                *ConnectorMarketCompatibilityRequirements            `json:"compatibility,omitempty"`
+	Description                  *string                                              `json:"description,omitempty"`
+	DisplayName                  string                                               `json:"displayName"`
+	IconUrl                      string                                               `json:"iconUrl"`
 
 	// Implementation Public implementation discriminator; sensitive host configuration is never returned.
 	Implementation ConnectorMarketImplementation        `json:"implementation"`
 	Permissions    []string                             `json:"permissions"`
 	SchemaVersion  ConnectorMarketManifestSchemaVersion `json:"schemaVersion"`
 }
+
+// ConnectorMarketManifestAuthorizationInteractionMode Public host capability hint. managed means the host owns the authorization interaction lifecycle; clients start authorization without collecting a secret and render the returned authorizationView.
+type ConnectorMarketManifestAuthorizationInteractionMode string
 
 // ConnectorMarketManifestSchemaVersion defines model for ConnectorMarketManifest.SchemaVersion.
 type ConnectorMarketManifestSchemaVersion string
@@ -11270,6 +11340,34 @@ func (t *ConnectorMarketAuthorizationRuntimeView) MergeConnectorMarketAuthorizat
 	return err
 }
 
+// AsConnectorMarketAuthorizationQRCodeView returns the union data inside the ConnectorMarketAuthorizationRuntimeView as a ConnectorMarketAuthorizationQRCodeView
+func (t ConnectorMarketAuthorizationRuntimeView) AsConnectorMarketAuthorizationQRCodeView() (ConnectorMarketAuthorizationQRCodeView, error) {
+	var body ConnectorMarketAuthorizationQRCodeView
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromConnectorMarketAuthorizationQRCodeView overwrites any union data inside the ConnectorMarketAuthorizationRuntimeView as the provided ConnectorMarketAuthorizationQRCodeView
+func (t *ConnectorMarketAuthorizationRuntimeView) FromConnectorMarketAuthorizationQRCodeView(v ConnectorMarketAuthorizationQRCodeView) error {
+	v.Type = "qr_code"
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeConnectorMarketAuthorizationQRCodeView performs a merge with any union data inside the ConnectorMarketAuthorizationRuntimeView, using the provided ConnectorMarketAuthorizationQRCodeView
+func (t *ConnectorMarketAuthorizationRuntimeView) MergeConnectorMarketAuthorizationQRCodeView(v ConnectorMarketAuthorizationQRCodeView) error {
+	v.Type = "qr_code"
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
 func (t ConnectorMarketAuthorizationRuntimeView) Discriminator() (string, error) {
 	var discriminator struct {
 		Discriminator string `json:"type"`
@@ -11288,6 +11386,8 @@ func (t ConnectorMarketAuthorizationRuntimeView) ValueByDiscriminator() (interfa
 		return t.AsConnectorMarketAuthorizationEmbeddedPageView()
 	case "external_link":
 		return t.AsConnectorMarketAuthorizationExternalLinkView()
+	case "qr_code":
+		return t.AsConnectorMarketAuthorizationQRCodeView()
 	default:
 		return nil, errors.New("unknown discriminator value: " + discriminator)
 	}

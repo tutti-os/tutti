@@ -536,6 +536,13 @@ components:
             Hosts transport this value without interpreting its UI semantics;
             renderers must validate it against the versioned protocol.
           additionalProperties: true
+        authorizationInteractionMode:
+          type: string
+          enum: [managed]
+          description: >-
+            Public host capability hint. managed means the host owns the
+            authorization interaction lifecycle; clients start authorization
+            without collecting a secret and render the returned authorizationView.
         compatibility:
           $ref: "#/components/schemas/ConnectorMarketCompatibilityRequirements"
     ConnectorMarketAgentRouting:
@@ -772,11 +779,13 @@ components:
       oneOf:
         - $ref: "#/components/schemas/ConnectorMarketAuthorizationExternalLinkView"
         - $ref: "#/components/schemas/ConnectorMarketAuthorizationEmbeddedPageView"
+        - $ref: "#/components/schemas/ConnectorMarketAuthorizationQRCodeView"
       discriminator:
         propertyName: type
         mapping:
           external_link: "#/components/schemas/ConnectorMarketAuthorizationExternalLinkView"
           embedded_page: "#/components/schemas/ConnectorMarketAuthorizationEmbeddedPageView"
+          qr_code: "#/components/schemas/ConnectorMarketAuthorizationQRCodeView"
     ConnectorMarketAuthorizationExternalLinkView:
       type: object
       additionalProperties: false
@@ -810,6 +819,31 @@ components:
         expiresAt:
           type: string
           format: date-time
+    ConnectorMarketAuthorizationQRCodeView:
+      type: object
+      additionalProperties: false
+      required: [type, source]
+      properties:
+        type:
+          type: string
+          enum: [qr_code]
+        source:
+          $ref: "#/components/schemas/ConnectorMarketAuthorizationQRCodePayloadSource"
+        expiresAt:
+          type: string
+          format: date-time
+    ConnectorMarketAuthorizationQRCodePayloadSource:
+      type: object
+      additionalProperties: false
+      required: [type, value]
+      properties:
+        type:
+          type: string
+          enum: [payload]
+        value:
+          type: string
+          minLength: 1
+          maxLength: 4096
     ConnectorMarketConnectorResponse:
       type: object
       additionalProperties: false

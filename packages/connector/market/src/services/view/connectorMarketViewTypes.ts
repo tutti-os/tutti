@@ -83,6 +83,7 @@ export interface ConnectorAuthorizationDialogView extends ConnectorDialogBaseVie
   authorizationKind: string;
   authorizationView?: AuthorizationViewEnvelopeV2;
   authorizing: boolean;
+  brokeredAuthorization: boolean;
   kind: "authorization";
   pending: boolean;
 }

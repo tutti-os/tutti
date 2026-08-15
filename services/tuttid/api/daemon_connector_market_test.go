@@ -88,6 +88,9 @@ func TestDaemonAPIConnectorMarketSnapshotHidesImplementationConfig(t *testing.T)
 	if implementation["kind"] != market.ImplementationKindManagedStdio {
 		t.Fatalf("implementation.kind = %#v, want managed_stdio", implementation["kind"])
 	}
+	if manifest["authorizationInteractionMode"] != market.AuthorizationInteractionModeManaged {
+		t.Fatalf("authorizationInteractionMode = %#v, want managed", manifest["authorizationInteractionMode"])
+	}
 	routing := manifest["agentRouting"].(map[string]any)
 	aliases := routing["aliases"].([]any)
 	if len(aliases) != 2 || aliases[0] != "Notion" || aliases[1] != "Notion AI" {

@@ -209,6 +209,29 @@ test("preserves the connector authorization interaction for the dialog", () => {
   );
 });
 
+test("marks managed credential brokers for automatic authorization start", () => {
+  const market = createConnectorMarketStoreState();
+  const connector = connectorFixture();
+  connector.installation = {
+    installedReleaseDigest: connector.release.releaseDigest,
+    state: "installed"
+  };
+  connector.release.manifest.authorizationKind = "api_key";
+  connector.release.manifest.authorizationInteractionMode = "managed";
+  market.connectorKeys = [connector.key];
+  market.connectorsByKey[connector.key] = connector;
+
+  const dialog = buildConnectorMarketView(market, {
+    ...uiState,
+    dialog: { connectorKey: connector.key, kind: "connector" }
+  }).dialog;
+
+  assert.equal(
+    dialog?.kind === "authorization" && dialog.brokeredAuthorization,
+    true
+  );
+});
+
 test("keeps a physical repair in the available segment until installation completes", () => {
   const market = createConnectorMarketStoreState();
   const connector = connectorFixture();

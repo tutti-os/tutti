@@ -439,6 +439,7 @@ func (api DaemonAPI) overlayConnectorAuthorizationProjections(ctx context.Contex
 
 func projectConnectorMarket[T any](value any) (T, error) {
 	var projected T
+	value = exposeConnectorMarketAuthorizationInteractionMode(value)
 	payload, err := json.Marshal(value)
 	if err != nil {
 		return projected, err
@@ -447,6 +448,44 @@ func projectConnectorMarket[T any](value any) (T, error) {
 		return projected, err
 	}
 	return projected, nil
+}
+
+func exposeConnectorMarketAuthorizationInteractionMode(value any) any {
+	switch typed := value.(type) {
+	case market.Snapshot:
+		typed.Connectors = append([]market.Connector(nil), typed.Connectors...)
+		for index := range typed.Connectors {
+			typed.Connectors[index] = exposeConnectorAuthorizationInteractionMode(typed.Connectors[index])
+		}
+		return typed
+	case market.CatalogPage:
+		typed.Items = append([]market.CatalogListing(nil), typed.Items...)
+		for index := range typed.Items {
+			typed.Items[index].Connector = exposeConnectorAuthorizationInteractionMode(typed.Items[index].Connector)
+		}
+		return typed
+	case market.Connector:
+		return exposeConnectorAuthorizationInteractionMode(typed)
+	case market.MutationResult:
+		if typed.Connector != nil {
+			connector := exposeConnectorAuthorizationInteractionMode(*typed.Connector)
+			typed.Connector = &connector
+		}
+		return typed
+	case market.AuthorizationResult:
+		typed.Connector = exposeConnectorAuthorizationInteractionMode(typed.Connector)
+		return typed
+	default:
+		return value
+	}
+}
+
+func exposeConnectorAuthorizationInteractionMode(connector market.Connector) market.Connector {
+	managed := connector.Release.Manifest.Implementation.ManagedStdio
+	if managed != nil && managed.CredentialBroker != nil {
+		connector.Release.Manifest.AuthorizationInteractionMode = market.AuthorizationInteractionModeManaged
+	}
+	return connector
 }
 
 func connectorMarketGetSnapshotError(err error) tuttigenerated.GetConnectorMarketResponseObject {

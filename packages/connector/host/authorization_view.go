@@ -11,6 +11,8 @@ const AuthorizationViewProtocolV2 = "tutti.connector.authorization.view.v2"
 const (
 	AuthorizationViewTypeExternalLink = "external_link"
 	AuthorizationViewTypeEmbeddedPage = "embedded_page"
+	AuthorizationViewTypeQRCode       = "qr_code"
+	AuthorizationQRCodeSourcePayload  = "payload"
 )
 
 // AuthorizationViewEnvelope is the host-neutral runtime presentation produced
@@ -23,10 +25,16 @@ type AuthorizationViewEnvelope struct {
 }
 
 type AuthorizationView struct {
-	Type      string `json:"type"`
-	FlowID    string `json:"flowId,omitempty"`
-	URL       string `json:"url"`
-	ExpiresAt string `json:"expiresAt,omitempty"`
+	Type      string                     `json:"type"`
+	FlowID    string                     `json:"flowId,omitempty"`
+	URL       string                     `json:"url,omitempty"`
+	Source    *AuthorizationQRCodeSource `json:"source,omitempty"`
+	ExpiresAt string                     `json:"expiresAt,omitempty"`
+}
+
+type AuthorizationQRCodeSource struct {
+	Type  string `json:"type"`
+	Value string `json:"value"`
 }
 
 func authorizationViewForSession(release Release, session AuthorizationSession) *AuthorizationViewEnvelope {
@@ -34,13 +42,22 @@ func authorizationViewForSession(release Release, session AuthorizationSession) 
 		return nil
 	}
 	viewType := AuthorizationViewTypeExternalLink
-	if managed := release.Manifest.Implementation.ManagedStdio; managed != nil && managed.CredentialBroker != nil &&
-		managed.CredentialBroker.Presentation == CredentialBrokerPresentationEmbeddedPage {
-		viewType = AuthorizationViewTypeEmbeddedPage
+	if managed := release.Manifest.Implementation.ManagedStdio; managed != nil && managed.CredentialBroker != nil {
+		switch managed.CredentialBroker.Presentation {
+		case CredentialBrokerPresentationEmbeddedPage:
+			viewType = AuthorizationViewTypeEmbeddedPage
+		case CredentialBrokerPresentationQRCode:
+			viewType = AuthorizationViewTypeQRCode
+		}
 	}
 	flowDigest := sha256.Sum256([]byte(session.SessionID))
 	viewDigest := sha256.Sum256([]byte(session.SessionID + "\x00" + session.AuthorizationURL))
-	view := AuthorizationView{Type: viewType, URL: session.AuthorizationURL}
+	view := AuthorizationView{Type: viewType}
+	if viewType == AuthorizationViewTypeQRCode {
+		view.Source = &AuthorizationQRCodeSource{Type: AuthorizationQRCodeSourcePayload, Value: session.AuthorizationURL}
+	} else {
+		view.URL = session.AuthorizationURL
+	}
 	if viewType == AuthorizationViewTypeEmbeddedPage {
 		view.FlowID = "authorization-flow-" + hex.EncodeToString(flowDigest[:16])
 	}
