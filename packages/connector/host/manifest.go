@@ -120,7 +120,22 @@ func validateReleaseShape(release Release, validateIcon bool) error {
 		strings.TrimSpace(release.Artifact.MediaType) == "" {
 		return invalidManifest("artifact key, lowercase SHA-256, positive sizeBytes, and mediaType are required", nil)
 	}
-	return validateManifestShape(release.Manifest, validateIcon)
+	if err := validateManifestShape(release.Manifest, validateIcon); err != nil {
+		return err
+	}
+	return validateLegacyCredentialBrokerPresentation(release)
+}
+
+func validateLegacyCredentialBrokerPresentation(release Release) error {
+	managed := release.Manifest.Implementation.ManagedStdio
+	if managed == nil || managed.CredentialBroker == nil ||
+		managed.CredentialBroker.Presentation != CredentialBrokerPresentationEmbeddedPage {
+		return nil
+	}
+	if release.ConnectorKey == "wecom-cli" && release.Version == "0.1.4" {
+		return nil
+	}
+	return invalidManifest("embedded_page presentation is reserved for the legacy wecom-cli 0.1.4 release", nil)
 }
 
 func ValidateManifestShape(manifest Manifest) error {
@@ -349,8 +364,9 @@ func validateManagedCredentialBroker(broker *ManagedCredentialBroker, hasCLI boo
 	if broker.TimeoutMS < 1_000 || broker.TimeoutMS > 10*60*1_000 {
 		return invalidManifest("credential broker timeoutMs must be between 1000 and 600000", nil)
 	}
-	// embedded_page remains accepted only so already-installed 0.1.4 releases
-	// can be upgraded. Hosts deliberately project it as an external link.
+	// Manifest-only validation has no connector identity or release version.
+	// Release validation restricts embedded_page to the legacy wecom-cli 0.1.4
+	// compatibility case; hosts deliberately project it as an external link.
 	if broker.Presentation != "" &&
 		broker.Presentation != CredentialBrokerPresentationEmbeddedPage &&
 		broker.Presentation != CredentialBrokerPresentationQRCode {
