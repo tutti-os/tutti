@@ -90,6 +90,9 @@ func (s *Service) availableComposerModelsForValidationProfile(
 		if err != nil {
 			return nil, false, nil
 		}
+		if result.Stale {
+			return nil, false, nil
+		}
 		values := make([]string, 0, len(result.Models))
 		seen := make(map[string]struct{}, len(result.Models))
 		for _, model := range result.Models {
@@ -135,6 +138,9 @@ func (s *Service) availableComposerModelsForValidationProfile(
 		}
 		result, err := s.ModelCatalog.ListModels(ctx, AgentModelCatalogInput{Provider: provider, Cwd: cwd})
 		if err != nil {
+			return nil, false, nil
+		}
+		if result.Stale {
 			return nil, false, nil
 		}
 		values := make([]string, 0, len(result.Models))

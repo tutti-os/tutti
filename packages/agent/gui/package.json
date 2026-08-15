@@ -15,6 +15,7 @@
     "./dock-icons": "./dockIcons.ts",
     "./layout": "./layout.ts",
     "./mention-search": "./agent-gui/agentGuiNode/AgentMentionSearchController.ts",
+    "./abortable-single-flight": "./abortable-single-flight.ts",
     "./agent-message-center": "./agent-message-center/index.ts",
     "./agent-conversation": "./agent-conversation/index.ts",
     "./agent-conversation/follow-end": "./shared/agentConversation/agentConversationFollowEndController.ts",
@@ -176,6 +177,10 @@
         "types": "./dist/mention-search.d.ts",
         "import": "./dist/mention-search.js"
       },
+      "./abortable-single-flight": {
+        "types": "./dist/abortable-single-flight.d.ts",
+        "import": "./dist/abortable-single-flight.js"
+      },
       "./agent-message-center": {
         "types": "./dist/agent-message-center/index.d.ts",
         "import": "./dist/agent-message-center/index.js"
@@ -335,6 +340,9 @@
         ],
         "mention-search": [
           "./dist/mention-search.d.ts"
+        ],
+        "abortable-single-flight": [
+          "./dist/abortable-single-flight.d.ts"
         ],
         "agent-conversation": [
           "./dist/agent-conversation/index.d.ts"

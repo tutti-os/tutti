@@ -358,6 +358,12 @@ is not a runtime or host capability and has no published package entrypoint.
 In-flight first-page results are fenced to the attached controller generation
 so stale mounts cannot mutate the Engine or cache.
 
+The `@tutti-os/agent-gui/abortable-single-flight` subpath exposes the generic
+`AbortableSingleFlight` lifecycle primitive for host adapters that need to
+coalesce keyed abortable reads while keeping caller cancellation independent.
+The primitive owns only request sharing and cancellation; cache, snapshot, and
+event ownership remain with the host adapter.
+
 Run this boundary check after changing AgentGUI data flow:
 
 ```sh

@@ -1917,6 +1917,14 @@ export type AgentProviderComposerConfig = {
 
 export type GetAgentProviderComposerOptionsRequest = {
   /**
+   * Selects the independently loadable composer section. Core contains model, reasoning, speed, permission, and runtime settings; capabilities contains skills and capability catalog data. Full is retained for callers that need the combined legacy response.
+   */
+  section?: "full" | "core" | "capabilities";
+  /**
+   * Waits for an authoritative model catalog when the cached result is stale. Use only for an explicit model-picker request; ordinary composer loads should render the last successful catalog first.
+   */
+  waitForFreshModelCatalog?: boolean;
+  /**
    * Agent target whose provider and runtime context the composer options resolve against. Optional; when omitted the provider path parameter is used directly.
    */
   agentTargetId?: string;
@@ -1930,6 +1938,10 @@ export type GetAgentProviderComposerOptionsRequest = {
 };
 
 export type GetWorkspaceAppFactoryAgentTargetComposerOptionsRequest = {
+  /**
+   * Independently loadable composer section.
+   */
+  section?: "full" | "core" | "capabilities";
   locale?: DesktopLocale;
   settings?: AgentSessionComposerSettings;
 };

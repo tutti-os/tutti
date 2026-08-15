@@ -611,6 +611,106 @@ func TestControllerExecGuidanceRejectsChangedExactTargetBeforeProviderCall(t *te
 	waitForSessionStatus(t, controller, "room-1", started.Session.AgentSessionID, SessionStatusReady)
 }
 
+func TestControllerExecGuidanceProviderErrorHasUnknownDeliveryOutcome(t *testing.T) {
+	t.Parallel()
+
+	wantErr := errors.New("provider guidance acknowledgement lost")
+	adapter := &guidanceBlockingAdapter{
+		blockingExecAdapter: newBlockingExecAdapter(),
+		guidanceErr:         wantErr,
+	}
+	controller := NewController([]Adapter{adapter}, nil)
+	started, err := controller.Start(t.Context(), StartInput{
+		RoomID:         "room-1",
+		AgentSessionID: "agent-session-1",
+		Provider:       ProviderCodex,
+		Title:          "Codex",
+	})
+	if err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	first, err := controller.Exec(t.Context(), ExecInput{
+		RoomID:         started.Session.RoomID,
+		AgentSessionID: started.Session.AgentSessionID,
+		Content:        textPrompt("first prompt"),
+	})
+	if err != nil {
+		t.Fatalf("first Exec: %v", err)
+	}
+	adapter.waitForPrompt(t, "first prompt")
+
+	result, err := controller.Exec(t.Context(), ExecInput{
+		RoomID:         started.Session.RoomID,
+		AgentSessionID: started.Session.AgentSessionID,
+		TurnID:         first.TurnID,
+		Content:        textPrompt("guide current turn"),
+		Guidance:       true,
+	})
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("guidance error = %v, want %v", err, wantErr)
+	}
+	if result.ProviderDispatch == nil ||
+		result.ProviderDispatch.Disposition != DispatchDispositionOutcomeUnknown {
+		t.Fatalf("guidance result = %#v, want outcome unknown", result)
+	}
+	if got := adapter.guidanceCalls.Load(); got != 1 {
+		t.Fatalf("provider guidance calls = %d, want 1", got)
+	}
+
+	adapter.releaseNext()
+	waitForSessionStatus(t, controller, "room-1", started.Session.AgentSessionID, SessionStatusReady)
+}
+
+func TestControllerExecGuidanceAdapterPreflightFailureIsNotDispatched(t *testing.T) {
+	t.Parallel()
+
+	wantErr := errors.New("provider session disconnected before guidance dispatch")
+	adapter := &guidanceDispatchAdapter{
+		guidanceBlockingAdapter: &guidanceBlockingAdapter{
+			blockingExecAdapter: newBlockingExecAdapter(),
+			guidanceErr:         wantErr,
+		},
+		disposition: DispatchDispositionNotDispatched,
+	}
+	controller := NewController([]Adapter{adapter}, nil)
+	started, err := controller.Start(t.Context(), StartInput{
+		RoomID:         "room-1",
+		AgentSessionID: "agent-session-1",
+		Provider:       ProviderCodex,
+		Title:          "Codex",
+	})
+	if err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	first, err := controller.Exec(t.Context(), ExecInput{
+		RoomID:         started.Session.RoomID,
+		AgentSessionID: started.Session.AgentSessionID,
+		Content:        textPrompt("first prompt"),
+	})
+	if err != nil {
+		t.Fatalf("first Exec: %v", err)
+	}
+	adapter.waitForPrompt(t, "first prompt")
+
+	result, err := controller.Exec(t.Context(), ExecInput{
+		RoomID:         started.Session.RoomID,
+		AgentSessionID: started.Session.AgentSessionID,
+		TurnID:         first.TurnID,
+		Content:        textPrompt("guide current turn"),
+		Guidance:       true,
+	})
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("guidance error = %v, want %v", err, wantErr)
+	}
+	if result.ProviderDispatch == nil ||
+		result.ProviderDispatch.Disposition != DispatchDispositionNotDispatched {
+		t.Fatalf("guidance result = %#v, want not dispatched", result)
+	}
+
+	adapter.releaseNext()
+	waitForSessionStatus(t, controller, "room-1", started.Session.AgentSessionID, SessionStatusReady)
+}
+
 func TestControllerExecGuidanceRequiresActiveTurn(t *testing.T) {
 	t.Parallel()
 
@@ -625,13 +725,58 @@ func TestControllerExecGuidanceRequiresActiveTurn(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Start: %v", err)
 	}
-	if _, err := controller.Exec(context.Background(), ExecInput{
+	result, err := controller.Exec(context.Background(), ExecInput{
 		RoomID:         started.Session.RoomID,
 		AgentSessionID: started.Session.AgentSessionID,
 		Content:        textPrompt("guide without active turn"),
 		Guidance:       true,
-	}); !errors.Is(err, ErrSessionNoActiveTurn) {
+	})
+	if !errors.Is(err, ErrSessionNoActiveTurn) {
 		t.Fatalf("guidance without active turn error = %v, want %v", err, ErrSessionNoActiveTurn)
+	}
+	if result.ProviderDispatch == nil ||
+		result.ProviderDispatch.Disposition != DispatchDispositionNotDispatched {
+		t.Fatalf("guidance result = %#v, want not dispatched", result)
+	}
+	if got := adapter.guidanceCalls.Load(); got != 0 {
+		t.Fatalf("provider guidance calls = %d, want 0", got)
+	}
+}
+
+func TestControllerExecExactGuidanceTreatsSettledTargetAsNotDispatched(t *testing.T) {
+	t.Parallel()
+
+	adapter := &guidanceBlockingAdapter{blockingExecAdapter: newBlockingExecAdapter()}
+	controller := NewController([]Adapter{adapter}, nil)
+	started, err := controller.Start(t.Context(), StartInput{
+		RoomID:         "room-1",
+		AgentSessionID: "agent-session-1",
+		Provider:       ProviderCodex,
+		Title:          "Codex",
+	})
+	if err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+
+	result, err := controller.Exec(t.Context(), ExecInput{
+		RoomID:         started.Session.RoomID,
+		AgentSessionID: started.Session.AgentSessionID,
+		TurnID:         "turn-settled-after-precheck",
+		Content:        textPrompt("guide settled turn"),
+		Guidance:       true,
+	})
+	if !errors.Is(err, ErrActiveTurnTargetMismatch) || !errors.Is(err, ErrSessionNoActiveTurn) {
+		t.Fatalf("guidance error = %v, want target mismatch joined with no active turn", err)
+	}
+	if result.ProviderDispatch == nil ||
+		result.ProviderDispatch.Disposition != DispatchDispositionNotDispatched {
+		t.Fatalf("guidance result = %#v, want not dispatched", result)
+	}
+	if result.TurnID != "turn-settled-after-precheck" {
+		t.Fatalf("guidance result turn = %q, want exact settled target", result.TurnID)
+	}
+	if got := adapter.guidanceCalls.Load(); got != 0 {
+		t.Fatalf("provider guidance calls = %d, want 0", got)
 	}
 }
 
@@ -728,10 +873,35 @@ func (returnOnlyFinalAdapter) Cancel(context.Context, Session, string) ([]activi
 type guidanceBlockingAdapter struct {
 	*blockingExecAdapter
 	guidanceCalls atomic.Int64
+	guidanceErr   error
+}
+
+type guidanceDispatchAdapter struct {
+	*guidanceBlockingAdapter
+	disposition DispatchDisposition
+}
+
+func (a *guidanceDispatchAdapter) GuideActiveTurnWithProviderDispatch(
+	ctx context.Context,
+	session Session,
+	content []PromptContentBlock,
+	displayPrompt string,
+	turnID string,
+	emit EventSink,
+	emitCommands CommandSnapshotSink,
+	reportDispatch ProviderDispatchSink,
+) ([]activityshared.Event, error) {
+	if reportDispatch != nil {
+		reportDispatch(ProviderDispatchResult{Disposition: a.disposition})
+	}
+	return a.GuideActiveTurn(ctx, session, content, displayPrompt, turnID, emit, emitCommands)
 }
 
 func (a *guidanceBlockingAdapter) GuideActiveTurn(ctx context.Context, session Session, content []PromptContentBlock, _ string, turnID string, emit EventSink, _ CommandSnapshotSink) ([]activityshared.Event, error) {
 	a.guidanceCalls.Add(1)
+	if a.guidanceErr != nil {
+		return nil, a.guidanceErr
+	}
 	events := []activityshared.Event{
 		newTurnActivityEvent(session, EventMessage, turnID, "", RoleUser, promptDisplayText(content), userPromptActivityPayload(content, "", userPromptActivityPayloadExtraFromExecMetadata(ctx, map[string]any{
 			"guidance": true,

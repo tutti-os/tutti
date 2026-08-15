@@ -91,6 +91,7 @@ interface UseAgentGUISubmitInteractionActionsInput {
         immediate?: boolean;
         requiredSettingsPatch?: AgentComposerSubmitOptions["requiredSettingsPatch"];
         sendNow?: boolean;
+        submittedDraft?: AgentComposerSubmitOptions["submittedDraft"];
         targetTurnId?: AgentComposerSubmitOptions["targetTurnId"];
         sourceScopeKey?: string;
         trackDraft?: boolean;
@@ -225,6 +226,7 @@ export function useAgentGUISubmitInteractionActions(
         immediate?: boolean;
         requiredSettingsPatch?: AgentComposerSubmitOptions["requiredSettingsPatch"];
         sendNow?: boolean;
+        submittedDraft?: AgentComposerSubmitOptions["submittedDraft"];
         targetTurnId?: AgentComposerSubmitOptions["targetTurnId"];
         sourceScopeKey?: string;
         trackDraft?: boolean;
@@ -254,6 +256,7 @@ export function useAgentGUISubmitInteractionActions(
           options.sourceScopeKey ??
           resolveAgentComposerDraftScopeKey({ agentSessionId });
         const submittedDraft =
+          options?.submittedDraft ??
           draftByScopeKeyRef.current[sourceScopeKey] ??
           emptyAgentComposerDraft();
         submittedDraftSnapshotsRef.current[submitTrace.clientSubmitId] = {
@@ -400,6 +403,7 @@ export function useAgentGUISubmitInteractionActions(
         capabilityRefs?: AgentComposerSubmitOptions["capabilityRefs"];
         requiredSettingsPatch?: AgentComposerSubmitOptions["requiredSettingsPatch"];
         sendNow?: boolean;
+        submittedDraft?: AgentComposerSubmitOptions["submittedDraft"];
         targetTurnId?: AgentComposerSubmitOptions["targetTurnId"];
         sourceScopeKey?: string;
         trackDraft?: boolean;
@@ -431,6 +435,7 @@ export function useAgentGUISubmitInteractionActions(
         requiredSettingsPatch: options?.requiredSettingsPatch,
         targetTurnId: options?.targetTurnId,
         sendNow: options?.sendNow === true,
+        submittedDraft: options?.submittedDraft,
         sourceScopeKey: options?.sourceScopeKey,
         trackDraft: options?.trackDraft === true
       });
@@ -510,6 +515,7 @@ export function useAgentGUISubmitInteractionActions(
               {
                 capabilityRefs: options?.capabilityRefs,
                 requiredSettingsPatch: options?.requiredSettingsPatch,
+                submittedDraft: options?.submittedDraft,
                 sourceScopeKey: resolveAgentComposerDraftScopeKey({}),
                 trackDraft: true
               }
@@ -519,7 +525,9 @@ export function useAgentGUISubmitInteractionActions(
         }
         const homeDraftKey = resolveAgentComposerDraftScopeKey({});
         const submittedHomeDraft = snapshotAgentComposerDraft(
-          draftByScopeKeyRef.current[homeDraftKey] ?? emptyAgentComposerDraft()
+          options?.submittedDraft ??
+            draftByScopeKeyRef.current[homeDraftKey] ??
+            emptyAgentComposerDraft()
         );
         const activationResult = startConversation(
           normalizedContent,
@@ -559,6 +567,7 @@ export function useAgentGUISubmitInteractionActions(
         {
           capabilityRefs: options?.capabilityRefs,
           requiredSettingsPatch: options?.requiredSettingsPatch,
+          submittedDraft: options?.submittedDraft,
           trackDraft: true
         }
       );
@@ -610,6 +619,7 @@ export function useAgentGUISubmitInteractionActions(
         {
           capabilityRefs: options?.capabilityRefs,
           sendNow: true,
+          submittedDraft: options?.submittedDraft,
           targetTurnId: activeTurnId,
           trackDraft: true
         }

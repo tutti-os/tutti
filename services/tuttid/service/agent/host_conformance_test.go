@@ -800,7 +800,8 @@ func (d *legacyHostConformanceDriver) Create(
 		ProviderTargetRef: input.ProviderTargetRef, ReasoningEffort: input.ReasoningEffort,
 		RuntimeContext: input.RuntimeContext, Speed: input.Speed,
 		ConversationDetailMode: input.ConversationDetailMode, Visible: input.Visible,
-		RailPlacement: input.RailPlacement,
+		RailPlacement:              input.RailPlacement,
+		RailPlacementAuthoritative: input.RailPlacementAuthoritative,
 	})
 	if err != nil {
 		return hostconformance.SessionObservation{}, "", err
@@ -1631,6 +1632,15 @@ func (i legacyHostConformanceSessionInitializer) InitializeRuntimeSession(
 	session ProviderRuntimeSession,
 	railPlacement *agenthost.RailPlacement,
 ) (PersistedSession, error) {
+	return i.InitializeRuntimeSessionWithRailAuthority(ctx, session, railPlacement, false)
+}
+
+func (i legacyHostConformanceSessionInitializer) InitializeRuntimeSessionWithRailAuthority(
+	ctx context.Context,
+	session ProviderRuntimeSession,
+	railPlacement *agenthost.RailPlacement,
+	railPlacementAuthoritative bool,
+) (PersistedSession, error) {
 	if i.fail {
 		return PersistedSession{}, errors.New("injected canonical session initialization failure")
 	}
@@ -1658,12 +1668,22 @@ func (i legacyHostConformanceSessionInitializer) InitializeRuntimeSession(
 		} else if err != nil {
 			return PersistedSession{}, err
 		}
+		var canonicalRail *agentactivitybiz.RailSection
+		if railPlacement != nil {
+			canonicalRail = &agentactivitybiz.RailSection{
+				Kind:        string(railPlacement.Kind),
+				ProjectPath: railPlacement.ProjectPath,
+				Key:         railPlacement.SectionKey,
+			}
+		}
 		if _, err := i.canonicalStore.ReportSessionState(ctx, agentactivitybiz.SessionStateReport{
-			WorkspaceID:       persisted.WorkspaceID,
-			AgentSessionID:    persisted.ID,
-			Provider:          persisted.Provider,
-			ProviderSessionID: persisted.ProviderSessionID,
-			OccurredAtUnixMS:  persisted.UpdatedAtUnixMS,
+			WorkspaceID:                persisted.WorkspaceID,
+			AgentSessionID:             persisted.ID,
+			Provider:                   persisted.Provider,
+			ProviderSessionID:          persisted.ProviderSessionID,
+			RailPlacement:              canonicalRail,
+			RailPlacementAuthoritative: railPlacementAuthoritative,
+			OccurredAtUnixMS:           persisted.UpdatedAtUnixMS,
 		}); err != nil {
 			return PersistedSession{}, err
 		}

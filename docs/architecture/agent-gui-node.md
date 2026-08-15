@@ -231,6 +231,15 @@ preference. A model or dependent setting explicitly supplied by the caller
 remains strict. If the runtime rejects an explicit model selection, startup
 fails rather than continuing with an undisclosed provider default.
 
+Composer model catalogs are daemon-owned snapshots. A provider auth/config
+change invalidates the snapshot and closes its provider app-server session, but
+the daemon may return the last known list as stale while refreshing it in the
+background. AgentGUI may render that stale projection with its loading state;
+model validation must wait for an authoritative snapshot. The daemon shares
+concurrent catalog loads, reuses a warm app-server session, and publishes the
+existing catalog invalidation hint after a successful refresh so open composers
+can converge without owning provider or cache policy.
+
 Settings that affect provider preparation are immutable after launch. The
 daemon validates them against current product policy and resolved provider
 capability before runtime preparation; an active Session cannot reinterpret
@@ -315,6 +324,12 @@ Submission acknowledgment and execution are separate presentation signals:
 
 This keeps feedback optimistic for responsiveness while keeping claims about
 Agent work grounded in the canonical Turn/runtime projection.
+
+The Composer also hands the exact draft used to build a submission to the
+AgentGUI controller. The controller snapshots that handoff for conditional
+post-submit clearing; it must clear only when the current draft still matches
+the submitted snapshot, so a queue admission or accepted send cannot erase a
+newer edit made while the request is in flight.
 
 ### 2.6 On-demand status
 
@@ -2479,8 +2494,10 @@ before calling either the runtime `getComposerOptions` or exposed Engine
 with exact duration. An unmatched start therefore remains observable when a
 Provider options request never settles. The facts distinguish runtime from
 session-Engine entry, force refresh, directory presence, bounded error
-category, and model count without carrying paths, settings, model names, or
-error messages.
+category, section/stage, and model count. Settled Composer events may include
+a bounded, deduplicated, control-character-cleaned allowlist of model
+identifiers; paths, settings, prompts, credentials, and error messages remain
+excluded.
 Hosts map those facts to their own analytics catalogs; they must not copy the
 Turn-binding, early-event buffering, duration-bucket, or token-classification
 logic.

@@ -889,16 +889,27 @@ Core capability booleans must not be reconstructed from private
 `runtimeContext` fields or represented as plugin/tool entries in the composer
 capability catalog.
 The activity snapshot also exposes the composer-options request lifecycle per
-opaque target key. Consumers use `loading` only for the initial request when no
-cached options exist; background refreshes keep rendering the last successful
-catalog, and failures transition to `error` instead of leaving indefinite
-loading UI. Desktop and Mobile request options through the semantic
+opaque target key and per independent section. `core` contains model,
+reasoning, speed, permission, and effective-settings data; `capabilities`
+contains skills, commands, and capability-catalog data. Desktop requests
+`core` for the model/reasoning/speed consumer and requests `capabilities` only
+when a capability surface is opened or used; neither capability discovery nor
+its eight-second provider timeout blocks the model controls. `full` remains the
+compatibility request for callers that need the combined response. Consumers use
+`loading` only for the initial
+request when no cached options exist; background refreshes keep rendering the
+last successful catalog, and failures transition to `error` instead of leaving
+indefinite loading UI. Desktop and Mobile request options through the semantic
 `AgentSessionEngine.loadComposerOptions` method. It owns request identity,
-signature-aware cache reuse, identical in-flight joining, supersession, exact
-settlement, caller abort, and engine disposal. The host extension adapter owns
-only the transport call and DTO mapping; hosts must not reconstruct this
-protocol with raw `composerOptions/loadRequested` dispatch plus snapshot
-subscriptions.
+section-scoped signature-aware cache reuse, identical in-flight joining,
+supersession, exact settlement, caller abort, and engine disposal. The host
+extension adapter owns only the transport call and DTO mapping; hosts must not
+reconstruct this protocol with raw `composerOptions/loadRequested` dispatch
+plus snapshot subscriptions.
+The daemon also persists the last successful credential-bound model catalog.
+After restart it may serve that catalog as stale and refresh in the background;
+the explicit model-picker-open request sets `waitForFreshModelCatalog` and waits
+for the provider refresh before returning.
 Provider context-window and quota updates enter the daemon at the runtime
 adapter boundary, are split into typed durable session metadata, and reach
 Agent GUI through the protocol-v2 `usage` field. GUI projections must not read

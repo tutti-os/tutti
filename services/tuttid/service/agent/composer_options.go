@@ -10,6 +10,7 @@ import (
 	"github.com/tutti-os/tutti/services/tuttid/biz/agentprovider"
 	modelplanbiz "github.com/tutti-os/tutti/services/tuttid/biz/modelplan"
 	preferencesbiz "github.com/tutti-os/tutti/services/tuttid/biz/preferences"
+	"golang.org/x/sync/errgroup"
 )
 
 type PermissionModeSemantic string
@@ -71,7 +72,12 @@ type ComposerOptionsInput struct {
 	Provider                 string
 	WorkspaceID              string
 	Settings                 ComposerSettings
+	Section                  ComposerOptionsSection
 	IncludeCapabilityCatalog *bool
+	// WaitForFreshModelCatalog is reserved for an explicit model-picker open.
+	// Ordinary composer loads may render the last successful list while the
+	// daemon refreshes it asynchronously.
+	WaitForFreshModelCatalog bool
 	CodexSaverMode           *bool
 	// ResolvedModelPlan is a daemon-only exact plan override supplied by a
 	// WorkspaceAgent resolver. It may contain a credential and must never be
@@ -84,6 +90,26 @@ type ComposerOptionsInput struct {
 	IgnoreModelPlanBinding   bool
 	providerTargetRef        map[string]any
 	extensionComposerProfile ExtensionComposerProfile
+}
+
+// ComposerOptionsSection lets callers consume the independent parts of the
+// composer catalog without making the model picker wait for app-server
+// capability discovery. Full remains the compatibility behavior.
+type ComposerOptionsSection string
+
+const (
+	ComposerOptionsSectionFull         ComposerOptionsSection = "full"
+	ComposerOptionsSectionCore         ComposerOptionsSection = "core"
+	ComposerOptionsSectionCapabilities ComposerOptionsSection = "capabilities"
+)
+
+func normalizeComposerOptionsSection(section ComposerOptionsSection) ComposerOptionsSection {
+	switch section {
+	case ComposerOptionsSectionCore, ComposerOptionsSectionCapabilities:
+		return section
+	default:
+		return ComposerOptionsSectionFull
+	}
 }
 
 type ComposerSkillOption struct {
@@ -147,6 +173,7 @@ type ComposerOptions struct {
 }
 
 func (s *Service) GetComposerOptions(ctx context.Context, input ComposerOptionsInput) (ComposerOptions, error) {
+	section := normalizeComposerOptionsSection(input.Section)
 	requestedPermissionModeID := strings.TrimSpace(input.Settings.PermissionModeID)
 	provider := agentprovider.Normalize(input.Provider)
 	agentTargetID := strings.TrimSpace(input.AgentTargetID)
@@ -260,7 +287,7 @@ func (s *Service) GetComposerOptions(ctx context.Context, input ComposerOptionsI
 		settings.Model = planEndpoint.Model
 	}
 	var catalogLoad <-chan composerModelCatalogLoadResult
-	if planEndpoint == nil && (composerOptionsProviderUsesModelCatalog(provider) ||
+	if section != ComposerOptionsSectionCapabilities && planEndpoint == nil && (composerOptionsProviderUsesModelCatalog(provider) ||
 		(s.ReplayMode && s.ModelCatalog != nil)) {
 		catalogLoad = startComposerModelCatalogLoad(
 			ctx,
@@ -268,27 +295,50 @@ func (s *Service) GetComposerOptions(ctx context.Context, input ComposerOptionsI
 			provider,
 			input.Cwd,
 			settings.Model,
+			input.WaitForFreshModelCatalog,
 		)
 	}
-	skills := filterWorkspaceAgentComposerSkills(
-		s.discoverComposerSkillOptionsForLaunch(ctx, provider, input.Cwd, nil, input.providerTargetRef),
-		launchInput.AgentSkills,
-		launchInput.AgentCapabilitiesExplicit,
-	)
+	skills := []ComposerSkillOption{}
+	if section != ComposerOptionsSectionCore {
+		skills = filterWorkspaceAgentComposerSkills(
+			s.discoverComposerSkillOptionsForLaunch(ctx, provider, input.Cwd, nil, input.providerTargetRef),
+			launchInput.AgentSkills,
+			launchInput.AgentCapabilitiesExplicit,
+		)
+	}
 	capabilityCatalog := []ComposerCapabilityOption{}
 	capabilityErrors := []string(nil)
-	if composerOptionsIncludeCapabilityCatalog(input) {
-		capabilityCatalog, capabilityErrors = s.listComposerCapabilityOptions(ctx, provider, input.Cwd, skills)
-		connectorsVisible, err := s.connectorCatalogVisible(ctx)
-		if err != nil {
-			capabilityErrors = append(capabilityErrors, "load connector visibility: "+err.Error())
+	if section != ComposerOptionsSectionCore && composerOptionsIncludeCapabilityCatalog(input) {
+		var (
+			connectorsVisible   = true
+			connectorVisibleErr error
+			localConnectors     []ComposerCapabilityOption
+			localConnectorsErr  error
+		)
+		capabilityGroup, capabilityContext := errgroup.WithContext(ctx)
+		capabilityGroup.Go(func() error {
+			capabilityCatalog, capabilityErrors = s.listComposerCapabilityOptions(capabilityContext, provider, input.Cwd, skills)
+			return nil
+		})
+		capabilityGroup.Go(func() error {
+			connectorsVisible, connectorVisibleErr = s.connectorCatalogVisible(capabilityContext)
+			return nil
+		})
+		if s.ConnectorMarketSnapshots != nil {
+			capabilityGroup.Go(func() error {
+				localConnectors, localConnectorsErr = localConnectorCapabilityOptions(capabilityContext, s.ConnectorMarketSnapshots)
+				return nil
+			})
+		}
+		_ = capabilityGroup.Wait()
+		if connectorVisibleErr != nil {
+			capabilityErrors = append(capabilityErrors, "load connector visibility: "+connectorVisibleErr.Error())
 		}
 		if !connectorsVisible {
 			capabilityCatalog = replaceComposerConnectorCapabilities(capabilityCatalog, nil)
 		} else if s.ConnectorMarketSnapshots != nil {
-			localConnectors, err := localConnectorCapabilityOptions(ctx, s.ConnectorMarketSnapshots)
-			if err != nil {
-				capabilityErrors = append(capabilityErrors, "load local connectors: "+err.Error())
+			if localConnectorsErr != nil {
+				capabilityErrors = append(capabilityErrors, "load local connectors: "+localConnectorsErr.Error())
 			}
 			capabilityCatalog = replaceComposerConnectorCapabilities(capabilityCatalog, localConnectors)
 		}
@@ -394,6 +444,13 @@ func (s *Service) GetComposerOptions(ctx context.Context, input ComposerOptionsI
 	if catalogProjectionOK {
 		modelOptions = s.enrichModelCapabilityOptions(ctx, provider, catalogProjection.ModelOptions)
 		runtimeContext["modelCatalogSource"] = catalogProjection.Source
+		if catalogProjection.Stale {
+			// Keep the last known catalog visible while the daemon refreshes it in
+			// the background. The activity adapter exposes this existing loading
+			// signal so the picker can distinguish stale options from a settled
+			// authoritative catalog.
+			runtimeContext["appServerStartup"] = map[string]any{"models": "loading"}
+		}
 		if composerProfileFor(provider).ReasoningEffort && len(catalogProjection.ReasoningProfiles) > 0 {
 			reasoningOptionsByModel = composerModelReasoningOptionsByModel(
 				provider,
@@ -444,7 +501,7 @@ func (s *Service) GetComposerOptions(ctx context.Context, input ComposerOptionsI
 		Behavior:                composerProfileFor(provider).Behavior,
 		SlashCommandPolicy:      slashCommandPolicy,
 	}
-	if planEndpoint == nil && !s.ReplayMode && (composerProfileFor(provider).LiveModelDiscovery ||
+	if section != ComposerOptionsSectionCapabilities && planEndpoint == nil && !s.ReplayMode && (composerProfileFor(provider).LiveModelDiscovery ||
 		providerTargetRefKind(input.providerTargetRef) == "agent_extension") {
 		var err error
 		options, err = s.mergeLiveComposerModelsForComposerOptions(ctx, input, effectiveSettings, options)
@@ -554,7 +611,7 @@ func composerDefaultModel(
 ) string {
 	if composerOptionsProviderUsesModelCatalog(provider) && catalog != nil {
 		result, err := catalog.ListModels(ctx, AgentModelCatalogInput{Provider: provider, Cwd: cwd})
-		if err == nil {
+		if err == nil && !result.Stale {
 			for _, model := range result.Models {
 				modelID := strings.TrimSpace(model.ID)
 				if model.IsDefault && modelID != "" {
@@ -727,160 +784,4 @@ func permissionModeConfigHasModeID(config PermissionConfig, modeID string) bool 
 		}
 	}
 	return false
-}
-
-func composerOptionsProviderUsesModelCatalog(provider string) bool {
-	return composerProfileFor(provider).UsesModelCatalog
-}
-
-func composerModelConfig(provider string, selected string, options []ComposerConfigOptionValue) ComposerConfigOption {
-	if composerProfileFor(provider).Behavior.ModelOptionsAuthoritative {
-		return ComposerConfigOption{}
-	}
-	values := make([]ComposerConfigOptionValue, 0, len(options))
-	for _, option := range options {
-		value := strings.TrimSpace(option.Value)
-		if value == "" {
-			continue
-		}
-		label := strings.TrimSpace(option.Label)
-		if label == "" {
-			label = value
-		}
-		values = append(values, ComposerConfigOptionValue{
-			ID:                 value,
-			Label:              label,
-			Value:              value,
-			Description:        strings.TrimSpace(option.Description),
-			SupportsImageInput: option.SupportsImageInput,
-			Requested:          option.Requested,
-		})
-	}
-	selected = strings.TrimSpace(selected)
-	return ComposerConfigOption{
-		Configurable: composerProfileFor(provider).ModelSelection,
-		CurrentValue: selected,
-		DefaultValue: selected,
-		Options:      values,
-	}
-}
-
-func composerSelectedModelOptions(model string) []ComposerConfigOptionValue {
-	model = strings.TrimSpace(model)
-	if model == "" {
-		return []ComposerConfigOptionValue{}
-	}
-	// Bootstrap echo: the sole entry mirrors the requested/effective settings,
-	// so it carries the requested provenance marker.
-	return []ComposerConfigOptionValue{{ID: model, Label: model, Value: model, Requested: true}}
-}
-
-func reasoningConfigOptionID(provider string) string {
-	return strings.TrimSpace(composerProfileFor(provider).ReasoningConfigOptionID)
-}
-
-// speedProviderSupportsSpeed reports whether the provider exposes the speed
-// dimension. Speed combines orthogonally with model and reasoning effort.
-//
-//   - Codex: the codex app-server honours `service_tier` (fast → priority).
-//   - Claude Code: the SDK sidecar maps the `standard` / `fast` tiers onto
-//     `Settings.fastMode`.
-func speedProviderSupportsSpeed(provider string) bool {
-	return composerProfileFor(provider).Speed
-}
-
-// speedConfigOptionID is the live config-option id the adapter sets. Codex maps
-// the tier onto the app-server `service_tier` config; Claude Code sets a `fast`
-// ACP config option when the agent advertises it.
-func speedConfigOptionID(provider string) string {
-	return strings.TrimSpace(composerProfileFor(provider).SpeedConfigOptionID)
-}
-
-func speedTierValuesForProvider(provider string) []string {
-	return append([]string(nil), composerProfileFor(provider).SpeedValues...)
-}
-
-func normalizeSpeedForProvider(provider string, value string) string {
-	if !speedProviderSupportsSpeed(provider) {
-		return ""
-	}
-	normalized := strings.TrimSpace(value)
-	for _, candidate := range speedTierValuesForProvider(provider) {
-		if candidate == normalized {
-			return normalized
-		}
-	}
-	return strings.TrimSpace(composerProfileFor(provider).DefaultSpeed)
-}
-
-func composerSpeedOptionValues(provider string, locale string) []ComposerConfigOptionValue {
-	values := speedTierValuesForProvider(provider)
-	options := make([]ComposerConfigOptionValue, 0, len(values))
-	for _, value := range values {
-		label, description := speedDisplay(value, locale)
-		options = append(options, ComposerConfigOptionValue{
-			ID:          value,
-			Label:       label,
-			Value:       value,
-			Description: description,
-		})
-	}
-	return options
-}
-
-func composerSpeedConfigFromOptions(provider string, selected string, options []ComposerConfigOptionValue) ComposerConfigOption {
-	selected = strings.TrimSpace(selected)
-	return ComposerConfigOption{
-		Configurable: speedProviderSupportsSpeed(provider) && len(options) > 0,
-		CurrentValue: selected,
-		DefaultValue: selected,
-		Options:      cloneComposerConfigOptionValues(options),
-	}
-}
-
-func composerAdvertisedSpeedOptionValues(locale string, advertised []AgentModelSpeedOption) []ComposerConfigOptionValue {
-	options := make([]ComposerConfigOptionValue, 0, len(advertised))
-	for _, advertisedOption := range advertised {
-		value := strings.TrimSpace(advertisedOption.Value)
-		if value == "" {
-			continue
-		}
-		label, description := speedDisplay(value, locale)
-		if advertisedLabel := strings.TrimSpace(advertisedOption.Label); advertisedLabel != "" {
-			label = advertisedLabel
-		}
-		if advertisedDescription := strings.TrimSpace(advertisedOption.Description); advertisedDescription != "" {
-			description = advertisedDescription
-		}
-		options = append(options, ComposerConfigOptionValue{
-			ID: value, Label: label, Value: value, Description: description,
-		})
-	}
-	return options
-}
-
-func resolveAdvertisedSpeed(selected string, advertisedDefault string, advertised []AgentModelSpeedOption) string {
-	selected = strings.TrimSpace(selected)
-	advertisedDefault = strings.TrimSpace(advertisedDefault)
-	firstValue := ""
-	defaultSupported := false
-	for _, option := range advertised {
-		value := strings.TrimSpace(option.Value)
-		if value == "" {
-			continue
-		}
-		if firstValue == "" {
-			firstValue = value
-		}
-		if value == selected {
-			return selected
-		}
-		if value == advertisedDefault {
-			defaultSupported = true
-		}
-	}
-	if defaultSupported {
-		return advertisedDefault
-	}
-	return firstValue
 }

@@ -61,6 +61,9 @@ describe("useAgentGUIComposerOptionsSync", () => {
 
     await waitFor(() => {
       expect(getComposerOptions).toHaveBeenCalledTimes(1);
+      expect(getComposerOptions).toHaveBeenCalledWith(
+        expect.objectContaining({ section: "core" })
+      );
       expect(
         authorityReconcilerRef.current.reconcileHomeDefaults
       ).toHaveBeenCalledWith(

@@ -326,7 +326,9 @@ export function useAgentGUINewConversationActivation(
       });
       const sourceScopeKey = resolveAgentComposerDraftScopeKey({});
       const submittedDraft =
-        draftByScopeKeyRef.current[sourceScopeKey] ?? emptyAgentComposerDraft();
+        submitOptions?.submittedDraft ??
+        draftByScopeKeyRef.current[sourceScopeKey] ??
+        emptyAgentComposerDraft();
       submittedDraftSnapshotsRef.current[submitTrace.clientSubmitId] = {
         sourceScopeKey,
         content: snapshotAgentComposerDraft(submittedDraft)

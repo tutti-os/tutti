@@ -9,6 +9,7 @@ export const agentGUIBuildEntries = {
   "dock-icons": "dockIcons.ts",
   layout: "layout.ts",
   "mention-search": "agent-gui/agentGuiNode/AgentMentionSearchController.ts",
+  "abortable-single-flight": "abortable-single-flight.ts",
   "agent-message-center/index": "agent-message-center/index.ts",
   "agent-conversation/index": "agent-conversation/index.ts",
   "agent-conversation/follow-end":
@@ -65,6 +66,7 @@ export const agentGUIDtsEntryGroups = [
     "quick-composer",
     "agents",
     "mention-search",
+    "abortable-single-flight",
     "agent-message-center/index",
     "agent-conversation/index",
     "agent-conversation/follow-end",

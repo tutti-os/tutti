@@ -888,7 +888,9 @@ export class WorkspaceAgentActivityService
     agentTargetId: string;
     cwd?: string | null;
     force?: boolean;
+    waitForFreshModelCatalog?: boolean;
     provider?: string;
+    section?: "full" | "core" | "capabilities";
     signal?: AbortSignal;
     settings?: Parameters<typeof normalizeComposerSettings>[0] | null;
     workspaceId: string;
@@ -899,7 +901,11 @@ export class WorkspaceAgentActivityService
     return entry.engine.loadComposerOptions({
       cwd: input.cwd,
       force: input.force,
+      waitForFreshModelCatalog: input.waitForFreshModelCatalog,
       provider,
+      ...(input.section && input.section !== "full"
+        ? { section: input.section }
+        : {}),
       settings: normalizeComposerSettings(input.settings),
       signal: input.signal,
       targetKey: input.agentTargetId

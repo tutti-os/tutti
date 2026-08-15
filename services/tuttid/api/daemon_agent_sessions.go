@@ -85,9 +85,13 @@ func (api DaemonAPI) GetAgentProviderComposerOptions(ctx context.Context, reques
 		Provider: string(request.Provider),
 	}
 	if request.Body != nil {
+		if request.Body.Section != nil {
+			input.Section = agentservice.ComposerOptionsSection(*request.Body.Section)
+		}
 		input.AgentTargetID = optionalStringValue(request.Body.AgentTargetId)
 		input.Cwd = optionalStringValue(request.Body.Cwd)
 		input.WorkspaceID = optionalStringValue(request.Body.WorkspaceId)
+		input.WaitForFreshModelCatalog = request.Body.WaitForFreshModelCatalog != nil && *request.Body.WaitForFreshModelCatalog
 	}
 	if request.Body != nil && request.Body.Settings != nil {
 		input.Settings = composerSettingsFromGenerated(*request.Body.Settings)

@@ -7,13 +7,23 @@ import {
   type AgentSessionEngine,
   type AgentSessionEngineState
 } from "@tutti-os/agent-activity-core";
+import {
+  agentGUIPerformanceDuration,
+  emitPerformanceEvent,
+  trackAgentGUIComposerOptionsLoad,
+  type AgentGUIComposerOptionsLoadInput
+} from "./agentGUIPerformanceComposerOptions.ts";
 import type {
-  AgentGUIComposerOptionsLoadSource,
-  AgentGUIComposerOptionsPerformanceEvent,
   AgentGUIFirstTokenKind,
-  AgentGUIPerformanceDurationBucket,
   AgentGUIPerformanceEvent
 } from "./agentGUIPerformanceEvents.ts";
+
+export {
+  agentGUIPerformanceDuration,
+  trackAgentGUIComposerOptionsLoad,
+  type AgentGUIComposerOptionsLoadInput,
+  type AgentGUIComposerOptionsPerformanceTrackerInput
+} from "./agentGUIPerformanceComposerOptions.ts";
 
 export type {
   AgentGUIComposerOptionsLoadSource,
@@ -25,22 +35,6 @@ export type {
 } from "./agentGUIPerformanceEvents.ts";
 
 const MAX_RETAINED_PERFORMANCE_RECORDS = 512;
-
-export interface AgentGUIComposerOptionsLoadInput {
-  agentTargetId: string;
-  cwd?: string | null;
-  force?: boolean;
-  load: () => Promise<AgentActivityComposerOptions>;
-  provider?: string | null;
-  source: AgentGUIComposerOptionsLoadSource;
-}
-
-export interface AgentGUIComposerOptionsPerformanceTrackerInput extends AgentGUIComposerOptionsLoadInput {
-  createOperationId?: () => string;
-  nowUnixMs?: () => number;
-  onEvent: (event: AgentGUIComposerOptionsPerformanceEvent) => void;
-  workspaceId: string;
-}
 
 export interface AgentGUIPerformanceMonitor {
   dispose(): void;
@@ -496,96 +490,6 @@ export function createAgentGUIPerformanceMonitor(input: {
   };
 }
 
-export async function trackAgentGUIComposerOptionsLoad(
-  input: AgentGUIComposerOptionsPerformanceTrackerInput
-): Promise<AgentActivityComposerOptions> {
-  const nowUnixMs = input.nowUnixMs ?? Date.now;
-  const startedAtUnixMs = safeNowUnixMs(nowUnixMs);
-  const operationId = composerOptionsOperationId(input, startedAtUnixMs);
-  const agentTargetId = input.agentTargetId.trim();
-  const force = input.force === true;
-  const hasDirectory = Boolean(input.cwd?.trim());
-  const provider = input.provider?.trim() || "unknown";
-  emitPerformanceEvent(input.onEvent, {
-    agentTargetId,
-    force,
-    hasDirectory,
-    observedAtUnixMs: startedAtUnixMs,
-    operationId,
-    provider,
-    source: input.source,
-    startedAtUnixMs,
-    type: "composer_options_load_started",
-    workspaceId: input.workspaceId
-  });
-
-  let options: AgentActivityComposerOptions;
-  try {
-    options = await input.load();
-  } catch (error) {
-    const observedAtUnixMs = safeNowUnixMs(nowUnixMs);
-    if (!isExpectedComposerOptionsCancellation(error)) {
-      emitPerformanceEvent(input.onEvent, {
-        agentTargetId,
-        ...agentGUIPerformanceDuration(observedAtUnixMs - startedAtUnixMs),
-        ...performanceErrorFieldsFromError(error),
-        failureStage: "options_load",
-        force,
-        hasDirectory,
-        observedAtUnixMs,
-        operationId,
-        outcome: "failed",
-        provider,
-        source: input.source,
-        startedAtUnixMs,
-        type: "composer_options_load_settled",
-        workspaceId: input.workspaceId
-      });
-    }
-    throw error;
-  }
-
-  const observedAtUnixMs = safeNowUnixMs(nowUnixMs);
-  emitPerformanceEvent(input.onEvent, {
-    agentTargetId,
-    ...agentGUIPerformanceDuration(observedAtUnixMs - startedAtUnixMs),
-    force,
-    hasDirectory,
-    modelCount: Array.isArray(options.models) ? options.models.length : 0,
-    observedAtUnixMs,
-    operationId,
-    outcome: "completed",
-    provider: options.provider?.trim() || provider,
-    source: input.source,
-    startedAtUnixMs,
-    type: "composer_options_load_settled",
-    workspaceId: input.workspaceId
-  });
-  return options;
-}
-
-export function agentGUIPerformanceDuration(durationMs: number): {
-  durationBucket: AgentGUIPerformanceDurationBucket;
-  durationMs: number;
-} {
-  const normalizedDurationMs = Number.isFinite(durationMs)
-    ? Math.max(0, durationMs)
-    : 0;
-  const durationBucket =
-    normalizedDurationMs < 1_000
-      ? "lt_1s"
-      : normalizedDurationMs < 3_000
-        ? "1s_to_3s"
-        : normalizedDurationMs < 10_000
-          ? "3s_to_10s"
-          : normalizedDurationMs < 30_000
-            ? "10s_to_30s"
-            : normalizedDurationMs < 60_000
-              ? "30s_to_60s"
-              : "gte_60s";
-  return { durationBucket, durationMs: normalizedDurationMs };
-}
-
 function firstTokenObservation(
   event: unknown,
   workspaceId: string,
@@ -677,13 +581,6 @@ function performanceTurnKey(agentSessionId: string, turnId: string): string {
   return `${agentSessionId}\u0000${turnId}`;
 }
 
-function performanceErrorFieldsFromError(error: unknown): {
-  errorCategory: string;
-  errorCode: string;
-} {
-  return performanceErrorFieldsFromCode(stringField(asRecord(error), "code"));
-}
-
 function performanceErrorFieldsFromCode(value: unknown): {
   errorCategory: string;
   errorCode: string;
@@ -700,62 +597,6 @@ function normalizePerformanceErrorCode(value: unknown): string {
     .replace(/^_+|_+$/g, "")
     .slice(0, 120);
   return normalized || "unknown";
-}
-
-function isExpectedComposerOptionsCancellation(error: unknown): boolean {
-  const record = asRecord(error);
-  const candidates = [
-    stringField(record, "code"),
-    error instanceof Error ? error.name : undefined,
-    error instanceof Error ? error.message : undefined
-  ]
-    .map((value) => value?.trim().toLowerCase())
-    .filter((value): value is string => Boolean(value));
-  return candidates.some((value) =>
-    [
-      "composer_options_load_aborted",
-      "composer_options_load_superseded",
-      "agent_session_engine_disposed"
-    ].includes(value)
-  );
-}
-
-function composerOptionsOperationId(
-  input: Pick<
-    AgentGUIComposerOptionsPerformanceTrackerInput,
-    "createOperationId"
-  >,
-  startedAtUnixMs: number
-): string {
-  const fallback = `composer-options:${startedAtUnixMs}:${Math.random()
-    .toString(36)
-    .slice(2)}`;
-  try {
-    return input.createOperationId?.().trim() || fallback;
-  } catch {
-    return fallback;
-  }
-}
-
-function safeNowUnixMs(nowUnixMs: () => number): number {
-  try {
-    const value = nowUnixMs();
-    return Number.isFinite(value) ? value : Date.now();
-  } catch {
-    return Date.now();
-  }
-}
-
-function emitPerformanceEvent<TEvent extends AgentGUIPerformanceEvent>(
-  onEvent: (event: TEvent) => void,
-  event: TEvent
-): void {
-  try {
-    onEvent(event);
-  } catch (error) {
-    // Performance reporting must never affect the Agent runtime.
-    console.error("[agent-gui] performance event sink failed", error);
-  }
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {

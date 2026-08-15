@@ -86,6 +86,7 @@ type Service struct {
 	skillOptionsCache              *composerSkillOptionsCache
 	providerAvailabilityCache      *providerAvailabilityCache
 	capabilityCatalogCache         *composerCapabilityCatalogCache
+	capabilityCatalogGroup         singleflight.Group
 	liveModelCache                 *composerLiveModelCache
 	claudeStartupLock              *claudecodeservice.StartupGate
 	liveModelDiscoveryMu           sync.Mutex
@@ -530,6 +531,15 @@ type SessionInitializer interface {
 	InitializeRuntimeSession(context.Context, ProviderRuntimeSession, *agenthost.RailPlacement) (PersistedSession, error)
 }
 
+// sessionInitializerWithRailAuthority is an optional adapter capability for
+// callers whose explicit rail placement comes from an external canonical
+// authority. The legacy initializer remains valid for ordinary service paths;
+// Host adapters must use this capability when they carry the authoritative
+// placement bit across the service boundary.
+type sessionInitializerWithRailAuthority interface {
+	InitializeRuntimeSessionWithRailAuthority(context.Context, ProviderRuntimeSession, *agenthost.RailPlacement, bool) (PersistedSession, error)
+}
+
 type ChildSessionReader interface {
 	ListChildSessions(context.Context, string, string) ([]PersistedSession, error)
 }
@@ -735,7 +745,10 @@ type CreateSessionInput struct {
 	ConversationDetailMode string
 	Visible                *bool
 	RailPlacement          *agenthost.RailPlacement
-	ExtraSkills            []SessionSkillBundle
+	// RailPlacementAuthoritative carries an externally canonical project
+	// placement through the legacy service adapter used by conformance tests.
+	RailPlacementAuthoritative bool
+	ExtraSkills                []SessionSkillBundle
 	// ExternalRolloutSourcePath is the absolute path to the original provider
 	// CLI rollout/transcript file this session was imported from, when known.
 	// Populated from the persisted session's RuntimeContext when resuming an

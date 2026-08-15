@@ -130,6 +130,57 @@ describe("createAgentGUIPerformanceMonitor", () => {
     monitor.dispose();
   });
 
+  it("reports section stages and bounded model names", async () => {
+    const onEvent = vi.fn();
+    const options = {
+      models: [
+        { label: "GPT-5", value: "gpt-5" },
+        { label: "GPT-5 duplicate", value: "gpt-5" },
+        { label: "Other", value: "model\nwith-control" }
+      ],
+      provider: "codex"
+    } as AgentActivityComposerOptions;
+
+    await expect(
+      trackAgentGUIComposerOptionsLoad({
+        agentTargetId: "codex-target",
+        cwd: "/private/workspace",
+        load: () => Promise.resolve(options),
+        onEvent,
+        provider: "codex",
+        section: "core",
+        source: "runtime",
+        stage: "model_catalog",
+        workspaceId: "workspace-1"
+      })
+    ).resolves.toBe(options);
+
+    expect(onEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        section: "core",
+        stage: "model_catalog",
+        type: "composer_options_stage_started"
+      })
+    );
+    expect(onEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        modelNames: ["gpt-5", "modelwith-control"],
+        section: "core",
+        stage: "model_catalog",
+        type: "composer_options_stage_settled"
+      })
+    );
+    expect(onEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        modelNames: ["gpt-5", "modelwith-control"],
+        type: "composer_options_load_settled"
+      })
+    );
+    expect(JSON.stringify(onEvent.mock.calls)).not.toContain(
+      "/private/workspace"
+    );
+  });
+
   it("uses bounded unknown for a missing Composer error code and rethrows it", async () => {
     const sinkFailure = new Error("event sink failed");
     const failure = new Error("private provider response");

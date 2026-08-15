@@ -177,7 +177,9 @@ export interface IWorkspaceAgentActivityService {
     agentTargetId: string;
     cwd?: string | null;
     force?: boolean;
+    waitForFreshModelCatalog?: boolean;
     provider?: string;
+    section?: "full" | "core" | "capabilities";
     signal?: AbortSignal;
     settings?: AgentHostAgentSessionComposerSettings | null;
     workspaceId: string;

@@ -184,12 +184,15 @@ current snapshot reference and does not notify subscribers.
 
 ## Composer Options Cache
 
-`engine.loadComposerOptions({ targetKey, provider, ... })` caches results in a
-single key space, `composerOptionsByTargetKey`. After non-empty boundary
-normalization, `targetKey` is an **opaque** cache key: the engine never parses
-or derives meaning from it. Callers pass the already-resolved directory target
-id; two distinct targets that share a `provider` therefore keep isolated caches
-(no provider-dimension fallback).
+`engine.loadComposerOptions({ targetKey, provider, section, ... })` caches
+results in a single target key space with independent `core` and
+`capabilities` entries. `core` owns model, reasoning, speed, permission, and
+effective settings; `capabilities` owns skills, commands, and capability
+catalog data. After non-empty boundary normalization, `targetKey` is an
+**opaque** cache key: the engine never parses or derives meaning from it.
+Callers pass the already-resolved directory target id; two distinct targets
+that share a `provider` therefore keep isolated caches (no provider-dimension
+fallback).
 
 The semantic Engine method owns request identity, signature-aware cache reuse,
 joining an identical in-flight request, supersession by a newer request, exact

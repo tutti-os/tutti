@@ -77,12 +77,12 @@ interface Props {
   onProviderSelect: AgentComposerProps["onProviderSelect"];
   onLinkAction: AgentComposerProps["onLinkAction"];
   availableSkills: AgentComposerProps["availableSkills"];
+  onRetryComposerOptions?: AgentComposerProps["onRetryComposerOptions"];
   onCapabilitySettingsRequest: AgentComposerProps["onCapabilitySettingsRequest"];
   onRequestWorkspaceReferences: AgentComposerProps["onRequestWorkspaceReferences"];
   onWorkspaceReferencePicker: () => void;
   onMentionPaletteButton: () => void;
   onSettingsChange: AgentComposerProps["onSettingsChange"];
-  onRetryComposerOptions: AgentComposerProps["onRetryComposerOptions"];
   onSubmit: AgentComposerProps["onSubmit"];
   onClearGoalMode: () => void;
   draftPrompt: string;
@@ -132,12 +132,12 @@ export function ComposerFooter({
   onProviderSelect,
   onLinkAction,
   availableSkills,
+  onRetryComposerOptions,
   onCapabilitySettingsRequest,
   onRequestWorkspaceReferences,
   onWorkspaceReferencePicker: handleWorkspaceReferencePicker,
   onMentionPaletteButton: handleMentionPaletteButton,
   onSettingsChange,
-  onRetryComposerOptions,
   onSubmit,
   onClearGoalMode: clearGoalModeBadge,
   draftPrompt: _draftPrompt,
@@ -224,6 +224,7 @@ export function ComposerFooter({
             isTuttiModeActive={isTuttiModeActive}
             isTuttiModeUpdating={isTuttiModeUpdating}
             labels={labels}
+            onRetryComposerOptions={onRetryComposerOptions}
             onCapabilitySettingsRequest={onCapabilitySettingsRequest}
             onTuttiModeChange={onTuttiModeChange}
             tuttiModeSupported={tuttiModeSupported}

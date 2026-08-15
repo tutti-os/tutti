@@ -282,6 +282,9 @@ func buildDaemonAPI(
 	})
 	agentModelCapabilities := agentservice.NewModelCapabilitiesService()
 	agentModelCatalog := agentservice.NewAgentModelCatalog()
+	agentModelCatalog.PersistentPath = filepath.Join(
+		tuttitypes.DefaultStateDir(), "agent-model-catalog", "model-catalog.json",
+	)
 	agentModelCatalog.ModelCapabilities = agentModelCapabilities
 	agentModelCatalog.ProviderCommands = &agentStatusService
 	agentSessionPurgeStore, ok := agentActivityRepo.(agenthost.SessionPurgeStore)

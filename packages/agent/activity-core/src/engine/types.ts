@@ -458,7 +458,9 @@ export type AgentSessionEngineIntentObserver = (intent: EngineIntent) => void;
 export interface AgentSessionLoadComposerOptionsInput {
   cwd?: string | null;
   force?: boolean;
+  waitForFreshModelCatalog?: boolean;
   provider: string;
+  section?: import("./composerOptions.types.ts").ComposerOptionsSection;
   settings?: AgentActivityComposerSettings | null;
   signal?: AbortSignal;
   targetKey: string;

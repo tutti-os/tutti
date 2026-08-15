@@ -685,7 +685,9 @@ export interface AgentGUINodeViewProps extends AgentGUIComposerExternalPromptPro
       permissionMode?: string;
     }) => void;
     /** Re-issues the composer-options load after a terminal error state. */
-    retryComposerOptions: () => void;
+    retryComposerOptions: NonNullable<
+      AgentComposerProps["onRetryComposerOptions"]
+    >;
     setTuttiModeActive: (active: boolean) => void;
     setTuttiModeEffect: (value: number) => void;
     setTuttiModeSpeed: (value: number) => void;

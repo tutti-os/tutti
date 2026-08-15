@@ -88,7 +88,10 @@ export function AgentModelReasoningDropdown({
    * exact target; explicit null disables model history.
    */
   modelHistoryTargetId?: string | null;
-  onRetryComposerOptions?: () => void;
+  onRetryComposerOptions?: (options?: {
+    section?: "core" | "capabilities";
+    waitForFreshModelCatalog?: boolean;
+  }) => void;
   onSettingsChange: (patch: {
     model?: string;
     reasoningEffort?: string;
@@ -113,6 +116,10 @@ export function AgentModelReasoningDropdown({
   } = modelHistory;
   const handleMenuOpenChange = (open: boolean): void => {
     if (open) {
+      // Opening the picker is the explicit consumer action that is allowed to
+      // wait for an authoritative catalog. Background composer loads keep the
+      // last successful list and refresh it asynchronously.
+      onRetryComposerOptions?.({ waitForFreshModelCatalog: true });
       // Pick up writes from other windows and clear the previous filter.
       modelHistory.refreshFromStorage();
       setModelSearchQuery("");
@@ -190,7 +197,7 @@ export function AgentModelReasoningDropdown({
       disabled={triggerDisabled}
       onClick={
         composerOptionsError && !retryDisabled
-          ? onRetryComposerOptions
+          ? () => onRetryComposerOptions?.()
           : undefined
       }
       data-agent-model-reasoning-trigger="true"

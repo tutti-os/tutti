@@ -5,7 +5,10 @@ import { createAgentSessionEngine } from "./createAgentSessionEngine.ts";
 import { createTestEngineCommandPort } from "./testEngineCommandPort.ts";
 import type { EngineExternalCommand, EngineScheduler } from "./types.ts";
 
-function composerOptions(model: string): AgentActivityComposerOptions {
+function composerOptions(
+  model: string,
+  overrides: Partial<AgentActivityComposerOptions> = {}
+): AgentActivityComposerOptions {
   return {
     behavior: {
       collapseModelOptionsToLatest: false,
@@ -20,7 +23,8 @@ function composerOptions(model: string): AgentActivityComposerOptions {
     provider: "codex",
     reasoningEfforts: [],
     skills: [],
-    speeds: []
+    speeds: [],
+    ...overrides
   };
 }
 
@@ -66,6 +70,48 @@ function loadInput(overrides: { cwd?: string; force?: boolean } = {}) {
     ...overrides
   };
 }
+
+test("core settles before capabilities and section requests do not share in-flight state", async () => {
+  const harness = createHarness();
+  const core = harness.engine.loadComposerOptions({
+    ...loadInput(),
+    section: "core"
+  });
+  const capabilities = harness.engine.loadComposerOptions({
+    ...loadInput(),
+    section: "capabilities"
+  });
+
+  assert.equal(harness.commands.length, 2);
+  assert.equal(harness.commands[0]?.type, "composerOptions/load");
+  assert.equal(harness.commands[1]?.type, "composerOptions/load");
+  assert.equal(harness.commands[0]?.section, "core");
+  assert.equal(harness.commands[1]?.section, "capabilities");
+
+  harness.succeed(
+    harness.commands[0]!.commandId,
+    composerOptions("core-model")
+  );
+  const coreOptions = await core;
+  assert.equal(coreOptions.models[0]?.value, "core-model");
+  assert.equal(harness.commands.length, 2);
+
+  harness.succeed(
+    harness.commands[1]!.commandId,
+    composerOptions("capability-response", {
+      skills: [
+        {
+          name: "search",
+          sourceKind: "project",
+          trigger: "/search"
+        }
+      ]
+    })
+  );
+  const merged = await capabilities;
+  assert.equal(merged.models[0]?.value, "core-model");
+  assert.equal(merged.skills[0]?.name, "search");
+});
 
 test("semantic composer load joins an identical request and reuses its ready cache", async () => {
   const harness = createHarness();
@@ -121,6 +167,23 @@ test("aborting one joined caller does not abort the shared composer load", async
     composerOptions("shared-model")
   );
   assert.equal((await first).models[0]?.value, "shared-model");
+});
+
+test("a forced identical request joins an already-running composer load", async () => {
+  const harness = createHarness();
+  const first = harness.engine.loadComposerOptions(loadInput());
+  const second = harness.engine.loadComposerOptions({
+    ...loadInput(),
+    force: true
+  });
+
+  assert.equal(harness.commands.length, 1);
+  harness.succeed(
+    harness.commands[0]!.commandId,
+    composerOptions("forced-shared-model")
+  );
+  assert.equal((await first).models[0]?.value, "forced-shared-model");
+  assert.equal((await second).models[0]?.value, "forced-shared-model");
 });
 
 test("invalidation keeps the current composer caller attached and makes the next load refetch", async () => {

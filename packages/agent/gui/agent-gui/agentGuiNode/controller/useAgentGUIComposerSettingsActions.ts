@@ -2,7 +2,7 @@ import {
   selectEngineSession,
   type AgentActivityComposerOptions,
   type AgentActivityTurn,
-  type AgentSessionEngine,
+  type AgentSessionEngine
 } from "@tutti-os/agent-activity-core";
 import type { Dispatch, RefObject, SetStateAction } from "react";
 import { useCallback, useRef } from "react";
@@ -10,13 +10,13 @@ import type { AgentGUIRuntime } from "../../../agentActivityRuntime";
 import { translate } from "../../../i18n/index";
 import type {
   AgentSessionComposerSettings,
-  AgentSessionReasoningEffort,
+  AgentSessionReasoningEffort
 } from "../../../shared/agentSessionTypes";
 import type { AgentGUINodeData } from "../../../types";
 import {
   normalizePlanIssueBudgetPreset,
   planIssueBudgetPresetsEqual,
-  type PlanIssueBudgetPreset,
+  type PlanIssueBudgetPreset
 } from "../../../shared/agentConversation/planImplementationPresentation";
 import { useStableControllerEventCallback } from "./agentGuiController.stableHelpers";
 import {
@@ -26,14 +26,14 @@ import {
   normalizePermissionModeId,
   readNodeDefaultDraftSettings,
   resolveEffectiveComposerSettings,
-  sameComposerSettings,
+  sameComposerSettings
 } from "./agentGuiController.composerHelpers";
 import {
   enforceComposerModelBindingForHomeDefaults,
   effectiveComposerSettingsFromOptions,
   nodeDataMatchesComposerTarget,
   sanitizeComposerSettingsForTarget,
-  type AgentGUIComposerTargetData,
+  type AgentGUIComposerTargetData
 } from "./agentGuiController.composerPresentation";
 import {
   acknowledgeAgentGUIComposerDefaultsMutation,
@@ -47,7 +47,7 @@ import {
   type AgentGUIComposerDefaultsAuthorityReconciler,
   type AgentGUIComposerDefaultsAuthorityReadReceipt,
   type AgentGUIComposerDefaultsMutation,
-  type AgentGUIRetiredComposerDefault,
+  type AgentGUIRetiredComposerDefault
 } from "./agentGuiComposerDefaultsReconciliation";
 import { normalizeOptionalText } from "./agentGuiController.promptHelpers";
 import {
@@ -55,7 +55,7 @@ import {
   composerOptionsForTarget,
   rememberComposerDefaultsFields,
   type AgentGUIRememberComposerDefaultsInput,
-  type AgentGUIRememberComposerDefaultsResult,
+  type AgentGUIRememberComposerDefaultsResult
 } from "./agentGuiController.providerHelpers";
 import type { useAgentGUIActivation } from "./useAgentGUIActivation";
 
@@ -72,14 +72,18 @@ interface UseAgentGUIComposerSettingsActionsInput {
     Record<string, AgentSessionComposerSettings>
   >;
   isMountedRef: RefObject<boolean>;
-  loadDraftComposerOptions(options?: { force?: boolean }): void;
+  loadDraftComposerOptions(options?: {
+    force?: boolean;
+    section?: "core" | "capabilities";
+    waitForFreshModelCatalog?: boolean;
+  }): void;
   onDataChangeRef: RefObject<
     (updater: (current: AgentGUINodeData) => AgentGUINodeData) => void
   >;
   onComposerDefaultsAuthorityReloadedRef: RefObject<AgentGUIComposerDefaultsAuthorityReconciler>;
   onRememberComposerDefaultsRef: RefObject<
     | ((
-        input: AgentGUIRememberComposerDefaultsInput,
+        input: AgentGUIRememberComposerDefaultsInput
       ) => void | Promise<AgentGUIRememberComposerDefaultsResult>)
     | undefined
   >;
@@ -103,7 +107,7 @@ interface UseAgentGUIComposerSettingsActionsInput {
 }
 
 export function useAgentGUIComposerSettingsActions(
-  input: UseAgentGUIComposerSettingsActionsInput,
+  input: UseAgentGUIComposerSettingsActionsInput
 ) {
   const {
     activation,
@@ -126,19 +130,19 @@ export function useAgentGUIComposerSettingsActions(
     setDraftSettingsBySessionId,
     setDetailError,
     updateComposerSettingsRef,
-    workspaceId,
+    workspaceId
   } = input;
   const composerSupport = {
     permissionModeChangeDeferred:
-      input.composerSupportPermissionModeChangeDeferred,
+      input.composerSupportPermissionModeChangeDeferred
   };
   const composerDefaultsLedgerRef = useRef(
-    createAgentGUIComposerDefaultsLedger(),
+    createAgentGUIComposerDefaultsLedger()
   );
   const retireAcknowledgedDefaultsForRead = useCallback(
     (
       receipt: AgentGUIComposerDefaultsAuthorityReadReceipt | null,
-      options: AgentActivityComposerOptions,
+      options: AgentActivityComposerOptions
     ) => {
       if (!isMountedRef.current || !receipt) return;
       const currentDraft =
@@ -150,31 +154,31 @@ export function useAgentGUIComposerSettingsActions(
         composerDefaultsLedgerRef.current,
         receipt,
         currentDraft,
-        authoritativeSettings,
+        authoritativeSettings
       );
       if (retired.length === 0) return;
       draftSettingsBySessionIdRef.current = reconcileRetiredDraftMap(
         draftSettingsBySessionIdRef.current,
         receipt.draftKey,
-        retired,
+        retired
       );
       setDraftSettingsBySessionId((current) =>
-        reconcileRetiredDraftMap(current, receipt.draftKey, retired),
+        reconcileRetiredDraftMap(current, receipt.draftKey, retired)
       );
     },
-    [draftSettingsBySessionIdRef, isMountedRef, setDraftSettingsBySessionId],
+    [draftSettingsBySessionIdRef, isMountedRef, setDraftSettingsBySessionId]
   );
   const prepareComposerDefaultsAuthorityRead = useCallback(
     (
       target: AgentGUIComposerTargetData,
-      settings: AgentSessionComposerSettings,
+      settings: AgentSessionComposerSettings
     ) =>
       prepareAcknowledgedComposerDefaultsAuthorityRead(
         composerDefaultsLedgerRef.current,
         nodeDefaultDraftKey(target.provider, target.agentTargetId),
-        settings,
+        settings
       ),
-    [],
+    []
   );
   onComposerDefaultsAuthorityReloadedRef.current = {
     prepareRead: prepareComposerDefaultsAuthorityRead,
@@ -184,14 +188,14 @@ export function useAgentGUIComposerSettingsActions(
         activeConversationIdRef.current !== null ||
         !nodeDataMatchesComposerTarget(
           selectedComposerTargetDataRef.current.data,
-          target,
+          target
         )
       ) {
         return;
       }
       const draftKey = nodeDefaultDraftKey(
         target.provider,
-        target.agentTargetId,
+        target.agentTargetId
       );
       const currentDraft = draftSettingsBySessionIdRef.current[draftKey];
       if (!currentDraft) {
@@ -206,34 +210,34 @@ export function useAgentGUIComposerSettingsActions(
             sanitizeComposerSettingsForTarget({
               settings: currentDraft,
               target,
-              options,
+              options
             }),
-            options,
-          ),
+            options
+          )
         );
       if (sameComposerSettings(currentDraft, reconciledDraft)) {
         return;
       }
       draftSettingsBySessionIdRef.current = {
         ...draftSettingsBySessionIdRef.current,
-        [draftKey]: reconciledDraft,
+        [draftKey]: reconciledDraft
       };
       setDraftSettingsBySessionId((current) => ({
         ...current,
-        [draftKey]: reconciledDraft,
+        [draftKey]: reconciledDraft
       }));
       onDataChangeRef.current((current) =>
         nodeDataFromComposerSettings(
           {
             ...current,
             provider: target.provider,
-            agentTargetId: target.agentTargetId,
+            agentTargetId: target.agentTargetId
           },
-          reconciledDraft,
-        ),
+          reconciledDraft
+        )
       );
     },
-    reloaded: retireAcknowledgedDefaultsForRead,
+    reloaded: retireAcknowledgedDefaultsForRead
   };
   const updateComposerSettings = useCallback(
     (nextSettings: Partial<AgentSessionComposerSettings>) => {
@@ -246,7 +250,7 @@ export function useAgentGUIComposerSettingsActions(
       // Values pass through unclamped: the toggle visibility is capability
       // gated and the daemon clamps persisted settings per provider.
       const supportedNextSettings: Partial<AgentSessionComposerSettings> = {
-        ...nextSettings,
+        ...nextSettings
       };
       // Persistent selections only originate from rendered menu values. A
       // transient empty select value during options refresh is not a user
@@ -267,19 +271,19 @@ export function useAgentGUIComposerSettingsActions(
         const targetData = selectedComposerTargetDataRef.current;
         const defaultDraftKey = nodeDefaultDraftKey(
           targetData.provider,
-          targetData.agentTargetId,
+          targetData.agentTargetId
         );
         const storedIntent = readNodeDefaultDraftSettings({
           data: targetData.data,
           defaultReasoningEffort,
-          drafts: draftSettingsBySessionIdRef.current,
+          drafts: draftSettingsBySessionIdRef.current
         });
         const previousSettings = resolveEffectiveComposerSettings({
-          settings: storedIntent,
+          settings: storedIntent
         });
         const mergedIntent: AgentSessionComposerSettings = {
           ...storedIntent,
-          ...supportedNextSettings,
+          ...supportedNextSettings
         };
         for (const field of rememberComposerDefaultsFields) {
           if (supportedNextSettings[field] !== undefined) {
@@ -287,39 +291,39 @@ export function useAgentGUIComposerSettingsActions(
               [field]:
                 field === "codexSaverMode"
                   ? supportedNextSettings.codexSaverMode === true
-                  : normalizeOptionalText(supportedNextSettings[field]),
+                  : normalizeOptionalText(supportedNextSettings[field])
             });
           }
         }
         const snapshotComposerOptions = composerOptionsForTarget({
           snapshot: agentActivityRuntime.getSnapshot(workspaceId),
-          target: targetData,
+          target: targetData
         });
         draftSettingsBySessionIdRef.current = {
           ...draftSettingsBySessionIdRef.current,
-          [defaultDraftKey]: mergedIntent,
+          [defaultDraftKey]: mergedIntent
         };
         setDraftSettingsBySessionId((current) => ({
           ...current,
-          [defaultDraftKey]: mergedIntent,
+          [defaultDraftKey]: mergedIntent
         }));
         const rememberedDefaultsPatch = composerDefaultsPatchFromSettings(
           supportedNextSettings,
-          mergedIntent,
+          mergedIntent
         );
         if (rememberedDefaultsPatch) {
           const mutation = registerAgentGUIComposerDefaultsMutation(
             composerDefaultsLedgerRef.current,
             defaultDraftKey,
-            rememberedDefaultsPatch,
+            rememberedDefaultsPatch
           );
           const acknowledgement = invokeRememberComposerDefaults(
             onRememberComposerDefaultsRef.current,
             {
               agentTargetId: targetData.agentTargetId,
               provider: targetData.provider,
-              defaults: rememberedDefaultsPatch,
-            },
+              defaults: rememberedDefaultsPatch
+            }
           );
           if (targetData.agentTargetId && acknowledgement) {
             void reconcileAcknowledgedHomeDefaults({
@@ -330,7 +334,7 @@ export function useAgentGUIComposerSettingsActions(
               ledger: composerDefaultsLedgerRef.current,
               mutation,
               reloadComposerOptionsForTarget,
-              target: targetData,
+              target: targetData
             }).catch(() => undefined);
           }
         }
@@ -339,20 +343,20 @@ export function useAgentGUIComposerSettingsActions(
           provider: targetData.provider,
           previousSettings,
           nextSettings: resolveEffectiveComposerSettings({
-            settings: mergedIntent,
-          }),
+            settings: mergedIntent
+          })
         });
         loadDraftComposerOptions(
           snapshotComposerOptions?.behavior
             ?.refreshModelOptionsAfterSettings === true
             ? { force: true }
-            : undefined,
+            : undefined
         );
         return;
       }
       const canonicalSession = selectEngineSession(
         sessionEngine.getSnapshot(),
-        agentSessionId,
+        agentSessionId
       );
       // The optimistic pre-activation window (see startConversation): the id
       // is already the active conversation but the backend session has not
@@ -364,14 +368,14 @@ export function useAgentGUIComposerSettingsActions(
         canonicalSession === null &&
         activation.stateFor(agentSessionId) === "activating";
       const sessionSettings = cloneComposerSettings(
-        canonicalSession ? activeCanonicalComposerSettings : null,
+        canonicalSession ? activeCanonicalComposerSettings : null
       );
       const nextPermission =
         supportedNextSettings.permissionModeId !== undefined
           ? normalizeOptionalText(supportedNextSettings.permissionModeId)
           : undefined;
       const currentPermission = normalizeOptionalText(
-        sessionSettings?.permissionModeId,
+        sessionSettings?.permissionModeId
       );
       const nextModel =
         supportedNextSettings.model !== undefined
@@ -398,7 +402,7 @@ export function useAgentGUIComposerSettingsActions(
 
       const rememberedDefaultsPatch = composerDefaultsPatchFromSettings(
         supportedNextSettings,
-        supportedNextSettings as AgentSessionComposerSettings,
+        supportedNextSettings as AgentSessionComposerSettings
       );
       if (rememberedDefaultsPatch) {
         const defaultAgentTargetId =
@@ -411,8 +415,8 @@ export function useAgentGUIComposerSettingsActions(
           {
             agentTargetId: defaultAgentTargetId,
             provider: defaultProvider,
-            defaults: rememberedDefaultsPatch,
-          },
+            defaults: rememberedDefaultsPatch
+          }
         );
         if (saving) {
           // Defaults persistence is independent from the active-session
@@ -464,7 +468,7 @@ export function useAgentGUIComposerSettingsActions(
         if (composerSupport.permissionModeChangeDeferred && isTurnInFlight) {
           onShowMessageRef.current?.(
             translate("messages.agentPermissionModeAppliesNextTurn"),
-            "info",
+            "info"
           );
         }
       }
@@ -476,12 +480,12 @@ export function useAgentGUIComposerSettingsActions(
           sessionEngine.dispatch({
             type: "activation/settingsPatched",
             agentSessionId,
-            settings: { ...sessionSettingsPatch },
+            settings: { ...sessionSettingsPatch }
           });
         } else {
           sessionEngine.updateSessionSettings({
             agentSessionId,
-            settings: { ...sessionSettingsPatch },
+            settings: { ...sessionSettingsPatch }
           });
         }
         return;
@@ -496,8 +500,8 @@ export function useAgentGUIComposerSettingsActions(
       reloadComposerOptionsForTarget,
       sessionEngine,
       workspaceId,
-      setDetailError,
-    ],
+      setDetailError
+    ]
   );
   updateComposerSettingsRef.current = updateComposerSettings;
 
@@ -508,32 +512,41 @@ export function useAgentGUIComposerSettingsActions(
       onDataChangeRef.current((current) =>
         planIssueBudgetPresetsEqual(current.planIssueBudgetPreset, normalized)
           ? current
-          : { ...current, planIssueBudgetPreset: normalized },
+          : { ...current, planIssueBudgetPreset: normalized }
       );
-    },
+    }
   );
 
   // Recovery entry for the composer-options terminal error state. Leave the
   // request non-forced so Activity Core joins an already-running load when a
   // user double-clicks the retry control instead of superseding it.
-  const retryComposerOptions = useStableControllerEventCallback(() => {
-    loadDraftComposerOptions();
-  });
+  const retryComposerOptions = useStableControllerEventCallback(
+    (options?: {
+      section?: "core" | "capabilities";
+      waitForFreshModelCatalog?: boolean;
+    }) => {
+      if (options === undefined) {
+        loadDraftComposerOptions();
+        return;
+      }
+      loadDraftComposerOptions(options);
+    }
+  );
 
   return {
     retryComposerOptions,
     updateComposerSettings,
-    updatePlanIssueBudgetPreset,
+    updatePlanIssueBudgetPreset
   };
 }
 
 function invokeRememberComposerDefaults(
   callback:
     | ((
-        input: AgentGUIRememberComposerDefaultsInput,
+        input: AgentGUIRememberComposerDefaultsInput
       ) => void | Promise<AgentGUIRememberComposerDefaultsResult>)
     | undefined,
-  input: AgentGUIRememberComposerDefaultsInput,
+  input: AgentGUIRememberComposerDefaultsInput
 ): Promise<AgentGUIRememberComposerDefaultsResult> | undefined {
   if (!callback) return undefined;
   try {
@@ -571,21 +584,21 @@ async function reconcileAcknowledgedHomeDefaults(input: {
     !acknowledgeAgentGUIComposerDefaultsMutation(
       input.ledger,
       input.mutation,
-      result,
+      result
     )
   ) {
     return;
   }
   await input.reloadComposerOptionsForTarget({
     settings: currentDraft,
-    target: input.target,
+    target: input.target
   });
 }
 
 function reconcileRetiredDraftMap(
   current: Record<string, AgentSessionComposerSettings>,
   draftKey: string,
-  retired: readonly AgentGUIRetiredComposerDefault[],
+  retired: readonly AgentGUIRetiredComposerDefault[]
 ): Record<string, AgentSessionComposerSettings> {
   const draft = current[draftKey];
   if (!draft) return current;

@@ -277,11 +277,22 @@ func TestCodexAppServerAdapterTurnSteerTimesOut(t *testing.T) {
 	transport.server.mu.Unlock()
 
 	startedAt := time.Now()
-	_, err := adapter.Exec(context.Background(), session, []PromptContentBlock{{
-		Type: "text", Text: "new guidance",
-	}}, "", "turn-guidance", nil, nil)
+	dispatches := make(chan ProviderDispatchResult, 1)
+	_, err := adapter.GuideActiveTurnWithProviderDispatch(
+		context.Background(),
+		session,
+		[]PromptContentBlock{{Type: "text", Text: "new guidance"}},
+		"",
+		"turn-guidance",
+		nil,
+		nil,
+		func(result ProviderDispatchResult) { dispatches <- result },
+	)
 	if !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("steered Exec error = %v, want deadline exceeded", err)
+	}
+	if dispatch := <-dispatches; dispatch.Disposition != DispatchDispositionOutcomeUnknown {
+		t.Fatalf("guidance dispatch = %#v, want outcome unknown", dispatch)
 	}
 	if elapsed := time.Since(startedAt); elapsed > time.Second {
 		t.Fatalf("steered Exec elapsed = %s, want bounded turn/steer", elapsed)

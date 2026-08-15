@@ -31,6 +31,7 @@ interface Props {
   connectors: readonly AgentGUIProviderSkillOption[];
   disabled: boolean;
   labels: ComposerConnectorsMenuLabels;
+  onOpenChange?: (open: boolean) => void;
   onOpenConnector: (connectorKey: string) => void;
   onOpenConnectors: () => void;
 }
@@ -49,6 +50,7 @@ export function ComposerConnectorsMenu({
   connectors,
   disabled,
   labels,
+  onOpenChange,
   onOpenConnector,
   onOpenConnectors
 }: Props): React.JSX.Element {
@@ -70,7 +72,13 @@ export function ComposerConnectorsMenu({
   };
 
   return (
-    <DropdownMenu open={open} onOpenChange={setOpen}>
+    <DropdownMenu
+      open={open}
+      onOpenChange={(nextOpen) => {
+        setOpen(nextOpen);
+        onOpenChange?.(nextOpen);
+      }}
+    >
       <DropdownMenuTrigger asChild>
         <button
           type="button"
@@ -111,7 +119,20 @@ export function ComposerConnectorsMenu({
             </>
           ) : (
             <>
-              <span aria-hidden className="inline-block size-4 bg-current transition-colors" style={{ WebkitMaskImage: `url("${connectorLinedIconUrl}")`, WebkitMaskPosition: "center", WebkitMaskRepeat: "no-repeat", WebkitMaskSize: "contain", maskImage: `url("${connectorLinedIconUrl}")`, maskPosition: "center", maskRepeat: "no-repeat", maskSize: "contain" }} />
+              <span
+                aria-hidden
+                className="inline-block size-4 bg-current transition-colors"
+                style={{
+                  WebkitMaskImage: `url("${connectorLinedIconUrl}")`,
+                  WebkitMaskPosition: "center",
+                  WebkitMaskRepeat: "no-repeat",
+                  WebkitMaskSize: "contain",
+                  maskImage: `url("${connectorLinedIconUrl}")`,
+                  maskPosition: "center",
+                  maskRepeat: "no-repeat",
+                  maskSize: "contain"
+                }}
+              />
               <span>{labels.connectors}</span>
             </>
           )}

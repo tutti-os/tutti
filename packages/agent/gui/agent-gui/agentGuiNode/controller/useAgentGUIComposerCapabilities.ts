@@ -3,6 +3,7 @@ import {
   resolveAgentActivityUsage,
   selectComposerOptions,
   selectComposerOptionsLoadStatus,
+  selectComposerOptionsSectionLoadStatus,
   type AgentActivityUsage,
   type CanonicalAgentSession,
   type AgentSessionEngine
@@ -55,10 +56,19 @@ export function useAgentGUIComposerCapabilities(
     input.sessionEngine,
     (state) => selectComposerOptionsLoadStatus(state, composerTargetKey)
   );
+  const capabilitiesLoadStatus = useEngineSelector(
+    input.sessionEngine,
+    (state) =>
+      selectComposerOptionsSectionLoadStatus(
+        state,
+        composerTargetKey,
+        "capabilities"
+      )
+  );
   const composerOptionsLoading = Boolean(
     composerTargetKey &&
-    !providerComposerOptions &&
-    composerOptionsLoadStatus === "loading"
+    (capabilitiesLoadStatus === "loading" ||
+      (!providerComposerOptions && composerOptionsLoadStatus === "loading"))
   );
   const defaultReasoningEffort: AgentSessionReasoningEffort | null = "high";
   const sessionCapabilities = input.activeEngineSession?.capabilities ?? null;

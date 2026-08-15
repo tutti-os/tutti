@@ -333,6 +333,25 @@ type ActiveTurnGuidanceAdapter interface {
 	GuideActiveTurn(context.Context, Session, []PromptContentBlock, string, string, EventSink, CommandSnapshotSink) ([]activityshared.Event, error)
 }
 
+// ActiveTurnGuidanceProviderDispatchAdapter adds the provider-dispatch verdict
+// needed to distinguish adapter-local preflight failures from a request whose
+// provider acknowledgement is unknown. Adapters that do not implement this
+// optional seam retain the conservative legacy behavior: any returned error is
+// treated as outcome_unknown.
+type ActiveTurnGuidanceProviderDispatchAdapter interface {
+	ActiveTurnGuidanceAdapter
+	GuideActiveTurnWithProviderDispatch(
+		context.Context,
+		Session,
+		[]PromptContentBlock,
+		string,
+		string,
+		EventSink,
+		CommandSnapshotSink,
+		ProviderDispatchSink,
+	) ([]activityshared.Event, error)
+}
+
 type ResumeProbeAdapter interface {
 	CanResume(Session) bool
 }

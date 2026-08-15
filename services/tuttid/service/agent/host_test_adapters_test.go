@@ -123,7 +123,9 @@ func (a serviceHostStore) RollbackRuntimeSessionInitialization(ctx context.Conte
 }
 
 func (a serviceHostStore) InitializeRuntimeSession(ctx context.Context, input agenthost.RuntimeSessionInitialization) (storesqlite.Session, error) {
-	persisted, err := a.service.initializeRuntimeSession(ctx, input.Session, input.RailPlacement)
+	persisted, err := a.service.initializeRuntimeSessionWithRailAuthority(
+		ctx, input.Session, input.RailPlacement, input.RailPlacementAuthoritative,
+	)
 	return activitySessionFromPersisted(persisted), err
 }
 

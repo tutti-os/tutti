@@ -197,6 +197,7 @@ export function createDesktopAgentActivityAdapter({
       const startedAt = Date.now();
       const cwd = input.cwd?.trim();
       const agentTargetId = input.agentTargetId?.trim();
+      const section = input.section ?? "full";
       try {
         const result = await withAbortableRequestTimeout(
           (signal) =>
@@ -205,6 +206,10 @@ export function createDesktopAgentActivityAdapter({
               {
                 ...(agentTargetId ? { agentTargetId } : {}),
                 ...(cwd ? { cwd } : {}),
+                ...(section !== "full" ? { section } : {}),
+                ...(input.waitForFreshModelCatalog
+                  ? { waitForFreshModelCatalog: true }
+                  : {}),
                 workspaceId: input.workspaceId,
                 settings: tuttiAgentSessionComposerSettingsFromActivity(
                   input.settings
@@ -218,20 +223,25 @@ export function createDesktopAgentActivityAdapter({
             timeoutMs: composerOptionsRequestTimeoutMs
           }
         );
+        const options = agentActivityComposerOptionsFromTuttidResult(
+          input.provider,
+          result
+        );
+        const modelNames = desktopComposerModelNames(options.models);
         reportDesktopAgentComposerOptionsDiagnostic(
           runtimeApi,
           input.workspaceId,
           {
             agentTargetId: agentTargetId ?? null,
             durationMs: Date.now() - startedAt,
+            modelCount: options.models.length,
+            ...(modelNames ? { modelNames } : {}),
             provider: input.provider,
+            section,
             status: "ready"
           }
         );
-        return agentActivityComposerOptionsFromTuttidResult(
-          input.provider,
-          result
-        );
+        return options;
       } catch (error) {
         reportDesktopAgentComposerOptionsDiagnostic(
           runtimeApi,
@@ -240,6 +250,7 @@ export function createDesktopAgentActivityAdapter({
             agentTargetId: agentTargetId ?? null,
             durationMs: Date.now() - startedAt,
             provider: input.provider,
+            section,
             status: "error",
             ...normalizeDesktopAgentDiagnosticError(error)
           }
@@ -727,6 +738,31 @@ function reportDesktopAgentComposerOptionsDiagnostic(
   } catch {
     // Diagnostic logging must not affect composer option loading.
   }
+}
+
+function desktopComposerModelNames(
+  models: readonly { value: string }[]
+): string | undefined {
+  const names: string[] = [];
+  const seen = new Set<string>();
+  let totalLength = 0;
+  for (const model of models) {
+    let withoutControls = "";
+    for (const character of model.value) {
+      const code = character.charCodeAt(0);
+      if ((code >= 0 && code <= 0x1f) || (code >= 0x7f && code <= 0x9f)) {
+        continue;
+      }
+      withoutControls += character;
+    }
+    const name = withoutControls.replace(/\s+/g, " ").trim().slice(0, 120);
+    if (!name || seen.has(name)) continue;
+    if (names.length >= 32 || totalLength + name.length > 1_024) break;
+    names.push(name);
+    seen.add(name);
+    totalLength += name.length;
+  }
+  return names.length > 0 ? names.join(",") : undefined;
 }
 
 function normalizeDesktopAgentDiagnosticError(

@@ -533,6 +533,45 @@ describe("existing-session prompt submission", () => {
     ).toBe("");
   });
 
+  it("clears the draft captured by the Composer when the controller ref is stale", () => {
+    const goalControl = vi.fn(async () => undefined);
+    const { input, draftByScopeKeyRef, sessionEngine, setDraftByScopeKey } =
+      createGoalControlInput(goalControl as never);
+    const submittedDraft = draft("continue");
+    draftByScopeKeyRef.current = {
+      "session:session-1": draft("stale projection")
+    };
+    const submitPrompt = vi
+      .spyOn(sessionEngine, "submitPrompt")
+      .mockReturnValue({ accepted: true, queued: true });
+    const { result } = renderHook(() =>
+      useAgentGUISubmitInteractionActions(input)
+    );
+
+    setDraftByScopeKey.mockImplementationOnce((update) => {
+      const current = { "session:session-1": submittedDraft };
+      const next = typeof update === "function" ? update(current) : update;
+      draftByScopeKeyRef.current = next;
+    });
+
+    act(() =>
+      result.current.submitPrompt(
+        [{ type: "text", text: "continue" }],
+        undefined,
+        { submittedDraft }
+      )
+    );
+
+    expect(submitPrompt).toHaveBeenCalledWith(
+      expect.objectContaining({
+        content: [{ type: "text", text: "continue" }]
+      })
+    );
+    expect(
+      agentComposerDraftPrompt(draftByScopeKeyRef.current["session:session-1"]!)
+    ).toBe("");
+  });
+
   it("keeps the draft when the Engine does not admit the submission", () => {
     const goalControl = vi.fn(async () => undefined);
     const { input, draftByScopeKeyRef, sessionEngine, setDraftByScopeKey } =

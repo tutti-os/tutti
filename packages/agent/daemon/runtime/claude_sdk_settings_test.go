@@ -2,6 +2,7 @@ package agentruntime
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -57,11 +58,14 @@ func TestClaudeCodeSDKAdapterGuideActiveTurnSendsSidecarGuide(t *testing.T) {
 		err    error
 	}
 	results := make(chan guidanceResult, 1)
+	dispatches := make(chan ProviderDispatchResult, 1)
 	go func() {
-		events, err := adapter.GuideActiveTurn(context.Background(), session, []PromptContentBlock{
+		events, err := adapter.GuideActiveTurnWithProviderDispatch(context.Background(), session, []PromptContentBlock{
 			{Type: "text", Text: "guide current turn"},
 			{Type: "image", MimeType: "image/png", URL: imageURL},
-		}, "", "turn-guidance", nil, nil)
+		}, "", "turn-guidance", nil, nil, func(result ProviderDispatchResult) {
+			dispatches <- result
+		})
 		results <- guidanceResult{events: events, err: err}
 	}()
 
@@ -95,6 +99,68 @@ func TestClaudeCodeSDKAdapterGuideActiveTurnSendsSidecarGuide(t *testing.T) {
 	}
 	if guidance, ok := messages[0].Payload.Metadata["guidance"].(bool); !ok || !guidance {
 		t.Fatalf("guidance metadata = %#v, want guidance=true", messages[0].Payload.Metadata)
+	}
+	if dispatch := <-dispatches; dispatch.Disposition != DispatchDispositionAppliedWithoutProviderTurn {
+		t.Fatalf("guidance dispatch = %#v, want applied", dispatch)
+	}
+}
+
+func TestClaudeCodeSDKAdapterGuidancePreflightFailureIsNotDispatched(t *testing.T) {
+	adapter := NewClaudeCodeSDKAdapter(nil)
+	dispatches := make(chan ProviderDispatchResult, 1)
+	_, err := adapter.GuideActiveTurnWithProviderDispatch(
+		t.Context(),
+		standardTestSession(ProviderClaudeCode),
+		textPrompt("guide current turn"),
+		"",
+		"turn-guidance",
+		nil,
+		nil,
+		func(result ProviderDispatchResult) { dispatches <- result },
+	)
+	if !errors.Is(err, ErrSessionDisconnected) {
+		t.Fatalf("GuideActiveTurn error = %v, want ErrSessionDisconnected", err)
+	}
+	if dispatch := <-dispatches; dispatch.Disposition != DispatchDispositionNotDispatched {
+		t.Fatalf("guidance dispatch = %#v, want not dispatched", dispatch)
+	}
+}
+
+func TestClaudeCodeSDKAdapterGuidanceFailureAfterSendIsOutcomeUnknown(t *testing.T) {
+	adapter := NewClaudeCodeSDKAdapter(nil)
+	session := standardTestSession(ProviderClaudeCode)
+	conn := newBlockingClaudeSDKConnection()
+	defer func() { _ = conn.Close() }()
+	adapter.storeSession(session.AgentSessionID, &claudeSDKAdapterSession{
+		conn:             conn,
+		reader:           &claudeSDKLineReader{conn: conn},
+		pendingRequests:  make(map[string]*pendingInteractiveRequest),
+		pendingResponses: make(map[string]chan claudeSDKSidecarEvent),
+		liveState:        newClaudeSDKLiveState(),
+	})
+	ctx, cancel := context.WithCancel(t.Context())
+	dispatches := make(chan ProviderDispatchResult, 1)
+	done := make(chan error, 1)
+	go func() {
+		_, err := adapter.GuideActiveTurnWithProviderDispatch(
+			ctx,
+			session,
+			textPrompt("guide current turn"),
+			"",
+			"turn-guidance",
+			nil,
+			nil,
+			func(result ProviderDispatchResult) { dispatches <- result },
+		)
+		done <- err
+	}()
+	waitForClaudeSDKSentRequest(t, conn, "guide")
+	cancel()
+	if err := <-done; !errors.Is(err, context.Canceled) {
+		t.Fatalf("GuideActiveTurn error = %v, want context canceled", err)
+	}
+	if dispatch := <-dispatches; dispatch.Disposition != DispatchDispositionOutcomeUnknown {
+		t.Fatalf("guidance dispatch = %#v, want outcome unknown", dispatch)
 	}
 }
 

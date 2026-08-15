@@ -2371,6 +2371,48 @@ func (e ExternalAgentImportArchiveKind) Valid() bool {
 	}
 }
 
+// Defines values for GetAgentProviderComposerOptionsRequestSection.
+const (
+	GetAgentProviderComposerOptionsRequestSectionCapabilities GetAgentProviderComposerOptionsRequestSection = "capabilities"
+	GetAgentProviderComposerOptionsRequestSectionCore         GetAgentProviderComposerOptionsRequestSection = "core"
+	GetAgentProviderComposerOptionsRequestSectionFull         GetAgentProviderComposerOptionsRequestSection = "full"
+)
+
+// Valid indicates whether the value is a known member of the GetAgentProviderComposerOptionsRequestSection enum.
+func (e GetAgentProviderComposerOptionsRequestSection) Valid() bool {
+	switch e {
+	case GetAgentProviderComposerOptionsRequestSectionCapabilities:
+		return true
+	case GetAgentProviderComposerOptionsRequestSectionCore:
+		return true
+	case GetAgentProviderComposerOptionsRequestSectionFull:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for GetWorkspaceAppFactoryAgentTargetComposerOptionsRequestSection.
+const (
+	GetWorkspaceAppFactoryAgentTargetComposerOptionsRequestSectionCapabilities GetWorkspaceAppFactoryAgentTargetComposerOptionsRequestSection = "capabilities"
+	GetWorkspaceAppFactoryAgentTargetComposerOptionsRequestSectionCore         GetWorkspaceAppFactoryAgentTargetComposerOptionsRequestSection = "core"
+	GetWorkspaceAppFactoryAgentTargetComposerOptionsRequestSectionFull         GetWorkspaceAppFactoryAgentTargetComposerOptionsRequestSection = "full"
+)
+
+// Valid indicates whether the value is a known member of the GetWorkspaceAppFactoryAgentTargetComposerOptionsRequestSection enum.
+func (e GetWorkspaceAppFactoryAgentTargetComposerOptionsRequestSection) Valid() bool {
+	switch e {
+	case GetWorkspaceAppFactoryAgentTargetComposerOptionsRequestSectionCapabilities:
+		return true
+	case GetWorkspaceAppFactoryAgentTargetComposerOptionsRequestSectionCore:
+		return true
+	case GetWorkspaceAppFactoryAgentTargetComposerOptionsRequestSectionFull:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for HealthStatusResponseStatus.
 const (
 	Ok HealthStatusResponseStatus = "ok"
@@ -7180,20 +7222,35 @@ type ForkWorkspaceAgentSessionRequest struct {
 // GetAgentProviderComposerOptionsRequest defines model for GetAgentProviderComposerOptionsRequest.
 type GetAgentProviderComposerOptionsRequest struct {
 	// AgentTargetId Agent target whose provider and runtime context the composer options resolve against. Optional; when omitted the provider path parameter is used directly.
-	AgentTargetId *string                       `json:"agentTargetId,omitempty"`
-	Cwd           *string                       `json:"cwd,omitempty"`
-	Locale        *DesktopLocale                `json:"locale,omitempty"`
-	Settings      *AgentSessionComposerSettings `json:"settings,omitempty"`
+	AgentTargetId *string        `json:"agentTargetId,omitempty"`
+	Cwd           *string        `json:"cwd,omitempty"`
+	Locale        *DesktopLocale `json:"locale,omitempty"`
+
+	// Section Selects the independently loadable composer section. Core contains model, reasoning, speed, permission, and runtime settings; capabilities contains skills and capability catalog data. Full is retained for callers that need the combined legacy response.
+	Section  *GetAgentProviderComposerOptionsRequestSection `json:"section,omitempty"`
+	Settings *AgentSessionComposerSettings                  `json:"settings,omitempty"`
+
+	// WaitForFreshModelCatalog Waits for an authoritative model catalog when the cached result is stale. Use only for an explicit model-picker request; ordinary composer loads should render the last successful catalog first.
+	WaitForFreshModelCatalog *bool `json:"waitForFreshModelCatalog,omitempty"`
 
 	// WorkspaceId Workspace used for Claude Code live model discovery.
 	WorkspaceId *string `json:"workspaceId,omitempty"`
 }
 
+// GetAgentProviderComposerOptionsRequestSection Selects the independently loadable composer section. Core contains model, reasoning, speed, permission, and runtime settings; capabilities contains skills and capability catalog data. Full is retained for callers that need the combined legacy response.
+type GetAgentProviderComposerOptionsRequestSection string
+
 // GetWorkspaceAppFactoryAgentTargetComposerOptionsRequest defines model for GetWorkspaceAppFactoryAgentTargetComposerOptionsRequest.
 type GetWorkspaceAppFactoryAgentTargetComposerOptionsRequest struct {
-	Locale   *DesktopLocale                `json:"locale,omitempty"`
-	Settings *AgentSessionComposerSettings `json:"settings,omitempty"`
+	Locale *DesktopLocale `json:"locale,omitempty"`
+
+	// Section Independently loadable composer section.
+	Section  *GetWorkspaceAppFactoryAgentTargetComposerOptionsRequestSection `json:"section,omitempty"`
+	Settings *AgentSessionComposerSettings                                   `json:"settings,omitempty"`
 }
+
+// GetWorkspaceAppFactoryAgentTargetComposerOptionsRequestSection Independently loadable composer section.
+type GetWorkspaceAppFactoryAgentTargetComposerOptionsRequestSection string
 
 // HealthStatusResponse defines model for HealthStatusResponse.
 type HealthStatusResponse struct {

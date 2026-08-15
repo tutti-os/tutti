@@ -3110,6 +3110,34 @@ inline data URL instead`. Claude or standard ACP may instead receive no
   [desktopRichTextAtAgentContributors.ts](../../../apps/desktop/src/renderer/src/features/rich-text-at/services/internal/desktopRichTextAtAgentContributors.ts)
   [agent-gui-node.md](../../architecture/agent-gui-node.md)
 
+### AgentGUI @ browse fails after reopening
+
+- Symptom:
+  The AgentGUI `@` palette opens once, then shows a search failure after the
+  palette is closed and reopened, even though the workspace request itself is
+  healthy.
+- Quick checks:
+  Inspect the AgentGUI lifecycle diagnostics for a `browse.fetch.start` entry
+  followed by `AbortError` on the next open. The failing request usually has
+  the same browse key as the request canceled when the first palette closed.
+- Root cause:
+  A shared browse request was kept in its deduplication map until its promise's
+  asynchronous `finally` cleanup ran. A new consumer could arrive in that
+  window and attach to the already-aborted request, turning expected palette
+  cancellation into a visible search failure.
+- Fix:
+  Use `AbortableSingleFlight` for shared abortable requests. Evict the entry
+  synchronously when its final consumer leaves, and make late cleanup delete
+  only the exact request instance. An operation owner may also abort a stuck
+  request immediately without leaving a retryable stale entry.
+- Validation:
+  Cover concurrent deduplication, one-consumer cancellation, immediate retry
+  after final-consumer cancellation, operation-owner timeout cancellation, and
+  late completion of the old request after a replacement starts.
+- References:
+  [abortableSingleFlight.ts](../../../packages/agent/gui/shared/query/abortableSingleFlight.ts)
+  [AgentMentionSearchCache.ts](../../../packages/agent/gui/agent-gui/agentGuiNode/AgentMentionSearchCache.ts)
+
 ### Agent diagnostics flood while a turn is streaming
 
 - Symptom:

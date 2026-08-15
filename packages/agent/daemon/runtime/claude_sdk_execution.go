@@ -509,14 +509,45 @@ func (a *ClaudeCodeSDKAdapter) GuideActiveTurn(
 	emit EventSink,
 	_ CommandSnapshotSink,
 ) ([]activityshared.Event, error) {
+	return a.GuideActiveTurnWithProviderDispatch(
+		ctx,
+		session,
+		content,
+		displayPrompt,
+		turnID,
+		emit,
+		nil,
+		nil,
+	)
+}
+
+func (a *ClaudeCodeSDKAdapter) GuideActiveTurnWithProviderDispatch(
+	ctx context.Context,
+	session Session,
+	content []PromptContentBlock,
+	displayPrompt string,
+	turnID string,
+	emit EventSink,
+	_ CommandSnapshotSink,
+	reportDispatch ProviderDispatchSink,
+) ([]activityshared.Event, error) {
+	reportNotDispatched := func() {
+		if reportDispatch != nil {
+			reportDispatch(ProviderDispatchResult{
+				Disposition: DispatchDispositionNotDispatched,
+			})
+		}
+	}
 	adapterSession := a.getSession(session.AgentSessionID)
 	if adapterSession == nil {
+		reportNotDispatched()
 		return nil, ErrSessionDisconnected
 	}
 	session.ProviderSessionID = adapterSession.providerSessionID
 	explicitDisplayPrompt, visibleText := explicitAndVisiblePromptText(content, displayPrompt)
 	providerContent, err := materializeProviderPromptImagesAtBoundary(ctx, content, a.promptImageMaterializer)
 	if err != nil {
+		reportNotDispatched()
 		return nil, err
 	}
 	events := []activityshared.Event{
@@ -527,6 +558,7 @@ func (a *ClaudeCodeSDKAdapter) GuideActiveTurn(
 		}),
 	}
 	if err := a.startClaudeSDKReader(session.AgentSessionID, adapterSession); err != nil {
+		reportNotDispatched()
 		return events, err
 	}
 	ctx, cancel := context.WithTimeout(ctx, claudeSDKGoalCommandTimeout)
@@ -540,7 +572,17 @@ func (a *ClaudeCodeSDKAdapter) GuideActiveTurn(
 			"content":        promptContentForClaudeSDK(providerContent, visibleText),
 		},
 	}); err != nil {
+		if reportDispatch != nil {
+			reportDispatch(ProviderDispatchResult{
+				Disposition: DispatchDispositionOutcomeUnknown,
+			})
+		}
 		return events, err
+	}
+	if reportDispatch != nil {
+		reportDispatch(ProviderDispatchResult{
+			Disposition: DispatchDispositionAppliedWithoutProviderTurn,
+		})
 	}
 	if emit != nil {
 		emit(events)

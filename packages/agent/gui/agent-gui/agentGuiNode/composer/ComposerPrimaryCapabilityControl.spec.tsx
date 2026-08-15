@@ -1,5 +1,5 @@
 import "@testing-library/jest-dom/vitest";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type { AgentComposerProps } from "./AgentComposer.types";
 import { ComposerPrimaryCapabilityControl } from "./ComposerPrimaryCapabilityControl";
@@ -40,6 +40,7 @@ describe("ComposerPrimaryCapabilityControl", () => {
   });
 
   it("shows only connectors when connectors are enabled", () => {
+    const onRetryComposerOptions = vi.fn();
     render(
       <ComposerPrimaryCapabilityControl
         availableSkills={[]}
@@ -48,6 +49,7 @@ describe("ComposerPrimaryCapabilityControl", () => {
         isTuttiModeActive={false}
         isTuttiModeUpdating={false}
         labels={labels}
+        onRetryComposerOptions={onRetryComposerOptions}
         onCapabilitySettingsRequest={vi.fn()}
         onTuttiModeChange={vi.fn()}
         tuttiModeSupported={true}
@@ -60,5 +62,12 @@ describe("ComposerPrimaryCapabilityControl", () => {
     expect(
       screen.queryByTestId("agent-gui-composer-tutti-mode-toggle")
     ).not.toBeInTheDocument();
+    fireEvent.pointerDown(
+      screen.getByTestId("agent-gui-composer-connectors-trigger"),
+      { button: 0, ctrlKey: false, pointerType: "mouse" }
+    );
+    expect(onRetryComposerOptions).toHaveBeenCalledWith({
+      section: "capabilities"
+    });
   });
 });

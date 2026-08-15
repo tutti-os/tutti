@@ -97,6 +97,7 @@ export type AgentGUIPerformanceEvent =
       force: boolean;
       hasDirectory: boolean;
       modelCount?: number;
+      modelNames?: string[];
       observedAtUnixMs: number;
       operationId: string;
       outcome: "completed" | "failed";
@@ -105,9 +106,50 @@ export type AgentGUIPerformanceEvent =
       startedAtUnixMs: number;
       type: "composer_options_load_settled";
       workspaceId: string;
+    }
+  | {
+      agentTargetId: string;
+      force: boolean;
+      hasDirectory: boolean;
+      observedAtUnixMs: number;
+      operationId: string;
+      provider: string;
+      section: string;
+      source: AgentGUIComposerOptionsLoadSource;
+      stage: string;
+      startedAtUnixMs: number;
+      type: "composer_options_stage_started";
+      workspaceId: string;
+    }
+  | {
+      agentTargetId: string;
+      durationBucket: AgentGUIPerformanceDurationBucket;
+      durationMs: number;
+      errorCategory?: string;
+      errorCode?: string;
+      failureStage?: AgentGUIPerformanceFailureStage;
+      force: boolean;
+      hasDirectory: boolean;
+      modelNames?: string[];
+      observedAtUnixMs: number;
+      operationId: string;
+      outcome: "completed" | "failed";
+      provider: string;
+      section: string;
+      source: AgentGUIComposerOptionsLoadSource;
+      stage: string;
+      startedAtUnixMs: number;
+      type: "composer_options_stage_settled";
+      workspaceId: string;
     };
 
 export type AgentGUIComposerOptionsPerformanceEvent = Extract<
   AgentGUIPerformanceEvent,
-  { type: "composer_options_load_settled" | "composer_options_load_started" }
+  {
+    type:
+      | "composer_options_load_settled"
+      | "composer_options_load_started"
+      | "composer_options_stage_settled"
+      | "composer_options_stage_started";
+  }
 >;

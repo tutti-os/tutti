@@ -11504,6 +11504,24 @@ components:
       type: object
       additionalProperties: false
       properties:
+        section:
+          type: string
+          enum:
+            - full
+            - core
+            - capabilities
+          default: full
+          description: >-
+            Selects the independently loadable composer section. Core contains
+            model, reasoning, speed, permission, and runtime settings;
+            capabilities contains skills and capability catalog data. Full is
+            retained for callers that need the combined legacy response.
+        waitForFreshModelCatalog:
+          type: boolean
+          description: >-
+            Waits for an authoritative model catalog when the cached result is
+            stale. Use only for an explicit model-picker request; ordinary
+            composer loads should render the last successful catalog first.
         agentTargetId:
           type: string
           description:
@@ -11523,6 +11541,14 @@ components:
       type: object
       additionalProperties: false
       properties:
+        section:
+          type: string
+          enum:
+            - full
+            - core
+            - capabilities
+          default: full
+          description: Independently loadable composer section.
         locale:
           $ref: "#/components/schemas/DesktopLocale"
         settings:
