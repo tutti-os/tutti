@@ -476,6 +476,9 @@ importers:
       '@tutti-os/browser-node':
         specifier: workspace:*
         version: link:../../browser/workbench-node
+      '@tutti-os/connector-market':
+        specifier: workspace:*
+        version: link:../../connector/market
       '@tutti-os/ui-i18n-runtime':
         specifier: workspace:*
         version: link:../../ui/i18n-runtime

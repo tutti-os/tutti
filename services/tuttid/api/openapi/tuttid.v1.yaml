@@ -5582,6 +5582,8 @@ paths:
           $ref: "#/components/responses/WorkspaceNotFoundError"
         "405":
           $ref: "#/components/responses/MethodNotAllowedError"
+        "409":
+          $ref: "#/components/responses/AgentInteractiveConflictError"
         "502":
           $ref: "#/components/responses/WorkspaceOperationError"
         "503":
@@ -7039,6 +7041,19 @@ components:
                     failureKind: missing
                   retryable: false
                   developerMessage: codex configuration dependency model_instructions_file is unavailable
+    AgentInteractiveConflictError:
+      description: Interactive response no longer matches a pending canonical request
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApiErrorResponse"
+          examples:
+            staleInteractiveResponse:
+              value:
+                error:
+                  code: workspace_operation_failed
+                  reason: agent_interactive_request_stale
+                  developerMessage: interactive request is no longer live
     AgentTargetNotFoundError:
       description: Agent target was not found
       content:
@@ -14575,9 +14590,17 @@ components:
         model:
           type: string
           nullable: true
+        modelExplicit:
+          type: boolean
+          nullable: true
+          description: True only when model came from an explicit caller selection; false identifies an inherited or remembered fallback preference.
         reasoningEffort:
           type: string
           nullable: true
+        reasoningEffortExplicit:
+          type: boolean
+          nullable: true
+          description: True only when reasoning effort came from an explicit caller selection; false identifies a model-dependent inherited value.
         noProject:
           type: boolean
           nullable: true

@@ -305,6 +305,16 @@ which stage to resume. Install and uninstall return verifiable results to the
 application; artifact helpers do not write the business repository or publish
 events directly.
 
+Every operation row also stores canonical `owner_account_id` and visibility.
+User commands are `account` visible and public reads always use
+`GetOperationForScope`; an ownership mismatch is indistinguishable from a
+missing row. Runtime reconcile and operations whose legacy owner cannot be
+proven are `system_private`: workers may still recover them, but snapshots and
+operation endpoints never publish them. Legacy rows derive ownership from
+`operation_json.scope.accountId`. The idempotency key is
+`(owner_account_id, client_request_id)`, while the active physical lifecycle
+constraint remains device-global per Connector.
+
 `accepted` and `running` rows have no age-based expiry. The SQLite repository
 protects them with one-active-operation constraints plus renewable,
 token-fenced leases, and daemon startup reschedules every recoverable row. The
@@ -432,6 +442,13 @@ state. A public projection change atomically advances the Connector revision and
 appends its invalidation event; account state can no longer change invisibly
 between market Snapshot reads.
 
+Operation-bearing events carry an internal account audience and are delivered
+only while that owner is the host's active account. Every state change also
+produces a machine-level Connector invalidation without an operation id, so a
+different account still observes device installation truth without learning
+another account's command identity. Legacy or private events are fail-closed by
+stripping operation and owner identifiers before publication.
+
 Concurrent catalog requests use a process-local monotonically increasing fetch
 fence: an older page or refresh response that returns after a newer response is
 dropped before its write transaction. This is a daemon compatibility mechanism
@@ -499,9 +516,35 @@ synchronizing -> materializing -> ready`; failure is terminal and disposes
   account authentication, activates the module without network access while
   signed out, reloads after login, and keeps reconnect/resume paths silent
   after logout
+- install intent that arrives while Tutti is signed out invokes the host-owned
+  account login flow through `requestInstallAdmission`; the service rechecks
+  admission and returns `not_admitted` without calling the backend or showing
+  installation success when login is still pending
+- Tutti enables renderer-owned automatic updates for installed, compatible
+  Connectors. After an authoritative snapshot, catalog page, or connector event
+  publishes a different active release digest, Market starts the existing
+  install/update command in the background. It never opens login from a
+  background update and attempts one release digest only once per renderer
+  lifetime, leaving explicit update available after failure
 - the shared renderer subscribes at leaf components through a stable context,
   uses `@tutti-os/ui-system`, and owns no transport, startup, disposal, or
   business-state reconciliation
+
+Compact composer surfaces reuse `ConnectorComposerMenu` from the shared UI
+entrypoint. The menu consumes only a host-neutral projection of connector key,
+name, icon, and setup state; AgentGUI maps its provider-neutral capability
+options into that projection and retains only placement plus its Tutti Mode
+fallback. Selecting one item emits a semantic connector-open intent. The host
+executes `openConnectorMarketDialog(root, connectorKey)`, which waits for the
+authoritative market view, rejects invalid or unknown keys, and then advances
+the package-owned dialog state machine. Selecting “more” remains host
+navigation because settings/workbench location is product-owned.
+
+Every renderer window mounts exactly one `ConnectorMarketDialogHost` alongside
+its other window-level panel hosts. Composer entries and catalog cards never
+mount their own dialog host. This keeps dialog identity and mutual exclusion in
+one shared Root while allowing several AgentGUI surfaces in the same window to
+open it.
 
 Connector details are represented by one modal state machine, never by a fixed
 right-hand pane. An uninstalled connector opens an installation confirmation.

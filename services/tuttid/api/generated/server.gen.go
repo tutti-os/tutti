@@ -11633,6 +11633,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	return m
 }
 
+type AgentInteractiveConflictErrorJSONResponse ApiErrorResponse
+
 type AgentQuickPromptConflictErrorJSONResponse ApiErrorResponse
 
 type AgentQuickPromptNotFoundErrorJSONResponse ApiErrorResponse
@@ -21451,6 +21453,22 @@ func (response SubmitWorkspaceAgentInteractive405JSONResponse) VisitSubmitWorksp
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(405)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SubmitWorkspaceAgentInteractive409JSONResponse struct {
+	AgentInteractiveConflictErrorJSONResponse
+}
+
+func (response SubmitWorkspaceAgentInteractive409JSONResponse) VisitSubmitWorkspaceAgentInteractiveResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
 	_, err := buf.WriteTo(w)
 	return err
 }

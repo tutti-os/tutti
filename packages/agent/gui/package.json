@@ -71,6 +71,7 @@
     "@tanstack/react-virtual": "^3.14.8",
     "@tutti-os/agent-activity-core": "workspace:*",
     "@tutti-os/browser-node": "workspace:*",
+    "@tutti-os/connector-market": "workspace:*",
     "@tutti-os/ui-i18n-runtime": "workspace:*",
     "@tutti-os/ui-react-hooks": "workspace:*",
     "@tutti-os/ui-rich-text": "workspace:*",

@@ -388,7 +388,20 @@ func (application *Application) FenceInstalledRuntimesForScope(ctx context.Conte
 		}
 		installedRelease, evidenceErr := application.installedReleaseEvidence(ctx, connector)
 		if evidenceErr != nil {
-			fenceErrors = append(fenceErrors, evidenceErr)
+			// Legacy stores may have lost the previous release metadata when a
+			// prepared update failed. The implementation host can still fence every
+			// route for the connector by identity, without trusting that metadata.
+			// This keeps the connector fail-closed without holding the global
+			// publication gate closed and blocking a repair install.
+			fallbackErr := application.config.Host.DeactivateRuntime(ctx, RuntimeDeactivationRequest{
+				Scope: scope, ConnectionID: defaultConnectorConnectionID, ConnectorKey: connector.Key,
+				ReleaseDigest: connector.Installation.InstalledReleaseDigest, AllConnections: true,
+				Generation: HostGeneration{BootEpoch: application.config.BootEpoch, Generation: maxGeneration(connector.Revision)},
+				Deadline:   application.config.Now().UTC().Add(5 * time.Second),
+			})
+			if fallbackErr != nil {
+				fenceErrors = append(fenceErrors, errors.Join(evidenceErr, fallbackErr))
+			}
 			continue
 		}
 		connector.Release = installedRelease

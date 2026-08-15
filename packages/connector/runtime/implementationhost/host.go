@@ -222,13 +222,7 @@ func (host *Host) Reconcile(ctx context.Context, request ReconcileRequest) (mark
 		return market.RuntimeReceipt{}, err
 	}
 	key := connectorRouteKey(runtimeRequest.ConnectionID, runtimeRequest.Connector.Key)
-	installation := runtimeRequest.Connector.Installation
-	currentRelease := installation.State == market.InstallationStateInstalled &&
-		installation.InstalledReleaseDigest == runtimeRequest.Connector.Release.ReleaseDigest
-	candidateRelease := (installation.State == market.InstallationStateInstalling ||
-		installation.State == market.InstallationStateUpdating) &&
-		installation.CandidateReleaseDigest == runtimeRequest.Connector.Release.ReleaseDigest
-	if !currentRelease && !candidateRelease {
+	if !installationTargetsRelease(runtimeRequest.Connector.Installation, runtimeRequest.Connector.Release.ReleaseDigest) {
 		return market.RuntimeReceipt{}, errors.New("connector installed release is not active")
 	}
 	if err := host.validateAuthorization(runtimeRequest); err != nil {
@@ -306,6 +300,17 @@ func (host *Host) Reconcile(ctx context.Context, request ReconcileRequest) (mark
 	return market.RuntimeReceipt{OperationID: runtimeRequest.OperationID, ConnectionID: runtimeRequest.ConnectionID,
 		ConnectorKey: runtimeRequest.Connector.Key, ReleaseDigest: route.releaseDigest,
 		Generation: runtimeRequest.Generation, Readiness: cloneRuntimeReadiness(route.readiness), Summary: &summary}, nil
+}
+
+func installationTargetsRelease(installation market.Installation, releaseDigest string) bool {
+	switch installation.State {
+	case market.InstallationStateInstalled:
+		return installation.InstalledReleaseDigest == releaseDigest
+	case market.InstallationStateInstalling, market.InstallationStateUpdating:
+		return installation.CandidateReleaseDigest == releaseDigest
+	default:
+		return false
+	}
 }
 
 func (*Host) validateAuthorization(request market.RuntimeReconcileRequest) error {

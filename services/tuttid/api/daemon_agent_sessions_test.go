@@ -367,6 +367,12 @@ func TestDaemonAPIGeneratedRoutesCreateAgentSessionAllowsTargetOnlyRequest(t *te
 				if input.Isolation != agentservice.WorktreeIsolationMode {
 					t.Fatalf("isolation = %q, want worktree", input.Isolation)
 				}
+				if input.ModelExplicit == nil || *input.ModelExplicit {
+					t.Fatalf("model explicit = %#v, want false", input.ModelExplicit)
+				}
+				if input.ReasoningEffortExplicit == nil || *input.ReasoningEffortExplicit {
+					t.Fatalf("reasoning explicit = %#v, want false", input.ReasoningEffortExplicit)
+				}
 				return agentservice.Session{
 					ID:            input.AgentSessionID,
 					AgentTargetID: input.AgentTargetID,
@@ -384,10 +390,12 @@ func TestDaemonAPIGeneratedRoutesCreateAgentSessionAllowsTargetOnlyRequest(t *te
 	}))
 
 	recorder := performGeneratedRouteRequest(t, mux, http.MethodPost, "/v1/workspaces/ws-1/agent-sessions", map[string]any{
-		"agentSessionId": "11111111-1111-4111-8111-111111111111",
-		"agentTargetId":  agenttargetbiz.IDLocalCodex,
-		"isolation":      "worktree",
-		"initialContent": []map[string]any{{"type": "text", "text": "hello"}},
+		"agentSessionId":          "11111111-1111-4111-8111-111111111111",
+		"agentTargetId":           agenttargetbiz.IDLocalCodex,
+		"isolation":               "worktree",
+		"modelExplicit":           false,
+		"reasoningEffortExplicit": false,
+		"initialContent":          []map[string]any{{"type": "text", "text": "hello"}},
 	})
 	if recorder.Code != http.StatusCreated {
 		t.Fatalf("status = %d, want %d; body: %s", recorder.Code, http.StatusCreated, recorder.Body.String())

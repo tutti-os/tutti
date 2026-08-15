@@ -626,6 +626,7 @@ export class AgentGUIConversationRailQueryController {
   ): void {
     const snapshot = this.selectSnapshot(
       {
+        agentTargetId: this.sectionAgentTargetId,
         queryState: this.queryState,
         runtimeRailFailed: this.queryFailed,
         runtimeSectionsEnabled: this.runtimeSectionsEnabled(),

@@ -345,7 +345,7 @@ func (host *Host) authorizationRoute(ctx context.Context, scope market.Operation
 	managed := connector.Release.Manifest.Implementation.ManagedStdio
 	if connector.Release.Manifest.Implementation.Kind != market.ImplementationKindManagedStdio ||
 		connector.Release.Manifest.AuthorizationKind == "none" || managed == nil || managed.CredentialBroker == nil ||
-		connector.Installation.State != market.InstallationStateInstalled {
+		!installationTargetsRelease(connector.Installation, connector.Release.ReleaseDigest) {
 		return nil, errors.New("managed connector authorization is unavailable")
 	}
 	connectionID := "default"
@@ -388,7 +388,7 @@ func (host *Host) buildAuthorizationRoute(ctx context.Context, connectionID stri
 	if err := market.ValidateRuntimeReleaseShape(connector.Release); err != nil {
 		return nil, err
 	}
-	if connector.Installation.InstalledReleaseDigest != connector.Release.ReleaseDigest {
+	if !installationTargetsRelease(connector.Installation, connector.Release.ReleaseDigest) {
 		return nil, errors.New("managed connector authorization release is not installed")
 	}
 	prepared, err := host.artifacts.ResolvePrepared(ctx, connector.Release)

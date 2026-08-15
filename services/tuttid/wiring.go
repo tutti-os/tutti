@@ -388,6 +388,13 @@ func (w *tuttiWiring) buildWorkspaceModule(ctx context.Context) error {
 			api.CLIRegistry.AppCommands, connectorCommands,
 		}}
 		connectorAuthorizationReadiness := connectormarkethost.NewAuthorizationReadinessGate()
+		connectorMarketScope := func() connectormarkethost.OperationScope {
+			session, sessionErr := accountService.ReadSession()
+			if sessionErr != nil || session == nil {
+				return connectormarkethost.OperationScope{}
+			}
+			return connectormarkethost.OperationScope{AccountID: strings.TrimSpace(session.UserID)}
+		}
 		connectorMarketHost, err := connectormarketdaemon.NewHost(ctx, connectormarketdaemon.HostConfig{
 			Repository: connectorMarketStore, CatalogSource: connectorCatalog,
 			ReleaseInstallations: releaseInstaller, ImplementationHost: connectorRuntime,
@@ -398,7 +405,7 @@ func (w *tuttiWiring) buildWorkspaceModule(ctx context.Context) error {
 			AuthorizationReadiness:   connectorAuthorizationReadiness,
 			RuntimeBindings:          connectormarkethost.AccountRuntimeBindingResolver{Projections: connectorMarketStore, Readiness: connectorAuthorizationReadiness},
 			ImplementationRegistry:   implementations, Outbox: connectorMarketStore, Lifecycle: connectorMarketStore,
-			Publisher: eventstreamservice.ConnectorMarketPublisher{Service: events},
+			Publisher: eventstreamservice.ConnectorMarketPublisher{Service: events, CurrentScope: connectorMarketScope},
 		})
 		if err != nil {
 			_ = connectorMarketStore.Close()
@@ -410,13 +417,6 @@ func (w *tuttiWiring) buildWorkspaceModule(ctx context.Context) error {
 			service.ConnectorMarketSnapshots = connectorMarketHost.Application
 		}
 		api.ConnectorMarketService = connectorMarketHost.Application
-		connectorMarketScope := func() connectormarkethost.OperationScope {
-			session, sessionErr := accountService.ReadSession()
-			if sessionErr != nil || session == nil {
-				return connectormarkethost.OperationScope{}
-			}
-			return connectormarkethost.OperationScope{AccountID: strings.TrimSpace(session.UserID)}
-		}
 		api.ConnectorMarketScope = connectorMarketScope
 		api.ConnectorAuthorizationReady = connectorAuthorizationReadiness.Ready
 		existingAccountLoginCompleted := accountService.OnLoginCompleted

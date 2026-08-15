@@ -31,19 +31,21 @@ type teaSDKEvent struct {
 }
 
 type teaSDKHeader struct {
-	AppVersion string
-	OSName     string
-	OSVersion  string
-	CPUABI     string
+	AppVersion      string
+	AppVersionMinor string
+	OSName          string
+	OSVersion       string
+	CPUABI          string
 }
 
 func (h teaSDKHeader) presetParams() map[string]any {
 	params := map[string]any{}
 	for key, value := range map[string]string{
-		"app_version": h.AppVersion,
-		"os_name":     h.OSName,
-		"os_version":  h.OSVersion,
-		"cpu_abi":     h.CPUABI,
+		"app_version":       h.AppVersion,
+		"app_version_minor": h.AppVersionMinor,
+		"os_name":           h.OSName,
+		"os_version":        h.OSVersion,
+		"cpu_abi":           h.CPUABI,
 	} {
 		if value = strings.TrimSpace(value); value != "" {
 			params[key] = value
@@ -157,13 +159,14 @@ func (d defaultTeaSDK) Send(
 		sdkEvents = append(sdkEvents, sdkEvent)
 	}
 	sdkHeader := &sdk.Header{
-		Aid:          &appID,
-		Custom:       common,
-		UserUniqueId: &uuid,
-		AppVersion:   optionalTeaString(header.AppVersion),
-		OsName:       optionalTeaString(header.OSName),
-		OsVersion:    optionalTeaString(header.OSVersion),
-		CpuAbi:       optionalTeaString(header.CPUABI),
+		Aid:             &appID,
+		Custom:          common,
+		UserUniqueId:    &uuid,
+		AppVersion:      optionalTeaString(header.AppVersion),
+		AppVersionMinor: optionalTeaString(header.AppVersionMinor),
+		OsName:          optionalTeaString(header.OSName),
+		OsVersion:       optionalTeaString(header.OSVersion),
+		CpuAbi:          optionalTeaString(header.CPUABI),
 	}
 	sendEventsWithHeader := d.sendEventsWithHeader
 	if sendEventsWithHeader == nil {

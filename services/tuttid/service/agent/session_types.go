@@ -202,6 +202,7 @@ type RuntimeController interface {
 
 type SessionDirectoryAllocator interface {
 	CreateSessionDirectory(context.Context) (string, error)
+	ReleaseSessionDirectory(context.Context, string) error
 }
 
 type AgentTargetStore interface {
@@ -724,8 +725,11 @@ type CreateSessionInput struct {
 	// StrictPermissionMode rejects an explicit unsupported permission mode
 	// instead of applying the provider default. It is used by unattended
 	// automation so a typo cannot silently broaden authority.
-	StrictPermissionMode  bool
-	Model                 *string
+	StrictPermissionMode bool
+	Model                *string
+	// ModelExplicit preserves caller intent across transport. Nil keeps legacy
+	// direct-Create behavior, where a supplied non-empty model is explicit.
+	ModelExplicit         *bool
 	ModelPlanID           *string
 	PlanMode              *bool
 	BrowserUse            *bool
@@ -734,6 +738,9 @@ type CreateSessionInput struct {
 	CodexSaverModeAllowed bool
 	ProviderTargetRef     map[string]any
 	ReasoningEffort       *string
+	// ReasoningEffortExplicit has the same compatibility semantics as
+	// ModelExplicit for the model-dependent reasoning setting.
+	ReasoningEffortExplicit *bool
 	// ReasoningIntensity is an Issue-owned 0-100 strength request. When an
 	// explicit ReasoningEffort is absent, Create compiles it against the
 	// selected model's ordered reasoning-effort catalog. It is daemon-only and

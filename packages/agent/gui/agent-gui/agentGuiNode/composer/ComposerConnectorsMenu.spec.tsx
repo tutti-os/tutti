@@ -44,16 +44,16 @@ describe("ComposerConnectorsMenu", () => {
     );
 
     expect(
-      screen.getByTestId("agent-gui-composer-connector-preview-connected-0")
+      screen.getByTestId("connector-market-composer-preview-connected-0")
     ).toBeInTheDocument();
     expect(
-      screen.getByTestId("agent-gui-composer-connector-preview-connected-2")
+      screen.getByTestId("connector-market-composer-preview-connected-2")
     ).toBeInTheDocument();
     expect(
-      screen.queryByTestId("agent-gui-composer-connector-preview-connected-3")
+      screen.queryByTestId("connector-market-composer-preview-connected-3")
     ).not.toBeInTheDocument();
     expect(
-      screen.getByTestId("agent-gui-composer-connector-preview-count")
+      screen.getByTestId("connector-market-composer-preview-count")
     ).toHaveTextContent("+2");
   });
 
@@ -80,42 +80,35 @@ describe("ComposerConnectorsMenu", () => {
     });
 
     const connected = await screen.findByTestId(
-      "agent-gui-composer-connector-github"
+      "connector-market-composer-item-github"
     );
     expect(connected).toHaveTextContent("Connected");
     expect(
-      screen.getByTestId("agent-gui-composer-connector-github-status")
+      screen.getByTestId("connector-market-composer-status-github")
     ).toHaveClass("ml-auto");
     expect(
-      screen.getByTestId("agent-gui-composer-connector-notion")
+      screen.getByTestId("connector-market-composer-item-notion")
     ).toHaveTextContent("Authorize");
-    expect(
-      screen.getByRole("button", { name: "Authorize Connector notion" })
-    ).toBeEnabled();
-
-    const connectAction = screen.getByRole("button", {
-      name: "Connect Connector lark"
-    });
-    expect(connectAction).toBeEnabled();
-    fireEvent.pointerDown(connectAction, { button: 0, ctrlKey: false });
-    fireEvent.click(connectAction, { detail: 1 });
+    const connectAction = screen.getByTestId(
+      "connector-market-composer-item-lark"
+    );
+    fireEvent.click(connectAction);
     expect(onOpenConnector).toHaveBeenCalledWith("lark");
     expect(onOpenConnector).toHaveBeenCalledOnce();
     expect(
-      screen.queryByTestId("agent-gui-composer-connector-lark")
+      screen.queryByTestId("connector-market-composer-item-lark")
     ).not.toBeInTheDocument();
 
     fireEvent.pointerDown(screen.getByRole("button", { name: "Connectors" }), {
       button: 0,
       ctrlKey: false
     });
-    fireEvent.pointerDown(
-      await screen.findByTestId("agent-gui-composer-more-connectors-entry"),
-      { button: 0, ctrlKey: false }
+    fireEvent.click(
+      await screen.findByTestId("connector-market-composer-more")
     );
     expect(onOpenConnectors).toHaveBeenCalledOnce();
     expect(
-      screen.queryByTestId("agent-gui-composer-more-connectors-entry")
+      screen.queryByTestId("connector-market-composer-more")
     ).not.toBeInTheDocument();
   });
 
@@ -138,7 +131,7 @@ describe("ComposerConnectorsMenu", () => {
       ctrlKey: false
     });
     expect(
-      await screen.findByTestId("agent-gui-composer-connector-lark-cli-status")
+      await screen.findByTestId("connector-market-composer-status-lark-cli")
     ).toHaveTextContent("Connected");
 
     rendered.rerender(
@@ -149,11 +142,11 @@ describe("ComposerConnectorsMenu", () => {
     );
 
     expect(
-      screen.queryByTestId("agent-gui-composer-connector-lark-cli-status")
+      screen.queryByTestId("connector-market-composer-status-lark-cli")
     ).not.toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: "Authorize Connector lark-cli" })
-    ).toBeEnabled();
+      screen.getByTestId("connector-market-composer-item-lark-cli")
+    ).toHaveTextContent("Authorize");
   });
 
   it("limits the quick connector projection to ten catalog entries", async () => {
@@ -183,10 +176,10 @@ describe("ComposerConnectorsMenu", () => {
     });
 
     expect(
-      await screen.findByTestId("agent-gui-composer-connector-connector-9")
+      await screen.findByTestId("connector-market-composer-item-connector-9")
     ).toBeInTheDocument();
     expect(
-      screen.queryByTestId("agent-gui-composer-connector-connector-10")
+      screen.queryByTestId("connector-market-composer-item-connector-10")
     ).not.toBeInTheDocument();
   });
 });

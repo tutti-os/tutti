@@ -385,6 +385,63 @@ func TestServiceCreateUsesProviderDefaultModelWhenModelOmitted(t *testing.T) {
 	}
 }
 
+func TestServiceCreateRecoversRetiredRememberedModelToProviderDefault(t *testing.T) {
+	runtime := newFakeRuntime()
+	service := newTestService(runtime)
+	service.AgentComposerDefaultsReader = fakeAgentComposerDefaultsReader{
+		agenttargetbiz.IDLocalCodex: {Model: "gpt-5.4"},
+	}
+	service.ModelCatalog = fakeModelCatalog{
+		result: AgentModelCatalogResult{
+			Provider: "codex",
+			Source:   "codex-cli",
+			Models: []AgentModelOption{
+				{ID: "gpt-5.6-sol", DisplayName: "GPT-5.6-Sol", IsDefault: true},
+				{ID: "gpt-5.5", DisplayName: "GPT-5.5"},
+			},
+		},
+	}
+
+	session, err := service.Create(context.Background(), "ws-1", CreateSessionInput{
+		AgentSessionID: "34343434-3434-4434-8434-343434343434",
+		AgentTargetID:  agenttargetbiz.IDLocalCodex,
+		Provider:       "codex",
+		InitialContent: TextPromptContent("hello"),
+	})
+	if err != nil {
+		t.Fatalf("Create returned error: %v", err)
+	}
+	if len(runtime.startCalls) != 1 || runtime.startCalls[0].Model != "gpt-5.6-sol" {
+		t.Fatalf("runtime start calls = %#v, want provider default model", runtime.startCalls)
+	}
+	if session.Settings == nil || session.Settings.Model != "gpt-5.6-sol" {
+		t.Fatalf("session settings = %#v, want provider default model", session.Settings)
+	}
+}
+
+func TestServiceCreateRecoversTransportMarkedInheritedModelToProviderDefault(t *testing.T) {
+	runtime := newFakeRuntime()
+	service := newTestService(runtime)
+	service.ModelCatalog = fakeModelCatalog{result: AgentModelCatalogResult{
+		Provider: "codex",
+		Models:   []AgentModelOption{{ID: "gpt-current", IsDefault: true}},
+	}}
+	inherited := false
+	session, err := service.Create(context.Background(), "ws-1", CreateSessionInput{
+		AgentSessionID: "35353535-3535-4535-8535-353535353535",
+		AgentTargetID:  agenttargetbiz.IDLocalCodex,
+		Provider:       "codex",
+		Model:          stringRef("gpt-retired"),
+		ModelExplicit:  &inherited,
+	})
+	if err != nil {
+		t.Fatalf("Create returned error: %v", err)
+	}
+	if session.Settings == nil || session.Settings.Model != "gpt-current" {
+		t.Fatalf("session settings = %#v, want provider default", session.Settings)
+	}
+}
+
 func TestServiceCreateClampsLegacyMaxToSelectedModelCapability(t *testing.T) {
 	runtime := newFakeRuntime()
 	service := newTestService(runtime)
@@ -442,11 +499,164 @@ func TestClampReasoningEffortForKnownProviderBehindAgentExtension(t *testing.T) 
 		context.Background(),
 		"opencode",
 		map[string]any{"kind": "agent_extension"},
+		"/workspace/project",
 		"openai/gpt-5.3-codex-spark",
 		&selected,
 	)
 	if got == nil || *got != "xhigh" {
 		t.Fatalf("reasoning effort = %#v, want xhigh", got)
+	}
+}
+
+func TestServiceCreateRejectsExplicitOpenCodeReasoningUnsupportedByTargetModel(t *testing.T) {
+	runtime := newFakeRuntime()
+	service := newTestService(runtime)
+	catalogInputs := []AgentModelCatalogInput{}
+	service.ModelCatalog = fakeModelCatalog{
+		inputs: &catalogInputs,
+		result: AgentModelCatalogResult{
+			Provider: "opencode",
+			Source:   "opencode-cli",
+			Models: []AgentModelOption{{
+				ID:                         "openai/gpt-5.3-codex-spark",
+				IsDefault:                  true,
+				DefaultReasoningEffort:     "medium",
+				ReasoningEffortsAdvertised: true,
+				SupportedReasoningEfforts: []AgentModelReasoningEffortOption{
+					{Value: "low"},
+					{Value: "medium"},
+					{Value: "high"},
+					{Value: "xhigh"},
+				},
+			}},
+		},
+	}
+
+	_, err := service.Create(context.Background(), "ws-1", CreateSessionInput{
+		AgentSessionID:  "45454545-4545-4545-8545-454545454545",
+		AgentTargetID:   agenttargetbiz.IDLocalOpenCode,
+		Provider:        "opencode",
+		Model:           stringRef("openai/gpt-5.3-codex-spark"),
+		ReasoningEffort: stringRef("none"),
+		Cwd:             stringRef("/workspace/project"),
+	})
+	if !errors.Is(err, ErrInvalidArgument) {
+		t.Fatalf("Create error = %v, want ErrInvalidArgument", err)
+	}
+	if len(runtime.startCalls) != 0 {
+		t.Fatalf("runtime start calls = %#v, want none", runtime.startCalls)
+	}
+	if len(catalogInputs) != 1 {
+		t.Fatalf("model catalog queries = %d, want one request-scoped lookup", len(catalogInputs))
+	}
+	for _, input := range catalogInputs {
+		if input.Cwd != "/workspace/project" {
+			t.Fatalf("catalog input = %#v, want workspace cwd", input)
+		}
+	}
+}
+
+func TestServiceCreateUsesAllocatedCwdForOpenCodeCatalogAndRuntime(t *testing.T) {
+	runtime := newFakeRuntime()
+	service := newTestService(runtime)
+	allocated := t.TempDir()
+	service.SessionDirectoryAllocator = &recordingSessionDirectoryAllocator{path: allocated}
+	catalogInputs := []AgentModelCatalogInput{}
+	service.ModelCatalog = fakeModelCatalog{
+		inputs: &catalogInputs,
+		result: AgentModelCatalogResult{
+			Provider: "opencode",
+			Models: []AgentModelOption{{
+				ID:                         "openai/gpt-current",
+				IsDefault:                  true,
+				DefaultReasoningEffort:     "medium",
+				ReasoningEffortsAdvertised: true,
+				SupportedReasoningEfforts:  []AgentModelReasoningEffortOption{{Value: "medium"}},
+			}},
+		},
+	}
+
+	if _, err := service.Create(context.Background(), "ws-1", CreateSessionInput{
+		AgentSessionID:  "47474747-4747-4747-8747-474747474747",
+		AgentTargetID:   agenttargetbiz.IDLocalOpenCode,
+		Provider:        "opencode",
+		ReasoningEffort: stringRef("medium"),
+	}); err != nil {
+		t.Fatalf("Create returned error: %v", err)
+	}
+	if len(catalogInputs) != 1 || catalogInputs[0].Cwd != allocated {
+		t.Fatalf("catalog inputs = %#v, want allocated cwd %q", catalogInputs, allocated)
+	}
+	if len(runtime.startCalls) != 1 || runtime.startCalls[0].Cwd != allocated {
+		t.Fatalf("runtime starts = %#v, want allocated cwd %q", runtime.startCalls, allocated)
+	}
+}
+
+func TestServiceCreateReleasesAllocatedCwdWhenOpenCodeValidationFails(t *testing.T) {
+	runtime := newFakeRuntime()
+	service := newTestService(runtime)
+	stateDir := t.TempDir()
+	now := func() time.Time { return time.Date(2026, 8, 14, 0, 0, 0, 0, time.UTC) }
+	allocator := LocalSessionDirectoryAllocator{StateDir: stateDir, Now: now}
+	service.SessionDirectoryAllocator = allocator
+	service.ModelCatalog = fakeModelCatalog{result: AgentModelCatalogResult{
+		Provider: "opencode",
+		Models: []AgentModelOption{{
+			ID:                         "openai/gpt-current",
+			IsDefault:                  true,
+			ReasoningEffortsAdvertised: true,
+			SupportedReasoningEfforts:  []AgentModelReasoningEffortOption{{Value: "medium"}},
+		}},
+	}}
+
+	_, err := service.Create(context.Background(), "ws-1", CreateSessionInput{
+		AgentSessionID:  "48484848-4848-4848-8848-484848484848",
+		AgentTargetID:   agenttargetbiz.IDLocalOpenCode,
+		Provider:        "opencode",
+		ReasoningEffort: stringRef("unsupported"),
+	})
+	if !errors.Is(err, ErrInvalidArgument) {
+		t.Fatalf("Create error = %v, want ErrInvalidArgument", err)
+	}
+	want := filepath.Join(stateDir, "agent", "sessions", "2026-08-14-001")
+	if _, statErr := os.Stat(want); !errors.Is(statErr, os.ErrNotExist) {
+		t.Fatalf("rolled back directory stat error = %v, want not exist", statErr)
+	}
+	reused, allocErr := allocator.CreateSessionDirectory(context.Background())
+	if allocErr != nil {
+		t.Fatalf("CreateSessionDirectory after rollback error = %v", allocErr)
+	}
+	if reused != want {
+		t.Fatalf("reused path = %q, want %q", reused, want)
+	}
+}
+
+func TestServiceCreateRejectsExplicitOpenCodeReasoningWithoutAdvertisedMetadata(t *testing.T) {
+	runtime := newFakeRuntime()
+	service := newTestService(runtime)
+	service.ModelCatalog = fakeModelCatalog{
+		result: AgentModelCatalogResult{
+			Provider: "opencode",
+			Source:   "opencode-cli",
+			Models: []AgentModelOption{{
+				ID:        "openai/gpt-5.3-codex-spark",
+				IsDefault: true,
+			}},
+		},
+	}
+
+	_, err := service.Create(context.Background(), "ws-1", CreateSessionInput{
+		AgentSessionID:  "46464646-4646-4646-8646-464646464646",
+		AgentTargetID:   agenttargetbiz.IDLocalOpenCode,
+		Provider:        "opencode",
+		Model:           stringRef("openai/gpt-5.3-codex-spark"),
+		ReasoningEffort: stringRef("none"),
+	})
+	if !errors.Is(err, ErrInvalidArgument) {
+		t.Fatalf("Create error = %v, want ErrInvalidArgument", err)
+	}
+	if len(runtime.startCalls) != 0 {
+		t.Fatalf("runtime start calls = %#v, want none", runtime.startCalls)
 	}
 }
 

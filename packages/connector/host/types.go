@@ -278,23 +278,25 @@ type Connector struct {
 }
 
 type Operation struct {
-	OperationID     string             `json:"operationId"`
-	ClientRequestID string             `json:"clientRequestId"`
-	ConnectorKey    string             `json:"connectorKey,omitempty"`
-	Kind            OperationKind      `json:"kind"`
-	Scope           OperationScope     `json:"scope,omitempty"`
-	State           OperationState     `json:"state"`
-	Stage           OperationStage     `json:"stage,omitempty"`
-	Target          *OperationTarget   `json:"target,omitempty"`
-	HostGeneration  HostGeneration     `json:"hostGeneration,omitempty"`
-	Execution       OperationExecution `json:"execution,omitempty"`
-	Attempt         uint32             `json:"attempt"`
-	LeaseOwner      string             `json:"leaseOwner,omitempty"`
-	LeaseToken      uint64             `json:"leaseToken,omitempty"`
-	LeaseExpiresAt  *time.Time         `json:"leaseExpiresAt,omitempty"`
-	FailureCode     string             `json:"failureCode,omitempty"`
-	CreatedAt       time.Time          `json:"createdAt"`
-	UpdatedAt       time.Time          `json:"updatedAt"`
+	OperationID     string              `json:"operationId"`
+	ClientRequestID string              `json:"clientRequestId"`
+	OwnerAccountID  string              `json:"ownerAccountId,omitempty"`
+	Visibility      OperationVisibility `json:"visibility"`
+	ConnectorKey    string              `json:"connectorKey,omitempty"`
+	Kind            OperationKind       `json:"kind"`
+	Scope           OperationScope      `json:"scope,omitempty"`
+	State           OperationState      `json:"state"`
+	Stage           OperationStage      `json:"stage,omitempty"`
+	Target          *OperationTarget    `json:"target,omitempty"`
+	HostGeneration  HostGeneration      `json:"hostGeneration,omitempty"`
+	Execution       OperationExecution  `json:"execution,omitempty"`
+	Attempt         uint32              `json:"attempt"`
+	LeaseOwner      string              `json:"leaseOwner,omitempty"`
+	LeaseToken      uint64              `json:"leaseToken,omitempty"`
+	LeaseExpiresAt  *time.Time          `json:"leaseExpiresAt,omitempty"`
+	FailureCode     string              `json:"failureCode,omitempty"`
+	CreatedAt       time.Time           `json:"createdAt"`
+	UpdatedAt       time.Time           `json:"updatedAt"`
 }
 
 // OperationScope freezes the external authority under which a durable
@@ -304,6 +306,13 @@ type Operation struct {
 type OperationScope struct {
 	AccountID string `json:"accountId,omitempty"`
 }
+
+type OperationVisibility string
+
+const (
+	OperationVisibilityAccount       OperationVisibility = "account"
+	OperationVisibilitySystemPrivate OperationVisibility = "system_private"
+)
 
 // OperationTarget freezes the exact release identity at command acceptance so
 // a concurrent catalog refresh cannot change what an operation installs.
@@ -576,8 +585,9 @@ type Snapshot struct {
 }
 
 type Mutation struct {
-	ClientRequestID  string `json:"clientRequestId"`
-	ExpectedRevision uint64 `json:"expectedRevision"`
+	ClientRequestID  string         `json:"clientRequestId"`
+	ExpectedRevision uint64         `json:"expectedRevision"`
+	Scope            OperationScope `json:"scope,omitempty"`
 }
 
 type ConnectorMutation struct {

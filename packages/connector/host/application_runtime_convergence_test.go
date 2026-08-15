@@ -137,3 +137,67 @@ func TestUpdateKeepsCurrentReleaseUntilCandidateRuntimeIsObserved(t *testing.T) 
 		t.Fatalf("update did not promote observed candidate: connector=%#v operation=%#v", completed, operation)
 	}
 }
+
+func TestAuthorizedUpdateInspectsPreparedCandidateBeforePromotion(t *testing.T) {
+	connector := testManagedAuthorizedConnector("lark-cli")
+	connector.Authorization = Authorization{State: AuthorizationStateConnected}
+	oldRelease := connector.Release
+	connector.Release.Version = "2.0.0"
+	connector.Release.ReleaseID = "lark-cli@2.0.0"
+	connector.Release.ReleaseDigest = "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+	connector.Release.ManifestDigest = "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+	repository := newMemoryRepository(connector)
+	repository.operations["old-install"] = Operation{
+		OperationID: "old-install", ConnectorKey: connector.Key, Kind: OperationKindInstall,
+		State: OperationStateCompleted, Target: &OperationTarget{
+			ConnectorKey: connector.Key, ReleaseDigest: oldRelease.ReleaseDigest, Release: &oldRelease,
+		},
+	}
+	runtime := &memoryInstallRuntime{}
+	application := newTestApplication(t, repository, &memoryScheduler{}, runtime, CatalogSnapshot{})
+	inspector := &candidateAuthorizationInspector{}
+	application.config.Authorization = inspector
+
+	accepted, err := application.Install(context.Background(), ConnectorMutation{
+		Mutation: Mutation{ClientRequestID: "update-authorized-lark"}, ConnectorKey: connector.Key,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := application.ExecuteOperation(context.Background(), accepted.Operation.OperationID); err != nil {
+		t.Fatal(err)
+	}
+	if len(inspector.requests) != 1 {
+		t.Fatalf("authorization inspections = %d, want 1", len(inspector.requests))
+	}
+	inspected := inspector.requests[0].Connector
+	if inspected.Installation.State != InstallationStateUpdating ||
+		inspected.Installation.CandidateReleaseDigest != connector.Release.ReleaseDigest ||
+		inspected.Release.ReleaseDigest != connector.Release.ReleaseDigest {
+		t.Fatalf("inspected candidate connector = %#v", inspected)
+	}
+	completed, err := repository.Connector(context.Background(), connector.Key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if completed.Installation.State != InstallationStateInstalled ||
+		completed.Installation.InstalledReleaseDigest != connector.Release.ReleaseDigest {
+		t.Fatalf("completed authorized update = %#v", completed.Installation)
+	}
+}
+
+type candidateAuthorizationInspector struct {
+	authorizationProviderStub
+	requests []AuthorizationInspectRequest
+}
+
+func (inspector *candidateAuthorizationInspector) InspectAuthorization(
+	_ context.Context,
+	request AuthorizationInspectRequest,
+) (AuthorizationObservation, error) {
+	inspector.requests = append(inspector.requests, request)
+	return AuthorizationObservation{
+		State: AuthorizationObservationConnected, ConnectorKey: request.Connector.Key,
+		ReleaseDigest: request.Connector.Release.ReleaseDigest, ConnectionID: defaultConnectorConnectionID,
+	}, nil
+}

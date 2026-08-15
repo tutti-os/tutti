@@ -7,7 +7,7 @@ import type { AgentToolCallVM } from "../contracts/agentToolCallVM";
 import { CollapsibleReveal } from "./CollapsibleReveal";
 import { useAgentConversationNowUnixMs } from "./AgentConversationClock";
 import { formatAgentToolDurationMs } from "./tool-renderers/render-data/agentToolRenderData";
-import { ToolMarkdownBlock } from "./tool-renderers/agentToolContentShared";
+import { AgentMessageMarkdown } from "../../AgentMessageMarkdown";
 
 // A delegated sub-agent renders as a first-class row aligned with tool rows:
 // header = "Sub-agent · <name> · <elapsed> · <status>" with a chevron, body =
@@ -15,7 +15,7 @@ import { ToolMarkdownBlock } from "./tool-renderers/agentToolContentShared";
 // sub-agent's own (child thread nickname + lifecycle), never the spawn tool's.
 export function AgentSubAgentCards({
   call,
-  onLinkClick,
+  onLinkClick
 }: {
   call: AgentToolCallVM;
   onLinkClick?: (href: string) => void;
@@ -47,12 +47,12 @@ export const AgentSubAgentCard = memo(
   AgentSubAgentCardImpl,
   (prev, next) =>
     prev.onLinkClick === next.onLinkClick &&
-    subAgentVMEquals(prev.subAgent, next.subAgent),
+    subAgentVMEquals(prev.subAgent, next.subAgent)
 );
 
 function subAgentVMEquals(
   left: AgentTaskSubAgentVM,
-  right: AgentTaskSubAgentVM,
+  right: AgentTaskSubAgentVM
 ): boolean {
   return (
     left.childSessionId === right.childSessionId &&
@@ -63,7 +63,7 @@ function subAgentVMEquals(
     left.laneIndex === right.laneIndex &&
     left.laneCount === right.laneCount &&
     left.latestActivity === right.latestActivity &&
-    left.resultMarkdown === right.resultMarkdown &&
+    left.assistantMarkdown === right.assistantMarkdown &&
     left.failureDetail === right.failureDetail &&
     left.queued === right.queued &&
     left.startedAtUnixMs === right.startedAtUnixMs &&
@@ -75,7 +75,7 @@ function subAgentVMEquals(
 
 function AgentSubAgentCardImpl({
   subAgent,
-  onLinkClick,
+  onLinkClick
 }: {
   subAgent: AgentTaskSubAgentVM;
   onLinkClick?: (href: string) => void;
@@ -109,7 +109,7 @@ function AgentSubAgentCardImpl({
 
 function SubAgentHeader({
   subAgent,
-  expanded,
+  expanded
 }: {
   subAgent: AgentTaskSubAgentVM;
   expanded: boolean;
@@ -125,7 +125,7 @@ function SubAgentHeader({
       data-active={running ? "true" : undefined}
       className={[
         "workspace-agents-status-panel__detail-tool-row-header-content",
-        running ? "tsh-inline-scanlight-group" : "",
+        running ? "tsh-inline-scanlight-group" : ""
       ]
         .filter(Boolean)
         .join(" ")}
@@ -172,7 +172,7 @@ function SubAgentHeader({
 
 function SubAgentBody({
   subAgent,
-  onLinkClick,
+  onLinkClick
 }: {
   subAgent: AgentTaskSubAgentVM;
   onLinkClick?: (href: string) => void;
@@ -188,15 +188,7 @@ function SubAgentBody({
             {subAgent.task}
           </div>
         ) : null}
-        {subAgent.status !== "completed" || !subAgent.resultMarkdown ? (
-          <SubAgentProgress subAgent={subAgent} />
-        ) : null}
-        {subAgent.status === "completed" && subAgent.resultMarkdown ? (
-          <ToolMarkdownBlock
-            content={subAgent.resultMarkdown}
-            onLinkClick={onLinkClick}
-          />
-        ) : null}
+        <SubAgentProgress subAgent={subAgent} onLinkClick={onLinkClick} />
         {subAgent.childSessions.length > 0 ? (
           <div className="workspace-agents-status-panel__detail-subagent-children">
             {subAgent.childSessions.map((childSession) => (
@@ -215,15 +207,37 @@ function SubAgentBody({
 
 function SubAgentProgress({
   subAgent,
+  onLinkClick
 }: {
   subAgent: AgentTaskSubAgentVM;
+  onLinkClick?: (href: string) => void;
 }): JSX.Element {
   "use memo";
-  // Progress stays a single line - the sub-agent's most recent activity (or
-  // failure detail), not a scrolling log.
+  if (subAgent.assistantMarkdown?.trim()) {
+    return (
+      <div className="workspace-agents-status-panel__detail-subagent-activity workspace-agents-status-panel__detail-subagent-activity--in-terminal">
+        <AgentMessageMarkdown
+          content={subAgent.assistantMarkdown}
+          documentCacheKey={`sub-agent:${subAgent.childSessionId}:assistant`}
+          onLinkClick={onLinkClick}
+          streaming={subAgent.status === "running"}
+          enableImageZoom
+          className="workspace-agents-status-panel__detail-tool-markdown [&_ol]:text-[var(--text-secondary)] [&_ul]:text-[var(--text-secondary)]"
+        />
+        {subAgent.failureDetail ? (
+          <div className="workspace-agents-status-panel__detail-subagent-activity--failure">
+            {subAgent.failureDetail}
+          </div>
+        ) : null}
+      </div>
+    );
+  }
+  // Tool/reasoning activity remains a short fallback until the child emits an
+  // assistant message. Once it does, the complete Markdown above owns both the
+  // streaming and settled presentation.
   const text =
     subAgent.failureDetail ??
-    subAgent.latestActivity ??
+    (subAgent.status === "running" ? subAgent.latestActivity : null) ??
     translate(
       subAgent.status === "completed"
         ? "agentHost.agentTool.statusCompleted"
@@ -233,7 +247,7 @@ function SubAgentProgress({
             ? "agentHost.agentTool.statusFailed"
             : subAgent.queued
               ? "agentHost.agentTool.details.subAgentQueued"
-              : "agentHost.agentTool.details.subAgentStarting",
+              : "agentHost.agentTool.details.subAgentStarting"
     );
   return (
     <div
@@ -259,7 +273,7 @@ function subAgentAriaLabel(subAgent: AgentTaskSubAgentVM): string {
   return [
     translate("agentHost.agentTool.details.subAgentFallbackName"),
     subAgentNameText(subAgent),
-    subAgentStatusLabel(subAgent.status),
+    subAgentStatusLabel(subAgent.status)
   ]
     .filter(Boolean)
     .join(" ");
@@ -293,7 +307,7 @@ function isSubAgentActivelyRunning(subAgent: AgentTaskSubAgentVM): boolean {
 }
 
 function useRunningSubAgentNowUnixMs(
-  subAgent: AgentTaskSubAgentVM,
+  subAgent: AgentTaskSubAgentVM
 ): number | null {
   const shouldTick =
     isSubAgentActivelyRunning(subAgent) &&
@@ -303,7 +317,7 @@ function useRunningSubAgentNowUnixMs(
 
 function subAgentElapsedText(
   subAgent: AgentTaskSubAgentVM,
-  runningNowUnixMs: number | null,
+  runningNowUnixMs: number | null
 ): string | null {
   const started = subAgent.startedAtUnixMs;
   if (typeof started !== "number") {

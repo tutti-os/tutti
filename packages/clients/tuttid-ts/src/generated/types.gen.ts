@@ -3281,7 +3281,15 @@ export type CreateWorkspaceAgentSessionRequest = {
   isolation?: WorkspaceAgentSessionIsolationMode | null;
   permissionModeId?: string | null;
   model?: string | null;
+  /**
+   * True only when model came from an explicit caller selection; false identifies an inherited or remembered fallback preference.
+   */
+  modelExplicit?: boolean | null;
   reasoningEffort?: string | null;
+  /**
+   * True only when reasoning effort came from an explicit caller selection; false identifies a model-dependent inherited value.
+   */
+  reasoningEffortExplicit?: boolean | null;
   /**
    * Classifies a session that is intentionally not attached to a workspace project.
    */
@@ -13349,6 +13357,10 @@ export type SubmitWorkspaceAgentInteractiveErrors = {
    * HTTP method is not supported on this route
    */
   405: ApiErrorResponse;
+  /**
+   * Interactive response no longer matches a pending canonical request
+   */
+  409: ApiErrorResponse;
   /**
    * Workspace operation failed in an upstream adapter or command
    */

@@ -69,6 +69,7 @@ Turn state, loading, cancel, restore, rail projection, event updates, imports, a
 - [AgentGUI loading disappears before active turn settles](./agent-session-lifecycle.md#agentgui-loading-disappears-before-active-turn-settles)
 - [Queued AgentGUI prompt stalls after no-active-turn failure](./agent-session-lifecycle.md#queued-agentgui-prompt-stalls-after-no-active-turn-failure)
 - [Agent session stays loading after a completed turn](./agent-session-lifecycle.md#agent-session-stays-loading-after-a-completed-turn)
+- [Remote session stays planning while the provider already replied](./agent-session-lifecycle.md#remote-session-stays-planning-while-the-provider-already-replied)
 - [AgentGUI model switch changes defaults but not the active session](./agent-session-lifecycle.md#agentgui-model-switch-changes-defaults-but-not-the-active-session)
 - [New Agent conversation rejects a model that is no longer offered](./agent-session-lifecycle.md#new-agent-conversation-rejects-a-model-that-is-no-longer-offered)
 - [AgentGUI shows the selected settings but a new session does not inherit them](./agent-session-lifecycle.md#agentgui-shows-the-selected-settings-but-a-new-session-does-not-inherit-them)

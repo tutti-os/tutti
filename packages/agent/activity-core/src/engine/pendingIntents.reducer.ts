@@ -293,10 +293,16 @@ function requestActivation(
       intent.initialTurnExpected ?? runtimeContent.length > 0,
     lastObservedStage: "requested" as const,
     ...(intent.isolation ? { isolation: intent.isolation } : {}),
+    ...(intent.modelExplicit !== undefined
+      ? { modelExplicit: intent.modelExplicit }
+      : {}),
     ...pendingActivationGoalControlFields(intent),
     ...pendingActivationRailSectionKeyFields(intent),
     ...(intent.railPlacement
       ? { railPlacement: { ...intent.railPlacement } }
+      : {}),
+    ...(intent.reasoningEffortExplicit !== undefined
+      ? { reasoningEffortExplicit: intent.reasoningEffortExplicit }
       : {}),
     ...(intent.submitDiagnostics
       ? { submitDiagnostics: { ...intent.submitDiagnostics } }
@@ -361,8 +367,14 @@ function requestActivation(
             ...(displayPrompt ? { initialDisplayPrompt: displayPrompt } : {}),
             ...pendingActivationGoalControlFields(intent),
             ...(intent.isolation ? { isolation: intent.isolation } : {}),
+            ...(intent.modelExplicit !== undefined
+              ? { modelExplicit: intent.modelExplicit }
+              : {}),
             ...(intent.railPlacement
               ? { railPlacement: { ...intent.railPlacement } }
+              : {}),
+            ...(intent.reasoningEffortExplicit !== undefined
+              ? { reasoningEffortExplicit: intent.reasoningEffortExplicit }
               : {}),
             ...(intent.submitDiagnostics
               ? { submitDiagnostics: { ...intent.submitDiagnostics } }

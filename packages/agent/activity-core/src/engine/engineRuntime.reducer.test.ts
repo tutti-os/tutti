@@ -1105,6 +1105,67 @@ test("authoritative interaction result drains from post-lifecycle canonical stat
   );
 });
 
+test("stale interaction failure requests reconcile through the root reducer", () => {
+  let state = createInitialAgentSessionEngineState();
+  const waitingTurn = {
+    agentSessionId: "session-1",
+    origin: "user_prompt" as const,
+    phase: "waiting" as const,
+    startedAtUnixMs: 1,
+    turnId: "turn-1",
+    updatedAtUnixMs: 1
+  };
+  const pendingInteraction = {
+    agentSessionId: "session-1",
+    createdAtUnixMs: 1,
+    input: {},
+    kind: "question" as const,
+    metadata: {},
+    requestId: "request-1",
+    status: "pending" as const,
+    turnId: "turn-1",
+    updatedAtUnixMs: 1
+  };
+  const session = {
+    ...runningSession(capabilities({})),
+    activeTurn: waitingTurn,
+    latestTurn: waitingTurn,
+    latestTurnInteractions: [pendingInteraction],
+    pendingInteractions: [pendingInteraction]
+  };
+  state = rootEngineReducer(state, {
+    sessions: [session],
+    type: "session/snapshotReceived"
+  }).state;
+  state = rootEngineReducer(state, {
+    agentSessionId: "session-1",
+    commandId: "respond-1",
+    optionId: "approve",
+    requestId: "request-1",
+    turnId: "turn-1",
+    type: "interaction/responseRequested",
+    workspaceId: "workspace-1"
+  }).state;
+
+  const stale = rootEngineReducer(state, {
+    commandId: "respond-1",
+    commandType: "interaction/respond",
+    correlationId: canonicalInteractionKey("session-1", "turn-1", "request-1"),
+    errorReason: "agent_interactive_request_stale",
+    outcome: "failed",
+    type: "engine/commandResult"
+  });
+  assert.deepEqual(stale.followUpIntents, [
+    {
+      agentSessionId: "session-1",
+      needsMessages: true,
+      needsState: true,
+      type: "session/reconcileRequested",
+      workspaceId: "workspace-1"
+    }
+  ]);
+});
+
 test("terminal latest turn drains at an unchanged session timestamp", () => {
   let state = createInitialAgentSessionEngineState();
   const running = runningSession(capabilities({}));

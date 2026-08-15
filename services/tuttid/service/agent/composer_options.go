@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/tutti-os/tutti/packages/agent/daemon/composercatalog"
 	"github.com/tutti-os/tutti/packages/agent/daemon/providerregistry"
 	agenthost "github.com/tutti-os/tutti/packages/agent/host"
 	"github.com/tutti-os/tutti/services/tuttid/biz/agentprovider"
@@ -122,22 +123,7 @@ type ComposerSkillOption struct {
 	Invocation  string
 }
 
-type ComposerCapabilityOption struct {
-	ID          string
-	Kind        string
-	Name        string
-	Label       string
-	IconURL     string
-	Description string
-	Status      string
-	Source      string
-	PluginName  string
-	ServerName  string
-	ToolName    string
-	Trigger     string
-	Path        string
-	Invocation  string
-}
+type ComposerCapabilityOption = composercatalog.Option
 
 type ComposerCommandOption struct {
 	Name        string

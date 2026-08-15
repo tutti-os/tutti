@@ -659,6 +659,31 @@ func TestApplicationStartupReconcileAdvancesPastFence(t *testing.T) {
 	}
 }
 
+func TestApplicationStartupFenceFallsBackToConnectorIdentityWhenReleaseEvidenceIsMissing(t *testing.T) {
+	connector := testConnector("lark-cli")
+	installedRelease := connector.Release
+	connector.Installation = Installation{
+		State: InstallationStateInstalled, InstalledVersion: installedRelease.Version,
+		InstalledReleaseID: installedRelease.ReleaseID, InstalledReleaseDigest: installedRelease.ReleaseDigest,
+	}
+	connector.Release.Version = "2.0.0"
+	connector.Release.ReleaseID = connector.Key + "@2.0.0"
+	connector.Release.ReleaseDigest = "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+	connector.Release.ManifestDigest = "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+	repository := newMemoryRepository(connector)
+	host := &memoryInstallRuntime{}
+	application := newTestApplication(t, repository, &memoryScheduler{}, host, CatalogSnapshot{})
+
+	if err := application.FenceInstalledRuntimes(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if host.deactivations != 1 || !host.lastDeactivation.AllConnections ||
+		host.lastDeactivation.ConnectorKey != connector.Key ||
+		host.lastDeactivation.ReleaseDigest != installedRelease.ReleaseDigest {
+		t.Fatalf("fallback deactivation = %#v", host.lastDeactivation)
+	}
+}
+
 func TestApplicationCrossDeviceRemoteReconcileUsesAccountProjectionAuthorization(t *testing.T) {
 	connector := testConnector("tencent-docs")
 	connector.Release.Manifest.AuthorizationKind = "api_key"
@@ -1008,6 +1033,79 @@ func TestApplicationManagedAuthorizationStartRepairsMissingAccountProjection(t *
 	}
 	if repository.connectors[connector.Key].Authorization.State != AuthorizationStateConnected {
 		t.Fatalf("device authorization = %#v", repository.connectors[connector.Key].Authorization)
+	}
+}
+
+func TestApplicationScopesPublicOperationReadsToOwnerAccount(t *testing.T) {
+	repository := newMemoryRepository()
+	now := time.Unix(1, 0).UTC()
+	repository.operations["operation-a"] = Operation{
+		OperationID: "operation-a", ClientRequestID: "request-a", ConnectorKey: "github",
+		Kind: OperationKindInstall, Scope: OperationScope{AccountID: "account-a"},
+		State: OperationStateFailed, CreatedAt: now, UpdatedAt: now,
+	}
+	repository.operations["operation-private"] = Operation{
+		OperationID: "operation-private", ClientRequestID: "request-private", ConnectorKey: "github",
+		Kind: OperationKindReconcileRuntime, Scope: OperationScope{AccountID: "account-a"},
+		State: OperationStateFailed, CreatedAt: now, UpdatedAt: now,
+	}
+	application := newTestApplication(t, repository, &memoryScheduler{}, &memoryInstallRuntime{}, CatalogSnapshot{})
+
+	operation, err := application.GetOperationForScope(context.Background(), OperationScope{AccountID: "account-a"}, "operation-a")
+	if err != nil || operation.OperationID != "operation-a" {
+		t.Fatalf("owner operation = %#v, error = %v", operation, err)
+	}
+	for _, test := range []struct {
+		name, accountID, operationID string
+	}{
+		{name: "different account", accountID: "account-b", operationID: "operation-a"},
+		{name: "private operation", accountID: "account-a", operationID: "operation-private"},
+		{name: "missing account", operationID: "operation-a"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			_, err := application.GetOperationForScope(context.Background(), OperationScope{AccountID: test.accountID}, test.operationID)
+			if !errors.Is(err, ErrNotFound) {
+				t.Fatalf("GetOperationForScope error = %v, want ErrNotFound", err)
+			}
+		})
+	}
+}
+
+func TestApplicationScopesIdempotencyByAccountButKeepsConnectorLifecycleGlobal(t *testing.T) {
+	connector := testConnector("github")
+	repository := newMemoryRepository(connector)
+	application := newTestApplication(t, repository, &memoryScheduler{}, &memoryInstallRuntime{}, CatalogSnapshot{})
+
+	first, err := application.Install(context.Background(), ConnectorMutation{
+		Mutation: Mutation{ClientRequestID: "shared-request"}, ConnectorKey: connector.Key, AccountID: "account-a",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = application.Install(context.Background(), ConnectorMutation{
+		Mutation:     Mutation{ClientRequestID: "different-request", ExpectedRevision: repository.revision},
+		ConnectorKey: connector.Key, AccountID: "account-b",
+	})
+	var domainError *DomainError
+	if !errors.As(err, &domainError) || domainError.Code != ErrorCodeOperationInProgress {
+		t.Fatalf("cross-account active operation error = %v", err)
+	}
+
+	finished := repository.operations[first.Operation.OperationID]
+	finished.State = OperationStateFailed
+	repository.operations[finished.OperationID] = finished
+	connector = repository.connectors[connector.Key]
+	connector.Installation = Installation{State: InstallationStateNotInstalled}
+	repository.connectors[connector.Key] = connector
+	second, err := application.Install(context.Background(), ConnectorMutation{
+		Mutation:     Mutation{ClientRequestID: "shared-request", ExpectedRevision: repository.revision},
+		ConnectorKey: connector.Key, AccountID: "account-b",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if second.Operation.OperationID == first.Operation.OperationID || second.Operation.OwnerAccountID != "account-b" {
+		t.Fatalf("cross-account request reuse joined wrong operation: first=%#v second=%#v", first.Operation, second.Operation)
 	}
 }
 
@@ -2428,6 +2526,18 @@ func (repository *memoryRepository) Operation(_ context.Context, operationID str
 	return operation, nil
 }
 
+func (repository *memoryRepository) OperationForScope(
+	_ context.Context,
+	scope OperationScope,
+	operationID string,
+) (Operation, error) {
+	operation, ok := repository.operations[operationID]
+	if !ok || !OperationVisibleToScope(operation, scope) {
+		return Operation{}, ErrNotFound
+	}
+	return operation, nil
+}
+
 func (repository *memoryRepository) ClaimOperation(
 	_ context.Context,
 	operationID string,
@@ -2745,9 +2855,10 @@ func (transaction *memoryTransaction) Operation(operationID string) (Operation, 
 	return operation, nil
 }
 
-func (transaction *memoryTransaction) OperationByClientRequestID(clientRequestID string) (*Operation, error) {
+func (transaction *memoryTransaction) OperationByClientRequestID(ownerAccountID, clientRequestID string) (*Operation, error) {
 	for _, operation := range transaction.operations {
-		if operation.ClientRequestID == clientRequestID {
+		operation = NormalizeOperationOwnership(operation)
+		if operation.OwnerAccountID == ownerAccountID && operation.ClientRequestID == clientRequestID {
 			copy := operation
 			return &copy, nil
 		}
@@ -2787,6 +2898,7 @@ func (transaction *memoryTransaction) DeleteConnector(connectorKey string) error
 }
 
 func (transaction *memoryTransaction) SaveOperation(operation Operation) error {
+	operation = NormalizeOperationOwnership(operation)
 	transaction.operations[operation.OperationID] = operation
 	return nil
 }

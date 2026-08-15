@@ -485,6 +485,7 @@ export function rootEngineReducer(
     ...(goalControl.followUpIntents ?? []),
     ...(sessionReconcile.followUpIntents ?? []),
     ...(sessionMutations.followUpIntents ?? []),
+    ...(sessionLifecycle.followUpIntents ?? []),
     ...(pendingIntents.followUpIntents ?? []),
     ...(promptExecutions.followUpIntents ?? []),
     ...(promptQueue.followUpIntents ?? [])

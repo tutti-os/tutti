@@ -70,6 +70,7 @@ type Repository interface {
 	Snapshot(ctx context.Context) (Snapshot, error)
 	Connector(ctx context.Context, connectorKey string) (Connector, error)
 	Operation(ctx context.Context, operationID string) (Operation, error)
+	OperationForScope(ctx context.Context, scope OperationScope, operationID string) (Operation, error)
 	// UnresolvedAuthorizationSessionOperations exposes private durable receipts
 	// only for the explicitly active account. Snapshot remains safe for public
 	// presentation and must not contain Operation.Execution.
@@ -96,7 +97,7 @@ type Transaction interface {
 	Connectors() ([]Connector, error)
 	Connector(connectorKey string) (Connector, error)
 	Operation(operationID string) (Operation, error)
-	OperationByClientRequestID(clientRequestID string) (*Operation, error)
+	OperationByClientRequestID(ownerAccountID, clientRequestID string) (*Operation, error)
 	ActiveOperation(connectorKey string) (*Operation, error)
 	SaveCatalogRevision(sourceRevision string) error
 	SetCatalogState(state CatalogState) error
@@ -400,10 +401,12 @@ type OperationScheduler interface {
 }
 
 type ChangedEvent struct {
-	ConnectorKey string `json:"connectorKey,omitempty"`
-	OperationID  string `json:"operationId,omitempty"`
-	Revision     uint64 `json:"revision"`
-	Cursor       int64  `json:"cursor,omitempty"`
+	ConnectorKey   string              `json:"connectorKey,omitempty"`
+	OperationID    string              `json:"operationId,omitempty"`
+	OwnerAccountID string              `json:"ownerAccountId,omitempty"`
+	Visibility     OperationVisibility `json:"visibility,omitempty"`
+	Revision       uint64              `json:"revision"`
+	Cursor         int64               `json:"cursor,omitempty"`
 }
 
 type ChangedEventRecord struct {

@@ -145,6 +145,7 @@ func (api DaemonAPI) RefreshConnectorMarket(
 	if err != nil {
 		return tuttigenerated.RefreshConnectorMarket400JSONResponse{ConnectorMarketInvalidRequestErrorJSONResponse: invalidConnectorMarketResponse(connectorMarketErrorPayload(err))}, nil
 	}
+	mutation.Scope = market.OperationScope{AccountID: api.connectorMarketAccountID()}
 	result, err := api.ConnectorMarketService.RefreshCatalog(ctx, mutation)
 	if err != nil {
 		payload, status := connectorMarketError(err)
@@ -325,7 +326,11 @@ func (api DaemonAPI) GetConnectorMarketOperation(
 	if api.ConnectorMarketService == nil {
 		return tuttigenerated.GetConnectorMarketOperation503JSONResponse{ConnectorMarketUnavailableErrorJSONResponse: connectorMarketUnavailableError()}, nil
 	}
-	operation, err := api.ConnectorMarketService.GetOperation(ctx, request.OperationID)
+	operation, err := api.ConnectorMarketService.GetOperationForScope(
+		ctx,
+		market.OperationScope{AccountID: api.connectorMarketAccountID()},
+		request.OperationID,
+	)
 	if err != nil {
 		payload, status := connectorMarketError(err)
 		switch status {

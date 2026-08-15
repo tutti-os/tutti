@@ -151,6 +151,123 @@ test("loads server categories and appends cursor pages", async () => {
   service.dispose();
 });
 
+test("automatically updates an installed connector when catalog discovery observes a new release", async () => {
+  const installed = connector("github", 1);
+  installed.release.releaseDigest =
+    "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc";
+  installed.installation = {
+    state: "installed",
+    installedReleaseDigest: installed.release.releaseDigest,
+    installedReleaseId: installed.release.releaseId,
+    installedVersion: installed.release.version
+  };
+  const available = structuredClone(installed);
+  available.release.releaseId = "github@1.1.0";
+  available.release.version = "1.1.0";
+  available.release.releaseDigest =
+    "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd";
+  available.revision = 2;
+  const updated = structuredClone(available);
+  updated.installation = {
+    state: "installed",
+    installedReleaseDigest: available.release.releaseDigest,
+    installedReleaseId: available.release.releaseId,
+    installedVersion: available.release.version
+  };
+  updated.revision = 3;
+  const installInputs: Parameters<
+    ConnectorMarketBackend["installConnector"]
+  >[0][] = [];
+  let installAdmissionRequests = 0;
+  const service = new ConnectorMarketService({
+    autoUpdateInstalledConnectors: true,
+    backend: backendWith({
+      getSnapshot: async () => snapshot(1, [installed]),
+      listCategories: async () => [
+        {
+          categoryId: "development",
+          kind: "category",
+          sortOrder: 20,
+          itemCount: 1
+        }
+      ],
+      listCatalogPage: async () => ({
+        sectionId: "development",
+        items: [
+          {
+            categoryId: "development",
+            featured: false,
+            connector: available
+          }
+        ],
+        revision: 2
+      }),
+      installConnector: async (input) => {
+        installInputs.push(input);
+        return {
+          connector: updated,
+          operation: {
+            operationId: "operation-auto-update",
+            clientRequestId: input.clientRequestId,
+            connectorKey: "github",
+            kind: "install",
+            state: "completed",
+            stage: "completed",
+            attempt: 1,
+            createdAt: "2026-08-15T00:00:00Z",
+            updatedAt: "2026-08-15T00:00:01Z"
+          },
+          revision: 3
+        };
+      }
+    }),
+    requestInstallAdmission: () => {
+      installAdmissionRequests += 1;
+    }
+  });
+
+  await service.ensureLoaded();
+  await waitFor(() => installInputs.length === 1);
+
+  assert.equal(installInputs[0]?.connectorKey, "github");
+  assert.equal(installInputs[0]?.expectedConnectorRevision, 2);
+  assert.equal(installAdmissionRequests, 0);
+  assert.equal(
+    service.dataStore.connectorsByKey.github?.installation
+      .installedReleaseDigest,
+    available.release.releaseDigest
+  );
+  service.dispose();
+});
+
+test("attempts automatic update only once for the same failed release", async () => {
+  const installed = connector("github", 1);
+  installed.installation = {
+    state: "installed",
+    installedReleaseDigest:
+      "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+  };
+  let installCalls = 0;
+  const service = new ConnectorMarketService({
+    autoUpdateInstalledConnectors: true,
+    backend: backendWith({
+      getSnapshot: async () => snapshot(1, [installed]),
+      installConnector: async () => {
+        installCalls += 1;
+        throw new Error("update failed");
+      }
+    })
+  });
+
+  await service.ensureLoaded();
+  await waitFor(() => installCalls === 1);
+  await service.reload();
+  await Promise.resolve();
+
+  assert.equal(installCalls, 1);
+  service.dispose();
+});
+
 test("keeps healthy catalog sections available and retries a failed section", async () => {
   let otherFails = true;
   const diagnostics: unknown[] = [];
@@ -351,6 +468,54 @@ test("rejects overlapping mutations for one connector", async () => {
     service.dataStore.operationsByConnectorKey.github?.operationId,
     "operation-1"
   );
+  service.dispose();
+});
+
+test("requests host admission instead of installing when account access is unavailable", async () => {
+  let admitted = false;
+  let admissionRequests = 0;
+  let installCalls = 0;
+  const installed = connector("github", 1);
+  installed.installation = {
+    state: "installed",
+    installedReleaseDigest: installed.release.releaseDigest
+  };
+  const service = new ConnectorMarketService({
+    backend: backendWith({
+      installConnector: async () => {
+        installCalls += 1;
+        return {
+          connector: installed,
+          operation: {
+            operationId: "operation-install-1",
+            clientRequestId: "request-install-1",
+            connectorKey: "github",
+            kind: "install",
+            state: "completed",
+            stage: "completed",
+            attempt: 1,
+            createdAt: "2026-08-03T00:00:00Z",
+            updatedAt: "2026-08-03T00:00:01Z"
+          },
+          revision: 1
+        };
+      }
+    }),
+    canRequest: () => admitted,
+    requestInstallAdmission: () => {
+      admissionRequests += 1;
+    }
+  });
+
+  assert.equal(await service.install("github"), "not_admitted");
+  assert.equal(admissionRequests, 1);
+  assert.equal(installCalls, 0);
+  assert.deepEqual(service.dataStore.pendingInstallationsByConnectorKey, {});
+
+  admitted = true;
+  assert.equal(await service.install("github"), "installed");
+  assert.equal(admissionRequests, 1);
+  assert.equal(installCalls, 1);
   service.dispose();
 });
 

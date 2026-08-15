@@ -212,7 +212,10 @@ export function ConnectorMarketDialogs() {
                 setShowSuccessToast(null);
                 void market
                   .install(dialog.connectorKey)
-                  .then(() => {
+                  .then((outcome) => {
+                    if (outcome !== "installed") {
+                      return;
+                    }
                     setShowSuccessToast("install");
                     uiState.closeDialog();
                   })

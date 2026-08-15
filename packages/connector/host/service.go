@@ -12,6 +12,10 @@ type ScopedSnapshotReader interface {
 	SnapshotForScope(ctx context.Context, scope OperationScope) (Snapshot, error)
 }
 
+type ScopedOperationReader interface {
+	GetOperationForScope(ctx context.Context, scope OperationScope, operationID string) (Operation, error)
+}
+
 // Service is the host-neutral connector-market application boundary. Host
 // daemons provide ports for persistence, artifacts, authorization, scheduling,
 // and events; transports adapt their generated OpenAPI DTOs to this interface.
@@ -20,7 +24,7 @@ type Service interface {
 	ListCatalogCategories(ctx context.Context) ([]CatalogCategory, error)
 	ListCatalogPage(ctx context.Context, query CatalogPageQuery) (CatalogPage, error)
 	GetConnector(ctx context.Context, connectorKey string) (Connector, error)
-	GetOperation(ctx context.Context, operationID string) (Operation, error)
+	GetOperationForScope(ctx context.Context, scope OperationScope, operationID string) (Operation, error)
 	RefreshCatalog(ctx context.Context, mutation Mutation) (MutationResult, error)
 	Install(ctx context.Context, mutation ConnectorMutation) (MutationResult, error)
 	Uninstall(ctx context.Context, mutation ConnectorMutation) (MutationResult, error)

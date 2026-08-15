@@ -109,17 +109,17 @@ func NewApplication(config ApplicationConfig) (*Application, error) {
 
 func (application *Application) Snapshot(ctx context.Context) (Snapshot, error) {
 	snapshot, err := application.config.Repository.Snapshot(ctx)
-	return publicSnapshot(snapshot), err
+	return publicSnapshot(snapshot, OperationScope{}), err
 }
 
 func (application *Application) SnapshotForScope(ctx context.Context, scope OperationScope) (Snapshot, error) {
 	if repository, ok := application.config.Repository.(ScopedSnapshotReader); ok {
 		snapshot, err := repository.SnapshotForScope(ctx, scope)
-		return publicSnapshot(snapshot), err
+		return publicSnapshot(snapshot, scope), err
 	}
-	snapshot, err := application.Snapshot(ctx)
+	snapshot, err := application.config.Repository.Snapshot(ctx)
 	if err != nil || strings.TrimSpace(scope.AccountID) == "" || application.config.AuthorizationProjections == nil {
-		return snapshot, err
+		return publicSnapshot(snapshot, scope), err
 	}
 	for index := range snapshot.Connectors {
 		projection, projectionErr := application.config.AuthorizationProjections.AuthorizationProjection(
@@ -135,13 +135,13 @@ func (application *Application) SnapshotForScope(ctx context.Context, scope Oper
 			State: projection.State, FailureCode: projection.FailureCode,
 		}
 	}
-	return snapshot, nil
+	return publicSnapshot(snapshot, scope), nil
 }
 
-func publicSnapshot(snapshot Snapshot) Snapshot {
+func publicSnapshot(snapshot Snapshot, scope OperationScope) Snapshot {
 	operations := snapshot.Operations[:0]
 	for _, operation := range snapshot.Operations {
-		if operation.Kind != OperationKindReconcileRuntime {
+		if OperationVisibleToScope(operation, scope) {
 			operations = append(operations, operation)
 		}
 	}
@@ -305,6 +305,24 @@ func (application *Application) GetOperation(ctx context.Context, operationID st
 		return Operation{}, err
 	}
 	if operation.Kind == OperationKindReconcileRuntime {
+		return Operation{}, ErrNotFound
+	}
+	return operation, nil
+}
+
+func (application *Application) GetOperationForScope(
+	ctx context.Context,
+	scope OperationScope,
+	operationID string,
+) (Operation, error) {
+	if strings.TrimSpace(operationID) == "" {
+		return Operation{}, invalidRequest("operationID is required")
+	}
+	operation, err := application.config.Repository.OperationForScope(ctx, scope, operationID)
+	if err != nil {
+		return Operation{}, err
+	}
+	if !OperationVisibleToScope(operation, scope) {
 		return Operation{}, ErrNotFound
 	}
 	return operation, nil
@@ -995,7 +1013,7 @@ func (application *Application) acceptConnectorOperation(
 	}
 	var result MutationResult
 	err := application.config.Repository.Transaction(ctx, func(tx Transaction) error {
-		existing, err := tx.OperationByClientRequestID(mutation.ClientRequestID)
+		existing, err := tx.OperationByClientRequestID(mutation.AccountID, mutation.ClientRequestID)
 		if err != nil {
 			return err
 		}
@@ -1043,6 +1061,8 @@ func (application *Application) acceptConnectorOperation(
 		operation := Operation{
 			OperationID:     operationID,
 			ClientRequestID: mutation.ClientRequestID,
+			OwnerAccountID:  strings.TrimSpace(mutation.AccountID),
+			Visibility:      OperationVisibilityAccount,
 			ConnectorKey:    mutation.ConnectorKey,
 			Kind:            kind,
 			Scope:           OperationScope{AccountID: strings.TrimSpace(mutation.AccountID)},
@@ -1096,7 +1116,7 @@ func (application *Application) isIdempotentConnectorOperation(
 ) (bool, error) {
 	var replay bool
 	err := application.config.Repository.Transaction(ctx, func(tx Transaction) error {
-		existing, err := tx.OperationByClientRequestID(mutation.ClientRequestID)
+		existing, err := tx.OperationByClientRequestID(mutation.AccountID, mutation.ClientRequestID)
 		if err != nil {
 			return err
 		}
@@ -1123,12 +1143,13 @@ func (application *Application) acceptOperation(
 	}
 	var result MutationResult
 	err := application.config.Repository.Transaction(ctx, func(tx Transaction) error {
-		existing, err := tx.OperationByClientRequestID(mutation.ClientRequestID)
+		ownerAccountID := strings.TrimSpace(mutation.Scope.AccountID)
+		existing, err := tx.OperationByClientRequestID(ownerAccountID, mutation.ClientRequestID)
 		if err != nil {
 			return err
 		}
 		if existing != nil {
-			if err := verifyIdempotentOperation(*existing, kind, connectorKey, ""); err != nil {
+			if err := verifyIdempotentOperation(*existing, kind, connectorKey, ownerAccountID); err != nil {
 				return err
 			}
 			result = MutationResult{Operation: *existing, Revision: tx.Revision()}
@@ -1149,8 +1170,11 @@ func (application *Application) acceptOperation(
 		operation := Operation{
 			OperationID:     operationID,
 			ClientRequestID: mutation.ClientRequestID,
+			OwnerAccountID:  ownerAccountID,
+			Visibility:      OperationVisibilityAccount,
 			ConnectorKey:    connectorKey,
 			Kind:            kind,
+			Scope:           OperationScope{AccountID: ownerAccountID},
 			State:           OperationStateAccepted,
 			Stage:           OperationStageAccepted,
 			CreatedAt:       now,

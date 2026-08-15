@@ -125,11 +125,20 @@ export function resolveSparseNewConversationActivationSettings(input: {
     draft.model,
     effective?.model
   );
-  const reasoningEffort = firstResolvedComposerText(
-    typeof patch.reasoningEffort === "string" ? patch.reasoningEffort : null,
+  const explicitReasoningEffort = firstResolvedComposerText(
+    typeof patch.reasoningEffort === "string" ? patch.reasoningEffort : null
+  );
+  const inheritedReasoningEffort = firstResolvedComposerText(
     draft.reasoningEffort,
     effective?.reasoningEffort
   );
+  const reasoningEffort =
+    explicitReasoningEffort ??
+    resolveInheritedReasoningEffortForModel(
+      input.composerOptions,
+      model,
+      inheritedReasoningEffort
+    );
   const speed = firstResolvedComposerText(
     typeof patch.speed === "string" ? patch.speed : null,
     draft.speed,
@@ -145,7 +154,7 @@ export function resolveSparseNewConversationActivationSettings(input: {
     ...draft,
     ...patch,
     ...(model ? { model } : {}),
-    ...(reasoningEffort ? { reasoningEffort } : {}),
+    reasoningEffort: reasoningEffort ?? undefined,
     ...(speed ? { speed } : {}),
     ...(permissionModeId
       ? { permissionModeId: normalizePermissionModeId(permissionModeId) }
@@ -159,6 +168,39 @@ export function resolveSparseNewConversationActivationSettings(input: {
         draft.codexSaverMode ??
         input.composerOptions.effectiveSettings?.codexSaverMode) === true
   };
+}
+
+export function resolveNewConversationSettingProvenance(
+  requiredSettingsPatch?: Partial<AgentSessionComposerSettings> | null
+): { modelExplicit: boolean; reasoningEffortExplicit: boolean } {
+  return {
+    modelExplicit: typeof requiredSettingsPatch?.model === "string",
+    reasoningEffortExplicit:
+      typeof requiredSettingsPatch?.reasoningEffort === "string"
+  };
+}
+
+function resolveInheritedReasoningEffortForModel(
+  options: AgentActivityComposerOptions | null,
+  model: string | null,
+  selected: string | null
+): string | null {
+  if (options?.provider?.trim().toLowerCase() !== "opencode" || !model) {
+    return selected;
+  }
+  const profile = options.reasoningOptionsByModel?.[model];
+  if (!profile) {
+    // OpenCode's strict catalog is authoritative. Missing per-model metadata
+    // means there is no safe inherited dependent value to forward.
+    return null;
+  }
+  const supported = new Set(profile.options.map((option) => option.value));
+  if (selected && supported.has(selected)) return selected;
+  const advertisedDefault = profile.defaultValue?.trim() ?? "";
+  if (advertisedDefault && supported.has(advertisedDefault)) {
+    return advertisedDefault;
+  }
+  return profile.options[0]?.value ?? null;
 }
 
 export function resolveInitialRailPlacement(input: {
@@ -291,6 +333,9 @@ export function useAgentGUINewConversationActivation(
         drafts: draftSettingsBySessionIdRef.current
       });
       const snapshotComposerOptions = getCachedComposerOptions();
+      const requiredSettingsPatch = submitOptions?.requiredSettingsPatch as
+        | Partial<AgentSessionComposerSettings>
+        | undefined;
       // Sparse Create settings must match the home presentation. Draft fields
       // retired after remembered-default acknowledgement still appear in
       // effectiveSettings / permissionConfig.defaultValue; resolve them here
@@ -298,9 +343,12 @@ export function useAgentGUINewConversationActivation(
       const settings = resolveSparseNewConversationActivationSettings({
         draftSettings: initialNodeSettings,
         composerOptions: snapshotComposerOptions,
-        requiredSettingsPatch: submitOptions?.requiredSettingsPatch,
+        requiredSettingsPatch,
         codexSaverModeEntryEnabled
       });
+      const settingProvenance = resolveNewConversationSettingProvenance(
+        requiredSettingsPatch
+      );
       const prewarmedSessionId =
         normalizedInitialContent.length > 0 &&
         snapshotComposerOptions?.behavior?.prewarmDraftSession === true
@@ -365,6 +413,7 @@ export function useAgentGUINewConversationActivation(
         ...(submitOptions?.isolation
           ? { isolation: submitOptions.isolation }
           : {}),
+        ...settingProvenance,
         ...(submitOptions?.capabilityRefs?.length
           ? { capabilityRefs: submitOptions.capabilityRefs }
           : {}),

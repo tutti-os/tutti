@@ -45,8 +45,10 @@ import {
   type IWorkspaceAppCenterService
 } from "@renderer/features/workspace-app-center";
 import { useService } from "@tutti-os/infra/di";
-import { IConnectorMarketModule } from "@tutti-os/connector-market/services";
-import { openConnectorDialogFromComposer } from "../services/openConnectorDialogFromComposer.ts";
+import {
+  IConnectorMarketModule,
+  openConnectorMarketDialog
+} from "@tutti-os/connector-market/services";
 import { IWorkspaceFileManagerService } from "@renderer/features/workspace-file-manager";
 import { IWorkspaceFilePreviewSurfaceHost } from "@renderer/features/workspace-file-preview";
 import type {
@@ -691,7 +693,7 @@ export function StandaloneAgentWindow({
           return;
         }
         if (target.action === "open") {
-          void openConnectorDialogFromComposer(
+          void openConnectorMarketDialog(
             connectorMarketModule.root,
             target.connectorKey
           ).catch(() => undefined);

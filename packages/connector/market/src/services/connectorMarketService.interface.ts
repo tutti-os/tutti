@@ -47,9 +47,13 @@ export interface ConnectorMarketStoreState {
 }
 
 export interface ConnectorMarketServiceDependencies {
+  /** Automatically installs a newly observed release for an installed Connector. */
+  autoUpdateInstalledConnectors?: boolean;
   backend: ConnectorMarketBackend;
   /** Host-owned admission check for transport requests. */
   canRequest?: () => boolean;
+  /** Host hook invoked by install intent when transport admission is unavailable. */
+  requestInstallAdmission?: () => void | Promise<void>;
   events?: ConnectorMarketEventSource;
   createRequestId?: () => string;
   openAuthorizationUrl?: (url: string) => Promise<void>;
@@ -77,7 +81,7 @@ export interface IConnectorMarketService {
   reload(): Promise<void>;
   refreshCatalog(): Promise<void>;
   loadMore(sectionId: string): Promise<void>;
-  install(connectorKey: string): Promise<void>;
+  install(connectorKey: string): Promise<ConnectorInstallOutcome>;
   uninstall(connectorKey: string): Promise<ConnectorOperation>;
   dismissUninstallNotification(operationId: string): void;
   beginAuthorization(connectorKey: string, secret?: string): Promise<void>;
@@ -87,6 +91,8 @@ export interface IConnectorMarketService {
   /** Releases subscriptions and makes the service terminal. */
   dispose(): void;
 }
+
+export type ConnectorInstallOutcome = "installed" | "not_admitted";
 
 export const IConnectorMarketService = createDecorator<IConnectorMarketService>(
   "connector-market-service"

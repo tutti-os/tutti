@@ -97,6 +97,7 @@ const (
 	ReasonAgentProviderUnavailable                       = "agent_provider_unavailable"
 	ReasonAgentRuntimeOperationReconciling               = "agent_runtime_operation_reconciling"
 	ReasonAgentRuntimeOperationFailed                    = "agent_runtime_operation_failed"
+	ReasonAgentInteractiveRequestStale                   = "agent_interactive_request_stale"
 	ReasonAgentActiveTurnTargetRequired                  = "agent.active_turn_target_required"
 	ReasonAgentActiveTurnTargetMismatch                  = "agent.active_turn_target_mismatch"
 	ReasonWorkspaceAppNotFound                           = "workspace_app_not_found"
@@ -298,6 +299,28 @@ func WorkspaceAppNotFound(options ...Option) *ProtocolError {
 
 func WorkspaceOperationFailed(options ...Option) *ProtocolError {
 	return New(StatusWorkspaceOperationFailed, tuttigenerated.WorkspaceOperationFailed, ReasonWorkspaceOperationFailed, options...)
+}
+
+func AgentInteractiveRequestStale(options ...Option) *ProtocolError {
+	return New(StatusConflict, tuttigenerated.WorkspaceOperationFailed, ReasonAgentInteractiveRequestStale, options...)
+}
+
+// ClassifyAgentInteractiveResponse preserves the distinction between a stale
+// renderer response and an upstream/runtime failure. Identity mismatches are
+// durable runtime-operation failures, not proof that the interactive request
+// itself became stale, so they remain on the normal failure classification path.
+func ClassifyAgentInteractiveResponse(err error) *ProtocolError {
+	if err == nil {
+		return nil
+	}
+	switch {
+	case errors.Is(err, agentservice.ErrInteractionRequestNotFound),
+		errors.Is(err, agentservice.ErrInteractiveRequestNotLive),
+		errors.Is(err, agentservice.ErrInteractiveAlreadyAnswered):
+		return AgentInteractiveRequestStale(WithCause(err))
+	default:
+		return Classify(err)
+	}
 }
 
 func AgentProviderUnavailable(err *agentservice.ProviderUnavailableError) *ProtocolError {

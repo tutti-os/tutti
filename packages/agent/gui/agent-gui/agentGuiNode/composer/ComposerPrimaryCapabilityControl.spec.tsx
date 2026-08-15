@@ -35,7 +35,7 @@ describe("ComposerPrimaryCapabilityControl", () => {
       screen.getByTestId("agent-gui-composer-tutti-mode-toggle")
     ).toBeInTheDocument();
     expect(
-      screen.queryByTestId("agent-gui-composer-connectors-trigger")
+      screen.queryByTestId("connector-market-composer-trigger")
     ).not.toBeInTheDocument();
   });
 
@@ -57,13 +57,13 @@ describe("ComposerPrimaryCapabilityControl", () => {
     );
 
     expect(
-      screen.getByTestId("agent-gui-composer-connectors-trigger")
+      screen.getByTestId("connector-market-composer-trigger")
     ).toBeInTheDocument();
     expect(
       screen.queryByTestId("agent-gui-composer-tutti-mode-toggle")
     ).not.toBeInTheDocument();
     fireEvent.pointerDown(
-      screen.getByTestId("agent-gui-composer-connectors-trigger"),
+      screen.getByTestId("connector-market-composer-trigger"),
       { button: 0, ctrlKey: false, pointerType: "mouse" }
     );
     expect(onRetryComposerOptions).toHaveBeenCalledWith({

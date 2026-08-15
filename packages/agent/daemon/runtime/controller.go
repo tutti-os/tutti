@@ -69,6 +69,15 @@ type RuntimeStreamEventObserver interface {
 	) error
 }
 
+// RuntimeStreamEventFilter can be implemented by an observer that validates
+// event identity before the same stream is delivered to daemon-local
+// subscribers. Observation and filtering are separate so an external
+// projection can still emit a reconcile signal while the invalid event is
+// withheld from the local session fan-out.
+type RuntimeStreamEventFilter interface {
+	FilterRuntimeStreamEvents(string, string, []StreamEvent) []StreamEvent
+}
+
 // ProviderObservationObserver receives capture-only provider observations
 // synchronously before their durable activity report is queued.
 type ProviderObservationObserver interface {

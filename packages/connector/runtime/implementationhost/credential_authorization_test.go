@@ -212,6 +212,62 @@ func TestManagedCredentialAuthorizationInspectReturnsFencedObservation(t *testin
 	}
 }
 
+func TestInstallationTargetsReleaseAcceptsOnlyActiveCurrentOrCandidate(t *testing.T) {
+	tests := []struct {
+		name          string
+		installation  market.Installation
+		releaseDigest string
+		want          bool
+	}{
+		{
+			name: "installed current release",
+			installation: market.Installation{
+				State: market.InstallationStateInstalled, InstalledReleaseDigest: "current",
+			},
+			releaseDigest: "current",
+			want:          true,
+		},
+		{
+			name: "installing candidate release",
+			installation: market.Installation{
+				State: market.InstallationStateInstalling, CandidateReleaseDigest: "candidate",
+			},
+			releaseDigest: "candidate",
+			want:          true,
+		},
+		{
+			name: "updating candidate release",
+			installation: market.Installation{
+				State: market.InstallationStateUpdating, InstalledReleaseDigest: "current", CandidateReleaseDigest: "candidate",
+			},
+			releaseDigest: "candidate",
+			want:          true,
+		},
+		{
+			name: "updating superseded current release",
+			installation: market.Installation{
+				State: market.InstallationStateUpdating, InstalledReleaseDigest: "current", CandidateReleaseDigest: "candidate",
+			},
+			releaseDigest: "current",
+		},
+		{
+			name: "failed candidate release",
+			installation: market.Installation{
+				State: market.InstallationStateFailed, CandidateReleaseDigest: "candidate",
+			},
+			releaseDigest: "candidate",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := installationTargetsRelease(test.installation, test.releaseDigest); got != test.want {
+				t.Fatalf("installationTargetsRelease() = %v, want %v", got, test.want)
+			}
+		})
+	}
+}
+
 func awaitAuthorizationObservations(t *testing.T, host *credentialAuthorizationHostStub, count int) []market.AuthorizationState {
 	t.Helper()
 	deadline := time.Now().Add(time.Second)

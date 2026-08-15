@@ -222,14 +222,30 @@ entry capability may additionally hide or disable an experimental control; the
 activation boundary must fail closed as well, so a remembered `true` value
 cannot outlive a disabled host entry. Provider support comes from the resolved
 composer descriptor rather than provider-name checks in shared UI code.
-Extension-owned model catalogs can change independently of target-scoped
+Provider and extension model catalogs can change independently of target-scoped
 remembered defaults. On Create, the daemon treats such a default as a fallback
-preference and resolves an obsolete value to the extension runtime's current
-model. Non-explicit model-dependent settings, such as reasoning effort, resolve
-against that effective model rather than remaining bound to the obsolete
-preference. A model or dependent setting explicitly supplied by the caller
-remains strict. If the runtime rejects an explicit model selection, startup
-fails rather than continuing with an undisclosed provider default.
+preference and resolves an obsolete value to the current catalog default from
+the same target. Because AgentGUI also sends its presented effective value, the
+activation request carries explicit provenance bits for model and reasoning;
+Engine and the tuttid adapter must preserve them through the HTTP boundary.
+Legacy direct Create callers that omit provenance retain the compatibility rule
+that a supplied non-empty value is explicit. Non-explicit model-dependent settings, such as reasoning
+effort, resolve against that effective model rather than remaining bound to the
+obsolete preference. A strict per-model catalog never forwards an inherited
+value that the target model did not advertise. A model or dependent setting
+explicitly supplied by the caller remains strict. If the runtime rejects an
+explicit model selection, startup fails rather than continuing with an
+undisclosed provider default.
+
+Create resolves and freezes the effective launch cwd before the first
+cwd-sensitive model-catalog lookup. A no-project session therefore queries the
+catalog from its allocated session directory, which is also passed to runtime;
+it must not inherit the tuttid process cwd. Worktree creation intentionally
+queries from the selected source checkout before creating the isolated checkout.
+The no-project directory remains a provisional allocation until Host creates
+the Session (or delivery becomes uncertain); any earlier catalog, plan,
+reasoning, preparation, or runtime failure releases it so failed requests cannot
+consume the allocator's daily name space.
 
 Composer model catalogs are daemon-owned snapshots. A provider auth/config
 change invalidates the snapshot and closes its provider app-server session, but
@@ -239,6 +255,16 @@ model validation must wait for an authoritative snapshot. The daemon shares
 concurrent catalog loads, reuses a warm app-server session, and publishes the
 existing catalog invalidation hint after a successful refresh so open composers
 can converge without owning provider or cache policy.
+
+Connector capability catalogs follow the same projection boundary. Each host
+reads its authoritative local Connector Market snapshot, then uses
+`packages/agent/daemon/composercatalog` to map manifest identity, icon,
+installation, compatibility, and authorization state into the closed Composer
+capability contract. Host transports only serialize that projection and route
+semantic open intents; they must not duplicate Connector readiness rules or
+derive Composer entries from renderer-local market state. Connector Market
+change events invalidate retained Composer options, while a menu open may still
+force an authoritative reread as a recovery path.
 
 Settings that affect provider preparation are immutable after launch. The
 daemon validates them against current product policy and resolved provider
@@ -631,6 +657,13 @@ delegation call and the canonical child Session/Turn. AgentGUI attaches the
 child lane only through the immutable `parentToolCallId`; it must not parse
 provider-native spawn events, invent a missing parent card, or create a
 presentation-only child lane.
+
+The parent-side child lane preserves the latest canonical assistant message as
+complete Markdown both while it streams and after the child settles. The same
+safe streaming Markdown/link boundary used by ordinary assistant messages owns
+that presentation. Bounded plain-text activity is only a fallback before the
+child emits assistant content; character-level activity truncation must never
+corrupt a generated-file link or drop earlier assistant context.
 
 User-initiated Fork creates a new root Session rather than a provider-native
 subagent. The child records durable lineage to the source Session and inclusive
@@ -1546,7 +1579,13 @@ command flows. Plural consumer selectors exclude them before Rail and Message
 Center collection projection; a hidden Session must not become a list row just
 because it is resumable or receives later canonical updates.
 
-When runtime sections are enabled, projection unions IDs from the current section, search, and reconciliation, then joins canonical Sessions. Unchanged summaries preserve structural sharing so unrelated engine updates do not rebuild the whole Rail snapshot.
+When runtime sections are enabled, projection unions IDs from the current
+section, search, reconciliation, and every in-progress root Session in the
+exact target scope, then joins canonical Sessions. In-progress Sessions remain
+display overlays until the bounded section query contains them; overlay rows
+do not alter cursors, `hasMore`, or server totals. Unchanged summaries preserve
+structural sharing so unrelated engine updates do not rebuild the whole Rail
+snapshot.
 
 Scroll, section collapse, visible limits, and search query belong to mounted view scope. Non-search state is isolated by `workspaceId + agentTargetId/all`; search creates a temporary navigation scope. `activeConversationId` expresses selection only. Scrolling requires an explicit reveal intent.
 
@@ -1846,6 +1885,14 @@ capability-menu state. The primary footer capability slot is mutually
 exclusive: when `lab.connectors` is off it renders Tutti Mode, and when the
 flag is on it renders only the Connectors menu. The same footer serves both the
 home hero and existing-session dock, so the two AgentGUI contexts cannot drift.
+The menu implementation and its host-neutral connector item contract belong to
+`@tutti-os/connector-market/ui`. AgentGUI owns only the capability-option
+mapping, Composer placement, canonical option refresh request, and Tutti Mode
+fallback. Its existing `onCapabilitySettingsRequest` host port emits the exact
+connector key; the host delegates that intent to Connector Market's shared open
+use case and mounts one window-level Connector Market dialog host. AgentGUI
+does not load Connector Market state, construct its Root, or mount a dialog per
+Composer.
 
 ### 5.3 Agent Directory and setup
 

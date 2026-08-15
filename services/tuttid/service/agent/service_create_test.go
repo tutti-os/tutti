@@ -679,8 +679,8 @@ func TestServiceCreateReportsNodeResults(t *testing.T) {
 
 	assertAgentNodeSequence(t, reporter.events, []string{
 		"content_normalized",
-		"model_validated",
 		"cwd_resolved",
+		"model_validated",
 		"runtime_prepared",
 		"runtime_started",
 		"session_persisted",

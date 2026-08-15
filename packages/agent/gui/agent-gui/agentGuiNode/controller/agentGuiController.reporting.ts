@@ -75,6 +75,7 @@ export type AgentGUIRuntimeErrorPhase =
   | "interrupt_current_turn"
   | "load_session_messages"
   | "load_session_state"
+  | "synchronize_session"
   | "retry_activation"
   | "send_prompt"
   | "submit_interactive"

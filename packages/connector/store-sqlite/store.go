@@ -112,7 +112,9 @@ VALUES (1, 0, 'stale', '') ON CONFLICT(id) DO NOTHING`,
 )`,
 		`CREATE TABLE IF NOT EXISTS connector_market_operations (
   operation_id TEXT PRIMARY KEY,
-  client_request_id TEXT NOT NULL UNIQUE,
+  client_request_id TEXT NOT NULL,
+  owner_account_id TEXT NOT NULL,
+  visibility TEXT NOT NULL CHECK (visibility IN ('account', 'system_private')),
   connector_key TEXT NOT NULL,
   kind TEXT NOT NULL,
   state TEXT NOT NULL,
@@ -144,6 +146,9 @@ ON connector_market_outbox(published_at_unix_ms, sequence)`,
 		return fmt.Errorf("migrate connector market operation lease token: %w", err)
 	}
 	if err := store.migrateLifecycle(ctx); err != nil {
+		return err
+	}
+	if err := store.migrateOperationOwnership(ctx); err != nil {
 		return err
 	}
 	return store.migrateRuntimeConvergence(ctx)
@@ -183,7 +188,7 @@ FROM connector_market_metadata WHERE id = ?`, metadataID).
 			return market.Snapshot{}, err
 		}
 	}
-	operations, err := listOperationsOn(ctx, tx)
+	operations, err := listOperationsOn(ctx, tx, accountID)
 	if err != nil {
 		return market.Snapshot{}, err
 	}
@@ -566,10 +571,12 @@ func (transaction *transaction) Operation(operationID string) (market.Operation,
 	return operationOn(transaction.ctx, transaction.tx, operationID)
 }
 
-func (transaction *transaction) OperationByClientRequestID(clientRequestID string) (*market.Operation, error) {
+func (transaction *transaction) OperationByClientRequestID(ownerAccountID, clientRequestID string) (*market.Operation, error) {
 	var payload string
 	if err := transaction.tx.QueryRowContext(transaction.ctx, `
-SELECT operation_json FROM connector_market_operations WHERE client_request_id = ?`, clientRequestID).Scan(&payload); err != nil {
+SELECT operation_json FROM connector_market_operations
+WHERE owner_account_id = ? AND client_request_id = ?`,
+		strings.TrimSpace(ownerAccountID), clientRequestID).Scan(&payload); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil
 		}
@@ -653,6 +660,30 @@ WHERE account_id = ? AND connector_key = ?`, strings.TrimSpace(scope.AccountID),
 }
 
 func (transaction *transaction) EnqueueConnectorMarketChanged(event market.ChangedEvent) error {
+	if strings.TrimSpace(event.OperationID) != "" {
+		operation, err := transaction.Operation(event.OperationID)
+		if err != nil && !errors.Is(err, market.ErrNotFound) {
+			return err
+		}
+		if err == nil {
+			operation = market.NormalizeOperationOwnership(operation)
+			if operation.Visibility == market.OperationVisibilityAccount {
+				accountEvent := event
+				accountEvent.OwnerAccountID = operation.OwnerAccountID
+				accountEvent.Visibility = market.OperationVisibilityAccount
+				if err := transaction.appendChangedEvent(accountEvent); err != nil {
+					return err
+				}
+			}
+		}
+	}
+	event.OperationID = ""
+	event.OwnerAccountID = ""
+	event.Visibility = market.OperationVisibilitySystemPrivate
+	return transaction.appendChangedEvent(event)
+}
+
+func (transaction *transaction) appendChangedEvent(event market.ChangedEvent) error {
 	payload, err := json.Marshal(event)
 	if err != nil {
 		return err
@@ -696,9 +727,15 @@ SELECT connector_json FROM connector_market_connectors ORDER BY connector_key`)
 	return connectors, nil
 }
 
-func listOperationsOn(ctx context.Context, database queryer) ([]market.Operation, error) {
+func listOperationsOn(ctx context.Context, database queryer, accountID string) ([]market.Operation, error) {
+	accountID = strings.TrimSpace(accountID)
+	if accountID == "" {
+		return []market.Operation{}, nil
+	}
 	rows, err := database.QueryContext(ctx, `
-SELECT operation_json FROM connector_market_operations ORDER BY operation_id`)
+SELECT operation_json FROM connector_market_operations
+WHERE owner_account_id = ? AND visibility = ? ORDER BY operation_id`,
+		accountID, market.OperationVisibilityAccount)
 	if err != nil {
 		return nil, err
 	}
@@ -712,9 +749,6 @@ SELECT operation_json FROM connector_market_operations ORDER BY operation_id`)
 		operation, err := decodeOperation(payload)
 		if err != nil {
 			return nil, err
-		}
-		if operation.Kind == market.OperationKindReconcileRuntime {
-			continue
 		}
 		operations = append(operations, publicOperation(operation))
 	}
@@ -731,6 +765,7 @@ SELECT operation_json FROM connector_market_operations WHERE operation_id = ?`, 
 }
 
 func saveOperationOn(ctx context.Context, tx *sql.Tx, operation market.Operation) error {
+	operation = market.NormalizeOperationOwnership(operation)
 	payload, err := json.Marshal(operation)
 	if err != nil {
 		return err
@@ -741,10 +776,12 @@ func saveOperationOn(ctx context.Context, tx *sql.Tx, operation market.Operation
 	}
 	result, err := tx.ExecContext(ctx, `
 INSERT INTO connector_market_operations (
-  operation_id, client_request_id, connector_key, kind, state,
+  operation_id, client_request_id, owner_account_id, visibility, connector_key, kind, state,
   lease_owner, lease_token, lease_expires_at_unix_ms, updated_at_unix_ms, operation_json
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(operation_id) DO UPDATE SET
+	owner_account_id = excluded.owner_account_id,
+	visibility = excluded.visibility,
   state = excluded.state,
   lease_owner = excluded.lease_owner,
 	lease_token = excluded.lease_token,
@@ -755,7 +792,7 @@ WHERE excluded.lease_token = 0 OR (
   connector_market_operations.lease_owner = excluded.lease_owner AND
   connector_market_operations.lease_token = excluded.lease_token
 )`,
-		operation.OperationID, operation.ClientRequestID, operation.ConnectorKey,
+		operation.OperationID, operation.ClientRequestID, operation.OwnerAccountID, operation.Visibility, operation.ConnectorKey,
 		operation.Kind, operation.State, operation.LeaseOwner, operation.LeaseToken, leaseExpiresAt,
 		operation.UpdatedAt.UTC().UnixMilli(), string(payload))
 	if err != nil {

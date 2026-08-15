@@ -108,6 +108,11 @@ implementation. `daemon/hostadapter` is the official daemon-runtime-to-Host
 adapter, `host.SQLiteWorkspaceStore` is the workspace-routed canonical store,
 and `daemon/modelcatalog` owns provider model/reasoning/speed normalization;
 product daemons compose these modules instead of copying their mappings.
+Tool adapters preserve provider-owned terminal state together with raw output
+and exit code. Generic ACP normalization prefers an explicit provider status;
+only when it is absent does it apply the process convention of zero success and
+nonzero failure. The generic layer and GUI never reinterpret status by parsing
+specific command strings.
 
 Canonical delete is a lossless tombstone transition. The transaction preserves
 each selected root/child Session component, its Turns, Messages, Interactions,
@@ -1520,6 +1525,12 @@ second reconcile while the first is pending. Explicit refresh remains a
 separate command. Message paging adapters do not call back into selection or
 Rail orchestration, and hosts do not maintain a second messages-only reconcile
 entrypoint.
+
+The focused conversation controller also owns the optional host synchronization
+lease for its exact active Session. It acquires the lease when focus changes,
+keeps repeated selection idempotent, and releases the previous lease on switch,
+clear, or disposal. A host may use that lease to retain a per-Session event
+stream; React surfaces must not retain that transport independently.
 
 Event-stream continuity and command reachability are separate host facts.
 `eventStreamConnectionChanged` belongs to the coordinator and triggers

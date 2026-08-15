@@ -14,6 +14,7 @@ import type {
 } from "../contracts/index.ts";
 import type {
   ConnectorMarketServiceDependencies,
+  ConnectorInstallOutcome,
   ConnectorMarketStoreState,
   IConnectorMarketService
 } from "./connectorMarketService.interface.ts";
@@ -182,6 +183,10 @@ export class ConnectorMarketService implements IConnectorMarketService {
   private eventConnectionUnsubscribe: (() => void) | null = null;
   private refreshInFlight: Promise<void> | null = null;
   private readonly sectionLoads = new Map<string, Promise<void>>();
+  private readonly automaticUpdateReleaseByConnectorKey = new Map<
+    string,
+    string
+  >();
   private loadInFlight: {
     generation: number;
     promise: Promise<void>;
@@ -302,7 +307,33 @@ export class ConnectorMarketService implements IConnectorMarketService {
     return promise;
   }
 
-  install(connectorKey: string): Promise<void> {
+  async install(connectorKey: string): Promise<ConnectorInstallOutcome> {
+    if (this.disposed) {
+      return "not_admitted";
+    }
+    if (!this.canRequest()) {
+      await this.dependencies.requestInstallAdmission?.();
+    }
+    if (this.disposed || !this.canRequest()) {
+      return "not_admitted";
+    }
+    const installed = await this.installConnector(connectorKey);
+    return installed ? "installed" : "not_admitted";
+  }
+
+  private installConnector(connectorKey: string): Promise<boolean> {
+    const connector = this.dataStore.connectorsByKey[connectorKey];
+    if (
+      connector?.installation.state === "installed" &&
+      connector.installation.installedReleaseDigest &&
+      connector.installation.installedReleaseDigest !==
+        connector.release.releaseDigest
+    ) {
+      this.automaticUpdateReleaseByConnectorKey.set(
+        connectorKey,
+        connector.release.releaseDigest
+      );
+    }
     return this.runConnectorMutation(
       connectorKey,
       () =>
@@ -539,8 +570,8 @@ export class ConnectorMarketService implements IConnectorMarketService {
     }
   }
 
-  disconnectAuthorization(connectorKey: string): Promise<void> {
-    return this.runConnectorMutation(connectorKey, () =>
+  async disconnectAuthorization(connectorKey: string): Promise<void> {
+    await this.runConnectorMutation(connectorKey, () =>
       this.dependencies.backend.disconnectAuthorization({
         connectorKey,
         clientRequestId: this.createRequestId(),
@@ -571,6 +602,7 @@ export class ConnectorMarketService implements IConnectorMarketService {
     this.operationTracks.clear();
     this.refreshInFlight = null;
     this.sectionLoads.clear();
+    this.automaticUpdateReleaseByConnectorKey.clear();
     this.eventUnsubscribe?.();
     this.eventUnsubscribe = null;
     this.eventConnectionUnsubscribe?.();
@@ -714,6 +746,7 @@ export class ConnectorMarketService implements IConnectorMarketService {
       for (const pageError of pageErrors) {
         this.reportDiagnostic(pageError);
       }
+      this.requestAutomaticUpdates();
     } catch (error) {
       if (!this.isCurrent(generation)) {
         return;
@@ -747,6 +780,7 @@ export class ConnectorMarketService implements IConnectorMarketService {
       });
       if (this.isCurrent(generation)) {
         applyConnectorMarketCatalogPage(this.dataStore, page);
+        this.requestAutomaticUpdates();
       }
     } catch (error) {
       if (this.isCurrent(generation)) {
@@ -838,20 +872,52 @@ export class ConnectorMarketService implements IConnectorMarketService {
     }
     this.dataStore.revision = Math.max(this.dataStore.revision, event.revision);
     this.dataStore.lastError = null;
+    this.requestAutomaticUpdates();
+  }
+
+  private requestAutomaticUpdates(): void {
+    if (
+      !this.dependencies.autoUpdateInstalledConnectors ||
+      !this.canRequest()
+    ) {
+      return;
+    }
+    for (const connector of Object.values(this.dataStore.connectorsByKey)) {
+      const installedReleaseDigest =
+        connector.installation.installedReleaseDigest;
+      const targetReleaseDigest = connector.release.releaseDigest;
+      if (
+        connector.compatibility.state !== "supported" ||
+        connector.release.status !== "available" ||
+        connector.installation.state !== "installed" ||
+        !installedReleaseDigest ||
+        installedReleaseDigest === targetReleaseDigest ||
+        this.connectorMutations.has(connector.key) ||
+        this.automaticUpdateReleaseByConnectorKey.get(connector.key) ===
+          targetReleaseDigest
+      ) {
+        continue;
+      }
+      this.automaticUpdateReleaseByConnectorKey.set(
+        connector.key,
+        targetReleaseDigest
+      );
+      void this.installConnector(connector.key).catch(() => undefined);
+    }
   }
 
   private async runConnectorMutation(
     connectorKey: string,
     operation: () => Promise<ConnectorMutationResult>,
     projectPendingInstallation = false
-  ): Promise<void> {
+  ): Promise<boolean> {
     const result = await this.runConnectorMutationResult(
       connectorKey,
       operation,
       projectPendingInstallation
     );
     if (!result) {
-      return;
+      return false;
     }
     const tracked = this.trackOperation(result.operation);
     if (tracked) {
@@ -867,6 +933,7 @@ export class ConnectorMarketService implements IConnectorMarketService {
         terminal.failureCode
       );
     }
+    return true;
   }
 
   private async runConnectorMutationResult(
@@ -1080,6 +1147,7 @@ export class ConnectorMarketService implements IConnectorMarketService {
         this.dataStore.revision,
         connector.revision
       );
+      this.requestAutomaticUpdates();
       return;
     }
     const snapshot = await this.dependencies.backend.getSnapshot();
@@ -1088,6 +1156,7 @@ export class ConnectorMarketService implements IConnectorMarketService {
       // state depend on another remote categories/icons request.
       applyConnectorMarketSnapshot(this.dataStore, snapshot);
       this.reconcileUninstallNotificationStates(snapshot.operations);
+      this.requestAutomaticUpdates();
     }
   }
 

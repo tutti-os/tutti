@@ -1831,6 +1831,40 @@ inline data URL instead`. Claude or standard ACP may instead receive no
   [service.go](../../../services/tuttid/service/agent/service.go)
   [service_session_list.go](../../../services/tuttid/service/agent/service_session_list.go)
 
+### Remote session stays planning while the provider already replied
+
+- Symptom:
+  A remote or cloud-backed AgentGUI conversation remains on its planning or
+  working placeholder after the provider has already settled the Turn. Reading
+  the authoritative Session directly reports `ready` with no active Turn, and
+  opening the Session event stream immediately reveals the missing assistant
+  response.
+- Quick checks:
+  First compare authoritative Session state with the renderer projection. Then
+  inspect host access logs for the exact Session event-stream subscription. If
+  the provider settled but the AgentGUI surface never requested the stream,
+  increasing HTTP or activation timeouts cannot repair the stale projection.
+- Root cause:
+  The focused conversation was hydrated once but did not retain the host's
+  optional Session synchronization lease. Hosts that use that lease to keep a
+  per-Session event stream open therefore receive no terminal state or message
+  events until another read happens to reconcile the Session.
+- Fix:
+  Keep synchronization ownership in the shared focused-conversation controller.
+  Acquire the exact Session lease on focus, keep repeated selection idempotent,
+  release the previous lease on switch or clear, and release the final lease on
+  disposal. Keep the host responsible for transport and authoritative
+  reconciliation; do not add provider-specific polling or longer timeouts.
+- Validation:
+  Add controller coverage for acquire, repeated selection, switch, clear, and
+  disposal. In the affected host, verify that selecting the conversation opens
+  the exact Session stream and that a terminal event updates both state and
+  transcript without a manual refresh.
+- References:
+  [agentConversationMessageController.ts](../../../packages/agent/gui/agentConversationMessageController.ts)
+  [useAgentConversationMessagePaging.ts](../../../packages/agent/gui/agent-gui/agentGuiNode/controller/useAgentConversationMessagePaging.ts)
+  [agent-activity-packages.md](../../architecture/agent-activity-packages.md)
+
 ### AgentGUI pin or unpin appears stuck for a live session
 
 - Symptom:
@@ -2035,7 +2069,10 @@ inline data URL instead`. Claude or standard ACP may instead receive no
   intent. Merge its sparse fields only in the tuttid SQLite transaction, publish
   target invalidation after success, and reread defaults through
   composer-options. Keep Create Session inheritance in `agent.Service.Create`;
-  callers pass only explicit overrides. Do not repair this with debounce,
+  if AgentGUI forwards a presented inherited model or reasoning value, it must
+  also carry `modelExplicit=false` / `reasoningEffortExplicit=false` through
+  Engine and the HTTP request; explicit overrides carry `true`. Do not repair
+  this with debounce,
   localStorage, node/workbench overlays, or another full preferences write.
   Do not add workspace/cwd to the target-default patch. Extension model
   validation uses the daemon-observed last-known-good catalog for the exact
@@ -2253,8 +2290,9 @@ inline data URL instead`. Claude or standard ACP may instead receive no
 - Fix:
   Keep page sessions in the workspace engine. Cache only ordered membership ids,
   cursor, `hasMore`, and `totalCount` in the controller query, then join ids to
-  engine entities with a pure model projection. Keep active and pending sessions
-  as display overlays outside pagination. Preserve old scope chrome and metadata
+  engine entities with a pure model projection. Keep active, pending, and all
+  exact-target in-progress root sessions as display overlays outside pagination
+  until canonical membership catches up. Preserve old scope chrome and metadata
   atomically while a provider refetch is pending. Engine snapshots merge
   monotonically; only explicit `session/removed` owns deletion. Keep first-page
   bootstrap as a required narrow repository seam: one requested-section-driven
@@ -4953,11 +4991,13 @@ agent target`, although the current model picker does not offer that model.
   provider-side reconfiguration failure.
 - Fix:
   At Create, distinguish a target-scoped persisted default from a model
-  explicitly supplied by the caller. For an Agent Extension, resolve an
-  obsolete persisted default to the current model reported by that same
-  extension; never use a different provider. Resolve non-explicit per-model
-  reasoning against that effective model while keeping explicit caller values
-  strict. Treat an explicit ACP model selection as identity-bearing: leave an
+  explicitly supplied by the caller. For a provider or Agent Extension,
+  resolve an obsolete persisted default to the current catalog default
+  reported by that same target; never use a different provider. Resolve
+  non-explicit per-model reasoning against that effective model while keeping
+  explicit caller values strict. A strict per-model reasoning catalog must
+  omit an inherited value when it cannot prove that the target model supports
+  it. Treat an explicit ACP model selection as identity-bearing: leave an
   already-selected model unchanged, and if a real model change is rejected,
   abort startup rather than falling back.
 - Validation:

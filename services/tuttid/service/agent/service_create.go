@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/tutti-os/tutti/packages/agent/daemon/providerregistry"
 	agenthost "github.com/tutti-os/tutti/packages/agent/host"
 	runtimeprep "github.com/tutti-os/tutti/packages/agent/runtimeprep"
 	"github.com/tutti-os/tutti/services/tuttid/biz/agentprovider"
@@ -21,6 +22,13 @@ import (
 func (s *Service) Create(ctx context.Context, workspaceID string, input CreateSessionInput) (Session, error) {
 	result, err := s.CreateWithResult(ctx, workspaceID, input)
 	return result.Session, err
+}
+
+func explicitSettingValue(explicit *bool, setting *string) bool {
+	if explicit != nil {
+		return *explicit
+	}
+	return strings.TrimSpace(value(setting)) != ""
 }
 
 // CreateWithResult creates a session while retaining the exact Turn identity
@@ -38,6 +46,7 @@ func (s *Service) CreateWithResult(ctx context.Context, workspaceID string, inpu
 	}
 	input.Provider = provider
 	input.ProviderTargetRef = launch.ProviderTargetRef
+	ctx = withRequestScopedAgentModelCatalog(ctx, s.ModelCatalog)
 	isolationMode := strings.TrimSpace(input.Isolation)
 	if isolationMode != "" && isolationMode != WorktreeIsolationMode {
 		return createSessionFailureResult(input, fmt.Errorf("%w: unsupported session isolation mode %q", ErrInvalidArgument, isolationMode))
@@ -54,9 +63,9 @@ func (s *Service) CreateWithResult(ctx context.Context, workspaceID string, inpu
 	if !input.CodexSaverModeAllowed || !composerProviderSupportsSaverSubagentMode(provider) {
 		input.CodexSaverMode = nil
 	}
-	modelExplicit := strings.TrimSpace(value(input.Model)) != ""
+	modelExplicit := explicitSettingValue(input.ModelExplicit, input.Model)
 	permissionModeExplicit := strings.TrimSpace(value(input.PermissionModeID)) != ""
-	reasoningEffortExplicit := strings.TrimSpace(value(input.ReasoningEffort)) != ""
+	reasoningEffortExplicit := explicitSettingValue(input.ReasoningEffortExplicit, input.ReasoningEffort)
 	if err := s.applyCreateSessionComposerDefaults(ctx, &input); err != nil {
 		return createSessionFailureResult(input, err)
 	}
@@ -108,9 +117,51 @@ func (s *Service) CreateWithResult(ctx context.Context, workspaceID string, inpu
 		s.reportAgentServiceNodeSuccess(ctx, input.AgentSessionID, "session_create", "content_normalized", provider, nodeStartedAt)
 	}
 	logAgentSubmitTrace("service.create.content_normalized", workspaceID, input.AgentSessionID, input.ClientSubmitID, input.Metadata, map[string]any{"content_block_count": len(normalizedContent)})
-	requestedModel := value(input.Model)
+	// Resolve the launch directory before any cwd-sensitive model catalog call.
+	// In particular, a no-project Create allocates its session directory here
+	// instead of querying OpenCode from the daemon process directory. Worktree
+	// launches intentionally query from the selected source checkout; the
+	// isolated checkout does not exist until the transaction below and contains
+	// the same tracked provider configuration at creation time.
 	nodeStartedAt := time.Now()
+	requestedCwdMissing := strings.TrimSpace(value(input.Cwd)) == ""
+	if isolationMode == WorktreeIsolationMode && requestedCwdMissing {
+		err := &WorktreeIsolationError{Kind: ErrNotAGitRepo}
+		s.reportAgentServiceNodeFailure(ctx, input.AgentSessionID, "session_create", "cwd_resolved", provider, nodeStartedAt, err)
+		return createSessionFailureResult(input, err)
+	}
+	cwd, err := s.resolveCwd(ctx, input.Cwd)
+	if err != nil {
+		s.reportAgentServiceNodeFailure(ctx, input.AgentSessionID, "session_create", "cwd_resolved", provider, nodeStartedAt, err)
+		return createSessionFailureResult(input, err)
+	}
+	input.Cwd = stringPointer(cwd)
+	allocatedSessionDirectory := requestedCwdMissing && s.SessionDirectoryAllocator != nil && strings.TrimSpace(cwd) != ""
+	keepSessionDirectory := !allocatedSessionDirectory
+	if allocatedSessionDirectory {
+		allocatedSessionDirectory := cwd
+		defer func() {
+			if !keepSessionDirectory {
+				_ = s.SessionDirectoryAllocator.ReleaseSessionDirectory(context.Background(), allocatedSessionDirectory)
+			}
+		}()
+	}
+	s.reportAgentServiceNodeSuccess(ctx, input.AgentSessionID, "session_create", "cwd_resolved", provider, nodeStartedAt)
+	logAgentSubmitTrace("service.create.cwd_resolved", workspaceID, input.AgentSessionID, input.ClientSubmitID, input.Metadata, map[string]any{
+		"cwd": cwd,
+	})
+	requestedModel := value(input.Model)
+	nodeStartedAt = time.Now()
 	planResolution, err := s.resolveCreateSessionModelForPlanOrProvider(ctx, workspaceID, provider, requestedModel, &input)
+	var invalidRememberedModel *InvalidModelError
+	if !modelExplicit && errors.As(err, &invalidRememberedModel) {
+		// Target-scoped defaults are fallback preferences. A provider catalog can
+		// retire a remembered model between launches, so retry resolution without
+		// that preference while keeping explicit caller selections strict.
+		input.Model = nil
+		requestedModel = ""
+		planResolution, err = s.resolveCreateSessionModelForPlanOrProvider(ctx, workspaceID, provider, requestedModel, &input)
+	}
 	if err != nil {
 		s.reportAgentServiceNodeFailure(ctx, input.AgentSessionID, "session_create", "model_validated", provider, nodeStartedAt, err)
 		return createSessionFailureResult(input, err)
@@ -123,13 +174,31 @@ func (s *Service) CreateWithResult(ctx context.Context, workspaceID string, inpu
 	if err := s.applyCreateSessionReasoningIntensity(ctx, provider, value(input.Model), &input); err != nil {
 		return createSessionFailureResult(input, err)
 	}
-	input.ReasoningEffort = s.clampReasoningEffortPointerForLaunch(
-		ctx,
-		provider,
-		input.ProviderTargetRef,
-		value(input.Model),
-		input.ReasoningEffort,
-	)
+	if reasoningEffortExplicit {
+		// Direct Create callers own explicit dependent settings. Keep strict
+		// catalog validation visible instead of silently rewriting a value that
+		// may express user intent.
+		if err := s.validateExplicitReasoningEffortForLaunch(
+			ctx,
+			provider,
+			input.ProviderTargetRef,
+			value(input.Cwd),
+			value(input.Model),
+			value(input.ReasoningEffort),
+		); err != nil {
+			return createSessionFailureResult(input, err)
+		}
+	}
+	if !reasoningEffortExplicit || composerProfileFor(provider).ReasoningEffortOptions != providerregistry.ReasoningEffortOptionsStrictModelCatalog {
+		input.ReasoningEffort = s.clampReasoningEffortPointerForLaunch(
+			ctx,
+			provider,
+			input.ProviderTargetRef,
+			value(input.Cwd),
+			value(input.Model),
+			input.ReasoningEffort,
+		)
+	}
 	if isolationMode == WorktreeIsolationMode {
 		// Serialize the explicit worktree create transaction with worktree
 		// management operations. Ordinary Session creation has no worktree
@@ -138,21 +207,6 @@ func (s *Service) CreateWithResult(ctx context.Context, workspaceID string, inpu
 		worktreeLock.Lock()
 		defer worktreeLock.Unlock()
 	}
-	nodeStartedAt = time.Now()
-	if isolationMode == WorktreeIsolationMode && strings.TrimSpace(value(input.Cwd)) == "" {
-		err := &WorktreeIsolationError{Kind: ErrNotAGitRepo}
-		s.reportAgentServiceNodeFailure(ctx, input.AgentSessionID, "session_create", "cwd_resolved", provider, nodeStartedAt, err)
-		return createSessionFailureResult(input, err)
-	}
-	cwd, err := s.resolveCwd(ctx, input.Cwd)
-	if err != nil {
-		s.reportAgentServiceNodeFailure(ctx, input.AgentSessionID, "session_create", "cwd_resolved", provider, nodeStartedAt, err)
-		return createSessionFailureResult(input, err)
-	}
-	s.reportAgentServiceNodeSuccess(ctx, input.AgentSessionID, "session_create", "cwd_resolved", provider, nodeStartedAt)
-	logAgentSubmitTrace("service.create.cwd_resolved", workspaceID, input.AgentSessionID, input.ClientSubmitID, input.Metadata, map[string]any{
-		"cwd": cwd,
-	})
 	var isolation *SessionIsolation
 	var isolationWarnings []SessionWarning
 	keepWorktree := false
@@ -280,6 +334,7 @@ func (s *Service) CreateWithResult(ctx context.Context, workspaceID string, inpu
 		// whole creation as absent.
 		if hostResult.SessionStatus == agenthost.CreateSessionStatusCreated {
 			keepWorktree = true
+			keepSessionDirectory = true
 			created, getErr := s.Get(ctx, workspaceID, input.AgentSessionID)
 			if getErr == nil {
 				return CreateSessionResult{
@@ -311,10 +366,13 @@ func (s *Service) CreateWithResult(ctx context.Context, workspaceID string, inpu
 		// reconciles instead of double-dispatching.
 		if !errors.Is(err, ErrSubmitDeliveryUnknown) {
 			_ = s.deleteTuttiModeActivationSessionState(context.WithoutCancel(ctx), workspaceID, input.AgentSessionID)
+		} else {
+			keepSessionDirectory = true
 		}
 		return createSessionFailureResult(input, err)
 	}
 	keepWorktree = true
+	keepSessionDirectory = true
 	session := hostResult.Session
 	logAgentSubmitTrace("service.create.runtime_start_resolved", workspaceID, session.ID, input.ClientSubmitID, input.Metadata, map[string]any{"provider_runtime_status": session.Status})
 	persistedSession := persistedSessionFromHost(hostResult.Canonical)
@@ -520,7 +578,7 @@ func (s *Service) resolveCreateSessionLaunch(ctx context.Context, workspaceID st
 func (s *Service) resolveCreateSessionModel(ctx context.Context, provider string, providerTargetRef map[string]any, cwd string, model *string) *string {
 	resolved := clampComposerModelForLaunch(provider, providerTargetRef, value(model))
 	if resolved == "" {
-		resolved = composerDefaultModel(ctx, provider, cwd, s.ModelCatalog)
+		resolved = composerDefaultModel(ctx, provider, cwd, s.modelCatalogForContext(ctx))
 	}
 	if resolved == "" {
 		return nil

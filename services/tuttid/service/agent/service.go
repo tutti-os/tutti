@@ -16,6 +16,7 @@ var (
 	ErrSessionNoActiveTurn              = errors.New("agent session has no active turn")
 	ErrSessionNotFound                  = agenthost.ErrSessionNotFound
 	ErrRuntimeSessionDisconnected       = agenthost.ErrRuntimeSessionDisconnected
+	ErrRuntimeOperationIdentityMismatch = agenthost.ErrRuntimeOperationIdentityMismatch
 	ErrInteractiveRequestNotLive        = errors.New("interactive request is no longer live")
 	ErrInteractiveAlreadyAnswered       = errors.New("interactive request has already been answered")
 	ErrInteractionRequestNotFound       = agenthost.ErrInteractionNotFound

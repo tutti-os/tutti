@@ -872,6 +872,44 @@ test("interaction timeout and late cross-scope results never become success", ()
   );
 });
 
+test("stale interactive responses request an authoritative session reconcile", () => {
+  let state = reduce(createInitialSessionLifecycleState(), {
+    type: "session/snapshotReceived",
+    sessions: [session(activeTurn(1), 1)]
+  }).state;
+  state = reduce(state, {
+    type: "interaction/upserted",
+    interaction: interaction("pending", 2)
+  }).state;
+  state = reduce(state, interactionResponseRequested("respond-1")).state;
+
+  const stale = reduce(state, {
+    commandId: "respond-1",
+    commandType: "interaction/respond",
+    correlationId: canonicalInteractionKey("session-1", "turn-1", "request-1"),
+    errorMessage: "interactive request is stale",
+    errorReason: "agent_interactive_request_stale",
+    outcome: "failed",
+    type: "engine/commandResult"
+  });
+
+  assert.equal(
+    stale.state.interactionResponsesById[
+      canonicalInteractionKey("session-1", "turn-1", "request-1")
+    ]?.status,
+    "failed"
+  );
+  assert.deepEqual(stale.followUpIntents, [
+    {
+      agentSessionId: "session-1",
+      needsMessages: true,
+      needsState: true,
+      type: "session/reconcileRequested",
+      workspaceId: "workspace-1"
+    }
+  ]);
+});
+
 test("terminal canonical session snapshot confirms an acknowledged response", () => {
   const source = session(activeTurn(1), 1);
   source.pendingInteractions = [interaction("pending", 1)];

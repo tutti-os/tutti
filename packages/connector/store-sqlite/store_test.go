@@ -3,6 +3,7 @@ package storesqlite
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/url"
@@ -76,6 +77,93 @@ func TestStoreMigrationDropsLegacyTrustTables(t *testing.T) {
 	}
 }
 
+func TestStoreMigrationBackfillsOwnedOperationsAndKeepsUnknownOwnerPrivate(t *testing.T) {
+	ctx := context.Background()
+	databasePath := filepath.Join(t.TempDir(), "tuttid.db")
+	legacy, err := sql.Open("sqlite", databasePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := legacy.ExecContext(ctx, `CREATE TABLE connector_market_operations (
+  operation_id TEXT PRIMARY KEY,
+  client_request_id TEXT NOT NULL UNIQUE,
+  connector_key TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  state TEXT NOT NULL,
+  lease_owner TEXT NOT NULL,
+  lease_token INTEGER NOT NULL DEFAULT 0,
+  lease_expires_at_unix_ms INTEGER,
+  updated_at_unix_ms INTEGER NOT NULL DEFAULT 0,
+  operation_json TEXT NOT NULL
+)`); err != nil {
+		_ = legacy.Close()
+		t.Fatal(err)
+	}
+	now := time.Unix(1, 0).UTC()
+	operations := []market.Operation{
+		{OperationID: "owned", ClientRequestID: "request-owned", ConnectorKey: "github", Kind: market.OperationKindInstall,
+			Scope: market.OperationScope{AccountID: "account-a"}, State: market.OperationStateFailed, CreatedAt: now, UpdatedAt: now},
+		{OperationID: "private", ClientRequestID: "request-private", ConnectorKey: "slack", Kind: market.OperationKindReconcileRuntime,
+			Scope: market.OperationScope{AccountID: "account-a"}, State: market.OperationStateFailed, CreatedAt: now, UpdatedAt: now},
+		{OperationID: "unknown-owner", ClientRequestID: "request-unknown", ConnectorKey: "notion", Kind: market.OperationKindInstall,
+			State: market.OperationStateAccepted, CreatedAt: now, UpdatedAt: now},
+	}
+	for _, operation := range operations {
+		payload, err := json.Marshal(operation)
+		if err != nil {
+			_ = legacy.Close()
+			t.Fatal(err)
+		}
+		if _, err := legacy.ExecContext(ctx, `INSERT INTO connector_market_operations (
+  operation_id, client_request_id, connector_key, kind, state, lease_owner, lease_token,
+  lease_expires_at_unix_ms, updated_at_unix_ms, operation_json
+) VALUES (?, ?, ?, ?, ?, '', 0, NULL, ?, ?)`, operation.OperationID, operation.ClientRequestID,
+			operation.ConnectorKey, operation.Kind, operation.State, operation.UpdatedAt.UnixMilli(), string(payload)); err != nil {
+			_ = legacy.Close()
+			t.Fatal(err)
+		}
+	}
+	if err := legacy.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	store, err := Open(ctx, databasePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	snapshot, err := store.SnapshotForScope(ctx, market.OperationScope{AccountID: "account-a"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(snapshot.Operations) != 1 || snapshot.Operations[0].OperationID != "owned" {
+		t.Fatalf("migrated public operations = %#v", snapshot.Operations)
+	}
+	if _, err := store.OperationForScope(ctx, market.OperationScope{AccountID: "account-a"}, "private"); !errors.Is(err, market.ErrNotFound) {
+		t.Fatalf("private operation error = %v", err)
+	}
+	if _, err := store.OperationForScope(ctx, market.OperationScope{AccountID: "account-a"}, "unknown-owner"); !errors.Is(err, market.ErrNotFound) {
+		t.Fatalf("unknown-owner operation error = %v", err)
+	}
+	recoverable, err := store.RecoverableOperations(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(recoverable) != 1 || recoverable[0].OperationID != "unknown-owner" {
+		t.Fatalf("recoverable migrated operations = %#v", recoverable)
+	}
+	for _, accountID := range []string{"account-a", "account-b"} {
+		operation := market.Operation{
+			OperationID: "reused-" + accountID, ClientRequestID: "reused-after-migration", ConnectorKey: "linear",
+			Kind: market.OperationKindInstall, Scope: market.OperationScope{AccountID: accountID},
+			State: market.OperationStateFailed, CreatedAt: now, UpdatedAt: now,
+		}
+		if err := store.Transaction(ctx, func(tx market.Transaction) error { return tx.SaveOperation(operation) }); err != nil {
+			t.Fatalf("reuse client request after migration for %s: %v", accountID, err)
+		}
+	}
+}
+
 func TestStorePersistsRevisionOperationBindingAndOutboxAtomically(t *testing.T) {
 	ctx := context.Background()
 	store, err := Open(ctx, filepath.Join(t.TempDir(), "tuttid.db"))
@@ -87,6 +175,7 @@ func TestStorePersistsRevisionOperationBindingAndOutboxAtomically(t *testing.T) 
 	operation := market.Operation{
 		OperationID: "operation-1", ClientRequestID: "request-1", ConnectorKey: connector.Key,
 		Kind: market.OperationKindInstall, State: market.OperationStateAccepted,
+		Scope: market.OperationScope{AccountID: "account-1"},
 		Stage: market.OperationStageAccepted, CreatedAt: time.Unix(1, 0).UTC(), UpdatedAt: time.Unix(1, 0).UTC(),
 	}
 	if err := store.Transaction(ctx, func(tx market.Transaction) error {
@@ -105,19 +194,152 @@ func TestStorePersistsRevisionOperationBindingAndOutboxAtomically(t *testing.T) 
 		t.Fatal(err)
 	}
 
-	snapshot, err := store.Snapshot(ctx)
+	snapshot, err := store.SnapshotForScope(ctx, operation.Scope)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if snapshot.Revision != 1 || snapshot.EventCursor != 1 || len(snapshot.Connectors) != 1 || len(snapshot.Operations) != 1 {
+	if snapshot.Revision != 1 || snapshot.EventCursor != 2 || len(snapshot.Connectors) != 1 || len(snapshot.Operations) != 1 {
 		t.Fatalf("snapshot = %#v", snapshot)
 	}
 	entries, err := store.PendingChangedEvents(ctx, 10)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(entries) != 1 || entries[0].Event.Revision != 1 {
+	if len(entries) != 2 || entries[0].Event.OperationID != operation.OperationID ||
+		entries[0].Event.OwnerAccountID != operation.Scope.AccountID || entries[1].Event.OperationID != "" {
 		t.Fatalf("outbox = %#v", entries)
+	}
+}
+
+func TestStoreScopedSnapshotOnlyReturnsOperationsOwnedByAccount(t *testing.T) {
+	ctx := context.Background()
+	store, err := Open(ctx, filepath.Join(t.TempDir(), "tuttid.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	now := time.Unix(1, 0).UTC()
+	connector := testConnector()
+	connector.Installation = market.Installation{
+		State: market.InstallationStateInstalled, InstalledVersion: connector.Release.Version,
+		InstalledReleaseID: connector.Release.ReleaseID, InstalledReleaseDigest: connector.Release.ReleaseDigest,
+	}
+	if err := store.Transaction(ctx, func(tx market.Transaction) error { return tx.SaveConnector(connector) }); err != nil {
+		t.Fatal(err)
+	}
+	for _, operation := range []market.Operation{
+		{OperationID: "operation-a", ClientRequestID: "request-a", ConnectorKey: "github", Kind: market.OperationKindInstall,
+			Scope: market.OperationScope{AccountID: "account-a"}, State: market.OperationStateAccepted, CreatedAt: now, UpdatedAt: now},
+		{OperationID: "operation-b", ClientRequestID: "request-b", ConnectorKey: "github", Kind: market.OperationKindUninstall,
+			Scope: market.OperationScope{AccountID: "account-b"}, State: market.OperationStateCompleted, CreatedAt: now, UpdatedAt: now},
+		{OperationID: "operation-private", ClientRequestID: "request-private", ConnectorKey: "github", Kind: market.OperationKindReconcileRuntime,
+			Scope: market.OperationScope{AccountID: "account-b"}, State: market.OperationStateCompleted, CreatedAt: now, UpdatedAt: now},
+		{OperationID: "operation-legacy", ClientRequestID: "request-legacy", ConnectorKey: "github", Kind: market.OperationKindInstall,
+			State: market.OperationStateFailed, CreatedAt: now, UpdatedAt: now},
+	} {
+		operation := operation
+		if err := store.Transaction(ctx, func(tx market.Transaction) error { return tx.SaveOperation(operation) }); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	snapshot, err := store.SnapshotForScope(ctx, market.OperationScope{AccountID: "account-b"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(snapshot.Operations) != 1 || snapshot.Operations[0].OperationID != "operation-b" {
+		t.Fatalf("account-b operations = %#v, want only operation-b", snapshot.Operations)
+	}
+	if len(snapshot.Connectors) != 1 || snapshot.Connectors[0].Installation.State != market.InstallationStateInstalled {
+		t.Fatalf("account-b machine connector state = %#v", snapshot.Connectors)
+	}
+	if operation, err := store.OperationForScope(ctx, market.OperationScope{AccountID: "account-a"}, "operation-a"); err != nil || operation.OperationID != "operation-a" {
+		t.Fatalf("account-a operation = %#v, error = %v", operation, err)
+	}
+	if _, err := store.OperationForScope(ctx, market.OperationScope{AccountID: "account-b"}, "operation-a"); !errors.Is(err, market.ErrNotFound) {
+		t.Fatalf("account-b operation-a error = %v, want ErrNotFound", err)
+	}
+	recoverable, err := store.RecoverableOperations(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(recoverable) != 1 || recoverable[0].OperationID != "operation-a" {
+		t.Fatalf("hidden account-a operation was not recoverable: %#v", recoverable)
+	}
+}
+
+func TestStoreAllowsClientRequestIDReuseAcrossAccounts(t *testing.T) {
+	ctx := context.Background()
+	store, err := Open(ctx, filepath.Join(t.TempDir(), "tuttid.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	now := time.Unix(1, 0).UTC()
+	for _, accountID := range []string{"account-a", "account-b"} {
+		operation := market.Operation{
+			OperationID: "operation-" + accountID, ClientRequestID: "shared-request", ConnectorKey: "github",
+			Kind: market.OperationKindInstall, Scope: market.OperationScope{AccountID: accountID},
+			State: market.OperationStateFailed, CreatedAt: now, UpdatedAt: now,
+		}
+		if err := store.Transaction(ctx, func(tx market.Transaction) error { return tx.SaveOperation(operation) }); err != nil {
+			t.Fatalf("save operation for %s: %v", accountID, err)
+		}
+	}
+}
+
+func TestStoreKeepsActiveConnectorLifecycleUniqueAcrossAccounts(t *testing.T) {
+	ctx := context.Background()
+	store, err := Open(ctx, filepath.Join(t.TempDir(), "tuttid.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	now := time.Unix(1, 0).UTC()
+	for _, accountID := range []string{"account-a", "account-b"} {
+		operation := market.Operation{
+			OperationID: "operation-" + accountID, ClientRequestID: "request-" + accountID, ConnectorKey: "github",
+			Kind: market.OperationKindInstall, Scope: market.OperationScope{AccountID: accountID},
+			State: market.OperationStateAccepted, CreatedAt: now, UpdatedAt: now,
+		}
+		err := store.Transaction(ctx, func(tx market.Transaction) error { return tx.SaveOperation(operation) })
+		if accountID == "account-a" && err != nil {
+			t.Fatal(err)
+		}
+		if accountID == "account-b" && err == nil {
+			t.Fatal("second account started a concurrent physical lifecycle operation for the same connector")
+		}
+	}
+}
+
+func TestStorePrivateOperationEventDoesNotExposeOperationID(t *testing.T) {
+	ctx := context.Background()
+	store, err := Open(ctx, filepath.Join(t.TempDir(), "tuttid.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	operation := market.Operation{
+		OperationID: "reconcile-1", ClientRequestID: "reconcile-request", ConnectorKey: "github",
+		Kind: market.OperationKindReconcileRuntime, Scope: market.OperationScope{AccountID: "account-a"},
+		State: market.OperationStateAccepted, CreatedAt: time.Unix(1, 0).UTC(), UpdatedAt: time.Unix(1, 0).UTC(),
+	}
+	if err := store.Transaction(ctx, func(tx market.Transaction) error {
+		if err := tx.SaveOperation(operation); err != nil {
+			return err
+		}
+		return tx.EnqueueConnectorMarketChanged(market.ChangedEvent{
+			ConnectorKey: operation.ConnectorKey, OperationID: operation.OperationID, Revision: tx.AdvanceRevision(),
+		})
+	}); err != nil {
+		t.Fatal(err)
+	}
+	events, err := store.PendingChangedEvents(ctx, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(events) != 1 || events[0].Event.OperationID != "" {
+		t.Fatalf("private operation event = %#v, want one machine event without operation id", events)
 	}
 }
 
@@ -133,6 +355,7 @@ func TestStoreKeepsAuthorizationSessionPrivateAndAvailableAfterReopen(t *testing
 	operation := market.Operation{
 		OperationID: "authorization-1", ClientRequestID: "request-1", ConnectorKey: connector.Key,
 		Kind: market.OperationKindStartAuthorization, State: market.OperationStateCompleted,
+		Scope: market.OperationScope{AccountID: "account-1"},
 		Stage: market.OperationStageCompleted, CreatedAt: time.Unix(1, 0).UTC(), UpdatedAt: time.Unix(2, 0).UTC(),
 		Execution: market.OperationExecution{AuthorizationSession: &market.AuthorizationSession{
 			OperationID: "authorization-1", ConnectorKey: connector.Key,
@@ -157,14 +380,14 @@ func TestStoreKeepsAuthorizationSessionPrivateAndAvailableAfterReopen(t *testing
 		t.Fatal(err)
 	}
 	defer reopened.Close()
-	snapshot, err := reopened.Snapshot(ctx)
+	snapshot, err := reopened.SnapshotForScope(ctx, operation.Scope)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(snapshot.Operations) != 1 || snapshot.Operations[0].Execution.AuthorizationSession != nil {
 		t.Fatalf("public snapshot exposed authorization session: %#v", snapshot.Operations)
 	}
-	operations, err := reopened.UnresolvedAuthorizationSessionOperations(ctx, market.OperationScope{})
+	operations, err := reopened.UnresolvedAuthorizationSessionOperations(ctx, operation.Scope)
 	if err != nil {
 		t.Fatal(err)
 	}

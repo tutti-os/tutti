@@ -166,7 +166,7 @@ export function AgentHandoffMenu({
         }}
       >
         {tooltip ? (
-          <TooltipProvider delayDuration={120}>
+          <TooltipProvider delayDuration={120} disableHoverableContent>
             <Tooltip>
               <TooltipTrigger asChild>{trigger}</TooltipTrigger>
               <TooltipContent side="top">{tooltip}</TooltipContent>

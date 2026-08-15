@@ -14,6 +14,25 @@ func (s *Store) upsertAgentSession(
 	input SessionStateReport,
 	now int64,
 ) (bool, bool, int64, Session, error) {
+	var (
+		accepted        bool
+		stateApplied    bool
+		lastEventUnixMS int64
+		session         Session
+	)
+	err := retrySQLiteBusy(ctx, func(attemptCtx context.Context) error {
+		var err error
+		accepted, stateApplied, lastEventUnixMS, session, err = s.upsertAgentSessionOnce(attemptCtx, input, now)
+		return err
+	})
+	return accepted, stateApplied, lastEventUnixMS, session, err
+}
+
+func (s *Store) upsertAgentSessionOnce(
+	ctx context.Context,
+	input SessionStateReport,
+	now int64,
+) (bool, bool, int64, Session, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return false, false, 0, Session{}, fmt.Errorf("begin workspace agent session state report: %w", err)

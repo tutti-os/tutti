@@ -82,8 +82,9 @@ func (s *Service) availableComposerModelsForValidationProfile(
 	cwd string,
 	profile composerProfile,
 ) ([]string, bool, error) {
-	if s.ReplayMode && s.ModelCatalog != nil {
-		result, err := s.ModelCatalog.ListModels(ctx, AgentModelCatalogInput{
+	catalog := s.modelCatalogForContext(ctx)
+	if s.ReplayMode && catalog != nil {
+		result, err := catalog.ListModels(ctx, AgentModelCatalogInput{
 			Provider: provider,
 			Cwd:      cwd,
 		})
@@ -133,10 +134,10 @@ func (s *Service) availableComposerModelsForValidationProfile(
 		return composerConfigOptionModelValues(models), true, nil
 	}
 	if profile.UsesModelCatalog {
-		if s.ModelCatalog == nil {
+		if catalog == nil {
 			return nil, false, nil
 		}
-		result, err := s.ModelCatalog.ListModels(ctx, AgentModelCatalogInput{Provider: provider, Cwd: cwd})
+		result, err := catalog.ListModels(ctx, AgentModelCatalogInput{Provider: provider, Cwd: cwd})
 		if err != nil {
 			return nil, false, nil
 		}

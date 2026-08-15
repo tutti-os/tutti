@@ -137,6 +137,9 @@ export abstract class WorkspaceAgentActivityReconcileBridge {
   ensureSessionSynchronized(
     input: WorkspaceAgentActivityEnsureSessionSynchronizedInput
   ): () => void {
+    // Desktop owns one workspace-scoped event stream, so focusing a Session
+    // needs an exact reconcile but does not acquire a per-Session subscription.
+    // Keep the release hook for hosts that implement a narrower stream lease.
     const workspaceId = normalizeWorkspaceId(input.workspaceId);
     const agentSessionId = input.agentSessionId.trim();
     if (agentSessionId) {
