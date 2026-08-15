@@ -9,6 +9,7 @@ import { DefaultAuthorizationViewRenderer } from "./AuthorizationViewRenderer.ts
 const labels = {
   activate: "Continue",
   cancel: "Cancel",
+  openExternal: "Open in browser",
   qrCodeAlt: "Authorization QR code",
   refresh: "Refresh",
   retry: "Retry",
@@ -23,7 +24,7 @@ test("renders a QR payload locally without exposing it as text", () => {
       busy: false,
       labels,
       view: {
-        protocol: "tutti.connector.authorization.view.v1",
+        protocol: "tutti.connector.authorization.view.v2",
         viewId: "qr-1",
         view: {
           type: "qr_code",
@@ -47,7 +48,7 @@ test("renders an activation action for external-link views", () => {
       busy: false,
       labels,
       view: {
-        protocol: "tutti.connector.authorization.view.v1",
+        protocol: "tutti.connector.authorization.view.v2",
         viewId: "external-1",
         view: {
           type: "external_link",
@@ -62,4 +63,31 @@ test("renders an activation action for external-link views", () => {
   assert.match(markup, /Continue in browser/);
   assert.match(markup, />Continue</);
   assert.doesNotMatch(markup, /https:\/\/example.com/);
+});
+
+test("renders an embedded page through the host slot", () => {
+  const markup = renderToStaticMarkup(
+    createElement(DefaultAuthorizationViewRenderer, {
+      busy: true,
+      embeddedPageRenderer: ({ url }) =>
+        createElement("div", { "data-embedded-url": url }),
+      labels,
+      view: {
+        protocol: "tutti.connector.authorization.view.v2",
+        viewId: "embedded-1",
+        view: {
+          type: "embedded_page",
+          flowId: "authorization-flow-1",
+          url: "https://accounts.example.com/device"
+        }
+      },
+      onEvent: () => undefined
+    })
+  );
+
+  assert.match(
+    markup,
+    /data-embedded-url="https:\/\/accounts.example.com\/device"/
+  );
+  assert.match(markup, />Open in browser</);
 });

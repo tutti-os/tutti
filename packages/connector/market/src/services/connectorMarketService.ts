@@ -1,4 +1,9 @@
 import { proxy } from "valtio/vanilla";
+import {
+  AUTHORIZATION_VIEW_PROTOCOL_V2,
+  parseAuthorizationViewV2,
+  type AuthorizationViewEnvelopeV2
+} from "@tutti-os/connector-authorization-protocol/v2";
 
 import type {
   ConnectorAuthorizationResult,
@@ -65,6 +70,16 @@ export class ConnectorAuthorizationCanceledError extends Error {
   }
 }
 
+class ConnectorAuthorizationViewInvalidError extends Error {
+  readonly code = "connector_authorization_view_invalid";
+  readonly retryable = false;
+
+  constructor() {
+    super("Connector authorization returned an invalid presentation");
+    this.name = "ConnectorAuthorizationViewInvalidError";
+  }
+}
+
 class ConnectorOperationTerminalError extends Error {
   readonly code: string;
   readonly retryable = true;
@@ -89,6 +104,55 @@ function waitForAuthorizationContinuation(): Promise<void> {
   return new Promise((resolve) => {
     setTimeout(resolve, authorizationContinuationPollMs);
   });
+}
+
+function legacyAuthorizationStepHash(value: string): string {
+  let hash = 0x811c9dc5;
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return (hash >>> 0).toString(16).padStart(8, "0");
+}
+
+function legacyAuthorizationViewId(operationId: string, url: string): string {
+  const normalized = operationId.replace(/[^A-Za-z0-9._:-]/g, "-");
+  const prefix = `authorization-${normalized || "legacy"}`.slice(0, 118);
+  return `${prefix}-${legacyAuthorizationStepHash(`${operationId}\0${url}`)}`;
+}
+
+function resolveAuthorizationView(
+  result: ConnectorAuthorizationResult
+): AuthorizationViewEnvelopeV2 | null {
+  if (result.connector.authorization.state !== "pending") {
+    return null;
+  }
+  const candidate =
+    result.authorizationView ??
+    (result.authorizationUrl
+      ? {
+          protocol: AUTHORIZATION_VIEW_PROTOCOL_V2,
+          viewId: legacyAuthorizationViewId(
+            result.operation.operationId,
+            result.authorizationUrl
+          ),
+          view: {
+            type: "external_link",
+            url: result.authorizationUrl,
+            ...(result.authorizationExpiresAt
+              ? { expiresAt: result.authorizationExpiresAt }
+              : {})
+          }
+        }
+      : null);
+  if (candidate === null) {
+    return null;
+  }
+  const parsed = parseAuthorizationViewV2(candidate);
+  if (!parsed.ok) {
+    throw new ConnectorAuthorizationViewInvalidError();
+  }
+  return parsed.value;
 }
 
 /**
@@ -328,6 +392,10 @@ export class ConnectorMarketService implements IConnectorMarketService {
     }
   }
 
+  async openAuthorizationUrl(url: string): Promise<void> {
+    await this.dependencies.openAuthorizationUrl?.(url);
+  }
+
   private async runAuthorization(
     connectorKey: string,
     secret?: string
@@ -335,6 +403,7 @@ export class ConnectorMarketService implements IConnectorMarketService {
     const token = this.acquireConnectorMutation(connectorKey);
     this.dataStore.authorizingConnectorKeys[connectorKey] = true;
     delete this.dataStore.pendingAuthorizationsByConnectorKey[connectorKey];
+    delete this.dataStore.authorizationViewsByConnectorKey[connectorKey];
     const generation = this.dataGeneration;
     const attempt: AuthorizationAttemptControl = {
       canceled: false,
@@ -348,12 +417,12 @@ export class ConnectorMarketService implements IConnectorMarketService {
       ...(secret ? { secret } : {})
     };
     let expectedRevision = this.dataStore.revision;
-    const openedAuthorizationUrls = new Set<string>();
+    const seenAuthorizationViewIds = new Set<string>();
     let recoveredRevisionConflict = false;
     try {
       while (this.isCurrentMutation(connectorKey, token, generation)) {
         if (
-          openedAuthorizationUrls.size > 0 &&
+          seenAuthorizationViewIds.size > 0 &&
           this.authorizationState(connectorKey) === "connected"
         ) {
           await this.waitForAuthorizationOperation(connectorKey);
@@ -372,7 +441,7 @@ export class ConnectorMarketService implements IConnectorMarketService {
             !recoveredRevisionConflict &&
             code === "connector_market_revision_conflict";
           const canRecoverBusyContinuation: boolean =
-            openedAuthorizationUrls.size > 0 &&
+            seenAuthorizationViewIds.size > 0 &&
             code === "connector_operation_in_progress";
           if (
             (!canRecoverRevision && !canRecoverBusyContinuation) ||
@@ -419,14 +488,16 @@ export class ConnectorMarketService implements IConnectorMarketService {
           ];
         }
         const operationTrack = this.trackOperation(result.operation);
-        const authorizationUrl = result.authorizationUrl;
+        const authorizationView = resolveAuthorizationView(result);
         const discoveredNextStep =
-          authorizationUrl !== undefined &&
-          !openedAuthorizationUrls.has(authorizationUrl);
-        if (discoveredNextStep && authorizationUrl) {
-          openedAuthorizationUrls.add(authorizationUrl);
-          if (this.dependencies.openAuthorizationUrl) {
-            await this.dependencies.openAuthorizationUrl(authorizationUrl);
+          authorizationView !== null &&
+          !seenAuthorizationViewIds.has(authorizationView.viewId);
+        if (discoveredNextStep && authorizationView) {
+          seenAuthorizationViewIds.add(authorizationView.viewId);
+          this.dataStore.authorizationViewsByConnectorKey[connectorKey] =
+            authorizationView;
+          if (authorizationView.view.type === "external_link") {
+            await this.openAuthorizationUrl(authorizationView.view.url);
           }
         }
         if (this.authorizationState(connectorKey) === "connected") {
@@ -458,6 +529,7 @@ export class ConnectorMarketService implements IConnectorMarketService {
       if (this.connectorMutations.get(connectorKey) === token) {
         delete this.dataStore.authorizingConnectorKeys[connectorKey];
         delete this.dataStore.pendingAuthorizationsByConnectorKey[connectorKey];
+        delete this.dataStore.authorizationViewsByConnectorKey[connectorKey];
       }
       if (this.authorizationAttempts.get(connectorKey) === attempt) {
         this.authorizationAttempts.delete(connectorKey);

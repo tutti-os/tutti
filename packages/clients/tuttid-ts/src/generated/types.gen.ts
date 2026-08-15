@@ -4942,7 +4942,35 @@ export type ConnectorMarketAuthorizationResponse = {
   operation: ConnectorMarketOperation;
   authorizationUrl?: string;
   authorizationExpiresAt: string;
+  authorizationView?: ConnectorMarketAuthorizationViewEnvelope;
   revision: number;
+};
+
+export type ConnectorMarketAuthorizationViewEnvelope = {
+  protocol: "tutti.connector.authorization.view.v2";
+  viewId: string;
+  view: ConnectorMarketAuthorizationRuntimeView;
+};
+
+export type ConnectorMarketAuthorizationRuntimeView =
+  | ({
+      type: "external_link";
+    } & ConnectorMarketAuthorizationExternalLinkView)
+  | ({
+      type: "embedded_page";
+    } & ConnectorMarketAuthorizationEmbeddedPageView);
+
+export type ConnectorMarketAuthorizationExternalLinkView = {
+  type: "external_link";
+  url: string;
+  expiresAt?: string;
+};
+
+export type ConnectorMarketAuthorizationEmbeddedPageView = {
+  type: "embedded_page";
+  flowId: string;
+  url: string;
+  expiresAt?: string;
 };
 
 export type ConnectorMarketConnectorResponse = {

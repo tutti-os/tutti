@@ -22,6 +22,7 @@ export function createConnectorMarketStoreState(): ConnectorMarketStoreState {
     pendingUninstallNotificationsByOperationId: {},
     operationsByConnectorKey: {},
     authorizingConnectorKeys: {},
+    authorizationViewsByConnectorKey: {},
     lastError: null,
     revision: 0,
     snapshotRevision: 0,
@@ -47,6 +48,8 @@ export function clearConnectorMarketStoreState(
     initial.pendingUninstallNotificationsByOperationId;
   state.operationsByConnectorKey = initial.operationsByConnectorKey;
   state.authorizingConnectorKeys = initial.authorizingConnectorKeys;
+  state.authorizationViewsByConnectorKey =
+    initial.authorizationViewsByConnectorKey;
   state.lastError = initial.lastError;
   state.revision = initial.revision;
   state.snapshotRevision = initial.snapshotRevision;

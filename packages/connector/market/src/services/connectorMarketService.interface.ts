@@ -1,4 +1,5 @@
 import { createDecorator } from "@tutti-os/infra/di";
+import type { AuthorizationViewEnvelopeV2 } from "@tutti-os/connector-authorization-protocol/v2";
 
 import type {
   Connector,
@@ -38,6 +39,7 @@ export interface ConnectorMarketStoreState {
     }
   >;
   authorizingConnectorKeys: Record<string, boolean>;
+  authorizationViewsByConnectorKey: Record<string, AuthorizationViewEnvelopeV2>;
   lastError: ConnectorMarketErrorShape | null;
   revision: number;
   snapshotRevision: number;
@@ -80,6 +82,7 @@ export interface IConnectorMarketService {
   dismissUninstallNotification(operationId: string): void;
   beginAuthorization(connectorKey: string, secret?: string): Promise<void>;
   cancelAuthorization(connectorKey: string): Promise<void>;
+  openAuthorizationUrl(url: string): Promise<void>;
   disconnectAuthorization(connectorKey: string): Promise<void>;
   /** Releases subscriptions and makes the service terminal. */
   dispose(): void;

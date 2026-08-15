@@ -749,10 +749,67 @@ components:
         authorizationExpiresAt:
           type: string
           format: date-time
+        authorizationView:
+          $ref: "#/components/schemas/ConnectorMarketAuthorizationViewEnvelope"
         revision:
           type: integer
           format: int64
           minimum: 0
+    ConnectorMarketAuthorizationViewEnvelope:
+      type: object
+      additionalProperties: false
+      required: [protocol, viewId, view]
+      properties:
+        protocol:
+          type: string
+          enum: [tutti.connector.authorization.view.v2]
+        viewId:
+          type: string
+          pattern: "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        view:
+          $ref: "#/components/schemas/ConnectorMarketAuthorizationRuntimeView"
+    ConnectorMarketAuthorizationRuntimeView:
+      oneOf:
+        - $ref: "#/components/schemas/ConnectorMarketAuthorizationExternalLinkView"
+        - $ref: "#/components/schemas/ConnectorMarketAuthorizationEmbeddedPageView"
+      discriminator:
+        propertyName: type
+        mapping:
+          external_link: "#/components/schemas/ConnectorMarketAuthorizationExternalLinkView"
+          embedded_page: "#/components/schemas/ConnectorMarketAuthorizationEmbeddedPageView"
+    ConnectorMarketAuthorizationExternalLinkView:
+      type: object
+      additionalProperties: false
+      required: [type, url]
+      properties:
+        type:
+          type: string
+          enum: [external_link]
+        url:
+          type: string
+          format: uri
+          pattern: "^https://"
+        expiresAt:
+          type: string
+          format: date-time
+    ConnectorMarketAuthorizationEmbeddedPageView:
+      type: object
+      additionalProperties: false
+      required: [type, flowId, url]
+      properties:
+        type:
+          type: string
+          enum: [embedded_page]
+        flowId:
+          type: string
+          pattern: "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        url:
+          type: string
+          format: uri
+          pattern: "^https://"
+        expiresAt:
+          type: string
+          format: date-time
     ConnectorMarketConnectorResponse:
       type: object
       additionalProperties: false

@@ -6,6 +6,7 @@ import { INotificationService } from "@tutti-os/ui-notifications";
 import { useCallback, useMemo } from "react";
 import { useTranslation } from "@renderer/i18n";
 import { useWorkspaceSettingsService } from "./useWorkspaceSettingsService";
+import { DesktopConnectorAuthorizationRenderer } from "../../connector-market/ui/DesktopConnectorAuthorizationPage";
 
 /** One canonical connector-market dialog host for each workbench window. */
 export function WorkspaceConnectorMarketDialogHost() {
@@ -24,6 +25,7 @@ export function WorkspaceConnectorMarketDialogHost() {
 
   return (
     <ConnectorMarketDialogHost
+      authorizationRenderer={DesktopConnectorAuthorizationRenderer}
       i18n={i18n}
       locale={locale}
       onError={handleError}

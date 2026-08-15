@@ -136,7 +136,6 @@ test("keeps connector details open through installation and advances to authoriz
     authorizing?.kind === "authorization" && authorizing.pending,
     true
   );
-
   connector.authorization = { state: "disconnected" };
   market.connectorsByKey[connector.key] = connector;
   market.pendingAuthorizationsByConnectorKey[connector.key] = true;
@@ -144,6 +143,23 @@ test("keeps connector details open through installation and advances to authoriz
   assert.equal(
     pendingSession?.kind === "authorization" && pendingSession.pending,
     true
+  );
+  market.authorizationViewsByConnectorKey[connector.key] = {
+    protocol: "tutti.connector.authorization.view.v2",
+    viewId: "wecom-authorization-1",
+    view: {
+      type: "embedded_page",
+      flowId: "wecom-authorization-flow-1",
+      url: "https://work.weixin.qq.com/ai/qc/gen?scode=opaque"
+    }
+  };
+  const embedded = buildConnectorMarketView(market, dialogState).dialog;
+  assert.equal(
+    embedded?.kind === "authorization" &&
+      embedded.authorizationView?.view.type === "embedded_page"
+      ? embedded.authorizationView.view.url
+      : undefined,
+    "https://work.weixin.qq.com/ai/qc/gen?scode=opaque"
   );
 });
 

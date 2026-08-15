@@ -1,0 +1,55 @@
+package host
+
+import (
+	"crypto/sha256"
+	"encoding/hex"
+	"strings"
+)
+
+const AuthorizationViewProtocolV2 = "tutti.connector.authorization.view.v2"
+
+const (
+	AuthorizationViewTypeExternalLink = "external_link"
+	AuthorizationViewTypeEmbeddedPage = "embedded_page"
+)
+
+// AuthorizationViewEnvelope is the host-neutral runtime presentation produced
+// after provider output has passed host URL policy. Connector-owned static
+// interactions and runtime views converge on the same renderer protocol.
+type AuthorizationViewEnvelope struct {
+	Protocol string            `json:"protocol"`
+	ViewID   string            `json:"viewId"`
+	View     AuthorizationView `json:"view"`
+}
+
+type AuthorizationView struct {
+	Type      string `json:"type"`
+	FlowID    string `json:"flowId,omitempty"`
+	URL       string `json:"url"`
+	ExpiresAt string `json:"expiresAt,omitempty"`
+}
+
+func authorizationViewForSession(release Release, session AuthorizationSession) *AuthorizationViewEnvelope {
+	if session.State != AuthorizationStatePending || strings.TrimSpace(session.AuthorizationURL) == "" {
+		return nil
+	}
+	viewType := AuthorizationViewTypeExternalLink
+	if managed := release.Manifest.Implementation.ManagedStdio; managed != nil && managed.CredentialBroker != nil &&
+		managed.CredentialBroker.Presentation == CredentialBrokerPresentationEmbeddedPage {
+		viewType = AuthorizationViewTypeEmbeddedPage
+	}
+	flowDigest := sha256.Sum256([]byte(session.SessionID))
+	viewDigest := sha256.Sum256([]byte(session.SessionID + "\x00" + session.AuthorizationURL))
+	view := AuthorizationView{Type: viewType, URL: session.AuthorizationURL}
+	if viewType == AuthorizationViewTypeEmbeddedPage {
+		view.FlowID = "authorization-flow-" + hex.EncodeToString(flowDigest[:16])
+	}
+	if !session.ExpiresAt.IsZero() {
+		view.ExpiresAt = session.ExpiresAt.UTC().Format("2006-01-02T15:04:05.999999999Z07:00")
+	}
+	return &AuthorizationViewEnvelope{
+		Protocol: AuthorizationViewProtocolV2,
+		ViewID:   "authorization-" + hex.EncodeToString(viewDigest[:16]),
+		View:     view,
+	}
+}

@@ -1,9 +1,11 @@
 import type {
-  AuthorizationEventEnvelopeV1,
   AuthorizationFieldV1,
-  AuthorizationValueV1,
-  AuthorizationViewEnvelopeV1
+  AuthorizationValueV1
 } from "@tutti-os/connector-authorization-protocol/v1";
+import type {
+  AuthorizationEventEnvelopeV2,
+  AuthorizationViewEnvelopeV2
+} from "@tutti-os/connector-authorization-protocol/v2";
 import {
   Button,
   Checkbox,
@@ -24,6 +26,7 @@ import { createAuthorizationSubmitEvent } from "./declarativeAuthorizationAdapte
 export interface AuthorizationRendererLabels {
   activate: string;
   cancel: string;
+  openExternal: string;
   refresh: string;
   qrCodeAlt: string;
   retry: string;
@@ -33,25 +36,35 @@ export interface AuthorizationRendererLabels {
 
 export interface AuthorizationViewRendererProps {
   busy: boolean;
+  embeddedPageRenderer?: AuthorizationEmbeddedPageRenderer;
   labels: AuthorizationRendererLabels;
-  view: AuthorizationViewEnvelopeV1;
-  onEvent(event: AuthorizationEventEnvelopeV1): void;
+  view: AuthorizationViewEnvelopeV2;
+  onEvent(event: AuthorizationEventEnvelopeV2): void;
 }
 
 export type AuthorizationViewRenderer =
   ComponentType<AuthorizationViewRendererProps>;
 
+export interface AuthorizationEmbeddedPageRendererProps {
+  flowId: string;
+  url: string;
+  viewId: string;
+}
+
+export type AuthorizationEmbeddedPageRenderer =
+  ComponentType<AuthorizationEmbeddedPageRendererProps>;
+
 type AuthorizationActionEventType = Exclude<
-  AuthorizationEventEnvelopeV1["event"]["type"],
+  AuthorizationEventEnvelopeV2["event"]["type"],
   "submit"
 >;
 
 function createAuthorizationActionEvent(
   viewId: string,
   type: AuthorizationActionEventType
-): AuthorizationEventEnvelopeV1 {
+): AuthorizationEventEnvelopeV2 {
   return {
-    protocol: "tutti.connector.authorization.event.v1",
+    protocol: "tutti.connector.authorization.event.v2",
     viewId,
     event: { type }
   };
@@ -177,7 +190,7 @@ function AuthorizationFormRenderer({
   view,
   onEvent
 }: AuthorizationViewRendererProps & {
-  view: AuthorizationViewEnvelopeV1 & { view: { type: "form" } };
+  view: AuthorizationViewEnvelopeV2 & { view: { type: "form" } };
 }) {
   const [values, setValues] = useState<Record<string, AuthorizationValueV1>>(
     () => initialFormValues(view.view.fields)
@@ -275,7 +288,7 @@ function AuthorizationActionFooter({
   busy: boolean;
   cancelLabel: string;
   viewId: string;
-  onEvent(event: AuthorizationEventEnvelopeV1): void;
+  onEvent(event: AuthorizationEventEnvelopeV2): void;
 }) {
   return (
     <DialogFooter>
@@ -313,7 +326,7 @@ function AuthorizationQrCodeRenderer({
   view,
   onEvent
 }: AuthorizationViewRendererProps & {
-  view: AuthorizationViewEnvelopeV1 & { view: { type: "qr_code" } };
+  view: AuthorizationViewEnvelopeV2 & { view: { type: "qr_code" } };
 }) {
   const imageSource = useMemo(() => {
     if (view.view.source.type === "png_base64") {
@@ -367,7 +380,7 @@ export function DefaultAuthorizationViewRenderer(
       <AuthorizationFormRenderer
         {...props}
         view={
-          props.view as AuthorizationViewEnvelopeV1 & {
+          props.view as AuthorizationViewEnvelopeV2 & {
             view: { type: "form" };
           }
         }
@@ -380,11 +393,42 @@ export function DefaultAuthorizationViewRenderer(
       <AuthorizationQrCodeRenderer
         {...props}
         view={
-          props.view as AuthorizationViewEnvelopeV1 & {
+          props.view as AuthorizationViewEnvelopeV2 & {
             view: { type: "qr_code" };
           }
         }
       />
+    );
+  }
+
+  if (props.view.view.type === "embedded_page") {
+    const EmbeddedPageRenderer = props.embeddedPageRenderer;
+    return (
+      <div className="grid gap-4 text-center">
+        <AuthorizationViewHeading
+          description={props.view.view.description}
+          title={props.view.view.title}
+        />
+        {EmbeddedPageRenderer ? (
+          <EmbeddedPageRenderer
+            flowId={props.view.view.flowId}
+            url={props.view.view.url}
+            viewId={props.view.viewId}
+          />
+        ) : (
+          <output className="block max-h-24 overflow-auto break-all rounded-lg border border-[var(--border-1)] bg-[var(--surface-2)] px-4 py-3 text-xs text-[var(--text-secondary)]">
+            {props.view.view.url}
+          </output>
+        )}
+        <AuthorizationActionFooter
+          actionLabel={props.labels.openExternal}
+          actionType="activate"
+          busy={false}
+          cancelLabel={props.labels.cancel}
+          viewId={props.view.viewId}
+          onEvent={props.onEvent}
+        />
+      </div>
     );
   }
 

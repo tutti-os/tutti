@@ -258,6 +258,7 @@ export interface ConnectorAuthorizationResult {
   operation: ConnectorOperation;
   authorizationUrl?: string;
   authorizationExpiresAt?: string;
+  authorizationView?: unknown;
   revision: number;
 }
 

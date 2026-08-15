@@ -4,6 +4,7 @@ import type {
   ConnectorInstallationState,
   ConnectorOperationStage
 } from "../../contracts/index.ts";
+import type { AuthorizationViewEnvelopeV2 } from "@tutti-os/connector-authorization-protocol/v2";
 
 export type ConnectorMarketViewStatus = "empty" | "error" | "loading" | "ready";
 
@@ -80,6 +81,7 @@ interface ConnectorDialogBaseView {
 export interface ConnectorAuthorizationDialogView extends ConnectorDialogBaseView {
   authorizationInteraction?: unknown;
   authorizationKind: string;
+  authorizationView?: AuthorizationViewEnvelopeV2;
   authorizing: boolean;
   kind: "authorization";
   pending: boolean;

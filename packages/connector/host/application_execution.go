@@ -3,6 +3,7 @@ package host
 import (
 	"context"
 	"errors"
+	"net/url"
 	"strings"
 	"time"
 )
@@ -400,13 +401,20 @@ func (application *Application) beginAuthorizationSession(
 	return session, nil
 }
 
+func validAuthorizationURL(value string) bool {
+	parsed, err := url.ParseRequestURI(strings.TrimSpace(value))
+	return err == nil && strings.EqualFold(parsed.Scheme, "https") &&
+		parsed.Hostname() != "" && parsed.User == nil
+}
+
 func validAuthorizationSessionAction(session AuthorizationSession) bool {
+	safeAuthorizationURL := validAuthorizationURL(session.AuthorizationURL)
 	switch strings.TrimSpace(session.ActionType) {
 	case "":
-		return (session.State == AuthorizationStatePending && strings.TrimSpace(session.AuthorizationURL) != "") ||
+		return (session.State == AuthorizationStatePending && safeAuthorizationURL) ||
 			(session.State == AuthorizationStateConnected && strings.TrimSpace(session.AuthorizationURL) == "" && strings.TrimSpace(session.ConnectionID) != "")
 	case "redirect":
-		return session.State == AuthorizationStatePending && strings.TrimSpace(session.AuthorizationURL) != ""
+		return session.State == AuthorizationStatePending && safeAuthorizationURL
 	case "submit_secret":
 		return session.State == AuthorizationStateConnected && strings.TrimSpace(session.AuthorizationURL) == "" && strings.TrimSpace(session.ConnectionID) != ""
 	default:

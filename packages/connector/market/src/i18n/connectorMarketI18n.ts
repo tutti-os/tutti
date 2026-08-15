@@ -35,6 +35,7 @@ const connectorMarketEn = {
   actionInstalling: "Installing…",
   actionManage: "Manage",
   actionMore: "More actions",
+  actionOpenInBrowser: "Open in browser",
   actionRefresh: "Refresh",
   authorizationQrCodeAlt: "Authorization QR code",
   actionRetry: "Retry",
@@ -91,6 +92,8 @@ const connectorMarketEn = {
   detailVersion: "Version",
   dialogAuthorizationDescription:
     "Tutti will access {{name}} only within the permissions shown below",
+  dialogAuthorizationEmbeddedPending:
+    "Complete authorization below",
   dialogAuthorizationPending:
     "Complete authorization in the browser, then return to Tutti",
   dialogAuthorizationTitle: "Connect {{name}} account",
@@ -162,6 +165,7 @@ const connectorMarketZhCN = {
   actionInstalling: "安装中…",
   actionManage: "管理",
   actionMore: "更多操作",
+  actionOpenInBrowser: "在浏览器中打开",
   actionRefresh: "刷新",
   authorizationQrCodeAlt: "授权二维码",
   actionRetry: "重试",
@@ -211,6 +215,7 @@ const connectorMarketZhCN = {
   detailVersion: "版本",
   dialogAuthorizationDescription:
     "Tutti 只会在下方列出的权限范围内访问 {{name}}",
+  dialogAuthorizationEmbeddedPending: "请在下方完成授权",
   dialogAuthorizationPending: "请在浏览器中完成授权，然后返回 Tutti",
   dialogAuthorizationTitle: "连接 {{name}} 账号",
   dialogManagementDescription: "查看安装、授权与权限状态",

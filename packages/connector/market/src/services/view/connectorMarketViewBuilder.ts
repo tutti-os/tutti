@@ -1,4 +1,5 @@
 import type { Connector } from "../../contracts/index.ts";
+import type { AuthorizationViewEnvelopeV2 } from "@tutti-os/connector-authorization-protocol/v2";
 import type { ConnectorMarketStoreState } from "../connectorMarketService.interface.ts";
 import type { ConnectorMarketUiState } from "../ui-state/connectorMarketUiStateService.interface.ts";
 import type {
@@ -102,7 +103,10 @@ export function buildConnectorMarketView(
       uiState.dialog
         ? (market.operationsByConnectorKey[uiState.dialog.connectorKey]
             ?.stage ?? null)
-        : null
+        : null,
+      uiState.dialog
+        ? market.authorizationViewsByConnectorKey[uiState.dialog.connectorKey]
+        : undefined
     ),
     installedCount,
     refreshing: market.catalogState === "refreshing",
@@ -215,7 +219,8 @@ function buildConnectorDialogView(
   authorizing: boolean,
   pendingAuthorization: boolean,
   pendingInstallation: boolean,
-  operationStage: ConnectorCardView["operationStage"]
+  operationStage: ConnectorCardView["operationStage"],
+  authorizationView?: AuthorizationViewEnvelopeV2
 ): ConnectorDialogView | null {
   if (!connector) {
     return null;
@@ -265,6 +270,7 @@ function buildConnectorDialogView(
       authorizationInteraction:
         connector.release.manifest.authorizationInteraction,
       authorizationKind: connector.release.manifest.authorizationKind,
+      authorizationView,
       authorizing,
       kind: "authorization",
       pending:

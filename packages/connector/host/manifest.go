@@ -14,12 +14,13 @@ import (
 )
 
 const (
-	ImplementationKindBuiltin              = "builtin"
-	ImplementationKindManagedStdio         = "managed_stdio"
-	ImplementationKindRemoteStreamableHTTP = "remote_streamable_http"
-	CredentialBrokerProtocolV1             = "tutti.connector.credentials.v1"
-	maxAgentRoutingAliases                 = 12
-	maxAgentRoutingAliasRunes              = 48
+	ImplementationKindBuiltin                = "builtin"
+	ImplementationKindManagedStdio           = "managed_stdio"
+	ImplementationKindRemoteStreamableHTTP   = "remote_streamable_http"
+	CredentialBrokerProtocolV1               = "tutti.connector.credentials.v1"
+	CredentialBrokerPresentationEmbeddedPage = "embedded_page"
+	maxAgentRoutingAliases                   = 12
+	maxAgentRoutingAliasRunes                = 48
 )
 
 var connectorKeyPattern = regexp.MustCompile(`^[a-z0-9](?:[a-z0-9._-]{0,126}[a-z0-9])?$`)
@@ -345,6 +346,9 @@ func validateManagedCredentialBroker(broker *ManagedCredentialBroker, hasCLI boo
 	}
 	if broker.TimeoutMS < 1_000 || broker.TimeoutMS > 10*60*1_000 {
 		return invalidManifest("credential broker timeoutMs must be between 1000 and 600000", nil)
+	}
+	if broker.Presentation != "" && broker.Presentation != CredentialBrokerPresentationEmbeddedPage {
+		return invalidManifest("credential broker presentation is unsupported", nil)
 	}
 	if len(broker.AllowedHosts) == 0 {
 		return invalidManifest("credential broker requires at least one allowed authorization host", nil)

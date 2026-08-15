@@ -6,7 +6,8 @@
   "types": "./src/index.ts",
   "exports": {
     ".": "./src/index.ts",
-    "./v1": "./src/v1/index.ts"
+    "./v1": "./src/v1/index.ts",
+    "./v2": "./src/v2/index.ts"
   },
   "scripts": {
     "build": "tsup --config tsup.config.ts",
@@ -41,6 +42,10 @@
       "./v1": {
         "types": "./dist/v1/index.d.ts",
         "import": "./dist/v1/index.js"
+      },
+      "./v2": {
+        "types": "./dist/v2/index.d.ts",
+        "import": "./dist/v2/index.js"
       }
     },
     "types": "./dist/index.d.ts"

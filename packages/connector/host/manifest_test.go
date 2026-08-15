@@ -124,6 +124,15 @@ func TestManagedCredentialBrokerRequiresConnectorOwnedEntrypointAndAllowedHosts(
 	if err := ValidateManifestShape(manifest); err != nil {
 		t.Fatal(err)
 	}
+	manifest.Implementation.ManagedStdio.CredentialBroker.Presentation = CredentialBrokerPresentationEmbeddedPage
+	if err := ValidateManifestShape(manifest); err != nil {
+		t.Fatal(err)
+	}
+	manifest.Implementation.ManagedStdio.CredentialBroker.Presentation = "inline"
+	if err := ValidateManifestShape(manifest); err == nil || !strings.Contains(err.Error(), "presentation") {
+		t.Fatalf("unsupported credential broker presentation error = %v", err)
+	}
+	manifest.Implementation.ManagedStdio.CredentialBroker.Presentation = ""
 	manifest.Implementation.ManagedStdio.CredentialBroker.Entrypoint = "../broker.mjs"
 	if err := ValidateManifestShape(manifest); err == nil {
 		t.Fatal("unsafe credential broker entrypoint was accepted")

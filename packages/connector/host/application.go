@@ -534,6 +534,7 @@ func (application *Application) BeginAuthorization(
 		Operation:              operation,
 		AuthorizationURL:       session.AuthorizationURL,
 		AuthorizationExpiresAt: session.ExpiresAt,
+		AuthorizationView:      authorizationViewForSession(current.Release, session),
 		Revision:               connector.Revision,
 	}, nil
 }

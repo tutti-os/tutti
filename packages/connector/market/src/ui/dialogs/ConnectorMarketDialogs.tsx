@@ -8,6 +8,7 @@ import {
 } from "@tutti-os/ui-system/components";
 import { useEffect, useState } from "react";
 import { useSnapshot } from "valtio";
+import type { AuthorizationViewEnvelopeV2 } from "@tutti-os/connector-authorization-protocol/v2";
 
 import { useConnectorMarketServices } from "../ConnectorMarketServicesContext.tsx";
 import { ConnectorAuthorizationDialog } from "./ConnectorAuthorizationDialog.tsx";
@@ -178,6 +179,11 @@ export function ConnectorMarketDialogs() {
               authorizationInteraction={dialog.authorizationInteraction}
               authorizationKind={dialog.authorizationKind}
               authorizationRenderer={authorizationRenderer}
+              authorizationView={
+                dialog.authorizationView as
+                  | AuthorizationViewEnvelopeV2
+                  | undefined
+              }
               authorizing={dialog.authorizing}
               displayName={dialog.displayName}
               iconUrl={dialog.iconUrl}
@@ -217,6 +223,7 @@ export function ConnectorMarketDialogs() {
                   });
               }}
               onClose={() => uiState.closeDialog()}
+              onOpenAuthorizationUrl={(url) => market.openAuthorizationUrl(url)}
             />
           ) : dialog.kind === "management" ? (
             <ConnectorManagementDialog

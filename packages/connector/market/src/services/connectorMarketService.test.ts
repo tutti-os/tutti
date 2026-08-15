@@ -1398,6 +1398,116 @@ test("expires a pending authorization attempt at its overall deadline", async ()
   service.dispose();
 });
 
+test("keeps embedded authorization pages in app state and preserves browser fallback", async () => {
+  const continueAuthorization = deferred<void>();
+  const openedUrls: string[] = [];
+  let step = 0;
+  const initial = connector("wecom-cli", 1);
+  initial.authorization = { state: "disconnected" };
+  const service = new ConnectorMarketService({
+    backend: backendWith({
+      getSnapshot: async () => snapshot(1, [initial]),
+      beginAuthorization: async () => {
+        step += 1;
+        if (step > 1) {
+          await continueAuthorization.promise;
+        }
+        const next = connector("wecom-cli", step + 1);
+        next.authorization = { state: step === 1 ? "pending" : "connected" };
+        return {
+          connector: next,
+          operation: {
+            ...operation("start_authorization", step + 1),
+            connectorKey: "wecom-cli",
+            state: "completed" as const
+          },
+          ...(step === 1
+            ? {
+                authorizationView: {
+                  protocol: "tutti.connector.authorization.view.v2" as const,
+                  viewId: "wecom-authorization-1",
+                  view: {
+                    type: "embedded_page" as const,
+                    flowId: "wecom-authorization-flow-1",
+                    url: "https://work.weixin.qq.com/ai/qc/gen?scode=opaque"
+                  }
+                }
+              }
+            : {}),
+          revision: step + 1
+        };
+      }
+    }),
+    openAuthorizationUrl: async (url) => {
+      openedUrls.push(url);
+    }
+  });
+  await service.ensureLoaded();
+
+  const authorization = service.beginAuthorization("wecom-cli");
+  await waitFor(
+    () =>
+      service.dataStore.authorizationViewsByConnectorKey["wecom-cli"]?.view
+        .type === "embedded_page"
+  );
+  assert.deepEqual(openedUrls, []);
+
+  await service.openAuthorizationUrl(
+    "https://work.weixin.qq.com/ai/qc/gen?scode=opaque"
+  );
+  assert.deepEqual(openedUrls, [
+    "https://work.weixin.qq.com/ai/qc/gen?scode=opaque"
+  ]);
+
+  continueAuthorization.resolve();
+  await authorization;
+  assert.deepEqual(service.dataStore.authorizationViewsByConnectorKey, {});
+  service.dispose();
+});
+
+test("fails closed when the host returns an invalid authorization view", async () => {
+  const initial = connector("wecom-cli", 1);
+  initial.authorization = { state: "disconnected" };
+  const pending = connector("wecom-cli", 2);
+  pending.authorization = { state: "pending" };
+  const service = new ConnectorMarketService({
+    backend: backendWith({
+      getSnapshot: async () => snapshot(1, [initial]),
+      beginAuthorization: async () => ({
+        connector: pending,
+        operation: {
+          ...operation("start_authorization", 2),
+          connectorKey: "wecom-cli",
+          state: "completed" as const
+        },
+        authorizationView: {
+          protocol: "tutti.connector.authorization.view.v2",
+          viewId: "wecom-authorization-1",
+          view: {
+            type: "embedded_page",
+            flowId: "wecom-authorization-flow-1",
+            url: "javascript:alert(document.domain)"
+          }
+        },
+        revision: 2
+      })
+    }),
+    openAuthorizationUrl: async () => undefined
+  });
+  await service.ensureLoaded();
+
+  await assert.rejects(
+    service.beginAuthorization("wecom-cli"),
+    (error: unknown) =>
+      typeof error === "object" &&
+      error !== null &&
+      "code" in error &&
+      error.code === "connector_authorization_view_invalid"
+  );
+  assert.deepEqual(service.dataStore.authorizationViewsByConnectorKey, {});
+  service.dispose();
+});
+
 test("waits for terminal authorization reconciliation before clearing loading", async () => {
   const terminalConnector = deferred<Connector>();
   const reconciliationStarted = deferred<void>();

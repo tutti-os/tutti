@@ -9,8 +9,11 @@ import {
 } from "@tutti-os/ui-system/components";
 import { ChangeLined, TuttiMarkNew } from "@tutti-os/ui-system/icons";
 
-import type { AuthorizationEventEnvelopeV1 } from "@tutti-os/connector-authorization-protocol/v1";
-
+import {
+  validateAuthorizationEventForViewV2,
+  type AuthorizationEventEnvelopeV2,
+  type AuthorizationViewEnvelopeV2
+} from "@tutti-os/connector-authorization-protocol/v2";
 import {
   DefaultAuthorizationViewRenderer,
   type AuthorizationViewRenderer
@@ -27,6 +30,7 @@ export interface ConnectorAuthorizationDialogProps {
   authorizationInteraction?: unknown;
   authorizationKind: string;
   authorizationRenderer?: AuthorizationViewRenderer;
+  authorizationView?: AuthorizationViewEnvelopeV2;
   authorizing: boolean;
   displayName: string;
   iconUrl: string;
@@ -35,6 +39,7 @@ export interface ConnectorAuthorizationDialogProps {
   onAuthorize: (secret?: string) => Promise<void>;
   onCancel: () => void;
   onClose: () => void;
+  onOpenAuthorizationUrl: (url: string) => Promise<void>;
   pending: boolean;
 }
 
@@ -43,6 +48,7 @@ export function ConnectorAuthorizationDialog({
   authorizationKind,
   authorizationRenderer:
     AuthorizationRenderer = DefaultAuthorizationViewRenderer,
+  authorizationView,
   authorizing,
   displayName,
   iconUrl,
@@ -51,6 +57,7 @@ export function ConnectorAuthorizationDialog({
   onAuthorize,
   onCancel,
   onClose,
+  onOpenAuthorizationUrl,
   pending
 }: ConnectorAuthorizationDialogProps) {
   const resolved = resolveAuthorizationInteraction({
@@ -63,16 +70,35 @@ export function ConnectorAuthorizationDialog({
     },
     locale
   });
+  const currentView =
+    authorizationView ?? (resolved.kind === "form" ? resolved.view : null);
+  const embeddedPage = currentView?.view.type === "embedded_page";
 
-  const handleInteractionEvent = (event: AuthorizationEventEnvelopeV1) => {
-    if (event.event.type === "cancel") {
+  const handleInteractionEvent = (event: AuthorizationEventEnvelopeV2) => {
+    if (!currentView) return;
+    const validated = validateAuthorizationEventForViewV2(currentView, event, {
+      isCurrentLocalFileHandle: () => false
+    });
+    if (!validated.ok) return;
+    if (validated.value.event.type === "cancel") {
       onCancel();
       return;
     }
-    if (resolved.kind !== "form") return;
+    if (validated.value.event.type === "activate") {
+      const view = currentView.view;
+      const url =
+        view.type === "device_code"
+          ? view.verificationUrl
+          : view.type === "external_link" || view.type === "embedded_page"
+            ? view.url
+            : null;
+      if (url) void onOpenAuthorizationUrl(url);
+      return;
+    }
+    if (authorizationView || resolved.kind !== "form") return;
     const submission = resolveDeclarativeAuthorizationSubmission(
       resolved,
-      event
+      validated.value
     );
     if (submission.ok) {
       void onAuthorize(submission.secret);
@@ -80,7 +106,9 @@ export function ConnectorAuthorizationDialog({
   };
 
   return (
-    <DialogContent className="max-h-[min(720px,calc(100vh-32px))] overflow-y-auto sm:max-w-[520px]">
+    <DialogContent
+      className={`max-h-[min(720px,calc(100vh-32px))] overflow-y-auto ${embeddedPage ? "sm:max-w-[640px]" : "sm:max-w-[520px]"}`}
+    >
       <DialogHeader className="items-center px-5 pt-4 text-center">
         <div className="mb-1 flex items-center gap-3">
           <span className="flex size-12 items-center justify-center rounded-xl bg-[var(--transparency-block)] text-[var(--accent)]">
@@ -98,7 +126,11 @@ export function ConnectorAuthorizationDialog({
         </DialogTitle>
         <DialogDescription>
           {pending
-            ? i18n.t("dialogAuthorizationPending")
+            ? i18n.t(
+                embeddedPage
+                  ? "dialogAuthorizationEmbeddedPending"
+                  : "dialogAuthorizationPending"
+              )
             : i18n.t("dialogAuthorizationDescription", { name: displayName })}
         </DialogDescription>
       </DialogHeader>
@@ -111,19 +143,20 @@ export function ConnectorAuthorizationDialog({
         />
       </div>
 
-      {resolved.kind === "form" ? (
+      {currentView ? (
         <AuthorizationRenderer
           busy={authorizing || pending}
           labels={{
             activate: i18n.t("actionContinueAuthorization"),
             cancel: i18n.t("cancel"),
+            openExternal: i18n.t("actionOpenInBrowser"),
             refresh: i18n.t("actionRefresh"),
             qrCodeAlt: i18n.t("authorizationQrCodeAlt"),
             retry: i18n.t("actionRetry"),
             submit: i18n.t("actionAuthorize"),
             unsupportedField: i18n.t("unsupportedAuthorizationField")
           }}
-          view={resolved.view}
+          view={currentView}
           onEvent={handleInteractionEvent}
         />
       ) : resolved.kind === "invalid" ? (
