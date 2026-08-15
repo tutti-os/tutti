@@ -44,6 +44,23 @@ func TestGeneratedComposerConfigOptionKeepsRequestedProvenance(t *testing.T) {
 	}
 }
 
+func TestGeneratedComposerConfigOptionKeepsVideoInputCapability(t *testing.T) {
+	videoInput := true
+	generated := generatedComposerConfigOption(agentservice.ComposerConfigOption{
+		Options: []agentservice.ComposerConfigOptionValue{{
+			ID:                 "opencode-minimax/MiniMax-M3",
+			Label:              "MiniMax M3",
+			Value:              "opencode-minimax/MiniMax-M3",
+			SupportsVideoInput: &videoInput,
+		}},
+	})
+	if len(generated.Options) != 1 ||
+		generated.Options[0].SupportsVideoInput == nil ||
+		!*generated.Options[0].SupportsVideoInput {
+		t.Fatalf("generated option = %#v, want supportsVideoInput=true", generated.Options)
+	}
+}
+
 func TestDaemonAPIGeneratedRoutesGetAgentProviderComposerOptions(t *testing.T) {
 	mux := http.NewServeMux()
 	RegisterRoutes(mux, NewRoutes(DaemonAPI{

@@ -35,6 +35,9 @@ func composerConfigOptionValuesToRuntimeModelOptions(options []ComposerConfigOpt
 		if option.SupportsImageInput != nil {
 			entry["supportsImageInput"] = *option.SupportsImageInput
 		}
+		if option.SupportsVideoInput != nil {
+			entry["supportsVideoInput"] = *option.SupportsVideoInput
+		}
 		if option.SupportsReasoningEffort != nil {
 			entry["supportsReasoningEffort"] = *option.SupportsReasoningEffort
 		}

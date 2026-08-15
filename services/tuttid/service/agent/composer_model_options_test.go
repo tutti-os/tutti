@@ -110,3 +110,13 @@ func TestComposerConfigOptionValuesToRuntimeModelOptionsEmitsRequested(t *testin
 		t.Fatal("requested entry must emit requested=true in runtime context")
 	}
 }
+
+func TestComposerConfigOptionValuesToRuntimeModelOptionsEmitsVideoInput(t *testing.T) {
+	supported := true
+	entries := composerConfigOptionValuesToRuntimeModelOptions([]ComposerConfigOptionValue{{
+		ID: "opencode-minimax/MiniMax-M3", Label: "MiniMax M3", Value: "opencode-minimax/MiniMax-M3", SupportsVideoInput: &supported,
+	}})
+	if len(entries) != 1 || entries[0]["supportsVideoInput"] != true {
+		t.Fatalf("runtime entries = %#v, want supportsVideoInput true", entries)
+	}
+}

@@ -50,6 +50,7 @@ type ComposerConfigOptionValue struct {
 	Label                      string
 	Value                      string
 	SupportsImageInput         *bool
+	SupportsVideoInput         *bool
 	SupportsReasoningEffort    *bool
 	ReasoningEffort            string
 	ReasoningEfforts           []AgentModelReasoningEffortOption
@@ -753,6 +754,7 @@ func composerModelConfig(provider string, selected string, options []ComposerCon
 			Value:              value,
 			Description:        strings.TrimSpace(option.Description),
 			SupportsImageInput: option.SupportsImageInput,
+			SupportsVideoInput: option.SupportsVideoInput,
 			Requested:          option.Requested,
 		})
 	}

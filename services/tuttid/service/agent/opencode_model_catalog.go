@@ -147,10 +147,14 @@ func normalizeVerboseOpenCodeModel(modelID string, metadata map[string]any) Agen
 		return openCodeReasoningEffortOrder(reasoningEfforts[leftIndex].Value) < openCodeReasoningEffortOrder(reasoningEfforts[rightIndex].Value)
 	})
 	var supportsImageInput *bool
+	var supportsVideoInput *bool
 	if capabilities, ok := metadata["capabilities"].(map[string]any); ok {
 		if input, ok := capabilities["input"].(map[string]any); ok {
 			if image, ok := input["image"].(bool); ok {
 				supportsImageInput = &image
+			}
+			if video, ok := input["video"].(bool); ok {
+				supportsVideoInput = &video
 			}
 		}
 	}
@@ -161,6 +165,7 @@ func normalizeVerboseOpenCodeModel(modelID string, metadata map[string]any) Agen
 		ReasoningEffortsAdvertised: variantsAdvertised,
 		SupportedReasoningEfforts:  reasoningEfforts,
 		SupportsImageInput:         supportsImageInput,
+		SupportsVideoInput:         supportsVideoInput,
 	}
 }
 

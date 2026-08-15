@@ -27,6 +27,7 @@ type ModelOption struct {
 	SpeedsAdvertised           bool
 	SupportedSpeeds            []SpeedOption
 	SupportsImageInput         *bool
+	SupportsVideoInput         *bool
 }
 
 // ModelSelection is the capability projection for the effective model. Field

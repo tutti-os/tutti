@@ -134,6 +134,7 @@ func composerModelOptionsFromCanonicalCatalog(models []modelcatalog.ModelOption)
 			Value:                      value,
 			Description:                strings.TrimSpace(model.Description),
 			SupportsImageInput:         model.SupportsImageInput,
+			SupportsVideoInput:         model.SupportsVideoInput,
 			SupportsReasoningEffort:    supportsReasoningEffort,
 			ReasoningEffort:            strings.TrimSpace(model.DefaultReasoningEffort),
 			ReasoningEfforts:           append([]AgentModelReasoningEffortOption(nil), model.SupportedReasoningEfforts...),
@@ -166,12 +167,19 @@ func composerConfigOptionValuesFromAny(input any) []ComposerConfigOptionValue {
 		if id == "" {
 			id = value
 		}
-		options = append(options, ComposerConfigOptionValue{
+		option := ComposerConfigOptionValue{
 			ID:          id,
 			Label:       label,
 			Value:       value,
 			Description: strings.TrimSpace(stringFromAny(optionMap["description"])),
-		})
+		}
+		if supported, advertised := optionMap["supportsImageInput"].(bool); advertised {
+			option.SupportsImageInput = &supported
+		}
+		if supported, advertised := optionMap["supportsVideoInput"].(bool); advertised {
+			option.SupportsVideoInput = &supported
+		}
+		options = append(options, option)
 	}
 	return options
 }

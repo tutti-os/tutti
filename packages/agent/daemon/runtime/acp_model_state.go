@@ -13,6 +13,7 @@ type acpModelInfo struct {
 	ReasoningEffort         json.RawMessage `json:"reasoningEffort"`
 	ReasoningEfforts        json.RawMessage `json:"reasoningEfforts"`
 	SupportsImageInput      json.RawMessage `json:"supportsImageInput"`
+	SupportsVideoInput      json.RawMessage `json:"supportsVideoInput"`
 	Meta                    json.RawMessage `json:"_meta"`
 }
 
@@ -100,6 +101,13 @@ func applyACPModelMetadata(option map[string]any, model acpModelInfo) {
 	}
 	if supportsImage != nil {
 		option["supportsImageInput"] = *supportsImage
+	}
+	supportsVideo := rawJSONBool(model.SupportsVideoInput)
+	if supportsVideo == nil {
+		supportsVideo = rawJSONBool(metadata["supportsVideoInput"])
+	}
+	if supportsVideo != nil {
+		option["supportsVideoInput"] = *supportsVideo
 	}
 }
 

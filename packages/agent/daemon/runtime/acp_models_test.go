@@ -46,7 +46,8 @@ func TestApplyACPModelsResultPreservesDynamicModelMetadata(t *testing.T) {
 						{"value":"brief","label":"Brief","description":"Fast"},
 						{"value":"deep","label":"Deep","default":true}
 					],
-					"supportsImageInput":true
+					"supportsImageInput":true,
+					"supportsVideoInput":true
 				},
 				{
 					"modelId":"plain-model",
@@ -54,7 +55,8 @@ func TestApplyACPModelsResultPreservesDynamicModelMetadata(t *testing.T) {
 					"_meta":{
 						"supportsReasoningEffort":false,
 						"reasoningEfforts":[],
-						"supportsImageInput":false
+						"supportsImageInput":false,
+						"supportsVideoInput":false
 					}
 				}
 			],
@@ -66,7 +68,7 @@ func TestApplyACPModelsResultPreservesDynamicModelMetadata(t *testing.T) {
 	if len(options) != 2 {
 		t.Fatalf("model options = %#v, want two", options)
 	}
-	if options[0]["supportsReasoningEffort"] != true || options[0]["reasoningEffort"] != "deep" || options[0]["supportsImageInput"] != true {
+	if options[0]["supportsReasoningEffort"] != true || options[0]["reasoningEffort"] != "deep" || options[0]["supportsImageInput"] != true || options[0]["supportsVideoInput"] != true {
 		t.Fatalf("reasoning model metadata = %#v", options[0])
 	}
 	efforts, ok := options[0]["reasoningEfforts"].([]any)
@@ -77,7 +79,7 @@ func TestApplyACPModelsResultPreservesDynamicModelMetadata(t *testing.T) {
 	if brief["value"] != "brief" || brief["label"] != "Brief" || brief["description"] != "Fast" {
 		t.Fatalf("brief effort = %#v", brief)
 	}
-	if options[1]["supportsReasoningEffort"] != false || options[1]["supportsImageInput"] != false {
+	if options[1]["supportsReasoningEffort"] != false || options[1]["supportsImageInput"] != false || options[1]["supportsVideoInput"] != false {
 		t.Fatalf("plain model metadata = %#v", options[1])
 	}
 	if efforts, ok := options[1]["reasoningEfforts"].([]any); !ok || len(efforts) != 0 {
