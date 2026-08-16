@@ -118,14 +118,16 @@ func (c *Controller) Exec(ctx context.Context, input ExecInput) (result ExecResu
 		return c.guideActiveTurn(ctx, session, adapter, providerContent, displayPrompt, metadata, input.CapabilityRefs, input.TurnID)
 	}
 	previousSession := session
-	titleUpdated := false
+	// Keep the initial title on the submitted Turn patch so owner admission
+	// persists the title, turn, and prompt as one state/message transaction.
+	submittedTitle := ""
 	if initialTitle := strings.TrimSpace(input.InitialTitle); initialTitle != "" &&
 		!session.InitialTitleEstablished &&
 		strings.TrimSpace(session.Title) == strings.TrimSpace(input.InitialTitleBase) {
 		session.Title = initialTitle
 		session = markInitialTitleEstablished(session)
 		session.UpdatedAtUnixMS = unixMS(now())
-		titleUpdated = true
+		submittedTitle = session.Title
 	}
 	turnID := strings.TrimSpace(input.TurnID)
 	if turnID == "" {
@@ -139,6 +141,10 @@ func (c *Controller) Exec(ctx context.Context, input ExecInput) (result ExecResu
 		runCtx = context.WithValue(runCtx, execMetadataContextKey{}, metadata)
 	}
 	runCtx = withCanonicalSubmitFact(runCtx, canonicalSubmit)
+	runCtx = withCanonicalPromptContent(runCtx, content)
+	if canonicalSubmit.clientSubmitID == "" {
+		runCtx = withPromptActivityMessageID(runCtx, newTurnUserPromptActivityMessageID())
+	}
 	tuttiModeSnapshot := normalizeTuttiModeTurnSnapshot(input.TuttiModeSnapshot)
 	runCtx = withTuttiModeTurnSnapshot(runCtx, tuttiModeSnapshot)
 	var dispatchObserver *providerDispatchObserver
@@ -157,10 +163,15 @@ func (c *Controller) Exec(ctx context.Context, input ExecInput) (result ExecResu
 	c.mu.Lock()
 	provisional := c.provisionalSessions[key]
 	c.mu.Unlock()
-	submitEvents := submittedTurnActivityEvents(session, turnID, input.CapabilityRefs)
-	if titleUpdated {
-		submitEvents = append([]activityshared.Event{newSessionTitleActivityEvent(session, session.Title)}, submitEvents...)
-	}
+	submitEvents := submittedTurnActivityEvents(
+		runCtx,
+		session,
+		content,
+		displayPrompt,
+		turnID,
+		input.CapabilityRefs,
+		submittedTitle,
+	)
 	// The submitted Turn is a durable user intent, not provider output. Keep
 	// the Session visible while the provider-identity acceptance barrier is
 	// pending so an explicit provider rejection cannot erase the prompt.

@@ -97,10 +97,9 @@ export class AgentMentionSearchController extends AgentMentionSearchControllerBa
     sectionKey?: string | null;
     sessionCwd?: string | null;
   }): void {
-    if (this.disposed) {
-      return;
-    }
+    if (this.disposed) return;
     const next = resolveAgentMentionQueryUpdate(input, {
+      agentGeneratedBrowsePath: this.agentGeneratedBrowsePath,
       workspaceId: this.activeWorkspaceId,
       currentUserId: this.currentUserId,
       sectionKey: this.currentSectionKey,

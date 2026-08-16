@@ -19,7 +19,7 @@ func TestPublishedScenarioCatalogsHaveUniqueNames(t *testing.T) {
 		{name: "submission fence", scenarios: SubmissionFenceScenarios(), wantCount: 1},
 		{name: "title policy", scenarios: TitlePolicyScenarios(), wantCount: 1},
 		{name: "deletion admission", scenarios: DeletionAdmissionScenarios(), wantCount: 3},
-		{name: "coordinator", scenarios: CoordinatorScenarios(), wantCount: 6},
+		{name: "coordinator", scenarios: CoordinatorScenarios(), wantCount: 7},
 		{name: "goal", scenarios: GoalScenarios(), wantCount: 17},
 		{name: "commit observer", scenarios: CommitObserverScenarios(), wantCount: 2},
 	}
@@ -174,6 +174,7 @@ func TestScenarioOwnershipIsExplicit(t *testing.T) {
 		"interactive response",
 		"interactive response reuses provider request id across turns",
 		"interactive response race",
+		"interactive follow-up recovers through Host admission",
 		"plan decision",
 		"recover operations before stale turns",
 	}

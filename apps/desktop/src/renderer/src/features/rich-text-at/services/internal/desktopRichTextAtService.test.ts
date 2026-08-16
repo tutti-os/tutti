@@ -170,6 +170,36 @@ test("desktop rich text @ service assembles workspace file providers by capabili
   });
 });
 
+test("desktop file mention provider preserves native Windows folder separators", async () => {
+  const service = new DesktopRichTextAtService({
+    tuttidClient: createTuttidClient({
+      async searchWorkspaceFiles() {
+        return {
+          entries: [
+            {
+              kind: "directory",
+              name: "generated",
+              path: "C:\\Users\\demo\\workspace\\generated\\",
+              score: 100
+            }
+          ],
+          root: "C:\\Users\\demo\\workspace",
+          workspaceID: "workspace-1"
+        };
+      }
+    })
+  });
+  const provider = getProvider(service, "file");
+  const [item] = await queryProvider(provider);
+
+  assert.equal((item as { kind?: string } | undefined)?.kind, "directory");
+  assert.deepEqual(provider.toInsertResult(item), {
+    href: "C:\\Users\\demo\\workspace\\generated\\",
+    kind: "markdown-link",
+    label: "generated"
+  });
+});
+
 test("desktop rich text @ service assembles workspace issue providers by capability", async () => {
   const listCalls: Array<{
     workspaceId: string;

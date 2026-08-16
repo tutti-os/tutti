@@ -20,8 +20,6 @@ var (
 )
 
 const defaultStreamingReportCoalesceWindow = 50 * time.Millisecond
-const interactiveDenyFollowUpStartTimeout = 30 * time.Second
-const interactiveDenyFollowUpPollInterval = 25 * time.Millisecond
 
 type execMetadataContextKey struct{}
 

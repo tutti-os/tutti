@@ -557,10 +557,6 @@ type RuntimeSubmitInteractiveInput struct {
 	Payload            map[string]any
 }
 
-type RuntimeSubmitInteractiveResult struct {
-	Disposition RuntimeInteractiveDisposition
-}
-
 type RuntimeInteractiveDisposition string
 
 const (

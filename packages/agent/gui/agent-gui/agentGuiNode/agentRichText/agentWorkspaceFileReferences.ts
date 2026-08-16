@@ -4,29 +4,21 @@ import {
   mentionItemToAttrs,
   type AgentContextMentionItem
 } from "./agentFileMentionExtension";
+import {
+  basenameFromPath,
+  dirnameFromPath,
+  hasPathTrailingSeparator
+} from "./agentMentionMarkdown";
 import { AGENT_RICH_TEXT_CARET_ANCHOR } from "./agentRichTextCaretAnchor";
-
-function basename(path: string): string {
-  const normalized = path.trim().replace(/\/+$/, "");
-  if (!normalized) {
-    return "";
-  }
-  const segments = normalized.split("/").filter(Boolean);
-  return segments.at(-1) ?? normalized;
-}
-
-function dirnameFromPath(path: string): string {
-  const normalized = path.trim().replace(/\/+$/, "");
-  const segments = normalized.split("/").filter(Boolean);
-  if (segments.length <= 1) {
-    return "/";
-  }
-  return `/${segments.slice(0, -1).join("/")}`;
-}
 
 function referenceMentionPath(item: WorkspaceFileReference): string {
   const path = item.path.trim();
-  if (item.kind === "folder" && path !== "/" && !path.endsWith("/")) {
+  if (
+    item.kind === "folder" &&
+    path &&
+    path !== "/" &&
+    !hasPathTrailingSeparator(path)
+  ) {
     return `${path}/`;
   }
   return path;
@@ -59,7 +51,7 @@ export function createAgentFileMentionContent(
 ): JSONContent[] {
   return items.flatMap((item, index) => {
     const path = referenceMentionPath(item);
-    const name = item.displayName?.trim() || basename(path);
+    const name = item.displayName?.trim() || basenameFromPath(path);
     return [
       ...(index === 0 && options.prefixCaretAnchor
         ? ([
@@ -74,7 +66,7 @@ export function createAgentFileMentionContent(
           path,
           name,
           entryKind: item.kind === "folder" ? "directory" : "file",
-          directoryPath: dirnameFromPath(path)
+          directoryPath: dirnameFromPath(path) || (path ? "/" : "")
         }
       },
       { type: "text", text: " " }

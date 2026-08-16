@@ -68,6 +68,7 @@ export function ConnectorComposerMenu({
   const additionalConnectorCount = connectedItems.length - previewItems.length;
   const closeAndRun = (action: () => void): void => {
     setOpen(false);
+    onOpenChange?.(false);
     action();
   };
 
@@ -136,14 +137,19 @@ export function ConnectorComposerMenu({
             return (
               <DropdownMenuItem
                 key={item.connectorKey}
-                aria-disabled={connected}
                 className="min-h-9 gap-2.5 px-2.5"
                 data-testid={`connector-market-composer-item-${item.connectorKey}`}
+                disabled={connected}
+                onPointerDown={(event) => {
+                  if (event.button !== 0 || event.ctrlKey) {
+                    return;
+                  }
+                  event.preventDefault();
+                  closeAndRun(() => onOpenConnector(item.connectorKey));
+                }}
                 onSelect={(event) => {
                   event.preventDefault();
-                  if (!connected) {
-                    closeAndRun(() => onOpenConnector(item.connectorKey));
-                  }
+                  closeAndRun(() => onOpenConnector(item.connectorKey));
                 }}
               >
                 <ConnectorComposerIcon
@@ -177,6 +183,13 @@ export function ConnectorComposerMenu({
         <DropdownMenuItem
           className="min-h-9 gap-2.5 px-2.5"
           data-testid="connector-market-composer-more"
+          onPointerDown={(event) => {
+            if (event.button !== 0 || event.ctrlKey) {
+              return;
+            }
+            event.preventDefault();
+            closeAndRun(onOpenMarket);
+          }}
           onSelect={(event) => {
             event.preventDefault();
             closeAndRun(onOpenMarket);

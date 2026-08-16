@@ -2,6 +2,7 @@ import { normalizeQuery } from "./agentMentionSearchHelpers";
 import type { AgentMentionFilterId } from "./AgentMentionSearchContracts";
 
 interface CurrentMentionQueryContext {
+  agentGeneratedBrowsePath: string | null;
   currentUserId: string;
   directoryDepth: number;
   filter: AgentMentionFilterId;
@@ -36,7 +37,8 @@ export function resolveAgentMentionQueryUpdate(
       !next.query &&
       !current.query &&
       current.filter === "file" &&
-      current.directoryDepth > 0 &&
+      (current.directoryDepth > 0 ||
+        current.agentGeneratedBrowsePath !== null) &&
       next.workspaceId === current.workspaceId &&
       next.currentUserId === current.currentUserId &&
       next.sectionKey === current.sectionKey &&

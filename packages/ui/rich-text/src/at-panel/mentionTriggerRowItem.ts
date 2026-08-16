@@ -436,7 +436,7 @@ function inferMentionFileVisualKind(pathOrName: string): MentionFileVisualKind {
   if (!normalized) {
     return "document";
   }
-  if (normalized.endsWith("/")) {
+  if (/[\\/]$/.test(normalized)) {
     return "folder";
   }
   const extension = normalized.match(/\.([a-z0-9]+)(?:[?#].*)?$/)?.[1] ?? "";

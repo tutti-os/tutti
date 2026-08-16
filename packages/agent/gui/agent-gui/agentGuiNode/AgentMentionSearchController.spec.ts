@@ -3022,6 +3022,106 @@ describe("AgentMentionSearchController", () => {
     controller.dispose();
   });
 
+  it("keeps an entered agent-generated folder when the cleared editor query repeats", async () => {
+    const queryAgentGeneratedFiles = vi.fn().mockResolvedValue({
+      entries: [
+        {
+          path: "/workspace/demo/static/app.js",
+          name: "app.js"
+        },
+        {
+          path: "/workspace/demo/static/index.html",
+          name: "index.html"
+        },
+        {
+          path: "/workspace/demo/static/styles.css",
+          name: "styles.css"
+        }
+      ]
+    });
+    const controller = new AgentMentionSearchController({
+      queryAgentGeneratedFiles,
+      queryFiles: vi.fn().mockResolvedValue({
+        workspaceId: "room-1",
+        root: "/workspace",
+        entries: []
+      }),
+      queryIssues: vi.fn().mockResolvedValue({
+        issues: [],
+        totalCount: 0,
+        statusCounts: undefined
+      }),
+      querySessions: vi.fn().mockResolvedValue({ presences: [], sessions: [] }),
+      loadSessionMessages: vi
+        .fn()
+        .mockResolvedValue({ messages: [], latestVersion: 0, hasMore: false }),
+      loadSessionSummary: vi.fn(),
+      loadUserProfiles: vi.fn().mockResolvedValue({ users: [] })
+    });
+    const states: AgentMentionSearchState[] = [];
+    controller.subscribe((state) => states.push(state));
+
+    controller.updateQuery({ workspaceId: "room-1", query: "" });
+    controller.setFilter("file");
+
+    await waitForFast(() => {
+      const folder = states
+        .at(-1)
+        ?.groups.find((group) => group.id === "agent_generated_files")
+        ?.items.find(
+          (item) =>
+            item.kind === "file" &&
+            item.mentionNavigation === "agent-generated-folder"
+        );
+      expect(folder).toEqual(
+        expect.objectContaining({
+          path: "/workspace/demo/static",
+          childCount: 3
+        })
+      );
+    });
+
+    const folder = states
+      .at(-1)
+      ?.groups.find((group) => group.id === "agent_generated_files")
+      ?.items.find(
+        (item) =>
+          item.kind === "file" &&
+          item.mentionNavigation === "agent-generated-folder"
+      );
+    expect(folder).toBeDefined();
+    expect(controller.selectFileMentionNavigationItem(folder!)).toBe(true);
+
+    // The editor emits this duplicate empty query after the click. It must
+    // not reset the agent-generated browse path back to the root folder list.
+    controller.updateQuery({ workspaceId: "room-1", query: "" });
+
+    await waitForFast(() => {
+      expect(states.at(-1)?.groups).toEqual([
+        expect.objectContaining({
+          id: "opened_files"
+        }),
+        expect.objectContaining({
+          id: "agent_generated_files",
+          items: [
+            expect.objectContaining({
+              mentionNavigation: "agent-generated-folder-back"
+            }),
+            expect.objectContaining({ path: "/workspace/demo/static/app.js" }),
+            expect.objectContaining({
+              path: "/workspace/demo/static/index.html"
+            }),
+            expect.objectContaining({
+              path: "/workspace/demo/static/styles.css"
+            })
+          ]
+        })
+      ]);
+    });
+
+    controller.dispose();
+  });
+
   it("keeps a directory request alive beyond the provider search timeout", async () => {
     let resolveDirectory:
       | ((value: {

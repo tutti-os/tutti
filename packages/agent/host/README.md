@@ -351,6 +351,19 @@ into the current provider response without interrupting it. A preemptive
 adapter must close the interrupted response's live message/tool projections
 and publish its provider-turn terminal boundary before admitting guided output.
 Neither form is a canonical Turn cancel or a second user Turn.
+
+Interactive responses follow the same ownership rule. Runtime may return a
+provider-neutral follow-up intent after an interactive denial, but it does not
+dispatch that prompt itself. Host checkpoints the intent on the leased
+interactive operation, waits for the answered Turn to become idle, and submits
+the prompt through `SendInput` with the stable id
+`interactive-deny:<operation-id>`. The checkpoint also persists the terminal
+interactive disposition, so recovery does not depend on Controller memory or
+an existing Runtime Session. Recovery reuses that disposition and id; if the
+provider connection is temporarily absent, the operation remains retryable
+until ordinary Host admission can replay the prompt without creating a
+duplicate Turn.
+
 Accepted runtime Session reports reconcile their Goal snapshot through the
 canonical bottom-up observation path without overwriting a newer desired
 intent. When that changes the public Goal projection, the same transaction

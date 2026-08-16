@@ -365,7 +365,10 @@ func (a *RuntimeController) SubmitInteractive(ctx context.Context, input host.Ru
 		AgentSessionID: input.AgentSessionID, TurnID: input.TurnID, RequestID: input.RequestID,
 		Action: input.Action, OptionID: input.OptionID, Payload: cloneMap(input.Payload),
 	})
-	return host.RuntimeSubmitInteractiveResult{Disposition: host.RuntimeInteractiveDisposition(result.Disposition)}, mapRuntimeError(err)
+	return host.RuntimeSubmitInteractiveResult{
+		Disposition:    host.RuntimeInteractiveDisposition(result.Disposition),
+		FollowUpPrompt: result.FollowUpPrompt,
+	}, mapRuntimeError(err)
 }
 
 func (a *RuntimeController) InteractiveDisposition(workspaceID, rootSessionID, sessionID, turnID, requestID string) host.RuntimeInteractiveDisposition {

@@ -50,19 +50,22 @@ type InteractionSeed struct {
 }
 
 type Fixture struct {
-	Session                *SessionSeed
-	LiveOnlySession        *SessionSeed
-	AdditionalSessions     []SessionSeed
-	Turn                   *TurnSeed
-	AdditionalTurns        []TurnSeed
-	Interaction            *InteractionSeed
-	AdditionalInteractions []InteractionSeed
-	PreparedSubmitID       string
-	RecoverInteractive     bool
-	DisableGoalInbox       bool
-	AcceptGoalControlsOnly bool
-	CompleteGoalOnSet      bool
-	EmptyPauseResumeGoal   bool
+	Session                                  *SessionSeed
+	LiveOnlySession                          *SessionSeed
+	AdditionalSessions                       []SessionSeed
+	Turn                                     *TurnSeed
+	AdditionalTurns                          []TurnSeed
+	Interaction                              *InteractionSeed
+	AdditionalInteractions                   []InteractionSeed
+	PreparedSubmitID                         string
+	RecoverInteractive                       bool
+	RecoverInteractiveFollowUpPrompt         string
+	RecoverInteractiveFollowUpClientSubmitID string
+	RecoverInteractiveFollowUpDisposition    agenthost.RuntimeInteractiveDisposition
+	DisableGoalInbox                         bool
+	AcceptGoalControlsOnly                   bool
+	CompleteGoalOnSet                        bool
+	EmptyPauseResumeGoal                     bool
 	// RaceRuntimeStartReport makes the test Runtime attempt its ordinary
 	// session-start activity report before CreateSession initializes canonical
 	// state. A conforming Host must keep that report behind the canonical
@@ -162,6 +165,7 @@ type Metrics struct {
 	LastCancelTargets                  []agenthost.RuntimeCancelTarget
 	LastInteractiveTurnID              string
 	LastInteractiveRequestID           string
+	LastExecClientSubmitID             string
 	LastInitialTitle                   string
 	LastExecRequiresProviderAcceptance bool
 	LastClosePreservedCanonicalState   bool

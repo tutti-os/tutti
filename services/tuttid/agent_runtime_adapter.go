@@ -425,7 +425,8 @@ func (a agentRuntimeAdapter) SubmitInteractive(ctx context.Context, input agents
 		Payload:            input.Payload,
 	})
 	mapped := agentservice.RuntimeSubmitInteractiveResult{
-		Disposition: agentservice.RuntimeInteractiveDisposition(result.Disposition),
+		Disposition:    agentservice.RuntimeInteractiveDisposition(result.Disposition),
+		FollowUpPrompt: result.FollowUpPrompt,
 	}
 	if err != nil {
 		return mapped, mapAgentRuntimeError(err)

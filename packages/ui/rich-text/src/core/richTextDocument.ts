@@ -121,7 +121,7 @@ function renderLegacyNodeToMarkdown(
     const href = normalizeRichTextLinkHref(hrefValue, kind);
     const label =
       (typeof attrs.name === "string" ? attrs.name : undefined)?.trim() ||
-      href.split("/").filter(Boolean).at(-1) ||
+      workspacePathBasename(href) ||
       href;
     return href && label ? `[${label}](${href})` : label;
   }
@@ -150,10 +150,51 @@ function normalizeWorkspacePath(
   if (!trimmed) {
     return "";
   }
-  if (kind === "folder" && !trimmed.endsWith("/")) {
+  if (kind === "folder" && !hasPathTrailingSeparator(trimmed)) {
     return `${trimmed}/`;
   }
   return trimmed;
+}
+
+export function isRichTextFolderHref(href: string): boolean {
+  const trimmed = href.trim();
+  const isWindowsAbsolutePath = /^[A-Za-z]:[\\/]/.test(trimmed);
+  const hasScheme = /^[a-zA-Z][a-zA-Z\d+.-]*:/.test(trimmed);
+  return (
+    hasPathTrailingSeparator(trimmed) && (!hasScheme || isWindowsAbsolutePath)
+  );
+}
+
+function workspacePathBasename(path: string): string {
+  return (
+    normalizePathSeparators(path)
+      .replace(/\/+$/, "")
+      .split("/")
+      .filter(Boolean)
+      .at(-1) ?? ""
+  );
+}
+
+function hasPathTrailingSeparator(path: string): boolean {
+  const trimmed = path.trim();
+  return (
+    trimmed.endsWith("/") ||
+    (isWindowsLikePath(trimmed) && trimmed.endsWith("\\"))
+  );
+}
+
+function normalizePathSeparators(path: string): string {
+  const trimmed = path.trim();
+  return isWindowsLikePath(trimmed) ? trimmed.replace(/\\/g, "/") : trimmed;
+}
+
+function isWindowsLikePath(path: string): boolean {
+  return (
+    !path.startsWith("/") ||
+    /^[A-Za-z]:[\\/]/.test(path) ||
+    /^\/[A-Za-z]:[\\/]/.test(path) ||
+    path.startsWith("\\\\")
+  );
 }
 
 function isWorkspaceReferenceHref(href: string): boolean {
@@ -365,7 +406,7 @@ export function createRichTextLinkMarkdown(input: RichTextLinkInput): string {
   const href = normalizeRichTextLinkHref(input.path, kind);
   const displayName =
     input.name?.trim() ||
-    href.split("/").filter(Boolean).at(-1) ||
+    workspacePathBasename(href) ||
     href ||
     input.path.trim();
   if (!href || !displayName) {
@@ -423,7 +464,7 @@ export function extractRichTextLinksFromContent(
     if (!name || !isWorkspaceReferenceHref(href)) {
       continue;
     }
-    const kind = href.endsWith("/") ? "folder" : "file";
+    const kind = isRichTextFolderHref(href) ? "folder" : "file";
     const path = normalizeRichTextLinkHref(href, kind);
     if (!path || refs.has(path)) {
       continue;
@@ -510,7 +551,7 @@ export function removeRichTextLinkFromContent(
   const normalized = normalizeContentString(content);
   const next = replaceRichTextMarkdownLinks(normalized, (match) => {
     const href = match.href.trim();
-    const kind = href.endsWith("/") ? "folder" : "file";
+    const kind = isRichTextFolderHref(href) ? "folder" : "file";
     const refPath = normalizeRichTextLinkHref(href, kind);
     return refPath === targetPath ? "" : match.source;
   });
@@ -614,7 +655,7 @@ function createRichTextInlineNodes(text: string): JSONContent[] {
         attrs: mention
       });
     } else if (label && isWorkspaceReferenceHref(href)) {
-      const kind = href.endsWith("/") ? "folder" : "file";
+      const kind = isRichTextFolderHref(href) ? "folder" : "file";
       content.push({
         type: workspaceReferenceNodeName,
         attrs: {

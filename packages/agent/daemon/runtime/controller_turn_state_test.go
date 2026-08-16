@@ -1,6 +1,7 @@
 package agentruntime
 
 import (
+	"context"
 	"testing"
 
 	agentsessionstore "github.com/tutti-os/tutti/packages/agent/daemon/activity"
@@ -11,16 +12,21 @@ import (
 func TestSubmittedTurnActivityEventProjectsCapabilityReferences(t *testing.T) {
 	t.Parallel()
 	session := Session{Provider: ProviderCodex, AgentSessionID: "agent-1", RoomID: "room-1"}
-	events := submittedTurnActivityEvents(session, "turn-1", []CapabilityReference{
+	events := submittedTurnActivityEvents(context.Background(), session, textPrompt("hello"), "", "turn-1", []CapabilityReference{
 		{Capability: " tutti ", Source: "slash_command"},
 		{Capability: "tutti", Source: "slash_command"},
-	})
-	if len(events) != 1 {
+	}, "")
+	if len(events) != 2 {
 		t.Fatalf("submitted events = %#v", events)
+	}
+	if events[0].Type != activityshared.EventMessageAppended ||
+		events[0].Payload.Role != activityshared.MessageRoleUser ||
+		events[0].Payload.TurnID != "turn-1" {
+		t.Fatalf("submitted prompt event = %#v", events[0])
 	}
 	patch, ok := statePatchFromSessionEvent(
 		canonical.EventSource{Provider: ProviderCodex},
-		events[0],
+		events[1],
 		"agent-1",
 		100,
 	)

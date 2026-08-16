@@ -60,6 +60,7 @@ describe("ComposerConnectorsMenu", () => {
   it("shows connected versus connect actions and opens the catalog footer", async () => {
     const onOpenConnector = vi.fn();
     const onOpenConnectors = vi.fn();
+    const onOpenChange = vi.fn();
     render(
       <ComposerConnectorsMenu
         connectors={[
@@ -69,6 +70,7 @@ describe("ComposerConnectorsMenu", () => {
         ]}
         disabled={false}
         labels={labels}
+        onOpenChange={onOpenChange}
         onOpenConnector={onOpenConnector}
         onOpenConnectors={onOpenConnectors}
       />
@@ -86,30 +88,38 @@ describe("ComposerConnectorsMenu", () => {
     expect(
       screen.getByTestId("connector-market-composer-status-github")
     ).toHaveClass("ml-auto");
+    expect(connected).toHaveAttribute("data-disabled");
     expect(
       screen.getByTestId("connector-market-composer-item-notion")
     ).toHaveTextContent("Authorize");
     const connectAction = screen.getByTestId(
       "connector-market-composer-item-lark"
     );
-    fireEvent.click(connectAction);
+    fireEvent.pointerDown(connectAction, {
+      button: 0,
+      ctrlKey: false,
+      pointerType: "mouse"
+    });
     expect(onOpenConnector).toHaveBeenCalledWith("lark");
     expect(onOpenConnector).toHaveBeenCalledOnce();
     expect(
       screen.queryByTestId("connector-market-composer-item-lark")
     ).not.toBeInTheDocument();
+    expect(onOpenChange).toHaveBeenLastCalledWith(false);
 
     fireEvent.pointerDown(screen.getByRole("button", { name: "Connectors" }), {
       button: 0,
       ctrlKey: false
     });
-    fireEvent.click(
-      await screen.findByTestId("connector-market-composer-more")
+    fireEvent.pointerDown(
+      await screen.findByTestId("connector-market-composer-more"),
+      { button: 0, ctrlKey: false, pointerType: "mouse" }
     );
     expect(onOpenConnectors).toHaveBeenCalledOnce();
     expect(
       screen.queryByTestId("connector-market-composer-more")
     ).not.toBeInTheDocument();
+    expect(onOpenChange).toHaveBeenLastCalledWith(false);
   });
 
   it("replaces connected state with authorize when connector status refreshes", async () => {

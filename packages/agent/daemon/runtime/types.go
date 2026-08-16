@@ -614,7 +614,12 @@ type SubmitInteractiveResult struct {
 	Accepted       bool                   `json:"accepted"`
 	OptionID       string                 `json:"optionId,omitempty"`
 	Disposition    InteractiveDisposition `json:"-"`
-	Events         []Event                `json:"events"`
+	// FollowUpPrompt is a provider-neutral intent for the Host to submit a
+	// follow-up through its normal SendInput admission path. Runtime must not
+	// dispatch this prompt directly because Host owns its idempotency and
+	// recovery semantics.
+	FollowUpPrompt string  `json:"-"`
+	Events         []Event `json:"events"`
 }
 
 type UpdateSettingsResult struct {

@@ -38,6 +38,7 @@ var (
 	interactiveResponseScenario         = Scenario{Name: "interactive response", run: runInteractiveResponse}
 	interactiveResponseReusedIDScenario = Scenario{Name: "interactive response reuses provider request id across turns", run: runInteractiveResponseReusedRequestID}
 	interactiveResponseRaceScenario     = Scenario{Name: "interactive response race", run: runInteractiveResponseRace}
+	interactiveFollowUpRecoveryScenario = Scenario{Name: "interactive follow-up recovers through Host admission", run: runInteractiveFollowUpRecovery}
 	planDecisionScenario                = Scenario{Name: "plan decision", run: runPlanDecision}
 	initialTitleCASScenario             = Scenario{Name: "initial title cas", run: runInitialTitleCAS}
 	getSessionScenario                  = Scenario{Name: "get session", run: runGetSession}
@@ -152,6 +153,7 @@ func CoordinatorScenarios() []Scenario {
 		interactiveResponseScenario,
 		interactiveResponseReusedIDScenario,
 		interactiveResponseRaceScenario,
+		interactiveFollowUpRecoveryScenario,
 		planDecisionScenario,
 		{Name: "recover operations before stale turns", run: runRecoveryOrder},
 	}

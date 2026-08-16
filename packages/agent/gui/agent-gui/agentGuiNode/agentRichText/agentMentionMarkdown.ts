@@ -43,11 +43,59 @@ export function createAgentComposerFileMentionMarkdown(input: {
 }
 
 export function dirnameFromPath(path: string): string {
-  const parts = path.split("/").filter(Boolean);
-  if (parts.length <= 1) {
-    return path.startsWith("/") ? "/" : "";
+  const normalized = normalizePathSeparators(path);
+  const withoutTrailingSeparators = normalized.replace(/\/+$/, "");
+  if (!withoutTrailingSeparators) {
+    return normalized.startsWith("/") ? "/" : "";
   }
-  return `/${parts.slice(0, -1).join("/")}`;
+  if (
+    /^[A-Za-z]:$/.test(withoutTrailingSeparators) &&
+    /^[A-Za-z]:\/+/.test(normalized)
+  ) {
+    return `${withoutTrailingSeparators}/`;
+  }
+  const index = withoutTrailingSeparators.lastIndexOf("/");
+  if (index < 0) {
+    return "";
+  }
+  if (index === 0) {
+    return "/";
+  }
+  const directory = withoutTrailingSeparators.slice(0, index);
+  if (/^[A-Za-z]:$/.test(directory)) {
+    return `${directory}/`;
+  }
+  if (/^[A-Za-z]:\//.test(directory)) {
+    return directory;
+  }
+  return directory.startsWith("/") ? directory : `/${directory}`;
+}
+
+export function basenameFromPath(path: string): string {
+  const normalized = normalizePathSeparators(path).replace(/\/+$/, "");
+  return normalized.split("/").filter(Boolean).at(-1) ?? "";
+}
+
+export function hasPathTrailingSeparator(path: string): boolean {
+  const trimmed = path.trim();
+  return (
+    trimmed.endsWith("/") ||
+    (isWindowsLikePath(trimmed) && trimmed.endsWith("\\"))
+  );
+}
+
+function normalizePathSeparators(path: string): string {
+  const trimmed = path.trim();
+  return isWindowsLikePath(trimmed) ? trimmed.replace(/\\/g, "/") : trimmed;
+}
+
+function isWindowsLikePath(path: string): boolean {
+  return (
+    !path.startsWith("/") ||
+    /^[A-Za-z]:[\\/]/.test(path) ||
+    /^\/[A-Za-z]:[\\/]/.test(path) ||
+    path.startsWith("\\\\")
+  );
 }
 
 export function normalizeAgentSessionMentionTitle(value: string): string {
@@ -548,5 +596,9 @@ function normalizeAgentComposerFileMentionStatus(
 }
 
 function isLocalDirectoryMentionHref(href: string): boolean {
-  return href.endsWith("/") && !/^[a-zA-Z][a-zA-Z\d+.-]*:/.test(href);
+  const isWindowsAbsolutePath = /^[A-Za-z]:[\\/]/.test(href);
+  const hasScheme = /^[a-zA-Z][a-zA-Z\d+.-]*:/.test(href);
+  return (
+    hasPathTrailingSeparator(href) && (!hasScheme || isWindowsAbsolutePath)
+  );
 }

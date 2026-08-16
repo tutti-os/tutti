@@ -1813,6 +1813,104 @@ describe("buildWorkspaceAgentActivityListViewModel", () => {
     ]);
   });
 
+  it("collects Windows generated images stored outside the workspace", () => {
+    const windowsPath =
+      "C:\\Users\\demo\\.tutti-dev\\agent\\runs\\session-21\\codex-home\\generated_images\\thread\\ig_windows.png";
+    const snapshot = {
+      workspaceId: "workspace-1",
+      presences: [],
+      sessions: [
+        {
+          agentSessionId: "session-21",
+          cwd: "C:\\Users\\demo\\project",
+          provider: "codex",
+          status: "completed",
+          title: "Generate a Windows image",
+          workspaceId: "workspace-1"
+        }
+      ],
+      sessionMessagesById: {
+        "session-21": [
+          {
+            agentSessionId: "session-21",
+            kind: "tool_call",
+            messageId: "message-windows-image",
+            payload: {
+              toolName: "ImageGeneration",
+              output: {
+                savedPath: windowsPath,
+                imageMimeType: "image/png"
+              }
+            },
+            role: "assistant",
+            status: "completed",
+            turnId: "turn-windows-image",
+            occurredAtUnixMs: 1,
+            version: 1
+          }
+        ]
+      }
+    };
+
+    expect(
+      collectWorkspaceAgentGeneratedFiles(canonicalSource(snapshot), {
+        workspaceRoot: "C:\\Users\\demo\\project"
+      })
+    ).toEqual([
+      {
+        path: windowsPath.replaceAll("\\", "/"),
+        label: "ig_windows.png"
+      }
+    ]);
+  });
+
+  it("treats Windows drive paths as case-insensitive during containment checks", () => {
+    const windowsPath = "c:\\Users\\Demo\\Project\\src\\report.md";
+    const snapshot = {
+      workspaceId: "workspace-1",
+      presences: [],
+      sessions: [
+        {
+          agentSessionId: "session-22",
+          cwd: "C:\\Users\\demo\\project",
+          provider: "codex",
+          status: "completed",
+          title: "Write a Windows file",
+          workspaceId: "workspace-1"
+        }
+      ],
+      sessionMessagesById: {
+        "session-22": [
+          {
+            agentSessionId: "session-22",
+            kind: "tool_call",
+            messageId: "message-windows-file",
+            payload: {
+              toolName: "Write",
+              input: { file_path: windowsPath }
+            },
+            role: "assistant",
+            status: "completed",
+            turnId: "turn-windows-file",
+            occurredAtUnixMs: 1,
+            version: 1
+          }
+        ]
+      }
+    };
+
+    expect(
+      collectWorkspaceAgentGeneratedFiles(canonicalSource(snapshot), {
+        workspaceRoot: "C:\\Users\\demo\\project"
+      })
+    ).toEqual([
+      {
+        path: windowsPath.replaceAll("\\", "/"),
+        label: "report.md"
+      }
+    ]);
+  });
+
   it("collects agent-generated files from lightweight change maps", () => {
     const snapshot = {
       workspaceId: "workspace-1",
