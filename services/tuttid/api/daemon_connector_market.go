@@ -462,13 +462,13 @@ func projectConnectorMarket[T any](value any) (T, error) {
 func exposeConnectorMarketAuthorizationInteractionMode(value any) any {
 	switch typed := value.(type) {
 	case market.Snapshot:
-		typed.Connectors = append([]market.Connector(nil), typed.Connectors...)
+		typed.Connectors = append([]market.Connector{}, typed.Connectors...)
 		for index := range typed.Connectors {
 			typed.Connectors[index] = exposeConnectorAuthorizationInteractionMode(typed.Connectors[index])
 		}
 		return typed
 	case market.CatalogPage:
-		typed.Items = append([]market.CatalogListing(nil), typed.Items...)
+		typed.Items = append([]market.CatalogListing{}, typed.Items...)
 		for index := range typed.Items {
 			typed.Items[index].Connector = exposeConnectorAuthorizationInteractionMode(typed.Items[index].Connector)
 		}

@@ -375,6 +375,30 @@ func TestDaemonAPIConnectorMarketServesCategoriesAndCursorPage(t *testing.T) {
 	}
 }
 
+func TestDaemonAPIConnectorMarketEmptyCatalogPageUsesEmptyItemsArray(t *testing.T) {
+	service := stubConnectorMarketService{
+		pageFn: func(context.Context, market.CatalogPageQuery) (market.CatalogPage, error) {
+			return market.CatalogPage{SectionID: "featured", Revision: 8}, nil
+		},
+	}
+	mux := http.NewServeMux()
+	RegisterRoutes(mux, NewRoutes(DaemonAPI{ConnectorMarketService: service}))
+
+	page := performGeneratedRouteRequest(t, mux, http.MethodGet, "/v1/connector-market/catalog?sectionId=featured&pageSize=20", nil)
+	if page.Code != http.StatusOK {
+		t.Fatalf("page status = %d; body: %s", page.Code, page.Body.String())
+	}
+	var raw map[string]any
+	decodeGeneratedRouteResponse(t, page, &raw)
+	items, ok := raw["items"].([]any)
+	if !ok || items == nil {
+		t.Fatalf("items = %#v, want an empty JSON array", raw["items"])
+	}
+	if len(items) != 0 {
+		t.Fatalf("items = %#v, want empty", items)
+	}
+}
+
 func connectorMarketTestConnector() market.Connector {
 	digest := "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 	return market.Connector{
