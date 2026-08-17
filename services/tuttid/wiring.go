@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	goruntime "runtime"
 	"strings"
 	"sync"
 	"time"
@@ -278,6 +279,10 @@ func (w *tuttiWiring) buildWorkspaceModule(ctx context.Context) error {
 		if err != nil {
 			return fmt.Errorf("configure connector market account authorization: %w", err)
 		}
+		connectorHostCapabilities := []string(nil)
+		if goruntime.GOOS == "linux" {
+			connectorHostCapabilities = []string{"connector.install.remote-archive.v1"}
+		}
 		connectorCatalog, err := connectormarketdaemon.NewCatalogSource(connectormarketdaemon.CatalogSourceConfig{
 			BaseURL:            connectorMarketBaseURL,
 			ExpectedMarketType: connectorMarketType,
@@ -286,7 +291,7 @@ func (w *tuttiWiring) buildWorkspaceModule(ctx context.Context) error {
 			HostProduct:        "tutti",
 			HostVersion:        tuttitypes.ResolveAppVersion(),
 			MaxConnectorSchema: 4,
-			HostCapabilities:   []string{"connector.install.remote-archive.v1"},
+			HostCapabilities:   connectorHostCapabilities,
 		})
 		if err != nil {
 			_ = connectorMarketStore.Close()

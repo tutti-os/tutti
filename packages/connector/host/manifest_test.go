@@ -264,6 +264,7 @@ func TestManagedCLIAllowsTypedNodePackageWithoutActionMappings(t *testing.T) {
 
 func TestManagedCLIAllowsTypedRemoteArchiveWithoutActionMappings(t *testing.T) {
 	manifest := Manifest{SchemaVersion: "1", DisplayName: "AWS CLI", IconURL: testConnectorIconURL, AuthorizationKind: "none",
+		Compatibility: CompatibilityRequirements{MinimumHostVersion: "0.2.27"},
 		Implementation: Implementation{Kind: ImplementationKindManagedStdio, ManagedStdio: &ManagedStdioImplementation{
 			Runtime: RuntimeRequirement{Language: "node", Profile: "connector-node-static", ABI: "node24-linux-arm64", VersionRange: ">=24.0.0 <25.0.0"},
 			CLI: &ManagedCLIInterface{Entrypoint: "dist/aws", Command: "aws", TimeoutMS: 120_000, Install: &CLIInstallation{Kind: "remote_archive", RemoteArchive: &RemoteArchiveInstallation{

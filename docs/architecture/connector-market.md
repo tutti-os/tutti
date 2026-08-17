@@ -138,8 +138,13 @@ During release installation the host downloads the archive once with bounded
 I/O, safely extracts only regular files into a release-scoped staging tree,
 verifies the complete inventory and entrypoint, and atomically promotes the
 read-only tree. Normal CLI execution never downloads or updates the runtime.
-The first implementation is Linux-only and fails closed on Windows until a
-reparse-point-safe activation adapter is available.
+The first implementation accepts ZIP archives on Linux only and fails closed
+on Windows until a reparse-point-safe activation adapter is available.
+Remote archive downloads bypass daemon and environment HTTP proxies so the
+transport can pin the public DNS addresses validated for that request. This is
+an intentional exception to the normal daemon proxy funnel: a proxy would
+resolve the CONNECT target independently and break the validation-to-socket
+binding.
 
 One portable install artifact may contain binaries for multiple exact targets.
 The signed v3 manifest selects one target implementation without OS or
@@ -170,6 +175,11 @@ typed remote_archive intent
     -> verify file count, expanded bytes, canonical inventory, and entrypoint
     -> atomically promote the immutable tree and publish a v2 receipt
 ```
+
+Protocol v1 keeps the existing `managed_stdio` runtime contract, so even a
+self-contained native archive declares and resolves `connector-node-static`.
+Removing that compatibility dependency requires a separate native-only runtime
+profile and is not implicit in `remote_archive`.
 
 A device has one active connector Node runtime. Connector manifests may state
 an explicit Node version range, but cannot download Node or select a second
@@ -297,6 +307,12 @@ preserving the caller's working directory; the physical
 installer owns receipt-based installation inspection, while the process adapter
 handles CLI readiness and credential-broker operations. Both interfaces use the same verified artifact snapshot,
 executable identity, generation lifecycle, and connection-scoped state path.
+The stable PATH shim is a same-user compatibility surface, not a per-invocation
+attestation or authorization boundary: daemon-managed readiness and `StartCLI`
+reverify tree identity, while shell invocation relies on the read-only,
+release-scoped tree verified at activation. Protecting against a process that
+already has the user's ability to chmod and rewrite connector state requires a
+future shim-to-daemon launcher and is outside this local same-user threat model.
 An installed runtime is daemon-global and is available to every Agent and the
 local Tutti CLI. TSH runs the same runtime module inside its managed VM and
 supplies a guest process adapter.

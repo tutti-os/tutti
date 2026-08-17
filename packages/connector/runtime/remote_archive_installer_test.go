@@ -5,10 +5,13 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"crypto/tls"
 	"encoding/hex"
+	"errors"
 	"io"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -27,7 +30,8 @@ func TestRemoteArchiveInstallerInstallsAndDetectsTreeDrift(t *testing.T) {
 	archive, release := remoteArchiveFixture(t)
 	requests := 0
 	installer, err := NewRemoteArchiveInstaller(RemoteArchiveInstallerConfig{
-		RootDir: t.TempDir(),
+		RootDir:                              t.TempDir(),
+		UnsafeAllowUnpinnedTransportForTests: true,
 		HTTPClient: &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
 			requests++
 			return &http.Response{StatusCode: http.StatusOK, ContentLength: int64(len(archive)), Body: io.NopCloser(bytes.NewReader(archive)), Header: make(http.Header), Request: request}, nil
@@ -69,7 +73,7 @@ func TestRemoteArchiveInstallerInstallsAndDetectsTreeDrift(t *testing.T) {
 func TestRemoteArchiveInstallerRejectsNonPublicResolution(t *testing.T) {
 	archive, release := remoteArchiveFixture(t)
 	installer, err := NewRemoteArchiveInstaller(RemoteArchiveInstallerConfig{
-		RootDir: t.TempDir(), HTTPClient: &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		RootDir: t.TempDir(), UnsafeAllowUnpinnedTransportForTests: true, HTTPClient: &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
 			return &http.Response{StatusCode: http.StatusOK, ContentLength: int64(len(archive)), Body: io.NopCloser(bytes.NewReader(archive)), Header: make(http.Header), Request: request}, nil
 		})},
 		LookupIP: func(context.Context, string) ([]net.IPAddr, error) {
@@ -84,10 +88,267 @@ func TestRemoteArchiveInstallerRejectsNonPublicResolution(t *testing.T) {
 	}
 }
 
+func TestRemoteArchiveInstallerRejectsSymlinkedStaging(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("remote archive v1 intentionally fails closed on Windows")
+	}
+	archive, release := remoteArchiveFixture(t)
+	root := t.TempDir()
+	outside := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "staging"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, filepath.Join(root, "staging", "install-1")); err != nil {
+		t.Fatal(err)
+	}
+	installer, err := NewRemoteArchiveInstaller(RemoteArchiveInstallerConfig{
+		RootDir:                              root,
+		UnsafeAllowUnpinnedTransportForTests: true,
+		HTTPClient: &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+			return &http.Response{StatusCode: http.StatusOK, ContentLength: int64(len(archive)), Body: io.NopCloser(bytes.NewReader(archive)), Header: make(http.Header), Request: request}, nil
+		})},
+		LookupIP: func(context.Context, string) ([]net.IPAddr, error) {
+			return []net.IPAddr{{IP: net.ParseIP("8.8.8.8")}}, nil
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := installer.InstallCLI(t.Context(), market.InstallCLIRequest{OperationID: "install-1", Release: release}); err == nil || !strings.Contains(err.Error(), "symbolic link") {
+		t.Fatalf("InstallCLI() error = %v, want symlink rejection", err)
+	}
+}
+
+func TestRemoteArchivePromoteRestoresQuarantinedTarget(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("remote archive v1 intentionally fails closed on Windows")
+	}
+	root := t.TempDir()
+	installer, err := NewRemoteArchiveInstaller(RemoteArchiveInstallerConfig{RootDir: root})
+	if err != nil {
+		t.Fatal(err)
+	}
+	target := filepath.Join(root, "releases", "aws-cli", strings.Repeat("a", 64))
+	staging := filepath.Join(root, "staging", "install-1")
+	if err := os.MkdirAll(target, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(target, "old"), []byte("old"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(staging, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	realRename := installer.rename
+	failed := false
+	installer.rename = func(oldPath, newPath string) error {
+		if oldPath == staging && newPath == target && !failed {
+			failed = true
+			return errors.New("injected activation failure")
+		}
+		return realRename(oldPath, newPath)
+	}
+	if err := installer.promote(staging, target, "install-1"); err == nil {
+		t.Fatal("promote succeeded after injected activation failure")
+	}
+	if data, err := os.ReadFile(filepath.Join(target, "old")); err != nil || string(data) != "old" {
+		t.Fatalf("old target was not restored: data=%q error=%v", data, err)
+	}
+}
+
+func TestRemoteArchivePromoteRejectsSymlinkedReleaseParent(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("remote archive v1 intentionally fails closed on Windows")
+	}
+	root := t.TempDir()
+	outside := t.TempDir()
+	if err := os.Symlink(outside, filepath.Join(root, "releases")); err != nil {
+		t.Fatal(err)
+	}
+	staging := filepath.Join(root, "staging", "install-1")
+	if err := os.MkdirAll(staging, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	installer, err := NewRemoteArchiveInstaller(RemoteArchiveInstallerConfig{RootDir: root})
+	if err != nil {
+		t.Fatal(err)
+	}
+	target := filepath.Join(root, "releases", "aws-cli", strings.Repeat("a", 64))
+	if err := installer.promote(staging, target, "install-1"); err == nil || !strings.Contains(err.Error(), "symbolic link") {
+		t.Fatalf("promote() error = %v, want symlink rejection", err)
+	}
+	if _, err := os.Stat(filepath.Join(outside, "aws-cli", strings.Repeat("a", 64))); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("promote wrote outside the managed root: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(outside, "aws-cli")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("promote created a directory outside the managed root: %v", err)
+	}
+}
+
+func TestRemoteArchiveRemoveRejectsSymlinkedParentBeforeChmod(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("remote archive v1 intentionally fails closed on Windows")
+	}
+	root := t.TempDir()
+	outside := t.TempDir()
+	externalConnector := filepath.Join(outside, "aws-cli")
+	if err := os.MkdirAll(externalConnector, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	externalFile := filepath.Join(externalConnector, "keep")
+	if err := os.WriteFile(externalFile, []byte("keep"), 0o400); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(externalConnector, 0o500); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(externalConnector, 0o700) })
+	if err := os.Symlink(outside, filepath.Join(root, "releases")); err != nil {
+		t.Fatal(err)
+	}
+	installer, err := NewRemoteArchiveInstaller(RemoteArchiveInstallerConfig{RootDir: root})
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = installer.RemoveConnector(t.Context(), market.RemoveConnectorInstallationRequest{ConnectorKey: "aws-cli"})
+	if err == nil || !strings.Contains(err.Error(), "symbolic link") {
+		t.Fatalf("RemoveConnector() error = %v, want symlink rejection", err)
+	}
+	info, statErr := os.Stat(externalFile)
+	if statErr != nil || info.Mode().Perm() != 0o400 {
+		t.Fatalf("external file mode changed before rejection: mode=%v error=%v", info.Mode().Perm(), statErr)
+	}
+}
+
+func TestRemoteArchiveCacheRejectsMatchingSymlink(t *testing.T) {
+	archive, release := remoteArchiveFixture(t)
+	source := release.Manifest.Implementation.ManagedStdio.CLI.Install.RemoteArchive.Source
+	outside := filepath.Join(t.TempDir(), "archive.zip")
+	if err := os.WriteFile(outside, archive, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(t.TempDir(), "cached.archive")
+	if err := os.Symlink(outside, link); err != nil {
+		t.Fatal(err)
+	}
+	if err := verifyRemoteArchiveFile(link, source); err == nil || !strings.Contains(err.Error(), "cache identity") {
+		t.Fatalf("verifyRemoteArchiveFile() error = %v, want symlink rejection", err)
+	}
+}
+
+func TestRemoteArchiveResolveRejectsSymlinkedReleaseParent(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("remote archive v1 intentionally fails closed on Windows")
+	}
+	archive, release := remoteArchiveFixture(t)
+	root := t.TempDir()
+	installer, err := NewRemoteArchiveInstaller(RemoteArchiveInstallerConfig{
+		RootDir: root, UnsafeAllowUnpinnedTransportForTests: true,
+		HTTPClient: &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+			return &http.Response{StatusCode: http.StatusOK, ContentLength: int64(len(archive)), Body: io.NopCloser(bytes.NewReader(archive)), Header: make(http.Header), Request: request}, nil
+		})},
+		LookupIP: func(context.Context, string) ([]net.IPAddr, error) {
+			return []net.IPAddr{{IP: net.ParseIP("8.8.8.8")}}, nil
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := installer.InstallCLI(t.Context(), market.InstallCLIRequest{OperationID: "install-1", Release: release}); err != nil {
+		t.Fatal(err)
+	}
+	externalReleases := filepath.Join(t.TempDir(), "releases")
+	if err := os.Rename(filepath.Join(root, "releases"), externalReleases); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = makeRemoteArchiveWritable(externalReleases) })
+	if err := os.Symlink(externalReleases, filepath.Join(root, "releases")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := installer.ResolveCLI(t.Context(), release); err == nil || !strings.Contains(err.Error(), market.ErrReleaseInstallationInvalid.Error()) {
+		t.Fatalf("ResolveCLI() error = %v, want invalid installation", err)
+	}
+}
+
+func TestRemoteArchivePromoteRemovesNewTargetWhenSyncRollbackRenameFails(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("remote archive v1 intentionally fails closed on Windows")
+	}
+	root := t.TempDir()
+	installer, err := NewRemoteArchiveInstaller(RemoteArchiveInstallerConfig{RootDir: root})
+	if err != nil {
+		t.Fatal(err)
+	}
+	target := filepath.Join(root, "releases", "aws-cli", strings.Repeat("a", 64))
+	staging := filepath.Join(root, "staging", "install-1")
+	if err := os.MkdirAll(target, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(target, "old"), []byte("old"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(staging, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(staging, "new"), []byte("new"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	realRename := installer.rename
+	installer.rename = func(oldPath, newPath string) error {
+		if oldPath == target && newPath == staging {
+			return errors.New("injected rollback rename failure")
+		}
+		return realRename(oldPath, newPath)
+	}
+	installer.syncDir = func(string) error { return errors.New("injected sync failure") }
+	if err := installer.promote(staging, target, "install-1"); err == nil {
+		t.Fatal("promote succeeded after injected sync failure")
+	}
+	if data, err := os.ReadFile(filepath.Join(target, "old")); err != nil || string(data) != "old" {
+		t.Fatalf("old target was not restored after rollback rename failure: data=%q error=%v", data, err)
+	}
+	if _, err := os.Stat(filepath.Join(target, "new")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("new target remained active after failed promote: %v", err)
+	}
+}
+
 type roundTripFunc func(*http.Request) (*http.Response, error)
 
 func (function roundTripFunc) RoundTrip(request *http.Request) (*http.Response, error) {
 	return function(request)
+}
+
+func TestRemoteArchiveInstallerRejectsUnpinnedCustomTransport(t *testing.T) {
+	_, err := NewRemoteArchiveInstaller(RemoteArchiveInstallerConfig{
+		RootDir: t.TempDir(), HTTPClient: &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) { return nil, errors.New("unused") })},
+	})
+	if err == nil || !strings.Contains(err.Error(), "pinned dialing") {
+		t.Fatalf("NewRemoteArchiveInstaller() error = %v, want pinned transport rejection", err)
+	}
+}
+
+func TestRemoteArchiveInstallerDisablesProxyAndRejectsTLSDialOverride(t *testing.T) {
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.Proxy = http.ProxyURL(&url.URL{Scheme: "http", Host: "proxy.invalid"})
+	installer, err := NewRemoteArchiveInstaller(RemoteArchiveInstallerConfig{RootDir: t.TempDir(), HTTPClient: &http.Client{Transport: transport}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if installer.httpClient.Transport.(*http.Transport).Proxy != nil {
+		t.Fatal("remote archive transport retained a proxy that can bypass DNS pinning")
+	}
+	transport = http.DefaultTransport.(*http.Transport).Clone()
+	transport.DialTLSContext = func(context.Context, string, string) (net.Conn, error) { return nil, errors.New("unused") }
+	_, err = NewRemoteArchiveInstaller(RemoteArchiveInstallerConfig{RootDir: t.TempDir(), HTTPClient: &http.Client{Transport: transport}})
+	if err == nil || !strings.Contains(err.Error(), "TLS dialing") {
+		t.Fatalf("NewRemoteArchiveInstaller() error = %v, want TLS dial override rejection", err)
+	}
+	transport = http.DefaultTransport.(*http.Transport).Clone()
+	transport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true} //nolint:gosec // The installer must reject this test input.
+	_, err = NewRemoteArchiveInstaller(RemoteArchiveInstallerConfig{RootDir: t.TempDir(), HTTPClient: &http.Client{Transport: transport}})
+	if err == nil || !strings.Contains(err.Error(), "verify TLS") {
+		t.Fatalf("NewRemoteArchiveInstaller() error = %v, want insecure TLS rejection", err)
+	}
 }
 
 func remoteArchiveFixture(t *testing.T) ([]byte, market.Release) {
@@ -140,7 +401,7 @@ func remoteArchiveFixture(t *testing.T) ([]byte, market.Release) {
 		ReleaseDigest: strings.Repeat("1", 64), ManifestDigest: strings.Repeat("2", 64),
 		Artifact:    market.Artifact{Key: "aws-cli.tgz", SHA256: strings.Repeat("3", 64), SizeBytes: 1, MediaType: "application/gzip"},
 		PublishedAt: time.Unix(1, 0).UTC(), Status: market.ReleaseStatusAvailable,
-		Manifest: market.Manifest{SchemaVersion: "1", DisplayName: "AWS CLI", IconURL: "data:image/png;base64,iVBORw0KGgo=", AuthorizationKind: "none",
+		Manifest: market.Manifest{SchemaVersion: "1", DisplayName: "AWS CLI", IconURL: "data:image/png;base64,iVBORw0KGgo=", AuthorizationKind: "none", Compatibility: market.CompatibilityRequirements{MinimumHostVersion: "0.2.27"},
 			Implementation: market.Implementation{Kind: market.ImplementationKindManagedStdio, ManagedStdio: &market.ManagedStdioImplementation{
 				Runtime: market.RuntimeRequirement{Language: "node", Profile: ConnectorNodeProfile, ABI: "node22-" + runtime.GOOS + "-" + runtime.GOARCH, VersionRange: ">=22.0.0 <23.0.0"},
 				CLI: &market.ManagedCLIInterface{Entrypoint: "dist/aws", Command: "aws", TimeoutMS: 120_000, Install: &market.CLIInstallation{Kind: "remote_archive", RemoteArchive: &market.RemoteArchiveInstallation{

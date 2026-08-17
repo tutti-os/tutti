@@ -138,6 +138,7 @@ type CompatibilityRequirements struct {
 	Products           []string `json:"products,omitempty"`
 	Platforms          []string `json:"platforms,omitempty"`
 	MinimumHostVersion string   `json:"minimumHostVersion,omitempty"`
+	FallbackVersion    string   `json:"fallbackVersion,omitempty"`
 }
 
 type Implementation struct {

@@ -29,11 +29,12 @@ const (
 )
 
 type RemoteArchiveInstallerConfig struct {
-	RootDir    string
-	HTTPClient *http.Client
-	Limits     marketartifact.Limits
-	Timeout    time.Duration
-	LookupIP   func(context.Context, string) ([]net.IPAddr, error)
+	RootDir                              string
+	HTTPClient                           *http.Client
+	Limits                               marketartifact.Limits
+	Timeout                              time.Duration
+	LookupIP                             func(context.Context, string) ([]net.IPAddr, error)
+	UnsafeAllowUnpinnedTransportForTests bool
 }
 
 type RemoteArchiveInstaller struct {
@@ -46,7 +47,15 @@ type RemoteArchiveInstaller struct {
 	lanes      map[string]*sync.Mutex
 	cacheLanes map[string]*sync.Mutex
 	slots      chan struct{}
+	rename     func(string, string) error
+	syncDir    func(string) error
 }
+
+type remoteArchivePinnedAddresses struct {
+	host      string
+	addresses []net.IPAddr
+}
+type remoteArchivePinnedAddressesKey struct{}
 
 var _ market.CLIInstallationManager = (*RemoteArchiveInstaller)(nil)
 
@@ -74,8 +83,59 @@ func NewRemoteArchiveInstaller(config RemoteArchiveInstallerConfig) (*RemoteArch
 	if lookup == nil {
 		lookup = net.DefaultResolver.LookupIPAddr
 	}
+	var transport *http.Transport
+	switch configured := clientCopy.Transport.(type) {
+	case nil:
+		defaultTransport, ok := http.DefaultTransport.(*http.Transport)
+		if !ok {
+			return nil, errors.New("connector remote archive default HTTP transport is unsupported")
+		}
+		transport = defaultTransport.Clone()
+	case *http.Transport:
+		transport = configured.Clone()
+	default:
+		if !config.UnsafeAllowUnpinnedTransportForTests {
+			return nil, errors.New("connector remote archive HTTP transport must support pinned dialing")
+		}
+	}
+	if transport != nil {
+		// DialTLS is deprecated, but callers can still set it and bypass DialContext.
+		//nolint:staticcheck // Reject both TLS dial hooks to preserve DNS pinning.
+		if transport.DialTLSContext != nil || transport.DialTLS != nil {
+			return nil, errors.New("connector remote archive HTTP transport must not override TLS dialing")
+		}
+		if transport.TLSClientConfig != nil {
+			if transport.TLSClientConfig.InsecureSkipVerify {
+				return nil, errors.New("connector remote archive HTTP transport must verify TLS")
+			}
+			transport.TLSClientConfig = transport.TLSClientConfig.Clone()
+			transport.TLSClientConfig.ServerName = ""
+		}
+		// A proxy resolves the CONNECT target independently and would break the
+		// binding between validation and the origin socket established below.
+		transport.Proxy = nil
+		baseDial := (&net.Dialer{Timeout: 30 * time.Second, KeepAlive: 30 * time.Second}).DialContext
+		transport.DialContext = func(ctx context.Context, network, address string) (net.Conn, error) {
+			pinned, _ := ctx.Value(remoteArchivePinnedAddressesKey{}).(remoteArchivePinnedAddresses)
+			host, port, splitErr := net.SplitHostPort(address)
+			if splitErr != nil || !strings.EqualFold(host, pinned.host) || len(pinned.addresses) == 0 {
+				return nil, errors.New("connector remote archive dial is not bound to validated DNS addresses")
+			}
+			var dialErr error
+			for _, candidate := range pinned.addresses {
+				connection, err := baseDial(ctx, network, net.JoinHostPort(candidate.IP.String(), port))
+				if err == nil {
+					return connection, nil
+				}
+				dialErr = errors.Join(dialErr, err)
+			}
+			return nil, dialErr
+		}
+		clientCopy.Transport = transport
+	}
 	return &RemoteArchiveInstaller{rootDir: root, httpClient: &clientCopy, limits: limits, timeout: timeout,
-		lookupIP: lookup, lanes: make(map[string]*sync.Mutex), cacheLanes: make(map[string]*sync.Mutex), slots: make(chan struct{}, 4)}, nil
+		lookupIP: lookup, lanes: make(map[string]*sync.Mutex), cacheLanes: make(map[string]*sync.Mutex), slots: make(chan struct{}, 4),
+		rename: os.Rename, syncDir: marketartifact.SyncDirectory}, nil
 }
 
 func (installer *RemoteArchiveInstaller) InstallCLI(ctx context.Context, request market.InstallCLIRequest) (market.CLIInstallationReceipt, error) {
@@ -114,16 +174,17 @@ func (installer *RemoteArchiveInstaller) InstallCLI(ctx context.Context, request
 	if !pathWithin(installer.rootDir, staging) {
 		return market.CLIInstallationReceipt{}, errors.New("connector remote archive staging path escapes root")
 	}
-	_ = marketartifact.RemoveAllWithin(installer.rootDir, staging)
-	if err := os.MkdirAll(staging, 0o700); err != nil {
+	if err := marketartifact.RemoveAllWithin(installer.rootDir, staging); err != nil {
+		return market.CLIInstallationReceipt{}, fmt.Errorf("clean connector remote archive staging: %w", err)
+	}
+	if err := createRemoteArchiveDirectory(installer.rootDir, staging); err != nil {
 		return market.CLIInstallationReceipt{}, err
 	}
 	defer func() {
-		_ = makeRemoteArchiveWritable(staging)
-		_ = marketartifact.RemoveAllWithin(installer.rootDir, staging)
+		_ = removeRemoteArchiveTree(installer.rootDir, staging)
 	}()
 	extracted := filepath.Join(staging, "extracted")
-	if err := os.MkdirAll(extracted, 0o700); err != nil {
+	if err := createRemoteArchiveDirectory(installer.rootDir, extracted); err != nil {
 		return market.CLIInstallationReceipt{}, err
 	}
 	if err := marketartifact.ExtractArchive(archivePath, install.Source.Format, extracted, installer.limits); err != nil {
@@ -196,10 +257,13 @@ func (installer *RemoteArchiveInstaller) ResolveCLI(ctx context.Context, release
 	unlock := installer.lock(release.ConnectorKey)
 	defer unlock()
 	target := installer.installRoot(release)
-	if _, err := os.Stat(target); errors.Is(err, os.ErrNotExist) {
+	if _, err := os.Lstat(target); errors.Is(err, os.ErrNotExist) {
 		return market.CLIInstallationReceipt{}, market.ErrReleaseInstallationAbsent
 	} else if err != nil {
 		return market.CLIInstallationReceipt{}, err
+	}
+	if err := ensureRemoteArchiveDirectory(installer.rootDir, target); err != nil {
+		return market.CLIInstallationReceipt{}, fmt.Errorf("%w: %v", market.ErrReleaseInstallationInvalid, err)
 	}
 	receipt, err := installer.readAndVerifyReceipt(release, target)
 	if err != nil {
@@ -218,8 +282,7 @@ func (installer *RemoteArchiveInstaller) RemoveCLI(ctx context.Context, request 
 	unlock := installer.lock(request.ConnectorKey)
 	defer unlock()
 	target := filepath.Join(installer.rootDir, "releases", request.ConnectorKey, request.ReleaseDigest)
-	_ = makeRemoteArchiveWritable(target)
-	return marketartifact.RemoveAllWithin(installer.rootDir, target)
+	return removeRemoteArchiveTree(installer.rootDir, target)
 }
 
 func (installer *RemoteArchiveInstaller) RemoveConnector(ctx context.Context, request market.RemoveConnectorInstallationRequest) error {
@@ -232,20 +295,22 @@ func (installer *RemoteArchiveInstaller) RemoveConnector(ctx context.Context, re
 	unlock := installer.lock(request.ConnectorKey)
 	defer unlock()
 	target := filepath.Join(installer.rootDir, "releases", request.ConnectorKey)
-	_ = makeRemoteArchiveWritable(target)
-	return marketartifact.RemoveAllWithin(installer.rootDir, target)
+	return removeRemoteArchiveTree(installer.rootDir, target)
 }
 
 func (installer *RemoteArchiveInstaller) prepareArchive(ctx context.Context, source market.RemoteArchiveSource) (string, error) {
 	unlock := installer.lockNamed(installer.cacheLanes, source.SHA256)
 	defer unlock()
 	cacheDir := filepath.Join(installer.rootDir, "cache")
-	if err := os.MkdirAll(cacheDir, 0o700); err != nil {
+	if err := createRemoteArchiveDirectory(installer.rootDir, cacheDir); err != nil {
 		return "", err
 	}
 	archivePath := filepath.Join(cacheDir, source.SHA256+".archive")
 	if verifyRemoteArchiveFile(archivePath, source) == nil {
 		return archivePath, nil
+	}
+	if err := removeInvalidRemoteArchiveCacheFile(installer.rootDir, archivePath); err != nil {
+		return "", err
 	}
 	temporary := archivePath + ".partial"
 	_ = os.Remove(temporary)
@@ -268,14 +333,14 @@ func (installer *RemoteArchiveInstaller) prepareArchive(ctx context.Context, sou
 		_ = os.Remove(temporary)
 		return "", errors.Join(errors.New("connector remote archive download identity is invalid"), copyErr, syncErr, closeErr)
 	}
-	if err := os.Rename(temporary, archivePath); err != nil {
+	if err := installer.rename(temporary, archivePath); err != nil {
 		_ = os.Remove(temporary)
 		if verifyRemoteArchiveFile(archivePath, source) == nil {
 			return archivePath, nil
 		}
 		return "", err
 	}
-	if err := marketartifact.SyncDirectory(cacheDir); err != nil {
+	if err := installer.syncDir(cacheDir); err != nil {
 		return "", err
 	}
 	return archivePath, nil
@@ -287,10 +352,12 @@ func (installer *RemoteArchiveInstaller) fetch(ctx context.Context, source marke
 		return nil, err
 	}
 	for redirect := 0; redirect <= maxRemoteArchiveRedirects; redirect++ {
-		if err := installer.validateURL(ctx, current, source.AllowedHosts); err != nil {
+		addresses, err := installer.validateURL(ctx, current, source.AllowedHosts)
+		if err != nil {
 			return nil, err
 		}
-		request, err := http.NewRequestWithContext(ctx, http.MethodGet, current.String(), nil)
+		requestContext := context.WithValue(ctx, remoteArchivePinnedAddressesKey{}, remoteArchivePinnedAddresses{host: current.Hostname(), addresses: addresses})
+		request, err := http.NewRequestWithContext(requestContext, http.MethodGet, current.String(), nil)
 		if err != nil {
 			return nil, err
 		}
@@ -321,29 +388,37 @@ func (installer *RemoteArchiveInstaller) fetch(ctx context.Context, source marke
 	return nil, errors.New("connector remote archive redirect limit exceeded")
 }
 
-func (installer *RemoteArchiveInstaller) validateURL(ctx context.Context, candidate *url.URL, allowedHosts []string) error {
+func (installer *RemoteArchiveInstaller) validateURL(ctx context.Context, candidate *url.URL, allowedHosts []string) ([]net.IPAddr, error) {
 	if candidate == nil || candidate.Scheme != "https" || candidate.User != nil || candidate.RawQuery != "" || candidate.Fragment != "" || candidate.Port() != "" || net.ParseIP(candidate.Hostname()) != nil || !containsFold(allowedHosts, candidate.Hostname()) {
-		return errors.New("connector remote archive URL is not allowed")
+		return nil, errors.New("connector remote archive URL is not allowed")
 	}
 	addresses, err := installer.lookupIP(ctx, candidate.Hostname())
 	if err != nil || len(addresses) == 0 {
-		return errors.New("resolve connector remote archive host")
+		return nil, errors.New("resolve connector remote archive host")
 	}
 	for _, address := range addresses {
 		ip := address.IP
-		if ip == nil || ip.IsPrivate() || ip.IsLoopback() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() || ip.IsUnspecified() || ip.IsMulticast() {
-			return errors.New("connector remote archive host resolved to a non-public address")
+		if ip == nil || !ip.IsGlobalUnicast() || ip.IsPrivate() || ip.IsLoopback() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() || ip.IsUnspecified() || ip.IsMulticast() {
+			return nil, errors.New("connector remote archive host resolved to a non-public address")
 		}
 	}
-	return nil
+	return addresses, nil
 }
 
-func (*RemoteArchiveInstaller) readAndVerifyReceipt(release market.Release, target string) (market.CLIInstallationReceipt, error) {
+func (installer *RemoteArchiveInstaller) readAndVerifyReceipt(release market.Release, target string) (market.CLIInstallationReceipt, error) {
 	managed, cli, install, err := remoteArchiveIntent(release)
 	if err != nil {
 		return market.CLIInstallationReceipt{}, err
 	}
-	data, err := os.ReadFile(filepath.Join(target, remoteArchiveReceiptFile))
+	if err := ensureRemoteArchiveDirectory(installer.rootDir, target); err != nil {
+		return market.CLIInstallationReceipt{}, err
+	}
+	receiptPath := filepath.Join(target, remoteArchiveReceiptFile)
+	receiptInfo, receiptStatErr := os.Lstat(receiptPath)
+	if receiptStatErr != nil || receiptInfo.Mode()&os.ModeSymlink != 0 || !receiptInfo.Mode().IsRegular() {
+		return market.CLIInstallationReceipt{}, errors.New("connector remote archive receipt is unavailable")
+	}
+	data, err := os.ReadFile(receiptPath)
 	if err != nil || len(data) > 1<<20 {
 		return market.CLIInstallationReceipt{}, errors.New("connector remote archive receipt is unavailable")
 	}
@@ -356,6 +431,9 @@ func (*RemoteArchiveInstaller) readAndVerifyReceipt(release market.Release, targ
 		receipt.LaunchKind != install.Launch.Kind || receipt.Entrypoint != cli.Entrypoint || receipt.EntrypointSHA256 != install.Launch.SHA256 || receipt.EntrypointSize != install.Launch.SizeBytes ||
 		filepath.Clean(receipt.InstallRoot) != filepath.Join(target, "payload") {
 		return market.CLIInstallationReceipt{}, errors.New("connector remote archive receipt identity is invalid")
+	}
+	if err := ensureRemoteArchiveDirectory(installer.rootDir, receipt.InstallRoot); err != nil {
+		return market.CLIInstallationReceipt{}, errors.New("connector remote archive payload path is invalid")
 	}
 	identity, err := marketartifact.InspectTree(receipt.InstallRoot)
 	if err != nil || identity.SHA256 != receipt.InventorySHA256 || identity.FileCount != receipt.FileCount || identity.ExpandedSizeBytes != receipt.ExpandedSizeBytes {
@@ -374,32 +452,123 @@ func (*RemoteArchiveInstaller) readAndVerifyReceipt(release market.Release, targ
 }
 
 func (installer *RemoteArchiveInstaller) promote(staging, target, operationID string) error {
-	if err := os.MkdirAll(filepath.Dir(target), 0o700); err != nil {
+	if err := createRemoteArchiveDirectory(installer.rootDir, filepath.Dir(target)); err != nil {
 		return err
 	}
 	quarantine := ""
 	if _, err := os.Lstat(target); err == nil {
 		quarantineRoot := filepath.Join(installer.rootDir, "quarantine")
-		if err := os.MkdirAll(quarantineRoot, 0o700); err != nil {
+		if err := createRemoteArchiveDirectory(installer.rootDir, quarantineRoot); err != nil {
 			return err
 		}
 		quarantine = filepath.Join(quarantineRoot, operationID)
-		_ = marketartifact.RemoveAllWithin(installer.rootDir, quarantine)
-		if err := os.Rename(target, quarantine); err != nil {
+		if err := marketartifact.RemoveAllWithin(installer.rootDir, quarantine); err != nil {
+			return fmt.Errorf("clean connector remote archive quarantine: %w", err)
+		}
+		if err := installer.rename(target, quarantine); err != nil {
 			return fmt.Errorf("quarantine invalid connector remote archive: %w", err)
 		}
 	}
-	if err := os.Rename(staging, target); err != nil {
-		return fmt.Errorf("activate connector remote archive: %w", err)
+	if err := installer.rename(staging, target); err != nil {
+		restoreErr := error(nil)
+		if quarantine != "" {
+			restoreErr = installer.rename(quarantine, target)
+		}
+		return errors.Join(fmt.Errorf("activate connector remote archive: %w", err), restoreErr)
 	}
-	if err := marketartifact.SyncDirectory(filepath.Dir(target)); err != nil {
-		return err
+	if err := installer.syncDir(filepath.Dir(target)); err != nil {
+		rollbackErr := installer.rename(target, staging)
+		if rollbackErr != nil {
+			rollbackErr = errors.Join(rollbackErr, removeRemoteArchiveTree(installer.rootDir, target))
+		}
+		if quarantine != "" {
+			if _, statErr := os.Lstat(target); errors.Is(statErr, os.ErrNotExist) {
+				rollbackErr = errors.Join(rollbackErr, installer.rename(quarantine, target))
+			}
+		}
+		return errors.Join(fmt.Errorf("sync activated connector remote archive: %w", err), rollbackErr)
 	}
 	if quarantine != "" {
-		_ = makeRemoteArchiveWritable(quarantine)
-		_ = marketartifact.RemoveAllWithin(installer.rootDir, quarantine)
+		_ = removeRemoteArchiveTree(installer.rootDir, quarantine)
 	}
 	return nil
+}
+
+func createRemoteArchiveDirectory(root, target string) error {
+	root = filepath.Clean(root)
+	target = filepath.Clean(target)
+	relative, err := filepath.Rel(root, target)
+	if err != nil || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
+		return errors.New("connector remote archive directory escapes root")
+	}
+	if err := os.MkdirAll(root, 0o700); err != nil {
+		return err
+	}
+	current := root
+	parts := []string{}
+	if relative != "." {
+		parts = strings.Split(relative, string(filepath.Separator))
+	}
+	for _, part := range append([]string{""}, parts...) {
+		if part != "" {
+			current = filepath.Join(current, part)
+		}
+		info, statErr := os.Lstat(current)
+		if errors.Is(statErr, os.ErrNotExist) {
+			if mkdirErr := os.Mkdir(current, 0o700); mkdirErr != nil && !errors.Is(mkdirErr, os.ErrExist) {
+				return mkdirErr
+			}
+			info, statErr = os.Lstat(current)
+		}
+		if statErr != nil {
+			return statErr
+		}
+		if info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
+			return errors.New("connector remote archive directory contains a symbolic link or non-directory")
+		}
+	}
+	return nil
+}
+
+func ensureRemoteArchiveDirectory(root, target string) error {
+	root = filepath.Clean(root)
+	target = filepath.Clean(target)
+	relative, err := filepath.Rel(root, target)
+	if err != nil || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
+		return errors.New("connector remote archive directory escapes root")
+	}
+	current := root
+	parts := []string{}
+	if relative != "." {
+		parts = strings.Split(relative, string(filepath.Separator))
+	}
+	for _, part := range append([]string{""}, parts...) {
+		if part != "" {
+			current = filepath.Join(current, part)
+		}
+		info, statErr := os.Lstat(current)
+		if statErr != nil {
+			return statErr
+		}
+		if info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
+			return errors.New("connector remote archive directory contains a symbolic link or non-directory")
+		}
+	}
+	return nil
+}
+
+func removeInvalidRemoteArchiveCacheFile(root, path string) error {
+	info, err := os.Lstat(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 || !pathWithin(root, path) {
+		return errors.New("connector remote archive cache entry is unsafe")
+	}
+	return os.Remove(path)
 }
 
 func (installer *RemoteArchiveInstaller) installRoot(release market.Release) string {
@@ -477,6 +646,19 @@ func makeRemoteArchiveWritable(root string) error {
 	})
 }
 
+func removeRemoteArchiveTree(root, target string) error {
+	if err := ensureRemoteArchiveDirectory(root, target); err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return marketartifact.RemoveAllWithin(root, target)
+		}
+		return err
+	}
+	if err := makeRemoteArchiveWritable(target); err != nil {
+		return err
+	}
+	return marketartifact.RemoveAllWithin(root, target)
+}
+
 func writeRemoteArchiveReceipt(root string, receipt market.CLIInstallationReceipt) error {
 	data, err := json.Marshal(receipt)
 	if err != nil {
@@ -501,13 +683,18 @@ func writeRemoteArchiveReceipt(root string, receipt market.CLIInstallationReceip
 }
 
 func verifyRemoteArchiveFile(path string, source market.RemoteArchiveSource) error {
+	pathInfo, err := os.Lstat(path)
+	if err != nil || pathInfo.Mode()&os.ModeSymlink != 0 || !pathInfo.Mode().IsRegular() {
+		return errors.New("connector remote archive cache identity is invalid")
+	}
 	file, err := os.Open(path)
 	if err != nil {
 		return err
 	}
 	defer file.Close()
 	info, err := file.Stat()
-	if err != nil || !info.Mode().IsRegular() || info.Size() != source.SizeBytes {
+	afterInfo, afterErr := os.Lstat(path)
+	if err != nil || afterErr != nil || afterInfo.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() || !afterInfo.Mode().IsRegular() || !os.SameFile(pathInfo, info) || !os.SameFile(info, afterInfo) || info.Size() != source.SizeBytes {
 		return errors.New("connector remote archive cache identity is invalid")
 	}
 	hash := sha256.New()

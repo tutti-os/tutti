@@ -163,6 +163,9 @@ func validateManifestShape(manifest Manifest, validateIcon bool) error {
 	if minimum := strings.TrimSpace(manifest.Compatibility.MinimumHostVersion); minimum != "" && !hostVersionPattern.MatchString(minimum) {
 		return invalidManifest("minimumHostVersion must be an exact semantic version", nil)
 	}
+	if fallback := strings.TrimSpace(manifest.Compatibility.FallbackVersion); fallback != "" && !exactPackageVersionPattern.MatchString(fallback) {
+		return invalidManifest("fallbackVersion must be an exact semantic version", nil)
+	}
 	switch manifest.AuthorizationKind {
 	case "none", "oauth2", "api_key":
 	default:
@@ -185,6 +188,10 @@ func validateManifestShape(manifest Manifest, validateIcon bool) error {
 	}
 	if branches != 1 {
 		return invalidManifest("implementation must select exactly one typed branch", nil)
+	}
+	if implementation.ManagedStdio != nil && implementation.ManagedStdio.CLI != nil && implementation.ManagedStdio.CLI.Install != nil &&
+		implementation.ManagedStdio.CLI.Install.Kind == "remote_archive" && strings.TrimSpace(manifest.Compatibility.MinimumHostVersion) == "" {
+		return invalidManifest("remote_archive requires minimumHostVersion", nil)
 	}
 	switch implementation.Kind {
 	case ImplementationKindBuiltin:
