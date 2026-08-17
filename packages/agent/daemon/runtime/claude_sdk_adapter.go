@@ -29,6 +29,7 @@ type ClaudeCodeSDKAdapter struct {
 
 	mu                         sync.Mutex
 	sessions                   map[string]*claudeSDKAdapterSession
+	retiredSessions            map[string][]*claudeSDKAdapterSession
 	terminalInteractions       terminalInteractiveDispositionStore
 	interactiveDispositionSink InteractiveDispositionSink
 	commandSink                CommandSnapshotSink
@@ -36,9 +37,20 @@ type ClaudeCodeSDKAdapter struct {
 	promptImageMaterializer    providerPromptImageMaterializer
 	interactiveAckTimeout      time.Duration
 	inputUnits                 *providerInputUnitTracker
+	lifecycleMu                sync.Mutex
+	lifecycleLocks             map[string]*claudeSDKSessionLock
+}
+
+type claudeSDKSessionLock struct {
+	mu   sync.Mutex
+	refs int
 }
 
 type claudeSDKAdapterSession struct {
+	// dispatchMu is the exact-session commit axis. Event projection may run
+	// before it, but canonical publication and registry replacement must hold
+	// this mutex so a stale reader cannot commit after a new generation wins.
+	dispatchMu        sync.Mutex
 	conn              ProcessConnection
 	reader            *claudeSDKLineReader
 	session           Session
@@ -216,8 +228,10 @@ func NewClaudeCodeSDKAdapter(transport ProcessTransport) *ClaudeCodeSDKAdapter {
 	return &ClaudeCodeSDKAdapter{
 		transport:             transport,
 		sessions:              make(map[string]*claudeSDKAdapterSession),
+		retiredSessions:       make(map[string][]*claudeSDKAdapterSession),
 		interactiveAckTimeout: claudeSDKInteractiveAckTimeout,
 		inputUnits:            providerInputUnitTrackerForTransport(transport),
+		lifecycleLocks:        make(map[string]*claudeSDKSessionLock),
 	}
 }
 

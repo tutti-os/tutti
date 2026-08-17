@@ -136,6 +136,34 @@ test("keeps connector details open through installation and advances to authoriz
     authorizing?.kind === "authorization" && authorizing.pending,
     true
   );
+
+  connector.authorization = { state: "disconnected" };
+  market.connectorsByKey[connector.key] = connector;
+  market.pendingAuthorizationsByConnectorKey[connector.key] = true;
+  const pendingSession = buildConnectorMarketView(market, dialogState).dialog;
+  assert.equal(
+    pendingSession?.kind === "authorization" && pendingSession.pending,
+    true
+  );
+  market.authorizationViewsByConnectorKey[connector.key] = {
+    protocol: "tutti.connector.authorization.view.v1",
+    viewId: "wecom-authorization-1",
+    view: {
+      type: "qr_code",
+      source: {
+        type: "payload",
+        value: "https://work.weixin.qq.com/ai/qc/c?s=opaque"
+      }
+    }
+  };
+  const qrDialog = buildConnectorMarketView(market, dialogState).dialog;
+  assert.equal(
+    qrDialog?.kind === "authorization" &&
+      qrDialog.authorizationView?.view.type === "qr_code"
+      ? qrDialog.authorizationView.view.source.value
+      : undefined,
+    "https://work.weixin.qq.com/ai/qc/c?s=opaque"
+  );
 });
 
 test("preserves the connector authorization interaction for the dialog", () => {
@@ -181,6 +209,29 @@ test("preserves the connector authorization interaction for the dialog", () => {
       ? dialog.authorizationInteraction
       : undefined,
     interaction
+  );
+});
+
+test("marks managed credential brokers for managed authorization handling", () => {
+  const market = createConnectorMarketStoreState();
+  const connector = connectorFixture();
+  connector.installation = {
+    installedReleaseDigest: connector.release.releaseDigest,
+    state: "installed"
+  };
+  connector.release.manifest.authorizationKind = "api_key";
+  connector.release.manifest.authorizationInteractionMode = "managed";
+  market.connectorKeys = [connector.key];
+  market.connectorsByKey[connector.key] = connector;
+
+  const dialog = buildConnectorMarketView(market, {
+    ...uiState,
+    dialog: { connectorKey: connector.key, kind: "connector" }
+  }).dialog;
+
+  assert.equal(
+    dialog?.kind === "authorization" && dialog.brokeredAuthorization,
+    true
   );
 });
 

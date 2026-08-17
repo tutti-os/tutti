@@ -74,6 +74,13 @@ export function useComposerPaletteCatalog({
   uiLanguage,
   editorHandleRef
 }: UseComposerPaletteCatalogInput) {
+  // Host menu state means desktop can present and configure computer use.
+  // Daemon support can be false while cua-driver is not ready; launch still
+  // goes through the daemon readiness clamp.
+  const computerExecutable = Boolean(composerSettings.supportsComputerUse);
+  const computerPresentationSupported =
+    computerExecutable ||
+    capabilityMenuState?.computerUse?.presentationSupported === true;
   const slashQuery = getPromptStartSlashCommandQuery(paletteDraftPrompt);
   const slashCommandPolicy = composerSettings.slashCommandPolicy;
   const promptBeforeSelection =
@@ -100,7 +107,7 @@ export function useComposerPaletteCatalog({
         compactSupported,
         planSupported: composerSettings.supportsPlanMode,
         browserSupported: Boolean(composerSettings.supportsBrowser),
-        computerSupported: Boolean(composerSettings.supportsComputerUse),
+        computerSupported: computerPresentationSupported,
         tuttiSupported: capabilityMenuState?.tuttiMode?.enabled === true
       }).filter(
         (command) =>
@@ -111,7 +118,7 @@ export function useComposerPaletteCatalog({
       compactSupported,
       composerSettings.supportsPlanMode,
       composerSettings.supportsBrowser,
-      composerSettings.supportsComputerUse,
+      computerPresentationSupported,
       capabilityMenuState?.tuttiMode?.enabled,
       hasCompactableContext,
       goalSupported,
@@ -150,7 +157,7 @@ export function useComposerPaletteCatalog({
         trigger: "/browser"
       });
     }
-    if (composerSettings.supportsComputerUse) {
+    if (computerPresentationSupported) {
       entries.push({
         capability: "computerUse",
         label: labels.computerUseCapabilityLabel,
@@ -162,7 +169,7 @@ export function useComposerPaletteCatalog({
   }, [
     capabilityControlsReadOnly,
     composerSettings.supportsBrowser,
-    composerSettings.supportsComputerUse,
+    computerPresentationSupported,
     labels.browserUseCapabilityLabel,
     labels.computerUseCapabilityLabel
   ]);
@@ -220,7 +227,8 @@ export function useComposerPaletteCatalog({
             disabled: capabilityControlsReadOnly,
             selectAction:
               command.capability === "computerUse" &&
-              (computerUseInstalled === false ||
+              (!computerExecutable ||
+                computerUseInstalled === false ||
                 (computerUseInstalled === true &&
                   (computerUseAuthorization === "needs-authorization" ||
                     computerUseAuthorization === "unknown")))
@@ -276,6 +284,7 @@ export function useComposerPaletteCatalog({
     capabilityMenuState?.browserUse?.connectionMode,
     capabilityMenuState?.computerUse?.authorization,
     capabilityMenuState?.computerUse?.installed,
+    computerExecutable,
     capabilityControlsReadOnly,
     filteredCommands,
     filteredSkills,

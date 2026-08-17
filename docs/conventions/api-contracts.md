@@ -175,6 +175,12 @@ Rules:
 while response `effectiveSettings` is the only contract for resolved homepage
 composer defaults.
 
+The same endpoint accepts an optional `section`: `core` returns the model,
+reasoning, speed, permission, and effective-settings projection;
+`capabilities` returns skills, commands, and capability-catalog data; omitted
+or `full` preserves the combined response for compatibility. Sectioned
+responses are additive projections, not alternate sources of resolved settings.
+
 ## Desktop Agent Conversation Detail Mode
 
 `agentConversationDetailMode` is a global desktop preference, not a provider-specific

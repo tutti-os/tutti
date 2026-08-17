@@ -409,7 +409,7 @@ func normalizedApprovalToolCall(toolCall map[string]any, displayInput map[string
 }
 
 // normalizedApprovalDisplayInput builds the preview detail (command, path,
-// query, reason, ...) shown on an approval card. Some ACP providers (Cursor) omit
+// query, URL, prompt, reason, ...) shown on an approval card. Some ACP providers (Cursor) omit
 // `rawInput` on the permission request's own `toolCall` and only repeat
 // `toolCallId`/`title`/`kind`, so `knownInput` — the input captured from an
 // earlier `tool_call`/`tool_call_update` for the same call id, when available
@@ -449,6 +449,8 @@ func normalizedApprovalDisplayInput(toolCall map[string]any, knownInput map[stri
 		"searchQuery",
 		"url",
 		"uri",
+		"prompt",
+		"instruction",
 		"pattern",
 		"cwd",
 		"changes",

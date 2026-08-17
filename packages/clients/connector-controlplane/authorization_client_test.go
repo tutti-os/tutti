@@ -127,6 +127,56 @@ func TestAuthorizationClientAcceptsImmediateSuccessWithoutNextAction(t *testing.
 	}
 }
 
+func TestAuthorizationClientReplacesAndCancelsRemoteSession(t *testing.T) {
+	requests := make([]string, 0, 2)
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		requests = append(requests, request.Method+" "+request.URL.Path)
+		switch request.URL.Path {
+		case "/v1/connectors/notion/authorization-sessions":
+			var body map[string]any
+			if err := json.NewDecoder(request.Body).Decode(&body); err != nil {
+				t.Fatal(err)
+			}
+			if body["replacementPolicy"] != "CONNECTOR_AUTHORIZATION_REPLACEMENT_POLICY_REPLACE_ACTIVE" {
+				t.Fatalf("replacementPolicy = %#v", body["replacementPolicy"])
+			}
+			_, _ = response.Write([]byte(`{"session":{"sessionId":"auth-replacement","connectorRevision":"1.0.0","status":"CONNECTOR_AUTHORIZATION_SESSION_STATUS_AWAITING_USER","nextAction":{"type":"redirect","url":"https://auth.example/connect"}}}`))
+		case "/v1/connector-authorization-sessions/auth-replacement":
+			if request.Method != http.MethodDelete {
+				t.Fatalf("cancel method = %s", request.Method)
+			}
+			_, _ = response.Write([]byte(`{"session":{"sessionId":"auth-replacement","status":"CONNECTOR_AUTHORIZATION_SESSION_STATUS_CANCELED","errorCode":"authorization_canceled"}}`))
+		default:
+			http.NotFound(response, request)
+		}
+	}))
+	defer server.Close()
+	client, err := NewAuthorizationClient(AuthorizationClientConfig{
+		BaseURL: server.URL, APIPrefix: "/v1", HTTPClient: server.Client(),
+		AuthorizeAccountRequest: func(*http.Request, string) error { return nil },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	session, err := client.Begin(context.Background(), market.AuthorizationStartRequest{
+		OperationID: "operation-replacement", ClientRequestID: "request-replacement",
+		ReplacementPolicy: market.AuthorizationReplacementPolicyReplaceActive,
+		Scope:             market.OperationScope{AccountID: "account-1"}, Connector: market.Connector{Key: "notion"},
+		Release: market.Release{Version: "1.0.0", Manifest: market.Manifest{AuthorizationKind: "oauth2"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := client.Cancel(context.Background(), market.AuthorizationCancelRequest{
+		OperationID: "operation-replacement", Scope: market.OperationScope{AccountID: "account-1"}, Session: session,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if len(requests) != 2 || requests[0] != "POST /v1/connectors/notion/authorization-sessions" || requests[1] != "DELETE /v1/connector-authorization-sessions/auth-replacement" {
+		t.Fatalf("requests = %#v", requests)
+	}
+}
+
 func TestAuthorizationClientSubmitsNativeSecretWithoutPersistingItInSession(t *testing.T) {
 	const token = "user-provided-token"
 	notifications := 0

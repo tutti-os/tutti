@@ -2058,8 +2058,8 @@ test("WorkspaceAgentActivityService preserves realtime turn provenance for atten
       historical.getSessionEngine("ws-2").getSnapshot(),
       "local",
       "session-1"
-    )?.isUnread,
-    false
+    ),
+    null
   );
 });
 
@@ -3538,7 +3538,7 @@ test("WorkspaceAgentActivityService does not tombstone a missing reconcile witho
   });
 });
 
-test("WorkspaceAgentActivityService preserves a pending new session when the Tutti event races create visibility", async (t) => {
+test("WorkspaceAgentActivityService preserves a pending new session when activity races create visibility", async (t) => {
   const diagnostics: unknown[] = [];
   const listenersByTopic = new Map<string, (event: unknown) => void>();
   let getSessionCalls = 0;
@@ -3609,6 +3609,23 @@ test("WorkspaceAgentActivityService preserves a pending new session when the Tut
     requestedAtUnixMs,
     requestId: "activation-1",
     workspaceId: "ws-1"
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+
+  const activityUpdated = listenersByTopic.get("agent.activity.updated");
+  assert.ok(activityUpdated);
+  activityUpdated({
+    payload: {
+      agentSessionId: "session-1",
+      data: {
+        agentSessionId: "session-1",
+        eventType: "session_reconcile_required",
+        lastEventUnixMs: requestedAtUnixMs,
+        workspaceId: "ws-1"
+      },
+      eventType: "session_reconcile_required",
+      workspaceId: "ws-1"
+    }
   });
   await new Promise((resolve) => setImmediate(resolve));
 

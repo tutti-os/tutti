@@ -52,3 +52,30 @@ func TestConnectorCLIShimExecutesVerifiedEntrypointThroughNormalShellPath(t *tes
 		t.Fatalf("CLI shim remained after route removal: %v", err)
 	}
 }
+
+func TestAttachCLIUsesArtifactNativeExecutableWithoutManagedRuntimeArgument(t *testing.T) {
+	root := t.TempDir()
+	entrypointRelative := "runtime/windows-amd64/gh.exe"
+	entrypoint := filepath.Join(root, filepath.FromSlash(entrypointRelative))
+	if err := os.MkdirAll(filepath.Dir(entrypoint), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	content := []byte("verified gh fixture")
+	if err := os.WriteFile(entrypoint, content, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	managed := &market.ManagedStdioImplementation{Runtime: market.RuntimeRequirement{Language: "node"},
+		CLI: &market.ManagedCLIInterface{Entrypoint: entrypointRelative, Command: "gh", TimeoutMS: 30_000,
+			Launch: &market.CLIArtifactLaunch{Kind: market.CLIArtifactLaunchKindNative,
+				SHA256: strings.Repeat("a", 64), SizeBytes: int64(len(content))}}}
+	route := &connectorRoute{}
+	if err := (&Host{}).attachCLI(route, managed, market.PreparedArtifactReceipt{PreparedPath: root}, nil,
+		connectorruntime.ConnectorExecutable{Path: filepath.Join(root, "node")}, filepath.Join(root, "state"), nil); err != nil {
+		t.Fatal(err)
+	}
+	if route.cliLaunch.executable.Path != entrypoint || route.cliLaunch.executable.SHA256 != strings.Repeat("a", 64) ||
+		route.cliLaunch.executable.SizeBytes != int64(len(content)) || len(route.cliLaunch.arguments) != 0 ||
+		route.cliInvocationCommand != "gh" {
+		t.Fatalf("artifact-native CLI launch = %#v", route.cliLaunch)
+	}
+}

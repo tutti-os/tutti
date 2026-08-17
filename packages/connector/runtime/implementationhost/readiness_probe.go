@@ -31,7 +31,7 @@ func (host *Host) checkCLIReadiness(ctx context.Context, route *connectorRoute, 
 	if err != nil {
 		return err
 	}
-	defer route.releaseProcess(processID, connection)
+	defer func() { _ = route.releaseProcess(processID, connection) }()
 	if graceful, ok := connection.(agentruntime.GracefulProcessConnection); ok {
 		_ = graceful.CloseInput()
 	}

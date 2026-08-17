@@ -503,9 +503,9 @@ describe("AgentMessageMarkdown", () => {
 
     expect(onLinkAction).toHaveBeenCalledWith({
       type: "open-workspace-file",
-      path: "C:/Users/local/project/docs/README.md",
-      directoryPath: "C:/Users/local/project/docs",
-      workspaceRoot: "C:/Users/local/project",
+      path: "/C:/Users/local/project/docs/README.md",
+      directoryPath: "/C:/Users/local/project/docs",
+      workspaceRoot: "/C:/Users/local/project",
       source: "agent-markdown"
     });
   });

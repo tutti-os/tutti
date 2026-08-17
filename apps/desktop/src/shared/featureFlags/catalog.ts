@@ -216,6 +216,11 @@ export function isFeatureEnabled(
   flags: DesktopFeatureFlags,
   key: string
 ): boolean {
+  // Keep the durable key for old profiles, but do not expose or activate the
+  // retired mobile remote access capability.
+  if (key === MOBILE_REMOTE_ACCESS_SETTINGS_FLAG) {
+    return false;
+  }
   if (Object.prototype.hasOwnProperty.call(flags, key)) {
     return flags[key] === true;
   }

@@ -36,7 +36,11 @@ func (c *Controller) publishStreamEvents(
 	c.streamObserverMu.RLock()
 	observer := c.streamObserver
 	c.streamObserverMu.RUnlock()
+	publishedEvents := events
 	if observer != nil {
+		if filter, ok := observer.(RuntimeStreamEventFilter); ok {
+			publishedEvents = filter.FilterRuntimeStreamEvents(roomID, agentSessionID, events)
+		}
 		if err := observer.ObserveRuntimeStreamEvents(
 			context.Background(),
 			roomID,
@@ -52,5 +56,5 @@ func (c *Controller) publishStreamEvents(
 			)
 		}
 	}
-	c.hub.Publish(roomID, agentSessionID, events)
+	c.hub.Publish(roomID, agentSessionID, publishedEvents)
 }

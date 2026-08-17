@@ -208,6 +208,52 @@ describe("createAgentConversationMessageController", () => {
     engine.dispose();
   });
 
+  it("retains synchronization only for the active Session", () => {
+    const engine = createTestAgentSessionEngine("workspace-1");
+    const releases: string[] = [];
+    const ensureSessionSynchronized = vi.fn(
+      ({ agentSessionId }: { agentSessionId: string }) =>
+        () => {
+          releases.push(agentSessionId);
+        }
+    );
+    const controller = createController({
+      engine,
+      ensureSessionSynchronized
+    });
+
+    controller.setActiveSession("session-1");
+    controller.setActiveSession("session-1");
+    controller.setActiveSession("session-2");
+    controller.setActiveSession(null);
+    controller.setActiveSession("session-3");
+    controller.dispose();
+
+    expect(ensureSessionSynchronized.mock.calls).toEqual([
+      [
+        expect.objectContaining({
+          agentSessionId: "session-1",
+          workspaceId: "workspace-1"
+        })
+      ],
+      [
+        expect.objectContaining({
+          agentSessionId: "session-2",
+          workspaceId: "workspace-1"
+        })
+      ],
+      [
+        expect.objectContaining({
+          agentSessionId: "session-3",
+          workspaceId: "workspace-1"
+        })
+      ]
+    ]);
+    expect(releases).toEqual(["session-1", "session-2", "session-3"]);
+
+    engine.dispose();
+  });
+
   it("rejects a stale page when the host focus changes before synchronization", async () => {
     const engine = createTestAgentSessionEngine("workspace-1");
     let focusedSessionId = "session-1";
@@ -240,6 +286,9 @@ describe("createAgentConversationMessageController", () => {
 
 function createController(input: {
   engine: ReturnType<typeof createTestAgentSessionEngine>;
+  ensureSessionSynchronized?: Parameters<
+    typeof createAgentConversationMessageController
+  >[0]["ensureSessionSynchronized"];
   isAvailable?: (agentSessionId?: string | null) => boolean;
   listSessionMessages?: (
     input: AgentConversationMessagePageInput
@@ -247,6 +296,7 @@ function createController(input: {
 }) {
   return createAgentConversationMessageController({
     engine: input.engine,
+    ensureSessionSynchronized: input.ensureSessionSynchronized,
     isAvailable: input.isAvailable ?? (() => true),
     listSessionMessages:
       input.listSessionMessages ??

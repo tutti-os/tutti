@@ -266,10 +266,10 @@ func (p Provider) requireResumes() error {
 	return nil
 }
 
-// requireTuttiModeActive rejects a plan or execution mutation when the caller
-// session has not enabled Tutti Mode. The reader is optional wiring: when it is
-// unset the gate is skipped so the command surface degrades open rather than
-// failing closed.
+// requireTuttiModeActive rejects a plan or execution mutation when the user has
+// not enabled Tutti Mode for the caller session. The reader is optional wiring:
+// when it is unset the gate is skipped so the command surface degrades open
+// rather than failing closed.
 func (p Provider) requireTuttiModeActive(ctx context.Context, workspaceID string, sessionID string) error {
 	if p.activations == nil {
 		return nil
@@ -281,7 +281,7 @@ func (p Provider) requireTuttiModeActive(ctx context.Context, workspaceID string
 	if activation == nil || activation.CurrentRevision.State != activationbiz.StateActive {
 		return cliservice.InvalidInputReasonError(
 			"tutti_mode_inactive",
-			"Tutti Mode is not active for this session; enable it with `tutti mode set --state active` before driving a Tutti Mode plan or execution.",
+			"Tutti Mode is not active for this session; only the user can turn it on. Ask the user to enable Tutti Mode manually before driving a Tutti Mode plan or execution.",
 			nil,
 		)
 	}

@@ -175,19 +175,49 @@ name come from the selected GitHub Environment. It must not add AppX files to
 the Direct GitHub Release, S3 mirror, CloudFront updater metadata, or
 `SHA256SUMS.txt`.
 
+The Store manifest explicitly targets Windows `10.0.17763.0` or later and
+declares `10.0.26100.0` as `MaxVersionTested`. The minimum is the Windows 10
+1809 floor required by the current Microsoft Store MSIX submission path. This
+is higher than the legacy AppX package that was previously accepted for the
+product, so a Store package built from this configuration may not be offered as
+an update to devices below that OS version.
+
+Store visual assets must retain transparent pixels, and the manifest must use
+`BackgroundColor="transparent"`; otherwise Windows composites the logo over the
+declared tile color even when the PNG has an alpha channel. The manifest also
+sets `AppListEntry="default"` explicitly so Tutti is registered in the Start
+menu's All Apps list. It declares a native `desktop7:Shortcut` targeting the
+user's desktop so supported Windows versions create `Tutti.lnk` during package
+registration. Because that extension requires Windows build `19645` or later,
+the `desktop7` namespace remains ignorable so older supported Windows releases
+still install the package and retain the Start menu entry.
+
+The desktop package description is the product tagline
+`Where people and agents build in tune.`. Electron-builder injects this value
+into the Store manifest description and the desktop package metadata. The
+English welcome copy uses the same tagline; technical `local-first` terms in
+architecture docs, tests, and catalog strategy values are intentionally not
+rewritten as product copy.
+
 `.github/workflows/desktop-store-submit.yml` supports two modes:
 
 - a manual test run can build and validate the package with `submit=false`;
 - a stable release can submit the package to Partner Center with `submit=true`.
+
+Manual validation may set `verify_release_tag=false` when the target is an
+untagged branch commit. Production and release-triggered calls keep the default
+`verify_release_tag=true` guard.
 
 The Microsoft Store Developer CLI cannot complete an application's first
 submission from a loose MSIX file. Complete the first submission once in
 Partner Center by uploading the validated AppX artifact and filling the Store
 listing, properties, age rating, pricing, and availability. After that first
 submission exists, the workflow can publish later package updates
-automatically. The workflow presents electron-builder's AppX payload to the
-CLI with an `.msix` extension because the CLI recognizes loose MSIX inputs but
-does not recognize the equivalent `.appx` extension.
+automatically. Electron-builder produces the validated AppX payload; the
+workflow creates a byte-identical `.msix` submission alias because the CLI
+recognizes loose MSIX inputs but does not recognize the equivalent `.appx`
+extension. The alias is created and hash-checked before any Partner Center
+submission.
 
 The automatic stable call is enabled only when the repository variable below
 is true:

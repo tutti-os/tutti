@@ -5,13 +5,16 @@ import (
 	"fmt"
 	"io"
 	"os/exec"
+	"sync"
 )
 
 type codexAppServerProcess struct {
 	stdin    io.WriteCloser
 	stdout   *io.PipeReader
 	stderr   *truncatingBuffer
-	waitDone <-chan error
+	waitDone chan struct{}
+	stopOnce sync.Once
+	stopErr  error
 }
 
 func startCodexAppServerProcess(
@@ -40,18 +43,19 @@ func startCodexAppServerProcess(
 		return nil, fmt.Errorf("start codex app-server: %w", err)
 	}
 
-	waitDone := make(chan error, 1)
-	go func() {
-		waitErr := cmd.Wait()
-		_ = stdoutWriter.Close()
-		waitDone <- waitErr
-	}()
-	return &codexAppServerProcess{
+	waitDone := make(chan struct{})
+	process := &codexAppServerProcess{
 		stdin:    stdin,
 		stdout:   stdout,
 		stderr:   stderr,
 		waitDone: waitDone,
-	}, nil
+	}
+	go func() {
+		_ = cmd.Wait()
+		_ = stdoutWriter.Close()
+		close(waitDone)
+	}()
+	return process, nil
 }
 
 func (p *codexAppServerProcess) stop(cancel context.CancelFunc) error {
@@ -59,11 +63,17 @@ func (p *codexAppServerProcess) stop(cancel context.CancelFunc) error {
 		cancel()
 		return nil
 	}
-	_ = p.stdin.Close()
-	cancel()
-	// A response parser can finish before the app-server exits. Closing the
-	// reader keeps os/exec's stdout copier from making process reaping depend on
-	// unread provider notifications.
-	_ = p.stdout.Close()
-	return <-p.waitDone
+	p.stopOnce.Do(func() {
+		_ = p.stdin.Close()
+		cancel()
+		// A response parser can finish before the app-server exits. Closing the
+		// reader keeps os/exec's stdout copier from making process reaping depend
+		// on unread provider notifications.
+		_ = p.stdout.Close()
+		<-p.waitDone
+		// stop is an intentional shutdown path. A context cancellation normally
+		// makes os/exec report SIGKILL/ExitError; that is not a cleanup failure.
+		p.stopErr = nil
+	})
+	return p.stopErr
 }

@@ -146,6 +146,51 @@ func TestActivityProjectionReportCreatesProviderInitiatedTurnBeforeMessages(t *t
 	}
 }
 
+func TestActivityProjectionSubmitProvenanceAllowsGeneratedPromptIdentity(t *testing.T) {
+	ctx := context.Background()
+	store := openAgentServiceSQLiteStore(t)
+	if err := store.Create(ctx, workspacebiz.Summary{ID: "ws-generated-prompt", Name: "Generated prompt"}); err != nil {
+		t.Fatal(err)
+	}
+	projection := NewActivityProjection(store)
+	turnID := "turn-generated-prompt"
+	messageID := "turn-user:generated-message"
+	if err := projection.ReportSubmitProvenance(ctx, agentsessionstore.ReportActivityInput{
+		WorkspaceID: "ws-generated-prompt",
+		Source: canonical.EventSource{
+			AgentID: "session-generated-prompt", Provider: "codex",
+			SessionOrigin: agentsessionstore.WorkspaceAgentSessionOriginRuntime,
+		},
+		StatePatches: []agentsessionstore.WorkspaceAgentStatePatch{{
+			AgentSessionID: "session-generated-prompt", Kind: agentactivitybiz.SessionKindRoot,
+			Provider: "codex", LifecycleStatus: "active", CurrentPhase: "working", OccurredAtUnixMS: 1,
+			Turn: &agentsessionstore.WorkspaceAgentTurnPatch{
+				TurnID: turnID, Origin: agentactivitybiz.TurnOriginUserPrompt,
+				ActiveTurnID: &turnID, Phase: agentactivitybiz.TurnPhaseSubmitted,
+			},
+		}},
+		MessageUpdates: []agentsessionstore.WorkspaceAgentMessageUpdate{{
+			AgentSessionID: "session-generated-prompt", TurnID: turnID, MessageID: messageID,
+			Role: "user", Kind: "text", Status: "completed", OccurredAtUnixMS: 1,
+			Payload: map[string]any{
+				"content": []map[string]any{{"type": "text", "text": "hello"}},
+			},
+		}},
+	}); err != nil {
+		t.Fatalf("generated prompt admission error = %v", err)
+	}
+	turn, found, err := store.GetTurn(ctx, "ws-generated-prompt", "session-generated-prompt", turnID)
+	if err != nil || !found || turn.Phase != agentactivitybiz.TurnPhaseSubmitted {
+		t.Fatalf("generated prompt turn = %#v found=%v error=%v", turn, found, err)
+	}
+	page, found, err := store.ListSessionMessages(ctx, agentactivitybiz.ListSessionMessagesInput{
+		WorkspaceID: "ws-generated-prompt", AgentSessionID: "session-generated-prompt", Limit: 10,
+	})
+	if err != nil || !found || len(page.Messages) != 1 || page.Messages[0].MessageID != messageID {
+		t.Fatalf("generated prompt messages = %#v found=%v error=%v", page.Messages, found, err)
+	}
+}
+
 func TestActivityProjectionRootProviderCompletionFlushesTurnMessagesBeforeSettlement(t *testing.T) {
 	ctx := context.Background()
 	store := openAgentServiceSQLiteStore(t)

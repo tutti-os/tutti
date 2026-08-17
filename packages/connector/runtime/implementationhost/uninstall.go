@@ -31,7 +31,7 @@ func (host *Host) deactivateConnector(request market.RuntimeDeactivationRequest)
 	host.authorizationMu.Unlock()
 	var authorizationErrs []error
 	for _, route := range authorizationRoutes {
-		host.authorizationProvider.cancelAuthorizationSession(route.id)
+		host.authorizationProvider.cancelAuthorizationSessionByRoute(route.id)
 		route.Fence()
 		if err := route.Close(request.Deadline); err != nil {
 			// Keep a fenced route reachable so an idempotent uninstall retry can

@@ -1,9 +1,13 @@
-import type { TuttidClient } from "@tutti-os/client-tuttid-ts";
+import {
+  isTuttidTransportError,
+  type TuttidClient,
+} from "@tutti-os/client-tuttid-ts";
 import type { DesktopHostFilesApi } from "@preload/types";
 import type { IAccountService } from "../accountService.interface";
 import { createAccountStore } from "./accountStore.ts";
 
 const loginStatusPollMs = 1000;
+const loginDaemonRetryDelaysMs = [500, 1000] as const;
 const productSummaryRefreshTtlMs = 15_000;
 
 type ActiveLoginAttempt = {
@@ -23,6 +27,7 @@ export interface AccountServiceDependencies {
     | "logoutAccount"
     | "startAccountLogin"
   >;
+  delay?: (milliseconds: number) => Promise<void>;
 }
 
 export class AccountService implements IAccountService {
@@ -109,21 +114,21 @@ export class AccountService implements IAccountService {
     if (summary?.registration_credits_reward?.id === rewardID) {
       this.store.productSummary = {
         ...summary,
-        registration_credits_reward: null
+        registration_credits_reward: null,
       };
     }
     try {
       await this.dependencies.tuttidClient.dismissAccountRegistrationCreditsReward(
-        rewardID
+        rewardID,
       );
     } catch (error) {
       this.store.productSummaryError = readAccountError(error);
     }
   }
 
-  async startLogin(): Promise<void> {
+  async startLogin(): Promise<{ error: string | null }> {
     if (this.store.signingIn) {
-      return;
+      return { error: null };
     }
     this.store.signingIn = true;
     this.store.error = null;
@@ -132,8 +137,11 @@ export class AccountService implements IAccountService {
       await this.dependencies.hostFilesApi.openExternal(attempt.loginURL);
       this.store.loginStatus = "pending";
       this.startLoginStatusPoll(attempt);
+      return { error: null };
     } catch (error) {
-      this.store.error = readAccountError(error);
+      const message = readAccountError(error);
+      this.store.error = message;
+      return { error: message };
     } finally {
       this.store.signingIn = false;
     }
@@ -170,14 +178,39 @@ export class AccountService implements IAccountService {
     ) {
       return this.activeLoginAttempt;
     }
-    const started = await this.dependencies.tuttidClient.startAccountLogin();
+    const started = await this.startAccountLoginWithDaemonRecovery();
     const attempt = {
       attemptID: started.attempt_id,
       expiresAt: started.expires_at,
-      loginURL: started.login_url
+      loginURL: started.login_url,
     };
     this.activeLoginAttempt = attempt;
     return attempt;
+  }
+
+  private async startAccountLoginWithDaemonRecovery() {
+    let lastError: unknown;
+    for (
+      let attempt = 0;
+      attempt <= loginDaemonRetryDelaysMs.length;
+      attempt += 1
+    ) {
+      try {
+        return await this.dependencies.tuttidClient.startAccountLogin();
+      } catch (error) {
+        lastError = error;
+        if (
+          !isDaemonTransportFailure(error) ||
+          attempt === loginDaemonRetryDelaysMs.length
+        ) {
+          throw error;
+        }
+        await (this.dependencies.delay ?? defaultDelay)(
+          loginDaemonRetryDelaysMs[attempt]!,
+        );
+      }
+    }
+    throw lastError;
   }
 
   private startLoginStatusPoll(attempt: ActiveLoginAttempt): void {
@@ -203,7 +236,7 @@ export class AccountService implements IAccountService {
 
   private async pollLoginStatus(
     attempt: ActiveLoginAttempt,
-    generation: number
+    generation: number,
   ): Promise<void> {
     try {
       while (
@@ -212,7 +245,7 @@ export class AccountService implements IAccountService {
       ) {
         const status =
           await this.dependencies.tuttidClient.getAccountLoginStatus(
-            attempt.attemptID
+            attempt.attemptID,
           );
         if (this.loginGeneration !== generation) {
           return;
@@ -249,6 +282,18 @@ export class AccountService implements IAccountService {
       }
     }
   }
+}
+
+function defaultDelay(milliseconds: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
+}
+
+function isDaemonTransportFailure(error: unknown): boolean {
+  if (isTuttidTransportError(error)) return true;
+  const message = error instanceof Error ? error.message : String(error);
+  return /failed to fetch|fetch failed|econnrefused|econnreset|socket hang up/i.test(
+    message,
+  );
 }
 
 function delay(ms: number): Promise<void> {

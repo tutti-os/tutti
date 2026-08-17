@@ -34,11 +34,14 @@ import {
   type ReferencePickerSelectionMode,
   type ReferenceSourceNodeChildrenState
 } from "./referenceSourcePickerController.ts";
+import { createReferenceSearchResultIndex } from "./referenceSearchResultIndex.ts";
 import { buildReferenceSourcePickerFilteredTree } from "./referenceSourcePickerFilterTree.ts";
 
 export type { WorkspaceFileManagerArrangeMode };
 
 export { WORKSPACE_ROOT_GROUP_NODE_ID } from "../../../core/index.ts";
+
+const EMPTY_REFERENCE_SEARCH_RESULT_INDEX = createReferenceSearchResultIndex();
 
 function referenceNodeToOpenWithCacheEntry(
   node: ReferenceNode
@@ -415,12 +418,10 @@ export function useReferenceSourcePickerView({
     () => sortNodes(currentChildren?.entries ?? []),
     [currentChildren?.entries, sortNodes]
   );
-  const searchResults = useMemo(
-    // Browse arrangement is a presentation preference. Search results keep the
-    // source-owned relevance order regardless of that preference.
-    () => [...(activeTabState?.searchEntries ?? [])] as ReferenceNode[],
-    [activeTabState?.searchEntries]
-  );
+  const searchResultIndex =
+    activeTabState?.searchResultIndex ?? EMPTY_REFERENCE_SEARCH_RESULT_INDEX;
+  const searchResultCount = activeTabState?.searchResultCount ?? 0;
+  const searchResultIdentity = activeTabState?.searchResultIdentity ?? 0;
 
   // 每个源的左栏二级分组(左栏可多源同时展开,故按源全量计算):
   //  - 源自带分组(listSidebarGroups,如本地源的 最近访问/下载/文稿/桌面/个人)优先;
@@ -903,7 +904,9 @@ export function useReferenceSourcePickerView({
     // 内容区递归就地树:当前选中二级节点的子条目(本地根时为源根子条目)。
     currentEntries,
     // 搜索态:扁平搜索结果。
-    searchResults,
+    searchResultIndex,
+    searchResultCount,
+    searchResultIdentity,
     contentError,
     expandedKeys: activeTabState?.expandedKeys ?? {},
     childrenByKey,
@@ -932,8 +935,7 @@ export function useReferenceSourcePickerView({
     // 搜索态:仅在「还没有任何结果」时显示 spinner;细化关键词(已有结果)时
     // 保留旧结果直到新结果就绪,避免内容区在 spinner/结果间反复切换造成闪烁。
     isLoading: isQuery
-      ? (activeTabState?.isSearchLoading ?? false) &&
-        (activeTabState?.searchEntries.length ?? 0) === 0
+      ? (activeTabState?.isSearchLoading ?? false) && searchResultCount === 0
       : recursiveFilterActive
         ? filteredTreeState.key !== recursiveFilterKey ||
           filteredTreeState.loading
@@ -988,10 +990,7 @@ export function useReferenceSourcePickerView({
       isQuery ? controller.loadMoreSearch() : controller.loadMore(currentNode),
     retryContent: () => {
       if (isQuery) {
-        controller.setSearchQuery(
-          activeTabState?.searchQuery ?? "",
-          searchScopeNodeId
-        );
+        controller.retrySearch();
         return;
       }
       if (recursiveFilterActive) {
@@ -1022,6 +1021,42 @@ export function useReferenceSourcePickerView({
       controller.ensureChildren(targetNode);
       setFocusedNode(null);
       return true;
+    },
+    selectTargets: async (
+      targets: readonly ReferenceLocateTarget[]
+    ): Promise<number> => {
+      const located = await Promise.all(
+        targets.map(async (target) => ({
+          path: await controller.locatePath(target),
+          target
+        }))
+      );
+      const selectable = located.flatMap(({ path, target }) => {
+        const node = path.at(-1);
+        return node && isSelectable(node) ? [{ node, path, target }] : [];
+      });
+      if (selectable.length === 0) {
+        return 0;
+      }
+      const visible = selectable.at(-1)!;
+      const rootGroupNode = visible.path[0] ?? null;
+      controller.setActiveSource(
+        visible.target.sourceId,
+        rootGroupNode?.ref.nodeId ?? null
+      );
+      controller.setSearchQuery("", rootGroupNode?.ref.nodeId ?? null);
+      controller.setSearchFilters([], rootGroupNode?.ref.nodeId ?? null);
+      controller.clearSelection();
+      for (const { node } of selectable) {
+        controller.toggleSelection(node);
+      }
+      setBreadcrumbBySource((current) => ({
+        ...current,
+        [visible.target.sourceId]: visible.path
+      }));
+      controller.ensureChildren(visible.node);
+      setFocusedNode(null);
+      return selectable.length;
     },
     isSelectable,
     isSelected,

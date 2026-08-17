@@ -66,11 +66,14 @@ type modernToolHeader struct {
 type ModernHTTPError struct {
 	StatusCode int
 	Body       []byte
+	Cause      error
 }
 
 func (err *ModernHTTPError) Error() string {
 	return fmt.Sprintf("MCP Streamable HTTP request failed: status %d", err.StatusCode)
 }
+
+func (err *ModernHTTPError) Unwrap() error { return err.Cause }
 
 func NewModernStreamableHTTPClient(config ModernStreamableHTTPClientConfig) (*ModernStreamableHTTPClient, error) {
 	endpoint, err := url.Parse(strings.TrimSpace(config.Endpoint))
@@ -240,20 +243,42 @@ func (client *ModernStreamableHTTPClient) Call(ctx context.Context, method strin
 		return nil, fmt.Errorf("modern MCP Streamable HTTP redirect is forbidden: status %d", response.StatusCode)
 	}
 	contentType, _, _ := mime.ParseMediaType(response.Header.Get("Content-Type"))
-	message, raw, err := readModernResponse(response.Body, contentType, id, client.maxResponse)
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		raw, readErr := readModernRawResponse(response.Body, client.maxResponse)
+		httpErr := &ModernHTTPError{StatusCode: response.StatusCode, Body: raw, Cause: readErr}
+		if readErr == nil && (contentType == "application/json" || contentType == "" || contentType == "text/event-stream") {
+			message, _, decodeErr := readModernResponse(bytes.NewReader(raw), contentType, id, int64(len(raw)))
+			switch {
+			case decodeErr != nil:
+				httpErr.Cause = decodeErr
+			case message != nil && message.Error != nil:
+				httpErr.Cause = message.Error
+			}
+		}
+		return nil, httpErr
+	}
+	message, _, err := readModernResponse(response.Body, contentType, id, client.maxResponse)
 	if err != nil {
 		return nil, err
 	}
 	if message != nil && message.Error != nil {
 		return nil, message.Error
 	}
-	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		return nil, &ModernHTTPError{StatusCode: response.StatusCode, Body: raw}
-	}
 	if message == nil {
 		return nil, errors.New("modern MCP Streamable HTTP response did not contain the matching request id")
 	}
 	return message.Result, nil
+}
+
+func readModernRawResponse(body io.Reader, limit int64) ([]byte, error) {
+	raw, err := io.ReadAll(io.LimitReader(body, limit+1))
+	if err != nil {
+		return raw, err
+	}
+	if int64(len(raw)) > limit {
+		return raw[:limit], fmt.Errorf("modern MCP Streamable HTTP response exceeds limit %d", limit)
+	}
+	return raw, nil
 }
 
 func (client *ModernStreamableHTTPClient) Close(context.Context) error {

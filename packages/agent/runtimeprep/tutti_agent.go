@@ -49,20 +49,25 @@ func (p TuttiAgentPreparer) Prepare(ctx context.Context, input ProviderPrepareIn
 			err = errors.Join(err, cleanup(ctx))
 		}
 	}()
-	extraSkillRoots, err := connectorSkillRoots(input.ConnectorRoutingHints)
-	if err != nil {
-		return ProviderPrepareResult{}, err
-	}
-	if strings.TrimSpace(p.StableSkillBundleRoot) == "" {
-		if _, err := installProviderNativeSkills(filepath.Join(home, "skills"), input.PrepareInput); err != nil {
-			return ProviderPrepareResult{}, fmt.Errorf("install tutti-agent native skills: %w", err)
-		}
-	} else {
-		root, err := materializeStableProviderSkills(p.StableSkillBundleRoot, input.PrepareInput)
+	var extraSkillRoots []string
+	if !input.SkipSkills {
+		extraSkillRoots, err = connectorSkillRoots(input.ConnectorRoutingHints)
 		if err != nil {
-			return ProviderPrepareResult{}, fmt.Errorf("materialize tutti-agent stable skills: %w", err)
+			return ProviderPrepareResult{}, err
 		}
-		extraSkillRoots = append([]string{root}, extraSkillRoots...)
+		if strings.TrimSpace(p.StableSkillBundleRoot) == "" {
+			if _, err := installProviderNativeSkillsSessionScoped(filepath.Join(home, "skills"), input.PrepareInput); err != nil {
+				return ProviderPrepareResult{}, fmt.Errorf("install tutti-agent native skills: %w", err)
+			}
+		} else {
+			root, err := materializeStableProviderSkills(p.StableSkillBundleRoot, input.PrepareInput)
+			if err != nil {
+				return ProviderPrepareResult{}, fmt.Errorf("materialize tutti-agent stable skills: %w", err)
+			}
+			if root != "" {
+				extraSkillRoots = append([]string{root}, extraSkillRoots...)
+			}
+		}
 	}
 	logRuntimePrepareTrace("runtime_prepare.tutti_agent.home_prepared", input.PrepareInput, nil)
 	instructionsPath := filepath.Join(home, "AGENTS.md")
@@ -87,12 +92,14 @@ func (p TuttiAgentPreparer) Prepare(ctx context.Context, input ProviderPrepareIn
 		}
 		env = append(env, "TUTTI_AGENT_EXTRA_SKILL_ROOTS_JSON="+string(encodedRoots))
 	}
-	if root := strings.TrimSpace(p.StableSystemSkillBundleRoot); root != "" {
-		root = filepath.Clean(root)
-		if !filepath.IsAbs(root) {
-			return ProviderPrepareResult{}, fmt.Errorf("tutti-agent stable system skill bundle root must be absolute")
+	if !input.SkipSkills {
+		if root := strings.TrimSpace(p.StableSystemSkillBundleRoot); root != "" {
+			root = filepath.Clean(root)
+			if !filepath.IsAbs(root) {
+				return ProviderPrepareResult{}, fmt.Errorf("tutti-agent stable system skill bundle root must be absolute")
+			}
+			env = append(env, "TUTTI_AGENT_STABLE_SYSTEM_SKILLS_ROOT="+root)
 		}
-		env = append(env, "TUTTI_AGENT_STABLE_SYSTEM_SKILLS_ROOT="+root)
 	}
 	if input.ModelEndpoint.supportsCodex() {
 		env = append(env, codexModelPlanAPIKeyEnv+"="+input.ModelEndpoint.APIKey)

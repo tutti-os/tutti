@@ -20,17 +20,18 @@ const commandPreconditionStage = "precondition"
 type commandTerminalFailure struct {
 	flow string
 
-	mu             sync.Mutex
-	workspaceID    string
-	agentSessionID string
-	operationID    string
-	requestID      string
-	clientSubmitID string
-	turnID         string
-	provider       string
-	stage          string
-	startedAt      time.Time
-	emitted        bool
+	mu                            sync.Mutex
+	workspaceID                   string
+	agentSessionID                string
+	operationID                   string
+	requestID                     string
+	clientSubmitID                string
+	turnID                        string
+	provider                      string
+	providerAcceptanceDiagnostics *RuntimeProviderAcceptanceDiagnostics
+	stage                         string
+	startedAt                     time.Time
+	emitted                       bool
 }
 
 type commandTerminalFailureInput struct {
@@ -109,6 +110,20 @@ func markCommandTerminalFailureEmitted(ctx context.Context) {
 	command.mu.Unlock()
 }
 
+func recordProviderAcceptanceDiagnostics(
+	ctx context.Context,
+	dispatch RuntimeProviderDispatchResult,
+) {
+	command := commandTerminalFailureFrom(ctx)
+	if command == nil || dispatch.AcceptanceDiagnostics == nil {
+		return
+	}
+	diagnostics := *dispatch.AcceptanceDiagnostics
+	command.mu.Lock()
+	command.providerAcceptanceDiagnostics = &diagnostics
+	command.mu.Unlock()
+}
+
 // finish emits the single aggregated failure for a command that returned err.
 func (c *commandTerminalFailure) finish(ctx context.Context, h *Host, err error) {
 	if c == nil || err == nil {
@@ -117,14 +132,15 @@ func (c *commandTerminalFailure) finish(ctx context.Context, h *Host, err error)
 	c.mu.Lock()
 	emitted, stage := c.emitted, c.stage
 	failure := TerminalFailure{
-		Flow:           c.flow,
-		WorkspaceID:    c.workspaceID,
-		AgentSessionID: c.agentSessionID,
-		OperationID:    c.operationID,
-		RequestID:      c.requestID,
-		ClientSubmitID: c.clientSubmitID,
-		TurnID:         c.turnID,
-		Provider:       c.provider,
+		Flow:                          c.flow,
+		WorkspaceID:                   c.workspaceID,
+		AgentSessionID:                c.agentSessionID,
+		OperationID:                   c.operationID,
+		RequestID:                     c.requestID,
+		ClientSubmitID:                c.clientSubmitID,
+		TurnID:                        c.turnID,
+		Provider:                      c.provider,
+		ProviderAcceptanceDiagnostics: c.providerAcceptanceDiagnostics,
 	}
 	startedAt := c.startedAt
 	c.mu.Unlock()

@@ -262,7 +262,7 @@ export function createWorkspaceWindow(
     const requestId = randomUUID();
     pendingWorkspaceWindowCloseRequests.set(workspaceWindow, requestId);
     sendWorkspaceWindowCloseRequest(workspaceWindow, {
-      reason: "window-close",
+      reason: "native-window-close",
       requestId
     });
   });

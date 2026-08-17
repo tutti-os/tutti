@@ -266,6 +266,7 @@ function backendWith(
   };
   return {
     beginAuthorization: unsupported,
+    cancelAuthorization: unsupported,
     disconnectAuthorization: unsupported,
     getConnector: unsupported,
     getOperation: unsupported,

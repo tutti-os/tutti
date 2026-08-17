@@ -51,6 +51,7 @@ type scriptedAppServerConnection struct {
 	closed               chan struct{}
 	closeOnce            sync.Once
 	closeCount           int
+	closeFailures        int
 	server               *fakeCodexAppServer
 	providerProgressWait func(context.Context, time.Duration) error
 }
@@ -155,6 +156,11 @@ func (c *scriptedAppServerConnection) recvWithWaitSignal(waitEntered chan<- stru
 func (c *scriptedAppServerConnection) Close() error {
 	c.mu.Lock()
 	c.closeCount++
+	if c.closeFailures > 0 {
+		c.closeFailures--
+		c.mu.Unlock()
+		return errors.New("injected app-server close failure")
+	}
 	c.mu.Unlock()
 	c.closeOnce.Do(func() { close(c.closed) })
 	return nil

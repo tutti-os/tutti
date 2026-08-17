@@ -1339,7 +1339,7 @@ func activeActivation() *activationbiz.Activation {
 	return &activationbiz.Activation{
 		ID: "activation-1",
 		CurrentRevision: activationbiz.Revision{
-			Revision: 1, State: activationbiz.StateActive, Source: activationbiz.SourceAgentCommand,
+			Revision: 1, State: activationbiz.StateActive, Source: activationbiz.SourceSlashCommand,
 		},
 	}
 }
@@ -1360,8 +1360,12 @@ func TestTuttiModeGateRejectsInactiveSessionsAndAllowsActive(t *testing.T) {
 	_, err := NewProvider(nil, inactivePlans, nil).
 		WithTuttiModeActivations(inactiveReader).
 		runPropose(context.Background(), invoke, proposeInput{File: path, RequestID: "request-1"})
-	if !errors.Is(err, cliservice.ErrInvalidInput) || !strings.Contains(err.Error(), "Tutti Mode is not active") {
+	if !errors.Is(err, cliservice.ErrInvalidInput) ||
+		!strings.Contains(err.Error(), "only the user can turn it on") {
 		t.Fatalf("inactive propose error = %v, want tutti-mode-inactive invalid input", err)
+	}
+	if strings.Contains(err.Error(), "tutti mode set") {
+		t.Fatalf("inactive propose error = %v, must not offer an Agent activation command", err)
 	}
 	if inactivePlans.proposeInput.RequestID != "" {
 		t.Fatalf("inactive session reached plan service: %#v", inactivePlans.proposeInput)

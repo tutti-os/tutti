@@ -68,3 +68,8 @@ func errorCodeOr(err error, fallback ErrorCode) ErrorCode {
 	}
 	return fallback
 }
+
+func isRetryableError(err error) bool {
+	var domainError *DomainError
+	return errors.As(err, &domainError) && domainError.Retryable
+}

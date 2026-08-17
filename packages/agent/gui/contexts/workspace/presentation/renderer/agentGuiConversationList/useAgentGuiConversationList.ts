@@ -134,7 +134,7 @@ export function useAgentGuiConversationList(
           id: activation.agentSessionId,
           provider,
           sortTimeUnixMs: activation.requestedAtUnixMs,
-          status: "working",
+          status: "ready",
           projectionSource: "pending_activation",
           railSectionKey: activation.railSectionKey,
           title,

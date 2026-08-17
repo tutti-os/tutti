@@ -142,7 +142,9 @@ export function ConnectorCard({ connectorKey }: { connectorKey: string }) {
           }
           onClick={handleAction}
         >
-          {disconnecting ? <Spinner size={14} /> : null}
+          {card.action === "busy" || disconnecting ? (
+            <Spinner size={14} />
+          ) : null}
           {disconnecting ? i18n.t("actionDisconnecting") : actionLabel}
         </Button>
       </div>

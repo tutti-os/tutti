@@ -59,6 +59,8 @@ func TestHostAppContextUsesNativeGeneratedImageArtifactsOnlyForSupportedProvider
 	}
 	if !strings.Contains(codexPolicy, "rendered directly from `imageGeneration` tool output") ||
 		!strings.Contains(codexPolicy, "do not repeat generated images as Markdown image tags") ||
+		!strings.Contains(codexPolicy, "[title](mentionUri)") ||
+		!strings.Contains(codexPolicy, "never return only `agentSessionId`") ||
 		strings.Contains(codexPolicy, "final response must include Markdown image tag") {
 		t.Fatalf("codex host policy = %q, want native generated-image artifact contract", codexPolicy)
 	}
@@ -267,6 +269,20 @@ func TestDefaultPreparerIncludesHostSkillSources(t *testing.T) {
 	}
 }
 
+func TestResolveCapabilitiesSkipsSkillSourcesForModelProbe(t *testing.T) {
+	called := false
+	_, err := resolveCapabilities(t.Context(), PrepareInput{
+		Provider:   "codex",
+		SkipSkills: true,
+	}, StandardProfile(), []SkillSource{countingSkillSource{called: &called}})
+	if err != nil {
+		t.Fatalf("resolveCapabilities() error = %v", err)
+	}
+	if called {
+		t.Fatal("model-only capability resolution called a Skill source")
+	}
+}
+
 func TestResolveCapabilitiesRejectsSkillPathTraversal(t *testing.T) {
 	profile := DeploymentProfile{Name: "test", Packs: []CapabilityPack{{
 		Name: "unsafe", Resolve: staticCapability(SkillSpec{
@@ -289,4 +305,13 @@ type staticSkillSource []SkillSpec
 
 func (s staticSkillSource) Skills(context.Context, SkillContext) ([]SkillSpec, error) {
 	return append([]SkillSpec(nil), s...), nil
+}
+
+type countingSkillSource struct {
+	called *bool
+}
+
+func (s countingSkillSource) Skills(context.Context, SkillContext) ([]SkillSpec, error) {
+	*s.called = true
+	return nil, nil
 }

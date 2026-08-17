@@ -218,14 +218,21 @@ export function createHostDesktopApi(): DesktopHostApi {
         const handler = (
           _event: Electron.IpcRendererEvent,
           payload?: { reason?: unknown; requestId?: unknown }
-        ) =>
+        ) => {
+          const reason =
+            payload?.reason === "native-window-close"
+              ? "native-window-close"
+              : payload?.reason === "quit"
+                ? "quit"
+                : "window-close";
           listener({
             requestId:
               typeof payload?.requestId === "string"
                 ? payload.requestId
                 : undefined,
-            reason: payload?.reason === "quit" ? "quit" : "window-close"
+            reason
           });
+        };
         ipcRenderer.on(desktopIpcChannels.host.window.closeRequest, handler);
         return () => {
           ipcRenderer.removeListener(

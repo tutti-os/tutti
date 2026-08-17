@@ -101,6 +101,66 @@ describe("presentAgentGeneratedFileMentionItems", () => {
     ).toEqual(["app.js", "index.html"]);
   });
 
+  it("keeps a visible label for files grouped directly under the POSIX root", () => {
+    const files = [
+      fileItem({
+        path: "/app.js",
+        name: "app.js",
+        directoryPath: "/"
+      }),
+      fileItem({
+        path: "/index.html",
+        name: "index.html",
+        directoryPath: "/"
+      })
+    ];
+
+    const presented = presentAgentGeneratedFileMentionItems({
+      files,
+      browsePath: null,
+      query: ""
+    });
+
+    expect(presented[0]).toMatchObject({
+      href: "/",
+      name: "/",
+      path: "/",
+      entryKind: "directory",
+      mentionNavigation: "agent-generated-folder",
+      childCount: 2
+    });
+  });
+
+  it("normalizes Windows generated directories into named folder rows", () => {
+    const files = [
+      fileItem({
+        path: String.raw`C:\workspace\generated\report.md`,
+        name: "report.md",
+        directoryPath: String.raw`C:\workspace\generated`
+      }),
+      fileItem({
+        path: String.raw`C:\workspace\generated\summary.md`,
+        name: "summary.md",
+        directoryPath: String.raw`C:\workspace\generated`
+      })
+    ];
+
+    const presented = presentAgentGeneratedFileMentionItems({
+      files,
+      browsePath: null,
+      query: ""
+    });
+
+    expect(presented[0]).toMatchObject({
+      href: "C:/workspace/generated/",
+      name: "generated",
+      path: "C:/workspace/generated",
+      entryKind: "directory",
+      mentionNavigation: "agent-generated-folder",
+      childCount: 2
+    });
+  });
+
   it("keeps a flat file list while searching", () => {
     const files = [
       fileItem({

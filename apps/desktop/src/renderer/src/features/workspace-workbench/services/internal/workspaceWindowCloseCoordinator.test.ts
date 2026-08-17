@@ -54,6 +54,85 @@ test("confirmWorkspaceWindowClose requests focused workbench node close before w
   assert.equal(outcome, "blocked");
 });
 
+test("confirmWorkspaceWindowClose approves native window close without closing workbench nodes", async () => {
+  const events: string[] = [];
+  const outcome = await confirmWorkspaceWindowClose({
+    confirmCloseGuard: async () => {
+      events.push("confirm");
+      return true;
+    },
+    host: createWorkbenchHostHandleStub({
+      focusedNodeId: "agent-gui-1",
+      nodeIds: ["browser-1", "agent-gui-1"],
+      onCloseNode: (nodeId) => events.push(`node-close:${nodeId}`),
+      onMinimizeNode: (nodeId) => events.push(`node-minimize:${nodeId}`),
+      onRequestNodeClose: (nodeId) =>
+        events.push(`node-request-close:${nodeId}`)
+    }),
+    hostInput: {
+      createWindowCloseDialogRequest: () => ({
+        cancelLabel: "Cancel",
+        confirmLabel: "Close",
+        description: "There is work running.",
+        scope: "window",
+        title: "Close window?"
+      }),
+      prepareHostClose: async ({ workspaceId }) => {
+        events.push(`prepare:${workspaceId}`);
+        return true;
+      },
+      workspaceId: "workspace-native-close"
+    },
+    reason: "native-window-close",
+    requestApprovedClose: async () => {
+      events.push("approve");
+    },
+    tracker: createWindowCloseRequestTracker()
+  });
+
+  assert.deepEqual(events, [
+    "confirm",
+    "prepare:workspace-native-close",
+    "approve"
+  ]);
+  assert.equal(outcome, "approved");
+});
+
+test("confirmWorkspaceWindowClose keeps native window open when close guard is declined", async () => {
+  const events: string[] = [];
+  const outcome = await confirmWorkspaceWindowClose({
+    confirmCloseGuard: async () => false,
+    host: createWorkbenchHostHandleStub({
+      focusedNodeId: "agent-gui-1",
+      nodeIds: ["agent-gui-1"],
+      onRequestNodeClose: (nodeId) =>
+        events.push(`node-request-close:${nodeId}`)
+    }),
+    hostInput: {
+      createWindowCloseDialogRequest: () => ({
+        cancelLabel: "Cancel",
+        confirmLabel: "Close",
+        description: "There is work running.",
+        scope: "window",
+        title: "Close window?"
+      }),
+      prepareHostClose: async () => {
+        events.push("prepare");
+        return true;
+      },
+      workspaceId: "workspace-native-close"
+    },
+    reason: "native-window-close",
+    requestApprovedClose: async () => {
+      events.push("approve");
+    },
+    tracker: createWindowCloseRequestTracker()
+  });
+
+  assert.deepEqual(events, []);
+  assert.equal(outcome, "blocked");
+});
+
 test("confirmWorkspaceWindowClose does not prepare host close before approving window close", async () => {
   let approvedCloseCount = 0;
   const preparedWorkspaceIds: string[] = [];

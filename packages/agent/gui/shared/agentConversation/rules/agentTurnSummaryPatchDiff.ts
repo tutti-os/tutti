@@ -161,8 +161,8 @@ function modifiedFilePatch(
 }
 
 function patchPathRelativeToCwd(path: string, cwd: string | null): string {
-  const normalizedPath = normalizeWorkspaceFilePath(path);
   const normalizedCwd = normalizeWorkspaceFilePath(cwd ?? "");
+  const normalizedPath = normalizeWorkspaceFilePath(path, normalizedCwd);
   if (
     isAbsolutePatchPath(normalizedPath) &&
     normalizedCwd &&
@@ -179,7 +179,7 @@ function patchPathRelativeToCwd(path: string, cwd: string | null): string {
 }
 
 function isAbsolutePatchPath(path: string): boolean {
-  return path.startsWith("/") || /^[A-Za-z]:\//.test(path);
+  return path.startsWith("/") || /^\/?[A-Za-z]:\//.test(path);
 }
 
 function splitPatchContentLines(content: string): string[] {

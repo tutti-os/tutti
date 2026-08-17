@@ -167,7 +167,7 @@ func statePatchFromSessionEvent(source canonical.EventSource, event activityshar
 			strings.TrimSpace(event.Payload.TurnOutcome) == string(activityshared.TurnOutcomeFailed) &&
 			strings.TrimSpace(errorCode) == "" {
 			errorCode = providerStopFailureCode(payloadString(event.Payload.Metadata, "stopReason"))
-			if errorCode == "" && strings.TrimSpace(errorMessage) != "" {
+			if errorCode == "" {
 				errorCode = visibleFailureCode(errorMessage)
 			}
 		}
@@ -196,7 +196,7 @@ func turnFailureDetails(event activityshared.Event) (string, string) {
 	if code == "" {
 		code = providerStopFailureCode(payloadString(event.Payload.Metadata, "stopReason"))
 	}
-	if code == "" && message != "" {
+	if code == "" {
 		code = visibleFailureCode(message)
 	}
 	return code, message

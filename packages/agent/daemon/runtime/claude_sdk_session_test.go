@@ -2,12 +2,14 @@ package agentruntime
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
 	"runtime"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -24,6 +26,49 @@ func TestClaudeCodeSDKAdapterCanResumeRequiresProviderSessionID(t *testing.T) {
 	session.ProviderSessionID = "claude-session-1"
 	if !adapter.CanResume(session) {
 		t.Fatal("CanResume with provider session id = false, want true")
+	}
+}
+
+func TestClaudeCodeSDKAdapterMarksProviderReadinessDeadline(t *testing.T) {
+	t.Parallel()
+
+	conn := &recordingClaudeSDKConnection{}
+	adapter := NewClaudeCodeSDKAdapter(&recordingClaudeSDKTransport{conn: conn})
+	session := standardTestSession(ProviderClaudeCode)
+	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(-time.Second))
+	defer cancel()
+
+	_, err := adapter.Start(ctx, session)
+	if !errors.Is(err, ErrProviderStartTimeout) || !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("Start() error = %v, want provider-start marker and deadline cause", err)
+	}
+	if adapter.getSession(session.AgentSessionID) != nil {
+		t.Fatal("timed-out provider readiness retained adapter session")
+	}
+	requests := conn.sentRequests()
+	if len(requests) != 1 || requests[0].Type != "start" {
+		t.Fatalf("sent requests = %#v, want one provider start before timeout", requests)
+	}
+}
+
+func TestClaudeCodeSDKAdapterLeavesPreparationDeadlineUnclassified(t *testing.T) {
+	t.Parallel()
+
+	transport := &recordingClaudeSDKTransport{conn: &recordingClaudeSDKConnection{}}
+	adapter := NewClaudeCodeSDKAdapter(transport)
+	adapter.SetProviderLaunchPreparer(func(context.Context, ProviderLaunchPrepareInput) (ProviderLaunchPrepareResult, error) {
+		return ProviderLaunchPrepareResult{}, context.DeadlineExceeded
+	})
+
+	_, err := adapter.Start(context.Background(), standardTestSession(ProviderClaudeCode))
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("Start() error = %v, want preparation deadline", err)
+	}
+	if errors.Is(err, ErrProviderStartTimeout) {
+		t.Fatalf("Start() error = %v, preparation deadline gained provider-start verdict", err)
+	}
+	if len(transport.spec.Command) != 0 {
+		t.Fatalf("process spec = %#v, preparation failure must not start provider", transport.spec)
 	}
 }
 
@@ -101,6 +146,473 @@ func TestClaudeCodeSDKAdapterCloseStartsReaderBeforeRoundTrip(t *testing.T) {
 	}
 	if !readerStarted {
 		t.Fatal("Close() sent request before starting the shared reader")
+	}
+}
+
+func TestClaudeCodeSDKAdapterDisconnectLiveSessionClosesColdTransportWithoutCloseRequest(t *testing.T) {
+	t.Parallel()
+
+	adapter := NewClaudeCodeSDKAdapter(nil)
+	session := standardTestSession(ProviderClaudeCode)
+	session.ProviderSessionID = "provider-session-1"
+	conn := newBlockingClaudeSDKConnection()
+	adapterSession := &claudeSDKAdapterSession{
+		conn:              conn,
+		reader:            &claudeSDKLineReader{conn: conn},
+		session:           session,
+		providerSessionID: session.ProviderSessionID,
+		pendingRequests:   make(map[string]*pendingInteractiveRequest),
+		pendingResponses:  make(map[string]chan claudeSDKSidecarEvent),
+		turns:             make(map[string]*claudeSDKTurnWaiter),
+		liveState:         newClaudeSDKLiveState(),
+	}
+	adapter.storeSession(session.AgentSessionID, adapterSession)
+
+	if err := adapter.DisconnectLiveSession(context.Background(), session); err != nil {
+		t.Fatalf("DisconnectLiveSession: %v", err)
+	}
+	if sent := conn.sentRequests(); len(sent) != 0 {
+		t.Fatalf("DisconnectLiveSession sent provider close request %#v", sent)
+	}
+	if adapter.HasLiveSession(session) {
+		t.Fatal("HasLiveSession = true after disconnect")
+	}
+	select {
+	case <-conn.closed:
+	default:
+		t.Fatal("cold Claude transport was not closed")
+	}
+}
+
+func TestClaudeCodeSDKAdapterDisconnectLiveSessionRetriesCloseFailedHandle(t *testing.T) {
+	t.Parallel()
+
+	adapter := NewClaudeCodeSDKAdapter(nil)
+	session := standardTestSession(ProviderClaudeCode)
+	conn := newBlockingClaudeSDKConnection()
+	conn.closeFailures = 1
+	adapterSession := &claudeSDKAdapterSession{
+		conn: conn, reader: &claudeSDKLineReader{conn: conn}, session: session,
+		pendingRequests:  make(map[string]*pendingInteractiveRequest),
+		pendingResponses: make(map[string]chan claudeSDKSidecarEvent),
+		turns:            make(map[string]*claudeSDKTurnWaiter), liveState: newClaudeSDKLiveState(),
+	}
+	adapter.storeSession(session.AgentSessionID, adapterSession)
+	if err := adapter.DisconnectLiveSession(context.Background(), session); err == nil {
+		t.Fatal("first DisconnectLiveSession error=nil, want close failure")
+	}
+	if adapter.getSession(session.AgentSessionID) != adapterSession {
+		t.Fatal("close-failed Claude handle lost ownership")
+	}
+	if err := adapter.DisconnectLiveSession(context.Background(), session); err != nil {
+		t.Fatalf("retry DisconnectLiveSession: %v", err)
+	}
+	if adapter.getSession(session.AgentSessionID) != nil {
+		t.Fatal("Claude handle remained after successful retry")
+	}
+	conn.mu.Lock()
+	closeCalls := conn.closeCalls
+	conn.mu.Unlock()
+	if closeCalls != 2 {
+		t.Fatalf("transport close calls=%d, want 2", closeCalls)
+	}
+}
+
+type replacementClaudeSDKTransport struct {
+	mu    sync.Mutex
+	conns []*scriptedClaudeSDKConnection
+}
+
+func (t *replacementClaudeSDKTransport) Start(context.Context, ProcessSpec) (ProcessConnection, error) {
+	started, err := json.Marshal(claudeSDKSidecarEvent{
+		Version: claudeSDKSidecarProtocolVersion,
+		Type:    "session_started",
+		Payload: map[string]any{"providerSessionId": "provider-session-replacement"},
+	})
+	if err != nil {
+		return nil, err
+	}
+	conn := &scriptedClaudeSDKConnection{frames: []ProcessFrame{{Stdout: append(started, '\n')}}}
+	t.mu.Lock()
+	t.conns = append(t.conns, conn)
+	t.mu.Unlock()
+	return conn, nil
+}
+
+func (t *replacementClaudeSDKTransport) starts() int {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return len(t.conns)
+}
+
+func TestClaudeCodeSDKAdapterCloseFailureRetainsOwnershipAndBackpressuresFurtherResume(t *testing.T) {
+	t.Parallel()
+
+	transport := &replacementClaudeSDKTransport{}
+	adapter := NewClaudeCodeSDKAdapter(transport)
+	session := standardTestSession(ProviderClaudeCode)
+	session.ProviderSessionID = "provider-session-1"
+	oldConnection := newBlockingClaudeSDKConnection()
+	oldConnection.closeFailures = 4
+	oldSession := &claudeSDKAdapterSession{
+		conn: oldConnection, reader: newClaudeSDKLineReader(oldConnection, false), session: session,
+		pendingRequests: make(map[string]*pendingInteractiveRequest), pendingResponses: make(map[string]chan claudeSDKSidecarEvent),
+		turns: make(map[string]*claudeSDKTurnWaiter), liveState: newClaudeSDKLiveState(),
+	}
+	adapter.storeSession(session.AgentSessionID, oldSession)
+	if err := adapter.DisconnectLiveSession(t.Context(), session); err == nil {
+		t.Fatal("DisconnectLiveSession error=nil, want close failure")
+	}
+	if adapter.HasLiveSession(session) {
+		t.Fatal("close-failed Claude session remained usable")
+	}
+	if err := adapter.Resume(t.Context(), session); err != nil {
+		t.Fatalf("first replacement Resume: %v", err)
+	}
+	if !adapter.HasLiveSession(session) {
+		t.Fatal("replacement Claude session is not usable")
+	}
+	if err := adapter.DisconnectLiveSession(t.Context(), session); err != nil {
+		t.Fatalf("release replacement: %v", err)
+	}
+	startsBefore := transport.starts()
+	err := adapter.Resume(t.Context(), session)
+	if AppErrorCode(err) != AppErrorProcessCleanupPending {
+		t.Fatalf("second Resume error code=%q err=%v", AppErrorCode(err), err)
+	}
+	if startsAfter := transport.starts(); startsAfter != startsBefore {
+		t.Fatalf("replacement spawned behind cleanup backpressure: %d -> %d", startsBefore, startsAfter)
+	}
+	cleanupAdapter, ok := any(adapter).(LiveSessionResourceCleanupAdapter)
+	if !ok {
+		t.Fatal("Claude adapter does not own detached resource cleanup")
+	}
+	cleanup := cleanupAdapter.CleanupLiveSessionResources(t.Context(), 1)
+	if cleanup.Attempted != 1 || cleanup.Failed != 1 {
+		t.Fatalf("failed cleanup=%#v", cleanup)
+	}
+	oldConnection.mu.Lock()
+	oldConnection.closeFailures = 0
+	oldConnection.mu.Unlock()
+	cleanup = cleanupAdapter.CleanupLiveSessionResources(t.Context(), 1)
+	if cleanup.Attempted != 1 || cleanup.Cleaned != 1 || cleanup.Failed != 0 {
+		t.Fatalf("successful cleanup=%#v", cleanup)
+	}
+}
+
+func TestClaudeCodeSDKAdapterDropsLateEventsFromRetiredConnection(t *testing.T) {
+	adapter := NewClaudeCodeSDKAdapter(nil)
+	session := standardTestSession(ProviderClaudeCode)
+	oldSession := &claudeSDKAdapterSession{session: session, liveState: newClaudeSDKLiveState()}
+	adapter.beginClaudeSDKRootTurn(oldSession, "turn-old", "provider-turn-old")
+	adapter.storeSession(session.AgentSessionID, oldSession)
+	replacement := &claudeSDKAdapterSession{session: session, liveState: newClaudeSDKLiveState()}
+	adapter.storeSession(session.AgentSessionID, replacement)
+	adapter.removeSession(session.AgentSessionID, oldSession)
+
+	var published []activityshared.Event
+	adapter.SetSessionEventSink(func(_ string, events []activityshared.Event) {
+		published = append(published, events...)
+	})
+	if err := adapter.dispatchClaudeSDKEvent(session.AgentSessionID, oldSession, claudeSDKSidecarEvent{
+		Type: "turn_completed",
+		Payload: map[string]any{
+			"turnId": "turn-old", "providerTurnId": "provider-turn-old", "stopReason": "end_turn",
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if len(published) != 0 {
+		t.Fatalf("retired connection published late events: %#v", published)
+	}
+	if adapter.getSession(session.AgentSessionID) != replacement {
+		t.Fatal("late retired event displaced replacement session")
+	}
+}
+
+func TestClaudeCodeSDKAdapterSerializesEventCommitBeforeConcurrentReplacement(t *testing.T) {
+	adapter := NewClaudeCodeSDKAdapter(nil)
+	session := standardTestSession(ProviderClaudeCode)
+	projectionEntered := make(chan struct{})
+	releaseProjection := make(chan struct{})
+	pending := &pendingInteractiveRequest{
+		agentSessionID: session.AgentSessionID,
+		turnID:         "turn-old",
+		requestID:      "request-old",
+		callID:         "approval:request-old",
+		callType:       "approval",
+		name:           "Bash",
+		onTerminal: func(_ *pendingInteractiveRequest, _ pendingInteractiveRequestState) {
+			close(projectionEntered)
+			<-releaseProjection
+		},
+	}
+	oldSession := &claudeSDKAdapterSession{
+		session: session,
+		pendingRequests: map[string]*pendingInteractiveRequest{
+			claudeSDKPendingRequestKey(pending.turnID, pending.requestID): pending,
+		},
+		pendingResponses: make(map[string]chan claudeSDKSidecarEvent),
+		turns:            make(map[string]*claudeSDKTurnWaiter),
+		liveState:        newClaudeSDKLiveState(),
+	}
+	adapter.storeSession(session.AgentSessionID, oldSession)
+	var published []activityshared.Event
+	adapter.SetSessionEventSink(func(_ string, events []activityshared.Event) {
+		published = append(published, events...)
+	})
+
+	dispatchDone := make(chan error, 1)
+	go func() {
+		dispatchDone <- adapter.dispatchClaudeSDKEvent(session.AgentSessionID, oldSession, claudeSDKSidecarEvent{
+			Type: "approval_resolved",
+			Payload: map[string]any{
+				"turnId": "turn-old", "requestId": "request-old", "optionId": "allow",
+			},
+		})
+	}()
+	<-projectionEntered
+
+	replacementSession := session
+	replacementSession.Status = SessionStatusReady
+	replacement := &claudeSDKAdapterSession{
+		session:          replacementSession,
+		pendingRequests:  make(map[string]*pendingInteractiveRequest),
+		pendingResponses: make(map[string]chan claudeSDKSidecarEvent),
+		turns:            make(map[string]*claudeSDKTurnWaiter),
+		liveState:        newClaudeSDKLiveState(),
+	}
+	replacementDone := make(chan struct{})
+	go func() {
+		adapter.storeSession(session.AgentSessionID, replacement)
+		close(replacementDone)
+	}()
+	select {
+	case <-replacementDone:
+		t.Fatal("replacement crossed an in-flight event commit")
+	default:
+	}
+	close(releaseProjection)
+	if err := <-dispatchDone; err != nil {
+		t.Fatalf("dispatch event: %v", err)
+	}
+	<-replacementDone
+	if len(published) == 0 {
+		t.Fatal("event that won the generation commit axis was not published")
+	}
+	if got := adapter.claudeSDKSessionSnapshot(replacement); got.Status != SessionStatusReady {
+		t.Fatalf("replacement session status=%q, want unchanged ready", got.Status)
+	}
+}
+
+func TestClaudeCodeSDKAdapterReaderFailureCommitsBeforeConcurrentReplacement(t *testing.T) {
+	adapter := NewClaudeCodeSDKAdapter(nil)
+	session := standardTestSession(ProviderClaudeCode)
+	failureProjectionEntered := make(chan struct{})
+	releaseFailureProjection := make(chan struct{})
+	pending := &pendingInteractiveRequest{
+		agentSessionID: session.AgentSessionID,
+		turnID:         "turn-old",
+		requestID:      "request-old",
+		callID:         "approval:request-old",
+		callType:       "approval",
+		name:           "Bash",
+		onTerminal: func(_ *pendingInteractiveRequest, _ pendingInteractiveRequestState) {
+			close(failureProjectionEntered)
+			<-releaseFailureProjection
+		},
+	}
+	oldSession := &claudeSDKAdapterSession{
+		session: session,
+		pendingRequests: map[string]*pendingInteractiveRequest{
+			claudeSDKPendingRequestKey(pending.turnID, pending.requestID): pending,
+		},
+		pendingResponses: make(map[string]chan claudeSDKSidecarEvent),
+		turns:            make(map[string]*claudeSDKTurnWaiter),
+		liveState:        newClaudeSDKLiveState(),
+	}
+	adapter.storeSession(session.AgentSessionID, oldSession)
+	var published []activityshared.Event
+	adapter.SetSessionEventSink(func(_ string, events []activityshared.Event) {
+		published = append(published, events...)
+	})
+
+	failureDone := make(chan struct{})
+	go func() {
+		adapter.failClaudeSDKReader(session.AgentSessionID, oldSession, errors.New("old reader failed"))
+		close(failureDone)
+	}()
+	<-failureProjectionEntered
+	replacement := &claudeSDKAdapterSession{
+		session:          session,
+		pendingRequests:  make(map[string]*pendingInteractiveRequest),
+		pendingResponses: make(map[string]chan claudeSDKSidecarEvent),
+		turns:            make(map[string]*claudeSDKTurnWaiter),
+		liveState:        newClaudeSDKLiveState(),
+	}
+	replacementDone := make(chan struct{})
+	go func() {
+		adapter.storeSession(session.AgentSessionID, replacement)
+		close(replacementDone)
+	}()
+	select {
+	case <-replacementDone:
+		t.Fatal("replacement crossed an in-flight reader-failure commit")
+	default:
+	}
+	close(releaseFailureProjection)
+	<-failureDone
+	<-replacementDone
+	if len(published) == 0 {
+		t.Fatal("reader failure that won the commit axis published no terminal events")
+	}
+	if got := adapter.getSession(session.AgentSessionID); got != replacement {
+		t.Fatal("replacement did not become current after reader-failure commit")
+	}
+}
+
+func TestClaudeCodeSDKAdapterDropsInteractiveAckAfterReplacement(t *testing.T) {
+	adapter := NewClaudeCodeSDKAdapter(nil)
+	session := standardTestSession(ProviderClaudeCode)
+	pending := &pendingInteractiveRequest{
+		agentSessionID: session.AgentSessionID,
+		turnID:         "turn-old",
+		requestID:      "request-old",
+		callID:         "approval:request-old",
+		callType:       "approval",
+		name:           "Bash",
+		state:          pendingInteractiveRequestStateResolving,
+	}
+	oldSession := &claudeSDKAdapterSession{
+		session: session,
+		pendingRequests: map[string]*pendingInteractiveRequest{
+			claudeSDKPendingRequestKey(pending.turnID, pending.requestID): pending,
+		},
+		pendingResponses: make(map[string]chan claudeSDKSidecarEvent),
+		turns:            make(map[string]*claudeSDKTurnWaiter),
+		liveState:        newClaudeSDKLiveState(),
+	}
+	adapter.storeSession(session.AgentSessionID, oldSession)
+	replacementSession := session
+	replacementSession.Status = SessionStatusReady
+	replacement := &claudeSDKAdapterSession{
+		session:          replacementSession,
+		pendingRequests:  make(map[string]*pendingInteractiveRequest),
+		pendingResponses: make(map[string]chan claudeSDKSidecarEvent),
+		turns:            make(map[string]*claudeSDKTurnWaiter),
+		liveState:        newClaudeSDKLiveState(),
+	}
+	adapter.storeSession(session.AgentSessionID, replacement)
+	var published []activityshared.Event
+	adapter.SetSessionEventSink(func(_ string, events []activityshared.Event) {
+		published = append(published, events...)
+	})
+
+	adapter.applyClaudeSDKInteractiveAck(
+		oldSession,
+		session,
+		pending,
+		pendingInteractiveResponse{optionID: "allow"},
+		claudeSDKInteractiveAck{disposition: InteractiveDispositionAnswered},
+	)
+	if got := pending.disposition(); got != pendingInteractiveRequestStateResolving {
+		t.Fatalf("old request disposition=%q, want unchanged resolving", got)
+	}
+	if len(published) != 0 {
+		t.Fatalf("old interactive ack published after replacement: %#v", published)
+	}
+	if got := adapter.claudeSDKSessionSnapshot(replacement); got.Status != SessionStatusReady {
+		t.Fatalf("replacement session status=%q, want unchanged ready", got.Status)
+	}
+}
+
+func TestClaudeCodeSDKAdapterExitedConnectionWithPersistentCloseFailureRemainsOwned(t *testing.T) {
+	transport := &replacementClaudeSDKTransport{}
+	adapter := NewClaudeCodeSDKAdapter(transport)
+	session := standardTestSession(ProviderClaudeCode)
+	base := newBlockingClaudeSDKConnection()
+	connection := newDoneClosedCloseFailConnection(base)
+	adapterSession := &claudeSDKAdapterSession{
+		conn: connection, reader: newClaudeSDKLineReader(connection, false), session: session,
+		pendingRequests: make(map[string]*pendingInteractiveRequest), pendingResponses: make(map[string]chan claudeSDKSidecarEvent),
+		turns: make(map[string]*claudeSDKTurnWaiter), liveState: newClaudeSDKLiveState(),
+	}
+	adapter.storeSession(session.AgentSessionID, adapterSession)
+
+	if err := adapter.DisconnectLiveSession(t.Context(), session); err == nil {
+		t.Fatal("DisconnectLiveSession error=nil, want persistent Close failure")
+	}
+	if adapter.HasLiveSession(session) {
+		t.Fatal("close-failed Claude connection reported usable")
+	}
+	if adapter.getSession(session.AgentSessionID) != adapterSession {
+		t.Fatal("Done-closed close-failed Claude handle lost current ownership")
+	}
+	if err := adapter.Resume(t.Context(), session); err != nil {
+		t.Fatalf("Resume after exited close failure: %v", err)
+	}
+	if !adapter.HasLiveSession(session) {
+		t.Fatal("replacement Claude session is not usable")
+	}
+	if adapter.getSession(session.AgentSessionID) == adapterSession {
+		t.Fatal("exited close-failed Claude handle remained current after replacement")
+	}
+	cleanup := adapter.CleanupLiveSessionResources(t.Context(), 1)
+	if cleanup.Attempted != 1 || cleanup.Failed != 1 || cleanup.Cleaned != 0 {
+		t.Fatalf("cleanup=%#v, want one retained failure", cleanup)
+	}
+	connection.mu.Lock()
+	closeCalls := connection.closeCalls
+	connection.mu.Unlock()
+	if closeCalls != 3 {
+		t.Fatalf("Close calls=%d, want disconnect + replacement retirement + bounded cleanup", closeCalls)
+	}
+}
+
+func TestClaudeCodeSDKAdapterDisconnectLiveSessionConvergesPendingInteractiveAndProviderTurn(t *testing.T) {
+	t.Parallel()
+
+	adapter := NewClaudeCodeSDKAdapter(nil)
+	session := standardTestSession(ProviderClaudeCode)
+	conn := newBlockingClaudeSDKConnection()
+	adapterSession := &claudeSDKAdapterSession{
+		conn: conn, reader: &claudeSDKLineReader{conn: conn}, session: session,
+		pendingRequests:  make(map[string]*pendingInteractiveRequest),
+		pendingResponses: make(map[string]chan claudeSDKSidecarEvent),
+		turns:            make(map[string]*claudeSDKTurnWaiter), liveState: newClaudeSDKLiveState(),
+	}
+	adapter.storeSession(session.AgentSessionID, adapterSession)
+	adapter.beginClaudeSDKRootTurn(adapterSession, "turn-disconnect", "provider-turn-disconnect")
+	waiter := adapter.registerClaudeSDKTurn(adapterSession, "turn-disconnect", nil)
+	if _, _, err := adapter.sidecarTurnEvents(adapterSession, session, "turn-disconnect", claudeSDKSidecarEvent{
+		Type: "approval_requested",
+		Payload: map[string]any{
+			"turnId": "turn-disconnect", "requestId": "approval-disconnect",
+			"toolName": "Bash", "input": map[string]any{"command": "sleep 10"},
+		},
+	}); err != nil {
+		t.Fatalf("approval_requested: %v", err)
+	}
+	var received []activityshared.Event
+	adapter.SetSessionEventSink(func(_ string, events []activityshared.Event) {
+		received = append(received, events...)
+	})
+	if err := adapter.DisconnectLiveSession(context.Background(), session); err != nil {
+		t.Fatalf("DisconnectLiveSession: %v", err)
+	}
+	if len(received) != 3 ||
+		received[0].Type != activityshared.EventInteractionSuperseded ||
+		received[1].Type != activityshared.EventCallFailed ||
+		received[2].Type != activityshared.EventRootProviderTurnCompleted {
+		t.Fatalf("disconnect events=%#v", received)
+	}
+	select {
+	case result := <-waiter.done:
+		if !errors.Is(result.err, ErrSessionDisconnected) {
+			t.Fatalf("waiter error=%v, want ErrSessionDisconnected", result.err)
+		}
+	default:
+		t.Fatal("active Claude turn was not terminalized")
 	}
 }
 

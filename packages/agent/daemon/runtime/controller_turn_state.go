@@ -1,6 +1,7 @@
 package agentruntime
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
@@ -9,15 +10,30 @@ import (
 )
 
 func submittedTurnActivityEvents(
+	submitCtx context.Context,
 	session Session,
+	content []PromptContentBlock,
+	displayPrompt string,
 	turnID string,
 	capabilityRefs []activityshared.CapabilityReference,
+	submittedTitle string,
 ) []activityshared.Event {
-	ctx, ok := activityEventContext(session, "turn-submitted:"+turnID, turnID)
+	eventContext, ok := activityEventContext(session, "turn-submitted:"+turnID, turnID)
 	if !ok {
 		return nil
 	}
-	event := activityshared.NewTurnUpdated(ctx, turnID, activityshared.TurnPhaseSubmitted)
+	explicitDisplayPrompt, visibleText := explicitAndVisiblePromptText(content, displayPrompt)
+	prompt := newUserPromptActivityEvent(
+		submitCtx,
+		session,
+		content,
+		explicitDisplayPrompt,
+		visibleText,
+		turnID,
+		nil,
+	)
+	event := activityshared.NewTurnUpdated(eventContext, turnID, activityshared.TurnPhaseSubmitted)
+	event.Payload.Title = strings.TrimSpace(submittedTitle)
 	event.Payload.Metadata = map[string]any{"turnOrigin": "user_prompt"}
 	// The controller owns the submit moment; it publishes the submitted
 	// lifecycle snapshot so downstream layers copy instead of recomputing
@@ -28,7 +44,7 @@ func submittedTurnActivityEvents(
 		Phase:        string(activityshared.TurnPhaseSubmitted),
 	})
 	activityshared.StampTurnCapabilityReferences(&event, capabilityRefs)
-	return []activityshared.Event{event}
+	return []activityshared.Event{prompt, event}
 }
 
 // guidanceTurnCapabilityReferenceStatePatch records provenance on the

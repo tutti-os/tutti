@@ -15,7 +15,6 @@ import (
 	"sort"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	agentruntime "github.com/tutti-os/tutti/packages/agent/daemon/runtime"
@@ -84,7 +83,9 @@ type Config struct {
 }
 
 type Host struct {
-	lifecycleMu            sync.Mutex
+	admission              sync.RWMutex
+	laneMu                 sync.Mutex
+	connectorLanes         map[string]*sync.Mutex
 	artifacts              PreparedArtifactResolver
 	planner                *connectorruntime.ManagedRoutePlanner
 	processes              agentruntime.ProcessTransport
@@ -125,6 +126,9 @@ type connectorRoute struct {
 	userHome               string
 	cliLaunch              *managedCLILaunch
 	cliCommand             string
+	cliInvocationCommand   string
+	cliContractHash        string
+	cliCommands            []market.CLICommand
 	cliShimPath            string
 	cliShimContent         []byte
 	credentialBrokerLaunch *managedCredentialBrokerLaunch
@@ -176,6 +180,7 @@ func New(config Config) (*Host, error) {
 		routes:                 routes,
 		snapshots:              snapshots,
 		authorizationRoutes:    make(map[string]*connectorRoute),
+		connectorLanes:         make(map[string]*sync.Mutex),
 		remoteMCPClientFactory: config.RemoteMCPClientFactory,
 		mcpRegistry:            config.MCP,
 		registry:               config.Registry,
@@ -191,25 +196,33 @@ func (host *Host) Reconcile(ctx context.Context, request ReconcileRequest) (mark
 		!hostIdentityPattern.MatchString(runtimeRequest.Connector.Key) || runtimeRequest.Generation.BootEpoch == "" || runtimeRequest.Generation.Generation == 0 {
 		return market.RuntimeReceipt{}, errors.New("connector runtime reconcile identity is invalid")
 	}
-	if err := market.ValidateRuntimeReleaseShape(runtimeRequest.Connector.Release); err != nil {
-		return market.RuntimeReceipt{}, err
-	}
-	host.lifecycleMu.Lock()
-	defer host.lifecycleMu.Unlock()
-	key := connectorRouteKey(runtimeRequest.ConnectionID, runtimeRequest.Connector.Key)
+	releaseLane := host.enterConnectorLane(runtimeRequest.Connector.Key)
+	defer releaseLane()
 	if !runtimeRequest.Enabled {
-		if err := host.routes.Remove(key, runtimeRequest.Generation, "", time.Time{}); err != nil {
+		// A connection id can rotate while an older account route is still
+		// present. Disabled is connector-level desired state, so convergence must
+		// fence every route and authorization session for the connector instead
+		// of removing only the latest route key.
+		if err := host.deactivateConnector(market.RuntimeDeactivationRequest{
+			ConnectionID:   runtimeRequest.ConnectionID,
+			ConnectorKey:   runtimeRequest.Connector.Key,
+			AllConnections: true,
+			Generation:     runtimeRequest.Generation,
+			Deadline:       time.Now().Add(3 * time.Second),
+		}); err != nil {
 			return market.RuntimeReceipt{}, err
 		}
-		host.notifyRouteChanged()
 		return market.RuntimeReceipt{OperationID: runtimeRequest.OperationID, ConnectionID: runtimeRequest.ConnectionID,
-			ConnectorKey: runtimeRequest.Connector.Key, ReleaseDigest: runtimeRequest.Connector.Installation.InstalledReleaseDigest,
+			ConnectorKey: runtimeRequest.Connector.Key, ReleaseDigest: runtimeRequest.Connector.Release.ReleaseDigest,
 			Generation: runtimeRequest.Generation,
 			Readiness: market.RuntimeReadiness{State: market.RuntimeReadinessBlocked,
 				ReasonCode: market.RuntimeReadinessReasonRuntimeDisabled}}, nil
 	}
-	if runtimeRequest.Connector.Installation.State != market.InstallationStateInstalled ||
-		runtimeRequest.Connector.Installation.InstalledReleaseDigest != runtimeRequest.Connector.Release.ReleaseDigest {
+	if err := market.ValidateRuntimeReleaseShape(runtimeRequest.Connector.Release); err != nil {
+		return market.RuntimeReceipt{}, err
+	}
+	key := connectorRouteKey(runtimeRequest.ConnectionID, runtimeRequest.Connector.Key)
+	if !installationTargetsRelease(runtimeRequest.Connector.Installation, runtimeRequest.Connector.Release.ReleaseDigest) {
 		return market.RuntimeReceipt{}, errors.New("connector installed release is not active")
 	}
 	if err := host.validateAuthorization(runtimeRequest); err != nil {
@@ -233,7 +246,7 @@ func (host *Host) Reconcile(ctx context.Context, request ReconcileRequest) (mark
 			return market.RuntimeReceipt{}, fmt.Errorf("resolve prepared connector artifact: %w", resolveErr)
 		}
 		installedRoot := prepared.PreparedPath
-		executionRoot, snapshotErr := host.snapshots.Create(prepared)
+		executionRoot, snapshotErr := host.snapshots.Create(prepared, artifactNativeEntrypoints(runtimeRequest.Connector.Release)...)
 		if snapshotErr != nil {
 			return market.RuntimeReceipt{}, fmt.Errorf("create connector execution snapshot: %w", snapshotErr)
 		}
@@ -289,6 +302,17 @@ func (host *Host) Reconcile(ctx context.Context, request ReconcileRequest) (mark
 		Generation: runtimeRequest.Generation, Readiness: cloneRuntimeReadiness(route.readiness), Summary: &summary}, nil
 }
 
+func installationTargetsRelease(installation market.Installation, releaseDigest string) bool {
+	switch installation.State {
+	case market.InstallationStateInstalled:
+		return installation.InstalledReleaseDigest == releaseDigest
+	case market.InstallationStateInstalling, market.InstallationStateUpdating:
+		return installation.CandidateReleaseDigest == releaseDigest
+	default:
+		return false
+	}
+}
+
 func (*Host) validateAuthorization(request market.RuntimeReconcileRequest) error {
 	authKind := request.Connector.Release.Manifest.AuthorizationKind
 	if request.Connector.Release.Manifest.Implementation.Kind == market.ImplementationKindRemoteStreamableHTTP {
@@ -332,6 +356,8 @@ func (host *Host) Close() error {
 		return nil
 	}
 	deadline := time.Now().Add(3 * time.Second)
+	host.admission.Lock()
+	defer host.admission.Unlock()
 	host.authorizationMu.Lock()
 	authorizationRoutes := make([]*connectorRoute, 0, len(host.authorizationRoutes))
 	for key, route := range host.authorizationRoutes {
@@ -358,6 +384,8 @@ func (host *Host) FenceAll(_ context.Context, deadline time.Time) error {
 	if host == nil {
 		return nil
 	}
+	host.admission.Lock()
+	defer host.admission.Unlock()
 	err := host.routes.FenceAll(deadline)
 	host.notifyRouteChanged()
 	return err
@@ -381,14 +409,33 @@ func (host *Host) DeactivateRuntime(ctx context.Context, request market.RuntimeD
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	host.lifecycleMu.Lock()
-	defer host.lifecycleMu.Unlock()
+	releaseLane := host.enterConnectorLane(request.ConnectorKey)
+	defer releaseLane()
 	if request.AllConnections {
 		return host.deactivateConnector(request)
 	}
 	err := host.routes.Remove(connectorRouteKey(request.ConnectionID, request.ConnectorKey), request.Generation, request.ReleaseDigest, request.Deadline)
 	host.notifyRouteChanged()
 	return err
+}
+
+func (host *Host) enterConnectorLane(connectorKey string) func() {
+	host.admission.RLock()
+	host.laneMu.Lock()
+	if host.connectorLanes == nil {
+		host.connectorLanes = make(map[string]*sync.Mutex)
+	}
+	lane := host.connectorLanes[connectorKey]
+	if lane == nil {
+		lane = &sync.Mutex{}
+		host.connectorLanes[connectorKey] = lane
+	}
+	host.laneMu.Unlock()
+	lane.Lock()
+	return func() {
+		lane.Unlock()
+		host.admission.RUnlock()
+	}
 }
 
 func (host *Host) buildManagedRoute(ctx context.Context, request market.RuntimeReconcileRequest,
@@ -476,7 +523,7 @@ func (host *Host) attachMCP(ctx context.Context, route *connectorRoute, managed 
 	if err != nil {
 		return fmt.Errorf("start connector MCP process: %w", err)
 	}
-	release := func() { route.releaseProcess(processID, connection) }
+	release := func() { _ = route.releaseProcess(processID, connection) }
 	client, err := mcp.NewStdioClient(mcp.StdioClientConfig{Connection: connection, ProcessName: route.connectorKey + " MCP"})
 	if err != nil {
 		release()
@@ -565,17 +612,38 @@ func (*Host) attachCLI(route *connectorRoute, managed *market.ManagedStdioImplem
 	if err != nil {
 		return err
 	}
+	contractHash, err := market.ManagedCLIContractHash(*managed.CLI)
+	if err != nil {
+		return fmt.Errorf("hash connector CLI contract: %w", err)
+	}
 	launchArguments := []string{entrypoint}
 	launchExecutable := executable
-	if installed != nil && installed.LaunchKind == "native" {
+	if managed.CLI.Launch != nil && managed.CLI.Launch.Kind == market.CLIArtifactLaunchKindNative {
+		launchArguments = nil
+		launchExecutable = connectorruntime.ConnectorExecutable{Path: entrypoint, SHA256: managed.CLI.Launch.SHA256,
+			SizeBytes: managed.CLI.Launch.SizeBytes}
+	} else if installed != nil && installed.LaunchKind == "native" {
 		launchArguments = nil
 		launchExecutable = connectorruntime.ConnectorExecutable{Path: entrypoint, SHA256: installed.EntrypointSHA256,
 			SizeBytes: installed.EntrypointSize}
 	}
 	route.cliLaunch = &managedCLILaunch{arguments: append(append([]string{}, launchArguments...), managed.CLI.Arguments...),
 		artifactTrees: append([]agentruntime.ArtifactTreeIdentity(nil), artifactTrees...), cwd: prepared.PreparedPath,
-		executable: launchExecutable, language: managed.Runtime.Language, stateDir: stateDir}
+		executable: launchExecutable, language: managed.Runtime.Language, stateDir: stateDir,
+		timeout: time.Duration(managed.CLI.TimeoutMS) * time.Millisecond}
+	route.cliContractHash = contractHash
+	route.cliInvocationCommand = market.ManagedCLICommandName(*managed.CLI)
+	route.cliCommands = cloneCLICommands(managed.CLI.Commands)
 	return nil
+}
+
+func artifactNativeEntrypoints(release market.Release) []string {
+	managed := release.Manifest.Implementation.ManagedStdio
+	if managed == nil || managed.CLI == nil || managed.CLI.Launch == nil ||
+		managed.CLI.Launch.Kind != market.CLIArtifactLaunchKindNative {
+		return nil
+	}
+	return []string{managed.CLI.Entrypoint}
 }
 
 func (host *Host) startProcess(ctx context.Context, route *connectorRoute, spec agentruntime.ProcessSpec,
@@ -632,10 +700,11 @@ func (route *connectorRoute) RouteGeneration() market.HostGeneration { return ro
 func (route *connectorRoute) RouteReleaseDigest() string             { return route.releaseDigest }
 func (route *connectorRoute) Fence()                                 { route.processes.Fence() }
 func (route *connectorRoute) close(deadline time.Time) error         { return route.Close(deadline) }
-func (route *connectorRoute) releaseProcess(id uint64, connection agentruntime.ProcessConnection) {
+func (route *connectorRoute) releaseProcess(id uint64, connection agentruntime.ProcessConnection) error {
 	if route != nil && route.processes != nil {
-		route.processes.Release(id, connection)
+		return route.processes.ReleaseWithError(id, connection)
 	}
+	return nil
 }
 
 func (route *connectorRoute) Close(deadline time.Time) error {
@@ -756,89 +825,6 @@ func connectorCLIShimContent(route *connectorRoute) ([]byte, error) {
 
 func shellQuote(value string) string {
 	return "'" + strings.ReplaceAll(value, "'", "'\"'\"'") + "'"
-}
-
-type RouteRegistry struct {
-	mu       sync.RWMutex
-	routes   *connectorruntime.RouteTable
-	revision atomic.Uint64
-}
-
-type RouteDescriptor struct {
-	ConnectorKey   string
-	DisplayName    string
-	Description    string
-	RoutingAliases []string
-	SkillRoot      string
-	Skills         []connectorartifact.SkillSummary
-	HasMCP         bool
-	CLICommand     string
-	Readiness      market.RuntimeReadiness
-}
-
-func (descriptor RouteDescriptor) InterfaceState(kind string) market.RuntimeReadinessState {
-	for _, readiness := range descriptor.Readiness.Interfaces {
-		if readiness.Kind == kind {
-			return readiness.State
-		}
-	}
-	return market.RuntimeReadinessFailed
-}
-
-func NewRouteRegistry() *RouteRegistry { return &RouteRegistry{} }
-
-func (registry *RouteRegistry) Revision() uint64 {
-	if registry == nil {
-		return 0
-	}
-	return registry.revision.Load()
-}
-
-func (registry *RouteRegistry) notifyChanged() {
-	if registry != nil {
-		registry.revision.Add(1)
-	}
-}
-
-func (registry *RouteRegistry) attach(routes *connectorruntime.RouteTable) {
-	registry.mu.Lock()
-	registry.routes = routes
-	registry.mu.Unlock()
-}
-
-func (registry *RouteRegistry) activeRoutes() []*connectorRoute {
-	registry.mu.RLock()
-	table := registry.routes
-	registry.mu.RUnlock()
-	if table == nil {
-		return nil
-	}
-	portable := table.PublishedRoutes()
-	routes := make([]*connectorRoute, 0, len(portable))
-	for _, candidate := range portable {
-		if route, ok := candidate.(*connectorRoute); ok {
-			routes = append(routes, route)
-		}
-	}
-	return routes
-}
-
-func (registry *RouteRegistry) Routes() []RouteDescriptor {
-	routes := registry.activeRoutes()
-	result := make([]RouteDescriptor, 0, len(routes))
-	for _, route := range routes {
-		result = append(result, routeDescriptor(route))
-	}
-	sort.Slice(result, func(left, right int) bool { return result[left].ConnectorKey < result[right].ConnectorKey })
-	return result
-}
-
-func routeDescriptor(route *connectorRoute) RouteDescriptor {
-	return RouteDescriptor{ConnectorKey: route.connectorKey, DisplayName: route.displayName,
-		Description: route.description, RoutingAliases: append([]string(nil), route.routingAliases...),
-		SkillRoot: route.skillRoot, Skills: append([]connectorartifact.SkillSummary(nil), route.skills...),
-		HasMCP: len(route.mcpTools) > 0, CLICommand: route.cliCommand,
-		Readiness: cloneRuntimeReadiness(route.readiness)}
 }
 
 var _ connectorruntime.ManagedRoute = (*connectorRoute)(nil)

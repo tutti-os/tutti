@@ -47,6 +47,7 @@ export function requestSubmit(
       : {}),
     errorCode: null,
     errorMessage: null,
+    errorReason: null,
     expiresAtUnixMs: intent.expiresAtUnixMs,
     ...(intent.submitDiagnostics
       ? { submitDiagnostics: { ...intent.submitDiagnostics } }
@@ -97,6 +98,7 @@ export function settleSubmitCommand(
           ...record,
           errorCode: "invalid_command_result",
           errorMessage: null,
+          errorReason: null,
           status: "uncertain"
         })
       };
@@ -132,6 +134,10 @@ export function settleSubmitCommand(
         intent.outcome === "timedOut"
           ? null
           : intent.errorMessage?.trim() || null,
+      errorReason:
+        intent.outcome === "timedOut"
+          ? null
+          : intent.errorReason?.trim() || null,
       status: intent.outcome === "timedOut" ? "uncertain" : "failed"
     })
   };

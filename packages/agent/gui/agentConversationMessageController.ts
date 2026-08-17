@@ -40,11 +40,20 @@ export interface AgentConversationMessageControllerDiagnostics {
     level?: "debug" | "warn";
     messages?: readonly AgentActivityDurableMessage[];
   }): void;
+  synchronizationError?(input: {
+    agentSessionId: string;
+    error: unknown;
+  }): void;
 }
 
 export interface CreateAgentConversationMessageControllerInput {
   diagnostics?: AgentConversationMessageControllerDiagnostics;
   engine: Pick<AgentSessionEngine, "dispatch" | "getSnapshot">;
+  ensureSessionSynchronized?(input: {
+    agentSessionId: string;
+    onError(error: unknown): void;
+    workspaceId: string;
+  }): () => void;
   isAvailable(agentSessionId?: string | null): boolean;
   listSessionMessages(
     input: AgentConversationMessagePageInput
@@ -90,6 +99,7 @@ export function createAgentConversationMessageController(
   let disposed = false;
   let generation = 0;
   let snapshot = EMPTY_SNAPSHOT;
+  let releaseSessionSynchronization: (() => void) | null = null;
   let olderRequest: {
     abortController: AbortController;
     agentSessionId: string;
@@ -140,12 +150,30 @@ export function createAgentConversationMessageController(
     if (normalized === activeSessionId) return;
     generation += 1;
     abortOlderRequest();
+    releaseSessionSynchronization?.();
+    releaseSessionSynchronization = null;
     activeSessionId = normalized;
     publish({
       agentSessionId: normalized,
       error: null,
       olderPagePhase: "idle"
     });
+    if (!normalized || !input.ensureSessionSynchronized) return;
+    const reportSynchronizationError = (error: unknown): void => {
+      input.diagnostics?.synchronizationError?.({
+        agentSessionId: normalized,
+        error
+      });
+    };
+    try {
+      releaseSessionSynchronization = input.ensureSessionSynchronized({
+        agentSessionId: normalized,
+        onError: reportSynchronizationError,
+        workspaceId: input.workspaceId
+      });
+    } catch (error) {
+      reportSynchronizationError(error);
+    }
   };
 
   const requestReconcile = (
@@ -185,6 +213,8 @@ export function createAgentConversationMessageController(
       disposed = true;
       generation += 1;
       abortOlderRequest();
+      releaseSessionSynchronization?.();
+      releaseSessionSynchronization = null;
     },
     getSnapshot: () => snapshot,
     async loadOlder(agentSessionId) {

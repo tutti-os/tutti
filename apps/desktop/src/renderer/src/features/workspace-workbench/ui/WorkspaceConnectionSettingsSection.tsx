@@ -1,26 +1,12 @@
 import { useEffect } from "react";
-import type { DesktopFeatureFlags } from "@shared/preferences";
 import { LoadingIcon } from "@tutti-os/ui-system";
-import {
-  isFeatureEnabled,
-  MOBILE_REMOTE_ACCESS_SETTINGS_FLAG
-} from "../../../../../shared/featureFlags/catalog.ts";
 import { useTranslation } from "@renderer/i18n";
-import { WorkspaceMobileRemoteSettingsSection } from "./WorkspaceMobileRemoteSettingsSection";
 import { WorkspaceSettingsActionButton } from "./WorkspaceSettingsActionButton";
 import { useAccountService } from "./useAccountService";
 
-export function WorkspaceConnectionSettingsSection({
-  featureFlags
-}: {
-  featureFlags: DesktopFeatureFlags;
-}) {
+export function WorkspaceConnectionSettingsSection() {
   const { t } = useTranslation();
   const { service: accountService, state: accountState } = useAccountService();
-  const mobileRemoteAccessSettingsEnabled = isFeatureEnabled(
-    featureFlags,
-    MOBILE_REMOTE_ACCESS_SETTINGS_FLAG
-  );
 
   useEffect(() => {
     void accountService.refreshUserInfo();
@@ -120,10 +106,6 @@ export function WorkspaceConnectionSettingsSection({
         <p className="m-0 rounded-[6px] bg-[color-mix(in_srgb,var(--state-warning)_16%,transparent)] px-3 py-2 text-[13px] text-[var(--text-primary)]">
           {accountState.error}
         </p>
-      ) : null}
-
-      {user && mobileRemoteAccessSettingsEnabled ? (
-        <WorkspaceMobileRemoteSettingsSection />
       ) : null}
     </div>
   );

@@ -121,6 +121,21 @@ artifact contains connector metadata and skills, not the CLI npm package. CLI
 installation remains part of the physical release install receipt, while route
 reconciliation is a separate operation:
 
+A CLI may instead declare `artifact_native` when its platform executable was
+acquired and verified by the Connector publication pipeline and is already
+inside the signed install artifact. The host does not receive an upstream URL
+or add another installer. It verifies the prepared artifact inventory, copies
+the declared entrypoint into the read-only execution snapshot with executable
+permission only for that entry, then verifies its exact size and SHA-256 at
+every launch. Windows executes the declared `.exe` directly; `.cmd` remains a
+user-facing PATH projection rather than the native launch boundary.
+
+One portable install artifact may contain binaries for multiple exact targets.
+The signed v3 manifest selects one target implementation without OS or
+architecture fallback; unused target files remain inert data in that release.
+Per-target artifacts are a distribution-size optimization and do not change
+the runtime trust or launch contract.
+
 The local daemon connector-manifest v1 contract includes required icons, typed
 package installation, explicit Node ranges, and mapping-free generic CLI. It is
 an internal host projection of the remote market v2 publication rather than a
@@ -283,16 +298,37 @@ restarted from the idempotent release installer; the business repository does
 not persist internal download/sync/import sub-stages:
 
 ```text
-accepted -> installing -> installed -> completed
-     |            |            |
-     +------------+------------+-> failed
+install/update:
+accepted -> installing(receipt) -> runtime_pending(candidate + Desired)
+         -> Observed(exact generation) -> current promoted -> completed
+
+uninstall:
+accepted -> deactivating(Desired=disabled) -> Observed(disabled)
+         -> removing -> absent -> completed
 ```
+
+These are short database transactions separated by idempotent external
+effects, not one long transaction. Every external effect is preceded by a
+durable phase/receipt. A retryable error leaves the Operation non-terminal and
+the continuous recovery scanner resumes it; a deterministic install failure
+clears Candidate and its convergence row before terminalizing. During update,
+Current and its route remain usable until Candidate has been observed ready.
 
 The repository owns operation leases and attempt metadata. Recovery observes
 staging markers, active-version markers, and host runtime state before deciding
 which stage to resume. Install and uninstall return verifiable results to the
 application; artifact helpers do not write the business repository or publish
 events directly.
+
+Every operation row also stores canonical `owner_account_id` and visibility.
+User commands are `account` visible and public reads always use
+`GetOperationForScope`; an ownership mismatch is indistinguishable from a
+missing row. Runtime reconcile and operations whose legacy owner cannot be
+proven are `system_private`: workers may still recover them, but snapshots and
+operation endpoints never publish them. Legacy rows derive ownership from
+`operation_json.scope.accountId`. The idempotency key is
+`(owner_account_id, client_request_id)`, while the active physical lifecycle
+constraint remains device-global per Connector.
 
 `accepted` and `running` rows have no age-based expiry. The SQLite repository
 protects them with one-active-operation constraints plus renewable,
@@ -310,14 +346,29 @@ from the authoritative connector/snapshot projection instead of relying on
 operation history.
 
 Installed release evidence is durable recovery input, not operation history.
-The SQLite store records one complete release record per installed connector in
-`connector_market_installed_releases`; install completion updates it and
-uninstall completion removes it in the same transaction as the business
-transition. Receipt-detected drift retains that evidence while the installation
-projection is failed so repair and uninstall still target the accepted release.
+The SQLite store records immutable Current and prepared Candidate releases by
+`(connector_key, release_digest)` in
+`connector_market_release_installations`; the legacy one-row table remains a
+compatibility projection. Uninstall completion removes all versions in the
+same transaction as the business transition. Receipt-detected drift retains
+Current evidence while the installation projection is failed so repair and
+uninstall still target the accepted release.
 Runtime recovery therefore remains valid after the corresponding completed
 install operation has expired, including when the accepted catalog has advanced
 to a newer release.
+
+Runtime publication is durable convergence state, not a public Operation. The
+runtime-pending transaction atomically commits Candidate evidence, a non-secret
+`RuntimeDesired`, the running install Operation, and the public outbox event.
+Only an exact current-boot `RuntimeObserved` allows the final transaction to
+promote Candidate to Current and complete the Operation.
+`RuntimeDesired.generation` is a Connector-and-account-scope clock
+independent from catalog and event revisions. A continuous daemon scanner claims
+`Desired != Observed` work with a renewable token-fenced lease, resolves any
+one-shot credential grant only immediately before the host call, and commits
+`RuntimeObserved` with a compare-and-swap on the exact desired generation. An
+Observed receipt from another daemon boot is stale even when its generation
+matches. Scheduling is only a latency hint; a lost wake-up cannot lose work.
 
 Before bootstrap republishes installed routes, it asks the physical installation
 manager to inspect the accepted artifact and optional CLI receipts. `absent` or
@@ -327,10 +378,20 @@ installed release evidence needed for safe repair or uninstall. A later
 preserves the projection. Runtime reconcile then performs interface readiness
 checks before any route is published.
 
-Authorization operations must follow the same recovery rule or remain fully
-synchronous without leaving a recoverable `running` operation. A provider uses
-the operation or client request identity to resume without creating duplicate
-external authorization sessions.
+Authorization operations follow the same recovery rule. Authorization creation
+is serialized per account and Connector. A repeated `clientRequestId` resumes
+the same external session. A different request retains the compatibility
+conflict unless it explicitly sends `replacementPolicy=replace_active`. Replace
+is Host-owned: it interrupts an in-progress initial Begin, moves an existing
+receipt through durable `canceling`, asks the provider to terminate the exact
+attempt, waits until that attempt can no longer publish credentials or events,
+then resolves it as `superseded` before accepting the new operation. A provider
+without confirmed attempt cancellation rejects replacement rather than running
+two sessions against shared credential state. Managed runtimes are inspected
+during convergence; restart finishes `canceling` receipts and no longer
+fabricates a permanently pending observation. Disconnect is completed only
+after the disconnected projection and exact disabled Runtime Observed state are
+durable.
 
 For account-scoped runtimes, `AccountRuntimeBindingResolver` maps `none`
 authorization to an always-active device connection. OAuth/API-key connectors
@@ -351,26 +412,32 @@ Remote Connector authorization uses that account projection for Start,
 observation, presentation, and route publication; the device Connector's
 authorization field is not remote authorization truth. A completed Start
 operation may retain a private authorization-session receipt while provider
-work is pending. Each receipt has a terminal resolution, and only unresolved
+work is pending. The Start response preserves the current session's `pending`
+state when the durable account projection is still missing, disconnected,
+expired, or failed; this ephemeral response state lets the caller continue the
+same idempotent session and does not replace the projection as durable truth.
+An already connected projection wins a race with a stale pending session. Each
+receipt has a terminal resolution, and only unresolved
 receipts for the daemon's current account are polled. Applying an authoritative
 connected Snapshot atomically writes its monotonic Projection and surfaces all
 matching account-and-Connector receipts. The daemon holds the account lifecycle
 fence and is the single runtime scheduler for receipt recovery. Host projection
-does not enqueue a second operation. The daemon atomically creates or joins the
-active Reconcile for the same Connector and account scope, awaits it, and only
-then resolves the receipts as
+does not enqueue a second public operation. The daemon updates or joins the
+scope's durable Runtime Desired, awaits the exact generation in Observed, and
+only then resolves the receipts as
 `account_state_converged`. A same-revision Snapshot still surfaces a receipt created
 after an earlier Snapshot does not cause permanent polling. WebSocket hints and
 the five-minute calibration both fetch Snapshot; runtime reconcile is
 level-triggered and can safely repeat after restart or an interrupted pass.
-The external mutation API continues to use the global Snapshot revision for
-CAS. Internal level-triggered repair reads current durable state inside its
-transaction, so unrelated Connector operations cannot create false revision
-conflicts.
-An existing active Reconcile may have resolved its binding before a newer
-Projection was persisted. Joining it therefore drains older work but is not a
-convergence proof; the daemon ensures and awaits one follow-up Reconcile from
-current durable state before resolving the receipt.
+New external Connector mutations use `expectedConnectorRevision`, so unrelated
+Connectors accepted from one Snapshot can proceed independently. The required
+global `expectedRevision` remains in the wire contract for old clients and is
+used when the Connector fence is absent. Catalog refresh retains its global
+revision fence. Internal level-triggered repair reads current durable state
+inside its transaction.
+An in-flight reconcile may have resolved its binding before a newer Projection
+was persisted. Its Observed compare-and-swap is rejected after Desired advances;
+the scanner then applies the newer generation before receipt resolution.
 
 Authorization execution is selected from the exact release frozen into the
 durable operation. `managed_stdio` delegates to the local implementation host;
@@ -380,12 +447,40 @@ authentication only through a host-supplied request authorizer. Neither an API
 key submitted by the user nor the product account session is copied into the
 runtime VM. Remote MCP execution follows the product host's authenticated
 relay, while the VM receives only the non-credential runtime route identity.
+Remote authorization replacement propagates the explicit replacement policy to
+Start and uses the session-scoped control-plane Cancel endpoint when a receipt
+already exists. This covers both a returned session and an interrupted initial
+Begin without relying on a device-local process handle.
 
 ## Event Consistency
 
 Business state and its invalidation event are written to a durable outbox in
 the same SQLite transaction. The host publisher delivers outbox entries through
-its existing event stream and records delivery progress.
+its existing event stream and records delivery progress. A full Snapshot carries
+the maximum outbox `eventCursor` read in the same SQLite snapshot. Each delivered
+event carries its durable outbox cursor; duplicates are ignored and a gap causes
+one authoritative reload. Snapshot revision, event cursor, and per-Connector
+revision are separate watermarks, so a late partial fetch cannot suppress an
+unrelated Connector update or overwrite a newer entity.
+
+Account authorization overlays are read in the same SQLite Snapshot as market
+state. A public projection change atomically advances the Connector revision and
+appends its invalidation event; account state can no longer change invisibly
+between market Snapshot reads. Composer capability projection and prompt
+admission use the current account-scoped Snapshot as well, so their connected
+state cannot diverge from Connector Market management surfaces.
+
+Operation-bearing events carry an internal account audience and are delivered
+only while that owner is the host's active account. Every state change also
+produces a machine-level Connector invalidation without an operation id, so a
+different account still observes device installation truth without learning
+another account's command identity. Legacy or private events are fail-closed by
+stripping operation and owner identifiers before publication.
+
+Concurrent catalog requests use a process-local monotonically increasing fetch
+fence: an older page or refresh response that returns after a newer response is
+dropped before its write transaction. This is a daemon compatibility mechanism
+and requires no remote catalog protocol change.
 
 Pending outbox entries never expire. Published entries are delivery receipts,
 not the replay or diagnostic authority, and are retained for one hour before
@@ -443,15 +538,50 @@ synchronizing -> materializing -> ready`; failure is terminal and disposes
   host keeps the mutation request open until runtime work completes; the local
   projection is cleared on both success and failure and never replaces daemon
   installation truth
+- every new user authorization action creates a new `clientRequestId` and sends
+  `replacementPolicy=replace_active`; continuation polling within that action
+  reuses the same identity, while a superseded renderer Promise cannot retain
+  the Connector mutation token
 - event refreshes are coalesced, daemon reconnect performs a full reload, and
   accepted commands are followed through the operation endpoint or events
 - hosts gate connector-market transport through `canRequest`; Tutti binds it to
   account authentication, activates the module without network access while
   signed out, reloads after login, and keeps reconnect/resume paths silent
   after logout
+- install intent that arrives while Tutti is signed out invokes the host-owned
+  account login flow through `requestInstallAdmission`; the service rechecks
+  admission and returns `not_admitted` without calling the backend or showing
+  installation success when login is still pending
+- Tutti enables renderer-owned automatic updates for installed, compatible
+  Connectors. After an authoritative snapshot, catalog page, or connector event
+  publishes a different active release digest, Market starts the existing
+  install/update command in the background. It never opens login from a
+  background update and attempts one release digest only once per renderer
+  lifetime, leaving explicit update available after failure
 - the shared renderer subscribes at leaf components through a stable context,
   uses `@tutti-os/ui-system`, and owns no transport, startup, disposal, or
   business-state reconciliation
+
+Compact composer surfaces reuse `ConnectorComposerMenu` from the shared UI
+entrypoint. The menu consumes only a host-neutral projection of connector key,
+name, icon, and setup state; AgentGUI maps its provider-neutral capability
+options into that projection and retains only placement plus its Tutti Mode
+fallback. Selecting one item emits a semantic connector-open intent. The host
+executes `openConnectorMarketDialog(root, connectorKey)`, which waits for the
+authoritative market view, rejects invalid or unknown keys, and then advances
+the package-owned dialog state machine. Before applying the bounded quick-list
+limit, the shared menu stably groups connected connectors ahead of connectors
+that still require authorization or setup; each group preserves host catalog
+order. Its compact trigger previews the installed and authorized group without
+requiring those connectors to be selected in the current draft; draft selection
+continues to control only structured prompt content. Selecting “more” remains
+host navigation because settings/workbench location is product-owned.
+
+Every renderer window mounts exactly one `ConnectorMarketDialogHost` alongside
+its other window-level panel hosts. Composer entries and catalog cards never
+mount their own dialog host. This keeps dialog identity and mutual exclusion in
+one shared Root while allowing several AgentGUI surfaces in the same window to
+open it.
 
 Connector details are represented by one modal state machine, never by a fixed
 right-hand pane. An uninstalled connector opens an installation confirmation.
@@ -460,6 +590,11 @@ authorized connector opens the management dialog. Blocked releases open the
 blocked-state dialog. Only one dialog host is mounted at a time, so
 the catalog keeps the full settings content width and never leaves an empty
 right column.
+
+Closing an authorization dialog only dismisses presentation. The explicit
+Cancel action calls the Host cancellation command. Reopening an unconnected
+Connector starts a new replace-active attempt, so a hidden or stuck renderer
+request cannot lock later authorization actions.
 
 ## Local OpenAPI Reuse
 

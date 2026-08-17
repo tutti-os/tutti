@@ -7,6 +7,7 @@ import type {
 } from "@tutti-os/workspace-file-reference/contracts";
 import type { ReferenceSourceAggregator } from "@tutti-os/workspace-file-reference/core";
 import type { ReferenceSourcePickerProps } from "@tutti-os/workspace-file-reference/ui";
+import type { AgentProjectDropdownOptions } from "./AgentComposerProjectMenu";
 import type { AgentGuiWorkbenchCommandBridge } from "../../workbench/commands";
 import type { AgentSettings } from "../../contexts/settings/domain/agentSettings";
 import type { WorkspaceLinkAction } from "../../actions/workspaceLinkActions";
@@ -253,6 +254,12 @@ export interface AgentGUINodeRenderSlots {
    */
   agentConfigAccount?: (context: AgentGUIAgentConfigMenuContext) => ReactNode;
   projectDirectoryPickerHeaderActions?: ReferenceSourcePickerProps["renderHeaderActions"];
+  projectSelectOptions?: AgentProjectDropdownOptions;
+  referencePickerSidebarActions?: (
+    context: Parameters<
+      NonNullable<ReferenceSourcePickerProps["renderSidebarActions"]>
+    >[0] & { purpose: "directory" | "reference" }
+  ) => ReactNode;
   providerRailEmpty?: AgentGUIAgentsEmptyRenderer;
   sidebarFooter?: (ctx: AgentGUISidebarFooterContext) => ReactNode;
 }
@@ -493,6 +500,8 @@ export function areAgentGUINodePropsEqual(
     ps.providerRailEmpty === ns.providerRailEmpty &&
     ps.projectDirectoryPickerHeaderActions ===
       ns.projectDirectoryPickerHeaderActions &&
+    ps.projectSelectOptions === ns.projectSelectOptions &&
+    ps.referencePickerSidebarActions === ns.referencePickerSidebarActions &&
     ps.sidebarFooter === ns.sidebarFooter
   );
 }

@@ -5582,6 +5582,8 @@ paths:
           $ref: "#/components/responses/WorkspaceNotFoundError"
         "405":
           $ref: "#/components/responses/MethodNotAllowedError"
+        "409":
+          $ref: "#/components/responses/AgentInteractiveConflictError"
         "502":
           $ref: "#/components/responses/WorkspaceOperationError"
         "503":
@@ -7039,6 +7041,19 @@ components:
                     failureKind: missing
                   retryable: false
                   developerMessage: codex configuration dependency model_instructions_file is unavailable
+    AgentInteractiveConflictError:
+      description: Interactive response no longer matches a pending canonical request
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApiErrorResponse"
+          examples:
+            staleInteractiveResponse:
+              value:
+                error:
+                  code: workspace_operation_failed
+                  reason: agent_interactive_request_stale
+                  developerMessage: interactive request is no longer live
     AgentTargetNotFoundError:
       description: Agent target was not found
       content:
@@ -7665,6 +7680,14 @@ components:
         agentSessionId:
           type: string
           description: Caller agent session id hint. This is not an authorization boundary.
+          nullable: true
+        agentCwd:
+          type: string
+          description: Host-injected caller Agent working directory inherited by nested Agent starts that omit an explicit cwd. This is not an authorization boundary.
+          nullable: true
+        agentRailPlacementJSON:
+          type: string
+          description: Host-injected versioned RailPlacement JSON inherited together with agentCwd. The Agent command provider validates this value before use.
           nullable: true
     CliInvokeRequest:
       type: object
@@ -11501,6 +11524,26 @@ components:
           description: >-
             Active Agent session whose isolated provider home contributes
             session-created Skills to the composer catalog.
+        section:
+          type: string
+          enum:
+            - full
+            - core
+            - capabilities
+            - connectors
+          default: full
+          description: >-
+            Selects the independently loadable composer section. Core contains
+            model, reasoning, speed, permission, and runtime settings;
+            capabilities contains skills and capability catalog data;
+            connectors contains only the local Connector Market projection.
+            Full is retained for callers that need the combined legacy response.
+        waitForFreshModelCatalog:
+          type: boolean
+          description: >-
+            Waits for an authoritative model catalog when the cached result is
+            stale. Use only for an explicit model-picker request; ordinary
+            composer loads should render the last successful catalog first.
         agentTargetId:
           type: string
           description:
@@ -11520,6 +11563,15 @@ components:
       type: object
       additionalProperties: false
       properties:
+        section:
+          type: string
+          enum:
+            - full
+            - core
+            - capabilities
+            - connectors
+          default: full
+          description: Independently loadable composer section.
         locale:
           $ref: "#/components/schemas/DesktopLocale"
         settings:
@@ -14546,9 +14598,17 @@ components:
         model:
           type: string
           nullable: true
+        modelExplicit:
+          type: boolean
+          nullable: true
+          description: True only when model came from an explicit caller selection; false identifies an inherited or remembered fallback preference.
         reasoningEffort:
           type: string
           nullable: true
+        reasoningEffortExplicit:
+          type: boolean
+          nullable: true
+          description: True only when reasoning effort came from an explicit caller selection; false identifies a model-dependent inherited value.
         noProject:
           type: boolean
           nullable: true

@@ -122,13 +122,71 @@ describe("submitted composer draft cleanup", () => {
     expect(clearSubmittedDraftIfUnchanged({ drafts, snapshot })).toBe(drafts);
   });
 
-  it("treats attachment upload metadata as part of the atomic content", () => {
+  it("keeps the full draft comparator sensitive to upload metadata", () => {
     const current = snapshotAgentComposerDraft(submittedDraft);
     const image = current.find((block) => block.type === "image");
     if (image) image.uploading = true;
 
     expect(areAgentComposerDraftsEqual(current, submittedDraft)).toBe(false);
+  });
+
+  it("clears after an image upload swaps its provider locator", () => {
+    const submittedDraft = buildAgentComposerDraft({
+      prompt: "Review this",
+      images: [
+        {
+          id: "image-1",
+          name: "screen.png",
+          mimeType: "image/png",
+          data: "base64-image",
+          previewUrl: "blob:image-1",
+          uploading: true
+        }
+      ]
+    });
+    const currentDraft = buildAgentComposerDraft({
+      prompt: "Review this",
+      images: [
+        {
+          id: "image-1",
+          name: "screen.png",
+          mimeType: "image/png",
+          attachmentId: "attachment-1",
+          url: "https://example.test/screen.png",
+          previewUrl: "blob:image-1",
+          uploading: false
+        }
+      ]
+    });
+    const snapshot: SubmittedDraftSnapshot = {
+      sourceScopeKey,
+      content: snapshotAgentComposerDraft(submittedDraft)
+    };
+    const drafts = { [sourceScopeKey]: currentDraft };
+
+    expect(areAgentComposerDraftsEqual(currentDraft, submittedDraft)).toBe(
+      false
+    );
+    const result = clearSubmittedDraftIfUnchanged({ drafts, snapshot });
+
+    expect(result[sourceScopeKey]).toEqual([{ type: "text", text: "" }]);
+  });
+
+  it("retains an image when its upload reports an error", () => {
+    const current = snapshotAgentComposerDraft(submittedDraft);
+    const image = current.find((block) => block.type === "image");
+    if (image) image.uploadError = "upload failed";
     const drafts = { [sourceScopeKey]: current };
+
+    expect(clearSubmittedDraftIfUnchanged({ drafts, snapshot })).toBe(drafts);
+  });
+
+  it("keeps detecting unknown image metadata as a draft change", () => {
+    const current = snapshotAgentComposerDraft(submittedDraft);
+    const image = current.find((block) => block.type === "image");
+    Object.assign(image ?? {}, { futureMetadata: "edited" });
+    const drafts = { [sourceScopeKey]: current };
+
     expect(clearSubmittedDraftIfUnchanged({ drafts, snapshot })).toBe(drafts);
   });
 

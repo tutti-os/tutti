@@ -431,6 +431,9 @@ type hostEditRetryRuntime struct {
 	execOutcomeUnknownAccepted  bool
 	execNotDispatchedBeforeTurn bool
 	guidanceMismatch            bool
+	guidanceTargetInactive      bool
+	guidancePreflightFailure    bool
+	guidanceProviderCalls       int
 	guidanceTransportFailure    bool
 	reconcileAcceptanceCalls    int
 	reconcileAcceptanceInput    agenthost.RuntimeProviderTurnAcceptanceInput
@@ -463,10 +466,39 @@ func (r *hostEditRetryRuntime) Exec(ctx context.Context, input agenthost.Runtime
 	outcomeUnknownAccepted := r.execOutcomeUnknownAccepted
 	notDispatchedBeforeTurn := r.execNotDispatchedBeforeTurn
 	guidanceMismatch := r.guidanceMismatch
+	guidanceTargetInactive := r.guidanceTargetInactive
+	guidancePreflightFailure := r.guidancePreflightFailure
 	guidanceTransportFailure := r.guidanceTransportFailure
 	r.execOutcomeUnknown = false
 	r.execOutcomeUnknownAccepted = false
 	r.execNotDispatchedBeforeTurn = false
+	r.guidanceMismatch = false
+	r.guidanceTargetInactive = false
+	r.guidancePreflightFailure = false
+	if input.Guidance && (guidanceMismatch || guidanceTargetInactive) {
+		r.mu.Unlock()
+		// The runtime adapter proves the exact target is inactive before entering
+		// the provider. Model both a changed active turn and the settle race where
+		// no active turn remains with the same Host sentinel/disposition contract.
+		return agenthost.RuntimeExecResult{
+			TurnID: input.TurnID,
+			ProviderDispatch: agenthost.RuntimeProviderDispatchResult{
+				Disposition: agenthost.RuntimeDispatchDispositionNotDispatched,
+			},
+		}, fmt.Errorf("%w: exact guidance target is inactive before provider admission", agenthost.ErrActiveTurnTargetMismatch)
+	}
+	if input.Guidance && guidancePreflightFailure {
+		r.mu.Unlock()
+		return agenthost.RuntimeExecResult{
+			TurnID: input.TurnID,
+			ProviderDispatch: agenthost.RuntimeProviderDispatchResult{
+				Disposition: agenthost.RuntimeDispatchDispositionNotDispatched,
+			},
+		}, errors.New("guidance adapter preflight failed before provider dispatch")
+	}
+	if input.Guidance {
+		r.guidanceProviderCalls++
+	}
 	if !outcomeUnknown || outcomeUnknownAccepted {
 		if !notDispatchedBeforeTurn {
 			r.providerTurns = append(r.providerTurns, agenthost.RuntimeHistoryTurn{
@@ -475,23 +507,13 @@ func (r *hostEditRetryRuntime) Exec(ctx context.Context, input agenthost.Runtime
 		}
 	}
 	r.mu.Unlock()
-	if input.Guidance && guidanceMismatch {
-		// The runtime adapter maps its own target verdict onto the Host
-		// sentinel, so the fixture reports the same shape production sees.
-		return agenthost.RuntimeExecResult{
-			TurnID: input.TurnID,
-			ProviderDispatch: agenthost.RuntimeProviderDispatchResult{
-				Disposition: agenthost.RuntimeDispatchDispositionNotDispatched,
-			},
-		}, fmt.Errorf("%w: guidance target changed before provider admission", agenthost.ErrActiveTurnTargetMismatch)
-	}
 	if input.Guidance && guidanceTransportFailure {
 		return agenthost.RuntimeExecResult{
 			TurnID: input.TurnID,
 			ProviderDispatch: agenthost.RuntimeProviderDispatchResult{
-				Disposition: agenthost.RuntimeDispatchDispositionNotDispatched,
+				Disposition: agenthost.RuntimeDispatchDispositionOutcomeUnknown,
 			},
-		}, errors.New("guidance transport failed before provider admission")
+		}, errors.New("guidance transport failed after provider admission")
 	}
 	if notDispatchedBeforeTurn {
 		return agenthost.RuntimeExecResult{

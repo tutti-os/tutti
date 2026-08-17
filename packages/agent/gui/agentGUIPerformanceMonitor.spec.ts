@@ -8,7 +8,8 @@ import { describe, expect, it, vi } from "vitest";
 import {
   agentGUIPerformanceDuration,
   createAgentGUIPerformanceMonitor,
-  trackAgentGUIComposerOptionsLoad
+  trackAgentGUIComposerOptionsLoad,
+  type AgentGUIComposerOptionsPerformanceEvent
 } from "./agentGUIPerformanceMonitor";
 
 describe("createAgentGUIPerformanceMonitor", () => {
@@ -116,6 +117,8 @@ describe("createAgentGUIPerformanceMonitor", () => {
         durationBucket: "3s_to_10s",
         durationMs: 4_000,
         errorCategory: "composer_options_timeout",
+        errorCode: "composer_options_timeout",
+        failureStage: "options_load",
         outcome: "failed",
         source: "session-engine",
         type: "composer_options_load_settled"
@@ -123,6 +126,127 @@ describe("createAgentGUIPerformanceMonitor", () => {
     );
     expect(JSON.stringify(onEvent.mock.calls)).not.toContain(
       "private provider response"
+    );
+    monitor.dispose();
+  });
+
+  it("reports section stages and bounded model names", async () => {
+    const onEvent = vi.fn();
+    const options = {
+      models: [
+        { label: "GPT-5", value: "gpt-5" },
+        { label: "GPT-5 duplicate", value: "gpt-5" },
+        { label: "Other", value: "model\nwith-control" }
+      ],
+      provider: "codex"
+    } as AgentActivityComposerOptions;
+
+    await expect(
+      trackAgentGUIComposerOptionsLoad({
+        agentTargetId: "codex-target",
+        cwd: "/private/workspace",
+        load: () => Promise.resolve(options),
+        onEvent,
+        provider: "codex",
+        section: "core",
+        source: "runtime",
+        stage: "model_catalog",
+        workspaceId: "workspace-1"
+      })
+    ).resolves.toBe(options);
+
+    expect(onEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        section: "core",
+        stage: "model_catalog",
+        type: "composer_options_stage_started"
+      })
+    );
+    expect(onEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        modelNames: ["gpt-5", "modelwith-control"],
+        section: "core",
+        stage: "model_catalog",
+        type: "composer_options_stage_settled"
+      })
+    );
+    expect(onEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        modelNames: ["gpt-5", "modelwith-control"],
+        type: "composer_options_load_settled"
+      })
+    );
+    expect(JSON.stringify(onEvent.mock.calls)).not.toContain(
+      "/private/workspace"
+    );
+  });
+
+  it("uses bounded unknown for a missing Composer error code and rethrows it", async () => {
+    const sinkFailure = new Error("event sink failed");
+    const failure = new Error("private provider response");
+    const onEvent = vi.fn<
+      (event: AgentGUIComposerOptionsPerformanceEvent) => void
+    >(() => {
+      throw sinkFailure;
+    });
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => undefined);
+
+    try {
+      const pending = trackAgentGUIComposerOptionsLoad({
+        agentTargetId: "codex-target",
+        load: () => Promise.reject(failure),
+        onEvent,
+        provider: "codex",
+        source: "runtime",
+        workspaceId: "workspace-1"
+      });
+
+      await expect(pending).rejects.toBe(failure);
+      expect(onEvent).toHaveBeenCalledTimes(2);
+      expect(onEvent.mock.calls[1]?.[0]).toEqual(
+        expect.objectContaining({
+          errorCategory: "unknown",
+          errorCode: "unknown",
+          failureStage: "options_load",
+          outcome: "failed",
+          type: "composer_options_load_settled"
+        })
+      );
+      expect(JSON.stringify(onEvent.mock.calls)).not.toContain(
+        "private provider response"
+      );
+    } finally {
+      consoleError.mockRestore();
+    }
+  });
+
+  it("does not report expected Composer options cancellation as a failure", async () => {
+    const harness = createEngineHarness(engineState({}));
+    const onEvent = vi.fn();
+    const monitor = createAgentGUIPerformanceMonitor({
+      engine: harness.engine,
+      onEvent,
+      subscribeSessionEvents: harness.subscribeSessionEvents
+    });
+
+    const pending = monitor.trackComposerOptionsLoad({
+      agentTargetId: "codex-target",
+      load: () => Promise.reject(new Error("composer_options_load_superseded")),
+      provider: "codex",
+      source: "session-engine"
+    });
+
+    await expect(pending).rejects.toThrow("composer_options_load_superseded");
+    expect(onEvent).toHaveBeenCalledWith(
+      expect.objectContaining({ type: "composer_options_load_started" })
+    );
+    expect(onEvent).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        outcome: "failed",
+        type: "composer_options_load_settled"
+      })
     );
     monitor.dispose();
   });

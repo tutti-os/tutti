@@ -11,6 +11,7 @@ import {
 } from "@tutti-os/ui-system";
 import { createElement, type ReactElement } from "react";
 import {
+  formatWorkspaceFilePathForDisplay,
   isWorkspaceFileBrowserOpenable,
   resolveRevealInFolderLabel,
   type WorkspaceFileEntry,
@@ -184,11 +185,15 @@ export function createDesktopWorkspaceFileManagerContextMenu(input: {
       icon: createElement(CopyIcon, { className: "size-4" }),
       label: appI18n.t("workspaceFileManager.copyPathLabel"),
       onSelect: async () => {
+        const displayPath = formatWorkspaceFilePathForDisplay(
+          entry.path,
+          hostOs
+        );
         if (onCopyPath) {
-          await onCopyPath(entry.path);
+          await onCopyPath(displayPath);
           return;
         }
-        await navigator.clipboard.writeText(entry.path);
+        await navigator.clipboard.writeText(displayPath);
       }
     });
     if (capabilities.canRevealInFolder && !isExternalLocation) {

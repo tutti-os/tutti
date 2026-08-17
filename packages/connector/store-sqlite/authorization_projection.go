@@ -30,6 +30,44 @@ WHERE account_id = ? AND connector_key = ?`, accountID, connectorKey).Scan(&payl
 	return projection, nil
 }
 
+func overlayAuthorizationProjectionsOn(
+	ctx context.Context,
+	tx *sql.Tx,
+	accountID string,
+	connectors []market.Connector,
+) ([]market.Connector, error) {
+	rows, err := tx.QueryContext(ctx, `SELECT connector_key, projection_json FROM connector_market_authorization_projections WHERE account_id = ?`, accountID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	projections := make(map[string]market.AuthorizationProjection)
+	for rows.Next() {
+		var connectorKey, payload string
+		if err := rows.Scan(&connectorKey, &payload); err != nil {
+			return nil, err
+		}
+		var projection market.AuthorizationProjection
+		if err := json.Unmarshal([]byte(payload), &projection); err != nil {
+			return nil, fmt.Errorf("decode connector authorization projection: %w", err)
+		}
+		projections[connectorKey] = projection
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	for index := range connectors {
+		projection, ok := projections[connectors[index].Key]
+		if !ok {
+			continue
+		}
+		connectors[index].Authorization = market.Authorization{
+			State: projection.State, FailureCode: projection.FailureCode,
+		}
+	}
+	return connectors, nil
+}
+
 func (store *Store) SaveAuthorizationProjection(
 	ctx context.Context,
 	projection market.AuthorizationProjection,
@@ -44,6 +82,7 @@ func (store *Store) SaveAuthorizationProjection(
 	}
 	defer func() { _ = tx.Rollback() }()
 	var currentPayload string
+	publicChanged := true
 	currentErr := tx.QueryRowContext(ctx, `SELECT projection_json FROM connector_market_authorization_projections
 WHERE account_id = ? AND connector_key = ?`, projection.AccountID, projection.ConnectorKey).Scan(&currentPayload)
 	if currentErr == nil {
@@ -55,6 +94,7 @@ WHERE account_id = ? AND connector_key = ?`, projection.AccountID, projection.Co
 			current.ServerSynchronized && projection.ServerSynchronized && current.ServerRevision > projection.ServerRevision {
 			return tx.Commit()
 		}
+		publicChanged = !samePublicAuthorizationProjection(current, projection)
 	} else if !errors.Is(currentErr, sql.ErrNoRows) {
 		return currentErr
 	}
@@ -64,6 +104,11 @@ VALUES (?, ?, ?)
 ON CONFLICT(account_id, connector_key) DO UPDATE SET projection_json = excluded.projection_json`,
 		projection.AccountID, projection.ConnectorKey, string(payload)); err != nil {
 		return err
+	}
+	if publicChanged {
+		if err := bumpAuthorizationProjectionRevisionOn(ctx, tx, projection.ConnectorKey); err != nil {
+			return err
+		}
 	}
 	return tx.Commit()
 }
@@ -157,6 +202,12 @@ VALUES (?, ?, ?) ON CONFLICT(account_id,connector_key) DO UPDATE SET projection_
 ON CONFLICT(account_id) DO UPDATE SET revision = excluded.revision`, accountID, snapshot.Revision); err != nil {
 			return market.AuthorizationSnapshotApplyResult{}, err
 		}
+		sort.Strings(result.ChangedConnectorKeys)
+		for _, connectorKey := range result.ChangedConnectorKeys {
+			if err := bumpAuthorizationProjectionRevisionOn(ctx, tx, connectorKey); err != nil {
+				return market.AuthorizationSnapshotApplyResult{}, err
+			}
+		}
 		effective = incoming
 	}
 	pending, err := connectedAuthorizationReceiptConnectorKeys(ctx, tx, accountID, effective)
@@ -170,6 +221,44 @@ ON CONFLICT(account_id) DO UPDATE SET revision = excluded.revision`, accountID, 
 		return market.AuthorizationSnapshotApplyResult{}, err
 	}
 	return result, nil
+}
+
+func samePublicAuthorizationProjection(left, right market.AuthorizationProjection) bool {
+	return left.State == right.State && left.ConnectionID == right.ConnectionID &&
+		left.FailureCode == right.FailureCode && left.ConnectionVersion == right.ConnectionVersion &&
+		left.ConnectorVersion == right.ConnectorVersion && left.ServerSynchronized == right.ServerSynchronized
+}
+
+func bumpAuthorizationProjectionRevisionOn(ctx context.Context, tx *sql.Tx, connectorKey string) error {
+	var connectorPayload string
+	if err := tx.QueryRowContext(ctx, `SELECT connector_json FROM connector_market_connectors WHERE connector_key = ?`, connectorKey).Scan(&connectorPayload); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil
+		}
+		return err
+	}
+	connector, err := decodeConnector(connectorPayload)
+	if err != nil {
+		return err
+	}
+	var revision uint64
+	if err := tx.QueryRowContext(ctx, `UPDATE connector_market_metadata SET revision = revision + 1 WHERE id = ? RETURNING revision`, metadataID).Scan(&revision); err != nil {
+		return err
+	}
+	connector.Revision = revision
+	payload, err := json.Marshal(connector)
+	if err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `UPDATE connector_market_connectors SET connector_json = ? WHERE connector_key = ?`, string(payload), connectorKey); err != nil {
+		return err
+	}
+	eventPayload, err := json.Marshal(market.ChangedEvent{ConnectorKey: connectorKey, Revision: revision})
+	if err != nil {
+		return err
+	}
+	_, err = tx.ExecContext(ctx, `INSERT INTO connector_market_outbox (revision, event_json, published_at_unix_ms) VALUES (?, ?, NULL)`, revision, string(eventPayload))
+	return err
 }
 
 func connectedAuthorizationReceiptConnectorKeys(

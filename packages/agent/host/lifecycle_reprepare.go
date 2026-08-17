@@ -93,6 +93,10 @@ func (h *Host) reprepareRuntimeSession(
 	if prepared.Settings != nil {
 		settings = *prepared.Settings
 	}
+	prepared.Env, err = runtimeEnvironmentForCanonicalSession(prepared.Env, prepared.Cwd, canonicalSession)
+	if err != nil {
+		return ProviderRuntimeSession{}, err
+	}
 	goalGenerationFences, err := h.listRuntimeGoalGenerationFences(ctx, ref)
 	if err != nil {
 		return ProviderRuntimeSession{}, h.cleanupFailedReprepare(ctx, ref, canonicalSession.Provider, err)

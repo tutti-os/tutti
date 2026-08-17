@@ -11,8 +11,7 @@ import {
   AGENT_EXTENSION_GEMINI_FLAG,
   AGENT_QUICK_PROMPT_LIBRARY_FLAG,
   LAB_CONNECTORS_FLAG,
-  LAB_ENABLED_FLAG,
-  MOBILE_REMOTE_ACCESS_SETTINGS_FLAG
+  LAB_ENABLED_FLAG
 } from "../../../../../../shared/featureFlags/catalog.ts";
 import type { DesktopWorkspaceSettingsClient } from "./adapters/desktopWorkspaceSettingsClient.ts";
 import { WorkspaceSettingsService } from "./workspaceSettingsService.ts";
@@ -621,30 +620,6 @@ test("WorkspaceSettingsService reports a quick prompt specific save failure", as
     notifications.items[0] ===
       "We couldn't update quick-prompt library availability." ||
       notifications.items[0] === "暂时无法更新快捷提示词库可用状态"
-  );
-});
-
-test("WorkspaceSettingsService reports a mobile remote access settings save failure", async () => {
-  const notifications = createNotificationRecorder();
-  const service = new WorkspaceSettingsService(
-    { client: createWorkspaceSettingsClient({}) },
-    createDesktopPreferencesService({
-      onSetFeatureFlags: async () => {
-        throw new Error("preferences unavailable");
-      },
-      state: createPreferencesState({ featureFlags: {} })
-    }),
-    notifications.service
-  );
-
-  await service.changeFeatureFlags({
-    [MOBILE_REMOTE_ACCESS_SETTINGS_FLAG]: true
-  });
-
-  assert.equal(notifications.items.length, 1);
-  assert.ok(
-    notifications.items[0] === "We couldn't update mobile remote access." ||
-      notifications.items[0] === "暂时无法更新手机远程访问设置"
   );
 });
 

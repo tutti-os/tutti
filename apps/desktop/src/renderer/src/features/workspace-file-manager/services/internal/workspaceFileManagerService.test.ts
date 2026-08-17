@@ -250,7 +250,49 @@ test("workspace file manager service compares native Windows paths with daemon l
 
   assert.equal(
     await service.entryExists({
-      path: "C:\\README.md",
+      path: "c:\\README.md",
+      workspaceID: "workspace-1"
+    }),
+    true
+  );
+  assert.equal(requestedPath, "/C:/");
+});
+
+test("workspace file manager service maps Git Bash Windows paths to daemon logical paths", async () => {
+  const dependencies = createDependenciesStub();
+  dependencies.platformApi = {
+    homeDirectory: "C:\\Users\\demo",
+    os: "win32"
+  };
+  let requestedPath: string | undefined;
+  dependencies.tuttidClient.listWorkspaceFileDirectory = async (
+    workspaceId,
+    input
+  ) => {
+    requestedPath = input?.path;
+    return {
+      directoryPath: "/C:/",
+      entries: [
+        {
+          createdTimeMs: null,
+          hasChildren: false,
+          kind: "file",
+          lastOpenedMs: null,
+          mtimeMs: null,
+          name: "README.md",
+          path: "/C:/README.md",
+          sizeBytes: 12
+        }
+      ],
+      root: "/C:/",
+      workspaceId
+    };
+  };
+  const service = new WorkspaceFileManagerService(dependencies);
+
+  assert.equal(
+    await service.entryExists({
+      path: "/c/README.md",
       workspaceID: "workspace-1"
     }),
     true

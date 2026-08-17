@@ -1,4 +1,4 @@
-import { act, renderHook } from "@testing-library/react";
+import { act, fireEvent, renderHook } from "@testing-library/react";
 import type { Editor } from "@tiptap/core";
 import { describe, expect, it, vi } from "vitest";
 import type { AgentRichTextEditorHandle } from "../agentRichText/AgentRichTextEditor";
@@ -59,6 +59,100 @@ describe("useComposerMentionActions directory navigation", () => {
 
     expect(updateQuery).not.toHaveBeenCalled();
     expect(selectFileMentionNavigationItem).not.toHaveBeenCalled();
+  });
+});
+
+describe("useComposerMentionActions palette dismissal", () => {
+  it("closes the mention palette when pointer or focus moves outside", () => {
+    const input = createInput({
+      replaceTextBeforeSelection: vi.fn(() => null),
+      selectFileMentionNavigationItem: vi.fn(() => false),
+      updateQuery: vi.fn()
+    });
+    const close = vi.fn();
+    const setIsPaletteOpen = vi.fn();
+    const composer = document.createElement("form");
+    const palette = document.createElement("div");
+    document.body.append(composer, palette);
+    input.fileMentionSuggestion = null;
+    input.showFileMentionPalette = true;
+    input.setIsPaletteOpen = setIsPaletteOpen;
+    input.mentionControllerRef.current = { close } as never;
+    input.composerRef.current = composer;
+    input.paletteContentRef.current = palette;
+
+    renderHook(() => useComposerMentionActions(input));
+
+    act(() => {
+      fireEvent.pointerDown(document.body);
+    });
+
+    expect(close).toHaveBeenCalledOnce();
+    expect(setIsPaletteOpen).toHaveBeenCalledWith(false);
+
+    act(() => {
+      fireEvent.focusIn(document.body);
+    });
+
+    expect(close).toHaveBeenCalledTimes(2);
+    expect(setIsPaletteOpen).toHaveBeenCalledTimes(2);
+    composer.remove();
+    palette.remove();
+  });
+
+  it("keeps the mention palette open when focus moves inside its portal", () => {
+    const input = createInput({
+      replaceTextBeforeSelection: vi.fn(() => null),
+      selectFileMentionNavigationItem: vi.fn(() => false),
+      updateQuery: vi.fn()
+    });
+    const close = vi.fn();
+    const setIsPaletteOpen = vi.fn();
+    const composer = document.createElement("form");
+    const palette = document.createElement("div");
+    const paletteButton = document.createElement("button");
+    palette.append(paletteButton);
+    document.body.append(composer, palette);
+    input.fileMentionSuggestion = null;
+    input.showFileMentionPalette = true;
+    input.setIsPaletteOpen = setIsPaletteOpen;
+    input.mentionControllerRef.current = { close } as never;
+    input.composerRef.current = composer;
+    input.paletteContentRef.current = palette;
+
+    renderHook(() => useComposerMentionActions(input));
+
+    act(() => {
+      fireEvent.focusIn(paletteButton);
+    });
+
+    expect(close).not.toHaveBeenCalled();
+    expect(setIsPaletteOpen).not.toHaveBeenCalled();
+    composer.remove();
+    palette.remove();
+  });
+
+  it("closes the mention palette when its host surface loses activity", () => {
+    const input = createInput({
+      replaceTextBeforeSelection: vi.fn(() => null),
+      selectFileMentionNavigationItem: vi.fn(() => false),
+      updateQuery: vi.fn()
+    });
+    const close = vi.fn();
+    const setIsPaletteOpen = vi.fn();
+    input.fileMentionSuggestion = null;
+    input.showFileMentionPalette = true;
+    input.setIsPaletteOpen = setIsPaletteOpen;
+    input.mentionControllerRef.current = { close } as never;
+    input.isActive = true;
+
+    const { rerender } = renderHook(() => useComposerMentionActions(input));
+
+    input.isActive = false;
+    rerender();
+
+    expect(close).toHaveBeenCalledOnce();
+    expect(setIsPaletteOpen).toHaveBeenCalledWith(false);
   });
 });
 
@@ -132,6 +226,7 @@ function createInput(mocks: {
     isSendingTurn: false,
     isSubmittingPrompt: false,
     showStopButton: false,
+    isActive: true,
     onSettingsChange: vi.fn(),
     handleSlashPaletteKeyDown: vi.fn(() => false),
     handleSlashCommandMenuKeyDown: vi.fn(() => false),

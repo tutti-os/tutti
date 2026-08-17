@@ -79,10 +79,14 @@ jobs:
           if (!lock.platforms?.[platform]) {
             throw new Error(`runtime lock does not contain ${platform}`);
           }
+          const pythonVersion =
+            platform === "windows-amd64"
+              ? lock.python?.windows?.version
+              : lock.python?.version;
           for (const [name, value] of [
             ["runtime_version", lock.runtimeVersion],
             ["uv_version", lock.uv?.version],
-            ["python_version", lock.python?.version],
+            ["python_version", pythonVersion],
             ["python_windows_archive_url", lock.python?.windows?.archiveUrl],
             ["python_windows_archive_sha256", lock.python?.windows?.archiveSha256],
             ["python_windows_archive_root", lock.python?.windows?.archiveRoot],
@@ -286,10 +290,9 @@ jobs:
           PYTHON_WINDOWS_ARCHIVE_SHA256: ${{ steps.lock.outputs.python_windows_archive_sha256 }}
           PYTHON_WINDOWS_ARCHIVE_ROOT: ${{ steps.lock.outputs.python_windows_archive_root }}
         run: |
-          # The official CPython release may be source-only for a patch
-          # release. Use the pinned relocatable build instead of silently
-          # substituting another Python version.
-          $archive = "python-$env:PYTHON_VERSION-windows.tar.gz"
+          # Windows uses the last official CPython 3.12 embeddable release so
+          # every executable module carries the PSF Authenticode signature.
+          $archive = "python-$env:PYTHON_VERSION-embed-amd64.zip"
           $archivePath = Join-Path $env:RUNNER_TEMP $archive
           Invoke-WebRequest -Uri $env:PYTHON_WINDOWS_ARCHIVE_URL -OutFile $archivePath
           $actual = (Get-FileHash -Algorithm SHA256 $archivePath).Hash.ToLowerInvariant()
@@ -300,12 +303,29 @@ jobs:
           $target = Join-Path $env:RUNNER_TEMP 'tutti-runtime-python'
           Remove-Item $expanded, $target -Recurse -Force -ErrorAction SilentlyContinue
           New-Item -ItemType Directory -Path $expanded -Force | Out-Null
-          tar -xzf $archivePath -C $expanded
+          Expand-Archive -LiteralPath $archivePath -DestinationPath $expanded
           $pythonRoot = Join-Path $target 'python/bin'
           New-Item -ItemType Directory -Path $pythonRoot -Force | Out-Null
           $sourceRoot = Join-Path $expanded $env:PYTHON_WINDOWS_ARCHIVE_ROOT
           if (-not (Test-Path (Join-Path $sourceRoot 'python.exe'))) {
             throw "Managed Python archive root does not contain python.exe"
+          }
+          $peFiles = Get-ChildItem -LiteralPath $sourceRoot -Recurse -File | Where-Object {
+            $_.Extension -in '.exe', '.dll', '.pyd'
+          }
+          if (-not $peFiles) {
+            throw "Managed Python archive contains no Windows executable files"
+          }
+          $invalidSignatures = @($peFiles | Where-Object {
+            (Get-AuthenticodeSignature -LiteralPath $_.FullName).Status -ne 'Valid'
+          })
+          if ($invalidSignatures.Count -gt 0) {
+            $invalidNames = ($invalidSignatures.Name | Sort-Object) -join ', '
+            throw "Managed Python archive contains invalid or unsigned files: $invalidNames"
+          }
+          $pythonSignature = Get-AuthenticodeSignature -LiteralPath (Join-Path $sourceRoot 'python.exe')
+          if ($pythonSignature.SignerCertificate.Subject -notmatch 'O=Python Software Foundation') {
+            throw "Managed Python executable is not signed by the Python Software Foundation"
           }
           Copy-Item (Join-Path $sourceRoot '*') $pythonRoot -Recurse
           $python = Join-Path $pythonRoot 'python.exe'

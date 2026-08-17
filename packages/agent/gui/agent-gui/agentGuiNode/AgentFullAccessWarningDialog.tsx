@@ -71,6 +71,7 @@ export function AgentFullAccessWarningDialog({
           rel="noreferrer"
           target="_blank"
           onClick={(event) => {
+            onOpenChange(false);
             if (!onLinkAction) {
               return;
             }

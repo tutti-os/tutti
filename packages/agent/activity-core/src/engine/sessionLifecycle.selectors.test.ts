@@ -171,7 +171,7 @@ test("consumer collections hide presentation-invisible sessions without removing
   );
 });
 
-test("consumer status is derived from canonical entities and engine-owned initial activation", () => {
+test("consumer status is derived from canonical Turn and Interaction entities", () => {
   let state = createInitialAgentSessionEngineState();
   state = rootEngineReducer(state, {
     sessions: [
@@ -227,7 +227,7 @@ test("consumer status is derived from canonical entities and engine-owned initia
   });
 });
 
-test("new activation stays working between session confirmation and first canonical turn", () => {
+test("new activation remains idle until canonical execution appears", () => {
   let state = createInitialAgentSessionEngineState();
   state = rootEngineReducer(state, {
     agentSessionId: "session-1",
@@ -246,6 +246,36 @@ test("new activation stays working between session confirmation and first canoni
     sessions: [
       {
         activeTurnId: null,
+        agentSessionId: "session-1",
+        createdAtUnixMs: 20,
+        cwd: "/workspace",
+        latestTurnInteractions: [],
+        pendingInteractions: [],
+        provider: "codex",
+        title: "test1",
+        workspaceId: "workspace-1"
+      }
+    ],
+    type: "session/snapshotReceived"
+  }).state;
+
+  assert.equal(
+    selectWorkspaceAgentConsumerSession(state, "session-1")?.displayStatus,
+    "idle"
+  );
+
+  state = rootEngineReducer(state, {
+    sessions: [
+      {
+        activeTurn: {
+          agentSessionId: "session-1",
+          origin: "user_prompt",
+          phase: "running",
+          startedAtUnixMs: 20,
+          turnId: "turn-1",
+          updatedAtUnixMs: 20
+        },
+        activeTurnId: "turn-1",
         agentSessionId: "session-1",
         createdAtUnixMs: 20,
         cwd: "/workspace",

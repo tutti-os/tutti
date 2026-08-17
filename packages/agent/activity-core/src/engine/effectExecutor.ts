@@ -344,8 +344,14 @@ function activationInput(
       ? { initialDisplayPrompt: command.initialDisplayPrompt }
       : {}),
     ...(command.isolation ? { isolation: command.isolation } : {}),
+    ...(command.modelExplicit !== undefined
+      ? { modelExplicit: command.modelExplicit }
+      : {}),
     ...(command.railPlacement
       ? { railPlacement: { ...command.railPlacement } }
+      : {}),
+    ...(command.reasoningEffortExplicit !== undefined
+      ? { reasoningEffortExplicit: command.reasoningEffortExplicit }
       : {}),
     ...(command.settings ? { settings: { ...command.settings } } : {}),
     ...(command.submitDiagnostics

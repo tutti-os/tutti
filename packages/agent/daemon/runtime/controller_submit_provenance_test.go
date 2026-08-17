@@ -176,13 +176,16 @@ func waitForCanonicalSubmitMessageReports(
 }
 
 type submittedTurnBarrierReporter struct {
-	entered chan struct{}
-	release chan struct{}
-	err     error
-	once    sync.Once
+	entered         chan struct{}
+	release         chan struct{}
+	err             error
+	once            sync.Once
+	input           agentsessionstore.ReportActivityInput
+	provenanceCalls int
 }
 
-func (r *submittedTurnBarrierReporter) Report(ctx context.Context, _ agentsessionstore.ReportActivityInput) error {
+func (r *submittedTurnBarrierReporter) Report(ctx context.Context, input agentsessionstore.ReportActivityInput) error {
+	r.input = input
 	r.once.Do(func() { close(r.entered) })
 	select {
 	case <-r.release:
@@ -193,6 +196,7 @@ func (r *submittedTurnBarrierReporter) Report(ctx context.Context, _ agentsessio
 }
 
 func (r *submittedTurnBarrierReporter) ReportSubmitProvenance(ctx context.Context, report agentsessionstore.ReportActivityInput) error {
+	r.provenanceCalls++
 	return r.Report(ctx, report)
 }
 
@@ -224,7 +228,11 @@ func TestControllerExecWaitsForSubmittedTurnDurableReportBeforeProviderStart(t *
 	execDone := make(chan error, 1)
 	go func() {
 		_, execErr := controller.Exec(context.Background(), ExecInput{
-			RoomID: "room-1", AgentSessionID: "agent-session-1", Content: textPrompt("hello"),
+			RoomID:                          "room-1",
+			AgentSessionID:                  "agent-session-1",
+			ClientSubmitID:                  "submit-1",
+			CanonicalSubmitOccurredAtUnixMS: 1_234,
+			Content:                         textPrompt("hello"),
 		})
 		execDone <- execErr
 	}()
@@ -248,6 +256,15 @@ func TestControllerExecWaitsForSubmittedTurnDurableReportBeforeProviderStart(t *
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("Exec did not return after durable report")
+	}
+	if len(reporter.input.MessageUpdates) != 1 ||
+		reporter.input.MessageUpdates[0].MessageID != userPromptActivityMessageIDFromClientSubmitID("submit-1") ||
+		reporter.input.MessageUpdates[0].Role != string(activityshared.MessageRoleUser) ||
+		reporter.input.MessageUpdates[0].TurnID == "" {
+		t.Fatalf("submitted report message updates = %#v", reporter.input.MessageUpdates)
+	}
+	if reporter.provenanceCalls != 1 {
+		t.Fatalf("submit provenance calls = %d, want one atomic admission call", reporter.provenanceCalls)
 	}
 	select {
 	case <-adapter.executed:

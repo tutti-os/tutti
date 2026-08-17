@@ -30,6 +30,9 @@ type ProviderLaunchPrepareInput struct {
 	Env         []string
 	CWD         string
 	DirectStart bool
+	// SkipSkills is used by model-only probes that do not start a live Agent
+	// Session and therefore do not need provider Skill materialization.
+	SkipSkills bool
 }
 
 type ProviderLaunchPrepareResult struct {

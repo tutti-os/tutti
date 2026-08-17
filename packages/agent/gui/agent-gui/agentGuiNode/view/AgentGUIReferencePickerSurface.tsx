@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import {
   ReferenceSourcePicker,
   WorkspaceFileReferencePicker,
@@ -20,6 +21,11 @@ export interface AgentGUIReferencePickerSurfaceProps {
   open: boolean;
   purpose: "directory" | "reference";
   renderDirectoryHeaderActions?: ReferenceSourcePickerProps["renderHeaderActions"];
+  renderSidebarActions?: (
+    context: Parameters<
+      NonNullable<ReferenceSourcePickerProps["renderSidebarActions"]>
+    >[0] & { purpose: "directory" | "reference" }
+  ) => ReactNode;
   resolveContentErrorAction: ReferenceSourcePickerProps["resolveContentErrorAction"];
   resolveEntryIconUrl: ReferenceSourcePickerProps["resolveEntryIconUrl"];
   workspaceId: string;
@@ -39,6 +45,7 @@ export function AgentGUIReferencePickerSurface({
   open,
   purpose,
   renderDirectoryHeaderActions,
+  renderSidebarActions,
   resolveContentErrorAction,
   resolveEntryIconUrl,
   workspaceId,
@@ -57,6 +64,11 @@ export function AgentGUIReferencePickerSurface({
       purpose={purpose}
       renderHeaderActions={
         purpose === "directory" ? renderDirectoryHeaderActions : undefined
+      }
+      renderSidebarActions={
+        renderSidebarActions
+          ? (context) => renderSidebarActions({ ...context, purpose })
+          : undefined
       }
       resolveContentErrorAction={resolveContentErrorAction}
       resolveEntryIconUrl={resolveEntryIconUrl}

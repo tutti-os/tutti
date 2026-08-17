@@ -22,6 +22,7 @@ import {
 } from "./pendingIntents.activationRecords.ts";
 import {
   confirmActivationsFromSessions,
+  createActivationRecoveryIntent,
   receiveSessionSnapshot,
   settleActivationCommand
 } from "./pendingIntents.activationSettlement.ts";
@@ -293,10 +294,16 @@ function requestActivation(
       intent.initialTurnExpected ?? runtimeContent.length > 0,
     lastObservedStage: "requested" as const,
     ...(intent.isolation ? { isolation: intent.isolation } : {}),
+    ...(intent.modelExplicit !== undefined
+      ? { modelExplicit: intent.modelExplicit }
+      : {}),
     ...pendingActivationGoalControlFields(intent),
     ...pendingActivationRailSectionKeyFields(intent),
     ...(intent.railPlacement
       ? { railPlacement: { ...intent.railPlacement } }
+      : {}),
+    ...(intent.reasoningEffortExplicit !== undefined
+      ? { reasoningEffortExplicit: intent.reasoningEffortExplicit }
       : {}),
     ...(intent.submitDiagnostics
       ? { submitDiagnostics: { ...intent.submitDiagnostics } }
@@ -361,8 +368,14 @@ function requestActivation(
             ...(displayPrompt ? { initialDisplayPrompt: displayPrompt } : {}),
             ...pendingActivationGoalControlFields(intent),
             ...(intent.isolation ? { isolation: intent.isolation } : {}),
+            ...(intent.modelExplicit !== undefined
+              ? { modelExplicit: intent.modelExplicit }
+              : {}),
             ...(intent.railPlacement
               ? { railPlacement: { ...intent.railPlacement } }
+              : {}),
+            ...(intent.reasoningEffortExplicit !== undefined
+              ? { reasoningEffortExplicit: intent.reasoningEffortExplicit }
               : {}),
             ...(intent.submitDiagnostics
               ? { submitDiagnostics: { ...intent.submitDiagnostics } }
@@ -590,8 +603,13 @@ function expireActivation(
   if (record.status === "canceled") {
     return { commands: NO_COMMANDS, state: deleteActivation(state, requestId) };
   }
+  const recoveryIntent =
+    record.status === "requested" || record.status === "uncertain"
+      ? createActivationRecoveryIntent(record)
+      : null;
   return {
     commands: NO_COMMANDS,
+    ...(recoveryIntent ? { followUpIntents: [recoveryIntent] } : {}),
     state: replaceActivation(state, {
       ...record,
       errorCode: record.errorCode ?? "activation_confirmation_expired",

@@ -215,6 +215,17 @@ The daemon DTO mapper belongs to
 `@tutti-os/agent-activity-tuttid-adapter`, so Desktop and Mobile do not keep
 separate parser implementations for Composer capabilities or option catalogs.
 
+## Performance Failure Events
+
+`AgentGUIPerformanceEvent` failure settlements carry a bounded `errorCode` and
+`failureStage` when the operation fails. `errorCode` comes from a stable
+machine-readable error field and falls back to `unknown`; raw error messages
+are never included. Composer option failures use `options_load`, Session
+activation uses `session_activation`, Prompt admission uses `prompt_admission`,
+and Turn failures use `turn_settlement`. Each settlement keeps its existing
+`operationId`, so hosts can deduplicate repeated observations without using
+provider names, timestamps, or error text.
+
 ## Quick Composer
 
 `@tutti-os/agent-gui/quick-composer` renders the canonical DOM Composer for a
@@ -346,6 +357,12 @@ The factory owns resolved-query cache reuse per workspace Engine; cache access
 is not a runtime or host capability and has no published package entrypoint.
 In-flight first-page results are fenced to the attached controller generation
 so stale mounts cannot mutate the Engine or cache.
+
+The `@tutti-os/agent-gui/abortable-single-flight` subpath exposes the generic
+`AbortableSingleFlight` lifecycle primitive for host adapters that need to
+coalesce keyed abortable reads while keeping caller cancellation independent.
+The primitive owns only request sharing and cancellation; cache, snapshot, and
+event ownership remain with the host adapter.
 
 Run this boundary check after changing AgentGUI data flow:
 

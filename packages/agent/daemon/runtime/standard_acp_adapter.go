@@ -110,6 +110,7 @@ type standardACPAdapter struct {
 	preparer                   ProviderLaunchPreparer
 	mu                         sync.Mutex
 	sessions                   map[string]*standardACPSession
+	retiredSessions            map[string][]*standardACPSession
 	terminalInteractions       terminalInteractiveDispositionStore
 	interactiveDispositionSink InteractiveDispositionSink
 	commandSink                CommandSnapshotSink
@@ -122,8 +123,19 @@ type standardACPAdapter struct {
 }
 
 type standardACPSession struct {
-	client            *acpClient
+	client *acpClient
+	// releasing fences new live-client work while idle release is closing the
+	// transport. The lifecycle lock serializes mutating entrypoints; this flag
+	// also makes liveness probes fail closed during the close call.
+	releasing bool
+	// releaseFailed keeps a physical client registered for another Close
+	// attempt while preventing new work from reusing its closed stdin.
+	releaseFailed     bool
 	providerSessionID string
+	// resumeMethod records the capability proven by this process's initialize
+	// handshake. Idle release is safe only when the next process can restore
+	// the provider session through this method.
+	resumeMethod string
 	// resumeRuntimeContext preserves the historical adapter projection only
 	// when replay attaches at an already-initialized connection checkpoint.
 	resumeRuntimeContext map[string]any

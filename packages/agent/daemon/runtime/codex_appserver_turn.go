@@ -115,8 +115,38 @@ func (a *CodexAppServerAdapter) GuideActiveTurn(
 	emit EventSink,
 	emitCommands CommandSnapshotSink,
 ) ([]activityshared.Event, error) {
+	return a.GuideActiveTurnWithProviderDispatch(
+		ctx,
+		session,
+		content,
+		displayPrompt,
+		turnID,
+		emit,
+		emitCommands,
+		nil,
+	)
+}
+
+func (a *CodexAppServerAdapter) GuideActiveTurnWithProviderDispatch(
+	ctx context.Context,
+	session Session,
+	content []PromptContentBlock,
+	displayPrompt string,
+	turnID string,
+	emit EventSink,
+	emitCommands CommandSnapshotSink,
+	reportDispatch ProviderDispatchSink,
+) ([]activityshared.Event, error) {
+	reportNotDispatched := func() {
+		if reportDispatch != nil {
+			reportDispatch(ProviderDispatchResult{
+				Disposition: DispatchDispositionNotDispatched,
+			})
+		}
+	}
 	appSession := a.getSession(session.AgentSessionID)
 	if appSession == nil || appSession.client == nil {
+		reportNotDispatched()
 		return nil, ErrSessionDisconnected
 	}
 	activeTurnID := a.sessionActiveTurnID(session.AgentSessionID)
@@ -131,12 +161,23 @@ func (a *CodexAppServerAdapter) GuideActiveTurn(
 		var err error
 		providerContent, err = materializeProviderPromptImagesAtBoundary(ctx, providerContent, a.promptImageMaterializer)
 		if err != nil {
+			reportNotDispatched()
 			return nil, err
 		}
-		return a.steerActiveTurn(
+		events, err := a.steerActiveTurn(
 			ctx, appSession, session, content, providerContent,
 			explicitDisplayPrompt, visibleText, turnID, activeTurnID, emit,
 		)
+		if err != nil {
+			if reportDispatch != nil {
+				reportDispatch(ProviderDispatchResult{
+					Disposition: DispatchDispositionOutcomeUnknown,
+				})
+			}
+			return events, err
+		}
+		reportCodexAppliedWithoutProviderTurn(reportDispatch)
+		return events, nil
 	}
 	// The canonical root turn remains active while child sessions drain even
 	// after the provider's root turn has ended. Guidance in that window starts
@@ -145,9 +186,10 @@ func (a *CodexAppServerAdapter) GuideActiveTurn(
 	if a.sessionActiveTurn(session.AgentSessionID) != nil {
 		// The provider turn exists but turn/started has not supplied its id yet;
 		// starting another turn would race the existing one.
+		reportNotDispatched()
 		return nil, ErrSessionNoActiveTurn
 	}
-	return a.startGuidanceContinuation(
+	events, err := a.startGuidanceContinuation(
 		ctx,
 		session,
 		content,
@@ -156,6 +198,12 @@ func (a *CodexAppServerAdapter) GuideActiveTurn(
 		emit,
 		emitCommands,
 	)
+	if err != nil {
+		reportNotDispatched()
+		return events, err
+	}
+	reportCodexAppliedWithoutProviderTurn(reportDispatch)
+	return events, nil
 }
 
 func (appTurn *codexAppServerActiveTurn) markTerminated() {

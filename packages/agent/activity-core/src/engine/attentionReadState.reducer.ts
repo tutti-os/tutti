@@ -6,22 +6,29 @@ import type {
 } from "./types.ts";
 import type {
   AttentionCompletionKind,
-  AttentionObservationProvenance,
-  AttentionReadStateProvenance,
   AttentionReadRecord,
   AttentionReadPartition,
   AttentionReadState
 } from "./attentionReadState.types.ts";
-import type { CanonicalAgentSession } from "./sessionLifecycle.types.ts";
 import { canonicalTurnKey } from "./sessionEntityKeys.ts";
 
 const NO_COMMANDS: readonly EngineCommand[] = [];
 
 interface AttentionReadStateContext {
-  previousSessionsById: Readonly<Record<string, CanonicalAgentSession>>;
+  previousSessionsById: Readonly<
+    Record<string, { userId?: string; latestTurn?: AgentActivityTurn | null }>
+  >;
   previousTurnsById: Readonly<Record<string, AgentActivityTurn>>;
-  sessionsById: Readonly<Record<string, { userId?: string }>>;
+  sessionsById: Readonly<
+    Record<string, { userId?: string; latestTurn?: AgentActivityTurn | null }>
+  >;
   turnsById: Readonly<Record<string, AgentActivityTurn>>;
+}
+
+interface CompletionKeyParts {
+  agentSessionId: string;
+  completionKey: string;
+  kind: AttentionCompletionKind;
 }
 
 export function createInitialAttentionReadState(): AttentionReadState {
@@ -44,15 +51,14 @@ export function attentionReadStateReducer(
     case "attention/readStateHydrated":
       return hydrate(state, intent);
     case "attention/read":
-      return setUnread(
+      return removeUnread(state, intent.userId, intent.agentSessionId);
+    case "attention/unreadRequested":
+      return requestUnread(
         state,
         intent.userId,
         intent.agentSessionId,
-        false,
-        false
+        context
       );
-    case "attention/unreadRequested":
-      return setUnread(state, intent.userId, intent.agentSessionId, true, true);
     case "attention/persistRetryRequested":
       return retryPersistence(state, intent.userId);
     case "engine/commandResult":
@@ -67,54 +73,35 @@ export function attentionReadStateReducer(
       return unchanged(state);
     case "turn/projectionReceived":
     case "turn/upserted": {
+      if (intent.type === "turn/upserted" && intent.live === false) {
+        return unchanged(state);
+      }
       const turn = acceptedCanonicalTurn(intent.turn, context);
-      if (!turn) return unchanged(state);
-      return observeTurn(
-        state,
-        context.sessionsById[turn.agentSessionId]?.userId ?? "",
-        turn,
-        intent.type === "turn/projectionReceived" || intent.live !== false
-      );
+      const userId = context.sessionsById[turn?.agentSessionId ?? ""]?.userId;
+      const replayAcceptedLiveCompletion =
+        intent.type === "turn/upserted" &&
+        intent.replayAcceptedLiveCompletion === true;
+      if (
+        !turn ||
+        userId === undefined ||
+        (!replayAcceptedLiveCompletion &&
+          !isLiveCompletionTransition(turn, context))
+      ) {
+        return unchanged(state);
+      }
+      return observeLiveUnread(state, userId, turn);
     }
+    case "session/detailSnapshotReceived":
     case "session/historyAuthoritativeSnapshotReceived":
-      return reconcileAuthoritativeHistoryAttention(state, intent, context);
-    case "session/snapshotReceived": {
-      let next = state;
-      for (const session of intent.sessions) {
-        if (session.latestTurn) {
-          const turn = acceptedCanonicalTurn(session.latestTurn, context);
-          const id = session.agentSessionId.trim();
-          const key = canonicalTurnKey(id, session.latestTurn.turnId);
-          const snapshotAccepted =
-            context.sessionsById[id] !== context.previousSessionsById[id] ||
-            turn !== context.previousTurnsById[key];
-          if (!turn || !snapshotAccepted) continue;
-          next = observeTurn(
-            next,
-            context.sessionsById[turn.agentSessionId]?.userId ?? "",
-            turn,
-            false
-          ).state;
-        }
-      }
-      return next === state ? unchanged(state) : changed(next);
-    }
-    case "session/removed": {
-      const id = intent.agentSessionId.trim();
-      let next = state;
-      for (const [userId, partition] of Object.entries(
-        state.partitionsByUserId
-      )) {
-        if (!partition.recordsBySessionId[id]) continue;
-        const recordsBySessionId = { ...partition.recordsBySessionId };
-        delete recordsBySessionId[id];
-        next = replacePartition(next, userId, {
-          ...partition,
-          recordsBySessionId
-        });
-      }
-      return next === state ? unchanged(state) : changed(next);
-    }
+      // Historical reads own canonical content. Their accepted live completion
+      // is replayed explicitly by sessionReconcile as a marked turn upsert.
+      return unchanged(state);
+    case "session/snapshotReceived":
+      // A list snapshot is historical content. It must not create a read
+      // marker, create an unread marker, or remove an existing unread marker.
+      return unchanged(state);
+    case "session/removed":
+      return removeSession(state, intent.agentSessionId);
     default:
       return unchanged(state);
   }
@@ -134,202 +121,208 @@ function acceptedCanonicalTurn(
     : null;
 }
 
-function reconcileAuthoritativeTurns(
-  state: AttentionReadState,
-  rawSessionId: string,
-  turns: readonly AgentActivityTurn[]
-): EngineReducerResult<AttentionReadState> {
-  const sessionId = rawSessionId.trim();
-  if (!sessionId) return unchanged(state);
-  const authoritativeCompletionKeys = new Set<string>();
-  for (const turn of turns) {
-    if (turn.agentSessionId.trim() !== sessionId) continue;
-    const turnId = turn.turnId.trim();
-    const kind = completionKind(turn);
-    if (turnId && kind) {
-      authoritativeCompletionKeys.add(`turn:${sessionId}:${turnId}:${kind}`);
-    }
-  }
-
-  let next = state;
-  const commands: EngineCommand[] = [];
-  for (const [userId, partition] of Object.entries(state.partitionsByUserId)) {
-    const current = partition.recordsBySessionId[sessionId];
-    const removeRecord =
-      current !== undefined &&
-      !authoritativeCompletionKeys.has(current.completionKey);
-    const hydrated = partition.hydrated;
-    let nextHydrated = hydrated;
-    if (hydrated) {
-      const completedReadIds = retainAuthoritativeCompletionKeys(
-        hydrated.completedReadIds,
-        sessionId,
-        authoritativeCompletionKeys
-      );
-      const completedUnreadIds = retainAuthoritativeCompletionKeys(
-        hydrated.completedUnreadIds,
-        sessionId,
-        authoritativeCompletionKeys
-      );
-      const failedReadIds = retainAuthoritativeCompletionKeys(
-        hydrated.failedReadIds,
-        sessionId,
-        authoritativeCompletionKeys
-      );
-      const failedUnreadIds = retainAuthoritativeCompletionKeys(
-        hydrated.failedUnreadIds,
-        sessionId,
-        authoritativeCompletionKeys
-      );
-      if (
-        completedReadIds !== hydrated.completedReadIds ||
-        completedUnreadIds !== hydrated.completedUnreadIds ||
-        failedReadIds !== hydrated.failedReadIds ||
-        failedUnreadIds !== hydrated.failedUnreadIds
-      ) {
-        nextHydrated = {
-          completedReadIds,
-          completedUnreadIds,
-          failedReadIds,
-          failedUnreadIds
-        };
-      }
-    }
-    if (!removeRecord && nextHydrated === hydrated) continue;
-
-    let recordsBySessionId = partition.recordsBySessionId;
-    if (removeRecord) {
-      const mutableRecords: Record<string, AttentionReadRecord> = {
-        ...partition.recordsBySessionId
-      };
-      delete mutableRecords[sessionId];
-      recordsBySessionId = mutableRecords;
-    }
-    const reconciledPartition: AttentionReadPartition = {
-      ...partition,
-      hydrated: nextHydrated,
-      recordsBySessionId
-    };
-    const persistence =
-      nextHydrated !== hydrated
-        ? queuePersistence(reconciledPartition, userId)
-        : { commands: NO_COMMANDS, partition: reconciledPartition };
-    commands.push(...persistence.commands);
-    next = replacePartition(next, userId, persistence.partition);
-  }
-  return next === state ? unchanged(state) : changed(next, commands);
-}
-
-function reconcileAuthoritativeHistoryAttention(
-  state: AttentionReadState,
-  intent: Extract<
-    EngineIntent,
-    { type: "session/historyAuthoritativeSnapshotReceived" }
-  >,
+function isLiveCompletionTransition(
+  turn: AgentActivityTurn,
   context: AttentionReadStateContext
-): EngineReducerResult<AttentionReadState> {
-  const reconciled = reconcileAuthoritativeTurns(
-    state,
-    intent.agentSessionId,
-    intent.turns
+): boolean {
+  if (!completionKind(turn)) return false;
+  const previous =
+    context.previousTurnsById[
+      canonicalTurnKey(turn.agentSessionId, turn.turnId)
+    ];
+  return (
+    previous === undefined ||
+    previous.phase !== "settled" ||
+    previous.outcome !== turn.outcome
   );
-  const liveTurnId = intent.liveTurnId?.trim() ?? "";
-  const incomingLiveTurn = liveTurnId
-    ? intent.turns.find((turn) => turn.turnId.trim() === liveTurnId)
-    : undefined;
-  const liveTurn = incomingLiveTurn
-    ? acceptedCanonicalTurn(incomingLiveTurn, context)
-    : null;
-  if (!liveTurn) return reconciled;
-  const observed = observeTurn(
-    reconciled.state,
-    context.sessionsById[intent.agentSessionId]?.userId ?? "",
-    liveTurn,
-    true
-  );
-  return {
-    commands: [...reconciled.commands, ...observed.commands],
-    state: observed.state
-  };
 }
 
-function retainAuthoritativeCompletionKeys(
-  keys: readonly string[],
-  sessionId: string,
-  authoritativeCompletionKeys: ReadonlySet<string>
-): readonly string[] {
-  const prefix = `turn:${sessionId}:`;
-  const filtered = keys.filter(
-    (key) => !key.startsWith(prefix) || authoritativeCompletionKeys.has(key)
-  );
-  return filtered.length === keys.length ? keys : filtered;
-}
-
-function observeTurn(
+function observeLiveUnread(
   state: AttentionReadState,
   rawUserId: string,
-  turn: AgentActivityTurn,
-  live: boolean
+  turn: AgentActivityTurn
 ): EngineReducerResult<AttentionReadState> {
-  const id = turn.agentSessionId.trim();
+  const parts = completionKeyParts(turn);
   const userId = rawUserId.trim();
-  const turnId = turn.turnId.trim();
-  const kind = completionKind(turn);
-  if (!id || !userId || !turnId || !kind) return unchanged(state);
+  if (!parts || !userId) return unchanged(state);
   const partition = partitionFor(state, userId);
-  const completionKey = `turn:${id}:${turnId}:${kind}`;
+  const current = partition.recordsBySessionId[parts.agentSessionId];
+  if (current?.completionKey === parts.completionKey) return unchanged(state);
+
+  return upsertUnread(state, userId, parts, false);
+}
+
+function requestUnread(
+  state: AttentionReadState,
+  rawUserId: string,
+  rawId: string,
+  context: AttentionReadStateContext
+): EngineReducerResult<AttentionReadState> {
+  const id = rawId.trim();
+  const userId = rawUserId.trim();
+  if (!id || !userId) return unchanged(state);
+  const partition = partitionFor(state, userId);
   const current = partition.recordsBySessionId[id];
+  if (current) {
+    if (current.markedUnreadByUser) return unchanged(state);
+    return upsertUnread(
+      state,
+      userId,
+      {
+        agentSessionId: id,
+        completionKey: current.completionKey,
+        kind: current.kind
+      },
+      true
+    );
+  }
+
+  const latestTurn = context.sessionsById[id]?.latestTurn;
+  const turn = latestTurn ? acceptedCanonicalTurn(latestTurn, context) : null;
+  const parts = turn ? completionKeyParts(turn) : null;
+  if (!parts) return unchanged(state);
+  return upsertUnread(state, userId, parts, true);
+}
+
+function upsertUnread(
+  state: AttentionReadState,
+  userId: string,
+  parts: CompletionKeyParts,
+  markedUnreadByUser: boolean
+): EngineReducerResult<AttentionReadState> {
+  const partition = partitionFor(state, userId);
+  const current = partition.recordsBySessionId[parts.agentSessionId];
+  const nextPartition: AttentionReadPartition = {
+    ...replaceDurableUnread(partition, parts),
+    recordsBySessionId: {
+      ...partition.recordsBySessionId,
+      [parts.agentSessionId]: {
+        completionKey: parts.completionKey,
+        isUnread: true,
+        kind: parts.kind,
+        markedUnreadByUser,
+        observationProvenance: "live",
+        readStateProvenance: markedUnreadByUser ? "durable" : "live"
+      }
+    }
+  };
   if (
-    current?.completionKey === completionKey &&
-    (current.observationProvenance === "live" || !live)
+    current?.completionKey === parts.completionKey &&
+    current.markedUnreadByUser === markedUnreadByUser
   ) {
     return unchanged(state);
   }
-  const sameCompletion = current?.completionKey === completionKey;
-  const hydratedIsUnread = hydratedUnread(partition, completionKey, kind);
-  const liveUpgradeMustIgnoreHistoricalMarker =
-    live && sameCompletion && current?.readStateProvenance === "historical";
-  const isUnread = liveUpgradeMustIgnoreHistoricalMarker
-    ? true
-    : (hydratedIsUnread ?? live);
-  const observationProvenance: AttentionObservationProvenance = live
-    ? "live"
-    : "historical";
-  const readStateProvenance: AttentionReadStateProvenance =
-    liveUpgradeMustIgnoreHistoricalMarker
-      ? "live"
-      : hydratedIsUnread !== null
-        ? "durable"
-        : live
-          ? "live"
-          : "historical";
-  const durablePartition = updateDurableMarker(
-    partition,
-    id,
-    completionKey,
-    kind,
-    isUnread
+  const persistence = queuePersistence(nextPartition, userId);
+  return changed(
+    replacePartition(state, userId, persistence.partition),
+    persistence.commands
   );
-  const nextPartition = {
-    ...durablePartition,
-    recordsBySessionId: {
-      ...durablePartition.recordsBySessionId,
-      [id]: {
-        completionKey,
-        isUnread,
-        kind,
-        markedUnreadByUser:
-          sameCompletion && current ? current.markedUnreadByUser : false,
-        observationProvenance,
-        readStateProvenance
-      }
-    }
+}
+
+function removeUnread(
+  state: AttentionReadState,
+  rawUserId: string,
+  rawId: string
+): EngineReducerResult<AttentionReadState> {
+  const id = rawId.trim();
+  const userId = rawUserId.trim();
+  if (!id || !userId) return unchanged(state);
+  const partition = partitionFor(state, userId);
+  const current = partition.recordsBySessionId[id];
+  if (!current) return unchanged(state);
+
+  const recordsBySessionId = { ...partition.recordsBySessionId };
+  delete recordsBySessionId[id];
+  const nextPartition: AttentionReadPartition = {
+    ...partition,
+    hydrated: removeDurableSessionKeys(partition, id),
+    recordsBySessionId
   };
   const persistence = queuePersistence(nextPartition, userId);
   return changed(
     replacePartition(state, userId, persistence.partition),
     persistence.commands
   );
+}
+
+function removeSession(
+  state: AttentionReadState,
+  rawId: string
+): EngineReducerResult<AttentionReadState> {
+  const id = rawId.trim();
+  if (!id) return unchanged(state);
+  let next = state;
+  const commands: EngineCommand[] = [];
+  for (const [userId, partition] of Object.entries(state.partitionsByUserId)) {
+    if (!partition.recordsBySessionId[id]) continue;
+    const recordsBySessionId = { ...partition.recordsBySessionId };
+    delete recordsBySessionId[id];
+    const hydrated = removeDurableSessionKeys(partition, id);
+    const nextPartition: AttentionReadPartition = {
+      ...partition,
+      hydrated,
+      recordsBySessionId
+    };
+    const persistence = queuePersistence(nextPartition, userId);
+    commands.push(...persistence.commands);
+    next = replacePartition(next, userId, persistence.partition);
+  }
+  return next === state ? unchanged(state) : changed(next, commands);
+}
+
+function replaceDurableUnread(
+  partition: AttentionReadPartition,
+  parts: CompletionKeyParts
+): AttentionReadPartition {
+  if (!partition.hydrated) return partition;
+  const completedUnreadIds = new Set(partition.hydrated.completedUnreadIds);
+  const failedUnreadIds = new Set(partition.hydrated.failedUnreadIds);
+  evictSessionCompletionKeys(parts.agentSessionId, [
+    completedUnreadIds,
+    failedUnreadIds
+  ]);
+  (parts.kind === "completed" ? completedUnreadIds : failedUnreadIds).add(
+    parts.completionKey
+  );
+  return {
+    ...partition,
+    hydrated: {
+      completedReadIds: [],
+      completedUnreadIds: [...completedUnreadIds],
+      failedReadIds: [],
+      failedUnreadIds: [...failedUnreadIds]
+    }
+  };
+}
+
+function removeDurableSessionKeys(
+  partition: AttentionReadPartition,
+  sessionId: string
+): AttentionReadPartition["hydrated"] {
+  if (!partition.hydrated) return partition.hydrated;
+  const completedUnreadIds = new Set(partition.hydrated.completedUnreadIds);
+  const failedUnreadIds = new Set(partition.hydrated.failedUnreadIds);
+  evictSessionCompletionKeys(sessionId, [completedUnreadIds, failedUnreadIds]);
+  return {
+    completedReadIds: [],
+    completedUnreadIds: [...completedUnreadIds],
+    failedReadIds: [],
+    failedUnreadIds: [...failedUnreadIds]
+  };
+}
+
+function completionKeyParts(
+  turn: AgentActivityTurn
+): CompletionKeyParts | null {
+  const agentSessionId = turn.agentSessionId.trim();
+  const turnId = turn.turnId.trim();
+  const kind = completionKind(turn);
+  if (!agentSessionId || !turnId || !kind) return null;
+  return {
+    agentSessionId,
+    completionKey: `turn:${agentSessionId}:${turnId}:${kind}`,
+    kind
+  };
 }
 
 function completionKind(
@@ -343,103 +336,115 @@ function completionKind(
       : null;
 }
 
-function hydratedUnread(
-  state: AttentionReadPartition,
-  completionKey: string,
-  kind: AttentionCompletionKind
-): boolean | null {
-  const hydrated = state.hydrated;
-  if (!hydrated) return null;
-  const unread =
-    kind === "completed"
-      ? hydrated.completedUnreadIds
-      : hydrated.failedUnreadIds;
-  const read =
-    kind === "completed" ? hydrated.completedReadIds : hydrated.failedReadIds;
-  if (unread.includes(completionKey)) return true;
-  if (read.includes(completionKey)) return false;
-  return null;
-}
-
-function setUnread(
+function hydrate(
   state: AttentionReadState,
-  rawUserId: string,
-  rawId: string,
-  isUnread: boolean,
-  markedUnreadByUser: boolean
+  intent: Extract<EngineIntent, { type: "attention/readStateHydrated" }>
 ): EngineReducerResult<AttentionReadState> {
-  const id = rawId.trim();
-  const userId = rawUserId.trim();
-  if (!id || !userId) return unchanged(state);
+  const userId = intent.userId.trim();
+  if (!userId) return unchanged(state);
   const partition = partitionFor(state, userId);
-  const current = partition.recordsBySessionId[id];
-  if (!current) return unchanged(state);
-  const next: AttentionReadRecord = current;
-  if (
-    current.isUnread === isUnread &&
-    current.markedUnreadByUser === markedUnreadByUser
-  ) {
+  const persistedCompletedUnread = sanitizeCompletionKeys(
+    intent.completed.unreadIds
+  );
+  const persistedFailedUnread = sanitizeCompletionKeys(intent.failed.unreadIds);
+  const persistedRecords: Record<string, AttentionReadRecord> = {};
+  for (const key of persistedCompletedUnread) {
+    const parts = parseCompletionKey(key, "completed");
+    if (parts)
+      persistedRecords[parts.agentSessionId] = unreadRecord(parts, false);
+  }
+  for (const key of persistedFailedUnread) {
+    const parts = parseCompletionKey(key, "failed");
+    if (parts && !persistedRecords[parts.agentSessionId]) {
+      persistedRecords[parts.agentSessionId] = unreadRecord(parts, false);
+    }
+  }
+
+  const recordsBySessionId: Record<string, AttentionReadRecord> = {
+    ...persistedRecords,
+    ...partition.recordsBySessionId
+  };
+  const completedUnreadIds = new Set(persistedCompletedUnread);
+  const failedUnreadIds = new Set(persistedFailedUnread);
+  for (const [sessionId, record] of Object.entries(recordsBySessionId)) {
+    evictSessionCompletionKeys(sessionId, [
+      completedUnreadIds,
+      failedUnreadIds
+    ]);
+    (record.kind === "completed" ? completedUnreadIds : failedUnreadIds).add(
+      record.completionKey
+    );
+  }
+
+  const hydrated = {
+    completedReadIds: [],
+    completedUnreadIds: [...completedUnreadIds],
+    failedReadIds: [],
+    failedUnreadIds: [...failedUnreadIds]
+  };
+  const recordsChanged = !sameRecords(
+    partition.recordsBySessionId,
+    recordsBySessionId
+  );
+  const firstHydration = partition.hydrated === null;
+  const hydratedChanged =
+    !firstHydration &&
+    (partition.hydrated?.completedReadIds.length !== 0 ||
+      partition.hydrated?.failedReadIds.length !== 0 ||
+      !sameStrings(
+        partition.hydrated?.completedUnreadIds ?? [],
+        hydrated.completedUnreadIds
+      ) ||
+      !sameStrings(
+        partition.hydrated?.failedUnreadIds ?? [],
+        hydrated.failedUnreadIds
+      ));
+  const nextPartition: AttentionReadPartition = {
+    ...partition,
+    hydrated,
+    lastError: null,
+    recordsBySessionId
+  };
+  if (!recordsChanged && !firstHydration && !hydratedChanged) {
     return unchanged(state);
   }
-  const durablePartition = updateDurableMarker(
-    partition,
-    id,
-    current.completionKey,
-    current.kind,
-    isUnread
-  );
-  const nextPartition = {
-    ...durablePartition,
-    recordsBySessionId: {
-      ...durablePartition.recordsBySessionId,
-      [id]: {
-        ...next,
-        isUnread,
-        markedUnreadByUser,
-        readStateProvenance: "durable" as const
-      }
-    }
-  };
-  const persistence = queuePersistence(nextPartition, userId);
+  const persistence = hydratedChanged
+    ? queuePersistence(nextPartition, userId)
+    : { commands: NO_COMMANDS, partition: nextPartition };
   return changed(
     replacePartition(state, userId, persistence.partition),
     persistence.commands
   );
 }
 
-function updateDurableMarker(
-  partition: AttentionReadPartition,
-  sessionId: string,
-  completionKey: string,
-  kind: AttentionCompletionKind,
-  isUnread: boolean
-): AttentionReadPartition {
-  if (!partition.hydrated) return partition;
-  const completedReadIds = new Set(partition.hydrated.completedReadIds);
-  const completedUnreadIds = new Set(partition.hydrated.completedUnreadIds);
-  const failedReadIds = new Set(partition.hydrated.failedReadIds);
-  const failedUnreadIds = new Set(partition.hydrated.failedUnreadIds);
-  // Only the latest completion per session drives the lamp, so evict any prior
-  // completion key for this session across every bucket before recording the new
-  // one. This keeps the durable set bounded to one key per session (per kind)
-  // while still keying on the exact completion so a new turn re-lights.
-  evictSessionCompletionKeys(sessionId, [
-    completedReadIds,
-    completedUnreadIds,
-    failedReadIds,
-    failedUnreadIds
-  ]);
-  const read = kind === "completed" ? completedReadIds : failedReadIds;
-  const unread = kind === "completed" ? completedUnreadIds : failedUnreadIds;
-  (isUnread ? unread : read).add(completionKey);
+function unreadRecord(
+  parts: CompletionKeyParts,
+  markedUnreadByUser: boolean
+): AttentionReadRecord {
   return {
-    ...partition,
-    hydrated: {
-      completedReadIds: [...completedReadIds],
-      completedUnreadIds: [...completedUnreadIds],
-      failedReadIds: [...failedReadIds],
-      failedUnreadIds: [...failedUnreadIds]
-    }
+    completionKey: parts.completionKey,
+    isUnread: true,
+    kind: parts.kind,
+    markedUnreadByUser,
+    observationProvenance: "live",
+    readStateProvenance: "durable"
+  };
+}
+
+function parseCompletionKey(
+  key: string,
+  expectedKind: AttentionCompletionKind
+): CompletionKeyParts | null {
+  const match = /^turn:([^:]+):([^:]+):(completed|failed)$/.exec(key);
+  if (!match) return null;
+  const kind = match[3] as AttentionCompletionKind;
+  if (kind !== expectedKind) return null;
+  const agentSessionId = match[1];
+  if (!agentSessionId) return null;
+  return {
+    agentSessionId,
+    completionKey: key,
+    kind
   };
 }
 
@@ -456,76 +461,41 @@ function evictSessionCompletionKeys(
 }
 
 function sanitizeCompletionKeys(ids: readonly string[]): string[] {
-  // Durable buckets hold completion keys (`turn:<session>:<turn>:<kind>`). Drop
-  // any legacy per-session id left by older builds so it cannot linger; a stale
-  // session id never matches a completion-key lookup anyway, and dropping it now
-  // keeps the persisted set clean without a bespoke migration.
-  return ids.filter((id) => id.startsWith("turn:"));
+  return ids.filter((id) => /^turn:[^:]+:[^:]+:(?:completed|failed)$/.test(id));
 }
 
-function hydrate(
-  state: AttentionReadState,
-  intent: Extract<EngineIntent, { type: "attention/readStateHydrated" }>
-): EngineReducerResult<AttentionReadState> {
-  const userId = intent.userId.trim();
-  if (!userId) return unchanged(state);
-  const partition = partitionFor(state, userId);
-  const completedReadIds = new Set(
-    sanitizeCompletionKeys(intent.completed.readIds)
+function sameRecords(
+  left: Readonly<Record<string, AttentionReadRecord>>,
+  right: Readonly<Record<string, AttentionReadRecord>>
+): boolean {
+  const leftIds = Object.keys(left);
+  const rightIds = Object.keys(right);
+  return (
+    leftIds.length === rightIds.length &&
+    leftIds.every((id) => {
+      const a = left[id];
+      const b = right[id];
+      return (
+        a !== undefined &&
+        b !== undefined &&
+        a.completionKey === b.completionKey &&
+        a.isUnread === b.isUnread &&
+        a.kind === b.kind &&
+        a.markedUnreadByUser === b.markedUnreadByUser &&
+        a.observationProvenance === b.observationProvenance &&
+        a.readStateProvenance === b.readStateProvenance
+      );
+    })
   );
-  const completedUnreadIds = new Set(
-    sanitizeCompletionKeys(intent.completed.unreadIds)
-  );
-  const failedReadIds = new Set(sanitizeCompletionKeys(intent.failed.readIds));
-  const failedUnreadIds = new Set(
-    sanitizeCompletionKeys(intent.failed.unreadIds)
-  );
-  const recordsBySessionId = { ...partition.recordsBySessionId };
-  let mergedObservedRecord = false;
-  for (const [id, record] of Object.entries(recordsBySessionId)) {
-    const key = record.completionKey;
-    const unread =
-      record.kind === "completed" ? completedUnreadIds : failedUnreadIds;
-    const read = record.kind === "completed" ? completedReadIds : failedReadIds;
-    if (unread.has(key)) {
-      recordsBySessionId[id] = { ...record, isUnread: true };
-    } else if (read.has(key)) {
-      recordsBySessionId[id] = {
-        ...record,
-        isUnread: false,
-        markedUnreadByUser: false
-      };
-    } else {
-      // The durable store predates this session's current completion. Evict any
-      // prior key for the session so the set stays bounded, then persist the
-      // observed provenance on the next write.
-      evictSessionCompletionKeys(id, [
-        completedReadIds,
-        completedUnreadIds,
-        failedReadIds,
-        failedUnreadIds
-      ]);
-      (record.isUnread ? unread : read).add(key);
-      mergedObservedRecord = true;
-    }
-  }
-  const nextPartition = {
-    ...partition,
-    hydrated: {
-      completedReadIds: [...completedReadIds],
-      completedUnreadIds: [...completedUnreadIds],
-      failedReadIds: [...failedReadIds],
-      failedUnreadIds: [...failedUnreadIds]
-    },
-    lastError: null,
-    recordsBySessionId
-  };
-  const persistence = mergedObservedRecord
-    ? queuePersistence(nextPartition, userId)
-    : { commands: NO_COMMANDS, partition: nextPartition };
-  return changed(
-    replacePartition(state, userId, persistence.partition),
-    persistence.commands
+}
+
+function sameStrings(
+  left: readonly string[],
+  right: readonly string[]
+): boolean {
+  return (
+    left.length === right.length &&
+    left.every((value, index) => value === right[index])
   );
 }
 
@@ -693,11 +663,11 @@ function queuePersistence(
         userId,
         workspaceId: partition.workspaceId,
         completed: {
-          readIds: partition.hydrated.completedReadIds,
+          readIds: [],
           unreadIds: partition.hydrated.completedUnreadIds
         },
         failed: {
-          readIds: partition.hydrated.failedReadIds,
+          readIds: [],
           unreadIds: partition.hydrated.failedUnreadIds
         }
       }
@@ -748,6 +718,7 @@ function changed(
 ): EngineReducerResult<AttentionReadState> {
   return { commands, state };
 }
+
 function unchanged(
   state: AttentionReadState
 ): EngineReducerResult<AttentionReadState> {

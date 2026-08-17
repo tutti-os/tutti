@@ -4,7 +4,7 @@ import {
   constants,
   existsSync,
   readFileSync,
-  statSync
+  statSync,
 } from "node:fs";
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
@@ -12,28 +12,28 @@ import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
 import type {
   HealthStatusResponse,
-  TuttidClient
+  TuttidClient,
 } from "@tutti-os/client-tuttid-ts";
 import { resolveDesktopDefaultsFromEnv, resolveTuttiEnv } from "../defaults.ts";
 import {
   desktopErrorCodes,
-  formatErrorMessage
+  formatErrorMessage,
 } from "../../shared/errors/desktopErrors.ts";
 import {
   createBestEffortProcessSink,
   getDesktopLogger,
-  getDesktopLogSessionID
+  getDesktopLogSessionID,
 } from "../logging.ts";
 import {
   resolveBrowserNodeAutomationListenerInfoPath,
   resolveDesktopLogsDir,
-  type DesktopDaemonEndpoint
+  type DesktopDaemonEndpoint,
 } from "../transport/paths.ts";
 import { applyUserShellProxyToSession } from "../net/sessionProxy.ts";
 import { resolveCachedUserShellEnv } from "./userShellEnv.ts";
 import {
   createDaemonRestartController,
-  type DaemonRestartController
+  type DaemonRestartController,
 } from "./daemonRestartController.ts";
 import type { DesktopUpdateAdmissionDaemonConfig } from "../desktopDaemonRuntime.ts";
 
@@ -74,13 +74,13 @@ export function createTuttidManager(
   options?: {
     desktopUpdateAdmission?: DesktopUpdateAdmissionDaemonConfig;
     workspaceAppCliPath?: string;
-  }
+  },
 ): TuttidManager {
   return new ManagedTuttid(
     endpoint,
     tuttidClient,
     options?.desktopUpdateAdmission,
-    options?.workspaceAppCliPath
+    options?.workspaceAppCliPath,
   );
 }
 
@@ -99,7 +99,7 @@ class ManagedTuttid implements TuttidManager {
     endpoint: DesktopDaemonEndpoint,
     tuttidClient: TuttidClient,
     desktopUpdateAdmission?: DesktopUpdateAdmissionDaemonConfig,
-    workspaceAppCliPath?: string
+    workspaceAppCliPath?: string,
   ) {
     this.endpoint = endpoint;
     this.tuttidClient = tuttidClient;
@@ -113,8 +113,8 @@ class ManagedTuttid implements TuttidManager {
       logger: {
         info: (message, fields) => getDesktopLogger().info(message, fields),
         warn: (message, fields) => getDesktopLogger().warn(message, fields),
-        error: (message, fields) => getDesktopLogger().error(message, fields)
-      }
+        error: (message, fields) => getDesktopLogger().error(message, fields),
+      },
     });
   }
 
@@ -142,7 +142,7 @@ class ManagedTuttid implements TuttidManager {
       desktopUpdateAdmission: this.desktopUpdateAdmission,
       workspaceAppCliPath: this.workspaceAppCliPath,
       logOutput,
-      userShellEnv
+      userShellEnv,
     });
     logger.info("starting managed tuttid", {
       command: launchSpec.command,
@@ -152,14 +152,14 @@ class ManagedTuttid implements TuttidManager {
       pid_path: this.endpoint.pidPath,
       log_output: logOutput,
       managed_posix_shell: processEnv.TUTTI_MANAGED_POSIX_SHELL ?? "",
-      managed_runtime_root: processEnv.TUTTI_APP_RUNTIME_ROOT ?? ""
+      managed_runtime_root: processEnv.TUTTI_APP_RUNTIME_ROOT ?? "",
     });
 
     const child = spawn(launchSpec.command, launchSpec.args, {
       cwd: launchSpec.cwd,
       detached: process.platform !== "win32",
       env: processEnv,
-      stdio: ["ignore", forwardStdout ? "pipe" : "ignore", "pipe"]
+      stdio: ["ignore", forwardStdout ? "pipe" : "ignore", "pipe"],
     });
     const spawned = waitForChildSpawn(child);
 
@@ -175,19 +175,19 @@ class ManagedTuttid implements TuttidManager {
 
     child.stderr?.on("data", (chunk: Buffer | string) => {
       startupDiagnostic = `${startupDiagnostic}${chunk.toString()}`.slice(
-        -maxStartupDiagnosticCharacters
+        -maxStartupDiagnosticCharacters,
       );
       void writeToProcessStderr(`[tuttid] ${chunk.toString()}`);
       getDesktopLogger().error("managed tuttid stderr", {
         chunk: chunk.toString().trim(),
-        error_code: desktopErrorCodes.managedProcessStderr
+        error_code: desktopErrorCodes.managedProcessStderr,
       });
     });
 
     child.on("error", (error) => {
       getDesktopLogger().error("managed tuttid process error", {
         error: formatErrorMessage(error),
-        error_code: desktopErrorCodes.managedProcessError
+        error_code: desktopErrorCodes.managedProcessError,
       });
     });
 
@@ -200,7 +200,7 @@ class ManagedTuttid implements TuttidManager {
           pid,
           code,
           signal,
-          error_code: desktopErrorCodes.managedProcessExited
+          error_code: desktopErrorCodes.managedProcessExited,
         });
         void this.restartController.notifyExited();
       }
@@ -209,11 +209,11 @@ class ManagedTuttid implements TuttidManager {
     try {
       await spawned;
       logger.info("managed tuttid spawned", {
-        pid: child.pid ?? null
+        pid: child.pid ?? null,
       });
       this.endpoint.boundAddr = await waitForListenerInfo(
         this.endpoint.listenerInfoPath,
-        () => this.isProcessAlive()
+        () => this.isProcessAlive(),
       );
       await waitUntilHealthy(this.tuttidClient, () => this.isProcessAlive());
     } catch (error) {
@@ -283,31 +283,31 @@ function waitForChildSpawn(child: ChildProcess): Promise<void> {
 
 export function managedTuttidStartupError(
   error: unknown,
-  diagnostic: string
+  diagnostic: string,
 ): Error {
   const message = formatErrorMessage(error);
   const causeMessage = diagnostic.trim();
-  if (!causeMessage && error instanceof Error) {
-    return error;
-  }
-  return new Error(message, {
+  const failure = new Error(message, {
     ...(causeMessage
       ? {
           cause: {
             code: desktopErrorCodes.managedProcessStderr,
-            message: causeMessage
-          }
+            message: causeMessage,
+          },
         }
-      : {})
+      : {}),
   });
+  (failure as NodeJS.ErrnoException).code =
+    desktopErrorCodes.managedProcessError;
+  return failure;
 }
 
 function resolveEndpointEnv(
-  endpoint: DesktopDaemonEndpoint
+  endpoint: DesktopDaemonEndpoint,
 ): Record<string, string> {
   return {
     TUTTID_ACCESS_TOKEN: endpoint.accessToken,
-    TUTTID_ADDR: endpoint.requestedAddr
+    TUTTID_ADDR: endpoint.requestedAddr,
   };
 }
 
@@ -333,13 +333,13 @@ const vendoredBrowserMcpRelPath = join(
   "build",
   "src",
   "bin",
-  "chrome-devtools-mcp.js"
+  "chrome-devtools-mcp.js",
 );
 const vendoredClaudeSDKSidecarRelPath = join(
   "bin",
   "claude-sdk-sidecar",
   "src",
-  "main.ts"
+  "main.ts",
 );
 const vendoredManagedPosixShellRootRelPath = join("bin", "managed-posix-shell");
 const vendoredMutagenRootRelPath = join("bin", "mutagen");
@@ -350,7 +350,7 @@ const vendoredManagedUVRootRelPath = join("bin", "managed-uv");
 // runtime. The daemon still owns browser connection-mode arguments because they
 // come from persisted desktop preferences.
 export function resolveBrowserMcpDaemonEnv(
-  runtime?: DesktopElectronAppRuntime
+  runtime?: DesktopElectronAppRuntime,
 ): Record<string, string> {
   if (
     process.env.TUTTI_BROWSER_MCP_COMMAND?.trim() ||
@@ -372,12 +372,12 @@ export function resolveBrowserMcpDaemonEnv(
     return {};
   }
   return {
-    TUTTI_BROWSER_MCP_ENTRY_PATH: entry
+    TUTTI_BROWSER_MCP_ENTRY_PATH: entry,
   };
 }
 
 export function resolveClaudeSDKSidecarDaemonEnv(
-  runtime?: DesktopElectronAppRuntime
+  runtime?: DesktopElectronAppRuntime,
 ): Record<string, string> {
   if (
     process.env.TUTTI_CLAUDE_SDK_SIDECAR_COMMAND?.trim() ||
@@ -399,7 +399,7 @@ export function resolveClaudeSDKSidecarDaemonEnv(
     return {};
   }
   return {
-    TUTTI_CLAUDE_SDK_SIDECAR_ENTRY_PATH: entry
+    TUTTI_CLAUDE_SDK_SIDECAR_ENTRY_PATH: entry,
   };
 }
 
@@ -427,16 +427,16 @@ export function resolveComputerMcpDaemonEnv(): Record<string, string> {
         "Cua",
         "cua-driver",
         "bin",
-        "cua-driver.exe"
+        "cua-driver.exe",
       ),
       join(localAppData, "Programs", "Cua", "cua-driver.exe"),
-      join(localAppData, "cua-driver", "cua-driver.exe")
+      join(localAppData, "cua-driver", "cua-driver.exe"),
     );
   }
   if (userProfile) {
     candidates.push(
       join(userProfile, ".cua-driver", "packages", "current", "cua-driver.exe"),
-      join(userProfile, ".local", "bin", "cua-driver.exe")
+      join(userProfile, ".local", "bin", "cua-driver.exe"),
     );
   }
   const entry = candidates.find((candidate) => existsSync(candidate));
@@ -445,7 +445,7 @@ export function resolveComputerMcpDaemonEnv(): Record<string, string> {
 
 export function resolveManagedPosixShellDaemonEnv(
   runtime?: DesktopElectronAppRuntime,
-  options: ResolveLaunchSpecOptions = {}
+  options: ResolveLaunchSpecOptions = {},
 ): Record<string, string> {
   if (process.env.TUTTI_MANAGED_POSIX_SHELL?.trim()) {
     return {};
@@ -460,12 +460,12 @@ export function resolveManagedPosixShellDaemonEnv(
     ? resolve(appRuntime.resourcesPath, vendoredManagedPosixShellRootRelPath)
     : resolve(
         options.repoRoot ?? resolveRepoRoot(),
-        "apps/desktop/build/managed-posix-shell"
+        "apps/desktop/build/managed-posix-shell",
       );
   let executable: unknown;
   try {
     const metadata = JSON.parse(
-      readFileSync(join(runtimeRoot, "runtime.json"), "utf8")
+      readFileSync(join(runtimeRoot, "runtime.json"), "utf8"),
     ) as { schemaVersion?: unknown; executable?: unknown };
     if (metadata.schemaVersion !== "tutti.managed-posix-shell.v1") {
       return {};
@@ -489,7 +489,7 @@ export function resolveManagedPosixShellDaemonEnv(
     return {};
   }
   return {
-    TUTTI_MANAGED_POSIX_SHELL: shell
+    TUTTI_MANAGED_POSIX_SHELL: shell,
   };
 }
 
@@ -497,7 +497,7 @@ export function resolveMutagenDaemonEnv(
   runtime?: DesktopElectronAppRuntime,
   options: ResolveLaunchSpecOptions & {
     inheritedEnv?: Record<string, string>;
-  } = {}
+  } = {},
 ): Record<string, string> {
   if (
     process.env.TUTTI_MUTAGEN_BIN?.trim() ||
@@ -515,12 +515,12 @@ export function resolveMutagenDaemonEnv(
     ? resolve(appRuntime.resourcesPath, vendoredMutagenRootRelPath)
     : resolve(
         options.repoRoot ?? resolveRepoRoot(),
-        "apps/desktop/build/mutagen"
+        "apps/desktop/build/mutagen",
       );
   let executable: unknown;
   try {
     const metadata = JSON.parse(
-      readFileSync(join(runtimeRoot, "runtime.json"), "utf8")
+      readFileSync(join(runtimeRoot, "runtime.json"), "utf8"),
     ) as { schemaVersion?: unknown; executable?: unknown };
     if (metadata.schemaVersion !== "tutti.mutagen.v1") {
       return {};
@@ -550,7 +550,7 @@ export function resolveManagedUVDaemonEnv(
   runtime?: DesktopElectronAppRuntime,
   options: ResolveLaunchSpecOptions & {
     inheritedEnv?: Record<string, string>;
-  } = {}
+  } = {},
 ): Record<string, string> {
   if (
     process.env.TUTTI_BUNDLED_UV_ROOT?.trim() ||
@@ -566,12 +566,15 @@ export function resolveManagedUVDaemonEnv(
   }
   const runtimeRoot = appRuntime.isPackaged
     ? resolve(appRuntime.resourcesPath, vendoredManagedUVRootRelPath)
-    : resolve(options.repoRoot ?? resolveRepoRoot(), "apps/desktop/build/managed-uv");
+    : resolve(
+        options.repoRoot ?? resolveRepoRoot(),
+        "apps/desktop/build/managed-uv",
+      );
   return existsSync(runtimeRoot) ? { TUTTI_BUNDLED_UV_ROOT: runtimeRoot } : {};
 }
 
 function resolveManagedRuntimeDaemonEnv(
-  userShellEnv?: Record<string, string>
+  userShellEnv?: Record<string, string>,
 ): Record<string, string> {
   const rootOverride =
     process.env.TUTTI_APP_RUNTIME_ROOT?.trim() ||
@@ -585,13 +588,13 @@ function resolveManagedRuntimeDaemonEnv(
   return {
     TUTTI_APP_RUNTIME_CACHE_ROOT: join(
       resolveDesktopDefaultsFromEnv().state.rootDir,
-      "app-runtimes"
-    )
+      "app-runtimes",
+    ),
   };
 }
 
 export function resolveManagedDaemonProcessEnv(
-  input: ManagedDaemonProcessEnvInput
+  input: ManagedDaemonProcessEnvInput,
 ): NodeJS.ProcessEnv {
   const desktopUpdateAdmission = input.desktopUpdateAdmission;
   return {
@@ -604,7 +607,9 @@ export function resolveManagedDaemonProcessEnv(
     ...resolveClaudeSDKSidecarDaemonEnv(),
     ...resolveManagedPosixShellDaemonEnv(),
     ...resolveMutagenDaemonEnv(undefined, { inheritedEnv: input.userShellEnv }),
-    ...resolveManagedUVDaemonEnv(undefined, { inheritedEnv: input.userShellEnv }),
+    ...resolveManagedUVDaemonEnv(undefined, {
+      inheritedEnv: input.userShellEnv,
+    }),
     TUTTI_APP_VERSION: process.env.TUTTI_APP_VERSION?.trim() ?? "",
     TUTTI_DESKTOP_UPDATE_ADMISSION_ARCHITECTURE:
       desktopUpdateAdmission?.architecture ?? "",
@@ -625,7 +630,7 @@ export function resolveManagedDaemonProcessEnv(
     TUTTI_SESSION_ID: input.sessionID ?? getDesktopLogSessionID(),
     TUTTI_WORKSPACE_APP_CLI_PATH: input.workspaceAppCliPath?.trim() ?? "",
     TUTTID_LOG_OUTPUT: input.logOutput,
-    TUTTI_ENV: resolveTuttiEnv()
+    TUTTI_ENV: resolveTuttiEnv(),
   };
 }
 
@@ -639,13 +644,13 @@ async function resolveManagedDaemonUserShellEnv(): Promise<
     if (keys.length > 0) {
       logger.info("resolved user shell env for managed tuttid", {
         keys: keys.sort(),
-        pathResolved: typeof env.PATH === "string" && env.PATH.trim() !== ""
+        pathResolved: typeof env.PATH === "string" && env.PATH.trim() !== "",
       });
     }
     return env;
   } catch (error) {
     logger.warn("failed to resolve user shell env for managed tuttid", {
-      error: formatErrorMessage(error)
+      error: formatErrorMessage(error),
     });
     return {};
   }
@@ -653,13 +658,13 @@ async function resolveManagedDaemonUserShellEnv(): Promise<
 
 export function resolveLaunchSpec(
   runtime?: DesktopElectronAppRuntime,
-  options: ResolveLaunchSpecOptions = {}
+  options: ResolveLaunchSpecOptions = {},
 ): LaunchSpec {
   const binaryOverride = process.env.TUTTID_BIN?.trim();
   if (binaryOverride) {
     return {
       command: binaryOverride,
-      args: []
+      args: [],
     };
   }
 
@@ -669,7 +674,7 @@ export function resolveLaunchSpec(
 
     return {
       command: join(appRuntime.resourcesPath, "bin", binaryName),
-      args: []
+      args: [],
     };
   }
 
@@ -677,7 +682,7 @@ export function resolveLaunchSpec(
   const devBinaryPath = resolve(
     repoRoot,
     "apps/desktop/build/tuttid",
-    process.platform === "win32" ? "tuttid.exe" : "tuttid"
+    process.platform === "win32" ? "tuttid.exe" : "tuttid",
   );
   if (
     isExecutable(devBinaryPath) &&
@@ -685,23 +690,23 @@ export function resolveLaunchSpec(
   ) {
     return {
       command: devBinaryPath,
-      args: []
+      args: [],
     };
   }
 
   return {
     command: "go",
     args: ["run", "."],
-    cwd: resolve(repoRoot, "services/tuttid")
+    cwd: resolve(repoRoot, "services/tuttid"),
   };
 }
 
 function isFreshDevelopmentTuttidBinary(
   binaryPath: string,
-  repoRoot: string
+  repoRoot: string,
 ): boolean {
   const sourceSentinelPaths = [
-    resolve(repoRoot, "services/tuttid/api/events/generated/protocol.gen.go")
+    resolve(repoRoot, "services/tuttid/api/events/generated/protocol.gen.go"),
   ];
 
   let binaryModifiedAt: number;
@@ -726,7 +731,7 @@ function resolveElectronAppRuntime(): DesktopElectronAppRuntime {
   };
   return {
     isPackaged: electron.app.isPackaged,
-    resourcesPath: process.resourcesPath
+    resourcesPath: process.resourcesPath,
   };
 }
 
@@ -777,7 +782,7 @@ function resolveRepoRoot(): string {
 
 async function waitUntilHealthy(
   tuttidClient: TuttidClient,
-  isAlive?: () => boolean
+  isAlive?: () => boolean,
 ): Promise<void> {
   const deadline = Date.now() + healthTimeoutMs;
   let lastError: unknown;
@@ -797,13 +802,13 @@ async function waitUntilHealthy(
   }
 
   throw new Error(
-    `Timed out waiting for tuttid health: ${formatError(lastError)}`
+    `Timed out waiting for tuttid health: ${formatError(lastError)}`,
   );
 }
 
 async function waitForListenerInfo(
   listenerInfoPath: string,
-  isAlive?: () => boolean
+  isAlive?: () => boolean,
 ): Promise<string> {
   const deadline = Date.now() + healthTimeoutMs;
   let lastError: unknown;
@@ -822,7 +827,7 @@ async function waitForListenerInfo(
   }
 
   throw new Error(
-    `Timed out waiting for tuttid listener info: ${formatError(lastError)}`
+    `Timed out waiting for tuttid listener info: ${formatError(lastError)}`,
   );
 }
 
@@ -883,7 +888,7 @@ async function stopStaleTuttid(pidPath: string): Promise<void> {
     getDesktopLogger().warn("ignoring stale tuttid pid for unrelated process", {
       pid,
       pid_path: pidPath,
-      command
+      command,
     });
     await rm(pidPath, { force: true });
     return;
@@ -892,7 +897,7 @@ async function stopStaleTuttid(pidPath: string): Promise<void> {
   getDesktopLogger().warn("stopping stale tuttid process", {
     pid,
     pid_path: pidPath,
-    command
+    command,
   });
 
   signalProcessTree(pid, "SIGTERM");
@@ -900,7 +905,7 @@ async function stopStaleTuttid(pidPath: string): Promise<void> {
   if (isProcessRunning(pid) && isLikelyTuttidProcess(readProcessCommand(pid))) {
     getDesktopLogger().warn("force stopping stale tuttid process", {
       pid,
-      pid_path: pidPath
+      pid_path: pidPath,
     });
     signalProcessTree(pid, "SIGKILL");
     await waitForProcessExit(pid, staleProcessShutdownTimeoutMs);
@@ -935,9 +940,9 @@ function readProcessCommand(pid: number): string {
         "-NoProfile",
         "-NonInteractive",
         "-Command",
-        `(Get-CimInstance Win32_Process -Filter "ProcessId = ${pid}").ExecutablePath`
+        `(Get-CimInstance Win32_Process -Filter "ProcessId = ${pid}").ExecutablePath`,
       ],
-      { encoding: "utf8", windowsHide: true }
+      { encoding: "utf8", windowsHide: true },
     );
     return result.status === 0 ? result.stdout.trim() : "";
   }
@@ -945,8 +950,8 @@ function readProcessCommand(pid: number): string {
     "ps",
     ["-p", String(pid), "-o", "comm=", "-o", "args="],
     {
-      encoding: "utf8"
-    }
+      encoding: "utf8",
+    },
   );
   if (result.status !== 0) {
     return "";
@@ -957,7 +962,7 @@ function readProcessCommand(pid: number): string {
 
 function terminateProcessTree(
   child: ChildProcess,
-  signal: NodeJS.Signals
+  signal: NodeJS.Signals,
 ): void {
   if (!child.pid) {
     return;
@@ -983,7 +988,7 @@ function terminateProcessTree(
 function waitForChildExit(
   child: ChildProcess,
   timeoutMs: number,
-  onTimeout: () => void
+  onTimeout: () => void,
 ): Promise<void> {
   if (child.exitCode !== null || child.signalCode !== null) {
     return Promise.resolve();
@@ -1007,7 +1012,7 @@ function waitForChildExit(
 
 async function waitForProcessExit(
   pid: number,
-  timeoutMs: number
+  timeoutMs: number,
 ): Promise<void> {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
@@ -1065,7 +1070,7 @@ function signalWindowsProcessTree(pid: number, signal: NodeJS.Signals): void {
   }
   const result = spawnSync("taskkill.exe", args, {
     encoding: "utf8",
-    windowsHide: true
+    windowsHide: true,
   });
   if (result.status === 0) {
     return;

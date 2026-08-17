@@ -77,12 +77,14 @@ interface Props {
   onProviderSelect: AgentComposerProps["onProviderSelect"];
   onLinkAction: AgentComposerProps["onLinkAction"];
   availableSkills: AgentComposerProps["availableSkills"];
+  selectedConnectorKeys: readonly string[];
+  onConnectorSelected: (connectorKey: string, selected: boolean) => void;
+  onRetryComposerOptions?: AgentComposerProps["onRetryComposerOptions"];
   onCapabilitySettingsRequest: AgentComposerProps["onCapabilitySettingsRequest"];
   onRequestWorkspaceReferences: AgentComposerProps["onRequestWorkspaceReferences"];
   onWorkspaceReferencePicker: () => void;
   onMentionPaletteButton: () => void;
   onSettingsChange: AgentComposerProps["onSettingsChange"];
-  onRetryComposerOptions: AgentComposerProps["onRetryComposerOptions"];
   onSubmit: AgentComposerProps["onSubmit"];
   onClearGoalMode: () => void;
   draftPrompt: string;
@@ -132,12 +134,14 @@ export function ComposerFooter({
   onProviderSelect,
   onLinkAction,
   availableSkills,
+  onRetryComposerOptions,
+  selectedConnectorKeys,
+  onConnectorSelected,
   onCapabilitySettingsRequest,
   onRequestWorkspaceReferences,
   onWorkspaceReferencePicker: handleWorkspaceReferencePicker,
   onMentionPaletteButton: handleMentionPaletteButton,
   onSettingsChange,
-  onRetryComposerOptions,
   onSubmit,
   onClearGoalMode: clearGoalModeBadge,
   draftPrompt: _draftPrompt,
@@ -148,7 +152,7 @@ export function ComposerFooter({
     <>
       <div className={styles.composerFooter}>
         <div className={composerStyles.footerGroup}>
-          <div className="inline-flex shrink-0 items-center gap-1">
+          <div className="inline-flex shrink-0 items-center gap-2">
             <TooltipProvider delayDuration={120}>
               <Tooltip>
                 <TooltipTrigger asChild>
@@ -224,8 +228,12 @@ export function ComposerFooter({
             isTuttiModeActive={isTuttiModeActive}
             isTuttiModeUpdating={isTuttiModeUpdating}
             labels={labels}
+            loading={composerSettings.isConnectorOptionsLoading === true}
+            onRetryComposerOptions={onRetryComposerOptions}
             onCapabilitySettingsRequest={onCapabilitySettingsRequest}
+            onConnectorSelected={onConnectorSelected}
             onTuttiModeChange={onTuttiModeChange}
+            selectedConnectorKeys={selectedConnectorKeys}
             tuttiModeSupported={tuttiModeSupported}
           />
           {showHandoffSelect ? (
@@ -273,7 +281,7 @@ export function ComposerFooter({
                   "w-auto max-w-[180px]"
                 )}
               >
-                <span className="flex min-w-0 items-center gap-1.5">
+                <span className="flex min-w-0 items-center gap-1">
                   <img
                     alt=""
                     aria-hidden="true"
@@ -305,7 +313,7 @@ export function ComposerFooter({
                     value={target.targetId}
                     className={cn(styles.composerMenuItem, "gap-2")}
                   >
-                    <span className="flex min-w-0 items-center gap-1.5">
+                    <span className="flex min-w-0 items-center gap-1">
                       <img
                         alt=""
                         aria-hidden="true"
@@ -367,7 +375,7 @@ export function ComposerFooter({
               )}
               onClick={onClearPlanMode}
             >
-              <span className="flex min-w-0 items-center gap-1.5 overflow-hidden">
+              <span className="flex min-w-0 items-center gap-1 overflow-hidden">
                 <RemovableBadgeIcon
                   icon={<ListChecks className="size-3.5" />}
                 />
@@ -389,7 +397,7 @@ export function ComposerFooter({
               )}
               onClick={clearGoalModeBadge}
             >
-              <span className="flex min-w-0 items-center gap-1.5 overflow-hidden">
+              <span className="flex min-w-0 items-center gap-1 overflow-hidden">
                 <span className="relative flex size-3.5 shrink-0 items-center justify-center">
                   <Target
                     aria-hidden

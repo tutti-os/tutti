@@ -279,6 +279,7 @@ export function useAgentGUIViewAssembly(input: UseAgentGUIViewAssemblyInput) {
       isSubmitting: input.isSubmitting,
       isInterrupting: detail.isInterrupting,
       isCancelPending: detail.isCancelPending,
+      hasPendingSubmitStopTarget: session.hasPendingSubmitStopTarget,
       promptImagesSupported: input.promptImagesSupported,
       compactSupported: input.compactSupported,
       goalPauseSupported: input.goalPauseSupported,

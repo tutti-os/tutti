@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { AgentGUIConversationSummary } from "./agentGuiConversationModel";
 import type { ConversationSection } from "../agentGuiNodeViewConversation";
 import {
+  conversationRailActiveOverlayCountsTowardTotal,
   conversationRailSectionActiveConversationId,
   conversationRailSectionHeaderVisibility,
   insertConversationRailSectionOverlay,
@@ -467,6 +468,45 @@ describe("projectConversationRailSectionsWithTransientConversations", () => {
     sectionConversations: "Conversations",
     sectionPinned: "Pinned"
   };
+
+  it("keeps every running canonical session visible while its page is stale", () => {
+    const canonical = section([conversation("older")]);
+    const project = canonical[0]?.project ?? null;
+    const first = {
+      ...conversation("running-1"),
+      project,
+      status: "working" as const,
+      sortTimeUnixMs: 30,
+      updatedAtUnixMs: 30
+    };
+    const second = {
+      ...conversation("running-2"),
+      project,
+      status: "waiting" as const,
+      sortTimeUnixMs: 20,
+      updatedAtUnixMs: 20
+    };
+
+    const projected = projectConversationRailSectionsWithTransientConversations(
+      {
+        conversations: [first, second],
+        labels,
+        reconcilingSessionIds: [],
+        sections: canonical
+      }
+    );
+
+    expect(projected[0]?.items.map((item) => item.id)).toEqual([
+      "running-1",
+      "running-2",
+      "older"
+    ]);
+    expect(projected[0]?.items.map((item) => item.projectionSource)).toEqual([
+      "runtime_overlay",
+      "runtime_overlay",
+      undefined
+    ]);
+  });
 
   it("keeps pending rows out of project sections until exact membership arrives", () => {
     const canonical = section([conversation("canonical")]);
@@ -1103,5 +1143,29 @@ describe("resolveConversationRailActiveConversation", () => {
         conversations: [conversation("other")]
       })
     ).toBe(controllerActive);
+  });
+});
+
+describe("conversationRailActiveOverlayCountsTowardTotal", () => {
+  it("does not count an active canonical entity when its section row is a runtime overlay", () => {
+    const active = conversation("active");
+
+    expect(
+      conversationRailActiveOverlayCountsTowardTotal({
+        activeConversation: active,
+        matchesFilter: true,
+        sectionItems: [{ ...active, projectionSource: "runtime_overlay" }]
+      })
+    ).toBe(false);
+  });
+
+  it("counts an active matching entity that is absent from the section", () => {
+    expect(
+      conversationRailActiveOverlayCountsTowardTotal({
+        activeConversation: conversation("active"),
+        matchesFilter: true,
+        sectionItems: [conversation("older")]
+      })
+    ).toBe(true);
   });
 });

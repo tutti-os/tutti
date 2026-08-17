@@ -239,7 +239,11 @@ function resolveAgentGeneratedFilePath(
   workspaceRoot: string,
   sessionCwd: string
 ): string | null {
-  const path = rawPath.trim();
+  // Agent activity payloads cross the daemon boundary using the host's native
+  // separator. Normalize before checking virtual namespaces such as the
+  // out-of-workspace generated-image directory; otherwise a Windows path is
+  // rejected because its `\\` segments are invisible to the `/`-only check.
+  const path = rawPath.trim().replace(/\\/g, "/");
   if (!path || isStructuredPayloadPath(path)) {
     return null;
   }
@@ -257,7 +261,7 @@ function resolveAgentGeneratedFilePath(
     ) {
       return null;
     }
-    return path.replace(/\\/g, "/");
+    return path;
   }
 
   const base = sessionCwd || workspaceRoot;
@@ -285,9 +289,15 @@ function isPathInsideOrEqual(path: string, root: string): boolean {
   if (!normalizedRoot) {
     return false;
   }
+  const comparisonPath = /^[A-Za-z]:\//.test(normalizedPath)
+    ? normalizedPath.toLowerCase()
+    : normalizedPath;
+  const comparisonRoot = /^[A-Za-z]:\//.test(normalizedRoot)
+    ? normalizedRoot.toLowerCase()
+    : normalizedRoot;
   return (
-    normalizedPath === normalizedRoot ||
-    normalizedPath.startsWith(`${normalizedRoot}/`)
+    comparisonPath === comparisonRoot ||
+    comparisonPath.startsWith(`${comparisonRoot}/`)
   );
 }
 

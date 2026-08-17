@@ -318,6 +318,13 @@ show product close guards, and clean up renderer-owned sessions. Once that
 work has completed, renderer calls the approved-close host capability and main
 destroys the window.
 
+Native titlebar close and Workbench node close are distinct intents. Windows
+caption close and the macOS traffic-light close use `native-window-close` and
+must approve destruction of the owning Electron window without first closing
+the focused Workbench node. `window-close` remains the node-oriented command
+used by interactions such as `Command+W`; `quit` remains the application-wide
+shutdown path.
+
 Renderer workspace code should not infer native close intent from
 `beforeunload`. Reload and close are distinct intents, and `beforeunload`
 cannot reliably distinguish Electron menu accelerators, keyboard shortcuts,

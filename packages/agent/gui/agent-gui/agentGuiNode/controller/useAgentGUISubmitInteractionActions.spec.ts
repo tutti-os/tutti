@@ -15,11 +15,26 @@ import {
   restoreFailedAgentGUIHomeDraft
 } from "./agentGuiController.homeDraftHelpers";
 import {
+  agentGUISubmitSettlementError,
   typedGoalControlFromComposer,
   useAgentGUISubmitInteractionActions
 } from "./useAgentGUISubmitInteractionActions";
 
 const draftKey = "node-default:codex:local:codex";
+
+it("preserves a failed submit reason for package-owned presentation", () => {
+  expect(
+    agentGUISubmitSettlementError({
+      errorCode: "workspace_operation_failed",
+      errorMessage: "agent process cleanup is still pending",
+      errorReason: "agent.process_cleanup_pending"
+    })
+  ).toMatchObject({
+    code: "workspace_operation_failed",
+    message: "agent process cleanup is still pending",
+    reason: "agent.process_cleanup_pending"
+  });
+});
 
 function draft(prompt: string): AgentComposerDraft {
   return [{ type: "text", text: prompt }];
@@ -538,6 +553,45 @@ describe("existing-session prompt submission", () => {
       })
     });
     expect(setDraftByScopeKey).toHaveBeenCalledTimes(1);
+    expect(
+      agentComposerDraftPrompt(draftByScopeKeyRef.current["session:session-1"]!)
+    ).toBe("");
+  });
+
+  it("clears the draft captured by the Composer when the controller ref is stale", () => {
+    const goalControl = vi.fn(async () => undefined);
+    const { input, draftByScopeKeyRef, sessionEngine, setDraftByScopeKey } =
+      createGoalControlInput(goalControl as never);
+    const submittedDraft = draft("continue");
+    draftByScopeKeyRef.current = {
+      "session:session-1": draft("stale projection")
+    };
+    const submitPrompt = vi
+      .spyOn(sessionEngine, "submitPrompt")
+      .mockReturnValue({ accepted: true, queued: true });
+    const { result } = renderHook(() =>
+      useAgentGUISubmitInteractionActions(input)
+    );
+
+    setDraftByScopeKey.mockImplementationOnce((update) => {
+      const current = { "session:session-1": submittedDraft };
+      const next = typeof update === "function" ? update(current) : update;
+      draftByScopeKeyRef.current = next;
+    });
+
+    act(() =>
+      result.current.submitPrompt(
+        [{ type: "text", text: "continue" }],
+        undefined,
+        { submittedDraft }
+      )
+    );
+
+    expect(submitPrompt).toHaveBeenCalledWith(
+      expect.objectContaining({
+        content: [{ type: "text", text: "continue" }]
+      })
+    );
     expect(
       agentComposerDraftPrompt(draftByScopeKeyRef.current["session:session-1"]!)
     ).toBe("");

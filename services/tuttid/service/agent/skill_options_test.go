@@ -74,6 +74,11 @@ name: browser-use
 description: Use Tutti browser automation.
 ---
 `)
+	writeSkill(t, filepath.Join(repoDir, ".agent_context", "skills", "computer-use", "SKILL.md"), `---
+name: computer-use
+description: Use Tutti computer automation.
+---
+`)
 	writeSkill(t, filepath.Join(repoDir, ".agent_context", "skills", "hermes-native", "SKILL.md"), `---
 name: hermes-native
 description: Native Hermes skill.
@@ -97,7 +102,7 @@ description: Native Hermes skill.
 		map[string]any{"kind": "agent_extension", "extensionInstallationId": "hermes@0.1.0"},
 	)
 	if got := composerSkillOptionTriggers(options); !slices.Equal(got, []string{"/hermes-native"}) {
-		t.Fatalf("extension skill triggers = %#v, want native Hermes skills without Tutti-injected browser-use", got)
+		t.Fatalf("extension skill triggers = %#v, want native Hermes skills without Tutti-injected browser-use or computer-use", got)
 	}
 }
 

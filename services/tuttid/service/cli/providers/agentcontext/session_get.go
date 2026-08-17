@@ -28,6 +28,7 @@ type sessionGetResult struct {
 	Trace          *sessionGetTraceResult
 	HasMoreTurns   bool
 	ImageLocalPath imageLocalPathResolver
+	WorkspaceID    string
 }
 
 type sessionGetTurnResult struct {
@@ -55,7 +56,7 @@ func (p Provider) getSessionContext(ctx context.Context, workspaceID string, inp
 		if err != nil {
 			return nil, err
 		}
-		return sessionGetResult{View: view, Session: session}, nil
+		return sessionGetResult{View: view, Session: session, WorkspaceID: workspaceID}, nil
 	}
 
 	session, err := p.sessions.Get(ctx, workspaceID, input.SessionID)
@@ -66,6 +67,7 @@ func (p Provider) getSessionContext(ctx context.Context, workspaceID string, inp
 		View:           view,
 		Session:        session,
 		ImageLocalPath: p.imageLocalPathResolver(ctx, workspaceID),
+		WorkspaceID:    workspaceID,
 	}
 	if view == getViewTrace {
 		trace, err := p.getSessionTrace(ctx, workspaceID, input)
@@ -287,8 +289,9 @@ func sessionGetJSONValue(result any) map[string]any {
 	got := result.(sessionGetResult)
 	value := map[string]any{
 		"view":    got.View,
-		"session": sessionInspectValue(got.Session),
+		"session": sessionInspectValue(got.WorkspaceID, got.Session),
 	}
+	addAgentSessionReference(value, got.WorkspaceID, got.Session.ID)
 	switch got.View {
 	case getViewTurns:
 		value["turns"] = sessionGetTurnSummaryValues(got.TurnSummaries)

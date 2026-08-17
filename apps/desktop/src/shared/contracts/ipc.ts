@@ -353,7 +353,7 @@ export interface DesktopHostWindowResizeContentWidthResult {
 
 export interface DesktopHostWindowCloseRequestPayload {
   requestId?: string;
-  reason: "quit" | "window-close";
+  reason: "native-window-close" | "quit" | "window-close";
 }
 
 export interface DesktopHostWindowCloseGuardInput {
@@ -1033,9 +1033,18 @@ export function desktopComputerUseStatusesEqual(
   );
 }
 
+export type DesktopComputerUseActionFailureReason =
+  | "timeout"
+  | "spawn-error"
+  | "exit-code";
+
 export interface DesktopComputerUseActionResult {
   success: boolean;
   output: string;
+  /** The child-process exit code, when the process reached close normally. */
+  exitCode?: number | null;
+  /** A stable reason that lets the renderer distinguish common failures. */
+  failureReason?: DesktopComputerUseActionFailureReason;
 }
 
 export type DesktopComputerUsePermissionPane =

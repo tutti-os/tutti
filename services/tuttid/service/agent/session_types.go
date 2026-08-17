@@ -74,6 +74,7 @@ type Service struct {
 	ComputerUseAvailable           func() bool
 	CapabilityLister               ComposerCapabilityLister
 	ConnectorMarketSnapshots       market.SnapshotReader
+	ConnectorMarketCurrentScope    func() market.OperationScope
 	ExtensionComposerProfiles      ExtensionComposerProfileResolver
 	AgentComposerDefaultsReader    AgentComposerDefaultsReader
 	DesktopPreferencesReader       DesktopPreferencesReader
@@ -86,6 +87,7 @@ type Service struct {
 	skillOptionsCache              *composerSkillOptionsCache
 	providerAvailabilityCache      *providerAvailabilityCache
 	capabilityCatalogCache         *composerCapabilityCatalogCache
+	capabilityCatalogGroup         singleflight.Group
 	liveModelCache                 *composerLiveModelCache
 	claudeStartupLock              *claudecodeservice.StartupGate
 	liveModelDiscoveryMu           sync.Mutex
@@ -201,6 +203,7 @@ type RuntimeController interface {
 
 type SessionDirectoryAllocator interface {
 	CreateSessionDirectory(context.Context) (string, error)
+	ReleaseSessionDirectory(context.Context, string) error
 }
 
 type AgentTargetStore interface {
@@ -530,6 +533,15 @@ type SessionInitializer interface {
 	InitializeRuntimeSession(context.Context, ProviderRuntimeSession, *agenthost.RailPlacement) (PersistedSession, error)
 }
 
+// sessionInitializerWithRailAuthority is an optional adapter capability for
+// callers whose explicit rail placement comes from an external canonical
+// authority. The legacy initializer remains valid for ordinary service paths;
+// Host adapters must use this capability when they carry the authoritative
+// placement bit across the service boundary.
+type sessionInitializerWithRailAuthority interface {
+	InitializeRuntimeSessionWithRailAuthority(context.Context, ProviderRuntimeSession, *agenthost.RailPlacement, bool) (PersistedSession, error)
+}
+
 type ChildSessionReader interface {
 	ListChildSessions(context.Context, string, string) ([]PersistedSession, error)
 }
@@ -714,8 +726,11 @@ type CreateSessionInput struct {
 	// StrictPermissionMode rejects an explicit unsupported permission mode
 	// instead of applying the provider default. It is used by unattended
 	// automation so a typo cannot silently broaden authority.
-	StrictPermissionMode  bool
-	Model                 *string
+	StrictPermissionMode bool
+	Model                *string
+	// ModelExplicit preserves caller intent across transport. Nil keeps legacy
+	// direct-Create behavior, where a supplied non-empty model is explicit.
+	ModelExplicit         *bool
 	ModelPlanID           *string
 	PlanMode              *bool
 	BrowserUse            *bool
@@ -724,6 +739,9 @@ type CreateSessionInput struct {
 	CodexSaverModeAllowed bool
 	ProviderTargetRef     map[string]any
 	ReasoningEffort       *string
+	// ReasoningEffortExplicit has the same compatibility semantics as
+	// ModelExplicit for the model-dependent reasoning setting.
+	ReasoningEffortExplicit *bool
 	// ReasoningIntensity is an Issue-owned 0-100 strength request. When an
 	// explicit ReasoningEffort is absent, Create compiles it against the
 	// selected model's ordered reasoning-effort catalog. It is daemon-only and
@@ -735,7 +753,10 @@ type CreateSessionInput struct {
 	ConversationDetailMode string
 	Visible                *bool
 	RailPlacement          *agenthost.RailPlacement
-	ExtraSkills            []SessionSkillBundle
+	// RailPlacementAuthoritative carries an externally canonical project
+	// placement through the legacy service adapter used by conformance tests.
+	RailPlacementAuthoritative bool
+	ExtraSkills                []SessionSkillBundle
 	// ExternalRolloutSourcePath is the absolute path to the original provider
 	// CLI rollout/transcript file this session was imported from, when known.
 	// Populated from the persisted session's RuntimeContext when resuming an

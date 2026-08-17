@@ -3,6 +3,7 @@ import {
   resolveAgentActivityUsage,
   selectComposerOptions,
   selectComposerOptionsLoadStatus,
+  selectComposerOptionsSectionLoadStatus,
   type AgentActivityUsage,
   type CanonicalAgentSession,
   type AgentSessionEngine
@@ -18,7 +19,8 @@ import { composerSettingsSupportFromOptions } from "../model/composerSettingsSup
 import { normalizeOptionalText } from "./agentGuiController.promptHelpers";
 import {
   composerTargetDataForConversation,
-  type AgentGUIComposerTargetData
+  type AgentGUIComposerTargetData,
+  type OptimisticComposerTarget
 } from "./agentGuiController.composerPresentation";
 import { resolvePromptImageSelectedModel } from "./agentGuiController.draftMessageHelpers";
 import { useEngineSelector } from "../../../shared/engine/useEngineSelector";
@@ -29,6 +31,7 @@ interface UseAgentGUIComposerCapabilitiesInput {
   activeSessionState: AgentSessionState | null;
   data: AgentGUINodeData;
   draftSettingsBySessionId: Record<string, AgentSessionComposerSettings>;
+  optimisticComposerTarget?: OptimisticComposerTarget | null;
   selectedComposerTargetData: AgentGUIComposerTargetData;
   sessionEngine: AgentSessionEngine;
 }
@@ -43,7 +46,7 @@ export function useAgentGUIComposerCapabilities(
     activeConversationId: input.activeConversationId,
     activeSessionTarget: input.activeEngineSession,
     data: input.data,
-    optimisticTarget: null,
+    optimisticTarget: input.optimisticComposerTarget ?? null,
     selectedTarget: input.selectedComposerTargetData
   });
   const composerTargetKey = composerTargetData.agentTargetId?.trim() ?? "";
@@ -55,10 +58,29 @@ export function useAgentGUIComposerCapabilities(
     input.sessionEngine,
     (state) => selectComposerOptionsLoadStatus(state, composerTargetKey)
   );
+  const capabilitiesLoadStatus = useEngineSelector(
+    input.sessionEngine,
+    (state) =>
+      selectComposerOptionsSectionLoadStatus(
+        state,
+        composerTargetKey,
+        "capabilities"
+      )
+  );
+  const connectorsLoadStatus = useEngineSelector(input.sessionEngine, (state) =>
+    selectComposerOptionsSectionLoadStatus(
+      state,
+      composerTargetKey,
+      "connectors"
+    )
+  );
   const composerOptionsLoading = Boolean(
     composerTargetKey &&
-    !providerComposerOptions &&
-    composerOptionsLoadStatus === "loading"
+    (capabilitiesLoadStatus === "loading" ||
+      (!providerComposerOptions && composerOptionsLoadStatus === "loading"))
+  );
+  const connectorOptionsLoading = Boolean(
+    composerTargetKey && connectorsLoadStatus === "loading"
   );
   const defaultReasoningEffort: AgentSessionReasoningEffort | null = "high";
   const sessionCapabilities = input.activeEngineSession?.capabilities ?? null;
@@ -148,6 +170,7 @@ export function useAgentGUIComposerCapabilities(
     composerSupport,
     composerOptionsLoadStatus,
     composerOptionsLoading,
+    connectorOptionsLoading,
     composerTargetData,
     defaultReasoningEffort,
     goalPauseSupported:

@@ -141,6 +141,9 @@ documentation impact was found.
 
 ## Common Checks
 
+- Writing, materially rewriting, reviewing, or removing tests invokes
+  `$tutti-test-audit`; the durable quality rules live in
+  [Unit Testing](docs/conventions/unit-testing.md).
 - UI-only exception: if a change modifies only UI presentation and does not alter logic or behavior, do not run any checks. This exception takes precedence over the checks below and includes tests, lint, typecheck, builds, boundary checks, and visual checks.
 - For every other change, follow the single validation-selection policy in
   [Testing](docs/conventions/testing.md#validation-selection). Closest-area

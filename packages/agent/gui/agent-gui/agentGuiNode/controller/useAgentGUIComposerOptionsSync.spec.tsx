@@ -61,6 +61,9 @@ describe("useAgentGUIComposerOptionsSync", () => {
 
     await waitFor(() => {
       expect(getComposerOptions).toHaveBeenCalledTimes(1);
+      expect(getComposerOptions).toHaveBeenCalledWith(
+        expect.objectContaining({ section: "core" })
+      );
       expect(
         authorityReconcilerRef.current.reconcileHomeDefaults
       ).toHaveBeenCalledWith(
@@ -355,7 +358,8 @@ describe("useAgentGUIComposerOptionsSync", () => {
         expect.objectContaining({
           agentTargetId: "local:codex",
           force: true,
-          provider: "codex"
+          provider: "codex",
+          section: "connectors"
         })
       );
     } finally {

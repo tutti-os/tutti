@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"reflect"
+	"strings"
 	"testing"
 
 	cliservice "github.com/tutti-os/tutti/services/tuttid/service/cli"
@@ -99,6 +100,32 @@ func TestNativeToolCallForwardsJSONArgumentsWithoutPerToolBinding(t *testing.T) 
 	}
 	content := output.Value["content"].([]any)
 	if len(content) != 2 || output.Value["isError"] != true || output.Value["futureField"] != true || output.Value["largeId"] != json.Number("9007199254740993") || !reflect.DeepEqual(output.Value["structuredContent"], map[string]any{"verified": false}) {
+		t.Fatalf("output = %#v", output.Value)
+	}
+	if output.Value["tuttiDiagnostic"] != "clicked" {
+		t.Fatalf("native error diagnostic = %#v", output.Value["tuttiDiagnostic"])
+	}
+}
+
+func TestNativeToolCallAddsNormalizedDriverDiagnosticWithoutDroppingRawEnvelope(t *testing.T) {
+	computer := &fakeComputerService{
+		catalog: testToolCatalog(),
+		result: computersvc.ToolResult{
+			Text:    "操作成功完成。 (0x00000000)",
+			Raw:     json.RawMessage(`{"isError":true,"content":[{"type":"text","text":"操作成功完成。 (0x00000000)"}],"futureField":"kept"}`),
+			IsError: true,
+		},
+	}
+	command := commandByID(t, NewProvider(nil, computer).Commands(), "computer.tool.call")
+	output, err := command.Handler(context.Background(), cliservice.InvokeRequest{
+		Input:      map[string]any{"name": "click"},
+		OutputMode: cliservice.OutputModeJSON,
+		Context:    cliservice.InvokeContext{WorkspaceID: "workspace-1"},
+	})
+	if err != nil {
+		t.Fatalf("tool call: %v", err)
+	}
+	if output.Value["futureField"] != "kept" || !strings.Contains(output.Value["tuttiDiagnostic"].(string), "inconsistent result") {
 		t.Fatalf("output = %#v", output.Value)
 	}
 }

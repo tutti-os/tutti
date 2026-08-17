@@ -222,8 +222,9 @@ func (c *Controller) observeProviderObservations(
 }
 
 // reportSubmittedTurnDurable is the acceptance barrier for a user submission.
-// The daemon reporter commits the submitted Turn and its session pointer before
-// Exec may publish the transition, start provider work, or return success.
+// The durable reporter commits the submitted Turn and canonical user message
+// together before Exec may publish the transition, start provider work, or
+// return success.
 func (c *Controller) reportSubmittedTurnDurable(
 	ctx context.Context,
 	session Session,
@@ -243,7 +244,7 @@ func (c *Controller) reportSubmittedTurnDurable(
 	if keepProvisional {
 		hideProvisionalSessionReport(&report)
 	}
-	return c.reporter.Report(ctx, report)
+	return c.reporter.ReportSubmitProvenance(ctx, report)
 }
 
 func hideProvisionalSessionReport(report *agentsessionstore.ReportActivityInput) {

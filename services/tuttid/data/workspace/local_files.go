@@ -48,7 +48,7 @@ func (LocalFilesAdapter) ListDirectory(
 		if err := ctx.Err(); err != nil {
 			return workspacefiles.DirectoryListing{}, err
 		}
-		if !includeHidden && strings.HasPrefix(dirEntry.Name(), ".") {
+		if !includeHidden && shouldHideWorkspaceEntry(physicalPath, dirEntry) {
 			continue
 		}
 

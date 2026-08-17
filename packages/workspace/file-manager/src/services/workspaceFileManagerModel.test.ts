@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   filterVisibleWorkspaceEntries,
+  formatWorkspaceFilePathForDisplay,
   formatWorkspaceFileModifiedTime,
   normalizeWorkspaceFilePath,
   resolveWorkspaceFileActivationTarget,
@@ -37,8 +38,57 @@ test("normalizes Windows drive paths without treating them as relative", () => {
     "/C:/tmp/report.txt"
   );
   assert.equal(
+    normalizeWorkspaceFilePath(
+      "c:\\Users\\demo\\project\\src\\main.ts",
+      "C:\\Users\\demo\\project"
+    ),
+    "/C:/Users/demo/project/src/main.ts"
+  );
+  assert.equal(
+    normalizeWorkspaceFilePath(
+      "/c/Users/demo/project/src/main.ts",
+      "C:\\Users\\demo\\project"
+    ),
+    "/C:/Users/demo/project/src/main.ts"
+  );
+  assert.equal(
     normalizeWorkspaceFilePath("/C:/tmp/report.txt"),
     "/C:/tmp/report.txt"
+  );
+});
+
+test("formats Windows logical paths for user-facing display", () => {
+  assert.equal(
+    formatWorkspaceFilePathForDisplay(
+      "/C:/Users/demo/project/README.md",
+      "win32"
+    ),
+    "C:\\Users\\demo\\project\\README.md"
+  );
+  assert.equal(
+    formatWorkspaceFilePathForDisplay(
+      "C:/Users/demo/project/README.md",
+      "win32"
+    ),
+    "C:\\Users\\demo\\project\\README.md"
+  );
+  assert.equal(
+    formatWorkspaceFilePathForDisplay(
+      "/c/Users/demo/project/README.md",
+      "win32"
+    ),
+    "C:\\Users\\demo\\project\\README.md"
+  );
+  assert.equal(
+    formatWorkspaceFilePathForDisplay(
+      "/c/Users/demo/project/README.md",
+      "linux"
+    ),
+    "/c/Users/demo/project/README.md"
+  );
+  assert.equal(
+    formatWorkspaceFilePathForDisplay("/Users/demo/project/README.md", "win32"),
+    "/Users/demo/project/README.md"
   );
 });
 

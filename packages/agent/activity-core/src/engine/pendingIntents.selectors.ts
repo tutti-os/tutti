@@ -199,6 +199,18 @@ export function selectLatestStopTargetSubmitForSession(
   return latest;
 }
 
+/**
+ * Whether an implicit Session stop can target a pending prompt admission.
+ * Consumers use this presentation-safe fact instead of duplicating submit and
+ * canonical Turn correlation rules.
+ */
+export function selectSessionHasPendingSubmitStopTarget(
+  state: AgentSessionEngineStateBase,
+  agentSessionId: string | null | undefined
+): boolean {
+  return selectLatestStopTargetSubmitForSession(state, agentSessionId) !== null;
+}
+
 function stopTargetMayStillProduceUnsettledTurn(
   state: AgentSessionEngineStateBase,
   pending: PendingSubmitIntentRecord

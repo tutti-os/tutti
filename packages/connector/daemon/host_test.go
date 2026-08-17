@@ -450,8 +450,8 @@ func TestAuthorizationRecoverySchedulesOneRuntimeBeforeResolvingReceipt(t *testi
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if runtime.reconciles != 2 {
-		t.Fatalf("runtime reconciles after live observation = %d, want 2", runtime.reconciles)
+	if runtime.reconciles != 1 {
+		t.Fatalf("unchanged runtime desired reconciled %d times, want 1", runtime.reconciles)
 	}
 	projection, err := store.AuthorizationProjection(ctx, scope.AccountID, connector.Key)
 	if err != nil {

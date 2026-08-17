@@ -23,7 +23,16 @@ func (c *standardACPConnection) Send(data []byte) error {
 			if request.Params != nil {
 				c.lastInitializeParamsSnapshot = maps.Clone(request.Params)
 			}
+			initializeError := c.initializeError
 			c.mu.Unlock()
+			if initializeError != nil {
+				c.sendJSON(map[string]any{
+					"jsonrpc": "2.0",
+					"id":      message.ID,
+					"error":   initializeError,
+				})
+				continue
+			}
 			result := map[string]any{
 				"protocolVersion": acpProtocolVersion,
 				"agentInfo": map[string]any{
@@ -44,10 +53,15 @@ func (c *standardACPConnection) Send(data []byte) error {
 			if len(sessionCapabilities) > 0 {
 				result["sessionCapabilities"] = sessionCapabilities
 			}
+			agentCapabilities := map[string]any{}
+			if c.supportsAgentLoadSession {
+				agentCapabilities["loadSession"] = true
+			}
 			if c.supportsHTTPMCP {
-				result["agentCapabilities"] = map[string]any{
-					"mcpCapabilities": map[string]any{"http": true},
-				}
+				agentCapabilities["mcpCapabilities"] = map[string]any{"http": true}
+			}
+			if len(agentCapabilities) > 0 {
+				result["agentCapabilities"] = agentCapabilities
 			}
 			if len(c.authMethods) > 0 {
 				result["authMethods"] = c.authMethods
@@ -199,7 +213,18 @@ func (c *standardACPConnection) Send(data []byte) error {
 				c.lastSetModeParamsSnapshot = maps.Clone(request.Params)
 			}
 			setModeError := c.setModeError
+			started := c.pauseSettingsRPCStarted
+			release := c.pauseSettingsRPCRelease
 			c.mu.Unlock()
+			if started != nil {
+				select {
+				case started <- struct{}{}:
+				default:
+				}
+			}
+			if release != nil {
+				<-release
+			}
 			if setModeError != nil {
 				c.sendJSON(map[string]any{
 					"jsonrpc": "2.0",
@@ -251,7 +276,18 @@ func (c *standardACPConnection) Send(data []byte) error {
 				c.setConfigOptionSnapshots = append(c.setConfigOptionSnapshots, maps.Clone(request.Params))
 			}
 			rejectModelValue := c.rejectModelValue
+			started := c.pauseSettingsRPCStarted
+			release := c.pauseSettingsRPCRelease
 			c.mu.Unlock()
+			if started != nil {
+				select {
+				case started <- struct{}{}:
+				default:
+				}
+			}
+			if release != nil {
+				<-release
+			}
 			if rejectModelValue != "" && request.Params != nil {
 				configID, _ := request.Params["configId"].(string)
 				value, _ := request.Params["value"].(string)

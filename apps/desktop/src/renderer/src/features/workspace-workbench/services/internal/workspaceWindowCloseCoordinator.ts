@@ -12,10 +12,36 @@ export async function confirmWorkspaceWindowClose(input: {
     WorkspaceWorkbenchHostInput,
     "createWindowCloseDialogRequest" | "prepareHostClose" | "workspaceId"
   >;
-  reason: "quit" | "window-close";
+  reason: "native-window-close" | "quit" | "window-close";
   requestApprovedClose(): Promise<void>;
   tracker: WindowCloseRequestTracker;
 }): Promise<"approved" | "blocked"> {
+  if (input.reason === "native-window-close") {
+    const host = input.host;
+    if (host) {
+      const effects = await host.collectWindowCloseEffects();
+      const request =
+        input.hostInput.createWindowCloseDialogRequest?.(effects) ?? null;
+      if (request && !(await input.confirmCloseGuard(request))) {
+        return "blocked";
+      }
+      if (
+        input.hostInput.prepareHostClose &&
+        !(await input.hostInput.prepareHostClose({
+          host,
+          workspaceId: input.hostInput.workspaceId
+        }))
+      ) {
+        return "blocked";
+      }
+    }
+
+    return requestWorkspaceWindowClose({
+      requestApprovedClose: () => input.requestApprovedClose(),
+      tracker: input.tracker
+    });
+  }
+
   if (input.reason === "window-close") {
     const host = input.host;
     if (host) {

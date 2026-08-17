@@ -10,8 +10,12 @@ interface Props {
   isTuttiModeActive: boolean;
   isTuttiModeUpdating: boolean;
   labels: AgentComposerProps["labels"];
+  loading: boolean;
+  onRetryComposerOptions?: AgentComposerProps["onRetryComposerOptions"];
   onCapabilitySettingsRequest: AgentComposerProps["onCapabilitySettingsRequest"];
+  onConnectorSelected: (connectorKey: string, selected: boolean) => void;
   onTuttiModeChange?: (active: boolean) => void;
+  selectedConnectorKeys: readonly string[];
   tuttiModeSupported: boolean;
 }
 
@@ -27,8 +31,12 @@ export function ComposerPrimaryCapabilityControl({
   isTuttiModeActive,
   isTuttiModeUpdating,
   labels,
+  loading,
+  onRetryComposerOptions,
   onCapabilitySettingsRequest,
+  onConnectorSelected,
   onTuttiModeChange,
+  selectedConnectorKeys,
   tuttiModeSupported
 }: Props): React.JSX.Element | null {
   if (!connectorsVisible) {
@@ -47,14 +55,22 @@ export function ComposerPrimaryCapabilityControl({
   return (
     <ComposerConnectorsMenu
       connectors={availableSkills ?? []}
-      disabled={disabled || !onCapabilitySettingsRequest}
+      disabled={disabled}
       labels={{
         connectors: labels.addContentConnectors,
         connectorConnected: labels.addContentConnectorConnected,
         connectorConnect: labels.addContentConnectorConnect,
         connectorAuthorize: labels.addContentConnectorAuthorize,
         connectorEmpty: labels.addContentConnectorEmpty,
-        connectorMore: labels.addContentConnectorMore
+        connectorLoading: labels.addContentConnectorLoading,
+        connectorMore: labels.addContentConnectorMore,
+        connectorSelected: labels.addContentConnectorSelected
+      }}
+      loading={loading}
+      onOpenChange={(open) => {
+        if (open) {
+          onRetryComposerOptions?.({ section: "connectors" });
+        }
       }}
       onOpenConnector={(connectorKey) =>
         onCapabilitySettingsRequest?.({
@@ -69,6 +85,8 @@ export function ComposerPrimaryCapabilityControl({
           pane: "connectors"
         })
       }
+      onSelectConnector={onConnectorSelected}
+      selectedConnectorKeys={selectedConnectorKeys}
     />
   );
 }

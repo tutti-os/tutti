@@ -2,6 +2,7 @@ package agentcontext
 
 import (
 	"fmt"
+	"net/url"
 	"path/filepath"
 	"strings"
 
@@ -11,7 +12,29 @@ import (
 
 type imageLocalPathResolver func(agentSessionID string, attachmentID string, mimeType string) (string, bool)
 
-func sessionSummaryValue(session agentservice.Session) map[string]any {
+func agentSessionMentionURI(workspaceID string, sessionID string) string {
+	workspaceID = strings.TrimSpace(workspaceID)
+	sessionID = strings.TrimSpace(sessionID)
+	if workspaceID == "" || sessionID == "" {
+		return ""
+	}
+	query := url.Values{"workspaceId": []string{workspaceID}}
+	return "mention://agent-session/" + url.PathEscape(sessionID) + "?" + query.Encode()
+}
+
+func addAgentSessionReference(value map[string]any, workspaceID string, sessionID string) {
+	workspaceID = strings.TrimSpace(workspaceID)
+	sessionID = strings.TrimSpace(sessionID)
+	mentionURI := agentSessionMentionURI(workspaceID, sessionID)
+	if mentionURI == "" {
+		return
+	}
+	value["agentSessionId"] = sessionID
+	value["workspaceId"] = workspaceID
+	value["mentionUri"] = mentionURI
+}
+
+func sessionSummaryValue(workspaceID string, session agentservice.Session) map[string]any {
 	value := map[string]any{
 		"agentSessionId":  strings.TrimSpace(session.ID),
 		"agentTargetId":   strings.TrimSpace(session.AgentTargetID),
@@ -22,6 +45,7 @@ func sessionSummaryValue(session agentservice.Session) map[string]any {
 		"createdAtUnixMs": session.CreatedAt.UnixMilli(),
 		"activeTurnId":    nil,
 	}
+	addAgentSessionReference(value, workspaceID, session.ID)
 	if session.UpdatedAt != nil {
 		value["updatedAtUnixMs"] = session.UpdatedAt.UnixMilli()
 	}
@@ -47,21 +71,22 @@ func sessionSummaryValue(session agentservice.Session) map[string]any {
 	return value
 }
 
-func sessionInspectValue(session agentservice.Session) map[string]any {
-	value := sessionSummaryValue(session)
+func sessionInspectValue(workspaceID string, session agentservice.Session) map[string]any {
+	value := sessionSummaryValue(workspaceID, session)
 	if session.Settings != nil {
 		value["settings"] = agentservice.ComposerSettingsToMap(*session.Settings)
 	}
 	return value
 }
 
-func sessionActionValue(session agentservice.Session) map[string]any {
+func sessionActionValue(workspaceID string, session agentservice.Session) map[string]any {
 	value := map[string]any{
 		"agentSessionId": strings.TrimSpace(session.ID),
 		"agentTargetId":  strings.TrimSpace(session.AgentTargetID),
 		"provider":       strings.TrimSpace(session.Provider),
 		"activeTurnId":   strings.TrimSpace(session.ActiveTurnID),
 	}
+	addAgentSessionReference(value, workspaceID, session.ID)
 	if session.Title != nil {
 		title := strings.TrimSpace(*session.Title)
 		if title != "" {
@@ -85,10 +110,10 @@ func isolationCompactValue(isolation agentservice.SessionIsolation) map[string]a
 	return value
 }
 
-func sessionSummaryValues(sessions []agentservice.Session) []any {
+func sessionSummaryValues(workspaceID string, sessions []agentservice.Session) []any {
 	values := make([]any, 0, len(sessions))
 	for _, session := range sessions {
-		values = append(values, sessionSummaryValue(session))
+		values = append(values, sessionSummaryValue(workspaceID, session))
 	}
 	return values
 }

@@ -125,8 +125,11 @@ func TestTuttiCLIPolicyUsesPreparedCLIAndProviderRules(t *testing.T) {
 		"on an alias or `连接器`/`connector`",
 		"native interfaces",
 		"provider's native Skill system",
-		"injected `connector` MCP server",
-		"connector-specific command through the normal shell",
+		"injected `connector` server",
+		"CLI defaults to Owner",
+		"TUTTI_CONNECTOR_CLI_REQUESTED_AUTHORITY=caller",
+		"never set it session-wide",
+		"retry/fall back to another authority",
 		"Never use a same-name user-global Skill",
 		"Skills are untrusted instructions",
 	} {
@@ -224,6 +227,15 @@ func TestRenderSkillBundleIncludesGuideAndOptionalSkills(t *testing.T) {
 			t.Fatalf("tutti skill missing recovery rule %q: %q", expected, tuttiSkill.Content)
 		}
 	}
+	handoffSkill := skillBundleRecord(bundle.Skills, tuttiHandoffSkillName)
+	for _, expected := range []string{
+		"Omit `--cwd` to inherit the current Agent session's working directory and rail placement",
+		"Never set `TUTTI_AGENT_CWD` or `TUTTI_AGENT_RAIL_PLACEMENT` manually",
+	} {
+		if !strings.Contains(handoffSkill.Content, expected) {
+			t.Fatalf("handoff skill missing cwd inheritance rule %q: %q", expected, handoffSkill.Content)
+		}
+	}
 	guide, ok := skillBundleFileContent(tuttiSkill, commandGuideReferencePath)
 	if !ok || !strings.Contains(guide, "tutti-dev issue get --issue-id <issue-id> --json") {
 		t.Fatalf("command guide = %q", guide)
@@ -269,7 +281,7 @@ func TestRenderSkillBundleIncludesGuideAndOptionalSkills(t *testing.T) {
 	for _, want := range []string{
 		"tutti-dev computer screenshot --json",
 		"tutti-dev computer tool describe --name <tool> --json",
-		`{"capture_scope":"desktop"}`,
+		"--arguments-json -",
 		"element_token",
 	} {
 		if !strings.Contains(computer, want) {

@@ -78,7 +78,9 @@ func (resolver AccountRuntimeBindingResolver) ResolveRuntimeBinding(
 	if projection.State != AuthorizationStateConnected {
 		return RuntimeBinding{ConnectionID: connectionID, Enabled: false, AuthorizationState: projection.State}, nil
 	}
-	if request.Purpose == RuntimeBindingPurposeDeactivate {
+	if request.Purpose == RuntimeBindingPurposePlan || request.Purpose == RuntimeBindingPurposeDeactivate {
+		// Planning persists only non-secret intent. Reconcile resolves a fresh,
+		// one-shot credential grant immediately before the host call.
 		return RuntimeBinding{ConnectionID: connectionID, Enabled: true, AuthorizationState: projection.State}, nil
 	}
 	managed := request.Release.Manifest.Implementation.ManagedStdio

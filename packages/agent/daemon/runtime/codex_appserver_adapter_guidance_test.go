@@ -124,6 +124,27 @@ func TestCodexAppServerAdapterGuideActiveTurnUsesTurnSteer(t *testing.T) {
 	}
 }
 
+func TestCodexAppServerAdapterGuidancePreflightFailureIsNotDispatched(t *testing.T) {
+	adapter := NewCodexAppServerAdapter(nil)
+	dispatches := make(chan ProviderDispatchResult, 1)
+	_, err := adapter.GuideActiveTurnWithProviderDispatch(
+		t.Context(),
+		standardTestSession(ProviderCodex),
+		textPrompt("guide current turn"),
+		"",
+		"turn-guidance",
+		nil,
+		nil,
+		func(result ProviderDispatchResult) { dispatches <- result },
+	)
+	if !errors.Is(err, ErrSessionDisconnected) {
+		t.Fatalf("GuideActiveTurn error = %v, want ErrSessionDisconnected", err)
+	}
+	if dispatch := <-dispatches; dispatch.Disposition != DispatchDispositionNotDispatched {
+		t.Fatalf("guidance dispatch = %#v, want not dispatched", dispatch)
+	}
+}
+
 func TestCodexAppServerAdapterGuideMaterializesRemoteImageAtProviderBoundary(t *testing.T) {
 	t.Parallel()
 

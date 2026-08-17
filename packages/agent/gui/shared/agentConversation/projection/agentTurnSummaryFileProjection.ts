@@ -15,13 +15,12 @@ export function normalizedFilePath(
   if (!path || isStructuredPayloadPath(path) || isIgnoredFilePath(path)) {
     return null;
   }
-  return resolveWorkspaceFilePathCandidate({
+  const candidate = resolveWorkspaceFilePathCandidate({
     path,
     workspaceRoot: options.workspaceRoot,
     basePath: options.defaultCwd
-  })
-    ? path
-    : null;
+  });
+  return candidate?.path ?? null;
 }
 
 function isIgnoredFilePath(path: string): boolean {

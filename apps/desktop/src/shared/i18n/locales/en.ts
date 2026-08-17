@@ -57,8 +57,7 @@ export const en = {
     syncingStatus: "syncing",
     uiSystemNote:
       "The new UI system now owns tokens, icons, and shared primitives in one place.",
-    welcomeDescription:
-      "A local-first intelligent productivity platform that brings control and focus to your workflow.",
+    welcomeDescription: "Where people and agents build in tune.",
     welcomeTitle: "Welcome to Tutti",
     featureLocalTitle: "Local data storage",
     featureLocalDescription: "Privacy and safety stay under your control",
@@ -274,6 +273,7 @@ export const en = {
       settings: "Settings",
       free: "Free",
       signIn: "Sign in",
+      signInFailed: "Unable to start sign-in",
       signOut: "Sign out",
       copyUserId: "Copy user ID",
       copyUserIdSuccess: "User ID copied",

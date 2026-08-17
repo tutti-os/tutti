@@ -9,7 +9,11 @@ import {
 } from "@renderer/features/analytics";
 import { startPredefinePageviewAnalytics } from "@renderer/features/analytics/predefinePageviewAnalytics.ts";
 import { registerAppUpdateServices } from "@renderer/features/app-update/services/registerAppUpdateServices";
-import { registerConnectorMarketModule } from "@renderer/features/connector-market";
+import {
+  registerConnectorMarketModule,
+  requestDesktopConnectorInstallAdmission
+} from "@renderer/features/connector-market";
+import { addTuttiDesktopClientToConnectorAuthorizationUrl } from "@renderer/features/connector-market/services/connectorAuthorizationClientUrl.ts";
 import { registerDesktopPreferencesServices } from "@renderer/features/desktop-preferences/services/registerDesktopPreferencesServices.ts";
 import { registerRichTextAtServices } from "@renderer/features/rich-text-at/services/registerRichTextAtServices";
 import { createDesktopAgentSessionStatusViewResolver } from "@renderer/features/rich-text-at/providers/desktopAgentSessionStatusView.ts";
@@ -215,7 +219,13 @@ export async function createWorkspaceWindowContainer(): Promise<WorkspaceWindowC
     canRequest: () => accountService.store.user !== null,
     client: tuttidClient,
     eventStreamClient: tuttidEventStreamClient,
-    openAuthorizationUrl: (url) => desktopApi.host.files.openExternal(url),
+    openAuthorizationUrl: (url) =>
+      desktopApi.host.files.openExternal(
+        addTuttiDesktopClientToConnectorAuthorizationUrl(
+          url,
+          import.meta.env.DEV
+        )
+      ),
     reportDiagnostic: (error) => {
       void desktopApi.runtime
         .logRendererDiagnostic({
@@ -227,7 +237,13 @@ export async function createWorkspaceWindowContainer(): Promise<WorkspaceWindowC
           source: "workspace-renderer"
         })
         .catch(() => undefined);
-    }
+    },
+    requestInstallAdmission: () =>
+      requestDesktopConnectorInstallAdmission(
+        accountService,
+        notificationService,
+        translate("workspace.accountMenu.signInFailed")
+      )
   });
   const workspaceAgentServices = registerWorkspaceAgentServices(registry, {
     accountLogin: accountService,

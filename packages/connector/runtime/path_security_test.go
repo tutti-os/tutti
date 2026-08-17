@@ -4,6 +4,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	market "github.com/tutti-os/tutti/packages/connector/host"
 )
 
 func TestSecureConnectorStateDirRejectsTraversalBeforeCreatingIt(t *testing.T) {
@@ -67,5 +69,48 @@ func TestExecutionSnapshotterCleanupOrphansRemovesOnlyManagedSnapshots(t *testin
 	}
 	if _, err := os.Stat(unmanaged); err != nil {
 		t.Fatalf("unmanaged directory was removed: %v", err)
+	}
+}
+
+func TestExecutionSnapshotterMarksOnlyDeclaredArtifactNativeEntrypointExecutable(t *testing.T) {
+	source := t.TempDir()
+	executableRelative := "runtime/linux-arm64/gh"
+	executable := filepath.Join(source, filepath.FromSlash(executableRelative))
+	data := filepath.Join(source, "implementation", "broker.mjs")
+	for _, file := range []string{executable, data} {
+		if err := os.MkdirAll(filepath.Dir(file), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(file, []byte(filepath.Base(file)), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	digest, err := ExecutionInventoryDigest(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	snapshotter, err := NewExecutionSnapshotter(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	snapshot, err := snapshotter.Create(market.PreparedArtifactReceipt{PreparedPath: source, InventoryDigest: digest}, executableRelative)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := snapshotter.Remove(snapshot); err != nil {
+			t.Errorf("remove execution snapshot: %v", err)
+		}
+	}()
+	executableInfo, err := os.Stat(filepath.Join(snapshot, filepath.FromSlash(executableRelative)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	dataInfo, err := os.Stat(filepath.Join(snapshot, "implementation", "broker.mjs"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if executableInfo.Mode()&0o111 == 0 || dataInfo.Mode()&0o111 != 0 {
+		t.Fatalf("snapshot modes executable=%o data=%o", executableInfo.Mode().Perm(), dataInfo.Mode().Perm())
 	}
 }

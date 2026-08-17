@@ -13,6 +13,7 @@ import (
 	"io"
 	"mime"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 
@@ -360,10 +361,19 @@ func (preparer *Preparer) extractZIP(archivePath, destination string) error {
 		return fmt.Errorf("connector artifact contains more than %d entries", preparer.limits.MaxFiles)
 	}
 	var expanded int64
+	seenEntries := make(map[string]struct{}, len(reader.File))
 	for _, entry := range reader.File {
 		if entry.Mode()&os.ModeSymlink != 0 || (!entry.FileInfo().IsDir() && !entry.Mode().IsRegular()) {
 			return fmt.Errorf("connector artifact entry %q is not a regular file or directory", entry.Name)
 		}
+		entryKey, err := safeArchiveEntryKey(entry.Name)
+		if err != nil {
+			return err
+		}
+		if _, duplicate := seenEntries[entryKey]; duplicate {
+			return fmt.Errorf("connector artifact contains duplicate or case-colliding entry %q", entry.Name)
+		}
+		seenEntries[entryKey] = struct{}{}
 		target, err := safeArchiveTarget(destination, entry.Name)
 		if err != nil {
 			return err
@@ -407,6 +417,7 @@ func (preparer *Preparer) extractTarGzip(archivePath, destination string) error 
 	reader := tar.NewReader(gzipReader)
 	var expanded int64
 	entries := 0
+	seenEntries := make(map[string]struct{})
 	for {
 		header, err := reader.Next()
 		if errors.Is(err, io.EOF) {
@@ -419,6 +430,14 @@ func (preparer *Preparer) extractTarGzip(archivePath, destination string) error 
 		if entries > preparer.limits.MaxFiles {
 			return fmt.Errorf("connector artifact contains more than %d entries", preparer.limits.MaxFiles)
 		}
+		entryKey, err := safeArchiveEntryKey(header.Name)
+		if err != nil {
+			return err
+		}
+		if _, duplicate := seenEntries[entryKey]; duplicate {
+			return fmt.Errorf("connector artifact contains duplicate or case-colliding entry %q", header.Name)
+		}
+		seenEntries[entryKey] = struct{}{}
 		target, err := safeArchiveTarget(destination, header.Name)
 		if err != nil {
 			return err
@@ -506,10 +525,10 @@ func validateArtifactRoot(rootDir string, limits Limits) (string, Limits, error)
 }
 
 func safeArchiveTarget(root, name string) (string, error) {
-	if name == "" || filepath.IsAbs(name) || strings.ContainsRune(name, '\x00') {
-		return "", fmt.Errorf("connector artifact entry %q has an unsafe path", name)
+	if _, err := safeArchiveEntryKey(name); err != nil {
+		return "", err
 	}
-	clean := filepath.Clean(filepath.FromSlash(name))
+	clean := filepath.Clean(filepath.FromSlash(strings.TrimSuffix(name, "/")))
 	if clean == "." || clean == ".." || strings.HasPrefix(clean, ".."+string(filepath.Separator)) {
 		return "", fmt.Errorf("connector artifact entry %q escapes the extraction root", name)
 	}
@@ -518,6 +537,24 @@ func safeArchiveTarget(root, name string) (string, error) {
 		return "", fmt.Errorf("connector artifact entry %q escapes the extraction root", name)
 	}
 	return target, nil
+}
+
+func safeArchiveEntryKey(name string) (string, error) {
+	canonical := strings.TrimSuffix(name, "/")
+	if canonical == "" || strings.HasPrefix(canonical, "/") || strings.ContainsAny(canonical, "\\:\x00") ||
+		path.Clean(canonical) != canonical {
+		return "", fmt.Errorf("connector artifact entry %q has an unsafe portable path", name)
+	}
+	for _, segment := range strings.Split(canonical, "/") {
+		trimmed := strings.TrimRight(segment, ". ")
+		base := strings.ToLower(strings.SplitN(trimmed, ".", 2)[0])
+		reserved := base == "con" || base == "prn" || base == "aux" || base == "nul" ||
+			(len(base) == 4 && (strings.HasPrefix(base, "com") || strings.HasPrefix(base, "lpt")) && base[3] >= '1' && base[3] <= '9')
+		if segment == "" || trimmed != segment || reserved {
+			return "", fmt.Errorf("connector artifact entry %q is not portable to Windows", name)
+		}
+	}
+	return strings.ToLower(canonical), nil
 }
 
 func ensureWithin(root, target string) error {

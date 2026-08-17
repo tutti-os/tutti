@@ -1847,6 +1847,10 @@ export const connectorMarketChangedPayloadSchema = {
     revision: {
       type: "integer",
       minimum: 1
+    },
+    cursor: {
+      type: "integer",
+      minimum: 1
     }
   }
 } as const;

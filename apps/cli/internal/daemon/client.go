@@ -92,11 +92,13 @@ type InvokeRequest struct {
 }
 
 type InvokeContext struct {
-	AppID           string `json:"appId,omitempty"`
-	Source          string `json:"source"`
-	WorkspaceID     string `json:"workspaceID,omitempty"`
-	ParentCommandID string `json:"parentCommandId,omitempty"`
-	AgentSessionID  string `json:"agentSessionId,omitempty"`
+	AppID                  string `json:"appId,omitempty"`
+	Source                 string `json:"source"`
+	WorkspaceID            string `json:"workspaceID,omitempty"`
+	ParentCommandID        string `json:"parentCommandId,omitempty"`
+	AgentSessionID         string `json:"agentSessionId,omitempty"`
+	AgentCWD               string `json:"agentCwd,omitempty"`
+	AgentRailPlacementJSON string `json:"agentRailPlacementJSON,omitempty"`
 }
 
 type InvokeResponse struct {

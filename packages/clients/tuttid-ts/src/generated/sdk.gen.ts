@@ -40,6 +40,9 @@ import type {
   CancelCollaborationRunData,
   CancelCollaborationRunErrors,
   CancelCollaborationRunResponses,
+  CancelConnectorMarketAuthorizationData,
+  CancelConnectorMarketAuthorizationErrors,
+  CancelConnectorMarketAuthorizationResponses,
   CancelTuttiModeExecutionData,
   CancelTuttiModeExecutionErrors,
   CancelTuttiModeExecutionResponses,
@@ -5572,7 +5575,7 @@ export const uninstallConnectorMarketConnector = <
   });
 
 /**
- * Start connector authorization
+ * Start or replace connector authorization
  */
 export const startConnectorMarketAuthorization = <
   ThrowOnError extends boolean = false
@@ -5591,6 +5594,24 @@ export const startConnectorMarketAuthorization = <
       "Content-Type": "application/json",
       ...options.headers
     }
+  });
+
+/**
+ * Cancel a pending connector authorization attempt
+ */
+export const cancelConnectorMarketAuthorization = <
+  ThrowOnError extends boolean = false
+>(
+  options: Options<CancelConnectorMarketAuthorizationData, ThrowOnError>
+) =>
+  (options.client ?? client).post<
+    CancelConnectorMarketAuthorizationResponses,
+    CancelConnectorMarketAuthorizationErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/connector-market/connectors/{connectorKey}/authorization:cancel",
+    ...options
   });
 
 /**

@@ -50,19 +50,22 @@ type InteractionSeed struct {
 }
 
 type Fixture struct {
-	Session                *SessionSeed
-	LiveOnlySession        *SessionSeed
-	AdditionalSessions     []SessionSeed
-	Turn                   *TurnSeed
-	AdditionalTurns        []TurnSeed
-	Interaction            *InteractionSeed
-	AdditionalInteractions []InteractionSeed
-	PreparedSubmitID       string
-	RecoverInteractive     bool
-	DisableGoalInbox       bool
-	AcceptGoalControlsOnly bool
-	CompleteGoalOnSet      bool
-	EmptyPauseResumeGoal   bool
+	Session                                  *SessionSeed
+	LiveOnlySession                          *SessionSeed
+	AdditionalSessions                       []SessionSeed
+	Turn                                     *TurnSeed
+	AdditionalTurns                          []TurnSeed
+	Interaction                              *InteractionSeed
+	AdditionalInteractions                   []InteractionSeed
+	PreparedSubmitID                         string
+	RecoverInteractive                       bool
+	RecoverInteractiveFollowUpPrompt         string
+	RecoverInteractiveFollowUpClientSubmitID string
+	RecoverInteractiveFollowUpDisposition    agenthost.RuntimeInteractiveDisposition
+	DisableGoalInbox                         bool
+	AcceptGoalControlsOnly                   bool
+	CompleteGoalOnSet                        bool
+	EmptyPauseResumeGoal                     bool
 	// RaceRuntimeStartReport makes the test Runtime attempt its ordinary
 	// session-start activity report before CreateSession initializes canonical
 	// state. A conforming Host must keep that report behind the canonical
@@ -77,6 +80,7 @@ type Fixture struct {
 	DisconnectGoalFenceDelivery bool
 	FailCommitObserver          bool
 	RejectInitialExec           bool
+	RailProjectPaths            []string
 	// GuidanceTargetMismatch makes the test runtime reject guidance whose
 	// explicit TurnID is not the Session.ActiveTurnID. It models the runtime
 	// target race without exposing a runtime/provider API to scenarios.
@@ -139,9 +143,11 @@ type InteractiveObservation struct {
 }
 
 type Metrics struct {
-	StartCalls  int
-	ResumeCalls int
-	ExecCalls   int
+	StartCalls    int
+	ResumeCalls   int
+	ExecCalls     int
+	LastStartEnv  []string
+	LastResumeEnv []string
 	// GuidanceProviderCalls counts guidance dispatches that passed the
 	// runtime's exact-target gate. ExecCalls includes the rejected gate check.
 	GuidanceProviderCalls              int
@@ -159,6 +165,7 @@ type Metrics struct {
 	LastCancelTargets                  []agenthost.RuntimeCancelTarget
 	LastInteractiveTurnID              string
 	LastInteractiveRequestID           string
+	LastExecClientSubmitID             string
 	LastInitialTitle                   string
 	LastExecRequiresProviderAcceptance bool
 	LastClosePreservedCanonicalState   bool
@@ -201,6 +208,64 @@ type Driver interface {
 	StepGoalOperations(context.Context, int64) error
 	Recover(context.Context) error
 	Metrics() Metrics
+}
+
+// WorkspaceRuntimeDisconnectDriver is a narrow opt-in lifecycle contract so a
+// new Host capability does not source-break existing external conformance
+// drivers that implement the stable Driver interface.
+type WorkspaceRuntimeDisconnectDriver interface {
+	Driver
+	DisconnectWorkspaceRuntime(context.Context, string) (agenthost.DisconnectWorkspaceRuntimeResult, error)
+}
+
+type WorkspaceRuntimeDisconnectScenario struct {
+	Name string
+	run  func(context.Context, WorkspaceRuntimeDisconnectDriver) error
+}
+
+// WorkspaceRuntimeAdmissionDriver exposes only the Host-owned coordination
+// seam needed to verify admission and durable disconnect fencing.
+type WorkspaceRuntimeAdmissionDriver interface {
+	WithWorkspaceRuntimeOperation(context.Context, string, func(context.Context) error) error
+	AcquireWorkspaceRuntimeDisconnectFence(context.Context, string) (WorkspaceRuntimeDisconnectFenceDriver, error)
+}
+
+type WorkspaceRuntimeDisconnectFenceDriver interface {
+	Wait(context.Context) (context.Context, error)
+	Release()
+}
+
+type WorkspaceRuntimeAdmissionScenario struct {
+	Name string
+	run  func(context.Context, WorkspaceRuntimeAdmissionDriver) error
+}
+
+func RunWorkspaceRuntimeAdmission(
+	ctx context.Context,
+	driver WorkspaceRuntimeAdmissionDriver,
+	scenario WorkspaceRuntimeAdmissionScenario,
+) error {
+	if driver == nil {
+		return fmt.Errorf("workspace runtime admission conformance driver is required")
+	}
+	if scenario.run == nil {
+		return fmt.Errorf("workspace runtime admission scenario %q has no runner", scenario.Name)
+	}
+	return scenario.run(ctx, driver)
+}
+
+func RunWorkspaceRuntimeDisconnect(
+	ctx context.Context,
+	driver WorkspaceRuntimeDisconnectDriver,
+	scenario WorkspaceRuntimeDisconnectScenario,
+) error {
+	if driver == nil {
+		return fmt.Errorf("workspace runtime disconnect conformance driver is required")
+	}
+	if scenario.run == nil {
+		return fmt.Errorf("workspace runtime disconnect scenario %q has no runner", scenario.Name)
+	}
+	return scenario.run(ctx, driver)
 }
 
 // ProviderlessTerminalDriver is the narrow fault-injection capability for a

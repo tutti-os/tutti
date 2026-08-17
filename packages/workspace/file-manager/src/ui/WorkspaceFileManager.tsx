@@ -84,6 +84,8 @@ export interface WorkspaceFileManagerLocationSidebarLayout {
 export interface WorkspaceFileManagerProps {
   className?: string;
   dateLocale?: TuttiDateLocale;
+  /** Formats physical Windows paths for user-facing labels and copy actions. */
+  pathDisplayPlatform?: string | null;
   entryDragMode?: WorkspaceFileManagerEntryDragMode;
   onCopyEntry?: () => Promise<void> | void;
   onDirectoryExpanded?: (path: string) => void;
@@ -127,6 +129,7 @@ export interface WorkspaceFileManagerProps {
 export function WorkspaceFileManager({
   className,
   dateLocale,
+  pathDisplayPlatform,
   entryDragMode,
   i18n,
   locationSidebarLayout,
@@ -518,6 +521,7 @@ export function WorkspaceFileManager({
           <>
             <WorkspaceFileManagerToolbarContainer
               i18n={i18n}
+              pathDisplayPlatform={pathDisplayPlatform}
               arrangeMode={arrangeMode}
               layoutMode={layoutMode}
               onArrangeModeChange={setArrangeMode}
@@ -529,6 +533,7 @@ export function WorkspaceFileManager({
             <div className="@max-[600px]/workspace-file-manager:flex-col @max-[600px]/workspace-file-manager:gap-3 flex min-h-0 min-w-0 flex-1 overflow-hidden">
               <WorkspaceFileManagerPanelsContainer
                 dateLocale={dateLocale}
+                pathDisplayPlatform={pathDisplayPlatform}
                 entryDragMode={entryDragMode}
                 arrangeMode={arrangeMode}
                 i18n={i18n}
@@ -562,6 +567,7 @@ export function WorkspaceFileManager({
 function WorkspaceFileManagerToolbarContainer({
   arrangeMode,
   i18n,
+  pathDisplayPlatform,
   layoutMode,
   onArrangeModeChange,
   onDirectoryExpanded,
@@ -571,6 +577,7 @@ function WorkspaceFileManagerToolbarContainer({
 }: {
   arrangeMode: WorkspaceFileManagerArrangeMode;
   i18n: WorkspaceFileManagerI18nRuntime;
+  pathDisplayPlatform?: string | null;
   layoutMode: WorkspaceFileManagerLayoutMode;
   onArrangeModeChange: (arrangeMode: WorkspaceFileManagerArrangeMode) => void;
   onDirectoryExpanded?: (path: string) => void;
@@ -617,6 +624,7 @@ function WorkspaceFileManagerToolbarContainer({
   return (
     <WorkspaceFileManagerToolbar
       breadcrumbs={view.breadcrumbs}
+      pathDisplayPlatform={pathDisplayPlatform}
       canSearch={view.canSearch}
       canGoBack={view.canGoBack}
       canGoForward={view.canGoForward}

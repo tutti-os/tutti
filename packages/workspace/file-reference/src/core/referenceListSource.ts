@@ -4,6 +4,7 @@ import type {
   ReferenceHandle,
   ReferenceNode,
   ReferencePreview,
+  ReferenceSearchPagination,
   ReferenceScope,
   ReferenceSourceCapabilities,
   ReferenceSourceService,
@@ -70,6 +71,11 @@ export interface ReferenceListResult {
   nextCursor?: string | null;
 }
 
+export interface ReferenceListSearchResult extends ReferenceListResult {
+  /** Per-query override for the source's default search pagination mode. */
+  searchPagination?: ReferenceSearchPagination;
+}
+
 /** 递归搜索请求(跨整源,非当前层 filter)。 */
 export interface ReferenceListSearchRequest {
   query: string;
@@ -100,7 +106,7 @@ export interface ReferenceListBackend {
   search?(
     scope: ReferenceScope,
     request: ReferenceListSearchRequest
-  ): Promise<ReferenceListResult>;
+  ): Promise<ReferenceListSearchResult>;
   /**
    * 可选:把语义定位参数解析为从根到目标分组的「不透明分组 id」路径(root → leaf),
    * 用各源自家的 group id 方案(与 list 返回的 group.id 同形),wrapper 负责编成 NodeRef。
@@ -308,7 +314,10 @@ export function createReferenceListSource(
       });
       return {
         entries: result.items.map((item) => itemToNode(sourceId, item)),
-        nextCursor: result.nextCursor ?? null
+        nextCursor: result.nextCursor ?? null,
+        ...(result.searchPagination
+          ? { searchPagination: result.searchPagination }
+          : {})
       };
     };
   }

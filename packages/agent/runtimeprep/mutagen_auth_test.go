@@ -15,6 +15,8 @@ import (
 	"path/filepath"
 	"reflect"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -106,6 +108,230 @@ func TestMutagenAuthProjectorFallsBackToGuardedCopy(t *testing.T) {
 	}
 	if content, err := os.ReadFile(source); err != nil || string(content) != `{"token":"refreshed"}` {
 		t.Fatalf("stable auth = %q, %v", content, err)
+	}
+}
+
+func TestMutagenAuthProjectorIgnoresCanceledRequestContextDuringSetup(t *testing.T) {
+	root := t.TempDir()
+	source := filepath.Join(root, "stable", "auth.json")
+	target := filepath.Join(root, "run", "auth.json")
+	if err := os.MkdirAll(filepath.Dir(source), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(source, []byte(`{"token":"stable"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	requestCtx, cancel := context.WithCancel(context.Background())
+	cancel()
+	projector := MutagenAuthFileProjector{
+		StateDir: root,
+		Symlink:  func(string, string) error { return os.ErrPermission },
+		ResolveExecutable: func(ctx context.Context) (string, error) {
+			if err := ctx.Err(); err != nil {
+				t.Fatalf("resolver inherited canceled request context: %v", err)
+			}
+			return "mutagen-test", nil
+		},
+		Run: func(ctx context.Context, _ string, args []string, _ []string) ([]byte, error) {
+			if err := ctx.Err(); err != nil {
+				t.Fatalf("Mutagen %v inherited canceled request context: %v", args, err)
+			}
+			return nil, nil
+		},
+	}
+	cleanup, err := projector.Project(requestCtx, AuthFileProjection{SourcePath: source, TargetPath: target})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cleanup == nil {
+		t.Fatal("cleanup = nil, want Mutagen cleanup")
+	}
+}
+
+func TestMutagenAuthProjectorFallsBackWhenCreateTimesOut(t *testing.T) {
+	root := t.TempDir()
+	source := filepath.Join(root, "stable", "auth.json")
+	target := filepath.Join(root, "run", "auth.json")
+	if err := os.MkdirAll(filepath.Dir(source), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(source, []byte(`{"token":"stable"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	projector := MutagenAuthFileProjector{
+		StateDir:          root,
+		CommandTimeout:    5 * time.Millisecond,
+		Symlink:           func(string, string) error { return os.ErrPermission },
+		ResolveExecutable: func(context.Context) (string, error) { return "mutagen-test", nil },
+		Run: func(ctx context.Context, _ string, args []string, _ []string) ([]byte, error) {
+			if len(args) > 1 && args[1] == "create" {
+				<-ctx.Done()
+				return nil, ctx.Err()
+			}
+			return nil, nil
+		},
+	}
+	cleanup, err := projector.Project(context.Background(), AuthFileProjection{SourcePath: source, TargetPath: target})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cleanup == nil {
+		t.Fatal("cleanup = nil, want guarded-copy fallback")
+	}
+	content, readErr := os.ReadFile(target)
+	if readErr != nil || string(content) != `{"token":"stable"}` {
+		t.Fatalf("fallback target = %q, %v", content, readErr)
+	}
+}
+
+func TestMutagenAuthProjectorDoesNotFallbackWhenFailedSessionCannotBeTerminated(t *testing.T) {
+	root := t.TempDir()
+	source := filepath.Join(root, "stable", "auth.json")
+	target := filepath.Join(root, "run", "auth.json")
+	if err := os.MkdirAll(filepath.Dir(source), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(source, []byte(`{"token":"stable"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	projector := MutagenAuthFileProjector{
+		StateDir:          root,
+		Symlink:           func(string, string) error { return os.ErrPermission },
+		ResolveExecutable: func(context.Context) (string, error) { return "mutagen-test", nil },
+		Run: func(_ context.Context, _ string, args []string, _ []string) ([]byte, error) {
+			if len(args) > 1 && args[1] == "create" {
+				return nil, errors.New("create failed")
+			}
+			if len(args) > 1 && args[1] == "terminate" {
+				return nil, errors.New("terminate failed")
+			}
+			return nil, nil
+		},
+	}
+	cleanup, err := projector.Project(context.Background(), AuthFileProjection{SourcePath: source, TargetPath: target})
+	if err == nil || !strings.Contains(err.Error(), "cleanup failed") {
+		t.Fatalf("error = %v, want cleanup failure", err)
+	}
+	if cleanup != nil {
+		t.Fatal("cleanup must be nil when Mutagen ownership is uncertain")
+	}
+}
+
+func TestMutagenAuthProjectorSerializesSetupForSameStableSource(t *testing.T) {
+	root := t.TempDir()
+	source := filepath.Join(root, "stable", "auth.json")
+	if err := os.MkdirAll(filepath.Dir(source), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(source, []byte(`{"token":"stable"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	firstEntered := make(chan struct{})
+	releaseFirst := make(chan struct{})
+	var createCount atomic.Int32
+	projector := MutagenAuthFileProjector{
+		StateDir:          root,
+		Symlink:           func(string, string) error { return os.ErrPermission },
+		ResolveExecutable: func(context.Context) (string, error) { return "mutagen-test", nil },
+		Run: func(_ context.Context, _ string, args []string, _ []string) ([]byte, error) {
+			if len(args) > 1 && args[1] == "create" && createCount.Add(1) == 1 {
+				close(firstEntered)
+				<-releaseFirst
+			}
+			return nil, nil
+		},
+	}
+
+	var waitGroup sync.WaitGroup
+	errorsByProjection := make(chan error, 2)
+	project := func(target string) {
+		defer waitGroup.Done()
+		_, err := projector.Project(context.Background(), AuthFileProjection{SourcePath: source, TargetPath: target})
+		errorsByProjection <- err
+	}
+	waitGroup.Add(1)
+	go project(filepath.Join(root, "run-1", "auth.json"))
+	<-firstEntered
+	waitGroup.Add(1)
+	go project(filepath.Join(root, "run-2", "auth.json"))
+	time.Sleep(50 * time.Millisecond)
+	if count := createCount.Load(); count != 1 {
+		t.Fatalf("create calls while first setup is active = %d, want 1", count)
+	}
+	close(releaseFirst)
+	waitGroup.Wait()
+	close(errorsByProjection)
+	for err := range errorsByProjection {
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	if count := createCount.Load(); count != 2 {
+		t.Fatalf("total create calls = %d, want 2", count)
+	}
+}
+
+func TestMutagenAuthProjectorSerializesFallbackCleanupAndPreservesConflict(t *testing.T) {
+	root := t.TempDir()
+	source := filepath.Join(root, "stable", "auth.json")
+	if err := os.MkdirAll(filepath.Dir(source), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(source, []byte(`{"token":"baseline"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	projector := MutagenAuthFileProjector{
+		StateDir:          root,
+		Symlink:           func(string, string) error { return os.ErrPermission },
+		ResolveExecutable: func(context.Context) (string, error) { return "", errors.New("missing") },
+	}
+	targetOne := filepath.Join(root, "run-1", "auth.json")
+	targetTwo := filepath.Join(root, "run-2", "auth.json")
+	cleanupOne, err := projector.Project(context.Background(), AuthFileProjection{SourcePath: source, TargetPath: targetOne})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cleanupTwo, err := projector.Project(context.Background(), AuthFileProjection{SourcePath: source, TargetPath: targetTwo})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(targetOne, []byte(`{"token":"runtime-one"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(targetTwo, []byte(`{"token":"runtime-two"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := cleanupOne(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if err := cleanupTwo(context.Background()); err == nil || !strings.Contains(err.Error(), "both files preserved") {
+		t.Fatalf("second cleanup error = %v, want preserved conflict", err)
+	}
+	if content, _ := os.ReadFile(source); string(content) != `{"token":"runtime-one"}` {
+		t.Fatalf("stable auth = %q, want first serialized cleanup", content)
+	}
+	if content, _ := os.ReadFile(targetTwo); string(content) != `{"token":"runtime-two"}` {
+		t.Fatalf("second runtime auth overwritten: %q", content)
+	}
+}
+
+func TestMutagenAuthProjectorCleanupRespectsCallerDeadline(t *testing.T) {
+	projector := MutagenAuthFileProjector{
+		StateDir:       t.TempDir(),
+		CommandTimeout: time.Minute,
+		Run: func(ctx context.Context, _ string, _ []string, _ []string) ([]byte, error) {
+			<-ctx.Done()
+			return nil, ctx.Err()
+		},
+	}
+	cleanup := projector.cleanupCallback("mutagen-test", "session", filepath.Join(t.TempDir(), mutagenSessionMarker))
+	cleanupCtx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
+	defer cancel()
+	started := time.Now()
+	err := cleanup(cleanupCtx)
+	if err == nil || time.Since(started) > time.Second {
+		t.Fatalf("cleanup error = %v after %s, want caller deadline", err, time.Since(started))
 	}
 }
 

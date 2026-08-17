@@ -66,6 +66,7 @@ export function groupAgentGUINodeViewModelFixture(
       isSubmitting: flat.isSubmitting,
       isInterrupting: flat.isInterrupting,
       isCancelPending: flat.isCancelPending,
+      hasPendingSubmitStopTarget: flat.hasPendingSubmitStopTarget,
       promptImagesSupported: flat.promptImagesSupported,
       compactSupported: flat.compactSupported,
       goalPauseSupported: flat.goalPauseSupported,

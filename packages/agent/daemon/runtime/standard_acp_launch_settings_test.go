@@ -407,6 +407,75 @@ func TestStandardACPLaunchPermissionPlanRestartsAndLoadsSameSession(t *testing.T
 	}
 }
 
+func TestStandardACPLaunchPermissionPlanPersistsWithoutSpawnAfterReleaseFailure(t *testing.T) {
+	t.Parallel()
+
+	transport := &multiProcStandardACPTransport{
+		agentTitle:          "Grok Build",
+		sessionID:           "grok-provider-session-deferred-plan",
+		supportsLoadSession: true,
+	}
+	adapterRaw, err := NewStandardACPAdapter(StandardACPAdapterConfig{
+		Provider:                     "acp:grok-launch-plan-deferred",
+		Name:                         "grok-launch-plan-deferred-acp",
+		DisplayName:                  "Grok Build",
+		Command:                      []string{"grok", "--permission-mode", "${permissionMode}", "agent", "stdio"},
+		PermissionModes:              map[string]string{"ask-before-write": "default", "auto": "auto", "full-access": "bypassPermissions"},
+		PlanModeRuntimeID:            "plan",
+		PlanModeDisabledRuntimeID:    "default",
+		PlanModeUsesLaunchPermission: true,
+		LaunchPermission: &StandardACPLaunchPermissionSetting{
+			Placeholder:     "${permissionMode}",
+			DefaultSemantic: "ask-before-write",
+			Values:          map[string]string{"ask-before-write": "default", "auto": "auto", "full-access": "bypassPermissions"},
+		},
+	}, transport, LegacyHostMetadata())
+	if err != nil {
+		t.Fatalf("NewStandardACPAdapter: %v", err)
+	}
+	adapter := adapterRaw.(*standardACPAdapter)
+	session := standardTestSession("acp:grok-launch-plan-deferred")
+	session.PermissionModeID = "auto"
+	session.Settings = &SessionSettings{PermissionModeID: "auto"}
+	events, err := adapter.Start(context.Background(), session)
+	if err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	session.ProviderSessionID = events[0].ProviderSessionID
+	transport.mu.Lock()
+	firstConnection := transport.conns[0]
+	transport.mu.Unlock()
+	firstConnection.mu.Lock()
+	firstConnection.closeFailures = 1
+	firstConnection.mu.Unlock()
+	if err := adapter.ReleaseLiveSession(context.Background(), session); err == nil {
+		t.Fatal("ReleaseLiveSession error = nil, want injected close failure")
+	}
+
+	enabled := true
+	session.Settings.PlanMode = enabled
+	if err := adapter.ApplySessionSettings(context.Background(), session, SessionSettingsPatch{PlanMode: &enabled}); err != nil {
+		t.Fatalf("ApplySessionSettings: %v", err)
+	}
+	spawned, _ := transport.snapshot()
+	if spawned != 1 {
+		t.Fatalf("process starts after settings persistence = %d, want 1", spawned)
+	}
+	if err := adapter.Resume(context.Background(), session); err != nil {
+		t.Fatalf("Resume: %v", err)
+	}
+	transport.mu.Lock()
+	specs := append([]ProcessSpec(nil), transport.specs...)
+	connections := append([]*standardACPConnection(nil), transport.conns...)
+	transport.mu.Unlock()
+	if len(specs) != 2 || specs[1].Command[2] != "plan" {
+		t.Fatalf("resume command = %#v, want persisted Plan launch", specs)
+	}
+	if got := asString(connections[1].lastLoadSessionParams["sessionId"]); got != session.ProviderSessionID {
+		t.Fatalf("resumed provider session = %q, want %q", got, session.ProviderSessionID)
+	}
+}
+
 func TestStandardACPLaunchPermissionRejectsUnknownSessionSemantic(t *testing.T) {
 	t.Parallel()
 

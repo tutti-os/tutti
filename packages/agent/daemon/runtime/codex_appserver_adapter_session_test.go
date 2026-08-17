@@ -709,6 +709,69 @@ func TestCodexAppServerAdapterReleaseLiveSessionClosesClientAndKeepsProviderSess
 	}
 }
 
+func TestCodexAppServerAdapterDisconnectLiveSessionClosesClientAndKeepsProviderSession(t *testing.T) {
+	t.Parallel()
+
+	transport := newScriptedAppServerTransport()
+	adapter := NewCodexAppServerAdapter(transport)
+	session := testAppServerSession()
+	events, err := adapter.Start(context.Background(), session)
+	if err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	session = applySessionEvents(session, events)
+	providerSessionID := session.ProviderSessionID
+	if err := adapter.DisconnectLiveSession(context.Background(), session); err != nil {
+		t.Fatalf("DisconnectLiveSession: %v", err)
+	}
+	if adapter.HasLiveSession(session) {
+		t.Fatal("HasLiveSession = true after disconnect")
+	}
+	if session.ProviderSessionID != providerSessionID || providerSessionID == "" {
+		t.Fatalf("provider session id=%q, want preserved %q", session.ProviderSessionID, providerSessionID)
+	}
+	transport.conn.mu.Lock()
+	closeCount := transport.conn.closeCount
+	transport.conn.mu.Unlock()
+	if closeCount == 0 {
+		t.Fatal("connection was not closed")
+	}
+}
+
+func TestCodexAppServerAdapterDisconnectLiveSessionRetriesCloseFailedHandle(t *testing.T) {
+	t.Parallel()
+
+	transport := newScriptedAppServerTransport()
+	adapter := NewCodexAppServerAdapter(transport)
+	session := testAppServerSession()
+	events, err := adapter.Start(context.Background(), session)
+	if err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	session = applySessionEvents(session, events)
+	transport.conn.mu.Lock()
+	transport.conn.closeFailures = 1
+	transport.conn.mu.Unlock()
+	if err := adapter.DisconnectLiveSession(context.Background(), session); err == nil {
+		t.Fatal("first DisconnectLiveSession error=nil, want close failure")
+	}
+	if adapter.getSession(session.AgentSessionID) == nil {
+		t.Fatal("close-failed app-server handle lost ownership")
+	}
+	if err := adapter.DisconnectLiveSession(context.Background(), session); err != nil {
+		t.Fatalf("retry DisconnectLiveSession: %v", err)
+	}
+	if adapter.getSession(session.AgentSessionID) != nil {
+		t.Fatal("app-server handle remained after successful retry")
+	}
+	transport.conn.mu.Lock()
+	closeCount := transport.conn.closeCount
+	transport.conn.mu.Unlock()
+	if closeCount != 2 {
+		t.Fatalf("transport close calls=%d, want 2", closeCount)
+	}
+}
+
 func TestCodexAppServerAdapterReleaseLiveSessionSkipsPendingRequests(t *testing.T) {
 	t.Parallel()
 
@@ -743,5 +806,39 @@ func TestCodexAppServerAdapterReleaseLiveSessionSkipsPendingRequests(t *testing.
 	case <-execDone:
 	case <-time.After(5 * time.Second):
 		t.Fatal("exec did not finish after resolving pending approval")
+	}
+}
+
+func TestCodexAppServerAdapterDisconnectLiveSessionSettlesPendingRequest(t *testing.T) {
+	t.Parallel()
+
+	adapter, transport, session := startedAppServerAdapter(t)
+	transport.server.commandApproval = true
+	execDone := make(chan struct{})
+	go func() {
+		_, _ = adapter.Exec(context.Background(), session, []PromptContentBlock{{
+			Type: "text", Text: "clean the build dir",
+		}}, "", "turn-local-1", nil, nil)
+		close(execDone)
+	}()
+	var pending *pendingInteractiveRequest
+	waitForCondition(t, func() bool {
+		pending = adapter.getPendingRequest(session.AgentSessionID, "turn-local-1", "approval-1")
+		return pending != nil
+	})
+
+	if err := adapter.DisconnectLiveSession(context.Background(), session); err != nil {
+		t.Fatalf("DisconnectLiveSession: %v", err)
+	}
+	select {
+	case <-execDone:
+	case <-time.After(5 * time.Second):
+		t.Fatal("exec did not settle after workspace runtime disconnect")
+	}
+	if state := pending.disposition(); state != pendingInteractiveRequestStateInterrupted {
+		t.Fatalf("pending request state=%q, want interrupted", state)
+	}
+	if adapter.HasLiveSession(session) {
+		t.Fatal("HasLiveSession = true after pending request disconnect")
 	}
 }

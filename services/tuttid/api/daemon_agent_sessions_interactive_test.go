@@ -6,6 +6,7 @@ import (
 
 	agenthost "github.com/tutti-os/tutti/packages/agent/host"
 	tuttigenerated "github.com/tutti-os/tutti/services/tuttid/api/generated"
+	"github.com/tutti-os/tutti/services/tuttid/apierrors"
 	agentservice "github.com/tutti-os/tutti/services/tuttid/service/agent"
 )
 
@@ -40,5 +41,31 @@ func TestSubmitWorkspaceAgentInteractiveBuildsTypedHostCommand(t *testing.T) {
 	}
 	if gotInput.Action == nil || *gotInput.Action != action || gotInput.OptionID == nil || *gotInput.OptionID != option || gotInput.Payload["answer"] != "yes" {
 		t.Fatalf("interactive input = %#v", gotInput)
+	}
+}
+
+func TestSubmitWorkspaceAgentInteractiveReturnsConflictForStaleRequest(t *testing.T) {
+	action := "approve"
+	api := DaemonAPI{AgentSessionService: stubAgentSessionService{
+		submitInteractiveFn: func(context.Context, agenthost.InteractionRef, agenthost.SubmitInteractiveInput) (agentservice.Session, error) {
+			return agentservice.Session{}, agentservice.ErrInteractiveRequestNotLive
+		},
+	}}
+
+	response, err := api.SubmitWorkspaceAgentInteractive(context.Background(), tuttigenerated.SubmitWorkspaceAgentInteractiveRequestObject{
+		WorkspaceID: "workspace-1", AgentSessionID: "session-1", RequestID: "request-1",
+		Body: &tuttigenerated.SubmitWorkspaceAgentInteractiveJSONRequestBody{
+			TurnId: "turn-1", Action: &action,
+		},
+	})
+	if err != nil {
+		t.Fatalf("SubmitWorkspaceAgentInteractive() error = %v", err)
+	}
+	conflict, ok := response.(tuttigenerated.SubmitWorkspaceAgentInteractive409JSONResponse)
+	if !ok {
+		t.Fatalf("response = %T, want 409 conflict", response)
+	}
+	if conflict.Error.Reason == nil || *conflict.Error.Reason != apierrors.ReasonAgentInteractiveRequestStale {
+		t.Fatalf("error = %#v, want stale interactive reason", conflict.Error)
 	}
 }

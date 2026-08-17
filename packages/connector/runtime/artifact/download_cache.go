@@ -52,6 +52,8 @@ type DownloadCache struct {
 	fetcher          Fetcher
 	maxDownloadBytes int64
 	mu               sync.Mutex
+	connectorLanes   map[string]*sync.Mutex
+	downloadSlots    chan struct{}
 }
 
 func NewDownloadCache(config DownloadCacheConfig) (*DownloadCache, error) {
@@ -65,7 +67,8 @@ func NewDownloadCache(config DownloadCacheConfig) (*DownloadCache, error) {
 	if limit <= 0 {
 		limit = DefaultLimits().MaxDownloadBytes
 	}
-	return &DownloadCache{rootDir: filepath.Clean(config.RootDir), fetcher: config.Fetcher, maxDownloadBytes: limit}, nil
+	return &DownloadCache{rootDir: filepath.Clean(config.RootDir), fetcher: config.Fetcher, maxDownloadBytes: limit,
+		connectorLanes: make(map[string]*sync.Mutex), downloadSlots: make(chan struct{}, 4)}, nil
 }
 
 func (cache *DownloadCache) PrepareCandidate(
@@ -89,8 +92,14 @@ func (cache *DownloadCache) prepareCandidate(
 	if err := validate(request.Release); err != nil {
 		return CachedArtifact{}, err
 	}
-	cache.mu.Lock()
-	defer cache.mu.Unlock()
+	releaseLane := cache.lockConnector(request.Release.ConnectorKey)
+	defer releaseLane()
+	select {
+	case cache.downloadSlots <- struct{}{}:
+		defer func() { <-cache.downloadSlots }()
+	case <-ctx.Done():
+		return CachedArtifact{}, ctx.Err()
+	}
 	if err := ctx.Err(); err != nil {
 		return CachedArtifact{}, err
 	}
@@ -118,8 +127,8 @@ func (cache *DownloadCache) PromoteCandidate(
 	if cache == nil {
 		return CachedArtifact{}, errors.New("connector download cache is unavailable")
 	}
-	cache.mu.Lock()
-	defer cache.mu.Unlock()
+	releaseLane := cache.lockConnector(release.ConnectorKey)
+	defer releaseLane()
 	if err := ctx.Err(); err != nil {
 		return CachedArtifact{}, err
 	}
@@ -172,8 +181,8 @@ func (cache *DownloadCache) RemoveConnector(ctx context.Context, connectorKey st
 	if cache == nil {
 		return errors.New("connector download cache is unavailable")
 	}
-	cache.mu.Lock()
-	defer cache.mu.Unlock()
+	releaseLane := cache.lockConnector(connectorKey)
+	defer releaseLane()
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -182,6 +191,18 @@ func (cache *DownloadCache) RemoveConnector(ctx context.Context, connectorKey st
 		return err
 	}
 	return removeAllWithin(cache.rootDir, root)
+}
+
+func (cache *DownloadCache) lockConnector(connectorKey string) func() {
+	cache.mu.Lock()
+	lane := cache.connectorLanes[connectorKey]
+	if lane == nil {
+		lane = &sync.Mutex{}
+		cache.connectorLanes[connectorKey] = lane
+	}
+	cache.mu.Unlock()
+	lane.Lock()
+	return lane.Unlock
 }
 
 func (cache *DownloadCache) downloadCandidate(

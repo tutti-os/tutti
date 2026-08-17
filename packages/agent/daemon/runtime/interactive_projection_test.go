@@ -84,6 +84,7 @@ func TestNormalizedApprovalInputRecoversTopLevelURL(t *testing.T) {
 		"toolCallId": "tool-web-fetch",
 		"name":       "WebFetch",
 		"url":        "https://example.com/fallback",
+		"prompt":     "Summarize the fallback page",
 	}, nil, "request-web-fetch", nil)
 
 	if input["url"] != "https://example.com/fallback" {
@@ -91,6 +92,26 @@ func TestNormalizedApprovalInputRecoversTopLevelURL(t *testing.T) {
 	}
 	if got := payloadMap(payloadMap(input, "toolCall"), "input")["url"]; got != "https://example.com/fallback" {
 		t.Fatalf("toolCall.input.url = %#v, want top-level fallback URL", got)
+	}
+	if got := payloadMap(payloadMap(input, "toolCall"), "input")["prompt"]; got != "Summarize the fallback page" {
+		t.Fatalf("toolCall.input.prompt = %#v, want top-level fallback prompt", got)
+	}
+}
+
+func TestNormalizedApprovalInputRecoversKnownInputWebAliases(t *testing.T) {
+	t.Parallel()
+
+	input := normalizedApprovalInput(map[string]any{
+		"toolCallId": "tool-web-fetch",
+		"name":       "WebFetch",
+	}, nil, "request-web-fetch", map[string]any{
+		"uri":         "https://example.com/known-input",
+		"instruction": "Extract the compatibility requirements",
+	})
+
+	toolCallInput := payloadMap(payloadMap(input, "toolCall"), "input")
+	if toolCallInput["uri"] != "https://example.com/known-input" || toolCallInput["instruction"] != "Extract the compatibility requirements" {
+		t.Fatalf("toolCall.input = %#v, want known-input web aliases", toolCallInput)
 	}
 }
 

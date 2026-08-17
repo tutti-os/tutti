@@ -77,6 +77,143 @@ describe("buildChildSessionLanesByParentToolCallId", () => {
     });
   });
 
+  it("preserves a completed child result as full Markdown", () => {
+    const markdown = `## Result\n\n[report](/workspace/report.pdf)\n\n${"detail ".repeat(40)}`;
+    const child = childSession({
+      id: "child-1",
+      parentSessionId: "root-1",
+      parentToolCallId: "spawn-1",
+      turn: turn("child-1", "settled", "completed")
+    });
+    const lane = buildChildSessionLanesByParentToolCallId({
+      rootSession: rootSession(),
+      rootTimelineItems: [spawnCall("root-1", "spawn-1", "Prepare report")],
+      childSessions: [child],
+      messagesBySessionId: { "child-1": [message("child-1", markdown, 30)] }
+    }).get("spawn-1")?.[0];
+
+    expect(lane?.assistantMarkdown).toBe(markdown);
+    expect(lane?.latestActivity).not.toBe(markdown);
+  });
+
+  it.each([
+    ["running", turn("child-1", "running", null)],
+    ["completed", turn("child-1", "settled", "completed")]
+  ] as const)(
+    "preserves the complete assistant Markdown while %s",
+    (_label, childTurn) => {
+      const child = childSession({
+        id: "child-1",
+        parentSessionId: "root-1",
+        parentToolCallId: "spawn-1",
+        turn: childTurn
+      });
+      const markdown = `Important opening context ${"detail ".repeat(24)}[PDF](C:/Reports/final%20report.pdf)`;
+      const lanes = buildChildSessionLanesByParentToolCallId({
+        rootSession: rootSession(),
+        rootTimelineItems: [spawnCall("root-1", "spawn-1", "Build report")],
+        childSessions: [child],
+        messagesBySessionId: {
+          "child-1": [message("child-1", markdown, 20)]
+        }
+      });
+
+      expect(lanes.get("spawn-1")?.[0]?.assistantMarkdown).toBe(markdown);
+      expect(lanes.get("spawn-1")?.[0]?.latestActivity).toHaveLength(141);
+    }
+  );
+
+  it("preserves leading indentation and surrounding blank lines in assistant Markdown", () => {
+    const child = childSession({
+      id: "child-1",
+      parentSessionId: "root-1",
+      parentToolCallId: "spawn-1",
+      turn: turn("child-1", "settled", "completed")
+    });
+    const markdown = "\n    console.log('preserved')\n\n";
+    const lanes = buildChildSessionLanesByParentToolCallId({
+      rootSession: rootSession(),
+      rootTimelineItems: [spawnCall("root-1", "spawn-1", "Build report")],
+      childSessions: [child],
+      messagesBySessionId: {
+        "child-1": [message("child-1", markdown, 20)]
+      }
+    });
+
+    expect(lanes.get("spawn-1")?.[0]?.assistantMarkdown).toBe(markdown);
+  });
+
+  it("uses bounded activity only before an assistant message exists", () => {
+    const child = childSession({
+      id: "child-1",
+      parentSessionId: "root-1",
+      parentToolCallId: "spawn-1",
+      turn: turn("child-1", "running", null)
+    });
+    const lanes = buildChildSessionLanesByParentToolCallId({
+      rootSession: rootSession(),
+      rootTimelineItems: [spawnCall("root-1", "spawn-1", "Build report")],
+      childSessions: [child],
+      messagesBySessionId: {
+        "child-1": [toolCallMessage("child-1", "inspect-1", 20)]
+      }
+    });
+
+    expect(lanes.get("spawn-1")?.[0]?.latestActivity).toBe("Agent");
+    expect(lanes.get("spawn-1")?.[0]?.assistantMarkdown).toBeNull();
+  });
+
+  it("does not replace assistant Markdown with a later status notice", () => {
+    const child = childSession({
+      id: "child-1",
+      parentSessionId: "root-1",
+      parentToolCallId: "spawn-1",
+      turn: turn("child-1", "settled", "failed", "provider failed")
+    });
+    const assistant = message("child-1", "Partial **report**", 20);
+    const notice: AgentActivityMessage = {
+      ...message("child-1", "Connection failed", 30),
+      messageId: "child-1-error",
+      kind: "error"
+    };
+    const lanes = buildChildSessionLanesByParentToolCallId({
+      rootSession: rootSession(),
+      rootTimelineItems: [spawnCall("root-1", "spawn-1", "Build report")],
+      childSessions: [child],
+      messagesBySessionId: { "child-1": [assistant, notice] }
+    });
+
+    expect(lanes.get("spawn-1")?.[0]?.assistantMarkdown).toBe(
+      "Partial **report**"
+    );
+    expect(lanes.get("spawn-1")?.[0]?.failureDetail).toBe("provider failed");
+  });
+
+  it("does not replace assistant Markdown with a later plan issue annotation", () => {
+    const child = childSession({
+      id: "child-1",
+      parentSessionId: "root-1",
+      parentToolCallId: "spawn-1",
+      turn: turn("child-1", "running", null)
+    });
+    const assistant = message("child-1", "Current **report**", 20);
+    const annotation: AgentActivityMessage = {
+      ...message("child-1", "[Issue](mention://workspace-issue/issue-1)", 30),
+      messageId: "plan-issue:issue-1",
+      kind: "session_audit"
+    };
+    const lanes = buildChildSessionLanesByParentToolCallId({
+      rootSession: rootSession(),
+      rootTimelineItems: [spawnCall("root-1", "spawn-1", "Build report")],
+      childSessions: [child],
+      messagesBySessionId: { "child-1": [assistant, annotation] }
+    });
+
+    expect(lanes.get("spawn-1")?.[0]?.assistantMarkdown).toBe(
+      "Current **report**"
+    );
+  });
+
   it("does not reconstruct legacy owner fields without a child session", () => {
     const legacyItem: WorkspaceAgentActivityTimelineItem = {
       id: 2,

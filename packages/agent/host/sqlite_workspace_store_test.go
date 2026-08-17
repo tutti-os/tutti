@@ -165,6 +165,77 @@ func TestSQLiteWorkspaceStoreInitializesCanonicalRuntimeSession(t *testing.T) {
 	}
 }
 
+func TestSQLiteWorkspaceStoreResolvesRuntimeRailPlacementFromPreparedCWD(t *testing.T) {
+	db, err := sql.Open("sqlite", filepath.Join(t.TempDir(), "agent-host-rail-resolution.db"))
+	if err != nil {
+		t.Fatalf("open SQLite: %v", err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	db.SetMaxOpenConns(1)
+	canonical := storesqlite.New(db, storesqlite.Options{
+		ProjectPaths: workspaceStoreProjectPaths{"/workspace/app"},
+	})
+	if err := canonical.Migrate(t.Context()); err != nil {
+		t.Fatalf("migrate SQLite: %v", err)
+	}
+	store := &agenthost.SQLiteWorkspaceStore{
+		StoreForWorkspace: func(workspaceID string) *storesqlite.Store {
+			if workspaceID != "workspace-1" {
+				return nil
+			}
+			return canonical
+		},
+	}
+
+	placement, err := store.ResolveRuntimeSessionRailPlacement(t.Context(), agenthost.ResolveRuntimeSessionRailPlacementInput{
+		WorkspaceID:    "workspace-1",
+		AgentSessionID: "session-1",
+		Cwd:            "/workspace/app/pkg",
+	})
+	if err != nil {
+		t.Fatalf("ResolveRuntimeSessionRailPlacement() error = %v", err)
+	}
+	wantKey := storesqlite.RailSectionKeyForProject("/workspace/app")
+	if placement.Version != 1 || placement.Kind != agenthost.RailPlacementKindProject ||
+		placement.ProjectPath != storesqlite.NormalizeProjectPath("/workspace/app") ||
+		placement.SectionKey != wantKey {
+		t.Fatalf("resolved placement = %#v, want project %q", placement, wantKey)
+	}
+
+	_, err = store.ResolveRuntimeSessionRailPlacement(t.Context(), agenthost.ResolveRuntimeSessionRailPlacementInput{
+		WorkspaceID:    "workspace-1",
+		AgentSessionID: "session-stale-project",
+		Cwd:            "/workspace/deleted-project",
+		RailPlacement: &agenthost.RailPlacement{
+			Version: 1, Kind: agenthost.RailPlacementKindProject,
+			ProjectPath: "/workspace/deleted-project",
+		},
+	})
+	if !errors.Is(err, agenthost.ErrRailPlacementConflict) {
+		t.Fatalf("stale explicit project error = %v, want %v", err, agenthost.ErrRailPlacementConflict)
+	}
+
+	authoritative, err := store.ResolveRuntimeSessionRailPlacement(t.Context(), agenthost.ResolveRuntimeSessionRailPlacementInput{
+		WorkspaceID:                "workspace-1",
+		AgentSessionID:             "session-authoritative-project",
+		Cwd:                        "/workspace/caller-project",
+		RailPlacementAuthoritative: true,
+		RailPlacement: &agenthost.RailPlacement{
+			Version: 1, Kind: agenthost.RailPlacementKindProject,
+			ProjectPath: "/workspace/caller-project",
+		},
+	})
+	if err != nil {
+		t.Fatalf("ResolveRuntimeSessionRailPlacement(authoritative) error = %v", err)
+	}
+	wantAuthoritativeKey := storesqlite.RailSectionKeyForProject("/workspace/caller-project")
+	if authoritative.Kind != agenthost.RailPlacementKindProject ||
+		authoritative.ProjectPath != storesqlite.NormalizeProjectPath("/workspace/caller-project") ||
+		authoritative.SectionKey != wantAuthoritativeKey {
+		t.Fatalf("authoritative placement = %#v, want project %q", authoritative, wantAuthoritativeKey)
+	}
+}
+
 func TestSQLiteWorkspaceStoreProjectsForkTurnIdentitiesThroughProductionPort(t *testing.T) {
 	db, err := sql.Open("sqlite", filepath.Join(t.TempDir(), "agent-host-fork-store.db"))
 	if err != nil {

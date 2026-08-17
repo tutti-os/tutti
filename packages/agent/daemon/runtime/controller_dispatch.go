@@ -58,8 +58,9 @@ func (c *Controller) confirmProviderDispatchDurable(
 		strings.TrimSpace(receipt.ProviderSessionID) !=
 			strings.TrimSpace(session.ProviderSessionID) {
 		return ProviderDispatchResult{
-			Disposition: DispatchDispositionOutcomeUnknown,
-			Acceptance:  &receipt,
+			Disposition:           DispatchDispositionOutcomeUnknown,
+			Acceptance:            &receipt,
+			AcceptanceDiagnostics: dispatch.AcceptanceDiagnostics,
 		}, errors.New("provider dispatch returned an invalid acceptance receipt")
 	}
 	eventContext, ok := activityEventContext(
@@ -97,15 +98,32 @@ func (c *Controller) confirmProviderDispatchDurable(
 	reported, err := c.reportProviderAcceptanceDurable(ctx, session, []activityshared.Event{accepted})
 	if err != nil {
 		return ProviderDispatchResult{
-			Disposition: DispatchDispositionOutcomeUnknown,
-			Acceptance:  &receipt,
+			Disposition:           DispatchDispositionOutcomeUnknown,
+			Acceptance:            &receipt,
+			AcceptanceDiagnostics: providerAcceptanceDurabilityFailureDiagnostics(dispatch.AcceptanceDiagnostics),
 		}, err
 	}
 	if !reported {
 		return ProviderDispatchResult{
-			Disposition: DispatchDispositionOutcomeUnknown,
-			Acceptance:  &receipt,
+			Disposition:           DispatchDispositionOutcomeUnknown,
+			Acceptance:            &receipt,
+			AcceptanceDiagnostics: providerAcceptanceDurabilityFailureDiagnostics(dispatch.AcceptanceDiagnostics),
 		}, errors.New("durable provider acceptance reporter is unavailable")
 	}
 	return dispatch, nil
+}
+
+func providerAcceptanceDurabilityFailureDiagnostics(
+	diagnostics *ProviderAcceptanceDiagnostics,
+) *ProviderAcceptanceDiagnostics {
+	if diagnostics == nil {
+		return &ProviderAcceptanceDiagnostics{
+			Status:        "durable_acceptance_failed",
+			FailureReason: "durable_provider_acceptance_failed",
+		}
+	}
+	copy := *diagnostics
+	copy.Status = "durable_acceptance_failed"
+	copy.FailureReason = "durable_provider_acceptance_failed"
+	return &copy
 }

@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { createTuttidClient } from "@tutti-os/client-tuttid-ts";
 import { AccountService } from "./accountService.ts";
 
 test("AccountService opens login URL and refreshes user after completion", async () => {
@@ -8,28 +9,28 @@ test("AccountService opens login URL and refreshes user after completion", async
     hostFilesApi: {
       async openExternal(url) {
         opened.push(url);
-      }
+      },
     },
     tuttidClient: {
       async startAccountLogin() {
         return {
           attempt_id: "attempt-1",
           expires_at: Date.now() + 10_000,
-          login_url: "https://tutti.sh/auth/login?state=test"
+          login_url: "https://tutti.sh/auth/login?state=test",
         };
       },
       async getAccountLoginStatus() {
         return {
           attempt_id: "attempt-1",
           expires_at: Date.now() + 10_000,
-          status: "completed" as const
+          status: "completed" as const,
         };
       },
       async getAccountUserInfo() {
         return {
           user_id: "user-1",
           name: "Tutti User",
-          email: "user@example.com"
+          email: "user@example.com",
         };
       },
       async getAccountProductSummary() {
@@ -37,36 +38,106 @@ test("AccountService opens login URL and refreshes user after completion", async
           user: {
             user_id: "user-1",
             name: "Tutti User",
-            email: "user@example.com"
+            email: "user@example.com",
           },
           membership: {
             tier_key: "pro",
-            display_name: "Pro"
+            display_name: "Pro",
           },
           membership_access: "active" as const,
           credits: {
-            available_credits: "2450.52"
+            available_credits: "2450.52",
           },
           links: {
             plan_url: "https://tutti.sh/profile/plan",
             usage_url: "https://tutti.sh/profile/usage",
-            settings_url: "https://tutti.sh/profile/settings"
-          }
+            settings_url: "https://tutti.sh/profile/settings",
+          },
         };
       },
       async dismissAccountRegistrationCreditsReward() {},
-      async logoutAccount() {}
-    }
+      async logoutAccount() {},
+    },
   });
 
-  await service.startLogin();
+  const result = await service.startLogin();
 
+  assert.deepEqual(result, { error: null });
   assert.deepEqual(opened, ["https://tutti.sh/auth/login?state=test"]);
   assert.equal(service.store.signingIn, false);
   await waitFor(() => service.store.user?.user_id === "user-1");
   await waitFor(
-    () => service.store.productSummary?.membership?.display_name === "Pro"
+    () => service.store.productSummary?.membership?.display_name === "Pro",
   );
+});
+
+test("AccountService returns the current login failure independently", async () => {
+  const service = new AccountService({
+    hostFilesApi: {
+      async openExternal() {},
+    },
+    tuttidClient: {
+      async startAccountLogin() {
+        throw new Error("login daemon unavailable");
+      },
+      async getAccountLoginStatus() {
+        throw new Error("unexpected status");
+      },
+      async getAccountUserInfo() {
+        return null;
+      },
+      async getAccountProductSummary() {
+        throw new Error("unexpected product summary refresh");
+      },
+      async dismissAccountRegistrationCreditsReward() {},
+      async logoutAccount() {},
+    },
+  });
+
+  const result = await service.startLogin();
+
+  assert.deepEqual(result, { error: "login daemon unavailable" });
+  assert.equal(service.store.error, "login daemon unavailable");
+});
+
+test("AccountService recovers login after the managed daemon restarts", async () => {
+  let starts = 0;
+  const delays: number[] = [];
+  const opened: string[] = [];
+  const service = new AccountService({
+    delay: async (milliseconds) => {
+      delays.push(milliseconds);
+    },
+    hostFilesApi: {
+      async openExternal(url) {
+        opened.push(url);
+      },
+    },
+    tuttidClient: createTuttidClient({
+      fetch: async (input) => {
+        const url = new URL(
+          input instanceof Request ? input.url : input.toString(),
+        );
+        if (url.pathname === "/v1/account/login/start") {
+          starts += 1;
+          if (starts < 3) throw new TypeError("Failed to fetch");
+          return Response.json({
+            attempt_id: "attempt-recovered",
+            expires_at: Date.now() + 60_000,
+            login_url: "https://example.test/login",
+          });
+        }
+        return Response.json({ status: "pending" });
+      },
+    }),
+  });
+
+  const result = await service.startLogin();
+
+  assert.deepEqual(result, { error: null });
+  assert.equal(starts, 3);
+  assert.deepEqual(delays, [500, 1000]);
+  assert.deepEqual(opened, ["https://example.test/login"]);
 });
 
 test("AccountService reopens the active login URL without starting another attempt", async () => {
@@ -76,7 +147,7 @@ test("AccountService reopens the active login URL without starting another attem
     hostFilesApi: {
       async openExternal(url) {
         opened.push(url);
-      }
+      },
     },
     tuttidClient: {
       async startAccountLogin() {
@@ -84,7 +155,7 @@ test("AccountService reopens the active login URL without starting another attem
         return {
           attempt_id: "attempt-1",
           expires_at: Date.now() + 10_000,
-          login_url: "https://tutti.sh/auth/login?state=test"
+          login_url: "https://tutti.sh/auth/login?state=test",
         };
       },
       async getAccountLoginStatus() {
@@ -97,8 +168,8 @@ test("AccountService reopens the active login URL without starting another attem
         throw new Error("unexpected product summary refresh");
       },
       async dismissAccountRegistrationCreditsReward() {},
-      async logoutAccount() {}
-    }
+      async logoutAccount() {},
+    },
   });
 
   await service.startLogin();
@@ -107,7 +178,7 @@ test("AccountService reopens the active login URL without starting another attem
   assert.equal(starts, 1);
   assert.deepEqual(opened, [
     "https://tutti.sh/auth/login?state=test",
-    "https://tutti.sh/auth/login?state=test"
+    "https://tutti.sh/auth/login?state=test",
   ]);
   assert.equal(service.store.signingIn, false);
   assert.equal(service.store.loginStatus, "pending");
@@ -121,7 +192,7 @@ test("AccountService refreshes product summary with single-flight and preserves 
   });
   const service = new AccountService({
     hostFilesApi: {
-      async openExternal() {}
+      async openExternal() {},
     },
     tuttidClient: {
       async startAccountLogin() {
@@ -142,20 +213,20 @@ test("AccountService refreshes product summary with single-flight and preserves 
             membership: null,
             membership_access: "unknown" as const,
             credits: {
-              available_credits: "100.25"
+              available_credits: "100.25",
             },
             links: {
               plan_url: "https://tutti.sh/profile/plan",
               usage_url: "https://tutti.sh/profile/usage",
-              settings_url: "https://tutti.sh/profile/settings"
-            }
+              settings_url: "https://tutti.sh/profile/settings",
+            },
           };
         }
         throw new Error("summary unavailable");
       },
       async dismissAccountRegistrationCreditsReward() {},
-      async logoutAccount() {}
-    }
+      async logoutAccount() {},
+    },
   });
 
   const refreshA = service.refreshProductSummary({ force: true });
@@ -165,14 +236,14 @@ test("AccountService refreshes product summary with single-flight and preserves 
   await Promise.all([refreshA, refreshB]);
   assert.equal(
     service.store.productSummary?.credits?.available_credits,
-    "100.25"
+    "100.25",
   );
 
   await service.refreshProductSummary({ force: true });
   assert.equal(calls, 2);
   assert.equal(
     service.store.productSummary?.credits?.available_credits,
-    "100.25"
+    "100.25",
   );
   assert.equal(service.store.productSummaryError, "summary unavailable");
 });
@@ -181,7 +252,7 @@ test("AccountService dismisses the current registration credits reward", async (
   const dismissed: string[] = [];
   const service = new AccountService({
     hostFilesApi: {
-      async openExternal() {}
+      async openExternal() {},
     },
     tuttidClient: {
       async startAccountLogin() {
@@ -199,36 +270,36 @@ test("AccountService dismisses the current registration credits reward", async (
           membership: null,
           membership_access: "unknown" as const,
           credits: {
-            available_credits: "500"
+            available_credits: "500",
           },
           registration_credits_reward: {
             id: "registrationCreditsToastShown:user-1:grant-1",
             grant_no: "grant-1",
             credits: 500,
-            created_at: "2026-07-07T00:00:00Z"
+            created_at: "2026-07-07T00:00:00Z",
           },
           links: {
             plan_url: "https://tutti.sh/profile/plan",
             usage_url: "https://tutti.sh/profile/usage",
-            settings_url: "https://tutti.sh/profile/settings"
-          }
+            settings_url: "https://tutti.sh/profile/settings",
+          },
         };
       },
       async dismissAccountRegistrationCreditsReward(rewardID) {
         dismissed.push(rewardID);
       },
-      async logoutAccount() {}
-    }
+      async logoutAccount() {},
+    },
   });
 
   await service.refreshProductSummary({ force: true });
   assert.equal(
     service.store.productSummary?.registration_credits_reward?.id,
-    "registrationCreditsToastShown:user-1:grant-1"
+    "registrationCreditsToastShown:user-1:grant-1",
   );
 
   await service.dismissRegistrationCreditsReward(
-    "registrationCreditsToastShown:user-1:grant-1"
+    "registrationCreditsToastShown:user-1:grant-1",
   );
 
   assert.deepEqual(dismissed, ["registrationCreditsToastShown:user-1:grant-1"]);
@@ -238,7 +309,7 @@ test("AccountService dismisses the current registration credits reward", async (
 test("AccountService logout clears product summary", async () => {
   const service = new AccountService({
     hostFilesApi: {
-      async openExternal() {}
+      async openExternal() {},
     },
     tuttidClient: {
       async startAccountLogin() {
@@ -256,18 +327,18 @@ test("AccountService logout clears product summary", async () => {
           membership: null,
           membership_access: "unknown" as const,
           credits: {
-            available_credits: "100"
+            available_credits: "100",
           },
           links: {
             plan_url: "https://tutti.sh/profile/plan",
             usage_url: "https://tutti.sh/profile/usage",
-            settings_url: "https://tutti.sh/profile/settings"
-          }
+            settings_url: "https://tutti.sh/profile/settings",
+          },
         };
       },
       async dismissAccountRegistrationCreditsReward() {},
-      async logoutAccount() {}
-    }
+      async logoutAccount() {},
+    },
   });
 
   await service.refreshProductSummary({ force: true });
@@ -287,7 +358,7 @@ test("AccountService ignores product summary responses after logout", async () =
   });
   const service = new AccountService({
     hostFilesApi: {
-      async openExternal() {}
+      async openExternal() {},
     },
     tuttidClient: {
       async startAccountLogin() {
@@ -306,18 +377,18 @@ test("AccountService ignores product summary responses after logout", async () =
           membership: null,
           membership_access: "unknown" as const,
           credits: {
-            available_credits: "100"
+            available_credits: "100",
           },
           links: {
             plan_url: "https://tutti.sh/profile/plan",
             usage_url: "https://tutti.sh/profile/usage",
-            settings_url: "https://tutti.sh/profile/settings"
-          }
+            settings_url: "https://tutti.sh/profile/settings",
+          },
         };
       },
       async dismissAccountRegistrationCreditsReward() {},
-      async logoutAccount() {}
-    }
+      async logoutAccount() {},
+    },
   });
 
   const refresh = service.refreshProductSummary({ force: true });

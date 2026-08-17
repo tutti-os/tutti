@@ -49,3 +49,17 @@ func (a LocalSessionDirectoryAllocator) CreateSessionDirectory(ctx context.Conte
 
 	return "", fmt.Errorf("create agent session directory: exhausted names for %s", prefix)
 }
+
+func (a LocalSessionDirectoryAllocator) ReleaseSessionDirectory(_ context.Context, path string) error {
+	root := filepath.Join(filepath.Clean(a.StateDir), "agent", "sessions")
+	path = filepath.Clean(path)
+	// Allocation rollback is intentionally limited to one exact direct child of
+	// the managed sessions root. Never let a malformed caller broaden cleanup.
+	if filepath.Dir(path) != root || path == root {
+		return fmt.Errorf("release agent session directory: path %q is outside managed root", path)
+	}
+	if err := os.RemoveAll(path); err != nil {
+		return fmt.Errorf("release agent session directory: %w", err)
+	}
+	return nil
+}

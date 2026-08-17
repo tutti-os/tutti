@@ -97,6 +97,7 @@ export class WorkspaceAgentComposerOptionsInvalidationCoordinator {
     for (const host of this.hosts()) {
       host.engine.dispatch({
         providers: event.providers,
+        sections: ["core"],
         type: "composerOptions/invalidated"
       });
     }
@@ -114,6 +115,7 @@ export class WorkspaceAgentComposerOptionsInvalidationCoordinator {
     if (!normalizedAgentTargetId) return;
     for (const host of this.hosts()) {
       host.engine.dispatch({
+        sections: ["core"],
         targetKeys: [normalizedAgentTargetId],
         type: "composerOptions/invalidated"
       });
@@ -147,7 +149,10 @@ export class WorkspaceAgentComposerOptionsInvalidationCoordinator {
     );
     this.connectorCatalogEventRevision = revision;
     for (const host of this.hosts()) {
-      host.engine.dispatch({ type: "composerOptions/invalidated" });
+      host.engine.dispatch({
+        sections: ["connectors"],
+        type: "composerOptions/invalidated"
+      });
     }
     for (const listener of this.connectorCatalogListeners) {
       listener({

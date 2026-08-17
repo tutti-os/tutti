@@ -65,6 +65,22 @@ func TestRouteTableRejectsGenerationAtOrBehindFence(t *testing.T) {
 	}
 }
 
+func TestRouteTablePublishesReadyCandidateBeforeOldRouteCleanup(t *testing.T) {
+	table := NewRouteTable()
+	key := "workspace\x00github"
+	old := &routeTableStub{id: key, digest: "release-1", generation: market.HostGeneration{BootEpoch: "boot-1", Generation: 1}, closeErrs: 1}
+	next := &routeTableStub{id: key, digest: "release-2", generation: market.HostGeneration{BootEpoch: "boot-1", Generation: 2}}
+	if err := table.Commit(old); err != nil {
+		t.Fatal(err)
+	}
+	if err := table.Commit(next); err == nil {
+		t.Fatal("old route cleanup failure was not reported")
+	}
+	if table.Route(key) != next || !table.IsCurrent(next) || old.fenced == false {
+		t.Fatalf("candidate was not retained after cleanup failure: current=%v oldFenced=%t", table.Route(key) == next, old.fenced)
+	}
+}
+
 func TestRouteTableRemoveMatchingClosesEverySelectedConnection(t *testing.T) {
 	table := NewRouteTable()
 	generation := market.HostGeneration{BootEpoch: "boot-1", Generation: 4}

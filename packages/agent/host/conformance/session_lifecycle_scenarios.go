@@ -177,6 +177,7 @@ func runTypedInitialGoalWaitsForCanonicalRailInitialization(ctx context.Context,
 	if err := driver.Reset(ctx, Fixture{
 		CompleteGoalOnSet:      true,
 		RaceRuntimeStartReport: true,
+		RailProjectPaths:       []string{"/workspace/selected-project"},
 	}); err != nil {
 		return err
 	}
@@ -242,6 +243,7 @@ func runFailedCanonicalInitializationAbortsUnpublishedRuntime(ctx context.Contex
 	if err := driver.Reset(ctx, Fixture{
 		RaceRuntimeStartReport:    true,
 		FailSessionInitialization: true,
+		RailProjectPaths:          []string{"/workspace/selected-project"},
 	}); err != nil {
 		return err
 	}
@@ -287,7 +289,7 @@ func runFailedCanonicalInitializationAbortsUnpublishedRuntime(ctx context.Contex
 }
 
 func runCreateWithRailPlacement(ctx context.Context, driver Driver) error {
-	if err := driver.Reset(ctx, Fixture{}); err != nil {
+	if err := driver.Reset(ctx, Fixture{RailProjectPaths: []string{"/workspace/project"}}); err != nil {
 		return err
 	}
 	input := agenthost.CreateSessionInput{
@@ -318,6 +320,13 @@ func runCreateWithRailPlacement(ctx context.Context, driver Driver) error {
 			wantKey,
 		)
 	}
+	metrics := driver.Metrics()
+	if err := requireRuntimeRailPlacement(metrics.LastStartEnv, agenthost.RailPlacement{
+		Version: 1, Kind: agenthost.RailPlacementKindProject,
+		ProjectPath: "/workspace/project", SectionKey: wantKey,
+	}); err != nil {
+		return fmt.Errorf("create runtime: %w", err)
+	}
 	if err := verifyRetriedInitialCreate(ctx, driver, input, session, turnID); err != nil {
 		return err
 	}
@@ -338,7 +347,7 @@ func runRecoverCanonicalSessionOnlyOnMatchingRail(
 	ctx context.Context,
 	driver RailPlacementRecoveryDriver,
 ) error {
-	if err := driver.Reset(ctx, Fixture{}); err != nil {
+	if err := driver.Reset(ctx, Fixture{RailProjectPaths: []string{"/workspace/project"}}); err != nil {
 		return err
 	}
 	ref := agenthost.SessionRef{
@@ -392,8 +401,18 @@ func runResumePersistedSession(ctx context.Context, driver Driver) error {
 	if session.SessionID != "session-resume" || session.ProviderSessionID != "provider-session-1" || !session.Resumable {
 		return fmt.Errorf("resumed session = %#v", session)
 	}
-	if metrics := driver.Metrics(); metrics.ResumeCalls != 1 || metrics.StartCalls != 0 {
+	metrics := driver.Metrics()
+	if metrics.ResumeCalls != 1 || metrics.StartCalls != 0 {
 		return fmt.Errorf("resume calls resume=%d start=%d", metrics.ResumeCalls, metrics.StartCalls)
+	}
+	if err := requireRuntimeRailPlacement(metrics.LastResumeEnv, agenthost.RailPlacement{
+		Version: 1, Kind: agenthost.RailPlacementKindConversations,
+		SectionKey: storesqlite.RailSectionKeyConversations,
+	}); err != nil {
+		return fmt.Errorf("resume runtime: %w", err)
+	}
+	if cwd, found := environmentValue(metrics.LastResumeEnv, "TUTTI_AGENT_CWD"); !found || cwd != "/workspace" {
+		return fmt.Errorf("resume runtime cwd env=%q found=%v, env=%#v", cwd, found, metrics.LastResumeEnv)
 	}
 	return nil
 }

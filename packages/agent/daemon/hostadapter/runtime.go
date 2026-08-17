@@ -39,6 +39,10 @@ type RuntimeBackend interface {
 	GoalCapabilities(context.Context, agentruntime.GoalReconcileInput) (agentruntime.GoalAdapterCapabilities, error)
 }
 
+type runtimeRetainedSettingsBackend interface {
+	UpdateRetainedSettings(context.Context, agentruntime.UpdateSettingsInput) (agentruntime.UpdateSettingsResult, error)
+}
+
 type runtimeHistoryBackend interface {
 	SupportsEffectiveHistory(context.Context, agentruntime.EffectiveHistoryInput) (bool, error)
 	ReadEffectiveHistory(context.Context, agentruntime.EffectiveHistoryInput) (agentruntime.EffectiveHistorySnapshot, error)
@@ -58,6 +62,9 @@ var (
 	_ host.RuntimeHistoryController                = (*RuntimeController)(nil)
 	_ host.RuntimeProviderTurnAcceptanceReconciler = (*RuntimeController)(nil)
 	_ host.RuntimeSessionLiveness                  = (*RuntimeController)(nil)
+	_ host.RuntimeWorkspaceDisconnector            = (*RuntimeController)(nil)
+	_ host.RuntimeWorkspaceDisconnectTargeter      = (*RuntimeController)(nil)
+	_ host.RuntimeRetainedSettingsUpdater          = (*RuntimeController)(nil)
 	_ host.RuntimeSubmitProvenanceReporter         = (*RuntimeController)(nil)
 	_ host.SessionForkRuntime                      = (*RuntimeController)(nil)
 	_ host.SessionForkTurnBindingRecoveryRuntime   = (*RuntimeController)(nil)
@@ -358,7 +365,10 @@ func (a *RuntimeController) SubmitInteractive(ctx context.Context, input host.Ru
 		AgentSessionID: input.AgentSessionID, TurnID: input.TurnID, RequestID: input.RequestID,
 		Action: input.Action, OptionID: input.OptionID, Payload: cloneMap(input.Payload),
 	})
-	return host.RuntimeSubmitInteractiveResult{Disposition: host.RuntimeInteractiveDisposition(result.Disposition)}, mapRuntimeError(err)
+	return host.RuntimeSubmitInteractiveResult{
+		Disposition:    host.RuntimeInteractiveDisposition(result.Disposition),
+		FollowUpPrompt: result.FollowUpPrompt,
+	}, mapRuntimeError(err)
 }
 
 func (a *RuntimeController) InteractiveDisposition(workspaceID, rootSessionID, sessionID, turnID, requestID string) host.RuntimeInteractiveDisposition {
@@ -373,6 +383,25 @@ func (a *RuntimeController) UpdateSettings(ctx context.Context, input host.Runti
 		return err
 	}
 	_, err := a.Backend.UpdateSettings(ctx, agentruntime.UpdateSettingsInput{
+		RoomID: input.WorkspaceID, AgentSessionID: input.AgentSessionID,
+		Settings: agentruntime.SessionSettingsPatch{
+			Model: input.Settings.Model, ReasoningEffort: input.Settings.ReasoningEffort, Speed: input.Settings.Speed,
+			PlanMode: input.Settings.PlanMode, BrowserUse: input.Settings.BrowserUse,
+			ComputerUse: input.Settings.ComputerUse, PermissionModeID: input.Settings.PermissionModeID,
+		},
+	})
+	return mapRuntimeError(err)
+}
+
+func (a *RuntimeController) UpdateRetainedSettings(ctx context.Context, input host.RuntimeUpdateSettingsInput) error {
+	if err := a.requireBackend(); err != nil {
+		return err
+	}
+	backend, ok := a.Backend.(runtimeRetainedSettingsBackend)
+	if !ok {
+		return host.ErrWorkspaceDisconnectUnavailable
+	}
+	_, err := backend.UpdateRetainedSettings(ctx, agentruntime.UpdateSettingsInput{
 		RoomID: input.WorkspaceID, AgentSessionID: input.AgentSessionID,
 		Settings: agentruntime.SessionSettingsPatch{
 			Model: input.Settings.Model, ReasoningEffort: input.Settings.ReasoningEffort, Speed: input.Settings.Speed,
@@ -645,6 +674,13 @@ func mapRuntimeError(err error) error {
 	}
 	if errors.Is(err, agentruntime.ErrEffectiveHistoryUnsupported) {
 		return host.ErrRuntimeHistoryUnsupported
+	}
+	if errors.Is(err, agentruntime.ErrProviderStartTimeout) {
+		var appErr *agentruntime.AppError
+		if errors.As(err, &appErr) && appErr != nil {
+			return host.NewProviderStartTimeoutError(appErr.Message, appErr.DebugMessage, err)
+		}
+		return host.NewProviderStartTimeoutError("", "", err)
 	}
 	var appErr *agentruntime.AppError
 	if errors.As(err, &appErr) && appErr != nil {

@@ -33,12 +33,13 @@ func TestTeaSDKPayloadUsesPresetHeaderAndEventID(t *testing.T) {
 			EventID:  eventID,
 			Params:   map[string]any{"event_id": eventID},
 		}},
-		map[string]any{"os": "darwin", "app_version": "1.2.3"},
+		map[string]any{"os": "darwin", "app_version": "1.2.3-rc.4"},
 		teaSDKHeader{
-			AppVersion: "1.2.3",
-			OSName:     "darwin",
-			OSVersion:  "15.6",
-			CPUABI:     "arm64",
+			AppVersion:      "1.2.3-rc.4",
+			AppVersionMinor: "1.2.3-rc.4",
+			OSName:          "darwin",
+			OSVersion:       "15.6",
+			CPUABI:          "arm64",
 		},
 	)
 	if err != nil {
@@ -50,10 +51,11 @@ func TestTeaSDKPayloadUsesPresetHeaderAndEventID(t *testing.T) {
 	}
 	decodedHeader := decoded["header"].(map[string]any)
 	for key, want := range map[string]string{
-		"app_version": "1.2.3",
-		"os_name":     "darwin",
-		"os_version":  "15.6",
-		"cpu_abi":     "arm64",
+		"app_version":       "1.2.3-rc.4",
+		"app_version_minor": "1.2.3-rc.4",
+		"os_name":           "darwin",
+		"os_version":        "15.6",
+		"cpu_abi":           "arm64",
 	} {
 		if got := decodedHeader[key]; got != want {
 			t.Fatalf("header[%q] = %v, want %q; payload=%s", key, got, want, payload)

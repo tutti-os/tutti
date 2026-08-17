@@ -1,5 +1,6 @@
 import { useMemo, useState, type JSX } from "react";
 import { translate } from "../../../../../i18n/index";
+import { workspaceFilePathBasename } from "../../../../../actions/workspaceFilePathCandidate";
 import { AgentToolScrollArea } from "../AgentToolScrollArea";
 import { AgentPathTailLabel } from "../AgentPathTailLabel";
 import {
@@ -162,8 +163,7 @@ function fileNameFromPath(path: string | null | undefined): string | null {
   if (!normalized) {
     return null;
   }
-  const segments = normalized.split("/");
-  return segments[segments.length - 1] || normalized;
+  return workspaceFilePathBasename(normalized) || normalized;
 }
 
 function flatLineClassName(kind: "add" | "remove" | "context"): string {

@@ -1,6 +1,15 @@
 import { act, fireEvent, render, waitFor } from "@testing-library/react";
 import { createRef } from "react";
 import { describe, expect, it, vi } from "vitest";
+import { RichTextMentionServiceProvider } from "@tutti-os/ui-rich-text/editor";
+import {
+  createRichTextMentionService,
+  type RichTextMentionService
+} from "@tutti-os/ui-rich-text/service";
+import type {
+  RichTextMentionResolved,
+  RichTextTriggerProvider
+} from "@tutti-os/ui-rich-text/types";
 import {
   registerAgentCustomMentionKind,
   resetAgentCustomMentionKindsForTests
@@ -325,9 +334,409 @@ describe("AgentRichTextEditor Agent mention presentation", () => {
       ).toHaveAttribute("src", iconUrl)
     );
   });
+
+  it("keeps the target catalog presentation over a stale mention-service result", async () => {
+    const currentIconUrl = "data:image/png;base64,current-codex";
+    const staleIconUrl = "data:image/png;base64,stale-provider";
+    const resolveMention = vi.fn(() => ({
+      label: "Stale Agent",
+      presentation: {
+        agentProviderId: "stale-provider",
+        iconUrl: staleIconUrl
+      }
+    }));
+    const provider: RichTextTriggerProvider<string> = {
+      id: "agent-target",
+      trigger: "@",
+      query: () => [],
+      getItemKey: (item) => item,
+      getItemLabel: (item) => item,
+      toInsertResult: (item) => ({ kind: "text", text: item }),
+      resolveMention
+    };
+    const mentionService = createRichTextMentionService({
+      providers: [provider]
+    });
+    const rendered = render(
+      <RichTextMentionServiceProvider service={mentionService}>
+        <AgentTargetPresentationProvider
+          agentTargets={[
+            {
+              agentTargetId: "shared-agent:current",
+              iconUrl: currentIconUrl,
+              name: "Current Agent",
+              provider: "codex",
+              workspaceId: "workspace-1"
+            }
+          ]}
+        >
+          <AgentRichTextEditor
+            value="[@Canonical Agent](mention://agent-target/shared-agent:current?workspaceId=workspace-1)"
+            disabled={false}
+            placeholder="Prompt"
+            onChange={vi.fn()}
+            onSubmit={vi.fn()}
+          />
+        </AgentTargetPresentationProvider>
+      </RichTextMentionServiceProvider>
+    );
+
+    await waitFor(() => expect(resolveMention).toHaveBeenCalled());
+    const mention = rendered.container.querySelector(
+      '[data-agent-mention-kind="agent-target"]'
+    );
+    expect(mention).toHaveTextContent("Current Agent");
+    expect(mention?.querySelector("img")).toHaveAttribute(
+      "src",
+      currentIconUrl
+    );
+    expect(rendered.container.innerHTML).not.toContain(staleIconUrl);
+
+    mentionService.dispose();
+  });
+
+  it("falls back to the canonical label and semantic icon when a resolved mention becomes missing", async () => {
+    let resolved: RichTextMentionResolved | null = {
+      label: "Resolved Weather",
+      presentation: { iconUrl: "https://icons.example/weather.png" }
+    };
+    const provider = createWorkspaceAppMentionProvider(() => resolved);
+    const mentionService = createRichTextMentionService({
+      providers: [provider]
+    });
+    const identity = {
+      providerId: "workspace-app",
+      entityId: "weather",
+      label: "Weather",
+      scope: { workspaceId: "workspace-1" }
+    };
+    const rendered = render(
+      <RichTextMentionServiceProvider service={mentionService}>
+        <AgentRichTextEditor
+          value="[@Weather](mention://workspace-app/weather?workspaceId=workspace-1)"
+          disabled={false}
+          placeholder="Prompt"
+          onChange={vi.fn()}
+          onSubmit={vi.fn()}
+        />
+      </RichTextMentionServiceProvider>
+    );
+
+    await waitFor(() => {
+      const mention = rendered.container.querySelector(
+        '[data-agent-mention-kind="workspace-app"]'
+      );
+      expect(mention).toHaveTextContent("Resolved Weather");
+      expect(mention?.querySelector("img")).toHaveAttribute(
+        "src",
+        "https://icons.example/weather.png"
+      );
+    });
+
+    resolved = null;
+    act(() => mentionService.invalidate(identity));
+
+    await waitFor(() => {
+      const mention = rendered.container.querySelector(
+        '[data-agent-mention-kind="workspace-app"]'
+      );
+      expect(mention).toHaveTextContent("Weather");
+      expect(mention?.querySelector("img")).toBeNull();
+    });
+
+    mentionService.dispose();
+  });
+
+  it("drops a resolved icon when the provider no longer returns one", async () => {
+    let resolved: RichTextMentionResolved | null = {
+      label: "Resolved Weather",
+      presentation: { iconUrl: "https://icons.example/weather.png" }
+    };
+    const provider = createWorkspaceAppMentionProvider(() => resolved);
+    const mentionService = createRichTextMentionService({
+      providers: [provider]
+    });
+    const identity = {
+      providerId: "workspace-app",
+      entityId: "weather",
+      label: "Weather",
+      scope: { workspaceId: "workspace-1" }
+    };
+    const rendered = render(
+      <RichTextMentionServiceProvider service={mentionService}>
+        <AgentRichTextEditor
+          value="[@Weather](mention://workspace-app/weather?workspaceId=workspace-1)"
+          disabled={false}
+          placeholder="Prompt"
+          onChange={vi.fn()}
+          onSubmit={vi.fn()}
+        />
+      </RichTextMentionServiceProvider>
+    );
+
+    await waitFor(() =>
+      expect(
+        rendered.container.querySelector(
+          '[data-agent-mention-kind="workspace-app"] img'
+        )
+      ).toHaveAttribute("src", "https://icons.example/weather.png")
+    );
+
+    resolved = { label: "Resolved Weather" };
+    act(() => mentionService.invalidate(identity));
+
+    await waitFor(() =>
+      expect(
+        rendered.container.querySelector(
+          '[data-agent-mention-kind="workspace-app"] img'
+        )
+      ).toBeNull()
+    );
+
+    mentionService.dispose();
+  });
+
+  it("detaches from a removed mention service and stops resolving", async () => {
+    const resolveMention = vi.fn(() => ({
+      label: "Resolved Weather",
+      presentation: { iconUrl: "https://icons.example/weather.png" }
+    }));
+    const provider = createWorkspaceAppMentionProvider(resolveMention);
+    const mentionService = createRichTextMentionService({
+      providers: [provider]
+    });
+    const identity = {
+      providerId: "workspace-app",
+      entityId: "weather",
+      label: "Weather",
+      scope: { workspaceId: "workspace-1" }
+    };
+    const editor = (service: RichTextMentionService | null) => (
+      <RichTextMentionServiceProvider
+        service={service as RichTextMentionService}
+      >
+        <AgentRichTextEditor
+          value="[@Weather](mention://workspace-app/weather?workspaceId=workspace-1)"
+          disabled={false}
+          placeholder="Prompt"
+          onChange={vi.fn()}
+          onSubmit={vi.fn()}
+        />
+      </RichTextMentionServiceProvider>
+    );
+    const rendered = render(editor(mentionService));
+
+    await waitFor(() =>
+      expect(
+        rendered.container.querySelector(
+          '[data-agent-mention-kind="workspace-app"]'
+        )
+      ).toHaveTextContent("Resolved Weather")
+    );
+    const callsBeforeRemoval = resolveMention.mock.calls.length;
+
+    rendered.rerender(editor(null));
+    await waitFor(() => {
+      const mention = rendered.container.querySelector(
+        '[data-agent-mention-kind="workspace-app"]'
+      );
+      expect(mention).toHaveTextContent("Weather");
+      expect(mention?.querySelector("img")).toBeNull();
+    });
+
+    act(() => mentionService.invalidate(identity));
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(resolveMention).toHaveBeenCalledTimes(callsBeforeRemoval);
+
+    mentionService.dispose();
+  });
+
+  it("does not resolve existing mentions again after ordinary text input", async () => {
+    const provider = createWorkspaceAppMentionProvider(() => ({
+      label: "Resolved Weather"
+    }));
+    const mentionService = createRichTextMentionService({
+      providers: [provider]
+    });
+    const resolve = vi.spyOn(mentionService, "resolve");
+    const ref = createRef<AgentRichTextEditorHandle>();
+    const rendered = render(
+      <RichTextMentionServiceProvider service={mentionService}>
+        <AgentRichTextEditor
+          ref={ref}
+          value="[@Weather](mention://workspace-app/weather?workspaceId=workspace-1)"
+          disabled={false}
+          placeholder="Prompt"
+          onChange={vi.fn()}
+          onSubmit={vi.fn()}
+        />
+      </RichTextMentionServiceProvider>
+    );
+
+    await waitFor(() =>
+      expect(rendered.container).toHaveTextContent("Resolved Weather")
+    );
+    const callsBeforeInput = resolve.mock.calls.length;
+    act(() => {
+      ref.current?.focusAtEnd();
+      ref.current?.insertPlainTextAtSelection("!");
+    });
+    await waitFor(() =>
+      expect(
+        rendered.container.querySelector('[contenteditable="true"]')
+      ).toHaveTextContent("Weather!")
+    );
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(resolve).toHaveBeenCalledTimes(callsBeforeInput);
+    mentionService.dispose();
+  });
+
+  it("resolves multiple mentions with linear call fan-out", async () => {
+    const provider = createWorkspaceAppMentionProvider((identity) => ({
+      label: `Resolved ${identity.entityId}`
+    }));
+    const mentionService = createRichTextMentionService({
+      providers: [provider]
+    });
+    const resolve = vi.spyOn(mentionService, "resolve");
+    const mentionCount = 10;
+    const value = Array.from(
+      { length: mentionCount },
+      (_, index) =>
+        `[@App ${index}](mention://workspace-app/app-${index}?workspaceId=workspace-1)`
+    ).join(" ");
+    const rendered = render(
+      <RichTextMentionServiceProvider service={mentionService}>
+        <AgentRichTextEditor
+          value={value}
+          disabled={false}
+          placeholder="Prompt"
+          onChange={vi.fn()}
+          onSubmit={vi.fn()}
+        />
+      </RichTextMentionServiceProvider>
+    );
+
+    await waitFor(() =>
+      expect(
+        rendered.container.querySelectorAll(
+          '[data-node-view-wrapper][data-agent-mention-kind="workspace-app"]'
+        )
+      ).toHaveLength(mentionCount)
+    );
+    await waitFor(() =>
+      expect(rendered.container).toHaveTextContent("Resolved app-9")
+    );
+
+    expect(resolve).toHaveBeenCalledTimes(mentionCount);
+    mentionService.dispose();
+  });
 });
 
+function createWorkspaceAppMentionProvider(
+  resolveMention: NonNullable<RichTextTriggerProvider<string>["resolveMention"]>
+): RichTextTriggerProvider<string> {
+  return {
+    id: "workspace-app",
+    trigger: "@",
+    query: () => [],
+    getItemKey: (item) => item,
+    getItemLabel: (item) => item,
+    toInsertResult: (item) => ({ kind: "text", text: item }),
+    resolveMention
+  };
+}
+
 describe("AgentRichTextEditor prompt insertion", () => {
+  it("drops a late mention resolution after the controlled draft is replaced", async () => {
+    let resolveOldMention: ((value: RichTextMentionResolved) => void) | null =
+      null;
+    const oldMentionResolution = new Promise<RichTextMentionResolved>(
+      (resolve) => {
+        resolveOldMention = resolve;
+      }
+    );
+    const resolveMention = vi.fn((identity) =>
+      identity.entityId === "app-a" ? oldMentionResolution : null
+    );
+    const provider: RichTextTriggerProvider<string> = {
+      id: "workspace-app",
+      trigger: "@",
+      query: () => [],
+      getItemKey: (item) => item,
+      getItemLabel: (item) => item,
+      toInsertResult: (item) => ({ kind: "text", text: item }),
+      resolveMention
+    };
+    const mentionService = createRichTextMentionService({
+      providers: [provider]
+    });
+    const ref = createRef<AgentRichTextEditorHandle>();
+    const onChange = vi.fn();
+    const draftA =
+      "[@App A](mention://workspace-app/app-a?workspaceId=workspace-1)";
+    const draftB =
+      "[@App B](mention://workspace-app/app-b?workspaceId=workspace-1)";
+    const editor = (value: string, contentScopeKey: string) => (
+      <RichTextMentionServiceProvider service={mentionService}>
+        <AgentRichTextEditor
+          ref={ref}
+          contentScopeKey={contentScopeKey}
+          disabled={false}
+          onChange={onChange}
+          onSubmit={vi.fn()}
+          placeholder="Prompt"
+          value={value}
+        />
+      </RichTextMentionServiceProvider>
+    );
+    const rendered = render(editor(draftA, "session-a"));
+    await waitFor(() =>
+      expect(resolveMention).toHaveBeenCalledWith(
+        expect.objectContaining({ entityId: "app-a" })
+      )
+    );
+
+    rendered.rerender(editor(draftB, "session-b"));
+    await waitFor(() =>
+      expect(
+        rendered.container.querySelector('[data-agent-mention-href*="app-b"]')
+      ).not.toBeNull()
+    );
+    onChange.mockClear();
+    act(() => {
+      ref.current?.focusAtEnd();
+      ref.current?.insertPlainTextAtSelection("!");
+    });
+    expect(onChange).toHaveBeenLastCalledWith(`${draftB}!`);
+
+    await act(async () => {
+      resolveOldMention?.({
+        label: "Stale App",
+        presentation: { iconUrl: "https://icons.example/stale.png" }
+      });
+      await oldMentionResolution;
+    });
+
+    await waitFor(() =>
+      expect(
+        rendered.container.querySelector('[contenteditable="true"]')
+      ).toHaveTextContent("App B!")
+    );
+    expect(rendered.container.innerHTML).not.toContain(
+      "https://icons.example/stale.png"
+    );
+    expect(onChange).toHaveBeenCalledTimes(1);
+
+    rendered.unmount();
+    mentionService.dispose();
+  });
+
   it("ignores stale controlled echoes while a transition catches up", async () => {
     const ref = createRef<AgentRichTextEditorHandle>();
     const props = {

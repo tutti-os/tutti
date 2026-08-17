@@ -23,6 +23,10 @@ func (a *standardACPAdapter) startupCallTimeout() time.Duration {
 func (a *standardACPAdapter) Start(ctx context.Context, session Session) ([]activityshared.Event, error) {
 	unlockLifecycle := a.lockSessionLifecycle(session.AgentSessionID)
 	defer unlockLifecycle()
+	if err := a.admitReplacementLocked(session.AgentSessionID); err != nil {
+		return nil, err
+	}
+	previousSession := a.getSession(session.AgentSessionID)
 	a.logStandardACPStartupDiagnostics("start.enter", map[string]any{
 		"room_id":            session.RoomID,
 		"agent_session_id":   session.AgentSessionID,
@@ -50,10 +54,10 @@ func (a *standardACPAdapter) Start(ctx context.Context, session Session) ([]acti
 	}
 	started := false
 	keepSession := false
-	previousSession := a.getSession(session.AgentSessionID)
+	var acpSession *standardACPSession
 	defer func() {
-		if !started {
-			_ = client.Close()
+		if !started && acpSession != nil {
+			a.closeOrRetainSession(session, acpSession)
 		}
 		if !keepSession {
 			if previousSession != nil {
@@ -67,15 +71,17 @@ func (a *standardACPAdapter) Start(ctx context.Context, session Session) ([]acti
 	if err != nil {
 		return nil, err
 	}
-	acpSession := &standardACPSession{
+	acpSession = &standardACPSession{
 		client:               client,
 		agentInfo:            acpAgentInfo(initializeResult),
 		promptImage:          standardACPProviderPromptImageSupported(a.config.provider, initializeResult),
 		sessionClose:         standardACPSessionCloseSupported(initializeResult),
+		resumeMethod:         acpResumeMethod(initializeResult),
 		acpLiveState:         standardACPInitialLiveState(),
 		pendingApprovals:     make(map[string]*pendingACPApproval),
 		permissionModeID:     strings.TrimSpace(session.PermissionModeID),
 		planMode:             session.SettingsValue().PlanMode,
+		lifecycleSeq:         session.LifecycleSeq,
 		initialPromptContext: initialPromptContext,
 	}
 	a.storeSession(session.AgentSessionID, acpSession)
@@ -166,7 +172,7 @@ func (a *standardACPAdapter) Start(ctx context.Context, session Session) ([]acti
 
 	started = true
 	keepSession = true
-	a.closeReplacedSession(previousSession, client)
+	a.closeReplacedSession(session.AgentSessionID, previousSession, client)
 	a.logStandardACPStartupDiagnostics("start.succeeded", map[string]any{
 		"room_id":             session.RoomID,
 		"agent_session_id":    session.AgentSessionID,
@@ -186,6 +192,18 @@ func (a *standardACPAdapter) Resume(ctx context.Context, session Session) error 
 	}
 	unlockLifecycle := a.lockSessionLifecycle(session.AgentSessionID)
 	defer unlockLifecycle()
+	if err := a.admitReplacementLocked(session.AgentSessionID); err != nil {
+		return err
+	}
+	return a.resumeLocked(ctx, session)
+}
+
+// resumeLocked reconnects a provider process while the caller owns the
+// per-session lifecycle lock. ApplySessionSettings uses it when a launch-time
+// Plan setting must replace an already usable process without re-entering the
+// same lock.
+func (a *standardACPAdapter) resumeLocked(ctx context.Context, session Session) error {
+	previousSession := a.getSession(session.AgentSessionID)
 	client, initializeResult, attachedCheckpoint, err := a.startClient(ctx, session, true, true)
 	if err != nil {
 		return err
@@ -201,10 +219,10 @@ func (a *standardACPAdapter) Resume(ctx context.Context, session Session) error 
 	}
 	started := false
 	keepSession := false
-	previousSession := a.getSession(session.AgentSessionID)
+	var acpSession *standardACPSession
 	defer func() {
-		if !started {
-			_ = client.Close()
+		if !started && acpSession != nil {
+			a.closeOrRetainSession(session, acpSession)
 		}
 		if !keepSession {
 			if previousSession != nil {
@@ -225,7 +243,7 @@ func (a *standardACPAdapter) Resume(ctx context.Context, session Session) error 
 			a.startupModeID(session),
 		)
 		agentInfo, _ := session.RuntimeContext["agent"].(map[string]any)
-		acpSession := &standardACPSession{
+		acpSession = &standardACPSession{
 			client:               client,
 			providerSessionID:    session.ProviderSessionID,
 			resumeRuntimeContext: clonePayload(session.RuntimeContext),
@@ -234,24 +252,27 @@ func (a *standardACPAdapter) Resume(ctx context.Context, session Session) error 
 			pendingApprovals:     make(map[string]*pendingACPApproval),
 			permissionModeID:     strings.TrimSpace(session.PermissionModeID),
 			planMode:             session.SettingsValue().PlanMode,
+			lifecycleSeq:         session.LifecycleSeq,
 			initialPromptContext: initialPromptContext,
 		}
 		started = true
 		keepSession = true
 		a.storeSession(session.AgentSessionID, acpSession)
-		a.closeReplacedSession(previousSession, client)
+		a.closeReplacedSession(session.AgentSessionID, previousSession, client)
 		return nil
 	}
-	acpSession := &standardACPSession{
+	acpSession = &standardACPSession{
 		client:               client,
 		providerSessionID:    session.ProviderSessionID,
 		agentInfo:            acpAgentInfo(initializeResult),
 		promptImage:          standardACPProviderPromptImageSupported(a.config.provider, initializeResult),
 		sessionClose:         standardACPSessionCloseSupported(initializeResult),
+		resumeMethod:         acpResumeMethod(initializeResult),
 		acpLiveState:         standardACPInitialLiveState(),
 		pendingApprovals:     make(map[string]*pendingACPApproval),
 		permissionModeID:     strings.TrimSpace(session.PermissionModeID),
 		planMode:             session.SettingsValue().PlanMode,
+		lifecycleSeq:         session.LifecycleSeq,
 		initialPromptContext: initialPromptContext,
 	}
 	if previousSession != nil {
@@ -259,7 +280,7 @@ func (a *standardACPAdapter) Resume(ctx context.Context, session Session) error 
 	}
 	a.storeSession(session.AgentSessionID, acpSession)
 
-	method := acpResumeMethod(initializeResult)
+	method := acpSession.resumeMethod
 	if method == "" {
 		return unsupportedACPResumeError(session)
 	}
@@ -289,7 +310,7 @@ func (a *standardACPAdapter) Resume(ctx context.Context, session Session) error 
 	}
 	started = true
 	keepSession = true
-	a.closeReplacedSession(previousSession, client)
+	a.closeReplacedSession(session.AgentSessionID, previousSession, client)
 	return nil
 }
 
@@ -331,7 +352,7 @@ func (*standardACPAdapter) CanResume(session Session) bool {
 }
 
 func (a *standardACPAdapter) HasLiveSession(session Session) bool {
-	acpSession := a.getSession(session.AgentSessionID)
+	acpSession := a.getUsableSession(session.AgentSessionID)
 	if acpSession == nil || acpSession.client == nil {
 		return false
 	}
@@ -340,93 +361,6 @@ func (a *standardACPAdapter) HasLiveSession(session Session) bool {
 		return false
 	default:
 		return true
-	}
-}
-
-// ReleaseLiveSession disconnects the ACP transport without sending
-// session/close. The latter is a destructive provider-history operation for
-// providers that implement it and therefore cannot be used by idle
-// reprepare/reconnect flows.
-func (a *standardACPAdapter) ReleaseLiveSession(_ context.Context, session Session) error {
-	if a == nil || a.transport == nil {
-		return nil
-	}
-	agentSessionID := strings.TrimSpace(session.AgentSessionID)
-	unlockLifecycle := a.lockSessionLifecycle(agentSessionID)
-	defer unlockLifecycle()
-	a.mu.Lock()
-	acpSession := a.sessions[agentSessionID]
-	if acpSession != nil {
-		for _, pending := range acpSession.pendingApprovals {
-			if pending != nil {
-				state := pending.disposition()
-				if state == pendingInteractiveRequestStatePending || state == pendingInteractiveRequestStateResolving {
-					a.mu.Unlock()
-					return ErrLiveSessionBusy
-				}
-			}
-		}
-	}
-	delete(a.sessions, agentSessionID)
-	a.mu.Unlock()
-	if acpSession == nil || acpSession.client == nil {
-		return nil
-	}
-	return acpSession.client.Close()
-}
-
-func (a *standardACPAdapter) Close(ctx context.Context, session Session) error {
-	if a == nil || a.transport == nil {
-		return nil
-	}
-	agentSessionID := strings.TrimSpace(session.AgentSessionID)
-	unlockLifecycle := a.lockSessionLifecycle(agentSessionID)
-	defer unlockLifecycle()
-	a.rejectPendingApprovals(agentSessionID, errPermissionRequestCanceled)
-	a.mu.Lock()
-	acpSession := a.sessions[agentSessionID]
-	delete(a.sessions, agentSessionID)
-	a.mu.Unlock()
-	if acpSession != nil && acpSession.client != nil {
-		a.closeProviderSession(ctx, session, acpSession)
-		closeErr := acpSession.client.Close()
-		if closeErr != nil {
-			a.logACPCloseDiagnostics("transport_close.failed", session, acpSession, closeErr)
-			return closeErr
-		}
-		a.logACPCloseDiagnostics("closed", session, acpSession, nil)
-	}
-	return nil
-}
-
-func (a *standardACPAdapter) closeProviderSession(ctx context.Context, session Session, acpSession *standardACPSession) {
-	if a == nil || acpSession == nil || acpSession.client == nil || !acpSession.sessionClose {
-		return
-	}
-	providerSessionID := strings.TrimSpace(firstNonEmptyString(acpSession.providerSessionID, session.ProviderSessionID))
-	if providerSessionID == "" {
-		a.logACPCloseDiagnostics("protocol_close.skipped_missing_session_id", session, acpSession, nil)
-		return
-	}
-	params := map[string]any{"sessionId": providerSessionID}
-	if _, err := acpSession.client.CallNoHandlerWithTimeout(ctx, acpCloseCallTimeout, acpMethodCloseSession, params); err != nil {
-		a.logACPCloseDiagnostics("protocol_close.failed", session, acpSession, err)
-		return
-	}
-	a.logACPCloseDiagnostics("protocol_close.succeeded", session, acpSession, nil)
-	a.waitForACPClientDone(acpSession.client, acpCloseGraceTimeout)
-}
-
-func (a *standardACPAdapter) closeReplacedSession(previousSession *standardACPSession, currentClient *acpClient) {
-	if previousSession == nil || previousSession.client == nil || previousSession.client == currentClient {
-		return
-	}
-	if err := previousSession.client.Close(); err != nil {
-		slog.Warn("agent session ACP replaced client close failed",
-			"event", "agent_session.acp.replaced_client.close_failed",
-			"provider", a.config.provider,
-			"error", err.Error(),
-		)
 	}
 }
 
@@ -577,6 +511,9 @@ func (a *standardACPAdapter) startClient(
 	})
 	client := newACPClientWithStderrMessageMapper(conn, a.config.stderrMessageMapper)
 	client.SetMessageHandler(func(ctx context.Context, message acpMessage) error {
+		if !a.isUsableCurrentClient(session.AgentSessionID, client) {
+			return nil
+		}
 		endInputUnit := a.inputUnits.begin(ctx, session.AgentSessionID)
 		defer endInputUnit()
 		turnSession := session
@@ -588,9 +525,13 @@ func (a *standardACPAdapter) startClient(
 		return err
 	})
 	started := false
+	failedSession := &standardACPSession{
+		client:           client,
+		pendingApprovals: make(map[string]*pendingACPApproval),
+	}
 	defer func() {
 		if !started {
-			_ = client.Close()
+			a.closeOrRetainSession(session, failedSession)
 		}
 	}()
 	captureOrigin := processCassetteCaptureOrigin(conn)

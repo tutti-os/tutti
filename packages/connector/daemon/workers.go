@@ -220,7 +220,9 @@ func (dispatcher OutboxDispatcher) Flush(ctx context.Context) error {
 			return nil
 		}
 		for _, entry := range entries {
-			if err := dispatcher.Publisher.PublishConnectorMarketChanged(ctx, entry.Event); err != nil {
+			event := entry.Event
+			event.Cursor = entry.Sequence
+			if err := dispatcher.Publisher.PublishConnectorMarketChanged(ctx, event); err != nil {
 				return err
 			}
 			if err := dispatcher.Outbox.MarkChangedEventPublished(ctx, entry.Sequence, now().UTC()); err != nil {

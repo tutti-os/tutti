@@ -562,9 +562,21 @@ type ProviderAcceptanceReceipt struct {
 	ProviderInputUnit *activityshared.ProviderInputUnitContext `json:"-"`
 }
 
+// ProviderAcceptanceDiagnostics describes the identity evidence observed at
+// the provider acceptance boundary. It is telemetry metadata only and must not
+// be used as durable coordination state.
+type ProviderAcceptanceDiagnostics struct {
+	Status                   string `json:"status"`
+	ProviderSessionIDPresent bool   `json:"providerSessionIdPresent"`
+	ProviderTurnIDPresent    bool   `json:"providerTurnIdPresent"`
+	ProviderTurnIDSource     string `json:"providerTurnIdSource,omitempty"`
+	FailureReason            string `json:"failureReason,omitempty"`
+}
+
 type ProviderDispatchResult struct {
-	Disposition DispatchDisposition        `json:"disposition"`
-	Acceptance  *ProviderAcceptanceReceipt `json:"acceptance,omitempty"`
+	Disposition           DispatchDisposition            `json:"disposition"`
+	Acceptance            *ProviderAcceptanceReceipt     `json:"acceptance,omitempty"`
+	AcceptanceDiagnostics *ProviderAcceptanceDiagnostics `json:"acceptanceDiagnostics,omitempty"`
 	// Failure is a process-local provider observation. It is carried only to
 	// the synchronous Controller caller and is never serialized or persisted as
 	// coordination state.
@@ -602,7 +614,12 @@ type SubmitInteractiveResult struct {
 	Accepted       bool                   `json:"accepted"`
 	OptionID       string                 `json:"optionId,omitempty"`
 	Disposition    InteractiveDisposition `json:"-"`
-	Events         []Event                `json:"events"`
+	// FollowUpPrompt is a provider-neutral intent for the Host to submit a
+	// follow-up through its normal SendInput admission path. Runtime must not
+	// dispatch this prompt directly because Host owns its idempotency and
+	// recovery semantics.
+	FollowUpPrompt string  `json:"-"`
+	Events         []Event `json:"events"`
 }
 
 type UpdateSettingsResult struct {

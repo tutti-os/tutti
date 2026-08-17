@@ -14,12 +14,16 @@ import (
 )
 
 const (
-	ImplementationKindBuiltin              = "builtin"
-	ImplementationKindManagedStdio         = "managed_stdio"
-	ImplementationKindRemoteStreamableHTTP = "remote_streamable_http"
-	CredentialBrokerProtocolV1             = "tutti.connector.credentials.v1"
-	maxAgentRoutingAliases                 = 12
-	maxAgentRoutingAliasRunes              = 48
+	ImplementationKindBuiltin                = "builtin"
+	ImplementationKindManagedStdio           = "managed_stdio"
+	ImplementationKindRemoteStreamableHTTP   = "remote_streamable_http"
+	CredentialBrokerProtocolV1               = "tutti.connector.credentials.v1"
+	CLIArtifactLaunchKindNative              = "artifact_native"
+	CredentialBrokerPresentationEmbeddedPage = "embedded_page"
+	CredentialBrokerPresentationQRCode       = "qr_code"
+	AuthorizationInteractionModeManaged      = "managed"
+	maxAgentRoutingAliases                   = 12
+	maxAgentRoutingAliasRunes                = 48
 )
 
 var connectorKeyPattern = regexp.MustCompile(`^[a-z0-9](?:[a-z0-9._-]{0,126}[a-z0-9])?$`)
@@ -117,7 +121,22 @@ func validateReleaseShape(release Release, validateIcon bool) error {
 		strings.TrimSpace(release.Artifact.MediaType) == "" {
 		return invalidManifest("artifact key, lowercase SHA-256, positive sizeBytes, and mediaType are required", nil)
 	}
-	return validateManifestShape(release.Manifest, validateIcon)
+	if err := validateManifestShape(release.Manifest, validateIcon); err != nil {
+		return err
+	}
+	return validateLegacyCredentialBrokerPresentation(release)
+}
+
+func validateLegacyCredentialBrokerPresentation(release Release) error {
+	managed := release.Manifest.Implementation.ManagedStdio
+	if managed == nil || managed.CredentialBroker == nil ||
+		managed.CredentialBroker.Presentation != CredentialBrokerPresentationEmbeddedPage {
+		return nil
+	}
+	if release.ConnectorKey == "wecom-cli" && release.Version == "0.1.4" {
+		return nil
+	}
+	return invalidManifest("embedded_page presentation is reserved for the legacy wecom-cli 0.1.4 release", nil)
 }
 
 func ValidateManifestShape(manifest Manifest) error {
@@ -271,6 +290,9 @@ func validateManagedStdio(managed ManagedStdioImplementation, authorizationKind 
 		if !safeRelativeEntrypoint(managed.CLI.Entrypoint) {
 			return invalidManifest("managed CLI entrypoint is required", nil)
 		}
+		if !manifestIdentifierPattern.MatchString(ManagedCLICommandName(*managed.CLI)) {
+			return invalidManifest("managed CLI command must be a safe identifier", nil)
+		}
 		for _, argument := range managed.CLI.Arguments {
 			if strings.ContainsRune(argument, '\x00') {
 				return invalidManifest("managed CLI arguments must not contain NUL", nil)
@@ -278,6 +300,16 @@ func validateManagedStdio(managed ManagedStdioImplementation, authorizationKind 
 		}
 		if err := validateCLIReadinessProbe(managed.CLI.ReadinessProbe); err != nil {
 			return err
+		}
+		if managed.CLI.Launch != nil {
+			if managed.CLI.Install != nil || len(managed.CLI.Commands) != 0 {
+				return invalidManifest("artifact-native CLI launch cannot declare install or command mappings", nil)
+			}
+			if strings.TrimSpace(managed.CLI.Command) == "" || managed.CLI.Launch.Kind != CLIArtifactLaunchKindNative ||
+				!artifactSHA256Pattern.MatchString(managed.CLI.Launch.SHA256) || managed.CLI.Launch.SizeBytes <= 0 ||
+				managed.CLI.Launch.SizeBytes > 64*1024*1024 {
+				return invalidManifest("artifact-native CLI launch requires an explicit command and bounded executable identity", nil)
+			}
 		}
 		if managed.CLI.Install != nil {
 			if err := validateCLIInstallation(*managed.CLI.Install, managed.Runtime, managed.CLI.Entrypoint); err != nil {
@@ -342,6 +374,14 @@ func validateManagedCredentialBroker(broker *ManagedCredentialBroker, hasCLI boo
 	}
 	if broker.TimeoutMS < 1_000 || broker.TimeoutMS > 10*60*1_000 {
 		return invalidManifest("credential broker timeoutMs must be between 1000 and 600000", nil)
+	}
+	// Manifest-only validation has no connector identity or release version.
+	// Release validation restricts embedded_page to the legacy wecom-cli 0.1.4
+	// compatibility case; hosts deliberately project it as an external link.
+	if broker.Presentation != "" &&
+		broker.Presentation != CredentialBrokerPresentationEmbeddedPage &&
+		broker.Presentation != CredentialBrokerPresentationQRCode {
+		return invalidManifest("credential broker presentation is unsupported", nil)
 	}
 	if len(broker.AllowedHosts) == 0 {
 		return invalidManifest("credential broker requires at least one allowed authorization host", nil)
@@ -466,11 +506,22 @@ func validateUniquePermissions(values []string) error {
 
 func safeRelativeEntrypoint(value string) bool {
 	value = strings.TrimSpace(value)
-	if value == "" || filepath.IsAbs(value) || strings.Contains(value, "\\") {
+	if value == "" || filepath.IsAbs(value) || strings.ContainsAny(value, "\\:") {
 		return false
 	}
 	cleaned := filepath.ToSlash(filepath.Clean(value))
-	return cleaned == value && cleaned != "." && cleaned != ".." && !strings.HasPrefix(cleaned, "../")
+	if cleaned != value || cleaned == "." || cleaned == ".." || strings.HasPrefix(cleaned, "../") {
+		return false
+	}
+	for _, segment := range strings.Split(cleaned, "/") {
+		trimmed := strings.TrimRight(segment, ". ")
+		base := strings.ToLower(strings.SplitN(trimmed, ".", 2)[0])
+		if trimmed != segment || base == "con" || base == "prn" || base == "aux" || base == "nul" ||
+			(len(base) == 4 && (strings.HasPrefix(base, "com") || strings.HasPrefix(base, "lpt")) && base[3] >= '1' && base[3] <= '9') {
+			return false
+		}
+	}
+	return true
 }
 
 func invalidManifest(message string, cause error) error {
