@@ -31,13 +31,9 @@ type CatalogSourceConfig struct {
 	ExpectedMarketType string
 	HTTPClient         *http.Client
 	AuthorizeRequest   RequestAuthorizer
-	// ExecutionTarget selects a Connector v3 or v4 target. Empty defaults to the
+	// ExecutionTarget selects a Connector v3 target. Empty defaults to the
 	// daemon process GOOS/GOARCH, which is the correct target for desktop Tutti.
-	ExecutionTarget    string
-	HostProduct        string
-	HostVersion        string
-	MaxConnectorSchema int
-	HostCapabilities   []string
+	ExecutionTarget string
 }
 
 type CatalogSource struct {
@@ -46,10 +42,6 @@ type CatalogSource struct {
 	httpClient         *http.Client
 	authorizeRequest   RequestAuthorizer
 	executionTarget    string
-	hostProduct        string
-	hostVersion        string
-	maxConnectorSchema int
-	hostCapabilities   []string
 }
 
 var _ market.CatalogSource = (*CatalogSource)(nil)
@@ -81,9 +73,7 @@ func NewCatalogSource(config CatalogSourceConfig) (*CatalogSource, error) {
 		return nil, executionTargetErr
 	}
 	return &CatalogSource{baseURL: baseURL, expectedMarketType: expectedMarketType,
-		httpClient: client, authorizeRequest: config.AuthorizeRequest, executionTarget: executionTarget,
-		hostProduct: strings.TrimSpace(config.HostProduct), hostVersion: strings.TrimSpace(config.HostVersion),
-		maxConnectorSchema: config.MaxConnectorSchema, hostCapabilities: append([]string(nil), config.HostCapabilities...)}, nil
+		httpClient: client, authorizeRequest: config.AuthorizeRequest, executionTarget: executionTarget}, nil
 }
 
 func (source *CatalogSource) Refresh(ctx context.Context) (market.CatalogSnapshot, error) {
@@ -138,9 +128,7 @@ func (source *CatalogSource) Refresh(ctx context.Context) (market.CatalogSnapsho
 
 func (source *CatalogSource) ListCategories(ctx context.Context) ([]market.CatalogCategory, error) {
 	var payload wireMarketCategoriesResponse
-	query := url.Values{"itemType": {"connector"}}
-	source.addHostCohort(query)
-	if _, err := source.getJSON(ctx, connectorCategoriesPath, query, &payload); err != nil {
+	if _, err := source.getJSON(ctx, connectorCategoriesPath, url.Values{"itemType": {"connector"}}, &payload); err != nil {
 		return nil, err
 	}
 	if payload.MarketType != source.expectedMarketType {
@@ -170,7 +158,6 @@ func (source *CatalogSource) ListPage(ctx context.Context, input market.CatalogS
 	if token := strings.TrimSpace(input.PageToken); token != "" {
 		query.Set("pageToken", token)
 	}
-	source.addHostCohort(query)
 	var payload wireMarketResponse
 	if _, err := source.getJSON(ctx, connectorCatalogPath, query, &payload); err != nil {
 		return market.CatalogSourcePage{}, err
@@ -190,19 +177,6 @@ func (source *CatalogSource) ListPage(ctx context.Context, input market.CatalogS
 		entries = append(entries, market.CatalogEntry{CategoryID: item.CategoryID, Featured: item.Featured, Release: release})
 	}
 	return market.CatalogSourcePage{SectionID: strings.TrimSpace(input.SectionID), Entries: entries, NextPageToken: payload.NextPageToken}, nil
-}
-
-func (source *CatalogSource) addHostCohort(query url.Values) {
-	if source == nil || strings.TrimSpace(source.hostProduct) == "" || strings.TrimSpace(source.hostVersion) == "" || source.maxConnectorSchema <= 0 {
-		return
-	}
-	query.Set("hostProduct", source.hostProduct)
-	query.Set("hostVersion", source.hostVersion)
-	query.Set("executionTarget", source.executionTarget)
-	query.Set("maxConnectorSchema", strconv.Itoa(source.maxConnectorSchema))
-	for _, capability := range source.hostCapabilities {
-		query.Add("hostCapabilities", capability)
-	}
 }
 
 func (source *CatalogSource) getJSON(ctx context.Context, requestPath string, query url.Values, target any) ([]byte, error) {
@@ -289,7 +263,7 @@ func (source *CatalogSource) mapItem(item wireMarketItem) (market.Release, error
 		iconURL = legacyConnectorIconURL
 	}
 	// The server's v2 envelope is the generic, market-neutral publication
-	// contract. V3 and v4 select one target first. All project into the stable host
+	// contract. V3 selects one target first. Both project into the stable host
 	// manifest contract; these schema versions describe different boundaries.
 	manifest := market.Manifest{SchemaVersion: "1", DisplayName: connectorManifest.Display.Name, IconURL: iconURL,
 		Description: connectorManifest.Display.Description, AgentRouting: connectorManifest.Payload.AgentRouting,
@@ -318,9 +292,9 @@ func (source *CatalogSource) resolveManifestImplementation(manifest wireConnecto
 			return market.Implementation{}, errors.New("connector v2 manifest must provide one market-neutral implementation")
 		}
 		return *payload.Implementation, nil
-	case "3", "4":
+	case "3":
 		if payload.Implementation != nil || len(payload.TargetImplementations) == 0 {
-			return market.Implementation{}, errors.New("targeted connector manifest must provide targetImplementations")
+			return market.Implementation{}, errors.New("connector v3 manifest must provide targetImplementations")
 		}
 		return market.ResolveTargetImplementation(source.executionTarget, payload.TargetImplementations)
 	default:

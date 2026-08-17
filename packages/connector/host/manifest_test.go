@@ -262,36 +262,6 @@ func TestManagedCLIAllowsTypedNodePackageWithoutActionMappings(t *testing.T) {
 	}
 }
 
-func TestManagedCLIAllowsTypedRemoteArchiveWithoutActionMappings(t *testing.T) {
-	manifest := Manifest{SchemaVersion: "1", DisplayName: "AWS CLI", IconURL: testConnectorIconURL, AuthorizationKind: "none",
-		Compatibility: CompatibilityRequirements{MinimumHostVersion: "0.2.27"},
-		Implementation: Implementation{Kind: ImplementationKindManagedStdio, ManagedStdio: &ManagedStdioImplementation{
-			Runtime: RuntimeRequirement{Language: "node", Profile: "connector-node-static", ABI: "node24-linux-arm64", VersionRange: ">=24.0.0 <25.0.0"},
-			CLI: &ManagedCLIInterface{Entrypoint: "dist/aws", Command: "aws", TimeoutMS: 120_000, Install: &CLIInstallation{Kind: "remote_archive", RemoteArchive: &RemoteArchiveInstallation{
-				Source:     RemoteArchiveSource{URL: "https://awscli.amazonaws.com/awscliv2.zip", AllowedHosts: []string{"awscli.amazonaws.com"}, Format: "zip", SHA256: strings.Repeat("a", 64), SizeBytes: 1024},
-				Extraction: RemoteArchiveExtraction{Root: "aws", FileCount: 2, ExpandedSizeBytes: 2048, InventoryAlgorithm: "tutti.connector.tree.v1", InventorySHA256: strings.Repeat("b", 64)},
-				Launch:     RemoteArchiveLaunch{Kind: "native", Entrypoint: "dist/aws", SHA256: strings.Repeat("c", 64), SizeBytes: 512},
-			}}},
-		}}}
-	if err := ValidateManifestShape(manifest); err != nil {
-		t.Fatal(err)
-	}
-	manifest.Compatibility.MinimumHostVersion = "v0.2.27"
-	if err := ValidateManifestShape(manifest); err == nil || !strings.Contains(err.Error(), "minimumHostVersion") {
-		t.Fatalf("invalid minimumHostVersion error = %v", err)
-	}
-	manifest.Compatibility.MinimumHostVersion = "0.2.27"
-	manifest.Implementation.ManagedStdio.CLI.Install.NodePackage = &NodePackageInstallation{}
-	if err := ValidateManifestShape(manifest); err == nil || !strings.Contains(err.Error(), "exactly") {
-		t.Fatalf("mixed installation branches error = %v", err)
-	}
-	manifest.Implementation.ManagedStdio.CLI.Install.NodePackage = nil
-	manifest.Implementation.ManagedStdio.CLI.Install.RemoteArchive.Extraction.Root = "aws/dist"
-	if err := ValidateManifestShape(manifest); err == nil || !strings.Contains(err.Error(), "extraction") {
-		t.Fatalf("nested archive root error = %v", err)
-	}
-}
-
 func TestManagedCLIAllowsArtifactNativeLaunch(t *testing.T) {
 	manifest := Manifest{SchemaVersion: "1", DisplayName: "GitHub CLI", IconURL: testConnectorIconURL, AuthorizationKind: "oauth2",
 		Implementation: Implementation{Kind: ImplementationKindManagedStdio, ManagedStdio: &ManagedStdioImplementation{

@@ -138,7 +138,6 @@ type CompatibilityRequirements struct {
 	Products           []string `json:"products,omitempty"`
 	Platforms          []string `json:"platforms,omitempty"`
 	MinimumHostVersion string   `json:"minimumHostVersion,omitempty"`
-	FallbackVersion    string   `json:"fallbackVersion,omitempty"`
 }
 
 type Implementation struct {
@@ -217,38 +216,8 @@ type CLIReadinessProbe struct {
 // intent into a package-manager invocation; connector manifests never provide
 // an arbitrary shell command.
 type CLIInstallation struct {
-	Kind          string                     `json:"kind"`
-	NodePackage   *NodePackageInstallation   `json:"nodePackage,omitempty"`
-	RemoteArchive *RemoteArchiveInstallation `json:"remoteArchive,omitempty"`
-}
-
-type RemoteArchiveInstallation struct {
-	Source     RemoteArchiveSource     `json:"source"`
-	Extraction RemoteArchiveExtraction `json:"extraction"`
-	Launch     RemoteArchiveLaunch     `json:"launch"`
-}
-
-type RemoteArchiveSource struct {
-	URL          string   `json:"url"`
-	AllowedHosts []string `json:"allowedHosts"`
-	Format       string   `json:"format"`
-	SHA256       string   `json:"sha256"`
-	SizeBytes    int64    `json:"sizeBytes"`
-}
-
-type RemoteArchiveExtraction struct {
-	Root               string `json:"root"`
-	FileCount          int    `json:"fileCount"`
-	ExpandedSizeBytes  int64  `json:"expandedSizeBytes"`
-	InventoryAlgorithm string `json:"inventoryAlgorithm"`
-	InventorySHA256    string `json:"inventorySha256"`
-}
-
-type RemoteArchiveLaunch struct {
-	Kind       string `json:"kind"`
-	Entrypoint string `json:"entrypoint"`
-	SHA256     string `json:"sha256"`
-	SizeBytes  int64  `json:"sizeBytes"`
+	Kind        string                   `json:"kind"`
+	NodePackage *NodePackageInstallation `json:"nodePackage,omitempty"`
 }
 
 type NodePackageInstallation struct {
@@ -388,32 +357,24 @@ type ReleaseInstallationReceipt struct {
 }
 
 type CLIInstallationReceipt struct {
-	SchemaVersion      string `json:"schemaVersion"`
-	OperationID        string `json:"operationId"`
-	ConnectorKey       string `json:"connectorKey"`
-	ReleaseDigest      string `json:"releaseDigest"`
-	RuntimeProfile     string `json:"runtimeProfile"`
-	RuntimeABI         string `json:"runtimeAbi"`
-	NodeVersion        string `json:"nodeVersion"`
-	NodeSHA256         string `json:"nodeSha256"`
-	Package            string `json:"package"`
-	PackageVersion     string `json:"packageVersion"`
-	PackageIntegrity   string `json:"packageIntegrity"`
-	LaunchKind         string `json:"launchKind"`
-	InstallRoot        string `json:"installRoot"`
-	StoreRoot          string `json:"storeRoot"`
-	Entrypoint         string `json:"entrypoint"`
-	EntrypointSHA256   string `json:"entrypointSha256"`
-	EntrypointSize     int64  `json:"entrypointSizeBytes"`
-	LockSHA256         string `json:"lockSha256"`
-	InstallKind        string `json:"installKind,omitempty"`
-	ArchiveSHA256      string `json:"archiveSha256,omitempty"`
-	ArchiveSize        int64  `json:"archiveSizeBytes,omitempty"`
-	ArchiveFormat      string `json:"archiveFormat,omitempty"`
-	InventoryAlgorithm string `json:"inventoryAlgorithm,omitempty"`
-	InventorySHA256    string `json:"inventorySha256,omitempty"`
-	FileCount          int    `json:"fileCount,omitempty"`
-	ExpandedSizeBytes  int64  `json:"expandedSizeBytes,omitempty"`
+	SchemaVersion    string `json:"schemaVersion"`
+	OperationID      string `json:"operationId"`
+	ConnectorKey     string `json:"connectorKey"`
+	ReleaseDigest    string `json:"releaseDigest"`
+	RuntimeProfile   string `json:"runtimeProfile"`
+	RuntimeABI       string `json:"runtimeAbi"`
+	NodeVersion      string `json:"nodeVersion"`
+	NodeSHA256       string `json:"nodeSha256"`
+	Package          string `json:"package"`
+	PackageVersion   string `json:"packageVersion"`
+	PackageIntegrity string `json:"packageIntegrity"`
+	LaunchKind       string `json:"launchKind"`
+	InstallRoot      string `json:"installRoot"`
+	StoreRoot        string `json:"storeRoot"`
+	Entrypoint       string `json:"entrypoint"`
+	EntrypointSHA256 string `json:"entrypointSha256"`
+	EntrypointSize   int64  `json:"entrypointSizeBytes"`
+	LockSHA256       string `json:"lockSha256"`
 	// OpaqueInstallationRef identifies an installation owned by a remote or
 	// isolated runtime. Cross-machine hosts persist this value instead of guest
 	// filesystem paths.

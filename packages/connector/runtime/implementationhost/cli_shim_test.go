@@ -18,12 +18,8 @@ func TestConnectorCLIShimExecutesVerifiedEntrypointThroughNormalShellPath(t *tes
 	}
 	root := t.TempDir()
 	working := filepath.Join(root, "working directory")
-	callerWorking := filepath.Join(root, "caller working directory")
 	binDir := filepath.Join(root, "bin")
 	if err := os.MkdirAll(working, 0o700); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.MkdirAll(callerWorking, 0o700); err != nil {
 		t.Fatal(err)
 	}
 	entrypoint := filepath.Join(root, "connector executable")
@@ -43,13 +39,11 @@ func TestConnectorCLIShimExecutesVerifiedEntrypointThroughNormalShellPath(t *tes
 	if err := route.activateCLIShim(); err != nil {
 		t.Fatal(err)
 	}
-	command := exec.Command(route.cliShimPath, "user argument")
-	command.Dir = callerWorking
-	output, err := command.CombinedOutput()
+	output, err := exec.Command(route.cliShimPath, "user argument").CombinedOutput()
 	if err != nil {
 		t.Fatalf("execute CLI shim: %v: %s", err, output)
 	}
-	want := strings.Join([]string{"github", callerWorking, "fixed argument", "user argument"}, "|")
+	want := strings.Join([]string{"github", working, "fixed argument", "user argument"}, "|")
 	if string(output) != want {
 		t.Fatalf("CLI output = %q, want %q", output, want)
 	}

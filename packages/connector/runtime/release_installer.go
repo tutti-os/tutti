@@ -71,7 +71,7 @@ func (installer *ReleaseInstaller) InstallRelease(
 			ReleaseDigest: request.Release.ReleaseDigest,
 		})
 		return market.ReleaseInstallationReceipt{}, fmt.Errorf(
-			"install connector CLI: %w",
+			"install connector CLI package: %w",
 			errors.Join(err, rollbackErr),
 		)
 	}
@@ -187,5 +187,6 @@ func (*ReleaseInstaller) CommitReleaseInstallation(
 
 func releaseRequiresCLIInstallation(release market.Release) bool {
 	managed := release.Manifest.Implementation.ManagedStdio
-	return managed != nil && managed.CLI != nil && managed.CLI.Install != nil
+	return managed != nil && managed.CLI != nil && managed.CLI.Install != nil &&
+		managed.CLI.Install.NodePackage != nil
 }

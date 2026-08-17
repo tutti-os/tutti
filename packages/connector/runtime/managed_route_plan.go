@@ -89,9 +89,6 @@ func (planner *ManagedRoutePlanner) Build(ctx context.Context, request market.Ru
 			return ManagedRoutePlan{}, fmt.Errorf("%w: %v", ErrCLIInstallationUnavailable, resolveErr)
 		}
 		installed = &receipt
-		if receipt.InventorySHA256 != "" {
-			artifactTrees = append(artifactTrees, agentruntime.ArtifactTreeIdentity{Root: receipt.InstallRoot, SHA256: receipt.InventorySHA256})
-		}
 	}
 	return ManagedRoutePlan{Managed: managed, Prepared: prepared, Resolved: resolved, Executable: executable,
 		InstalledCLI: installed, StateDir: stateDir, UserHome: planner.userHome, ArtifactTrees: artifactTrees}, nil

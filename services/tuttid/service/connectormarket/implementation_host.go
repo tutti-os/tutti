@@ -5,15 +5,12 @@ import (
 	"errors"
 	"os"
 	"runtime"
-	"strings"
 	"time"
 
 	agentruntime "github.com/tutti-os/tutti/packages/agent/daemon/runtime"
 	market "github.com/tutti-os/tutti/packages/connector/host"
 	connectorruntime "github.com/tutti-os/tutti/packages/connector/runtime"
 	implementationhost "github.com/tutti-os/tutti/packages/connector/runtime/implementationhost"
-	tuttitypes "github.com/tutti-os/tutti/services/tuttid/types"
-	"golang.org/x/mod/semver"
 )
 
 type PreparedArtifactResolver = implementationhost.PreparedArtifactResolver
@@ -154,19 +151,15 @@ func (host *ImplementationHost) Close() error {
 }
 
 func ProductionPorts(host *ImplementationHost, external market.AuthorizationProvider) (market.ImplementationHost, market.AuthorizationProvider, market.CompatibilityEvaluator, market.ImplementationRegistry) {
-	return host, market.NewImplementationAuthorizationRouter(host, external), productionCompatibility{hostVersion: canonicalHostVersion(tuttitypes.ResolveAppVersion())}, market.NewImplementationRegistry(map[string]market.ImplementationValidator{
+	return host, market.NewImplementationAuthorizationRouter(host, external), productionCompatibility{}, market.NewImplementationRegistry(map[string]market.ImplementationValidator{
 		market.ImplementationKindManagedStdio:         nil,
 		market.ImplementationKindRemoteStreamableHTTP: nil,
 	})
 }
 
-type productionCompatibility struct{ hostVersion string }
+type productionCompatibility struct{}
 
-func (compatibility productionCompatibility) Evaluate(manifest market.Manifest) market.Compatibility {
-	if minimum := canonicalHostVersion(manifest.Compatibility.MinimumHostVersion); manifest.Compatibility.MinimumHostVersion != "" &&
-		(minimum == "" || compatibility.hostVersion == "" || semver.Compare(compatibility.hostVersion, minimum) < 0) {
-		return market.Compatibility{State: market.CompatibilityStateUnsupportedVersion, Reason: "minimum_host_version"}
-	}
+func (productionCompatibility) Evaluate(manifest market.Manifest) market.Compatibility {
 	switch manifest.Implementation.Kind {
 	case market.ImplementationKindRemoteStreamableHTTP:
 		return market.Compatibility{State: market.CompatibilityStateSupported}
@@ -186,18 +179,4 @@ func (compatibility productionCompatibility) Evaluate(manifest market.Manifest) 
 		return market.Compatibility{State: market.CompatibilityStateUnsupportedPlatform, Reason: "platform is not supported"}
 	}
 	return market.Compatibility{State: market.CompatibilityStateSupported}
-}
-
-func canonicalHostVersion(value string) string {
-	value = strings.TrimSpace(value)
-	if value == "" {
-		return ""
-	}
-	if !strings.HasPrefix(value, "v") {
-		value = "v" + value
-	}
-	if !semver.IsValid(value) {
-		return ""
-	}
-	return semver.Canonical(value)
 }

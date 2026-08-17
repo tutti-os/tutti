@@ -523,13 +523,3 @@ func TestImplementationHostBoundsMCPProcessStart(t *testing.T) {
 		t.Fatal("MCP process Start was not bounded")
 	}
 }
-
-func TestProductionCompatibilityEnforcesMinimumHostVersion(t *testing.T) {
-	manifest := market.Manifest{AuthorizationKind: "none", Implementation: market.Implementation{Kind: market.ImplementationKindManagedStdio, ManagedStdio: &market.ManagedStdioImplementation{}}, Compatibility: market.CompatibilityRequirements{MinimumHostVersion: "0.2.27"}}
-	if got := (productionCompatibility{hostVersion: "v0.2.26"}).Evaluate(manifest); got.State != market.CompatibilityStateUnsupportedVersion || got.Reason != "minimum_host_version" {
-		t.Fatalf("older host compatibility = %#v", got)
-	}
-	if got := (productionCompatibility{hostVersion: "v0.2.27"}).Evaluate(manifest); got.State != market.CompatibilityStateSupported {
-		t.Fatalf("equal host compatibility = %#v", got)
-	}
-}

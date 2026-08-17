@@ -130,22 +130,6 @@ permission only for that entry, then verifies its exact size and SHA-256 at
 every launch. Windows executes the declared `.exe` directly; `.cmd` remains a
 user-facing PATH projection rather than the native launch boundary.
 
-A CLI may declare `remote_archive` when its publisher distributes a signed
-platform archive directly. The connector artifact signs the exact HTTPS URL,
-redirect-host allowlist, archive size and SHA-256, expected extracted file
-count and byte count, canonical tree digest, and native entrypoint identity.
-During release installation the host downloads the archive once with bounded
-I/O, safely extracts only regular files into a release-scoped staging tree,
-verifies the complete inventory and entrypoint, and atomically promotes the
-read-only tree. Normal CLI execution never downloads or updates the runtime.
-The first implementation accepts ZIP archives on Linux only and fails closed
-on Windows until a reparse-point-safe activation adapter is available.
-Remote archive downloads bypass daemon and environment HTTP proxies so the
-transport can pin the public DNS addresses validated for that request. This is
-an intentional exception to the normal daemon proxy funnel: a proxy would
-resolve the CONNECT target independently and break the validation-to-socket
-binding.
-
 One portable install artifact may contain binaries for multiple exact targets.
 The signed v3 manifest selects one target implementation without OS or
 architecture fallback; unused target files remain inert data in that release.
@@ -166,20 +150,6 @@ typed node_package intent
     -> verify package name, exact version, sha512 integrity, lock, and bin entry
     -> atomically publish the installation receipt
 ```
-
-```text
-typed remote_archive intent
-    -> fetch an allowlisted public HTTPS origin without credentials
-    -> verify exact Content-Length, downloaded size, and archive SHA-256
-    -> safely extract into a release-scoped staging directory
-    -> verify file count, expanded bytes, canonical inventory, and entrypoint
-    -> atomically promote the immutable tree and publish a v2 receipt
-```
-
-Protocol v1 keeps the existing `managed_stdio` runtime contract, so even a
-self-contained native archive declares and resolves `connector-node-static`.
-Removing that compatibility dependency requires a separate native-only runtime
-profile and is not implicit in `remote_archive`.
 
 A device has one active connector Node runtime. Connector manifests may state
 an explicit Node version range, but cannot download Node or select a second
@@ -302,17 +272,10 @@ implementation host, process, and product-command adapters. In Tutti, `managed_s
 connectors resolve an exact Node/Python runtime profile. MCP servers are
 long-lived daemon children governed by the route generation fence and process
 registry. CLI routes instead atomically publish stable shims that directly exec
-the verified release entrypoint through the Agent's normal shell while
-preserving the caller's working directory; the physical
+the verified release entrypoint through the Agent's normal shell; the physical
 installer owns receipt-based installation inspection, while the process adapter
 handles CLI readiness and credential-broker operations. Both interfaces use the same verified artifact snapshot,
 executable identity, generation lifecycle, and connection-scoped state path.
-The stable PATH shim is a same-user compatibility surface, not a per-invocation
-attestation or authorization boundary: daemon-managed readiness and `StartCLI`
-reverify tree identity, while shell invocation relies on the read-only,
-release-scoped tree verified at activation. Protecting against a process that
-already has the user's ability to chmod and rewrite connector state requires a
-future shim-to-daemon launcher and is outside this local same-user threat model.
 An installed runtime is daemon-global and is available to every Agent and the
 local Tutti CLI. TSH runs the same runtime module inside its managed VM and
 supplies a guest process adapter.

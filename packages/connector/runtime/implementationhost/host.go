@@ -787,7 +787,7 @@ func connectorCLIShimContent(route *connectorRoute) ([]byte, error) {
 	arguments := append([]string(nil), launch.arguments...)
 	if runtime.GOOS == "windows" {
 		values := append([]string{launch.executable.Path}, arguments...)
-		for _, value := range append(values, launch.stateDir, route.userHome) {
+		for _, value := range append(values, launch.cwd, launch.stateDir, route.userHome) {
 			if strings.ContainsAny(value, "\r\n\"") {
 				return nil, errors.New("connector CLI path cannot be represented by Windows shim")
 			}
@@ -802,7 +802,8 @@ func connectorCLIShimContent(route *connectorRoute) ([]byte, error) {
 			"set \"TUTTI_CONNECTOR_LANGUAGE=" + launch.language + "\"\r\n" +
 			"set \"TUTTI_CONNECTOR_STATE_DIR=" + launch.stateDir + "\"\r\n" +
 			"set \"HOME=" + route.userHome + "\"\r\n" +
-			"set \"USERPROFILE=" + route.userHome + "\"\r\n" + strings.Join(quoted, " ") + " %*\r\n"
+			"set \"USERPROFILE=" + route.userHome + "\"\r\n" +
+			"cd /d \"" + launch.cwd + "\"\r\n" + strings.Join(quoted, " ") + " %*\r\n"
 		return []byte(content), nil
 	}
 	values := append([]string{launch.executable.Path}, arguments...)
@@ -817,6 +818,7 @@ func connectorCLIShimContent(route *connectorRoute) ([]byte, error) {
 		"export TUTTI_CONNECTOR_STATE_DIR=" + shellQuote(launch.stateDir) + "\n" +
 		"export HOME=" + shellQuote(route.userHome) + "\n" +
 		"export USERPROFILE=" + shellQuote(route.userHome) + "\n" +
+		"cd " + shellQuote(launch.cwd) + " || exit 1\n" +
 		"exec " + strings.Join(quoted, " ") + " \"$@\"\n"
 	return []byte(content), nil
 }

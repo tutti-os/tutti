@@ -35,7 +35,6 @@ var permissionScopePattern = regexp.MustCompile(`^[a-z0-9](?:[a-z0-9._-]{0,126}[
 var nodePackageNamePattern = regexp.MustCompile(`^(?:@[a-z0-9][a-z0-9._-]{0,126}/)?[a-z0-9][a-z0-9._-]{0,126}$`)
 var exactPackageVersionPattern = regexp.MustCompile(`^[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?$`)
 var nodeVersionRangePattern = regexp.MustCompile(`^(?:[<>]=?\s*[0-9]+\.[0-9]+\.[0-9]+(?:\s+|$))+$`)
-var hostVersionPattern = regexp.MustCompile(`^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$`)
 
 type ImplementationValidator func(Implementation) error
 
@@ -160,12 +159,6 @@ func validateManifestShape(manifest Manifest, validateIcon bool) error {
 	if err := validateUniquePermissions(manifest.Permissions); err != nil {
 		return err
 	}
-	if minimum := strings.TrimSpace(manifest.Compatibility.MinimumHostVersion); minimum != "" && !hostVersionPattern.MatchString(minimum) {
-		return invalidManifest("minimumHostVersion must be an exact semantic version", nil)
-	}
-	if fallback := strings.TrimSpace(manifest.Compatibility.FallbackVersion); fallback != "" && !exactPackageVersionPattern.MatchString(fallback) {
-		return invalidManifest("fallbackVersion must be an exact semantic version", nil)
-	}
 	switch manifest.AuthorizationKind {
 	case "none", "oauth2", "api_key":
 	default:
@@ -188,10 +181,6 @@ func validateManifestShape(manifest Manifest, validateIcon bool) error {
 	}
 	if branches != 1 {
 		return invalidManifest("implementation must select exactly one typed branch", nil)
-	}
-	if implementation.ManagedStdio != nil && implementation.ManagedStdio.CLI != nil && implementation.ManagedStdio.CLI.Install != nil &&
-		implementation.ManagedStdio.CLI.Install.Kind == "remote_archive" && strings.TrimSpace(manifest.Compatibility.MinimumHostVersion) == "" {
-		return invalidManifest("remote_archive requires minimumHostVersion", nil)
 	}
 	switch implementation.Kind {
 	case ImplementationKindBuiltin:
@@ -413,26 +402,17 @@ func validateManagedCredentialBroker(broker *ManagedCredentialBroker, hasCLI boo
 }
 
 func validateCLIInstallation(install CLIInstallation, runtime RuntimeRequirement, executable string) error {
+	if install.Kind != "node_package" || install.NodePackage == nil {
+		return invalidManifest("managed CLI install must select the node_package branch", nil)
+	}
 	if runtime.Language != "node" || runtime.Profile != "connector-node-static" {
-		return invalidManifest("managed CLI installation requires the shared connector-node-static runtime", nil)
+		return invalidManifest("node package CLI installation requires the shared connector-node-static runtime", nil)
 	}
 	if !nodeVersionRangePattern.MatchString(strings.TrimSpace(runtime.VersionRange)) {
-		return invalidManifest("managed CLI installation requires an explicit comparator-based Node versionRange", nil)
-	}
-	if !safeRelativeEntrypoint(executable) {
-		return invalidManifest("installed CLI entrypoint must be a safe relative path", nil)
-	}
-	if install.Kind == "remote_archive" {
-		if install.RemoteArchive == nil || install.NodePackage != nil {
-			return invalidManifest("remote_archive install must select exactly its typed branch", nil)
-		}
-		return validateRemoteArchiveInstallation(*install.RemoteArchive, executable)
-	}
-	if install.Kind != "node_package" || install.NodePackage == nil || install.RemoteArchive != nil {
-		return invalidManifest("managed CLI install must select exactly one supported branch", nil)
+		return invalidManifest("node package CLI installation requires an explicit comparator-based Node versionRange", nil)
 	}
 	if !manifestIdentifierPattern.MatchString(executable) {
-		return invalidManifest("node package CLI entrypoint must be a stable executable name", nil)
+		return invalidManifest("installed CLI entrypoint must be a stable executable name", nil)
 	}
 	request := install.NodePackage
 	if !nodePackageNamePattern.MatchString(request.Package) {
@@ -472,45 +452,6 @@ func validateCLIInstallation(install CLIInstallation, runtime RuntimeRequirement
 				return invalidManifest("node package lifecycle arguments must not contain NUL", nil)
 			}
 		}
-	}
-	return nil
-}
-
-func validateRemoteArchiveInstallation(request RemoteArchiveInstallation, executable string) error {
-	sourceURL, err := url.Parse(strings.TrimSpace(request.Source.URL))
-	if err != nil || sourceURL.Scheme != "https" || sourceURL.Host == "" || sourceURL.User != nil ||
-		sourceURL.RawQuery != "" || sourceURL.Fragment != "" || sourceURL.Port() != "" || net.ParseIP(sourceURL.Hostname()) != nil {
-		return invalidManifest("remote archive source must be an exact public HTTPS URL", nil)
-	}
-	if request.Source.Format != "zip" || !artifactSHA256Pattern.MatchString(request.Source.SHA256) ||
-		request.Source.SizeBytes <= 0 || request.Source.SizeBytes > 256*1024*1024 {
-		return invalidManifest("remote archive source requires a bounded zip identity", nil)
-	}
-	hostAllowed := false
-	seenHosts := make(map[string]struct{}, len(request.Source.AllowedHosts))
-	for _, rawHost := range request.Source.AllowedHosts {
-		host := strings.ToLower(strings.TrimSpace(rawHost))
-		parsed, parseErr := url.Parse("https://" + host)
-		if parseErr != nil || host == "" || parsed.Host != host || parsed.Hostname() != host || parsed.Port() != "" || net.ParseIP(host) != nil {
-			return invalidManifest("remote archive allowedHosts must contain exact DNS hostnames", nil)
-		}
-		if _, duplicate := seenHosts[host]; duplicate {
-			return invalidManifest("remote archive allowedHosts must be unique", nil)
-		}
-		seenHosts[host] = struct{}{}
-		hostAllowed = hostAllowed || strings.EqualFold(sourceURL.Hostname(), host)
-	}
-	if !hostAllowed {
-		return invalidManifest("remote archive source host must be allowlisted", nil)
-	}
-	if !manifestIdentifierPattern.MatchString(request.Extraction.Root) || request.Extraction.FileCount < 1 || request.Extraction.FileCount > 10_000 ||
-		request.Extraction.ExpandedSizeBytes < 1 || request.Extraction.ExpandedSizeBytes > 512*1024*1024 ||
-		request.Extraction.InventoryAlgorithm != "tutti.connector.tree.v1" || !artifactSHA256Pattern.MatchString(request.Extraction.InventorySHA256) {
-		return invalidManifest("remote archive extraction identity is invalid", nil)
-	}
-	if request.Launch.Kind != "native" || request.Launch.Entrypoint != executable || !safeRelativeEntrypoint(request.Launch.Entrypoint) ||
-		!artifactSHA256Pattern.MatchString(request.Launch.SHA256) || request.Launch.SizeBytes <= 0 || request.Launch.SizeBytes > 64*1024*1024 {
-		return invalidManifest("remote archive native launch identity is invalid", nil)
 	}
 	return nil
 }

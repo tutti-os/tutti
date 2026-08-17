@@ -90,7 +90,7 @@ func validateReleaseInstallationReceipt(operation Operation, release Release, re
 	if err := validatePreparedArtifact(operation, release, receipt.Artifact); err != nil {
 		return err
 	}
-	cliInstall := releaseCLIInstallationIntent(release)
+	cliInstall := releaseCLIInstallation(release)
 	if cliInstall == nil {
 		if receipt.CLIInstallation != nil {
 			return invalidOperationReceipt("release installer returned an unexpected CLI receipt")
@@ -100,28 +100,7 @@ func validateReleaseInstallationReceipt(operation Operation, release Release, re
 	if receipt.CLIInstallation == nil {
 		return invalidOperationReceipt("release installer did not return the required CLI receipt")
 	}
-	switch cliInstall.Kind {
-	case "node_package":
-		if cliInstall.NodePackage == nil {
-			return invalidOperationReceipt("release has an invalid node package installation")
-		}
-		return validateCLIInstallationReceipt(operation, release, *cliInstall.NodePackage, *receipt.CLIInstallation)
-	case "remote_archive":
-		if cliInstall.RemoteArchive == nil {
-			return invalidOperationReceipt("release has an invalid remote archive installation")
-		}
-		return validateRemoteArchiveInstallationReceipt(operation, release, *cliInstall.RemoteArchive, *receipt.CLIInstallation)
-	default:
-		return invalidOperationReceipt("release has an unsupported CLI installation")
-	}
-}
-
-func releaseCLIInstallationIntent(release Release) *CLIInstallation {
-	managed := release.Manifest.Implementation.ManagedStdio
-	if managed == nil || managed.CLI == nil {
-		return nil
-	}
-	return managed.CLI.Install
+	return validateCLIInstallationReceipt(operation, release, *cliInstall, *receipt.CLIInstallation)
 }
 
 func releaseCLIInstallation(release Release) *NodePackageInstallation {
@@ -149,26 +128,6 @@ func validateCLIInstallationReceipt(operation Operation, release Release, instal
 	remoteReceipt := strings.TrimSpace(receipt.OpaqueInstallationRef) != ""
 	if !localReceipt && !remoteReceipt {
 		return invalidOperationReceipt("CLI installer returned a mismatched receipt")
-	}
-	return nil
-}
-
-func validateRemoteArchiveInstallationReceipt(operation Operation, release Release, install RemoteArchiveInstallation, receipt CLIInstallationReceipt) error {
-	if receipt.SchemaVersion != "tutti.connector.cli-installation.v2" || receipt.InstallKind != "remote_archive" ||
-		receipt.OperationID != operation.OperationID || receipt.ConnectorKey != release.ConnectorKey || receipt.ReleaseDigest != release.ReleaseDigest ||
-		receipt.RuntimeProfile != release.Manifest.Implementation.ManagedStdio.Runtime.Profile ||
-		receipt.RuntimeABI != release.Manifest.Implementation.ManagedStdio.Runtime.ABI ||
-		receipt.ArchiveSHA256 != install.Source.SHA256 || receipt.ArchiveSize != install.Source.SizeBytes || receipt.ArchiveFormat != install.Source.Format ||
-		receipt.InventoryAlgorithm != install.Extraction.InventoryAlgorithm || receipt.InventorySHA256 != install.Extraction.InventorySHA256 ||
-		receipt.FileCount != install.Extraction.FileCount || receipt.ExpandedSizeBytes != install.Extraction.ExpandedSizeBytes ||
-		receipt.LaunchKind != install.Launch.Kind || receipt.Entrypoint != install.Launch.Entrypoint ||
-		receipt.EntrypointSHA256 != install.Launch.SHA256 || receipt.EntrypointSize != install.Launch.SizeBytes {
-		return invalidOperationReceipt("remote archive installer returned a mismatched receipt")
-	}
-	localReceipt := filepath.IsAbs(receipt.InstallRoot) && strings.TrimSpace(receipt.OpaqueInstallationRef) == ""
-	remoteReceipt := strings.TrimSpace(receipt.OpaqueInstallationRef) != "" && receipt.InstallRoot == ""
-	if !localReceipt && !remoteReceipt {
-		return invalidOperationReceipt("remote archive installer returned an invalid location")
 	}
 	return nil
 }
