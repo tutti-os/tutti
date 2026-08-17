@@ -540,6 +540,16 @@ function parseWorkspaceFileMentionTarget(
   href: string
 ): ParsedWorkspaceFileMentionTarget | null {
   const target = href.trim();
+  if (isWindowsAbsolutePath(target)) {
+    const path = target.replace(/[\\/]+$/, "");
+    if (!path) {
+      return null;
+    }
+    return {
+      path,
+      explicitKind: /[\\/]$/.test(target) ? "directory" : null
+    };
+  }
   if (!isLocalAbsolutePath(target)) {
     return null;
   }

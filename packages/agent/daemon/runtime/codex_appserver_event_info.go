@@ -4,9 +4,16 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
+	"regexp"
 	"strings"
 
 	activityshared "github.com/tutti-os/tutti/packages/agent/daemon/activity/events"
+)
+
+var (
+	appServerFileCitationPattern          = regexp.MustCompile(`:codex-file-citation\{([^{}\r\n]*)\}`)
+	appServerFileCitationAttributePattern = regexp.MustCompile(`(?:^|\s)(path|purpose)="([^"\r\n]*)"`)
 )
 
 func (a *CodexAppServerAdapter) appServerInfo(raw json.RawMessage) map[string]any {
@@ -84,10 +91,75 @@ func appServerTurnFinalAssistantText(turn map[string]any) string {
 	for index := len(items) - 1; index >= 0; index-- {
 		item := payloadObject(items[index])
 		if asString(item["type"]) == "agentMessage" {
-			return strings.TrimSpace(asStringRaw(item["text"]))
+			return normalizeAppServerFileCitations(strings.TrimSpace(asStringRaw(item["text"])))
 		}
 	}
 	return ""
+}
+
+func normalizeAppServerFileCitations(text string) string {
+	return appServerFileCitationPattern.ReplaceAllStringFunc(text, func(marker string) string {
+		body := strings.TrimSuffix(strings.TrimPrefix(marker, ":codex-file-citation{"), "}")
+		attributes := appServerFileCitationAttributePattern.FindAllStringSubmatch(body, -1)
+		values := make(map[string]string, len(attributes))
+		for _, attribute := range attributes {
+			if len(attribute) != 3 || values[attribute[1]] != "" {
+				return marker
+			}
+			values[attribute[1]] = attribute[2]
+		}
+
+		filePath := strings.TrimSpace(values["path"])
+		if values["purpose"] != "output" || !isAppServerAbsoluteFilePath(filePath) {
+			return marker
+		}
+
+		normalizedPath := filePath
+		if isAppServerWindowsAbsoluteFilePath(normalizedPath) {
+			normalizedPath = strings.ReplaceAll(normalizedPath, `\`, "/")
+		}
+		fileName := normalizedPath
+		if separator := strings.LastIndex(normalizedPath, "/"); separator >= 0 {
+			fileName = normalizedPath[separator+1:]
+		}
+		if fileName == "" {
+			return marker
+		}
+
+		return fmt.Sprintf(
+			"[@%s](<%s>)",
+			escapeAppServerMarkdownLabel(fileName),
+			escapeAppServerMarkdownPath(normalizedPath),
+		)
+	})
+}
+
+func isAppServerAbsoluteFilePath(filePath string) bool {
+	return (strings.HasPrefix(filePath, "/") && !strings.HasPrefix(filePath, "//")) ||
+		isAppServerWindowsAbsoluteFilePath(filePath)
+}
+
+func isAppServerWindowsAbsoluteFilePath(filePath string) bool {
+	return len(filePath) >= 3 &&
+		((filePath[0] >= 'a' && filePath[0] <= 'z') || (filePath[0] >= 'A' && filePath[0] <= 'Z')) &&
+		filePath[1] == ':' &&
+		(filePath[2] == '/' || filePath[2] == '\\')
+}
+
+func escapeAppServerMarkdownLabel(label string) string {
+	replacer := strings.NewReplacer(`\`, `\\`, "[", `\[`, "]", `\]`)
+	return replacer.Replace(label)
+}
+
+func escapeAppServerMarkdownPath(filePath string) string {
+	segments := strings.Split(filePath, "/")
+	for index, segment := range segments {
+		if index == 0 && isAppServerWindowsAbsoluteFilePath(filePath) {
+			continue
+		}
+		segments[index] = url.PathEscape(segment)
+	}
+	return strings.Join(segments, "/")
 }
 
 func appServerTurnTerminalEvents(

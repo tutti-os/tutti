@@ -122,6 +122,37 @@ describe("AgentMessageMarkdown", () => {
     expect(screen.queryByText(/\]\(\/Users\/Sun\/Documents/)).toBeNull();
   });
 
+  it("renders a Windows output file mention as a clickable file chip", () => {
+    const onLinkAction = vi.fn();
+    const { container } = render(
+      <AgentMessageMarkdown
+        content={
+          "Created [@output.docx](<C:/Users/local%20user/.tutti/apps/output.docx>)"
+        }
+        onLinkAction={onLinkAction}
+        workspaceLinkContext={{
+          workspaceRoot: "C:/Users/local user/project",
+          basePath: "C:/Users/local user/project",
+          source: "agent-markdown"
+        }}
+      />
+    );
+
+    const fileChip = screen.getByRole("link", { name: "output.docx" });
+    expect(fileChip).toHaveAttribute("data-agent-mention-kind", "file");
+    expect(container).not.toHaveTextContent("C:/Users/local user/.tutti");
+
+    fireEvent.click(fileChip);
+
+    expect(onLinkAction).toHaveBeenCalledWith({
+      type: "open-workspace-file",
+      path: "C:/Users/local user/.tutti/apps/output.docx",
+      directoryPath: "C:/Users/local user/.tutti/apps",
+      workspaceRoot: "C:/Users/local user/project",
+      source: "agent-markdown"
+    });
+  });
+
   it("renders markdown links, inline code, and lists", () => {
     render(
       <AgentMessageMarkdown
