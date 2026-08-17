@@ -359,6 +359,43 @@ func TestCrossMachineReceiptsUseOpaqueReferences(t *testing.T) {
 	}
 }
 
+func TestRemoteArchiveReceiptRequiresExactSignedIdentityAndOneLocation(t *testing.T) {
+	release := testReleaseWithImplementation("aws-cli", "0.2.0", ImplementationKindManagedStdio)
+	managed := release.Manifest.Implementation.ManagedStdio
+	managed.MCP = nil
+	managed.Runtime = RuntimeRequirement{Language: "node", Profile: "connector-node-static", ABI: "node24-linux-arm64", VersionRange: ">=24.0.0 <25.0.0"}
+	install := RemoteArchiveInstallation{
+		Source:     RemoteArchiveSource{URL: "https://awscli.amazonaws.com/aws.zip", AllowedHosts: []string{"awscli.amazonaws.com"}, Format: "zip", SHA256: strings.Repeat("a", 64), SizeBytes: 10},
+		Extraction: RemoteArchiveExtraction{Root: "aws", FileCount: 2, ExpandedSizeBytes: 7, InventoryAlgorithm: "tutti.connector.tree.v1", InventorySHA256: strings.Repeat("b", 64)},
+		Launch:     RemoteArchiveLaunch{Kind: "native", Entrypoint: "dist/aws", SHA256: strings.Repeat("c", 64), SizeBytes: 5},
+	}
+	managed.CLI = &ManagedCLIInterface{Entrypoint: install.Launch.Entrypoint, Install: &CLIInstallation{Kind: "remote_archive", RemoteArchive: &install}}
+	operation := Operation{OperationID: "operation-1", ConnectorKey: release.ConnectorKey}
+	receipt := CLIInstallationReceipt{
+		SchemaVersion: "tutti.connector.cli-installation.v2", OperationID: operation.OperationID,
+		ConnectorKey: release.ConnectorKey, ReleaseDigest: release.ReleaseDigest,
+		RuntimeProfile: managed.Runtime.Profile, RuntimeABI: managed.Runtime.ABI,
+		InstallKind: "remote_archive", ArchiveSHA256: install.Source.SHA256, ArchiveSize: install.Source.SizeBytes, ArchiveFormat: install.Source.Format,
+		InventoryAlgorithm: install.Extraction.InventoryAlgorithm, InventorySHA256: install.Extraction.InventorySHA256,
+		FileCount: install.Extraction.FileCount, ExpandedSizeBytes: install.Extraction.ExpandedSizeBytes,
+		LaunchKind: install.Launch.Kind, Entrypoint: install.Launch.Entrypoint,
+		EntrypointSHA256: install.Launch.SHA256, EntrypointSize: install.Launch.SizeBytes,
+		InstallRoot: t.TempDir(),
+	}
+	if err := validateRemoteArchiveInstallationReceipt(operation, release, install, receipt); err != nil {
+		t.Fatal(err)
+	}
+	receipt.OpaqueInstallationRef = "guest-install-1"
+	if err := validateRemoteArchiveInstallationReceipt(operation, release, install, receipt); err == nil {
+		t.Fatal("remote archive receipt with local and opaque locations should be rejected")
+	}
+	receipt.OpaqueInstallationRef = ""
+	receipt.InventorySHA256 = strings.Repeat("d", 64)
+	if err := validateRemoteArchiveInstallationReceipt(operation, release, install, receipt); err == nil {
+		t.Fatal("remote archive receipt with mismatched inventory should be rejected")
+	}
+}
+
 func TestApplicationReconcilesInstalledRuntimeAtStartup(t *testing.T) {
 	connector := testConnector("github")
 	connector.Revision = 7

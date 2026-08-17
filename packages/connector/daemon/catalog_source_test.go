@@ -20,6 +20,11 @@ func TestCatalogSourceMapsPublishedConnectorItemsWithAdditiveFields(t *testing.T
 		if request.URL.Query().Get("itemType") != "connector" {
 			t.Fatalf("request path=%q query=%q", request.URL.Path, request.URL.RawQuery)
 		}
+		query := request.URL.Query()
+		if query.Get("hostProduct") != "tutti" || query.Get("hostVersion") != "0.2.27" || query.Get("executionTarget") != "darwin-arm64" ||
+			query.Get("maxConnectorSchema") != "4" || strings.Join(query["hostCapabilities"], ",") != "connector.install.remote-archive.v1" {
+			t.Fatalf("request path=%q cohort query=%q", request.URL.Path, request.URL.RawQuery)
+		}
 		writer.Header().Set("Content-Type", "application/json")
 		if request.URL.Path == connectorCategoriesPath {
 			_, _ = writer.Write([]byte(`{
@@ -91,6 +96,8 @@ func TestCatalogSourceMapsPublishedConnectorItemsWithAdditiveFields(t *testing.T
 			request.Header.Set("Authorization", "Bearer catalog-token")
 			return nil
 		},
+		ExecutionTarget: "darwin-arm64", HostProduct: "tutti", HostVersion: "0.2.27", MaxConnectorSchema: 4,
+		HostCapabilities: []string{"connector.install.remote-archive.v1"},
 	})
 	if err != nil {
 		t.Fatal(err)
