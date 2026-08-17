@@ -128,6 +128,18 @@ scope. When no project is selected, it uses the daemon-owned discovery directory
 under `<state>/agent/discovery/<provider>`, because standard ACP session creation
 requires a concrete working directory.
 
+A signed Composer permission mode may declare `automaticDecision: "approved"`
+only with the `full-access` semantic, or `automaticDecision: "denied"` with a
+`read-only` or `locked-down` semantic. The Standard ACP adapter applies that
+decision to execution-authorization callbacks using the session's exact live
+runtime mode. It does not apply automatic permission decisions to
+`AskUserQuestion`, `ExitPlanMode`, or other canonical interactive prompts:
+full access removes repeated execution approval, but it does not answer a
+question or make a workflow decision for the user. Multiple runtime IDs may
+share one semantic, so an extension that intends to approve only one of them
+must declare the decision on that exact runtime ID and preserve the other IDs
+unchanged.
+
 ### Spawn Settings And ACP Workflow Modes
 
 Composer profile v1 has an optional, closed `launchSettings.permission`

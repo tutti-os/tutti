@@ -11,6 +11,7 @@ import { enAgentGuiCollaboration } from "./en.agentGuiCollaboration.ts";
 import { enAgentGuiUsageStatus } from "./en.agentGuiUsageStatus.ts";
 import { enAgentGuiComposer } from "./en.agentGuiComposer.ts";
 import { enAgentGuiProjectLaunch } from "./en.agentGuiProjectLaunch.ts";
+import { enAgentGuiProviderPermissionModes } from "./en.agentGuiProviderPermissionModes.ts";
 
 export const enAgentGui = {
   imageDownloaded: "Image downloaded",
@@ -229,21 +230,7 @@ export const enAgentGui = {
           "Automatically allows gated actions without changing OpenCode's separate Plan mode restrictions."
       }
     },
-    nexight: {
-      "read-only": {
-        label: "Ask for approval",
-        description: "Always ask to edit external files and use the internet"
-      },
-      auto: {
-        label: "Approve for me",
-        description: "Only ask for actions detected as potentially unsafe"
-      },
-      "full-access": {
-        label: "Full access",
-        description:
-          "Unrestricted access to the internet and any file on your computer"
-      }
-    },
+    ...enAgentGuiProviderPermissionModes,
     "claude-code": {
       default: {
         label: "Default",

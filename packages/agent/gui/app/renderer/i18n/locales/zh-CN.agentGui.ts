@@ -10,6 +10,7 @@ import { zhCNAgentGuiCollaboration } from "./zh-CN.agentGuiCollaboration.ts";
 import { zhCNTuttiModePlan } from "./zh-CN.tuttiModePlan.ts";
 import { zhCNAgentGuiComposer } from "./zh-CN.agentGuiComposer.ts";
 import { zhCNAgentGuiProjectLaunch } from "./zh-CN.agentGuiProjectLaunch.ts";
+import { zhCNAgentGuiProviderPermissionModes } from "./zh-CN.agentGuiProviderPermissionModes.ts";
 export const zhCNAgentGui = {
   imageDownloaded: "图片已下载",
   imageLoadFailed: "图片加载失败",
@@ -214,20 +215,7 @@ export const zhCNAgentGui = {
           "自动允许需授权操作，但不会改变 OpenCode 独立的 Plan 模式限制"
       }
     },
-    nexight: {
-      "read-only": {
-        label: "请求批准",
-        description: "编辑外部文件或使用互联网前始终询问你"
-      },
-      auto: {
-        label: "替我审批",
-        description: "仅在检测到可能不安全的操作时询问你"
-      },
-      "full-access": {
-        label: "完全访问",
-        description: "可不受限制地访问互联网和你电脑上的任何文件"
-      }
-    },
+    ...zhCNAgentGuiProviderPermissionModes,
     "claude-code": {
       default: {
         label: "默认权限",

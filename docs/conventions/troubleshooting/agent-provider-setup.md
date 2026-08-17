@@ -1340,6 +1340,45 @@ file or directory`. A failed `codex app-server` probe is diagnostic evidence,
   proving bypass mode allows an ordinary Bash request without
   `approval_requested`, while `AskUserQuestion` still surfaces user input.
 
+### CodeBuddy fullAccess still requests execution approval
+
+- Symptom:
+  A CodeBuddy extension session reports `permissionModeId=fullAccess`, and
+  `session/set_mode` succeeds, but ordinary file or command operations still
+  create a Tutti waiting-approval interaction.
+- Quick checks:
+  Inspect the session-pinned extension installation and its
+  `profiles/composer.json`. Confirm that `fullAccess` is preserved as the exact
+  runtime ID, rather than collapsed into `bypassPermissions`, and check whether
+  that mode declares `automaticDecision: "approved"`. In ACP logs, distinguish
+  a residual `session/request_permission` authorization callback from an
+  `AskUserQuestion` or `ExitPlanMode` interaction.
+- Root cause:
+  `session/set_mode` configures CodeBuddy's permission tier, but an ACP runtime
+  may still emit a permission callback. Tutti resolves such a callback
+  automatically only when the signed Composer profile declares the live
+  runtime mode's automatic decision. Without that declaration, the generic ACP
+  adapter correctly falls back to a manual approval. Treating every callback
+  as approval is also unsafe because ACP carries user questions and workflow
+  transitions through the same request method.
+- Fix:
+  Publish a new signed CodeBuddy extension release whose exact `fullAccess`
+  mode declares `automaticDecision: "approved"`; leave
+  `bypassPermissions` and all other runtime IDs unchanged. The Standard ACP
+  adapter must apply the decision only to execution authorization and preserve
+  canonical interactive prompts. Do not patch an installed signed package or
+  add a CodeBuddy provider branch to the daemon. Sessions remain pinned to
+  their installation, so recreate sessions that still reference the previous
+  extension version.
+- Validation:
+  In a new session pinned to the updated extension, confirm the runtime receives
+  `session/set_mode` with `modeId=fullAccess`. Trigger an ordinary write and a
+  dangerous command and verify both complete without `waiting_approval`.
+  Trigger `AskUserQuestion` and verify it still publishes exactly one canonical
+  question interaction and waits for the user's answer. Confirm
+  `bypassPermissions` has no automatic decision and that other permission
+  modes behave unchanged.
+
 ### Extension session create rejects a semantic permission id
 
 - Symptom:
