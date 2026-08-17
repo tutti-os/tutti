@@ -82,6 +82,7 @@ const schemaMigrationWorkspaceAgentSessionForkV3 = "workspace_agent_session_fork
 const schemaMigrationWorkspaceAgentSessionForkV4 = "workspace_agent_session_fork_v4"
 const schemaMigrationWorkspaceAgentSessionForkV5 = "workspace_agent_session_fork_v5"
 const schemaMigrationWorkspaceAgentEffectiveHistoryV1 = "workspace_agent_effective_history_v1"
+const schemaMigrationWorkspaceAgentEffectiveHistoryV2 = "workspace_agent_effective_history_v2_submission_metadata"
 const schemaMigrationWorkspaceAgentSessionForkV6 = "workspace_agent_session_fork_v6_optimistic"
 const schemaMigrationWorkspaceAgentSessionForkV7 = "workspace_agent_session_fork_v7_full_turn_bindings"
 const schemaMigrationWorkspaceAgentProviderCheckpointV1 = "workspace_agent_provider_checkpoint_v1"
@@ -306,6 +307,9 @@ CREATE TABLE IF NOT EXISTS `+schemaMigrationsTable+` (
 		return err
 	}
 	if err := s.applyWorkspaceAgentEffectiveHistoryV1(ctx); err != nil {
+		return err
+	}
+	if err := s.applyWorkspaceAgentEffectiveHistoryV2(ctx); err != nil {
 		return err
 	}
 	if err := s.applyWorkspaceAgentSessionForkV6(ctx); err != nil {

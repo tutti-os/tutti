@@ -368,6 +368,10 @@ func (s *SQLiteStore) GetTurn(ctx context.Context, workspaceID string, agentSess
 	return s.agentReadStore().GetTurn(ctx, workspaceID, agentSessionID, turnID)
 }
 
+func (s *SQLiteStore) GetTurnSubmission(ctx context.Context, workspaceID string, agentSessionID string, turnID string) (agentactivitybiz.TurnSubmission, bool, error) {
+	return s.agentReadStore().GetTurnSubmission(ctx, workspaceID, agentSessionID, turnID)
+}
+
 func (s *SQLiteStore) GetLatestTurn(ctx context.Context, workspaceID string, agentSessionID string) (agentactivitybiz.Turn, bool, error) {
 	return s.agentReadStore().GetLatestTurn(ctx, workspaceID, agentSessionID)
 }
