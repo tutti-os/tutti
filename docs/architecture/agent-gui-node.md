@@ -1876,7 +1876,9 @@ infer installation from a remote market response.
 
 Authorization and draft selection are separate facts. Selected connectors are
 stored as semantic draft blocks, rendered as removable chips, and submitted as
-structured prompt content without synthesizing slash text.
+structured prompt content without synthesizing slash text. The compact Composer
+trigger previews installed and authorized connectors independently from draft
+selection, while preserving selected connectors first in that bounded preview.
 
 The device-global `lab.connectors` UI-preference flag controls whether that
 projection is returned. The daemon fails closed when the preference is absent

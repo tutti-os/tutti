@@ -69,11 +69,11 @@ export function ConnectorComposerMenu({
   const [open, setOpen] = useState(false);
   const normalizedItems = normalizeConnectorItems(items);
   const quickItems = normalizedItems.slice(0, QUICK_CONNECTOR_LIMIT);
-  const selectedItems = normalizedItems.filter(
-    (item) => item.status === "connected" && item.selected === true
+  const connectedItems = normalizedItems.filter(
+    (item) => item.status === "connected"
   );
-  const previewItems = selectedItems.slice(0, CONNECTOR_PREVIEW_LIMIT);
-  const additionalConnectorCount = selectedItems.length - previewItems.length;
+  const previewItems = connectedItems.slice(0, CONNECTOR_PREVIEW_LIMIT);
+  const additionalConnectorCount = connectedItems.length - previewItems.length;
   const closeAndRun = (action: () => void): void => {
     setOpen(false);
     onOpenChange?.(false);

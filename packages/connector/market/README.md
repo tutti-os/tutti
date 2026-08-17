@@ -141,8 +141,10 @@ must be routed through `openConnectorMarketDialog` from
 `@tutti-os/connector-market/services`, which loads the authoritative View before
 opening the package-owned installation, authorization, management, or blocked
 dialog. The bounded quick list places connected connectors first while
-preserving the host order within connected and remaining groups. “More
-connectors” is a separate host navigation callback.
+preserving the host order within connected and remaining groups. The compact
+trigger previews authorized connected connectors independently from the current
+draft selection; selection continues to control only structured prompt content.
+“More connectors” is a separate host navigation callback.
 
 Mount one `ConnectorMarketDialogHost` per renderer window/application
 container, not per composer entry or settings page. Multiple entries share the

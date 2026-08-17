@@ -81,7 +81,7 @@ describe("ComposerConnectorsMenu", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("summarizes connected connectors in a compact preview group", () => {
+  it("summarizes authorized connectors without requiring draft selection", () => {
     const connectedConnectors = Array.from({ length: 5 }, (_, index) => ({
       ...connector(`connected-${index}`, "available"),
       iconUrl: `/connector-${index}.png`
@@ -93,9 +93,7 @@ describe("ComposerConnectorsMenu", () => {
         labels={labels}
         onOpenConnector={vi.fn()}
         onOpenConnectors={vi.fn()}
-        selectedConnectorKeys={connectedConnectors.map(
-          (item) => item.connectorKey ?? ""
-        )}
+        selectedConnectorKeys={[]}
       />
     );
 
@@ -191,6 +189,10 @@ describe("ComposerConnectorsMenu", () => {
         selectedConnectorKeys={[]}
       />
     );
+
+    expect(
+      screen.getByTestId("connector-market-composer-preview-notion")
+    ).toBeInTheDocument();
 
     fireEvent.pointerDown(screen.getByRole("button", { name: "Connectors" }), {
       button: 0,

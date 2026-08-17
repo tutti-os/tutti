@@ -572,8 +572,10 @@ authoritative market view, rejects invalid or unknown keys, and then advances
 the package-owned dialog state machine. Before applying the bounded quick-list
 limit, the shared menu stably groups connected connectors ahead of connectors
 that still require authorization or setup; each group preserves host catalog
-order. Selecting “more” remains host navigation because settings/workbench
-location is product-owned.
+order. Its compact trigger previews the installed and authorized group without
+requiring those connectors to be selected in the current draft; draft selection
+continues to control only structured prompt content. Selecting “more” remains
+host navigation because settings/workbench location is product-owned.
 
 Every renderer window mounts exactly one `ConnectorMarketDialogHost` alongside
 its other window-level panel hosts. Composer entries and catalog cards never
