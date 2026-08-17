@@ -581,6 +581,10 @@ WHERE status = ?
 		RuntimeOperationStatusPrepared, RuntimeOperationStatusLeased); err != nil {
 		return nil, fmt.Errorf("supersede stale workspace agent interactions: %w", err)
 	}
+	canceledMessages, err := s.cancelStaleTurnToolMessagesTx(ctx, tx, settlements, now)
+	if err != nil {
+		return nil, err
+	}
 	notifiedSessions := make(map[string]Message, len(settlements))
 	for _, settlement := range settlements {
 		key := settlement.WorkspaceID + "\x00" + settlement.AgentSessionID
@@ -594,7 +598,7 @@ WHERE status = ?
 		notifiedSessions[key] = message
 	}
 
-	mutations := make([]TransactionMutation, 0, len(settlements)*3+len(pendingInteractions))
+	mutations := make([]TransactionMutation, 0, len(settlements)*3+len(pendingInteractions)+len(canceledMessages))
 	for _, settlement := range settlements {
 		mutations = append(mutations,
 			transactionMutation(settlement.WorkspaceID, settlement.AgentSessionID, MutationEntityTurn, settlement.TurnID, "settle", now),
@@ -605,6 +609,12 @@ WHERE status = ?
 		mutations = append(mutations, transactionMutation(
 			interaction.WorkspaceID, interaction.AgentSessionID, MutationEntityInteraction,
 			interactionMutationEntityID(interaction.TurnID, interaction.RequestID), "supersede", now,
+		))
+	}
+	for _, canceled := range canceledMessages {
+		mutations = append(mutations, transactionMutation(
+			canceled.workspaceID, canceled.message.AgentSessionID, MutationEntityMessage,
+			canceled.message.MessageID, "upsert", int64(canceled.message.Version),
 		))
 	}
 	for key, message := range notifiedSessions {
