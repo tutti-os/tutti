@@ -440,6 +440,7 @@ export interface AgentActivitySubmitDiagnostics {
   promptLength?: number;
   queued?: boolean;
   source?: string;
+  uiMode?: "os" | "agent";
 }
 
 export type AgentActivitySendInputResult =

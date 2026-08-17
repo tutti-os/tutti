@@ -362,7 +362,7 @@ func (h *Host) recordEditRetryReplacementSubmission(
 		ctx,
 		SessionRef{WorkspaceID: operation.WorkspaceID, AgentSessionID: operation.AgentSessionID},
 		payload.ReplacementTurnID, payload.ClientSubmitID, input.Content,
-		input.DisplayPrompt, input.CapabilityRefs, input.TuttiModeSnapshot,
+		input.DisplayPrompt, input.CapabilityRefs, input.Metadata, input.TuttiModeSnapshot,
 	); err != nil {
 		return err
 	}

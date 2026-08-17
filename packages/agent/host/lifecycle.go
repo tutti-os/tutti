@@ -2,7 +2,6 @@ package agenthost
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -286,7 +285,7 @@ func (h *Host) createSession(ctx context.Context, workspaceID string, input Crea
 				ctx, SessionRef{WorkspaceID: workspaceID, AgentSessionID: session.ID}, execResult,
 				firstNonEmpty(claim.ClientSubmitID, input.ClientSubmitID, legacyClientSubmitID(metadata)),
 				claim.CreatedAtUnixMS, preparedContent, displayPrompt, input.CapabilityRefs,
-				input.TuttiModeSnapshot,
+				metadata, input.TuttiModeSnapshot,
 			); persistErr != nil {
 				claimPending = false
 				return createSessionCreatedErrorResult(input, session, canonicalSession, errors.Join(ErrSubmitDeliveryUnknown, err, persistErr))
@@ -333,7 +332,7 @@ func (h *Host) createSession(ctx context.Context, workspaceID string, input Crea
 	}
 	if err := h.recordTurnSubmission(
 		ctx, ref, turnID, input.ClientSubmitID, preparedContent.Persisted,
-		displayPrompt, input.CapabilityRefs, input.TuttiModeSnapshot,
+		displayPrompt, input.CapabilityRefs, metadata, input.TuttiModeSnapshot,
 	); err != nil {
 		claimPending = false
 		return createSessionCreatedErrorResult(input, session, canonicalSession, errors.Join(ErrSubmitDeliveryUnknown, err))
@@ -650,7 +649,7 @@ func (h *Host) sendInputSerialized(
 				ctx, ref, execResult,
 				firstNonEmpty(claim.ClientSubmitID, input.ClientSubmitID, legacyClientSubmitID(metadata)),
 				claim.CreatedAtUnixMS, preparedContent, displayPrompt, input.CapabilityRefs,
-				input.TuttiModeSnapshot,
+				metadata, input.TuttiModeSnapshot,
 			); persistErr != nil {
 				claimPending = false
 				return SendInputResult{}, errors.Join(ErrSubmitDeliveryUnknown, err, persistErr)
@@ -707,7 +706,7 @@ func (h *Host) sendInputSerialized(
 	if !input.Guidance {
 		if err := h.recordTurnSubmission(
 			ctx, ref, turnID, input.ClientSubmitID, preparedContent.Persisted,
-			displayPrompt, input.CapabilityRefs, input.TuttiModeSnapshot,
+			displayPrompt, input.CapabilityRefs, metadata, input.TuttiModeSnapshot,
 		); err != nil {
 			claimPending = false
 			return SendInputResult{}, errors.Join(ErrSubmitDeliveryUnknown, err)
@@ -767,47 +766,6 @@ func (h *Host) UpdateTitle(ctx context.Context, input UpdateTitleInput) (UpdateT
 	}
 	result.Session = runtimeSession
 	return result, nil
-}
-
-func (h *Host) recordTurnSubmission(
-	ctx context.Context,
-	ref SessionRef,
-	turnID string,
-	clientSubmitID string,
-	content []PromptContentBlock,
-	displayPrompt string,
-	capabilityRefs []CapabilityReference,
-	tuttiModeSnapshot *TuttiModeTurnSnapshot,
-) error {
-	if h == nil || h.turnSubmissions == nil {
-		return nil
-	}
-	contentJSON, err := json.Marshal(content)
-	if err != nil {
-		return fmt.Errorf("encode turn submission content: %w", err)
-	}
-	capabilityRefsJSON, err := json.Marshal(capabilityRefs)
-	if err != nil {
-		return fmt.Errorf("encode turn submission capability refs: %w", err)
-	}
-	tuttiModeSnapshotJSON, err := json.Marshal(tuttiModeSnapshot)
-	if err != nil {
-		return fmt.Errorf("encode turn submission tutti mode snapshot: %w", err)
-	}
-	now := h.now().UnixMilli()
-	_, _, err = h.turnSubmissions.RecordTurnSubmission(ctx, storesqlite.TurnSubmission{
-		WorkspaceID: ref.WorkspaceID, AgentSessionID: ref.AgentSessionID,
-		TurnID: strings.TrimSpace(turnID), ContentJSON: string(contentJSON),
-		DisplayPrompt:         strings.TrimSpace(displayPrompt),
-		CapabilityRefsJSON:    string(capabilityRefsJSON),
-		TuttiModeSnapshotJSON: string(tuttiModeSnapshotJSON),
-		ClientSubmitID:        strings.TrimSpace(clientSubmitID),
-		CreatedAtUnixMS:       now, UpdatedAtUnixMS: now,
-	})
-	if err != nil {
-		return fmt.Errorf("record turn submission envelope: %w", err)
-	}
-	return nil
 }
 
 func (h *Host) requireSendAllowedByEffectiveHistory(ctx context.Context, ref SessionRef) error {

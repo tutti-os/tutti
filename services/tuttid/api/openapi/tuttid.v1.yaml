@@ -15168,6 +15168,11 @@ components:
           type: boolean
         source:
           type: string
+        uiMode:
+          type: string
+          enum:
+            - os
+            - agent
     AgentPromptContentBlock:
       type: object
       additionalProperties: false

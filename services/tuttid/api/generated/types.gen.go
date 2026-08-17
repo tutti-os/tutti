@@ -754,6 +754,24 @@ func (e AgentSlashCommandEffect) Valid() bool {
 	}
 }
 
+// Defines values for AgentSubmitDiagnosticsUiMode.
+const (
+	AgentSubmitDiagnosticsUiModeAgent AgentSubmitDiagnosticsUiMode = "agent"
+	AgentSubmitDiagnosticsUiModeOs    AgentSubmitDiagnosticsUiMode = "os"
+)
+
+// Valid indicates whether the value is a known member of the AgentSubmitDiagnosticsUiMode enum.
+func (e AgentSubmitDiagnosticsUiMode) Valid() bool {
+	switch e {
+	case AgentSubmitDiagnosticsUiModeAgent:
+		return true
+	case AgentSubmitDiagnosticsUiModeOs:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for AgentTargetBuiltinLocalLaunchRefType.
 const (
 	AgentTargetBuiltinLocalLaunchRefTypeBuiltinLocal AgentTargetBuiltinLocalLaunchRefType = "builtin_local"
@@ -3834,16 +3852,16 @@ func (e WorkspaceAgentSessionWorktreeSupportErrorCode) Valid() bool {
 
 // Defines values for WorkspaceAgentSource.
 const (
-	LegacyBinding WorkspaceAgentSource = "legacy_binding"
-	User          WorkspaceAgentSource = "user"
+	WorkspaceAgentSourceLegacyBinding WorkspaceAgentSource = "legacy_binding"
+	WorkspaceAgentSourceUser          WorkspaceAgentSource = "user"
 )
 
 // Valid indicates whether the value is a known member of the WorkspaceAgentSource enum.
 func (e WorkspaceAgentSource) Valid() bool {
 	switch e {
-	case LegacyBinding:
+	case WorkspaceAgentSourceLegacyBinding:
 		return true
-	case User:
+	case WorkspaceAgentSourceUser:
 		return true
 	default:
 		return false
@@ -5622,13 +5640,17 @@ type AgentSlashCommandPolicy struct {
 
 // AgentSubmitDiagnostics defines model for AgentSubmitDiagnostics.
 type AgentSubmitDiagnostics struct {
-	BlockCount        *int    `json:"blockCount,omitempty"`
-	HasImage          *bool   `json:"hasImage,omitempty"`
-	PromptLength      *int    `json:"promptLength,omitempty"`
-	Queued            *bool   `json:"queued,omitempty"`
-	Source            *string `json:"source,omitempty"`
-	SubmittedAtUnixMs *int64  `json:"submittedAtUnixMs,omitempty"`
+	BlockCount        *int                          `json:"blockCount,omitempty"`
+	HasImage          *bool                         `json:"hasImage,omitempty"`
+	PromptLength      *int                          `json:"promptLength,omitempty"`
+	Queued            *bool                         `json:"queued,omitempty"`
+	Source            *string                       `json:"source,omitempty"`
+	SubmittedAtUnixMs *int64                        `json:"submittedAtUnixMs,omitempty"`
+	UiMode            *AgentSubmitDiagnosticsUiMode `json:"uiMode,omitempty"`
 }
+
+// AgentSubmitDiagnosticsUiMode defines model for AgentSubmitDiagnostics.UiMode.
+type AgentSubmitDiagnosticsUiMode string
 
 // AgentTarget defines model for AgentTarget.
 type AgentTarget struct {

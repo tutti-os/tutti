@@ -39,6 +39,7 @@ import {
   TuttidProtocolError
 } from "@tutti-os/client-tuttid-ts";
 import type { DesktopRuntimeApi } from "@preload/types";
+import type { DesktopWorkspaceUiMode } from "@shared/preferences";
 import { getActiveLocale } from "../../../i18n/runtime.ts";
 import { wrapLocalizedTuttidErrorIfSpecific } from "../../../lib/desktopErrors.ts";
 import { agentActivityComposerOptionsFromTuttidResult } from "../../../lib/agentComposerOptionsProjection.ts";
@@ -54,6 +55,21 @@ export interface CreateDesktopAgentActivityAdapterInput {
     workspaceId: string,
     recordingId: string
   ) => void;
+  uiMode?: DesktopWorkspaceUiMode;
+}
+
+function submitDiagnosticsWithUiMode<T extends { submitDiagnostics?: object }>(
+  input: T,
+  uiMode: DesktopWorkspaceUiMode | undefined
+): T {
+  if (!uiMode) return input;
+  return {
+    ...input,
+    submitDiagnostics: {
+      ...input.submitDiagnostics,
+      uiMode
+    }
+  };
 }
 
 // Cold ACP/model discovery is materially slower on Windows (Cursor can take
@@ -126,7 +142,8 @@ export function createDesktopAgentActivityAdapter({
   tuttidClient,
   runtimeApi,
   takePendingSessionRecording,
-  restorePendingSessionRecording
+  restorePendingSessionRecording,
+  uiMode
 }: CreateDesktopAgentActivityAdapterInput): DesktopAgentActivityCommandAdapter {
   return {
     async listSessions(input) {
@@ -286,13 +303,16 @@ export function createDesktopAgentActivityAdapter({
         const agentTargetId = requiredAgentTargetId(input.agentTargetId);
         recordingId = takePendingSessionRecording?.(input.workspaceId) ?? null;
         const request = tuttiCreateWorkspaceAgentSessionRequestFromActivity(
-          {
-            ...input,
-            agentSessionId,
-            agentTargetId,
-            noProject:
-              input.noProject ?? (normalizeText(input.cwd) ? null : true)
-          },
+          submitDiagnosticsWithUiMode(
+            {
+              ...input,
+              agentSessionId,
+              agentTargetId,
+              noProject:
+                input.noProject ?? (normalizeText(input.cwd) ? null : true)
+            },
+            uiMode
+          ),
           { recordingId }
         );
         const session = await tuttidClient.createWorkspaceAgentSession(
@@ -348,8 +368,9 @@ export function createDesktopAgentActivityAdapter({
         submitDiagnostics: input.submitDiagnostics,
         workspaceId: input.workspaceId
       });
-      const request =
-        tuttiSendWorkspaceAgentSessionInputRequestFromActivity(input);
+      const request = tuttiSendWorkspaceAgentSessionInputRequestFromActivity(
+        submitDiagnosticsWithUiMode(input, uiMode)
+      );
       let result: Awaited<
         ReturnType<TuttidClient["sendWorkspaceAgentSessionInput"]>
       >;

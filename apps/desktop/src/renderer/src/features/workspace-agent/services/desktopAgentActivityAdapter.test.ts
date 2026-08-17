@@ -456,7 +456,8 @@ test("desktop agent activity adapter forwards typed submit diagnostics", async (
         };
       }
     }),
-    runtimeApi: createRuntimeApi()
+    runtimeApi: createRuntimeApi(),
+    uiMode: "os"
   });
 
   const result = await adapter.sendInput({
@@ -484,7 +485,8 @@ test("desktop agent activity adapter forwards typed submit diagnostics", async (
         guidance: true,
         submitDiagnostics: {
           submittedAtUnixMs: 1234,
-          source: "agent-gui"
+          source: "agent-gui",
+          uiMode: "os"
         }
       } satisfies SendWorkspaceAgentSessionInputRequest,
       signal: controller.signal,
@@ -1363,7 +1365,8 @@ test("desktop agent activity adapter sends plan mode when creating sessions", as
         });
       }
     }),
-    runtimeApi: createRuntimeApi()
+    runtimeApi: createRuntimeApi(),
+    uiMode: "agent"
   });
 
   const session = await adapter.createSession({
@@ -1400,7 +1403,8 @@ test("desktop agent activity adapter sends plan mode when creating sessions", as
         submitDiagnostics: {
           blockCount: 1,
           submittedAtUnixMs: 12345,
-          source: "agent-gui"
+          source: "agent-gui",
+          uiMode: "agent"
         },
         model: "gpt-5.5-codex-spark",
         noProject: null,

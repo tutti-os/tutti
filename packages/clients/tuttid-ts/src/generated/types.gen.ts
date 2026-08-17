@@ -3506,6 +3506,7 @@ export type AgentSubmitDiagnostics = {
   promptLength?: number;
   queued?: boolean;
   source?: string;
+  uiMode?: "os" | "agent";
 };
 
 export type AgentPromptContentBlock = {

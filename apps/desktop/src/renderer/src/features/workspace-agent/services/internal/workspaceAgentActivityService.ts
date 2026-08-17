@@ -21,6 +21,7 @@ import type {
   WorkspaceAgentProvider
 } from "@tutti-os/client-tuttid-ts";
 import type { DesktopHostFilesApi, DesktopRuntimeApi } from "@preload/types";
+import type { DesktopWorkspaceUiMode } from "@shared/preferences";
 import type { IReporterService } from "../../../analytics/services/reporterService.interface.ts";
 import {
   normalizeComposerSettings,
@@ -98,6 +99,7 @@ export interface WorkspaceAgentActivityServiceDependencies {
   ) => WorkspaceAgentProvider | null;
   workspaceUserProjectService?: IWorkspaceUserProjectService;
   sessionReplayEnabled?: boolean;
+  uiMode?: DesktopWorkspaceUiMode;
 }
 
 type WorkspaceAgentActivityEntry = WorkspaceAgentSessionEngineHost;
@@ -1074,6 +1076,7 @@ export class WorkspaceAgentActivityService
       reconcileSession: (command, signal) =>
         this.executeSessionReconcileCommand(command, signal),
       runtimeApi: this.dependencies.runtimeApi,
+      uiMode: this.dependencies.uiMode,
       executeEngineSendInput: async (input, options) => {
         try {
           const result = await this.executeSendInputEffect(input, options);

@@ -54,6 +54,11 @@ func (api DaemonAPI) CreateWorkspaceAgentSession(ctx context.Context, request tu
 	}
 	initialGoalControl := initialGoalControlFromGenerated(request.Body.InitialGoalControl)
 	clientSubmitID := strings.TrimSpace(request.Body.ClientSubmitId)
+	if diagnosticsErr := validateAgentSubmitDiagnostics(request.Body.SubmitDiagnostics); diagnosticsErr != nil {
+		return tuttigenerated.CreateWorkspaceAgentSession400JSONResponse{
+			InvalidRequestErrorJSONResponse: invalidRequestError(diagnosticsErr),
+		}, nil
+	}
 	metadata := agentSubmitMetadata(request.Body.SubmitDiagnostics)
 	isolation := ""
 	if request.Body.Isolation != nil {
@@ -245,6 +250,11 @@ func (api DaemonAPI) SendWorkspaceAgentSessionInput(ctx context.Context, request
 		}, nil
 	}
 	clientSubmitID := strings.TrimSpace(request.Body.ClientSubmitId)
+	if diagnosticsErr := validateAgentSubmitDiagnostics(request.Body.SubmitDiagnostics); diagnosticsErr != nil {
+		return tuttigenerated.SendWorkspaceAgentSessionInput400JSONResponse{
+			InvalidRequestErrorJSONResponse: invalidRequestError(diagnosticsErr),
+		}, nil
+	}
 	metadata := agentSubmitMetadata(request.Body.SubmitDiagnostics)
 	guidance := request.Body.Guidance != nil && *request.Body.Guidance
 	targetTurnID := ""
@@ -397,5 +407,17 @@ func agentSubmitMetadata(diagnostics *tuttigenerated.AgentSubmitDiagnostics) map
 	if diagnostics.Source != nil {
 		metadata["source"] = strings.TrimSpace(*diagnostics.Source)
 	}
+	if diagnostics.UiMode != nil {
+		metadata["uiMode"] = strings.TrimSpace(string(*diagnostics.UiMode))
+	}
 	return metadata
+}
+
+func validateAgentSubmitDiagnostics(diagnostics *tuttigenerated.AgentSubmitDiagnostics) *apierrors.ProtocolError {
+	if diagnostics != nil && diagnostics.UiMode != nil && !diagnostics.UiMode.Valid() {
+		return apierrors.MalformedRequest(
+			apierrors.WithDeveloperMessage("submitDiagnostics.uiMode is invalid"),
+		)
+	}
+	return nil
 }
