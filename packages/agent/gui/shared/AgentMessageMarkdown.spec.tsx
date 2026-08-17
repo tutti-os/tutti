@@ -1573,6 +1573,33 @@ describe("AgentMessageMarkdown", () => {
     expect(mention).toHaveTextContent("Weather");
   });
 
+  it("opens workspace app mentions without file path context", () => {
+    const onLinkAction = vi.fn();
+    const onLinkClick = vi.fn();
+    render(
+      <AgentMessageMarkdown
+        content="打开 [@Weather](mention://workspace-app/weather?workspaceId=room-1)"
+        onLinkAction={onLinkAction}
+        onLinkClick={onLinkClick}
+        workspaceLinkContext={{
+          workspaceRoot: null,
+          basePath: null,
+          source: "agent-markdown"
+        }}
+      />
+    );
+
+    fireEvent.click(screen.getByText("Weather"));
+
+    expect(onLinkAction).toHaveBeenCalledWith({
+      type: "open-workspace-app",
+      workspaceId: "room-1",
+      appId: "weather",
+      source: "agent-markdown"
+    });
+    expect(onLinkClick).not.toHaveBeenCalled();
+  });
+
   it("renders agent target mentions with managed agent icons", () => {
     const iconUrl = MANAGED_AGENT_ICON_ROUNDED_URLS["claude-code"];
     const { container } = render(
