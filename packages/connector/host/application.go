@@ -150,13 +150,38 @@ func (application *Application) SnapshotForScope(ctx context.Context, scope Oper
 
 func publicSnapshot(snapshot Snapshot, scope OperationScope) Snapshot {
 	operations := snapshot.Operations[:0]
+	visibleOperationIDs := make(map[string]struct{}, len(snapshot.Operations))
 	for _, operation := range snapshot.Operations {
 		if OperationVisibleToScope(operation, scope) {
 			operations = append(operations, operation)
+			visibleOperationIDs[operation.OperationID] = struct{}{}
 		}
 	}
 	snapshot.Operations = operations
+	completions := snapshot.AuthorizationCompletions[:0]
+	for _, completion := range snapshot.AuthorizationCompletions {
+		if _, visible := visibleOperationIDs[completion.CompletionID]; visible {
+			completions = append(completions, completion)
+		}
+	}
+	snapshot.AuthorizationCompletions = completions
 	return snapshot
+}
+
+func (application *Application) AcknowledgeAuthorizationCompletion(
+	ctx context.Context,
+	scope OperationScope,
+	completionID string,
+) error {
+	completionID = strings.TrimSpace(completionID)
+	if strings.TrimSpace(scope.AccountID) == "" || completionID == "" {
+		return invalidRequest("authorization completion scope and id are required")
+	}
+	store, ok := application.config.Repository.(AuthorizationCompletionStore)
+	if !ok {
+		return NewDomainError(ErrorCodeUnavailable, "authorization completion acknowledgement is unavailable", false, nil)
+	}
+	return store.AcknowledgeAuthorizationCompletion(ctx, scope, completionID)
 }
 
 func (application *Application) ListCatalogCategories(ctx context.Context) ([]CatalogCategory, error) {

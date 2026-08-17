@@ -1,7 +1,8 @@
 export const zhCNAgentGuiAddContent = {
   addContentResourcePanel: "资源面板",
   addContentConnectors: "连接器",
-  addContentConnectorConnected: "已连接",
+  addContentConnectorConnected: "已授权",
+  addContentConnectorSelected: "已选中",
   addContentConnectorConnect: "安装",
   addContentConnectorAuthorize: "授权",
   addContentConnectorEmpty: "暂无连接器",

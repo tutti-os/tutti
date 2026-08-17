@@ -13,7 +13,9 @@ interface Props {
   loading: boolean;
   onRetryComposerOptions?: AgentComposerProps["onRetryComposerOptions"];
   onCapabilitySettingsRequest: AgentComposerProps["onCapabilitySettingsRequest"];
+  onConnectorSelected: (connectorKey: string, selected: boolean) => void;
   onTuttiModeChange?: (active: boolean) => void;
+  selectedConnectorKeys: readonly string[];
   tuttiModeSupported: boolean;
 }
 
@@ -32,7 +34,9 @@ export function ComposerPrimaryCapabilityControl({
   loading,
   onRetryComposerOptions,
   onCapabilitySettingsRequest,
+  onConnectorSelected,
   onTuttiModeChange,
+  selectedConnectorKeys,
   tuttiModeSupported
 }: Props): React.JSX.Element | null {
   if (!connectorsVisible) {
@@ -51,7 +55,7 @@ export function ComposerPrimaryCapabilityControl({
   return (
     <ComposerConnectorsMenu
       connectors={availableSkills ?? []}
-      disabled={disabled || !onCapabilitySettingsRequest}
+      disabled={disabled}
       labels={{
         connectors: labels.addContentConnectors,
         connectorConnected: labels.addContentConnectorConnected,
@@ -59,7 +63,8 @@ export function ComposerPrimaryCapabilityControl({
         connectorAuthorize: labels.addContentConnectorAuthorize,
         connectorEmpty: labels.addContentConnectorEmpty,
         connectorLoading: labels.addContentConnectorLoading,
-        connectorMore: labels.addContentConnectorMore
+        connectorMore: labels.addContentConnectorMore,
+        connectorSelected: labels.addContentConnectorSelected
       }}
       loading={loading}
       onOpenChange={(open) => {
@@ -80,6 +85,8 @@ export function ComposerPrimaryCapabilityControl({
           pane: "connectors"
         })
       }
+      onSelectConnector={onConnectorSelected}
+      selectedConnectorKeys={selectedConnectorKeys}
     />
   );
 }

@@ -20,6 +20,7 @@ export function createConnectorMarketStoreState(): ConnectorMarketStoreState {
     pendingInstallationsByConnectorKey: {},
     pendingAuthorizationsByConnectorKey: {},
     pendingUninstallNotificationsByOperationId: {},
+    pendingAuthorizationCompletionsById: {},
     operationsByConnectorKey: {},
     authorizingConnectorKeys: {},
     authorizationViewsByConnectorKey: {},
@@ -46,6 +47,8 @@ export function clearConnectorMarketStoreState(
     initial.pendingAuthorizationsByConnectorKey;
   state.pendingUninstallNotificationsByOperationId =
     initial.pendingUninstallNotificationsByOperationId;
+  state.pendingAuthorizationCompletionsById =
+    initial.pendingAuthorizationCompletionsById;
   state.operationsByConnectorKey = initial.operationsByConnectorKey;
   state.authorizingConnectorKeys = initial.authorizingConnectorKeys;
   state.authorizationViewsByConnectorKey =
@@ -190,6 +193,12 @@ export function applyConnectorMarketSnapshot(
     snapshotCatalogOperation = state.catalogOperation;
   }
   state.catalogOperation = snapshotCatalogOperation;
+  state.pendingAuthorizationCompletionsById = Object.fromEntries(
+    (next.authorizationCompletions ?? []).map((completion) => [
+      completion.completionId,
+      completion
+    ])
+  );
   state.catalogState = next.catalogState;
   state.revision = Math.max(state.revision, next.revision);
   state.snapshotRevision = next.revision;

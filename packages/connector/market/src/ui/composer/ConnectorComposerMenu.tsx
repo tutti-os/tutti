@@ -25,6 +25,8 @@ export interface ConnectorComposerItem {
   connectorKey: string;
   iconUrl?: string;
   name: string;
+  /** Composer-local selection; authorization remains represented by status. */
+  selected?: boolean;
   status: ConnectorComposerItemStatus;
 }
 
@@ -36,6 +38,7 @@ export interface ConnectorComposerMenuLabels {
   empty: string;
   loading: string;
   more: string;
+  selected?: string;
 }
 
 export interface ConnectorComposerMenuProps {
@@ -46,6 +49,7 @@ export interface ConnectorComposerMenuProps {
   onOpenChange?: (open: boolean) => void;
   onOpenConnector: (connectorKey: string) => void;
   onOpenMarket: () => void;
+  onSelectConnector?: (connectorKey: string, selected: boolean) => void;
 }
 
 /**
@@ -59,16 +63,17 @@ export function ConnectorComposerMenu({
   loading = false,
   onOpenChange,
   onOpenConnector,
-  onOpenMarket
+  onOpenMarket,
+  onSelectConnector
 }: ConnectorComposerMenuProps): React.JSX.Element {
   const [open, setOpen] = useState(false);
   const normalizedItems = normalizeConnectorItems(items);
   const quickItems = normalizedItems.slice(0, QUICK_CONNECTOR_LIMIT);
-  const connectedItems = normalizedItems.filter(
-    (item) => item.status === "connected"
+  const selectedItems = normalizedItems.filter(
+    (item) => item.status === "connected" && item.selected === true
   );
-  const previewItems = connectedItems.slice(0, CONNECTOR_PREVIEW_LIMIT);
-  const additionalConnectorCount = connectedItems.length - previewItems.length;
+  const previewItems = selectedItems.slice(0, CONNECTOR_PREVIEW_LIMIT);
+  const additionalConnectorCount = selectedItems.length - previewItems.length;
   const closeAndRun = (action: () => void): void => {
     setOpen(false);
     onOpenChange?.(false);
@@ -133,6 +138,7 @@ export function ConnectorComposerMenu({
         {quickItems.length > 0 ? (
           quickItems.map((item) => {
             const connected = item.status === "connected";
+            const selected = connected && item.selected === true;
             const actionLabel =
               item.status === "authorization_required"
                 ? labels.authorize
@@ -142,17 +148,30 @@ export function ConnectorComposerMenu({
                 key={item.connectorKey}
                 className="min-h-9 gap-2.5 px-2.5"
                 data-testid={`connector-market-composer-item-${item.connectorKey}`}
-                disabled={connected}
+                data-selected={selected ? "true" : undefined}
+                disabled={connected && !onSelectConnector}
                 onPointerDown={(event) => {
                   if (event.button !== 0 || event.ctrlKey) {
                     return;
                   }
                   event.preventDefault();
-                  closeAndRun(() => onOpenConnector(item.connectorKey));
+                  closeAndRun(() => {
+                    if (connected) {
+                      onSelectConnector?.(item.connectorKey, !selected);
+                      return;
+                    }
+                    onOpenConnector(item.connectorKey);
+                  });
                 }}
                 onSelect={(event) => {
                   event.preventDefault();
-                  closeAndRun(() => onOpenConnector(item.connectorKey));
+                  closeAndRun(() => {
+                    if (connected) {
+                      onSelectConnector?.(item.connectorKey, !selected);
+                      return;
+                    }
+                    onOpenConnector(item.connectorKey);
+                  });
                 }}
               >
                 <ConnectorComposerIcon
@@ -166,7 +185,9 @@ export function ConnectorComposerMenu({
                     data-testid={`connector-market-composer-status-${item.connectorKey}`}
                   >
                     <CheckIcon aria-hidden className="size-4" />
-                    {labels.connected}
+                    {selected
+                      ? (labels.selected ?? labels.connected)
+                      : labels.connected}
                   </span>
                 ) : (
                   <span className="ml-auto inline-flex shrink-0 items-center gap-1 pl-3 text-xs text-[var(--text-primary)]">
@@ -216,6 +237,7 @@ export function ConnectorComposerMenu({
 export function normalizeConnectorItems(
   items: readonly ConnectorComposerItem[]
 ): ConnectorComposerItem[] {
+  const selectedItems: ConnectorComposerItem[] = [];
   const connectedItems: ConnectorComposerItem[] = [];
   const remainingItems: ConnectorComposerItem[] = [];
   const seenConnectorKeys = new Set<string>();
@@ -226,13 +248,15 @@ export function normalizeConnectorItems(
     }
     seenConnectorKeys.add(connectorKey);
     const normalizedItem = { ...item, connectorKey };
-    if (normalizedItem.status === "connected") {
+    if (normalizedItem.status === "connected" && normalizedItem.selected) {
+      selectedItems.push(normalizedItem);
+    } else if (normalizedItem.status === "connected") {
       connectedItems.push(normalizedItem);
     } else {
       remainingItems.push(normalizedItem);
     }
   }
-  return [...connectedItems, ...remainingItems];
+  return [...selectedItems, ...connectedItems, ...remainingItems];
 }
 
 function ConnectorComposerIcon({

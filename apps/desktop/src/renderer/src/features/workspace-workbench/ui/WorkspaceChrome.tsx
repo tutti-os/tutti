@@ -26,6 +26,7 @@ import type {
   WorkspaceWallpaperDisplayMode,
   WorkspaceWallpaperId
 } from "../services/workspaceWallpaper";
+import { selectWorkspaceAgentGuiConnector } from "../services/selectWorkspaceAgentGuiConnector.ts";
 
 const tuttiWindowIconUrl = new URL(
   "../../app-update/assets/tutti.png",
@@ -51,6 +52,8 @@ export function WorkspaceChrome({
   selectedWallpaperID,
   wallpaperAppearance,
   launchNode,
+  activateNode,
+  focusNode,
   workbenchController,
   workspace
 }: {
@@ -75,6 +78,8 @@ export function WorkspaceChrome({
   selectedWallpaperID: WorkspaceWallpaperId;
   wallpaperAppearance: "dark" | "light";
   launchNode?: WorkbenchHostChromeRenderContext["launchNode"];
+  activateNode?: WorkbenchHostChromeRenderContext["activateNode"];
+  focusNode?: WorkbenchHostChromeRenderContext["focusNode"];
   workbenchController?: WorkbenchController<WorkbenchHostNodeData>;
   workspace: WorkspaceSummary;
 }) {
@@ -102,6 +107,21 @@ export function WorkspaceChrome({
       setExternalImportWizardOpen(true);
     },
     []
+  );
+  const handleTryConnector = useCallback(
+    (connectorKey: string): void => {
+      if (!activateNode || !focusNode || !launchNode || !workbenchController) {
+        return;
+      }
+      void selectWorkspaceAgentGuiConnector({
+        activateNode,
+        connectorKey,
+        controller: workbenchController,
+        focusNode,
+        launchNode
+      });
+    },
+    [activateNode, focusNode, launchNode, workbenchController]
   );
   useEffect(() => {
     const openImportWizard = (): void => {
@@ -187,6 +207,7 @@ export function WorkspaceChrome({
           />
           <WorkspaceSettingsTrigger
             onOpenExternalAgentImport={() => openExternalAgentImport()}
+            onTryConnector={handleTryConnector}
             onSelectWallpaper={onSelectWallpaper}
             onSelectWallpaperDisplayMode={onSelectWallpaperDisplayMode}
             selectedWallpaperDisplayMode={selectedWallpaperDisplayMode}

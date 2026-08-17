@@ -38,4 +38,7 @@ export interface ConnectorMarketBackend {
   disconnectAuthorization(
     input: ConnectorMutationInput
   ): Promise<ConnectorMutationResult>;
+  acknowledgeAuthorizationCompletion(input: {
+    completionId: string;
+  }): Promise<void>;
 }

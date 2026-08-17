@@ -509,15 +509,17 @@ type RuntimeConvergence struct {
 }
 
 type AuthorizationSession struct {
-	OperationID      string                         `json:"operationId"`
-	ConnectorKey     string                         `json:"connectorKey"`
-	ConnectionID     string                         `json:"-"`
-	SessionID        string                         `json:"sessionId"`
-	ActionType       string                         `json:"actionType"`
-	AuthorizationURL string                         `json:"-"`
-	ExpiresAt        time.Time                      `json:"expiresAt"`
-	State            AuthorizationState             `json:"-"`
-	Resolution       AuthorizationSessionResolution `json:"resolution"`
+	OperationID              string                         `json:"operationId"`
+	ConnectorKey             string                         `json:"connectorKey"`
+	ConnectionID             string                         `json:"-"`
+	SessionID                string                         `json:"sessionId"`
+	ActionType               string                         `json:"actionType"`
+	AuthorizationURL         string                         `json:"-"`
+	ExpiresAt                time.Time                      `json:"expiresAt"`
+	State                    AuthorizationState             `json:"-"`
+	Resolution               AuthorizationSessionResolution `json:"resolution"`
+	ResolvedAt               *time.Time                     `json:"resolvedAt,omitempty"`
+	CompletionAcknowledgedAt *time.Time                     `json:"completionAcknowledgedAt,omitempty"`
 }
 
 // AuthorizationSessionResolution records why a private, durable start receipt
@@ -582,12 +584,22 @@ type AuthorizationObservation struct {
 }
 
 type Snapshot struct {
-	CatalogState   CatalogState `json:"catalogState"`
-	Connectors     []Connector  `json:"connectors"`
-	Operations     []Operation  `json:"operations"`
-	Revision       uint64       `json:"revision"`
-	EventCursor    int64        `json:"eventCursor"`
-	SourceRevision string       `json:"sourceRevision,omitempty"`
+	CatalogState             CatalogState              `json:"catalogState"`
+	Connectors               []Connector               `json:"connectors"`
+	Operations               []Operation               `json:"operations"`
+	AuthorizationCompletions []AuthorizationCompletion `json:"authorizationCompletions"`
+	Revision                 uint64                    `json:"revision"`
+	EventCursor              int64                     `json:"eventCursor"`
+	SourceRevision           string                    `json:"sourceRevision,omitempty"`
+}
+
+// AuthorizationCompletion is an account-scoped, durable one-shot receipt.
+// Hosts present it after an external authorization flow reactivates the app and
+// acknowledge it only after the user-visible notification has been consumed.
+type AuthorizationCompletion struct {
+	CompletionID string    `json:"completionId"`
+	ConnectorKey string    `json:"connectorKey"`
+	CompletedAt  time.Time `json:"completedAt"`
 }
 
 type Mutation struct {

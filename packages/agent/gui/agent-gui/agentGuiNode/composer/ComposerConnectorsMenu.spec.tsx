@@ -6,12 +6,13 @@ import { ComposerConnectorsMenu } from "./ComposerConnectorsMenu";
 
 const labels = {
   connectors: "Connectors",
-  connectorConnected: "Connected",
+  connectorConnected: "Authorized",
   connectorConnect: "Connect",
   connectorAuthorize: "Authorize",
   connectorEmpty: "No connectors available",
   connectorLoading: "Loading connectors…",
-  connectorMore: "View more connectors"
+  connectorMore: "View more connectors",
+  connectorSelected: "Selected"
 };
 
 function connector(
@@ -35,6 +36,7 @@ describe("ComposerConnectorsMenu", () => {
         connectors={[]}
         disabled={false}
         labels={labels}
+        selectedConnectorKeys={[]}
         loading
         onOpenConnector={vi.fn()}
         onOpenConnectors={vi.fn()}
@@ -91,6 +93,9 @@ describe("ComposerConnectorsMenu", () => {
         labels={labels}
         onOpenConnector={vi.fn()}
         onOpenConnectors={vi.fn()}
+        selectedConnectorKeys={connectedConnectors.map(
+          (item) => item.connectorKey ?? ""
+        )}
       />
     );
 
@@ -135,7 +140,7 @@ describe("ComposerConnectorsMenu", () => {
     const connected = await screen.findByTestId(
       "connector-market-composer-item-github"
     );
-    expect(connected).toHaveTextContent("Connected");
+    expect(connected).toHaveTextContent("Authorized");
     expect(
       screen.getByTestId("connector-market-composer-status-github")
     ).toHaveClass("ml-auto");
@@ -173,6 +178,48 @@ describe("ComposerConnectorsMenu", () => {
     expect(onOpenChange).toHaveBeenLastCalledWith(false);
   });
 
+  it("distinguishes authorized connectors from composer selection", async () => {
+    const onSelectConnector = vi.fn();
+    const rendered = render(
+      <ComposerConnectorsMenu
+        connectors={[connector("notion", "available")]}
+        disabled={false}
+        labels={labels}
+        onOpenConnector={vi.fn()}
+        onOpenConnectors={vi.fn()}
+        onSelectConnector={onSelectConnector}
+        selectedConnectorKeys={[]}
+      />
+    );
+
+    fireEvent.pointerDown(screen.getByRole("button", { name: "Connectors" }), {
+      button: 0,
+      ctrlKey: false
+    });
+    const authorized = await screen.findByTestId(
+      "connector-market-composer-item-notion"
+    );
+    expect(authorized).toHaveTextContent("Authorized");
+    expect(authorized).not.toHaveAttribute("data-disabled");
+    fireEvent.pointerDown(authorized, { button: 0, ctrlKey: false });
+    expect(onSelectConnector).toHaveBeenCalledWith("notion", true);
+
+    rendered.rerender(
+      <ComposerConnectorsMenu
+        connectors={[connector("notion", "available")]}
+        disabled={false}
+        labels={labels}
+        onOpenConnector={vi.fn()}
+        onOpenConnectors={vi.fn()}
+        onSelectConnector={onSelectConnector}
+        selectedConnectorKeys={["notion"]}
+      />
+    );
+    expect(
+      screen.getByTestId("connector-market-composer-preview-notion")
+    ).toBeInTheDocument();
+  });
+
   it("replaces connected state with authorize when connector status refreshes", async () => {
     const props = {
       disabled: false,
@@ -193,7 +240,7 @@ describe("ComposerConnectorsMenu", () => {
     });
     expect(
       await screen.findByTestId("connector-market-composer-status-lark-cli")
-    ).toHaveTextContent("Connected");
+    ).toHaveTextContent("Authorized");
 
     rendered.rerender(
       <ComposerConnectorsMenu

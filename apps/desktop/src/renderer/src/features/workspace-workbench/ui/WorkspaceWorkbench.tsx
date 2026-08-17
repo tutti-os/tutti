@@ -939,10 +939,12 @@ function ReadyWorkspaceWorkbenchWithSession({
           onNodeCloseRequest={hostInput.onNodeCloseRequest}
           renderTopChrome={(chromeContext) => (
             <WorkspaceChrome
+              activateNode={chromeContext.activateNode}
               appName={appName}
               externalAgentSessionImportPromptEnabled={!replayRuntimeActive}
               headerSlot={headerSlot}
               launchNode={chromeContext.launchNode}
+              focusNode={chromeContext.focusNode}
               missionControl={runtime.missionControl}
               onSelectWallpaper={runtime.selectWallpaper}
               onSelectWallpaperDisplayMode={runtime.selectWallpaperDisplayMode}

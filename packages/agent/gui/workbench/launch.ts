@@ -6,10 +6,12 @@ import {
 import {
   agentGuiWorkbenchOpenSessionActivationType,
   agentGuiWorkbenchPrefillPromptActivationType,
+  agentGuiWorkbenchSelectConnectorActivationType,
   type AgentGuiWorkbenchPrefillPromptPayload,
   type AgentGuiWorkbenchOpenSessionComposerAppend,
   type AgentGuiWorkbenchOpenSessionPayload,
-  type AgentGuiWorkbenchProvider
+  type AgentGuiWorkbenchProvider,
+  type AgentGuiWorkbenchSelectConnectorPayload
 } from "./types.ts";
 
 export { agentGuiWorkbenchPrefillPromptActivationType } from "./types.ts";
@@ -146,6 +148,21 @@ export function createAgentGuiWorkbenchDraftLaunchRequest(input: {
   };
 }
 
+export function createAgentGuiWorkbenchConnectorLaunchRequest(input: {
+  connectorKey: string;
+}) {
+  const connectorKey = input.connectorKey.trim();
+  if (!connectorKey) {
+    throw new Error("agent_gui_workbench.connector_key_required");
+  }
+  return {
+    dockEntryId: agentGuiWorkbenchUnifiedDockEntryId(),
+    payload: { composerAppend: { connectorKey } },
+    reason: "host" as const,
+    typeId: agentGuiWorkbenchTypeId
+  };
+}
+
 export interface AgentGuiWorkbenchLaunchDescriptor {
   activation:
     | {
@@ -155,6 +172,10 @@ export interface AgentGuiWorkbenchLaunchDescriptor {
     | {
         payload: AgentGuiWorkbenchPrefillPromptPayload;
         type: typeof agentGuiWorkbenchPrefillPromptActivationType;
+      }
+    | {
+        payload: AgentGuiWorkbenchSelectConnectorPayload;
+        type: typeof agentGuiWorkbenchSelectConnectorActivationType;
       }
     | null;
   dockEntryId: string;
@@ -175,6 +196,23 @@ export function createAgentGuiWorkbenchLaunchDescriptor(
 ): AgentGuiWorkbenchLaunchDescriptor {
   const provider = agentGuiWorkbenchProviderFromLaunchRequest(request);
   const dockEntryId = agentGuiWorkbenchUnifiedDockEntryId();
+  const connectorSelection = connectorSelectionFromLaunchPayload(
+    request.payload
+  );
+  if (connectorSelection) {
+    return {
+      activation: {
+        payload: connectorSelection,
+        type: agentGuiWorkbenchSelectConnectorActivationType
+      },
+      dockEntryId,
+      instanceId: createAgentGuiWorkbenchInstanceId(),
+      openInNewWindow: false,
+      provider,
+      reusePolicy: { kind: "dock-entry" },
+      targetAgentSessionId: null
+    };
+  }
   const prefillPrompt = prefillPromptFromLaunchPayload(request.payload);
   if (prefillPrompt) {
     const openInNewWindow = openInNewWindowFromLaunchPayload(request.payload);
@@ -222,6 +260,28 @@ export function createAgentGuiWorkbenchLaunchDescriptor(
           : { kind: "dock-entry" },
     targetAgentSessionId
   };
+}
+
+function connectorSelectionFromLaunchPayload(
+  payload: unknown
+): AgentGuiWorkbenchSelectConnectorPayload | null {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    return null;
+  }
+  const composerAppend = (payload as { composerAppend?: unknown })
+    .composerAppend;
+  if (
+    !composerAppend ||
+    typeof composerAppend !== "object" ||
+    Array.isArray(composerAppend)
+  ) {
+    return null;
+  }
+  const connectorKey = (composerAppend as { connectorKey?: unknown })
+    .connectorKey;
+  return typeof connectorKey === "string" && connectorKey.trim()
+    ? { connectorKey: connectorKey.trim() }
+    : null;
 }
 
 function openSessionComposerAppendFromLaunchPayload(

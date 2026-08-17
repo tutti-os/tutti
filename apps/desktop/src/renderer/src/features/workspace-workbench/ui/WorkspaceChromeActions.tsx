@@ -296,6 +296,7 @@ function WorkspaceMissionControlAction({
 
 export function WorkspaceSettingsTrigger({
   onOpenExternalAgentImport,
+  onTryConnector,
   onSelectWallpaper,
   onSelectWallpaperDisplayMode,
   selectedWallpaperDisplayMode,
@@ -303,6 +304,7 @@ export function WorkspaceSettingsTrigger({
   workspace
 }: {
   onOpenExternalAgentImport: () => void;
+  onTryConnector: (connectorKey: string) => void;
   onSelectWallpaper: (id: WorkspaceWallpaperId) => void;
   onSelectWallpaperDisplayMode: (
     displayMode: WorkspaceWallpaperDisplayMode
@@ -347,7 +349,7 @@ export function WorkspaceSettingsTrigger({
 
   return (
     <>
-      <WorkspaceConnectorMarketDialogHost />
+      <WorkspaceConnectorMarketDialogHost onTryConnector={onTryConnector} />
       <Tooltip>
         <TooltipTrigger asChild>
           <span
@@ -381,6 +383,7 @@ export function WorkspaceSettingsTrigger({
       </Tooltip>
       <WorkspaceSettingsPanel
         onOpenExternalAgentImport={onOpenExternalAgentImport}
+        onTryConnector={onTryConnector}
         onSelectWallpaper={onSelectWallpaper}
         onSelectWallpaperDisplayMode={onSelectWallpaperDisplayMode}
         selectedWallpaperDisplayMode={selectedWallpaperDisplayMode}

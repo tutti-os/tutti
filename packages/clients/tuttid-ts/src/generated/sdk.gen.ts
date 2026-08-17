@@ -10,6 +10,9 @@ import type {
   AcceptAgentSessionWorkData,
   AcceptAgentSessionWorkErrors,
   AcceptAgentSessionWorkResponses,
+  AcknowledgeConnectorMarketAuthorizationCompletionData,
+  AcknowledgeConnectorMarketAuthorizationCompletionErrors,
+  AcknowledgeConnectorMarketAuthorizationCompletionResponses,
   AcknowledgeWorkspaceAgentSessionForkOperationData,
   AcknowledgeWorkspaceAgentSessionForkOperationErrors,
   AcknowledgeWorkspaceAgentSessionForkOperationResponses,
@@ -5634,6 +5637,27 @@ export const disconnectConnectorMarketAuthorization = <
       "Content-Type": "application/json",
       ...options.headers
     }
+  });
+
+/**
+ * Acknowledge one durable authorization completion notification
+ */
+export const acknowledgeConnectorMarketAuthorizationCompletion = <
+  ThrowOnError extends boolean = false
+>(
+  options: Options<
+    AcknowledgeConnectorMarketAuthorizationCompletionData,
+    ThrowOnError
+  >
+) =>
+  (options.client ?? client).post<
+    AcknowledgeConnectorMarketAuthorizationCompletionResponses,
+    AcknowledgeConnectorMarketAuthorizationCompletionErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/connector-market/authorization-completions/{completionID}:acknowledge",
+    ...options
   });
 
 /**

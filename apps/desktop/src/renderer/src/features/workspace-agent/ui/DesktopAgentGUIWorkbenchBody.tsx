@@ -74,7 +74,7 @@ import { resolveDesktopAgentGUIWorkbenchBodyVisibility } from "./desktopAgentGUI
 import { useDesktopAgentConfigCommerce } from "./useDesktopAgentConfigCommerce.tsx";
 import { hasDesktopLocalTuttiAgent } from "./desktopAgentConfigCommerceContext.ts";
 import { useDesktopAgentGUIComposerFooterAccessory } from "./useDesktopAgentGUIComposerFooterAccessory.tsx";
-import { useDesktopAgentGUIOpenSessionComposerRequest } from "./useDesktopAgentGUIOpenSessionComposerRequest.ts";
+import { useDesktopAgentGUIConnectorSelectionActivation } from "./useDesktopAgentGUIConnectorSelectionActivation.ts";
 import { useDesktopAgentGUIProviderAuthAccountLabels } from "./useDesktopAgentGUIProviderAuthAccountLabels.ts";
 import {
   useDesktopAgentGUIConversationRailPreference,
@@ -523,8 +523,13 @@ function DesktopAgentGUISurfaceImpl({
     },
     [desktopPreferencesService, runtimeApi, workspaceId]
   );
-  const handleComposerAppendHandled =
-    useDesktopAgentGUIOpenSessionComposerRequest(setOpenSessionComposerRequest);
+  const { connectorSelectionRequest, handleComposerAppendHandled } =
+    useDesktopAgentGUIConnectorSelectionActivation({
+      activation: surface.activation,
+      clearNodeActivation: surface.host.clearNodeActivation,
+      nodeId: surface.nodeId,
+      setOpenSessionComposerRequest
+    });
 
   const frame = surface.frame;
   const agentHostApiWithToast = useMemo<AgentHostInputApi>(
@@ -545,6 +550,7 @@ function DesktopAgentGUISurfaceImpl({
   );
   const composerFocusRequestSequence =
     openSessionComposerRequest?.sequence ??
+    connectorSelectionRequest?.sequence ??
     composerAppendRequest?.sequence ??
     (surface.activation?.type === workbenchFocusInputActivationType ||
     surface.activation?.type === desktopAgentGUIPrefillPromptActivationType
@@ -654,7 +660,7 @@ function DesktopAgentGUISurfaceImpl({
             prompt: openSessionComposerRequest.draftPrompt,
             sequence: openSessionComposerRequest.sequence
           }
-        : composerAppendRequest,
+        : (connectorSelectionRequest ?? composerAppendRequest),
       composerFocusSequence: composerFocusRequestSequence,
       workbench: {
         instanceId: surface.instanceId,

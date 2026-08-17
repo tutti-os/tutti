@@ -7,6 +7,7 @@ import type {
   AgentComposerDraftFile,
   AgentComposerDraftLargeText,
   AgentComposerDraftImage,
+  AgentComposerDraftConnector,
   AgentComposerDraftContent,
   AgentGUIProviderSkillOption
 } from "./agentGuiNodeTypes";
@@ -23,13 +24,20 @@ import {
 } from "./agentExternalPromptFiles";
 import { agentComposerFileMentionReferences } from "../agentRichText/agentMentionMarkdown";
 import { pastedTextDraftDisplayName } from "../../../shared/pastedTextReferenceProjection";
+import {
+  agentComposerDraftConnectorBlocks,
+  agentComposerDraftConnectors,
+  agentPromptContentConnectors,
+  mergeAgentComposerDraftConnectorKeys
+} from "./agentComposerDraftConnectors";
+
+export { agentComposerDraftConnectors } from "./agentComposerDraftConnectors";
 
 export {
   extractPastedTextArchivePaths,
   linkifyPastedTextReferences,
   pastedTextDraftDisplayName
 } from "../../../shared/pastedTextReferenceProjection";
-
 const PASTED_TEXT_MENTION_PREVIEW_MAX_CHARS = 10;
 
 /**
@@ -213,6 +221,7 @@ interface AgentComposerDraftAttachmentProjection {
   images: AgentComposerDraftImage[];
   files: AgentComposerDraftFile[];
   largeTexts: AgentComposerDraftLargeText[];
+  connectors: AgentComposerDraftConnector[];
 }
 
 const attachmentProjectionByDraft = new WeakMap<
@@ -228,7 +237,8 @@ export function agentComposerDraftAttachmentProjection(
   const projection = {
     images: agentComposerDraftImages(draft),
     files: agentComposerDraftFiles(draft),
-    largeTexts: agentComposerDraftLargeTexts(draft)
+    largeTexts: agentComposerDraftLargeTexts(draft),
+    connectors: agentComposerDraftConnectors(draft)
   };
   attachmentProjectionByDraft.set(draft, projection);
   return projection;
@@ -239,6 +249,7 @@ export function buildAgentComposerDraft(input: {
   images?: readonly AgentComposerDraftImage[];
   files?: readonly AgentComposerDraftFile[];
   largeTexts?: readonly AgentComposerDraftLargeText[];
+  connectors?: readonly AgentComposerDraftConnector[];
 }): AgentComposerDraft {
   return [
     { type: "text", text: input.prompt },
@@ -257,7 +268,8 @@ export function buildAgentComposerDraft(input: {
         kind: AGENT_PASTED_TEXT_BLOCK_KIND,
         ...item
       })
-    )
+    ),
+    ...agentComposerDraftConnectorBlocks(input.connectors ?? [])
   ];
 }
 
@@ -268,13 +280,15 @@ export function updateAgentComposerDraft(
     images: readonly AgentComposerDraftImage[];
     files: readonly AgentComposerDraftFile[];
     largeTexts: readonly AgentComposerDraftLargeText[];
+    connectors: readonly AgentComposerDraftConnector[];
   }>
 ): AgentComposerDraft {
   return buildAgentComposerDraft({
     prompt: update.prompt ?? agentComposerDraftPrompt(draft),
     images: update.images ?? agentComposerDraftImages(draft),
     files: update.files ?? agentComposerDraftFiles(draft),
-    largeTexts: update.largeTexts ?? agentComposerDraftLargeTexts(draft)
+    largeTexts: update.largeTexts ?? agentComposerDraftLargeTexts(draft),
+    connectors: update.connectors ?? agentComposerDraftConnectors(draft)
   });
 }
 
@@ -295,6 +309,7 @@ export function agentComposerDraftHasContent(
   );
   if (
     textWithoutComposerFiles.trim() ||
+    agentComposerDraftConnectors(draft).length > 0 ||
     agentComposerDraftFiles(draft).some((file) =>
       referencedFileIds.has(file.id)
     )
@@ -304,6 +319,7 @@ export function agentComposerDraftHasContent(
   return draft.some((block) => {
     if (block.type === "text") return false;
     if (block.type === "image") return true;
+    if (block.type === "connector") return true;
     return block.kind === "file"
       ? false
       : block.text.trim() !== "" || Boolean(block.path || block.url);
@@ -472,7 +488,8 @@ export function agentPromptContentToComposerDraft(
         agentPromptImageBlockToDraftImage(image, idPrefix, index)
       ),
     files,
-    largeTexts
+    largeTexts,
+    connectors: agentPromptContentConnectors(normalizedContent)
   });
 }
 
@@ -513,13 +530,17 @@ export function agentComposerDraftToPromptContent(input: {
     prompt,
     skills: input.skills
   });
+  const connectorKeys = mergeAgentComposerDraftConnectorKeys(
+    input.draft,
+    connectorProjection.connectorKeys
+  );
   return normalizeAgentPromptContentBlocks([
     ...textPromptContent(connectorProjection.prompt),
     ...promptItemBlocksForProviderSkills({
       prompt: connectorProjection.prompt,
       skills: input.skills
     }),
-    ...connectorProjection.connectorKeys.map((connectorKey) => ({
+    ...connectorKeys.map((connectorKey) => ({
       type: "connector" as const,
       connectorKey
     })),

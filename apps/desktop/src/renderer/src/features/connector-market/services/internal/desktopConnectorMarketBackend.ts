@@ -40,6 +40,11 @@ export function createDesktopConnectorMarketBackend(
         connectorKey,
         request
       );
+    },
+    acknowledgeAuthorizationCompletion({ completionId }) {
+      return client.acknowledgeConnectorMarketAuthorizationCompletion(
+        completionId
+      );
     }
   };
 }

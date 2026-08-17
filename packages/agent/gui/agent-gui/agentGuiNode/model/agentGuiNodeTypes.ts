@@ -214,13 +214,22 @@ export type AgentComposerAttachmentBlock =
   | AgentComposerImageBlock
   | AgentComposerFileBlock;
 
+export interface AgentComposerConnectorBlock {
+  type: "connector";
+  connectorKey: string;
+}
+
+export type AgentComposerSupplementaryBlock =
+  | AgentComposerAttachmentBlock
+  | AgentComposerConnectorBlock;
+
 export type AgentComposerDraftBlock =
   | AgentComposerTextBlock
-  | AgentComposerAttachmentBlock;
+  | AgentComposerSupplementaryBlock;
 
 export type AgentComposerDraftContent = [
   AgentComposerTextBlock,
-  ...AgentComposerAttachmentBlock[]
+  ...AgentComposerSupplementaryBlock[]
 ];
 
 /** One atomic, unsent composer message. */
@@ -242,6 +251,10 @@ export type AgentComposerDraftFile = Omit<
 export type AgentComposerDraftLargeText = Omit<
   AgentComposerPastedTextBlock,
   "type" | "kind"
+>;
+export type AgentComposerDraftConnector = Omit<
+  AgentComposerConnectorBlock,
+  "type"
 >;
 
 /**

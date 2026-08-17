@@ -1,9 +1,13 @@
-import { agentGuiWorkbenchOpenSessionActivationType } from "@tutti-os/agent-gui/workbench/types";
+import {
+  agentGuiWorkbenchOpenSessionActivationType,
+  agentGuiWorkbenchSelectConnectorActivationType
+} from "@tutti-os/agent-gui/workbench/types";
 import {
   agentGuiWorkbenchProviderFromLaunchRequest,
   agentGuiWorkbenchTypeId,
   agentGuiWorkbenchUnifiedDockEntryId,
   createAgentGuiWorkbenchDraftLaunchRequest,
+  createAgentGuiWorkbenchConnectorLaunchRequest,
   createAgentGuiWorkbenchInstanceId,
   createAgentGuiWorkbenchLaunchDescriptor,
   createAgentGuiWorkbenchSessionLaunchRequest
@@ -11,10 +15,12 @@ import {
 
 export {
   agentGuiWorkbenchOpenSessionActivationType,
+  agentGuiWorkbenchSelectConnectorActivationType,
   agentGuiWorkbenchProviderFromLaunchRequest as workspaceAgentGuiProviderFromLaunchRequest,
   agentGuiWorkbenchTypeId as workspaceAgentGuiNodeID,
   agentGuiWorkbenchUnifiedDockEntryId as workspaceAgentGuiUnifiedDockEntryId,
   createAgentGuiWorkbenchDraftLaunchRequest as createWorkspaceAgentGuiDraftLaunchRequest,
+  createAgentGuiWorkbenchConnectorLaunchRequest as createWorkspaceAgentGuiConnectorLaunchRequest,
   createAgentGuiWorkbenchInstanceId as createWorkspaceAgentGuiInstanceId,
   createAgentGuiWorkbenchLaunchDescriptor as createWorkspaceAgentGuiLaunchDescriptor,
   createAgentGuiWorkbenchSessionLaunchRequest as createWorkspaceAgentGuiSessionLaunchRequest

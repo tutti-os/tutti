@@ -268,6 +268,7 @@ function backendWith(
     beginAuthorization: unsupported,
     cancelAuthorization: unsupported,
     disconnectAuthorization: unsupported,
+    acknowledgeAuthorizationCompletion: unsupported,
     getConnector: unsupported,
     getOperation: unsupported,
     getSnapshot: async () => snapshot(0, []),

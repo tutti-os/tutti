@@ -8,7 +8,11 @@ import { useTranslation } from "@renderer/i18n";
 import { useWorkspaceSettingsService } from "./useWorkspaceSettingsService";
 
 /** One canonical connector-market dialog host for each workbench window. */
-export function WorkspaceConnectorMarketDialogHost() {
+export function WorkspaceConnectorMarketDialogHost({
+  onTryConnector
+}: {
+  onTryConnector: (connectorKey: string) => void;
+}) {
   const { i18n: appI18n, locale } = useTranslation();
   const i18n = useMemo(
     () => createConnectorMarketI18nRuntime(appI18n),
@@ -27,7 +31,10 @@ export function WorkspaceConnectorMarketDialogHost() {
       i18n={i18n}
       locale={locale}
       onError={handleError}
-      onTryConnector={() => settingsService.closePanel()}
+      onTryConnector={(connectorKey) => {
+        settingsService.closePanel();
+        onTryConnector(connectorKey);
+      }}
       root={connectorMarketModule.root}
     />
   );

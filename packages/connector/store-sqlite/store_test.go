@@ -402,6 +402,83 @@ func TestStoreKeepsAuthorizationSessionPrivateAndAvailableAfterReopen(t *testing
 	}
 }
 
+func TestStorePersistsAndAcknowledgesAuthorizationCompletionPerAccount(t *testing.T) {
+	ctx := context.Background()
+	store, err := Open(ctx, filepath.Join(t.TempDir(), "tuttid.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	for _, accountID := range []string{"account-1", "account-2"} {
+		operation := market.Operation{
+			OperationID:     "authorization-" + accountID,
+			ClientRequestID: "request-" + accountID,
+			ConnectorKey:    "notion",
+			Kind:            market.OperationKindStartAuthorization,
+			State:           market.OperationStateCompleted,
+			Scope:           market.OperationScope{AccountID: accountID},
+			Stage:           market.OperationStageCompleted,
+			CreatedAt:       time.Unix(1, 0).UTC(),
+			UpdatedAt:       time.Unix(2, 0).UTC(),
+			Execution: market.OperationExecution{AuthorizationSession: &market.AuthorizationSession{
+				OperationID:  "authorization-" + accountID,
+				ConnectorKey: "notion",
+				SessionID:    "session-" + accountID,
+				State:        market.AuthorizationStatePending,
+			}},
+		}
+		if err := store.Transaction(ctx, func(tx market.Transaction) error { return tx.SaveOperation(operation) }); err != nil {
+			t.Fatal(err)
+		}
+		if err := store.ResolveAuthorizationSession(
+			ctx,
+			operation.OperationID,
+			market.AuthorizationSessionResolutionProviderConnected,
+		); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	accountOne, err := store.SnapshotForScope(ctx, market.OperationScope{AccountID: "account-1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(accountOne.AuthorizationCompletions) != 1 ||
+		accountOne.AuthorizationCompletions[0].CompletionID != "authorization-account-1" {
+		t.Fatalf("account one completions = %#v", accountOne.AuthorizationCompletions)
+	}
+	if err := store.AcknowledgeAuthorizationCompletion(
+		ctx,
+		market.OperationScope{AccountID: "account-2"},
+		"authorization-account-1",
+	); !errors.Is(err, market.ErrNotFound) {
+		t.Fatalf("cross-account acknowledgement error = %v, want not found", err)
+	}
+	if err := store.AcknowledgeAuthorizationCompletion(
+		ctx,
+		market.OperationScope{AccountID: "account-1"},
+		"authorization-account-1",
+	); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.AcknowledgeAuthorizationCompletion(
+		ctx,
+		market.OperationScope{AccountID: "account-1"},
+		"authorization-account-1",
+	); err != nil {
+		t.Fatalf("idempotent acknowledgement failed: %v", err)
+	}
+	accountOne, err = store.SnapshotForScope(ctx, market.OperationScope{AccountID: "account-1"})
+	if err != nil || len(accountOne.AuthorizationCompletions) != 0 {
+		t.Fatalf("acknowledged account one completions = %#v, error = %v", accountOne.AuthorizationCompletions, err)
+	}
+	accountTwo, err := store.SnapshotForScope(ctx, market.OperationScope{AccountID: "account-2"})
+	if err != nil || len(accountTwo.AuthorizationCompletions) != 1 ||
+		accountTwo.AuthorizationCompletions[0].CompletionID != "authorization-account-2" {
+		t.Fatalf("account two completions = %#v, error = %v", accountTwo.AuthorizationCompletions, err)
+	}
+}
+
 func TestStorePersistsAuthorizationProjectionByAccount(t *testing.T) {
 	ctx := context.Background()
 	store, err := Open(ctx, filepath.Join(t.TempDir(), "tuttid.db"))

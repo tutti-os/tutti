@@ -12,16 +12,28 @@ import (
 
 type stubConnectorMarketService struct {
 	market.Service
-	snapshotFn   func(context.Context) (market.Snapshot, error)
-	categoriesFn func(context.Context) ([]market.CatalogCategory, error)
-	pageFn       func(context.Context, market.CatalogPageQuery) (market.CatalogPage, error)
-	installFn    func(context.Context, market.ConnectorMutation) (market.MutationResult, error)
-	uninstallFn  func(context.Context, market.ConnectorMutation) (market.MutationResult, error)
-	refreshFn    func(context.Context, market.Mutation) (market.MutationResult, error)
-	operationFn  func(context.Context, market.OperationScope, string) (market.Operation, error)
-	cancelFn     func(context.Context, market.OperationScope, string) error
-	beginFn      func(context.Context, market.ConnectorMutation, []byte) (market.AuthorizationResult, error)
-	projectionFn func(context.Context, string, string) (market.AuthorizationProjection, error)
+	snapshotFn                           func(context.Context) (market.Snapshot, error)
+	categoriesFn                         func(context.Context) ([]market.CatalogCategory, error)
+	pageFn                               func(context.Context, market.CatalogPageQuery) (market.CatalogPage, error)
+	installFn                            func(context.Context, market.ConnectorMutation) (market.MutationResult, error)
+	uninstallFn                          func(context.Context, market.ConnectorMutation) (market.MutationResult, error)
+	refreshFn                            func(context.Context, market.Mutation) (market.MutationResult, error)
+	operationFn                          func(context.Context, market.OperationScope, string) (market.Operation, error)
+	cancelFn                             func(context.Context, market.OperationScope, string) error
+	acknowledgeAuthorizationCompletionFn func(context.Context, market.OperationScope, string) error
+	beginFn                              func(context.Context, market.ConnectorMutation, []byte) (market.AuthorizationResult, error)
+	projectionFn                         func(context.Context, string, string) (market.AuthorizationProjection, error)
+}
+
+func (service stubConnectorMarketService) AcknowledgeAuthorizationCompletion(
+	ctx context.Context,
+	scope market.OperationScope,
+	completionID string,
+) error {
+	if service.acknowledgeAuthorizationCompletionFn == nil {
+		return nil
+	}
+	return service.acknowledgeAuthorizationCompletionFn(ctx, scope, completionID)
 }
 
 func (service stubConnectorMarketService) BeginAuthorization(
@@ -166,6 +178,33 @@ func TestDaemonAPICancelsConnectorAuthorizationForActiveAccount(t *testing.T) {
 	}
 	if gotScope.AccountID != "account-1" || gotConnectorKey != "supabase" {
 		t.Fatalf("cancel scope=%#v connector=%q", gotScope, gotConnectorKey)
+	}
+}
+
+func TestDaemonAPIAcknowledgesAuthorizationCompletionForActiveAccount(t *testing.T) {
+	var gotScope market.OperationScope
+	var gotCompletionID string
+	service := stubConnectorMarketService{acknowledgeAuthorizationCompletionFn: func(
+		_ context.Context,
+		scope market.OperationScope,
+		completionID string,
+	) error {
+		gotScope, gotCompletionID = scope, completionID
+		return nil
+	}}
+	mux := http.NewServeMux()
+	RegisterRoutes(mux, NewRoutes(DaemonAPI{
+		ConnectorMarketService: service,
+		ConnectorMarketScope:   func() market.OperationScope { return market.OperationScope{AccountID: "account-1"} },
+	}))
+
+	recorder := performGeneratedRouteRequest(t, mux, http.MethodPost,
+		"/v1/connector-market/authorization-completions/authorization-1:acknowledge", nil)
+	if recorder.Code != http.StatusNoContent {
+		t.Fatalf("status = %d, want %d; body: %s", recorder.Code, http.StatusNoContent, recorder.Body.String())
+	}
+	if gotScope.AccountID != "account-1" || gotCompletionID != "authorization-1" {
+		t.Fatalf("acknowledgement scope=%#v completion=%q", gotScope, gotCompletionID)
 	}
 }
 

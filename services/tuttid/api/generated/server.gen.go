@@ -101,6 +101,9 @@ type ServerInterface interface {
 	// Get the authoritative connector-market snapshot
 	// (GET /v1/connector-market)
 	GetConnectorMarket(w http.ResponseWriter, r *http.Request)
+	// Acknowledge one durable authorization completion notification
+	// (POST /v1/connector-market/authorization-completions/{completionID}:acknowledge)
+	AcknowledgeConnectorMarketAuthorizationCompletion(w http.ResponseWriter, r *http.Request, completionID ConnectorMarketAuthorizationCompletionID)
 	// List one server-owned connector-market section
 	// (GET /v1/connector-market/catalog)
 	ListConnectorMarketCatalog(w http.ResponseWriter, r *http.Request, params ListConnectorMarketCatalogParams)
@@ -1652,6 +1655,38 @@ func (siw *ServerInterfaceWrapper) GetConnectorMarket(w http.ResponseWriter, r *
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetConnectorMarket(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// AcknowledgeConnectorMarketAuthorizationCompletion operation middleware
+func (siw *ServerInterfaceWrapper) AcknowledgeConnectorMarketAuthorizationCompletion(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "completionID" -------------
+	var completionID ConnectorMarketAuthorizationCompletionID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "completionID", r.PathValue("completionID"), &completionID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "completionID", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AcknowledgeConnectorMarketAuthorizationCompletion(w, r, completionID)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -11413,6 +11448,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/cli/capabilities", wrapper.ListCliCapabilities)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/cli/commands/{commandID}/invoke", wrapper.InvokeCliCommand)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/connector-market", wrapper.GetConnectorMarket)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/connector-market/authorization-completions/{completionID}:acknowledge", wrapper.AcknowledgeConnectorMarketAuthorizationCompletion)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/connector-market/catalog", wrapper.ListConnectorMarketCatalog)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/connector-market/categories", wrapper.ListConnectorMarketCategories)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/connector-market/connectors/{connectorKey}", wrapper.GetConnectorMarketConnector)
@@ -13996,6 +14032,86 @@ type GetConnectorMarket503JSONResponse struct {
 }
 
 func (response GetConnectorMarket503JSONResponse) VisitGetConnectorMarketResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AcknowledgeConnectorMarketAuthorizationCompletionRequestObject struct {
+	CompletionID ConnectorMarketAuthorizationCompletionID `json:"completionID"`
+}
+
+type AcknowledgeConnectorMarketAuthorizationCompletionResponseObject interface {
+	VisitAcknowledgeConnectorMarketAuthorizationCompletionResponse(w http.ResponseWriter) error
+}
+
+type AcknowledgeConnectorMarketAuthorizationCompletion204Response struct {
+}
+
+func (response AcknowledgeConnectorMarketAuthorizationCompletion204Response) VisitAcknowledgeConnectorMarketAuthorizationCompletionResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type AcknowledgeConnectorMarketAuthorizationCompletion400JSONResponse struct {
+	ConnectorMarketInvalidRequestErrorJSONResponse
+}
+
+func (response AcknowledgeConnectorMarketAuthorizationCompletion400JSONResponse) VisitAcknowledgeConnectorMarketAuthorizationCompletionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AcknowledgeConnectorMarketAuthorizationCompletion401JSONResponse struct {
+	ConnectorMarketUnauthorizedErrorJSONResponse
+}
+
+func (response AcknowledgeConnectorMarketAuthorizationCompletion401JSONResponse) VisitAcknowledgeConnectorMarketAuthorizationCompletionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AcknowledgeConnectorMarketAuthorizationCompletion404JSONResponse struct {
+	ConnectorMarketNotFoundErrorJSONResponse
+}
+
+func (response AcknowledgeConnectorMarketAuthorizationCompletion404JSONResponse) VisitAcknowledgeConnectorMarketAuthorizationCompletionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AcknowledgeConnectorMarketAuthorizationCompletion503JSONResponse struct {
+	ConnectorMarketUnavailableErrorJSONResponse
+}
+
+func (response AcknowledgeConnectorMarketAuthorizationCompletion503JSONResponse) VisitAcknowledgeConnectorMarketAuthorizationCompletionResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -39601,6 +39717,9 @@ type StrictServerInterface interface {
 	// Get the authoritative connector-market snapshot
 	// (GET /v1/connector-market)
 	GetConnectorMarket(ctx context.Context, request GetConnectorMarketRequestObject) (GetConnectorMarketResponseObject, error)
+	// Acknowledge one durable authorization completion notification
+	// (POST /v1/connector-market/authorization-completions/{completionID}:acknowledge)
+	AcknowledgeConnectorMarketAuthorizationCompletion(ctx context.Context, request AcknowledgeConnectorMarketAuthorizationCompletionRequestObject) (AcknowledgeConnectorMarketAuthorizationCompletionResponseObject, error)
 	// List one server-owned connector-market section
 	// (GET /v1/connector-market/catalog)
 	ListConnectorMarketCatalog(ctx context.Context, request ListConnectorMarketCatalogRequestObject) (ListConnectorMarketCatalogResponseObject, error)
@@ -41087,6 +41206,32 @@ func (sh *strictHandler) GetConnectorMarket(w http.ResponseWriter, r *http.Reque
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetConnectorMarketResponseObject); ok {
 		if err := validResponse.VisitGetConnectorMarketResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// AcknowledgeConnectorMarketAuthorizationCompletion operation middleware
+func (sh *strictHandler) AcknowledgeConnectorMarketAuthorizationCompletion(w http.ResponseWriter, r *http.Request, completionID ConnectorMarketAuthorizationCompletionID) {
+	var request AcknowledgeConnectorMarketAuthorizationCompletionRequestObject
+
+	request.CompletionID = completionID
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.AcknowledgeConnectorMarketAuthorizationCompletion(ctx, request.(AcknowledgeConnectorMarketAuthorizationCompletionRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "AcknowledgeConnectorMarketAuthorizationCompletion")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(AcknowledgeConnectorMarketAuthorizationCompletionResponseObject); ok {
+		if err := validResponse.VisitAcknowledgeConnectorMarketAuthorizationCompletionResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

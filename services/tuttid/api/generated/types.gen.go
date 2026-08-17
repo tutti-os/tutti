@@ -6241,6 +6241,13 @@ type ConnectorMarketAuthorization struct {
 	State       ConnectorMarketAuthorizationState `json:"state"`
 }
 
+// ConnectorMarketAuthorizationCompletion defines model for ConnectorMarketAuthorizationCompletion.
+type ConnectorMarketAuthorizationCompletion struct {
+	CompletedAt  time.Time `json:"completedAt"`
+	CompletionId string    `json:"completionId"`
+	ConnectorKey string    `json:"connectorKey"`
+}
+
 // ConnectorMarketAuthorizationReplacementPolicy When set to replace_active, the Host fences and terminates a different unresolved authorization attempt before starting this request. Omission preserves the legacy resume-or-conflict behavior.
 type ConnectorMarketAuthorizationReplacementPolicy string
 
@@ -6464,12 +6471,13 @@ type ConnectorMarketReleaseStatus string
 
 // ConnectorMarketSnapshot defines model for ConnectorMarketSnapshot.
 type ConnectorMarketSnapshot struct {
-	CatalogState   ConnectorMarketCatalogState `json:"catalogState"`
-	Connectors     []ConnectorMarketConnector  `json:"connectors"`
-	EventCursor    int64                       `json:"eventCursor"`
-	Operations     []ConnectorMarketOperation  `json:"operations"`
-	Revision       int64                       `json:"revision"`
-	SourceRevision *string                     `json:"sourceRevision,omitempty"`
+	AuthorizationCompletions []ConnectorMarketAuthorizationCompletion `json:"authorizationCompletions"`
+	CatalogState             ConnectorMarketCatalogState              `json:"catalogState"`
+	Connectors               []ConnectorMarketConnector               `json:"connectors"`
+	EventCursor              int64                                    `json:"eventCursor"`
+	Operations               []ConnectorMarketOperation               `json:"operations"`
+	Revision                 int64                                    `json:"revision"`
+	SourceRevision           *string                                  `json:"sourceRevision,omitempty"`
 }
 
 // CopyWorkspaceFileEntryRequest defines model for CopyWorkspaceFileEntryRequest.
@@ -10123,6 +10131,9 @@ type CliCommandID = string
 
 // CollaborationRunID defines model for CollaborationRunID.
 type CollaborationRunID = string
+
+// ConnectorMarketAuthorizationCompletionID defines model for ConnectorMarketAuthorizationCompletionID.
+type ConnectorMarketAuthorizationCompletionID = string
 
 // ConnectorMarketConnectorKey defines model for ConnectorMarketConnectorKey.
 type ConnectorMarketConnectorKey = string

@@ -824,6 +824,15 @@ func registerConnectorMarketRoutes(mux *http.ServeMux, wrapper *tuttigenerated.S
 		}
 		wrapper.DisconnectConnectorMarketAuthorization(w, r)
 	})
+	mux.HandleFunc("/v1/connector-market/authorization-completions/{completionSegment}", func(w http.ResponseWriter, r *http.Request) {
+		segment := r.PathValue("completionSegment")
+		if r.Method != http.MethodPost || !strings.HasSuffix(segment, ":acknowledge") {
+			tuttitypes.WriteMethodNotAllowed(w)
+			return
+		}
+		r.SetPathValue("completionID", strings.TrimSuffix(segment, ":acknowledge"))
+		wrapper.AcknowledgeConnectorMarketAuthorizationCompletion(w, r)
+	})
 	mux.HandleFunc("/v1/connector-market/operations/{operationID}", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			tuttitypes.WriteMethodNotAllowed(w)

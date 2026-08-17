@@ -69,6 +69,7 @@ const connectorMarketEn = {
   connectedStatus: "Connected",
   connectorAuthorizationFailed:
     "Authorization could not be started. Try again.",
+  connectorAuthorizationSuccess: "{{name}} is authorized and ready to use",
   connectorAuthorizationTimedOut:
     "Authorization timed out. Start authorization again.",
   connectorAuthorizationConfigurationInvalid:
@@ -192,6 +193,7 @@ const connectorMarketZhCN = {
   close: "关闭",
   connectedStatus: "已连接",
   connectorAuthorizationFailed: "无法启动授权，请重试",
+  connectorAuthorizationSuccess: "{{name}} 已授权成功，现在可以使用啦",
   connectorAuthorizationTimedOut: "授权已超时，请重新授权",
   connectorAuthorizationConfigurationInvalid: "连接器授权配置无效",
   connectorDisconnectFailed: "无法解除授权，请重试",

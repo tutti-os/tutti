@@ -34,6 +34,7 @@ type Service interface {
 	BeginAuthorization(ctx context.Context, mutation ConnectorMutation, secret []byte) (AuthorizationResult, error)
 	CancelAuthorization(ctx context.Context, scope OperationScope, connectorKey string) error
 	DisconnectAuthorization(ctx context.Context, mutation ConnectorMutation) (MutationResult, error)
+	AcknowledgeAuthorizationCompletion(ctx context.Context, scope OperationScope, completionID string) error
 	ExecuteOperation(ctx context.Context, operationID string) error
 	Recover(ctx context.Context) error
 }

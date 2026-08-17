@@ -28,6 +28,7 @@ var _ market.ChangedEventOutbox = (*Store)(nil)
 var _ market.LifecycleCleanupStore = (*Store)(nil)
 var _ market.AuthorizationProjectionStore = (*Store)(nil)
 var _ market.AuthorizationSnapshotStore = (*Store)(nil)
+var _ market.AuthorizationCompletionStore = (*Store)(nil)
 
 func Open(ctx context.Context, dbPath string) (*Store, error) {
 	dbPath = strings.TrimSpace(dbPath)
@@ -192,8 +193,13 @@ FROM connector_market_metadata WHERE id = ?`, metadataID).
 	if err != nil {
 		return market.Snapshot{}, err
 	}
+	completions, err := listAuthorizationCompletionsOn(ctx, tx, accountID)
+	if err != nil {
+		return market.Snapshot{}, err
+	}
 	result.Connectors = connectors
 	result.Operations = operations
+	result.AuthorizationCompletions = completions
 	if err := tx.QueryRowContext(ctx, `SELECT COALESCE(MAX(sequence), 0) FROM connector_market_outbox`).Scan(&result.EventCursor); err != nil {
 		return market.Snapshot{}, fmt.Errorf("read connector market event cursor: %w", err)
 	}
@@ -387,78 +393,6 @@ ORDER BY operation_id`)
 		operations = append(operations, operation)
 	}
 	return operations, rows.Err()
-}
-
-func (store *Store) UnresolvedAuthorizationSessionOperations(
-	ctx context.Context,
-	scope market.OperationScope,
-) ([]market.Operation, error) {
-	rows, err := store.db.QueryContext(ctx, `
-SELECT operation_json FROM connector_market_operations
-WHERE kind = 'start_authorization' AND state = 'completed'
-ORDER BY operation_id`)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	operations := make([]market.Operation, 0)
-	for rows.Next() {
-		var payload string
-		if err := rows.Scan(&payload); err != nil {
-			return nil, err
-		}
-		operation, err := decodeOperation(payload)
-		if err != nil {
-			return nil, err
-		}
-		if operation.Scope.AccountID != scope.AccountID || operation.Execution.AuthorizationSession == nil ||
-			operation.Execution.AuthorizationSession.IsResolved() {
-			continue
-		}
-		operations = append(operations, operation)
-	}
-	return operations, rows.Err()
-}
-
-func (store *Store) ResolveAuthorizationSession(
-	ctx context.Context,
-	operationID string,
-	resolution market.AuthorizationSessionResolution,
-) error {
-	if !validAuthorizationSessionResolutionTransition(resolution) {
-		return errors.New("valid authorization session resolution is required")
-	}
-	tx, err := store.db.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = tx.Rollback() }()
-	operation, err := operationOn(ctx, tx, operationID)
-	if err != nil {
-		return err
-	}
-	if operation.Execution.AuthorizationSession == nil || operation.Execution.AuthorizationSession.IsResolved() {
-		return tx.Commit()
-	}
-	operation.Execution.AuthorizationSession.Resolution = resolution
-	operation.UpdatedAt = time.Now().UTC()
-	if err := saveOperationOn(ctx, tx, operation); err != nil {
-		return err
-	}
-	return tx.Commit()
-}
-
-func validAuthorizationSessionResolutionTransition(resolution market.AuthorizationSessionResolution) bool {
-	switch resolution {
-	case market.AuthorizationSessionResolutionCanceling,
-		market.AuthorizationSessionResolutionProviderConnected,
-		market.AuthorizationSessionResolutionProviderFailed,
-		market.AuthorizationSessionResolutionAccountStateConverged,
-		market.AuthorizationSessionResolutionSuperseded:
-		return true
-	default:
-		return false
-	}
 }
 
 func (store *Store) Transaction(ctx context.Context, fn func(market.Transaction) error) error {

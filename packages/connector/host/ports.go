@@ -334,6 +334,12 @@ type AuthorizationSnapshotStore interface {
 	ApplyAuthorizationSnapshot(ctx context.Context, accountID string, snapshot AuthorizationSnapshot) (AuthorizationSnapshotApplyResult, error)
 }
 
+// AuthorizationCompletionStore persists consumption of account-scoped
+// authorization completion receipts without exposing private session data.
+type AuthorizationCompletionStore interface {
+	AcknowledgeAuthorizationCompletion(ctx context.Context, scope OperationScope, completionID string) error
+}
+
 type AuthorizationSnapshotSource interface {
 	AuthorizationSnapshot(ctx context.Context, accountID string) (AuthorizationSnapshot, error)
 }

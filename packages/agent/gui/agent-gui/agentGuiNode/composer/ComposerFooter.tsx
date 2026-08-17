@@ -77,6 +77,8 @@ interface Props {
   onProviderSelect: AgentComposerProps["onProviderSelect"];
   onLinkAction: AgentComposerProps["onLinkAction"];
   availableSkills: AgentComposerProps["availableSkills"];
+  selectedConnectorKeys: readonly string[];
+  onConnectorSelected: (connectorKey: string, selected: boolean) => void;
   onRetryComposerOptions?: AgentComposerProps["onRetryComposerOptions"];
   onCapabilitySettingsRequest: AgentComposerProps["onCapabilitySettingsRequest"];
   onRequestWorkspaceReferences: AgentComposerProps["onRequestWorkspaceReferences"];
@@ -133,6 +135,8 @@ export function ComposerFooter({
   onLinkAction,
   availableSkills,
   onRetryComposerOptions,
+  selectedConnectorKeys,
+  onConnectorSelected,
   onCapabilitySettingsRequest,
   onRequestWorkspaceReferences,
   onWorkspaceReferencePicker: handleWorkspaceReferencePicker,
@@ -227,7 +231,9 @@ export function ComposerFooter({
             loading={composerSettings.isConnectorOptionsLoading === true}
             onRetryComposerOptions={onRetryComposerOptions}
             onCapabilitySettingsRequest={onCapabilitySettingsRequest}
+            onConnectorSelected={onConnectorSelected}
             onTuttiModeChange={onTuttiModeChange}
+            selectedConnectorKeys={selectedConnectorKeys}
             tuttiModeSupported={tuttiModeSupported}
           />
           {showHandoffSelect ? (

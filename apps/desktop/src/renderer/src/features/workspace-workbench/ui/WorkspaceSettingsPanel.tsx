@@ -162,6 +162,7 @@ const cuaDriverToggleDemoUrl = new URL(
 ).href;
 export function WorkspaceSettingsPanel({
   onOpenExternalAgentImport,
+  onTryConnector,
   onSelectWallpaper,
   onSelectWallpaperDisplayMode,
   selectedWallpaperDisplayMode,
@@ -169,6 +170,7 @@ export function WorkspaceSettingsPanel({
   workspace
 }: {
   onOpenExternalAgentImport: () => void;
+  onTryConnector: (connectorKey: string) => void;
   onSelectWallpaper: (id: WorkspaceWallpaperId) => void;
   onSelectWallpaperDisplayMode: (
     displayMode: WorkspaceWallpaperDisplayMode
@@ -403,149 +405,160 @@ export function WorkspaceSettingsPanel({
               />
             ) : settingsState.activeSection === "agent" ? (
               <div className="flex min-h-0 flex-col gap-5">
-              <div className="pb-[20px]">
-                <div className="sticky top-0 z-10 -mx-[22px] px-[22px] py-3 bg-[var(--background-fronted)]">
-                  <SectionTabs
-                    ariaLabel={t("workspace.settings.nav.agent")}
-                    className="h-8 shrink-0"
-                    tabs={[
-                      {
-                        value: "general" as const,
-                        label: t("workspace.settings.agent.tabs.general")
-                      },
-                      {
-                        value: "agents" as const,
-                        label: t("workspace.settings.agent.tabs.agents")
-                      },
-                      ...(connectorsVisible
-                        ? [
-                            {
-                              value: "connectors" as const,
-                              label: translateConnectorMarket("title")
-                            }
-                          ]
-                        : []),
-                      {
-                        value: "customAgents" as const,
-                        label: t("workspace.settings.agent.tabs.customAgents")
-                      },
-                      ...(automationRulesEnabled
-                        ? [
-                            {
-                              value: "automation" as const,
-                              label: t("workspace.settings.agent.tabs.automation")
-                            }
-                          ]
-                        : [])
-                    ]}
-                    value={settingsState.agentTab}
-                    onValueChange={(tab) => settingsService.selectAgentTab(tab)}
-                  />
-                </div>
-                {settingsState.agentTab === "agents" ? (
-                  <WorkspaceAgentsSettingsTab
-                    autoCheckEnabled={
-                      desktopPreferencesState.agentCliUpdateCheckEnabled
-                    }
-                    autoCheckPending={
-                      desktopPreferencesState.changingAgentCliUpdateCheckEnabled !==
-                      null
-                    }
-                    agentProviderStatusService={agentProviderStatusService}
-                    agentsService={agentsService}
-                    focusProvider={settingsState.agentFocusProvider}
-                    focusRequestID={settingsState.agentFocusRequestID}
-                    earlyAccessEnabled={earlyAccessIntegrationsEnabled}
-                    featureFlags={pendingFeatureFlags}
-                    featureFlagsPending={
-                      desktopPreferencesState.changingFeatureFlags !== null
-                    }
-                    onAgentEnabledChange={(agentTargetID, enabled) =>
-                      settingsService.setAgentTargetEnabled(
-                        agentTargetID,
-                        enabled
-                      )
-                    }
-                    onAutoCheckEnabledChange={(enabled) => {
-                      void desktopPreferencesService
-                        .setAgentCliUpdateCheckEnabled(enabled)
-                        .catch((error) => {
-                          notifications.error({
-                            description:
-                              error instanceof Error && error.message.trim()
-                                ? error.message
-                                : undefined,
-                            title: t(
-                              "workspace.settings.agent.agents.autoCheckUpdatesFailed"
-                            )
+                <div className="pb-[20px]">
+                  <div className="sticky top-0 z-10 -mx-[22px] px-[22px] py-3 bg-[var(--background-fronted)]">
+                    <SectionTabs
+                      ariaLabel={t("workspace.settings.nav.agent")}
+                      className="h-8 shrink-0"
+                      tabs={[
+                        {
+                          value: "general" as const,
+                          label: t("workspace.settings.agent.tabs.general")
+                        },
+                        {
+                          value: "agents" as const,
+                          label: t("workspace.settings.agent.tabs.agents")
+                        },
+                        ...(connectorsVisible
+                          ? [
+                              {
+                                value: "connectors" as const,
+                                label: translateConnectorMarket("title")
+                              }
+                            ]
+                          : []),
+                        {
+                          value: "customAgents" as const,
+                          label: t("workspace.settings.agent.tabs.customAgents")
+                        },
+                        ...(automationRulesEnabled
+                          ? [
+                              {
+                                value: "automation" as const,
+                                label: t(
+                                  "workspace.settings.agent.tabs.automation"
+                                )
+                              }
+                            ]
+                          : [])
+                      ]}
+                      value={settingsState.agentTab}
+                      onValueChange={(tab) =>
+                        settingsService.selectAgentTab(tab)
+                      }
+                    />
+                  </div>
+                  {settingsState.agentTab === "agents" ? (
+                    <WorkspaceAgentsSettingsTab
+                      autoCheckEnabled={
+                        desktopPreferencesState.agentCliUpdateCheckEnabled
+                      }
+                      autoCheckPending={
+                        desktopPreferencesState.changingAgentCliUpdateCheckEnabled !==
+                        null
+                      }
+                      agentProviderStatusService={agentProviderStatusService}
+                      agentsService={agentsService}
+                      focusProvider={settingsState.agentFocusProvider}
+                      focusRequestID={settingsState.agentFocusRequestID}
+                      earlyAccessEnabled={earlyAccessIntegrationsEnabled}
+                      featureFlags={pendingFeatureFlags}
+                      featureFlagsPending={
+                        desktopPreferencesState.changingFeatureFlags !== null
+                      }
+                      onAgentEnabledChange={(agentTargetID, enabled) =>
+                        settingsService.setAgentTargetEnabled(
+                          agentTargetID,
+                          enabled
+                        )
+                      }
+                      onAutoCheckEnabledChange={(enabled) => {
+                        void desktopPreferencesService
+                          .setAgentCliUpdateCheckEnabled(enabled)
+                          .catch((error) => {
+                            notifications.error({
+                              description:
+                                error instanceof Error && error.message.trim()
+                                  ? error.message
+                                  : undefined,
+                              title: t(
+                                "workspace.settings.agent.agents.autoCheckUpdatesFailed"
+                              )
+                            });
                           });
+                      }}
+                      onExtensionEnabledChange={(flag, enabled) => {
+                        return settingsService.changeFeatureFlags({
+                          ...pendingFeatureFlags,
+                          [flag]: enabled
                         });
-                    }}
-                    onExtensionEnabledChange={(flag, enabled) => {
-                      return settingsService.changeFeatureFlags({
-                        ...pendingFeatureFlags,
-                        [flag]: enabled
-                      });
-                    }}
-                    onOpenEnvironment={(provider) =>
-                      agentEnvService.open({ focus: "detect", provider })
-                    }
-                  />
-                ) : settingsState.agentTab === "connectors" &&
-                  connectorsVisible ? (
-                  <ConnectorMarketPanel
-                    i18n={connectorMarketI18n}
-                    locale={desktopPreferencesState.locale}
-                    onError={handleConnectorMarketError}
-                    onTryConnector={() => settingsService.closePanel()}
-                    root={connectorMarketModule.root}
-                  />
-                ) : settingsState.agentTab === "customAgents" ? (
-                  <SettingsRows>
-                    <WorkspaceAgentsSection />
-                  </SettingsRows>
-                ) : settingsState.agentTab === "automation" &&
-                  automationRulesEnabled ? (
-                  <SettingsRows>
-                    <WorkspaceAutomationRulesSection />
-                  </SettingsRows>
-                ) : (
-                  <WorkspaceAgentSettingsSection
-                    agentConversationDetailMode={
-                      desktopPreferencesState.agentConversationDetailMode
-                    }
-                    browserUseConnectionMode={
-                      desktopPreferencesState.browserUseConnectionMode
-                    }
-                    changingAgentConversationDetailMode={
-                      desktopPreferencesState.changingAgentConversationDetailMode
-                    }
-                    changingDefaultAgentProvider={
-                      desktopPreferencesState.changingDefaultAgentProvider
-                    }
-                    changingBrowserUseConnectionMode={
-                      desktopPreferencesState.changingBrowserUseConnectionMode
-                    }
-                    defaultAgentProvider={
-                      desktopPreferencesState.defaultAgentProvider
-                    }
-                    focusedAnchor={settingsState.generalFocusAnchor}
-                    focusRequestID={settingsState.generalFocusRequestID}
-                    onBrowserUseConnectionModeChange={(mode) => {
-                      void settingsService.changeBrowserUseConnectionMode(mode);
-                    }}
-                    onAgentConversationDetailModeChange={(mode) => {
-                      void settingsService.changeAgentConversationDetailMode(
-                        mode
-                      );
-                    }}
-                    onDefaultAgentProviderChange={(provider) => {
-                      void settingsService.changeDefaultAgentProvider(provider);
-                    }}
-                    onOpenExternalAgentImport={onOpenExternalAgentImport}
-                  />
-                )}
-              </div>
+                      }}
+                      onOpenEnvironment={(provider) =>
+                        agentEnvService.open({ focus: "detect", provider })
+                      }
+                    />
+                  ) : settingsState.agentTab === "connectors" &&
+                    connectorsVisible ? (
+                    <ConnectorMarketPanel
+                      i18n={connectorMarketI18n}
+                      locale={desktopPreferencesState.locale}
+                      onError={handleConnectorMarketError}
+                      onTryConnector={(connectorKey) => {
+                        settingsService.closePanel();
+                        onTryConnector(connectorKey);
+                      }}
+                      root={connectorMarketModule.root}
+                    />
+                  ) : settingsState.agentTab === "customAgents" ? (
+                    <SettingsRows>
+                      <WorkspaceAgentsSection />
+                    </SettingsRows>
+                  ) : settingsState.agentTab === "automation" &&
+                    automationRulesEnabled ? (
+                    <SettingsRows>
+                      <WorkspaceAutomationRulesSection />
+                    </SettingsRows>
+                  ) : (
+                    <WorkspaceAgentSettingsSection
+                      agentConversationDetailMode={
+                        desktopPreferencesState.agentConversationDetailMode
+                      }
+                      browserUseConnectionMode={
+                        desktopPreferencesState.browserUseConnectionMode
+                      }
+                      changingAgentConversationDetailMode={
+                        desktopPreferencesState.changingAgentConversationDetailMode
+                      }
+                      changingDefaultAgentProvider={
+                        desktopPreferencesState.changingDefaultAgentProvider
+                      }
+                      changingBrowserUseConnectionMode={
+                        desktopPreferencesState.changingBrowserUseConnectionMode
+                      }
+                      defaultAgentProvider={
+                        desktopPreferencesState.defaultAgentProvider
+                      }
+                      focusedAnchor={settingsState.generalFocusAnchor}
+                      focusRequestID={settingsState.generalFocusRequestID}
+                      onBrowserUseConnectionModeChange={(mode) => {
+                        void settingsService.changeBrowserUseConnectionMode(
+                          mode
+                        );
+                      }}
+                      onAgentConversationDetailModeChange={(mode) => {
+                        void settingsService.changeAgentConversationDetailMode(
+                          mode
+                        );
+                      }}
+                      onDefaultAgentProviderChange={(provider) => {
+                        void settingsService.changeDefaultAgentProvider(
+                          provider
+                        );
+                      }}
+                      onOpenExternalAgentImport={onOpenExternalAgentImport}
+                    />
+                  )}
+                </div>
               </div>
             ) : settingsState.activeSection === "appearance" ? (
               <WorkspaceAppearanceSettingsSection

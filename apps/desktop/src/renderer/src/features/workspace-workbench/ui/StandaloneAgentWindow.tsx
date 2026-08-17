@@ -407,6 +407,17 @@ export function StandaloneAgentWindow({
         Date.now() * 1_000 + (++composerAppendSequenceRef.current % 1_000)
     });
   }, []);
+  const selectComposerConnector = useCallback((connectorKey: string): void => {
+    const normalizedConnectorKey = connectorKey.trim();
+    if (!normalizedConnectorKey) {
+      return;
+    }
+    setComposerAppendRequest({
+      connectorKey: normalizedConnectorKey,
+      sequence:
+        Date.now() * 1_000 + (++composerAppendSequenceRef.current % 1_000)
+    });
+  }, []);
   const fileOpenRequestSequenceRef = useRef(0);
   const openFileInSidebar = useCallback(
     async (file: string, validateExists = false): Promise<boolean> => {
@@ -940,7 +951,10 @@ export function StandaloneAgentWindow({
         </StandaloneAgentToolSidebar>
         {panelHostsReady ? (
           <Suspense fallback={null}>
-            <LazyStandaloneAgentWindowPanelHosts workspace={workspace} />
+            <LazyStandaloneAgentWindowPanelHosts
+              onTryConnector={selectComposerConnector}
+              workspace={workspace}
+            />
           </Suspense>
         ) : null}
         <WorkspaceAppExternalBridge

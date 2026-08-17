@@ -4,9 +4,10 @@ import {
   agentGuiWorkbenchProviderFromLaunchRequest,
   agentGuiWorkbenchUnifiedDockEntryId,
   createAgentGuiWorkbenchDraftLaunchRequest,
+  createAgentGuiWorkbenchConnectorLaunchRequest,
   createAgentGuiWorkbenchInstanceId,
   createAgentGuiWorkbenchLaunchDescriptor,
-  createAgentGuiWorkbenchSessionLaunchRequest,
+  createAgentGuiWorkbenchSessionLaunchRequest
 } from "./launch.ts";
 
 describe("agent gui workbench launch contract", () => {
@@ -140,6 +141,23 @@ describe("agent gui workbench launch contract", () => {
     expect(descriptor.instanceId).toMatch(/^agent-gui:instance:/);
     expect(descriptor.provider).toBe("claude-code");
     expect(descriptor.reusePolicy).toEqual({ kind: "dock-entry" });
+  });
+
+  it("reuses the unified Agent GUI and activates an exact connector selection", () => {
+    const request = createAgentGuiWorkbenchConnectorLaunchRequest({
+      connectorKey: " notion "
+    });
+    const descriptor = createAgentGuiWorkbenchLaunchDescriptor({
+      ...request,
+      payload: { ...request.payload, provider: "codex" }
+    });
+
+    expect(descriptor.activation).toEqual({
+      payload: { connectorKey: "notion" },
+      type: "agent-gui:select-connector"
+    });
+    expect(descriptor.reusePolicy).toEqual({ kind: "dock-entry" });
+    expect(descriptor.targetAgentSessionId).toBeNull();
   });
 
   it("keeps a managed edit prompt attached to the exact source session", () => {

@@ -7,6 +7,9 @@ export const agentGuiWorkbenchOpenSessionActivationType =
 export const agentGuiWorkbenchPrefillPromptActivationType =
   "agent-gui:prefill-prompt";
 
+export const agentGuiWorkbenchSelectConnectorActivationType =
+  "agent-gui:select-connector";
+
 export interface AgentGuiWorkbenchOpenSessionComposerAppend {
   draftPrompt: string;
   focusComposer?: boolean;
@@ -15,6 +18,10 @@ export interface AgentGuiWorkbenchOpenSessionComposerAppend {
 export interface AgentGuiWorkbenchOpenSessionPayload {
   agentSessionId: string;
   composerAppend?: AgentGuiWorkbenchOpenSessionComposerAppend;
+}
+
+export interface AgentGuiWorkbenchSelectConnectorPayload {
+  connectorKey: string;
 }
 
 export interface AgentGuiWorkbenchPrefillPromptPayload {

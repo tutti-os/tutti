@@ -51,6 +51,7 @@ export {
   agentGuiWorkbenchTypeId,
   agentGuiWorkbenchUnifiedDockEntryId,
   createAgentGuiWorkbenchDraftLaunchRequest,
+  createAgentGuiWorkbenchConnectorLaunchRequest,
   createAgentGuiWorkbenchInstanceId,
   createAgentGuiWorkbenchLaunchDescriptor,
   createAgentGuiWorkbenchSessionLaunchRequest,
@@ -91,9 +92,11 @@ export type {
 export {
   agentGuiWorkbenchOpenSessionActivationType,
   agentGuiWorkbenchPrefillPromptActivationType,
+  agentGuiWorkbenchSelectConnectorActivationType,
   type AgentGuiWorkbenchComposerOverrides,
   type AgentGuiWorkbenchNodeState,
   type AgentGuiWorkbenchPrefillPromptPayload,
+  type AgentGuiWorkbenchSelectConnectorPayload,
   type AgentGuiWorkbenchProvider,
   type AgentGuiWorkbenchState,
   type AgentGuiWorkbenchWorkspaceState

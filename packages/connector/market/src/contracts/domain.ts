@@ -207,9 +207,17 @@ export interface ConnectorMarketSnapshot {
   catalogState: ConnectorCatalogState;
   connectors: Connector[];
   operations: ConnectorOperation[];
+  /** Durable one-shot receipts. Older hosts may omit this additive field. */
+  authorizationCompletions?: ConnectorAuthorizationCompletion[];
   revision: number;
   eventCursor?: number;
   sourceRevision?: string;
+}
+
+export interface ConnectorAuthorizationCompletion {
+  completionId: string;
+  connectorKey: string;
+  completedAt: string;
 }
 
 export type ConnectorMarketCategoryKind = "category" | "featured";

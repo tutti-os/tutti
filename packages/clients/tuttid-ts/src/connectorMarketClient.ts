@@ -1,4 +1,5 @@
 import {
+  acknowledgeConnectorMarketAuthorizationCompletion,
   cancelConnectorMarketAuthorization,
   disconnectConnectorMarketAuthorization,
   getConnectorMarket,
@@ -57,6 +58,9 @@ export function isConnectorMarketClientError(
 }
 
 export interface ConnectorMarketClient {
+  acknowledgeConnectorMarketAuthorizationCompletion(
+    completionId: string
+  ): Promise<void>;
   getConnectorMarket(): Promise<ConnectorMarketSnapshot>;
   listConnectorMarketCategories(): Promise<ConnectorMarketCategoriesResponse>;
   listConnectorMarketCatalog(input: {
@@ -97,6 +101,19 @@ export function createConnectorMarketClient(
   client: Client
 ): ConnectorMarketClient {
   return {
+    async acknowledgeConnectorMarketAuthorizationCompletion(completionId) {
+      const response = await acknowledgeConnectorMarketAuthorizationCompletion({
+        client,
+        path: { completionID: completionId }
+      });
+      const details = connectorMarketErrorDetails(response.error);
+      if (details) {
+        throw new ConnectorMarketClientError(
+          details,
+          response.response?.status ?? 0
+        );
+      }
+    },
     async getConnectorMarket() {
       return unwrapConnectorMarketData(
         await getConnectorMarket({ client }),

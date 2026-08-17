@@ -87,9 +87,47 @@ function backendWith(
     beginAuthorization: unsupported,
     cancelAuthorization: unsupported,
     disconnectAuthorization: unsupported,
+    acknowledgeAuthorizationCompletion: unsupported,
     ...overrides
   };
 }
+
+test("loads and acknowledges durable authorization completions", async () => {
+  const acknowledged: string[] = [];
+  const service = new ConnectorMarketService({
+    backend: backendWith({
+      getSnapshot: async () => ({
+        ...snapshot(2, [connector("notion", 2)]),
+        authorizationCompletions: [
+          {
+            completionId: "authorization-1",
+            connectorKey: "notion",
+            completedAt: "2026-08-17T00:00:00Z"
+          }
+        ]
+      }),
+      acknowledgeAuthorizationCompletion: async ({ completionId }) => {
+        acknowledged.push(completionId);
+      }
+    })
+  });
+
+  await service.ensureLoaded();
+  assert.equal(
+    service.dataStore.pendingAuthorizationCompletionsById["authorization-1"]
+      ?.connectorKey,
+    "notion"
+  );
+
+  await service.acknowledgeAuthorizationCompletion("authorization-1");
+
+  assert.deepEqual(acknowledged, ["authorization-1"]);
+  assert.equal(
+    service.dataStore.pendingAuthorizationCompletionsById["authorization-1"],
+    undefined
+  );
+  service.dispose();
+});
 
 test("exposes commands directly on a class service and state through dataStore", async () => {
   const service = new ConnectorMarketService({

@@ -290,6 +290,40 @@ func (api DaemonAPI) CancelConnectorMarketAuthorization(
 	return tuttigenerated.CancelConnectorMarketAuthorization204Response{}, nil
 }
 
+func (api DaemonAPI) AcknowledgeConnectorMarketAuthorizationCompletion(
+	ctx context.Context,
+	request tuttigenerated.AcknowledgeConnectorMarketAuthorizationCompletionRequestObject,
+) (tuttigenerated.AcknowledgeConnectorMarketAuthorizationCompletionResponseObject, error) {
+	if api.ConnectorMarketService == nil {
+		return tuttigenerated.AcknowledgeConnectorMarketAuthorizationCompletion503JSONResponse{
+			ConnectorMarketUnavailableErrorJSONResponse: connectorMarketUnavailableError(),
+		}, nil
+	}
+	err := api.ConnectorMarketService.AcknowledgeAuthorizationCompletion(
+		ctx,
+		market.OperationScope{AccountID: api.connectorMarketAccountID()},
+		string(request.CompletionID),
+	)
+	if err == nil {
+		return tuttigenerated.AcknowledgeConnectorMarketAuthorizationCompletion204Response{}, nil
+	}
+	payload, status := connectorMarketError(err)
+	switch status {
+	case 400:
+		return tuttigenerated.AcknowledgeConnectorMarketAuthorizationCompletion400JSONResponse{
+			ConnectorMarketInvalidRequestErrorJSONResponse: invalidConnectorMarketResponse(payload),
+		}, nil
+	case 404:
+		return tuttigenerated.AcknowledgeConnectorMarketAuthorizationCompletion404JSONResponse{
+			ConnectorMarketNotFoundErrorJSONResponse: notFoundConnectorMarketResponse(payload),
+		}, nil
+	default:
+		return tuttigenerated.AcknowledgeConnectorMarketAuthorizationCompletion503JSONResponse{
+			ConnectorMarketUnavailableErrorJSONResponse: unavailableConnectorMarketResponse(payload),
+		}, nil
+	}
+}
+
 func (api DaemonAPI) DisconnectConnectorMarketAuthorization(
 	ctx context.Context,
 	request tuttigenerated.DisconnectConnectorMarketAuthorizationRequestObject,

@@ -21,6 +21,11 @@ interface UninstallSuccessToast {
   operationId: string;
 }
 
+interface AuthorizationSuccessToast {
+  completionId: string;
+  displayName: string;
+}
+
 export function ConnectorMarketDialogs() {
   const {
     authorizationRenderer,
@@ -35,19 +40,19 @@ export function ConnectorMarketDialogs() {
   const dialog = useSnapshot(view.dataStore).dialog;
   const dialogRequest = useSnapshot(uiState.dataStore).dialog;
   const marketSnapshot = useSnapshot(market.dataStore);
-  const [showSuccessToast, setShowSuccessToast] = useState<
-    "authorize" | "install" | null
-  >(null);
+  const [showSuccessToast, setShowSuccessToast] = useState<"install" | null>(
+    null
+  );
+  const [authorizationSuccess, setAuthorizationSuccess] =
+    useState<AuthorizationSuccessToast | null>(null);
   const [uninstallSubmitting, setUninstallSubmitting] = useState(false);
   const [uninstallSuccess, setUninstallSuccess] =
     useState<UninstallSuccessToast | null>(null);
   const authorizeConnector = useCallback(
     (connectorKey: string, secret?: string) => {
-      setShowSuccessToast(null);
       return market
         .beginAuthorization(connectorKey, secret)
         .then(() => {
-          setShowSuccessToast("authorize");
           uiState.closeDialog();
         })
         .catch((error: unknown) => {
@@ -73,6 +78,31 @@ export function ConnectorMarketDialogs() {
     },
     [i18n, market, onError, uiState]
   );
+
+  useEffect(() => {
+    if (authorizationSuccess) {
+      return;
+    }
+    const completion = Object.values(
+      marketSnapshot.pendingAuthorizationCompletionsById
+    ).sort((left, right) =>
+      left.completedAt.localeCompare(right.completedAt)
+    )[0];
+    if (!completion) {
+      return;
+    }
+    const connector = marketSnapshot.connectorsByKey[completion.connectorKey];
+    setAuthorizationSuccess({
+      completionId: completion.completionId,
+      displayName:
+        connector?.release.manifest.displayName.trim() ||
+        completion.connectorKey
+    });
+  }, [
+    authorizationSuccess,
+    marketSnapshot.connectorsByKey,
+    marketSnapshot.pendingAuthorizationCompletionsById
+  ]);
 
   useEffect(() => {
     for (const tracked of Object.values(
@@ -105,14 +135,19 @@ export function ConnectorMarketDialogs() {
     }
   }, [dialog, dialogRequest?.kind, uiState]);
 
-  if (!dialog && !showSuccessToast && !uninstallSuccess) {
+  if (
+    !dialog &&
+    !showSuccessToast &&
+    !authorizationSuccess &&
+    !uninstallSuccess
+  ) {
     return null;
   }
 
   // Hide management dialog when showing success toast
   const shouldHideDialog =
     dialog?.kind === "management" &&
-    Boolean(showSuccessToast || uninstallSuccess);
+    Boolean(showSuccessToast || authorizationSuccess || uninstallSuccess);
 
   const cancelAuthorizationDialog = () => {
     if (dialog?.kind !== "authorization") {
@@ -275,12 +310,34 @@ export function ConnectorMarketDialogs() {
             variant="success"
             onOpenChange={(open) => !open && setShowSuccessToast(null)}
           >
+            <ToastTitle>{i18n.t("actionInstallSuccess")}</ToastTitle>
+          </ToastRoot>
+          <ToastViewport />
+        </ToastProvider>
+      ) : null}
+      {authorizationSuccess ? (
+        <ToastProvider>
+          <ToastRoot
+            open
+            variant="success"
+            onOpenChange={(open) => {
+              if (open) {
+                return;
+              }
+              void market
+                .acknowledgeAuthorizationCompletion(
+                  authorizationSuccess.completionId
+                )
+                .then(() => setAuthorizationSuccess(null))
+                .catch(() => {
+                  onError?.(i18n.t("connectorAuthorizationFailed"));
+                });
+            }}
+          >
             <ToastTitle>
-              {i18n.t(
-                showSuccessToast === "install"
-                  ? "actionInstallSuccess"
-                  : "actionAuthorizeSuccess"
-              )}
+              {i18n.t("connectorAuthorizationSuccess", {
+                name: authorizationSuccess.displayName
+              })}
             </ToastTitle>
           </ToastRoot>
           <ToastViewport />

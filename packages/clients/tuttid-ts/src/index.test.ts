@@ -2470,6 +2470,7 @@ test("getTuttidErrorI18nCandidates prefers reason-specific keys", () => {
 
 test("shared tuttid client preserves connector market read and install routes", async () => {
   const snapshot = {
+    authorizationCompletions: [],
     catalogState: "ready" as const,
     connectors: [],
     operations: [],
@@ -2535,6 +2536,24 @@ test("shared tuttid connector client cancels a pending authorization without a r
     body: null,
     method: "POST",
     path: "/v1/connector-market/connectors/supabase/authorization:cancel",
+    query: {}
+  });
+});
+
+test("shared tuttid connector client acknowledges one authorization completion", async () => {
+  const { client, requests } = captureClient(
+    () => new Response(null, { status: 204 })
+  );
+
+  await client.acknowledgeConnectorMarketAuthorizationCompletion(
+    "authorization-1"
+  );
+
+  assertRequest(requests[0]!, {
+    authorization: null,
+    body: null,
+    method: "POST",
+    path: "/v1/connector-market/authorization-completions/authorization-1:acknowledge",
     query: {}
   });
 });

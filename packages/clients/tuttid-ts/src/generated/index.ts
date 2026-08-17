@@ -2,6 +2,7 @@
 
 export {
   acceptAgentSessionWork,
+  acknowledgeConnectorMarketAuthorizationCompletion,
   acknowledgeWorkspaceAgentSessionForkOperation,
   addWorkspaceIssueContextRefs,
   addWorkspaceIssueTaskContextRefs,
@@ -276,6 +277,11 @@ export type {
   AccountRegistrationCreditsReward,
   AccountUserInfo,
   AccountUserInfoResponse,
+  AcknowledgeConnectorMarketAuthorizationCompletionData,
+  AcknowledgeConnectorMarketAuthorizationCompletionError,
+  AcknowledgeConnectorMarketAuthorizationCompletionErrors,
+  AcknowledgeConnectorMarketAuthorizationCompletionResponse,
+  AcknowledgeConnectorMarketAuthorizationCompletionResponses,
   AcknowledgeWorkspaceAgentSessionForkOperationData,
   AcknowledgeWorkspaceAgentSessionForkOperationError,
   AcknowledgeWorkspaceAgentSessionForkOperationErrors,
@@ -548,6 +554,8 @@ export type {
   ConnectorMarketAgentRouting,
   ConnectorMarketArtifact,
   ConnectorMarketAuthorization,
+  ConnectorMarketAuthorizationCompletion,
+  ConnectorMarketAuthorizationCompletionId,
   ConnectorMarketAuthorizationReplacementPolicy,
   ConnectorMarketAuthorizationRequest,
   ConnectorMarketAuthorizationRequestWritable,

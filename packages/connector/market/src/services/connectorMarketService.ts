@@ -390,6 +390,20 @@ export class ConnectorMarketService implements IConnectorMarketService {
     }
   }
 
+  async acknowledgeAuthorizationCompletion(
+    completionId: string
+  ): Promise<void> {
+    if (this.disposed) {
+      return;
+    }
+    await this.dependencies.backend.acknowledgeAuthorizationCompletion({
+      completionId
+    });
+    if (!this.disposed) {
+      delete this.dataStore.pendingAuthorizationCompletionsById[completionId];
+    }
+  }
+
   beginAuthorization(connectorKey: string, secret?: string): Promise<void> {
     if (this.disposed || !this.canRequest()) {
       return Promise.resolve();
@@ -891,6 +905,12 @@ export class ConnectorMarketService implements IConnectorMarketService {
     if (operation?.connectorKey === connectorKey) {
       this.applyTrackedOperation(operation);
       this.trackOperation(operation);
+      if (
+        operation.kind === "start_authorization" &&
+        connector.authorization.state === "connected"
+      ) {
+        this.requestAuthoritativeLoad();
+      }
     }
     this.dataStore.revision = Math.max(this.dataStore.revision, event.revision);
     this.dataStore.lastError = null;

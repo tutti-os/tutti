@@ -7,6 +7,7 @@ import { ComposerPrimaryCapabilityControl } from "./ComposerPrimaryCapabilityCon
 const labels = {
   addContentConnectors: "Connectors",
   addContentConnectorConnected: "Connected",
+  addContentConnectorSelected: "Selected",
   addContentConnectorConnect: "Connect",
   addContentConnectorAuthorize: "Authorize",
   addContentConnectorEmpty: "No connectors available",
@@ -28,7 +29,9 @@ describe("ComposerPrimaryCapabilityControl", () => {
         labels={labels}
         loading={false}
         onCapabilitySettingsRequest={vi.fn()}
+        onConnectorSelected={vi.fn()}
         onTuttiModeChange={vi.fn()}
+        selectedConnectorKeys={[]}
         tuttiModeSupported={true}
       />
     );
@@ -54,7 +57,9 @@ describe("ComposerPrimaryCapabilityControl", () => {
         loading
         onRetryComposerOptions={onRetryComposerOptions}
         onCapabilitySettingsRequest={vi.fn()}
+        onConnectorSelected={vi.fn()}
         onTuttiModeChange={vi.fn()}
+        selectedConnectorKeys={[]}
         tuttiModeSupported={true}
       />
     );

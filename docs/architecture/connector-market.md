@@ -42,6 +42,15 @@ freezes its `accountId` in `OperationScope`, while short-lived artifact and
 credential grants are passed only through execution ports and are never
 serialized into SQLite.
 
+Authorization success presentation is also derived from daemon truth. A
+successful authorization-session resolution produces an account-scoped,
+durable completion in the local snapshot. Renderer dialog hosts may present
+that completion after a process relaunch and acknowledge its stable completion
+id only after the success notice closes. Acknowledgement is idempotent and
+account-fenced; renderer-local promise settlement is never authorization
+success testimony. Older hosts that omit the completion collection remain
+read-compatible and simply cannot provide relaunch-safe success notices.
+
 Connector Manifest v3 keeps one signed release and adds an execution-target
 matrix keyed by canonical Go platform tuples such as `darwin-arm64` and
 `linux-arm64`. The catalog adapter selects the daemon's exact target and

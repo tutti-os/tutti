@@ -27,10 +27,12 @@ import type {
 } from "../services/workspaceWallpaper";
 
 interface StandaloneAgentWindowPanelHostsProps {
+  onTryConnector: (connectorKey: string) => void;
   workspace: WorkspaceSummary;
 }
 
 export function StandaloneAgentWindowPanelHosts({
+  onTryConnector,
   workspace
 }: StandaloneAgentWindowPanelHostsProps): ReactNode {
   const { service: workspaceSettingsService } = useWorkspaceSettingsService();
@@ -113,9 +115,10 @@ export function StandaloneAgentWindowPanelHosts({
 
   return (
     <>
-      <WorkspaceConnectorMarketDialogHost />
+      <WorkspaceConnectorMarketDialogHost onTryConnector={onTryConnector} />
       <WorkspaceSettingsPanel
         onOpenExternalAgentImport={() => openExternalAgentImport()}
+        onTryConnector={onTryConnector}
         onSelectWallpaper={selectWallpaper}
         onSelectWallpaperDisplayMode={selectWallpaperDisplayMode}
         selectedWallpaperDisplayMode={selectedWallpaperDisplayMode}

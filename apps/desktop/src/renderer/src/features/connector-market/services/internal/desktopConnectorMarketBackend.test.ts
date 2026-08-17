@@ -10,6 +10,7 @@ import { createDesktopConnectorMarketBackend } from "./desktopConnectorMarketBac
 test("desktop connector market backend delegates snapshot reads to the daemon client", async () => {
   let calls = 0;
   const snapshot: ConnectorMarketSnapshot = {
+    authorizationCompletions: [],
     catalogState: "ready",
     connectors: [],
     operations: [],

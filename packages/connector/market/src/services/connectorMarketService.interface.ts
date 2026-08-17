@@ -38,6 +38,14 @@ export interface ConnectorMarketStoreState {
       state: ConnectorOperation["state"];
     }
   >;
+  pendingAuthorizationCompletionsById: Record<
+    string,
+    {
+      completionId: string;
+      connectorKey: string;
+      completedAt: string;
+    }
+  >;
   authorizingConnectorKeys: Record<string, boolean>;
   authorizationViewsByConnectorKey: Record<string, AuthorizationViewEnvelopeV1>;
   lastError: ConnectorMarketErrorShape | null;
@@ -84,6 +92,7 @@ export interface IConnectorMarketService {
   install(connectorKey: string): Promise<ConnectorInstallOutcome>;
   uninstall(connectorKey: string): Promise<ConnectorOperation>;
   dismissUninstallNotification(operationId: string): void;
+  acknowledgeAuthorizationCompletion(completionId: string): Promise<void>;
   beginAuthorization(connectorKey: string, secret?: string): Promise<void>;
   cancelAuthorization(connectorKey: string): Promise<void>;
   openAuthorizationUrl(url: string): Promise<void>;

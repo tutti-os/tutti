@@ -253,6 +253,24 @@ paths:
           $ref: "#/components/responses/ConnectorMarketConflictError"
         "503":
           $ref: "#/components/responses/ConnectorMarketUnavailableError"
+  /v1/connector-market/authorization-completions/{completionID}:acknowledge:
+    parameters:
+      - $ref: "#/components/parameters/ConnectorMarketAuthorizationCompletionID"
+    post:
+      operationId: acknowledgeConnectorMarketAuthorizationCompletion
+      tags: [connector-market]
+      summary: Acknowledge one durable authorization completion notification
+      responses:
+        "204":
+          description: Authorization completion acknowledged
+        "400":
+          $ref: "#/components/responses/ConnectorMarketInvalidRequestError"
+        "401":
+          $ref: "#/components/responses/ConnectorMarketUnauthorizedError"
+        "404":
+          $ref: "#/components/responses/ConnectorMarketNotFoundError"
+        "503":
+          $ref: "#/components/responses/ConnectorMarketUnavailableError"
   /v1/connector-market/operations/{operationID}:
     parameters:
       - $ref: "#/components/parameters/ConnectorMarketOperationID"
@@ -286,6 +304,13 @@ components:
         pattern: "^[a-z0-9](?:[a-z0-9._-]{0,126}[a-z0-9])?$"
     ConnectorMarketOperationID:
       name: operationID
+      in: path
+      required: true
+      schema:
+        type: string
+        minLength: 1
+    ConnectorMarketAuthorizationCompletionID:
+      name: completionID
       in: path
       required: true
       schema:
@@ -420,7 +445,15 @@ components:
     ConnectorMarketSnapshot:
       type: object
       additionalProperties: false
-      required: [catalogState, connectors, operations, revision, eventCursor]
+      required:
+        [
+          catalogState,
+          connectors,
+          operations,
+          authorizationCompletions,
+          revision,
+          eventCursor
+        ]
       properties:
         catalogState:
           $ref: "#/components/schemas/ConnectorMarketCatalogState"
@@ -432,6 +465,10 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/ConnectorMarketOperation"
+        authorizationCompletions:
+          type: array
+          items:
+            $ref: "#/components/schemas/ConnectorMarketAuthorizationCompletion"
         revision:
           type: integer
           format: int64
@@ -442,6 +479,20 @@ components:
           minimum: 0
         sourceRevision:
           type: string
+    ConnectorMarketAuthorizationCompletion:
+      type: object
+      additionalProperties: false
+      required: [completionId, connectorKey, completedAt]
+      properties:
+        completionId:
+          type: string
+          minLength: 1
+        connectorKey:
+          type: string
+          minLength: 1
+        completedAt:
+          type: string
+          format: date-time
     ConnectorMarketConnector:
       type: object
       additionalProperties: false

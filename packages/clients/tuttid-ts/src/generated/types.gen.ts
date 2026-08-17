@@ -4830,9 +4830,16 @@ export type ConnectorMarketSnapshot = {
   catalogState: ConnectorMarketCatalogState;
   connectors: Array<ConnectorMarketConnector>;
   operations: Array<ConnectorMarketOperation>;
+  authorizationCompletions: Array<ConnectorMarketAuthorizationCompletion>;
   revision: number;
   eventCursor: number;
   sourceRevision?: string;
+};
+
+export type ConnectorMarketAuthorizationCompletion = {
+  completionId: string;
+  connectorKey: string;
+  completedAt: string;
 };
 
 export type ConnectorMarketConnector = {
@@ -5218,6 +5225,8 @@ export type IssueManagerSearchQuery = string;
 export type ConnectorMarketConnectorKey = string;
 
 export type ConnectorMarketOperationId = string;
+
+export type ConnectorMarketAuthorizationCompletionId = string;
 
 export type ConnectorMarketSectionId = string;
 
@@ -17303,6 +17312,47 @@ export type DisconnectConnectorMarketAuthorizationResponses = {
 
 export type DisconnectConnectorMarketAuthorizationResponse =
   DisconnectConnectorMarketAuthorizationResponses[keyof DisconnectConnectorMarketAuthorizationResponses];
+
+export type AcknowledgeConnectorMarketAuthorizationCompletionData = {
+  body?: never;
+  path: {
+    completionID: string;
+  };
+  query?: never;
+  url: "/v1/connector-market/authorization-completions/{completionID}:acknowledge";
+};
+
+export type AcknowledgeConnectorMarketAuthorizationCompletionErrors = {
+  /**
+   * Invalid connector-market request
+   */
+  400: ConnectorMarketError;
+  /**
+   * Daemon authorization is required
+   */
+  401: ConnectorMarketError;
+  /**
+   * Connector or operation was not found
+   */
+  404: ConnectorMarketError;
+  /**
+   * Connector-market capability is temporarily unavailable
+   */
+  503: ConnectorMarketError;
+};
+
+export type AcknowledgeConnectorMarketAuthorizationCompletionError =
+  AcknowledgeConnectorMarketAuthorizationCompletionErrors[keyof AcknowledgeConnectorMarketAuthorizationCompletionErrors];
+
+export type AcknowledgeConnectorMarketAuthorizationCompletionResponses = {
+  /**
+   * Authorization completion acknowledged
+   */
+  204: void;
+};
+
+export type AcknowledgeConnectorMarketAuthorizationCompletionResponse =
+  AcknowledgeConnectorMarketAuthorizationCompletionResponses[keyof AcknowledgeConnectorMarketAuthorizationCompletionResponses];
 
 export type GetConnectorMarketOperationData = {
   body?: never;
