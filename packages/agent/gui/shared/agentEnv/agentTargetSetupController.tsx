@@ -384,7 +384,6 @@ function createAgentTargetSetupController(input: {
             ) {
               unsubscribe?.();
               unsubscribe = null;
-              cancelTerminalLogin(false);
             }
           });
         }
