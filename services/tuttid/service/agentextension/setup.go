@@ -70,6 +70,8 @@ type SetupSnapshot struct {
 	Reason         string
 	AuthMethods    []RuntimeAuthMethod
 	Account        *RuntimeAuthenticatedAccount
+	Models         []RuntimeModel
+	DefaultModelID string
 	Plan           *InstallPlan
 	Action         *SetupAction
 }
@@ -307,6 +309,8 @@ func (s *SetupService) snapshotForPlan(ctx context.Context, plan InstallPlan, wo
 		}
 		snapshot.Status = SetupStatus(probe.Status)
 		snapshot.AuthMethods = probe.AuthMethods
+		snapshot.Models = probe.Models
+		snapshot.DefaultModelID = probe.DefaultModelID
 		if snapshot.Status == SetupReady && s.AuthInvalidation != nil &&
 			s.AuthInvalidation.AuthInvalidated(binding.Installation.Provider) {
 			snapshot.Status = SetupAuthRequired

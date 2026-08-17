@@ -94,6 +94,32 @@ func TestExtensionComposerModelValidationRemainsStrictWithAdvertisedCatalog(t *t
 	}
 }
 
+func TestServiceGetComposerOptionsReusesPreloadedSetupModels(t *testing.T) {
+	runtime, service := newExtensionComposerValidationService(t)
+	options, err := service.GetComposerOptions(context.Background(), ComposerOptionsInput{
+		AgentTargetID: extensionComposerValidationTargetID,
+		WorkspaceID:   "workspace-extension",
+		Cwd:           t.TempDir(),
+		PreloadedModelOptions: []ComposerConfigOptionValue{
+			{ID: "gemini-current", Value: "gemini-current", Label: "Gemini Current"},
+			{ID: "gemini-next", Value: "gemini-next", Label: "Gemini Next"},
+		},
+		PreloadedDefaultModelID: "gemini-current",
+	})
+	if err != nil {
+		t.Fatalf("GetComposerOptions() error = %v", err)
+	}
+	if len(runtime.startCalls) != 0 {
+		t.Fatalf("runtime starts = %#v, want setup models reused without hidden session", runtime.startCalls)
+	}
+	if got := options.ModelConfig.CurrentValue; got != "gemini-current" {
+		t.Fatalf("current model = %q, want gemini-current", got)
+	}
+	if got := composerConfigOptionValuesDebugValues(options.ModelConfig.Options); !slices.Equal(got, []string{"gemini-current", "gemini-next"}) {
+		t.Fatalf("model options = %#v", got)
+	}
+}
+
 func TestServiceCreateValidatesExtensionDefaultsAndExplicitOverrides(t *testing.T) {
 	runtime, service := newExtensionComposerValidationService(t)
 	service.AgentComposerDefaultsReader = fakeAgentComposerDefaultsReader{
